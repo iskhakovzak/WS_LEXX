@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
 import {
   CAP_PRESETS, DEFAULT_FILTERS, PERIODS, PT_SIZES, activeFilterCount,
   type Filters, type Period, type PtSize, type SavedView, type SortKey, type TierFilter, type TypeFilter,
@@ -63,6 +65,7 @@ export function FiltersBar({
   onSortMode: (k: "time" | "score") => void;
   shown: number;
 }) {
+  const { t } = analystI18n.useT();
   const extra = (f.tier !== "all" ? 1 : 0) + (f.ptMin ? 1 : 0) + (f.sector ? 1 : 0) + (f.minCapB > 0 ? 1 : 0);
   const anyActive = activeFilterCount(f) > 0 || !!search || !!firmFilter || !!tickerFilter;
   return (
@@ -75,29 +78,29 @@ export function FiltersBar({
             value={search}
             onChange={(e) => onSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { onSearch(""); (e.target as HTMLInputElement).blur(); } }}
-            placeholder="Тикер или фирма"
-            aria-label="Поиск по тикеру или фирме"
-            className="h-9 pl-9 pr-10"
+            placeholder={t("filters.searchPlaceholder")}
+            aria-label={t("filters.searchAria")}
+            className="h-8 pl-9 pr-10"
             autoComplete="off"
           />
           <Kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>
         </div>
         <Segmented<TypeFilter>
-          ariaLabel="Тип действия"
+          ariaLabel={t("filters.typeAria")}
           size="sm"
           value={f.type}
           onChange={(v) => onChange({ type: v })}
           options={[
-            { value: "all", label: "Все", count: typeCounts.all },
-            { value: "moves", label: "Смена рейтинга", count: typeCounts.moves },
-            { value: "upgrade", label: "Апгрейды", count: typeCounts.upgrade },
-            { value: "downgrade", label: "Даунгрейды", count: typeCounts.downgrade },
-            { value: "initiated", label: "Покрытие", count: typeCounts.initiated },
-            { value: "targets", label: "Таргеты", count: typeCounts.targets },
+            { value: "all", label: commonI18n.t("states.all"), count: typeCounts.all },
+            { value: "moves", label: t("filters.type.moves"), count: typeCounts.moves },
+            { value: "upgrade", label: t("filters.type.upgrade"), count: typeCounts.upgrade },
+            { value: "downgrade", label: t("filters.type.downgrade"), count: typeCounts.downgrade },
+            { value: "initiated", label: t("filters.type.initiated"), count: typeCounts.initiated },
+            { value: "targets", label: t("filters.type.targets"), count: typeCounts.targets },
           ]}
         />
         <Segmented<Period>
-          ariaLabel="Период"
+          ariaLabel={t("filters.periodAria")}
           size="sm"
           value={f.period}
           onChange={(v) => onChange({ period: v })}
@@ -106,19 +109,19 @@ export function FiltersBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <FilterChip active={f.mineOnly} onClick={() => onChange({ mineOnly: !f.mineOnly })} count={mineCount || undefined}>
-          <UserRound className="h-3.5 w-3.5" aria-hidden="true" /> Мои тикеры
+        <FilterChip size="sm" active={f.mineOnly} onClick={() => onChange({ mineOnly: !f.mineOnly })} count={mineCount || undefined}>
+          <UserRound className="h-3.5 w-3.5" aria-hidden="true" /> {t("filters.myTickers")}
           <Kbd className="ml-0.5 hidden sm:inline-flex">M</Kbd>
         </FilterChip>
-        <FilterChip active={f.todayOnly} onClick={() => onChange({ todayOnly: !f.todayOnly })}>
-          <Sunrise className="h-3.5 w-3.5" aria-hidden="true" /> К сессии
+        <FilterChip size="sm" active={f.todayOnly} onClick={() => onChange({ todayOnly: !f.todayOnly })}>
+          <Sunrise className="h-3.5 w-3.5" aria-hidden="true" /> {t("filters.toSession")}
           <Kbd className="ml-0.5 hidden sm:inline-flex">T</Kbd>
         </FilterChip>
 
         <Popover>
           <PopoverTrigger asChild>
             <button type="button" aria-pressed={extra > 0} className={chipBtn}>
-              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" /> Фильтры
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" /> {commonI18n.t("actions.filters")}
               {extra > 0 && <span className="tabular-nums">· {extra}</span>}
               <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
             </button>
@@ -126,52 +129,52 @@ export function FiltersBar({
           <PopoverContent align="start" className="w-80">
             <div className="flex flex-col gap-4">
               <div>
-                <div className="micro-label mb-2 flex items-center gap-1">Фирмы <TermTooltip term="topFirm" icon /></div>
+                <div className="micro-label mb-2 flex items-center gap-1">{t("filters.firms")} <TermTooltip term="topFirm" icon /></div>
                 <Segmented<TierFilter>
-                  ariaLabel="Уровень фирмы"
+                  ariaLabel={t("filters.tierAria")}
                   size="sm"
                   value={f.tier}
                   onChange={(v) => onChange({ tier: v })}
-                  options={[{ value: "all", label: "Все" }, { value: "top", label: "Топ" }, { value: "other", label: "Остальные" }]}
+                  options={[{ value: "all", label: commonI18n.t("states.all") }, { value: "top", label: t("filters.tierTop") }, { value: "other", label: t("filters.tierOther") }]}
                 />
               </div>
               <div>
-                <div className="micro-label mb-2 flex items-center gap-1">Изменение таргета <TermTooltip term="pt" icon /></div>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Минимальное изменение таргета">
+                <div className="micro-label mb-2 flex items-center gap-1">{t("filters.ptChange")} <TermTooltip term="pt" icon /></div>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("filters.ptAria")}>
                   {PT_SIZES.map((v) => (
                     <FilterChip key={v} active={f.ptMin === v} onClick={() => onChange({ ptMin: v as PtSize })} className="min-h-7 px-2.5 text-xs">
-                      {v === 0 ? "Любое" : `≥ ${v}%`}
+                      {v === 0 ? t("filters.any") : `≥ ${v}%`}
                     </FilterChip>
                   ))}
                 </div>
               </div>
               {sectors.length > 1 && (
                 <div>
-                  <Label htmlFor="aa-sector" className="micro-label mb-2 block">Сектор</Label>
+                  <Label htmlFor="aa-sector" className="micro-label mb-2 block">{t("filters.sector")}</Label>
                   <select
                     id="aa-sector"
                     value={f.sector ?? ""}
                     onChange={(e) => onChange({ sector: e.target.value || null })}
                     className="glass-field h-9 w-full rounded-lg px-3 text-sm text-foreground"
                   >
-                    <option value="">Все секторы</option>
+                    <option value="">{t("filters.allSectors")}</option>
                     {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               )}
               <div>
-                <div className="micro-label mb-2 flex items-center gap-1"><Coins className="h-3.5 w-3.5" aria-hidden="true" /> Капитализация от</div>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Минимальная капитализация">
+                <div className="micro-label mb-2 flex items-center gap-1"><Coins className="h-3.5 w-3.5" aria-hidden="true" /> {t("filters.capFrom")}</div>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("filters.capAria")}>
                   {CAP_PRESETS.map((b) => (
                     <FilterChip key={b} active={f.minCapB === b} onClick={() => onChange({ minCapB: b })} className="min-h-7 px-2.5 text-xs">
-                      {b === 0 ? "Любая" : `$${b}B`}
+                      {b === 0 ? t("filters.anyCap") : `$${b}B`}
                     </FilterChip>
                   ))}
                 </div>
                 {f.minCapB > 0 && (
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <Label htmlFor="aa-unknown-cap" className="text-xs font-normal text-muted-foreground">
-                      включая без данных{capStats && capStats.unknown > 0 ? ` (${capStats.unknown})` : ""}
+                      {t("filters.includeUnknown")}{capStats && capStats.unknown > 0 ? ` (${capStats.unknown})` : ""}
                     </Label>
                     <Switch id="aa-unknown-cap" checked={f.includeUnknownCap} onCheckedChange={(v) => onChange({ includeUnknownCap: v })} />
                   </div>
@@ -185,34 +188,34 @@ export function FiltersBar({
 
         {firmFilter && (
           <Pill tone="accent" className="pr-1">
-            Фирма: {firmFilter}
-            <button type="button" onClick={onClearFirm} aria-label="Сбросить фильтр по фирме" className="grid h-6 w-6 place-items-center rounded-full hover:bg-primary/20">
+            {t("filters.firm", { name: firmFilter })}
+            <button type="button" onClick={onClearFirm} aria-label={t("filters.clearFirm")} className="grid h-6 w-6 place-items-center rounded-full hover:bg-primary/20">
               <X className="h-3 w-3" aria-hidden="true" />
             </button>
           </Pill>
         )}
         {tickerFilter && (
           <Pill tone="accent" className="pr-1">
-            Тикер: {tickerFilter}
-            <button type="button" onClick={onClearTicker} aria-label="Сбросить фильтр по тикеру" className="grid h-6 w-6 place-items-center rounded-full hover:bg-primary/20">
+            {t("filters.ticker", { name: tickerFilter })}
+            <button type="button" onClick={onClearTicker} aria-label={t("filters.clearTicker")} className="grid h-6 w-6 place-items-center rounded-full hover:bg-primary/20">
               <X className="h-3 w-3" aria-hidden="true" />
             </button>
           </Pill>
         )}
         {anyActive && (
           <Button variant="ghost" size="sm" onClick={onReset}>
-            Сбросить <Kbd className="hidden sm:inline-flex">Esc</Kbd>
+            {commonI18n.t("actions.reset")} <Kbd className="hidden sm:inline-flex">Esc</Kbd>
           </Button>
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground">{shown.toLocaleString("ru-RU")} строк</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{t("filters.rows", { count: shown })}</span>
           <Segmented<SortKey>
-            ariaLabel="Порядок строк"
+            ariaLabel={t("filters.orderAria")}
             size="sm"
             value={sortKey}
             onChange={(v) => onSortMode(v === "score" ? "score" : "time")}
-            options={[{ value: "time", label: "Новые" }, { value: "score", label: "Важные" }]}
+            options={[{ value: "time", label: t("filters.newest") }, { value: "score", label: t("filters.important") }]}
           />
         </div>
       </div>
@@ -229,6 +232,7 @@ function SavedViews({
   onApply: (v: SavedView) => void;
   current: Filters;
 }) {
+  const { t } = analystI18n.useT();
   const [name, setName] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const same = (v: SavedView) => JSON.stringify(v.filters) === JSON.stringify(current);
@@ -238,14 +242,14 @@ function SavedViews({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" aria-pressed={!!active} className={chipBtn}>
-          <Bookmark className="h-3.5 w-3.5" aria-hidden="true" /> {active ? active.name : "Виды"}
+          <Bookmark className="h-3.5 w-3.5" aria-hidden="true" /> {active ? active.name : t("filters.views")}
           <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72">
         <div className="flex flex-col gap-3">
           {views.length > 0 ? (
-            <ul className="flex flex-col gap-0.5" aria-label="Сохранённые виды">
+            <ul className="flex flex-col gap-0.5" aria-label={t("filters.viewsAria")}>
               {views.map((v) => (
                 <li key={v.id} className="flex items-center gap-1">
                   <button
@@ -261,7 +265,7 @@ function SavedViews({
                   <button
                     type="button"
                     onClick={() => onDelete(v.id)}
-                    aria-label={`Убрать вид «${v.name}»`}
+                    aria-label={t("filters.removeView", { name: v.name })}
                     className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -270,14 +274,14 @@ function SavedViews({
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-muted-foreground">Сохраните текущий набор фильтров, чтобы включать его в один клик. Хранится в этом браузере.</p>
+            <p className="text-xs text-muted-foreground">{t("filters.viewsHint")}</p>
           )}
           <form
             className="flex items-center gap-2"
             onSubmit={(e) => { e.preventDefault(); if (canSave) { onSave(name.trim()); setName(""); } }}
           >
-            <Input value={name} onChange={(e) => setName(e.target.value.slice(0, 40))} placeholder="Название вида" aria-label="Название вида" className="h-8" />
-            <Button type="submit" size="sm" disabled={!canSave}>Сохранить</Button>
+            <Input value={name} onChange={(e) => setName(e.target.value.slice(0, 40))} placeholder={t("filters.viewName")} aria-label={t("filters.viewName")} className="h-8" />
+            <Button type="submit" size="sm" disabled={!canSave}>{commonI18n.t("actions.save")}</Button>
           </form>
         </div>
       </PopoverContent>

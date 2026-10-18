@@ -11,6 +11,8 @@
  * Плюс календарь дисциплины по дням, серии чистых дней и подсказки параметров для шаблонов (по истории трейдера).
  */
 import { kindMeta, describeThreshold } from "./rulesCatalog";
+import { renderViolation } from "./rulesI18n";
+import type { Lang } from "../i18n";
 import { coversTrade, evalRule, evalSelfCheck, notionalOf, type RiskLimits, type RuleRow, type SelfMark, type Severity, type TradeForRule, type ViolationDraft } from "./rulesEval";
 import { addDays } from "./tradingDate";
 
@@ -35,6 +37,8 @@ export interface ReportInput {
   marks: SelfMark[];
   /** `${ruleId}:${key}` → сохранённое нарушение (статус разбора). */
   persisted?: Map<string, PersistedViolation>;
+  /** Language of labels, summaries and violation texts (default ru). */
+  lang?: Lang;
 }
 
 export interface SideStats { n: number; net: number; avg: number | null }
@@ -244,12 +248,12 @@ export function buildRulesReport(input: ReportInput): RulesReport {
   const ruleReports: RuleReport[] = [];
 
   for (const rule of rules) {
-    const meta = kindMeta(rule.kind);
+    const meta = kindMeta(rule.kind, input.lang);
     const auto = meta ? meta.auto : true;
     const base = {
       id: rule.id, name: rule.name, kind: rule.kind, kindLabel: meta?.label ?? rule.kind, group: meta?.group ?? "process", auto,
       origin: rule.origin, desk: rule.desk, trader: rule.trader, note: rule.note, createdBy: rule.createdBy, enabled: rule.enabled,
-      threshold: rule.threshold ?? {}, summary: describeThreshold(rule.kind, rule.threshold, limits),
+      threshold: rule.threshold ?? {}, summary: describeThreshold(rule.kind, rule.threshold, limits, input.lang),
     };
     const empty: SideStats = { n: 0, net: 0, avg: null };
     if (!rule.enabled) {
@@ -324,7 +328,7 @@ export function buildRulesReport(input: ReportInput): RulesReport {
         const p = input.persisted?.get(`${rule.id}:${d.key}`);
         return {
           key: d.key, tradeId: d.tradeId, ticker: tr?.ticker ?? null, day: d.day, net: tr?.netPnl ?? null, impact: d.impactNet ?? null,
-          message: d.message, severity: d.severity, violationId: p?.id ?? null, status: p ? (p.resolution === "dismissed" ? "dismissed" : p.status) : null,
+          message: input.lang && input.lang !== "ru" ? (renderViolation(d.msg, input.lang) ?? d.message) : d.message, severity: d.severity, violationId: p?.id ?? null, status: p ? (p.resolution === "dismissed" ? "dismissed" : p.status) : null,
         };
       });
     const status: RuleReport["status"] = !auto ? (applicableDays.length ? "checked" : "no_marks") : coveredTrades.length || drafts.length ? "checked" : windowTrades.length ? "no_data" : "checked";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASK_BOOK_COLS, askBookQuery, askBookResponse, askBookTuple, type AskBookDbRow } from "../askBook";
+import { ASK_BOOK_COLS, askBookCompact, askBookQuery, askBookResponse, askBookTuple, clockCell, type AskBookDbRow } from "../askBook";
 import type { MoneyViewer } from "../playbookPrivacy";
 
 const alex: MoneyViewer = { name: "Алекс", staff: false };
@@ -86,5 +86,41 @@ describe("askBookResponse", () => {
   });
   it("empty book", () => {
     expect(askBookResponse([], guest, null)).toMatchObject({ rows: [], truncated: false, redacted: false });
+  });
+});
+
+describe("askBookCompact (enc=2)", () => {
+  it("dictionary-encodes repeated strings and sends same-day stamps as seconds", () => {
+    const book = askBookResponse([
+      row({ id: 3, exit_date: "2026-03-03", closed_at: "2026-03-03T09:31:05" }),
+      row({ id: 2, setup: "Отскок", opened_at: "2026-03-02T10:00:00.5", closed_at: null }),
+      row({ id: 1, setup: null }),
+    ], alex, "Алекс");
+    const c = askBookCompact(book);
+    expect(c.enc).toBe(2);
+    expect(c.rows).toHaveLength(3);
+    expect(c.dicts.setup).toEqual(["Пробой", "Отскок"]);
+    expect(c.dicts.trader).toEqual(["Алекс"]);
+    expect(col(c.rows[0], "setup")).toBe(0);
+    expect(col(c.rows[1], "setup")).toBe(1);
+    expect(col(c.rows[2], "setup")).toBeNull();
+    expect(col(c.rows[0], "date")).toBe(0);
+    expect(c.dicts.date![0]).toBe("2026-03-02");
+    // openedAt on the trade date → seconds; closedAt is relative to exitDate when there is one.
+    expect(col(c.rows[0], "openedAt")).toBe(9 * 3600 + 41 * 60);
+    expect(col(c.rows[0], "closedAt")).toBe(9 * 3600 + 31 * 60 + 5);
+    expect(col(c.rows[2], "closedAt")).toBe(12 * 3600 + 10 * 60);
+    // Not a plain stamp → unchanged string; null stays null.
+    expect(col(c.rows[1], "openedAt")).toBe("2026-03-02T10:00:00.5");
+    expect(col(c.rows[1], "closedAt")).toBeNull();
+    // Numbers untouched; the plain response is not mutated.
+    expect(col(c.rows[0], "pnl")).toBe(275);
+    expect(col(book.rows[0], "setup")).toBe("Пробой");
+    expect(c.clock).toEqual({ openedAt: "date", closedAt: "exitDate" });
+  });
+  it("clockCell keeps stamps from another day", () => {
+    expect(clockCell("2026-03-03T09:30:00", "2026-03-02")).toBe("2026-03-03T09:30:00");
+    expect(clockCell("2026-03-02T00:00:00", "2026-03-02")).toBe(0);
+    expect(clockCell(null, "2026-03-02")).toBeNull();
   });
 });

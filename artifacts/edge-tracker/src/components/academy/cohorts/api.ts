@@ -1,9 +1,11 @@
 /**
  * «Академия» → когорты и наставничество: типы ответов (зеркало api-server/src/routes/academy-cohorts.ts и
- * lib/academyCohorts.ts) и raw-fetch хуки для /api/academy/* (orval-кодоген для новых эндпоинтов не запускается).
+ * lib/academyCohorts.ts), коды справочников с функциями-подписями (язык читается при вызове) и raw-fetch хуки для /api/academy/* (orval-кодоген для новых эндпоинтов не запускается).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http, type ApiError } from "@/lib/api/http";
+import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
+import { commonI18n } from "@/i18n/ns/common";
 
 /* ─── Справочники ─────────────────────────────────────────────────────────── */
 
@@ -20,16 +22,32 @@ export type MetricKey = "fee_share" | "loss_streak" | "win_rate" | "journal_days
 export type Comparator = "lt" | "lte" | "gte" | "gt";
 
 export const STAGES: Stage[] = ["trainee", "junior", "trader", "senior"];
-export const STAGE_LABELS: Record<Stage, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
-export const STATUS_LABELS: Record<EnrollmentStatus, string> = { active: "Учится", paused: "Пауза", graduated: "Выпущен", dropped: "Отчислен" };
-export const FORMAT_LABELS: Record<CohortFormat, string> = { office: "Офис", remote: "Удалённо", hybrid: "Гибрид" };
-export const MODE_LABELS: Record<SessionMode, string> = { office: "Офлайн", online: "Онлайн", hybrid: "Гибрид" };
-export const KIND_LABELS: Record<SessionKind, string> = { briefing: "Брифинг", lecture: "Лекция", review: "Разбор", workshop: "Практикум", other: "Другое" };
-export const RECURRENCE_LABELS: Record<Recurrence, string> = { none: "Разово", daily: "Ежедневно", weekdays: "По будням", weekly: "По дням недели" };
-export const ATTENDANCE_LABELS: Record<AttendanceStatus, string> = { present: "Был", late: "Опоздал", absent: "Пропуск", excused: "Уважит." };
-export const GOAL_STATUS_LABELS: Record<GoalStatus, string> = { active: "В работе", achieved: "Достигнута", missed: "Сорвана", cancelled: "Отменена" };
+export const COHORT_FORMATS: CohortFormat[] = ["office", "remote", "hybrid"];
+export const ENROLLMENT_STATUSES: EnrollmentStatus[] = ["active", "paused", "graduated", "dropped"];
+export const SESSION_MODES: SessionMode[] = ["office", "online", "hybrid"];
+export const SESSION_KINDS: SessionKind[] = ["briefing", "lecture", "review", "workshop", "other"];
+export const RECURRENCES: Recurrence[] = ["none", "daily", "weekdays", "weekly"];
+export const GOAL_STATUSES: GoalStatus[] = ["active", "achieved", "missed", "cancelled"];
+export const ATTENDANCE_STATUSES: AttendanceStatus[] = ["present", "late", "absent", "excused"];
 export const COMPARATOR_SIGNS: Record<Comparator, string> = { lt: "<", lte: "≤", gte: "≥", gt: ">" };
-export const WEEKDAYS_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+
+/* Display labels: read the current language at call time (never at module scope). Unknown codes fall back to the code. */
+const STAGE_TIER = { trainee: "intern", junior: "junior", trader: "trader", senior: "senior" } as const;
+const has = <T extends string>(list: readonly T[], v: string): v is T => (list as readonly string[]).includes(v);
+const t = academyCohortsI18n.t;
+
+/** Стажёр / Джун / Трейдер / Сеньор → common `tiers.*` (trainee = Intern / Stajyor). */
+export const stageLabel = (s: Stage | string): string => (has(STAGES, s) ? commonI18n.t(`tiers.${STAGE_TIER[s]}`) : s);
+export const statusLabel = (s: EnrollmentStatus | string): string => (has(ENROLLMENT_STATUSES, s) ? t(`enrollmentStatus.${s}`) : s);
+export const formatLabel = (f: CohortFormat | string): string => (has(COHORT_FORMATS, f) ? t(`format.${f}`) : f);
+export const modeLabel = (m: SessionMode | string): string => (has(SESSION_MODES, m) ? t(`mode.${m}`) : m);
+export const kindLabel = (k: SessionKind | string): string => (has(SESSION_KINDS, k) ? t(`kind.${k}`) : k);
+export const recurrenceLabel = (r: Recurrence): string => t(`recurrence.${r}`);
+/** Short chip label («Уважит.»); `attendanceTitle` is the full form for tooltips. */
+export const attendanceLabel = (a: AttendanceStatus): string => t(`attendance.${a}`);
+export const attendanceTitle = (a: AttendanceStatus): string => t(`attendanceFull.${a}`);
+export const goalStatusLabel = (g: GoalStatus | string): string => (has(GOAL_STATUSES, g) ? t(`goalStatus.${g}`) : g);
+export const meetingFormatLabel = (f: "office" | "online", inline = false): string => t(inline ? `meetingFormatInline.${f}` : `meetingFormat.${f}`);
 
 /* ─── Типы ответов ────────────────────────────────────────────────────────── */
 
@@ -138,35 +156,6 @@ export type MentorDashboard = {
 export type RosterRow = { enrollment: Enrollment; status: AttendanceStatus | null; source: "mentor" | "self" | null; checkedInAt: string | null; markedBy: string | null; note: string };
 export type Roster = { session: Session; occurrence: { date: string; startUtc: string; endUtc: string }; roster: RosterRow[] };
 
-/* ─── fetch ───────────────────────────────────────────────────────────────── */
-
-export class ApiError extends Error {
-  status: number;
-  code?: string;
-  body?: Record<string, unknown>;
-  constructor(msg: string, status: number, body?: Record<string, unknown>) {
-    super(msg);
-    this.status = status;
-    this.body = body;
-    this.code = typeof body?.code === "string" ? body.code : undefined;
-  }
-}
-
-async function req<T>(path: string, method: "GET" | "POST" | "PATCH" = "GET", body?: unknown): Promise<T> {
-  const r = await fetch(apiUrl(path), {
-    method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  let j: Record<string, unknown> | null = null;
-  try { j = (await r.json()) as Record<string, unknown>; } catch { /* no body */ }
-  if (!r.ok) {
-    const msg = r.status === 404 && !j?.error ? "Модуль «Академия» ещё не подключён на сервере" : (typeof j?.error === "string" ? j.error : `HTTP ${r.status}`);
-    throw new ApiError(msg, r.status, j ?? undefined);
-  }
-  return j as T;
-}
-
 const enc = encodeURIComponent;
 
 export const academyKeys = {
@@ -184,44 +173,44 @@ export const academyKeys = {
 };
 
 export function useCohorts(archived = false) {
-  return useQuery({ queryKey: academyKeys.cohorts(archived), queryFn: () => req<{ staff: boolean; cohorts: CohortListItem[] }>(`/api/academy/cohorts${archived ? "?archived=1" : ""}`), retry: false });
+  return useQuery({ queryKey: academyKeys.cohorts(archived), queryFn: () => http.get<{ staff: boolean; cohorts: CohortListItem[] }>(`/api/academy/cohorts${archived ? "?archived=1" : ""}`), retry: false });
 }
 export function useCohort(id: number | null) {
-  return useQuery({ queryKey: academyKeys.cohort(id ?? 0), enabled: !!id, queryFn: () => req<CohortDetail>(`/api/academy/cohorts/${id}`), retry: false });
+  return useQuery({ queryKey: academyKeys.cohort(id ?? 0), enabled: !!id, queryFn: () => http.get<CohortDetail>(`/api/academy/cohorts/${id}`), retry: false });
 }
 export function useMyDashboard(user: string) {
   return useQuery({
     queryKey: academyKeys.my(user),
-    queryFn: () => req<MyDashboard>(`/api/academy/my${user ? `?user=${enc(user)}` : ""}`),
+    queryFn: () => http.get<MyDashboard>(`/api/academy/my${user ? `?user=${enc(user)}` : ""}`),
     retry: false,
     refetchInterval: 60_000,
   });
 }
 export function useMentorDashboard(all: boolean) {
-  return useQuery({ queryKey: academyKeys.mentor(all), queryFn: () => req<MentorDashboard>(`/api/academy/mentor${all ? "?all=1" : ""}`), retry: false, refetchInterval: 120_000 });
+  return useQuery({ queryKey: academyKeys.mentor(all), queryFn: () => http.get<MentorDashboard>(`/api/academy/mentor${all ? "?all=1" : ""}`), retry: false, refetchInterval: 120_000 });
 }
 export function useIdp(student: string, enabled = true) {
-  return useQuery({ queryKey: academyKeys.idp(student), enabled: enabled && !!student, queryFn: () => req<{ student: string; goals: Goal[] }>(`/api/academy/idp?student=${enc(student)}`), retry: false });
+  return useQuery({ queryKey: academyKeys.idp(student), enabled: enabled && !!student, queryFn: () => http.get<{ student: string; goals: Goal[] }>(`/api/academy/idp?student=${enc(student)}`), retry: false });
 }
 export function useMetrics() {
-  return useQuery({ queryKey: academyKeys.metrics, staleTime: Infinity, queryFn: () => req<{ metrics: MetricDef[] }>("/api/academy/idp/metrics"), retry: false });
+  return useQuery({ queryKey: academyKeys.metrics, staleTime: Infinity, queryFn: () => http.get<{ metrics: MetricDef[] }>("/api/academy/idp/metrics"), retry: false });
 }
 export function useMeetings(student: string, enabled = true) {
-  return useQuery({ queryKey: academyKeys.meetings(student), enabled, queryFn: () => req<{ meetings: Meeting[] }>(`/api/academy/one-on-ones${student ? `?student=${enc(student)}` : ""}`), retry: false });
+  return useQuery({ queryKey: academyKeys.meetings(student), enabled, queryFn: () => http.get<{ meetings: Meeting[] }>(`/api/academy/one-on-ones${student ? `?student=${enc(student)}` : ""}`), retry: false });
 }
 export function useRoster(sessionId: number | null, date: string) {
-  return useQuery({ queryKey: academyKeys.roster(sessionId ?? 0, date), enabled: !!sessionId && !!date, queryFn: () => req<Roster>(`/api/academy/sessions/${sessionId}/roster?date=${date}`), retry: false });
+  return useQuery({ queryKey: academyKeys.roster(sessionId ?? 0, date), enabled: !!sessionId && !!date, queryFn: () => http.get<Roster>(`/api/academy/sessions/${sessionId}/roster?date=${date}`), retry: false });
 }
 export function useSchedule(cohortId: number | null, from: string, to: string) {
   return useQuery({
     queryKey: academyKeys.sessions(cohortId, from, to),
-    queryFn: () => req<{ from: string; to: string; serverNow: string; sessions: Session[]; occurrences: Occurrence[] }>(
+    queryFn: () => http.get<{ from: string; to: string; serverNow: string; sessions: Session[]; occurrences: Occurrence[] }>(
       `/api/academy/sessions?from=${from}&to=${to}${cohortId ? `&cohortId=${cohortId}` : ""}`),
     retry: false,
   });
 }
 export function useEnrollmentHistory(id: number | null) {
-  return useQuery({ queryKey: academyKeys.history(id ?? 0), enabled: !!id, queryFn: () => req<{ history: HistoryRow[] }>(`/api/academy/enrollments/${id}/history`), retry: false });
+  return useQuery({ queryKey: academyKeys.history(id ?? 0), enabled: !!id, queryFn: () => http.get<{ history: HistoryRow[] }>(`/api/academy/enrollments/${id}/history`), retry: false });
 }
 
 /** Любая мутация «Академии»: после успеха инвалидирует все ключи модуля (данные связаны между собой). */
@@ -231,47 +220,47 @@ function useAcademyMutation<V, R = unknown>(fn: (v: V) => Promise<R>) {
 }
 
 export type CohortInput = { name: string; format: CohortFormat; mentor?: string | null; startsOn?: string | null; endsOn?: string | null; timezone?: string; description?: string; room?: string | null; meetingUrl?: string | null };
-export const useCreateCohort = () => useAcademyMutation((v: CohortInput) => req<Cohort>("/api/academy/cohorts", "POST", v));
-export const useUpdateCohort = () => useAcademyMutation(({ id, ...v }: Partial<CohortInput> & { id: number }) => req<Cohort>(`/api/academy/cohorts/${id}`, "PATCH", v));
-export const useArchiveCohort = () => useAcademyMutation(({ id, restore }: { id: number; restore?: boolean }) => req<Cohort>(`/api/academy/cohorts/${id}/${restore ? "restore" : "archive"}`, "POST"));
-export const useSeedDemo = () => useAcademyMutation(() => req<{ ok: boolean; created: Record<string, number>; skippedUsers: string[] }>("/api/academy/cohorts/seed-demo", "POST"));
+export const useCreateCohort = () => useAcademyMutation((v: CohortInput) => http.post<Cohort>("/api/academy/cohorts", v));
+export const useUpdateCohort = () => useAcademyMutation(({ id, ...v }: Partial<CohortInput> & { id: number }) => http.patch<Cohort>(`/api/academy/cohorts/${id}`, v));
+export const useArchiveCohort = () => useAcademyMutation(({ id, restore }: { id: number; restore?: boolean }) => http.post<Cohort>(`/api/academy/cohorts/${id}/${restore ? "restore" : "archive"}`));
+export const useSeedDemo = () => useAcademyMutation(() => http.post<{ ok: boolean; created: Record<string, number>; skippedUsers: string[] }>("/api/academy/cohorts/seed-demo"));
 
 export type EnrollInput = { cohortId: number; userName: string; stage: Stage; status?: EnrollmentStatus; joinedOn?: string; note?: string };
-export const useEnroll = () => useAcademyMutation((v: EnrollInput) => req<Enrollment>("/api/academy/enrollments", "POST", v));
+export const useEnroll = () => useAcademyMutation((v: EnrollInput) => http.post<Enrollment>("/api/academy/enrollments", v));
 export const useUpdateEnrollment = () => useAcademyMutation(({ id, ...v }: { id: number; stage?: Stage; status?: EnrollmentStatus; joinedOn?: string; note?: string; reason?: string }) =>
-  req<Enrollment>(`/api/academy/enrollments/${id}`, "PATCH", v));
-export const useArchiveEnrollment = () => useAcademyMutation((id: number) => req<Enrollment>(`/api/academy/enrollments/${id}/archive`, "POST"));
+  http.patch<Enrollment>(`/api/academy/enrollments/${id}`, v));
+export const useArchiveEnrollment = () => useAcademyMutation((id: number) => http.post<Enrollment>(`/api/academy/enrollments/${id}/archive`));
 
 export type SessionInput = {
   cohortId: number; title: string; kind: SessionKind; recurrence: Recurrence; weekdays: number[]; startDate: string; endDate?: string | null; startTime: string;
   durationMin: number; timezone: string; mode: SessionMode; room?: string | null; meetingUrl?: string | null; host?: string | null; description?: string;
 };
-export const useCreateSession = () => useAcademyMutation((v: SessionInput) => req<Session>("/api/academy/sessions", "POST", v));
-export const useUpdateSession = () => useAcademyMutation(({ id, cohortId: _c, ...v }: Partial<SessionInput> & { id: number }) => req<Session>(`/api/academy/sessions/${id}`, "PATCH", v));
-export const useArchiveSession = () => useAcademyMutation((id: number) => req<Session>(`/api/academy/sessions/${id}/archive`, "POST"));
+export const useCreateSession = () => useAcademyMutation((v: SessionInput) => http.post<Session>("/api/academy/sessions", v));
+export const useUpdateSession = () => useAcademyMutation(({ id, cohortId: _c, ...v }: Partial<SessionInput> & { id: number }) => http.patch<Session>(`/api/academy/sessions/${id}`, v));
+export const useArchiveSession = () => useAcademyMutation((id: number) => http.post<Session>(`/api/academy/sessions/${id}/archive`));
 
 export const useMarkAttendance = () => useAcademyMutation((v: { sessionId: number; date: string; marks: { userName: string; status: AttendanceStatus; note?: string }[] }) =>
-  req<{ saved: number; skipped: string[] }>("/api/academy/attendance", "POST", v));
+  http.post<{ saved: number; skipped: string[] }>("/api/academy/attendance", v));
 export const useCheckin = () => useAcademyMutation((v: { sessionId: number; date: string }) =>
-  req<{ already: boolean; status: AttendanceStatus; checkedInAt: string; minutesFromStart?: number }>("/api/academy/checkin", "POST", v));
+  http.post<{ already: boolean; status: AttendanceStatus; checkedInAt: string; minutesFromStart?: number }>("/api/academy/checkin", v));
 
 export type MeetingInput = {
   student: string; mentor?: string; cohortId?: number | null; metAt: string; durationMin?: number | null; format: "office" | "online";
   agenda: string; notes: string; privateNotes: string; actionItems: { title: string; dueOn?: string | null; owner: "student" | "mentor" }[];
 };
-export const useCreateMeeting = () => useAcademyMutation((v: MeetingInput) => req<Meeting>("/api/academy/one-on-ones", "POST", v));
-export const useArchiveMeeting = () => useAcademyMutation((id: number) => req<Meeting>(`/api/academy/one-on-ones/${id}/archive`, "POST"));
+export const useCreateMeeting = () => useAcademyMutation((v: MeetingInput) => http.post<Meeting>("/api/academy/one-on-ones", v));
+export const useArchiveMeeting = () => useAcademyMutation((id: number) => http.post<Meeting>(`/api/academy/one-on-ones/${id}/archive`));
 
 export const useCreateAction = () => useAcademyMutation((v: { student: string; title: string; dueOn?: string | null; owner: "student" | "mentor"; meetingId?: number | null }) =>
-  req<ActionItem>("/api/academy/action-items", "POST", v));
+  http.post<ActionItem>("/api/academy/action-items", v));
 export const useUpdateAction = () => useAcademyMutation(({ id, ...v }: { id: number; status?: ActionStatus; title?: string; dueOn?: string | null }) =>
-  req<ActionItem>(`/api/academy/action-items/${id}`, "PATCH", v));
+  http.patch<ActionItem>(`/api/academy/action-items/${id}`, v));
 
 export type GoalInput = {
   student: string; title: string; metric: MetricKey; comparator?: Comparator; target?: number; window?: number | null; startDate?: string; dueOn?: string | null;
   manualProgress?: number | null; note?: string;
 };
-export const useCreateGoal = () => useAcademyMutation((v: GoalInput) => req<Goal>("/api/academy/idp", "POST", v));
+export const useCreateGoal = () => useAcademyMutation((v: GoalInput) => http.post<Goal>("/api/academy/idp", v));
 export const useUpdateGoal = () => useAcademyMutation(({ id, ...v }: { id: number; manualProgress?: number; status?: "active" | "cancelled"; dueOn?: string | null; target?: number; title?: string }) =>
-  req<Goal>(`/api/academy/idp/${id}`, "PATCH", v));
-export const useArchiveGoal = () => useAcademyMutation((id: number) => req<{ id: number }>(`/api/academy/idp/${id}/archive`, "POST"));
+  http.patch<Goal>(`/api/academy/idp/${id}`, v));
+export const useArchiveGoal = () => useAcademyMutation((id: number) => http.post<{ id: number }>(`/api/academy/idp/${id}/archive`));

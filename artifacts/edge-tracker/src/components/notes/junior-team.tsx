@@ -10,13 +10,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  HttpError, api, byAttention, canReviewTrader, composeSections, daysSince, hasDraft, lastTradingDays, fmtDayLong, fmtDayShort,
+  byAttention, canReviewTrader, previewSections, daysSince, hasDraft, lastTradingDays,
   localToday, nextTradingDay, nextUnanswered, prevTradingDay, qk, relTime, sectionsOf,
   type JuniorNote, type OverviewRow, type ReviewerInfo, type ReviewScopeFilter,
 } from "./junior-lib";
+import { fmtDate, fmtNum } from "@/lib/format";
+import { http, ApiError } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 import { Initial, LoadError, MarkdownText, MoodPill, ScoreStars } from "./junior-ui";
 import { JuniorNoteSheet, type SheetNav } from "./junior-note-sheet";
 import { ScoreTrail, TrendArrow } from "./junior-review-context";
+import { PeopleSearchInput } from "@/components/people/people-search-input";
+import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
+import { notesI18n } from "@/i18n/ns/notes";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName, comparePersonNames } from "@/i18n";
 
 const SCOPE_KEY = "ws_lexx_junior_scope";
 const SORT_KEY = "ws_lexx_junior_roster_sort";
@@ -35,6 +43,8 @@ function writePref(key: string, v: string) {
 
 export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me: string }) {
   const { toast } = useToast();
+  const { t } = notesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const qc = useQueryClient();
   const today = localToday();
   const isReviewer = !!reviewer && reviewer.kind !== "none";
@@ -52,6 +62,8 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
   const [scopePref, setScopePref] = React.useState<ReviewScopeFilter>(() => readPref(SCOPE_KEY, ["all", "mine"] as const, "all"));
   const [sort, setSort] = React.useState<"attention" | "name">(() => readPref(SORT_KEY, ["attention", "name"] as const, "attention"));
   const [flaggedOnly, setFlaggedOnly] = React.useState(false);
+  const [who, setWho] = React.useState("");
+  const aliases = usePeopleAliases();
   // Mentors review only their mentees anyway — their default view is «Мои джуны».
   const scope: ReviewScopeFilter = canFilterMine ? (isMentor && !localStorageHas(SCOPE_KEY) ? "mine" : scopePref) : "all";
   const setScope = (v: ReviewScopeFilter) => { setScopePref(v); writePref(SCOPE_KEY, v); };
@@ -59,23 +71,23 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
 
   const teamQ = useQuery({
     queryKey: qk.team(date),
-    queryFn: () => api<JuniorNote[]>(`/junior-notes/team?date=${date}`),
+    queryFn: () => http.get<JuniorNote[]>(`/api/junior-notes/team?date=${date}`),
     staleTime: 30_000,
   });
   const overviewQ = useQuery({
     queryKey: qk.overview(date, scope),
-    queryFn: () => api<{ date: string; rows: OverviewRow[] }>(`/junior-notes/overview?date=${date}${scopeQs}`),
+    queryFn: () => http.get<{ date: string; rows: OverviewRow[] }>(`/api/junior-notes/overview?date=${date}${scopeQs}`),
     enabled: isReviewer,
     staleTime: 30_000,
-    retry: (n, e) => !(e instanceof HttpError && (e.status === 404 || e.status === 403)) && n < 2,
+    retry: (n, e) => !(e instanceof ApiError && (e.status === 404 || e.status === 403)) && n < 2,
   });
 
   const queueQ = useQuery({
     queryKey: qk.queueOf(scope),
-    queryFn: () => api<JuniorNote[]>(`/junior-notes/queue?days=14${scopeQs}`),
+    queryFn: () => http.get<JuniorNote[]>(`/api/junior-notes/queue?days=14${scopeQs}`),
     enabled: isReviewer,
     staleTime: 30_000,
-    retry: (n, e) => !(e instanceof HttpError && (e.status === 404 || e.status === 403)) && n < 2,
+    retry: (n, e) => !(e instanceof ApiError && (e.status === 404 || e.status === 403)) && n < 2,
   });
   const queue = queueQ.data ?? [];
 
@@ -95,9 +107,10 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
   const missed = rows.filter((r) => !r.note);
   const flagged = rows.filter((r) => (r.attention ?? []).some((f) => f.kind !== "unanswered"));
   const shownRows = React.useMemo(() => {
-    const base = flaggedOnly ? rows.filter((r) => (r.attention ?? []).length > 0) : rows;
-    return sort === "attention" ? byAttention(base) : [...base].sort((a, b) => a.trader.localeCompare(b.trader, "ru"));
-  }, [rows, sort, flaggedOnly]);
+    const pq = prepareQuery(who);
+    const base = (flaggedOnly ? rows.filter((r) => (r.attention ?? []).length > 0) : rows).filter((r) => pq.empty || matchPerson(pq, r.trader, aliases));
+    return sort === "attention" ? byAttention(base) : [...base].sort((a, b) => comparePersonNames(a.trader, b.trader));
+  }, [rows, sort, flaggedOnly, who, aliases]);
   const teamAvg = (() => {
     const s = rows.filter((r) => r.avg_score != null).map((r) => r.avg_score!);
     return s.length ? (s.reduce((a, b) => a + b, 0) / s.length).toFixed(1) : null;
@@ -110,10 +123,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
     let ok = 0;
     for (const t of traders) {
       try {
-        const r = await api<{ id: number; curator: string; created_at: string }>("/junior-notes/reminders", {
-          method: "POST",
-          json: { trader: t, date },
-        });
+        const r = await http.post<{ id: number; curator: string; created_at: string }>("/api/junior-notes/reminders", { trader: t, date });
         ok++;
         qc.setQueryData<{ date: string; rows: OverviewRow[] }>(qk.overview(date, scope), (prev) =>
           prev && { ...prev, rows: prev.rows.map((x) => (x.trader === t ? { ...x, reminder: { id: r.id, curator: r.curator, created_at: r.created_at } } : x)) },
@@ -121,8 +131,8 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
       } catch { /* counted below */ }
     }
     setReminding((s) => { const n = new Set(s); traders.forEach((t) => n.delete(t)); return n; });
-    if (ok === traders.length) toast({ title: ok === 1 ? `Напоминание для ${traders[0]} отправлено` : `Напоминания отправлены: ${ok}`, description: "Трейдер увидит его на странице сводки" });
-    else toast({ title: `Отправлено ${ok} из ${traders.length}`, variant: "destructive" });
+    if (ok === traders.length) toast({ title: ok === 1 ? t("junior.team.remindedOne", { name: personName(traders[0]!) }) : t("junior.team.remindedMany", { count: ok }), description: t("junior.team.remindedDesc") });
+    else toast({ title: t("junior.team.remindedPartial", { ok, total: traders.length }), variant: "destructive" });
   };
 
   const generateSummary = async () => {
@@ -131,10 +141,10 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
     setSummarizing(true);
     setSummary(null);
     try {
-      const d = await api<{ summary?: string }>("/junior-notes/team-summary", { method: "POST", json: { note_ids: ids } });
+      const d = await http.post<{ summary?: string }>("/api/junior-notes/team-summary", { note_ids: ids });
       if (d.summary) setSummary(d.summary);
     } catch (e) {
-      toast({ title: e instanceof Error ? e.message : "AI недоступен", variant: "destructive" });
+      toast({ title: e instanceof Error ? e.message : t("junior.team.aiUnavailable"), variant: "destructive" });
     } finally {
       setSummarizing(false);
     }
@@ -149,7 +159,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
   const nav: SheetNav | undefined = navIdx < 0 || !opened ? undefined : {
     index: navIdx,
     total: navList.length,
-    label: opened.src === "queue" ? "Очередь" : "День",
+    label: opened.src === "queue" ? t("junior.team.navQueue") : t("junior.team.navDay"),
     onPrev: navIdx > 0 ? () => setOpened({ id: navList[navIdx - 1]!.id, src: opened.src }) : undefined,
     onNext: navIdx < navList.length - 1 ? () => setOpened({ id: navList[navIdx + 1]!.id, src: opened.src }) : undefined,
   };
@@ -161,7 +171,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
       const idx = Math.max(0, queue.findIndex((n) => n.id === updated.id));
       const next = rest[idx] ?? rest[0];
       if (next) setOpened({ id: next.id, src: "queue" });
-      else { setOpened(null); toast({ title: "Очередь разобрана", description: "Все сводки за 14 дней с ответом" }); }
+      else { setOpened(null); toast({ title: t("junior.team.queueDone"), description: t("junior.team.queueDoneDesc") }); }
       return;
     }
     const next = nextUnanswered(reviewable.map((n) => (n.id === updated.id ? updated : n)), updated.id);
@@ -178,37 +188,38 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
     <div className="flex flex-col gap-4">
       {/* Day switcher + whose juniors */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button size="icon" variant="ghost" className="h-9 w-9" aria-label="Предыдущий торговый день" onClick={() => setDate(prevTradingDay(date))}>
+        <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={t("prevTradingDay")} onClick={() => setDate(prevTradingDay(date))}>
           <ChevronLeft />
         </Button>
-        <label className="glass-field relative inline-flex min-h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
-          <span className="first-letter:uppercase">{fmtDayLong(date)}</span>
+        <label className="glass-field relative inline-flex h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
+          <span className="first-letter:uppercase">{fmtDate(date, "weekdayDayMonthLong")}</span>
           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-          <input type="date" aria-label="Дата сводок команды" value={date} max={today} onChange={(e) => e.target.value && setDate(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
+          <input type="date" aria-label={t("junior.team.dateAria")} value={date} max={today} onChange={(e) => e.target.value && setDate(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
         </label>
-        <Button size="icon" variant="ghost" className="h-9 w-9" aria-label="Следующий торговый день" disabled={nextTradingDay(date) > today} onClick={() => setDate(nextTradingDay(date))}>
+        <Button size="icon" variant="ghost" className="h-9 w-9" aria-label={t("nextTradingDay")} disabled={nextTradingDay(date) > today} onClick={() => setDate(nextTradingDay(date))}>
           <ChevronRight />
         </Button>
-        {date !== today && <Button size="sm" variant="outline" onClick={() => setDate(today)}>Сегодня</Button>}
+        {date !== today && <Button variant="outline" onClick={() => setDate(today)}>{tc("time.today")}</Button>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {rows.length > 6 && <PeopleSearchInput value={who} onChange={setWho} className="sm:w-52" />}
           {isMentor && (
-            <Pill tone="purple" title={`Ты наставник: ${mineList.join(", ")}`}>
-              <GraduationCap className="h-3 w-3" aria-hidden="true" />Наставник · {mineList.length}
+            <Pill tone="purple" title={t("junior.team.mentorTitle", { names: mineList.map(personName).join(", ") })}>
+              <GraduationCap className="h-3 w-3" aria-hidden="true" />{t("junior.team.mentor", { count: mineList.length })}
             </Pill>
           )}
           {canFilterMine && (
             <Segmented
               size="sm"
-              ariaLabel="Чьи сводки показывать"
+              ariaLabel={t("junior.team.scopeAria")}
               value={scope}
               onChange={setScope}
               options={[
-                { value: "mine", label: "Мои джуны", count: mineList.length },
-                { value: "all", label: isMentor ? "Вся команда" : "Все" },
+                { value: "mine", label: t("junior.team.myJuniors"), count: mineList.length },
+                { value: "all", label: isMentor ? t("junior.team.wholeTeam") : tc("states.all") },
               ]}
             />
           )}
-          {!isReviewer && <Pill tone="neutral">только чтение</Pill>}
+          {!isReviewer && <Pill tone="neutral">{t("junior.team.readOnly")}</Pill>}
         </div>
       </div>
 
@@ -219,41 +230,41 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
           <Skeleton className="h-64 w-full rounded-2xl" />
         </>
       ) : overviewQ.isError ? (
-        overviewQ.error instanceof HttpError && overviewQ.error.status === 404 ? null : (
-          <LoadError text="Не удалось загрузить обзор команды" onRetry={() => overviewQ.refetch()} />
+        isNotFound(overviewQ.error) ? null : (
+          <LoadError text={t("junior.team.overviewFailed")} onRetry={() => overviewQ.refetch()} />
         )
       ) : (
         <>
           <StatGrid>
-            <StatCard label="Написали" value={`${wrote.length} / ${rows.length}`} tone={rows.length && wrote.length === rows.length ? "up" : "neutral"} hint={date === today ? "сегодня" : fmtDayShort(date)} />
-            <StatCard label="Без сводки" value={missed.length} tone={missed.length ? "warn" : "up"} hint={missed.filter((r) => r.reminder).length ? `напомнили ${missed.filter((r) => r.reminder).length}` : "за этот день"} />
+            <StatCard label={t("junior.team.wrote")} value={`${wrote.length} / ${rows.length}`} tone={rows.length && wrote.length === rows.length ? "up" : "neutral"} hint={date === today ? t("junior.team.today") : fmtDate(date, "dayMonth")} />
+            <StatCard label={t("junior.team.noNote")} value={missed.length} tone={missed.length ? "warn" : "up"} hint={missed.filter((r) => r.reminder).length ? t("junior.team.remindedCount", { count: missed.filter((r) => r.reminder).length }) : t("junior.team.forThisDay")} />
             <StatCard
-              label="Ждут ответа"
+              label={t("junior.team.waitingCount")}
               icon={Inbox}
               value={queue.length}
               tone={queue.length ? "accent" : "up"}
-              hint={queue.length ? `за 14 дн. · старейшая ${oldestWait} дн.` : "очередь пуста"}
+              hint={queue.length ? t("junior.team.waitingHint", { days: oldestWait }) : t("junior.team.queueEmpty")}
             />
             <StatCard
-              label="Требуют внимания"
+              label={t("junior.team.needAttention")}
               icon={AlertTriangle}
               value={flagged.length}
               tone={flagged.length ? "warn" : "up"}
-              hint={teamAvg ? `средняя оценка ${teamAvg}` : "пропуски, оценки, повторы"}
+              hint={teamAvg ? t("junior.team.teamAvg", { avg: teamAvg }) : t("junior.team.attentionHint")}
               onClick={flagged.length ? () => { setFlaggedOnly(true); setSort("attention"); } : undefined}
             />
           </StatGrid>
 
           {/* Inbox: unanswered summaries across days */}
-          {!(queueQ.error instanceof HttpError && queueQ.error.status === 404) && (
+          {!isNotFound(queueQ.error) && (
             <Panel
-              title="Ждут ответа"
+              title={t("junior.team.waitingCount")}
               icon={Inbox}
-              description="Сводки за 14 дней без ответа — от старых к новым. После ответа открывается следующая."
+              description={t("junior.team.queueDescription")}
               actions={
                 queue.length > 0 ? (
                   <Button size="sm" onClick={() => setOpened({ id: queue[0]!.id, src: "queue" })}>
-                    <Play aria-hidden="true" />Разобрать по очереди ({queue.length})
+                    <Play aria-hidden="true" />{t("junior.team.reviewQueue", { count: queue.length })}
                   </Button>
                 ) : undefined
               }
@@ -261,9 +272,9 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
               {queueQ.isLoading ? (
                 <div className="space-y-2" aria-busy="true">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}</div>
               ) : queueQ.isError ? (
-                <LoadError text="Не удалось загрузить очередь" onRetry={() => queueQ.refetch()} />
+                <LoadError text={t("junior.team.queueFailed")} onRetry={() => queueQ.refetch()} />
               ) : queue.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Все сводки за две недели с ответом. Отличная работа.</p>
+                <p className="text-sm text-muted-foreground">{t("junior.team.queueAllAnswered")}</p>
               ) : (
                 <ul className="flex flex-col gap-1">
                   {queue.slice(0, 8).map((n) => {
@@ -275,43 +286,43 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                           onClick={() => setOpened({ id: n.id, src: "queue" })}
                           className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-2 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-nowrap"
                         >
-                          <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtDayShort(n.note_date)}</span>
+                          <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtDate(n.note_date, "dayMonth")}</span>
                           <Initial name={n.trader} className="h-7 w-7" />
-                          <span className="shrink-0 text-sm font-medium">{n.trader}</span>
-                          <span className="min-w-0 flex-1 basis-full truncate text-sm text-muted-foreground sm:basis-auto">{composeSections(sectionsOf(n)) || n.raw_text}</span>
-                          {hasDraft(n.id) && <Pill tone="purple"><PenLine className="h-3 w-3" aria-hidden="true" />черновик</Pill>}
-                          {wait >= 2 && <Pill tone={wait >= 4 ? "down" : "warn"}>ждёт {wait} дн.</Pill>}
+                          <span className="shrink-0 text-sm font-medium">{personName(n.trader)}</span>
+                          <span className="min-w-0 flex-1 basis-full truncate text-sm text-muted-foreground sm:basis-auto" title={previewSections(sectionsOf(n)) || n.raw_text}>{previewSections(sectionsOf(n)) || n.raw_text}</span>
+                          {hasDraft(n.id) && <Pill tone="purple"><PenLine className="h-3 w-3" aria-hidden="true" />{t("draftPill")}</Pill>}
+                          {wait >= 2 && <Pill tone={wait >= 4 ? "down" : "warn"}>{t("junior.team.waitsDays", { days: wait })}</Pill>}
                           <MoodPill mood={n.mood} />
                         </button>
                       </li>
                     );
                   })}
-                  {queue.length > 8 && <li className="px-2 pt-1 text-xs text-muted-foreground">и ещё {queue.length - 8}</li>}
+                  {queue.length > 8 && <li className="px-2 pt-1 text-xs text-muted-foreground">{t("moreCount", { count: queue.length - 8 })}</li>}
                 </ul>
               )}
             </Panel>
           )}
 
           <Panel
-            title={isMentor ? "Мои джуны" : scope === "mine" ? "Мои джуны" : "Команда"}
+            title={isMentor || scope === "mine" ? t("junior.team.myJuniors") : t("junior.team.team")}
             icon={Users}
-            description="Сначала те, кому нужен ответ, напоминание или разговор: пропуски, падающие оценки, повторяющиеся ошибки"
+            description={t("junior.team.rosterDescription")}
             actions={
               <div className="flex flex-wrap items-center gap-2">
                 <Segmented
                   size="sm"
-                  ariaLabel="Порядок списка"
+                  ariaLabel={t("junior.team.sortAria")}
                   value={sort}
                   onChange={(v) => { setSort(v); writePref(SORT_KEY, v); }}
-                  options={[{ value: "attention", label: "По вниманию" }, { value: "name", label: "По имени" }]}
+                  options={[{ value: "attention", label: t("junior.team.byAttention") }, { value: "name", label: t("junior.team.byName") }]}
                 />
                 <Button size="sm" variant={flaggedOnly ? "default" : "ghost"} aria-pressed={flaggedOnly} onClick={() => setFlaggedOnly((v) => !v)}>
-                  <AlertTriangle aria-hidden="true" />Требуют внимания
+                  <AlertTriangle aria-hidden="true" />{t("junior.team.needAttention")}
                 </Button>
                 {missed.filter((r) => !r.reminder).length > 0 && (
                   <Button size="sm" variant="outline" disabled={reminding.size > 0} onClick={() => void remind(missed.filter((r) => !r.reminder).map((r) => r.trader))}>
                     <BellRing aria-hidden="true" />
-                    Напомнить всем ({missed.filter((r) => !r.reminder).length})
+                    {t("junior.team.remindAll", { count: missed.filter((r) => !r.reminder).length })}
                   </Button>
                 )}
               </div>
@@ -319,9 +330,9 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
             padded={false}
           >
             {rows.length === 0 ? (
-              <EmptyState icon={Users} title={scope === "mine" || isMentor ? "За тобой пока не закреплены джуны" : "Нет активных трейдеров"} />
+              <EmptyState icon={Users} title={scope === "mine" || isMentor ? t("junior.team.noJuniors") : t("junior.team.noTraders")} />
             ) : shownRows.length === 0 ? (
-              <p className="px-5 pb-5 text-sm text-muted-foreground">Никому не нужно внимание сверх обычного. Все в порядке.</p>
+              <p className="px-5 pb-5 text-sm text-muted-foreground">{t("junior.team.allFine")}</p>
             ) : (
               <ul className="divide-y divide-border px-2 pb-2 sm:px-3">
                 {shownRows.map((r) => (
@@ -342,17 +353,17 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
 
       {/* Notes of the day */}
       <Panel
-        title="Сводки за день"
-        description={isReviewer ? "Открой, чтобы оценить и ответить. Отметь несколько для общей AI-сводки." : "Твоя сводка за день. Сводки коллег видят только они сами, их кураторы и наставники"}
+        title={t("junior.team.dayNotes")}
+        description={isReviewer ? t("junior.team.dayNotesReviewer") : t("junior.team.dayNotesJunior")}
         actions={
           reviewable.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="ghost" onClick={() => setSelected(selected.size === reviewable.length ? new Set() : new Set(reviewable.map((n) => n.id)))}>
-                {selected.size === reviewable.length ? "Снять все" : "Выбрать все"}
+                {selected.size === reviewable.length ? t("junior.team.unselectAll") : tc("actions.selectAll")}
               </Button>
               <Button size="sm" variant="outline" disabled={summarizing || selected.size === 0} onClick={() => void generateSummary()}>
                 {summarizing ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
-                {summarizing ? "AI анализирует…" : `AI-сводка${selected.size ? ` (${selected.size})` : ""}`}
+                {summarizing ? t("analyzing") : selected.size ? t("junior.team.aiSummaryCount", { count: selected.size }) : t("junior.team.aiSummary")}
               </Button>
             </div>
           ) : undefined
@@ -362,8 +373,8 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
           <div className="mb-4 rounded-xl bg-primary/10 p-4">
             <div className="mb-2 flex items-center gap-1.5 text-sm text-primary">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
-              <span className="font-medium">AI-сводка группы</span>
-              <button type="button" aria-label="Закрыть сводку" onClick={() => setSummary(null)} className="ml-auto grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+              <span className="font-medium">{t("junior.team.groupSummary")}</span>
+              <button type="button" aria-label={t("closeSummary")} onClick={() => setSummary(null)} className="ml-auto grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -376,19 +387,19 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
             {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
           </div>
         ) : teamQ.isError ? (
-          <LoadError text="Не удалось загрузить сводки команды" onRetry={() => teamQ.refetch()} />
+          <LoadError text={t("junior.team.teamFailed")} onRetry={() => teamQ.refetch()} />
         ) : notes.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={!isReviewer ? "Ты ещё не написал сводку за этот день" : scope === "mine" ? "Твои джуны ещё не написали сводку за этот день" : "Никто ещё не написал сводку за этот день"}
-            description={date === today ? "Сводки появятся здесь, как только трейдеры их сохранят." : undefined}
+            title={!isReviewer ? t("junior.team.noOwnNote") : scope === "mine" ? t("junior.team.noJuniorNotes") : t("junior.team.noNotes")}
+            description={date === today ? t("junior.team.notesAppear") : undefined}
           />
         ) : (
           <ul className="grid gap-3 md:grid-cols-2">
             {notes.map((n) => {
               const isSel = selected.has(n.id);
               const mayReview = canReview(n.trader);
-              const text = composeSections(sectionsOf(n));
+              const text = previewSections(sectionsOf(n));
               return (
                 <li key={n.id} className={cn("relative rounded-xl bg-[var(--glass-bg)] transition-shadow", isSel && "ring-1 ring-primary/60")}>
                   <button
@@ -398,20 +409,20 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                   >
                     <div className={cn("flex flex-wrap items-center gap-2", mayReview && "pr-9")}>
                       <Initial name={n.trader} />
-                      <span className="text-sm font-semibold">{n.trader}</span>
+                      <span className="text-sm font-semibold">{personName(n.trader)}</span>
                       <MoodPill mood={n.mood} />
                     </div>
                     <p className="line-clamp-3 text-sm text-muted-foreground">{text || n.raw_text}</p>
                     <div className="mt-auto flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
                       {n.reviewed_at ? (
                         <>
-                          <Pill tone="up"><MessageSquareQuote className="h-3 w-3" aria-hidden="true" />Ответ {n.reviewed_by}</Pill>
+                          <Pill tone="up"><MessageSquareQuote className="h-3 w-3" aria-hidden="true" />{t("junior.team.answerBy", { name: personName(n.reviewed_by) })}</Pill>
                           <ScoreStars score={n.curator_score} />
                         </>
                       ) : (
-                        <Pill tone="accent" dot>Ждёт ответа</Pill>
+                        <Pill tone="accent" dot>{t("waiting")}</Pill>
                       )}
-                      {mayReview && hasDraft(n.id) && <Pill tone="purple"><PenLine className="h-3 w-3" aria-hidden="true" />черновик</Pill>}
+                      {mayReview && hasDraft(n.id) && <Pill tone="purple"><PenLine className="h-3 w-3" aria-hidden="true" />{t("draftPill")}</Pill>}
                       <span className="ml-auto">{relTime(n.updated_at)}</span>
                     </div>
                   </button>
@@ -419,7 +430,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                     <button
                       type="button"
                       aria-pressed={isSel}
-                      aria-label={`Выбрать сводку ${n.trader} для AI-сводки`}
+                      aria-label={t("junior.team.selectAria", { name: personName(n.trader) })}
                       onClick={() => setSelected((p) => { const s = new Set(p); if (s.has(n.id)) s.delete(n.id); else s.add(n.id); return s; })}
                       className={cn(
                         "absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -444,8 +455,8 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
         onReviewed={advance}
         submitLabel={
           opened?.src === "queue"
-            ? (queue.length > 1 ? "Отправить и дальше" : "Отправить и закончить")
-            : teamHasMoreUnanswered ? "Отправить и дальше" : undefined
+            ? (queue.length > 1 ? t("junior.team.sendNext") : t("junior.team.sendFinish"))
+            : teamHasMoreUnanswered ? t("junior.team.sendNext") : undefined
         }
         nav={nav}
       />
@@ -460,6 +471,7 @@ function localStorageHas(key: string): boolean {
 function RosterRow({
   r, busy, showMine, onOpen, onRemind,
 }: { r: OverviewRow; busy: boolean; showMine: boolean; onOpen: () => void; onRemind: () => void }) {
+  const { t } = notesI18n.useT();
   const n = r.note;
   const flags = (r.attention ?? []).filter((f) => !(f.kind === "unanswered" && n && !n.reviewed_at && r.unreviewed_14d <= 1));
   return (
@@ -467,47 +479,47 @@ function RosterRow({
       <Initial name={r.trader} />
       <div className="min-w-0 flex-1 basis-48">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold">{r.trader}</span>
-          {showMine && r.mine && <Pill tone="purple">мой</Pill>}
+          <span className="text-sm font-semibold">{personName(r.trader)}</span>
+          {showMine && r.mine && <Pill tone="purple">{t("junior.team.mine")}</Pill>}
           {n ? (
-            <Pill tone={n.reviewed_at ? "up" : "accent"} dot>{n.reviewed_at ? "Есть ответ" : "Ждёт ответа"}{n.words ? ` · ${n.words} сл.` : ""}</Pill>
+            <Pill tone={n.reviewed_at ? "up" : "accent"} dot>{n.reviewed_at ? t("answered") : t("waiting")}{n.words ? ` · ${t("wordsShort", { count: n.words })}` : ""}</Pill>
           ) : r.reminder ? (
-            <Pill tone="warn" dot>Напомнили {relTime(r.reminder.created_at)}</Pill>
+            <Pill tone="warn" dot>{t("junior.team.remindedAgo", { ago: relTime(r.reminder.created_at) })}</Pill>
           ) : (
-            <Pill tone="down" dot>Нет сводки</Pill>
+            <Pill tone="down" dot>{t("junior.team.noNote")}</Pill>
           )}
           {r.streak > 0 && (
             <Pill tone={r.streak >= 5 ? "accent" : "neutral"}>
-              <Flame className="h-3 w-3" aria-hidden="true" />{r.streak} подряд
+              <Flame className="h-3 w-3" aria-hidden="true" />{t("junior.team.inARow", { count: r.streak })}
             </Pill>
           )}
           {flags.map((f) => <Pill key={f.kind} tone={f.tone}>{f.label}</Pill>)}
         </div>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        <p className="mt-0.5 truncate text-xs text-muted-foreground" title={n?.preview || undefined}>
           {n
-            ? n.preview || "Пустая сводка"
-            : r.last_note_date ? `Последняя сводка: ${fmtDayShort(r.last_note_date)}` : "Ещё ни одной сводки"}
+            ? n.preview || t("junior.team.emptyNote")
+            : r.last_note_date ? t("junior.team.lastNote", { date: fmtDate(r.last_note_date, "dayMonth") }) : t("junior.team.noNotesYet")}
           {" · "}
-          {r.notes_30d} за 30 дн.
-          {r.repeated && r.repeated.length > 0 && r.repeated[0]!.count < 3 && ` · чаще всего: ${r.repeated[0]!.label.toLowerCase()}`}
+          {t("junior.team.notes30", { count: r.notes_30d })}
+          {r.repeated && r.repeated.length > 0 && r.repeated[0]!.count < 3 && ` · ${t("junior.team.mostOften", { label: r.repeated[0]!.label.toLowerCase() })}`}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {r.trend && r.trend.scores.length > 0 && (
-          <span className="hidden items-center gap-1.5 sm:inline-flex" title={`Средняя ${r.trend.avg?.toFixed(1)} · последние 3 — ${r.trend.recent?.toFixed(1)}`}>
+          <span className="hidden items-center gap-1.5 sm:inline-flex" title={t("junior.team.trendTitle", { avg: fmtNum(r.trend.avg, 1), recent: fmtNum(r.trend.recent, 1) })}>
             <ScoreTrail scores={r.trend.scores} />
-            <span className="text-xs tabular-nums text-muted-foreground">{r.trend.recent?.toFixed(1)}</span>
+            <span className="text-xs tabular-nums text-muted-foreground">{fmtNum(r.trend.recent, { decimals: 1, fallback: "" })}</span>
             <TrendArrow trend={r.trend} />
           </span>
         )}
         {n ? (
-          <Button size="sm" variant={n.reviewed_at ? "ghost" : "outline"} onClick={onOpen} aria-label={`${n.reviewed_at ? "Открыть" : "Ответить на"} сводку ${r.trader}`}>
-            {n.reviewed_at ? "Открыть" : "Ответить"}
+          <Button size="sm" variant={n.reviewed_at ? "ghost" : "outline"} onClick={onOpen} aria-label={t(n.reviewed_at ? "junior.team.openAria" : "junior.team.replyAria", { name: personName(r.trader) })}>
+            {n.reviewed_at ? t("junior.team.open") : t("junior.team.reply")}
           </Button>
         ) : (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={onRemind} aria-label={`Напомнить ${r.trader} написать сводку`}>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={onRemind} aria-label={t("junior.team.remindAria", { name: personName(r.trader) })}>
             {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <BellRing aria-hidden="true" />}
-            {r.reminder ? "Ещё раз" : "Напомнить"}
+            {r.reminder ? t("junior.team.again") : t("junior.team.remind")}
           </Button>
         )}
       </div>

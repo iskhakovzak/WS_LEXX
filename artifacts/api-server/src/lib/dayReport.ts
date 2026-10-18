@@ -15,6 +15,8 @@
  * Деньги — нетто = брутто − |комиссии| (lib/tradeMath.netPnl). Время — America/New_York.
  */
 import { netPnl, num, normResult } from "./tradeMath";
+import { dayReportT } from "../i18n/ns";
+import { localeTagFor, type Lang } from "../i18n";
 
 /* ─── Типы ─────────────────────────────────────────────────────────────────── */
 
@@ -73,6 +75,8 @@ export interface DayReportOptions {
   sizeUpFactor?: number;
   /** Окно сравнения, торговых дней. По умолчанию 20. */
   lookbackDays?: number;
+  /** Language of the texts (default RU). */
+  lang?: Lang;
 }
 
 export interface TradeRef {
@@ -234,12 +238,9 @@ function toMs(v: unknown): number | null {
   return null;
 }
 
-const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
-
-function weekdayOf(ymd: string): string {
+function weekdayOf(ymd: string, lang: Lang = "ru"): string {
   const [y, m, d] = ymd.split("-").map(Number);
-  const wd = new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay();
-  return WEEKDAYS[wd] ?? "";
+  return new Intl.DateTimeFormat(localeTagFor(lang), { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, (m || 1) - 1, d || 1, 12)));
 }
 
 /* ─── Нормализация ─────────────────────────────────────────────────────────── */
@@ -247,7 +248,7 @@ function weekdayOf(ymd: string): string {
 function sideOf(v: unknown): Side | null {
   const s = String(v ?? "").trim().toLowerCase();
   if (!s) return null;
-  return s.startsWith("s") || s.startsWith("ш") ? "short" : "long";
+  return s.startsWith("s") || s.startsWith("ш") ? "short" : "long"; // i18n-ignore (parses RU side input)
 }
 
 /** Строка API/БД → DayTrade. Время: исполнения → снапшот PropReports (openedAt/closedAt, ET) → нет. */
@@ -380,14 +381,15 @@ export function computeSummary(trades: DayTrade[]): Summary {
   };
 }
 
-export function computeComparison(todayNet: number, date: string, history: DailyNet[], lookback = 20, hasTrades = true): Comparison {
+export function computeComparison(todayNet: number, date: string, history: DailyNet[], lookback = 20, hasTrades = true, lang: Lang = "ru"): Comparison {
+  const t = dayReportT.tFor(lang);
   const window = history
     .filter((h) => h.date < date && Number.isFinite(h.net))
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .slice(0, lookback);
   const n = window.length;
   const empty: Comparison = { days: n, avg: null, std: null, z: null, betterThanPct: null, rank: null, bestDay: null, worstDay: null, label: "" };
-  if (!n) return { ...empty, label: "Нет истории для сравнения" };
+  if (!n) return { ...empty, label: t("cmp.none") };
   const nets = window.map((h) => h.net);
   const avg = sum(nets) / n;
   const std = n > 1 ? Math.sqrt(sum(nets.map((x) => (x - avg) ** 2)) / (n - 1)) : null;
@@ -400,8 +402,8 @@ export function computeComparison(todayNet: number, date: string, history: Daily
   const worstDay = window.reduce((a, b) => (b.net < a.net ? b : a));
   const pct = Math.round(betterThanPct * 100);
   const label = !hasTrades
-    ? `Без сделок · среднее за ${n} дн. ${usd(avg, true)}`
-    : `День лучше ${pct}% из ${n} последних торговых дней${z != null ? ` · z = ${z > 0 ? "+" : ""}${z.toFixed(2)}` : ""}`;
+    ? t("cmp.noTrades", { n, avg: usd(avg, true) })
+    : `${t("cmp.better", { pct, n })}${z != null ? t("cmp.z", { z: `${z > 0 ? "+" : ""}${z.toFixed(2)}` }) : ""}`;
   return { days: n, avg: r2(avg), std: std != null ? r2(std) : null, z, betterThanPct, rank, bestDay, worstDay, label };
 }
 
@@ -453,16 +455,15 @@ export function computeTimeline(trades: DayTrade[]): TimelineRow[] {
   });
 }
 
-const SIDE_LABEL: Record<string, string> = { long: "Лонг", short: "Шорт" };
-
-export function computeBreakdown(trades: DayTrade[]): DayReport["breakdown"] {
+export function computeBreakdown(trades: DayTrade[], lang: Lang = "ru"): DayReport["breakdown"] {
+  const sideLabel = (k: string) => dayReportT.tryFor(lang, `side.${k}`) ?? k;
   const closed = trades.filter((t) => t.net != null);
   const byNet = (a: Bucket, b: Bucket) => b.net - a.net || a.key.localeCompare(b.key);
   return {
     byTicker: bucketize(closed, (t) => t.ticker, (k) => k).sort(byNet),
     byHour: bucketize(closed, (t) => (t.entryAt != null ? String(etHour(t.entryAt)).padStart(2, "0") : null), (k) => `${k}:00–${String(+k + 1).padStart(2, "0")}:00`)
       .sort((a, b) => a.key.localeCompare(b.key)),
-    bySide: bucketize(closed, (t) => t.side, (k) => SIDE_LABEL[k] ?? k).sort(byNet),
+    bySide: bucketize(closed, (t) => t.side, sideLabel).sort(byNet),
   };
 }
 
@@ -478,6 +479,7 @@ function leak(kind: LeakKind, title: string, detail: string, ts: DayTrade[], cos
 }
 
 export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit: number | null, opts: Required<DayReportOptions>): Leak[] {
+  const L = dayReportT.tFor(opts.lang);
   const closed = trades.filter((t) => t.net != null);
   const out: Leak[] = [];
 
@@ -485,8 +487,8 @@ export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit:
   const feeHeavy = closed.filter((t) => t.fees > 0 && t.fees > Math.abs(t.gross ?? 0));
   if (feeHeavy.length) {
     const fees = sum(feeHeavy.map((t) => t.fees));
-    out.push(leak("fee_over_gross", "Комиссия больше результата",
-      `${feeHeavy.length} сдел. с комиссией выше |брутто|: комиссии ${usd(fees)}, нетто ${usd(sum(feeHeavy.map((t) => t.net!)), true)}`,
+    out.push(leak("fee_over_gross", L("leak.feeTitle"),
+      L("leak.feeDetail", { n: feeHeavy.length, fees: usd(fees), net: usd(sum(feeHeavy.map((t) => t.net!)), true) }),
       feeHeavy, fees));
   }
 
@@ -496,8 +498,8 @@ export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit:
     const afterIds = new Set(equity.points.slice(peakIdx + 1).map((p) => p.tradeId).filter((x): x is number => x != null));
     const after = closed.filter((t) => afterIds.has(t.id));
     if (after.length) {
-      out.push(leak("after_peak", "Отдача после пика дня",
-        `Пик ${usd(equity.peak.value, true)} в ${equity.peak.time ?? "—"}, закрытие ${usd(equity.final, true)}: отдано ${usd(equity.giveback)} за ${after.length} сдел.`,
+      out.push(leak("after_peak", L("leak.peakTitle"),
+        L("leak.peakDetail", { peak: usd(equity.peak.value, true), time: equity.peak.time ?? "—", final: usd(equity.final, true), giveback: usd(equity.giveback), n: after.length }),
         after, equity.giveback));
     }
   }
@@ -516,14 +518,14 @@ export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit:
   }
   if (revenge.length) {
     const net = sum(revenge.map((t) => t.net!));
-    out.push(leak("revenge", `Вход < ${opts.revengeMin} мин после убытка`,
-      `${revenge.length} сдел. открыто быстрее ${opts.revengeMin} мин после убыточного выхода: нетто ${usd(net, true)}`,
+    out.push(leak("revenge", L("leak.revengeTitle", { min: opts.revengeMin }),
+      L("leak.revengeDetail", { n: revenge.length, min: opts.revengeMin, net: usd(net, true) }),
       revenge, -net));
   }
   if (sizeUp.length) {
     const net = sum(sizeUp.map((t) => t.net!));
-    out.push(leak("size_up", "Рост размера после убытка",
-      `${sizeUp.length} сдел. с объёмом больше предыдущей убыточной (×${opts.sizeUpFactor}+): нетто ${usd(net, true)}`,
+    out.push(leak("size_up", L("leak.sizeTitle"),
+      L("leak.sizeDetail", { n: sizeUp.length, factor: opts.sizeUpFactor, net: usd(net, true) }),
       sizeUp, -net));
   }
 
@@ -539,8 +541,8 @@ export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit:
         const net = sum(after.map((t) => t.net!));
         // Цена нарушения лимита — все убытки, взятые сверх лимита (прибыльные сделки их не «отменяют»).
         const lossesAfter = sum(after.map((t) => Math.min(0, t.net!)));
-        out.push(leak("after_limit", "Торговля после дневного лимита",
-          `Лимит −${usd(dailyLossLimit)} достигнут в ${hit.time ?? "—"}; после этого ${after.length} сдел., нетто ${usd(net, true)}, убытки ${usd(lossesAfter)}`,
+        out.push(leak("after_limit", L("leak.limitTitle"),
+          L("leak.limitDetail", { limit: usd(dailyLossLimit), time: hit.time ?? "—", n: after.length, net: usd(net, true), losses: usd(lossesAfter) }),
           after, -lossesAfter));
         out[out.length - 1].severity = "high";
       }
@@ -574,33 +576,34 @@ export function computeStrengths(trades: DayTrade[], breakdown: DayReport["break
 /* ─── План на завтра ───────────────────────────────────────────────────────── */
 
 export function buildPlan(r: Pick<DayReport, "summary" | "leaks" | "breakdown" | "strengths" | "equity" | "dailyLossLimit" | "timeline">, opts: Required<DayReportOptions>): PlanItem[] {
+  const P = dayReportT.tFor(opts.lang);
   const plan: PlanItem[] = [];
   const add = (p: PlanItem) => { if (!plan.some((x) => x.id === p.id)) plan.push(p); };
 
   for (const l of r.leaks) {
-    const cost = l.costUsd > 0 ? ` — сегодня это стоило −${usd(l.costUsd).replace("−", "")}` : ` — сегодня ${l.count} сдел., нетто ${usd(l.netUsd, true)}`;
+    const cost = l.costUsd > 0 ? P("plan.costToday", { cost: usd(l.costUsd).replace("−", "") }) : P("plan.countToday", { n: l.count, net: usd(l.netUsd, true) });
     switch (l.kind) {
       case "revenge":
         add({ id: "revenge", source: l.kind, costUsd: l.costUsd || null, reason: l.detail,
-          text: `Не открывать сделки в течение ${Math.max(3, opts.revengeMin + 1)} мин после убытка${cost}.` });
+          text: P("plan.revenge", { min: Math.max(3, opts.revengeMin + 1), cost }) });
         break;
       case "size_up":
         add({ id: "size_up", source: l.kind, costUsd: l.costUsd || null, reason: l.detail,
-          text: `После убыточной сделки следующий вход — тем же или меньшим объёмом, не больше${cost}.` });
+          text: P("plan.sizeUp", { cost }) });
         break;
       case "after_peak": {
         const lock = r2(Math.max(r.equity.peak.value * 0.5, 0));
         add({ id: "after_peak", source: l.kind, costUsd: l.costUsd || null, reason: l.detail,
-          text: `Защитить прибыль: если отдано 50% от пика дня (сегодня пик ${usd(r.equity.peak.value, true)} → стоп-линия ${usd(lock, true)}), прекратить торговлю${cost}.` });
+          text: P("plan.afterPeak", { peak: usd(r.equity.peak.value, true), lock: usd(lock, true), cost }) });
         break;
       }
       case "fee_over_gross":
         add({ id: "fee_over_gross", source: l.kind, costUsd: l.costUsd || null, reason: l.detail,
-          text: `Не брать сделки, где ожидаемое движение не покрывает комиссию: выход в ноль = минус комиссия${cost}.` });
+          text: P("plan.feeOverGross", { cost }) });
         break;
       case "after_limit":
         add({ id: "after_limit", source: l.kind, costUsd: l.costUsd || null, reason: l.detail,
-          text: `При достижении дневного лимита (−${usd(r.dailyLossLimit ?? 0).replace("−", "")}) — платформа закрыта до конца дня${cost}.` });
+          text: P("plan.afterLimit", { limit: usd(r.dailyLossLimit ?? 0).replace("−", ""), cost }) });
         break;
     }
   }
@@ -609,8 +612,8 @@ export function buildPlan(r: Pick<DayReport, "summary" | "leaks" | "breakdown" |
   // Убыточный тикер с ≥2 убытками — не возвращаться.
   const badTicker = r.breakdown.byTicker.filter((b) => b.losses >= 2 && b.net < 0).sort((a, b) => a.net - b.net)[0];
   if (badTicker) {
-    add({ id: `ticker_${badTicker.key}`, source: "stat", costUsd: r2(-badTicker.net), reason: `${badTicker.label}: ${badTicker.losses} убытка, нетто ${usd(badTicker.net, true)}`,
-      text: `Максимум 2 попытки на тикер: после второго убытка в ${badTicker.label} — не возвращаться (сегодня ${usd(badTicker.net, true)}).` });
+    add({ id: `ticker_${badTicker.key}`, source: "stat", costUsd: r2(-badTicker.net), reason: P("plan.tickerReason", { ticker: badTicker.label, losses: badTicker.losses, net: usd(badTicker.net, true) }),
+      text: P("plan.ticker", { ticker: badTicker.label, net: usd(badTicker.net, true) }) });
   }
   // Удержание убытков дольше прибылей.
   const holds = (pred: (t: TimelineRow) => boolean) => r.timeline.filter((t) => pred(t) && t.holdMin != null).map((t) => t.holdMin!);
@@ -619,40 +622,40 @@ export function buildPlan(r: Pick<DayReport, "summary" | "leaks" | "breakdown" |
   const avg = (xs: number[]) => (xs.length ? sum(xs) / xs.length : null);
   const aw = avg(hw), al = avg(hl);
   if (aw != null && al != null && al > aw * 1.5 && al >= 2) {
-    add({ id: "hold_losers", source: "stat", costUsd: null, reason: `Среднее удержание: убытки ${al.toFixed(1)} мин, прибыли ${aw.toFixed(1)} мин`,
-      text: `Резать убытки быстрее: убыточные сделки держались ${al.toFixed(0)} мин против ${aw.toFixed(0)} мин у прибыльных — выход по стопу без ожидания.` });
+    add({ id: "hold_losers", source: "stat", costUsd: null, reason: P("plan.holdReason", { losers: al.toFixed(1), winners: aw.toFixed(1) }),
+      text: P("plan.hold", { losers: al.toFixed(0), winners: aw.toFixed(0) }) });
   }
   // Высокая доля комиссий.
   if (s.feeShareOfGross != null && s.feeShareOfGross >= 0.2 && !plan.some((p) => p.id === "fee_over_gross")) {
-    add({ id: "fee_share", source: "stat", costUsd: s.fees, reason: `Комиссии ${usd(s.fees)} = ${Math.round(s.feeShareOfGross * 100)}% брутто`,
-      text: `Комиссии съели ${Math.round(s.feeShareOfGross * 100)}% брутто — меньше мелких скальпов, больше сделок с целью ≥ 3× комиссии.` });
+    add({ id: "fee_share", source: "stat", costUsd: s.fees, reason: P("plan.feeShareReason", { fees: usd(s.fees), pct: Math.round(s.feeShareOfGross * 100) }),
+      text: P("plan.feeShare", { pct: Math.round(s.feeShareOfGross * 100) }) });
   }
   // Убыточное окно по часу.
   const badHour = r.breakdown.byHour.filter((b) => b.net < 0 && b.trades >= 2).sort((a, b) => a.net - b.net)[0];
   if (badHour) {
-    add({ id: `hour_${badHour.key}`, source: "stat", costUsd: r2(-badHour.net), reason: `${badHour.label} ET: ${badHour.trades} сдел., нетто ${usd(badHour.net, true)}`,
-      text: `Окно ${badHour.label} ET было убыточным (${usd(badHour.net, true)} за ${badHour.trades} сдел.) — в это время только A+ сетапы.` });
+    add({ id: `hour_${badHour.key}`, source: "stat", costUsd: r2(-badHour.net), reason: P("plan.hourReason", { hour: badHour.label, n: badHour.trades, net: usd(badHour.net, true) }),
+      text: P("plan.hour", { hour: badHour.label, net: usd(badHour.net, true), n: badHour.trades }) });
   }
   // Повторить сильное.
   const bestTicker = r.strengths.tickers[0];
   if (bestTicker && plan.length < 5) {
-    add({ id: `repeat_${bestTicker.key}`, source: "stat", costUsd: null, reason: `${bestTicker.label}: ${bestTicker.wins}/${bestTicker.trades} в плюс, ${usd(bestTicker.net, true)}`,
-      text: `Повторить то, что сработало: ${bestTicker.label} дал ${usd(bestTicker.net, true)} — записать сетап в журнал и искать такой же паттерн завтра.` });
+    add({ id: `repeat_${bestTicker.key}`, source: "stat", costUsd: null, reason: P("plan.repeatReason", { ticker: bestTicker.label, wins: bestTicker.wins, n: bestTicker.trades, net: usd(bestTicker.net, true) }),
+      text: P("plan.repeat", { ticker: bestTicker.label, net: usd(bestTicker.net, true) }) });
   }
   if (r.strengths.bestHour && plan.length < 3) {
     const h = r.strengths.bestHour;
-    add({ id: `besthour_${h.key}`, source: "stat", costUsd: null, reason: `${h.label} ET: ${usd(h.net, true)}`,
-      text: `Лучшее окно дня — ${h.label} ET (${usd(h.net, true)}): основной объём держать в нём.` });
+    add({ id: `besthour_${h.key}`, source: "stat", costUsd: null, reason: P("plan.bestHourReason", { hour: h.label, net: usd(h.net, true) }),
+      text: P("plan.bestHour", { hour: h.label, net: usd(h.net, true) }) });
   }
   if (plan.length < 3 && s.closed > 0) {
-    add({ id: "journal", source: "stat", costUsd: null, reason: "Базовая дисциплина",
-      text: `Заполнить журнал дня: сетап и причина входа для каждой из ${s.closed} сдел., чтобы завтрашний разбор видел преимущество по сетапам.` });
+    add({ id: "journal", source: "stat", costUsd: null, reason: P("plan.journalReason"),
+      text: P("plan.journal", { n: s.closed }) });
   }
   if (plan.length < 3 && s.closed > 0) {
-    add({ id: "max_loss", source: "stat", costUsd: null, reason: r.dailyLossLimit ? `Лимит ${usd(r.dailyLossLimit)}` : "Лимит не задан",
+    add({ id: "max_loss", source: "stat", costUsd: null, reason: r.dailyLossLimit ? P("plan.limitReason", { limit: usd(r.dailyLossLimit) }) : P("plan.noLimitReason"),
       text: r.dailyLossLimit
-        ? `Держать дневной лимит ${usd(r.dailyLossLimit)}: после −${usd(r2(r.dailyLossLimit / 2)).replace("−", "")} — пауза 15 мин и пересмотр плана.`
-        : `Попросить куратора задать дневной лимит убытка — без него правило «стоп на день» не проверяется.` });
+        ? P("plan.limit", { limit: usd(r.dailyLossLimit), half: usd(r2(r.dailyLossLimit / 2)).replace("−", "") })
+        : P("plan.noLimit") });
   }
   return plan.slice(0, 5);
 }
@@ -664,13 +667,14 @@ export function buildDayReport(input: DayReportInput): DayReport {
     revengeMin: input.options?.revengeMin ?? 2,
     sizeUpFactor: input.options?.sizeUpFactor ?? 1.2,
     lookbackDays: input.options?.lookbackDays ?? 20,
+    lang: input.options?.lang ?? "ru",
   };
   const trades = input.trades;
   const summary = computeSummary(trades);
-  const comparison = computeComparison(summary.net, input.date, input.history, opts.lookbackDays, summary.closed > 0);
+  const comparison = computeComparison(summary.net, input.date, input.history, opts.lookbackDays, summary.closed > 0, opts.lang);
   const equity = computeEquity(trades);
   const timeline = computeTimeline(trades);
-  const breakdown = computeBreakdown(trades);
+  const breakdown = computeBreakdown(trades, opts.lang);
   const leaks = computeLeaks(trades, equity, input.dailyLossLimit, opts);
   const strengths = computeStrengths(trades, breakdown);
   const plan = buildPlan({ summary, leaks, breakdown, strengths, equity, dailyLossLimit: input.dailyLossLimit, timeline }, opts);
@@ -681,7 +685,7 @@ export function buildDayReport(input: DayReportInput): DayReport {
   return {
     trader: input.trader,
     date: input.date,
-    weekday: weekdayOf(input.date),
+    weekday: weekdayOf(input.date, opts.lang),
     summary,
     comparison,
     equity,

@@ -2,10 +2,11 @@ import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { mondayOf } from "./discipline";
-import { fmtDay, fmtUsd } from "./constants";
+import { fmtDate, fmtMonth, fmtUsd, fmtWeekday } from "@/lib/format";
 import type { CalendarDay } from "./types";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт"];
 
 /**
  * Discipline heatmap: one cell per trading day (Mon–Fri columns by week).
@@ -22,11 +23,11 @@ function cellClass(s: CalendarDay | undefined, future: boolean): string {
 }
 
 export function describeDay(s: CalendarDay | undefined, date: string): string {
-  const d = fmtDay(date);
-  if (!s || s.trades === 0) return `${d}: нет сделок`;
-  const parts = [`${s.trades} сд.`, fmtUsd(s.net)];
-  parts.push(s.clean ? "без нарушений" : `нарушений: ${s.violations}`);
-  return `${d}: ${parts.join(" · ")}`;
+  const d = fmtDate(date, "dayMonth");
+  if (!s || s.trades === 0) return rulesI18n.t("calendar.noTrades", { date: d });
+  const parts = [commonI18n.t("units.tradesShort", { count: s.trades }), fmtUsd(s.net, { signed: true, decimals: "trim" })];
+  parts.push(s.clean ? rulesI18n.t("calendar.clean") : rulesI18n.t("calendar.violations", { count: s.violations }));
+  return rulesI18n.t("calendar.dayLine", { date: d, details: parts.join(" · ") });
 }
 
 export function DisciplineCalendar({
@@ -42,6 +43,7 @@ export function DisciplineCalendar({
   selected: string | null;
   onSelect: (date: string | null) => void;
 }) {
+  const { t } = rulesI18n.useT();
   const byDay = useMemo(() => new Map(calendar.map((c) => [c.day, c])), [calendar]);
   const today = nyDate();
   const cols = useMemo(() => {
@@ -59,7 +61,10 @@ export function DisciplineCalendar({
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">
         <div className="grid shrink-0 grid-rows-5 gap-[3px] pt-5 text-xs text-muted-foreground" aria-hidden="true">
-          {WEEKDAYS.map((w) => <span key={w} className="flex items-center leading-none">{w}</span>)}
+          {[1, 2, 3, 4, 5].map((i) => {
+            const w = fmtWeekday(i, "short");
+            return <span key={i} className="flex items-center leading-none">{w.charAt(0).toUpperCase() + w.slice(1)}</span>;
+          })}
         </div>
         <div className="min-w-0 flex-1" style={{ maxWidth: weeks * 28 }}>
           <div className="grid gap-[3px] pb-1 text-xs text-muted-foreground" style={{ gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` }} aria-hidden="true">
@@ -68,14 +73,14 @@ export function DisciplineCalendar({
               const showMonth = i === 0 || d.getDate() <= 7;
               return (
                 <span key={col[0]} className="h-4 overflow-visible whitespace-nowrap leading-4">
-                  {showMonth && i < weeks - 1 ? d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", "") : ""}
+                  {showMonth && i < weeks - 1 ? fmtMonth(d, "short").replace(".", "") : ""}
                 </span>
               );
             })}
           </div>
           <div
             role="grid"
-            aria-label="Календарь дисциплины по торговым дням"
+            aria-label={t("calendar.aria")}
             className="grid grid-flow-col grid-rows-5 gap-[3px]"
             style={{ gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` }}
           >
@@ -110,9 +115,9 @@ export function DisciplineCalendar({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] border border-[var(--glass-border)] bg-[var(--glass-bg)]" aria-hidden="true" />Без сделок</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-primary/55" aria-hidden="true" />Чистый день</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-warn/70" aria-hidden="true" />Нарушения</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] border border-[var(--glass-border)] bg-[var(--glass-bg)]" aria-hidden="true" />{t("calendar.legendNone")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-primary/55" aria-hidden="true" />{t("calendar.legendClean")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-warn/70" aria-hidden="true" />{t("calendar.legendBroken")}</span>
       </div>
     </div>
   );

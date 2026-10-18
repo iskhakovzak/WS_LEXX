@@ -3,14 +3,14 @@
  */
 import { toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtSigned, type MergedCatalyst } from "./lib";
-import { tradingDaysUntil, TODAY } from "./lib";
+import { type MergedCatalyst } from "./lib";
+import { fmtNum, fmtPct, fmtPrice } from "@/lib/format";
+import { big7Today, tradingDaysUntil } from "./lib";
 import type { LevelPoint } from "./context";
+import { big7I18n } from "@/i18n/ns/big7";
 
-export const fmtPx = (n: number | null | undefined) =>
-  n == null || !Number.isFinite(n) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-export const fmtRvol = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n.toFixed(n >= 10 ? 0 : 1)}×`);
+/** RVOL «1.8×» / «12×» (whole from 10×). */
+export const fmtRvol = (n: number | null | undefined) => fmtNum(n, { decimals: n != null && n >= 10 ? 0 : 1, suffix: "×" });
 
 /** Signed, coloured, tabular number. `dim` keeps it neutral below |threshold|. */
 export function Signed({ value, digits = 2, suffix = "%", threshold = 0, className }: {
@@ -20,7 +20,7 @@ export function Signed({ value, digits = 2, suffix = "%", threshold = 0, classNa
   const tone = v == null || Math.abs(v) < threshold ? "neutral" : toneOf(v);
   return (
     <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : toneText(tone), className)}>
-      {fmtSigned(v, digits, suffix)}
+      {fmtNum(v, { decimals: digits, signed: true, suffix })}
     </span>
   );
 }
@@ -46,26 +46,28 @@ export function RsBar({ value, max = 2, className }: { value: number | null | un
 export function LevelChip({ level, dir }: { level: LevelPoint | null; dir: "up" | "down" }) {
   if (!level) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className="inline-flex items-baseline gap-1 whitespace-nowrap tabular-nums" title={`${level.label} ${fmtPx(level.price)}`}>
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap tabular-nums" title={`${level.label} ${fmtPrice(level.price)}`}>
       <span className={cn("text-xs", dir === "up" ? "text-up" : "text-down")} aria-hidden="true">{dir === "up" ? "↑" : "↓"}</span>
       <span className="text-foreground">{level.label}</span>
-      <span className="text-xs text-muted-foreground">{fmtSigned(level.distPct, 2)}</span>
+      <span className="text-xs text-muted-foreground">{fmtPct(level.distPct, 2)}</span>
     </span>
   );
 }
 
 /** Next earnings for a ticker within `horizon` trading days (auto calendar + manual catalysts). */
 export function nextEarnings(symbol: string, merged: MergedCatalyst[], horizon = 5): { date: string; days: number; when: string | null } | null {
-  const e = merged.find((c) => c.ticker === symbol && c.type === "earnings" && c.date >= TODAY);
+  const e = merged.find((c) => c.ticker === symbol && c.type === "earnings" && c.date >= big7Today());
   if (!e) return null;
   const days = tradingDaysUntil(e.date);
   if (days > horizon) return null;
+  // Calendar rows carry the timing; a manual catalyst may name it in its (user-written) description.
   const d = e.description ?? "";
-  const when = d.startsWith("до открытия") ? "BMO" : d.startsWith("после закрытия") ? "AMC" : null;
+  const when = e.callType ?? (/\bBMO\b|до открытия/i.test(d) ? "BMO" : /\bAMC\b|после закрытия/i.test(d) ? "AMC" : null); // i18n-ignore (parses user text)
   return { date: e.date, days, when };
 }
 
 export function earningsLabel(e: { days: number; when: string | null }): string {
-  const day = e.days <= 0 ? "сегодня" : e.days === 1 ? "завтра" : `${e.days}д`;
-  return `Отчёт ${day}${e.when ? ` ${e.when}` : ""}`;
+  const t = big7I18n.t;
+  const day = e.days <= 0 ? t("earnings.today") : e.days === 1 ? t("earnings.tomorrow") : t("earnings.inDays", { count: e.days });
+  return e.when ? t("earnings.labelWhen", { day, when: e.when }) : t("earnings.label", { day });
 }

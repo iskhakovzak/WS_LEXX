@@ -10,19 +10,18 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Kbd, Pill, ProgressRing, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtMoney, fmtPrice, fmtR } from "../lib/format";
+import { fmtNum, fmtPrice, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
 import { fmtPerShare } from "../lib/trade-summary";
 import {
   historyStats, plannedRR, sessionSlice, simFillLabel, simLiveR, simMark, trainingVerdict,
   type SimAction, type SimFillReason, type SimState, type TrainingOutcome, type TrainingRecord,
 } from "../lib/training-sim";
 import { AsideCard } from "./TradePanels";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const tone = (n: number | null | undefined) => (n == null || !Number.isFinite(n) || Math.abs(n) < 1e-12 ? "text-foreground" : n > 0 ? "text-up" : "text-down");
-const pluralRu = (n: number, one: string, few: string, many: string) => {
-  const m10 = n % 10, m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-};
 const QTY_CHIPS = [100, 500, 1000] as const;
 const RR_CHIPS = [1, 2, 3] as const;
 
@@ -66,6 +65,7 @@ export function TrainingTicket({
   /** At least one bar was played (nothing to score before that). */
   started: boolean;
 }) {
+  const { t } = chartI18n.useT();
   const uid = React.useId();
   const open = sim.pos !== 0 && sim.avg != null;
   const mark = price != null ? simMark(sim, price) : null;
@@ -78,28 +78,28 @@ export function TrainingTicket({
   const hasStopForNew = ticket.autoStop || manualStop != null;
   const noPrice = price == null || atLimit;
   return (
-    <AsideCard title="Твоя сделка" action={<span className="text-sm tabular-nums text-muted-foreground">цена <b className="text-foreground">{fmtPrice(price)}</b></span>}>
+    <AsideCard title={t("training.ticket")} action={<span className="text-sm tabular-nums text-muted-foreground">{t("training.price")} <b className="text-foreground">{fmtPrice(price)}</b></span>}>
       <div className="grid grid-cols-2 gap-1.5">
-        <Button className="h-10 justify-between bg-up px-3 text-white hover:bg-up/90" onClick={() => onOrder("buy")} disabled={noPrice} title="Купить по закрытию текущего бара (B)">
-          Купить <Kbd className="border-white/30 bg-white/15 text-white max-sm:hidden">B</Kbd>
+        <Button className="h-10 justify-between bg-up px-3 text-white hover:bg-up/90" onClick={() => onOrder("buy")} disabled={noPrice} title={t("training.buyTitle")}>
+          {t("training.buy")} <Kbd className="border-white/30 bg-white/15 text-white max-sm:hidden">B</Kbd>
         </Button>
-        <Button className="h-10 justify-between bg-down px-3 text-white hover:bg-down/90" onClick={() => onOrder("sell")} disabled={noPrice} title="Продать / шорт по закрытию текущего бара (S)">
-          Продать <Kbd className="border-white/30 bg-white/15 text-white max-sm:hidden">S</Kbd>
+        <Button className="h-10 justify-between bg-down px-3 text-white hover:bg-down/90" onClick={() => onOrder("sell")} disabled={noPrice} title={t("training.sellTitle")}>
+          {t("training.sell")} <Kbd className="border-white/30 bg-white/15 text-white max-sm:hidden">S</Kbd>
         </Button>
       </div>
       <div className="grid grid-cols-3 gap-1.5">
-        <Button variant="outline" size="sm" className="h-8 gap-1 px-2" onClick={() => onOrder("half")} disabled={!open || atLimit} title="Закрыть половину позиции (H)">
+        <Button variant="outline" size="sm" className="h-8 gap-1 px-2" onClick={() => onOrder("half")} disabled={!open || atLimit} title={t("training.halfTitle")}>
           ½ <Kbd className="max-sm:hidden">H</Kbd>
         </Button>
-        <Button variant="outline" size="sm" className="h-8 gap-1 px-2" onClick={onBreakeven} disabled={!canBE || atLimit} title={open ? (canBE ? "Стоп в безубыток — на среднюю цену (E)" : "Б/У можно, когда цена ушла за среднюю в плюс") : "Нет позиции"}>
-          Б/У <Kbd className="max-sm:hidden">E</Kbd>
+        <Button variant="outline" size="sm" className="h-8 gap-1 px-2" onClick={onBreakeven} disabled={!canBE || atLimit} title={open ? (canBE ? t("training.beTitle") : t("training.beNotYet")) : t("training.noPosition")}>
+          {t("training.be")} <Kbd className="max-sm:hidden">E</Kbd>
         </Button>
-        <Button variant="outline" size="sm" className="h-8 gap-1 px-2" onClick={() => onOrder("flat")} disabled={!open || atLimit} title="Закрыть всю позицию (C)">
-          В ноль <Kbd className="max-sm:hidden">C</Kbd>
+        <Button variant="outline" size="sm" className="h-8 gap-1 px-2" onClick={() => onOrder("flat")} disabled={!open || atLimit} title={t("training.flatTitle")}>
+          {t("training.flat")} <Kbd className="max-sm:hidden">C</Kbd>
         </Button>
       </div>
 
-      <Field label="Размер" htmlFor={`${uid}-qty`}>
+      <Field label={t("training.size")} htmlFor={`${uid}-qty`}>
         <Input
           id={`${uid}-qty`} inputMode="numeric" className="h-8 w-[4.5rem] tabular-nums" value={String(ticket.qty)}
           onChange={(e) => { const n = Math.floor(Number(e.target.value.replace(/\D/g, ""))); onTicket({ qty: Number.isFinite(n) ? Math.min(1_000_000, n) : 0 }); }}
@@ -111,48 +111,48 @@ export function TrainingTicket({
         </div>
       </Field>
 
-      <Field label="Стоп" htmlFor={`${uid}-stop`}>
+      <Field label={t("training.stop")} htmlFor={`${uid}-stop`}>
         {ticket.autoStop && !open ? (
-          <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground" title={`Авто: за экстремумом последних 5 баров — для лонга ${fmtPrice(suggestLong)}, для шорта ${fmtPrice(suggestShort)}`}>
+          <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground" title={t("training.autoStopTitle", { long: fmtPrice(suggestLong), short: fmtPrice(suggestShort) })}>
             <span className="text-up">↑</span>{fmtPrice(suggestLong)} <span className="text-down">↓</span>{fmtPrice(suggestShort)}
           </span>
         ) : (
           <Input
-            id={`${uid}-stop`} aria-label="Цена стопа" inputMode="decimal" className="h-8 min-w-0 flex-1 tabular-nums" placeholder={open ? fmtPrice(sim.stop) : "цена"}
+            id={`${uid}-stop`} aria-label={t("training.stopPrice")} inputMode="decimal" className="h-8 min-w-0 flex-1 tabular-nums" placeholder={open ? fmtPrice(sim.stop) : t("training.price")}
             value={ticket.stopText} onChange={(e) => onTicket({ stopText: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter" && open) onApplyStop(); }}
           />
         )}
         {open ? (
-          <Button size="sm" variant="outline" className="h-8 shrink-0 px-2.5" disabled={manualStop == null} onClick={onApplyStop}>Перенести</Button>
+          <Button size="sm" variant="outline" className="h-8 shrink-0 px-2.5" disabled={manualStop == null} onClick={onApplyStop}>{t("training.move")}</Button>
         ) : (
-          <label className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><Switch checked={ticket.autoStop} onCheckedChange={(v) => onTicket({ autoStop: v })} aria-label="Автостоп" />авто</label>
+          <label className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"><Switch checked={ticket.autoStop} onCheckedChange={(v) => onTicket({ autoStop: v })} aria-label={t("training.autoStop")} />{t("training.auto")}</label>
         )}
       </Field>
 
-      <Field label="Цель" htmlFor={open ? `${uid}-target` : undefined}>
+      <Field label={t("training.target")} htmlFor={open ? `${uid}-target` : undefined}>
         {open ? (
           <>
             <Input
-              id={`${uid}-target`} aria-label="Цена цели" inputMode="decimal" className="h-8 min-w-0 flex-1 tabular-nums" placeholder={sim.target != null ? fmtPrice(sim.target) : "цена"}
+              id={`${uid}-target`} aria-label={t("training.targetPrice")} inputMode="decimal" className="h-8 min-w-0 flex-1 tabular-nums" placeholder={sim.target != null ? fmtPrice(sim.target) : t("training.price")}
               value={ticket.targetText} onChange={(e) => onTicket({ targetText: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") onApplyTarget(); }}
             />
             {manualTarget != null ? (
-              <Button size="sm" variant="outline" className="h-8 shrink-0 px-2.5" onClick={onApplyTarget}>Поставить</Button>
+              <Button size="sm" variant="outline" className="h-8 shrink-0 px-2.5" onClick={onApplyTarget}>{t("training.set")}</Button>
             ) : (
               <div className="flex shrink-0 gap-0.5">
                 {RR_CHIPS.map((n) => (
-                  <button key={n} type="button" disabled={sim.stop == null} onClick={() => onTargetRR(n)} title={sim.stop == null ? "Нужен стоп" : `Цель на ${n}R от средней`} className="h-7 rounded-full px-1.5 text-xs tabular-nums text-muted-foreground hover:bg-[var(--glass-hover-bg)] disabled:opacity-40">{n}R</button>
+                  <button key={n} type="button" disabled={sim.stop == null} onClick={() => onTargetRR(n)} title={sim.stop == null ? t("training.needStop") : t("training.targetRTitle", { n })} className="h-7 rounded-full px-1.5 text-xs tabular-nums text-muted-foreground hover:bg-[var(--glass-hover-bg)] disabled:opacity-40">{n}R</button>
                 ))}
                 {sim.target != null && (
-                  <button type="button" onClick={onClearTarget} aria-label="Убрать цель" title="Убрать цель" className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)]"><X className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={onClearTarget} aria-label={t("training.clearTarget")} title={t("training.clearTarget")} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)]"><X className="h-3.5 w-3.5" /></button>
                 )}
               </div>
             )}
           </>
         ) : (
           <Segmented
-            size="sm" ariaLabel="Цель для новой позиции" value={String(ticket.targetRR)} onChange={(v) => onTicket({ targetRR: Number(v) })} className="min-w-0"
-            options={[{ value: "0", label: "нет" }, ...RR_CHIPS.map((n) => ({ value: String(n), label: `${n}R`, disabled: !hasStopForNew, title: hasStopForNew ? `Цель на ${n} × расстояние до стопа` : "Цель в R считается от стопа — включи автостоп или впиши стоп" }))]}
+            size="sm" ariaLabel={t("training.newTarget")} value={String(ticket.targetRR)} onChange={(v) => onTicket({ targetRR: Number(v) })} className="min-w-0"
+            options={[{ value: "0", label: t("training.none") }, ...RR_CHIPS.map((n) => ({ value: String(n), label: `${n}R`, disabled: !hasStopForNew, title: hasStopForNew ? t("training.targetMultTitle", { n }) : t("training.targetNeedsStop") }))]}
           />
         )}
       </Field>
@@ -161,30 +161,30 @@ export function TrainingTicket({
         {open ? (
           <div className="flex flex-col gap-0.5">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-medium">{sim.pos > 0 ? "Лонг" : "Шорт"} {Math.abs(sim.pos)} @ {fmtPrice(sim.avg)}</span>
-              <b className={tone(mark?.total)}>{fmtMoney(mark?.total)}</b>
+              <span className="font-medium">{sim.pos > 0 ? commonI18n.t("trading.long") : commonI18n.t("trading.short")} {Math.abs(sim.pos)} @ {fmtPrice(sim.avg)}</span>
+              <b className={tone(mark?.total)}>{fmtUsd(mark?.total, { signed: true, decimals: "auto" })}</b>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs text-muted-foreground">
-              <span>стоп {sim.stop != null ? fmtPrice(sim.stop) : "—"} · цель {sim.target != null ? fmtPrice(sim.target) : "—"}{rr != null && <> · R:R 1:{rr.toFixed(1)}</>}</span>
+              <span>{t("training.stopTarget", { stop: sim.stop != null ? fmtPrice(sim.stop) : "—", target: sim.target != null ? fmtPrice(sim.target) : "—" })}{rr != null && <> · R:R 1:{fmtNum(rr, 1)}</>}</span>
               <span className="flex gap-2">
                 <b className={tone(perShare)}>{fmtPerShare(perShare)}</b>
-                <b className={tone(liveR)} title="Весь результат попытки в R первого стопа">{liveR != null ? fmtR(liveR) : "— R"}</b>
+                <b className={tone(liveR)} title={t("training.liveRTitle")}>{liveR != null ? fmtR(liveR) : "— R"}</b>
               </span>
             </div>
           </div>
         ) : (
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-muted-foreground">{sim.fills.length ? "Без позиции" : "Сделок ещё нет"}</span>
-            {sim.fills.length > 0 && <span className="flex gap-2"><b className={tone(sim.realized)}>{fmtMoney(sim.realized)}</b>{liveR != null && <b className={tone(liveR)}>{fmtR(liveR)}</b>}</span>}
+            <span className="text-muted-foreground">{sim.fills.length ? t("training.flatNow") : t("training.noTradesYet")}</span>
+            {sim.fills.length > 0 && <span className="flex gap-2"><b className={tone(sim.realized)}>{fmtUsd(sim.realized, { signed: true, decimals: "auto" })}</b>{liveR != null && <b className={tone(liveR)}>{fmtR(liveR)}</b>}</span>}
           </div>
         )}
       </div>
 
-      {atLimit && <p className="text-xs font-medium text-[hsl(var(--chart-3))]" role="status">Сессия закончилась — дальше баров нет.</p>}
-      <Button variant={atLimit ? "default" : "secondary"} className="h-9 w-full justify-center gap-1.5" onClick={onReveal} disabled={!started} title="Закончить и посмотреть, как было (Enter)">
-        <Eye className="h-4 w-4 shrink-0" /> <span className="truncate">Показать, как было</span> <Kbd className="ml-auto max-sm:hidden">Enter</Kbd>
+      {atLimit && <p className="text-xs font-medium text-[hsl(var(--chart-3))]" role="status">{t("training.sessionOver")}</p>}
+      <Button variant={atLimit ? "default" : "secondary"} className="h-9 w-full justify-center gap-1.5" onClick={onReveal} disabled={!started} title={t("training.revealTitle")}>
+        <Eye className="h-4 w-4 shrink-0" /> <span className="truncate">{t("training.reveal")}</span> <Kbd className="ml-auto max-sm:hidden">Enter</Kbd>
       </Button>
-      <p className="text-2xs leading-snug text-muted-foreground">Ордер — по закрытию текущего бара, стоп и цель — на следующих (если бар задел оба, считается стоп). Назад нельзя.</p>
+      <p className="text-2xs leading-snug text-muted-foreground">{t("training.rules")}</p>
     </AsideCard>
   );
 }
@@ -205,39 +205,40 @@ export function TrainingOutcomeCard({
   onRestart: () => void;
   onNext?: () => void;
 }) {
+  const { t } = chartI18n.useT();
   const v = trainingVerdict(o);
   return (
-    <AsideCard title="Результат тренировки">
+    <AsideCard title={t("training.outcome")}>
       <div className="flex items-center gap-3">
-        <ProgressRing value={o.score ?? 0} size={64} stroke={6} tone={v.tone === "down" ? "down" : v.tone === "warn" ? "warn" : v.tone === "up" ? "up" : "neutral"} label={o.score != null ? String(o.score) : "—"} ariaLabel="Оценка из 100" />
+        <ProgressRing value={o.score ?? 0} size={64} stroke={6} tone={v.tone === "down" ? "down" : v.tone === "warn" ? "warn" : v.tone === "up" ? "up" : "neutral"} label={o.score != null ? String(o.score) : "—"} ariaLabel={t("training.scoreAria")} />
         <div className="flex min-w-0 flex-col gap-1">
           <Pill tone={v.tone === "neutral" ? "neutral" : v.tone}>{v.label}</Pill>
-          <span className="text-xs text-muted-foreground">{o.score != null ? "Доля лучшего возможного хода за просмотренные бары" : "Оценки нет: сделок не было"}</span>
+          <span className="text-xs text-muted-foreground">{o.score != null ? t("training.scoreHint") : t("training.noScore")}</span>
         </div>
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm tabular-nums">
-        <dt className="text-muted-foreground">Ты</dt>
-        <dd className="flex flex-wrap justify-end gap-x-1.5 text-right">{o.trades ? <><b className={tone(o.r ?? o.perShare)}>{o.r != null ? fmtR(o.r) : fmtPerShare(o.perShare)}</b>{o.r != null && <span className={tone(o.perShare)}>{fmtPerShare(o.perShare)}</span>}<span className="text-muted-foreground">{fmtMoney(o.pnlUsd)}</span></> : "без сделок"}</dd>
-        <dt className="text-muted-foreground">Было можно</dt>
-        <dd className="text-right">{o.idealPerShare != null ? <><b className="text-up">{fmtPerShare(o.idealPerShare)}</b> <span className="text-muted-foreground">{o.idealSide === "short" ? "в шорт" : "в лонг"}</span></> : "—"}</dd>
+        <dt className="text-muted-foreground">{t("training.you")}</dt>
+        <dd className="flex flex-wrap justify-end gap-x-1.5 text-right">{o.trades ? <><b className={tone(o.r ?? o.perShare)}>{o.r != null ? fmtR(o.r) : fmtPerShare(o.perShare)}</b>{o.r != null && <span className={tone(o.perShare)}>{fmtPerShare(o.perShare)}</span>}<span className="text-muted-foreground">{fmtUsd(o.pnlUsd, { signed: true, decimals: "auto" })}</span></> : t("training.noTrades")}</dd>
+        <dt className="text-muted-foreground">{t("training.couldHave")}</dt>
+        <dd className="text-right">{o.idealPerShare != null ? <><b className="text-up">{fmtPerShare(o.idealPerShare)}</b> <span className="text-muted-foreground">{o.idealSide === "short" ? t("training.toShort") : t("training.toLong")}</span></> : "—"}</dd>
         {traderName !== null && (
           <>
-            <dt className="truncate text-muted-foreground">{traderName ? `Сделка: ${traderName}` : "Реальная сделка"}</dt>
+            <dt className="truncate text-muted-foreground">{traderName ? t("training.tradeOf", { name: personName(traderName) }) : t("training.realTrade")}</dt>
             <dd className="text-right">{o.realPerShare != null ? <><b className={tone(o.realPerShare)}>{fmtPerShare(o.realPerShare)}</b>{o.realR != null && <b className={cn("ml-1.5", tone(o.realR))}>{fmtR(o.realR)}</b>}</> : "—"}</dd>
           </>
         )}
       </dl>
       {o.vsRealPerShare != null && (
-        <p className={cn("text-sm", tone(o.vsRealPerShare))}>{o.vsRealPerShare >= 0 ? "Лучше реальной сделки" : "Хуже реальной сделки"} на {fmtPerShare(Math.abs(o.vsRealPerShare)).replace("+", "")} на акцию</p>
+        <p className={cn("text-sm", tone(o.vsRealPerShare))}>{t(o.vsRealPerShare >= 0 ? "training.betterThanReal" : "training.worseThanReal", { value: fmtPerShare(Math.abs(o.vsRealPerShare)).replace("+", "") })}</p>
       )}
 
       {decisions.length > 0 && (
         <div className="flex flex-col gap-1">
-          <h4 className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Твои действия</h4>
+          <h4 className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{t("training.yourActions")}</h4>
           <ol className="flex max-h-40 flex-col overflow-y-auto text-xs tabular-nums">
             {decisions.map((d, i) => (
               <li key={`${d.idx}-${i}`}>
-                <button type="button" disabled={!onJump} onClick={() => onJump?.(d.idx)} className="grid w-full grid-cols-[3rem_4.5rem_1fr_auto] items-baseline gap-2 rounded-md px-1 py-0.5 text-left hover:bg-[var(--glass-hover-bg)] disabled:hover:bg-transparent" title="Показать на графике">
+                <button type="button" disabled={!onJump} onClick={() => onJump?.(d.idx)} className="grid w-full grid-cols-[minmax(3rem,auto)_minmax(4.5rem,auto)_1fr_auto] items-baseline gap-2 whitespace-nowrap rounded-md px-1 py-0.5 text-left hover:bg-[var(--glass-hover-bg)] disabled:hover:bg-transparent" title={t("training.showOnChart")}>
                   <span className="text-muted-foreground">{d.time}</span>
                   <span className={cn("font-medium", REASON_TONE[d.reason])}>{simFillLabel(d)}</span>
                   <span className="text-right">{fmtPrice(d.price)}</span>
@@ -248,10 +249,10 @@ export function TrainingOutcomeCard({
           </ol>
         </div>
       )}
-      <p className="text-2xs leading-snug text-muted-foreground">На графике: {traderName !== null ? "реальные исполнения (стрелки), " : ""}твои (кружки B/S, ✓ — цель, × — стоп) и идеальный ход (жёлтый пунктир).</p>
+      <p className="text-2xs leading-snug text-muted-foreground">{traderName !== null ? t("training.legendWithReal") : t("training.legend")}</p>
       <div className="flex gap-1.5">
-        <Button variant="outline" size="sm" className="h-8 flex-1 gap-1" onClick={onRestart}><RotateCcw className="h-3.5 w-3.5" /> Ещё раз</Button>
-        {onNext && <Button size="sm" className="h-8 flex-[1.4] gap-1" onClick={onNext}><Shuffle className="h-3.5 w-3.5" /> Следующая <ArrowRight className="h-3.5 w-3.5" /></Button>}
+        <Button variant="outline" size="sm" className="h-8 flex-1 gap-1" onClick={onRestart}><RotateCcw className="h-3.5 w-3.5" /> {t("training.again")}</Button>
+        {onNext && <Button size="sm" className="h-8 flex-[1.4] gap-1" onClick={onNext} title={t("training.nextTitle")}><Shuffle className="h-3.5 w-3.5" /> {t("training.next")} <ArrowRight className="h-3.5 w-3.5" /></Button>}
       </div>
     </AsideCard>
   );
@@ -274,7 +275,9 @@ function Stat({ value, label, className, title }: { value: React.ReactNode; labe
   );
 }
 
-export function TrainingHistoryCard({ list }: { list: readonly TrainingRecord[] }) {
+/** Memoised: it sits beside the chart and must not recompute its stats on every replay tick. */
+export const TrainingHistoryCard = React.memo(function TrainingHistoryCard({ list }: { list: readonly TrainingRecord[] }) {
+  const { t } = chartI18n.useT();
   const [scope, setScope] = React.useState<"session" | "all">("session");
   const [since, setSince] = React.useState<number>(loadSessionStart);
   const newSession = () => {
@@ -287,44 +290,44 @@ export function TrainingHistoryCard({ list }: { list: readonly TrainingRecord[] 
   const st = historyStats(shown);
   if (!list.length) {
     return (
-      <AsideCard title="Твоя статистика">
-        <p className="text-sm text-muted-foreground">Пока пусто. Каждая попытка сохраняется в этом браузере: оценка, R, серия плюсовых попыток и сравнение с реальными сделками.</p>
+      <AsideCard title={t("training.stats")}>
+        <p className="text-sm text-muted-foreground">{t("training.statsEmpty")}</p>
       </AsideCard>
     );
   }
   return (
     <AsideCard
-      title="Твоя статистика"
-      action={<Segmented size="sm" ariaLabel="Период статистики" value={scope} onChange={setScope} options={[{ value: "session", label: "Сессия" }, { value: "all", label: "Всё" }]} />}
+      title={t("training.stats")}
+      action={<Segmented size="sm" ariaLabel={t("training.statsPeriod")} value={scope} onChange={setScope} options={[{ value: "session", label: t("training.session") }, { value: "all", label: t("training.all") }]} />}
     >
       {st.count === 0 ? (
-        <p className="text-sm text-muted-foreground">В этой сессии попыток ещё нет.</p>
+        <p className="text-sm text-muted-foreground">{t("training.sessionEmpty")}</p>
       ) : (
         <>
           <div className="grid grid-cols-3 gap-x-2 gap-y-2 text-center">
-            <Stat value={st.count} label={pluralRu(st.count, "попытка", "попытки", "попыток")} />
-            <Stat value={st.avgScore ?? "—"} label="ср. оценка" />
-            <Stat value={st.plusShare != null ? `${Math.round(st.plusShare * 100)}%` : "—"} label="в плюс" />
-            <Stat value={st.avgR != null ? fmtR(st.avgR) : "—"} label="ср. R" className={tone(st.avgR)} title={st.sumR != null ? `Всего ${fmtR(st.sumR)}` : "R считается для попыток со стопом"} />
-            <Stat value={st.avgRealR != null ? fmtR(st.avgRealR) : "—"} label="R трейдеров" className={tone(st.avgRealR)} title="Средний R реальных сделок в этих задачах (где был стоп)" />
-            <Stat value={st.comparable ? `${st.beatReal}/${st.comparable}` : "—"} label="лучше сделки" title="Попыток лучше реальной сделки на акцию" />
+            <Stat value={st.count} label={t("training.attempts", { count: st.count })} />
+            <Stat value={st.avgScore ?? "—"} label={t("training.avgScore")} />
+            <Stat value={fmtRate(st.plusShare)} label={t("training.plusShare")} />
+            <Stat value={st.avgR != null ? fmtR(st.avgR) : "—"} label={t("training.avgR")} className={tone(st.avgR)} title={st.sumR != null ? t("training.sumR", { value: fmtR(st.sumR) }) : t("training.rNeedsStop")} />
+            <Stat value={st.avgRealR != null ? fmtR(st.avgRealR) : "—"} label={t("training.tradersR")} className={tone(st.avgRealR)} title={t("training.tradersRTitle")} />
+            <Stat value={st.comparable ? `${st.beatReal}/${st.comparable}` : "—"} label={t("training.beatReal")} title={t("training.beatRealTitle")} />
           </div>
-          {st.streak > 0 && <p className="inline-flex items-center gap-1 text-xs font-semibold text-[hsl(var(--chart-3))]"><Flame className="h-3.5 w-3.5" aria-hidden="true" />серия в плюс: {st.streak}</p>}
+          {st.streak > 0 && <p className="inline-flex items-center gap-1 text-xs font-semibold text-[hsl(var(--chart-3))]"><Flame className="h-3.5 w-3.5" aria-hidden="true" />{t("training.streak", { count: st.streak })}</p>}
           <ul className="flex flex-col divide-y divide-[var(--glass-border)] text-xs tabular-nums">
             {shown.slice(0, 5).map((x) => (
               <li key={x.at} className="flex items-center gap-2 py-1">
                 <span className="w-7 font-semibold">{x.score ?? "—"}</span>
                 <span className="font-medium">{x.ticker}</span>
                 <span className="text-muted-foreground">{x.day.slice(5)}</span>
-                <span className={cn("ml-auto", tone(x.trades ? x.pnlUsd : null))}>{x.trades ? (x.r != null ? fmtR(x.r) : fmtPerShare(x.perShare)) : "без сделок"}</span>
+                <span className={cn("ml-auto", tone(x.trades ? x.pnlUsd : null))}>{x.trades ? (x.r != null ? fmtR(x.r) : fmtPerShare(x.perShare)) : t("training.noTrades")}</span>
               </li>
             ))}
           </ul>
         </>
       )}
-      <Button variant="ghost" size="sm" className="h-7 self-start px-2 text-xs text-muted-foreground" onClick={newSession} title="Начать новую сессию: счётчики «Сессия» с нуля (история не удаляется)">
-        <RotateCcw className="mr-1 h-3 w-3" /> Новая сессия
+      <Button variant="ghost" size="sm" className="h-7 self-start px-2 text-xs text-muted-foreground" onClick={newSession} title={t("training.newSessionTitle")}>
+        <RotateCcw className="mr-1 h-3 w-3" /> {t("training.newSession")}
       </Button>
     </AsideCard>
   );
-}
+});

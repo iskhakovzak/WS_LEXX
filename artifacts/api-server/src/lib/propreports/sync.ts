@@ -29,6 +29,8 @@ import { round2 } from "./csv";
 import { applyFeeSettings, type DetectedFeeColumn } from "./fees";
 import { getSettings, setSetting } from "./settings";
 import type { RoundTrip } from "./types";
+import { normResult } from "../tradeMath";
+import { emitJobEvent } from "../../jobs/registry";
 
 export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict" | "skip";
 
@@ -161,7 +163,8 @@ function brokerFields(t: RoundTrip) {
     qty: t.qty,
     fees: t.totalFees,
     pnl: t.grossPnl,
-    result: t.result,
+    // canonical code on write (win / loss / be / open): the parsers say "breakeven", the DB stores "be"
+    result: normResult(t.result) ?? t.result,
     session: t.session,
     horizon: t.horizon,
     exitDate: t.exitDate,
@@ -497,7 +500,7 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
       } catch (e) {
         res.errors++;
         errors.push(`${it.externalId}: ${e instanceof Error ? e.message : String(e)}`);
-        if (errors.length > 50) throw new Error("Слишком много ошибок, импорт отменён");
+        if (errors.length > 50) throw new Error("Too many errors (> 50), import cancelled");
       }
     }
     for (const [account, last] of touchedAccounts) {
@@ -552,7 +555,21 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
       void import("../rulesEngine").then(async ({ scanRulesForTrader }) => {
         for (const t of traders) await scanRulesForTrader(t).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e), trader: t }, "propreports: rule scan failed"));
       });
+      // Ideas of these traders: link them to the new broker trades (ticker + side + entry in the idea window).
+      void import("../ideaTradeMatch").then(({ relinkIdeasForTraders }) => relinkIdeasForTraders([...traders]))
+        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: idea relink failed"));
+      // Academy challenges of these traders: status + pass/fail notices move here (write path), not on GET.
+      void import("../../routes/academy-path").then(({ refreshChallenges }) => refreshChallenges([...traders]))
+        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: challenge refresh failed"));
     }
+  }
+  // Jobs listening to "propreports.synced" (src/jobs/registry.ts) run after every recorded sync that did not fail outright.
+  if (runId && (!res.errors || res.inserted + res.updated > 0)) {
+    const changedTraders = [...new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string))];
+    emitJobEvent("propreports.synced", {
+      runId, source: opts.source, dateFrom: opts.dateFrom ?? plan.dateFrom ?? null, dateTo: opts.dateTo ?? plan.dateTo ?? null,
+      traders: changedTraders, inserted: res.inserted, updated: res.updated, changed: res.inserted + res.updated > 0,
+    });
   }
   return res;
 }
@@ -611,7 +628,8 @@ export async function listPending(trader: string | null): Promise<PendingTrade[]
   }));
 }
 
-export type MergeOutcome = { ok: true; tradeId: number } | { ok: false; status: number; error: string };
+/** Failure: `code` = API error code (route throws AppError(code, status)); `error` = RU text for logs. */
+export type MergeOutcome = { ok: true; tradeId: number } | { ok: false; status: number; error: string; code: "PENDING_NOT_FOUND" | "TRADE_NOT_FOUND" | "TRADE_ALREADY_LINKED" | "TRADE_OTHER_TRADER" | "BROKER_TRADE_EXISTS" | "INTERNAL" };
 
 /** Broker numbers + executions into the manual trade; trader fields untouched; pending row removed. */
 export async function mergePending(pendingId: number, tradeId: number, actor: string): Promise<MergeOutcome> {
@@ -619,13 +637,13 @@ export async function mergePending(pendingId: number, tradeId: number, actor: st
   try {
     await client.query("BEGIN");
     const p = await client.query(`SELECT * FROM propreports_pending_trades WHERE id = $1 FOR UPDATE`, [pendingId]);
-    if (!p.rows[0]) { await client.query("ROLLBACK"); return { ok: false, status: 404, error: "Запись на сверку не найдена" }; }
+    if (!p.rows[0]) { await client.query("ROLLBACK"); return { ok: false, status: 404, error: "pending row not found", code: "PENDING_NOT_FOUND" }; }
     const pending = p.rows[0];
     const t = await client.query(`SELECT id, trader, external_id, deleted_at FROM trades WHERE id = $1 FOR UPDATE`, [tradeId]);
     const trade = t.rows[0];
-    if (!trade || trade.deleted_at) { await client.query("ROLLBACK"); return { ok: false, status: 404, error: "Сделка не найдена" }; }
-    if (trade.external_id) { await client.query("ROLLBACK"); return { ok: false, status: 409, error: "Сделка уже привязана к брокерской записи" }; }
-    if (trade.trader !== pending.trader) { await client.query("ROLLBACK"); return { ok: false, status: 409, error: "Сделка принадлежит другому трейдеру" }; }
+    if (!trade || trade.deleted_at) { await client.query("ROLLBACK"); return { ok: false, status: 404, error: "trade not found", code: "TRADE_NOT_FOUND" }; }
+    if (trade.external_id) { await client.query("ROLLBACK"); return { ok: false, status: 409, error: "trade already linked", code: "TRADE_ALREADY_LINKED" }; }
+    if (trade.trader !== pending.trader) { await client.query("ROLLBACK"); return { ok: false, status: 409, error: "trade of another trader", code: "TRADE_OTHER_TRADER" }; }
     const trip = pending.payload as RoundTrip;
     await client.query(TRADE_UPDATE_SQL, updateParams(tradeId, trip));
     await writeExecutions(client, tradeId, trip);
@@ -637,7 +655,7 @@ export async function mergePending(pendingId: number, tradeId: number, actor: st
     return { ok: true, tradeId };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
-    return { ok: false, status: 500, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, status: 500, error: e instanceof Error ? e.message : String(e), code: "INTERNAL" };
   } finally {
     client.release();
   }
@@ -649,11 +667,11 @@ export async function keepPendingSeparate(pendingId: number, actor: string): Pro
   try {
     await client.query("BEGIN");
     const p = await client.query(`SELECT * FROM propreports_pending_trades WHERE id = $1 FOR UPDATE`, [pendingId]);
-    if (!p.rows[0]) { await client.query("ROLLBACK"); return { ok: false, status: 404, error: "Запись на сверку не найдена" }; }
+    if (!p.rows[0]) { await client.query("ROLLBACK"); return { ok: false, status: 404, error: "pending row not found", code: "PENDING_NOT_FOUND" }; }
     const pending = p.rows[0];
     const trip = pending.payload as RoundTrip;
     const dup = await client.query(`SELECT id FROM trades WHERE source = 'propreports' AND external_id = $1`, [trip.externalId]);
-    if (dup.rows[0]) { await client.query("ROLLBACK"); return { ok: false, status: 409, error: "Эта брокерская сделка уже есть в журнале" }; }
+    if (dup.rows[0]) { await client.query("ROLLBACK"); return { ok: false, status: 409, error: "broker trade exists", code: "BROKER_TRADE_EXISTS" }; }
     const id = await insertTrade(client, trip, String(pending.trader));
     await writeExecutions(client, id, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
@@ -664,7 +682,7 @@ export async function keepPendingSeparate(pendingId: number, actor: string): Pro
     return { ok: true, tradeId: id };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
-    return { ok: false, status: 500, error: e instanceof Error ? e.message : String(e) };
+    return { ok: false, status: 500, error: e instanceof Error ? e.message : String(e), code: "INTERNAL" };
   } finally {
     client.release();
   }

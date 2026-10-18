@@ -6,12 +6,14 @@ import { EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds"
 import { Kbd } from "@/components/ui/kbd";
 import { useToast } from "@/hooks/use-toast";
 import {
-  api, isUnread, lastTradingDays, localToday, qk, type JuniorNote, type Reminder, type ReviewerInfo,
+  isUnread, lastTradingDays, localToday, qk, type JuniorNote, type Reminder, type ReviewerInfo,
 } from "@/components/notes/junior-lib";
+import { http } from "@/lib/api/http";
 import { JuniorEditor } from "@/components/notes/junior-editor";
 import { JuniorHistory } from "@/components/notes/junior-history";
 import { JuniorTeam } from "@/components/notes/junior-team";
 import { JuniorBanners, JuniorKpis } from "@/components/notes/junior-overview";
+import { notesI18n } from "@/i18n/ns/notes";
 
 type Tab = "today" | "history" | "team";
 const TAB_KEY = "ws_lexx_junior_tab";
@@ -39,6 +41,7 @@ function initialDate(): string {
 export default function JuniorNotesPage() {
   const { user, isCurator, isAdmin } = useAuth();
   const { toast } = useToast();
+  const { t } = notesI18n.useT();
   const qc = useQueryClient();
   const trader = user?.traderName ?? "";
   const isPrivileged = isCurator || isAdmin;
@@ -54,7 +57,7 @@ export default function JuniorNotesPage() {
   // Who the caller reviews: curators/admins — everyone; an academy mentor (even a trader) — their mentees.
   const reviewerQ = useQuery({
     queryKey: qk.reviewer,
-    queryFn: () => api<ReviewerInfo>("/junior-notes/reviewer"),
+    queryFn: () => http.get<ReviewerInfo>("/api/junior-notes/reviewer"),
     enabled: !!trader,
     staleTime: 5 * 60_000,
     retry: false,
@@ -77,7 +80,7 @@ export default function JuniorNotesPage() {
 
   const historyQ = useQuery({
     queryKey: qk.history(trader),
-    queryFn: () => api<JuniorNote[]>(`/junior-notes/history?trader=${encodeURIComponent(trader)}&limit=250`),
+    queryFn: () => http.get<JuniorNote[]>(`/api/junior-notes/history?trader=${encodeURIComponent(trader)}&limit=250`),
     enabled: !!trader,
     staleTime: 60_000,
   });
@@ -85,7 +88,7 @@ export default function JuniorNotesPage() {
 
   const remindersQ = useQuery({
     queryKey: qk.reminders,
-    queryFn: () => api<Reminder[]>("/junior-notes/reminders/me"),
+    queryFn: () => http.get<Reminder[]>("/api/junior-notes/reminders/me"),
     enabled: !!trader,
     staleTime: 60_000,
     retry: false,
@@ -101,8 +104,8 @@ export default function JuniorNotesPage() {
 
   const dismissReminder = async (id: number) => {
     qc.setQueryData<Reminder[]>(qk.reminders, (prev) => prev?.filter((r) => r.id !== id));
-    try { await api(`/junior-notes/reminders/${id}/dismiss`, { method: "POST", json: {} }); }
-    catch { toast({ title: "Не удалось скрыть напоминание", variant: "destructive" }); void remindersQ.refetch(); }
+    try { await http.post(`/api/junior-notes/reminders/${id}/dismiss`, {}); }
+    catch { toast({ title: t("junior.dismissFailed"), variant: "destructive" }); void remindersQ.refetch(); }
   };
 
   // Global shortcuts: N — today's summary, H — history, T — team (outside text fields).
@@ -113,9 +116,10 @@ export default function JuniorNotesPage() {
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
       if (document.querySelector("[role=dialog]")) return;
       const k = e.key.toLowerCase();
-      if (k === "n" || k === "т") { e.preventDefault(); openDay(localToday()); }
-      else if (k === "h" || k === "р") { e.preventDefault(); setTab("history"); }
-      else if (k === "t" || k === "е") { e.preventDefault(); setTab("team"); }
+      // Russian-layout twins of N / H / T (physical keys), not UI text.
+      if (k === "n" || k === "т") { e.preventDefault(); openDay(localToday()); } // i18n-ignore
+      else if (k === "h" || k === "р") { e.preventDefault(); setTab("history"); } // i18n-ignore
+      else if (k === "t" || k === "е") { e.preventDefault(); setTab("team"); } // i18n-ignore
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -124,9 +128,9 @@ export default function JuniorNotesPage() {
   if (!trader) {
     return (
       <Page>
-        <PageHeader title="Сводка джунов" icon={NotebookPen} />
+        <PageHeader title={t("junior.title")} icon={NotebookPen} />
         <Panel>
-          <EmptyState icon={NotebookPen} title="Войди в аккаунт" description="Сводки привязаны к трейдеру — войди, чтобы писать и читать их." />
+          <EmptyState icon={NotebookPen} title={t("junior.signInTitle")} description={t("junior.signInDescription")} />
         </Panel>
       </Page>
     );
@@ -135,27 +139,23 @@ export default function JuniorNotesPage() {
   return (
     <Page>
       <PageHeader
-        title="Сводка джунов"
+        title={t("junior.title")}
         icon={NotebookPen}
-        description={
-          isReviewer
-            ? "Итоги дня джунов: план → сделки → ошибки → уроки. Отвечай по очереди, сверяй со вчерашним фокусом и сделками."
-            : "Итоги дня по структуре: план → сделки → ошибки → уроки. Куратор или наставник отвечает и ставит оценку."
-        }
+        description={isReviewer ? t("junior.descriptionReviewer") : t("junior.descriptionJunior")}
         actions={
           <span className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
-            <Kbd>N</Kbd> сегодня <Kbd>H</Kbd> история <Kbd>T</Kbd> команда
+            <Kbd>N</Kbd> {t("junior.shortcuts.today")} <Kbd>H</Kbd> {t("junior.shortcuts.history")} <Kbd>T</Kbd> {t("junior.shortcuts.team")}
           </span>
         }
       >
         <Segmented
-          ariaLabel="Раздел сводок"
+          ariaLabel={t("junior.tabsAria")}
           value={tab}
           onChange={setTab}
           options={[
-            { value: "today", label: <><PencilLine className="h-4 w-4" aria-hidden="true" />Сводка дня</> },
-            { value: "history", label: <><BookOpen className="h-4 w-4" aria-hidden="true" />История</>, count: unread.length || undefined },
-            { value: "team", label: <><Users className="h-4 w-4" aria-hidden="true" />Команда</> },
+            { value: "today", label: <><PencilLine className="h-4 w-4" aria-hidden="true" />{t("junior.tabs.today")}</> },
+            { value: "history", label: <><BookOpen className="h-4 w-4" aria-hidden="true" />{t("junior.tabs.history")}</>, count: unread.length || undefined },
+            { value: "team", label: <><Users className="h-4 w-4" aria-hidden="true" />{t("junior.tabs.team")}</> },
           ]}
         />
       </PageHeader>

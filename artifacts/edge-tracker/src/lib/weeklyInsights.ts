@@ -6,6 +6,14 @@
  * (GET /api/weekly-review, /api/behavior, /api/whatif/fees, /api/whatif/suggestions, /api/day-report,
  * /api/benchmark). Each input is optional — a missing / failed endpoint simply yields fewer insights.
  */
+import { fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { personName } from "@/i18n";
+
+const t = weeklyI18n.t;
+const trades = (count: number) => commonI18n.t("units.trades", { count });
+const usd = (v: number | null | undefined) => fmtUsd(v, { signed: true, decimals: "auto" });
 
 // ── Inputs (defensive subsets of the engine responses) ───────────────────────
 
@@ -74,29 +82,7 @@ export type DayReportLite = {
   plan?: DayPlanItem[];
 };
 
-// ── Formatting (local: ₽-free «−$1,234») ─────────────────────────────────────
-
-export function usd(v: number | null | undefined, signed = true): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const a = Math.abs(v);
-  const body = a.toLocaleString("en-US", { maximumFractionDigits: a >= 1000 ? 0 : a >= 100 ? 0 : 2, minimumFractionDigits: 0 });
-  const sign = v < 0 ? "−" : signed && v > 0 ? "+" : "";
-  return `${sign}$${body}`;
-}
-
-export function pct(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${(v * 100).toFixed(digits)}%`;
-}
-
-const plural = (n: number, one: string, few: string, many: string) => {
-  const a = Math.abs(n) % 100, b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b > 1 && b < 5) return few;
-  if (b === 1) return one;
-  return many;
-};
-export const trades = (n: number) => `${n} ${plural(n, "сделка", "сделки", "сделок")}`;
+// ── Formatting: @/lib/format (fmtUsd, fmtRate, fmtWeekday) and commonI18n units ──
 
 // ── Derived KPIs ─────────────────────────────────────────────────────────────
 
@@ -135,7 +121,7 @@ export type Tip = {
   source: TipSource;
   /** Short headline with the $ figure. */
   title: string;
-  /** $ impact: negative = what it cost this week, positive = potential gain (simulator). */
+  /** $ impact: negative = what it cost this week, positive = potential gain (what-if). */
   amount: number | null;
   /** What the data shows. */
   evidence: string;
@@ -145,44 +131,38 @@ export type Tip = {
   href?: string;
 };
 
+/** Tip source → label in the UI language (getters: read at render time). */
 export const TIP_SOURCE_LABEL: Record<TipSource, string> = {
-  behavior: "Поведение",
-  hold: "Удержание",
-  fees: "Комиссии",
-  time: "Время дня",
-  sim: "Симулятор",
-  day: "Разбор дня",
+  get behavior() { return t("insights.source.behavior"); },
+  get hold() { return t("insights.source.hold"); },
+  get fees() { return t("insights.source.fees"); },
+  get time() { return t("insights.source.time"); },
+  get sim() { return t("insights.source.sim"); },
+  get day() { return t("insights.source.day"); },
 };
+
+type PatternKey = "martingale" | "revenge" | "overtrading" | "fatigue" | "tilt" | "chase" | "disposition" | "euphoria" | "firstTrade";
+const PATTERN_KEYS = new Set<string>(["martingale", "revenge", "overtrading", "fatigue", "tilt", "chase", "disposition", "euphoria", "firstTrade"]);
+const isPatternKey = (k: string): k is PatternKey => PATTERN_KEYS.has(k);
 
 /** Concrete next-week rule per behavior pattern (keys from lib/behaviorEngine). */
-const PATTERN_ACTION: Record<string, (p: BehaviorPattern) => string> = {
-  martingale: () => "После убытка следующий вход — тем же или меньшим объёмом.",
-  revenge: () => "Пауза 3 минуты после каждого убыточного выхода.",
-  overtrading: (p) => `Лимит ${typeof p.extra?.norm === "number" ? p.extra.norm : 4} сделок в день, дальше — только A+ сетапы.`,
-  fatigue: (p) => `После ${typeof p.extra?.cut === "number" ? p.extra.cut : 3}-й сделки дня — только A+ сетапы или стоп.`,
-  tilt: () => "Стоп на день после 3 убытков подряд.",
-  chase: () => "Красное утро — работаем половинным размером, без отыгрыша.",
-  disposition: () => "Тайм-стоп: убыточная позиция не дольше средней прибыльной.",
-  euphoria: () => "После крупного плюса — пауза 15 минут, следующий вход стандартным размером.",
-  firstTrade: () => "Первая сделка дня — только по плану и половинным размером.",
-};
+function patternAction(p: BehaviorPattern): string {
+  if (!isPatternKey(p.key)) return t("insights.action.fallback");
+  if (p.key === "overtrading") return t("insights.action.overtrading", { n: typeof p.extra?.norm === "number" ? p.extra.norm : 4 });
+  if (p.key === "fatigue") return t("insights.action.fatigue", { n: typeof p.extra?.cut === "number" ? p.extra.cut : 3 });
+  return t(`insights.action.${p.key}`);
+}
 
-const PATTERN_TITLE: Record<string, string> = {
-  martingale: "Рост размера после убытка",
-  revenge: "Вход сразу после убытка",
-  overtrading: "Сделки сверх нормы",
-  fatigue: "Сделки в конце дня",
-  tilt: "Серии убытков подряд",
-  chase: "Отыгрыш после красного утра",
-  disposition: "Пересиживание убытков",
-  euphoria: "Сделки на эйфории",
-  firstTrade: "Первая сделка дня",
-};
+/** Pattern name in the UI language; unknown keys fall back to the server title. */
+function patternTitle(p: BehaviorPattern): string {
+  return isPatternKey(p.key) ? t(`insights.pattern.${p.key}`) : p.title;
+}
 
 /** Day-report leak kinds that duplicate a behavior pattern (so the same issue is not tipped twice). */
 const LEAK_TO_PATTERN: Record<string, string> = { revenge: "revenge", size_up: "martingale", overtrading: "overtrading", tilt: "tilt" };
 
-const SCALP_KEYS = new Set(["< 30 с", "30 с – 2 мин"]);
+// Hold-bucket keys as the what-if fees engine sends them (data codes, not UI text).
+const SCALP_KEYS = new Set(["< 30 с", "30 с – 2 мин"]); // i18n-ignore (server bucket keys)
 
 export type TipInput = {
   trader: string;
@@ -214,15 +194,15 @@ export function tipCandidates(input: TipInput): Tip[] {
   for (const p of behavior?.patterns ?? []) {
     const w = patternWeek(p, weekStart);
     if (!w || w.n <= 0) continue;
-    const action = (PATTERN_ACTION[p.key] ?? (() => "Разберите эти сделки в журнале и запишите правило."))(p);
-    const name = PATTERN_TITLE[p.key] ?? p.title;
+    const action = patternAction(p);
+    const name = patternTitle(p);
     if (p.key === "firstTrade") {
       // «Первая сделка дня −$Y»: the absolute result of the first trades, only when it lost money.
       if (w.net == null || w.net >= -1) continue;
       out.push({
         id: "beh:firstTrade", source: "behavior", amount: w.net,
-        title: `${name}: ${usd(w.net)}`,
-        evidence: `${trades(w.n)} открыли день с итогом ${usd(w.net)}.`,
+        title: t("insights.titleAmount", { name, amount: usd(w.net) }),
+        evidence: t("insights.firstTradeEvidence", { trades: trades(w.n), amount: usd(w.net) }),
         action, href: `/behavior${q({ trader })}`,
       });
       usedPatterns.add(p.key);
@@ -231,8 +211,12 @@ export function tipCandidates(input: TipInput): Tip[] {
     if (w.cost == null || w.cost >= -1) continue;
     out.push({
       id: `beh:${p.key}`, source: "behavior", amount: w.cost,
-      title: `${name}: ${usd(w.cost)}`,
-      evidence: `${trades(w.n)}${w.net != null ? `, нетто ${usd(w.net)}` : ""} — на ${usd(Math.abs(w.cost), false)} хуже вашей нормы${p.baselineLabel ? ` (${p.baselineLabel})` : ""}.`,
+      title: t("insights.titleAmount", { name, amount: usd(w.cost) }),
+      evidence: (() => {
+        const head = w.net != null ? t("insights.behHeadNet", { trades: trades(w.n), net: usd(w.net) }) : trades(w.n);
+        const cost = fmtUsd(Math.abs(w.cost), { decimals: "auto" });
+        return p.baselineLabel ? t("insights.behEvidenceBase", { head, cost, baseline: p.baselineLabel }) : t("insights.behEvidence", { head, cost });
+      })(),
       action, href: `/behavior${q({ trader })}`,
     });
     usedPatterns.add(p.key);
@@ -249,10 +233,10 @@ export function tipCandidates(input: TipInput): Tip[] {
       const be = fees?.breakEvenCents ?? total?.breakEvenCents ?? null;
       out.push({
         id: "hold:scalps", source: "hold", amount: Math.round(net * 100) / 100,
-        title: `Скальпы < 2 мин: ${usd(net)}`,
-        evidence: `${trades(n)} короче 2 минут, комиссии ${usd(fee, false)}.`,
-        action: be != null ? `Минимальное удержание 2 мин или цель ≥ ${Math.max(3, Math.ceil(be * 3))}¢ на акцию.` : "Минимальное удержание 2 минуты — или цель минимум втрое больше комиссии.",
-        href: `/simulator${q({ trader })}`,
+        title: t("insights.scalpsTitle", { amount: usd(net) }),
+        evidence: t("insights.scalpsEvidence", { trades: trades(n), fees: fmtUsd(fee, { decimals: "auto" }) }),
+        action: be != null ? t("insights.scalpsActionBe", { cents: Math.max(3, Math.ceil(be * 3)) }) : t("insights.scalpsAction"),
+        href: `/what-if${q({ trader })}`,
       });
     }
   }
@@ -265,10 +249,12 @@ export function tipCandidates(input: TipInput): Tip[] {
     const share = worstHour.feePctOfGrossWins ?? null;
     out.push({
       id: `time:${worstHour.key}`, source: "time", amount: worstHour.net,
-      title: `${worstHour.key} ET: ${usd(worstHour.net)}`,
-      evidence: `${trades(worstHour.trades)} в этом окне${share != null && share > 0 ? `, комиссии съели ${pct(share)} прибыли` : ""}.`,
-      action: `В ${worstHour.key} — только A+ сетапы, остальное пропускать.`,
-      href: `/simulator${q({ trader })}`,
+      title: t("insights.timeTitle", { window: worstHour.key, amount: usd(worstHour.net) }),
+      evidence: share != null && share > 0
+        ? t("insights.timeEvidenceFees", { trades: trades(worstHour.trades), share: fmtRate(share) })
+        : t("insights.timeEvidence", { trades: trades(worstHour.trades) }),
+      action: t("insights.timeAction", { window: worstHour.key }),
+      href: `/what-if${q({ trader })}`,
     });
   }
 
@@ -280,10 +266,10 @@ export function tipCandidates(input: TipInput): Tip[] {
     if (eaten != null && eaten >= 0.25) {
       out.push({
         id: "fees:total", source: "fees", amount: -Math.round(total.fees * 100) / 100,
-        title: `${dominant ? `${dominant.key}: к` : "К"}омиссии съели ${pct(eaten)} прибыли`,
-        evidence: `${usd(total.fees, false)} комиссий при ${usd(total.grossWins ?? null, false)} брутто прибыльных сделок.`,
-        action: fees?.recommendations?.[0] ?? "Цель сделки — минимум втрое больше безубытка по комиссиям.",
-        href: `/simulator${q({ trader })}`,
+        title: dominant ? t("insights.feesTitleWindow", { window: dominant.key, share: fmtRate(eaten) }) : t("insights.feesTitle", { share: fmtRate(eaten) }),
+        evidence: t("insights.feesEvidence", { fees: fmtUsd(total.fees, { decimals: "auto" }), gross: fmtUsd(total.grossWins ?? null, { decimals: "auto" }) }),
+        action: fees?.recommendations?.[0] ?? t("insights.feesAction"),
+        href: `/what-if${q({ trader })}`,
       });
     }
   }
@@ -298,7 +284,8 @@ export function tipCandidates(input: TipInput): Tip[] {
       const a = leakAgg.get(l.kind) ?? { title: l.title, cost: 0, count: 0, days: 0, date: d.date };
       a.cost += l.costUsd; a.count += l.count; a.days += 1;
       const plan = d.plan?.find((p) => p.id === l.kind)?.text;
-      if (plan && !a.plan) a.plan = plan.replace(/\s+—\s+сегодня.*$/u, ".").replace(/\.\.$/, ".");
+      // Day-report plan lines end with «— сегодня …» / «— today …»: keep the rule, drop the day-specific tail.
+      if (plan && !a.plan) a.plan = plan.replace(/\s+—\s+(сегодня|today|bugun).*$/iu, ".").replace(/\.\.$/, "."); // i18n-ignore (parses server text)
       leakAgg.set(l.kind, a);
     }
   }
@@ -307,9 +294,9 @@ export function tipCandidates(input: TipInput): Tip[] {
     if (cost >= -1) continue;
     out.push({
       id: `day:${kind}`, source: "day", amount: cost,
-      title: `${a.title}: ${usd(cost)}`,
-      evidence: `${trades(a.count)} за ${a.days} ${plural(a.days, "день", "дня", "дней")} по разбору дня.`,
-      action: a.plan ?? "Разберите эти сделки в «Разборе дня» и запишите правило.",
+      title: t("insights.titleAmount", { name: a.title, amount: usd(cost) }),
+      evidence: t("insights.dayEvidence", { trades: trades(a.count), days: commonI18n.t("units.days", { count: a.days }) }),
+      action: a.plan ?? t("insights.dayAction"),
       href: `/day-report${q({ trader, date: a.date })}`,
     });
   }
@@ -320,10 +307,12 @@ export function tipCandidates(input: TipInput): Tip[] {
     const weeks = input.suggestionsWeeks ?? 8;
     out.push({
       id: "sim:best", source: "sim", amount: best.improvement,
-      title: `Правило «${best.label}»: ${usd(best.improvement)}`,
-      evidence: `Симулятор: за ${weeks} нед. добавило бы ${usd(best.improvement)}${best.ci ? ` (диапазон ${usd(best.ci.lo)}…${usd(best.ci.hi)})` : ""}${best.excluded ? `, убрав ${trades(best.excluded)}` : ""}.`,
-      action: `Правило на неделю: «${best.label}».`,
-      href: `/simulator${q({ trader })}`,
+      title: t("insights.simTitle", { label: best.label, amount: usd(best.improvement) }),
+      evidence: `${t("insights.simEvidence", { weeks: commonI18n.t("units.weeks", { count: weeks }), amount: usd(best.improvement) })}${
+        best.ci ? ` (${t("insights.simRange", { lo: usd(best.ci.lo), hi: usd(best.ci.hi) })})` : ""}${
+        best.excluded ? `, ${t("insights.simExcluded", { trades: trades(best.excluded) })}` : ""}.`,
+      action: t("insights.simAction", { label: best.label }),
+      href: `/what-if${q({ trader })}`,
     });
   }
 
@@ -368,10 +357,11 @@ export type PositiveInput = {
   tradingDays?: number;
 };
 
-const WEEKDAY = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+/** "Пн" (UI language) for a YYYY-MM-DD. */
 const wd = (ymd: string) => {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? ymd : WEEKDAY[(d.getUTCDay() + 6) % 7];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+  const s = fmtWeekday(ymd, "short");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
 export function buildPositives(input: PositiveInput, limit = 4): Positive[] {
@@ -380,28 +370,28 @@ export function buildPositives(input: PositiveInput, limit = 4): Positive[] {
   if (!k || k.trades === 0) return out;
   const money = k.unit === "usd";
   if (money && k.netPnl != null && avg4?.netPnl != null && (input.avg4Weeks ?? 0) > 0 && k.netPnl > avg4.netPnl + 1) {
-    out.push({ id: "net-vs-avg", text: `Нетто лучше среднего за 4 недели на ${usd(k.netPnl - avg4.netPnl, false)}`, amount: k.netPnl - avg4.netPnl });
+    out.push({ id: "net-vs-avg", text: t("insights.pos.netVsAvg", { amount: fmtUsd(k.netPnl - avg4.netPnl, { decimals: "auto" }) }), amount: k.netPnl - avg4.netPnl });
   }
   if (k.winRate != null && avg4?.winRate != null && (input.avg4Weeks ?? 0) > 0 && k.winRate - avg4.winRate >= 0.05) {
-    out.push({ id: "wr", text: `Win rate ${pct(k.winRate)} — на ${Math.round((k.winRate - avg4.winRate) * 100)} п.п. выше среднего` });
+    out.push({ id: "wr", text: t("insights.pos.wr", { wr: fmtRate(k.winRate), pp: Math.round((k.winRate - avg4.winRate) * 100) }) });
   }
   if (k.bestDay && k.bestDay.value > 0) {
-    out.push({ id: "best-day", text: `Лучший день — ${wd(k.bestDay.date)}: ${money ? usd(k.bestDay.value) : `+${k.bestDay.value}R`}`, amount: money ? k.bestDay.value : null });
+    out.push({ id: "best-day", text: t("insights.pos.bestDay", { day: wd(k.bestDay.date), value: money ? usd(k.bestDay.value) : fmtR(k.bestDay.value) }), amount: money ? k.bestDay.value : null });
   }
   if (input.bestTrade?.net != null && input.bestTrade.net > 0) {
-    out.push({ id: "best-trade", text: `Лучшая сделка — ${input.bestTrade.ticker}: ${usd(input.bestTrade.net)}`, amount: input.bestTrade.net });
+    out.push({ id: "best-trade", text: t("insights.pos.bestTrade", { ticker: input.bestTrade.ticker, amount: usd(input.bestTrade.net) }), amount: input.bestTrade.net });
   }
   const first = behavior?.patterns?.find((p) => p.key === "firstTrade");
   const fw = first ? patternWeek(first, weekStart) : null;
   if (fw && fw.n > 0 && fw.cost != null && fw.cost > 1 && (fw.net ?? 0) >= 0) {
-    out.push({ id: "first-trade", text: `Первые сделки дня сильнее остальных: ${usd(fw.net)} за ${trades(fw.n)}`, amount: fw.net });
+    out.push({ id: "first-trade", text: t("insights.pos.firstTrade", { amount: usd(fw.net), trades: trades(fw.n) }), amount: fw.net });
   }
-  if ((input.violations ?? 0) === 0 && (input.mistakes ?? 0) === 0) out.push({ id: "clean", text: "Ни одного нарушения правил и записанной ошибки" });
+  if ((input.violations ?? 0) === 0 && (input.mistakes ?? 0) === 0) out.push({ id: "clean", text: t("insights.pos.clean") });
   const disc = disciplineOf(behavior, weekStart).current;
-  if (disc != null && disc >= 85) out.push({ id: "discipline", text: `Индекс дисциплины ${Math.round(disc)}/100` });
+  if (disc != null && disc >= 85) out.push({ id: "discipline", text: t("insights.pos.discipline", { value: Math.round(disc) }) });
   const avoided = (behavior?.patterns ?? []).filter((p) => ["overtrading", "tilt", "revenge"].includes(p.key));
-  if (avoided.length === 3 && avoided.every((p) => (patternWeek(p, weekStart)?.n ?? 0) === 0)) out.push({ id: "no-tilt", text: "Без овертрейдинга, тильта и реванша" });
-  if ((input.tradingDays ?? 0) > 0 && (input.journalDays ?? 0) >= (input.tradingDays ?? 0)) out.push({ id: "journal", text: "Журнал заполнен каждый торговый день" });
+  if (avoided.length === 3 && avoided.every((p) => (patternWeek(p, weekStart)?.n ?? 0) === 0)) out.push({ id: "no-tilt", text: t("insights.pos.noTilt") });
+  if ((input.tradingDays ?? 0) > 0 && (input.journalDays ?? 0) >= (input.tradingDays ?? 0)) out.push({ id: "journal", text: t("insights.pos.journal") });
   return out.slice(0, limit);
 }
 
@@ -436,23 +426,23 @@ export function buildChecklist(input: ChecklistInput): CheckItem[] {
   // Rules
   const byRule = new Map<string, number>();
   for (const v of input.violations) {
-    const k = v.ruleName ?? v.ruleKind ?? "Правило";
+    const k = v.ruleName ?? v.ruleKind ?? t("insights.check.rule");
     byRule.set(k, (byRule.get(k) ?? 0) + 1);
   }
   const ruleList = [...byRule.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ×${n}`).join(", ");
   out.push(input.violations.length === 0
-    ? { id: "rules", label: "Правила соблюдены", status: "ok", detail: "Нарушений правил нет" }
-    : { id: "rules", label: "Нарушения правил", status: "fail", detail: ruleList, amount: input.violationCostUsd, href: "/error-tracker" });
+    ? { id: "rules", label: t("insights.check.rulesOk"), status: "ok", detail: t("insights.check.rulesOkDetail") }
+    : { id: "rules", label: t("insights.check.rulesFail"), status: "fail", detail: ruleList, amount: input.violationCostUsd, href: "/error-tracker" });
 
   // Risk limits
   const r = input.risk;
   out.push(!r.hasLimits
-    ? { id: "risk", label: "Лимиты риска", status: "na", detail: "Лимиты не заданы", href: `/risk${q2({ trader: input.trader })}` }
+    ? { id: "risk", label: t("insights.check.risk"), status: "na", detail: t("insights.check.riskNa"), href: `/risk${q2({ trader: input.trader })}` }
     : r.breaches
-      ? { id: "risk", label: "Лимиты риска нарушены", status: "fail", detail: r.labels.join(", ") || `${r.breaches} наруш.`, href: `/risk${q2({ trader: input.trader })}` }
+      ? { id: "risk", label: t("insights.check.riskBreach"), status: "fail", detail: r.labels.join(", ") || commonI18n.t("units.violations", { count: r.breaches }), href: `/risk${q2({ trader: input.trader })}` }
       : r.warns
-        ? { id: "risk", label: "Лимиты на грани", status: "warn", detail: r.labels.join(", ") || `${r.warns} предупр.`, href: `/risk${q2({ trader: input.trader })}` }
-        : { id: "risk", label: "Лимиты риска соблюдены", status: "ok", detail: "Ни одного события риска" });
+        ? { id: "risk", label: t("insights.check.riskWarn"), status: "warn", detail: r.labels.join(", ") || t("insights.check.warnings", { count: r.warns }), href: `/risk${q2({ trader: input.trader })}` }
+        : { id: "risk", label: t("insights.check.riskOk"), status: "ok", detail: t("insights.check.riskOkDetail") });
 
   // Behavior red flags this week
   const flags = (input.behavior?.patterns ?? [])
@@ -462,10 +452,10 @@ export function buildChecklist(input: ChecklistInput): CheckItem[] {
   if (input.behavior) {
     const cost = flags.reduce((s, x) => s + Math.min(0, x.w?.cost ?? 0), 0);
     out.push(flags.length === 0
-      ? { id: "behavior", label: "Без мартингейла, реванша и тильта", status: "ok", detail: "Поведенческих срывов не найдено" }
+      ? { id: "behavior", label: t("insights.check.behOk"), status: "ok", detail: t("insights.check.behOkDetail") }
       : {
-          id: "behavior", label: "Поведенческие срывы", status: cost < -1 ? "fail" : "warn",
-          detail: flags.map((x) => `${PATTERN_TITLE[x.p.key] ?? x.p.title} ×${x.w?.n}`).join(", "),
+          id: "behavior", label: t("insights.check.behFail"), status: cost < -1 ? "fail" : "warn",
+          detail: flags.map((x) => `${patternTitle(x.p)} ×${x.w?.n}`).join(", "),
           amount: cost < 0 ? Math.round(cost * 100) / 100 : null, href: `/behavior${q2({ trader: input.trader })}`,
         });
   }
@@ -473,33 +463,33 @@ export function buildChecklist(input: ChecklistInput): CheckItem[] {
   // Journal / day review
   const missing = input.daysWithoutReview.length;
   out.push(input.tradingDays === 0
-    ? { id: "journal", label: "Разбор дней в журнале", status: "na", detail: "Торговых дней не было" }
+    ? { id: "journal", label: t("insights.check.journal"), status: "na", detail: t("insights.check.journalNa") }
     : missing === 0
-      ? { id: "journal", label: "Каждый торговый день разобран", status: "ok", detail: `${input.tradingDays} из ${input.tradingDays} дней с разбором` }
-      : { id: "journal", label: "Дни без разбора", status: missing >= Math.ceil(input.tradingDays / 2) ? "fail" : "warn", detail: `${missing} из ${input.tradingDays} торговых дней без записи` });
+      ? { id: "journal", label: t("insights.check.journalOk"), status: "ok", detail: t("insights.check.journalOkDetail", { done: input.tradingDays, total: input.tradingDays }) }
+      : { id: "journal", label: t("insights.check.journalMissing"), status: missing >= Math.ceil(input.tradingDays / 2) ? "fail" : "warn", detail: t("insights.check.journalMissingDetail", { missing, total: input.tradingDays }) });
 
   // Mistakes
-  if (input.mistakes > 0) out.push({ id: "mistakes", label: "Записанные ошибки", status: "warn", detail: `${input.mistakes} за неделю`, amount: input.mistakeCostUsd, href: "/error-tracker" });
+  if (input.mistakes > 0) out.push({ id: "mistakes", label: t("insights.check.mistakes"), status: "warn", detail: t("insights.check.mistakesDetail", { count: input.mistakes }), amount: input.mistakeCostUsd, href: "/error-tracker" });
 
   // Fees
   if (input.feeShare != null) {
     out.push(input.feeShare > 0.4
-      ? { id: "fees", label: "Комиссии съедают брутто", status: "fail", detail: `${pct(input.feeShare)} брутто ушло в комиссии` }
+      ? { id: "fees", label: t("insights.check.feesFail"), status: "fail", detail: t("insights.check.feesDetail", { share: fmtRate(input.feeShare) }) }
       : input.feeShare > 0.25
-        ? { id: "fees", label: "Комиссии заметны", status: "warn", detail: `${pct(input.feeShare)} брутто ушло в комиссии` }
-        : { id: "fees", label: "Комиссии под контролем", status: "ok", detail: `${pct(input.feeShare)} брутто` });
+        ? { id: "fees", label: t("insights.check.feesWarn"), status: "warn", detail: t("insights.check.feesDetail", { share: fmtRate(input.feeShare) }) }
+        : { id: "fees", label: t("insights.check.feesOk"), status: "ok", detail: t("insights.check.feesOkDetail", { share: fmtRate(input.feeShare) }) });
   }
 
   // Self-review & last week's goals
   out.push(input.reviewStatus === "submitted" || input.reviewStatus === "reviewed"
-    ? { id: "self", label: "Самооценка отправлена", status: "ok", detail: input.reviewStatus === "reviewed" ? "Неделя разобрана" : "Ждёт вашего разбора" }
-    : { id: "self", label: "Самооценка не отправлена", status: "warn", detail: input.reviewStatus === "draft" ? "Есть черновик" : "Трейдер ещё не писал" });
+    ? { id: "self", label: t("insights.check.selfOk"), status: "ok", detail: input.reviewStatus === "reviewed" ? t("insights.check.selfReviewed") : t("insights.check.selfWaiting") }
+    : { id: "self", label: t("insights.check.selfMissing"), status: "warn", detail: input.reviewStatus === "draft" ? t("insights.check.selfDraft") : t("insights.check.selfNone") });
   if (input.prevGoals.length) {
     const open = input.prevGoals.filter((g) => g.status === "open").length;
     const done = input.prevGoals.filter((g) => g.status === "done").length;
     out.push(open
-      ? { id: "goals", label: "Цели прошлой недели не отмечены", status: "warn", detail: `${open} из ${input.prevGoals.length} без статуса` }
-      : { id: "goals", label: "Цели прошлой недели", status: done === input.prevGoals.length ? "ok" : "warn", detail: `${done} из ${input.prevGoals.length} выполнено` });
+      ? { id: "goals", label: t("insights.check.goalsOpen"), status: "warn", detail: t("insights.check.goalsOpenDetail", { open, total: input.prevGoals.length }) }
+      : { id: "goals", label: t("insights.check.goals"), status: done === input.prevGoals.length ? "ok" : "warn", detail: t("insights.check.goalsDetail", { done, total: input.prevGoals.length }) });
   }
   return out;
 }
@@ -530,37 +520,47 @@ export type DeskSummary = {
 export function buildDeskConclusions(s: DeskSummary, rows: DeskRow[], limit = 5): string[] {
   const out: string[] = [];
   const active = rows.filter((r) => r.trades > 0);
-  if (active.length === 0) return ["За неделю закрытых сделок на деске нет."];
+  if (active.length === 0) return [t("insights.desk.empty")];
   const green = active.filter((r) => (r.netPnl ?? 0) > 0);
-  out.push(`Деск: нетто ${usd(s.netPnl)} за неделю; торговали ${s.active} из ${s.traders}, в плюсе ${green.length}.`);
+  out.push(t("insights.desk.summary", { net: usd(s.netPnl), active: s.active, total: s.traders, green: green.length }));
 
   const byNet = [...active].filter((r) => r.netPnl != null).sort((a, b) => (b.netPnl as number) - (a.netPnl as number));
   const top = byNet[0];
   const worst = byNet[byNet.length - 1];
   if (top && (top.netPnl ?? 0) > 0) {
     const share = s.netPnl != null && s.netPnl > 0 && top.netPnl != null ? top.netPnl / s.netPnl : null;
-    out.push(`Лучший результат — ${top.trader} (${usd(top.netPnl)}${share != null && share >= 0.5 && byNet.length > 1 ? `, ${pct(Math.min(share, 9.99))} нетто деска` : ""}).`);
+    out.push(share != null && share >= 0.5 && byNet.length > 1
+      ? t("insights.desk.topShare", { name: personName(top.trader), net: usd(top.netPnl), share: fmtRate(Math.min(share, 9.99)) })
+      : t("insights.desk.top", { name: personName(top.trader), net: usd(top.netPnl) }));
   }
   if (worst && worst !== top && (worst.netPnl ?? 0) < 0) {
-    const why = worst.riskStatus === "breach" ? "нарушил лимиты" : worst.verdict === "worse" ? "хуже своих прошлых 4 недель" : worst.weakness ?? null;
-    out.push(`Проблемная зона — ${worst.trader} (${usd(worst.netPnl)}${why ? `, ${why}` : ""}).`);
+    const why = worst.riskStatus === "breach" ? t("insights.desk.whyBreach") : worst.verdict === "worse" ? t("insights.desk.whyWorse") : worst.weakness ?? null;
+    out.push(why ? t("insights.desk.worstWhy", { name: worst.trader, net: usd(worst.netPnl), why }) : t("insights.desk.worst", { name: worst.trader, net: usd(worst.netPnl) }));
   }
 
   if (s.fees > 0) {
     const share = s.grossPnl != null && s.grossPnl > 0 ? s.fees / s.grossPnl : null;
     const perTrade = s.netPnl != null ? s.netPnl / Math.max(1, active.reduce((a, r) => a + r.trades, 0)) : null;
-    out.push(`Комиссии ${usd(s.fees, false)}${share != null ? ` — ${pct(share)} брутто` : s.grossPnl != null ? " при отрицательном брутто" : ""}; нетто на сделку ${usd(perTrade)}.`);
+    const feeArgs = { fees: fmtUsd(s.fees, { decimals: "auto" }), perTrade: usd(perTrade) };
+    out.push(share != null
+      ? t("insights.desk.feesShare", { ...feeArgs, share: fmtRate(share) })
+      : s.grossPnl != null ? t("insights.desk.feesNegGross", feeArgs) : t("insights.desk.fees", feeArgs));
   }
 
   const breach = rows.filter((r) => r.riskStatus === "breach").map((r) => r.trader);
   const warn = rows.filter((r) => r.riskStatus === "warn").map((r) => r.trader);
-  if (breach.length) out.push(`Риск: лимиты нарушены у ${breach.join(", ")}${warn.length ? `; на грани — ${warn.join(", ")}` : ""}.`);
-  else if (warn.length) out.push(`Риск: нарушений нет, на грани лимитов — ${warn.join(", ")}.`);
-  else if (rows.some((r) => r.riskStatus === "ok")) out.push("Риск: лимиты не нарушались.");
+  if (breach.length) out.push(warn.length ? t("insights.desk.riskBreachWarn", { names: breach.join(", "), warn: warn.join(", ") }) : t("insights.desk.riskBreach", { names: breach.join(", ") }));
+  else if (warn.length) out.push(t("insights.desk.riskWarn", { names: warn.join(", ") }));
+  else if (rows.some((r) => r.riskStatus === "ok")) out.push(t("insights.desk.riskOk"));
 
   const worse = active.filter((r) => r.verdict === "worse").map((r) => r.trader);
-  if (worse.length) out.push(`Тренд: ${worse.join(", ")} — хуже своих прошлых 4 недель.`);
+  if (worse.length) out.push(t("insights.desk.trend", { names: worse.join(", ") }));
 
-  if (out.length < limit) out.push(`Разбор: ${s.reviewed} из ${s.traders} недель разобрано куратором${s.submitted ? `, ${s.submitted} ждут разбора` : ""}.`);
-  return out.slice(0, limit);
+  if (out.length < limit) {
+    out.push(s.submitted
+      ? t("insights.desk.reviewWaiting", { reviewed: s.reviewed, total: s.traders, waiting: s.submitted })
+      : t("insights.desk.review", { reviewed: s.reviewed, total: s.traders }));
+  }
+  // Names ending in a dot («Игорь П.») before the sentence's own dot.
+  return out.slice(0, limit).map((line) => line.replace(/\.\.$/, "."));
 }

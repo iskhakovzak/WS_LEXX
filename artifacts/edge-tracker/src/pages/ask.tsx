@@ -1,5 +1,5 @@
 /**
- * «Спроси журнал» — questions about the trade book in plain Russian, parsed deterministically (no AI).
+ * «Спроси журнал» — questions about the trade book in plain Russian, English or Uzbek, parsed deterministically (no AI).
  * Route /ask?q=<phrase> (the command palette can deep-link here). The book is loaded once per scope and every
  * question runs on the client: the viewer's own trades by default; staff load the whole desk only when the question
  * needs it («весь деск», another trader's name, «по трейдерам») — lib/ask/run askBookScope.
@@ -13,7 +13,9 @@ import { useAuth } from "@/contexts/auth-context";
 import { nyDate } from "@/lib/trading-date";
 import { parseAsk, removeToken, replaceToken, type ParseContext } from "@/lib/ask/parse";
 import { askBookKey, askBookScope, fetchAskBook, runAsk, type AskBook, type AskLoadProgress } from "@/lib/ask/run";
-import { dmy, tradesWord } from "@/lib/ask/aggregate";
+import { dmy } from "@/lib/ask/aggregate";
+import { commonI18n } from "@/i18n/ns/common";
+import { askI18n } from "@/i18n/ns/ask";
 import { AskBar } from "@/components/ask/AskBar";
 import { AskNotUnderstood, AskResult, AskResultSkeleton } from "@/components/ask/AskResult";
 import { AskSidebar } from "@/components/ask/AskSidebar";
@@ -29,6 +31,7 @@ function readQ(search: string): string {
 }
 
 export default function AskPage() {
+  const { t } = askI18n.useT();
   const search = useSearch();
   const [, navigate] = useLocation();
   const { user, dbUsers, isCurator, isAdmin } = useAuth();
@@ -98,24 +101,24 @@ export default function AskPage() {
 
   const prog = progress[scope];
   const loadingText = prog
-    ? prog.total ? ` ${Math.min(99, Math.round((prog.loaded / prog.total) * 100))}%` : prog.loaded > 1e5 ? ` ${(prog.loaded / 1e6).toFixed(1)} МБ` : ""
+    ? prog.total ? ` ${Math.min(99, Math.round((prog.loaded / prog.total) * 100))}%` : prog.loaded > 1e5 ? ` ${t("page.mb", { n: (prog.loaded / 1e6).toFixed(1) })}` : ""
     : "";
   const meta = book.data ? (
     <span className="tabular-nums">
-      {isStaff ? (scope === "desk" ? "Весь деск: " : "Ваши: ") : ""}{tradesWord(book.data.trades.length)} в журнале
+      {isStaff ? (scope === "desk" ? t("page.scopeDesk") : t("page.scopeMine")) : ""}{t("page.inJournal", { trades: commonI18n.t("units.trades", { count: book.data.trades.length }) })}
       {book.data.firstDate && book.data.lastDate ? ` · ${dmy(book.data.firstDate)} — ${dmy(book.data.lastDate)}` : ""}
-      {book.data.truncated ? " · загружены не все" : ""}
+      {book.data.truncated ? t("page.partial") : ""}
     </span>
   ) : book.isLoading || (scope === "desk" && !desk.data && !desk.isError) ? (
-    <span className="tabular-nums" role="status">{scope === "desk" ? "Загружаю сделки деска…" : "Загружаю сделки…"}{loadingText}</span>
+    <span className="tabular-nums" role="status">{scope === "desk" ? t("page.loadingDesk") : t("page.loading")}{loadingText}</span>
   ) : null;
 
   return (
     <Page>
       <PageHeader
-        title="Спроси журнал"
+        title={t("page.title")}
         icon={MessageSquareText}
-        description="Вопрос обычными словами — ответ сразу: цифра, вывод, график и сделки. Разбор по правилам, без ИИ."
+        description={t("page.description")}
         meta={meta}
       />
 
@@ -136,7 +139,7 @@ export default function AskPage() {
           </Panel>
 
           {book.isError ? (
-            <ErrorState title="Не удалось загрузить сделки" error={book.error} onRetry={() => book.refetch()} />
+            <ErrorState title={t("page.loadError")} error={book.error} onRetry={() => book.refetch()} />
           ) : query && !query.ok ? (
             <AskNotUnderstood query={query} tickers={tickerNames} onAsk={ask} />
           ) : query && !result ? (

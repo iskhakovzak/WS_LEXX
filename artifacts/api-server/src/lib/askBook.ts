@@ -119,3 +119,59 @@ export function askBookResponse(dbRows: AskBookDbRow[], viewer: MoneyViewer, sco
   });
   return { cols: ASK_BOOK_COLS, rows, truncated, scope, redacted };
 }
+
+// ── Compact wire format (?enc=2) ──────────────────────────────────────────────
+// The desk book is ~45k rows; as plain tuples that is ~9.5 MB of JSON, two thirds of it repeated strings (setup and
+// trader names, dates) and full ISO timestamps. enc=2 sends:
+//   • string columns in ASK_BOOK_DICT_COLS as indexes into `dicts[col]` (null stays null);
+//   • openedAt / closedAt as seconds since midnight of the trade's date (closedAt: exitDate ?? date) when the stamp is
+//     a plain `YYYY-MM-DDTHH:MM:SS` on that day — anything else goes out unchanged as a string.
+// The client (edge-tracker lib/ask/run.ts tradesFromTuples) restores the exact strings. Plain tuples stay the default
+// so a browser still running an older bundle keeps working against a newer API.
+
+export const ASK_BOOK_DICT_COLS = ["ticker", "date", "exitDate", "side", "trader", "setup", "holdTime", "result", "horizon"] as const satisfies readonly AskBookCol[];
+export const ASK_BOOK_CLOCK_COLS = { openedAt: "date", closedAt: "exitDate" } as const satisfies Partial<Record<AskBookCol, AskBookCol>>;
+
+export interface AskBookCompactResponse extends AskBookResponse {
+  enc: 2;
+  dicts: Partial<Record<AskBookCol, string[]>>;
+  /** Columns sent as seconds since midnight of the base date column. */
+  clock: Partial<Record<AskBookCol, AskBookCol>>;
+}
+
+const STAMP_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})$/;
+
+/** Seconds since midnight of `base` when `stamp` is a plain wall-clock stamp on that day, else the stamp itself. */
+export function clockCell(stamp: Cell, base: Cell): Cell {
+  if (typeof stamp !== "string" || typeof base !== "string") return stamp;
+  const m = STAMP_RE.exec(stamp);
+  if (!m || m[1] !== base) return stamp;
+  return Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4]);
+}
+
+export function askBookCompact(resp: AskBookResponse): AskBookCompactResponse {
+  const ix = (k: AskBookCol) => ASK_BOOK_COLS.indexOf(k);
+  const iDate = ix("date"), iExit = ix("exitDate");
+  const clocks = [
+    { i: ix("openedAt"), base: (r: Cell[]) => r[iDate] },
+    { i: ix("closedAt"), base: (r: Cell[]) => r[iExit] ?? r[iDate] },
+  ];
+  const dictCols = ASK_BOOK_DICT_COLS.map((k) => ({ k, i: ix(k), idx: new Map<string, number>(), list: [] as string[] }));
+  const rows = resp.rows.map((src) => {
+    const r = src.slice();
+    // Clock first: it reads the raw date strings before they become dictionary indexes.
+    for (const c of clocks) r[c.i] = clockCell(src[c.i], c.base(src));
+    for (const d of dictCols) {
+      const v = src[d.i];
+      if (v == null) continue;
+      const s = String(v);
+      let n = d.idx.get(s);
+      if (n === undefined) { n = d.list.length; d.list.push(s); d.idx.set(s, n); }
+      r[d.i] = n;
+    }
+    return r;
+  });
+  const dicts: Partial<Record<AskBookCol, string[]>> = {};
+  for (const d of dictCols) dicts[d.k] = d.list;
+  return { ...resp, rows, enc: 2, dicts, clock: { ...ASK_BOOK_CLOCK_COLS } };
+}

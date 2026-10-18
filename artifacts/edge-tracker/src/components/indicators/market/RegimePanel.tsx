@@ -2,33 +2,12 @@ import { Activity, Gauge, TrendingUp } from "lucide-react";
 import { Panel, TermTooltip, type TermKey, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { Axis, Driver, Regime } from "./engine";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
 
 /** Drivers whose label is a desk-glossary term get the shared explanation on hover/focus. */
 const DRIVER_TERM: Partial<Record<string, TermKey>> = { vix: "vix", vixTerm: "vixTerm", vixChg5: "vix", rsp: "breadth", atr: "atr" };
 
-const AXIS_META: Record<Axis, { title: string; icon: typeof Gauge }> = {
-  trend: { title: "Тренд", icon: TrendingUp },
-  vol: { title: "Волатильность", icon: Activity },
-  risk: { title: "Риск-аппетит", icon: Gauge },
-};
-
-const MEANING = {
-  trend: {
-    up: "SPY выше своих средних — покупатели контролируют рынок, откаты выкупают.",
-    range: "SPY около своих средних — явного направления нет, чаще пила и ложные пробои.",
-    down: "SPY ниже своих средних — продавцы давят, отскоки продают.",
-  },
-  vol: {
-    low: "Узкие диапазоны: меньше хода, цели ближе, пробои чаще без продолжения.",
-    mid: "Обычная амплитуда для этого года.",
-    high: "Широкие свечи и резкие развороты: размер меньше, стоп шире.",
-  },
-  risk: {
-    on: "Деньги идут в риск: малые компании и широкий рынок сильнее индекса.",
-    mixed: "Сигналы расходятся — нет единого настроя.",
-    off: "Деньги уходят в защиту: VIX растёт, малые компании отстают.",
-  },
-} as const;
+const AXIS_ICON: Record<Axis, typeof Gauge> = { trend: TrendingUp, vol: Activity, risk: Gauge };
 
 /** Tone of a driver/axis: trend & risk read bullish = up; volatility reads "more" = warn. */
 function impactTone(axis: Axis, v: number): Tone {
@@ -51,26 +30,30 @@ function ImpactBar({ axis, v, className }: { axis: Axis; v: number; className?: 
 }
 
 function AxisBlock({ axis, label, score, keyName, drivers }: { axis: Axis; label: string; score: number; keyName: string; drivers: Driver[] }) {
-  const meta = AXIS_META[axis];
-  const Icon = meta.icon;
+  const { t: tt } = indicatorsI18n.useT();
+  const Icon = AXIS_ICON[axis];
+  const title = tt(`regime.axis.${axis}`);
   const t = impactTone(axis, score);
-  const meaning = (MEANING[axis] as Record<string, string>)[keyName];
+  const meaning = indicatorsI18n.tryT(`regime.meaning.${axis}.${keyName}`) ?? "";
   return (
     <div className="tile flex min-w-0 flex-col gap-2.5 p-3">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-        {meta.title}
+        {title}
       </div>
       <div className={cn("text-base font-semibold leading-tight", TEXT[t])}>{label}</div>
       <p className="text-xs leading-snug text-muted-foreground">{meaning}</p>
-      <ul className="mt-auto flex flex-col gap-1.5 border-t border-border/50 pt-2.5" aria-label={`Что влияет: ${meta.title}`}>
+      <ul className="mt-auto flex flex-col gap-1.5 border-t border-border/50 pt-2.5" aria-label={tt("regime.drivers", { axis: title })}>
         {drivers.map((d) => (
-          <li key={d.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-xs">
-            <span className="truncate text-muted-foreground" title={d.label}>
-              {DRIVER_TERM[d.id] ? <TermTooltip term={DRIVER_TERM[d.id]!}>{d.label}</TermTooltip> : d.label}
+          <li key={d.id} className="flex flex-col gap-1 text-xs">
+            {/* Label and reading share a line when they fit; a long reading («20.0 · 81-й перцентиль») drops under the label instead of squeezing it. */}
+            <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+              <span className="min-w-0 leading-snug text-muted-foreground">
+                {DRIVER_TERM[d.id] ? <TermTooltip term={DRIVER_TERM[d.id]!} className="text-left">{d.label}</TermTooltip> : d.label}
+              </span>
+              <span className="ml-auto whitespace-nowrap font-medium tabular-nums">{d.reading}</span>
             </span>
-            <span className="text-right font-medium tabular-nums">{d.reading}</span>
-            <ImpactBar axis={axis} v={d.impact} className="col-span-2" />
+            <ImpactBar axis={axis} v={d.impact} />
           </li>
         ))}
       </ul>
@@ -79,16 +62,17 @@ function AxisBlock({ axis, label, score, keyName, drivers }: { axis: Axis; label
 }
 
 export function RegimePanel({ regime, asOf }: { regime: Regime; asOf: string }) {
+  const { t } = indicatorsI18n.useT();
   const by = (a: Axis) => regime.drivers.filter((d) => d.axis === a).sort((x, y) => Math.abs(y.impact * y.weight) - Math.abs(x.impact * x.weight));
   return (
-    <Panel title="Режим рынка" description={asOf} icon={Gauge} fill>
+    <Panel title={t("regime.title")} description={asOf} icon={Gauge} fill>
       <p className="mb-3 text-xl font-semibold leading-tight tracking-tight">{regime.headline}</p>
       <div className="grid gap-[var(--grid-gap)] md:grid-cols-3">
         <AxisBlock axis="trend" label={regime.trend.label} score={regime.trend.score} keyName={regime.trend.key} drivers={by("trend")} />
         <AxisBlock axis="vol" label={regime.vol.label} score={regime.vol.score} keyName={regime.vol.key} drivers={by("vol")} />
         <AxisBlock axis="risk" label={regime.risk.label} score={regime.risk.score} keyName={regime.risk.key} drivers={by("risk")} />
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">Полоска у каждого фактора — насколько сильно он тянет вывод в свою сторону.</p>
+      <p className="mt-3 text-xs text-muted-foreground">{t("regime.footnote")}</p>
     </Panel>
   );
 }

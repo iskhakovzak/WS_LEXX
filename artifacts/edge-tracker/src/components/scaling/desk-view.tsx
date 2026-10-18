@@ -5,18 +5,22 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
+import { fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { scalingI18n } from "@/i18n/ns/scaling";
+import { personName } from "@/i18n";
 import type { Action, Evaluation, TraderEval } from "./use-scaling";
 import { useEvaluation, useProposals } from "./use-scaling";
 import { ProposalCard } from "./proposal-card";
 import { TraderSheet } from "./trader-sheet";
 import { ProposeButton, TierPopover } from "./curator-actions";
-import { ACTION_META, fmtMetric } from "./format";
+import { ACTION_TONE, actionLabel, fmtMetric, tierLabel } from "./format";
 
 type Filter = "all" | "action" | "pending";
 const FILTERS: readonly Filter[] = ["all", "action", "pending"];
 
 const ACCESSORS = {
-  trader: (r: TraderEval) => r.trader,
+  trader: (r: TraderEval) => personName(r.trader),
   tier: (r: TraderEval) => r.tier?.order ?? -1,
   action: (r: TraderEval) => ({ demote: 0, promote: 1, assign: 2, hold: 3 } as Record<Action, number>)[r.recommendation.action],
   progress: (r: TraderEval) => r.progress,
@@ -33,14 +37,16 @@ function metric(r: TraderEval, key: string): number | null {
 }
 
 function MiniBar({ value }: { value: number | null }) {
+  const { t } = scalingI18n.useT();
   if (value == null) return <span className="text-xs text-muted-foreground">—</span>;
   const pct = Math.round(value * 100);
+  const label = fmtRate(value);
   return (
-    <div className="flex items-center gap-2" title={`${pct}% условий повышения`}>
-      <div role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Прогресс до следующего тира" className="h-1.5 w-20 overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]">
-        <div className={cn("h-full rounded-full", pct >= 100 ? "bg-up" : "bg-primary")} style={{ width: `${pct}%` }} />
+    <div className="flex items-center gap-2" title={t("progress.meterTitle", { value: label })}>
+      <div role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t("progress.aria")} className="h-1.5 w-20 overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]">
+        <div className={cn("h-full rounded-full", pct >= 100 ? "bg-up" : "bg-primary")} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
-      <span className="text-xs tabular-nums text-muted-foreground">{pct}%</span>
+      <span className="text-xs tabular-nums text-muted-foreground">{label}</span>
     </div>
   );
 }
@@ -50,6 +56,8 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   /** Deep link ?trader=X: open that trader's card once the evaluation has loaded. */
   focusTrader?: string | null;
 }) {
+  const { t } = scalingI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const ev = useEvaluation(null);
   const pending = useProposals("pending", null);
   const [filter, setFilter] = React.useState<Filter>("all");
@@ -75,7 +83,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return all.filter((r) => {
-      if (q && !r.trader.toLowerCase().includes(q)) return false;
+      if (q && !r.trader.toLowerCase().includes(q) && !personName(r.trader).toLowerCase().includes(q)) return false;
       if (filter === "action") return r.recommendation.action !== "hold" || r.recommendation.warning;
       if (filter === "pending") return !!r.pendingProposal;
       return true;
@@ -87,11 +95,12 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const pendingList = pending.data?.proposals ?? [];
 
   if (ev.isError) {
-    return <Panel><QueryError error={ev.error} onRetry={() => ev.refetch()} title="Не удалось загрузить план масштабирования" /></Panel>;
+    return <Panel><QueryError error={ev.error} onRetry={() => ev.refetch()} title={t("desk.loadFailed")} /></Panel>;
   }
 
   const s = data?.summary;
   const actionCount = all.filter((r) => r.recommendation.action !== "hold" || r.recommendation.warning).length;
+  const filterLabel = (f: Filter) => (f === "all" ? tc("states.all") : f === "action" ? t("desk.filterAction") : t("desk.filterPending"));
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
@@ -100,16 +109,16 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
         ) : (
           <>
-            <StatCard label="Трейдеров в плане" value={s.traders} icon={Users} hint={s.assign ? `${s.assign} без тира` : "у всех есть тир"} />
-            <StatCard label="К повышению" value={s.promote} tone={s.promote ? "up" : "neutral"} icon={ArrowUpRight} hint="все условия выполнены" onClick={() => setFilter("action")} />
-            <StatCard label="К понижению" value={s.demote + s.warnings} tone={s.demote + s.warnings ? "down" : "neutral"} icon={ArrowDownRight} hint={s.warnings ? `${s.warnings} на нижнем тире` : "сработали правила понижения"} onClick={() => setFilter("action")} />
-            <StatCard label="Предложений в очереди" value={s.pending} tone={s.pending ? "warn" : "neutral"} icon={Inbox} hint="ждут решения куратора" onClick={() => setFilter("pending")} />
+            <StatCard label={t("desk.statTraders")} value={s.traders} icon={Users} hint={s.assign ? t("desk.statNoTier", { count: s.assign }) : t("desk.statAllHaveTier")} />
+            <StatCard label={t("desk.statPromote")} value={s.promote} tone={s.promote ? "up" : "neutral"} icon={ArrowUpRight} hint={t("desk.statPromoteHint")} onClick={() => setFilter("action")} />
+            <StatCard label={t("desk.statDemote")} value={s.demote + s.warnings} tone={s.demote + s.warnings ? "down" : "neutral"} icon={ArrowDownRight} hint={s.warnings ? t("desk.statDemoteBottom", { count: s.warnings }) : t("desk.statDemoteHint")} onClick={() => setFilter("action")} />
+            <StatCard label={t("desk.statPending")} value={s.pending} tone={s.pending ? "warn" : "neutral"} icon={Inbox} hint={t("desk.statPendingHint")} onClick={() => setFilter("pending")} />
           </>
         )}
       </StatGrid>
 
       {(pending.isLoading || pendingList.length > 0) && (
-        <Panel title="Очередь на одобрение" description="Рекомендации по правилам и ручные предложения; одобрение сразу меняет риск-лимиты" icon={Inbox}>
+        <Panel title={t("desk.queueTitle")} description={t("desk.queueDesc")} icon={Inbox}>
           {pending.isLoading ? (
             <div className="grid gap-2 md:grid-cols-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
           ) : (
@@ -125,40 +134,40 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
       <Toolbar>
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Трейдер… ( / )" aria-label="Поиск трейдера" className="pl-9" />
+          <Input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("desk.searchPlaceholder")} aria-label={t("desk.searchAria")} className="pl-9" />
         </div>
         {FILTERS.map((f) => (
           <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={f === "all" ? all.length : f === "action" ? actionCount : s?.pending}>
-            {f === "all" ? "Все" : f === "action" ? "Нужно решение" : "В очереди"}
+            {filterLabel(f)}
           </FilterChip>
         ))}
       </Toolbar>
 
-      <Panel padded={false} title="Деск" description="Текущий тир, рекомендация по правилам и прогресс до следующей ступени (окно 20 торговых дней)" icon={TrendingUp}>
+      <Panel padded={false} title={tc("trading.desk")} description={t("desk.tableDesc")} icon={TrendingUp}>
         {ev.isLoading ? (
           <div className="flex flex-col gap-2 p-4">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-11 rounded-xl" />)}</div>
         ) : rows.length === 0 ? (
-          <EmptyState icon={Users} title={all.length ? "Никого не найдено" : "Нет трейдеров"} description={all.length ? "Измените фильтр или запрос." : "Активные трейдеры появятся здесь автоматически."} />
+          <EmptyState icon={Users} title={all.length ? t("desk.emptyFiltered") : t("desk.emptyNone")} description={all.length ? t("desk.emptyFilteredHint") : t("desk.emptyNoneHint")} />
         ) : (
-          <DataTable maxHeight="60vh" ariaLabel="Трейдеры и рекомендации">
+          <DataTable maxHeight="60vh" ariaLabel={t("desk.tableAria")}>
             <table>
               <thead>
                 <tr>
-                  <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
-                  <SortableTh {...thProps("tier")}>Тир</SortableTh>
-                  <SortableTh {...thProps("action")}>Рекомендация</SortableTh>
-                  <SortableTh {...thProps("progress")}>До след. тира</SortableTh>
-                  <SortableTh {...thProps("net")} align="right">P&L нетто / R</SortableTh>
+                  <SortableTh {...thProps("trader")}>{tc("fields.trader")}</SortableTh>
+                  <SortableTh {...thProps("tier")}>{tc("tiers.tier")}</SortableTh>
+                  <SortableTh {...thProps("action")}>{t("desk.colRecommendation")}</SortableTh>
+                  <SortableTh {...thProps("progress")}><span title={t("desk.colProgressFull")}>{t("desk.colProgress")}</span></SortableTh>
+                  <SortableTh {...thProps("net")} align="right">{tc("trading.netPnl")} / R</SortableTh>
                   <SortableTh {...thProps("pf")} align="right">PF</SortableTh>
-                  <SortableTh {...thProps("dd")} align="right">Просадка</SortableTh>
-                  <SortableTh {...thProps("discipline")} align="right">Дисц.</SortableTh>
-                  <SortableTh {...thProps("breaches")} align="right">Наруш.</SortableTh>
-                  <th scope="col" className="text-right"><span className="sr-only">Действия</span></th>
+                  <SortableTh {...thProps("dd")} align="right">{tc("trading.drawdown")}</SortableTh>
+                  <SortableTh {...thProps("discipline")} align="right"><span title={t("desk.colDisciplineFull")}>{t("desk.colDiscipline")}</span></SortableTh>
+                  <SortableTh {...thProps("breaches")} align="right"><span title={t("desk.colBreachesFull")}>{t("desk.colBreaches")}</span></SortableTh>
+                  <th scope="col" className="text-right"><span className="sr-only">{t("desk.colActions")}</span></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const a = ACTION_META[r.recommendation.action];
+                  const action = r.recommendation.action;
                   const net = metric(r, "net_pnl");
                   const netR = metric(r, "net_r");
                   const pf = metric(r, "profit_factor");
@@ -168,18 +177,18 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
                   return (
                     <tr key={r.trader} className="group">
                       <td>
-                        <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setSelected(r.trader)}>{r.trader}</button>
+                        <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setSelected(r.trader)}>{personName(r.trader)}</button>
                       </td>
-                      <td><Pill tone="purple">{r.tier?.name ?? "Без тира"}</Pill></td>
+                      <td><Pill tone="purple">{tierLabel(r.tier)}</Pill></td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <Pill tone={a.tone} dot>{a.label}{r.recommendation.toTier ? ` → ${r.recommendation.toTier.name}` : ""}</Pill>
-                          {r.recommendation.warning && <Pill tone="warn">разбор</Pill>}
-                          {r.pendingProposal && <Pill tone="warn">в очереди</Pill>}
+                          <Pill tone={ACTION_TONE[action]} dot>{actionLabel(action)}{r.recommendation.toTier ? ` → ${tierLabel(r.recommendation.toTier)}` : ""}</Pill>
+                          {r.recommendation.warning && <Pill tone="warn">{t("desk.review")}</Pill>}
+                          {r.pendingProposal && <Pill tone="warn">{t("desk.queued")}</Pill>}
                         </div>
                       </td>
                       <td><MiniBar value={r.progress} /></td>
-                      <td className={cn("text-right", (net ?? netR ?? 0) > 0 ? "text-up" : (net ?? netR ?? 0) < 0 ? "text-down" : "")}>
+                      <td className={cn("whitespace-nowrap text-right", (net ?? netR ?? 0) > 0 ? "text-up" : (net ?? netR ?? 0) < 0 ? "text-down" : "")}>
                         {net != null ? fmtMetric("usd", net) : netR != null ? fmtMetric("r", netR) : "—"}
                       </td>
                       <td className="text-right">{fmtMetric("x", pf)}</td>
@@ -191,7 +200,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
                       <td className="text-right">
                         {data?.canEdit && (
                           <div className="flex justify-end gap-1.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                            {r.recommendation.action === "assign" ? <TierPopover row={r} tiers={data.tiers} mode="assign" /> : <ProposeButton row={r} />}
+                            {action === "assign" ? <TierPopover row={r} tiers={data.tiers} mode="assign" /> : <ProposeButton row={r} />}
                           </div>
                         )}
                       </td>

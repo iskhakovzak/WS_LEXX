@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AlertTriangle, Crosshair, Star, Wand2 } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,11 +16,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Pill, StatRow, toneOf } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { VoiceRecorder } from "@/components/voice-recorder";
-import { fetchJson, fmtR } from "./shared";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import {
-  CRITERIA, OVERALL, TIER_LABELS, avgScores, shiftWeek, tierLabel, weekLabel, weekOf,
+  CRITERIA, OVERALL, TIER_CODES, avgScores, isLadderTier, shiftWeek, tierLabel, weekLabel, weekOf,
   type CriterionKey, type Rating, type RatingEvidence, type ScoreKey,
 } from "./scorecard-model";
+import { PersonSelect } from "@/components/people/person-select";
+import { ratingsI18n } from "@/i18n/ns/ratings";
+import { personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Form = Record<ScoreKey, number> & { trader: string; week: string; comment: string; focus: string; tier: string };
 
@@ -28,38 +34,37 @@ const blank = (trader: string, week: string): Form => ({
   comment: "", focus: "", tier: "",
 });
 
-const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
-const usd = (v: number | null | undefined) => (v == null ? "—" : `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`);
 
 /** The week's facts the rubric is scored against — pulled from trades, journal, ideas and the risk desk. */
 function EvidencePanel({ trader, week, evidence, loading }: { trader: string; week: string; evidence: RatingEvidence | null; loading: boolean }) {
+  const { t: tr } = ratingsI18n.useT();
   if (!trader) return null;
   if (loading) return <Skeleton className="h-28 rounded-xl" />;
-  if (!evidence) return <p className="text-xs text-muted-foreground">Факты за неделю недоступны.</p>;
+  if (!evidence) return <p className="text-xs text-muted-foreground">{tr("dialog.noFacts")}</p>;
   const t = evidence.trades;
   return (
     <div className="rounded-xl bg-[var(--glass-bg)] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">Факты за неделю</span>
+        <span className="font-medium text-foreground">{tr("dialog.facts")}</span>
         <span>{weekLabel(week)}</span>
         {evidence.risk.tier && <Pill tone="purple">{tierLabel(evidence.risk.tier)}</Pill>}
         <span className="ml-auto flex gap-2">
-          <Link href={links.risk(trader)} className="text-primary hover:underline">Риск</Link>
-          <Link href={links.scaling(trader)} className="text-primary hover:underline">Масштабирование</Link>
-          <Link href={links.weeklyReview({ trader, week })} className="text-primary hover:underline">Разбор недели</Link>
+          <Link href={links.risk(trader)} className="text-primary hover:underline">{tr("dialog.risk")}</Link>
+          <Link href={links.scaling(trader)} className="text-primary hover:underline">{tr("dialog.scaling")}</Link>
+          <Link href={links.weeklyReview({ trader, week })} className="text-primary hover:underline">{tr("dialog.weeklyReview")}</Link>
         </span>
       </div>
       <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-        <StatRow label="Сделок (W/L/BE)" value={t.trades ? `${t.trades} (${t.wins}/${t.losses}/${t.be})` : "0"} />
-        <StatRow label="Win rate" value={pct(t.winRate)} tone={t.winRate == null ? "neutral" : t.winRate >= 0.5 ? "up" : "down"} />
-        <StatRow label="Σ R / ср. R" value={`${fmtR(t.totalR, 1)} / ${fmtR(t.avgR)}`} tone={toneOf(t.totalR)} />
-        <StatRow label="P&L нетто" value={usd(t.net)} tone={toneOf(t.net)} />
-        <StatRow label="Худший день (нетто)" value={usd(evidence.worstDayNet)} tone={toneOf(evidence.worstDayNet)} />
-        <StatRow label="Макс. убыток, R" value={fmtR(t.maxLossR)} tone={t.maxLossR != null && t.maxLossR < -1.5 ? "down" : "neutral"} />
-        <StatRow label="Журнал (дней / план)" value={`${evidence.journal.days} / ${pct(evidence.journal.planFollowedPct)}`} />
-        <StatRow label="Идей опубл. / в сделке" value={`${evidence.ideas.published} / ${evidence.ideas.converted}`} />
-        <StatRow label="Заметки к сделкам" value={pct(t.tradesWithNotesPct)} />
-        <StatRow label="К прошлой неделе" value={evidence.netDelta == null ? "—" : usd(evidence.netDelta)} tone={toneOf(evidence.netDelta)} />
+        <StatRow label={tr("dialog.tradesWlb")} value={t.trades ? `${t.trades} (${t.wins}/${t.losses}/${t.be})` : "0"} />
+        <StatRow label="Win rate" value={fmtRate(t.winRate)} tone={t.winRate == null ? "neutral" : t.winRate >= 0.5 ? "up" : "down"} />
+        <StatRow label={tr("dialog.sumAvgR")} value={`${fmtR(t.totalR, 1)} / ${fmtR(t.avgR)}`} tone={toneOf(t.totalR)} />
+        <StatRow label={tr("dialog.netPnl")} value={fmtUsd(t.net, { decimals: 0 })} tone={toneOf(t.net)} />
+        <StatRow label={tr("dialog.worstDay")} value={fmtUsd(evidence.worstDayNet, { decimals: 0 })} tone={toneOf(evidence.worstDayNet)} />
+        <StatRow label={tr("dialog.maxLossR")} value={fmtR(t.maxLossR)} tone={t.maxLossR != null && t.maxLossR < -1.5 ? "down" : "neutral"} />
+        <StatRow label={tr("dialog.journal")} value={`${evidence.journal.days} / ${fmtRate(evidence.journal.planFollowedPct)}`} />
+        <StatRow label={tr("dialog.ideas")} value={`${evidence.ideas.published} / ${evidence.ideas.converted}`} />
+        <StatRow label={tr("dialog.tradeNotes")} value={fmtRate(t.tradesWithNotesPct)} />
+        <StatRow label={tr("dialog.vsLastWeek")} value={evidence.netDelta == null ? "—" : fmtUsd(evidence.netDelta, { decimals: 0 })} tone={toneOf(evidence.netDelta)} />
       </div>
       {evidence.breaches.length > 0 && (
         <ul className="mt-2 space-y-1">
@@ -71,7 +76,7 @@ function EvidencePanel({ trader, week, evidence, loading }: { trader: string; we
       {evidence.prevFocus && (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
           <Crosshair className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-          <span>Фокус прошлой недели: <span className="text-foreground">{evidence.prevFocus}</span></span>
+          <span>{tr("dialog.prevFocus")} <span className="text-foreground">{evidence.prevFocus}</span></span>
         </p>
       )}
     </div>
@@ -83,6 +88,7 @@ function ScorePicker({ id, label, hint, value, prev, onChange, icon: Icon }: {
   id: string; label: string; hint?: string; value: number; prev?: number | null;
   onChange: (v: number) => void; icon: React.ElementType;
 }) {
+  const { t } = ratingsI18n.useT();
   const tone = (n: number) => (n >= 8 ? "bg-up text-primary-foreground" : n >= 5 ? "bg-[hsl(var(--chart-3))] text-primary-foreground" : "bg-down text-primary-foreground");
   return (
     <div className="flex flex-col gap-1.5">
@@ -91,7 +97,7 @@ function ScorePicker({ id, label, hint, value, prev, onChange, icon: Icon }: {
         <span id={`${id}-label`} className="text-sm font-medium text-foreground">{label}</span>
         {hint && <span className="hidden truncate text-xs text-muted-foreground sm:inline">· {hint}</span>}
         <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-          {prev != null && <span title="Оценка за прошлую неделю">было {prev.toFixed(1)}</span>}
+          {prev != null && <span title={t("dialog.lastWeekTitle")}>{t("dialog.was", { value: fmtNum(prev, 1) })}</span>}
           <span className="text-sm font-semibold text-foreground">{value}</span>
         </span>
       </div>
@@ -112,7 +118,7 @@ function ScorePicker({ id, label, hint, value, prev, onChange, icon: Icon }: {
               type="button"
               role="radio"
               aria-checked={active}
-              aria-label={`${n} из 10`}
+              aria-label={t("dialog.ofTen", { n })}
               tabIndex={active ? 0 : -1}
               onClick={() => onChange(n)}
               className={cn(
@@ -143,8 +149,11 @@ export function RatingDialog({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = ratingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [form, setForm] = useState<Form>(() => blank("", weekOf()));
   const [overallTouched, setOverallTouched] = useState(false);
+  const traderOptions = useMemo(() => traders.map((n) => ({ value: n, label: personName(n) })), [traders]);
 
   useEffect(() => {
     if (!open) return;
@@ -184,15 +193,15 @@ export function RatingDialog({
   const weekValid = /^\d{4}-\d{2}-\d{2}$/.test(form.week);
   const evidenceQ = useQuery<RatingEvidence>({
     queryKey: ["ratings", "evidence", form.trader, form.week],
-    queryFn: () => fetchJson<RatingEvidence>(`${BASE}/api/ratings/evidence?trader=${encodeURIComponent(form.trader)}&week=${form.week}`),
+    queryFn: ({ signal }) => http.get<RatingEvidence>("/api/ratings/evidence", { query: { trader: form.trader, week: form.week }, signal }),
     enabled: open && !!form.trader && weekValid,
-    staleTime: 60_000,
+    staleTime: STALE.short,
     retry: 0,
   });
   // The desk's risk tier pre-fills the rating's tier (staff change the desk tier itself on /risk).
   useEffect(() => {
-    const t = evidenceQ.data?.risk.tier;
-    if (t && !editing) setForm((f) => (f.tier ? f : { ...f, tier: t }));
+    const tier = evidenceQ.data?.risk.tier;
+    if (tier && !editing) setForm((f) => (f.tier ? f : { ...f, tier }));
   }, [evidenceQ.data?.risk.tier, editing]);
 
   const save = useMutation({
@@ -205,22 +214,16 @@ export function RatingDialog({
         // Snapshot of the facts the score was based on — shown to the trader with the rating.
         evidence: ev ? { trades: ev.trades, worstDayNet: ev.worstDayNet, journal: ev.journal, ideas: ev.ideas, breaches: ev.breaches, netDelta: ev.netDelta } : undefined,
       };
-      const r = editing
-        ? await fetch(`${BASE}/api/ratings/${editing.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-        : await fetch(`${BASE}/api/ratings`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...payload, trader: form.trader, week: form.week }),
-          });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось сохранить оценку");
-      return body as Rating & { updated?: boolean };
+      return editing
+        ? http.patch<Rating & { updated?: boolean }>(`/api/ratings/${editing.id}`, payload)
+        : http.post<Rating & { updated?: boolean }>("/api/ratings", { ...payload, trader: form.trader, week: form.week });
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["ratings"] });
       onOpenChange(false);
-      toast({ title: editing || res?.updated ? "Оценка обновлена" : "Оценка сохранена", description: `${form.trader} · ${weekLabel(form.week)}` });
+      toast({ title: ratingsI18n.t(editing || res?.updated ? "dialog.updated" : "dialog.saved"), description: `${personName(form.trader)} · ${weekLabel(form.week)}` });
     },
-    onError: (e: Error) => toast({ title: "Ошибка сохранения", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: ratingsI18n.t("dialog.saveError"), description: humanizeApiError(e, ratingsI18n.t("dialog.saveFailed")), variant: "destructive" }),
   });
 
   const canSave = !!form.trader && weekValid && !save.isPending;
@@ -228,13 +231,13 @@ export function RatingDialog({
   const criterionEvidence = (key: CriterionKey): string | undefined => {
     const ev = evidenceQ.data;
     if (!ev) return undefined;
-    const t = ev.trades;
+    const tr = ev.trades;
     switch (key) {
-      case "discipline": return `план ${pct(ev.journal.planFollowedPct)} · журнал ${ev.journal.days} дн · макс. убыток ${fmtR(t.maxLossR)}`;
-      case "riskManagement": return `худший день ${usd(ev.worstDayNet)} · ср. риск ${usd(t.avgRiskUsd)}${ev.breaches.length ? ` · нарушений ${ev.breaches.length}` : ""}`;
-      case "execution": return `win rate ${pct(t.winRate)} · ср. R ${fmtR(t.avgR)} · PF ${t.profitFactor == null ? "—" : t.profitFactor.toFixed(2)}`;
-      case "journaling": return `дней ${ev.journal.days} · заметки ${pct(t.tradesWithNotesPct)} · идей ${ev.ideas.published}`;
-      case "improvement": return `к прошлой неделе ${ev.netDelta == null ? "—" : usd(ev.netDelta)}${ev.prevFocus ? ` · фокус: ${ev.prevFocus}` : ""}`;
+      case "discipline": return t("dialog.evDiscipline", { plan: fmtRate(ev.journal.planFollowedPct), days: ev.journal.days, maxLoss: fmtR(tr.maxLossR) });
+      case "riskManagement": return `${t("dialog.evRisk", { worst: fmtUsd(ev.worstDayNet, { decimals: 0 }), avgRisk: fmtUsd(tr.avgRiskUsd, { decimals: 0 }) })}${ev.breaches.length ? ` · ${t("dialog.evBreaches", { count: ev.breaches.length })}` : ""}`;
+      case "execution": return t("dialog.evExecution", { winRate: fmtRate(tr.winRate), avgR: fmtR(tr.avgR), pf: fmtNum(tr.profitFactor) });
+      case "journaling": return t("dialog.evJournaling", { days: ev.journal.days, notes: fmtRate(tr.tradesWithNotesPct), ideas: ev.ideas.published });
+      case "improvement": return `${t("dialog.evImprovement", { delta: ev.netDelta == null ? "—" : fmtUsd(ev.netDelta, { decimals: 0 }) })}${ev.prevFocus ? ` · ${t("dialog.evFocus", { focus: ev.prevFocus })}` : ""}`;
     }
   };
   const set = (k: ScoreKey, v: number) => setForm((f) => ({ ...f, [k]: v }));
@@ -248,26 +251,19 @@ export function RatingDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Star className="h-4 w-4 text-primary" aria-hidden="true" />
-            {editing ? "Изменить оценку" : "Оценить трейдера"}
+            {editing ? t("dialog.titleEdit") : t("dialog.titleNew")}
           </DialogTitle>
-          <DialogDescription>
-            Рубрика: пять критериев по шкале 1–10 с фактами недели под каждым. Общая оценка считается как среднее, пока вы не зададите её вручную.
-          </DialogDescription>
+          <DialogDescription>{t("dialog.description")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="rating-trader" className="text-xs text-muted-foreground">Трейдер</label>
-              <Select value={form.trader} onValueChange={(v) => setForm((f) => ({ ...f, trader: v }))} disabled={!!editing}>
-                <SelectTrigger id="rating-trader" aria-label="Трейдер"><SelectValue placeholder="Выберите трейдера" /></SelectTrigger>
-                <SelectContent>
-                  {traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <label htmlFor="rating-trader" className="text-xs text-muted-foreground">{t("dialog.trader")}</label>
+              <PersonSelect id="rating-trader" value={form.trader} onValueChange={(v) => setForm((f) => ({ ...f, trader: v }))} disabled={!!editing} options={traderOptions} placeholder={t("dialog.pickTrader")} ariaLabel={t("dialog.trader")} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="rating-week" className="text-xs text-muted-foreground">Неделя (понедельник)</label>
+              <label htmlFor="rating-week" className="text-xs text-muted-foreground">{t("dialog.week")}</label>
               <Input
                 id="rating-week" type="date" value={form.week} disabled={!!editing}
                 onChange={(e) => setForm((f) => ({ ...f, week: e.target.value ? weekOf(new Date(`${e.target.value}T12:00:00`)) : "" }))}
@@ -276,14 +272,14 @@ export function RatingDialog({
           </div>
           {!editing && (
             <div className="-mt-2 flex flex-wrap items-center gap-1.5">
-              <button type="button" className="chip min-h-7 px-2.5 text-xs" aria-pressed={form.week === thisWeek} onClick={() => setForm((f) => ({ ...f, week: thisWeek }))}>Эта неделя</button>
-              <button type="button" className="chip min-h-7 px-2.5 text-xs" aria-pressed={form.week === shiftWeek(thisWeek, -1)} onClick={() => setForm((f) => ({ ...f, week: shiftWeek(thisWeek, -1) }))}>Прошлая</button>
+              <button type="button" className="chip min-h-7 px-2.5 text-xs" aria-pressed={form.week === thisWeek} onClick={() => setForm((f) => ({ ...f, week: thisWeek }))}>{t("dialog.thisWeek")}</button>
+              <button type="button" className="chip min-h-7 px-2.5 text-xs" aria-pressed={form.week === shiftWeek(thisWeek, -1)} onClick={() => setForm((f) => ({ ...f, week: shiftWeek(thisWeek, -1) }))}>{t("dialog.lastWeek")}</button>
               {form.week && <span className="text-xs text-muted-foreground">{weekLabel(form.week)}</span>}
             </div>
           )}
           {existing && (
             <p className="rounded-xl bg-[hsl(var(--chart-3)/0.12)] px-3 py-2 text-xs text-foreground">
-              Вы уже оценили {form.trader} за эту неделю ({existing.overall}/10). Сохранение обновит ту оценку.
+              {t("dialog.existing", { trader: personName(form.trader), overall: existing.overall })}
             </p>
           )}
 
@@ -309,10 +305,10 @@ export function RatingDialog({
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 {overallTouched ? (
                   <button type="button" className="inline-flex items-center gap-1 rounded-full px-1 hover:text-foreground" onClick={() => setOverallTouched(false)}>
-                    <Wand2 className="h-3 w-3" aria-hidden="true" /> Вернуть среднее ({suggested})
+                    <Wand2 className="h-3 w-3" aria-hidden="true" /> {t("dialog.resetAvg", { value: suggested })}
                   </button>
                 ) : (
-                  <Pill tone="accent">авто · среднее критериев</Pill>
+                  <Pill tone="accent">{t("dialog.autoAvg")}</Pill>
                 )}
               </div>
             </div>
@@ -320,21 +316,21 @@ export function RatingDialog({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_160px]">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="rating-focus" className="text-xs text-muted-foreground">Фокус на следующую неделю</label>
+              <label htmlFor="rating-focus" className="text-xs text-muted-foreground">{t("dialog.focus")}</label>
               <Input
                 id="rating-focus" maxLength={500} value={form.focus}
                 onChange={(e) => setForm((f) => ({ ...f, focus: e.target.value }))}
-                placeholder="Одна вещь, над которой работать: например, «стоп не двигать»"
+                placeholder={t("dialog.focusPlaceholder")}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="rating-tier" className="text-xs text-muted-foreground">Уровень риска</label>
+              <label htmlFor="rating-tier" className="text-xs text-muted-foreground">{t("dialog.tier")}</label>
               <Select value={form.tier || "none"} onValueChange={(v) => setForm((f) => ({ ...f, tier: v === "none" ? "" : v }))}>
-                <SelectTrigger id="rating-tier" aria-label="Уровень риска"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectTrigger id="rating-tier" aria-label={t("dialog.tier")}><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">—</SelectItem>
-                  {Object.entries(TIER_LABELS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
-                  {form.tier && !TIER_LABELS[form.tier] && <SelectItem value={form.tier}>{form.tier}</SelectItem>}
+                  {TIER_CODES.map((k) => <SelectItem key={k} value={k}>{tierLabel(k)}</SelectItem>)}
+                  {form.tier && !isLadderTier(form.tier) && <SelectItem value={form.tier}>{tierLabel(form.tier)}</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -342,23 +338,23 @@ export function RatingDialog({
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <label htmlFor="rating-comment" className="text-xs text-muted-foreground">Комментарий трейдеру</label>
+              <label htmlFor="rating-comment" className="text-xs text-muted-foreground">{t("dialog.comment")}</label>
               <VoiceRecorder onTranscript={(text) => setForm((f) => ({ ...f, comment: f.comment ? `${f.comment}\n${text}` : text }))} />
             </div>
             <Textarea
               id="rating-comment" rows={3} maxLength={4000} value={form.comment}
               onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
-              placeholder="Что получилось, над чем работать на следующей неделе…"
+              placeholder={t("dialog.commentPlaceholder")}
               className="resize-none"
             />
           </div>
         </div>
 
         <DialogFooter className="gap-2">
-          <span className="mr-auto hidden self-center text-xs text-muted-foreground sm:inline">Ctrl+Enter — сохранить</span>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
+          <span className="mr-auto hidden self-center text-xs text-muted-foreground sm:inline">{t("dialog.shortcut")}</span>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{tc("actions.cancel")}</Button>
           <Button onClick={() => save.mutate()} disabled={!canSave}>
-            {save.isPending ? "Сохраняем…" : editing || existing ? "Обновить оценку" : "Сохранить оценку"}
+            {save.isPending ? t("dialog.saving") : editing || existing ? t("dialog.update") : t("dialog.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,22 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import type { BehaviorResponse, DisciplineResponse, Mistake, MistakesSummary, Rule, RuleKindDef, RuleReport, RulesReportResponse, SelfChecksResponse, Violation } from "./types";
-
-async function errorText(r: Response, fallback: string): Promise<string> {
-  try { const j = await r.json(); return j?.error || fallback; } catch { return fallback; }
-}
-
-export async function apiJson<T>(path: string, init?: RequestInit & { json?: unknown }, fallback = "Ошибка запроса"): Promise<T> {
-  const { json, ...rest } = init ?? {};
-  const r = await fetch(`${BASE}/api${path}`, {
-    ...rest,
-    headers: json !== undefined ? { "Content-Type": "application/json", ...(rest.headers ?? {}) } : rest.headers,
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
-  if (!r.ok) throw new Error(await errorText(r, `${fallback} (HTTP ${r.status})`));
-  return r.json() as Promise<T>;
-}
 
 const q = (trader: string) => `trader=${encodeURIComponent(trader)}`;
 
@@ -37,7 +22,7 @@ export const rulesKeys = {
 export function useRuleKinds() {
   return useQuery({
     queryKey: rulesKeys.kinds,
-    queryFn: () => apiJson<RuleKindDef[]>("/rules/kinds", undefined, "Не удалось загрузить типы правил"),
+    queryFn: () => http.get<RuleKindDef[]>("/api/rules/kinds"),
     staleTime: Infinity,
   });
 }
@@ -45,7 +30,7 @@ export function useRuleKinds() {
 export function useRules(trader: string) {
   return useQuery({
     queryKey: rulesKeys.rules(trader),
-    queryFn: () => apiJson<Rule[]>(`/rules?${q(trader)}`, undefined, "Не удалось загрузить правила"),
+    queryFn: () => http.get<Rule[]>(`/api/rules?${q(trader)}`),
     enabled: !!trader,
   });
 }
@@ -53,7 +38,7 @@ export function useRules(trader: string) {
 export function useViolations(trader: string) {
   return useQuery({
     queryKey: rulesKeys.violations(trader),
-    queryFn: () => apiJson<Violation[]>(`/rule-violations?${q(trader)}&limit=500`, undefined, "Не удалось загрузить нарушения"),
+    queryFn: () => http.get<Violation[]>(`/api/rule-violations?${q(trader)}&limit=500`),
     enabled: !!trader,
   });
 }
@@ -62,7 +47,7 @@ export function useViolations(trader: string) {
 export function useArchivedViolations(trader: string, enabled: boolean) {
   return useQuery({
     queryKey: rulesKeys.archivedViolations(trader),
-    queryFn: () => apiJson<Violation[]>(`/rule-violations?${q(trader)}&archived=only&limit=500`, undefined, "Не удалось загрузить архив нарушений"),
+    queryFn: () => http.get<Violation[]>(`/api/rule-violations?${q(trader)}&archived=only&limit=500`),
     enabled: enabled && !!trader,
   });
 }
@@ -70,7 +55,7 @@ export function useArchivedViolations(trader: string, enabled: boolean) {
 export function useMistakes(trader: string) {
   return useQuery({
     queryKey: rulesKeys.mistakes(trader),
-    queryFn: () => apiJson<Mistake[]>(`/errors?${q(trader)}&limit=1000`, undefined, "Не удалось загрузить журнал ошибок"),
+    queryFn: () => http.get<Mistake[]>(`/api/errors?${q(trader)}&limit=1000`),
     enabled: !!trader,
   });
 }
@@ -78,7 +63,7 @@ export function useMistakes(trader: string) {
 export function useDiscipline(trader: string, days: number) {
   return useQuery({
     queryKey: rulesKeys.discipline(trader, days),
-    queryFn: () => apiJson<DisciplineResponse>(`/rules/discipline?${q(trader)}&days=${days}`, undefined, "Не удалось загрузить статистику дисциплины"),
+    queryFn: () => http.get<DisciplineResponse>(`/api/rules/discipline?${q(trader)}&days=${days}`),
     enabled: !!trader,
   });
 }
@@ -87,7 +72,7 @@ export function useDiscipline(trader: string, days: number) {
 export function useRulesReport(trader: string, days: number) {
   return useQuery({
     queryKey: rulesKeys.report(trader, days),
-    queryFn: () => apiJson<RulesReportResponse>(`/rules/report?${q(trader)}&days=${days}`, undefined, "Не удалось загрузить отчёт по правилам"),
+    queryFn: () => http.get<RulesReportResponse>(`/api/rules/report?${q(trader)}&days=${days}`),
     enabled: !!trader,
     staleTime: 60_000,
     placeholderData: (prev) => (prev && prev.trader === trader ? prev : undefined),
@@ -99,7 +84,7 @@ export function useRulePreview(trader: string, days: number, kind: string, thres
   const th = JSON.stringify(threshold ?? {});
   return useQuery({
     queryKey: rulesKeys.preview(trader, days, kind, th),
-    queryFn: () => apiJson<RuleReport>(`/rules/preview?${q(trader)}&days=${days}&kind=${encodeURIComponent(kind)}&threshold=${encodeURIComponent(th)}`, undefined, "Предпросмотр недоступен"),
+    queryFn: () => http.get<RuleReport>(`/api/rules/preview?${q(trader)}&days=${days}&kind=${encodeURIComponent(kind)}&threshold=${encodeURIComponent(th)}`),
     enabled: enabled && !!trader && !!kind && threshold != null,
     staleTime: 5 * 60_000,
     retry: false,
@@ -109,7 +94,7 @@ export function useRulePreview(trader: string, days: number, kind: string, thres
 export function useMistakesSummary(trader: string, days: number) {
   return useQuery({
     queryKey: rulesKeys.errorsSummary(trader, days),
-    queryFn: () => apiJson<MistakesSummary>(`/errors/summary?${q(trader)}&days=${days}`, undefined, "Не удалось загрузить сводку ошибок"),
+    queryFn: () => http.get<MistakesSummary>(`/api/errors/summary?${q(trader)}&days=${days}`),
     enabled: !!trader,
   });
 }
@@ -118,7 +103,7 @@ export function useMistakesSummary(trader: string, days: number) {
 export function useBehaviorPatterns(trader: string, from: string | undefined, to: string | undefined) {
   return useQuery({
     queryKey: rulesKeys.behavior(trader, from ?? "", to ?? ""),
-    queryFn: () => apiJson<BehaviorResponse>(`/behavior?${q(trader)}&from=${from}&to=${to}`, undefined, "Паттерны недоступны"),
+    queryFn: () => http.get<BehaviorResponse>(`/api/behavior?${q(trader)}&from=${from}&to=${to}`),
     enabled: !!trader && !!from && !!to,
     staleTime: 5 * 60_000,
     retry: false,
@@ -129,13 +114,13 @@ export function useBehaviorPatterns(trader: string, from: string | undefined, to
 export function useSelfChecks(trader: string, day: string, enabled = true) {
   return useQuery({
     queryKey: rulesKeys.selfChecks(trader, day),
-    queryFn: () => apiJson<SelfChecksResponse>(`/rules/self-checks?${q(trader)}&day=${day}`, undefined, "Не удалось загрузить самооценку"),
+    queryFn: () => http.get<SelfChecksResponse>(`/api/rules/self-checks?${q(trader)}&day=${day}`),
     enabled: enabled && !!trader && !!day,
   });
 }
 
 export function putSelfCheck(body: { trader: string; day: string; ruleId: number; ok: boolean | null; note?: string | null }) {
-  return apiJson<{ ruleId: number; day: string; ok: boolean | null }>(`/rules/self-checks`, { method: "PUT", json: body }, "Не удалось сохранить отметку");
+  return http.put<{ ruleId: number; day: string; ok: boolean | null }>(`/api/rules/self-checks`, body);
 }
 
 /** Invalidate everything on this page (rules list, violations, mistakes, discipline aggregates). */

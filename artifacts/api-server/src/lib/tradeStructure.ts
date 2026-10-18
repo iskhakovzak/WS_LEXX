@@ -16,7 +16,7 @@
  * walk from that size/average; a closing leg with nothing open and no carry is an exit of an unknown position.
  *
  * Stops. With a stop price (trade.stop, or derived from risk_usd) a closing leg at/through the stop is «Стоп».
- * Without one the final exit can be marked as an INFERRED stop (`inferred: true`, reason in Russian):
+ * Without one the final exit can be marked as an INFERRED stop (`inferred: true`, with a reason):
  *   - a losing full exit within 5 minutes of an add that averaged the position down/up against the trade, or
  *   - a losing full exit that gave back ≥ 80 % of the worst adverse excursion of the hold (ctx.adverseExtreme from
  *     cached candles, when known) — the trader got out near the bottom (long) / top (short), as a stop does.
@@ -24,22 +24,30 @@
  * Fidelity. Trades imported from the PropReports «Trades» report carry only average entry/exit prices
  * (source "report"): the walk then sees one entry and one exit. An average that is not a whole cent proves the
  * side was built from at least two fills at different prices (`scaledEntryLikely` / `scaledExitLikely`).
+ *
+ * Texts (labels, reasons, notes, summary) come from the server `tradeStructure` namespace in `ctx.lang` (default RU).
+ * Reasons and notes are also kept as data (`reasonItem`, `stats.noteItems`, `stats.stopReasonItem`) so a persisted
+ * structure can be shown in another language (localizeStats).
  */
+import { tradeStructureT } from "../i18n/ns";
+import type { Lang, Params } from "../i18n";
+
+/** A reason / note as data: key in the `tradeStructure` namespace + params. */
+export type TextItem = { key: string; params?: Params };
+const tsText = (lang: Lang, item: TextItem) => tradeStructureT.tryFor(lang, item.key, item.params) ?? item.key;
 
 export type ExecKind = "entry" | "add" | "trim" | "exit" | "stop";
 export type LegRole = "entry" | "reentry" | "flip" | "add" | "partial_exit" | "exit" | "stop";
 export type TradeSource = "fills" | "report" | "manual";
 export type Side = "long" | "short";
 
-export const ROLE_LABEL_RU: Record<LegRole, string> = {
-  entry: "Вход",
-  reentry: "Перезаход",
-  flip: "Переворот",
-  add: "Добор",
-  partial_exit: "Частичный фикс",
-  exit: "Выход",
-  stop: "Стоп",
-};
+const ROLES: readonly LegRole[] = ["entry", "reentry", "flip", "add", "partial_exit", "exit", "stop"];
+/** Role label in `lang`. */
+export function roleLabel(role: LegRole, lang: Lang = "ru"): string {
+  return tradeStructureT.tFor(lang)(`role.${role}`);
+}
+/** RU labels (kept for older imports). */
+export const ROLE_LABEL_RU = Object.fromEntries(ROLES.map((r) => [r, roleLabel(r)])) as Record<LegRole, string>;
 
 /** Opening roles raise the position; the rest lower it. */
 export function isOpeningRole(role: LegRole, opening: boolean): boolean {
@@ -81,6 +89,8 @@ export interface TradeCtx {
   adverseExtreme?: number | null;
   /** Position already open before the first known fill (overnight carry). */
   carriedIn?: { qty: number; avg: number } | null;
+  /** Language of labels / reasons / notes (default RU = the persisted fallback). */
+  lang?: Lang;
 }
 
 export interface Leg {
@@ -111,12 +121,14 @@ export interface Leg {
   r: number | null;
   /** The role is a guess (stop heuristics). */
   inferred: boolean;
-  /** Russian explanation for stop / flip / re-entry roles. */
+  /** Explanation for stop / flip / re-entry roles (in ctx.lang). */
   reason: string | null;
+  /** The same explanation as data. */
+  reasonItem?: TextItem | null;
 }
 
 export interface StructureStats {
-  v: 1;
+  v: 2;
   source: TradeSource;
   /** "fills" = every fill known; "averages" = only average entry/exit prices (Trades report). */
   fidelity: "fills" | "averages";
@@ -141,6 +153,8 @@ export interface StructureStats {
   stopHit: boolean;
   stopInferred: boolean;
   stopReason: string | null;
+  /** stopReason as data (localizeStats). */
+  stopReasonItem?: TextItem | null;
   reentryIndex: number;
   prevId: number | null;
   nextId: number | null;
@@ -152,6 +166,8 @@ export interface StructureStats {
   firstAt: string | null;
   lastAt: string | null;
   notes: string[];
+  /** notes as data (localizeStats). */
+  noteItems?: TextItem[];
 }
 
 export interface TradeStructure {
@@ -232,7 +248,8 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
   const qtyKnown = raw.length > 0 && raw.every((l) => l.qty != null);
   const carry = ctx.carriedIn && ctx.carriedIn.qty > 0 ? ctx.carriedIn : null;
   const link = ctx.link ?? null;
-  const notes: string[] = [];
+  const lang: Lang = ctx.lang ?? "ru";
+  const noteItems: TextItem[] = [];
 
   // ── position walk ──
   let pos = qtyKnown && carry ? carry.qty : 0;
@@ -249,12 +266,12 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
       index: i, role: "entry", label: "", opening: l.opening, executionIds: l.execs.map((e) => e.id), pieces: l.execs.length,
       price: round4(l.price), qty: l.qty, at: first.at, atEnd: lastE.at,
       positionBefore: qtyKnown ? pos : null, positionAfter: null, avgAfter: null, fraction: null,
-      perShare: null, realized: null, r: null, inferred: false, reason: null,
+      perShare: null, realized: null, r: null, inferred: false, reason: null, reasonItem: null,
     };
     if (l.opening) {
       const flatBefore = qtyKnown ? pos <= EPS : openingSeen === 0;
       leg.role = openingSeen === 0 || flatBefore ? (openingSeen === 0 ? "entry" : "reentry") : "add";
-      if (leg.role === "reentry") leg.reason = "Новый вход после полного выхода внутри той же сделки";
+      if (leg.role === "reentry") leg.reasonItem = { key: "reason.reentryInTrade" };
       openingSeen++;
       if (qtyKnown) {
         const q = l.qty as number;
@@ -275,7 +292,7 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
       } else {
         leg.role = i === lastClosingIdx ? "exit" : "partial_exit";
       }
-      if (l.explicitStop) { leg.role = "stop"; leg.reason = "Отмечено как стоп"; }
+      if (l.explicitStop) { leg.role = "stop"; leg.reasonItem = { key: "reason.markedStop" }; }
     }
     if (qtyKnown) {
       leg.positionAfter = round4(pos);
@@ -289,13 +306,13 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
   // ── links: first entry = re-entry / flip, final exit = flip ──
   const firstOpen = legs.find((l) => l.opening);
   if (firstOpen && firstOpen.role === "entry" && !carry && link) {
-    if (link.flipIn) { firstOpen.role = "flip"; firstOpen.reason = "Переворот: открыта в ту же секунду, когда закрылась противоположная позиция"; }
-    else if (link.reentryIndex > 0) { firstOpen.role = "reentry"; firstOpen.reason = `Перезаход №${link.reentryIndex} по тикеру за сессию`; }
+    if (link.flipIn) { firstOpen.role = "flip"; firstOpen.reasonItem = { key: "reason.flipIn" }; }
+    else if (link.reentryIndex > 0) { firstOpen.role = "reentry"; firstOpen.reasonItem = { key: "reason.reentryN", params: { n: link.reentryIndex } }; }
   }
   const finalExit = qtyKnown
     ? legs.find((l) => !l.opening && l.positionAfter != null && l.positionAfter <= EPS && l.index === lastClosingIdx)
     : legs[lastClosingIdx];
-  if (finalExit && link?.flipOut && finalExit.role !== "stop") { finalExit.role = "flip"; finalExit.reason = "Переворот: в ту же секунду открыта противоположная позиция"; }
+  if (finalExit && link?.flipOut && finalExit.role !== "stop") { finalExit.role = "flip"; finalExit.reasonItem = { key: "reason.flipOut" }; }
 
   // ── stop: known level, derived from risk $, or inferred ──
   const openingLegs = legs.filter((l) => l.opening);
@@ -311,7 +328,7 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
   const riskPerShare = stopPrice != null && firstEntryPrice != null && Math.abs(firstEntryPrice - stopPrice) > EPS ? round4(Math.abs(firstEntryPrice - stopPrice)) : null;
   let stopHit = legs.some((l) => l.role === "stop");
   let stopInferred = false;
-  let stopReason: string | null = stopHit ? "Отмечено как стоп" : null;
+  let stopReasonItem: TextItem | null = stopHit ? { key: "reason.markedStop" } : null;
   if (stopPrice != null && riskPerShare != null) {
     const tol = Math.max(0.01, 0.1 * riskPerShare);
     for (const l of legs) {
@@ -319,9 +336,9 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
       const through = dir === 1 ? l.price <= stopPrice + tol : l.price >= stopPrice - tol;
       if (through && (l.perShare == null || l.perShare < 0)) {
         l.role = "stop";
-        l.reason = `Выход на уровне стопа ${fmt(stopPrice)}${stopFromRisk ? " (стоп из риска $)" : ""}`;
+        l.reasonItem = { key: stopFromRisk ? "reason.atStopFromRisk" : "reason.atStop", params: { price: fmt(stopPrice) } };
         stopHit = true;
-        stopReason = l.reason;
+        stopReasonItem = l.reasonItem;
       }
     }
   } else if (finalExit && finalExit.role === "exit" && finalExit.perShare != null && finalExit.perShare < 0) {
@@ -334,13 +351,13 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
     const loss = avgIn != null ? dir * (avgIn - finalExit.price) : 0;
     const atWorst = excursion > EPS && loss > EPS && loss >= STOP_NEAR_WORST_SHARE * excursion;
     if (adverseAdd && tExit != null && tPrev != null && tExit - tPrev <= STOP_AFTER_ADD_SECONDS) {
-      finalExit.reason = "Предположительно стоп: выход в минус в течение 5 минут после усреднения против позиции";
+      finalExit.reasonItem = { key: "reason.inferredAfterAdd" };
     } else if (atWorst) {
-      finalExit.reason = `Предположительно стоп: выход в минус у худшей цены сделки (${fmt(extreme as number)}, отдано ${Math.round((loss / excursion) * 100)}% просадки)`;
+      finalExit.reasonItem = { key: "reason.inferredAtWorst", params: { price: fmt(extreme as number), pct: Math.round((loss / excursion) * 100) } };
     }
-    if (finalExit.reason) {
+    if (finalExit.reasonItem) {
       finalExit.role = "stop"; finalExit.inferred = true;
-      stopHit = true; stopInferred = true; stopReason = finalExit.reason;
+      stopHit = true; stopInferred = true; stopReasonItem = finalExit.reasonItem;
     }
   }
 
@@ -352,7 +369,10 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
     else if (!qtyKnown && closingLegs.length === 1 && l.perShare != null && riskPerShare) l.r = round4(l.perShare / riskPerShare);
   }
 
-  for (const l of legs) l.label = ROLE_LABEL_RU[l.role];
+  for (const l of legs) {
+    l.label = roleLabel(l.role, lang);
+    l.reason = l.reasonItem ? tsText(lang, l.reasonItem) : null;
+  }
 
   // ── stats ──
   const avgEntry = weighted(openingLegs) ?? (carry ? carry.avg : null);
@@ -365,18 +385,20 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
   const timed = legs.map((l) => l.at).filter((x): x is string => !!x);
   const lastTimed = legs.map((l) => l.atEnd).filter((x): x is string => !!x);
 
-  if (fidelity === "averages") notes.push("Сделка из отчёта Trades: известны только средние цены входа и выхода, отдельные доборы и частичные фиксы не видны. Синхронизация по Fills покажет каждое исполнение.");
-  if (scaledEntryLikely) notes.push(`Средняя цена входа ${openingLegs[0].price} не кратна центу — вход набран минимум двумя исполнениями по разным ценам (добор или исполнение частями).`);
-  if (scaledExitLikely) notes.push(`Средняя цена выхода ${closingLegs[0].price} не кратна центу — выход был минимум в два исполнения по разным ценам (частичный фикс или исполнение частями).`);
-  if (carry) notes.push("Позиция перенесена с предыдущей сессии: часть входов была раньше загруженных исполнений.");
-  if (unknownCarryExit) notes.push("Есть закрывающие исполнения без открытой позиции — вход был раньше загруженного периода.");
-  if (!qtyKnown && raw.length) notes.push("У части исполнений нет количества — позиция и $ по ногам не считаются.");
+  if (fidelity === "averages") noteItems.push({ key: "note.averages" });
+  if (scaledEntryLikely) noteItems.push({ key: "note.scaledEntry", params: { price: String(openingLegs[0].price) } });
+  if (scaledExitLikely) noteItems.push({ key: "note.scaledExit", params: { price: String(closingLegs[0].price) } });
+  if (carry) noteItems.push({ key: "note.carry" });
+  if (unknownCarryExit) noteItems.push({ key: "note.unknownCarry" });
+  if (!qtyKnown && raw.length) noteItems.push({ key: "note.noQty" });
   const split = legs.reduce((s, l) => s + (l.pieces > 1 ? l.pieces - 1 : 0), 0);
-  if (split) notes.push(`Исполнения одного ордера частями объединены в одну ногу (${split} доп. ${split === 1 ? "филл" : "филлов"}).`);
-  if (stopInferred && stopReason) notes.push(stopReason);
+  if (split) noteItems.push({ key: "note.split", params: { count: split } });
+  if (stopInferred && stopReasonItem) noteItems.push(stopReasonItem);
+  const notes = noteItems.map((it) => tsText(lang, it));
+  const stopReason = stopReasonItem ? tsText(lang, stopReasonItem) : null;
 
   const stats: StructureStats = {
-    v: 1,
+    v: 2,
     source: ctx.source,
     fidelity,
     side: ctx.side,
@@ -397,6 +419,7 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
     stopHit,
     stopInferred,
     stopReason,
+    stopReasonItem,
     reentryIndex: link?.reentryIndex ?? 0,
     prevId: link?.prevId ?? null,
     nextId: link?.nextId ?? null,
@@ -408,6 +431,7 @@ export function classifyTrade(execs: readonly ExecIn[], ctx: TradeCtx): TradeStr
     firstAt: timed[0] ?? null,
     lastAt: lastTimed[lastTimed.length - 1] ?? null,
     notes,
+    noteItems,
   };
   const byExecution: TradeStructure["byExecution"] = {};
   for (const l of legs) for (const id of l.executionIds) byExecution[id] = { role: l.role, legIndex: l.index, inferred: l.inferred };
@@ -469,20 +493,27 @@ export function linkTrades(heads: readonly TradeHead[]): Map<number, TradeLink> 
   return out;
 }
 
-/** One-line Russian summary for lists: «2 добора · частичный фикс · перезаход №1». */
-export function structureSummary(s: Pick<StructureStats, "adds" | "partials" | "stopHit" | "stopInferred" | "reentryIndex" | "flipIn" | "flipOut" | "scaledEntryLikely" | "scaledExitLikely" | "fidelity">): string {
+/** One-line summary for lists in `lang`: «2 добора · частичный фикс · перезаход №1». */
+export function structureSummary(s: Pick<StructureStats, "adds" | "partials" | "stopHit" | "stopInferred" | "reentryIndex" | "flipIn" | "flipOut" | "scaledEntryLikely" | "scaledExitLikely" | "fidelity">, lang: Lang = "ru"): string {
+  const t = tradeStructureT.tFor(lang);
   const parts: string[] = [];
-  const plural = (n: number, one: string, few: string, many: string) => {
-    const m10 = n % 10, m100 = n % 100;
-    return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-  };
-  if (s.flipIn) parts.push("переворот");
-  else if (s.reentryIndex > 0) parts.push(`перезаход №${s.reentryIndex}`);
-  if (s.adds) parts.push(`${s.adds} ${plural(s.adds, "добор", "добора", "доборов")}`);
-  else if (s.scaledEntryLikely) parts.push("вход частями");
-  if (s.partials) parts.push(`${s.partials} ${plural(s.partials, "частичный фикс", "частичных фикса", "частичных фиксов")}`);
-  else if (s.scaledExitLikely) parts.push("выход частями");
-  if (s.stopHit) parts.push(s.stopInferred ? "стоп?" : "стоп");
-  if (s.flipOut) parts.push("→ переворот");
+  if (s.flipIn) parts.push(t("summary.flip"));
+  else if (s.reentryIndex > 0) parts.push(t("summary.reentry", { n: s.reentryIndex }));
+  if (s.adds) parts.push(t("summary.adds", { count: s.adds }));
+  else if (s.scaledEntryLikely) parts.push(t("summary.scaledEntry"));
+  if (s.partials) parts.push(t("summary.partials", { count: s.partials }));
+  else if (s.scaledExitLikely) parts.push(t("summary.scaledExit"));
+  if (s.stopHit) parts.push(t(s.stopInferred ? "summary.stopInferred" : "summary.stop"));
+  if (s.flipOut) parts.push(t("summary.flipOut"));
   return parts.join(" · ");
+}
+
+/** Persisted / computed stats with notes, stop reason (and `summary`, when present) re-rendered in `lang`. */
+export function localizeStats<T extends Partial<StructureStats> & { summary?: string }>(stats: T, lang: Lang): T {
+  if (lang === "ru" || !stats) return stats;
+  const out = { ...stats };
+  if (Array.isArray(stats.noteItems)) out.notes = stats.noteItems.map((it) => tsText(lang, it));
+  if (stats.stopReasonItem) out.stopReason = tsText(lang, stats.stopReasonItem);
+  if (typeof stats.summary === "string" && typeof stats.adds === "number") out.summary = structureSummary(stats as StructureStats, lang);
+  return out;
 }

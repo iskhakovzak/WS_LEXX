@@ -19,6 +19,8 @@
  * Money = net of fees (lib/tradeMath), dates = NY trading dates.
  */
 import { DEFAULT_TIERS, addDays, isWeekend, type Tier } from "./scalingEngine";
+import { academyPathT, ruPath } from "./academyI18n";
+import { DEFAULT_LANG, isLang, type Lang, type Params } from "../i18n";
 
 export type DrawdownMode = "static" | "trailing" | "trailing_eod";
 
@@ -63,7 +65,7 @@ export interface ChallengeTemplate {
 
 // ─── templates ──────────────────────────────────────────────────────────────
 
-const STAGE_NAMES: Record<StageKey, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
+const stageName = (k: StageKey, lang: Lang) => academyPathT.tFor(lang)(`stages.${k}.name`);
 
 /** Capital-exam policy: every number is derived from the target scaling tier (DEFAULT_TIERS). */
 export const CAPITAL_EXAM_POLICY = {
@@ -94,31 +96,50 @@ export function formatWindow(w: { start: number; end: number }): string {
   return `${hhmm(w.start)}–${hhmm(Math.max(w.start, w.end - 1))}`;
 }
 
-/** Human description of a rules set — the single source of every template description. */
-export function describeRules(r: ChallengeRules, durationTradingDays: number): string {
-  const ddKind = r.drawdownMode === "static" ? "статическая просадка" : r.drawdownMode === "trailing_eod" ? "трейлинг-просадка по закрытию дня" : "трейлинг-просадка";
+/** Human description of a rules set — the single source of every template description (text in `lang`). */
+export function describeRules(r: ChallengeRules, durationTradingDays: number, lang: Lang = DEFAULT_LANG): string {
+  const t = academyPathT.tFor(lang);
+  const usd = usdFor(lang);
+  const kind = t(r.drawdownMode === "static" ? "challenge.ddKind.static" : r.drawdownMode === "trailing_eod" ? "challenge.ddKind.trailing_eod" : "challenge.ddKind.trailing");
   const parts = [
-    `счёт ${usd(r.accountSize)}`,
-    r.profitTarget != null ? `цель +${usd(r.profitTarget)} за ${durationTradingDays} торг. дн.` : `без цели по прибыли, ${durationTradingDays} торг. дн.`,
-    r.dailyLossLimit != null ? `дневной лимит убытка ${usd(r.dailyLossLimit)}` : null,
-    r.maxDrawdown != null ? `${ddKind} ${usd(r.maxDrawdown)}${r.drawdownMode !== "static" && r.trailingStopsAtStart ? " (фиксируется на стартовом балансе)" : ""}` : null,
-    r.consistencyPct != null ? `лучший день ≤ ${r.consistencyPct}% прибыли` : null,
-    r.minTradingDays != null ? `мин. ${r.minTradingDays} торговых дней` : null,
-    r.maxPositionUsd != null ? `позиция ≤ ${usd(r.maxPositionUsd)}` : null,
-    r.maxPositionQty != null ? `позиция ≤ ${r.maxPositionQty} акций` : null,
-    r.tradingWindow ? `входы ${formatWindow(r.tradingWindow)} NY${r.tradingWindowStrict ? " (строго: вход вне окна — провал)" : " (вход вне окна — нарушение, экзамен не останавливается)"}` : null,
+    t("challenge.describe.account", { usd: usd(r.accountSize) }),
+    r.profitTarget != null ? t("challenge.describe.target", { usd: usd(r.profitTarget), n: durationTradingDays }) : t("challenge.describe.noTarget", { n: durationTradingDays }),
+    r.dailyLossLimit != null ? t("challenge.describe.daily", { usd: usd(r.dailyLossLimit) }) : null,
+    r.maxDrawdown != null
+      ? t(r.drawdownMode !== "static" && r.trailingStopsAtStart ? "challenge.describe.ddLocked" : "challenge.describe.dd", { kind, usd: usd(r.maxDrawdown) })
+      : null,
+    r.consistencyPct != null ? t("challenge.describe.bestDay", { pct: r.consistencyPct }) : null,
+    r.minTradingDays != null ? t("challenge.describe.minDays", { count: r.minTradingDays }) : null,
+    r.maxPositionUsd != null ? t("challenge.describe.positionUsd", { usd: usd(r.maxPositionUsd) }) : null,
+    r.maxPositionQty != null ? t("challenge.describe.positionQty", { n: r.maxPositionQty }) : null,
+    r.tradingWindow ? t(r.tradingWindowStrict ? "challenge.describe.windowStrict" : "challenge.describe.windowSoft", { window: formatWindow(r.tradingWindow) }) : null,
   ];
   return parts.filter(Boolean).join(", ");
 }
 
-export function describeTemplate(lead: string, rules: ChallengeRules, durationTradingDays: number): string {
-  return `${lead}: ${describeRules(rules, durationTradingDays)}`;
+export function describeTemplate(lead: string, rules: ChallengeRules, durationTradingDays: number, lang: Lang = DEFAULT_LANG): string {
+  return academyPathT.tFor(lang)("challenge.describe.template", { lead, rules: describeRules(rules, durationTradingDays, lang) });
 }
 
 type TemplateSpec = Omit<ChallengeTemplate, "description"> & { lead: string };
 function template({ lead, ...t }: TemplateSpec): ChallengeTemplate {
   return { ...t, description: describeTemplate(lead, t.rules, t.durationTradingDays) };
 }
+
+/** Names / leads of the built-in templates in `lang` (capital exams are built from their stages). */
+function templateTexts(key: string, lang: Lang): { name: string; lead: string } | null {
+  const t = academyPathT.tFor(lang);
+  if (key === "trainee_test_10d" || key === "sim_exam_20d") return { name: t(`challenge.templates.${key}.name`), lead: t(`challenge.templates.${key}.lead`) };
+  const cap = CAPITAL_KEYS[key];
+  if (!cap) return null;
+  const from = stageName(cap.from, lang), to = stageName(cap.to, lang);
+  return { name: t("challenge.templates.capitalName", { from, to, k: Math.round(tierOf(cap.to).accountSize / 1000) }), lead: t("challenge.templates.capitalLead", { from, to }) };
+}
+const CAPITAL_KEYS: Record<string, { from: StageKey; to: Exclude<StageKey, "trainee"> }> = {
+  trainee_to_junior: { from: "trainee", to: "junior" },
+  junior_to_trader: { from: "junior", to: "trader" },
+  trader_to_senior: { from: "trader", to: "senior" },
+};
 
 /**
  * A capital exam «fromStage → targetTier»: account, daily limit and hard position limit = the target tier's;
@@ -146,11 +167,12 @@ export function capitalExam(
     tradingWindowStrict: P.tradingWindowStrict,
     rulesVersion: RULES_VERSION,
   };
-  const from = STAGE_NAMES[fromStage], to = STAGE_NAMES[targetTierKey];
+  const t = academyPathT.tFor(DEFAULT_LANG);
+  const from = stageName(fromStage, DEFAULT_LANG), to = stageName(targetTierKey, DEFAULT_LANG);
   return template({
     key: overrides.key,
-    name: overrides.name ?? `Перевод ${from} → ${to} (капитал $${Math.round(tier.accountSize / 1000)}k)`,
-    lead: `Экзамен на перевод ${from} → ${to}`,
+    name: overrides.name ?? t("challenge.templates.capitalName", { from, to, k: Math.round(tier.accountSize / 1000) }),
+    lead: t("challenge.templates.capitalLead", { from, to }),
     forStage: fromStage, toStage: targetTierKey, scalingTier: tier.key,
     durationTradingDays: overrides.durationTradingDays ?? P.durationTradingDays,
     rules,
@@ -168,8 +190,8 @@ function traineeRules(r: Pick<ChallengeRules, "profitTarget" | "maxDrawdown" | "
 export const TEMPLATES: readonly ChallengeTemplate[] = [
   template({
     key: "trainee_test_10d",
-    name: "Стажёрский тест 10 дней",
-    lead: "Короткая проверка стажёра: дисциплина дневного лимита и ровная торговля",
+    name: ruPath.challenge.templates.trainee_test_10d.name,
+    lead: ruPath.challenge.templates.trainee_test_10d.lead,
     forStage: "trainee", toStage: null, scalingTier: "trainee", durationTradingDays: 10,
     rules: traineeRules({ profitTarget: 300, maxDrawdown: 500, drawdownMode: "trailing", trailingStopsAtStart: true, consistencyPct: 50, minTradingDays: 5 }),
   }),
@@ -178,14 +200,37 @@ export const TEMPLATES: readonly ChallengeTemplate[] = [
   capitalExam("trader", "senior", { key: "trader_to_senior", consistencyPct: 30, minTradingDays: 15 }),
   template({
     key: "sim_exam_20d",
-    name: "Сим-экзамен 20 дней",
-    lead: "Экзамен на симуляторе для стажёра",
+    name: ruPath.challenge.templates.sim_exam_20d.name,
+    lead: ruPath.challenge.templates.sim_exam_20d.lead,
     forStage: "trainee", toStage: null, scalingTier: "trainee", durationTradingDays: 20,
     rules: traineeRules({ profitTarget: 500, maxDrawdown: 800, drawdownMode: "static", trailingStopsAtStart: false, consistencyPct: 40, minTradingDays: 15 }),
   }),
 ];
 
 export const TEMPLATE_BY_KEY: Record<string, ChallengeTemplate> = Object.fromEntries(TEMPLATES.map((t) => [t.key, t]));
+
+const templatesCache = new Map<Lang, ChallengeTemplate[]>();
+/** Built-in templates with name / description in `lang` (keys, rules and numbers are identical). */
+export function templatesFor(lang: Lang | null | undefined = DEFAULT_LANG): ChallengeTemplate[] {
+  const l: Lang = isLang(lang) ? lang : DEFAULT_LANG;
+  if (l === DEFAULT_LANG) return TEMPLATES as ChallengeTemplate[];
+  let out = templatesCache.get(l);
+  if (!out) {
+    out = TEMPLATES.map((tpl) => {
+      const tx = templateTexts(tpl.key, l);
+      return tx ? { ...tpl, name: tx.name, description: describeTemplate(tx.lead, tpl.rules, tpl.durationTradingDays, l) } : tpl;
+    });
+    templatesCache.set(l, out);
+  }
+  return out;
+}
+
+/** Display name of a stored challenge: the built-in template's Russian name → `lang`; a custom name stays. */
+export function challengeNameFor(templateKey: string | null | undefined, stored: string, lang: Lang | null | undefined): string {
+  const tpl = templateKey ? TEMPLATE_BY_KEY[templateKey] : undefined;
+  if (!tpl || stored !== tpl.name) return stored;
+  return templatesFor(lang).find((x) => x.key === tpl.key)?.name ?? stored;
+}
 
 export interface ChallengeTrade {
   id: number;
@@ -203,15 +248,8 @@ export interface ChallengeTrade {
 
 export type RuleKey = "profit_target" | "daily_loss" | "max_drawdown" | "consistency" | "min_days" | "max_position" | "trading_window";
 
-export const RULE_LABELS: Record<RuleKey, string> = {
-  profit_target: "Цель по прибыли",
-  daily_loss: "Дневной лимит убытка",
-  max_drawdown: "Макс. просадка",
-  consistency: "Правило стабильности",
-  min_days: "Мин. торговых дней",
-  max_position: "Макс. размер позиции",
-  trading_window: "Торговое окно",
-};
+export const RULE_LABELS: Record<RuleKey, string> = ruPath.challenge.rules;
+const ruleLabel = (k: RuleKey, lang: Lang) => academyPathT.tFor(lang)(`challenge.rules.${k}`);
 
 export type EventKind = "daily_loss" | "max_dd" | "size" | "window" | "target" | "passed" | "warn_daily" | "warn_dd" | "warn_window";
 
@@ -259,13 +297,40 @@ export interface RuleProgress {
 
 export type ChallengeStatus = "scheduled" | "active" | "passed" | "failed" | "expired";
 
-export const STATUS_LABELS: Record<ChallengeStatus, string> = {
-  scheduled: "Запланирован",
-  active: "Идёт",
-  passed: "Сдан",
-  failed: "Провален",
-  expired: "Время истекло",
-};
+export const STATUS_LABELS: Record<ChallengeStatus, string> = ruPath.challenge.status;
+/** Status labels in `lang`. */
+export function statusLabelsFor(lang: Lang | null | undefined): Record<ChallengeStatus, string> {
+  const t = academyPathT.tFor(lang);
+  return { scheduled: t("challenge.status.scheduled"), active: t("challenge.status.active"), passed: t("challenge.status.passed"), failed: t("challenge.status.failed"), expired: t("challenge.status.expired") };
+}
+
+/** A text as data: key under `academyPath.challenge.*` + language-neutral params (money is preformatted). */
+export type ChallengeMsg = { key: string; params?: Record<string, string | number> };
+/**
+ * The status reason as data (rendered per reader: stored in notification params, see renderChallengeReason).
+ * `rule` → `{label}`, `detail` → `{detail}`, `list` → joined into `{miss}` / `{left}`.
+ */
+export type ReasonData = { key: string; params: Record<string, string | number>; rule?: RuleKey; detail?: ChallengeMsg; list?: ChallengeMsg[]; listSep?: string };
+
+function renderMsg(m: ChallengeMsg, lang: Lang): string {
+  const p: Params = { ...(m.params ?? {}) };
+  if (p.ticker === "") p.ticker = academyPathT.tFor(lang)("challenge.trade");
+  return academyPathT.tryFor(lang, `challenge.${m.key}`, p) ?? m.key;
+}
+
+/** Render a stored ReasonData in `lang`. */
+export function renderChallengeReason(d: ReasonData, lang: Lang | null | undefined): string {
+  const l: Lang = isLang(lang) ? lang : DEFAULT_LANG;
+  const p: Params = { ...d.params };
+  if (d.rule) p.label = ruleLabel(d.rule, l);
+  if (d.detail) p.detail = renderMsg(d.detail, l);
+  if (d.list) {
+    const joined = d.list.map((m) => renderMsg(m, l)).join(d.listSep ?? "; ");
+    if (d.key === "reason.expired") p.miss = joined || renderMsg({ key: "reason.expiredNone" }, l);
+    else p.left = joined;
+  }
+  return academyPathT.tryFor(l, `challenge.${d.key}`, p) ?? d.key;
+}
 
 export interface ChallengeFailure {
   rule: RuleKey;
@@ -280,6 +345,8 @@ export interface ChallengeResult {
   status: ChallengeStatus;
   statusLabel: string;
   reason: string;
+  /** `reason` as data (for texts stored or sent later in the recipient's language). */
+  reasonData: ReasonData;
   failure: ChallengeFailure | null;
   passedOn: string | null;
   startsOn: string;
@@ -310,8 +377,13 @@ export interface ChallengeResult {
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 // Function declaration (hoisted): TEMPLATES above call it while the module initialises.
+/** Money for exam texts: grouping of the reader's language for RU (historical "$25 000"), "$25,000" otherwise. */
+function usdFor(lang: Lang): (x: number) => string {
+  const tag = lang === "ru" ? "ru-RU" : "en-US";
+  return (x: number) => `${x < 0 ? "−" : ""}$${Math.abs(x).toLocaleString(tag, { maximumFractionDigits: 0 })}`;
+}
 function usd(x: number): string {
-  return `${x < 0 ? "−" : ""}$${Math.abs(x).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
+  return usdFor(DEFAULT_LANG)(x);
 }
 
 export function hhmm(min: number | null): string | null {
@@ -354,8 +426,12 @@ export function ddFloor(rules: ChallengeRules, peak: number): number | null {
 
 // ─── evaluation ─────────────────────────────────────────────────────────────
 
-export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules: ChallengeRules }, tradesIn: ChallengeTrade[], today: string): ChallengeResult {
+export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules: ChallengeRules }, tradesIn: ChallengeTrade[], today: string, lang: Lang = DEFAULT_LANG): ChallengeResult {
   const { startsOn, endsOn, rules } = def;
+  const tt = academyPathT.tFor(lang);
+  const usd = usdFor(lang);
+  const txt = (key: string, params?: Record<string, string | number>) => renderMsg({ key, params }, lang);
+  let failureDetail: ChallengeMsg | null = null;
   const evalEnd = today < endsOn ? today : endsOn;
   const trades = tradesIn
     .filter((t) => YMD.test(t.date) && t.date >= startsOn && t.date <= evalEnd)
@@ -389,10 +465,12 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
     if (!(total > 0)) return null;
     return (Math.max(0, ...dayNets) / total) * 100;
   };
-  const fail = (rule: RuleKey, date: string, t: ChallengeTrade | null, detail: string, ev: TimelineEvent[], kind: EventKind) => {
+  const fail = (rule: RuleKey, date: string, t: ChallengeTrade | null, detailMsg: ChallengeMsg, ev: TimelineEvent[], kind: EventKind) => {
     const time = t ? hhmm(t.exitMin ?? t.entryMin) : null;
-    failure = { rule, label: RULE_LABELS[rule], date, time, tradeId: t?.id ?? null, detail };
-    ev.push({ kind, label: `${RULE_LABELS[rule]}: ${detail}`, time, tradeId: t?.id ?? null });
+    const detail = renderMsg(detailMsg, lang);
+    failureDetail = detailMsg;
+    failure = { rule, label: ruleLabel(rule, lang), date, time, tradeId: t?.id ?? null, detail };
+    ev.push({ kind, label: tt("challenge.events.rule", { label: ruleLabel(rule, lang), detail }), time, tradeId: t?.id ?? null });
   };
 
   for (const date of days) {
@@ -407,23 +485,23 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
       if (t.qty != null) maxQty = Math.max(maxQty, Math.abs(t.qty));
       if (notional != null) maxNotional = Math.max(maxNotional, notional);
       if (rules.maxPositionQty != null && t.qty != null && Math.abs(t.qty) > rules.maxPositionQty) {
-        fail("max_position", date, t, `${t.ticker ?? "сделка"}: ${Math.abs(t.qty)} акций > ${rules.maxPositionQty}`, events, "size");
+        fail("max_position", date, t, { key: "failure.qty", params: { ticker: t.ticker ?? "", qty: Math.abs(t.qty), max: rules.maxPositionQty } }, events, "size");
         break;
       }
       if (rules.maxPositionUsd != null && notional != null && notional > rules.maxPositionUsd) {
-        fail("max_position", date, t, `${t.ticker ?? "сделка"}: позиция ${usd(notional)} > ${usd(rules.maxPositionUsd)}`, events, "size");
+        fail("max_position", date, t, { key: "failure.usd", params: { ticker: t.ticker ?? "", usd: usd(notional), max: usd(rules.maxPositionUsd) } }, events, "size");
         break;
       }
       if (rules.tradingWindow) {
         if (t.entryMin == null) withoutTime++;
         else if (Math.floor(t.entryMin) < rules.tradingWindow.start || Math.floor(t.entryMin) >= rules.tradingWindow.end) {
           outOfWindow++;
-          const msg = `${t.ticker ?? "сделка"}: вход в ${hhmm(Math.floor(t.entryMin))} вне окна ${formatWindow(rules.tradingWindow)} NY`;
+          const msg: ChallengeMsg = { key: "failure.window", params: { ticker: t.ticker ?? "", time: hhmm(Math.floor(t.entryMin)) ?? "", window: formatWindow(rules.tradingWindow) } };
           if (rules.tradingWindowStrict) {
             fail("trading_window", date, { ...t, entryMin: Math.floor(t.entryMin), exitMin: null }, msg, events, "window");
             break;
           }
-          events.push({ kind: "warn_window", label: `Нарушение окна (не стоп): ${msg}`, time: hhmm(Math.floor(t.entryMin)), tradeId: t.id });
+          events.push({ kind: "warn_window", label: tt("challenge.events.windowWarn", { msg: renderMsg(msg, lang) }), time: hhmm(Math.floor(t.entryMin)), tradeId: t.id });
         }
       }
       if (t.net == null) { withoutPnl++; continue; }
@@ -434,22 +512,22 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
       if (dayPnl < dayLow) dayLow = dayPnl;
       if (dl != null) {
         if (-dayPnl >= dl) {
-          fail("daily_loss", date, t, `убыток дня ${usd(dayPnl)} достиг лимита ${usd(-dl)}`, events, "daily_loss");
+          fail("daily_loss", date, t, { key: "failure.dailyLoss", params: { loss: usd(dayPnl), limit: usd(-dl) } }, events, "daily_loss");
           break;
         }
         if (!warnedDaily && -dayPnl >= 0.8 * dl) {
           warnedDaily = true;
-          events.push({ kind: "warn_daily", label: `Использовано ${Math.round((-dayPnl / dl) * 100)}% дневного лимита`, time: hhmm(t.exitMin ?? t.entryMin), tradeId: t.id });
+          events.push({ kind: "warn_daily", label: txt("events.dailyWarn", { pct: Math.round((-dayPnl / dl) * 100) }), time: hhmm(t.exitMin ?? t.entryMin), tradeId: t.id });
         }
       }
       if (floor != null) {
         if (balance <= floor) {
-          fail("max_drawdown", date, t, `баланс ${usd(balance)} коснулся уровня просадки ${usd(floor)}`, events, "max_dd");
+          fail("max_drawdown", date, t, { key: "failure.dd", params: { balance: usd(balance), floor: usd(floor) } }, events, "max_dd");
           break;
         }
         if (!warnedDd && rules.maxDrawdown && balance - floor <= 0.2 * rules.maxDrawdown) {
           warnedDd = true;
-          events.push({ kind: "warn_dd", label: `До уровня просадки осталось ${usd(balance - floor)}`, time: hhmm(t.exitMin ?? t.entryMin), tradeId: t.id });
+          events.push({ kind: "warn_dd", label: txt("events.ddWarn", { usd: usd(balance - floor) }), time: hhmm(t.exitMin ?? t.entryMin), tradeId: t.id });
         }
       }
       if (rules.drawdownMode === "trailing" && balance > peak) { peak = balance; floor = ddFloor(rules, peak); }
@@ -465,10 +543,10 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
       const cons = consistencyNow();
       const consOk = rules.consistencyPct == null || (cons != null && cons <= rules.consistencyPct);
       if (rules.profitTarget != null && targetMet && !timeline.some((d) => d.events.some((e) => e.kind === "target")))
-        events.push({ kind: "target", label: `Цель ${usd(rules.profitTarget)} достигнута (итого ${usd(cum)})`, time: null, tradeId: null });
+        events.push({ kind: "target", label: txt("events.target", { target: usd(rules.profitTarget), total: usd(cum) }), time: null, tradeId: null });
       if (targetMet && tradingDays >= minDays && consOk && (rules.profitTarget != null || (date === evalEnd && evalEnd === endsOn))) {
         passedOn = date;
-        events.push({ kind: "passed", label: "Все условия выполнены — экзамен сдан", time: null, tradeId: null });
+        events.push({ kind: "passed", label: txt("events.passed"), time: null, tradeId: null });
       }
     }
     timeline.push({
@@ -483,72 +561,82 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
   const tradingDaysElapsed = startsOn <= evalEnd ? weekdaysBetween(startsOn, evalEnd) : 0;
   const tradingDaysLeft = Math.max(0, today < startsOn ? tradingDaysTotal : weekdaysBetween(addDays(evalEnd, 1), endsOn));
   let status: ChallengeStatus;
-  let reason: string;
+  let reasonData: ReasonData;
   const f = failure as ChallengeFailure | null;
   if (f) {
     status = "failed";
-    reason = `${f.label}: ${f.detail} — ${f.date}${f.time ? ` в ${f.time} NY` : ""}`;
+    reasonData = { key: f.time ? "reason.failedAt" : "reason.failed", params: { date: f.date, ...(f.time ? { time: f.time } : {}) }, rule: f.rule, detail: failureDetail ?? undefined };
   } else if (passedOn) {
     status = "passed";
-    reason = `Сдан ${passedOn}: итог ${usd(cum)} за ${tradingDays} торг. дн.`;
+    reasonData = { key: "reason.passed", params: { date: passedOn, net: usd(cum), n: tradingDays } };
   } else if (today < startsOn) {
     status = "scheduled";
-    reason = `Начнётся ${startsOn}`;
+    reasonData = { key: "reason.scheduled", params: { date: startsOn } };
   } else if (today > endsOn) {
     status = "expired";
-    const miss: string[] = [];
-    if (rules.profitTarget != null && cum < rules.profitTarget) miss.push(`цель ${usd(rules.profitTarget)} не достигнута (${usd(cum)})`);
-    if (tradingDays < minDays) miss.push(`торговых дней ${tradingDays} из ${minDays}`);
-    if (rules.consistencyPct != null && (cons == null || cons > rules.consistencyPct)) miss.push(cons == null ? "нет прибыли для правила стабильности" : `лучший день ${cons.toFixed(0)}% > ${rules.consistencyPct}%`);
-    reason = `Срок истёк ${endsOn}: ${miss.join("; ") || "условия не выполнены"}`;
+    const miss: ChallengeMsg[] = [];
+    if (rules.profitTarget != null && cum < rules.profitTarget) miss.push({ key: "reason.missTarget", params: { target: usd(rules.profitTarget), net: usd(cum) } });
+    if (tradingDays < minDays) miss.push({ key: "reason.missDays", params: { n: tradingDays, min: minDays } });
+    if (rules.consistencyPct != null && (cons == null || cons > rules.consistencyPct)) {
+      miss.push(cons == null ? { key: "reason.missNoProfit" } : { key: "reason.bestDayOver", params: { pct: cons.toFixed(0), max: rules.consistencyPct } });
+    }
+    reasonData = { key: "reason.expired", params: { date: endsOn }, list: miss, listSep: "; " };
   } else {
     status = "active";
-    const left: string[] = [];
-    if (rules.profitTarget != null && cum < rules.profitTarget) left.push(`до цели ${usd(rules.profitTarget - cum)}`);
-    if (tradingDays < minDays) left.push(`ещё ${minDays - tradingDays} торг. дн.`);
-    if (rules.consistencyPct != null && cons != null && cons > rules.consistencyPct) left.push(`лучший день ${cons.toFixed(0)}% > ${rules.consistencyPct}%`);
-    reason = left.length ? `Осталось: ${left.join(", ")} · ${tradingDaysLeft} торг. дн. до конца` : `Идёт · ${tradingDaysLeft} торг. дн. до конца`;
+    const left: ChallengeMsg[] = [];
+    if (rules.profitTarget != null && cum < rules.profitTarget) left.push({ key: "reason.leftTarget", params: { usd: usd(rules.profitTarget - cum) } });
+    if (tradingDays < minDays) left.push({ key: "reason.leftDays", params: { n: minDays - tradingDays } });
+    if (rules.consistencyPct != null && cons != null && cons > rules.consistencyPct) left.push({ key: "reason.bestDayOver", params: { pct: cons.toFixed(0), max: rules.consistencyPct } });
+    reasonData = left.length
+      ? { key: "reason.active", params: { n: tradingDaysLeft }, list: left, listSep: ", " }
+      : { key: "reason.activeNone", params: { n: tradingDaysLeft } };
   }
+  const reason = renderChallengeReason(reasonData, lang);
 
   // ── per-rule progress ──
   const progress: RuleProgress[] = [];
   const failedRule = f?.rule ?? null;
   if (rules.profitTarget != null) {
     const pct = rules.profitTarget > 0 ? Math.max(0, Math.min(1, cum / rules.profitTarget)) : 1;
-    progress.push({ key: "profit_target", label: RULE_LABELS.profit_target, kind: "target", value: r2(cum), target: rules.profitTarget, pct: r2(pct), state: cum >= rules.profitTarget ? "met" : "pending", display: `${usd(cum)} / ${usd(rules.profitTarget)}`, detail: cum >= rules.profitTarget ? "Цель достигнута" : `Осталось ${usd(rules.profitTarget - cum)}` });
+    progress.push({ key: "profit_target", label: ruleLabel("profit_target", lang), kind: "target", value: r2(cum), target: rules.profitTarget, pct: r2(pct), state: cum >= rules.profitTarget ? "met" : "pending", display: `${usd(cum)} / ${usd(rules.profitTarget)}`, detail: cum >= rules.profitTarget ? txt("progress.targetMet") : txt("progress.left", { usd: usd(rules.profitTarget - cum) }) });
   }
   if (dl != null) {
     const used = -worstDayLow;
     const st: RuleState = failedRule === "daily_loss" ? "breached" : used >= 0.8 * dl ? "warn" : "ok";
-    progress.push({ key: "daily_loss", label: RULE_LABELS.daily_loss, kind: "limit", value: r2(used), target: dl, pct: r2(used / dl), state: st, display: `худший день ${usd(-used)} / лимит ${usd(-dl)}`, detail: st === "breached" ? `Пробит ${f!.date}${f!.time ? ` в ${f!.time}` : ""}` : `Макс. внутридневной убыток за экзамен — ${Math.round((used / dl) * 100)}% лимита` });
+    progress.push({ key: "daily_loss", label: ruleLabel("daily_loss", lang), kind: "limit", value: r2(used), target: dl, pct: r2(used / dl), state: st, display: txt("progress.daily", { worst: usd(-used), limit: usd(-dl) }), detail: st === "breached" ? (f!.time ? txt("progress.breachedAt", { date: f!.date, time: f!.time }) : txt("progress.breached", { date: f!.date })) : txt("progress.dailyDetail", { pct: Math.round((used / dl) * 100) }) });
   }
   if (rules.maxDrawdown != null && rules.maxDrawdown > 0) {
     const room = floor != null ? balance - floor : null;
     const st: RuleState = failedRule === "max_drawdown" ? "breached" : room != null && room <= 0.2 * rules.maxDrawdown ? "warn" : "ok";
-    const mode = rules.drawdownMode === "static" ? "статическая" : rules.drawdownMode === "trailing_eod" ? "трейлинг по закрытию дня" : "трейлинг";
-    progress.push({ key: "max_drawdown", label: `${RULE_LABELS.max_drawdown} (${mode})`, kind: "limit", value: r2(maxDdUsed), target: rules.maxDrawdown, pct: r2(maxDdUsed / rules.maxDrawdown), state: st, display: `макс. ${usd(maxDdUsed)} / ${usd(rules.maxDrawdown)}`, detail: floor != null ? `Уровень ${usd(floor)}, запас ${usd(room ?? 0)}` : "" });
+    const mode = txt(`progress.ddMode.${rules.drawdownMode === "static" ? "static" : rules.drawdownMode === "trailing_eod" ? "trailing_eod" : "trailing"}`);
+    progress.push({ key: "max_drawdown", label: txt("progress.ddLabel", { label: ruleLabel("max_drawdown", lang), mode }), kind: "limit", value: r2(maxDdUsed), target: rules.maxDrawdown, pct: r2(maxDdUsed / rules.maxDrawdown), state: st, display: txt("progress.ddDisplay", { used: usd(maxDdUsed), max: usd(rules.maxDrawdown) }), detail: floor != null ? txt("progress.ddDetail", { floor: usd(floor), room: usd(room ?? 0) }) : "" });
   }
   if (rules.consistencyPct != null) {
     const st: RuleState = cons == null ? (tradingDays ? "pending" : "na") : cons <= rules.consistencyPct ? "ok" : "warn";
-    progress.push({ key: "consistency", label: RULE_LABELS.consistency, kind: "requirement", value: cons == null ? null : r2(cons), target: rules.consistencyPct, pct: cons == null ? null : r2(cons / 100), state: st, display: cons == null ? "нет прибыли" : `лучший день ${cons.toFixed(0)}% / ≤ ${rules.consistencyPct}%`, detail: cons != null && cons > rules.consistencyPct ? `Нужно ещё ≈ ${usd(Math.max(...dayNets) / (rules.consistencyPct / 100) - cum)} прибыли в других днях` : "Ни один день не даёт больше допустимой доли" });
+    progress.push({ key: "consistency", label: ruleLabel("consistency", lang), kind: "requirement", value: cons == null ? null : r2(cons), target: rules.consistencyPct, pct: cons == null ? null : r2(cons / 100), state: st, display: cons == null ? txt("progress.noProfit") : txt("progress.consDisplay", { pct: cons.toFixed(0), max: rules.consistencyPct }), detail: cons != null && cons > rules.consistencyPct ? txt("progress.consNeed", { usd: usd(Math.max(...dayNets) / (rules.consistencyPct / 100) - cum) }) : txt("progress.consOk") });
   }
   if (rules.minTradingDays != null) {
-    progress.push({ key: "min_days", label: RULE_LABELS.min_days, kind: "requirement", value: tradingDays, target: rules.minTradingDays, pct: r2(Math.min(1, rules.minTradingDays > 0 ? tradingDays / rules.minTradingDays : 1)), state: tradingDays >= rules.minTradingDays ? "met" : "pending", display: `${tradingDays} / ${rules.minTradingDays}`, detail: tradingDays >= rules.minTradingDays ? "Выполнено" : `Ещё ${rules.minTradingDays - tradingDays} дн.` });
+    progress.push({ key: "min_days", label: ruleLabel("min_days", lang), kind: "requirement", value: tradingDays, target: rules.minTradingDays, pct: r2(Math.min(1, rules.minTradingDays > 0 ? tradingDays / rules.minTradingDays : 1)), state: tradingDays >= rules.minTradingDays ? "met" : "pending", display: `${tradingDays} / ${rules.minTradingDays}`, detail: tradingDays >= rules.minTradingDays ? txt("progress.done") : txt("progress.daysLeft", { n: rules.minTradingDays - tradingDays }) });
   }
   if (rules.maxPositionQty != null || rules.maxPositionUsd != null) {
     const st: RuleState = failedRule === "max_position" ? "breached" : "ok";
-    const parts = [rules.maxPositionQty != null ? `${maxQty} / ${rules.maxPositionQty} акций` : null, rules.maxPositionUsd != null ? `${usd(maxNotional)} / ${usd(rules.maxPositionUsd)}` : null].filter(Boolean);
-    progress.push({ key: "max_position", label: RULE_LABELS.max_position, kind: "limit", value: rules.maxPositionUsd != null ? r2(maxNotional) : maxQty, target: rules.maxPositionUsd ?? rules.maxPositionQty, pct: rules.maxPositionUsd ? r2(maxNotional / rules.maxPositionUsd) : rules.maxPositionQty ? r2(maxQty / rules.maxPositionQty) : null, state: st, display: parts.join(" · "), detail: "Максимальная позиция за экзамен" });
+    const parts = [rules.maxPositionQty != null ? txt("progress.qty", { qty: maxQty, max: rules.maxPositionQty }) : null, rules.maxPositionUsd != null ? `${usd(maxNotional)} / ${usd(rules.maxPositionUsd)}` : null].filter(Boolean);
+    progress.push({ key: "max_position", label: ruleLabel("max_position", lang), kind: "limit", value: rules.maxPositionUsd != null ? r2(maxNotional) : maxQty, target: rules.maxPositionUsd ?? rules.maxPositionQty, pct: rules.maxPositionUsd ? r2(maxNotional / rules.maxPositionUsd) : rules.maxPositionQty ? r2(maxQty / rules.maxPositionQty) : null, state: st, display: parts.join(" · "), detail: txt("progress.maxPosDetail") });
   }
   if (rules.tradingWindow) {
     const st: RuleState = failedRule === "trading_window" ? "breached" : outOfWindow > 0 ? "warn" : "ok";
-    progress.push({ key: "trading_window", label: RULE_LABELS.trading_window, kind: "limit", value: outOfWindow, target: 0, pct: null, state: st, display: `${formatWindow(rules.tradingWindow)} NY${rules.tradingWindowStrict ? "" : " (нарушение не стоп)"}`, detail: `${outOfWindow ? `${outOfWindow} вход(ов) вне окна${rules.tradingWindowStrict ? "" : " — учтены как нарушения, экзамен не остановлен"}` : "Все входы в окне"}${withoutTime ? ` · ${withoutTime} без времени не проверены` : ""}` });
+    const win = formatWindow(rules.tradingWindow);
+    const outText = outOfWindow
+      ? tt(rules.tradingWindowStrict ? "challenge.progress.windowOut" : "challenge.progress.windowOutSoft", { count: outOfWindow })
+      : txt("progress.windowAll");
+    progress.push({ key: "trading_window", label: ruleLabel("trading_window", lang), kind: "limit", value: outOfWindow, target: 0, pct: null, state: st, display: txt(rules.tradingWindowStrict ? "progress.windowDisplay" : "progress.windowDisplaySoft", { window: win }), detail: `${outText}${withoutTime ? txt("progress.withoutTime", { n: withoutTime }) : ""}` });
   }
 
   return {
     status,
-    statusLabel: STATUS_LABELS[status],
+    statusLabel: statusLabelsFor(lang)[status],
     reason,
+    reasonData,
     failure: f,
     passedOn,
     startsOn,

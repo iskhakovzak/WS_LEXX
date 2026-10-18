@@ -6,7 +6,10 @@ import {
 } from "recharts";
 import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { EquityChart, buildDayCandles, soleTrader, type EquityTradeInput } from "@/components/equity-chart";
-import { fmtCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
+import { fmtMetricCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
+import { fmtMonth } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { statsI18n } from "@/i18n/ns/stats";
 
 export const CHART_TOOLTIP = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -20,8 +23,11 @@ export const CHART_TOOLTIP = {
 export const CHART_CURSOR = { fill: "hsl(var(--muted-foreground) / 0.08)" };
 const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
 
-const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-const monthLabel = (m: string) => `${MONTHS[Number(m.substring(5, 7)) - 1] ?? m} ${m.substring(2, 4)}`;
+/** "2026-10" → «окт 26» / «Oct 26». */
+const monthLabel = (m: string) => {
+  const i = Number(m.substring(5, 7)) - 1;
+  return i >= 0 && i < 12 ? `${fmtMonth(i, "short").replace(".", "")} ${m.substring(2, 4)}` : m;
+};
 
 type View = "equity" | "monthly";
 
@@ -36,6 +42,7 @@ export function EquityPanel({
   /** Trader for the day-report link (null / "all" — derived from the trades). */
   trader?: string | null;
 }) {
+  const { t } = statsI18n.useT();
   const [view, setView] = useState<View>("equity");
   const reduce = useReducedMotion();
   const unit = metric === "r" ? "R" : "$";
@@ -45,21 +52,21 @@ export function EquityPanel({
 
   return (
     <Panel
-      title={view === "equity" ? "Кривая результата" : "Результат по месяцам"}
+      title={view === "equity" ? t("equity.curve") : t("equity.monthly")}
       description={
         view === "equity"
           ? trades
-            ? `Накопленный ${unit} по дням, неделям или месяцам · клик по дню — разбор дня`
-            : `Накопленный ${unit} по закрытым сделкам и просадка от пика`
-          : `Сумма ${unit} за каждый месяц периода`
+            ? t("equity.hintDays", { unit })
+            : t("equity.hintCurve", { unit })
+          : t("equity.hintMonthly", { unit })
       }
       actions={
         <Segmented<View>
           size="sm"
-          ariaLabel="Вид графика"
+          ariaLabel={t("equity.viewAria")}
           value={view}
           onChange={setView}
-          options={[{ value: "equity", label: "Кривая" }, { value: "monthly", label: "По месяцам" }]}
+          options={[{ value: "equity", label: t("equity.viewCurve") }, { value: "monthly", label: t("equity.viewMonthly") }]}
         />
       }
     >
@@ -78,9 +85,9 @@ export function EquityPanel({
               <span className={`text-lg font-semibold tabular-nums ${last != null && last < 0 ? "text-down" : "text-up"}`}>
                 {fmtValue(last, metric)}
               </span>
-              <span className="text-xs text-muted-foreground">за {equity.length} сделок с {unit}</span>
+              <span className="text-xs text-muted-foreground">{t("equity.overTrades", { count: equity.length, unit })}</span>
             </div>
-            <div className="h-[240px]" role="img" aria-label={`Кривая результата: итог ${fmtValue(last, metric)}`}>
+            <div className="h-[240px]" role="img" aria-label={t("equity.aria", { value: fmtValue(last, metric) })}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={equity} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
                   <defs>
@@ -91,13 +98,13 @@ export function EquityPanel({
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="idx" {...AXIS} minTickGap={48} />
-                  <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtCompact(v, metric) || "0"} />
+                  <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
                   <ReferenceLine y={0} stroke="hsl(var(--muted-foreground) / 0.5)" />
                   <Tooltip
                     contentStyle={CHART_TOOLTIP}
                     cursor={{ stroke: "hsl(var(--border))" }}
                     labelFormatter={(_l, payload) => (payload?.[0]?.payload as EquityPoint | undefined)?.label ?? ""}
-                    formatter={(v: number, name: string) => [fmtValue(v, metric), name === "equity" ? "Накоплено" : "Просадка"]}
+                    formatter={(v: number, name: string) => [fmtValue(v, metric), name === "equity" ? t("equity.accumulated") : t("equity.drawdown")]}
                   />
                   <Area
                     type="monotone" dataKey="drawdown" stroke="hsl(var(--down))" strokeWidth={1}
@@ -111,30 +118,30 @@ export function EquityPanel({
               </ResponsiveContainer>
             </div>
             <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-full bg-chart-1" aria-hidden="true" />Накоплено</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-full bg-down/40" aria-hidden="true" />Просадка</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-full bg-chart-1" aria-hidden="true" />{t("equity.accumulated")}</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-full bg-down/40" aria-hidden="true" />{t("equity.drawdown")}</span>
             </div>
           </>
         ) : (
           <EmptyState
             icon={LineIcon}
-            title="Мало данных для кривой"
-            description={`Нужно минимум 2 закрытые сделки с заполненным ${metric === "r" ? "R-multiple" : "P&L"}.`}
+            title={t("equity.few")}
+            description={t("equity.fewHint", { unit: metric === "r" ? "R-multiple" : "P&L" })}
           />
         )
       ) : monthly.length > 0 ? (
-        <div className="h-[268px]" role="img" aria-label="Результат по месяцам">
+        <div className="h-[268px]" role="img" aria-label={t("equity.monthlyAria")}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={monthly} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis dataKey="month" {...AXIS} tickFormatter={monthLabel} />
-              <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtCompact(v, metric) || "0"} />
+              <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground) / 0.5)" />
               <Tooltip
                 contentStyle={CHART_TOOLTIP}
                 cursor={CHART_CURSOR}
                 labelFormatter={(l: string) => monthLabel(l)}
-                formatter={(v: number, _n, item) => [`${fmtValue(v, metric)} · ${(item?.payload as { count: number }).count} сд.`, "Результат"]}
+                formatter={(v: number, _n, item) => [`${fmtValue(v, metric)} · ${commonI18n.t("units.tradesShort", { count: (item?.payload as { count: number }).count })}`, t("equity.result")]}
               />
               <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={36} isAnimationActive={!reduce}>
                 {monthly.map((m) => <Cell key={m.month} fill={m.value >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"} />)}
@@ -143,7 +150,8 @@ export function EquityPanel({
           </ResponsiveContainer>
         </div>
       ) : (
-        <EmptyState icon={LineIcon} title="Нет данных по месяцам" description={`Заполните ${metric === "r" ? "R-multiple" : "P&L"} в закрытых сделках.`} />
+        <EmptyState icon={LineIcon} title={t("equity.noMonthly")} description={metric === "r" ? t("equity.noMonthlyR") : t("equity.noMonthlyUsd")} />
+
       )}
     </Panel>
   );

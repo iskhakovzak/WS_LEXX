@@ -10,14 +10,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Page, PageHeader, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
+import { academyPathI18n } from "@/i18n/ns/academyPath";
+import { shellI18n } from "@/i18n/ns/shell";
+import { comparePersonNames, personName } from "@/i18n";
 import { pathKeys, usePathConfig, useRequests } from "@/components/academy/path/api";
-import { selectCls } from "@/components/academy/path/bits";
+import { ladderText } from "@/components/academy/path/labels";
 import { PersonView } from "@/components/academy/path/person-view";
 import { CriteriaEditor, FunnelView, RequestsView } from "@/components/academy/path/staff-views";
+import { PersonSelect } from "@/components/people/person-select";
 
 type View = "person" | "funnel" | "requests" | "criteria";
 
 export default function AcademyPathPage() {
+  const { t } = academyPathI18n.useT();
   const { user, isCurator, dbUsers } = useAuth();
   const me = user && user.role !== "guest" ? user.traderName : null;
   const search = useSearch();
@@ -29,17 +34,20 @@ export default function AcademyPathPage() {
 
   const config = usePathConfig();
   const pending = useRequests("pending", isCurator);
-  const people = React.useMemo(() => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, "ru")), [dbUsers]);
+  const people = React.useMemo(() => {
+    const names = dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames);
+    return (me ? [me, ...names.filter((n) => n !== me)] : names).map((n) => ({ value: n, label: personName(n) }));
+  }, [dbUsers, me]);
   const open = (u: string) => { setTarget(u); setView("person"); };
 
   return (
     <Page>
       <PageHeader
-        title="Путь трейдера"
+        title={shellI18n.t("nav.academyPath")}
         icon={RouteIcon}
-        description="Стажёр → Джун → Трейдер → Сеньор: объективные критерии перевода, отчёт готовности и решение наставника"
+        description={t("page.pathDescription", { ladder: ladderText() })}
         actions={
-          <Button variant="ghost" size="sm" onClick={() => void qc.invalidateQueries({ queryKey: pathKeys.all })} aria-label="Обновить данные">
+          <Button variant="ghost" size="sm" onClick={() => void qc.invalidateQueries({ queryKey: pathKeys.all })} aria-label={t("page.refreshData")} title={t("page.refreshData")}>
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </Button>
         }
@@ -47,23 +55,21 @@ export default function AcademyPathPage() {
         {isCurator && (
           <div className="flex flex-wrap items-center gap-2">
             <Segmented<View>
-              ariaLabel="Раздел"
+              ariaLabel={t("page.sectionAria")}
               value={view}
               onChange={setView}
               options={[
-                { value: "funnel", label: "Воронка" },
-                { value: "person", label: "Отчёт ученика" },
-                { value: "requests", label: "Заявки", count: pending.data?.requests.length || undefined },
-                { value: "criteria", label: "Критерии" },
+                { value: "funnel", label: t("page.views.funnel") },
+                { value: "person", label: t("page.views.person") },
+                { value: "requests", label: t("page.views.requests"), count: pending.data?.requests.length || undefined },
+                { value: "criteria", label: t("page.views.criteria") },
               ]}
             />
             {view === "person" && (
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Ученик</span>
-                <select className={selectCls} value={target ?? me ?? ""} onChange={(e) => setTarget(e.target.value || null)}>
-                  {me && <option value={me}>{me} (я)</option>}
-                  {people.filter((n) => n !== me).map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
+                <span>{t("page.student")}</span>
+                <PersonSelect value={target ?? me ?? ""} onValueChange={(v) => setTarget(v || null)} options={people} self={me}
+                  placeholder={t("page.student")} ariaLabel={t("page.student")} className="h-9 w-56" />
               </label>
             )}
           </div>

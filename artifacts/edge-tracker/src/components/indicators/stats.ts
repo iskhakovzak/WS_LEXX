@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { Trade } from "@workspace/api-client-react";
+import type { StatTrade } from "./use-tagged-trades";
 import { LIBRARY, HORIZONS, type Horizon } from "./library";
 
 export type HorizonStats = { count: number; wins: number; winRate: number; avgR: number | null };
@@ -38,7 +39,7 @@ export function horizonOf(t: Pick<Trade, "horizon">): Horizon {
   return h === "overnight" || h === "swing" ? h : "intraday";
 }
 
-function summarize(list: Trade[]): Pick<HorizonStats, "count" | "wins" | "winRate" | "avgR"> {
+function summarize(list: StatTrade[]): Pick<HorizonStats, "count" | "wins" | "winRate" | "avgR"> {
   const wins = list.filter((t) => t.result === "win").length;
   const rs = list.filter((t) => t.rMultiple != null && Number.isFinite(Number(t.rMultiple))).map((t) => Number(t.rMultiple));
   return {
@@ -57,7 +58,7 @@ function summarize(list: Trade[]): Pick<HorizonStats, "count" | "wins" | "winRat
  * `scopeTotal` — trades in scope for this horizon when `trades` is only the tagged subset (server-side filter);
  * null ⇒ `trades` is the whole book and is its own denominator.
  */
-export function useIndicatorStats(trades: Trade[], horizon: Horizon | "all", scopeTotal: number | null = null) {
+export function useIndicatorStats(trades: StatTrade[], horizon: Horizon | "all", scopeTotal: number | null = null) {
   return useMemo(() => {
     const prepared = trades
       .filter((t) => horizon === "all" || horizonOf(t) === horizon)

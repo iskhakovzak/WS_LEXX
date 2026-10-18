@@ -8,6 +8,7 @@ import { logActivity } from "../lib/activity";
 import { canAccessTrade, isStaffRole, requireMember, scopeTrader, viewerRole, GUEST_SCOPE } from "../lib/auth";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
+import { loadViewer, visibleSql } from "../lib/playbookAccess";
 import {
   CreateResearchBody,
   GetResearchParams,
@@ -18,6 +19,7 @@ import {
   GetResearchResponse,
   UpdateResearchResponse,
 } from "@workspace/api-zod";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Research notes ("Ресёрч") — patterns the desk keeps studying.
@@ -29,6 +31,8 @@ import {
  *   PATCH  /research/:id                         owner or staff (also {date, playbookId} lineage)
  *   DELETE /research/:id, POST /research/:id/restore
  *   GET    /research/:id/trades                  scoped trades linked via pattern_id + net stats
+ *   GET    /research/:id/setups                  playbook setups promoted from the note (viewer-visible, lean)
+ *   GET    /research/:id/candidates              scoped trades in the note's ticker(s) not linked to it yet (≤12)
  *   POST   /research/:id/link-trade              {tradeId, unlink?}
  *   POST   /research/:id/pin                     {pinned} — per-user pin (research_pins)
  *
@@ -153,7 +157,7 @@ async function canModify(req: Request, r: ResearchRow): Promise<boolean> {
 
 function parseId(req: Request, res: Response): number | null {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -175,12 +179,12 @@ const ListQuery = z.object({
 router.get("/research", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await evidenceScope(req);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const q = ListQuery.safeParse({
     ticker: req.query.ticker || undefined, q: req.query.q || undefined, tag: req.query.tag || undefined,
     pinned: req.query.pinned || undefined, limit: req.query.limit, offset: req.query.offset,
   });
-  if (!q.success) { res.status(400).json({ error: q.error.message }); return; }
+  if (!q.success) throw q.error;
   const viewer = req.authUser?.name ?? null;
   const where: string[] = ["r.deleted_at IS NULL"];
   const params: unknown[] = [scope, viewer];
@@ -218,12 +222,12 @@ router.post("/research", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateResearchBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const extra = CreateExtra.safeParse(req.body);
-  if (!extra.success) { res.status(400).json({ error: extra.error.message }); return; }
+  if (!extra.success) throw extra.error;
   const d = parsed.data;
   const name = d.patternName.trim();
-  if (!name) { res.status(400).json({ error: "Название обязательно" }); return; }
+  if (!name) throw new AppError("NAME_REQUIRED_GENERIC");
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO research (pattern_name, ticker, context, market_condition, what_worked, what_failed, repeat_count, confidence_level,
        screenshot_url, screenshot_notes, tags, market_cap, float, adv, atr, relative_volume, beta, short_interest, sector, long_name,
@@ -246,12 +250,12 @@ router.post("/research", asyncHandler(async (req, res): Promise<void> => {
 router.get("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await evidenceScope(req);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const params = GetResearchParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const viewer = req.authUser?.name ?? null;
   const entry = await loadResearch(params.data.id, viewer, scope);
-  if (!entry) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!entry) throw notFound("RESEARCH_NOT_FOUND");
   res.json(serializeResearch(entry, viewer));
 }));
 
@@ -272,16 +276,16 @@ router.patch("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = UpdateResearchParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const parsed = UpdateResearchBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const extra = PatchExtra.safeParse(req.body);
-  if (!extra.success) { res.status(400).json({ error: extra.error.message }); return; }
+  if (!extra.success) throw extra.error;
   const viewer = req.authUser!.name;
   const scope = (await evidenceScope(req)) ?? null;
   const existing = await loadResearch(params.data.id, viewer, scope);
-  if (!existing) { res.status(404).json({ error: "Research not found" }); return; }
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Изменять заметку может только автор или куратор" }); return; }
+  if (!existing) throw notFound("RESEARCH_NOT_FOUND");
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   const d = parsed.data;
   const patch: Record<string, unknown> = {
     ...d,
@@ -304,7 +308,7 @@ router.patch("/research/:id", asyncHandler(async (req, res): Promise<void> => {
     await pool.query(`UPDATE research SET ${sets.join(", ")} WHERE id = $${vals.length} AND deleted_at IS NULL`, vals);
   }
   const entry = await loadResearch(existing.id, viewer, scope);
-  if (!entry) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!entry) throw notFound("RESEARCH_NOT_FOUND");
   logActivity({ action: extra.data.playbookId ? "promoted" : "updated", section: "research", entityId: String(entry.id), entityTitle: entry.pattern_name, trader: viewer, details: extra.data.playbookId ? `playbook #${extra.data.playbookId}` : undefined });
   const out = serializeResearch(entry, viewer);
   UpdateResearchResponse.parse(out);
@@ -315,10 +319,10 @@ router.delete("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteResearchParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const existing = await loadResearch(params.data.id, req.authUser!.name, GUEST_SCOPE);
-  if (!existing) { res.status(404).json({ error: "Research not found" }); return; }
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Удалить заметку может только автор или куратор" }); return; }
+  if (!existing) throw notFound("RESEARCH_NOT_FOUND");
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await pool.query(`UPDATE research SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [existing.id]);
   logActivity({ action: "deleted", section: "research", entityId: String(existing.id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
   res.sendStatus(204);
@@ -329,8 +333,8 @@ router.post("/research/:id/restore", asyncHandler(async (req, res): Promise<void
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadResearch(id, req.authUser!.name, GUEST_SCOPE, true);
-  if (!existing || !existing.deleted_at) { res.status(404).json({ error: "Research not found" }); return; }
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Восстановить заметку может только автор или куратор" }); return; }
+  if (!existing || !existing.deleted_at) throw notFound("RESEARCH_NOT_FOUND");
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await pool.query(`UPDATE research SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
   logActivity({ action: "restored", section: "research", entityId: String(id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
   res.json({ success: true });
@@ -346,9 +350,9 @@ router.get("/research/:id/trades", asyncHandler(async (req, res): Promise<void> 
   await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const scope = await evidenceScope(req);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const { rows: exists } = await pool.query(`SELECT 1 FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   const { rows } = await pool.query<Record<string, unknown>>(
     `SELECT ${TRADE_SELECT} FROM trades t
       WHERE t.deleted_at IS NULL AND t.pattern_id = $1 AND ($2::text IS NULL OR t.trader = $2)
@@ -379,6 +383,55 @@ router.get("/research/:id/trades", asyncHandler(async (req, res): Promise<void> 
   });
 }));
 
+/**
+ * Playbook setups promoted from this note (source_type = 'research', or the note's own playbook_id), limited to what
+ * the viewer may read. The note preview used to load the whole /playbook list (~300 KB) just for this lookup.
+ */
+router.get("/research/:id/setups", asyncHandler(async (req, res): Promise<void> => {
+  await ensureTables();
+  const id = parseId(req, res); if (id == null) return;
+  const { rows: exists } = await pool.query<{ playbook_id: number | null }>(`SELECT playbook_id FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
+  const params: unknown[] = [id, exists[0].playbook_id];
+  const vis = visibleSql(await loadViewer(req), params, "p");
+  const { rows } = await pool.query<{ id: number; name: string; folder: string | null; source_type: string | null; source_id: number | null }>(
+    `SELECT p.id, p.name, p.folder, p.source_type, p.source_id
+       FROM playbook p
+      WHERE p.deleted_at IS NULL AND ((p.source_type = 'research' AND p.source_id = $1) OR p.id = $2::int) AND ${vis}
+      ORDER BY p.created_at ASC LIMIT 20`,
+    params,
+  );
+  res.json(rows.map((r) => ({ id: r.id, name: r.name, folder: r.folder, sourceType: r.source_type, sourceId: r.source_id })));
+}));
+
+/**
+ * Trades the viewer could link to this note: same ticker(s), not linked to this note yet, newest first (scoped like
+ * /research/:id/trades — a trader sees only their own). Saves looking up trade IDs in the journal.
+ */
+router.get("/research/:id/candidates", asyncHandler(async (req, res): Promise<void> => {
+  await ensureTables();
+  const id = parseId(req, res); if (id == null) return;
+  const scope = await evidenceScope(req);
+  if (scope === undefined) throw unauthorized();
+  if (scope === GUEST_SCOPE) { res.json([]); return; }
+  const { rows: exists } = await pool.query<{ ticker: string | null }>(`SELECT ticker FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
+  const tickers = [...new Set((exists[0].ticker ?? "").toUpperCase().split(/[\s,;/]+/).map((t) => t.trim()).filter((t) => /^[A-Z][A-Z0-9.\-]{0,11}$/.test(t)))];
+  if (!tickers.length) { res.json([]); return; }
+  const { rows } = await pool.query<Record<string, unknown>>(
+    `SELECT ${TRADE_SELECT} FROM trades t
+      WHERE t.deleted_at IS NULL AND UPPER(t.ticker) = ANY($1::text[]) AND t.pattern_id IS DISTINCT FROM $2
+        AND ($3::text IS NULL OR t.trader = $3)
+      ORDER BY ${closeDateSql("t")} DESC, t.id DESC LIMIT 12`,
+    [tickers, id, scope],
+  );
+  res.json(rows.map((r) => ({
+    id: Number(r.id), ticker: String(r.ticker ?? ""), date: String(r.date ?? "").slice(0, 10), side: (r.side as string | null) ?? null,
+    setup: (r.setup as string | null) ?? null, result: (r.result as string | null) ?? null, netPnl: strToNum(r.net_pnl),
+    signedR: strToNum(r.signed_r), trader: (r.trader as string | null) ?? null, patternId: r.pattern_id == null ? null : Number(r.pattern_id),
+  })));
+}));
+
 const LinkBody = z.object({ tradeId: z.coerce.number().int().positive(), unlink: z.coerce.boolean().optional() });
 
 router.post("/research/:id/link-trade", asyncHandler(async (req, res): Promise<void> => {
@@ -386,12 +439,12 @@ router.post("/research/:id/link-trade", asyncHandler(async (req, res): Promise<v
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = LinkBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: "tradeId required" }); return; }
+  if (!body.success) throw new AppError("FIELD_REQUIRED", undefined, { field: "tradeId" });
   const { rows: exists } = await pool.query<{ pattern_name: string }>(`SELECT pattern_name FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   const access = await canAccessTrade(req, body.data.tradeId);
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-  if (!access) { res.status(403).json({ error: "Можно привязывать только свои сделки" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
+  if (!access) throw new AppError("OWN_TRADES_ONLY");
   await pool.query(`UPDATE trades SET pattern_id = $1 WHERE id = $2 AND deleted_at IS NULL`, [body.data.unlink ? null : id, body.data.tradeId]);
   logActivity({ action: body.data.unlink ? "unlinked" : "linked", section: "research", entityId: String(id), entityTitle: exists[0].pattern_name, trader: req.authUser!.name, details: `trade #${body.data.tradeId}` });
   res.json({ success: true, patternId: body.data.unlink ? null : id, tradeId: body.data.tradeId });
@@ -404,9 +457,9 @@ router.post("/research/:id/pin", asyncHandler(async (req, res): Promise<void> =>
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = PinBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: "pinned (boolean) required" }); return; }
+  if (!body.success) throw new AppError("INVALID_FIELD", undefined, { field: "pinned" });
   const { rows: exists } = await pool.query(`SELECT 1 FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   if (body.data.pinned) {
     await pool.query(`INSERT INTO research_pins (user_name, research_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [req.authUser!.name, id]);
   } else {

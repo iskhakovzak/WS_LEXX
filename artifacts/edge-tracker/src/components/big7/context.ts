@@ -11,7 +11,9 @@ import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { etParts, RTH_OPEN_MIN, RTH_CLOSE_MIN, PRE_OPEN_MIN } from "@/components/chart-engine/lib/time";
 import type { Candle } from "@/components/chart-engine/types";
 import { nyDate, prevWeekday } from "@/lib/trading-date";
+import { fmtNum } from "@/lib/format";
 import type { GapStats, StockQuote } from "./lib";
+import { big7I18n } from "@/i18n/ns/big7";
 
 // ─── session date / phase ───────────────────────────────────────────────────
 export type Phase = "pre" | "rth" | "post" | "closed";
@@ -358,7 +360,6 @@ export type ToneKind = "on" | "off" | "mixed";
 export type Tone = { kind: ToneKind; label: string; score: number; reasons: string[]; divergence: boolean };
 
 const clamp1 = (x: number) => Math.max(-1, Math.min(1, x));
-const s2 = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(2)}`;
 
 /**
  * Risk-on / risk-off from five signals, each in [−1, 1] with a weight:
@@ -386,22 +387,23 @@ export function marketTone(i: {
   const divergence = i.agg.weighted != null && i.qqqChg != null && Math.abs(i.agg.weighted) >= 0.25 && Math.abs(i.qqqChg) >= 0.15
     && Math.sign(i.agg.weighted) !== Math.sign(i.qqqChg);
 
+  const t = big7I18n.t;
   const reasons: string[] = [];
-  if (i.agg.n > 0) reasons.push(`${i.agg.up} из ${i.agg.n} в плюсе`);
-  if (i.qqqVwapDist != null && i.phase !== "pre") reasons.push(`QQQ ${i.qqqVwapDist >= 0 ? "над" : "под"} VWAP`);
-  if (divergence) reasons.push("Big 7 против индекса — ротация");
+  if (i.agg.n > 0) reasons.push(t("tone.upOf", { up: i.agg.up, n: i.agg.n }));
+  if (i.qqqVwapDist != null && i.phase !== "pre") reasons.push(t(i.qqqVwapDist >= 0 ? "tone.qqqAboveVwap" : "tone.qqqBelowVwap"));
+  if (divergence) reasons.push(t("tone.rotation"));
   else if (i.agg.shareQqq != null && i.agg.contribQqq != null && Math.abs(i.agg.shareQqq) >= 0.15)
-    reasons.push(`мегакэпы ≈ ${s2(i.agg.contribQqq)} п.п. движения QQQ`);
-  if (i.qqqAboveSma20 != null && reasons.length < 3) reasons.push(`QQQ ${i.qqqAboveSma20 ? "над" : "под"} SMA20`);
+    reasons.push(t("tone.megacapsShare", { value: fmtNum(i.agg.contribQqq, { signed: true }) }));
+  if (i.qqqAboveSma20 != null && reasons.length < 3) reasons.push(t(i.qqqAboveSma20 ? "tone.qqqAboveSma" : "tone.qqqBelowSma"));
 
-  const label = kind === "on" ? "Risk-on" : kind === "off" ? "Risk-off" : "Смешанный";
+  const label = kind === "on" ? "Risk-on" : kind === "off" ? "Risk-off" : t("tone.mixed");
   return { kind, label, score, reasons: reasons.slice(0, 3), divergence };
 }
 
 /** One-line playbook hint for the tone. */
 export function toneHint(t: Tone): string {
-  if (t.divergence) return "Индекс держат не мегакэпы — торгуйте лидеров дня, а не QQQ.";
-  if (t.kind === "on") return "Приоритет лонгам в лидерах по RS; откаты к VWAP — точки входа.";
-  if (t.kind === "off") return "Шорты слабых по RS; лонги только A+ от уровня.";
-  return "Нет единого направления — меньше размер, торгуйте от уровней.";
+  if (t.divergence) return big7I18n.t("tone.hintDivergence");
+  if (t.kind === "on") return big7I18n.t("tone.hintOn");
+  if (t.kind === "off") return big7I18n.t("tone.hintOff");
+  return big7I18n.t("tone.hintMixed");
 }

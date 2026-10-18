@@ -2,8 +2,12 @@
 // number comes from the API, which uses the shared trade math (net = gross − |fees|, signed R,
 // win rate = W/(W+L), PF = ΣR⁺/|ΣR⁻|). Nothing here recomputes R or P&L.
 import { useCallback, useEffect, useState } from "react";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { apiErrorStatus, nullIfMissing } from "@/lib/api/errors";
+import { POLL, STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
 import { nyDate } from "@/lib/trading-date";
 import type { Horizon } from "@/lib/trade-math";
 
@@ -200,20 +204,9 @@ export type RecentTrade = {
   createdAt: string;
 };
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(apiUrl(path));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as T;
-}
-
-/** GET that treats 404 (section not deployed) and non-JSON as "not available" → null. */
-async function getOptional<T>(path: string): Promise<T | null> {
-  const res = await fetch(apiUrl(path));
-  if (res.status === 404 || res.status === 403) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const ct = res.headers.get("content-type") ?? "";
-  if (!ct.includes("json")) return null;
-  return (await res.json()) as T;
+/** GET where 403 (section not for this role) and 404 / non-JSON (section not deployed) mean "not available" → null. */
+function getOptional<T>(path: string, signal?: AbortSignal): Promise<T | null> {
+  return http.get<T>(path, { signal }).catch((e: unknown) => (apiErrorStatus(e) === 403 ? null : nullIfMissing(e)));
 }
 
 function scopeQuery(scope: Scope) {
@@ -224,10 +217,10 @@ export function useDashboardToday(scope: Scope, enabled = true) {
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/dashboard/today", { scope, date }],
-    queryFn: () => getJson<DashboardToday>(`/api/dashboard/today?${scopeQuery(scope)}&date=${date}`),
-    staleTime: 15_000,
+    queryFn: ({ signal }) => http.get<DashboardToday>(`/api/dashboard/today?${scopeQuery(scope)}&date=${date}`, { signal }),
+    staleTime: STALE.live,
     refetchOnWindowFocus: true,
-    refetchInterval: 120_000,
+    refetchInterval: POLL.twoMinutes,
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -237,8 +230,8 @@ export function useDashboardEquity(scope: Scope, period: EquityPeriod, enabled =
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/dashboard/equity", { scope, period, date }],
-    queryFn: () => getJson<DashboardEquity>(`/api/dashboard/equity?${scopeQuery(scope)}&period=${period}&date=${date}`),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => http.get<DashboardEquity>(`/api/dashboard/equity?${scopeQuery(scope)}&period=${period}&date=${date}`, { signal }),
+    staleTime: STALE.default,
     refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
     enabled,
@@ -249,8 +242,8 @@ export function useDashboardEquity(scope: Scope, period: EquityPeriod, enabled =
 export function useRecentTrades(scope: Scope, enabled = true) {
   return useQuery({
     queryKey: ["/api/dashboard/recenttrades", { scope }],
-    queryFn: () => getJson<RecentTrade[]>(`/api/dashboard/recenttrades?limit=8&${scopeQuery(scope)}`),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => http.get<RecentTrade[]>(`/api/dashboard/recenttrades?limit=8&${scopeQuery(scope)}`, { signal }),
+    staleTime: STALE.default,
     refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
     enabled,
@@ -311,14 +304,13 @@ export type RiskMe = {
   todayPnl: number | null;
 };
 
+/** Shares one cache entry with the risk page and the shell badge (lib/api/queries → riskMeQuery). */
 export function useRiskMe(enabled = true) {
   return useQuery({
-    queryKey: ["/api/risk/me", { date: nyDate() }],
-    queryFn: () => getOptional<RiskMe>(`/api/risk/me?date=${nyDate()}`),
-    staleTime: 30_000,
+    ...riskMeQuery<RiskMe>(),
     retry: false,
     refetchOnWindowFocus: true,
-    refetchInterval: 120_000,
+    refetchInterval: POLL.twoMinutes,
     enabled,
   });
 }
@@ -364,11 +356,11 @@ export type RiskDesk = {
 export function useRiskDesk(enabled: boolean) {
   return useQuery({
     queryKey: ["/api/risk/desk", { date: nyDate() }],
-    queryFn: () => getOptional<RiskDesk>(`/api/risk/desk?date=${nyDate()}`),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => getOptional<RiskDesk>(`/api/risk/desk?date=${nyDate()}`, signal),
+    staleTime: STALE.default,
     retry: false,
     refetchOnWindowFocus: true,
-    refetchInterval: 120_000,
+    refetchInterval: POLL.twoMinutes,
     enabled,
   });
 }
@@ -392,8 +384,8 @@ export function useEodStatus(enabled = true) {
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/eod/status", { date }],
-    queryFn: () => getOptional<EodStatus>(`/api/eod/status?date=${date}`),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => getOptional<EodStatus>(`/api/eod/status?date=${date}`, signal),
+    staleTime: STALE.short,
     retry: false,
     refetchOnWindowFocus: true,
     enabled,
@@ -413,8 +405,8 @@ export type PropReportsStatus = {
 export function usePropReportsStatus(enabled = true) {
   return useQuery({
     queryKey: ["/api/propreports/status"],
-    queryFn: () => getOptional<PropReportsStatus>("/api/propreports/status"),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => getOptional<PropReportsStatus>("/api/propreports/status", signal),
+    staleTime: STALE.short,
     retry: false,
     refetchOnWindowFocus: true,
     enabled,
@@ -439,8 +431,8 @@ export function useEventsToday(enabled = true) {
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/events/today", { date }],
-    queryFn: () => getOptional<EventsToday>(`/api/events/today?date=${date}`),
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => getOptional<EventsToday>(`/api/events/today?date=${date}`, signal),
+    staleTime: STALE.long,
     retry: false,
     enabled,
   });
@@ -450,8 +442,8 @@ export function useEventsToday(enabled = true) {
 export function useEodDay(date: string | null, trader: string | null, enabled = true) {
   return useQuery({
     queryKey: ["/api/eod/status", { date, trader }],
-    queryFn: () => getOptional<EodStatus>(`/api/eod/status?date=${date}&trader=${encodeURIComponent(trader ?? "")}`),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => getOptional<EodStatus>(`/api/eod/status?date=${date}&trader=${encodeURIComponent(trader ?? "")}`, signal),
+    staleTime: STALE.short,
     retry: false,
     enabled: enabled && !!date && !!trader,
   });
@@ -474,22 +466,21 @@ export type SectionId =
   | "dna"
   | "psychology";
 
-export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }> = {
-  attention: { label: "Что важно сейчас", hint: "Следующий шаг, риск, разбор дня, события по моим тикерам" },
-  equity: { label: "Кривая капитала", hint: "От недели до всего времени, нетто или R" },
-  recent: { label: "Последние сделки", hint: "Короткая лента → карточка сделки" },
-  desk: { label: "Деск сегодня", hint: "Каждый трейдер: день, неделя, лимит", staffOnly: true },
-  streaks: { label: "Серии", hint: "Текущая серия и последние 20 сделок" },
-  positions: { label: "Открытые позиции", hint: "Показывается, только когда есть позиции" },
+const SECTION_FLAGS: Record<SectionId, { staffOnly?: boolean; extra?: boolean }> = {
+  attention: {}, equity: {}, recent: {}, desk: { staffOnly: true }, streaks: {}, positions: {},
   // Optional extras below the cockpit — off by default, switch on in «Настроить».
-  checkin: { label: "Утренний чек-ин", hint: "Сон, фокус, стресс перед сессией", extra: true },
-  brief: { label: "Бриф к открытию", hint: "Премаркет, гэпы, события дня", extra: true },
-  quote: { label: "Цитата дня", hint: "Короткая мысль на день", extra: true },
-  sectors: { label: "Радар секторов", hint: "Сила секторов к рынку", extra: true },
-  macro: { label: "Макро-календарь", hint: "Ближайшие события и праздники", extra: true },
-  dna: { label: "DNA рынка", hint: "Режим рынка сегодня", extra: true },
-  psychology: { label: "Психология недели", hint: "Еженедельный отчёт", extra: true },
+  checkin: { extra: true }, brief: { extra: true }, quote: { extra: true }, sectors: { extra: true },
+  macro: { extra: true }, dna: { extra: true }, psychology: { extra: true },
 };
+
+/** Label / hint are read in the current language on access; flags are plain. */
+export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }> = Object.fromEntries(
+  (Object.keys(SECTION_FLAGS) as SectionId[]).map((id) => [id, {
+    ...SECTION_FLAGS[id],
+    get label() { return dashboardI18n.t(`sections.${id}.label`); },
+    get hint() { return dashboardI18n.t(`sections.${id}.hint`); },
+  }]),
+) as Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }>;
 
 export const DEFAULT_ORDER: SectionId[] = [
   "attention",

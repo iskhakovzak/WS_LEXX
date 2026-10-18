@@ -1558,63 +1558,32 @@ export async function scanGeneralFinanceFeedsForAnalystActions(opts: { tickers?:
   return { scanned, matched, inserted, errors, durationMs: Date.now() - start };
 }
 
-// Background poller: scan watchlist + news on startup, then hourly.
-let analystPollerStarted = false;
-export function startAnalystActionsPoller() {
-  if (analystPollerStarted) return;
-  analystPollerStarted = true;
-  const run = async () => {
-    try {
-      // 1) Build dynamic ticker list (watchlist + trades + watchlist table + recent news tickers)
-      const tickers = await getDynamicAnalystTickers({ newsDays: 14 });
-      logger.info({ count: tickers.length }, "Analyst scan: dynamic ticker list built");
-      const r = await scanWatchlistAnalystActions({ concurrency: 5, tickers, fetchFundamentals: false });
-      logger.info(r, "Yahoo analyst actions scan complete");
-      // 2) Parse news_cache for analyst headlines on tickers Yahoo may have missed
-      const n = await scanNewsForAnalystActions({ sinceDays: 14 });
-      logger.info(n, "News-based analyst scan complete");
-      // 3) Seeking Alpha per-ticker RSS — independent firehose
-      const sa = await scanSeekingAlphaForAnalystActions({ concurrency: 4, tickers });
-      logger.info(sa, "Seeking Alpha analyst scan complete");
-      // 4) NASDAQ structured ratings JSON
-      const nq = await scanNasdaqAnalystActions({ concurrency: 3, tickers });
-      logger.info(nq, "NASDAQ analyst scan complete");
-      // 5) General finance feeds (MarketWatch + Investing.com)
-      const rss = await scanGeneralFinanceFeedsForAnalystActions({ tickers });
-      logger.info(rss, "General finance RSS analyst scan complete");
-    } catch (e: any) {
-      logger.warn({ error: e.message }, "Analyst actions scan failed");
-    }
-  };
-  // Initial scan after 30s so server is up
-  setTimeout(() => { run().catch(() => {}); }, 30 * 1000);
-  // 20-min cadence — analysts publish throughout the day; missing fresh actions
-  // is the #1 user complaint. Yahoo per-ticker calls are cheap (~150 tickers).
-  setInterval(() => { run().catch(() => {}); }, 20 * 60 * 1000);
-  logger.info("Analyst actions poller started (every 20m, dynamic ticker list + news parsing)");
+// Background scans — scheduled by the job registry (src/jobs/definitions.ts: "market.analyst-actions", "market.sectors").
+
+/** One analyst-actions scan over the dynamic ticker list (Yahoo, news, Seeking Alpha, NASDAQ, general RSS). */
+export async function runAnalystActionsScan(): Promise<Record<string, unknown>> {
+  // 1) Build dynamic ticker list (watchlist + trades + watchlist table + recent news tickers)
+  const tickers = await getDynamicAnalystTickers({ newsDays: 14 });
+  logger.info({ count: tickers.length }, "Analyst scan: dynamic ticker list built");
+  const r = await scanWatchlistAnalystActions({ concurrency: 5, tickers, fetchFundamentals: false });
+  logger.info(r, "Yahoo analyst actions scan complete");
+  // 2) Parse news_cache for analyst headlines on tickers Yahoo may have missed
+  const n = await scanNewsForAnalystActions({ sinceDays: 14 });
+  logger.info(n, "News-based analyst scan complete");
+  // 3) Seeking Alpha per-ticker RSS — independent firehose
+  const sa = await scanSeekingAlphaForAnalystActions({ concurrency: 4, tickers });
+  logger.info(sa, "Seeking Alpha analyst scan complete");
+  // 4) NASDAQ structured ratings JSON
+  const nq = await scanNasdaqAnalystActions({ concurrency: 3, tickers });
+  logger.info(nq, "NASDAQ analyst scan complete");
+  // 5) General finance feeds (MarketWatch + Investing.com)
+  const rss = await scanGeneralFinanceFeedsForAnalystActions({ tickers });
+  logger.info(rss, "General finance RSS analyst scan complete");
+  return { tickers: tickers.length };
 }
 
-let sectorPollerStarted = false;
-export function startSectorPoller() {
-  if (sectorPollerStarted) return;
-  sectorPollerStarted = true;
-  const tick = async () => {
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/New_York",
-      weekday: "short",
-      hour: "2-digit",
-      hour12: false,
-    });
-    const parts = fmt.formatToParts(new Date());
-    const wd = parts.find((p) => p.type === "weekday")?.value || "";
-    const hh = Number(parts.find((p) => p.type === "hour")?.value || "0");
-    const isWeekday = wd !== "Sat" && wd !== "Sun";
-    const isMarketWindow = hh >= 9 && hh <= 16;
-    if (isWeekday && isMarketWindow) {
-      await getSectorStrength({ force: true }).catch(() => {});
-    }
-  };
-  tick().catch(() => {});
-  setInterval(() => { tick().catch(() => {}); }, 15 * 60 * 1000);
-  logger.info("Sector strength poller started (every 15 min during market hours)");
+/** Sector strength refresh (the job's cron limits it to weekdays 09:00–16:59 New York). */
+export async function runSectorRefresh(): Promise<Record<string, unknown>> {
+  const points = await getSectorStrength({ force: true });
+  return { sectors: points.length };
 }

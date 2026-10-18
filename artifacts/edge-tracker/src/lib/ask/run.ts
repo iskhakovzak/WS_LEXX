@@ -6,17 +6,18 @@
 // only when the question needs it (names another trader, «весь деск», «по трейдерам», compare traders) or when they
 // have no trades of their own — see askBookScope.
 //
-// Source: GET /api/ask/book — one SQL query, only the fields the engine reads, rows as tuples (api-server
-// routes/ask.ts). Fallback while an older API is running (404): cursor paging over /api/trades/page, scoped the same
+// Source: GET /api/ask/book?enc=2 — one SQL query, only the fields the engine reads, rows as tuples with repeated
+// strings dictionary-encoded and clock stamps as seconds, gzipped (api-server routes/ask.ts, lib/askBook.ts). Fallback while an older API is running (404): cursor paging over /api/trades/page, scoped the same
 // way, ≤ ASK_MAX_PAGES × ASK_PAGE_LIMIT trades.
 
-import { apiUrl } from "@/lib/api";
+import { http, apiErrorFromResponse } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import {
   applyFilter, buildAnswer, buildCompare, indexBook, MAX_LINK_IDS,
   type AskAnswer, type AskLinkParams, type AskTrade, type BookIndex,
 } from "./aggregate";
 import { filterOf, type AskFilter, type AskQuery } from "./parse";
+import { askI18n } from "@/i18n/ns/ask";
 
 export const ASK_PAGE_LIMIT = 500;
 export const ASK_MAX_PAGES = 10;
@@ -36,7 +37,53 @@ export interface AskLoadProgress {
 }
 
 type PageResponse = { items?: AskTrade[]; page?: { hasMore?: boolean; nextCursor?: string | null } };
-type CompactResponse = { cols?: string[]; rows?: Array<Array<string | number | null>>; truncated?: boolean };
+type Cell = string | number | null;
+type CompactResponse = {
+  cols?: string[];
+  rows?: Cell[][];
+  truncated?: boolean;
+  /** enc=2: column → dictionary; the column's cells are indexes into it. */
+  dicts?: Record<string, string[]>;
+  /** enc=2: column → base date column; numeric cells are seconds since midnight of that date (closedAt falls back to date). */
+  clock?: Record<string, string>;
+};
+
+export interface TupleEncoding {
+  dicts?: Record<string, string[]>;
+  clock?: Record<string, string>;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+/** Seconds since midnight on `base` → "YYYY-MM-DDTHH:MM:SS" (the exact stamp the API encoded). */
+function clockStamp(base: string, sec: number): string {
+  return `${base}T${pad2(Math.floor(sec / 3600))}:${pad2(Math.floor((sec % 3600) / 60))}:${pad2(sec % 60)}`;
+}
+
+/** Undo the enc=2 encoding: dictionary indexes → strings, then clock seconds → stamps (reads the decoded dates). */
+export function decodeTuples(cols: readonly string[], rows: ReadonlyArray<ReadonlyArray<Cell>>, enc: TupleEncoding = {}): Cell[][] {
+  const dicts = Object.entries(enc.dicts ?? {})
+    .map(([k, list]) => ({ i: cols.indexOf(k), list }))
+    .filter((d) => d.i >= 0);
+  const iDate = cols.indexOf("date");
+  const clocks = Object.entries(enc.clock ?? {})
+    .map(([k, baseCol]) => ({ i: cols.indexOf(k), b: cols.indexOf(baseCol) }))
+    .filter((c) => c.i >= 0);
+  if (!dicts.length && !clocks.length) return rows as Cell[][];
+  return rows.map((src) => {
+    const r = src.slice();
+    for (const d of dicts) {
+      const v = r[d.i];
+      if (typeof v === "number") r[d.i] = d.list[v] ?? null;
+    }
+    for (const c of clocks) {
+      const v = r[c.i];
+      if (typeof v !== "number") continue;
+      const base = (c.b >= 0 ? r[c.b] : null) ?? (iDate >= 0 ? r[iDate] : null);
+      r[c.i] = typeof base === "string" ? clockStamp(base, v) : null;
+    }
+    return r;
+  });
+}
 
 export interface AskBook {
   trades: AskTrade[];
@@ -89,7 +136,8 @@ export function askBookScope(q: AskQuery | null, opts: { me: string | null; isSt
 }
 
 /** Tuples from /api/ask/book → AskTrade (openedAt / closedAt go back into contextSnapshot, where the engine reads them). */
-export function tradesFromTuples(cols: readonly string[], rows: ReadonlyArray<ReadonlyArray<string | number | null>>): AskTrade[] {
+export function tradesFromTuples(cols: readonly string[], encoded: ReadonlyArray<ReadonlyArray<Cell>>, enc?: TupleEncoding): AskTrade[] {
+  const rows = decodeTuples(cols, encoded, enc);
   const at = (k: string) => cols.indexOf(k);
   const i = {
     id: at("id"), ticker: at("ticker"), date: at("date"), exitDate: at("exitDate"), side: at("side"), trader: at("trader"),
@@ -121,15 +169,13 @@ export function tradesFromTuples(cols: readonly string[], rows: ReadonlyArray<Re
   }));
 }
 
-async function httpError(r: Response): Promise<Error> {
-  let msg = `HTTP ${r.status}`;
-  try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* not JSON */ }
-  return new Error(msg);
-}
-
-/** Reads a JSON body while reporting bytes received (Content-Length is set: res.json, no compression). */
+/**
+ * Reads a JSON body while reporting bytes received. The body arrives decompressed, so the total is X-Raw-Length
+ * (uncompressed size, set when the API gzips) and Content-Length only for an uncompressed response.
+ */
 async function readJson<T>(r: Response, onProgress?: (p: AskLoadProgress) => void): Promise<T> {
-  const lenHeader = Number(r.headers.get("content-length"));
+  const raw = r.headers.get("x-raw-length");
+  const lenHeader = Number(raw ?? (r.headers.get("content-encoding") ? null : r.headers.get("content-length")));
   const total = Number.isFinite(lenHeader) && lenHeader > 0 ? lenHeader : null;
   if (!onProgress || !r.body) return (await r.json()) as T;
   const reader = r.body.getReader();
@@ -155,9 +201,7 @@ async function fetchPagedBook(scope: AskBookScope, me: string | null, signal?: A
     const p = new URLSearchParams({ sort: "date", dir: "desc", limit: String(ASK_PAGE_LIMIT) });
     if (scope === "mine" && me) p.set("trader", me);
     if (cursor) p.set("cursor", cursor);
-    const r = await fetch(apiUrl(`/api/trades/page?${p.toString()}`), { signal });
-    if (!r.ok) throw await httpError(r);
-    const j = (await r.json()) as PageResponse;
+    const j = await http.get<PageResponse>(`/api/trades/page?${p.toString()}`, { signal });
     out.push(...(j.items ?? []));
     onProgress?.({ loaded: out.length, total: null });
     if (!j.page?.hasMore || !j.page.nextCursor) return makeBook(out, false);
@@ -172,13 +216,13 @@ export async function fetchAskBook(
   opts: { me?: string | null; signal?: AbortSignal; onProgress?: (p: AskLoadProgress) => void } = {},
 ): Promise<AskBook> {
   const { me = null, signal, onProgress } = opts;
-  const r = await fetch(apiUrl(`/api/ask/book${scope === "mine" ? "?mine=1" : ""}`), { signal });
+  const r = await http.raw(`/api/ask/book?enc=2${scope === "mine" ? "&mine=1" : ""}`, { signal, throwOnError: false });
   // Older API without the route: 404 in dev, the SPA's index.html (200, text/html) in production.
   const isJson = (r.headers.get("content-type") ?? "").includes("json");
   if (r.status === 404 || (r.ok && !isJson)) return fetchPagedBook(scope, me, signal, onProgress);
-  if (!r.ok) throw await httpError(r);
+  if (!r.ok) throw await apiErrorFromResponse(r);
   const j = await readJson<CompactResponse>(r, onProgress);
-  return makeBook(tradesFromTuples(j.cols ?? [], j.rows ?? []), Boolean(j.truncated));
+  return makeBook(tradesFromTuples(j.cols ?? [], j.rows ?? [], { dicts: j.dicts, clock: j.clock }), Boolean(j.truncated));
 }
 
 /** href into /trades with the parameters the trades page reads. */
@@ -221,7 +265,7 @@ export function runAsk(q: AskQuery, book: AskBook, opts: AskRunOptions = {}): As
     const rb = applyFilter(book.trades, fb, book.index);
     const notes: string[] = [];
     const noTime = ra.noTime + rb.noTime;
-    if (noTime) notes.push(`${noTime} сделок без времени входа не учтены.`);
+    if (noTime) notes.push(askI18n.t("ans.noTime", { count: noTime }));
     const answer = buildCompare(q, f, ra.kept, rb.kept, book.index, { ...meta, notes });
     return { answer, href: tradesHref(answer.link), filter: f, defaultTrader };
   }

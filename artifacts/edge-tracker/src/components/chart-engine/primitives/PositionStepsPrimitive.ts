@@ -4,7 +4,8 @@
  * size as a thin step band along the bottom of the price pane. Replay: nothing past the cursor is drawn.
  */
 import type { PositionStep } from "../lib/structure";
-import { fmtPrice, fmtQty } from "../lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
+import { fmtCount, fmtPrice } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, measureLabel, vline } from "./canvas";
 
 /** Height of the size band at the bottom of the pane (CSS px). */
@@ -46,7 +47,7 @@ export class PositionStepsPrimitive extends SeriesPrimitiveBase {
       hline(ctx, x1, Math.max(x2, x1 + 2), y, col, 1.2, [5, 3]);
       prevY = y;
       // «200 шт. · ср. 10.25» at the change, when it fits without covering the previous pill
-      const text = `${s.qty != null ? `${fmtQty(s.qty)} шт. · ` : ""}ср. ${fmtPrice(s.avg)}`;
+      const text = s.qty != null ? chartI18n.t("canvas.stepQty", { qty: fmtCount(Math.round(s.qty)), price: fmtPrice(s.avg) }) : chartI18n.t("canvas.stepAvg", { price: fmtPrice(s.avg) });
       const m = measureLabel(ctx, theme, text, { size: 9, pad: 3 });
       const bx = Math.min(width - m.w - 2, x1 + 3);
       if (pills.some((p) => Math.abs(p.y - y) < m.h + 2 && bx < p.x + p.w + 4 && bx + m.w > p.x - 4)) continue;

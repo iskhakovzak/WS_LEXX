@@ -10,14 +10,6 @@ export function parseYmd(s: string): Date {
   return new Date(y, (m || 1) - 1, d || 1);
 }
 
-export function initials(name: string | null | undefined): string {
-  const n = (name ?? "").trim();
-  if (!n) return "?";
-  const parts = n.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return n.slice(0, 2).toUpperCase();
-}
-
 const AVATAR_TONES = [
   "bg-[hsl(var(--chart-1)/0.18)] text-[hsl(var(--chart-1))]",
   "bg-[hsl(var(--chart-2)/0.18)] text-[hsl(var(--chart-2))]",
@@ -32,24 +24,6 @@ export function avatarTone(name: string | null | undefined): string {
   let h = 0;
   for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
   return AVATAR_TONES[h % AVATAR_TONES.length];
-}
-
-export function fmtR(v: number | null | undefined, digits = 2): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const f = Math.abs(v).toFixed(digits);
-  const s = f.includes(".") ? f.replace(/\.?0+$/, "") : f;
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${s}R`;
-}
-
-export function fmtMoney(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const txt = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}$${txt}`;
-}
-
-export function fmtPct(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v * 100)}%`;
 }
 
 /** First screenshot URL from a trade's newline-separated screenshotUrl field. */

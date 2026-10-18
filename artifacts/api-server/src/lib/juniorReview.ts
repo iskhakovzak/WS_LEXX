@@ -10,6 +10,8 @@
  *   - "none"   — everyone else (reads only their own summaries — canReadJuniorNotes / juniorTeamFilter).
  * Nobody reviews their own summary.
  */
+import { juniorReviewT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 export type ReviewScope =
   | { kind: "desk"; mine: string[] }
@@ -176,24 +178,29 @@ export function scoreTrend(notes: readonly ScoredNote[], n = 10): ScoreTrend {
  * Mistake categories recognised in the «Ошибки» section (lower-cased, ё→е). Plain keyword stems — no AI.
  * Cyrillic needs explicit [а-я] classes: \w in JS regexps is ASCII only.
  */
+/** Display label of a mistake category in `lang` (juniorReview namespace `mistake.*`). */
+export function mistakeLabel(key: string, lang: Lang = "ru"): string {
+  return juniorReviewT.tryFor(lang, `mistake.${key}`) ?? key;
+}
+
 export const MISTAKE_PATTERNS: readonly { key: string; label: string; re: RegExp }[] = [
-  { key: "fomo", label: "FOMO / погоня", re: /fomo|фомо|упустить|догон|погнал|погон[яе]|запрыгнул|впрыгнул/ },
-  { key: "early_entry", label: "Ранний вход", re: /ран(ний|ние|него|о)\s+вх?о|рано\s+(за|во)[шй]|(вошел|зашел|вошла|зашла)\s+рано|не\s+дожд(ал|ался|алась)/ },
-  { key: "moved_stop", label: "Двигал стоп", re: /(двинул|двигал|сдвинул|передвинул|отодвинул|убрал|перенес|расширил)[а-я]*\s+(свой\s+)?стоп|стоп[а-я]*\s+(двинул|сдвинул|убрал|отодвинул|передвинул)/ },
-  { key: "no_stop", label: "Без стопа", re: /без\s+стоп|не\s+(поставил|выставил|ставил)\s+стоп|стопа\s+не\s+было/ },
-  { key: "overtrading", label: "Переторговка", re: /переторг|овертрейд|overtrad|слишком\s+много\s+сделок|лишн[а-я]*\s+сделк/ },
-  { key: "size", label: "Размер больше плана", re: /(завысил|превысил|увеличил)\s+размер|размер[а-я]*\s+(больше|выше|сверх|завыш)|большой\s+размер|оверсайз|oversiz/ },
-  { key: "revenge", label: "Отыгрыш", re: /отыгр|отбить|ревендж|revenge/ },
-  { key: "off_plan", label: "Не по плану", re: /не\s+по\s+плану|вне\s+плана|без\s+плана|отош[а-я]*\s+от\s+плана|нарушил\s+план|не\s+по\s+сетапу|не\s+мой\s+сетап/ },
-  { key: "early_exit", label: "Ранний выход", re: /рано\s+(вышел|закрыл|зафикс|скинул)|(вышел|закрыл|зафиксировал|скинул)\s+рано|раньше\s+времени|не\s+дал[а-я]*\s+(сделке\s+)?отработ/ },
-  { key: "held_loser", label: "Передержал лосс", re: /пересидел|передержал|держал\s+(лосс|убыт|минус)|поздно\s+(вышел|закрыл)|не\s+закрыл\s+вовремя/ },
-  { key: "averaging", label: "Усреднение", re: /усредн|доливал(ся)?\s+в\s+минус/ },
-  { key: "daily_limit", label: "Нарушил лимит", re: /(нарушил|превысил|пробил|пробит)[а-я]*\s+(дневн[а-я]*\s+)?лимит|лимит[а-я]*\s+(дня|на\s+день)\s+(пробит|нарушен|превышен)/ },
-  { key: "emotions", label: "Эмоции / тильт", re: /эмоци|тильт|tilt|импульсив|психанул|злил/ },
+  { key: "fomo", label: mistakeLabel("fomo"), re: /fomo|фомо|упустить|догон|погнал|погон[яе]|запрыгнул|впрыгнул/ },
+  { key: "early_entry", label: mistakeLabel("early_entry"), re: /ран(ний|ние|него|о)\s+вх?о|рано\s+(за|во)[шй]|(вошел|зашел|вошла|зашла)\s+рано|не\s+дожд(ал|ался|алась)/ },
+  { key: "moved_stop", label: mistakeLabel("moved_stop"), re: /(двинул|двигал|сдвинул|передвинул|отодвинул|убрал|перенес|расширил)[а-я]*\s+(свой\s+)?стоп|стоп[а-я]*\s+(двинул|сдвинул|убрал|отодвинул|передвинул)/ },
+  { key: "no_stop", label: mistakeLabel("no_stop"), re: /без\s+стоп|не\s+(поставил|выставил|ставил)\s+стоп|стопа\s+не\s+было/ },
+  { key: "overtrading", label: mistakeLabel("overtrading"), re: /переторг|овертрейд|overtrad|слишком\s+много\s+сделок|лишн[а-я]*\s+сделк/ },
+  { key: "size", label: mistakeLabel("size"), re: /(завысил|превысил|увеличил)\s+размер|размер[а-я]*\s+(больше|выше|сверх|завыш)|большой\s+размер|оверсайз|oversiz/ },
+  { key: "revenge", label: mistakeLabel("revenge"), re: /отыгр|отбить|ревендж|revenge/ },
+  { key: "off_plan", label: mistakeLabel("off_plan"), re: /не\s+по\s+плану|вне\s+плана|без\s+плана|отош[а-я]*\s+от\s+плана|нарушил\s+план|не\s+по\s+сетапу|не\s+мой\s+сетап/ },
+  { key: "early_exit", label: mistakeLabel("early_exit"), re: /рано\s+(вышел|закрыл|зафикс|скинул)|(вышел|закрыл|зафиксировал|скинул)\s+рано|раньше\s+времени|не\s+дал[а-я]*\s+(сделке\s+)?отработ/ },
+  { key: "held_loser", label: mistakeLabel("held_loser"), re: /пересидел|передержал|держал\s+(лосс|убыт|минус)|поздно\s+(вышел|закрыл)|не\s+закрыл\s+вовремя/ },
+  { key: "averaging", label: mistakeLabel("averaging"), re: /усредн|доливал(ся)?\s+в\s+минус/ },
+  { key: "daily_limit", label: mistakeLabel("daily_limit"), re: /(нарушил|превысил|пробил|пробит)[а-я]*\s+(дневн[а-я]*\s+)?лимит|лимит[а-я]*\s+(дня|на\s+день)\s+(пробит|нарушен|превышен)/ },
+  { key: "emotions", label: mistakeLabel("emotions"), re: /эмоци|тильт|tilt|импульсив|психанул|злил/ },
 ];
 
 export function normalizeText(s: string): string {
-  return s.toLowerCase().replace(/ё/g, "е");
+  return s.toLowerCase().replace(/ё/g, "е"); // i18n-ignore (RU input normalisation)
 }
 
 /** Category keys found in one text (each at most once). */
@@ -211,7 +218,7 @@ export interface RepeatedMistake { key: string; label: string; count: number; la
  */
 export function repeatedMistakes(
   notes: readonly { note_date: string; text: string | null | undefined }[],
-  opts: { minNotes?: number; top?: number } = {},
+  opts: { minNotes?: number; top?: number; lang?: Lang } = {},
 ): RepeatedMistake[] {
   const minNotes = opts.minNotes ?? 2;
   const top = opts.top ?? 3;
@@ -224,10 +231,9 @@ export function repeatedMistakes(
       acc.set(k, cur);
     }
   }
-  const labels = new Map(MISTAKE_PATTERNS.map((p) => [p.key, p.label]));
   return [...acc.entries()]
     .filter(([, v]) => v.count >= minNotes)
-    .map(([key, v]) => ({ key, label: labels.get(key) ?? key, count: v.count, last: v.last }))
+    .map(([key, v]) => ({ key, label: mistakeLabel(key, opts.lang), count: v.count, last: v.last }))
     .sort((a, b) => b.count - a.count || b.last.localeCompare(a.last))
     .slice(0, top);
 }
@@ -254,20 +260,21 @@ export interface AttentionInput {
   /** Has written at least one summary in the window (new juniors are not «missing» forever). */
   everWrote: boolean;
   trend: Pick<ScoreTrend, "recent" | "direction" | "delta">;
-  repeated: readonly Pick<RepeatedMistake, "label" | "count">[];
+  repeated: readonly (Pick<RepeatedMistake, "label" | "count"> & { key?: string })[];
 }
 
 /**
  * Flags for one junior + a sort priority (higher = look first). The senior's desk sorts juniors by it so the
  * people who need an answer, a nudge or a conversation are on top.
  */
-export function attentionOf(i: AttentionInput): { flags: AttentionFlag[]; priority: number } {
+export function attentionOf(i: AttentionInput, lang: Lang = "ru"): { flags: AttentionFlag[]; priority: number } {
+  const t = juniorReviewT.tFor(lang);
   const flags: AttentionFlag[] = [];
   let p = 0;
   if (i.unreviewed14 > 0) {
     flags.push({
       kind: "unanswered",
-      label: i.unreviewed14 === 1 ? "Ждёт ответа" : `Без ответа: ${i.unreviewed14}`,
+      label: i.unreviewed14 === 1 ? t("attention.waiting") : t("attention.unanswered", { n: i.unreviewed14 }),
       tone: "accent",
     });
     p += 30 + Math.min(i.unreviewed14, 10) * 3;
@@ -275,21 +282,21 @@ export function attentionOf(i: AttentionInput): { flags: AttentionFlag[]; priori
   if (i.missed >= 2 || (i.missed >= 1 && !i.everWrote)) {
     flags.push({
       kind: "missed",
-      label: i.everWrote ? `Пропуск ${i.missed >= 10 ? "10+" : i.missed} дн. подряд` : "Ещё ни одной сводки",
+      label: i.everWrote ? t("attention.missed", { n: i.missed >= 10 ? "10+" : i.missed }) : t("attention.never"),
       tone: i.missed >= 3 ? "down" : "warn",
     });
     p += i.everWrote ? 20 + Math.min(i.missed, 10) * 4 : 15;
   }
   if (i.trend.recent != null && i.trend.recent <= 2.5) {
-    flags.push({ kind: "low_score", label: `Низкие оценки · ${i.trend.recent.toFixed(1)}`, tone: "down" });
+    flags.push({ kind: "low_score", label: t("attention.low", { score: i.trend.recent.toFixed(1) }), tone: "down" });
     p += 25;
   } else if (i.trend.direction === "down") {
-    flags.push({ kind: "falling", label: `Оценки падают · ${i.trend.delta?.toFixed(1)}`, tone: "warn" });
+    flags.push({ kind: "falling", label: t("attention.falling", { delta: String(i.trend.delta?.toFixed(1)) }), tone: "warn" });
     p += 12;
   }
   const rep = i.repeated[0];
   if (rep && rep.count >= 3) {
-    flags.push({ kind: "repeat", label: `Повторяет: ${lowerFirst(rep.label)} ×${rep.count}`, tone: "warn" });
+    flags.push({ kind: "repeat", label: t("attention.repeat", { mistake: lowerFirst(rep.key ? mistakeLabel(rep.key, lang) : rep.label), count: rep.count }), tone: "warn" });
     p += 8 + Math.min(rep.count, 10);
   }
   return { flags, priority: p };
@@ -364,7 +371,7 @@ export function buildDayTrades(
   };
 }
 
-/** «Ранний вход» → «ранний вход», but keeps acronyms such as «FOMO / погоня». */
+/** «Early entry» → «early entry», but keeps acronyms such as «FOMO / chasing». */
 function lowerFirst(s: string): string {
   return s.length > 1 && s[1] === s[1]!.toLowerCase() ? s[0]!.toLowerCase() + s.slice(1) : s;
 }

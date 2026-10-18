@@ -5,13 +5,15 @@ import type { LucideIcon } from "lucide-react";
 import { EmptyState, Panel, type Tone, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { TradeLinkRow } from "./trade-link-row";
-import {
-  WEEKDAYS, dayKey, fmtPct, fmtValue, groupBy, isClosed, pluralRu, pluralTrades, valueOf, weekdayIdx, type Kpis, type Metric,
-} from "./metrics";
+import { dayKey, fmtValue, groupBy, isClosed, valueOf, weekdayIdx, weekdayLabel, type Kpis, type Metric } from "./metrics";
+import { fmtNum, fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { statsI18n } from "@/i18n/ns/stats";
 
 export type Insight = { id: string; tone: Tone; icon: LucideIcon; text: string; href?: string; cta?: string };
 
 export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight[] {
+  const t = statsI18n.t;
   const out: Insight[] = [];
   const unit = metric === "r" ? "R" : "P&L";
 
@@ -21,9 +23,7 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
       id: "streak",
       tone: win ? "up" : "down",
       icon: Flame,
-      text: win
-        ? `Серия: ${k.current.len} ${pluralRu(k.current.len, "победа", "победы", "побед")} подряд — держите размер позиции, не разгоняйте риск.`
-        : `Серия: ${k.current.len} ${pluralRu(k.current.len, "убыток", "убытка", "убытков")} подряд — время снизить размер и перечитать плейбук.`,
+      text: win ? t("insights.streakWin", { count: k.current.len }) : t("insights.streakLoss", { count: k.current.len }),
     });
   }
 
@@ -33,25 +33,25 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
       id: "edge",
       tone: k.winRate >= need ? "up" : "down",
       icon: Target,
-      text: `При payoff ${k.payoff.toFixed(2)} безубыточный win rate — ${fmtPct(need)}; у вас ${fmtPct(k.winRate)}${k.winRate >= need ? " — есть запас." : " — пока ниже порога."}`,
+      text: t(k.winRate >= need ? "insights.edgeOk" : "insights.edgeLow", { payoff: fmtNum(k.payoff), need: fmtRate(need), wr: fmtRate(k.winRate) }),
     });
   }
 
   const closed = trades.filter(isClosed);
-  const byDay = groupBy(closed, (t) => WEEKDAYS[weekdayIdx(dayKey(t))], metric).filter((g) => g.valued >= 2 && g.value != null);
+  const byDay = groupBy(closed, (tr) => weekdayLabel(weekdayIdx(dayKey(tr))), metric).filter((g) => g.valued >= 2 && g.value != null);
   if (byDay.length >= 2) {
     const best = byDay.reduce((a, b) => ((b.value ?? 0) > (a.value ?? 0) ? b : a));
     const worst = byDay.reduce((a, b) => ((b.value ?? 0) < (a.value ?? 0) ? b : a));
-    if ((best.value ?? 0) > 0) out.push({ id: "bestday", tone: "up", icon: TrendingUp, text: `Лучший день недели — ${best.key}: ${fmtValue(best.value, metric)} за ${best.count} ${pluralTrades(best.count)}.` });
-    if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstday", tone: "down", icon: TrendingDown, text: `Слабый день — ${worst.key}: ${fmtValue(worst.value, metric)}. Посмотрите, что мешает в этот день.` });
+    if ((best.value ?? 0) > 0) out.push({ id: "bestday", tone: "up", icon: TrendingUp, text: t("insights.bestDay", { day: best.key, value: fmtValue(best.value, metric), trades: commonI18n.t("units.trades", { count: best.count }) }) });
+    if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstday", tone: "down", icon: TrendingDown, text: t("insights.worstDay", { day: worst.key, value: fmtValue(worst.value, metric) }) });
   }
 
-  const bySetup = groupBy(closed, (t) => t.setup || t.eventType, metric).filter((g) => g.key !== "—" && g.valued >= 2 && g.value != null);
+  const bySetup = groupBy(closed, (tr) => tr.setup || tr.eventType, metric).filter((g) => g.key !== "—" && g.valued >= 2 && g.value != null);
   if (bySetup.length) {
     const best = bySetup.reduce((a, b) => ((b.value ?? 0) > (a.value ?? 0) ? b : a));
     const worst = bySetup.reduce((a, b) => ((b.value ?? 0) < (a.value ?? 0) ? b : a));
-    if ((best.value ?? 0) > 0) out.push({ id: "bestsetup", tone: "up", icon: Trophy, text: `Сильнейший сетап — «${best.key}»: ${fmtValue(best.value, metric)}, WR ${fmtPct(best.winRate)}.`, href: "/playbook", cta: "Плейбук" });
-    if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstsetup", tone: "down", icon: AlertTriangle, text: `Сетап «${worst.key}» в минусе: ${fmtValue(worst.value, metric)} за ${worst.count} ${pluralTrades(worst.count)}.`, href: "/analytics", cta: "Разобрать" });
+    if ((best.value ?? 0) > 0) out.push({ id: "bestsetup", tone: "up", icon: Trophy, text: t("insights.bestSetup", { setup: best.key, value: fmtValue(best.value, metric), wr: fmtRate(best.winRate) }), href: "/playbook", cta: t("insights.playbook") });
+    if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstsetup", tone: "down", icon: AlertTriangle, text: t("insights.worstSetup", { setup: worst.key, value: fmtValue(worst.value, metric), trades: commonI18n.t("units.trades", { count: worst.count }) }), href: "/analytics?tab=edge", cta: t("insights.review") });
   }
 
   if (k.missing > 0) {
@@ -59,9 +59,9 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
       id: "missing",
       tone: "warn",
       icon: AlertTriangle,
-      text: `${k.missing} ${pluralRu(k.missing, "закрытая сделка", "закрытые сделки", "закрытых сделок")} без ${unit} — заполните, чтобы отчёт был точным.`,
+      text: t("insights.missing", { count: k.missing, unit }),
       href: "/trades",
-      cta: "К сделкам",
+      cta: t("insights.toTrades"),
     });
   }
   if (k.open > 0) {
@@ -69,19 +69,20 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
       id: "open",
       tone: "accent",
       icon: Lightbulb,
-      text: `${k.open} ${pluralRu(k.open, "открытая сделка", "открытые сделки", "открытых сделок")} не учитываются в результате и win rate.`,
+      text: t("insights.open2", { count: k.open }),
       href: "/trades",
-      cta: "Закрыть",
+      cta: t("insights.close"),
     });
   }
   return out;
 }
 
 export function InsightsPanel({ insights }: { insights: Insight[] }) {
+  const { t } = statsI18n.useT();
   return (
-    <Panel title="Выводы периода" icon={Lightbulb} description="Автоматически из ваших сделок">
+    <Panel title={t("insights.title")} icon={Lightbulb} description={t("insights.hint")}>
       {insights.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Пока недостаточно данных для выводов — нужно хотя бы несколько закрытых сделок с {`R/P&L`}.</p>
+        <p className="text-sm text-muted-foreground">{t("insights.empty")}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {insights.map((i) => (
@@ -90,7 +91,7 @@ export function InsightsPanel({ insights }: { insights: Insight[] }) {
               <span className="min-w-0 flex-1 text-sm text-foreground">{i.text}</span>
               {i.href && (
                 <Link href={i.href} className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  {i.cta ?? "Открыть"} <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                  {i.cta ?? t("insights.open")} <ArrowRight className="h-3 w-3" aria-hidden="true" />
                 </Link>
               )}
             </li>
@@ -103,6 +104,7 @@ export function InsightsPanel({ insights }: { insights: Insight[] }) {
 
 /** Best / worst trades of the period — each row opens the trade in the journal. */
 export function ExtremesPanel({ trades, metric }: { trades: Trade[]; metric: Metric }) {
+  const { t } = statsI18n.useT();
   const valued = trades.filter((t) => isClosed(t) && valueOf(t, metric) != null);
   const best = valued.filter((t) => valueOf(t, metric)! > 0).sort((a, b) => valueOf(b, metric)! - valueOf(a, metric)!).slice(0, 5);
   const worst = valued.filter((t) => valueOf(t, metric)! < 0).sort((a, b) => valueOf(a, metric)! - valueOf(b, metric)!).slice(0, 5);
@@ -125,13 +127,14 @@ export function ExtremesPanel({ trades, metric }: { trades: Trade[]; metric: Met
   );
 
   return (
-    <Panel title="Лучшие и худшие сделки" description={`Топ-5 по ${unit} — нажмите, чтобы открыть сделку в журнале`}>
+    <Panel title={t("extremes.title")} description={t("extremes.hint", { unit })}>
       {valued.length === 0 ? (
-        <EmptyState icon={Trophy} title={`Нет закрытых сделок с ${unit}`} description="Как только появятся результаты, здесь будут лидеры и аутсайдеры периода." />
+        <EmptyState icon={Trophy} title={t("extremes.empty", { unit })} description={t("extremes.emptyHint")} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          <List title="Лучшие" icon={Trophy} tone="up" items={best} empty="Нет прибыльных сделок за период" />
-          <List title="Худшие" icon={AlertTriangle} tone="down" items={worst} empty="Нет убыточных сделок за период" />
+          <List title={t("extremes.best")} icon={Trophy} tone="up" items={best} empty={t("extremes.noBest")} />
+          <List title={t("extremes.worst")} icon={AlertTriangle} tone="down" items={worst} empty={t("extremes.noWorst")} />
+
         </div>
       )}
     </Panel>

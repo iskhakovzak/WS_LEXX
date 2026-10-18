@@ -9,9 +9,10 @@ import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  ApiError, KIND_LABEL, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, useQuiz,
+  kindLabel, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, useQuiz,
   type ItemKind, type Nav,
 } from "@/components/academy/content/api";
+import { ApiError } from "@/lib/api/http";
 import { Markdown } from "@/components/academy/content/markdown";
 import { outlineOf, parseMarkdown, readingMinutes } from "@/components/academy/content/markdown-parse";
 import { AttachmentList, KindIcon, VideoPlayer } from "@/components/academy/content/bits";
@@ -19,12 +20,22 @@ import { QuizRunner } from "@/components/academy/content/quiz-runner";
 import { AssignmentPanel } from "@/components/academy/content/assignment-panel";
 import { academyLinks } from "@/components/academy/content/links";
 import { DualTime } from "@/components/academy/content/time";
+import { academyI18n } from "@/i18n/ns/academy";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 /**
  * /academy/lesson — один элемент программы: ?id=<урок> | ?quiz=<тест> | ?assignment=<задание>
  * (&submission=<сдача> подсвечивает сдачу из уведомления, &user=<ученик> — staff смотрит глазами ученика).
  * Слева — оглавление программы (nav.outline), снизу — «назад / дальше».
  */
+
+/** One translated sentence with a bold name inside: the key carries `{name}`, filled with a slot marker and split here. */
+const NAME_SLOT = "\u0000";
+function withName(text: string, name: React.ReactNode): React.ReactNode {
+  const [before, after = ""] = text.split(NAME_SLOT);
+  return <>{before}{name}{after}</>;
+}
 
 function useTarget(): { kind: ItemKind; id: number } | null {
   const search = useSearch();
@@ -47,12 +58,13 @@ export default function AcademyLesson() {
   const staff = isCurator || !!meta.data?.staff;
   const viewUser = staff ? params.get("user") ?? undefined : undefined;
   const submission = Number(params.get("submission")) || null;
+  const { t } = academyI18n.useT();
 
   if (!target) {
     return (
       <Page>
         <Panel>
-          <EmptyState icon={BookOpen} title="Материал не выбран" description="Откройте урок, тест или задание из программы." action={<Button asChild><Link href={academyLinks.learn()}>К курсам</Link></Button>} />
+          <EmptyState icon={BookOpen} title={t("lesson.noTarget")} description={t("lesson.noTargetDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>} />
         </Panel>
       </Page>
     );
@@ -69,23 +81,25 @@ export default function AcademyLesson() {
 /* ─── shared chrome ─────────────────────────────────────────────────────── */
 
 function LoadState({ error }: { error: unknown }) {
+  const { t } = academyI18n.useT();
   if (!error) return <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]"><Skeleton className="h-80 rounded-2xl" /><Skeleton className="h-[28rem] rounded-2xl" /></div>;
   const status = error instanceof ApiError ? error.status : 0;
   return (
     <Panel>
       <EmptyState
         icon={BookOpen}
-        title={status === 404 ? "Материал не найден" : "Не удалось загрузить материал"}
-        description={status === 404 ? "Он мог быть перемещён в архив или ещё не опубликован." : (error as Error).message}
-        action={<Button asChild><Link href={academyLinks.learn()}>К курсам</Link></Button>}
+        title={status === 404 ? t("lesson.notFound") : t("lesson.loadFailed")}
+        description={status === 404 ? t("lesson.notFoundDesc") : (error as Error).message}
+        action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>}
       />
     </Panel>
   );
 }
 
 function OutlineNav({ nav, current, user }: { nav: Nav; current: { kind: ItemKind; id: number }; user?: string }) {
+  const { t } = academyI18n.useT();
   return (
-    <nav aria-label="Содержание программы" className="glass-panel sticky top-[var(--sticky-top)] hidden max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))] overflow-y-auto rounded-2xl p-3 lg:block">
+    <nav aria-label={t("lesson.outlineAria")} className="glass-panel sticky top-[var(--sticky-top)] hidden max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))] overflow-y-auto rounded-2xl p-3 lg:block">
       <Link href={academyLinks.learn({ program: nav.program.id, user })} className="mb-2 flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground hover:text-primary">
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />{nav.program.title}
       </Link>
@@ -107,8 +121,8 @@ function OutlineNav({ nav, current, user }: { nav: Nav; current: { kind: ItemKin
                       )}
                     >
                       <KindIcon kind={i.kind} className="shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{i.title}</span>
-                      {i.draft && <Pill tone="warn">черн.</Pill>}
+                      <span className="min-w-0 flex-1 truncate" title={i.title}>{i.title}</span>
+                      {i.draft && <Pill tone="warn">{t("tree.draftShort")}</Pill>}
                     </Link>
                   </li>
                 );
@@ -121,19 +135,33 @@ function OutlineNav({ nav, current, user }: { nav: Nav; current: { kind: ItemKin
   );
 }
 
+/** «Дальше: …» after finishing an item — the next step of the program is one click away. */
+function NextButton({ next }: { next: NonNullable<Nav["next"]> }) {
+  const { t } = academyI18n.useT();
+  const short = next.title.length > 32 ? `${next.title.slice(0, 32)}…` : next.title;
+  return (
+    <Button size="sm" asChild>
+      <Link href={academyLinks.item(next.kind, next.id)} title={next.title}>
+        {t("lesson.nextUp", { title: short })}<ArrowRight aria-hidden="true" />
+      </Link>
+    </Button>
+  );
+}
+
 function PrevNext({ nav, user }: { nav: Nav; user?: string }) {
+  const { t } = academyI18n.useT();
   if (!nav.prev && !nav.next) return null;
   return (
-    <nav aria-label="Соседние материалы" className="grid gap-3 sm:grid-cols-2">
+    <nav aria-label={t("lesson.adjacentAria")} className="grid gap-3 sm:grid-cols-2">
       {nav.prev ? (
         <Link href={academyLinks.item(nav.prev.kind, nav.prev.id, { user })} className="glass-panel group flex items-center gap-3 rounded-2xl p-4 hover:bg-[var(--glass-hover-bg)]">
           <ArrowLeft className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
-          <span className="min-w-0"><span className="block text-xs text-muted-foreground">Назад · {KIND_LABEL[nav.prev.kind]}</span><span className="block truncate font-medium">{nav.prev.title}</span></span>
+          <span className="min-w-0"><span className="block text-xs text-muted-foreground">{t("lesson.prevKind", { kind: kindLabel(nav.prev.kind) })}</span><span className="block truncate font-medium" title={nav.prev.title}>{nav.prev.title}</span></span>
         </Link>
       ) : <span />}
       {nav.next && (
         <Link href={academyLinks.item(nav.next.kind, nav.next.id, { user })} className="glass-panel group flex items-center justify-end gap-3 rounded-2xl p-4 text-right hover:bg-[var(--glass-hover-bg)]">
-          <span className="min-w-0"><span className="block text-xs text-muted-foreground">Дальше · {KIND_LABEL[nav.next.kind]}</span><span className="block truncate font-medium">{nav.next.title}</span></span>
+          <span className="min-w-0"><span className="block text-xs text-muted-foreground">{t("lesson.nextKind", { kind: kindLabel(nav.next.kind) })}</span><span className="block truncate font-medium" title={nav.next.title}>{nav.next.title}</span></span>
           <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
         </Link>
       )}
@@ -145,6 +173,7 @@ function Shell({ nav, current, user, staff, title, kind, meta, actions, children
   nav: Nav; current: { kind: ItemKind; id: number }; user?: string; staff: boolean;
   title: string; kind: ItemKind; meta?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode;
 }) {
+  const { t } = academyI18n.useT();
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
       <OutlineNav nav={nav} current={current} user={user} />
@@ -152,14 +181,14 @@ function Shell({ nav, current, user, staff, title, kind, meta, actions, children
         <PageHeader
           title={title}
           icon={kind === "lesson" ? BookOpen : kind === "quiz" ? Layers : PencilRuler}
-          description={<>{nav.program.title} · {KIND_LABEL[kind]}</>}
+          description={<>{nav.program.title} · {kindLabel(kind)}</>}
           meta={meta}
           actions={
             <>
               {actions}
               {staff && (
                 <Button variant="outline" size="sm" asChild>
-                  <Link href={academyLinks.admin({ program: nav.program.id })}><PencilRuler aria-hidden="true" />В редакторе</Link>
+                  <Link href={academyLinks.admin({ program: nav.program.id })}><PencilRuler aria-hidden="true" />{t("lesson.inEditor")}</Link>
                 </Button>
               )}
             </>
@@ -167,7 +196,7 @@ function Shell({ nav, current, user, staff, title, kind, meta, actions, children
         />
         {user && (
           <p className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-            <Eye className="h-4 w-4 text-primary" aria-hidden="true" />Вы смотрите материал глазами ученика <b>{user}</b> — отправка ответов отключена.
+            <Eye className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{withName(t("lesson.viewingAs", { name: NAME_SLOT }), <b>{personName(user)}</b>)}</span>
           </p>
         )}
         {children}
@@ -182,6 +211,7 @@ function Shell({ nav, current, user, staff, title, kind, meta, actions, children
 function LessonView({ id, user, staff }: { id: number; user?: string; staff: boolean }) {
   const q = useLesson(id, user);
   const { toast } = useToast();
+  const { t } = academyI18n.useT();
   const toggle = useAcademyMutation((completed: boolean) => api.lessonProgress(id, completed));
   const pinged = useRef<number | null>(null);
   const data = q.data;
@@ -203,8 +233,8 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
 
   const onToggle = () =>
     toggle.mutate(!done, {
-      onSuccess: () => toast({ title: done ? "Отметка снята" : "Урок пройден", description: !done && nav.next ? `Дальше: ${nav.next.title}` : undefined }),
-      onError: (e) => toast({ title: "Не удалось сохранить", description: (e as Error).message, variant: "destructive" }),
+      onSuccess: () => toast({ title: done ? t("lesson.unmarked") : t("lesson.lessonDone"), description: !done && nav.next ? t("lesson.nextUp", { title: nav.next.title }) : undefined }),
+      onError: (e) => toast({ title: commonI18n.t("states.saveFailed"), description: (e as Error).message, variant: "destructive" }),
     });
 
   return (
@@ -217,17 +247,20 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
       kind="lesson"
       meta={
         <>
-          <span className="inline-flex items-center gap-1 tabular-nums"><Clock className="h-3 w-3" aria-hidden="true" />≈{minutes} мин</span>
-          {lesson.draft && <Pill tone="warn">Черновик — ученики не видят</Pill>}
-          {done ? <Pill tone="up" dot>Пройден</Pill> : progress.startedAt ? <Pill tone="accent">Начат</Pill> : null}
-          {progress.completedAt && <span>отмечен <DualTime iso={progress.completedAt} /></span>}
+          <span className="inline-flex items-center gap-1 tabular-nums"><Clock className="h-3 w-3" aria-hidden="true" />{t("units.minutesApprox", { count: minutes })}</span>
+          {lesson.draft && <Pill tone="warn">{t("lesson.draftHidden")}</Pill>}
+          {done ? <Pill tone="up" dot>{t("lesson.completed")}</Pill> : progress.startedAt ? <Pill tone="accent">{t("lesson.started")}</Pill> : null}
+          {progress.completedAt && <span>{t("lesson.markedAt")} <DualTime iso={progress.completedAt} /></span>}
         </>
       }
       actions={!user && !lesson.draft ? (
-        <Button variant={done ? "outline" : "default"} size="sm" onClick={onToggle} disabled={toggle.isPending} aria-pressed={done}>
-          {toggle.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : done ? <CheckCircle2 aria-hidden="true" /> : <Circle aria-hidden="true" />}
-          {done ? "Пройден" : "Отметить пройденным"}
-        </Button>
+        <>
+          <Button variant={done ? "outline" : "default"} size="sm" onClick={onToggle} disabled={toggle.isPending} aria-pressed={done}>
+            {toggle.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : done ? <CheckCircle2 aria-hidden="true" /> : <Circle aria-hidden="true" />}
+            {done ? t("lesson.completed") : t("lesson.markDone")}
+          </Button>
+          {done && nav.next && <NextButton next={nav.next} />}
+        </>
       ) : undefined}
     >
       {lesson.summary && <p className="text-sm text-muted-foreground">{lesson.summary}</p>}
@@ -239,23 +272,23 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
             <Markdown blocks={blocks} />
           </Panel>
           {lesson.attachments.length > 0 && (
-            <Panel title="Материалы">
+            <Panel title={t("lesson.materials")}>
               <AttachmentList items={lesson.attachments} />
             </Panel>
           )}
           {(setups.length > 0 || lesson.setupNames.length > 0) && (
-            <Panel title="Сетапы плейбука" description="Урок разбирает эти сетапы — откройте карточку, чтобы сверить правила со своими сделками.">
+            <Panel title={t("lesson.setups")} description={t("lesson.setupsDesc")}>
               <ul className="flex flex-wrap gap-2">
                 {setups.map((s) => (
                   <li key={s.id}>
                     <Link href={links.setup(s.id)} className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1 text-sm hover:border-primary/60 hover:text-primary">
-                      {s.name}{s.trader && <span className="text-xs text-muted-foreground">· {s.trader}</span>}
+                      {s.name}{s.trader && <span className="text-xs text-muted-foreground">· {personName(s.trader)}</span>}
                     </Link>
                   </li>
                 ))}
                 {lesson.setupNames.filter((n) => !setups.some((s) => s.name.toLowerCase() === n.toLowerCase())).map((n) => (
                   <li key={n}>
-                    <Link href={links.trades({ setup: n })} className="inline-flex items-center rounded-full border border-dashed border-border/60 px-3 py-1 text-sm text-muted-foreground hover:text-primary" title="Сделки с этим сетапом">
+                    <Link href={links.trades({ setup: n })} className="inline-flex items-center rounded-full border border-dashed border-border/60 px-3 py-1 text-sm text-muted-foreground hover:text-primary" title={t("lesson.setupTrades")}>
                       {n}
                     </Link>
                   </li>
@@ -265,8 +298,8 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
           )}
         </div>
         {toc.length > 1 && (
-          <nav aria-label="Оглавление урока" className="glass-panel sticky top-[var(--sticky-top)] hidden rounded-2xl p-3 xl:block">
-            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">В уроке</p>
+          <nav aria-label={t("lesson.tocAria")} className="glass-panel sticky top-[var(--sticky-top)] hidden rounded-2xl p-3 xl:block">
+            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("lesson.inLesson")}</p>
             <ol className="mt-1 flex flex-col">
               {toc.map((h) => (
                 <li key={h.id}>
@@ -285,6 +318,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
 
 function QuizView({ id, user, staff }: { id: number; user?: string; staff: boolean }) {
   const q = useQuiz(id, user);
+  const { t } = academyI18n.useT();
   if (!q.data) return <LoadState error={q.error} />;
   const d = q.data;
   return (
@@ -297,9 +331,9 @@ function QuizView({ id, user, staff }: { id: number; user?: string; staff: boole
       kind="quiz"
       meta={
         <>
-          <span className="tabular-nums">{d.quiz.questions.length} вопр. · зачёт от {d.quiz.passPct}% · {d.quiz.maxAttempts ? `попыток: ${d.quiz.maxAttempts}` : "попытки без ограничений"}</span>
-          {d.quiz.draft && <Pill tone="warn">Черновик</Pill>}
-          {d.state.passed && <Pill tone="up" dot>Сдан</Pill>}
+          <span className="tabular-nums">{t("units.questions", { count: d.quiz.questions.length })} · {t("lesson.passFrom", { pct: d.quiz.passPct })} · {d.quiz.maxAttempts ? t("lesson.attemptsN", { count: d.quiz.maxAttempts }) : t("lesson.attemptsUnlimited")}</span>
+          {d.quiz.draft && <Pill tone="warn">{commonI18n.t("states.draft")}</Pill>}
+          {d.state.passed && <Pill tone="up" dot>{t("lesson.passed")}</Pill>}
         </>
       }
     >
@@ -315,6 +349,7 @@ function AssignmentView({ id, user, staff, focus }: { id: number; user?: string;
   // Staff opening from the review queue / a notification (no ?user) sees every student's submissions.
   const all = staff && !user;
   const q = useAssignment(id, user, all);
+  const { t } = academyI18n.useT();
   if (!q.data) return <LoadState error={q.error} />;
   const d = q.data;
   return (
@@ -327,8 +362,8 @@ function AssignmentView({ id, user, staff, focus }: { id: number; user?: string;
       kind="assignment"
       meta={
         <>
-          <span className="tabular-nums">зачёт от {d.assignment.passPct}%{d.assignment.minTrades ? ` · минимум сделок: ${d.assignment.minTrades}` : ""}</span>
-          {d.assignment.draft && <Pill tone="warn">Черновик</Pill>}
+          <span className="tabular-nums">{t("lesson.passFrom", { pct: d.assignment.passPct })}{d.assignment.minTrades ? ` · ${t("lesson.minTradesMeta", { count: d.assignment.minTrades })}` : ""}</span>
+          {d.assignment.draft && <Pill tone="warn">{commonI18n.t("states.draft")}</Pill>}
         </>
       }
     >

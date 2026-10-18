@@ -5,18 +5,17 @@
  * so the first / last candle never sticks to the axis; the window can't be narrower than `minSpan` candles.
  */
 import { addDays, nyDate } from "@/lib/trading-date";
+import { equityChartI18n } from "@/i18n/ns/equityChart";
 
 export interface View { from: number; to: number }
 
 export type Preset = "1w" | "1m" | "3m" | "ytd" | "all";
 
-export const PRESETS: { value: Preset; label: string; title: string }[] = [
-  { value: "1w", label: "1Н", title: "Неделя" },
-  { value: "1m", label: "1М", title: "Месяц" },
-  { value: "3m", label: "3М", title: "3 месяца" },
-  { value: "ytd", label: "YTD", title: "С начала года" },
-  { value: "all", label: "Всё", title: "Всё время" },
-];
+export const PRESET_VALUES: readonly Preset[] = ["1w", "1m", "3m", "ytd", "all"];
+/** Window presets with labels in the UI language (call at render time). */
+export function presets(): { value: Preset; label: string; title: string }[] {
+  return PRESET_VALUES.map((value) => ({ value, label: equityChartI18n.t(`presets.${value}`), title: equityChartI18n.t(`presets.${value}Title`) }));
+}
 
 /** Side padding in slots: half a candle on short series, a touch more on long ones. */
 export function padFor(n: number): number {

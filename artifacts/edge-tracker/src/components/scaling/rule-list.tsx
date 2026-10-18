@@ -4,7 +4,9 @@ import { Check, Minus, X } from "lucide-react";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { MetricMeta, RuleResult } from "./use-scaling";
-import { OP_LABEL, STATUS_META, fmtMetric, fmtThreshold } from "./format";
+import { OP_LABEL, STATUS_TONE, fmtMetric, fmtThreshold, ruleStatusLabel } from "./format";
+import { fmtRate } from "@/lib/format";
+import { scalingI18n } from "@/i18n/ns/scaling";
 
 const ICON = { pass: Check, fail: X, na: Minus } as const;
 const ICON_CLS = { pass: "bg-up/15 text-up", fail: "bg-down/15 text-down", na: "bg-[var(--glass-bg)] text-muted-foreground" } as const;
@@ -12,12 +14,12 @@ const BAR_CLS = { pass: "bg-up", fail: "bg-[hsl(var(--chart-3))]", na: "bg-muted
 
 /**
  * Rule checklist: each row = status icon, label, actual vs. threshold and a progress bar to passing.
- * Demotion rules invert the wording ("сработало" when the condition is met).
+ * Demotion rules invert the wording ("triggered" when the condition is met).
  */
 export function RuleList({
   rules,
   metrics,
-  emptyText = "Нет правил для этого тира",
+  emptyText,
   className,
 }: {
   rules: RuleResult[];
@@ -25,9 +27,10 @@ export function RuleList({
   emptyText?: string;
   className?: string;
 }) {
+  const { t } = scalingI18n.useT();
   const reduce = useReducedMotion();
   const meta = React.useMemo(() => new Map(metrics.map((m) => [m.key, m])), [metrics]);
-  if (!rules.length) return <p className={cn("text-sm text-muted-foreground", className)}>{emptyText}</p>;
+  if (!rules.length) return <p className={cn("text-sm text-muted-foreground", className)}>{emptyText ?? t("rules.empty")}</p>;
   return (
     <ul className={cn("flex flex-col gap-2", className)}>
       {rules.map((r) => {
@@ -37,9 +40,9 @@ export function RuleList({
         const Icon = demote && r.status === "pass" ? X : ICON[r.status];
         const iconCls = demote && r.status === "pass" ? ICON_CLS.fail : demote && r.status === "fail" ? ICON_CLS.pass : ICON_CLS[r.status];
         const statusLabel = demote
-          ? r.status === "pass" ? "сработало" : r.status === "fail" ? "в норме" : STATUS_META.na.label
-          : STATUS_META[r.status].label;
-        const statusTone = demote ? (r.status === "pass" ? "down" : r.status === "fail" ? "up" : "neutral") : STATUS_META[r.status].tone;
+          ? r.status === "pass" ? t("ruleStatus.triggered") : r.status === "fail" ? t("ruleStatus.ok") : ruleStatusLabel("na")
+          : ruleStatusLabel(r.status);
+        const statusTone = demote ? (r.status === "pass" ? "down" : r.status === "fail" ? "up" : "neutral") : STATUS_TONE[r.status];
         const pct = Math.round(r.progress * 100);
         return (
           <li key={r.ruleId} className="glass-panel flex flex-col gap-2 rounded-xl px-3 py-2.5">
@@ -57,9 +60,9 @@ export function RuleList({
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
                   <Pill tone={statusTone} className="text-2xs">{statusLabel}</Pill>
-                  <span>{r.windowDays} торг. дн.</span>
-                  {r.basis === "r" && unit !== "r" && <span>по R</span>}
-                  {r.status === "na" && <span className="truncate">{r.text.split(": ").slice(1).join(": ")}</span>}
+                  <span>{t("rules.windowDays", { count: r.windowDays })}</span>
+                  {r.basis === "r" && unit !== "r" && <span>{t("rules.byR")}</span>}
+                  {r.status === "na" && <span className="truncate" title={r.text}>{r.text.split(": ").slice(1).join(": ")}</span>}
                 </div>
               </div>
             </div>
@@ -69,13 +72,13 @@ export function RuleList({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={pct}
-                aria-label={`${r.label}: ${pct}% до выполнения`}
+                aria-label={t("progress.toPass", { label: r.label, value: fmtRate(r.progress) })}
                 className="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]"
               >
                 <motion.div
-                  className={cn("h-full rounded-full", BAR_CLS[r.status])}
-                  initial={reduce ? false : { width: 0 }}
-                  animate={{ width: `${pct}%` }}
+                  className={cn("h-full w-full rounded-full", BAR_CLS[r.status])}
+                  initial={reduce ? false : { x: "-100%" }}
+                  animate={{ x: `${pct - 100}%` }}
                   transition={{ duration: reduce ? 0 : 0.45, ease: [0.2, 0.8, 0.2, 1] }}
                 />
               </div>

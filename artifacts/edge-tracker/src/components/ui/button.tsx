@@ -26,11 +26,14 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        // @replit changed sizes
-        default: "min-h-9 px-4 py-2",
-        sm: "min-h-8 px-3 text-xs",
-        lg: "min-h-10 px-6",
-        icon: "h-10 w-10",
+        // Control-height scale (index.css): sm 32 / md 36 / lg 40, border included. min-h (not h) so an
+        // explicit multi-line button (`h-auto whitespace-normal`) can still grow; the padding never pushes a
+        // single line past the token (default used to render 39px next to 36px inputs).
+        default: "min-h-9 px-4 py-1.5",
+        sm: "min-h-8 px-3 text-xs [&_svg]:size-3.5",
+        lg: "min-h-10 px-6 py-2",
+        icon: "h-9 w-9",
+        "icon-sm": "h-8 w-8 [&_svg]:size-3.5",
       },
     },
     defaultVariants: {

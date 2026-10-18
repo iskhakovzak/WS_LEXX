@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { getListTradesQueryKey, listTrades, type Trade } from "@workspace/api-client-react";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
 import { applyPreset, isUnreviewed, presetCounts, type Preset } from "@/components/trades/review-presets";
 import {
   applyBaseFilters,
@@ -98,10 +98,6 @@ export type TradesPageResponse = {
 
 export type TradesPageMode = "server" | "local";
 
-export class TradesPageError extends Error {
-  status: number;
-  constructor(message: string, status: number) { super(message); this.status = status; }
-}
 
 /** Query string for /api/trades/page from the UI filter model (shared with CSV export and the ticker history). */
 export function buildTradesPageParams(filters: TradeFilters, sort: SortConfig, opts: { limit: number; offset?: number; cursor?: string | null; preset?: Preset | null }): URLSearchParams {
@@ -137,12 +133,7 @@ export function buildTradesPageParams(filters: TradeFilters, sort: SortConfig, o
 }
 
 export async function fetchTradesPage(params: URLSearchParams, signal?: AbortSignal): Promise<TradesPageResponse> {
-  const r = await fetch(`${BASE}${TRADES_PAGE_KEY}?${params.toString()}`, { signal });
-  if (!r.ok) {
-    const body: { error?: string; message?: string } = await r.json().catch(() => ({}));
-    throw new TradesPageError(body.message ?? body.error ?? `HTTP ${r.status}`, r.status);
-  }
-  return r.json();
+  return http.get<TradesPageResponse>(`${TRADES_PAGE_KEY}?${params.toString()}`, { signal });
 }
 
 // ── Local fallback (legacy full-list API) ─────────────────────────────────────
@@ -245,11 +236,11 @@ export function getTradesCaps(): Promise<TradesApiCaps> {
   if (!capsInflight) {
     capsInflight = (async () => {
       try {
-        const r = await fetch(`${BASE}/api/trades/days?limit=1`);
+        const r = await http.raw("/api/trades/days?limit=1", { throwOnError: false });
         if (r.ok) return (capsCache = { page: true, review: true });
         if (r.status === 404 || r.status === 400) {
           // Older build: /trades/days is missing; /trades/page may still exist.
-          const pr = await fetch(`${BASE}${TRADES_PAGE_KEY}?limit=1`);
+          const pr = await http.raw(`${TRADES_PAGE_KEY}?limit=1`, { throwOnError: false });
           return (capsCache = { page: pr.status !== 404, review: false });
         }
         return { page: true, review: false }; // transient error: not cached, re-probed next time
@@ -341,7 +332,7 @@ export function useTradesPage(input: UseTradesPageInput) {
   const needsQuality = hasQualityFilters(filters) || sort.col === "exitEff" || sort.col === "mfeR" || sort.col === "left";
   const qualityStamp = mode === "local" && needsQuality ? Object.keys(input.quality ?? {}).length : 0;
 
-  const query = useQuery<TradesPageResponse, TradesPageError>({
+  const query = useQuery<TradesPageResponse, ApiError>({
     queryKey: [TRADES_PAGE_KEY, scopeKey, page, qualityStamp],
     enabled: input.enabled !== false,
     placeholderData: keepPreviousData,
@@ -364,7 +355,7 @@ export function useTradesPage(input: UseTradesPageInput) {
           return res;
         } catch (e) {
           // 404 ⇒ the running API has no /trades/page yet: fall back to the full list for this session.
-          if (!(e instanceof TradesPageError) || e.status !== 404) throw e;
+          if (!(e instanceof ApiError) || e.status !== 404) throw e;
           serverMode = "local";
           setMode("local");
         }
@@ -538,12 +529,7 @@ export async function fetchTradeDays(filters: TradeFilters, opts: { limit: numbe
   p.delete("sort");
   p.delete("dir");
   if (opts.before) p.set("before", opts.before);
-  const r = await fetch(`${BASE}${TRADES_DAYS_KEY}?${p.toString()}`, { signal });
-  if (!r.ok) {
-    const body: { error?: string; message?: string } = await r.json().catch(() => ({}));
-    throw new TradesPageError(body.message ?? body.error ?? `HTTP ${r.status}`, r.status);
-  }
-  return r.json();
+  return http.get<TradeDaysResponse>(`${TRADES_DAYS_KEY}?${p.toString()}`, { signal });
 }
 
 /**
@@ -559,7 +545,7 @@ export function useTradeDays(filters: TradeFilters, opts: { limit?: number; enab
   const [pagesKey, setPagesKey] = useState(baseKey);
   if (pagesKey !== baseKey) { setPagesKey(baseKey); setPages(1); }
 
-  const query = useQuery<{ days: TradeDay[]; hasMore: boolean; totalDays: number; listByDay: Map<string, Trade[]> | null }, TradesPageError>({
+  const query = useQuery<{ days: TradeDay[]; hasMore: boolean; totalDays: number; listByDay: Map<string, Trade[]> | null }, ApiError>({
     queryKey: [TRADES_DAYS_KEY, baseKey, pages, limit],
     enabled: opts.enabled !== false,
     placeholderData: keepPreviousData,

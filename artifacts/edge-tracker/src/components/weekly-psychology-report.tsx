@@ -3,7 +3,9 @@ import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -11,8 +13,11 @@ import { Pill, EmptyState, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
-import { WidgetShell, IconAction, WidgetError, Sparkline, fmtMoney, fmtR, num, relTime, useStoredState } from "@/components/widgets/widget-kit";
+import { WidgetShell, IconAction, WidgetError, Sparkline, num, relTime, useStoredState } from "@/components/widgets/widget-kit";
+import { fmtDate, fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 import { readinessTone } from "@/components/widgets/checkin-model";
+import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { commonI18n } from "@/i18n/ns/common";
 
 type StateStats = { count: number; winRate: number; avgPnl: number; totalPnl: number; avgR?: number | null };
 
@@ -42,14 +47,11 @@ type WeeklyReport = {
 };
 type HistoryData = { reports: WeeklyReport[]; recalcWeeks: string[] | null };
 
-const STATE_LABELS: Record<string, string> = {
-  focused: "В фокусе",
-  stressed: "Стресс",
-  tilted: "Тильт",
-  revenge: "Отыгрыш",
-  anxious: "Тревога",
-  normal: "Без отметок",
-};
+type StateKey = "focused" | "stressed" | "tilted" | "revenge" | "anxious" | "normal";
+const STATE_KEYS = new Set<string>(["focused", "stressed", "tilted", "revenge", "anxious", "normal"]);
+/** Check-in state code → label in the UI language (unknown codes shown as is). */
+const stateLabel = (s: string) => (STATE_KEYS.has(s) ? weeklyI18n.t(`psych.states.${s as StateKey}`) : s);
+const tradesShort = (count: number) => commonI18n.t("units.trades", { count });
 const STATE_TONE: Record<string, Tone> = {
   focused: "up",
   normal: "neutral",
@@ -59,16 +61,6 @@ const STATE_TONE: Record<string, Tone> = {
   anxious: "purple",
 };
 
-// "2026-10-13" → "13 окт" (parsed as a local date, no UTC shift)
-function fmtDay(ymd: string): string {
-  const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return ymd;
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-function weekday(ymd: string): string {
-  const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { weekday: "short" });
-}
 
 /** Monday..Friday of the current trading week (New York date, same as every desk report). */
 function currentWeekBounds(): { weekStart: string; weekEnd: string } {
@@ -81,7 +73,7 @@ function currentWeekBounds(): { weekStart: string; weekEnd: string } {
 function Delta({ value, unit, digits = 0, invert = false, neutral = false }: { value: number | null; unit: string; digits?: number; invert?: boolean; neutral?: boolean }) {
   if (value == null || !Number.isFinite(value)) return <span className="text-muted-foreground">—</span>;
   const r = Number(value.toFixed(digits));
-  if (r === 0) return <span className="text-muted-foreground">без изм.</span>;
+  if (r === 0) return <span className="text-muted-foreground">{weeklyI18n.t("psych.noChange")}</span>;
   const good = invert ? r < 0 : r > 0;
   return (
     <span className={neutral ? "text-muted-foreground" : good ? "text-up" : "text-down"}>
@@ -110,6 +102,7 @@ function Kpi({ label, value, tone = "neutral", delta }: { label: string; value: 
 }
 
 export function WeeklyPsychologyReport() {
+  const { t } = weeklyI18n.useT();
   const { user } = useAuth();
   const userId = user?.traderName ?? null;
   const qc = useQueryClient();
@@ -122,17 +115,18 @@ export function WeeklyPsychologyReport() {
 
   const historyQ = useQuery<HistoryData>({
     queryKey: ["weekly-psychology-history", userId],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/psychology/weekly-report/history?userId=${encodeURIComponent(userId!)}&limit=8`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+    queryFn: async ({ signal }) => {
+      const data = await http.get<{ reports?: WeeklyReport[]; recalcWeeks?: unknown }>("/api/psychology/weekly-report/history", {
+        query: { userId: userId!, limit: 8 },
+        signal,
+      });
       return {
         reports: (data.reports ?? []) as WeeklyReport[],
         recalcWeeks: Array.isArray(data.recalcWeeks) ? (data.recalcWeeks as string[]) : null,
       };
     },
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE.long,
     retry: 1,
   });
 
@@ -162,33 +156,28 @@ export function WeeklyPsychologyReport() {
     setGenerating(true);
     setError(null);
     try {
-      let res = await fetch(`${BASE}/api/psychology/weekly-report/recalculate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, ...(weekStart ? { weekStart } : {}) }),
-      });
-      if (res.status === 404 && !weekStart) {
-        res = await fetch(`${BASE}/api/psychology/weekly-report/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // Local Monday–Friday: the server used to derive the week from UTC and land on Sunday.
-          body: JSON.stringify({ userId, ...thisWeek }),
-        });
+      try {
+        await http.post("/api/psychology/weekly-report/recalculate", { userId, ...(weekStart ? { weekStart } : {}) });
+      } catch (e) {
+        if (!(isNotFound(e) && !weekStart)) throw e;
+        // Local Monday–Friday: the server used to derive the week from UTC and land on Sunday.
+        await http.post("/api/psychology/weekly-report/generate", { userId, ...thisWeek });
       }
-      if (res.ok) {
-        const keepWeek = weekStart ?? null;
-        await qc.invalidateQueries({ queryKey: ["weekly-psychology-history", userId] });
-        await qc.invalidateQueries({ queryKey: ["weekly-psychology-report", userId] });
-        const fresh = qc.getQueryData<HistoryData>(["weekly-psychology-history", userId])?.reports ?? [];
-        const at = keepWeek ? fresh.findIndex((r) => r.weekStart === keepWeek) : -1;
-        setIdx(at >= 0 ? at : 0);
-        toast({ title: "Отчёт пересчитан" });
+      const keepWeek = weekStart ?? null;
+      await qc.invalidateQueries({ queryKey: ["weekly-psychology-history", userId] });
+      await qc.invalidateQueries({ queryKey: ["weekly-psychology-report", userId] });
+      const fresh = qc.getQueryData<HistoryData>(["weekly-psychology-history", userId])?.reports ?? [];
+      const at = keepWeek ? fresh.findIndex((r) => r.weekStart === keepWeek) : -1;
+      setIdx(at >= 0 ? at : 0);
+      toast({ title: t("psych.recalculated") });
+    } catch (e) {
+      if (e instanceof ApiError && !e.isNetwork) {
+        // e.message is the localized text of the error code (falls back to the server body).
+        const msg = e.message || e.field<string>("error");
+        setError(msg ? t("psych.buildFailed", { reason: msg }) : t("psych.buildFailedHttp", { status: e.status }));
       } else {
-        const j = await res.json().catch(() => null);
-        setError(`Не удалось сформировать отчёт${j?.error ? `: ${j.error}` : ` (HTTP ${res.status})`}`);
+        setError(t("psych.networkError"));
       }
-    } catch {
-      setError("Ошибка сети — проверьте подключение");
     } finally {
       setGenerating(false);
     }
@@ -216,39 +205,39 @@ export function WeeklyPsychologyReport() {
   return (
     <WidgetShell
       icon={Brain}
-      title="Психология недели"
-      meta={report ? `${fmtDay(report.weekStart)} – ${fmtDay(report.weekEnd)}` : undefined}
+      title={t("psych.title")}
+      meta={report ? `${fmtDate(report.weekStart, "dayMonth")} – ${fmtDate(report.weekEnd, "dayMonth")}` : undefined}
       actions={
         <>
           {reports.length > 1 && (
             <>
-              <IconAction icon={ChevronLeft} label="Предыдущая неделя" disabled={safeIdx >= reports.length - 1} onClick={() => setIdx(safeIdx + 1)} />
-              <IconAction icon={ChevronRight} label="Следующая неделя" disabled={safeIdx === 0} onClick={() => setIdx(safeIdx - 1)} />
+              <IconAction icon={ChevronLeft} label={t("psych.prevWeek")} disabled={safeIdx >= reports.length - 1} onClick={() => setIdx(safeIdx + 1)} />
+              <IconAction icon={ChevronRight} label={t("psych.nextWeek")} disabled={safeIdx === 0} onClick={() => setIdx(safeIdx - 1)} />
             </>
           )}
-          <Link href={links.weeklyReview()} className="px-1 text-xs font-medium text-primary hover:underline">Отчёт недели →</Link>
-          <IconAction icon={RefreshCw} label="Пересчитать текущую неделю" spinning={generating} disabled={generating} onClick={() => void handleGenerate()} />
+          <Link href={links.weeklyReview()} className="px-1 text-xs font-medium text-primary hover:underline">{t("psych.weeklyLink")}</Link>
+          <IconAction icon={RefreshCw} label={t("psych.recalcCurrent")} spinning={generating} disabled={generating} onClick={() => void handleGenerate()} />
         </>
       }
     >
       {historyQ.isLoading ? (
-        <div className="space-y-3" aria-busy="true" aria-label="Загрузка отчёта">
+        <div className="space-y-3" aria-busy="true" aria-label={t("psych.loading")}>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[60px] rounded-xl" />)}
           </div>
           <Skeleton className="h-10 w-full rounded-xl" />
         </div>
       ) : historyQ.isError ? (
-        <WidgetError message="Не удалось загрузить отчёт" onRetry={() => historyQ.refetch()} />
+        <WidgetError message={t("psych.loadFailed")} onRetry={() => historyQ.refetch()} />
       ) : !report ? (
         <EmptyState
           icon={Brain}
-          title="Отчёта пока нет"
-          description="Сформируйте отчёт за неделю, чтобы увидеть, как состояние из чек-инов влияет на винрейт и R."
+          title={t("psych.emptyTitle")}
+          description={t("psych.emptyDesc")}
           action={
             <Button size="sm" onClick={() => void handleGenerate()} disabled={generating}>
               <RefreshCw className={cn(generating && "motion-safe:animate-spin")} aria-hidden="true" />
-              {generating ? "Формирование…" : "Сформировать отчёт"}
+              {generating ? t("psych.building") : t("psych.build")}
             </Button>
           }
           className="py-6"
@@ -258,32 +247,34 @@ export function WeeklyPsychologyReport() {
           {report.stale && (
             <div role="status" className="flex flex-wrap items-center gap-2 rounded-xl bg-[hsl(var(--chart-3)/0.12)] px-3 py-2 text-xs">
               <span className="min-w-0 flex-1">
-                Отчёт устарел: {report.staleReason === "trades_appeared" ? "он сформирован, когда сделок за неделю ещё не было" : "сделки за неделю изменились"} —
-                сейчас в журнале {report.liveTrades ?? "?"} сд., в отчёте {report.totalTrades}.
-                {recalcWeeks && !recalcWeeks.includes(report.weekStart) ? " Пересчитать можно только текущую или прошлую неделю." : ""}
+                {t(report.staleReason === "trades_appeared" ? "psych.staleAppeared" : "psych.staleChanged", {
+                  live: report.liveTrades != null ? tradesShort(report.liveTrades) : "?",
+                  stored: tradesShort(report.totalTrades),
+                })}
+                {recalcWeeks && !recalcWeeks.includes(report.weekStart) ? t("psych.staleOnlyRecent") : ""}
               </span>
               {(!recalcWeeks || recalcWeeks.includes(report.weekStart)) && (
                 <Button size="sm" variant="secondary" onClick={() => void handleGenerate(recalcWeeks ? report.weekStart : undefined)} disabled={generating}>
                   <RefreshCw className={cn(generating && "motion-safe:animate-spin")} aria-hidden="true" />
-                  Пересчитать
+                  {t("psych.recalc")}
                 </Button>
               )}
             </div>
           )}
           {!report.stale && recalcWeeks && recalcWeeks.includes(report.weekStart) && !isCurrent && (
             <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
-              <span>Отчёт сформирован {relTime(report.generatedAt)}.</span>
+              <span>{t("psych.generatedAgo", { ago: relTime(report.generatedAt) })}</span>
               <Button size="sm" variant="ghost" onClick={() => void handleGenerate(report.weekStart)} disabled={generating}>
                 <RefreshCw className={cn(generating && "motion-safe:animate-spin")} aria-hidden="true" />
-                Пересчитать эту неделю
+                {t("psych.recalcThis")}
               </Button>
             </div>
           )}
           {!isCurrent && safeIdx === 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[hsl(var(--chart-3)/0.1)] px-3 py-2 text-xs">
-              <span className="min-w-0 flex-1">Это отчёт за прошлую неделю. Текущая ({fmtDay(thisWeek.weekStart)} – {fmtDay(thisWeek.weekEnd)}) ещё не посчитана.</span>
+              <span className="min-w-0 flex-1">{t("psych.lastWeekNote", { range: `${fmtDate(thisWeek.weekStart, "dayMonth")} – ${fmtDate(thisWeek.weekEnd, "dayMonth")}` })}</span>
               <Button size="sm" variant="secondary" onClick={() => void handleGenerate()} disabled={generating}>
-                Посчитать
+                {t("psych.calculate")}
               </Button>
             </div>
           )}
@@ -291,33 +282,33 @@ export function WeeklyPsychologyReport() {
           {/* KPIs with deltas vs previous week */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Kpi
-              label="Сделки"
+              label={t("psych.trades")}
               value={report.totalTrades}
               delta={prev ? <Delta value={report.totalTrades - prev.totalTrades} unit="" neutral /> : undefined}
             />
             <Kpi
-              label="Винрейт"
+              label={t("psych.winRate")}
               value={wr == null ? "—" : `${wr}%`}
               tone={wr == null ? "neutral" : wr >= 50 ? "up" : "down"}
-              delta={prev ? <Delta value={wr != null && prevWr != null ? wr - prevWr : null} unit=" п.п." /> : undefined}
+              delta={prev ? <Delta value={wr != null && prevWr != null ? wr - prevWr : null} unit={t("psych.pp")} /> : undefined}
             />
             {pnl != null && pnl !== 0 ? (
               <Kpi
                 label="P&L"
-                value={fmtMoney(pnl)}
+                value={fmtUsd(pnl, { signed: true, decimals: 0 })}
                 tone={pnl >= 0 ? "up" : "down"}
                 delta={prev ? <Delta value={prevPnl != null ? pnl - prevPnl : null} unit="$" /> : undefined}
               />
             ) : (
               <Kpi
-                label="Средний R"
+                label={t("psych.avgR")}
                 value={fmtR(avgR)}
                 tone={avgR == null ? "neutral" : avgR >= 0 ? "up" : "down"}
                 delta={prev ? <Delta value={avgR != null && prevAvgR != null ? avgR - prevAvgR : null} unit="R" digits={2} /> : undefined}
               />
             )}
             <Kpi
-              label={`Готовность · ${report.totalCheckins}/5 чек-инов`}
+              label={t("psych.readiness", { count: report.totalCheckins })}
               value={ready == null ? "—" : ready}
               tone={readinessTone(ready)}
               delta={prev ? <Delta value={ready != null && prevReady != null ? ready - prevReady : null} unit="" /> : undefined}
@@ -326,28 +317,28 @@ export function WeeklyPsychologyReport() {
 
           {/* Day strip Mon–Fri */}
           {days.length > 0 && (
-            <ol className="grid grid-cols-5 gap-1.5" aria-label="Дни недели">
+            <ol className="grid grid-cols-5 gap-1.5" aria-label={t("psych.daysAria")}>
               {days.map((d) => {
-                const t = readinessTone(d.readiness);
+                const tone = readinessTone(d.readiness);
                 return (
                   <li
                     key={d.date}
                     className="min-w-0 rounded-xl bg-foreground/[0.04] px-2 py-1.5 text-center"
-                    title={`${fmtDay(d.date)}: ${d.count} сд., винрейт ${d.count ? Math.round(d.winRate * 100) + "%" : "—"}, готовность ${d.readiness ?? "—"}`}
+                    title={t("psych.dayTip", { date: fmtDate(d.date, "dayMonth"), trades: tradesShort(d.count), wr: d.count ? fmtRate(d.winRate) : "—", ready: d.readiness ?? "—" })}
                   >
                     <div className="flex items-center justify-center gap-1 text-2xs text-muted-foreground">
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full",
-                          d.readiness == null ? "bg-foreground/20" : t === "up" ? "bg-up" : t === "warn" ? "bg-[hsl(var(--chart-3))]" : "bg-down",
+                          d.readiness == null ? "bg-foreground/20" : tone === "up" ? "bg-up" : tone === "warn" ? "bg-[hsl(var(--chart-3))]" : "bg-down",
                         )}
                         aria-hidden="true"
                       />
-                      {weekday(d.date)}
+                      {fmtWeekday(d.date, "short")}
                     </div>
                     <div className="text-sm font-semibold tabular-nums">{d.count || "—"}</div>
                     <div className={cn("text-2xs tabular-nums", d.count ? (d.winRate >= 0.5 ? "text-up" : "text-down") : "text-muted-foreground")}>
-                      {d.count ? `${Math.round(d.winRate * 100)}%` : "нет сделок"}
+                      {d.count ? fmtRate(d.winRate) : t("psych.noTrades")}
                     </div>
                   </li>
                 );
@@ -357,15 +348,15 @@ export function WeeklyPsychologyReport() {
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              {report.bestState && <Pill tone="up">Лучшее: {STATE_LABELS[report.bestState] ?? report.bestState}</Pill>}
+              {report.bestState && <Pill tone="up">{t("psych.best", { state: stateLabel(report.bestState) })}</Pill>}
               {report.worstState && report.worstState !== report.bestState && (
-                <Pill tone="down">Худшее: {STATE_LABELS[report.worstState] ?? report.worstState}</Pill>
+                <Pill tone="down">{t("psych.worst", { state: stateLabel(report.worstState) })}</Pill>
               )}
             </div>
             {reports.length > 1 && (
               <div className="flex items-center gap-2 text-2xs text-muted-foreground">
-                <span>Винрейт · {reports.length} нед.</span>
-                <Sparkline values={trend.wr} width={88} height={22} domain={[0, 100]} tone="accent" connectGaps label="Винрейт по неделям" />
+                <span>{t("psych.wrWeeks", { weeks: commonI18n.t("units.weeks", { count: reports.length }) })}</span>
+                <Sparkline values={trend.wr} width={88} height={22} domain={[0, 100]} tone="accent" connectGaps label={t("psych.wrSparkAria")} />
               </div>
             )}
           </div>
@@ -379,7 +370,7 @@ export function WeeklyPsychologyReport() {
           >
             <span className="flex items-center gap-1.5">
               <Lightbulb className="h-3.5 w-3.5" aria-hidden="true" />
-              Выводы и разбивка по состояниям
+              {t("psych.detailsToggle")}
               {report.keyInsights?.length ? <span className="tabular-nums">· {report.keyInsights.length}</span> : null}
             </span>
             {details === "open" ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
@@ -388,14 +379,14 @@ export function WeeklyPsychologyReport() {
           {details === "open" && (
             <div id="weekly-psychology-details" className="grid gap-4 md:grid-cols-2">
               <div>
-                <div className="micro-label mb-2">Винрейт по состояниям</div>
+                <div className="micro-label mb-2">{t("psych.byState")}</div>
                 {breakdown.length ? (
                   <ul className="space-y-1.5">
                     {breakdown.map(([state, s]) => {
                       const tone = STATE_TONE[state] ?? "neutral";
                       return (
                         <li key={state} className="grid grid-cols-[6.5rem_minmax(0,1fr)_3rem_3.5rem] items-center gap-2 text-xs">
-                          <span className="truncate">{STATE_LABELS[state] ?? state}</span>
+                          <span className="truncate" title={stateLabel(state)}>{stateLabel(state)}</span>
                           <span className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden="true">
                             <span
                               className={cn("block h-full rounded-full", s.winRate >= 0.5 ? "bg-up" : "bg-down")}
@@ -403,21 +394,21 @@ export function WeeklyPsychologyReport() {
                             />
                           </span>
                           <span className={cn("text-right tabular-nums", tone === "down" && s.winRate < 0.5 ? "text-down" : "text-foreground")}>
-                            {Math.round(s.winRate * 100)}%
+                            {fmtRate(s.winRate)}
                           </span>
                           <span className="text-right tabular-nums text-muted-foreground">
-                            {s.count} сд.
+                            {commonI18n.t("units.tradesShort", { count: s.count })}
                           </span>
                         </li>
                       );
                     })}
                   </ul>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Нет сделок с отмеченным состоянием.</p>
+                  <p className="text-xs text-muted-foreground">{t("psych.noStateTrades")}</p>
                 )}
               </div>
               <div>
-                <div className="micro-label mb-2">Ключевые выводы</div>
+                <div className="micro-label mb-2">{t("psych.keyInsights")}</div>
                 {report.keyInsights?.length ? (
                   <ul className="space-y-1.5">
                     {report.keyInsights.map((insight, i) => (
@@ -428,15 +419,15 @@ export function WeeklyPsychologyReport() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Выводов пока нет.</p>
+                  <p className="text-xs text-muted-foreground">{t("psych.noInsights")}</p>
                 )}
               </div>
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2 text-2xs text-muted-foreground">
-            <span title={new Date(report.generatedAt).toLocaleString("ru-RU")}>Пересчитан {relTime(report.generatedAt)}</span>
-            {prev && <span>Сравнение с неделей {fmtDay(prev.weekStart)} – {fmtDay(prev.weekEnd)}</span>}
+            <span title={fmtDate(report.generatedAt, "shortDateTime")}>{t("psych.recalculatedAgo", { ago: relTime(report.generatedAt) })}</span>
+            {prev && <span>{t("psych.compareWith", { range: `${fmtDate(prev.weekStart, "dayMonth")} – ${fmtDate(prev.weekEnd, "dayMonth")}` })}</span>}
           </div>
           {error && <WidgetError message={error} />}
         </div>

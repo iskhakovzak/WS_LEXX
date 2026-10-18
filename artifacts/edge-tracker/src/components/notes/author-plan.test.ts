@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  FOLLOW_HEADER, extractTickers, findPrevPlan, followThrough, followThroughBlock, matchesSearch, moneyMentions,
+  followHeader, extractTickers, findPrevPlan, followThrough, followThroughBlock, matchesSearch, moneyMentions,
   planLines, sectionForDigit, splitTickers,
 } from "./author-plan";
 import { serializeNote, emptySections, type AuthorNote } from "./author-model";
@@ -76,7 +76,7 @@ describe("followThrough", () => {
 
   it("block for lessons is R-only and names the plan date", () => {
     const block = followThroughBlock("2026-10-16", followThrough(["$TSLA выше 250", "NVDA", "размер 50%"], trades));
-    expect(block.startsWith(`${FOLLOW_HEADER} (план от`)).toBe(true);
+    expect(block.startsWith(`${followHeader()} (план от`)).toBe(true);
     expect(block).toContain("• $TSLA выше 250 → торговал TSLA +1.0R — ");
     expect(block).toContain("• NVDA → не торговал — ");
     expect(block).toContain("• размер 50% → ");

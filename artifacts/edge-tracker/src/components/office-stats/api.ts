@@ -1,12 +1,14 @@
 /**
- * Data layer of «Статистика офиса»: raw fetch helpers for /api/office-stats* (no orval codegen for new endpoints)
+ * Data layer of «Статистика офиса»: lib/api/http calls for /api/office-stats* (no orval codegen for new endpoints)
  * and response types mirrored from api-server/src/lib/officeStats.ts + routes/officeStats.ts.
  *
  * Admin (partner) responses carry both views (`usd`, `pct`) + capital; member responses carry `pct` only —
  * the server strips $, absolute volume and per-trader rows before sending.
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { fmtCompact, fmtCount, fmtDate, fmtMonth, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
 
 export const STRATEGIES = ["OPG", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "OPT"] as const;
 export type Strategy = (typeof STRATEGIES)[number];
@@ -75,78 +77,43 @@ export type AdminResponse = Base & { role: "admin"; settings: AdminSetting[]; us
 export type MemberResponse = Base & { role: "member"; settings: { year: number; goalPct: number; hasCapital: boolean }[]; pct: OfficeView };
 export type OfficeStatsResponse = AdminResponse | MemberResponse;
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-
-async function readError(res: Response): Promise<never> {
-  let msg = `HTTP ${res.status}`;
-  try { const b = (await res.json()) as { error?: string }; if (b?.error) msg = b.error; } catch { /* not json */ }
-  throw new HttpError(res.status, msg);
-}
-
 export type OfficeParams = { years: number[]; from: string | null; to: string | null };
 
 export function useOfficeStats(p: OfficeParams, enabled = true) {
   return useQuery({
     queryKey: ["office-stats", p.years.join(","), p.from, p.to],
-    queryFn: async () => {
-      const q = new URLSearchParams({ years: p.years.join(",") });
-      if (p.from) q.set("from", p.from);
-      if (p.to) q.set("to", p.to);
-      const res = await fetch(apiUrl(`/api/office-stats?${q}`));
-      if (!res.ok) return readError(res);
-      return (await res.json()) as OfficeStatsResponse;
-    },
+    queryFn: ({ signal }) =>
+      http.get<OfficeStatsResponse>("/api/office-stats", { query: { years: p.years.join(","), from: p.from, to: p.to }, signal }),
     enabled,
     placeholderData: keepPreviousData,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   });
 }
 
 export function useSaveCapital() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { year: number; capital: number | null; goalPct: number }) => {
-      const res = await fetch(apiUrl("/api/office-stats/capital"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) return readError(res);
-      return (await res.json()) as AdminSetting;
-    },
+    mutationFn: (body: { year: number; capital: number | null; goalPct: number }) => http.put<AdminSetting>("/api/office-stats/capital", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["office-stats"] }),
   });
 }
 
 // ─── Formatting ────────────────────────────────────────────────────────────
 
-const MINUS = "−";
-
-/** +1.23% / −$1,234 — signed by default. */
+/** Value in the office unit: +1.23% (return on capital) / −$1,234 — signed by default; fewer decimals as it grows. */
 export function fmtV(v: number | null | undefined, unit: Unit, o: { signed?: boolean; digits?: number } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
   const signed = o.signed ?? true;
-  const sign = v > 0 ? (signed ? "+" : "") : v < 0 ? MINUS : "";
-  const a = Math.abs(v);
-  if (unit === "pct") {
-    const d = o.digits ?? (a >= 100 ? 0 : a >= 10 ? 1 : 2);
-    return `${sign}${a.toFixed(d)}%`;
-  }
-  const d = o.digits ?? (a >= 1000 ? 0 : a >= 100 ? 0 : 2);
-  return `${sign}$${a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
+  const a = v == null ? 0 : Math.abs(v);
+  if (unit === "pct") return fmtPct(v, { signed, decimals: o.digits ?? (a >= 100 ? 0 : a >= 10 ? 1 : 2) });
+  return fmtUsd(v, { signed, decimals: o.digits ?? (a >= 100 ? 0 : 2) });
 }
 
 /** Compact axis label: +12% / −$4.5K. */
 export function fmtAxis(v: number, unit: Unit): string {
   if (Math.abs(v) < 1e-9) return unit === "pct" ? "0%" : "$0";
-  const sign = v < 0 ? MINUS : "";
   const a = Math.abs(v);
-  if (unit === "pct") return `${sign}${a >= 10 ? a.toFixed(0) : a >= 1 ? a.toFixed(1).replace(/\.0$/, "") : a.toFixed(2).replace(/0$/, "")}%`;
-  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(a >= 10_000 ? 0 : 1)}K`;
-  return `${sign}$${a.toFixed(0)}`;
+  if (unit === "pct") return fmtPct(v, { signed: false, decimals: a >= 10 ? 0 : a >= 1 ? 1 : 2 }).replace(/\.0%$/, "%").replace(/(\.\d)0%$/, "$1%");
+  return fmtUsd(v, { compact: true });
 }
 
 /** Contribution style: 4.21% / (2.77%) — accounting parentheses for negatives. */
@@ -156,32 +123,31 @@ export function fmtParen(v: number | null | undefined, unit: Unit): string {
   return v < 0 ? `(${s})` : s;
 }
 
+/** Share 0…1 → "57%" (no "−0%" for a tiny negative). */
 export function fmtShare(x: number | null | undefined, digits = 0): string {
-  if (x == null || !Number.isFinite(x)) return "—";
-  const s = Math.abs(x * 100).toFixed(digits);
-  // A tiny negative share rounds to "-0%": show 0% then, and the typographic minus otherwise (as fmtV).
-  return x < 0 && Number(s) !== 0 ? `${MINUS}${s}%` : `${s}%`;
+  return fmtRate(x, digits);
 }
 
+/** Trade / share counts: locale grouping below 10,000, compact above (12.3K, 1.2M). */
 export function fmtNum(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  const a = Math.abs(n);
-  if (a >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (a >= 10_000) return `${(n / 1000).toFixed(0)}K`;
-  return Math.round(n).toLocaleString("ru-RU");
+  return Math.abs(n) >= 10_000 ? fmtCompact(n) : fmtCount(Math.round(n));
 }
 
-const DAY_FMT = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" });
-const DAY_LONG = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-export const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-export const MONTHS_LONG = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+/** Short month 0–11 without the abbreviation dot: «янв» / «Jan». */
+export const monthShort = (i: number) => fmtMonth(i, "short").replace(".", "");
+/** Month 0–11 with a capital letter: «Январь» / «January». */
+export const monthLong = (i: number) => {
+  const s = fmtMonth(i, "long");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
 
 export function fmtDay(ymd: string | null | undefined): string {
   if (!ymd) return "—";
-  return DAY_FMT.format(new Date(`${ymd}T00:00:00Z`)).replace(".", "");
+  return fmtDate(ymd, "dayMonth").replace(".", "");
 }
 export function fmtDayLong(ymd: string): string {
-  return DAY_LONG.format(new Date(`${ymd}T00:00:00Z`));
+  return fmtDate(ymd, "fullShortWeekday");
 }
 /** Calendar date of a day-of-year (1-based) in a year. */
 export function dateOfDoy(year: number, doy: number): string {

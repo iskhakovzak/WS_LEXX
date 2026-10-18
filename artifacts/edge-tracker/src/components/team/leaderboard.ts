@@ -4,31 +4,32 @@
 import type { Trade } from "@workspace/api-client-react";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { closeDate, isClosed, netPnl, signedR } from "@/lib/trade-math";
+import { fmtDate, fmtDateRange } from "@/lib/format";
+import { teamI18n } from "@/i18n/ns/team";
+import { commonI18n } from "@/i18n/ns/common";
+
+/** `{ key: label }` whose labels are read in the current language on every access (safe at module scope). */
+function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const k of keys) Object.defineProperty(o, k, { get: () => label(k), enumerable: true });
+  return o;
+}
 
 export type Period = "week" | "month" | "quarter" | "all";
 export type Metric = "score" | "net" | "r" | "expectancy" | "pf" | "consistency" | "drawdown" | "winrate";
 
-export const METRIC_LABEL: Record<Metric, string> = {
-  score: "Desk score",
-  net: "P&L нетто",
-  r: "Сумма R",
-  expectancy: "Ожидание R",
-  pf: "Profit factor",
-  consistency: "Зелёные дни",
-  drawdown: "Просадка",
-  winrate: "Win rate",
-};
+const METRICS: readonly Metric[] = ["score", "net", "r", "expectancy", "pf", "consistency", "drawdown", "winrate"];
+/** Metric → label in the current language (getters, so `METRIC_LABEL[m]` follows a language switch). */
+export const METRIC_LABEL: Record<Metric, string> = liveLabels(METRICS, (m) => teamI18n.t(`metric.${m}`));
 
 export type Range = { kind: Period; from: string | null; to: string | null; label: string };
-
-const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-const MONTHS_NOM = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 
 function parts(ymd: string) {
   const [y, m, d] = ymd.split("-").map(Number);
   return { y, m, d };
 }
 const pad = (n: number) => String(n).padStart(2, "0");
+const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Monday of the NY week containing `ymd`. */
 export function mondayOf(ymd: string): string {
@@ -41,28 +42,27 @@ function lastDayOfMonth(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
+/** «17 октября» / «17 октября 2026 г.» */
 export function fmtDay(ymd: string, withYear = false): string {
-  const { y, m, d } = parts(ymd);
-  return `${d} ${MONTHS[m - 1]}${withYear ? ` ${y}` : ""}`;
+  return fmtDate(ymd, withYear ? "long" : "dayMonthLong");
 }
 
 /** Window for an anchor date: Mon–Fri week, calendar month, calendar quarter, or everything. */
 export function periodRange(anchor: string, period: Period): Range {
-  if (period === "all") return { kind: "all", from: null, to: null, label: "За всё время" };
+  if (period === "all") return { kind: "all", from: null, to: null, label: teamI18n.t("period.all") };
   const { y, m } = parts(anchor);
   if (period === "week") {
     const from = mondayOf(anchor);
     const to = addDays(from, 4);
-    const a = parts(from), b = parts(to);
-    const label = a.m === b.m ? `${a.d}–${b.d} ${MONTHS[b.m - 1]} ${b.y}` : `${fmtDay(from)} – ${fmtDay(to, true)}`;
-    return { kind: "week", from, to, label };
+    // «12–16 октября 2026 г.» / «October 12 – 16, 2026» / «2026-yil 12–16-oktabr» (shared range formatter).
+    return { kind: "week", from, to, label: fmtDateRange(from, to) };
   }
   if (period === "month") {
-    return { kind: "month", from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(lastDayOfMonth(y, m))}`, label: `${MONTHS_NOM[m - 1]} ${y}` };
+    return { kind: "month", from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(lastDayOfMonth(y, m))}`, label: capFirst(fmtDate(`${y}-${pad(m)}-01`, "monthYear")) };
   }
   const q = Math.floor((m - 1) / 3);
   const fm = q * 3 + 1, lm = fm + 2;
-  return { kind: "quarter", from: `${y}-${pad(fm)}-01`, to: `${y}-${pad(lm)}-${pad(lastDayOfMonth(y, lm))}`, label: `${q + 1} квартал ${y}` };
+  return { kind: "quarter", from: `${y}-${pad(fm)}-01`, to: `${y}-${pad(lm)}-${pad(lastDayOfMonth(y, lm))}`, label: teamI18n.t("period.quarter", { q: q + 1, year: y }) };
 }
 
 export function shiftAnchor(anchor: string, period: Period, dir: -1 | 1): string {
@@ -87,14 +87,8 @@ export const todayNy = () => nyDate();
 
 export type ScorePart = "expectancy" | "profitFactor" | "net" | "consistency" | "drawdown" | "discipline";
 
-export const SCORE_PART_LABEL: Record<ScorePart, string> = {
-  expectancy: "Ожидание R",
-  profitFactor: "Profit factor",
-  net: "P&L нетто к лимиту",
-  consistency: "Зелёные дни",
-  drawdown: "Просадка",
-  discipline: "Дисциплина",
-};
+const SCORE_PARTS: readonly ScorePart[] = ["expectancy", "profitFactor", "net", "consistency", "drawdown", "discipline"];
+export const SCORE_PART_LABEL: Record<ScorePart, string> = liveLabels(SCORE_PARTS, (k) => teamI18n.t(`scorePart.${k}`));
 
 export type TraderRow = {
   trader: string;
@@ -215,7 +209,7 @@ export function setupOf(t: Trade): string {
   if (s) return s;
   const tag = t.tags?.split(",")[0]?.trim();
   if (tag) return tag;
-  return "Без сетапа";
+  return commonI18n.t("trading.noSetup");
 }
 
 /** Closed trades of the window by close date (NY calendar). */

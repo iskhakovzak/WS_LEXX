@@ -1,0 +1,63 @@
+import type { Messages } from "../../core";
+import type ru from "../ru/auth";
+
+export default {
+  tagline: "Prop-treyding desk jurnali",
+  steps: {
+    aria: "Kirish bosqichlari",
+    signIn: "Kirish",
+    newPassword: "Yangi parol",
+  },
+  name: {
+    label: "Ism",
+    placeholder: "Deskdagi ismingiz",
+    change: "Boshqa ism",
+  },
+  secret: {
+    pin: "PIN",
+    password: "Parol",
+    pinPlaceholder: "6 ta raqam",
+    passwordPlaceholder: "Parolni kiriting",
+    usePassword: "Menda parol bor",
+    usePin: "Menda PIN bor",
+    show: "Koʻrsatish",
+    hide: "Yashirish",
+    capsLock: "Caps Lock yoqilgan",
+  },
+  submit: "Kirish",
+  submitting: "Kirilmoqda…",
+  enterHint: "kirish uchun",
+  lockedButton: "Bloklangan · {time}",
+  errors: {
+    invalid: "Ism yoki PIN notoʻgʻri. Klaviatura tilini tekshirib, qayta urinib koʻring",
+    locked: "Muvaffaqiyatsiz urinishlar juda koʻp. {time} dan keyin qayta urinib koʻring",
+    rateLimited: "Kirish urinishlari juda koʻp. {time} dan keyin qayta urinib koʻring",
+    network: "Server mavjud emas. Ulanishni tekshirib, qayta urinib koʻring",
+    banned: "Kirish bloklangan. Kuratoringizga murojaat qiling",
+    guestDisabled: "Bu serverda mehmon sifatida kirish oʻchirilgan. Ismingiz bilan kiring",
+  },
+  guest: "Mehmon sifatida kirish · faqat koʻrish",
+  forced: {
+    title: "Yangi parol oʻrnating",
+    description: "Kurator va administratorlar uchun parol endi kamida {min} ta belgidan iborat boʻlishi kerak. Buni bir marta qilasiz, keyin darhol jurnalga oʻtasiz.",
+    signedInAs: "Siz {name} sifatida kirdingiz",
+    current: "Joriy parol",
+    next: "Yangi parol",
+    repeat: "Yangi parolni takrorlang",
+    counter: "{count} / {min}",
+    tooShort: "Kamida {min} ta belgi",
+    mismatch: "Parollar mos kelmaydi",
+    same: "Yangi parol joriy paroldan farq qilishi kerak",
+    submit: "Saqlash va kirish",
+    saving: "Saqlanmoqda…",
+    cancel: "Chiqish",
+    failed: "Parolni saqlab boʻlmadi",
+  },
+  clock: {
+    weekend: "Dam olish kunlari",
+    premarket: "Premarket",
+    regular: "Asosiy sessiya",
+    postmarket: "Postmarket",
+    closed: "Bozor yopiq",
+  },
+} satisfies Messages<typeof ru>;

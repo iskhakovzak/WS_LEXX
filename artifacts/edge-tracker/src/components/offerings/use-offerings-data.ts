@@ -1,7 +1,13 @@
-import { useMemo } from "react";
+import { createElement, useMemo } from "react";
+import { useLocation } from "wouter";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { humanizeApiError, isNotFound } from "@/lib/api/errors";
+import { KEYS, STALE } from "@/lib/api/keys";
+import { openTradesQuery, type OpenTradeRow } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
+import { links } from "@/lib/links";
 import { gpApi, gpKeys } from "@/components/game-plan/types";
 import { docToDraft, draftToDoc, emptyTicker, MAX_TICKERS } from "@/components/game-plan/plan-draft";
 import type {
@@ -9,27 +15,17 @@ import type {
   TickerHistory, TradeRow, WatchItem,
 } from "./types";
 import { watchCatalyst } from "./types";
+import { commonI18n } from "@/i18n/ns/common";
+import { offeringsI18n } from "@/i18n/ns/offerings";
 
-type HttpError = Error & { status?: number };
-const statusOf = (e: unknown): number | undefined => (e as HttpError | null)?.status;
-/** New endpoints answer 404 until the API is rebuilt: never retry those. */
-const retryUnless404 = (count: number, err: unknown) => statusOf(err) !== 404 && count < 1;
-export const isMissingEndpoint = (e: unknown) => statusOf(e) === 404;
+/** New endpoints answer 404 until the API is rebuilt: never retry those (old-API fallback, phase E removes). */
+const retryUnless404 = (count: number, err: unknown) => !isNotFound(err) && count < 1;
+export const isMissingEndpoint = (e: unknown) => isNotFound(e);
 
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`);
-  if (!r.ok) {
-    const body = (await r.json().catch(() => null)) as { error?: string; message?: string } | null;
-    const err = new Error(body?.message || body?.error || `HTTP ${r.status}`) as Error & { status?: number };
-    err.status = r.status;
-    throw err;
-  }
-  return r.json() as Promise<T>;
-}
 
 const watchQuery = (day: string) => ({
   queryKey: ["offerings", day] as const,
-  queryFn: () => getJson<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}`),
+  queryFn: () => http.get<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}`),
   staleTime: 5 * 60_000,
 });
 
@@ -57,7 +53,7 @@ export function useOfferingsDays(days: string[], enabled: boolean) {
 export function useTickerHistory(ticker: string | null) {
   return useQuery<TickerHistory>({
     queryKey: ["offerings", "history", ticker],
-    queryFn: () => getJson<TickerHistory>(`/api/offerings/history/${encodeURIComponent(ticker ?? "")}`),
+    queryFn: () => http.get<TickerHistory>(`/api/offerings/history/${encodeURIComponent(ticker ?? "")}`),
     enabled: !!ticker,
     staleTime: 60 * 60_000,
     retry: retryUnless404,
@@ -71,7 +67,7 @@ export function useTickerHistory(ticker: string | null) {
 export function useMyOfferingStats(win: 0 | 1, enabled: boolean) {
   return useQuery<MyOfferingStats>({
     queryKey: ["offerings", "my-stats", win],
-    queryFn: () => getJson<MyOfferingStats>(`/api/offerings/my-stats?window=${win}`),
+    queryFn: () => http.get<MyOfferingStats>(`/api/offerings/my-stats?window=${win}`),
     enabled,
     staleTime: 10 * 60_000,
     retry: retryUnless404,
@@ -83,7 +79,7 @@ export function useMyOfferingStats(win: 0 | 1, enabled: boolean) {
 export function useIpoCalendar(enabled: boolean) {
   return useQuery<IpoCalendarResponse>({
     queryKey: ["offerings", "ipo-calendar"],
-    queryFn: () => getJson<IpoCalendarResponse>("/api/offerings/ipo-calendar"),
+    queryFn: () => http.get<IpoCalendarResponse>("/api/offerings/ipo-calendar"),
     enabled,
     staleTime: 10 * 60_000,
     retry: retryUnless404,
@@ -97,7 +93,7 @@ export function useMyTickerTrades(ticker: string | null, trader: string | null |
     queryFn: async () => {
       const qs = new URLSearchParams({ ticker: ticker ?? "", limit: "50", sort: "date", dir: "desc" });
       if (trader) qs.set("trader", trader);
-      const r = await getJson<{ items: TradeRow[] }>(`/api/trades/page?${qs}`);
+      const r = await http.get<{ items: TradeRow[] }>(`/api/trades/page?${qs}`);
       return r.items ?? [];
     },
     enabled: !!ticker,
@@ -108,21 +104,19 @@ export function useMyTickerTrades(ticker: string | null, trader: string | null |
 
 /** Force-refresh bypassing the 10-min server cache (server allows it once per minute). */
 export async function fetchOfferingsFresh(day: string): Promise<OfferingsResponse> {
-  return getJson<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}&force=1`);
+  return http.get<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}&force=1`);
 }
+
+const toOpenTrades = (rows: OpenTradeRow[]): OpenTrade[] => (Array.isArray(rows) ? (rows as unknown as OpenTrade[]) : []);
 
 /** Open positions (own for traders, desk-wide for curators) and the shared watchlist. */
 export function useExposure() {
-  const trades = useQuery<OpenTrade[]>({
-    queryKey: ["offerings", "open-trades"],
-    queryFn: () => getJson<OpenTrade[]>("/api/trades?result=open"),
-    staleTime: 60_000,
-    retry: 1,
-  });
+  // One cache entry with the analyst page (lib/api/queries).
+  const trades = useQuery({ ...openTradesQuery(), select: toOpenTrades, retry: 1 });
   const watch = useQuery<WatchItem[]>({
-    queryKey: ["watchlist"],
-    queryFn: () => getJson<WatchItem[]>("/api/watchlist"),
-    staleTime: 60_000,
+    queryKey: KEYS.watchlist(),
+    queryFn: ({ signal }) => http.get<WatchItem[]>("/api/watchlist", { signal }),
+    staleTime: STALE.short,
     retry: 1,
   });
   const map = useMemo(() => {
@@ -136,7 +130,8 @@ export function useExposure() {
     }
     for (const w of watch.data ?? []) {
       const k = String(w.ticker ?? "").toUpperCase();
-      if (!k) continue;
+      // Archived («Пропустил») rows are out of work — «В вотчлист» brings them back.
+      if (!k || String(w.status ?? "").toLowerCase() === "passed") continue;
       const e = m.get(k) ?? { held: [], watched: false };
       e.watched = true;
       m.set(k, e);
@@ -149,7 +144,7 @@ export function useExposure() {
 export function useTickerDetail(ticker: string | null) {
   return useQuery<TickerDetail>({
     queryKey: ["offerings", "ticker", ticker],
-    queryFn: () => getJson<TickerDetail>(`/api/offerings/ticker/${encodeURIComponent(ticker ?? "")}`),
+    queryFn: () => http.get<TickerDetail>(`/api/offerings/ticker/${encodeURIComponent(ticker ?? "")}`),
     enabled: !!ticker,
     staleTime: 30 * 60_000,
     retry: retryUnless404,
@@ -160,49 +155,55 @@ export function useInsiders(tickers: string[]) {
   const key = tickers.slice(0, 8).join(",");
   return useQuery<{ fetchedAt: number; items: InsiderSummary[]; missing: string[] }>({
     queryKey: ["offerings", "insiders", key],
-    queryFn: () => getJson(`/api/offerings/insiders?tickers=${encodeURIComponent(key)}`),
+    queryFn: () => http.get(`/api/offerings/insiders?tickers=${encodeURIComponent(key)}`),
     enabled: key.length > 0,
     staleTime: 30 * 60_000,
     retry: 1,
   });
 }
 
-/** Add a ticker to the shared watchlist with the filing as catalyst. */
+/**
+ * Add a ticker to the shared watchlist «Сегодня» (a deal in play is traded today) with the filing as catalyst.
+ * Already there / archived (409) → the quick endpoint moves or restores the existing row instead.
+ */
 export function useAddToWatchlist() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   return useMutation({
     mutationFn: async (o: Offering) => {
-      const r = await fetch(`${BASE}/api/watchlist`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      try {
+        return await http.post("/api/watchlist", {
           ticker: o.ticker,
           catalyst: watchCatalyst(o),
           notes: o.filingUrl ? `SEC: ${o.filingUrl}` : undefined,
           sector: o.sector ?? undefined,
-        }),
-      });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error || `HTTP ${r.status}`);
+          list: "today",
+          inPlay: true,
+        });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) return http.post("/api/watchlist/quick", { tickers: [o.ticker], list: "today" });
+        throw e;
       }
-      return r.json();
     },
     onMutate: async (o) => {
-      await qc.cancelQueries({ queryKey: ["watchlist"] });
-      const prev = qc.getQueryData<WatchItem[]>(["watchlist"]);
-      qc.setQueryData<WatchItem[]>(["watchlist"], (old) => [...(old ?? []), { id: -Date.now(), ticker: o.ticker, status: "watching" }]);
+      await qc.cancelQueries({ queryKey: KEYS.watchlist() });
+      const prev = qc.getQueryData<WatchItem[]>(KEYS.watchlist());
+      qc.setQueryData<WatchItem[]>(KEYS.watchlist(), (old) => [...(old ?? []), { id: -Date.now(), ticker: o.ticker, status: "watching" }]);
       return { prev };
     },
     onError: (e, o, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["watchlist"], ctx.prev);
-      toast({ title: `Не удалось добавить ${o.ticker}`, description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev);
+      toast({ title: offeringsI18n.t("toast.addFailed", { ticker: o.ticker }), description: humanizeApiError(e), variant: "destructive" });
     },
     onSuccess: (_d, o) => {
-      toast({ title: `${o.ticker} в вотчлисте`, description: watchCatalyst(o) });
+      toast({
+        title: offeringsI18n.t("toast.addedWatch", { ticker: o.ticker }),
+        description: watchCatalyst(o),
+        action: createElement(ToastAction, { altText: offeringsI18n.t("toast.openInWatch"), onClick: () => navigate(links.watchlist(o.ticker)) }, commonI18n.t("actions.open")) as unknown as ToastActionElement,
+      });
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: KEYS.watchlist() }),
   });
 }
 
@@ -219,17 +220,17 @@ export function useAddToPlan() {
       const draft = docToDraft(cur.plan?.doc);
       const t = o.ticker.toUpperCase();
       if (draft.inPlay.some((i) => i.ticker.trim().toUpperCase() === t)) return { already: true, date };
-      if (draft.inPlay.length >= MAX_TICKERS) throw new Error(`В плане уже ${MAX_TICKERS} тикеров`);
+      if (draft.inPlay.length >= MAX_TICKERS) throw new Error(offeringsI18n.t("toast.planFull", { count: MAX_TICKERS }));
       draft.inPlay.push(emptyTicker({ ticker: t, catalyst: watchCatalyst(o), bias: "bear" }));
       await gpApi.saveMy(date, { ...draftToDoc(draft), status: cur.plan?.status ?? "draft" });
       return { already: false, date };
     },
     onSuccess: (r, { o }) => {
       void qc.invalidateQueries({ queryKey: gpKeys.my(r.date) });
-      toast({ title: r.already ? `${o.ticker} уже в плане` : `${o.ticker} добавлен в план дня`, description: r.already ? undefined : watchCatalyst(o) });
+      toast({ title: r.already ? offeringsI18n.t("toast.alreadyInPlan", { ticker: o.ticker }) : offeringsI18n.t("toast.addedPlan", { ticker: o.ticker }), description: r.already ? undefined : watchCatalyst(o) });
     },
     onError: (e, { o }) => {
-      toast({ title: `Не удалось добавить ${o.ticker} в план`, description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      toast({ title: offeringsI18n.t("toast.addPlanFailed", { ticker: o.ticker }), description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     },
   });
 }

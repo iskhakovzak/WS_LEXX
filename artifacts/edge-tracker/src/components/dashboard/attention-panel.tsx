@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle,
@@ -26,8 +26,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { links } from "@/lib/links";
 import { prevWeekday } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
-import { fmtMoney, plural, shortDate } from "./fmt";
+import { shortDate } from "./fmt";
+import { fmtUsd } from "@/lib/format";
 import type { DashboardToday, EodStatus, EventsToday, MiniTrade, RecentTrade, RiskDesk, RiskMe } from "./use-dashboard";
+import { commonI18n } from "@/i18n/ns/common";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { personName } from "@/i18n";
 
 /** One actionable line. Lower `rank` = more urgent; the first item becomes «Следующий шаг». */
 type Item = {
@@ -55,6 +59,7 @@ const TONE_ICON: Record<Tone, string> = {
 
 const CLOSE_MIN = 16 * 60;
 const VISIBLE_ROWS = 5;
+const INPUT_WAIT_MS = 2500;
 
 function dayReportHref(date: string, trader?: string | null) {
   const q = new URLSearchParams({ date });
@@ -89,6 +94,7 @@ function ItemLink({ item, className, children }: { item: Item; className?: strin
 }
 
 function NextStep({ item }: { item: Item }) {
+  const { t } = dashboardI18n.useT();
   const Icon = item.icon;
   return (
     <div className="tile flex flex-col gap-3 p-3">
@@ -97,7 +103,7 @@ function NextStep({ item }: { item: Item }) {
           <Icon className="h-4 w-4" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="micro-label">Следующий шаг</div>
+          <div className="micro-label">{t("attention.nextStep")}</div>
           <div className="text-sm font-semibold leading-5">{item.title}</div>
           {item.detail && <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.detail}</div>}
         </div>
@@ -143,8 +149,8 @@ function Row({ item }: { item: Item }) {
           <Icon className="h-3.5 w-3.5" aria-hidden="true" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{item.title}</span>
-          {item.detail && <span className="block truncate text-xs text-muted-foreground">{item.detail}</span>}
+          <span className="block truncate text-sm font-medium" title={item.title}>{item.title}</span>
+          {item.detail && <span className="block truncate text-xs text-muted-foreground" title={item.detail}>{item.detail}</span>}
         </span>
         <span className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground group-hover:text-foreground">
           <span className="hidden xl:inline">{item.cta}</span>
@@ -188,17 +194,27 @@ export function AttentionPanel({
   /** Macro calendar for today (OPEX, CPI, holidays…). */
   marketEvents: { name: string; type?: string | null; importance?: string | null }[];
   unread: { unread: number; critical: number; warn: number } | undefined;
+  /** True until every input above has answered (the task count would otherwise jump as they arrive). */
   isLoading: boolean;
   updatedAt?: number;
   onCheckin: () => void;
   fill?: boolean;
 }) {
+  const { t } = dashboardI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [expanded, setExpanded] = useState(false);
+  // A slow / retrying secondary input must not hold the panel back for long: after INPUT_WAIT_MS render what we have.
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    if (!isLoading || !data) return;
+    const timer = window.setTimeout(() => setWaited(true), INPUT_WAIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, data]);
 
-  if (isLoading && !data) {
+  if (!data ? isLoading : isLoading && !waited) {
     return (
-      <Panel title="Что важно сейчас" icon={Compass} fill={fill}>
-        <div className="flex flex-col gap-3" role="status" aria-label="Загрузка">
+      <Panel title={t("attention.title")} icon={Compass} fill={fill}>
+        <div className="flex flex-col gap-3" role="status" aria-label={tc("states.loading")}>
           <Skeleton className="h-[104px] w-full rounded-xl" />
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-2">
@@ -233,10 +249,10 @@ export function AttentionPanel({
         rank: breach ? 0 : 3,
         icon: ShieldAlert,
         tone: breach ? "down" : "warn",
-        title: risk.halted ? risk.stop.label : `Близко к лимиту: ${first?.label ?? "риск"}`,
-        detail: risk.halted ? risk.stop.message : first ? `${first.pct != null ? `${Math.round(first.pct)}% лимита` : ""}${first.detail ? ` · ${first.detail}` : ""}` : undefined,
+        title: risk.halted ? risk.stop.label : t("attention.nearLimit", { label: first?.label ?? t("attention.nearLimitFallback") }),
+        detail: risk.halted ? risk.stop.message : first ? [first.pct != null ? t("attention.limitPct", { pct: Math.round(first.pct) }) : null, first.detail || null].filter(Boolean).join(" · ") : undefined,
         href: links.risk(risk.trader),
-        cta: "Риск-деск",
+        cta: t("attention.riskDesk"),
       });
     }
   }
@@ -247,10 +263,10 @@ export function AttentionPanel({
       rank: halted.length > 0 ? 0 : 3,
       icon: ShieldAlert,
       tone: halted.length > 0 ? "down" : "warn",
-      title: halted.length > 0 ? `Стоп по риску: ${halted.map((b) => b.trader).join(", ")}` : `Близко к лимиту: ${desk.banner.map((b) => b.trader).join(", ")}`,
+      title: halted.length > 0 ? t("attention.riskStop", { traders: halted.map((b) => personName(b.trader)).join(", ") }) : t("attention.nearLimit", { label: desk.banner.map((b) => personName(b.trader)).join(", ") }),
       detail: desk.banner[0]?.message,
       href: links.risk(desk.banner[0]?.trader),
-      cta: "Риск-деск",
+      cta: t("attention.riskDesk"),
     });
   }
 
@@ -267,17 +283,17 @@ export function AttentionPanel({
         rank: 1,
         icon: ClipboardCheck,
         tone: "warn",
-        title: isToday ? "Закрыть сегодняшний день" : isYesterday ? "Заполнить разбор вчерашнего дня" : `Заполнить разбор дня ${shortDate(lastDay)}`,
+        title: isToday ? t("attention.closeToday") : isYesterday ? t("attention.fillYesterday") : t("attention.fillDay", { date: shortDate(lastDay) }),
         detail: [
-          `${row.trades} ${plural(row.trades, ["сделка", "сделки", "сделок"])}`,
-          dayNet != null ? `${fmtMoney(dayNet)} нетто` : null,
-          missing > 0 ? `${missing} без сетапа или оценки` : "итог дня не записан",
+          tc("units.trades", { count: row.trades }),
+          dayNet != null ? t("attention.dayNet", { amount: fmtUsd(dayNet, { signed: true }) }) : null,
+          missing > 0 ? t("attention.missingSetup", { count: missing }) : t("attention.noDayResult"),
         ]
           .filter(Boolean)
           .join(" · "),
         href: links.journalDay(lastDay, me),
-        cta: "Заполнить разбор",
-        secondary: { label: "Авторазбор дня", href: dayReportHref(lastDay, me) },
+        cta: t("attention.fillReview"),
+        secondary: { label: t("attention.autoReview"), href: dayReportHref(lastDay, me) },
       });
     }
   } else if (team && eod && afterClose) {
@@ -288,10 +304,10 @@ export function AttentionPanel({
         rank: 2,
         icon: ClipboardCheck,
         tone: "warn",
-        title: `${open.length} ${plural(open.length, ["трейдер не закрыл", "трейдера не закрыли", "трейдеров не закрыли"])} день`,
-        detail: open.map((x) => x.trader).slice(0, 5).join(", "),
+        title: t("attention.teamNotClosed", { count: open.length }),
+        detail: open.map((x) => personName(x.trader)).slice(0, 5).join(", "),
         href: links.journalDay(today),
-        cta: "К журналу",
+        cta: t("attention.toJournal"),
       });
     }
   }
@@ -304,10 +320,10 @@ export function AttentionPanel({
       rank: 2,
       icon: BookOpenCheck,
       tone: "accent",
-      title: "Прочитать план на день",
-      detail: `${p.bias ? `${p.bias} · ` : ""}${p.inPlayCount} ${plural(p.inPlayCount, ["тикер в фокусе", "тикера в фокусе", "тикеров в фокусе"])}`,
+      title: t("attention.readPlan"),
+      detail: [p.bias || null, t("attention.tickersInFocus", { count: p.inPlayCount })].filter(Boolean).join(" · "),
       href: links.gamePlan(today),
-      cta: "Открыть план",
+      cta: t("attention.openPlan"),
     });
   }
   if (!a.checkin.done && tradingDay && !afterClose) {
@@ -316,10 +332,10 @@ export function AttentionPanel({
       rank: 4,
       icon: HeartPulse,
       tone: "warn",
-      title: "Утренний чек-ин",
-      detail: "Сон, фокус, тильт — 30 секунд",
+      title: t("attention.checkin"),
+      detail: t("attention.checkinHint"),
       onClick: onCheckin,
-      cta: "Заполнить",
+      cta: t("attention.fill"),
     });
   }
 
@@ -334,11 +350,11 @@ export function AttentionPanel({
   const myEarnings = (events?.earnings ?? []).filter((e) => mine.has(e.ticker.toUpperCase()));
   const eventLabels = [
     ...marketEvents.map((e) => e.name),
-    ...macroEvents.map((e) => e.headline ?? e.eventType ?? "событие"),
+    ...macroEvents.map((e) => e.headline ?? e.eventType ?? t("attention.eventFallback")),
   ];
   const tickerChips = [
-    ...tickerEvents.flatMap((e) => splitTickers(e.ticker).filter((t) => mine.has(t)).map((t) => ({ t, title: `${t}: ${e.headline ?? e.eventType ?? "событие"}` }))),
-    ...myEarnings.map((e) => ({ t: e.ticker.toUpperCase(), title: `${e.ticker}: отчёт ${e.session ?? ""}`.trim() })),
+    ...tickerEvents.flatMap((e) => splitTickers(e.ticker).filter((tk) => mine.has(tk)).map((tk) => ({ t: tk, title: `${tk}: ${e.headline ?? e.eventType ?? t("attention.eventFallback")}` }))),
+    ...myEarnings.map((e) => ({ t: e.ticker.toUpperCase(), title: t("attention.earnings", { ticker: e.ticker, session: e.session ?? "" }).trim() })),
   ].filter((c, i, arr) => arr.findIndex((x) => x.t === c.t) === i);
   // After the close today's catalysts are history — the block is about what's ahead.
   if (!afterClose && (tickerChips.length > 0 || eventLabels.length > 0)) {
@@ -350,11 +366,13 @@ export function AttentionPanel({
       tone: high ? "warn" : "purple",
       title:
         tickerChips.length > 0
-          ? `События сегодня по моим тикерам: ${tickerChips.slice(0, 4).map((c) => c.t).join(", ")}${tickerChips.length > 4 ? ` +${tickerChips.length - 4}` : ""}`
-          : `Сегодня: ${eventLabels.slice(0, 2).join(" · ")}`,
-      detail: tickerChips.length > 0 ? (eventLabels.length > 0 ? `Рынок: ${eventLabels.slice(0, 2).join(" · ")}` : tickerChips[0].title) : eventLabels.length > 2 ? `и ещё ${eventLabels.length - 2}` : "Календарь рынка",
+          ? t("attention.myEvents", { tickers: `${tickerChips.slice(0, 4).map((c) => c.t).join(", ")}${tickerChips.length > 4 ? ` +${tickerChips.length - 4}` : ""}` })
+          : t("attention.todayEvents", { events: eventLabels.slice(0, 2).join(" · ") }),
+      detail: tickerChips.length > 0
+        ? (eventLabels.length > 0 ? t("attention.market", { events: eventLabels.slice(0, 2).join(" · ") }) : tickerChips[0].title)
+        : eventLabels.length > 2 ? t("attention.andMore", { count: eventLabels.length - 2 }) : t("attention.marketCalendar"),
       href: tickerChips.length === 1 ? links.events(tickerChips[0].t) : links.events(),
-      cta: "События",
+      cta: t("attention.events"),
     });
   }
 
@@ -366,10 +384,10 @@ export function AttentionPanel({
       rank: carried.length > 0 && afterClose ? 2 : 6,
       icon: Moon,
       tone: carried.length > 0 ? "purple" : "accent",
-      title: carried.length > 0 ? `${carried.length} ${plural(carried.length, ["позиция", "позиции", "позиций"])} на ночь / свинг` : `${a.openTrades.count} ${plural(a.openTrades.count, ["открытая сделка", "открытые сделки", "открытых сделок"])}`,
-      detail: a.openTrades.items.map((t) => t.ticker).slice(0, 5).join(", "),
+      title: carried.length > 0 ? t("attention.carried", { count: carried.length }) : t("attention.openTrades", { count: a.openTrades.count }),
+      detail: a.openTrades.items.map((x) => x.ticker).slice(0, 5).join(", "),
       href: links.trades(),
-      cta: "К сделкам",
+      cta: t("attention.toTrades"),
     });
   }
 
@@ -380,10 +398,10 @@ export function AttentionPanel({
       rank: unread.critical > 0 ? 1 : 7,
       icon: Bell,
       tone: unread.critical > 0 ? "down" : unread.warn > 0 ? "warn" : "neutral",
-      title: `${unread.unread} ${plural(unread.unread, ["непрочитанное уведомление", "непрочитанных уведомления", "непрочитанных уведомлений"])}`,
-      detail: unread.critical > 0 ? `${unread.critical} критичных` : unread.warn > 0 ? `${unread.warn} с предупреждением` : undefined,
+      title: t("attention.unread", { count: unread.unread }),
+      detail: unread.critical > 0 ? t("attention.critical", { count: unread.critical }) : unread.warn > 0 ? t("attention.warn", { count: unread.warn }) : undefined,
       href: "/notifications",
-      cta: "Открыть",
+      cta: t("attention.open"),
     });
   }
   if (a.violations.count > 0) {
@@ -392,10 +410,10 @@ export function AttentionPanel({
       rank: 3,
       icon: AlertTriangle,
       tone: "down",
-      title: `${a.violations.count} ${plural(a.violations.count, ["нарушение правил", "нарушения правил", "нарушений правил"])} за сутки`,
+      title: t("attention.violations", { count: a.violations.count }),
       detail: a.violations.items[0]?.message,
       href: "/error-tracker",
-      cta: "Подробнее",
+      cta: t("attention.details"),
     });
   }
   if (a.curatorQueue && a.curatorQueue.count > 0) {
@@ -405,10 +423,10 @@ export function AttentionPanel({
       rank: 5,
       icon: UserCheck,
       tone: "purple",
-      title: `${q.count} ${plural(q.count, ["вывод ждёт", "вывода ждут", "выводов ждут"])} вашего ревью`,
-      detail: q.items.map((t) => `${t.ticker}${t.trader ? ` (${t.trader})` : ""}`).slice(0, 3).join(", "),
-      href: links.trades({ ids: q.items.map((t) => t.id) }),
-      cta: "Рецензировать",
+      title: t("attention.curatorQueue", { count: q.count }),
+      detail: q.items.map((x) => `${x.ticker}${x.trader ? ` (${personName(x.trader)})` : ""}`).slice(0, 3).join(", "),
+      href: links.trades({ ids: q.items.map((x) => x.id) }),
+      cta: t("attention.reviewIt"),
     });
   }
   if (a.unreviewed.count > 0) {
@@ -417,10 +435,10 @@ export function AttentionPanel({
       rank: 8,
       icon: ClipboardPen,
       tone: "neutral",
-      title: `${a.unreviewed.count} ${plural(a.unreviewed.count, ["сделка", "сделки", "сделок"])} без выводов за 30 дней`,
-      detail: a.unreviewed.items.map((t) => t.ticker).slice(0, 5).join(", "),
+      title: t("attention.unreviewed", { trades: tc("units.trades", { count: a.unreviewed.count }) }),
+      detail: a.unreviewed.items.map((x) => x.ticker).slice(0, 5).join(", "),
       href: a.unreviewed.items[0] ? links.trade(a.unreviewed.items[0].id) : links.trades(),
-      cta: "Разобрать",
+      cta: t("attention.reviewTrades"),
       chips: tradeChips(a.unreviewed.items),
     });
   }
@@ -430,10 +448,10 @@ export function AttentionPanel({
       rank: 9,
       icon: Lightbulb,
       tone: "accent",
-      title: `${a.ideasToReview.count} ${plural(a.ideasToReview.count, ["идея команды", "идеи команды", "идей команды"])} без вашей оценки`,
+      title: t("attention.ideas", { count: a.ideasToReview.count }),
       detail: a.ideasToReview.items.map((i) => i.ticker).slice(0, 5).join(", "),
       href: a.ideasToReview.items[0] ? links.idea(a.ideasToReview.items[0].id) : "/trade-ideas",
-      cta: "Оценить",
+      cta: t("attention.rate"),
     });
   }
   if (a.draftIdeas.count > 0) {
@@ -442,10 +460,10 @@ export function AttentionPanel({
       rank: 10,
       icon: FileEdit,
       tone: "neutral",
-      title: `${a.draftIdeas.count} ${plural(a.draftIdeas.count, ["черновик идеи", "черновика идей", "черновиков идей"])}`,
-      detail: "Опубликуйте или удалите",
+      title: t("attention.drafts", { count: a.draftIdeas.count }),
+      detail: t("attention.draftsHint"),
       href: "/trade-ideas?status=draft&mine=1",
-      cta: "К идеям",
+      cta: t("attention.toIdeas"),
     });
   }
 
@@ -459,10 +477,10 @@ export function AttentionPanel({
           rank: 99,
           icon: ClipboardCheck,
           tone: "up",
-          title: `Посмотреть разбор дня ${shortDate(lastTradeDate)}`,
-          detail: "Сильные стороны, утечки и план на следующий день",
+          title: t("attention.seeReport", { date: shortDate(lastTradeDate) }),
+          detail: t("attention.seeReportHint"),
           href: dayReportHref(lastTradeDate, me),
-          cta: "Открыть разбор",
+          cta: t("attention.openReport"),
         }
       : null;
   const [next, ...rest] = fallback ? [fallback] : items;
@@ -472,17 +490,17 @@ export function AttentionPanel({
 
   return (
     <Panel
-      title="Что важно сейчас"
+      title={t("attention.title")}
       icon={Compass}
       fill={fill}
       actions={
         pending > 0 ? (
           <Pill tone="warn">
-            {pending} {plural(pending, ["задача", "задачи", "задач"])}
+            {t("attention.tasks", { count: pending })}
           </Pill>
         ) : (
           <Pill tone="up" dot>
-            Всё в порядке
+            {t("attention.allGood")}
           </Pill>
         )
       }
@@ -491,14 +509,14 @@ export function AttentionPanel({
       {!next ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
           <CheckCircle2 className="h-6 w-6 text-up" aria-hidden="true" />
-          <p className="text-sm font-medium">Срочных дел нет</p>
-          <p className="max-w-[28ch] text-xs text-muted-foreground">Риск в норме, разбор закрыт, новых уведомлений нет.</p>
+          <p className="text-sm font-medium">{t("attention.nothingUrgent")}</p>
+          <p className="max-w-[28ch] text-xs text-muted-foreground">{t("attention.nothingUrgentHint")}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
           <NextStep item={next} />
           {shown.length > 0 && (
-            <ul className="flex flex-col" aria-label="Остальные задачи">
+            <ul className="flex flex-col" aria-label={t("attention.otherTasks")}>
               {shown.map((i) => (
                 <Row key={i.key} item={i} />
               ))}
@@ -512,7 +530,7 @@ export function AttentionPanel({
               className="inline-flex items-center gap-1 self-start rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
-              {expanded ? "Свернуть" : `Ещё ${hiddenCount}`}
+              {expanded ? tc("actions.collapse") : t("attention.more", { count: hiddenCount })}
             </button>
           )}
         </div>

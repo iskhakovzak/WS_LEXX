@@ -13,12 +13,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { BASE, fetchDeskLimits, fetchErrorMessage, fmtNum, fmtPct, fmtUsd, fmtUsdSigned, impliedVolPct, num, usePersistedState } from "./lib";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
+import { fetchErrorMessage, fmtStrike, impliedVolPct, num, toDeskLimits, usePersistedState, type RiskMeRaw } from "./lib";
+import { fmtNum, fmtPct, fmtUsd } from "@/lib/format";
 import { Hint, MetricTile, NumField } from "./fields";
 import {
   buildStrategies, fsFind, type AdvisorGoal, type ChainData, type ChainOption, type Expiration, type IvOutlook, type Strategy,
 } from "./strategies";
 import type { OpenInBuilderParams, UseInBsParams } from "./OptionsSection";
+import { riskPerTradeUsd, useTradingDefaults } from "@/components/settings/trading-defaults";
+import { calculatorI18n } from "@/i18n/ns/calculator";
 
 interface AiAnalysisResult {
   strategy: string;
@@ -32,20 +38,20 @@ interface AiAnalysisResult {
   altStrategies?: string[];
 }
 
-const GOALS: { id: AdvisorGoal; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "bullish", label: "Рост", icon: TrendingUp },
-  { id: "bearish", label: "Падение", icon: TrendingDown },
-  { id: "hedge_long", label: "Хедж лонга", icon: Shield },
-  { id: "hedge_short", label: "Хедж шорта", icon: Shield },
-  { id: "big_move", label: "Большой ход", icon: Zap },
-  { id: "neutral_sell", label: "Продажа премии", icon: Star },
+/** Goal codes + icons; labels come from `advisor.goals.<id>` at render. */
+const GOALS: { id: AdvisorGoal; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "bullish", icon: TrendingUp },
+  { id: "bearish", icon: TrendingDown },
+  { id: "hedge_long", icon: Shield },
+  { id: "hedge_short", icon: Shield },
+  { id: "big_move", icon: Zap },
+  { id: "neutral_sell", icon: Star },
 ];
 
-const IV_OUTLOOKS: { value: IvOutlook; label: string }[] = [
-  { value: "expand", label: "Вырастет" },
-  { value: "neutral", label: "Без прогноза" },
-  { value: "contract", label: "Упадёт" },
-];
+const IV_OUTLOOKS: IvOutlook[] = ["expand", "neutral", "contract"];
+
+/** Recommendation cards shown before «Ещё N стратегий» (choice overload: the best few first). */
+const TOP_STRATEGIES = 3;
 
 type ChainView = "calls" | "puts" | "both";
 
@@ -63,8 +69,10 @@ export default function ChainAdvisor({
   builderLegCount: number;
   onShowBuilder: () => void;
 }) {
+  const { t } = calculatorI18n.useT();
   const { toast } = useToast();
   const [ticker, setTicker] = usePersistedState<string>("chain_ticker", "");
+  const [showAllStrategies, setShowAllStrategies] = useState(false);
   const prefilled = useRef(false);
   useEffect(() => {
     if (!initialTicker || prefilled.current) return;
@@ -85,15 +93,22 @@ export default function ChainAdvisor({
 
   const [goal, setGoal] = usePersistedState<AdvisorGoal>("advisor_goal", "bullish");
   const [maxRisk, setMaxRisk] = usePersistedState<string>("advisor_maxrisk", "500");
-  // Desk's risk per trade seeds the per-contract cap once (the trader can still type their own number).
-  const deskQ = useQuery({ queryKey: ["calculator", "risk-me"], queryFn: fetchDeskLimits, retry: false, staleTime: 60_000 });
+  // The trader's own 1R (Settings → Торговля) seeds the per-contract cap once, never above the desk's
+  // max risk per trade (/risk/me = hard cap). The trader can still type their own number.
+  const deskQ = useQuery({ ...riskMeQuery<RiskMeRaw>(), select: toDeskLimits, retry: false, staleTime: STALE.short });
+  const tradingDefaults = useTradingDefaults();
+  const personalRisk = tradingDefaults.updatedAt ? riskPerTradeUsd(tradingDefaults) : null;
+  const deskMaxRisk = deskQ.data?.maxRisk ?? null;
   const deskSeeded = useRef(false);
   useEffect(() => {
-    const mr = deskQ.data?.maxRisk;
-    if (deskSeeded.current || mr == null) return;
+    if (deskSeeded.current || deskQ.isLoading) return;
+    const seed = personalRisk != null && personalRisk > 0
+      ? (deskMaxRisk != null ? Math.min(personalRisk, deskMaxRisk) : personalRisk)
+      : deskMaxRisk;
+    if (seed == null) return;
     deskSeeded.current = true;
-    if (maxRisk === "500") setMaxRisk(String(Math.round(mr)));
-  }, [deskQ.data?.maxRisk, maxRisk, setMaxRisk]);
+    if (maxRisk === "500") setMaxRisk(String(Math.round(seed)));
+  }, [deskQ.isLoading, deskMaxRisk, personalRisk, maxRisk, setMaxRisk]);
   const [ivOutlook, setIvOutlook] = usePersistedState<IvOutlook>("advisor_iv", "neutral");
   const [nContracts, setNContracts] = usePersistedState<string>("advisor_contracts", "1");
   const [rateStr, setRateStr] = usePersistedState<string>("advisor_rate", "4.5");
@@ -108,17 +123,17 @@ export default function ChainAdvisor({
     const reqId = ++chainReq.current;
     setChainLoading(true); setError(null);
     try {
-      const r = await fetch(`${BASE}/api/options/chain?symbol=${encodeURIComponent(sym.toUpperCase())}&expiration=${encodeURIComponent(exp)}`);
-      if (!r.ok) throw new Error(await fetchErrorMessage(r, "Ошибка загрузки цепочки"));
-      const j = await r.json() as ChainData;
+      const j = await http
+        .get<ChainData>("/api/options/chain", { query: { symbol: sym.toUpperCase(), expiration: exp } })
+        .catch((err: unknown) => { throw new Error(fetchErrorMessage(err, calculatorI18n.t("advisor.chainLoadError"))); });
       if (reqId !== chainReq.current) return; // a newer request superseded this one
-      if (!(j.spot > 0)) throw new Error("Не удалось определить цену базового актива");
+      if (!(j.spot > 0)) throw new Error(calculatorI18n.t("advisor.noSpot"));
       setChain(j);
       setSpotInfo({ price: j.spot, changePct: j.changePct, name: j.name });
     } catch (e: unknown) {
       if (reqId !== chainReq.current) return;
       setChain(null);
-      setError(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "Ошибка загрузки цепочки");
+      setError(e instanceof Error && e.message !== "Failed to fetch" ? e.message : calculatorI18n.t("advisor.chainLoadError"));
     } finally {
       if (reqId === chainReq.current) setChainLoading(false);
     }
@@ -130,19 +145,19 @@ export default function ChainAdvisor({
     chainReq.current++; // invalidate in-flight chain requests for the previous symbol
     setLoading(true); setChainLoading(false); setError(null); setChain(null); setExpirations([]); setLoadedSymbol("");
     try {
-      const r = await fetch(`${BASE}/api/options/chain?symbol=${encodeURIComponent(sym)}`);
-      if (!r.ok) throw new Error(await fetchErrorMessage(r, "Ошибка загрузки"));
-      const j = await r.json() as { spot: number; changePct: number | null; name: string; expirations: Expiration[] };
+      const j = await http
+        .get<{ spot: number; changePct: number | null; name: string; expirations: Expiration[] }>("/api/options/chain", { query: { symbol: sym } })
+        .catch((err: unknown) => { throw new Error(fetchErrorMessage(err, calculatorI18n.t("advisor.loadError"))); });
       const exps = Array.isArray(j.expirations) ? j.expirations : [];
       setExpirations(exps);
       setSpotInfo({ price: j.spot, changePct: j.changePct, name: j.name });
-      if (exps.length === 0) { setError("Нет доступных дат экспирации для этого тикера"); return; }
+      if (exps.length === 0) { setError(calculatorI18n.t("advisor.noExpirations")); return; }
       setLoadedSymbol(sym);
       const exp = preferredExp && exps.some((e) => e.label === preferredExp) ? preferredExp : exps[0].label;
       setSelectedExp(exp);
       void loadChain(sym, exp);
     } catch (e: unknown) {
-      setError(e instanceof Error && e.message !== "Failed to fetch" ? e.message : "Ошибка загрузки");
+      setError(e instanceof Error && e.message !== "Failed to fetch" ? e.message : calculatorI18n.t("advisor.loadError"));
     } finally { setLoading(false); }
   }, [setSelectedExp, loadChain]);
 
@@ -174,8 +189,19 @@ export default function ChainAdvisor({
   const strategies = useMemo(() => {
     if (!chain) return [];
     const mr = num(maxRisk);
-    return buildStrategies(chain, goal, mr > 0 ? mr : 500, ivOutlook, contractsN, riskFree);
-  }, [chain, goal, maxRisk, ivOutlook, contractsN, riskFree]);
+    let perContract = mr > 0 ? mr : 500;
+    // Desk limit is a hard cap on the whole trade (N contracts).
+    if (deskMaxRisk != null) perContract = Math.min(perContract, deskMaxRisk / contractsN);
+    return buildStrategies(chain, goal, perContract, ivOutlook, contractsN, riskFree);
+  }, [chain, goal, maxRisk, ivOutlook, contractsN, riskFree, deskMaxRisk]);
+  const tradeRisk = (num(maxRisk) > 0 ? num(maxRisk) : 500) * contractsN;
+  const overDesk = deskMaxRisk != null && tradeRisk > deskMaxRisk + 0.005;
+  const maxRiskHint = [
+    personalRisk != null ? t("advisor.personalRisk", { amount: fmtUsd(personalRisk, { decimals: 0 }) }) : null,
+    deskMaxRisk != null
+      ? t(personalRisk != null ? "advisor.deskLimitAfter" : "advisor.deskLimit", { amount: fmtUsd(deskMaxRisk, { decimals: 0 }) })
+      : null,
+  ].filter(Boolean).join(" · ");
 
   const atmIv = useMemo(() => {
     if (!chain) return null;
@@ -215,25 +241,20 @@ export default function ChainAdvisor({
       symbol: chain.symbol, spot: chain.spot, days: chain.daysToExpiry, iv: atmIv, append: true,
       legs: [{ side: "buy", kind: type, strike: o.strike, premium: o.mid, qty: 1 }],
     });
-    toast({ title: `Buy ${type === "call" ? "Call" : "Put"} ${fmtNum(o.strike, 2, 0)} добавлен в конструктор`, description: `Ног в конструкторе: ${builderLegCount + 1}` });
+    const contract = `Buy ${type === "call" ? "Call" : "Put"} ${fmtStrike(o.strike)}`;
+    toast({ title: calculatorI18n.t("advisor.addedToBuilder", { contract }), description: calculatorI18n.t("advisor.builderLegs", { count: builderLegCount + 1 }) });
   }
 
   const analyzeWithAI = useCallback(async () => {
     if (!chain || !aiPrompt.trim()) return;
     setAiLoading(true); setAiError(null); setAiResult(null);
     try {
-      const r = await fetch(`${BASE}/api/options/ai-analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          symbol: chain.symbol, spot: chain.spot, daysToExpiry: chain.daysToExpiry,
-          calls: chain.calls, puts: chain.puts, strikes: chain.strikes, userPrompt: aiPrompt,
-        }),
-      });
-      if (!r.ok) { const j = await r.json().catch(() => ({})) as { error?: string }; throw new Error(j.error || `HTTP ${r.status}`); }
-      setAiResult(await r.json() as AiAnalysisResult);
+      setAiResult(await http.post<AiAnalysisResult>("/api/options/ai-analyze", {
+        symbol: chain.symbol, spot: chain.spot, daysToExpiry: chain.daysToExpiry,
+        calls: chain.calls, puts: chain.puts, strikes: chain.strikes, userPrompt: aiPrompt,
+      }));
     } catch (e: unknown) {
-      setAiError(e instanceof Error ? e.message : "Ошибка AI-анализа");
+      setAiError(e instanceof Error ? e.message : calculatorI18n.t("advisor.aiError"));
     } finally {
       setAiLoading(false);
     }
@@ -244,28 +265,28 @@ export default function ChainAdvisor({
 
   return (
     <div className="flex flex-col gap-4">
-      <Panel title="Цепочка опционов" icon={Search} description="NASDAQ, с задержкой">
+      <Panel title={t("advisor.chainTitle")} icon={Search} description={t("advisor.chainSource")}>
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,16rem)_minmax(0,16rem)_1fr] lg:items-end">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,20rem)_minmax(0,16rem)_1fr] lg:items-end">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="chain-ticker" className="text-xs font-normal text-muted-foreground">Тикер</Label>
+              <Label htmlFor="chain-ticker" className="text-xs font-normal text-muted-foreground">{t("shared.ticker")}</Label>
               <div className="flex gap-2">
                 <Input id="chain-ticker" autoComplete="off" value={ticker} placeholder="AAPL, SPY, QQQ…" className="h-9 uppercase"
                   onChange={(e) => setTicker(e.target.value.toUpperCase())}
                   onKeyDown={(e) => { if (e.key === "Enter") void loadExpirations(ticker, selectedExp); }} />
                 <Button type="button" className="shrink-0" onClick={() => void loadExpirations(ticker, selectedExp)} disabled={loading || !ticker.trim()}>
-                  {loading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Search aria-hidden="true" />} Загрузить
+                  {loading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Search aria-hidden="true" />} {t("advisor.load")}
                 </Button>
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="chain-exp" className="text-xs font-normal text-muted-foreground">Экспирация</Label>
+              <Label htmlFor="chain-exp" className="text-xs font-normal text-muted-foreground">{t("advisor.expiration")}</Label>
               <Select value={selectedExp} onValueChange={onSelectExp} disabled={expirations.length === 0}>
-                <SelectTrigger id="chain-exp" className="h-9"><SelectValue placeholder={expirations.length ? "Выберите дату" : "Сначала загрузите тикер"} /></SelectTrigger>
+                <SelectTrigger id="chain-exp" className="h-9"><SelectValue placeholder={expirations.length ? t("advisor.pickDate") : t("advisor.loadTickerFirst")} /></SelectTrigger>
                 <SelectContent>
                   {expirations.map((e) => (
                     <SelectItem key={e.label} value={e.label}>
-                      <span className="tabular-nums">{e.label}</span> <span className="text-muted-foreground">· {e.dte} дн.</span>
+                      <span className="tabular-nums">{e.label}</span> <span className="text-muted-foreground">· {t("shared.days", { count: e.dte })}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -275,14 +296,14 @@ export default function ChainAdvisor({
               {spot && (
                 <>
                   <span className="font-semibold tabular-nums">{fmtUsd(spot.price)}</span>
-                  {spot.changePct != null && <Pill tone={spot.changePct >= 0 ? "up" : "down"}>{fmtPct(spot.changePct, 2, true)}</Pill>}
+                  {spot.changePct != null && <Pill tone={spot.changePct >= 0 ? "up" : "down"}>{fmtPct(spot.changePct, 2)}</Pill>}
                 </>
               )}
-              {chainLoading && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Загружаем цепочку…</span>}
+              {chainLoading && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t("advisor.loadingChain")}</span>}
               {chain && !chainLoading && (
                 <>
-                  <Pill tone="neutral">{chain.calls.length + chain.puts.length} контрактов</Pill>
-                  {expInfo && <Pill tone="neutral">{chain.daysToExpiry} дн.</Pill>}
+                  <Pill tone="neutral">{t("advisor.contracts", { count: chain.calls.length + chain.puts.length })}</Pill>
+                  {expInfo && <Pill tone="neutral">{t("shared.days", { count: chain.daysToExpiry })}</Pill>}
                   {atmIv != null && <Pill tone="purple">ATM IV {fmtNum(atmIv, 0)}%</Pill>}
                 </>
               )}
@@ -294,22 +315,22 @@ export default function ChainAdvisor({
 
       {!chain && !loading && !chainLoading && !error && expirations.length === 0 && (
         <Panel>
-          <EmptyState icon={BarChart3} title="Загрузите цепочку опционов"
-            description="Введите тикер с листингованными опционами (AAPL, TSLA, SPY, QQQ…). Советник подберёт стратегии под ваш взгляд на рынок и риск." />
+          <EmptyState icon={BarChart3} title={t("advisor.emptyTitle")}
+            description={t("advisor.emptyDescription")} />
         </Panel>
       )}
 
       {chain && (
         <>
-          <Panel title="Советник" icon={Zap} description="Стратегии по реальным ценам цепочки, отсортированы по соответствию цели">
+          <Panel title={t("advisor.title")} icon={Zap} description={t("advisor.description")}>
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
-                <span className="text-xs text-muted-foreground">Ваш взгляд на рынок</span>
-                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6" role="group" aria-label="Ваш взгляд на рынок">
+                <span className="text-xs text-muted-foreground">{t("advisor.view")}</span>
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6" role="group" aria-label={t("advisor.view")}>
                   {GOALS.map((g) => (
                     <button key={g.id} type="button" aria-pressed={goal === g.id} onClick={() => setGoal(g.id)}
-                      className="chip inline-flex min-h-9 items-center justify-center gap-1.5 px-3 text-sm font-medium">
-                      <g.icon className="h-4 w-4" aria-hidden="true" />{g.label}
+                      className="chip inline-flex min-h-9 items-center justify-center gap-1.5 px-3 py-1 text-center text-sm font-medium leading-tight">
+                      <g.icon className="h-4 w-4 shrink-0" aria-hidden="true" />{t(`advisor.goals.${g.id}`)}
                     </button>
                   ))}
                 </div>
@@ -317,15 +338,17 @@ export default function ChainAdvisor({
               <div className="grid grid-cols-2 gap-3 md:grid-cols-[auto_repeat(3,minmax(0,10rem))] md:items-end">
                 <div className="col-span-2 flex flex-col gap-1.5 md:col-span-1">
                   <span className="flex min-h-5 items-center gap-1 text-xs text-muted-foreground">
-                    Волатильность (IV) дальше
-                    <Hint text="Рост IV помогает купленным опционам, падение — проданным" />
+                    {t("advisor.ivAhead")}
+                    <Hint text={t("advisor.ivHint")} />
                   </span>
-                  <Segmented<IvOutlook> ariaLabel="Прогноз волатильности" value={ivOutlook} onChange={setIvOutlook} options={IV_OUTLOOKS} />
+                  <Segmented<IvOutlook> ariaLabel={t("advisor.ivAria")} value={ivOutlook} onChange={setIvOutlook}
+                    options={IV_OUTLOOKS.map((v) => ({ value: v, label: t(`advisor.ivOutlook.${v}`) }))} />
                 </div>
-                <NumField label="Макс. риск на контракт" prefix="$" value={maxRisk} onChange={setMaxRisk} placeholder="500"
-                  hint={deskQ.data?.maxRisk != null ? `Лимит деска на сделку: ${fmtUsd(deskQ.data.maxRisk, 0)}` : undefined} />
-                <NumField label="Контрактов" value={nContracts} onChange={setNContracts} integer placeholder="1" />
-                <NumField label="Ставка" suffix="%" value={rateStr} onChange={setRateStr} placeholder="4.5" />
+                <NumField label={t("advisor.maxRiskPerContract")} prefix="$" value={maxRisk} onChange={setMaxRisk} placeholder="500"
+                  error={overDesk ? t("advisor.overDesk", { risk: fmtUsd(tradeRisk, { decimals: 0 }), limit: fmtUsd(deskMaxRisk ?? 0, { decimals: 0 }) }) : undefined}
+                  hint={maxRiskHint || undefined} />
+                <NumField label={t("shared.contracts")} value={nContracts} onChange={setNContracts} integer placeholder="1" />
+                <NumField label={t("shared.rate")} suffix="%" value={rateStr} onChange={setRateStr} placeholder="4.5" />
               </div>
             </div>
           </Panel>
@@ -333,36 +356,45 @@ export default function ChainAdvisor({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <Star className="h-4 w-4 text-primary" aria-hidden="true" />
-              Рекомендации
-              <span className="font-normal text-muted-foreground">· {chain.symbol} {fmtUsd(chain.spot)} · {chain.daysToExpiry} дн.</span>
+              {t("advisor.recommendations")}
+              <span className="font-normal text-muted-foreground">· {chain.symbol} {fmtUsd(chain.spot)} · {t("shared.days", { count: chain.daysToExpiry })}</span>
             </h2>
             {builderLegCount > 0 && (
-              <Button type="button" variant="ghost" size="sm" onClick={onShowBuilder}><Layers aria-hidden="true" /> Конструктор · {builderLegCount}</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onShowBuilder}><Layers aria-hidden="true" /> {t("modes.builderCount", { count: builderLegCount })}</Button>
             )}
           </div>
           {strategies.length === 0 ? (
-            <Panel><EmptyState icon={Star} title="Нет подходящих стратегий" description="В этой экспирации мало ликвидных страйков — попробуйте другую дату." /></Panel>
+            <Panel><EmptyState icon={Star} title={t("advisor.noStrategiesTitle")} description={t("advisor.noStrategiesDescription")} /></Panel>
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {strategies.map((s, i) => (
-                <StrategyCard key={s.id} s={s} spot={chain.spot} top={i === 0} onUseInBs={handleUseBs} onToBuilder={strategyToBuilder} />
-              ))}
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {(showAllStrategies ? strategies : strategies.slice(0, TOP_STRATEGIES)).map((s, i) => (
+                  <StrategyCard key={s.id} s={s} spot={chain.spot} top={i === 0} onUseInBs={handleUseBs} onToBuilder={strategyToBuilder} />
+                ))}
+              </div>
+              {strategies.length > TOP_STRATEGIES && (
+                <Button type="button" variant="ghost" size="sm" className="self-start" aria-expanded={showAllStrategies}
+                  onClick={() => setShowAllStrategies((v) => !v)}>
+                  <ChevronDown className={cn("transition-transform", showAllStrategies && "rotate-180")} aria-hidden="true" />
+                  {showAllStrategies ? t("advisor.fewerStrategies") : t("advisor.moreStrategies", { count: strategies.length - TOP_STRATEGIES })}
+                </Button>
+              )}
             </div>
           )}
 
           <Panel
-            title="Цепочка"
+            title={t("advisor.chain")}
             icon={Table2}
-            description={expInfo ? `${expInfo.label} · ${expInfo.dte} дн. · страйки ±25% от спота · нажмите на mid, чтобы добавить в конструктор` : undefined}
+            description={expInfo ? t("advisor.chainDescription", { expiration: expInfo.label, days: t("shared.days", { count: expInfo.dte }) }) : undefined}
             actions={
               <>
                 {showChainTable && (
-                  <Segmented<ChainView> ariaLabel="Какие опционы показать" size="sm" value={chainView} onChange={setChainView}
-                    options={[{ value: "calls", label: "Calls" }, { value: "puts", label: "Puts" }, { value: "both", label: "Обе" }]} />
+                  <Segmented<ChainView> ariaLabel={t("advisor.chainViewAria")} size="sm" value={chainView} onChange={setChainView}
+                    options={[{ value: "calls", label: "Calls" }, { value: "puts", label: "Puts" }, { value: "both", label: t("advisor.both") }]} />
                 )}
                 <Button type="button" variant="ghost" size="sm" aria-expanded={showChainTable} onClick={() => setShowChainTable(!showChainTable)}>
                   <ChevronDown className={cn("transition-transform", showChainTable && "rotate-180")} aria-hidden="true" />
-                  {showChainTable ? "Скрыть" : "Показать"}
+                  {showChainTable ? t("advisor.hide") : t("advisor.show")}
                 </Button>
               </>
             }
@@ -370,7 +402,7 @@ export default function ChainAdvisor({
             {showChainTable && (
               <div className="-mx-1 max-h-[70dvh] overflow-auto px-1">
                 <table className="w-full text-xs tabular-nums">
-                  <caption className="sr-only">Цепочка опционов {chain.symbol}</caption>
+                  <caption className="sr-only">{t("advisor.chainCaption", { symbol: chain.symbol })}</caption>
                   <thead className="sticky top-0 z-sticky bg-[hsl(var(--popover))] text-muted-foreground">
                     <tr className="border-b border-border/60">
                       {chainView !== "puts" && <>
@@ -379,7 +411,7 @@ export default function ChainAdvisor({
                         <th scope="col" className="px-2 py-2 text-right font-normal">IV</th>
                         <th scope="col" className="px-2 py-2 text-right font-normal">OI</th>
                       </>}
-                      <th scope="col" className="px-2 py-2 text-center font-medium text-foreground">Страйк</th>
+                      <th scope="col" className="px-2 py-2 text-center font-medium text-foreground">{t("shared.strike")}</th>
                       {chainView !== "calls" && <>
                         <th scope="col" className="px-2 py-2 text-left font-normal">Put bid</th>
                         <th scope="col" className="px-2 py-2 text-left font-normal">Mid</th>
@@ -400,7 +432,7 @@ export default function ChainAdvisor({
                             <td className={cn("px-2 py-1 text-right", c?.inTheMoney ? "text-up" : "text-muted-foreground")}>{c ? fmtNum(c.bid, 2) : "—"}</td>
                             <td className="px-1 py-0.5 text-right">
                               {c && c.mid > 0 ? (
-                                <button type="button" onClick={() => addContractToBuilder(c, "call")} aria-label={`Добавить Buy Call ${strike} в конструктор`}
+                                <button type="button" onClick={() => addContractToBuilder(c, "call")} aria-label={t("advisor.addToBuilderAria", { contract: `Buy Call ${fmtStrike(strike)}` })}
                                   className="inline-flex min-h-6 items-center gap-0.5 rounded-full px-1.5 hover:bg-primary/15 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
                                   {fmtNum(c.mid, 2)}<Plus className="h-3 w-3 opacity-60" aria-hidden="true" />
                                 </button>
@@ -409,12 +441,12 @@ export default function ChainAdvisor({
                             <td className="px-2 py-1 text-right text-[hsl(var(--chart-5))]">{c?.iv != null ? fmtNum(c.iv, 0) : "—"}</td>
                             <td className="px-2 py-1 text-right text-muted-foreground">{c ? oi(c.openInterest) : "—"}</td>
                           </>}
-                          <td className={cn("px-2 py-1 text-center font-semibold", isAtm ? "text-primary" : "text-foreground")}>{fmtNum(strike, 2, 0)}</td>
+                          <td className={cn("px-2 py-1 text-center font-semibold", isAtm ? "text-primary" : "text-foreground")}>{fmtStrike(strike)}</td>
                           {chainView !== "calls" && <>
                             <td className={cn("px-2 py-1 text-left", p?.inTheMoney ? "text-down" : "text-muted-foreground")}>{p ? fmtNum(p.bid, 2) : "—"}</td>
                             <td className="px-1 py-0.5 text-left">
                               {p && p.mid > 0 ? (
-                                <button type="button" onClick={() => addContractToBuilder(p, "put")} aria-label={`Добавить Buy Put ${strike} в конструктор`}
+                                <button type="button" onClick={() => addContractToBuilder(p, "put")} aria-label={t("advisor.addToBuilderAria", { contract: `Buy Put ${fmtStrike(strike)}` })}
                                   className="inline-flex min-h-6 items-center gap-0.5 rounded-full px-1.5 hover:bg-primary/15 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
                                   {fmtNum(p.mid, 2)}<Plus className="h-3 w-3 opacity-60" aria-hidden="true" />
                                 </button>
@@ -432,24 +464,24 @@ export default function ChainAdvisor({
             )}
           </Panel>
 
-          <Panel title="ATM-опционы на экспирацию" description="P&L одного контракта при движении акции">
+          <Panel title={t("advisor.atmTitle")} description={t("advisor.atmDescription")}>
             <ScenarioTable chain={chain} goal={goal} />
           </Panel>
         </>
       )}
 
-      <Panel title="AI-советник" icon={Sparkles} description={chain
-        ? `${chain.symbol} ${fmtUsd(chain.spot)}, ${chain.daysToExpiry} дн. — опишите идею, AI подберёт структуру`
-        : "Сначала загрузите цепочку опционов, затем опишите идею"}>
+      <Panel title={t("advisor.aiTitle")} icon={Sparkles} description={chain
+        ? t("advisor.aiDescription", { symbol: chain.symbol, price: fmtUsd(chain.spot), days: t("shared.days", { count: chain.daysToExpiry }) })
+        : t("advisor.aiDescriptionEmpty")}>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ai-prompt" className="text-xs font-normal text-muted-foreground">Идея (Ctrl+Enter — отправить)</Label>
+            <Label htmlFor="ai-prompt" className="text-xs font-normal text-muted-foreground">{t("advisor.aiLabel")}</Label>
             <Textarea
               id="ai-prompt"
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void analyzeWithAI(); }}
-              placeholder="Например: ставлю на рост в ближайшие 2 недели, риск не больше $300, голые опционы не продаю"
+              placeholder={t("advisor.aiPlaceholder")}
               disabled={!chain || aiLoading}
               rows={3}
               className="resize-none rounded-2xl"
@@ -457,7 +489,7 @@ export default function ChainAdvisor({
           </div>
           <Button type="button" variant="outline" className="self-end" onClick={() => void analyzeWithAI()} disabled={!chain || !aiPrompt.trim() || aiLoading}>
             {aiLoading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
-            {aiLoading ? "Думает…" : "Спросить"}
+            {aiLoading ? t("advisor.aiThinking") : t("advisor.aiAsk")}
           </Button>
 
           {aiError && (
@@ -477,7 +509,7 @@ export default function ChainAdvisor({
                     symbol: chain.symbol, spot: chain.spot, days: chain.daysToExpiry, iv: atmIv,
                     legs: aiResult.legs.map((l) => ({ side: l.action, kind: l.type, strike: l.strike, premium: l.premium, qty: Math.max(1, l.contracts || 1) })),
                   })}>
-                    <Layers aria-hidden="true" /> В конструктор
+                    <Layers aria-hidden="true" /> {t("shared.toBuilder")}
                   </Button>
                 )}
               </div>
@@ -487,26 +519,26 @@ export default function ChainAdvisor({
                     <li key={i} className="flex items-center gap-2 text-sm tabular-nums">
                       <Pill tone={leg.action === "buy" ? "up" : "down"}>{leg.action === "buy" ? "Buy" : "Sell"}</Pill>
                       <Pill tone={leg.type === "call" ? "accent" : "warn"}>{leg.type === "call" ? "Call" : "Put"}</Pill>
-                      <span className="font-medium">{fmtUsd(leg.strike, 2)}</span>
+                      <span className="font-medium">{fmtUsd(leg.strike)}</span>
                       <span className="text-muted-foreground">×{leg.contracts}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">~{fmtUsd(leg.premium, 2)}/акц.</span>
+                      <span className="ml-auto text-xs text-muted-foreground">~{t("shared.perShareSuffix", { price: fmtUsd(leg.premium) })}</span>
                     </li>
                   ))}
                 </ul>
               )}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <MetricTile label="Макс. риск" value={aiResult.maxRisk != null ? fmtUsd(aiResult.maxRisk, 0) : "не ограничен"} tone="text-down" />
-                <MetricTile label="Макс. прибыль" value={aiResult.maxProfit != null ? fmtUsd(aiResult.maxProfit, 0) : "без лимита"} tone="text-up" />
-                <MetricTile label="Безубыток" value={aiResult.breakevens.length ? aiResult.breakevens.map((b) => fmtUsd(b, 2)).join(" / ") : "—"} />
+                <MetricTile label={t("shared.maxRisk")} value={aiResult.maxRisk != null ? fmtUsd(aiResult.maxRisk, { decimals: 0 }) : t("advisor.notLimited")} tone="text-down" />
+                <MetricTile label={t("shared.maxProfit")} value={aiResult.maxProfit != null ? fmtUsd(aiResult.maxProfit, { decimals: 0 }) : t("shared.unlimited")} tone="text-up" />
+                <MetricTile label={t("shared.breakeven")} value={aiResult.breakevens.length ? aiResult.breakevens.map((b) => fmtUsd(b)).join(" / ") : "—"} />
               </div>
               <p className="border-l-2 border-primary/40 pl-3 text-sm text-muted-foreground">{aiResult.reasoning}</p>
-              <p className="text-sm"><span className="text-muted-foreground">Почему: </span>{aiResult.whyBest}</p>
+              <p className="text-sm"><span className="text-muted-foreground">{t("advisor.why")} </span>{aiResult.whyBest}</p>
               <p className="flex items-start gap-2 text-sm text-[hsl(var(--chart-3))]">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{aiResult.keyRisk}
               </p>
               {aiResult.altStrategies && aiResult.altStrategies.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Альтернативы:</span>
+                  <span className="text-xs text-muted-foreground">{t("advisor.alternatives")}</span>
                   {aiResult.altStrategies.map((alt, i) => <Pill key={i} tone="neutral">{alt}</Pill>)}
                 </div>
               )}
@@ -521,6 +553,7 @@ export default function ChainAdvisor({
 function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
   s: Strategy; spot: number; top: boolean; onUseInBs: (s: Strategy) => void; onToBuilder: (s: Strategy) => void;
 }) {
+  const { t, tryT } = calculatorI18n.useT();
   const [open, setOpen] = useState(top);
   const isDebit = s.netDebit >= 0;
   const scoreTone = s.score >= 70 ? "up" : s.score >= 45 ? "warn" : "neutral";
@@ -533,24 +566,24 @@ function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold">{s.name}</span>
-              {top && <Pill tone="accent">Лучшее</Pill>}
+              {top && <Pill tone="accent">{t("advisor.best")}</Pill>}
             </div>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              <Pill tone={isDebit ? "neutral" : "up"}>{isDebit ? `Дебет ${fmtUsd(s.netDebit * 100, 0)}` : `Кредит ${fmtUsd(Math.abs(s.netDebit) * 100, 0)}`}/контр.</Pill>
+              <Pill tone={isDebit ? "neutral" : "up"}>{isDebit ? t("advisor.debitPerContract", { amount: fmtUsd(s.netDebit * 100, { decimals: 0 }) }) : t("advisor.creditPerContract", { amount: fmtUsd(Math.abs(s.netDebit) * 100, { decimals: 0 }) })}</Pill>
               <Pill tone={s.ivSensitivity === "positive" ? "purple" : s.ivSensitivity === "negative" ? "warn" : "neutral"}>
                 Vega {s.ivSensitivity === "positive" ? "+" : s.ivSensitivity === "negative" ? "−" : "≈0"}
               </Pill>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <Pill tone={scoreTone}><span className="sr-only">Оценка </span>{s.score}</Pill>
+            <Pill tone={scoreTone}><span className="sr-only">{t("advisor.score")} </span>{s.score}</Pill>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden="true" />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div><div className="text-2xs text-muted-foreground">Макс. прибыль</div><div className="text-sm font-semibold tabular-nums text-up">{s.maxProfit === null ? "∞" : fmtUsd(s.maxProfit, 0)}</div></div>
-          <div><div className="text-2xs text-muted-foreground">Макс. убыток</div><div className="text-sm font-semibold tabular-nums text-down">{s.maxLoss === null ? "∞" : fmtUsdSigned(-s.maxLoss)}</div></div>
-          <div><div className="text-2xs text-muted-foreground">P(прибыль)</div><div className="text-sm font-semibold tabular-nums text-primary">{s.probProfit !== null ? `${fmtNum(s.probProfit, 0)}%` : "—"}</div></div>
+          <div><div className="text-2xs text-muted-foreground">{t("shared.maxProfit")}</div><div className="text-sm font-semibold tabular-nums text-up">{s.maxProfit === null ? "∞" : fmtUsd(s.maxProfit, { decimals: 0 })}</div></div>
+          <div><div className="text-2xs text-muted-foreground">{t("shared.maxLoss")}</div><div className="text-sm font-semibold tabular-nums text-down">{s.maxLoss === null ? "∞" : fmtUsd(-s.maxLoss, { signed: true, decimals: 0 })}</div></div>
+          <div><div className="text-2xs text-muted-foreground">{t("advisor.probProfitShort")}</div><div className="text-sm font-semibold tabular-nums text-primary">{s.probProfit !== null ? `${fmtNum(s.probProfit, 0)}%` : "—"}</div></div>
         </div>
       </button>
       {open && (
@@ -560,26 +593,26 @@ function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
               <li key={i} className="flex items-center gap-2 text-sm tabular-nums">
                 <Pill tone={l.action === "buy" ? "up" : "down"}>{l.action === "buy" ? "Buy" : "Sell"}</Pill>
                 <span className={l.optType === "call" ? "text-up" : "text-down"}>{l.optType === "call" ? "Call" : "Put"}</span>
-                <span className="font-semibold">{fmtNum(l.strike, 2, 0)}</span>
-                <span className="ml-auto text-xs text-muted-foreground">{fmtUsd(l.premium, 2)}/акц.</span>
+                <span className="font-semibold">{fmtStrike(l.strike)}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{t("shared.perShareSuffix", { price: fmtUsd(l.premium) })}</span>
               </li>
             ))}
           </ul>
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
-            <span className="text-xs text-muted-foreground">Безубыток{s.breakevens.length > 1 ? "и" : ""}:</span>
+            <span className="text-xs text-muted-foreground">{t("advisor.breakevensLabel", { count: s.breakevens.length })}</span>
             {s.breakevens.map((be, i) => (
               <span key={i} className="tabular-nums">
-                <span className="font-medium text-primary">{fmtUsd(be, 2)}</span>
-                <span className="text-xs text-muted-foreground"> ({fmtPct(((be - spot) / spot) * 100, 1, true)})</span>
+                <span className="font-medium text-primary">{fmtUsd(be)}</span>
+                <span className="text-xs text-muted-foreground"> ({fmtPct(((be - spot) / spot) * 100, 1)})</span>
               </span>
             ))}
             {s.riskReward !== null && <span className="ml-auto text-xs text-muted-foreground">R:R <span className="font-medium text-foreground">{fmtNum(s.riskReward, 2)}</span></span>}
           </div>
-          <p className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-sm text-muted-foreground">{s.summary}</p>
-          <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Когда работает: </span>{s.bestWhen}</p>
+          <p className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-sm text-muted-foreground">{tryT(`strategies.${s.id}.summary`, s.summaryParams)}</p>
+          <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{t("advisor.bestWhen")} </span>{t(`strategies.${s.id}.bestWhen`)}</p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => onToBuilder(s)}><Layers aria-hidden="true" /> В конструктор</Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => onUseInBs(s)}><Calculator aria-hidden="true" /> Первая нога в B-S</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => onToBuilder(s)}><Layers aria-hidden="true" /> {t("shared.toBuilder")}</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => onUseInBs(s)}><Calculator aria-hidden="true" /> {t("advisor.firstLegToBs")}</Button>
           </div>
         </div>
       )}
@@ -588,19 +621,20 @@ function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
 }
 
 function ScenarioTable({ chain, goal }: { chain: ChainData; goal: AdvisorGoal }) {
+  const { t } = calculatorI18n.useT();
   const steps = [-20, -10, -5, 0, 5, 10, 20];
   const atmC = fsFind(chain.calls, chain.spot);
   const atmP = fsFind(chain.puts, chain.spot);
   return (
     <div className="-mx-1 overflow-x-auto px-1">
       <table className="w-full text-sm tabular-nums">
-        <caption className="sr-only">P&L ATM-опционов при разных ценах</caption>
+        <caption className="sr-only">{t("advisor.atmCaption")}</caption>
         <thead>
           <tr className="border-b border-border/60 text-xs text-muted-foreground">
-            <th scope="col" className="py-2 pr-2 text-left font-normal">Ход</th>
-            <th scope="col" className="px-2 py-2 text-right font-normal">Цена</th>
-            <th scope="col" className="px-2 py-2 text-right font-normal">Call {atmC ? fmtNum(atmC.strike, 2, 0) : ""}</th>
-            <th scope="col" className="py-2 pl-2 text-right font-normal">Put {atmP ? fmtNum(atmP.strike, 2, 0) : ""}</th>
+            <th scope="col" className="py-2 pr-2 text-left font-normal">{t("shared.move")}</th>
+            <th scope="col" className="px-2 py-2 text-right font-normal">{t("shared.price")}</th>
+            <th scope="col" className="px-2 py-2 text-right font-normal">Call {atmC ? fmtStrike(atmC.strike) : ""}</th>
+            <th scope="col" className="py-2 pl-2 text-right font-normal">Put {atmP ? fmtStrike(atmP.strike) : ""}</th>
           </tr>
         </thead>
         <tbody>
@@ -611,10 +645,10 @@ function ScenarioTable({ chain, goal }: { chain: ChainData; goal: AdvisorGoal })
             const highlight = (goal === "bullish" && pct > 0) || (goal === "bearish" && pct < 0) || (goal === "big_move" && Math.abs(pct) >= 10);
             return (
               <tr key={pct} className={cn("border-b border-border/40 last:border-0", highlight && "bg-primary/5")}>
-                <td className={cn("py-1.5 pr-2", pct > 0 ? "text-up" : pct < 0 ? "text-down" : "text-muted-foreground")}>{fmtPct(pct, 0, true)}</td>
-                <td className="px-2 py-1.5 text-right">{fmtUsd(x, 2)}</td>
-                <td className={cn("px-2 py-1.5 text-right font-medium", callPnl >= 0 ? "text-up" : "text-down")}>{fmtUsdSigned(callPnl)}</td>
-                <td className={cn("py-1.5 pl-2 text-right font-medium", putPnl >= 0 ? "text-up" : "text-down")}>{fmtUsdSigned(putPnl)}</td>
+                <td className={cn("py-1.5 pr-2", pct > 0 ? "text-up" : pct < 0 ? "text-down" : "text-muted-foreground")}>{fmtPct(pct, 0)}</td>
+                <td className="px-2 py-1.5 text-right">{fmtUsd(x)}</td>
+                <td className={cn("px-2 py-1.5 text-right font-medium", callPnl >= 0 ? "text-up" : "text-down")}>{fmtUsd(callPnl, { signed: true, decimals: 0 })}</td>
+                <td className={cn("py-1.5 pl-2 text-right font-medium", putPnl >= 0 ? "text-up" : "text-down")}>{fmtUsd(putPnl, { signed: true, decimals: 0 })}</td>
               </tr>
             );
           })}

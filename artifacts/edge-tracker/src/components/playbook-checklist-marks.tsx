@@ -2,12 +2,14 @@ import { useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Users, User as UserIcon, RotateCcw } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Pill, toneText } from "@/components/ds";
 import { Ring, Bar, readinessTone } from "@/components/playbook-sub/bits";
+import { playbookToolsI18n } from "@/i18n/ns/playbookTools";
 
+import { personName } from "@/i18n";
 export type ChecklistItem = { id: string; text: string };
 
 function itemIdFromText(text: string): string {
@@ -28,18 +30,17 @@ export function deriveChecklistItems(items: ChecklistItem[] | null | undefined, 
 type MarksData = { shared: Record<string, boolean>; personal: Record<string, boolean> };
 
 async function fetchMarks(playbookId: number): Promise<MarksData> {
-  const r = await fetch(`${BASE}/api/playbook/${playbookId}/marks`, { credentials: "include" });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const j = await r.json();
+  const j = await http.get<Partial<MarksData> | null>(`/api/playbook/${playbookId}/marks`, { credentials: "include" });
   return { shared: j?.shared ?? {}, personal: j?.personal ?? {} };
 }
 
 function readinessLabel(pct: number) {
-  if (pct >= 100) return "Все условия выполнены";
-  if (pct >= 80) return "Сетап почти готов";
-  if (pct >= 50) return "Часть условий не выполнена";
-  if (pct > 0) return "Большинство условий не выполнено";
-  return "Ничего не отмечено";
+  const t = playbookToolsI18n.t;
+  if (pct >= 100) return t("marks.readiness.all");
+  if (pct >= 80) return t("marks.readiness.almost");
+  if (pct >= 50) return t("marks.readiness.part");
+  if (pct > 0) return t("marks.readiness.most");
+  return t("marks.readiness.none");
 }
 
 /** Checkbox visual: 20px rounded box inside a 32px hit target. */
@@ -70,6 +71,7 @@ export function MarkChecklist({
   /** Show keyboard hint line under the list (desktop only). */
   showHints?: boolean;
 }) {
+  const { t } = playbookToolsI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -85,13 +87,7 @@ export function MarkChecklist({
 
   const mutate = useMutation({
     mutationFn: async (vars: { itemId: string; scope: "shared" | "personal"; done: boolean }) => {
-      const r = await fetch(`${BASE}/api/playbook/${playbookId}/marks/${encodeURIComponent(vars.itemId)}`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope: vars.scope, done: vars.done }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await http.put(`/api/playbook/${playbookId}/marks/${encodeURIComponent(vars.itemId)}`, { scope: vars.scope, done: vars.done }, { credentials: "include" });
     },
     onMutate: async (vars) => {
       await qc.cancelQueries({ queryKey: ["playbook-marks", playbookId, trader] });
@@ -106,7 +102,7 @@ export function MarkChecklist({
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(["playbook-marks", playbookId, trader], ctx.prev);
-      toast({ title: "Не удалось сохранить отметку", variant: "destructive" });
+      toast({ title: t("marks.saveFailed"), variant: "destructive" });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["playbook-marks", playbookId, trader] }),
   });
@@ -137,6 +133,7 @@ export function MarkChecklist({
     else if (e.key === "ArrowUp" || e.key === "k") target = Math.max(0, idx - 1);
     else if (e.key === "Home") target = 0;
     else if (e.key === "End") target = items.length - 1;
+    // i18n-ignore (RU keyboard layout keys)
     else if (trader && (e.key === "p" || e.key === "P" || e.key === "з" || e.key === "З")) {
       e.preventDefault();
       toggle(it, "personal");
@@ -152,32 +149,32 @@ export function MarkChecklist({
     <div className="space-y-3">
       {/* Readiness summary */}
       <div className="flex items-center gap-3 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3">
-        <Ring value={sharedChecked / total} size={44} stroke={4} tone={tone} label={`Готовность ${pct}%`}>
+        <Ring value={sharedChecked / total} size={44} stroke={4} tone={tone} label={t("marks.readinessPct", { pct })}>
           <span className={cn("text-xs font-semibold tabular-nums", toneText(tone))}>{pct}</span>
         </Ring>
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
               <Users className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-              Готовность к входу
+              {t("marks.readinessTitle")}
             </span>
             <span className="text-xs tabular-nums text-muted-foreground">{sharedChecked}/{total}</span>
           </div>
-          <p className="truncate text-xs text-muted-foreground" aria-live="polite">{isLoading ? "Загрузка отметок…" : readinessLabel(pct)}</p>
+          <p className="truncate text-xs text-muted-foreground" aria-live="polite">{isLoading ? t("marks.loading") : readinessLabel(pct)}</p>
           {trader && (
             <div className="flex items-center gap-2 pt-0.5">
               <UserIcon className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
               <Bar value={personalChecked / total} tone="accent" className="h-1" />
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">Мои {personalPct}%</span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{t("marks.minePct", { pct: personalPct })}</span>
               {personalChecked > 0 && (
                 <button
                   type="button"
                   onClick={resetPersonal}
                   className="inline-flex min-h-6 shrink-0 items-center gap-1 rounded-full px-1.5 text-xs text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="Сбросить мои отметки"
-                  title="Сбросить мои отметки"
+                  aria-label={t("marks.resetMine")}
+                  title={t("marks.resetMine")}
                 >
-                  <RotateCcw className="h-3 w-3" aria-hidden="true" /> Сброс
+                  <RotateCcw className="h-3 w-3" aria-hidden="true" /> {t("marks.reset")}
                 </button>
               )}
             </div>
@@ -187,12 +184,12 @@ export function MarkChecklist({
 
       {trader && (
         <div className="flex items-center gap-3 px-1 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-up" aria-hidden="true" /> общая (видят все)</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-primary" aria-hidden="true" /> личная (только вы)</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-up" aria-hidden="true" /> {t("marks.legendShared")}</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-primary" aria-hidden="true" /> {t("marks.legendPersonal")}</span>
         </div>
       )}
 
-      <ul className="space-y-0.5" aria-label="Пункты чек-листа">
+      <ul className="space-y-0.5" aria-label={t("marks.itemsAria")}>
         {items.map((it, idx) => {
           const sharedOn = !!marks?.shared?.[it.id];
           const personalOn = !!marks?.personal?.[it.id];
@@ -210,8 +207,8 @@ export function MarkChecklist({
                 type="button"
                 role="checkbox"
                 aria-checked={sharedOn}
-                aria-label={`Общая отметка: ${it.text}`}
-                title="Общая отметка (видят все). ↑↓ — навигация"
+                aria-label={t("marks.sharedAria", { text: it.text })}
+                title={t("marks.sharedTitle")}
                 onClick={() => toggle(it, "shared")}
                 onKeyDown={(e) => onRowKey(e, idx)}
                 className="group/cb grid h-8 w-8 shrink-0 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -223,8 +220,8 @@ export function MarkChecklist({
                   type="button"
                   role="checkbox"
                   aria-checked={personalOn}
-                  aria-label={`Личная отметка: ${it.text}`}
-                  title={`Личная отметка (видна только ${trader}). Клавиша P`}
+                  aria-label={t("marks.personalAria", { text: it.text })}
+                  title={t("marks.personalTitle", { name: personName(trader) })}
                   onClick={() => toggle(it, "personal")}
                   className="group/cb grid h-8 w-8 shrink-0 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
@@ -242,7 +239,7 @@ export function MarkChecklist({
                 {it.text}
               </span>
               {isNext && sharedChecked > 0 && (
-                <Pill tone="accent" className="mt-1.5 hidden sm:inline-flex">следующий</Pill>
+                <Pill tone="accent" className="mt-1.5 hidden sm:inline-flex">{t("marks.next")}</Pill>
               )}
             </li>
           );
@@ -251,7 +248,7 @@ export function MarkChecklist({
 
       {showHints && (
         <p className="hidden px-1 text-xs text-muted-foreground sm:block">
-          ↑↓ — переход по пунктам · Пробел — общая отметка{trader ? " · P — личная" : ""}
+          {trader ? t("marks.hintsPersonal") : t("marks.hints")}
         </p>
       )}
     </div>
@@ -267,6 +264,7 @@ export function ChecklistProbabilityBadge({
   items?: ChecklistItem[] | null;
   text?: string | null;
 }) {
+  const { t } = playbookToolsI18n.useT();
   const { user } = useAuth();
   const trader = user?.role === "trader" && user.traderName ? user.traderName : "";
   const items = useMemo(() => deriveChecklistItems(itemsInput, text), [itemsInput, text]);
@@ -286,13 +284,13 @@ export function ChecklistProbabilityBadge({
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full border border-[var(--field-border)] bg-[var(--glass-bg)] py-0.5 pl-0.5 pr-2"
-      title={`Готовность по чек-листу: ${sharedChecked} из ${items.length} пунктов`}
+      title={t("marks.badgeTitle", { checked: sharedChecked, total: items.length })}
     >
       <Ring value={sharedChecked / items.length} size={18} stroke={3} tone={tone} />
       <span className={cn("text-xs font-medium tabular-nums", tone === "neutral" ? "text-muted-foreground" : toneText(tone))}>
         {sharedChecked}/{items.length}
       </span>
-      <span className="sr-only">пунктов чек-листа выполнено</span>
+      <span className="sr-only">{t("marks.badgeSr")}</span>
     </span>
   );
 }

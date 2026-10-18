@@ -3,6 +3,9 @@ import { pool } from "@workspace/db";
 import { can, evaluate, getEffectiveMatrix, resolveActor } from "./permissions";
 import { normalizeRole } from "./permissionsMatrix";
 import { logger } from "./logger";
+import { discussionsT } from "../i18n/ns";
+import type { Lang, Params } from "../i18n";
+import { errorMessage, type ErrorCode } from "./http/errors";
 
 /**
  * Discussions audience («Кому видна тема»).
@@ -29,10 +32,14 @@ export const STAFF_TOKEN = "staff";
 const COHORT_RE = /^cohort:([1-9]\d{0,8})$/;
 const MAX_TOKENS = 12;
 
-/** Dative labels («тема — Джунам»), shown in the UI and notifications. */
-export const AUDIENCE_LABELS: Record<string, string> = {
-  trainee: "Стажёрам", junior: "Джунам", trader: "Трейдерам", senior: "Сеньорам", staff: "Кураторам",
-};
+/** Audience token label in `lang` («тема — Джунам»), shown in the UI and notifications (discussions namespace). */
+export function audienceTokenLabel(token: string, lang: Lang = "ru"): string {
+  return discussionsT.tryFor(lang, `audience.${token}`) ?? token;
+}
+/** RU labels (kept for older imports). */
+export const AUDIENCE_LABELS: Record<string, string> = Object.fromEntries(
+  ["trainee", "junior", "trader", "senior", "staff"].map((k) => [k, audienceTokenLabel(k)]),
+);
 
 export interface AudienceViewer {
   name: string | null;
@@ -70,7 +77,9 @@ function tokenRank(t: string): number {
   return 100 + (cohortOf(t) ?? 0);
 }
 
-export type AudienceParse = { ok: true; audience: string[] } | { ok: false; error: string };
+/** Failure carries an API error code (+ params); `error` is the RU text (logs / older callers). */
+export type AudienceParse = { ok: true; audience: string[] } | { ok: false; code: ErrorCode; params?: Params; error: string };
+const audienceFail = (code: ErrorCode, params?: Params): AudienceParse => ({ ok: false, code, params, error: errorMessage(code, "ru", params) });
 
 /**
  * Body value → canonical token list ([] = everyone). Accepts an array or a comma string; "all" / "" / null mean
@@ -79,16 +88,16 @@ export type AudienceParse = { ok: true; audience: string[] } | { ok: false; erro
 export function parseAudience(input: unknown): AudienceParse {
   if (input === undefined || input === null || input === "") return { ok: true, audience: [] };
   const raw = Array.isArray(input) ? input : typeof input === "string" ? input.split(",") : null;
-  if (!raw) return { ok: false, error: "Некорректная аудитория" };
+  if (!raw) return audienceFail("AUDIENCE_INVALID");
   const out = new Set<string>();
   for (const item of raw) {
     const t = String(item ?? "").trim().toLowerCase();
     if (!t) continue;
     if (t === "all") return { ok: true, audience: [] };
-    if (!isStage(t) && t !== STAFF_TOKEN && cohortOf(t) == null) return { ok: false, error: `Неизвестная аудитория: ${t.slice(0, 40)}` };
+    if (!isStage(t) && t !== STAFF_TOKEN && cohortOf(t) == null) return audienceFail("AUDIENCE_UNKNOWN", { token: t.slice(0, 40) });
     out.add(t);
   }
-  if (out.size > MAX_TOKENS) return { ok: false, error: "Слишком много групп в аудитории" };
+  if (out.size > MAX_TOKENS) return audienceFail("AUDIENCE_TOO_MANY");
   return { ok: true, audience: [...out].sort((a, b) => tokenRank(a) - tokenRank(b)) };
 }
 
@@ -151,12 +160,13 @@ export function pickStage(own: unknown, enrollment: unknown, tier: unknown): Aud
 }
 
 /** Human label for an audience («Джунам, Трейдерам», cohorts by name when known). */
-export function audienceLabel(audience: readonly string[] | null | undefined, cohortNames?: ReadonlyMap<number, string>): string {
-  if (isPublicAudience(audience)) return "Всем";
-  return audience!.map((t) => {
-    const c = cohortOf(t);
-    if (c != null) return cohortNames?.get(c) ?? `Когорта #${c}`;
-    return AUDIENCE_LABELS[t] ?? t;
+export function audienceLabel(audience: readonly string[] | null | undefined, cohortNames?: ReadonlyMap<number, string>, lang: Lang = "ru"): string {
+  const t = discussionsT.tFor(lang);
+  if (isPublicAudience(audience)) return t("audience.all");
+  return audience!.map((tok) => {
+    const c = cohortOf(tok);
+    if (c != null) return cohortNames?.get(c) ?? t("audience.cohort", { id: c });
+    return audienceTokenLabel(tok, lang);
   }).join(", ");
 }
 

@@ -5,10 +5,12 @@ import {
   scanRulesForTrader, scanRulesAll, ensureRulesSchema, fetchRulesFor, fetchTrades, fetchRiskLimits, fetchSelfMarks,
   syncSelfCheckViolation, mapRuleRow, DESK_TRADER, type StoredRule,
 } from "../lib/rulesEngine";
-import { RULE_CATALOG, RULE_GROUPS, kindMeta, validateThreshold, describeThreshold } from "../lib/rulesCatalog";
+import { RULE_CATALOG, catalogFor, ruleGroupsFor, kindMeta, validateThreshold, describeThreshold, type ThresholdError } from "../lib/rulesCatalog";
+import { rulesT, violationMessage, violationMsgParams, type ViolationMsg } from "../lib/rulesI18n";
+import { langOf, type Lang } from "../i18n";
 import { buildRulesReport, previewRule, type PersistedViolation } from "../lib/rulesReport";
 import { GUEST_SCOPE, isGuest } from "../lib/auth";
-import { can, readScope, requireCap } from "../lib/permissions";
+import { can, readScope } from "../lib/permissions";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { logActivity } from "../lib/activity";
@@ -16,6 +18,7 @@ import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
 import { notifyUser } from "../lib/notifyUtils";
 import { activeViolationSql, archiveWhereSql, isArchiveReason, parseArchiveMode } from "../lib/violationArchive";
+import { AppError, badRequest, forbidden, notFound, unauthorized, type ErrorCode } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -30,11 +33,11 @@ const router: IRouter = Router();
 
 type Scope =
   | { ok: true; trader: string | null; staff: boolean; actor: string }
-  | { ok: false; status: number; error: string };
+  | { ok: false; error: AppError };
 
 async function resolveScope(req: Request, claimed: unknown, opts: { allowAll?: boolean } = {}): Promise<Scope> {
   const auth = req.authUser;
-  if (!auth) return { ok: false, status: 401, error: "Требуется вход" };
+  if (!auth) return { ok: false, error: unauthorized() };
   const claimedName = typeof claimed === "string" && claimed.trim() ? claimed.trim() : null;
   // Guests: read-only sentinel scope (matches no trader) — never anyone's rules or violations.
   if (isGuest(req)) return { ok: true, trader: GUEST_SCOPE, staff: false, actor: auth.name };
@@ -43,7 +46,7 @@ async function resolveScope(req: Request, claimed: unknown, opts: { allowAll?: b
     return { ok: true, trader: claimedName ?? (opts.allowAll ? null : auth.name), staff, actor: auth.name };
   }
   if (claimedName && claimedName !== auth.name) {
-    return { ok: false, status: 403, error: "Можно работать только со своими правилами" };
+    return { ok: false, error: new AppError("RULES_OWN_ONLY", 403) };
   }
   return { ok: true, trader: auth.name, staff, actor: auth.name };
 }
@@ -56,18 +59,21 @@ async function canManageDesk(req: Request): Promise<boolean> {
 }
 
 /** May the caller edit/disable/delete this rule? */
-async function canTouchRule(req: Request, rule: { trader: string; origin?: string | null }): Promise<{ ok: true } | { ok: false; error: string }> {
+async function canTouchRule(req: Request, rule: { trader: string; origin?: string | null }): Promise<{ ok: true } | { ok: false; code: ErrorCode }> {
   const auth = req.authUser;
-  if (!auth || isGuest(req)) return { ok: false, error: "Нет доступа" };
+  if (!auth || isGuest(req)) return { ok: false, code: "FORBIDDEN" };
   if (rule.trader === DESK_TRADER) {
-    return (await canManageDesk(req)) ? { ok: true } : { ok: false, error: "Правило всего деска меняет куратор" };
+    return (await canManageDesk(req)) ? { ok: true } : { ok: false, code: "RULE_DESK_STAFF_ONLY" };
   }
   const staff = await can(req, "rules.manage.team", { trader: rule.trader });
   if (staff) return { ok: true };
-  if (rule.trader !== auth.name) return { ok: false, error: "Можно менять только свои правила" };
-  if (rule.origin === "office") return { ok: false, error: "Это правило офиса — изменить его может куратор" };
+  if (rule.trader !== auth.name) return { ok: false, code: "RULE_EDIT_OWN_ONLY" };
+  if (rule.origin === "office") return { ok: false, code: "RULE_OFFICE_LOCKED" };
   return { ok: true };
 }
+
+/** A failed validateThreshold as an API error (field label already in the request language). */
+const thresholdError = (th: ThresholdError) => new AppError(th.code, 400, th.params);
 
 const MAX_NAME = 120;
 const MAX_NOTE = 500;
@@ -76,13 +82,13 @@ const MAX_COMMENT = 2000;
 const RULE_COLS = `id, trader, name, kind, threshold, enabled, created_at, origin, created_by, note`;
 
 /** Public rule shape. Keeps the original fields (id, trader, name, kind, threshold, enabled, createdAt) — additive only. */
-function shapeRule(r: any) {
+function shapeRule(r: any, lang: Lang) {
   const s = mapRuleRow(r);
-  const meta = kindMeta(s.kind);
+  const meta = kindMeta(s.kind, lang);
   return {
     id: s.id, trader: s.trader, name: s.name, kind: s.kind, threshold: s.threshold, enabled: s.enabled, createdAt: s.createdAt,
     origin: s.origin, desk: s.desk, createdBy: s.createdBy, note: s.note,
-    auto: meta ? meta.auto : true, kindLabel: meta?.label ?? s.kind, summary: describeThreshold(s.kind, s.threshold),
+    auto: meta ? meta.auto : true, kindLabel: meta?.label ?? s.kind, summary: describeThreshold(s.kind, s.threshold, undefined, lang),
   };
 }
 
@@ -102,8 +108,10 @@ function parseWindow(q: Record<string, unknown>): { from: string; to: string; da
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 
 /** Full catalog of rule kinds (the original 11 first, same fields) + groups. Each item: kind, label, hint, group, auto, needs, fields. */
-router.get("/rules/kinds", asyncHandler(async (_req, res): Promise<void> => {
-  res.json(RULE_CATALOG.map((k) => ({ ...k, groupLabel: RULE_GROUPS[k.group] })));
+router.get("/rules/kinds", asyncHandler(async (req, res): Promise<void> => {
+  const lang = langOf(req);
+  const groups = ruleGroupsFor(lang);
+  res.json(catalogFor(lang).map((k) => ({ ...k, groupLabel: groups[k.group] })));
 }));
 
 // ─── Rules CRUD ───────────────────────────────────────────────────────────────
@@ -111,13 +119,14 @@ router.get("/rules/kinds", asyncHandler(async (_req, res): Promise<void> => {
 router.get("/rules", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader, { allowAll: true });
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   const params: unknown[] = [];
   let sql = `SELECT ${RULE_COLS} FROM trading_rules WHERE deleted_at IS NULL`;
   if (scope.trader) { sql += ` AND (trader = $1 OR trader = '${DESK_TRADER}')`; params.push(scope.trader); }
   sql += ` ORDER BY created_at DESC`;
   const { rows } = await pool.query<any>(sql, params);
-  res.json(rows.map(shapeRule));
+  const lang = langOf(req);
+  res.json(rows.map((r) => shapeRule(r, lang)));
 }));
 
 /**
@@ -131,30 +140,28 @@ router.get("/rules", asyncHandler(async (req, res): Promise<void> => {
 router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const { trader, name, kind, threshold, enabled, note, desk } = req.body as Record<string, unknown>;
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой доступ только для просмотра" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const deskWide = desk === true;
   let owner: string;
   let origin: "personal" | "office";
   const actor = req.authUser?.name ?? null;
   if (deskWide) {
-    if (!(await canManageDesk(req))) { res.status(403).json({ error: "Правила для всего деска задаёт куратор" }); return; }
+    if (!(await canManageDesk(req))) throw new AppError("RULE_DESK_STAFF_ONLY", 403);
     owner = DESK_TRADER;
     origin = "office";
   } else {
     const scope = await resolveScope(req, trader);
-    if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+    if (!scope.ok) throw scope.error;
     owner = scope.trader!;
     origin = scope.staff && owner !== scope.actor ? "office" : "personal";
   }
   const cleanName = typeof name === "string" ? name.trim() : "";
-  if (!cleanName || !kind) { res.status(400).json({ error: "name, kind required" }); return; }
-  if (cleanName.length > MAX_NAME) { res.status(400).json({ error: `Название длиннее ${MAX_NAME} символов` }); return; }
-  if (!kindMeta(String(kind))) {
-    res.status(400).json({ error: `Invalid kind. Must be one of: ${RULE_CATALOG.map((k) => k.kind).join(", ")}` });
-    return;
-  }
-  const th = validateThreshold(String(kind), threshold);
-  if (!th.ok) { res.status(400).json({ error: th.error }); return; }
+  const lang = langOf(req);
+  if (!cleanName) throw badRequest("NAME_REQUIRED");
+  if (!kind || !kindMeta(String(kind))) throw badRequest("RULE_KIND_INVALID", { kinds: RULE_CATALOG.map((k) => k.kind) });
+  if (cleanName.length > MAX_NAME) throw badRequest("NAME_TOO_LONG", undefined, { max: MAX_NAME });
+  const th = validateThreshold(String(kind), threshold, lang);
+  if (!th.ok) throw thresholdError(th);
   const cleanNote = typeof note === "string" && note.trim() ? note.trim().slice(0, MAX_NOTE) : null;
   const { rows } = await pool.query<any>(
     `INSERT INTO trading_rules (trader, name, kind, threshold, enabled, origin, created_by, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -164,38 +171,44 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
   if (owner === DESK_TRADER) scanRulesAll().catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   else scanRulesForTrader(owner).catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   if (origin === "office") {
-    logActivity({ action: "created", section: "rules", entityId: String(rows[0].id), entityTitle: cleanName, trader: actor ?? "", details: owner === DESK_TRADER ? "Правило для всего деска" : `Правило офиса для ${owner}` }).catch(() => {});
+    const ru = rulesT.tFor("ru");
+    logActivity({
+      action: "created", section: "rules", entityId: String(rows[0].id), entityTitle: cleanName, trader: actor ?? "",
+      details: owner === DESK_TRADER ? ru("activity.deskRule") : ru("activity.officeRule", { trader: owner }),
+      params: owner === DESK_TRADER ? { detailsKey: "rules.activity.deskRule" } : { detailsKey: "rules.activity.officeRule", trader: owner },
+    }).catch(() => {});
   }
-  res.status(201).json(shapeRule(rows[0]));
+  res.status(201).json(shapeRule(rows[0], lang));
 }));
 
 router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, kind, origin FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Rule not found" }); return; }
+  if (!existing[0]) throw notFound("RULE_NOT_FOUND");
   const access = await canTouchRule(req, existing[0]);
-  if (!access.ok) { res.status(403).json({ error: access.error }); return; }
+  if (!access.ok) throw new AppError(access.code, 403);
 
   const { name, kind, threshold, enabled, note } = req.body as Record<string, unknown>;
+  const lang = langOf(req);
   const sets: string[] = [];
   const params: unknown[] = [];
   if (name !== undefined) {
     const n = String(name).trim();
-    if (!n) { res.status(400).json({ error: "Name required" }); return; }
-    if (n.length > MAX_NAME) { res.status(400).json({ error: `Название длиннее ${MAX_NAME} символов` }); return; }
+    if (!n) throw badRequest("NAME_REQUIRED");
+    if (n.length > MAX_NAME) throw badRequest("NAME_TOO_LONG", undefined, { max: MAX_NAME });
     sets.push(`name = $${params.length + 1}`); params.push(n);
   }
   let effectiveKind = existing[0].kind as string;
   if (kind !== undefined) {
-    if (!kindMeta(String(kind))) { res.status(400).json({ error: "Invalid kind" }); return; }
+    if (!kindMeta(String(kind))) throw badRequest("RULE_KIND_INVALID");
     effectiveKind = String(kind);
     sets.push(`kind = $${params.length + 1}`); params.push(effectiveKind);
   }
   if (threshold !== undefined || kind !== undefined) {
-    const th = validateThreshold(effectiveKind, threshold ?? {});
-    if (!th.ok) { res.status(400).json({ error: th.error }); return; }
+    const th = validateThreshold(effectiveKind, threshold ?? {}, lang);
+    if (!th.ok) throw thresholdError(th);
     sets.push(`threshold = $${params.length + 1}`); params.push(JSON.stringify(th.value));
   }
   if (note !== undefined) {
@@ -203,13 +216,13 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
     sets.push(`note = $${params.length + 1}`); params.push(n);
   }
   if (enabled !== undefined) { sets.push(`enabled = $${params.length + 1}`); params.push(Boolean(enabled)); }
-  if (sets.length === 0) { res.status(400).json({ error: "Nothing to update" }); return; }
+  if (sets.length === 0) throw badRequest("NO_FIELDS");
   params.push(id);
   const { rows } = await pool.query<any>(
     `UPDATE trading_rules SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING ${RULE_COLS}`,
     params,
   );
-  if (rows.length === 0) { res.status(404).json({ error: "Rule not found" }); return; }
+  if (rows.length === 0) throw notFound("RULE_NOT_FOUND");
   // Disabled rules are skipped by the scanner: their violations (with comments and reviews) are archived, not deleted —
   // out of counts and default lists, shown in rule history with «правило выключено». Re-enabling brings them back;
   // the rescan below then dedups by dedup_key (upsert) and archives/deletes the ones that no longer apply.
@@ -226,7 +239,7 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   if (rows[0].trader === DESK_TRADER) scanRulesAll().catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   else scanRulesForTrader(rows[0].trader).catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
-  res.json(shapeRule(rows[0]));
+  res.json(shapeRule(rows[0], lang));
 }));
 
 /**
@@ -236,11 +249,11 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
 router.delete("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, origin, name FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing[0]) throw notFound("RULE_NOT_FOUND");
   const access = await canTouchRule(req, existing[0]);
-  if (!access.ok) { res.status(403).json({ error: access.error }); return; }
+  if (!access.ok) throw new AppError(access.code, 403);
   await pool.query(`UPDATE trading_rules SET deleted_at = NOW(), enabled = false WHERE id = $1`, [id]);
   const arch = await pool.query(
     `UPDATE rule_violations SET archived_at = COALESCE(archived_at, NOW()), archived_reason = 'rule_deleted'
@@ -253,11 +266,11 @@ router.delete("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
 router.post("/rules/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, origin FROM trading_rules WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing[0]) throw notFound("RULE_NOT_FOUND");
   const access = await canTouchRule(req, existing[0]);
-  if (!access.ok) { res.status(403).json({ error: access.error }); return; }
+  if (!access.ok) throw new AppError(access.code, 403);
   const { rows } = await pool.query<any>(`UPDATE trading_rules SET deleted_at = NULL, enabled = true WHERE id = $1 RETURNING ${RULE_COLS}`, [id]);
   // The restored rule is enabled again: its archived violations come back; the rescan dedups by dedup_key.
   await pool.query(
@@ -266,12 +279,12 @@ router.post("/rules/:id/restore", asyncHandler(async (req, res): Promise<void> =
   );
   if (rows[0].trader === DESK_TRADER) scanRulesAll().catch(() => {});
   else scanRulesForTrader(rows[0].trader).catch(() => {});
-  res.json(shapeRule(rows[0]));
+  res.json(shapeRule(rows[0], langOf(req)));
 }));
 
 router.post("/rules/scan", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader, { allowAll: true });
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   if (scope.trader) {
     const result = await scanRulesForTrader(scope.trader);
     res.json({ trader: scope.trader, ...result });
@@ -327,13 +340,14 @@ async function archivedCounts(trader: string): Promise<Map<number, number>> {
 router.get("/rules/report", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   const trader = scope.trader!;
   const { from, to, days } = parseWindow(req.query as Record<string, unknown>);
   const [rules, trades, limits, marks, persisted, archivedByRule] = await Promise.all([
     fetchRulesFor(trader), fetchTrades(trader), fetchRiskLimits(trader), fetchSelfMarks(trader), persistedMap(trader), archivedCounts(trader),
   ]);
-  const report = buildRulesReport({ trader, rules, trades, limits, from, to, marks, persisted });
+  const lang = langOf(req);
+  const report = buildRulesReport({ trader, rules, trades, limits, from, to, marks, persisted, lang });
   const auth = req.authUser!;
   const staffFor = await can(req, "rules.manage.team", { trader });
   const desk = await canManageDesk(req);
@@ -350,20 +364,21 @@ router.get("/rules/report", asyncHandler(async (req, res): Promise<void> => {
 /** GET /rules/preview?trader&days&kind&threshold=<json> — what-if for a rule that doesn't exist yet. */
 router.get("/rules/preview", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   const trader = scope.trader!;
   const kind = String(req.query.kind ?? "");
-  if (!kindMeta(kind)) { res.status(400).json({ error: "Invalid kind" }); return; }
+  if (!kindMeta(kind)) throw badRequest("RULE_KIND_INVALID");
   let rawTh: unknown = {};
   if (typeof req.query.threshold === "string" && req.query.threshold) {
-    try { rawTh = JSON.parse(req.query.threshold); } catch { res.status(400).json({ error: "threshold: JSON" }); return; }
+    try { rawTh = JSON.parse(req.query.threshold); } catch { throw badRequest("RULE_THRESHOLD_INVALID"); }
   }
-  const th = validateThreshold(kind, rawTh);
-  if (!th.ok) { res.status(400).json({ error: th.error }); return; }
+  const lang = langOf(req);
+  const th = validateThreshold(kind, rawTh, lang);
+  if (!th.ok) throw thresholdError(th);
   const { from, to } = parseWindow(req.query as Record<string, unknown>);
   const [trades, limits] = await Promise.all([fetchTrades(trader), fetchRiskLimits(trader)]);
   const rule: StoredRule = { id: 0, trader, name: "preview", kind, threshold: th.value, enabled: true, origin: "personal", desk: false, note: null, createdBy: null, createdAt: null };
-  res.json(previewRule(rule, { trader, trades, limits, from, to, marks: [] }));
+  res.json(previewRule(rule, { trader, trades, limits, from, to, marks: [], lang }));
 }));
 
 // ─── Self-checks (journal integration) ───────────────────────────────────────
@@ -376,7 +391,7 @@ router.get("/rules/preview", asyncHandler(async (req, res): Promise<void> => {
 router.get("/rules/self-checks", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   const trader = scope.trader!;
   const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
   const from = isDay(req.query.day) ? req.query.day : isDay(req.query.from) ? req.query.from : addDays(nyDate(), -30);
@@ -397,17 +412,18 @@ router.get("/rules/self-checks", asyncHandler(async (req, res): Promise<void> =>
 router.put("/rules/self-checks", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const body = req.body as Record<string, unknown>;
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой доступ только для просмотра" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const scope = await resolveScope(req, body.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   const trader = scope.trader!;
   const day = typeof body.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.day) ? body.day : null;
-  if (!day || day > nyDate()) { res.status(400).json({ error: "day: YYYY-MM-DD, не в будущем" }); return; }
+  if (!day) throw badRequest("INVALID_DATE");
+  if (day > nyDate()) throw badRequest("DAY_IN_FUTURE");
   const ruleId = Number(body.ruleId);
   const ok = body.ok === true ? true : body.ok === false ? false : null;
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, MAX_NOTE) : null;
   const rule = (await fetchRulesFor(trader, { enabledOnly: true })).find((r) => r.id === ruleId && r.kind === "self_check");
-  if (!rule) { res.status(404).json({ error: "Правило-самооценка не найдено" }); return; }
+  if (!rule) throw notFound("RULE_NOT_FOUND");
   if (ok === null) {
     // Clearing keeps the row (ok = NULL, «не отмечено») — nothing the trader entered is hard-deleted.
     await pool.query(`UPDATE rule_self_checks SET ok = NULL, note = NULL, updated_by = $4, updated_at = NOW() WHERE rule_id = $1 AND trader = $2 AND day = $3`, [ruleId, trader, day, scope.actor]);
@@ -428,7 +444,7 @@ router.put("/rules/self-checks", asyncHandler(async (req, res): Promise<void> =>
  */
 router.get("/rules/discipline", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   const trader = scope.trader!;
   const rawDays = Number(req.query.days);
   const days = Number.isFinite(rawDays) && rawDays > 0 ? Math.min(Math.floor(rawDays), 366) : 90;
@@ -499,9 +515,11 @@ const VIOLATION_SELECT = `
     LEFT JOIN playbook p ON p.id = t.playbook_id
 `;
 
-function shapeViolation(r: any) {
+function shapeViolation(r: any, lang: Lang) {
   return {
     ...r,
+    // Stored reason (Russian) → the reader's language when the row carries it as data (details.msg).
+    message: violationMessage(r.message, r.details, lang),
     costNet: r.costNet == null ? null : Number(r.costNet),
     tradeR: r.tradeR == null ? null : Number(r.tradeR),
     tradePnl: r.tradePnl == null ? null : Number(r.tradePnl),
@@ -517,7 +535,11 @@ function shapeViolation(r: any) {
 }
 
 /**
- * GET /rule-violations?trader&status&from&to&tradeId&ruleId&limit
+ * GET /rule-violations?trader&status&from&to&tradeId&tradeIds&ruleId&limit&offset&paged
+ *   tradeIds  comma-separated ids (≤ 500) — only the violations of these trades (e.g. the trades of one journal day).
+ *   offset    skip N rows of the same order (day desc, id desc) — pagination instead of one big limit=500.
+ *   paged=1   respond `{ items, nextOffset }` (nextOffset null on the last page); without it the response stays
+ *             the plain array (old behaviour).
  * Archive (lib/violationArchive): active rows only by default; `include=archived` adds archived rows (disabled /
  * deleted rules, stale), `archived=only` returns only them. A ruleId filter (rule history) also shows the rows of a
  * disabled rule. Each row carries archived / archivedReason for the badge.
@@ -525,7 +547,7 @@ function shapeViolation(r: any) {
 router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader, { allowAll: true });
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.error;
   const rawLimit = Number(req.query.limit);
   const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 500) : 200;
   const params: unknown[] = [];
@@ -541,13 +563,25 @@ router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
   if (typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) { params.push(req.query.from); where.push(`${dayExpr} >= $${params.length}`); }
   if (typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) { params.push(req.query.to); where.push(`${dayExpr} <= $${params.length}`); }
   if (typeof req.query.tradeId === "string" && /^\d+$/.test(req.query.tradeId)) { params.push(Number(req.query.tradeId)); where.push(`v.trade_id = $${params.length}`); }
+  if (typeof req.query.tradeIds === "string") {
+    const ids = [...new Set(req.query.tradeIds.split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
+    params.push(ids);
+    where.push(`v.trade_id = ANY($${params.length}::int[])`);
+  }
   if (typeof req.query.ruleId === "string" && /^\d+$/.test(req.query.ruleId)) { params.push(Number(req.query.ruleId)); where.push(`v.rule_id = $${params.length}`); }
   let sql = VIOLATION_SELECT;
   sql += ` WHERE ${where.join(" AND ")}`;
-  params.push(limit);
+  const rawOffset = Number(req.query.offset);
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.min(Math.floor(rawOffset), 1_000_000) : 0;
+  const paged = req.query.paged === "1" || req.query.paged === "true";
+  params.push(paged ? limit + 1 : limit); // one extra row tells whether another page exists
   sql += ` ORDER BY ${dayExpr} DESC, v.id DESC LIMIT $${params.length}`;
+  if (offset) { params.push(offset); sql += ` OFFSET $${params.length}`; }
   const { rows } = await pool.query<any>(sql, params);
-  res.json(rows.map(shapeViolation));
+  const lang = langOf(req);
+  if (!paged) { res.json(rows.map((r) => shapeViolation(r, lang))); return; }
+  const more = rows.length > limit;
+  res.json({ items: rows.slice(0, limit).map((r) => shapeViolation(r, lang)), nextOffset: more ? offset + limit : null });
 }));
 
 /**
@@ -559,14 +593,14 @@ router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const auth = req.authUser;
-  if (!auth) { res.status(401).json({ error: "Требуется вход" }); return; }
-  const { rows: existing } = await pool.query<any>(`SELECT trader, message FROM rule_violations WHERE id = $1`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!auth) throw unauthorized();
+  const { rows: existing } = await pool.query<any>(`SELECT trader, message, details FROM rule_violations WHERE id = $1`, [id]);
+  if (!existing[0]) throw notFound();
   const owner = existing[0].trader === auth.name;
   const staff = await can(req, "rules.manage.team", { trader: existing[0].trader });
-  if (!owner && !staff) { res.status(403).json({ error: "Нет доступа" }); return; }
+  if (!owner && !staff) throw forbidden();
 
   const body = req.body as Record<string, unknown>;
   const sets: string[] = [];
@@ -585,14 +619,14 @@ router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void
       push("acknowledged_by", null);
       push("acknowledged_at", null);
     } else {
-      res.status(403).json({ error: "Снять отметку может только куратор" }); return;
+      throw new AppError("VIOLATION_UNACK_STAFF_ONLY", 403);
     }
   }
   if (body.resolution !== undefined || body.consequence !== undefined) {
-    if (!staff) { res.status(403).json({ error: "Решение по нарушению выносит куратор" }); return; }
+    if (!staff) throw new AppError("VIOLATION_DECISION_STAFF_ONLY", 403);
     if (body.resolution !== undefined) {
       const r = body.resolution == null || body.resolution === "" ? null : String(body.resolution);
-      if (r != null && r !== "upheld" && r !== "dismissed") { res.status(400).json({ error: "resolution: upheld | dismissed" }); return; }
+      if (r != null && r !== "upheld" && r !== "dismissed") throw badRequest("INVALID_FIELD", { field: "resolution", allowed: ["upheld", "dismissed"] }, { field: "resolution" });
       push("resolution", r);
       push("resolved_by", r ? auth.name : null);
       sets.push(r ? `resolved_at = NOW()` : `resolved_at = NULL`);
@@ -602,21 +636,28 @@ router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void
       push("consequence", c || null);
     }
   }
-  if (!sets.length) { res.status(400).json({ error: "Nothing to update" }); return; }
+  if (!sets.length) throw badRequest("NO_FIELDS");
   params.push(id);
   await pool.query(`UPDATE rule_violations SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
   const { rows } = await pool.query<any>(`${VIOLATION_SELECT} WHERE v.id = $1`, [id]);
-  const v = shapeViolation(rows[0]);
-  const what = body.resolution !== undefined ? (v.resolution === "dismissed" ? "Нарушение снято куратором" : v.resolution === "upheld" ? "Нарушение подтверждено куратором" : "Решение по нарушению отменено")
-    : body.acknowledged === true ? "Нарушение принято трейдером" : "Комментарий к нарушению";
-  logActivity({ action: "updated", section: "rules", entityId: String(id), entityTitle: v.ruleName ?? existing[0].message, trader: auth.name, details: what }).catch(() => {});
+  const v = shapeViolation(rows[0], langOf(req));
+  const whatKey = body.resolution !== undefined ? (v.resolution === "dismissed" ? "dismissed" : v.resolution === "upheld" ? "upheld" : "decisionCleared")
+    : body.acknowledged === true ? "acknowledged" : "commented";
+  logActivity({
+    action: "updated", section: "rules", entityId: String(id), entityTitle: v.ruleName ?? existing[0].message, trader: auth.name,
+    details: rulesT.tFor("ru")(`activity.${whatKey}`), params: { detailsKey: `rules.activity.${whatKey}` },
+  }).catch(() => {});
   // A curator's decision reaches the trader (never the curator about their own trades).
   const trader = String(existing[0].trader);
   if (body.resolution !== undefined && v.resolution && trader !== auth.name) {
+    const storedMsg = (existing[0].details as { msg?: ViolationMsg } | null)?.msg;
     inBackground("rule_violation_decision", () => notifyUser({
       userName: trader, type: "rule_violation", source: "rules", actor: auth.name, severity: "info",
-      title: `${v.resolution === "dismissed" ? "Нарушение снято" : "Нарушение подтверждено"}: «${textPreview(v.ruleName ?? "правило", 60)}»`,
-      message: textPreview([v.consequence ? `Последствие: ${v.consequence}` : null, v.comment].filter(Boolean).join(" · ") || existing[0].message, 160),
+      // Rendered per reader (lib/notificationRenderers/rules.ts); the RU title/body are filled from the same params.
+      params: {
+        variant: "decision", decision: v.resolution, rule: v.ruleName ? textPreview(v.ruleName, 60) : null,
+        consequence: v.consequence ?? null, comment: v.comment ?? null, message: String(existing[0].message ?? ""), ...violationMsgParams(storedMsg),
+      },
       link: `/rules?tab=violations&trader=${encodeURIComponent(trader)}`, entityType: "rule_violation", entityId: id,
     }));
   }
@@ -630,11 +671,12 @@ router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void
 router.delete("/rule-violations/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (!(await requireCap(req, res, "rules.violations.delete", null, "Снимать нарушения может только куратор — отметьте «принято» или оставьте комментарий"))) return;
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
+  if (!req.authUser) throw unauthorized();
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
+  if (!(await can(req, "rules.violations.delete"))) throw new AppError("VIOLATION_DISMISS_STAFF_ONLY", 403, undefined, { capability: "rules.violations.delete" });
   const { rows } = await pool.query<any>(`SELECT trader FROM rule_violations WHERE id = $1`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   await pool.query(
     `UPDATE rule_violations SET resolution = 'dismissed', resolved_by = $2, resolved_at = COALESCE(resolved_at, NOW()) WHERE id = $1`,
     [id, req.authUser.name],

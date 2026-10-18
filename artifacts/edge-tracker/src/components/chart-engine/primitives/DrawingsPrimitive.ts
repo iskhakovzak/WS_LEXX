@@ -7,7 +7,7 @@ import type { PrimitiveHoveredItem } from "lightweight-charts";
 import type { Candle, Drawing } from "../types";
 import { timeToLogical } from "../lib/time";
 import { FIB_LEVELS, distToSegment } from "../lib/drawings";
-import { fmtPrice } from "../lib/format";
+import { fmtPrice } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, line } from "./canvas";
 
 type Shape = { id: string; segments: [number, number, number, number][]; rect?: [number, number, number, number] };

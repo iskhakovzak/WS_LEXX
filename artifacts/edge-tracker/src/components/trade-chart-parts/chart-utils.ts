@@ -4,6 +4,8 @@
  */
 import { useEffect, useState } from "react";
 import type { UTCTimestamp, Time } from "lightweight-charts";
+import { fmtDate } from "@/lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
 
 export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 
@@ -53,28 +55,35 @@ const ET_FMT = new Intl.DateTimeFormat("en-US", {
   year: "numeric", month: "2-digit", day: "2-digit",
   hour: "2-digit", minute: "2-digit",
 });
-export const ET_TIME_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false });
-/** HH:MM:SS New York — fills carry seconds (PropReports), bars do not. */
-export const ET_TIME_SEC_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-export const ET_DAY_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "America/New_York", day: "numeric", month: "short" });
+// Display labels follow the UI language (resolved at call time); the zone is always New York.
+const NY = { timeZone: "America/New_York" };
+/** "15:55" (ET). */
+export function fmtEtTime(d: Date): string {
+  return fmtDate(d, "time", NY);
+}
+/** "15 окт." (ET). */
+export function fmtEtDay(d: Date): string {
+  return fmtDate(d, "dayMonth", NY);
+}
 
 export function timeToDate(time: Time): Date | null {
   return typeof time === "number" ? new Date(time * 1000) : null;
 }
 export function fmtEtDateTime(d: Date): string {
-  return `${ET_DAY_FMT.format(d)} ${ET_TIME_FMT.format(d)} ET`;
+  return `${fmtEtDay(d)} ${fmtEtTime(d)} ET`;
 }
 /** "15:55:35" (ET). Accepts a Date, an ISO string or epoch seconds. */
 export function fmtEtTimeSec(v: Date | string | number | null | undefined): string {
   const d = v == null ? null : v instanceof Date ? v : typeof v === "number" ? new Date(v * 1000) : new Date(v);
   if (!d || Number.isNaN(d.getTime())) return "—";
-  return ET_TIME_SEC_FMT.format(d);
+  // HH:MM:SS New York — fills carry seconds (PropReports), bars do not.
+  return fmtDate(d, "timeSeconds", NY);
 }
 /** "15 окт. 15:55:35 ET". */
 export function fmtEtDateTimeSec(v: Date | string | number | null | undefined): string {
   const d = v == null ? null : v instanceof Date ? v : typeof v === "number" ? new Date(v * 1000) : new Date(v);
   if (!d || Number.isNaN(d.getTime())) return "—";
-  return `${ET_DAY_FMT.format(d)} ${ET_TIME_SEC_FMT.format(d)} ET`;
+  return `${fmtEtDay(d)} ${fmtDate(d, "timeSeconds", NY)} ET`;
 }
 
 /**
@@ -84,15 +93,22 @@ export function fmtEtDateTimeSec(v: Date | string | number | null | undefined): 
 export function fmtDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds)) return "—";
   const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return `${s} с`;
-  if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return r ? `${m} мин ${r} с` : `${m} мин`; }
-  if (s < 86400) { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return m ? `${h} ч ${String(m).padStart(2, "0")} мин` : `${h} ч`; }
+  const t = chartI18n.t;
+  if (s < 60) return t("dur.s", { s });
+  if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return r ? t("dur.ms", { m, s: r }) : t("dur.m", { m }); }
+  if (s < 86400) { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return m ? t("dur.hm", { h, m: String(m).padStart(2, "0") }) : t("dur.h", { h }); }
   const d = Math.floor(s / 86400), h = Math.round((s % 86400) / 3600);
-  return h ? `${d} дн ${h} ч` : `${d} дн`;
+  return h ? t("dur.dh", { d, h }) : t("dur.d", { d });
 }
 
 export type EtSession = "premarket" | "regular" | "postmarket" | "closed";
-export const ET_SESSION_LABEL: Record<EtSession, string> = { premarket: "премаркет", regular: "основная сессия", postmarket: "постмаркет", closed: "вне торгов" };
+/** Session names in the UI language (getters: every read follows the current language). */
+export const ET_SESSION_LABEL: Readonly<Record<EtSession, string>> = {
+  get premarket() { return chartI18n.t("session.premarket"); },
+  get regular() { return chartI18n.t("session.regular"); },
+  get postmarket() { return chartI18n.t("session.postmarket"); },
+  get closed() { return chartI18n.t("session.closed"); },
+};
 /** Session of an instant by New York wall clock: 04:00–09:30 premarket, 09:30–16:00 regular, 16:00–20:00 postmarket. */
 export function sessionOfEt(v: Date | string | number | null | undefined): EtSession | null {
   const d = v == null ? null : v instanceof Date ? v : typeof v === "number" ? new Date(v * 1000) : new Date(v);
@@ -457,15 +473,22 @@ export type ChartPrefs = {
   tall: boolean;
 };
 
+/** The whole trading day by default: premarket 4:00 → after-hours 20:00 ET (pre/post on). */
 export const DEFAULT_PREFS: ChartPrefs = {
-  vwap: true, levels: true, rLevels: true, volume: true, adds: false, extended: false, daysBack: 0, tall: false,
+  vwap: true, levels: true, rLevels: true, volume: true, adds: false, extended: true, daysBack: 0, tall: false,
 };
-const PREFS_KEY = "trade-chart-prefs-v2";
+const PREFS_KEY = "trade-chart-prefs-v3";
+/** v2 saved `extended: false` for everyone (the old default); v3 keeps the other choices and starts on the full day. */
+const PREFS_KEY_V2 = "trade-chart-prefs-v2";
 
 export function loadPrefs(): ChartPrefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    if (!raw) return DEFAULT_PREFS;
+    if (!raw) {
+      const old = localStorage.getItem(PREFS_KEY_V2);
+      const p = old ? JSON.parse(old) : null;
+      return { ...DEFAULT_PREFS, ...(p && typeof p === "object" ? p : {}), extended: true };
+    }
     const p = JSON.parse(raw);
     return { ...DEFAULT_PREFS, ...(p && typeof p === "object" ? p : {}) };
   } catch {
@@ -476,15 +499,3 @@ export function savePrefs(p: ChartPrefs) {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* storage unavailable */ }
 }
 
-export function fmtPrice(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return n >= 1000 ? n.toFixed(0) : n >= 10 ? n.toFixed(2) : n.toFixed(n < 1 ? 4 : 2);
-}
-
-export function fmtVol(v: number): string {
-  if (!Number.isFinite(v)) return "—";
-  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-  return String(Math.round(v));
-}

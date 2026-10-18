@@ -1,4 +1,6 @@
 // Shapes returned by GET /api/trades/:id/quality and /api/trade-quality?ids=… (server: lib/tradeQuality.ts, v2).
+import { chartI18n } from "@/i18n/ns/chart";
+
 export type Excursion = {
   perShare: number;
   r: number | null;
@@ -70,21 +72,10 @@ export type QualityBatchResponse = {
   version: number;
 };
 
-export const REASON_LABEL: Record<QualityReason, string> = {
-  no_bars: "нет свечей за период сделки",
-  no_entry: "нет цены входа",
-  open_position: "позиция открыта — считаем по последнему бару",
-  fills_placed_by_price: "исполнения без времени: привязаны по цене",
-  qty_assumed: "количество неизвестно — $ по qty сделки",
-  no_bars_after_exit: "после выхода свечей нет",
-  coarse_bars: "таймфрейм свечей грубее сделки — MFE/MAE только по известному пути вход → выход",
-  no_stop: "стоп не задан — показываем $ и на акцию, без R",
-  no_risk: "риск не определён",
-  exit_not_in_bars: "цена выхода не попала в диапазон свечей",
-  entry_not_in_bars: "цена входа не попала в диапазон свечей",
-  atr_from_day_range: "ATR взят как диапазон дня",
-  no_atr: "ATR неизвестен",
-};
+/** Why the quality is partial / unavailable, in the UI language. */
+export function reasonLabel(r: QualityReason): string {
+  return chartI18n.tryT(`quality.reason.${r}`) ?? r;
+}
 
 export const DEFAULT_AFTER_EXIT = 30;
 export const AFTER_EXIT_OPTIONS = [15, 30, 60, 120] as const;

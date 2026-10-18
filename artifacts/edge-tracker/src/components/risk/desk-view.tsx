@@ -5,37 +5,42 @@ import { EmptyState, ErrorState, Panel, Segmented, StatCard, StatGrid, StatGridS
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
-import { HttpError, useRiskDesk, useRiskPositions } from "./use-risk";
-import { LevelBadge, fmtSignedUsd, fmtUsd, useStoredState } from "./primitives";
+import { isNotFound } from "@/lib/api/errors";
+import { useRiskDesk, useRiskPositions } from "./use-risk";
+import { LevelBadge, useStoredState } from "./primitives";
 import { exposureByTrader } from "./risk-math";
 import { DeskTable, toTableRows, type DeskTableRow } from "./desk-table";
 import { PositionsTable } from "./positions-table";
 import { TraderSheet } from "./trader-sheet";
+import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
+import { rich, slots } from "@/i18n/rich";
+import { alertLabel, positionsCount, stopMessage } from "./labels";
 
 type StatusFilter = "all" | "attention" | "no_limits";
 const STATUS_FILTERS: readonly StatusFilter[] = ["all", "attention", "no_limits"];
 
-const plural = (n: number, one: string, few: string, many: string) => {
-  const m10 = n % 10, m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-};
-
 /** Who needs action right now: stopped / near a limit, with the exact reason. Renders nothing when the desk is clean. */
 function ActionStrip({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (t: string) => void }) {
+  const { t: tr } = riskI18n.useT();
   const hot = rows.filter((r) => r.level === "stop" || r.level === "near").sort((a, b) => b.score - a.score);
   if (!hot.length) return null;
   const stopped = hot.some((r) => r.level === "stop");
   return (
     <section
-      role="alert"
-      aria-label="Требует действия"
+      aria-label={tr("desk.action")}
+      aria-live="polite"
       className={cn("glass-panel flex flex-col gap-2 rounded-2xl p-[var(--panel-p)] ring-1 ring-inset", stopped ? "ring-down/50" : "ring-warn/40")}
     >
-      <h2 className="text-sm font-semibold">Требует действия · {hot.length}</h2>
+      <h2 className="text-sm font-semibold">{tr("desk.actionCount", { count: hot.length })}</h2>
       <ul className="grid grid-cols-1 gap-1.5 xl:grid-cols-2">
         {hot.map((t) => {
           const r = t.row;
-          const reason = r.halted || r.stop.state === "warn" ? r.stop.message : r.alerts.map((a) => `${a.label}${a.pct != null ? ` ${Math.round(a.pct)}%` : ""}${a.detail ? ` (${a.detail})` : ""}`).join(" · ");
+          const reason = r.halted || r.stop.state === "warn"
+            ? stopMessage(r, r.limits)
+            : r.alerts.map((a) => [alertLabel(a), a.pct != null ? fmtPct(a.pct, { decimals: 0, signed: false }) : null, a.detail ? `(${a.detail})` : null].filter(Boolean).join(" ")).join(" · ");
           return (
             <li key={r.trader}>
               <button
@@ -46,10 +51,10 @@ function ActionStrip({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (t: strin
                   t.level === "stop" ? "bg-down/10 hover:bg-down/15" : "bg-warn/10 hover:bg-warn/15",
                 )}
               >
-                <LevelBadge level={t.level} className="w-24" />
-                <span className="font-semibold">{r.trader}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground tabular-nums" title={reason}>{reason}</span>
-                <span className="shrink-0 text-xs text-primary">карточка →</span>
+                <LevelBadge level={t.level} className="min-w-[6rem]" />
+                <span className="font-semibold">{personName(r.trader)}</span>
+                <span className={cn("min-w-0 flex-1 truncate text-xs tabular-nums", t.level === "stop" ? "text-down" : "text-muted-foreground")} title={reason}>{reason}</span>
+                <span className="shrink-0 whitespace-nowrap text-xs text-primary">{tr("desk.openCard")}</span>
               </button>
             </li>
           );
@@ -118,7 +123,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return tableRows.filter((t) => {
-      if (q && !t.row.trader.toLowerCase().includes(q)) return false;
+      if (q && !t.row.trader.toLowerCase().includes(q) && !personName(t.row.trader).toLowerCase().includes(q)) return false;
       if (statusFilter === "attention") return attention(t);
       if (statusFilter === "no_limits") return t.level === "none";
       return true;
@@ -131,15 +136,18 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   const shown = foldIdle ? filtered.filter((t) => !isIdle(t)) : filtered;
   const selectedRow = rows.find((r) => r.trader === selected) ?? null;
   const limitsByTrader = React.useMemo(() => new Map(rows.map((r) => [r.trader, r.limits])), [rows]);
+  const { t } = riskI18n.useT();
+  const c = commonI18n.t;
+  const short = (v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 });
 
   if (desk.isError) {
-    const notReady = desk.error instanceof HttpError && desk.error.status === 404;
+    const notReady = isNotFound(desk.error);
     return notReady ? (
       <Panel>
-        <EmptyState icon={ShieldAlert} title="Риск-деск ещё не подключён на сервере" description="API /api/risk/desk появится после пересборки сервера." />
+        <EmptyState icon={ShieldAlert} title={t("page.notReadyTitle")} description={t("desk.notReadyDesc")} />
       </Panel>
     ) : (
-      <ErrorState title="Не удалось загрузить риск-деск" error={desk.error} onRetry={() => desk.refetch()} />
+      <ErrorState title={t("desk.loadFailed")} error={desk.error} onRetry={() => desk.refetch()} />
     );
   }
 
@@ -158,37 +166,39 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
         <StatGridSkeleton count={4} />
       ) : quiet ? (
         <p role="status" className="glass-panel flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl px-[var(--panel-p)] py-3 text-sm text-muted-foreground tabular-nums">
-          <span className="inline-flex items-center gap-2 font-medium text-foreground"><Wallet className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Сегодня ({desk.data!.date.slice(8, 10)}.{desk.data!.date.slice(5, 7)}) деск не торговал</span>
-          <span>открытых позиций и овернайта нет</span>
-          <span>все в пределах лимитов</span>
+          <span className="inline-flex items-center gap-2 font-medium text-foreground"><Wallet className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{t("desk.quietDay", { date: fmtDate(desk.data!.date, "dayMonthNumeric") })}</span>
+          <span>{t("desk.quietBook")}</span>
+          <span>{t("desk.allOk")}</span>
         </p>
       ) : (
         <StatGrid cols={4}>
           <StatCard
-            label="P&L деска сегодня, нетто"
+            label={t("desk.kpiPnl")}
             icon={Wallet}
-            value={s.pnlNetToday != null ? fmtSignedUsd(s.pnlNetToday) : "—"}
+            value={s.pnlNetToday != null ? fmtUsd(s.pnlNetToday, { signed: true, decimals: 0 }) : "—"}
             tone={toneOf(s.pnlNetToday)}
-            hint={s.tradesToday ? `${s.tradesToday} ${plural(s.tradesToday, "сделка", "сделки", "сделок")} · торговали ${tradedToday} из ${s.traders}` : `сегодня (${desk.data!.date.slice(8, 10)}.${desk.data!.date.slice(5, 7)}) сделок нет`}
+            hint={s.tradesToday
+              ? t("desk.kpiPnlHint", { trades: c("units.trades", { count: s.tradesToday }), traded: tradedToday, total: s.traders })
+              : t("desk.kpiPnlNone", { date: fmtDate(desk.data!.date, "dayMonthNumeric") })}
           />
           <StatCard
-            label="Стоп / у лимита"
+            label={t("desk.kpiStops")}
             icon={ShieldAlert}
             value={<span><span className={stops.length ? "text-down" : ""}>{stops.length}</span><span className="text-muted-foreground"> / </span><span className={nears.length ? "text-warn" : ""}>{nears.length}</span></span>}
-            hint={stops.length || nears.length ? [...stops, ...nears].map((t) => t.row.trader).join(", ") : "все в пределах лимитов"}
+            hint={stops.length || nears.length ? [...stops, ...nears].map((x) => personName(x.row.trader)).join(", ") : t("desk.allOk")}
             onClick={stops.length || nears.length ? () => setStatusFilter("attention") : undefined}
           />
           <StatCard
-            label="Экспозиция деска (gross)"
+            label={t("desk.kpiGross")}
             icon={Briefcase}
-            value={fmtUsd(longUsd + shortUsd, { compact: true })}
-            hint={s.openPositions ? `лонг ${fmtUsd(longUsd, { compact: true })} · шорт ${fmtUsd(shortUsd, { compact: true })} · ${s.openPositions} поз.` : "открытых позиций нет"}
+            value={short(longUsd + shortUsd)}
+            hint={s.openPositions ? t("desk.kpiGrossHint", { long: short(longUsd), short: short(shortUsd), positions: positionsCount(s.openPositions) }) : t("desk.noPositions")}
           />
           <StatCard
-            label="Через закрытие"
+            label={t("desk.kpiOvernight")}
             icon={Moon}
-            value={fmtUsd(s.overnightExposureUsd, { compact: true })}
-            hint={s.carriedTonight ? `${s.carriedTonight} поз. · риск по стопам ${fmtUsd(s.openRiskUsd, { compact: true })}` : "овернайт-книга пуста"}
+            value={short(s.overnightExposureUsd)}
+            hint={s.carriedTonight ? t("desk.kpiOvernightHint", { positions: positionsCount(s.carriedTonight), risk: short(s.openRiskUsd) }) : t("desk.overnightEmpty")}
             onClick={onShowOvernight}
           />
         </StatGrid>
@@ -197,9 +207,9 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
       {!desk.isLoading && <ActionStrip rows={tableRows} onOpen={(t) => open(t)} />}
 
       <Panel
-        title="Трейдеры по риску"
+        title={t("desk.tradersTitle")}
         icon={Users}
-        description="Сверху — кто ближе всего к стопу. Полоски: использование дневного, недельного лимита и просадки; справа — сколько осталось."
+        description={t("desk.tradersDesc")}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -209,21 +219,21 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
-                placeholder="Трейдер…"
-                aria-label="Поиск трейдера"
+                placeholder={t("desk.searchPlaceholder")}
+                aria-label={t("desk.searchAria")}
                 className="h-9 w-40 pl-9 pr-8"
               />
               <Kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>
             </div>
             <Segmented
-              ariaLabel="Фильтр по статусу"
+              ariaLabel={t("desk.filterAria")}
               size="sm"
               value={statusFilter}
               onChange={setStatusFilter}
               options={[
-                { value: "all", label: "Все", count: tableRows.length },
-                { value: "attention", label: "Внимание", count: tableRows.filter(attention).length },
-                { value: "no_limits", label: "Без лимитов", count: noLimitRows.length },
+                { value: "all", label: c("states.all"), count: tableRows.length },
+                { value: "attention", label: t("desk.filterAttention"), count: tableRows.filter(attention).length },
+                { value: "no_limits", label: t("desk.filterNoLimits"), count: noLimitRows.length },
               ]}
             />
           </div>
@@ -232,15 +242,18 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           noLimitRows.length > 0 && !desk.isLoading ? (
             <>
               <span className="min-w-0 flex-1 tabular-nums">
-                <span className="font-medium text-foreground">{noLimitRows.length} из {tableRows.length} без лимитов</span> — стоп для них не считается
-                {foldIdle && idleRows.length > 0 ? `; ${idleRows.length} без сделок и позиций сегодня свёрнуты` : ""}: {noLimitRows.slice(0, 6).map((t) => t.row.trader).join(", ")}{noLimitRows.length > 6 ? "…" : ""}
+                {rich(t("desk.noLimitsLine", slots("head", "names")), {
+                  head: <span className="font-medium text-foreground">{t("desk.noLimitsHead", { count: noLimitRows.length, total: tableRows.length })}</span>,
+                  names: `${noLimitRows.slice(0, 6).map((x) => personName(x.row.trader)).join(", ")}${noLimitRows.length > 6 ? "…" : ""}`,
+                })}
+                {foldIdle && idleRows.length > 0 && <> · {t("desk.idleFolded", { count: idleRows.length })}</>}
               </span>
               {idleRows.length > 0 && (
                 <Button size="sm" variant="ghost" onClick={() => setShowIdle((v) => !v)} aria-expanded={showIdle}>
-                  {showIdle ? "Свернуть" : `Показать ${idleRows.length}`}
+                  {showIdle ? c("actions.collapse") : t("desk.showIdle", { count: idleRows.length })}
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => open(noLimitRows[0].row.trader, "limits")}>Задать лимиты</Button>
+              <Button size="sm" variant="outline" onClick={() => open(noLimitRows[0].row.trader, "limits")}>{t("desk.setLimits")}</Button>
             </>
           ) : undefined
         }
@@ -251,15 +264,15 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           <EmptyState
             compact
             icon={Users}
-            title="Сегодня следить не за кем"
-            description="У трейдеров с лимитами нет записей, остальные без сделок и позиций. Разверните список в подвале панели."
+            title={t("desk.idleTitle")}
+            description={t("desk.idleDesc")}
           />
         ) : shown.length === 0 ? (
           <EmptyState
             compact
             icon={Users}
-            title={rows.length === 0 ? "На деске пока нет трейдеров" : "Никого не найдено"}
-            description={rows.length === 0 ? "Трейдеры появятся, когда у них будут сделки или лимиты." : "Измените поиск или фильтр."}
+            title={rows.length === 0 ? t("desk.noTradersTitle") : t("desk.notFoundTitle")}
+            description={rows.length === 0 ? t("desk.noTradersDesc") : t("desk.notFoundDesc")}
           />
         ) : (
           <DeskTable rows={shown} onOpen={(t) => open(t, rows.find((r) => r.trader === t)?.status === "no_limits" ? "limits" : "overview")} />
@@ -267,7 +280,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
       </Panel>
 
       {positions.length > 0 && (
-        <Panel title="Открытая книга деска" icon={Activity} description="Все открытые позиции: горизонт, срок, $ под риском и экспозиция">
+        <Panel title={t("desk.bookTitle")} icon={Activity} description={t("desk.bookDesc")}>
           <PositionsTable
             positions={positions}
             showTrader

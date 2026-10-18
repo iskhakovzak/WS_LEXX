@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildQuickRows, defaultTier, matchesSearch, tradesWord, undoSteps, type QuickSetup } from "./quick-add-logic";
+import { buildQuickRows, defaultTier, matchesSearch, undoSteps, type QuickSetup } from "./quick-add-logic";
 
 const S = (id: number, name: string, extra: Partial<QuickSetup> = {}): QuickSetup => ({
   id, name, folder: null, space: "office", mine: false, shared: false, owner: null, canAddExamples: true, setupType: null, tags: null, ...extra,
@@ -17,10 +17,10 @@ describe("quick add: setup rows", () => {
   it("groups suggested → recent → mine → office → shared, each setup once, no read-only ones", () => {
     const rows = buildQuickRows({ setups, suggested: [{ id: 5 }, { id: 4 }], recent: [5, 1], search: "" });
     expect(rows.map((r) => [r.s.id, r.group])).toEqual([
-      [5, "Подходят по сделке"],
-      [1, "Недавние"],
-      [2, "Мой плейбук"],
-      [3, "Общие"],
+      [5, "suggested"],
+      [1, "recent"],
+      [2, "mine"],
+      [3, "shared"],
     ]);
   });
 
@@ -63,11 +63,5 @@ describe("quick add: undo", () => {
   });
   it("offers nothing on an older API that does not report what it did", () => {
     expect(undoSteps({ examples: [{ id: 1, tradeId: 2 }], linked: 1 })).toEqual([]);
-  });
-});
-
-describe("plural", () => {
-  it("сделка / сделки / сделок", () => {
-    expect([1, 2, 5, 11, 21, 22, 25, 112].map(tradesWord)).toEqual(["сделка", "сделки", "сделок", "сделок", "сделка", "сделки", "сделок", "сделок"]);
   });
 });

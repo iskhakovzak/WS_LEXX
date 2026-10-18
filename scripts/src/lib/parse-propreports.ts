@@ -1,4 +1,10 @@
-import XLSX from "xlsx";
+import * as fs from "node:fs";
+import * as XLSX from "xlsx";
+import * as cptable from "xlsx/dist/cpexcel.full.mjs";
+
+// SheetJS CE ESM build: readFile needs fs, and codepage tables are opt-in (the old npm CJS build loaded both itself).
+XLSX.set_fs(fs);
+XLSX.set_cptable(cptable);
 
 export interface PropReportsTrade {
   openedAt: string;

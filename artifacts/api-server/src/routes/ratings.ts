@@ -10,6 +10,9 @@ import { notifyUser } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
+import { AppError, badRequest, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { reviewT } from "../i18n/ns";
 
 // ─── Additive schema (gameplan pattern) ─────────────────────────────────────
 // trader_ratings is created by migrate.ts; here we only add the rubric/feedback-loop columns.
@@ -54,13 +57,20 @@ const COLUMN: Record<Criterion | "overall", string> = {
 };
 
 /** Rubric the UI renders and the curator scores against — one source for labels and what counts as evidence. */
-export const RUBRIC: ReadonlyArray<{ key: Criterion; label: string; hint: string; evidence: string[] }> = [
-  { key: "discipline", label: "Дисциплина", hint: "План дня, стоп соблюдён, без тильта", evidence: ["planFollowedPct", "journalDays", "maxLossR"] },
-  { key: "riskManagement", label: "Риск-менеджмент", hint: "Риск на сделку, дневной лимит, размер", evidence: ["maxLossR", "worstDayNet", "avgRiskUsd"] },
-  { key: "execution", label: "Исполнение", hint: "Вход по плану, R-профиль, слиппедж", evidence: ["winRate", "avgR", "profitFactor"] },
-  { key: "journaling", label: "Журнал", hint: "Дни с записью, идеи, разбор ошибок", evidence: ["journalDays", "ideasPublished", "tradesWithNotesPct"] },
-  { key: "improvement", label: "Прогресс", hint: "Динамика к прошлой неделе, работа над фокусом", evidence: ["netDelta", "prevFocus"] },
+const RUBRIC_DEFS: ReadonlyArray<{ key: Criterion; evidence: string[] }> = [
+  { key: "discipline", evidence: ["planFollowedPct", "journalDays", "maxLossR"] },
+  { key: "riskManagement", evidence: ["maxLossR", "worstDayNet", "avgRiskUsd"] },
+  { key: "execution", evidence: ["winRate", "avgR", "profitFactor"] },
+  { key: "journaling", evidence: ["journalDays", "ideasPublished", "tradesWithNotesPct"] },
+  { key: "improvement", evidence: ["netDelta", "prevFocus"] },
 ];
+/** Rubric with labels / hints in `lang` (review namespace `rubric.*`). */
+export function rubricFor(lang: Lang = "ru"): Array<{ key: Criterion; label: string; hint: string; evidence: string[] }> {
+  const t = reviewT.tFor(lang);
+  return RUBRIC_DEFS.map((r) => ({ ...r, label: t(`rubric.${r.key}.label`), hint: t(`rubric.${r.key}.hint`) }));
+}
+/** RU rubric (kept for older imports). */
+export const RUBRIC = rubricFor("ru");
 
 const SELECT_COLS = `id, trader, curator, week,
   discipline, risk_management AS "riskManagement",
@@ -97,8 +107,10 @@ function notifyRating(r: { id: number; trader: string; week: string; overall: nu
   if (!r || !r.trader || r.trader === actor) return;
   inBackground("ratings.rating", () => notifyUser({
     userName: r.trader, type: "rating", actor, source: "ratings",
-    title: `${kind === "new" ? "Оценка за неделю" : "Оценка обновлена"} ${String(r.week).slice(0, 10)}: ${r.overall ?? "—"}/10`,
-    message: `${actor}${r.focus ? ` · фокус: «${textPreview(r.focus, 80)}»` : ""}${r.comment ? ` · «${textPreview(r.comment, 120)}»` : ""}`,
+    params: {
+      variant: kind, week: String(r.week).slice(0, 10), overall: r.overall ?? null, actor,
+      focus: r.focus ? textPreview(r.focus, 80) : null, comment: r.comment ? textPreview(r.comment, 120) : null,
+    },
     link: notifLinks.ratings(r.trader), entityType: "rating", entityId: r.id,
   }));
 }
@@ -106,7 +118,7 @@ function notifyRating(r: { id: number; trader: string; week: string; overall: nu
 router.get("/ratings", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const curator = req.query.curator as string | undefined;
   const week = typeof req.query.week === "string" ? mondayOf(req.query.week) : null;
   let sqlText = `SELECT ${SELECT_COLS} FROM trader_ratings`;
@@ -121,19 +133,20 @@ router.get("/ratings", asyncHandler(async (req, res): Promise<void> => {
   res.json(rows);
 }));
 
-router.get("/ratings/rubric", asyncHandler(async (_req, res): Promise<void> => {
-  res.json({ rubric: RUBRIC, scale: { min: 1, max: 10 }, formulas: {
-    winRate: "W / (W + L), безубыток исключён",
-    avgR: "ΣR / число закрытых сделок (R со знаком, ±20 clamp)",
-    profitFactor: "ΣR⁺ / |ΣR⁻| (null когда нет убытков)",
-    net: "P&L нетто = брутто − |комиссии|; дата = exit_date ?? date (NY)",
+router.get("/ratings/rubric", asyncHandler(async (req, res): Promise<void> => {
+  const t = reviewT.tFor(langOf(req));
+  res.json({ rubric: rubricFor(langOf(req)), scale: { min: 1, max: 10 }, formulas: {
+    winRate: t("formula.winRate"),
+    avgR: t("formula.avgRRubric"),
+    profitFactor: t("formula.profitFactorRubric"),
+    net: t("formula.netRubric"),
   } });
 }));
 
 router.get("/ratings/summary", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const params: unknown[] = [];
   const where = scope ? (params.push(scope), `WHERE trader = $1`) : "";
   const { rows } = await pool.query<any>(`
@@ -172,11 +185,11 @@ router.get("/ratings/summary", asyncHandler(async (req, res): Promise<void> => {
 router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (!scope) { res.status(400).json({ error: "trader required" }); return; }
+  if (scope === undefined) throw unauthorized();
+  if (!scope) throw badRequest("TRADER_REQUIRED");
   const weekRaw = typeof req.query.week === "string" ? req.query.week : nyDate();
   const monday = mondayOf(weekRaw);
-  if (!monday) { res.status(400).json({ error: "week must be YYYY-MM-DD" }); return; }
+  if (!monday) throw new AppError("INVALID_WEEK");
   const sunday = addDays(monday, 6);
   const prevMonday = addDays(monday, -7);
   const prevSunday = addDays(monday, -1);
@@ -285,10 +298,11 @@ router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => 
   );
 
   // Breaches of the desk's own limits, from the same rows (explicit, not inferred from P&L).
+  const tl = reviewT.tFor(langOf(req));
   const breaches: string[] = [];
-  if (risk.maxRiskPerTrade != null && cur.avgRiskUsd != null && cur.avgRiskUsd > risk.maxRiskPerTrade) breaches.push("Средний риск на сделку выше лимита");
-  if (risk.dailyLossLimit != null && worstDayNet != null && worstDayNet < -Math.abs(risk.dailyLossLimit)) breaches.push("Дневной лимит убытка превышен");
-  if (cur.maxLossR != null && cur.maxLossR < -2) breaches.push(`Убыток ${cur.maxLossR.toFixed(1)}R — стоп не соблюдён`);
+  if (risk.maxRiskPerTrade != null && cur.avgRiskUsd != null && cur.avgRiskUsd > risk.maxRiskPerTrade) breaches.push(tl("breach.avgRisk"));
+  if (risk.dailyLossLimit != null && worstDayNet != null && worstDayNet < -Math.abs(risk.dailyLossLimit)) breaches.push(tl("breach.dailyLimit"));
+  if (cur.maxLossR != null && cur.maxLossR < -2) breaches.push(tl("breach.bigLoss", { r: cur.maxLossR.toFixed(1) }));
 
   res.json({
     trader, week: monday, weekEnd: sunday,
@@ -303,12 +317,12 @@ router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => 
     prevFocus: prevRating[0]?.focus ?? null,
     prevRating: prevRating[0] ?? null,
     currentRating: thisRating[0] ?? null,
-    rubric: RUBRIC,
+    rubric: rubricFor(langOf(req)),
     formulas: {
-      winRate: "W / (W + L), безубыток исключён",
-      avgR: "ΣR / закрытые (win+loss+be)",
-      profitFactor: "ΣR⁺ / |ΣR⁻|",
-      net: "нетто = брутто − |комиссии|; неделя по дате закрытия (NY)",
+      winRate: tl("formula.winRate"),
+      avgR: tl("formula.avgR"),
+      profitFactor: tl("formula.profitFactor"),
+      net: tl("formula.net"),
     },
   });
 }));
@@ -323,24 +337,24 @@ router.post("/ratings", asyncHandler(async (req, res): Promise<void> => {
   const curator = req.authUser?.name ?? "";
   const b = req.body as Record<string, unknown>;
   const { trader, week } = b;
-  if (!trader || !week) { res.status(400).json({ error: "trader, week required" }); return; }
+  if (!trader || !week) throw new AppError("VALIDATION");
   const traderName = String(trader).trim();
-  if (!traderName || traderName.length > 100) { res.status(400).json({ error: "invalid trader" }); return; }
+  if (!traderName || traderName.length > 100) throw new AppError("INVALID_TRADER");
   if (!(await requireCap(req, res, "ratings.write", { trader: traderName }))) return;
   const monday = mondayOf(String(week));
-  if (!monday) { res.status(400).json({ error: "week must be YYYY-MM-DD" }); return; }
-  if (monday > nyDate()) { res.status(400).json({ error: "Нельзя оценить будущую неделю" }); return; }
+  if (!monday) throw new AppError("INVALID_WEEK");
+  if (monday > nyDate()) throw new AppError("FUTURE_WEEK");
   const { rows: known } = await pool.query("SELECT 1 FROM users WHERE name = $1 AND active = true", [traderName]);
-  if (known.length === 0) { res.status(400).json({ error: "Трейдер не найден" }); return; }
+  if (known.length === 0) throw new AppError("TRADER_NOT_FOUND", 400);
 
   const scores: Record<string, number> = {};
   for (const k of [...CRITERIA, "overall"] as const) {
     const s = parseScore(b[k]);
-    if (s == null) { res.status(400).json({ error: `${k}: целое число от 1 до 10` }); return; }
+    if (s == null) throw new AppError("SCORE_RANGE", 400, { field: k });
     scores[k] = s;
   }
   const tier = parseTier(b.tier);
-  if (tier === "invalid") { res.status(400).json({ error: "invalid tier" }); return; }
+  if (tier === "invalid") throw new AppError("INVALID_FIELD", 400, { field: "tier" });
   const evidence = b.evidence && typeof b.evidence === "object" ? JSON.stringify(b.evidence).slice(0, 20000) : null;
   const values = [
     scores.discipline, scores.riskManagement, scores.execution,
@@ -378,13 +392,12 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   if (!(await requireCap(req, res, "ratings.write"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: found } = await pool.query<any>(`SELECT curator FROM trader_ratings WHERE id = $1`, [id]);
-  if (!found[0]) { res.status(404).json({ error: "Rating not found" }); return; }
+  if (!found[0]) throw new AppError("RATING_NOT_FOUND");
   const actor = req.authUser!.name;
   if (found[0].curator !== actor && !(await can(req, "ratings.manage.any"))) {
-    res.status(403).json({ error: "Можно редактировать только свои оценки" });
-    return;
+    throw new AppError("RATING_OWN_ONLY");
   }
   const body = req.body as Record<string, unknown>;
   const sets: string[] = [];
@@ -392,7 +405,7 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
   for (const k of [...CRITERIA, "overall"] as const) {
     if (body[k] !== undefined) {
       const s = parseScore(body[k]);
-      if (s == null) { res.status(400).json({ error: `${k}: целое число от 1 до 10` }); return; }
+      if (s == null) throw new AppError("SCORE_RANGE", 400, { field: k });
       params.push(s); sets.push(`${COLUMN[k]} = $${params.length}`);
     }
   }
@@ -400,10 +413,10 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
   if (body.focus !== undefined) { params.push(cleanText(body.focus, 500)); sets.push(`focus = $${params.length}`); }
   if (body.tier !== undefined) {
     const tier = parseTier(body.tier);
-    if (tier === "invalid") { res.status(400).json({ error: "invalid tier" }); return; }
+    if (tier === "invalid") throw new AppError("INVALID_FIELD", 400, { field: "tier" });
     params.push(tier); sets.push(`tier = $${params.length}`);
   }
-  if (sets.length === 0) { res.status(400).json({ error: "Нечего обновлять" }); return; }
+  if (sets.length === 0) throw badRequest("NO_FIELDS");
   sets.push(`updated_at = NOW()`);
   params.push(id);
   const { rows } = await pool.query<any>(
@@ -417,14 +430,14 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
 /** POST /ratings/:id/ack — the rated trader confirms they read the feedback (closes the loop). */
 router.post("/ratings/:id/ack", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (!req.authUser) throw unauthorized();
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: found } = await pool.query<any>(`SELECT trader, acknowledged_at FROM trader_ratings WHERE id = $1`, [id]);
-  if (!found[0]) { res.status(404).json({ error: "Rating not found" }); return; }
+  if (!found[0]) throw new AppError("RATING_NOT_FOUND");
   if (found[0].trader !== req.authUser.name && !(await can(req, "ratings.write", { trader: found[0].trader }))) {
-    res.status(403).json({ error: "Подтвердить может только оцениваемый трейдер" }); return;
+    throw new AppError("RATING_ACK_TRADER_ONLY");
   }
   const { rows } = await pool.query<any>(
     `UPDATE trader_ratings SET acknowledged_at = COALESCE(acknowledged_at, NOW()) WHERE id = $1 RETURNING ${SELECT_COLS}`, [id],
@@ -435,8 +448,7 @@ router.post("/ratings/:id/ack", asyncHandler(async (req, res): Promise<void> => 
   if (r && !found[0].acknowledged_at && r.curator && r.curator !== acker) {
     inBackground("ratings.ack", () => notifyUser({
       userName: r.curator, type: "rating_ack", actor: acker, source: "ratings",
-      title: `${r.trader} подтвердил оценку`,
-      message: `Неделя ${String(r.week).slice(0, 10)}: ${r.overall ?? "—"}/10${acker !== r.trader ? ` (отметил ${acker})` : ""}`,
+      params: { trader: r.trader, week: String(r.week).slice(0, 10), overall: r.overall ?? null, acker: acker !== r.trader ? acker : null },
       link: notifLinks.ratings(r.trader), entityType: "rating", entityId: r.id,
     }));
   }
@@ -446,12 +458,11 @@ router.post("/ratings/:id/ack", asyncHandler(async (req, res): Promise<void> => 
 router.delete("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "ratings.write"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(`SELECT curator FROM trader_ratings WHERE id = $1`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Rating not found" }); return; }
+  if (!rows[0]) throw new AppError("RATING_NOT_FOUND");
   if (rows[0].curator !== req.authUser!.name && !(await can(req, "ratings.manage.any"))) {
-    res.status(403).json({ error: "Можно удалять только свои оценки" });
-    return;
+    throw new AppError("RATING_OWN_ONLY");
   }
   await pool.query(`DELETE FROM trader_ratings WHERE id = $1`, [id]);
   res.json({ success: true });

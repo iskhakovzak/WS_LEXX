@@ -10,6 +10,7 @@
  *               убыток сверх лимита на сделку — только перебор). Отрицательное = нарушение стоило денег.
  */
 import { hhmmToMinutes } from "./rulesCatalog";
+import { renderViolation, type ViolationMsg } from "./rulesI18n";
 
 export type RuleKind =
   | "max_trades_per_day"
@@ -106,7 +107,10 @@ export interface ViolationDraft {
   day: string;
   /** Stable key within a rule: one row per (rule, trade) or (rule, day). */
   key: string;
+  /** Russian rendering of `msg` (stored in rule_violations.message as the fallback). */
   message: string;
+  /** The reason as data (lib/rulesI18n): rendered in the reader's language. */
+  msg: ViolationMsg;
   severity: Severity;
   details: Record<string, unknown>;
   /** $ cost of the violation, net (≤ 0 when it lost money); null when unknown. */
@@ -131,7 +135,11 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const money = (v: number) => `$${Math.round(Math.abs(v)).toLocaleString("en-US")}`;
+/** Violation reason as data + its Russian rendering (the stored fallback). */
+function reason(key: string, params: Record<string, string | number> = {}): { msg: ViolationMsg; message: string } {
+  const msg: ViolationMsg = { key, params };
+  return { msg, message: renderViolation(msg, "ru") ?? key };
+}
 const r2 = (v: number) => Math.round(v * 100) / 100;
 /** Cost of a trade-level violation: the trade's net loss (0 when it made money), null when P&L is unknown. */
 const lossOf = (t: TradeForRule) => (t.netPnl == null ? null : Math.min(0, t.netPnl));
@@ -168,7 +176,7 @@ function clock(min: number): string {
 }
 
 /** Day-loss rule shared by $ and % variants: running NET day P&L by realised day. */
-function dayLossViolations(rule: RuleRow, trades: TradeForRule[], limit: number, how: string): ViolationDraft[] {
+function dayLossViolations(rule: RuleRow, trades: TradeForRule[], limit: number, how: Record<string, string | number>): ViolationDraft[] {
   const out: ViolationDraft[] = [];
   const byDay = groupBy(trades.filter((t) => t.netPnl != null), (t) => t.closeDate);
   for (const [day, list] of byDay) {
@@ -179,7 +187,7 @@ function dayLossViolations(rule: RuleRow, trades: TradeForRule[], limit: number,
       if (breached) {
         out.push({
           ruleId: rule.id, trader: rule.trader, tradeId: t.id, day, key: `t${t.id}`, severity: "critical",
-          message: `Сделка после достижения дневного лимита ${money(limit)}${how} (день ${money(running)} нетто)`,
+          ...reason("dayLimitAfter", { limitUsd: limit, runningUsd: running, ...how }),
           details: { day, runningNet: running, limitUsd: limit, afterBreach: true },
           costNet: lossOf(t),
           impactNet: netOf(t),
@@ -189,7 +197,7 @@ function dayLossViolations(rule: RuleRow, trades: TradeForRule[], limit: number,
         const over = Math.min(0, running + limit);
         out.push({
           ruleId: rule.id, trader: rule.trader, tradeId: t.id, day, key: `t${t.id}`, severity: "high",
-          message: `Дневной лимит убытка ${money(limit)}${how} достигнут: −${money(running)} нетто за ${day}`,
+          ...reason("dayLimitHit", { limitUsd: limit, runningUsd: running, day, ...how }),
           details: { day, runningNet: running, limitUsd: limit, afterBreach: false },
           costNet: over,
           impactNet: r2(over),
@@ -203,15 +211,15 @@ function dayLossViolations(rule: RuleRow, trades: TradeForRule[], limit: number,
 export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimits = NO_LIMITS): ViolationDraft[] {
   const out: ViolationDraft[] = [];
   const t = rule.threshold ?? {};
-  const push = (tr: TradeForRule, day: string, severity: Severity, message: string, details: Record<string, unknown>, impactNet: number | null, costNet: number | null = lossOf(tr)) =>
-    out.push({ ruleId: rule.id, trader: rule.trader, tradeId: tr.id, day, key: `t${tr.id}`, severity, message, details, costNet, impactNet });
+  const push = (tr: TradeForRule, day: string, severity: Severity, text: { msg: ViolationMsg; message: string }, details: Record<string, unknown>, impactNet: number | null, costNet: number | null = lossOf(tr)) =>
+    out.push({ ruleId: rule.id, trader: rule.trader, tradeId: tr.id, day, key: `t${tr.id}`, severity, ...text, details, costNet, impactNet });
 
   switch (rule.kind as RuleKind) {
     case "max_trades_per_day": {
       const n = th(t.n) ?? 5;
       for (const [day, list] of groupBy(trades, (x) => x.date)) {
         for (let i = n; i < list.length; i++) {
-          push(list[i], day, "high", `Превышен лимит ${n} сделок/день: сделка №${i + 1} за ${day}`, { day, totalTradesThatDay: list.length, limit: n }, netOf(list[i]));
+          push(list[i], day, "high", reason("maxTrades", { n, no: i + 1, day }), { day, totalTradesThatDay: list.length, limit: n }, netOf(list[i]));
         }
       }
       break;
@@ -222,7 +230,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
         let losses = 0;
         for (const tr of list) {
           if (losses >= n) {
-            push(tr, day, "critical", `Сделка после ${n} убытков подряд за день ${day}`, { day, lossesBefore: losses, limit: n }, netOf(tr));
+            push(tr, day, "critical", reason("afterLosses", { n, day }), { day, lossesBefore: losses, limit: n }, netOf(tr));
           }
           if (tr.result === "loss") losses++;
           else if (tr.result === "win") losses = 0;
@@ -233,33 +241,33 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
     case "max_daily_loss_usd": {
       const limit = th(t.usd) ?? limits.dailyLossLimit;
       if (limit == null) break;
-      out.push(...dayLossViolations(rule, trades, limit, th(t.usd) ? "" : " (риск-деск)"));
+      out.push(...dayLossViolations(rule, trades, limit, th(t.usd) ? {} : { how: "desk" }));
       break;
     }
     case "max_loss_per_day_pct": {
       const pct = th(t.pct) ?? 2;
       const capital = th(t.capital) ?? limits.accountSize ?? 50000;
-      out.push(...dayLossViolations(rule, trades, (capital * pct) / 100, ` (${pct}% от ${money(capital)})`));
+      out.push(...dayLossViolations(rule, trades, (capital * pct) / 100, { how: "pct", pct, capitalUsd: capital }));
       break;
     }
     case "max_position_usd":
     case "position_size_pct": {
       let maxSize: number | null;
-      let how: string;
+      let how: Record<string, string | number>;
       if (rule.kind === "max_position_usd") {
         maxSize = th(t.usd) ?? limits.maxPositionUsd;
-        how = th(t.usd) ? "" : " (риск-деск)";
+        how = th(t.usd) ? {} : { how: "desk" };
       } else {
         const pct = th(t.pct) ?? 10;
         const capital = th(t.capital) ?? limits.accountSize ?? 50000;
         maxSize = (capital * pct) / 100;
-        how = ` (${pct}% капитала)`;
+        how = { how: "capPct", pct };
       }
       if (maxSize == null) break;
       for (const tr of trades) {
         const size = notionalOf(tr);
         if (size != null && size > maxSize) {
-          push(tr, tr.date, "medium", `Размер позиции ${money(size)} > лимита ${money(maxSize)}${how}`,
+          push(tr, tr.date, "medium", reason("positionSize", { sizeUsd: size, maxUsd: maxSize, ...how }),
             { positionSize: size, maxSize, fromExecutions: tr.maxNotional != null }, excessShare(tr, maxSize, size));
         }
       }
@@ -271,7 +279,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       for (const tr of trades) {
         const risk = riskOf(tr);
         if (risk != null && risk > limit) {
-          push(tr, tr.date, "high", `Риск на сделку ${money(risk)} > лимита ${money(limit)}${th(t.usd) ? "" : " (риск-деск)"}`,
+          push(tr, tr.date, "high", reason("riskPerTrade", { riskUsd: risk, limitUsd: limit, ...(th(t.usd) ? {} : { how: "desk" }) }),
             { riskUsd: risk, limitUsd: limit }, excessShare(tr, limit, risk));
         }
       }
@@ -284,7 +292,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
         if (tr.result === "loss") {
           streak++;
           if (streak >= n) {
-            push(tr, tr.closeDate, "high", `${streak} убытков подряд (лимит ${n})`, { streak, limit: n, date: tr.date }, netOf(tr));
+            push(tr, tr.closeDate, "high", reason("consecutive", { streak, n }), { streak, limit: n, date: tr.date }, netOf(tr));
           }
         } else if (tr.result === "win") {
           streak = 0;
@@ -298,7 +306,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       for (const tr of trades) {
         const hit = swingOnly ? tr.horizon === "swing" : tr.horizon !== "intraday";
         if (!hit) continue;
-        push(tr, tr.date, "high", swingOnly ? `Свинг-сделка при запрете свингов` : `Перенос позиции через ночь (${tr.horizon}) при запрете`,
+        push(tr, tr.date, "high", swingOnly ? reason("swing") : reason("overnight", { horizon: tr.horizon }),
           { horizon: tr.horizon, exitDate: tr.closeDate }, netOf(tr));
       }
       break;
@@ -308,7 +316,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
         // Broker-imported round trips never went through the journal's checklist: not a discipline fault.
         if (tr.source === "propreports") continue;
         if (tr.checklistRuns > 0 || tr.setupScore != null) continue;
-        push(tr, tr.date, "medium", tr.playbookId ? `Сделка по сетапу без прогона чеклиста` : `Сделка без сетапа и чеклиста`, { playbookId: tr.playbookId }, netOf(tr));
+        push(tr, tr.date, "medium", tr.playbookId ? reason("noChecklistSetup") : reason("noChecklist"), { playbookId: tr.playbookId }, netOf(tr));
       }
       break;
     }
@@ -319,7 +327,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       for (const [k, list] of groupBy(trades.filter((x) => !!x.ticker), (x) => `${x.date}|${x.ticker}`)) {
         const [day, ticker] = k.split("|");
         for (let i = n; i < list.length; i++) {
-          push(list[i], day, "medium", `${ticker}: вход №${i + 1} за день (лимит ${n})`, { ticker, entryNo: i + 1, limit: n }, netOf(list[i]));
+          push(list[i], day, "medium", reason("tickerEntries", { ticker, no: i + 1, n }), { ticker, entryNo: i + 1, limit: n }, netOf(list[i]));
         }
       }
       break;
@@ -330,7 +338,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       for (const tr of trades) {
         if (tr.netPnl == null || tr.netPnl >= -limit) continue;
         push(tr, tr.closeDate, tr.netPnl <= -2 * limit ? "critical" : "high",
-          `Убыток ${money(tr.netPnl)} нетто > лимита ${money(limit)}${th(t.usd) ? "" : " (риск-деск)"}`,
+          reason("lossPerTrade", { lossUsd: tr.netPnl, limitUsd: limit, ...(th(t.usd) ? {} : { how: "desk" }) }),
           { lossUsd: tr.netPnl, limitUsd: limit }, r2(tr.netPnl + limit));
       }
       break;
@@ -343,7 +351,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
           if (tr.entryAt != null && lastLossExit != null) {
             const gapMin = (tr.entryAt - lastLossExit) / 60000;
             if (gapMin >= 0 && gapMin < min) {
-              push(tr, day, "high", `Вход через ${gapMin < 1 ? "<1" : Math.floor(gapMin)} мин после убытка (пауза ${min} мин)`, { gapMin: r2(gapMin), limitMin: min }, netOf(tr));
+              push(tr, day, "high", reason("pause", { gap: gapMin < 1 ? "<1" : Math.floor(gapMin), min }), { gapMin: r2(gapMin), limitMin: min }, netOf(tr));
             }
           }
           const ex = exitMs(tr);
@@ -359,7 +367,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
         for (const tr of list) {
           const size = notionalOf(tr);
           if (size != null && prevLoss != null && size >= prevLoss * factor) {
-            push(tr, day, "high", `Размер ${money(size)} ≥ ×${factor} после убытка (${money(prevLoss)})`,
+            push(tr, day, "high", reason("sizeUp", { sizeUsd: size, factor, prevUsd: prevLoss }),
               { notional: size, prevLossNotional: prevLoss, factor }, excessShare(tr, prevLoss, size));
           }
           if (tr.result === "loss" && size != null) prevLoss = size;
@@ -372,7 +380,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       for (const tr of trades) {
         if (tr.entryMin == null) continue;
         if (tr.entryMin >= 570 && tr.entryMin < 570 + n) {
-          push(tr, tr.date, "medium", `Вход в ${clock(tr.entryMin)} — в первые ${n} мин после открытия`, { entryMin: tr.entryMin, limitMin: n }, netOf(tr));
+          push(tr, tr.date, "medium", reason("firstMinutes", { time: clock(tr.entryMin), n }), { entryMin: tr.entryMin, limitMin: n }, netOf(tr));
         }
       }
       break;
@@ -383,7 +391,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       for (const tr of trades) {
         if (tr.entryMin == null) continue;
         if (tr.entryMin < start || tr.entryMin >= end) {
-          push(tr, tr.date, "medium", `Вход в ${clock(tr.entryMin)} вне окна ${clock(start)}–${clock(end)} ET`, { entryMin: tr.entryMin, start, end }, netOf(tr));
+          push(tr, tr.date, "medium", reason("window", { time: clock(tr.entryMin), start: clock(start), end: clock(end) }), { entryMin: tr.entryMin, start, end }, netOf(tr));
         }
       }
       break;
@@ -392,7 +400,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       const sec = th(t.sec) ?? 30;
       for (const tr of trades) {
         if (tr.holdSec == null || tr.holdSec >= sec) continue;
-        push(tr, tr.closeDate, "low", `Удержание ${Math.round(tr.holdSec)} сек < ${sec} сек`, { holdSec: tr.holdSec, limitSec: sec }, netOf(tr));
+        push(tr, tr.closeDate, "low", reason("hold", { hold: Math.round(tr.holdSec), sec }), { holdSec: tr.holdSec, limitSec: sec }, netOf(tr));
       }
       break;
     }
@@ -400,14 +408,14 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       const limit = th(t.qty) ?? 500;
       for (const tr of trades) {
         if (tr.qty == null || tr.qty <= limit) continue;
-        push(tr, tr.date, "medium", `${Math.round(tr.qty).toLocaleString("ru-RU")} акций > лимита ${limit.toLocaleString("ru-RU")}`, { qty: tr.qty, limit }, excessShare(tr, limit, tr.qty));
+        push(tr, tr.date, "medium", reason("shares", { qty: Math.round(tr.qty), limitQty: limit }), { qty: tr.qty, limit }, excessShare(tr, limit, tr.qty));
       }
       break;
     }
     case "no_averaging_down": {
       for (const tr of trades) {
         if (!tr.avgDownShare || tr.avgDownShare <= 0) continue;
-        push(tr, tr.date, "critical", `Усреднение убыточной позиции (${Math.round(tr.avgDownShare * 100)}% позиции добрано по худшей цене)`,
+        push(tr, tr.date, "critical", reason("avgDown", { pct: Math.round(tr.avgDownShare * 100) }),
           { avgDownShare: tr.avgDownShare }, tr.netPnl == null ? null : r2(tr.netPnl * tr.avgDownShare));
       }
       break;
@@ -417,7 +425,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       if (!list.length) break;
       for (const tr of trades) {
         const tk = (tr.ticker ?? "").toUpperCase();
-        if (tk && list.includes(tk)) push(tr, tr.date, "high", `Сделка в запрещённом тикере ${tk}`, { ticker: tk }, netOf(tr));
+        if (tk && list.includes(tk)) push(tr, tr.date, "high", reason("banned", { ticker: tk }), { ticker: tk }, netOf(tr));
       }
       break;
     }
@@ -435,13 +443,18 @@ export interface SelfMark {
   note?: string | null;
 }
 
+/** Reason of a self-check violation (the trader marked «нарушил», optionally with a note — user content). */
+export function selfCheckReason(note: string | null | undefined): { msg: ViolationMsg; message: string } {
+  return note ? reason("selfNote", { note }) : reason("self");
+}
+
 /** Нарушения правила-самооценки: дни, где трейдер отметил «нарушил». */
 export function evalSelfCheck(rule: RuleRow, trader: string, marks: SelfMark[]): ViolationDraft[] {
   return marks
     .filter((m) => m.ruleId === rule.id && m.ok === false)
     .map((m) => ({
       ruleId: rule.id, trader, tradeId: null, day: m.day, key: `d:${trader}:${m.day}`, severity: "medium" as Severity,
-      message: m.note ? `Отмечено «нарушил»: ${m.note}` : "Отмечено «нарушил» в журнале",
+      ...selfCheckReason(m.note),
       details: { selfCheck: true }, costNet: null, impactNet: null,
     }));
 }

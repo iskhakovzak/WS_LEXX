@@ -36,7 +36,6 @@ const TRADE_DEPENDENT_PREFIXES: readonly string[] = [
   "leaderboard",
   "event-trades",
   "all-trades-for-link",
-  "analyst-open-positions",
   "activity-feed",
   "activity-summary",
   "admin-overview",
@@ -50,6 +49,13 @@ const TRADE_DEPENDENT_PREFIXES: readonly string[] = [
   "scaling",
   "eod",
   "weekly-report",
+  // Stop-gap until phase E (`meta.deps`): trade-derived screens that were missing from this list.
+  "behavior",
+  "setups-auto",
+  "benchmark",
+  "day-report",
+  "/api/eod",
+  "/api/events",
 ];
 
 function firstSegment(key: QueryKey): string | null {

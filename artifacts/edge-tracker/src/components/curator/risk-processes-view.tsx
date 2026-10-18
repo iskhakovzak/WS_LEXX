@@ -10,8 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { curatorApi, curatorKeys, useRiskSummary, useRiskTemplates, type RiskSummary, type TemplatesPayload } from "./api";
 import { BreachReviewPanel } from "./breach-review";
-import { shortDate, usd } from "./curator-math";
 import { TemplateDialog } from "./template-dialog";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 
 /**
  * «Риск-процессы»: daily risk summary (GET /api/risk/summary), tier limit templates with bulk apply
@@ -21,6 +23,7 @@ export function RiskProcessesView({ onOpenTrader }: { onOpenTrader: (trader: str
   const summary = useRiskSummary();
   const templates = useRiskTemplates();
   const breaches = useQuery({ queryKey: curatorKeys.breaches(null), queryFn: () => curatorApi.breaches(null, 30), staleTime: 30_000, retry: false });
+  const { t } = curatorI18n.useT();
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
@@ -37,9 +40,9 @@ export function RiskProcessesView({ onOpenTrader }: { onOpenTrader: (trader: str
           <BreachReviewPanel
             breaches={b.breaches}
             showTrader
-            description="Стоп, недельный лимит и макс. просадка по деску. Повторные за 7 дней эскалируются руководителю."
+            description={t("risk.breachesHint")}
             canReview={b.canReview}
-            title={`Нарушения за 30 дней${b.unreviewed ? ` · без разбора ${b.unreviewed}` : ""}`}
+            title={b.unreviewed ? t("risk.breaches30Unreviewed", { count: b.unreviewed }) : t("risk.breaches30")}
           />
         )}
       </QueryState>
@@ -48,48 +51,49 @@ export function RiskProcessesView({ onOpenTrader }: { onOpenTrader: (trader: str
 }
 
 function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trader: string, tab?: string) => void }) {
-  const t = s.totals;
+  const x = s.totals;
+  const { t } = curatorI18n.useT();
   return (
     <>
       <StatGrid cols={6}>
-        <StatCard label="Нетто деска" value={usd(t.pnlNetToday)} tone={toneOf(t.pnlNetToday)} hint={`торгуют ${t.trading} из ${t.traders}`} term="net" />
-        <StatCard label="На стопе" value={s.halted.length} tone={s.halted.length ? "down" : "neutral"} icon={ShieldAlert} hint={s.nearStop.length ? `близко к стопу: ${s.nearStop.length}` : "никто не близко"} />
-        <StatCard label="Нарушения" value={s.breachesToday.length} tone={s.breachesToday.length ? "down" : "neutral"} icon={AlertTriangle} hint={`сегодня · ${s.unreviewedBreaches.length ? `без разбора ${s.unreviewedBreaches.length}` : "все разобраны"}`} />
-        <StatCard label="Повторные, 7 дн." value={s.repeatBreachers.length} tone={s.repeatBreachers.length ? "warn" : "neutral"} icon={Repeat} hint="→ руководителю" />
-        <StatCard label="Открытый риск" value={usd(t.openRiskUsd, false)} icon={ShieldCheck} hint={`${t.openPositions} позиций`} term="openRisk" />
-        <StatCard label="Овернайт" value={t.carriedTonight} tone={s.overnight.some((o) => o.allowed === false) ? "down" : "neutral"} icon={Moon} hint={t.overnightExposureUsd ? usd(t.overnightExposureUsd, false) : "нет экспозиции"} />
+        <StatCard label={t("risk.deskNet")} value={fmtUsd(x.pnlNetToday, { signed: true, decimals: 0 })} tone={toneOf(x.pnlNetToday)} hint={t("risk.tradingOf", { n: x.trading, total: x.traders })} term="net" />
+        <StatCard label={t("risk.halted")} value={s.halted.length} tone={s.halted.length ? "down" : "neutral"} icon={ShieldAlert} hint={s.nearStop.length ? t("risk.nearStop", { count: s.nearStop.length }) : t("risk.nobodyNear")} />
+        <StatCard label={t("risk.breaches")} value={s.breachesToday.length} tone={s.breachesToday.length ? "down" : "neutral"} icon={AlertTriangle} hint={s.unreviewedBreaches.length ? t("risk.todayUnreviewed", { count: s.unreviewedBreaches.length }) : t("risk.todayAllReviewed")} />
+        <StatCard label={t("risk.repeat7")} value={s.repeatBreachers.length} tone={s.repeatBreachers.length ? "warn" : "neutral"} icon={Repeat} hint={t("risk.toHead")} />
+        <StatCard label={t("risk.openRisk")} value={fmtUsd(x.openRiskUsd, { decimals: 0 })} icon={ShieldCheck} hint={t("risk.positions", { count: x.openPositions })} term="openRisk" />
+        <StatCard label={t("risk.overnight")} value={x.carriedTonight} tone={s.overnight.some((o) => o.allowed === false) ? "down" : "neutral"} icon={Moon} hint={x.overnightExposureUsd ? fmtUsd(x.overnightExposureUsd, { decimals: 0 }) : t("risk.noExposure")} />
       </StatGrid>
       {(s.repeatBreachers.length > 0 || s.overnight.length > 0 || s.unreviewedBreaches.length > 0) && (
         <BentoGrid>
-          <Panel className="lg:col-span-6" fill title="Требует решения" icon={AlertTriangle} description="Повторные нарушения и разборы, которые ещё не записаны">
+          <Panel className="lg:col-span-6" fill title={t("risk.needsDecision")} icon={AlertTriangle} description={t("risk.needsDecisionHint")}>
             <ul className="flex flex-col gap-1.5">
               {s.repeatBreachers.map((r) => (
                 <li key={`rep-${r.trader}`} className="flex items-center gap-2 text-sm">
-                  <Pill tone="warn">Повторное</Pill>
-                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{r.trader}</button>
-                  <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{r.days7} дн. с нарушением за 7 дней: {r.dates.map(shortDate).join(", ")}</span>
+                  <Pill tone="warn">{t("risk.repeat")}</Pill>
+                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{personName(r.trader)}</button>
+                  <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{t("risk.repeatDays", { count: r.days7, dates: r.dates.map((d) => fmtDate(d, "dayMonth")).join(", ") })}</span>
                 </li>
               ))}
               {s.unreviewedBreaches.slice(0, 8).map((b) => (
                 <li key={`b-${b.id}`} className="flex items-center gap-2 text-sm">
                   <Pill tone="down" dot>{b.kindLabel}</Pill>
-                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(b.trader, "risk")}>{b.trader}</button>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{shortDate(b.date)} · нужен разбор</span>
+                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(b.trader, "risk")}>{personName(b.trader)}</button>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fmtDate(b.date, "dayMonth")} · {t("risk.needsReview")}</span>
                 </li>
               ))}
-              {s.repeatBreachers.length === 0 && s.unreviewedBreaches.length === 0 && <li className="text-sm text-muted-foreground">Всё разобрано.</li>}
+              {s.repeatBreachers.length === 0 && s.unreviewedBreaches.length === 0 && <li className="text-sm text-muted-foreground">{t("risk.allReviewed")}</li>}
             </ul>
           </Panel>
-          <Panel className="lg:col-span-6" fill title="Овернайт" icon={Moon} description="Кто переносит позиции через ночь и разрешено ли это лимитами">
+          <Panel className="lg:col-span-6" fill title={t("risk.overnight")} icon={Moon} description={t("risk.overnightHint")}>
             {s.overnight.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Никто не переносит позиции.</p>
+              <p className="text-sm text-muted-foreground">{t("risk.nobodyOvernight")}</p>
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {s.overnight.map((o) => (
                   <li key={o.trader} className="flex items-center gap-2 text-sm">
-                    <button type="button" className="w-28 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(o.trader, "risk")}>{o.trader}</button>
-                    <span className="text-xs tabular-nums text-muted-foreground">{o.positions} поз. · {usd(o.exposureUsd, false)}{o.limitUsd != null ? ` из ${usd(o.limitUsd, false)}` : ""}</span>
-                    <span className="ml-auto">{o.allowed === false ? <Pill tone="down">Не разрешено</Pill> : o.allowed ? <Pill tone="up">Разрешено</Pill> : <Pill tone="neutral">Лимитов нет</Pill>}</span>
+                    <button type="button" className="w-28 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(o.trader, "risk")} title={personName(o.trader)}>{personName(o.trader)}</button>
+                    <span className="text-xs tabular-nums text-muted-foreground">{t("risk.overnightPositions", { count: o.positions, amount: fmtUsd(o.exposureUsd, { decimals: 0 }) })}{o.limitUsd != null ? t("risk.ofLimit", { limit: fmtUsd(o.limitUsd, { decimals: 0 }) }) : ""}</span>
+                    <span className="ml-auto">{o.allowed === false ? <Pill tone="down">{t("risk.notAllowed")}</Pill> : o.allowed ? <Pill tone="up">{t("risk.allowed")}</Pill> : <Pill tone="neutral">{t("risk.noLimits")}</Pill>}</span>
                   </li>
                 ))}
               </ul>
@@ -105,7 +109,7 @@ type TemplateRow = TemplatesPayload["traders"][number];
 const TIER_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
 /** Проблемные строки (нет лимитов → нет тира → расхождение) поднимаются наверх при сортировке по возрастанию. */
 const TEMPLATE_ACCESSORS = {
-  trader: (r: TemplateRow) => r.trader,
+  trader: (r: TemplateRow) => personName(r.trader),
   tier: (r: TemplateRow) => (r.tier ? TIER_ORDER[r.tier] ?? 9 : null),
   daily: (r: TemplateRow) => r.limits?.dailyLossLimit ?? null,
   weekly: (r: TemplateRow) => r.limits?.weeklyLossLimit ?? null,
@@ -121,32 +125,33 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
   const toggle = (name: string) => setSelected((s) => { const n = new Set(s); if (n.has(name)) n.delete(name); else n.add(name); return n; });
   const allOn = t.traders.length > 0 && t.traders.every((r) => selected.has(r.trader));
   const { rows, thProps } = useTableSort(t.traders, TEMPLATE_ACCESSORS, "fit", "asc");
+  const tr = curatorI18n.useT().t;
 
   return (
     <BentoGrid>
       <Panel
         className="lg:col-span-8"
         fill
-        title="Лимиты по тирам"
+        title={tr("risk.templatesTitle")}
         icon={Layers}
-        description="Шаблон тира задаёт все лимиты одним действием: журнал изменений, аудит и уведомление трейдеру"
+        description={tr("risk.templatesHint")}
         actions={t.canEdit ? (
           <div className="flex items-center gap-2">
             {needs.length > 0 && (
               <Button type="button" size="sm" variant="outline" onClick={() => setDialog({ traders: needs.map((r) => r.trader), tier: null })}>
-                Исправить {needs.length}
+                {tr("risk.fix", { count: needs.length })}
               </Button>
             )}
             <Button type="button" size="sm" disabled={!selected.size} onClick={() => setDialog({ traders: [...selected], tier: null })}>
-              <Layers className="h-3.5 w-3.5" /> Применить шаблон{selected.size ? ` (${selected.size})` : ""}
+              <Layers className="h-3.5 w-3.5" /> {selected.size ? tr("risk.applyTemplateN", { count: selected.size }) : tr("risk.applyTemplate")}
             </Button>
           </div>
-        ) : <Pill tone="neutral">только просмотр</Pill>}
+        ) : <Pill tone="neutral">{tr("risk.viewOnly")}</Pill>}
       >
         {t.traders.length === 0 ? (
-          <EmptyState compact icon={Layers} title="Трейдеров нет" />
+          <EmptyState compact icon={Layers} title={tr("risk.noTraders")} />
         ) : (
-          <DataTable ariaLabel="Лимиты трейдеров и шаблоны тиров" maxHeight="65vh">
+          <DataTable ariaLabel={tr("risk.tableAria")} maxHeight="65vh">
             <table>
               <thead>
                 <tr>
@@ -155,16 +160,16 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                       <Checkbox
                         checked={allOn}
                         onCheckedChange={(v) => setSelected(v ? new Set(t.traders.map((r) => r.trader)) : new Set())}
-                        aria-label="Выбрать всех"
+                        aria-label={tr("risk.selectAll")}
                       />
                     </th>
                   )}
-                  <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
-                  <SortableTh {...thProps("tier")}>Тир</SortableTh>
-                  <SortableTh {...thProps("daily")} align="right">Дневной</SortableTh>
-                  <SortableTh {...thProps("weekly")} align="right">Недельный</SortableTh>
-                  <SortableTh {...thProps("dd")} align="right">Просадка</SortableTh>
-                  <SortableTh {...thProps("fit")}>Соответствие шаблону</SortableTh>
+                  <SortableTh {...thProps("trader")}>{tr("risk.col.trader")}</SortableTh>
+                  <SortableTh {...thProps("tier")}>{tr("risk.col.tier")}</SortableTh>
+                  <SortableTh {...thProps("daily")} align="right">{tr("risk.col.daily")}</SortableTh>
+                  <SortableTh {...thProps("weekly")} align="right">{tr("risk.col.weekly")}</SortableTh>
+                  <SortableTh {...thProps("dd")} align="right">{tr("risk.col.dd")}</SortableTh>
+                  <SortableTh {...thProps("fit")}>{tr("risk.col.fit")}</SortableTh>
                   {t.canEdit && <th />}
                 </tr>
               </thead>
@@ -172,22 +177,22 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                 {rows.map((r) => (
                   <tr key={r.trader} className={cn(selected.has(r.trader) && "bg-primary/5")}>
                     {t.canEdit && (
-                      <td><Checkbox checked={selected.has(r.trader)} onCheckedChange={() => toggle(r.trader)} aria-label={`Выбрать ${r.trader}`} /></td>
+                      <td><Checkbox checked={selected.has(r.trader)} onCheckedChange={() => toggle(r.trader)} aria-label={tr("risk.selectOne", { name: personName(r.trader) })} /></td>
                     )}
-                    <td><button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{r.trader}</button></td>
+                    <td><button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{personName(r.trader)}</button></td>
                     <td className="text-muted-foreground">{r.tierName ?? "—"}</td>
-                    <td className="text-right">{usd(r.limits?.dailyLossLimit, false)}</td>
-                    <td className="text-right">{usd(r.limits?.weeklyLossLimit, false)}</td>
-                    <td className="text-right">{usd(r.limits?.maxDrawdown, false)}</td>
+                    <td className="text-right">{fmtUsd(r.limits?.dailyLossLimit, { decimals: 0 })}</td>
+                    <td className="text-right">{fmtUsd(r.limits?.weeklyLossLimit, { decimals: 0 })}</td>
+                    <td className="text-right">{fmtUsd(r.limits?.maxDrawdown, { decimals: 0 })}</td>
                     <td className="min-w-[10rem] max-w-[20rem]">
-                      {!r.hasLimits ? <Pill tone="warn">Лимитов нет</Pill>
-                        : !r.tier ? <Pill tone="neutral">Тир не назначен</Pill>
-                        : r.drift.length ? <span className="block whitespace-normal break-words text-xs text-warn">Отличается: {r.drift.map((d) => d.label).join(", ")}</span>
-                        : <Pill tone="up">Совпадает</Pill>}
+                      {!r.hasLimits ? <Pill tone="warn">{tr("risk.noLimits")}</Pill>
+                        : !r.tier ? <Pill tone="neutral">{tr("risk.noTier")}</Pill>
+                        : r.drift.length ? <span className="block whitespace-normal break-words text-xs text-warn">{tr("risk.differs", { fields: r.drift.map((d) => d.label).join(", ") })}</span>
+                        : <Pill tone="up">{tr("risk.matches")}</Pill>}
                     </td>
                     {t.canEdit && (
                       <td className="text-right">
-                        <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setDialog({ traders: [r.trader], tier: r.tier })}>Шаблон</Button>
+                        <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setDialog({ traders: [r.trader], tier: r.tier })}>{tr("risk.template")}</Button>
                       </td>
                     )}
                   </tr>
@@ -197,22 +202,22 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
           </DataTable>
         )}
       </Panel>
-      <Panel className="lg:col-span-4" fill title="Лестница тиров" icon={ShieldCheck} description="Стажёр → Джун → Трейдер → Сеньор" actions={<Button asChild size="sm" variant="ghost"><Link href="/scaling">Скейлинг <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}>
+      <Panel className="lg:col-span-4" fill title={tr("risk.ladderTitle")} icon={ShieldCheck} description={tr("risk.ladder")} actions={<Button asChild size="sm" variant="ghost"><Link href="/scaling">{tr("risk.scaling")} <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}>
         <ul className="flex flex-col gap-2">
           {ladder.map((x) => (
             <li key={x.key} className="tile flex flex-col gap-0.5 p-2.5">
               <div className="flex items-center gap-2 text-sm">
                 <span className="font-medium text-foreground">{x.stageLabel ?? x.name}</span>
-                <span className="ml-auto text-xs tabular-nums text-muted-foreground">{t.traders.filter((r) => r.tier === x.key).length} чел.</span>
+                <span className="ml-auto text-xs tabular-nums text-muted-foreground">{tr("risk.people", { count: t.traders.filter((r) => r.tier === x.key).length })}</span>
               </div>
               <p className="text-xs tabular-nums text-muted-foreground">
-                день {usd(x.dailyLossLimit, false)} · неделя {usd(x.weeklyLossLimit, false)} · просадка {usd(x.maxDrawdown, false)} · {x.allowOvernight ? "овернайт да" : "без овернайта"}
+                {tr("risk.tierLine", { daily: fmtUsd(x.dailyLossLimit, { decimals: 0 }), weekly: fmtUsd(x.weeklyLossLimit, { decimals: 0 }), dd: fmtUsd(x.maxDrawdown, { decimals: 0 }) })} · {x.allowOvernight ? tr("risk.overnightYes") : tr("risk.overnightNo")}
               </p>
             </li>
           ))}
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">
-          Эскалация: 70% лимита — предупреждение трейдеру; 100% — стоп и уведомление куратору; повторное нарушение за 7 дней — руководителю деска. Ручная правка лимитов — в <Link href="/risk" className="text-primary hover:underline">риск-деске</Link>.
+          {tr("risk.escalation")} <Link href="/risk" className="text-primary hover:underline">{tr("risk.riskDeskLink")}</Link>.
         </p>
       </Panel>
       <TemplateDialog

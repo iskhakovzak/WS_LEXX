@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "./feed-utils";
+import { fmtDate, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { feedI18n } from "@/i18n/ns/feed";
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+/** Monday-first weekday indexes (Date#getDay numbering). */
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 /** Month mini-calendar: dots for days with feed events, ring for today, accent for the selected day. */
 export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect, today, anchor }: {
@@ -16,6 +19,7 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
   /** Day whose month is shown first when nothing is selected (e.g. the latest entry). */
   anchor?: string;
 }) {
+  const { t } = feedI18n.useT();
   const initial = selected ?? anchor ?? today;
   const [cursor, setCursor] = useState(() => ({ y: Number(initial.slice(0, 4)), m: Number(initial.slice(5, 7)) - 1 }));
   useEffect(() => {
@@ -33,7 +37,8 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
     return out;
   }, [cursor]);
 
-  const monthLabel = new Date(cursor.y, cursor.m, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  const monthLabel = fmtDate(new Date(cursor.y, cursor.m, 1), "monthYear");
+  const weekdays = WEEK_ORDER.map((i) => { const s = fmtWeekday(i, "short"); return s.charAt(0).toUpperCase() + s.slice(1); });
   const monthPrefix = `${cursor.y}-${String(cursor.m + 1).padStart(2, "0")}`;
   const monthEntries = Array.from(counts.entries()).filter(([d]) => d.startsWith(monthPrefix)).reduce((s, [, n]) => s + n, 0);
   const move = (delta: number) => setCursor((c) => {
@@ -44,21 +49,21 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <button type="button" aria-label="Предыдущий месяц" onClick={() => move(-1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+        <button type="button" aria-label={t("calendar.prevMonth")} onClick={() => move(-1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
           <ChevronLeft className="h-4 w-4" />
         </button>
         <div className="text-center">
           <div className="text-sm font-semibold capitalize text-foreground">{monthLabel}</div>
           <div className="text-xs tabular-nums text-muted-foreground">
-            {monthEntries} {pluralRu(monthEntries, "событие", "события", "событий")}
+            {commonI18n.t("units.events", { count: monthEntries })}
           </div>
         </div>
-        <button type="button" aria-label="Следующий месяц" onClick={() => move(1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+        <button type="button" aria-label={t("calendar.nextMonth")} onClick={() => move(1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-0.5 text-center" role="grid" aria-label={`Календарь ленты, ${monthLabel}`}>
-        {WEEKDAYS.map((w) => (
+      <div className="grid grid-cols-7 gap-0.5 text-center" role="grid" aria-label={t("calendar.aria", { month: monthLabel })}>
+        {weekdays.map((w) => (
           <div key={w} className="pb-1 text-xs font-medium text-muted-foreground" role="columnheader">{w}</div>
         ))}
         {cells.map((d, i) => {
@@ -66,7 +71,7 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
           const n = counts.get(d) ?? 0;
           const isSel = d === selected;
           const isToday = d === today;
-          const label = `${d}: ${n ? `${n} ${pluralRu(n, "событие", "события", "событий")}` : "пусто"}${tradeDays.has(d) ? ", были сделки" : ""}`;
+          const label = `${fmtDate(d, "medium")}: ${n ? commonI18n.t("units.events", { count: n }) : t("calendar.empty")}${tradeDays.has(d) ? t("calendar.hadTrades") : ""}`;
           return (
             <button
               key={d}
@@ -95,9 +100,9 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
         })}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />новое</span>
-        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-foreground/50" aria-hidden="true" />события</span>
-        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-up" aria-hidden="true" />торговый день</span>
+        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />{t("calendar.legendNew")}</span>
+        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-foreground/50" aria-hidden="true" />{t("calendar.legendEvents")}</span>
+        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-up" aria-hidden="true" />{t("calendar.legendTrading")}</span>
       </div>
     </div>
   );

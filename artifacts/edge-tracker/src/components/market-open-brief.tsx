@@ -16,7 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useMarketBrief, type MarketBrief } from "@/lib/market-intel";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
 import { Segmented, Pill, EmptyState, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,15 +26,18 @@ import {
   IconAction,
   WidgetError,
   SkeletonTiles,
-  fmtPct,
-  fmtPrice,
   relTime,
-  clockTime,
   nySession,
   useNow,
   useStoredState,
   num,
 } from "@/components/widgets/widget-kit";
+import { fmtDate, fmtPct, fmtPrice } from "@/lib/format";
+import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
+
+const bt = marketWidgetsI18n.t;
+/** Server period label («За последний день» / «Last day») → mid-sentence form. */
+const lowerFirst = (s: string) => s.charAt(0).toLocaleLowerCase() + s.slice(1);
 
 /** 9:25–10:30 ET weekdays: the brief opens itself automatically. */
 function isMarketOpenWindow(now = new Date()): boolean {
@@ -77,29 +80,29 @@ function riskSentiment(b: MarketBrief, premarket: boolean): { tone: Tone; label:
     .filter((x): x is number => x != null);
   if (fut.length) {
     const avg = fut.reduce((a, c) => a + c, 0) / fut.length;
-    if (avg > 0.2) { score++; factors.push(`Фьючерсы растут (${fmtPct(avg)})`); }
-    else if (avg < -0.2) { score--; factors.push(`Фьючерсы падают (${fmtPct(avg)})`); }
+    if (avg > 0.2) { score++; factors.push(bt("brief.futuresUp", { value: fmtPct(avg) })); }
+    else if (avg < -0.2) { score--; factors.push(bt("brief.futuresDown", { value: fmtPct(avg) })); }
   }
   const vix = b.macro?.find((m) => m.name === "VIX");
   const vixCh = num(vix?.changePct);
   if (vixCh != null) {
-    if (vixCh > 3) { score--; factors.push(`VIX растёт (${fmtPct(vixCh, 1)})`); }
-    else if (vixCh < -3) { score++; factors.push(`VIX снижается (${fmtPct(vixCh, 1)})`); }
+    if (vixCh > 3) { score--; factors.push(bt("brief.vixUp", { value: fmtPct(vixCh, 1) })); }
+    else if (vixCh < -3) { score++; factors.push(bt("brief.vixDown", { value: fmtPct(vixCh, 1) })); }
   }
   const dxy = num(b.macro?.find((m) => m.name === "DXY")?.changePct);
   if (dxy != null) {
-    if (dxy > 0.3) { score--; factors.push(`Доллар крепнет (${fmtPct(dxy)})`); }
-    else if (dxy < -0.3) { score++; factors.push(`Доллар слабеет (${fmtPct(dxy)})`); }
+    if (dxy > 0.3) { score--; factors.push(bt("brief.dollarUp", { value: fmtPct(dxy) })); }
+    else if (dxy < -0.3) { score++; factors.push(bt("brief.dollarDown", { value: fmtPct(dxy) })); }
   }
   const ov = (b.overnight ?? []).map((o) => num(o.changePct)).filter((x): x is number => x != null);
   if (ov.length) {
     const avg = ov.reduce((a, c) => a + c, 0) / ov.length;
-    if (avg > 0.3) { score++; factors.push(`Азия/Европа в плюсе (${fmtPct(avg)})`); }
-    else if (avg < -0.3) { score--; factors.push(`Азия/Европа в минусе (${fmtPct(avg)})`); }
+    if (avg > 0.3) { score++; factors.push(bt("brief.overnightUp", { value: fmtPct(avg) })); }
+    else if (avg < -0.3) { score--; factors.push(bt("brief.overnightDown", { value: fmtPct(avg) })); }
   }
   if (score >= 2) return { tone: "up", label: "Risk-on", factors };
   if (score <= -2) return { tone: "down", label: "Risk-off", factors };
-  return { tone: "neutral", label: "Нейтрально", factors: factors.length ? factors : ["Сильных сигналов нет"] };
+  return { tone: "neutral", label: bt("brief.neutral"), factors: factors.length ? factors : [bt("brief.noSignals")] };
 }
 
 function Section({ title, icon: Icon, meta, children, className }: { title: string; icon?: typeof Globe2; meta?: React.ReactNode; children: React.ReactNode; className?: string }) {
@@ -148,31 +151,16 @@ function MoverRow({ ticker, pct, sector, catalyst, price }: { ticker: string; pc
   );
 }
 
-const EVENT_TYPE_RU: Record<string, string> = {
-  holiday: "Праздник",
-  early_close: "Сокр. день",
-  fomc: "FOMC",
-  cpi: "CPI",
-  ppi: "PPI",
-  nfp: "NFP",
-  opex: "OPEX",
-  gdp: "GDP",
-  macro: "Макро",
-  earnings: "Отчёты",
-};
-
-function fmtShortDate(ymd: string): string {
-  const [y, m, d] = (ymd || "").slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return ymd;
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
-}
+/** Macro event type → chip label (macro codes like FOMC/CPI stay as is). */
+const EVENT_CODES = new Set(["fomc", "cpi", "ppi", "nfp", "opex", "gdp"]);
+const eventTypeLabel = (type: string) => (EVENT_CODES.has(type) ? type.toUpperCase() : marketWidgetsI18n.tryT(`brief.eventType.${type}`) ?? type);
 
 function CopyButton({ text }: { text: string }) {
   const [ok, setOk] = useState(false);
   return (
     <IconAction
       icon={ok ? Check : Copy}
-      label={ok ? "Скопировано" : "Скопировать сводку"}
+      label={ok ? bt("brief.copied") : bt("brief.copySummary")}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
@@ -187,6 +175,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }) {
+  const { t } = marketWidgetsI18n.useT();
   const now = useNow(30_000);
   const [forceShow, setForceShow] = useState<boolean>(alwaysShow);
   const [tab, setTab] = useStoredState<Tab>("market_brief_tab", "markets", TABS);
@@ -206,12 +195,10 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
     setQuotesFetching(true);
     setNextRefresh(60);
     try {
-      const r = await fetch(`${BASE}/api/market-brief/quotes`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setQuotes(await r.json());
+      setQuotes(await http.get<Quotes>("/api/market-brief/quotes"));
       setQuotesError(null);
     } catch (e) {
-      setQuotesError(e instanceof Error && /^HTTP/.test(e.message) ? `Котировки недоступны (${e.message})` : "Котировки недоступны — ошибка сети");
+      setQuotesError(e instanceof ApiError && !e.isNetwork ? bt("brief.quotesUnavailableHttp", { status: e.status }) : bt("brief.quotesUnavailableNet"));
     } finally {
       setQuotesFetching(false);
     }
@@ -248,15 +235,15 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
         </span>
         <div className="min-w-0 flex-1 basis-56">
           <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-            Бриф открытия
+            {t("brief.title")}
             <Pill tone={session.tone} dot>
               {session.label} · NY {session.hhmm}
             </Pill>
           </div>
-          <div className="text-xs text-muted-foreground">Откроется сам в 9:25–10:30 NY: фьючерсы, макро, движения вотчлиста, календарь и новости.</div>
+          <div className="text-xs text-muted-foreground">{t("brief.teaser")}</div>
         </div>
         <Button size="sm" variant="secondary" onClick={() => setForceShow(true)}>
-          Показать сейчас
+          {t("brief.showNow")}
         </Button>
       </div>
     );
@@ -273,13 +260,13 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
   return (
     <WidgetShell
       icon={Sunrise}
-      title="Бриф открытия"
-      meta={brief?.date ? fmtShortDate(brief.date) : undefined}
+      title={t("brief.title")}
+      meta={brief?.date ? fmtDate(brief.date.slice(0, 10), "weekdayDayMonth") : undefined}
       actions={
         <>
           <IconAction
             icon={Zap}
-            label="Обновить котировки сейчас"
+            label={t("brief.refreshQuotes")}
             active={!!quotes}
             disabled={quotesFetching}
             onClick={fetchQuotes}
@@ -287,7 +274,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
           />
           <IconAction
             icon={RefreshCw}
-            label="Обновить бриф"
+            label={t("brief.refresh")}
             spinning={isFetching}
             disabled={isFetching}
             onClick={() => {
@@ -298,7 +285,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
           />
           {!alwaysShow && !isMarketOpenWindow(new Date(now)) && (
             <Button size="sm" variant="ghost" onClick={() => setForceShow(false)}>
-              Скрыть
+              {t("brief.hide")}
             </Button>
           )}
         </>
@@ -310,16 +297,16 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
           {session.label} · NY {session.hhmm}
         </Pill>
         {builtAt && (
-          <span className="tabular-nums" title={new Date(builtAt).toLocaleString("ru-RU")}>
-            Бриф собран {clockTime(builtAt)} · {relTime(builtAt, now)}
+          <span className="tabular-nums" title={fmtDate(builtAt, "shortDateTime")}>
+            {t("brief.builtAt", { time: fmtDate(builtAt, "time"), ago: relTime(builtAt, now) })}
           </span>
         )}
-        {stale && <Pill tone="warn">Устаревшие данные</Pill>}
+        {stale && <Pill tone="warn">{t("brief.stale")}</Pill>}
         {quotes && (
           <span className="flex items-center gap-1 tabular-nums text-up">
             <Activity className="h-3 w-3 motion-safe:animate-pulse" aria-hidden="true" />
-            Котировки {clockTime(quotes.quotesAt)}
-            {premarket && <span className="text-muted-foreground">· обновление через {nextRefresh} с</span>}
+            {t("brief.quotesAt", { time: fmtDate(quotes.quotesAt, "time") })}
+            {premarket && <span className="text-muted-foreground">{t("brief.nextRefresh", { count: nextRefresh })}</span>}
           </span>
         )}
       </div>
@@ -327,19 +314,19 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
       {quotesError && <WidgetError message={quotesError} className="mb-3" />}
 
       {isLoading && !brief ? (
-        <div className="space-y-3" aria-busy="true" aria-label="Собираем бриф">
+        <div className="space-y-3" aria-busy="true" aria-label={t("brief.building")}>
           <Skeleton className="h-16 w-full rounded-xl" />
           <SkeletonTiles count={4} />
         </div>
       ) : isError && !brief ? (
-        <WidgetError message="Не удалось собрать бриф открытия" onRetry={() => refetch()} />
+        <WidgetError message={t("brief.buildFailed")} onRetry={() => refetch()} />
       ) : brief ? (
         <div className="space-y-4">
           {/* Headline: sentiment + AI summary */}
           <div className="grid gap-3 lg:grid-cols-[13rem_minmax(0,1fr)]">
             {sentiment && (
               <div className="rounded-xl bg-foreground/[0.04] px-3 py-2.5">
-                <div className="text-2xs text-muted-foreground">Настроение рынка</div>
+                <div className="text-2xs text-muted-foreground">{t("brief.sentiment")}</div>
                 <div className={cn("text-lg font-semibold", sentiment.tone === "up" ? "text-up" : sentiment.tone === "down" ? "text-down" : "text-foreground")}>
                   {sentiment.label}
                 </div>
@@ -354,7 +341,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
               <div className="relative rounded-xl bg-primary/[0.07] px-3 py-2.5">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
-                    <Brain className="h-3.5 w-3.5" aria-hidden="true" /> Коротко главное за ночь
+                    <Brain className="h-3.5 w-3.5" aria-hidden="true" /> {t("brief.aiTitle")}
                   </span>
                   <CopyButton text={brief.aiSummary} />
                 </div>
@@ -362,28 +349,28 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
               </div>
             ) : (
               <div className="flex items-center rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-sm text-muted-foreground">
-                AI-сводка пока не готова — данные ниже актуальны.
+                {t("brief.aiPending")}
               </div>
             )}
           </div>
 
           <Segmented<Tab>
-            ariaLabel="Раздел брифа"
+            ariaLabel={t("brief.tabsAria")}
             size="sm"
             value={tab}
             onChange={setTab}
             options={[
-              { value: "markets", label: "Рынки" },
-              { value: "movers", label: "Движения", count: counts.movers || undefined },
-              { value: "calendar", label: "Календарь", count: counts.calendar || undefined },
-              { value: "news", label: "Новости", count: counts.news || undefined },
+              { value: "markets", label: t("brief.tabMarkets") },
+              { value: "movers", label: t("brief.tabMovers"), count: counts.movers || undefined },
+              { value: "calendar", label: t("brief.tabCalendar"), count: counts.calendar || undefined },
+              { value: "news", label: t("brief.tabNews"), count: counts.news || undefined },
             ]}
           />
 
           {tab === "markets" && (
             <div className="space-y-4">
               {brief.futures?.length > 0 && (
-                <Section title="Фьючерсы США" meta={premarket ? "день · премаркет к закрытию" : "изменение за сессию"}>
+                <Section title={t("brief.futures")} meta={premarket ? t("brief.futuresMetaPre") : t("brief.futuresMetaDay")}>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {brief.futures.map((f) => {
                       const pm = premarket ? f.preMarketChangePct : null;
@@ -393,7 +380,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                           name={f.name}
                           main={fmtPct(f.changePct)}
                           mainClass={pctClass(f.changePct)}
-                          sub={pm != null ? <span className={pctClass(pm)}>Премаркет {fmtPct(pm)}</span> : undefined}
+                          sub={pm != null ? <span className={pctClass(pm)}>{t("brief.premarket", { value: fmtPct(pm) })}</span> : undefined}
                           sub2={fmtPrice(premarket && f.preMarketPrice != null ? f.preMarketPrice : f.price)}
                           highlight={pm != null}
                         />
@@ -403,7 +390,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                 </Section>
               )}
               {(brief.macro?.length ?? 0) > 0 && (
-                <Section title="Макро · волатильность, доллар, ставки, сырьё">
+                <Section title={t("brief.macro")}>
                   <div className="grid grid-cols-3 gap-2 lg:grid-cols-6">
                     {brief.macro!.map((m) => (
                       <QuoteTile
@@ -417,12 +404,12 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                 </Section>
               )}
               {(brief.overnight?.length ?? 0) > 0 && (
-                <Section title="Ночная сессия · Азия и Европа" icon={Globe2}>
+                <Section title={t("brief.overnight")} icon={Globe2}>
                   <ul className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
                     {brief.overnight!.map((o) => (
                       <li key={o.symbol} className="flex items-center justify-between gap-2 border-b border-border/40 py-1.5 text-sm last:border-0">
                         <span className="min-w-0 truncate">
-                          {o.name} <span className="text-2xs text-muted-foreground">{o.region === "Asia" ? "Азия" : o.region === "Europe" ? "Европа" : o.region}</span>
+                          {o.name} <span className="text-2xs text-muted-foreground">{o.region === "Asia" ? t("brief.asia") : o.region === "Europe" ? t("brief.europe") : o.region}</span>
                         </span>
                         <span className={cn("font-medium tabular-nums", pctClass(o.changePct))}>{fmtPct(o.changePct)}</span>
                       </li>
@@ -431,7 +418,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                 </Section>
               )}
               {(brief.sectorRotation?.length ?? 0) > 0 && (
-                <Section title="Ротация секторов">
+                <Section title={t("brief.rotation")}>
                   <div className="flex flex-wrap gap-1.5">
                     {brief.sectorRotation.slice(0, 3).map((s) => (
                       <Pill key={s.symbol} tone="up">{s.symbol} {fmtPct(s.changePct, 1)}</Pill>
@@ -448,7 +435,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
 
           {tab === "movers" && (
             <div className="space-y-4">
-              <Section title="Премаркет · вотчлист" meta={brief.premarketMovers?.length ? `${brief.premarketMovers.length} тикеров` : undefined}>
+              <Section title={t("brief.pmMovers")} meta={brief.premarketMovers?.length ? t("brief.tickersCount", { count: brief.premarketMovers.length }) : undefined}>
                 {brief.premarketMovers?.length ? (
                   <ul className="divide-y divide-border/40">
                     {brief.premarketMovers.map((p) => (
@@ -456,10 +443,10 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Нет движений больше 0.5% в премаркете.</p>
+                  <p className="text-sm text-muted-foreground">{t("brief.noPmMoves")}</p>
                 )}
               </Section>
-              <Section title="Гэпы · вотчлист" meta={brief.gapLeaders?.length ? `${brief.gapLeaders.length} тикеров` : undefined}>
+              <Section title={t("brief.gaps")} meta={brief.gapLeaders?.length ? t("brief.tickersCount", { count: brief.gapLeaders.length }) : undefined}>
                 {brief.gapLeaders?.length ? (
                   <ul className="divide-y divide-border/40">
                     {brief.gapLeaders.map((g) => (
@@ -467,18 +454,18 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Гэпов больше 1% в вотчлисте нет.</p>
+                  <p className="text-sm text-muted-foreground">{t("brief.noGaps")}</p>
                 )}
               </Section>
               <Link href="/watchlist" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                Открыть вотчлист <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                {t("brief.openWatchlist")} <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
             </div>
           )}
 
           {tab === "calendar" && (
             <div className="space-y-4">
-              <Section title="Отчёты сегодня" meta={brief.earningsToday?.length ? `${brief.earningsToday.length}` : undefined}>
+              <Section title={t("brief.earningsToday")} meta={brief.earningsToday?.length ? `${brief.earningsToday.length}` : undefined}>
                 {brief.earningsToday?.length ? (
                   <div className="flex flex-wrap gap-1.5">
                     {brief.earningsToday.map((e, i) => (
@@ -488,10 +475,10 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Отчётов на сегодня нет.</p>
+                  <p className="text-sm text-muted-foreground">{t("brief.noEarnings")}</p>
                 )}
               </Section>
-              <Section title="Макрособытия · 7 дней" icon={CalendarDays}>
+              <Section title={t("brief.macroEvents")} icon={CalendarDays}>
                 {brief.economicEvents?.length ? (
                   <ul className="divide-y divide-border/40">
                     {brief.economicEvents.slice(0, 10).map((e) => {
@@ -499,29 +486,29 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                       return (
                         <li key={e.id} className="flex items-center gap-2 py-1.5 text-sm">
                           <span className={cn("w-24 shrink-0 text-xs tabular-nums", isToday ? "font-semibold text-primary" : "text-muted-foreground")}>
-                            {isToday ? "Сегодня" : fmtShortDate(e.date)}
+                            {isToday ? t("brief.today") : fmtDate(e.date.slice(0, 10), "weekdayDayMonth")}
                           </span>
                           <span className="min-w-0 flex-1 truncate" title={e.description ?? undefined}>{e.name}</span>
                           <Pill tone={e.importance === "high" ? "down" : e.importance === "medium" ? "warn" : "neutral"}>
-                            {EVENT_TYPE_RU[e.type] ?? e.type}
+                            {eventTypeLabel(e.type)}
                           </Pill>
                         </li>
                       );
                     })}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Значимых событий на неделе нет.</p>
+                  <p className="text-sm text-muted-foreground">{t("brief.noEvents")}</p>
                 )}
               </Section>
               <Link href="/events" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-                Все события <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                {t("brief.allEvents")} <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
             </div>
           )}
 
           {tab === "news" && (
             <div className="space-y-4">
-              <Section title={`Что важно · ${(brief.lookback?.label || "за последний день").replace(/^За/, "за")}`} icon={Newspaper}>
+              <Section title={t("brief.whatMatters", { period: brief.lookback?.label ? lowerFirst(brief.lookback.label) : t("brief.lastDay") })} icon={Newspaper}>
                 {brief.topNews?.length ? (
                   <ul className="divide-y divide-border/40">
                     {brief.topNews.map((n, i) => {
@@ -532,18 +519,18 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                           <span className="min-w-0 flex-1 text-sm leading-snug text-foreground/90">{n.headline}</span>
                           <span className="shrink-0 text-right">
                             {mv != null && <span className={cn("block text-sm font-semibold tabular-nums", pctClass(mv))}>{fmtPct(mv)}</span>}
-                            <span className="block text-2xs tabular-nums text-muted-foreground">{(n.date || "").slice(5, 10).split("-").reverse().join(".")}</span>
+                            <span className="block text-2xs tabular-nums text-muted-foreground">{n.date ? fmtDate(n.date.slice(0, 10), "dayMonthNumeric") : ""}</span>
                           </span>
                         </li>
                       );
                     })}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Новостей за период нет.</p>
+                  <p className="text-sm text-muted-foreground">{t("brief.noNews")}</p>
                 )}
               </Section>
               {brief.yesterdayThemes?.what_works_now && (
-                <Section title={`Что работало · ${(brief.lookback?.label || "вчера").replace(/^За/, "за")}`}>
+                <Section title={t("brief.whatWorked", { period: brief.lookback?.label ? lowerFirst(brief.lookback.label) : t("brief.yesterday") })}>
                   <p className="text-sm leading-relaxed text-foreground/90">{brief.yesterdayThemes.what_works_now}</p>
                   {brief.yesterdayThemes.best_tickers && (
                     <div className="flex flex-wrap gap-1.5">
@@ -562,7 +549,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
           )}
         </div>
       ) : (
-        <EmptyState icon={Sunrise} title="Бриф пока пуст" description="Данные появятся после первой сборки брифа." className="py-6" />
+        <EmptyState icon={Sunrise} title={t("brief.emptyTitle")} description={t("brief.emptyText")} className="py-6" />
       )}
     </WidgetShell>
   );

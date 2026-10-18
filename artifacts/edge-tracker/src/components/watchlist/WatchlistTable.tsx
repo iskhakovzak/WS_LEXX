@@ -5,15 +5,14 @@ import { useAuth } from "@/contexts/auth-context";
 import { canModifyOwned } from "@/lib/ownership";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  LIST_LABELS, fmtPct, fmtPrice,
-  type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem,
-} from "./lib";
+import { LIST_LABELS, type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem } from "./lib";
 import type { DayLevelSet, UpcomingEarnings } from "./use-market";
 import type { TickerHistory } from "./use-history";
 import { EventMarks, HistoryCell, InlineNote, LevelCell } from "./bits";
 import { RowMenu, type RowActions } from "./WatchlistRow";
 import { Sparkline } from "./visuals";
+import { fmtPct, fmtPrice } from "@/lib/format";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
 
 /** One prepared row: the watchlist item plus everything the table shows next to it. */
 export type WlRow = {
@@ -113,22 +112,22 @@ export function WatchlistTable({
                   <Checkbox
                     checked={allSelected ? true : someSelected ? "indeterminate" : false}
                     onCheckedChange={(v) => onSelectAll(v === true)}
-                    aria-label="Выбрать все строки"
+                    aria-label={watchlistI18n.t("table.selectAll")}
                   />
                 </span>
               )}
             </th>
-            <SortableTh {...th("ticker")}>Тикер</SortableTh>
-            <th scope="col" className="text-right">Цена</th>
-            <SortableTh {...th("change")} align="right">День</SortableTh>
-            <SortableTh {...th("gap")} align="right">Гэп</SortableTh>
+            <SortableTh {...th("ticker")}>{watchlistI18n.t("table.ticker")}</SortableTh>
+            <th scope="col" className="text-right">{watchlistI18n.t("table.price")}</th>
+            <SortableTh {...th("change")} align="right">{watchlistI18n.t("table.day")}</SortableTh>
+            <SortableTh {...th("gap")} align="right">{watchlistI18n.t("table.gap")}</SortableTh>
             <SortableTh {...th("rvol")} align="right">rVol</SortableTh>
             <SortableTh {...th("atr")} align="right">ATR</SortableTh>
-            {comfy && <th scope="col">22 дня</th>}
-            <SortableTh {...th("level")}>Ближайший уровень</SortableTh>
-            <SortableTh {...th("hist")}>{me ? "Мои сделки" : "История"}</SortableTh>
-            <th scope="col">Заметка</th>
-            <th scope="col"><span className="sr-only">Действия</span></th>
+            {comfy && <th scope="col">{watchlistI18n.t("table.days22")}</th>}
+            <SortableTh {...th("level")}>{watchlistI18n.t("table.nearest")}</SortableTh>
+            <SortableTh {...th("hist")}>{me ? watchlistI18n.t("table.myTrades") : watchlistI18n.t("table.history")}</SortableTh>
+            <th scope="col">{watchlistI18n.t("table.note")}</th>
+            <th scope="col"><span className="sr-only">{watchlistI18n.t("table.actions")}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -244,7 +243,7 @@ const Row = React.memo(function Row({
         {canEdit && (
           <span className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" aria-hidden="true" />
-            <Checkbox checked={selected} onCheckedChange={(v) => onSelect(item.id, v === true)} aria-label={`Выбрать ${item.ticker}`} />
+            <Checkbox checked={selected} onCheckedChange={(v) => onSelect(item.id, v === true)} aria-label={watchlistI18n.t("table.select", { ticker: item.ticker })} />
           </span>
         )}
       </td>
@@ -256,7 +255,7 @@ const Row = React.memo(function Row({
           <EventMarks item={item} earnings={r.earnings} upcoming={r.upcoming} news={r.news} today={today} />
           {showList && (
             <span className="ml-auto shrink-0 rounded-full bg-[var(--glass-bg)] px-1.5 text-xs text-muted-foreground">
-              {r.list ? LIST_LABELS[r.list] : "архив"}
+              {r.list ? LIST_LABELS[r.list] : watchlistI18n.t("list.archiveLower")}
             </span>
           )}
         </div>
@@ -268,14 +267,14 @@ const Row = React.memo(function Row({
       </td>
       <td className={cn("text-right", cellY, toneText(toneOf(q?.change)))}>{loadingQuote ? "" : fmtPct(q?.change, 2)}</td>
       <td className={cn("text-right text-xs", cellY, gap != null && Math.abs(gap) >= 3 ? cn("font-semibold", toneText(toneOf(gap))) : "text-muted-foreground")}>
-        {fmtPct(gap)}
+        {fmtPct(gap, 1)}
       </td>
       <td className={cn("text-right text-xs", cellY, rv != null && rv >= 1.5 ? "font-semibold text-primary" : "text-muted-foreground")}>
         {rv != null ? `${rv.toFixed(1)}×` : "—"}
       </td>
       <td className={cn("text-right text-xs", cellY)}>
         {q?.atr != null ? (
-          <span className="whitespace-nowrap"><span className="text-foreground">{q.atr.toFixed(2)}</span>{atrPct != null && <span className="text-muted-foreground"> · {atrPct.toFixed(1)}%</span>}</span>
+          <span className="whitespace-nowrap"><span className="text-foreground">{fmtPrice(q.atr)}</span>{atrPct != null && <span className="text-muted-foreground"> · {fmtPct(atrPct, { decimals: 1, signed: false })}</span>}</span>
         ) : <span className="text-muted-foreground">—</span>}
       </td>
       {comfy && (
@@ -306,5 +305,5 @@ const Row = React.memo(function Row({
 });
 
 function alertLabel(a: NonNullable<Plan["alert"]>): string {
-  return a === "stop-hit" ? "Стоп пробит" : a === "target-hit" ? "Цель достигнута" : a === "near-stop" ? "Цена у стопа" : "Цена у цели";
+  return watchlistI18n.t(a === "stop-hit" ? "alert.stopHit" : a === "target-hit" ? "alert.targetHit" : a === "near-stop" ? "alert.nearStop" : "alert.nearTarget");
 }

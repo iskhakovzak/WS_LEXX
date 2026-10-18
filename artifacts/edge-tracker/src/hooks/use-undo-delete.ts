@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { useToast } from "@/hooks/use-toast";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Default undo window. UndoToast uses the same default. */
 export const UNDO_WINDOW_MS = 8000;
@@ -58,15 +59,11 @@ export function useUndoDelete(onRestore?: () => void, options?: Options) {
     setRestoring(true);
     clearTimeout(cur.timer);
     try {
-      const r = await fetch(`${BASE}/api/${cur.section}/${cur.id}/restore`, { method: "POST" });
-      if (!r.ok) {
-        const body: { error?: string } = await r.json().catch(() => ({}));
-        throw new Error(body.error ?? `Статус ${r.status}`);
-      }
+      await http.post(`/api/${cur.section}/${cur.id}/restore`);
       onRestore?.();
-      toast({ title: `${cur.label} восстановлено` });
+      toast({ title: commonI18n.t("undo.restored", { label: cur.label }) });
     } catch (e) {
-      toast({ title: "Не удалось восстановить", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: commonI18n.t("undo.restoreFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       restoringRef.current = false;
       setRestoring(false);

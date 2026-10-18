@@ -10,21 +10,26 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { netPnl } from "@/lib/trade-math";
 import { links } from "@/lib/links";
-import { ASK_HINTS, fmtClock, fmtDuration, type AskQuery, type AskToken } from "@/lib/ask/parse";
-import { chipAlternatives, suggestFor } from "@/lib/ask/examples";
-import { dm, fmtMoney, fmtPct, tradesWord, type Agg, type AskAnswer, type AskTrade, type BookIndex } from "@/lib/ask/aggregate";
+import { fmtClock, fmtDuration, type AskQuery, type AskToken } from "@/lib/ask/parse";
+import { askHints, chipAlternatives, suggestFor } from "@/lib/ask/examples";
+import { askI18n } from "@/i18n/ns/ask";
+import { fmtCount, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { dm, type Agg, type AskAnswer, type AskTrade, type BookIndex } from "@/lib/ask/aggregate";
 import { AskChart } from "./AskChart";
 
+import { personName } from "@/i18n";
 // ── «Не понял» ────────────────────────────────────────────────────────────────
 
 export function AskNotUnderstood({ query, tickers, onAsk }: { query: AskQuery; tickers: string[]; onAsk: (text: string) => void }) {
+  const { t } = askI18n.useT();
   const suggestions = suggestFor(query.raw, query, tickers);
   return (
     <Panel>
       <EmptyState
         icon={HelpCircle}
-        title={`Не понял «${query.raw.trim()}»`}
-        description="Нужен хотя бы тикер, период, сторона или вопрос. Возможно, вы имели в виду:"
+        title={t("result.notUnderstood", { text: query.raw.trim() })}
+        description={t("result.notUnderstoodHint")}
         action={
           <div className="flex max-w-2xl flex-col items-center gap-4">
             <div className="flex flex-wrap justify-center gap-2">
@@ -33,9 +38,9 @@ export function AskNotUnderstood({ query, tickers, onAsk }: { query: AskQuery; t
               ))}
             </div>
             <details className="w-full text-left">
-              <summary className="cursor-pointer text-center text-xs text-muted-foreground hover:text-foreground">Что я понимаю</summary>
+              <summary className="cursor-pointer text-center text-xs text-muted-foreground hover:text-foreground">{t("result.whatIKnow")}</summary>
               <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                {ASK_HINTS.map((h) => <li key={h}>• {h}</li>)}
+                {askHints().map((h) => <li key={h}>• {h}</li>)}
               </ul>
             </details>
           </div>
@@ -47,18 +52,13 @@ export function AskNotUnderstood({ query, tickers, onAsk }: { query: AskQuery; t
 
 // ── Editable chips («Почему такой ответ») ─────────────────────────────────────
 
-const KIND_TITLE: Partial<Record<AskToken["kind"], string>> = {
-  date: "Период", time: "Время входа", side: "Сторона", outcome: "Результат", weekday: "Дни недели", ticker: "Тикер",
-  setup: "Сетап", hold: "Удержание", qty: "Размер", price: "Цена входа", after: "Контекст", group: "Разбивка", intent: "Что считаем",
-  last: "Последние сделки",
-};
-
 function TokenChip({ token, alternatives, onReplace, onRemove }: {
   token: AskToken;
   alternatives: string[];
   onReplace: (key: string, text: string) => void;
   onRemove: (key: string) => void;
 }) {
+  const { t, tryT } = askI18n.useT();
   const [open, setOpen] = React.useState(false);
   const editable = alternatives.length > 0;
   const removable = token.start >= 0;
@@ -71,13 +71,13 @@ function TokenChip({ token, alternatives, onReplace, onRemove }: {
       {editable ? (
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <button type="button" className="inline-flex min-h-7 items-center gap-1 rounded-full py-0.5 pl-2.5 pr-1.5 hover:bg-[var(--glass-hover-bg)]" aria-label={`Изменить: ${token.label}`}>
+            <button type="button" className="inline-flex min-h-7 items-center gap-1 rounded-full py-0.5 pl-2.5 pr-1.5 hover:bg-[var(--glass-hover-bg)]" aria-label={t("result.edit", { label: token.label })}>
               {token.label}
               <ChevronDown className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-60 p-1.5" onCloseAutoFocus={(e) => e.preventDefault()}>
-            <p className="px-2 pb-1 pt-1 text-xs font-medium text-muted-foreground">{KIND_TITLE[token.kind] ?? "Заменить на"}</p>
+            <p className="px-2 pb-1 pt-1 text-xs font-medium text-muted-foreground">{tryT(`result.chipKinds.${token.kind}`) ?? t("result.replaceWith")}</p>
             <ul className="max-h-64 overflow-y-auto">
               {alternatives.map((alt) => (
                 <li key={alt}>
@@ -99,7 +99,7 @@ function TokenChip({ token, alternatives, onReplace, onRemove }: {
       {removable && (
         <button
           type="button"
-          aria-label={`Убрать: ${token.label}`}
+          aria-label={t("result.remove", { label: token.label })}
           onClick={() => onRemove(token.key)}
           className="mr-0.5 grid h-6 w-6 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
         >
@@ -121,27 +121,28 @@ function WhyAnswer({ query, answer, defaultTrader, isStaff, tickers, setups, onR
   onRemove: (key: string) => void;
   onAsk: (text: string) => void;
 }) {
+  const { t } = askI18n.useT();
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--glass-border)] pt-4">
-      <h3 className="text-xs font-medium text-muted-foreground">Почему такой ответ</h3>
-      <div className="flex flex-wrap items-center gap-1.5" aria-label="Как понят вопрос">
+      <h3 className="text-xs font-medium text-muted-foreground">{t("result.why")}</h3>
+      <div className="flex flex-wrap items-center gap-1.5" aria-label={t("result.howParsed")}>
         {query.tokens.map((t) => (
           <TokenChip key={t.key} token={t} alternatives={chipAlternatives(t.kind, { tickers, setups })} onReplace={onReplace} onRemove={onRemove} />
         ))}
         {defaultTrader && (
-          <Pill title="Без имени трейдера ответ строится по вашим сделкам">Трейдер: {defaultTrader}</Pill>
+          <Pill title={t("result.defaultTraderHint")}>{t("result.trader", { name: personName(defaultTrader) })}</Pill>
         )}
         {defaultTrader && isStaff && (
-          <button type="button" className="chip min-h-7 px-2.5 text-xs" onClick={() => onAsk(`${query.raw.trim()} весь деск`)}>+ весь деск</button>
+          <button type="button" className="chip min-h-7 px-2.5 text-xs" onClick={() => onAsk(t("q.withDesk", { text: query.raw.trim() }))}>{t("result.addDesk")}</button>
         )}
       </div>
       <ul className="space-y-0.5 text-xs text-muted-foreground">
-        {answer && !answer.empty && <li>Найдено {tradesWord(answer.matched)} из {answer.total} в выборке.</li>}
+        {answer && !answer.empty && <li>{t("result.found", { trades: commonI18n.t("units.trades", { count: answer.matched }), total: fmtCount(answer.total) })}</li>}
         {query.corrections.length > 0 && (
-          <li>Исправил: {query.corrections.map((c) => `«${c.from}» → «${c.to}»`).join(", ")}.</li>
+          <li>{t("result.corrected", { list: query.corrections.map((c) => `«${c.from}» → «${c.to}»`).join(", ") })}</li>
         )}
-        {query.unknown.length > 0 && <li>Пропустил непонятные слова: «{query.unknown.join(" ")}».</li>}
-        <li>Нетто = брутто − комиссии; винрейт = W/(W+L), безубыточные не считаются; PF = Σ плюсов / |Σ минусов|. Время входа — ET, дата — по Нью-Йорку.</li>
+        {query.unknown.length > 0 && <li>{t("result.skipped", { words: query.unknown.join(" ") })}</li>}
+        <li>{t("result.method")}</li>
         {answer?.notes.map((n) => <li key={n}>{n}</li>)}
       </ul>
     </div>
@@ -153,20 +154,23 @@ function WhyAnswer({ query, answer, defaultTrader, isStaff, tickers, setups, onR
 type GroupKey = "order" | "label" | "n" | "wr" | "net" | "avg" | "fees";
 
 function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]>; onAsk: (text: string) => void }) {
+  const { t } = askI18n.useT();
   const hl = new Set(groups.highlight ?? []);
+  // Trader groups are keyed by the stored name; show it in the UI language.
+  const labelOf = React.useCallback((r: Agg) => (groups.dim === "trader" ? personName(r.label) : r.label), [groups.dim]);
   // Default keeps the answer's own order (hours / weekdays read top-down); headers re-sort.
   const accessors = React.useMemo<Record<GroupKey, (r: Agg) => number | string | null>>(() => {
     const order = new Map(groups.rows.map((r, i) => [r.key, i]));
     return {
       order: (r) => order.get(r.key) ?? null,
-      label: (r) => r.label,
+      label: (r) => labelOf(r),
       n: (r) => r.n,
       wr: (r) => r.winRate,
       net: (r) => r.net,
       avg: (r) => r.avgNet,
       fees: (r) => r.fees,
     };
-  }, [groups.rows]);
+  }, [groups.rows, labelOf]);
   const { rows, thProps } = useTableSort(groups.rows, accessors, "order", "asc");
   return (
     <div className="min-w-0">
@@ -175,12 +179,12 @@ function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]
         <table>
           <thead>
             <tr>
-              <SortableTh {...thProps("label")}>{groups.dim === "insight" ? "Срез" : "Группа"}</SortableTh>
-              <SortableTh {...thProps("n")} align="right">Сделок</SortableTh>
-              <SortableTh {...thProps("wr")} align="right">Винрейт</SortableTh>
-              <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
-              <SortableTh {...thProps("avg")} align="right">Среднее</SortableTh>
-              <SortableTh {...thProps("fees")} align="right">Комиссии</SortableTh>
+              <SortableTh {...thProps("label")}>{groups.dim === "insight" ? t("result.colSlice") : t("result.colGroup")}</SortableTh>
+              <SortableTh {...thProps("n")} align="right">{t("result.colTrades")}</SortableTh>
+              <SortableTh {...thProps("wr")} align="right">{t("result.colWinRate")}</SortableTh>
+              <SortableTh {...thProps("net")} align="right">{t("result.colNet")}</SortableTh>
+              <SortableTh {...thProps("avg")} align="right">{t("result.colAvg")}</SortableTh>
+              <SortableTh {...thProps("fees")} align="right">{t("result.colFees")}</SortableTh>
             </tr>
           </thead>
           <tbody>
@@ -189,20 +193,20 @@ function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]
                 key={r.key}
                 className={cn(r.ask && "cursor-pointer", hl.has(r.key) && "bg-primary/10")}
                 onClick={r.ask ? () => onAsk(r.ask!) : undefined}
-                title={r.ask ? `Спросить: ${r.ask}` : undefined}
+                title={r.ask ? t("result.askRow", { text: r.ask }) : undefined}
               >
-                <td className="max-w-[260px] truncate font-medium">{r.label}</td>
+                <td className="max-w-[260px] truncate font-medium" title={labelOf(r)}>{labelOf(r)}</td>
                 <td className="text-right">{r.n}</td>
-                <td className="text-right">{fmtPct(r.winRate)}</td>
-                <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtMoney(r.net)}</td>
-                <td className={cn("text-right", toneText(toneOf(r.avgNet)))}>{fmtMoney(r.avgNet)}</td>
-                <td className="text-right text-muted-foreground">{fmtMoney(r.fees, false)}</td>
+                <td className="text-right">{fmtRate(r.winRate)}</td>
+                <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true })}</td>
+                <td className={cn("text-right", toneText(toneOf(r.avgNet)))}>{fmtUsd(r.avgNet, { signed: true })}</td>
+                <td className="text-right text-muted-foreground">{fmtUsd(r.fees)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </DataTable>
-      {groups.rows.some((r) => r.ask) && <p className="mt-1.5 text-xs text-muted-foreground">Строка — уточняющий вопрос по этой группе.</p>}
+      {groups.rows.some((r) => r.ask) && <p className="mt-1.5 text-xs text-muted-foreground">{t("result.rowHint")}</p>}
     </div>
   );
 }
@@ -212,69 +216,70 @@ function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]
 type TradeKey = "order" | "date" | "time" | "ticker" | "trader" | "side" | "qty" | "entry" | "hold" | "net";
 
 function TradeTable({ title, trades, index, showTrader }: { title: string; trades: AskTrade[]; index: BookIndex; showTrader: boolean }) {
+  const { t } = askI18n.useT();
   const [, navigate] = useLocation();
   const cols = showTrader ? 9 : 8;
   // Default keeps the answer's order (e.g. «худшие сделки» come worst-first); headers re-sort.
   const accessors = React.useMemo<Record<TradeKey, (t: AskTrade) => number | string | null>>(() => {
-    const order = new Map(trades.map((t, i) => [t.id, i]));
+    const order = new Map(trades.map((tr, i) => [tr.id, i]));
     return {
-      order: (t) => order.get(t.id) ?? null,
-      date: (t) => { const m = index.get(t.id); return `${m?.day ?? t.date ?? ""} ${String(m?.min ?? 0).padStart(4, "0")}`; },
-      time: (t) => index.get(t.id)?.min ?? null,
-      ticker: (t) => t.ticker,
-      trader: (t) => t.trader ?? null,
-      side: (t) => t.side ?? null,
-      qty: (t) => index.get(t.id)?.qty ?? null,
-      entry: (t) => (t.entry == null ? null : Number(t.entry)),
-      hold: (t) => index.get(t.id)?.hold ?? null,
-      net: (t) => netPnl(t),
+      order: (tr) => order.get(tr.id) ?? null,
+      date: (tr) => { const m = index.get(tr.id); return `${m?.day ?? tr.date ?? ""} ${String(m?.min ?? 0).padStart(4, "0")}`; },
+      time: (tr) => index.get(tr.id)?.min ?? null,
+      ticker: (tr) => tr.ticker,
+      trader: (tr) => (tr.trader ? personName(tr.trader) : null),
+      side: (tr) => tr.side ?? null,
+      qty: (tr) => index.get(tr.id)?.qty ?? null,
+      entry: (tr) => (tr.entry == null ? null : Number(tr.entry)),
+      hold: (tr) => index.get(tr.id)?.hold ?? null,
+      net: (tr) => netPnl(tr),
     };
   }, [index, trades]);
   const { rows, thProps } = useTableSort(trades, accessors, "order", "asc");
   if (!trades.length) return null;
   return (
     <div className="min-w-0">
-      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title} · {tradesWord(trades.length)}</h3>
+      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title} · {commonI18n.t("units.trades", { count: trades.length })}</h3>
       <DataTable maxHeight="70dvh" ariaLabel={title}>
         <table>
           <thead>
             <tr>
-              <SortableTh {...thProps("date")}>Дата</SortableTh>
-              <SortableTh {...thProps("time")}>Вход ET</SortableTh>
-              <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-              {showTrader && <SortableTh {...thProps("trader")}>Трейдер</SortableTh>}
-              <SortableTh {...thProps("side")}>Сторона</SortableTh>
-              <SortableTh {...thProps("qty")} align="right">Акций</SortableTh>
-              <SortableTh {...thProps("entry")} align="right">Вход</SortableTh>
-              <SortableTh {...thProps("hold")} align="right">Удержание</SortableTh>
-              <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+              <SortableTh {...thProps("date")}>{t("result.colDate")}</SortableTh>
+              <SortableTh {...thProps("time")}>{t("result.colEntryEt")}</SortableTh>
+              <SortableTh {...thProps("ticker")}>{t("result.colTicker")}</SortableTh>
+              {showTrader && <SortableTh {...thProps("trader")}>{t("result.colTrader")}</SortableTh>}
+              <SortableTh {...thProps("side")}>{t("result.colSide")}</SortableTh>
+              <SortableTh {...thProps("qty")} align="right">{t("result.colShares")}</SortableTh>
+              <SortableTh {...thProps("entry")} align="right">{t("result.colEntry")}</SortableTh>
+              <SortableTh {...thProps("hold")} align="right">{t("result.colHold")}</SortableTh>
+              <SortableTh {...thProps("net")} align="right">{t("result.colNet")}</SortableTh>
             </tr>
           </thead>
           <VirtualRows
             rows={rows}
             colSpan={cols}
-            getKey={(t) => t.id}
-            renderRow={(t) => {
-              const m = index.get(t.id);
-              const n = netPnl(t);
-              const href = links.trade(t.id);
+            getKey={(tr) => tr.id}
+            renderRow={(tr) => {
+              const m = index.get(tr.id);
+              const n = netPnl(tr);
+              const href = links.trade(tr.id);
               return (
                 <tr
-                  key={t.id}
+                  key={tr.id}
                   className="cursor-pointer"
                   onClick={(e) => { if (!(e.target as HTMLElement).closest("a")) navigate(href); }}
                 >
                   <td className="whitespace-nowrap">
-                    <Link href={href} className="hover:underline" title={t.date}>{dm(m?.day ?? t.date)}</Link>
+                    <Link href={href} className="hover:underline" title={tr.date}>{dm(m?.day ?? tr.date)}</Link>
                   </td>
                   <td>{m?.min == null ? "—" : fmtClock(m.min)}</td>
-                  <td className="font-medium">{t.ticker}</td>
-                  {showTrader && <td className="max-w-[140px] truncate text-muted-foreground">{t.trader ?? "—"}</td>}
-                  <td>{t.side === "Short" ? "Short" : t.side === "Long" ? "Long" : "—"}</td>
-                  <td className="text-right">{m?.qty == null ? "—" : m.qty}</td>
-                  <td className="text-right">{t.entry == null ? "—" : `$${Number(t.entry).toFixed(2)}`}</td>
+                  <td className="font-medium">{tr.ticker}</td>
+                  {showTrader && <td className="max-w-[140px] truncate text-muted-foreground" title={tr.trader ? personName(tr.trader) : undefined}>{tr.trader ? personName(tr.trader) : "—"}</td>}
+                  <td>{tr.side === "Short" ? "Short" : tr.side === "Long" ? "Long" : "—"}</td>
+                  <td className="text-right">{m?.qty == null ? "—" : fmtCount(m.qty)}</td>
+                  <td className="text-right">{tr.entry == null ? "—" : `$${Number(tr.entry).toFixed(2)}`}</td>
                   <td className="text-right">{m?.hold == null ? "—" : fmtDuration(m.hold)}</td>
-                  <td className={cn("text-right font-medium", toneText(toneOf(n)))}>{fmtMoney(n)}</td>
+                  <td className={cn("text-right font-medium", toneText(toneOf(n)))}>{fmtUsd(n, { signed: true })}</td>
                 </tr>
               );
             }}
@@ -304,6 +309,7 @@ export interface AskResultProps {
 }
 
 export function AskResult(p: AskResultProps) {
+  const { t } = askI18n.useT();
   const { query, answer, href } = p;
   const showTrader = !answer.empty && new Set(answer.trades.map((t) => t.trader)).size > 1;
   const pinBtn = (
@@ -311,11 +317,11 @@ export function AskResult(p: AskResultProps) {
       type="button"
       onClick={p.onTogglePin}
       aria-pressed={p.pinned}
-      title={p.pinned ? "Открепить вопрос" : "Закрепить вопрос"}
+      title={p.pinned ? t("result.unpinTitle") : t("result.pinTitle")}
       className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs"
     >
       {p.pinned ? <PinOff className="h-3.5 w-3.5" aria-hidden="true" /> : <Pin className="h-3.5 w-3.5" aria-hidden="true" />}
-      {p.pinned ? "Открепить" : "Закрепить"}
+      {p.pinned ? t("result.unpin") : t("result.pin")}
     </button>
   );
 
@@ -340,7 +346,7 @@ export function AskResult(p: AskResultProps) {
           compact
           icon={HelpCircle}
           title={answer.headline}
-          description="Уберите или замените условие ниже — или спросите за другой период."
+          description={t("result.emptyHint")}
         />
       ) : (
         <>

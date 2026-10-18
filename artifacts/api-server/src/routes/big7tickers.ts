@@ -5,7 +5,11 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { netPnlSql, resultSql, num } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { nyDate, addDays as nyAddDays } from "../lib/tradingDate";
+import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
+import { reviewT } from "../i18n/ns";
+import { langOf, type Lang } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -27,16 +31,10 @@ router.get("/big7/tickers", asyncHandler(async (_req, res): Promise<void> => {
 
 router.post("/big7/tickers", asyncHandler(async (req, res): Promise<void> => {
   const { symbol, exchange, name, groupName, position } = req.body as Record<string, unknown>;
-  if (!symbol) {
-    res.status(400).json({ error: "symbol is required" });
-    return;
-  }
+  if (!symbol) throw new AppError("TICKER_REQUIRED");
   const group = VALID_GROUPS.has(String(groupName)) ? String(groupName) : "core";
   const sym = String(symbol).toUpperCase().trim().replace(/^\$/, "");
-  if (!SYMBOL_RE.test(sym)) {
-    res.status(400).json({ error: "invalid symbol" });
-    return;
-  }
+  if (!SYMBOL_RE.test(sym)) throw new AppError("INVALID_SYMBOL");
   const existing = await db
     .select()
     .from(big7TickersTable)
@@ -58,10 +56,7 @@ router.post("/big7/tickers", asyncHandler(async (req, res): Promise<void> => {
 
 router.post("/big7/tickers/bulk", asyncHandler(async (req, res): Promise<void> => {
   const { symbols, groupName } = req.body as { symbols?: unknown; groupName?: unknown };
-  if (!Array.isArray(symbols) || symbols.length === 0) {
-    res.status(400).json({ error: "symbols array is required" });
-    return;
-  }
+  if (!Array.isArray(symbols) || symbols.length === 0) throw new AppError("FIELD_REQUIRED", undefined, { field: "symbols" });
   const group = VALID_GROUPS.has(String(groupName)) ? String(groupName) : "core";
   const cleaned = Array.from(
     new Set(
@@ -99,9 +94,9 @@ router.post("/big7/tickers/bulk", asyncHandler(async (req, res): Promise<void> =
 
 router.patch("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [owned] = await db.select({ createdBy: big7TickersTable.createdBy }).from(big7TickersTable).where(eq(big7TickersTable.id, id));
-  if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+  if (!owned) throw notFound();
   // Reordering (position) and moving between groups touch a shared board row → same owner-or-staff rule.
   if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   const { symbol, exchange, name, groupName, position } = req.body as Record<string, unknown>;
@@ -113,15 +108,14 @@ router.patch("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> =
     position: typeof position === "number" ? position : undefined,
   }).where(eq(big7TickersTable.id, id)).returning();
   if (!row) {
-    res.status(404).json({ error: "Not found" });
-    return;
+    throw notFound();
   }
   res.json(row);
 }));
 
 router.delete("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [owned] = await db.select({ createdBy: big7TickersTable.createdBy }).from(big7TickersTable).where(eq(big7TickersTable.id, id));
   if (!owned) { res.status(204).send(); return; }
   if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
@@ -277,9 +271,9 @@ router.get("/big7/gaprisk", asyncHandler(async (req, res): Promise<void> => {
   const requested = Array.from(new Set(
     raw.toUpperCase().split(",").map((s) => s.trim().replace(/^\$/, "")).filter(Boolean),
   ));
-  if (requested.length > 30) { res.status(400).json({ error: "too many symbols (max 30)" }); return; }
+  if (requested.length > 30) throw new AppError("TOO_MANY", undefined, { field: "symbols", max: 30 });
   const bad = requested.find((s) => !GAP_SYMBOL_RE.test(s));
-  if (bad) { res.status(400).json({ error: "invalid symbol", symbol: bad }); return; }
+  if (bad) throw new AppError("INVALID_SYMBOL", 400, undefined, { symbol: bad });
 
   const all = Array.from(new Set([...BENCHMARKS, ...requested]));
   const barsList = await mapLimit(all, 4, getDailyBars);
@@ -321,15 +315,17 @@ router.get("/big7/gaprisk", asyncHandler(async (req, res): Promise<void> => {
 const ALIASES: Record<string, string[]> = { GOOGL: ["GOOG"], GOOG: ["GOOGL"], "BRK.B": ["BRK-B"], "BRK-B": ["BRK.B"] };
 
 const HOUR_BUCKETS: Array<{ key: string; label: string; from: number; to: number }> = [
-  { key: "pre", label: "До 9:30", from: 0, to: 570 },
+  { key: "pre", label: "", from: 0, to: 570 }, // label: review namespace hours.pre
   { key: "open", label: "9:30–10", from: 570, to: 600 },
   { key: "10", label: "10–11", from: 600, to: 660 },
   { key: "11", label: "11–12", from: 660, to: 720 },
   { key: "lunch", label: "12–14", from: 720, to: 840 },
   { key: "14", label: "14–15", from: 840, to: 900 },
   { key: "15", label: "15–16", from: 900, to: 960 },
-  { key: "post", label: "После 16", from: 960, to: 1440 },
+  { key: "post", label: "", from: 960, to: 1440 }, // label: review namespace hours.post
 ];
+/** Bucket label in `lang` (pre / post are words, the rest are time ranges). */
+const hourLabel = (b: { key: string; label: string }, lang: Lang): string => (b.key === "pre" || b.key === "post" ? reviewT.tFor(lang)(`hours.${b.key}`) : b.label);
 const bucketOf = (min: number | null) => (min == null ? null : HOUR_BUCKETS.find((b) => min >= b.from && min < b.to) ?? null);
 
 type Agg = { n: number; net: number; wins: number; losses: number };
@@ -356,17 +352,18 @@ const ENTRY_MIN_SQL = `(CASE
   ELSE NULL END)`;
 
 router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
+  const lang = langOf(req);
   const raw = String(req.query.symbols ?? "");
   const board = Array.from(new Set(raw.toUpperCase().split(",").map((s) => s.trim().replace(/^\$/, "")).filter(Boolean)));
-  if (!board.length) { res.status(400).json({ error: "symbols required" }); return; }
-  if (board.length > 30) { res.status(400).json({ error: "too many symbols (max 30)" }); return; }
+  if (!board.length) throw new AppError("FIELD_REQUIRED", undefined, { field: "symbols" });
+  if (board.length > 30) throw new AppError("TOO_MANY", undefined, { field: "symbols", max: 30 });
   const bad = board.find((s) => !GAP_SYMBOL_RE.test(s));
-  if (bad) { res.status(400).json({ error: "invalid symbol", symbol: bad }); return; }
+  if (bad) throw new AppError("INVALID_SYMBOL", 400, undefined, { symbol: bad });
   const daysRaw = Number(req.query.days ?? 0);
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(3650, Math.round(daysRaw)) : 0;
   const requested = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim().slice(0, 120) : req.authUser?.name ?? null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (!scope) { res.json({ trader: null, from: null, total: outAgg(emptyAgg()), tickers: [], hours: [] }); return; }
 
   // Every SQL ticker maps back to one board symbol.
@@ -377,13 +374,9 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
   }
   const from = days > 0 ? nyAddDays(nyDate(), -days) : null;
   const { rows } = await pool.query<{ ticker: string; side: string | null; net: string | number | null; res: string | null; entry_min: number | null; d: string }>(
-    `WITH exec AS (
-       SELECT trade_id, MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry
-       FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
-     )
-     SELECT UPPER(t.ticker) AS ticker, t.side, ${netPnlSql("t")} AS net, ${resultSql("t")} AS res,
+    `SELECT UPPER(t.ticker) AS ticker, t.side, ${netPnlSql("t")} AS net, ${resultSql("t")} AS res,
             ${ENTRY_MIN_SQL} AS entry_min, substring(t.date from 1 for 10) AS d
-     FROM trades t LEFT JOIN exec e ON e.trade_id = t.id
+     FROM trades t ${execSpanJoin("lateral")}
      WHERE t.deleted_at IS NULL AND t.trader = $1 AND t.pnl IS NOT NULL
        AND UPPER(t.ticker) = ANY($2::text[])
        AND ($3::text IS NULL OR substring(t.date from 1 for 10) >= $3)`,
@@ -417,7 +410,7 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
     for (const b of HOUR_BUCKETS) {
       const a = m.get(b.key);
       if (!a || a.n < 2) continue;
-      if (!best || dir * a.net > dir * best.net) best = { key: b.key, label: b.label, net: Math.round(a.net * 100) / 100, n: a.n };
+      if (!best || dir * a.net > dir * best.net) best = { key: b.key, label: hourLabel(b, lang), net: Math.round(a.net * 100) / 100, n: a.n };
     }
     return best && dir * best.net > 0 ? best : null;
   };
@@ -429,7 +422,7 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
       const p = per.get(s)!;
       return { ticker: s, ...outAgg(p.all), longNet: outAgg(p.long).net, shortNet: outAgg(p.short).net, lastDate: p.last, bestHour: pickHour(p.hours, 1), worstHour: pickHour(p.hours, -1) };
     }),
-    hours: HOUR_BUCKETS.map((b) => ({ key: b.key, label: b.label, ...outAgg(hours.get(b.key) ?? emptyAgg()) })),
+    hours: HOUR_BUCKETS.map((b) => ({ key: b.key, label: hourLabel(b, lang), ...outAgg(hours.get(b.key) ?? emptyAgg()) })),
   });
 }));
 

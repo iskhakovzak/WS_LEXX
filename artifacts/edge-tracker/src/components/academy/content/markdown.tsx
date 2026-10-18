@@ -4,6 +4,7 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { academyI18n } from "@/i18n/ns/academy";
 import { parseMarkdown, type Align, type Block, type Inline } from "./markdown-parse";
 
 function InlineView({ nodes }: { nodes: Inline[] }) {
@@ -48,7 +49,7 @@ function BlockView({ b }: { b: Block }) {
     case "hr": return <hr className="my-5 border-[var(--glass-border)]" />;
     case "code":
       return (
-        <pre className="mt-3 overflow-x-auto rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3 font-mono text-xs leading-relaxed text-foreground" aria-label={b.lang ? `Код (${b.lang})` : "Код"}>
+        <pre className="mt-3 overflow-x-auto rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3 font-mono text-xs leading-relaxed text-foreground" aria-label={b.lang ? academyI18n.t("markdown.codeLang", { lang: b.lang }) : academyI18n.t("markdown.code")}>
           <code>{b.v}</code>
         </pre>
       );
@@ -91,8 +92,9 @@ function BlockView({ b }: { b: Block }) {
 }
 
 export function Markdown({ source, blocks, className }: { source?: string; blocks?: Block[]; className?: string }) {
+  const { t } = academyI18n.useT();
   const parsed = React.useMemo(() => blocks ?? parseMarkdown(source ?? ""), [source, blocks]);
-  if (!parsed.length) return <p className={cn("text-sm text-muted-foreground", className)}>Текст пока не добавлен.</p>;
+  if (!parsed.length) return <p className={cn("text-sm text-muted-foreground", className)}>{t("markdown.empty")}</p>;
   return (
     <div className={cn("max-w-[72ch] text-sm text-foreground/90", className)}>
       {parsed.map((b, i) => <BlockView key={i} b={b} />)}

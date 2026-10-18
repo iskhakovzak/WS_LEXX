@@ -25,13 +25,16 @@ import { DetailSheet } from "@/components/big7/DetailSheet";
 import { CatalystDialog, CatalystSheet, CatalystWeek, emptyDraft, type CatalystDraft } from "@/components/big7/catalysts";
 import { TickerManagerSheet, useSeedBig7 } from "@/components/big7/TickerManagerSheet";
 import {
-  useAutoEarnings, useCatalysts, useGapRisk, useMyStats, useNow, useQuotes, useSessionBars,
+  useAutoEarnings, useBig7Today, useCatalysts, useGapRisk, useMyStats, useNow, useQuotes, useSessionBars,
 } from "@/components/big7/use-big7";
-import { DEFAULT_BIG7, TODAY, lsRaw, lsRawSet, mergeCatalysts, type BoardTicker, type MergedCatalyst } from "@/components/big7/lib";
+import { DEFAULT_BIG7, lsRaw, lsRawSet, mergeCatalysts, type BoardTicker, type MergedCatalyst } from "@/components/big7/lib";
+import { big7I18n } from "@/i18n/ns/big7";
+import { commonI18n } from "@/i18n/ns/common";
 import {
   boardAgg, buildRow, buildSnap, marketTone, phaseOf, referenceSession, windowStart, type Big7Row, type SessionSnap,
 } from "@/components/big7/context";
 import { nextEarnings } from "@/components/big7/ui";
+import { fmtDate } from "@/lib/format";
 
 const BENCH = ["QQQ", "SPY"] as const;
 /** Max symbols that get intraday bars (board + hot); keeps the server/Yahoo load bounded. */
@@ -44,12 +47,10 @@ function isTypingTarget(el: EventTarget | null) {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || n.isContentEditable;
 }
 
-const PHASE_META = { pre: "премаркет", rth: "идут торги", post: "постмаркет", closed: "закрыта" } as const;
-
-const dayFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-const sessionLabel = (day: string) => dayFmt.format(new Date(`${day}T12:00:00Z`)).replace(/\.$/, "");
+const sessionLabel = (day: string) => fmtDate(day, "weekdayDayMonth").replace(/\.$/, "");
 
 export default function Big7() {
+  const { t } = big7I18n.useT();
   const { canEdit } = useAuth();
   const now = useNow(60_000);
 
@@ -63,14 +64,18 @@ export default function Big7() {
   const { data: tickers = [], isLoading: tickersLoading, isError: tickersError, error: tickersErr, refetch: refetchTickers } = useListBig7Tickers();
   const { seed, seeding } = useSeedBig7();
 
-  // Hot list: per day, local (managed in the ticker sheet).
-  const HOT_KEY = `big7_hot_${TODAY}`;
-  const [hotSymbols, setHotSymbols] = useState<string[]>(() => {
+  // Hot list: per day, local (managed in the ticker sheet). Rolls over at the NY date change in an open tab.
+  const today = useBig7Today();
+  const HOT_KEY = `big7_hot_${today}`;
+  const readHot = (key: string): string[] => {
     try {
-      const v = JSON.parse(lsRaw(HOT_KEY) || "[]");
+      const v = JSON.parse(lsRaw(key) || "[]");
       return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
     } catch { return []; }
-  });
+  };
+  const [hotSymbols, setHotSymbols] = useState<string[]>(() => readHot(HOT_KEY));
+  const [hotKeyLoaded, setHotKeyLoaded] = useState(HOT_KEY);
+  if (hotKeyLoaded !== HOT_KEY) { setHotKeyLoaded(HOT_KEY); setHotSymbols(readHot(HOT_KEY)); }
   const saveHot = useCallback((syms: string[]) => {
     const unique = [...new Set(syms.map((s) => s.toUpperCase()))];
     setHotSymbols(unique);
@@ -191,7 +196,7 @@ export default function Big7() {
 
   const tileGrid = (rows: Big7Row[], offset: number, hotGroup = false) => (
     <div
-      className="grid grid-cols-2 gap-[var(--grid-gap)] sm:grid-cols-4 min-[1360px]:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
+      className="grid grid-cols-2 gap-[var(--grid-gap)] @min-[672px]:grid-cols-4 @min-[1200px]:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
       style={{ ["--cols" as string]: String(hotGroup ? Math.max(cols, 7) : cols) }}
     >
       {rows.map((r, i) => (
@@ -205,11 +210,11 @@ export default function Big7() {
       <PageHeader
         title="Big 7"
         icon={Star}
-        description="Мегакэпы: тон рынка, лидерство к QQQ, уровни и катализаторы"
+        description={t("page.description")}
         meta={
           board.length > 0 ? (
             <>
-              <span className="tabular-nums">Сессия {sessionLabel(effectiveDay)} · {PHASE_META[phase]}</span>
+              <span className="tabular-nums">{t("page.session", { day: sessionLabel(effectiveDay), phase: t(`page.phase.${phase}`) })}</span>
               {bars.updatedAt > 0 && <UpdatedAgo at={bars.updatedAt} />}
             </>
           ) : undefined
@@ -218,20 +223,20 @@ export default function Big7() {
           <>
             <Button
               variant="ghost"
-              size="icon"
-              aria-label="Обновить данные"
-              title="Обновить данные"
+              size="icon-sm"
+              aria-label={t("page.refresh")}
+              title={t("page.refresh")}
               onClick={() => { void bars.refetch(); void quotesQ.refetch(); }}
               disabled={refreshing || !board.length}
             >
               <RefreshCw className={cn(refreshing && "motion-safe:animate-spin")} />
             </Button>
             <WriteOnly>
-              <Button variant="outline" size="sm" onClick={() => setManagerOpen(true)} title="Клавиша T">
-                <Layers /> Тикеры <span className="tabular-nums text-muted-foreground">{board.length}</span>
+              <Button variant="outline" size="sm" onClick={() => setManagerOpen(true)} title={t("page.keyT")}>
+                <Layers /> {t("page.tickers")} <span className="tabular-nums text-muted-foreground">{board.length}</span>
               </Button>
-              <Button size="sm" onClick={() => addCatalyst()} title="Клавиша C">
-                <Plus /> Катализатор
+              <Button size="sm" onClick={() => addCatalyst()} title={t("page.keyC")}>
+                <Plus /> {t("page.catalyst")}
               </Button>
             </WriteOnly>
           </>
@@ -242,9 +247,9 @@ export default function Big7() {
         <div role="alert" className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3">
           <span className="flex min-w-0 items-center gap-2 text-sm text-down">
             <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Не удалось загрузить тикеры{tickersErr instanceof Error && tickersErr.message ? `: ${tickersErr.message}` : ""}
+            {tickersErr instanceof Error && tickersErr.message ? t("page.loadFailedWith", { error: tickersErr.message }) : t("page.loadFailed")}
           </span>
-          <Button size="sm" variant="outline" onClick={() => refetchTickers()}><RefreshCw /> Повторить</Button>
+          <Button size="sm" variant="outline" onClick={() => refetchTickers()}><RefreshCw /> {commonI18n.t("actions.retry")}</Button>
         </div>
       )}
 
@@ -252,17 +257,17 @@ export default function Big7() {
         <div className="glass-panel rounded-2xl">
           <EmptyState
             icon={Star}
-            title="Доска Big 7 пуста"
-            description={`Загрузите стандартный список одним кликом — ${DEFAULT_BIG7.map((d) => d.symbol).join(", ")} — или соберите свой.`}
+            title={t("page.emptyTitle")}
+            description={t("page.emptyText", { list: DEFAULT_BIG7.map((d) => d.symbol).join(", ") })}
             action={
               canEdit ? (
                 <div className="flex flex-wrap justify-center gap-2">
                   <Button onClick={() => seed([])} disabled={seeding}>
-                    {seeding ? <Loader2 className="animate-spin" /> : <Star />} Загрузить Big 7
+                    {seeding ? <Loader2 className="animate-spin" /> : <Star />} {t("page.seed")}
                   </Button>
-                  <Button variant="outline" onClick={() => setManagerOpen(true)}><Plus /> Свой список</Button>
+                  <Button variant="outline" onClick={() => setManagerOpen(true)}><Plus /> {t("page.customList")}</Button>
                 </div>
-              ) : <p className="text-xs text-muted-foreground">Попросите куратора заполнить список.</p>
+              ) : <p className="text-xs text-muted-foreground">{t("page.askCurator")}</p>
             }
           />
         </div>
@@ -272,9 +277,9 @@ export default function Big7() {
         <>
           <ToneBar tone={model.tone} agg={model.agg} qqq={model.qqq} spy={model.spy} phase={phase} loading={dataLoading} />
 
-          <section aria-label="Тикеры" className="flex flex-col gap-[var(--grid-gap)]">
+          <section aria-label={t("page.tilesAria")} className="@container flex flex-col gap-[var(--grid-gap)]">
             {tickersLoading ? (
-              <div className="grid grid-cols-2 gap-[var(--grid-gap)] sm:grid-cols-4 min-[1360px]:grid-cols-7" aria-busy="true" aria-label="Загрузка тикеров">
+              <div className="grid grid-cols-2 gap-[var(--grid-gap)] @min-[672px]:grid-cols-4 @min-[1200px]:grid-cols-7" aria-busy="true" aria-label={t("page.tilesLoading")}>
                 {Array.from({ length: 7 }, (_, i) => <TileSkeleton key={i} />)}
               </div>
             ) : (
@@ -283,7 +288,7 @@ export default function Big7() {
                 {hotRows.length > 0 && (
                   <>
                     <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                      <Flame className="h-4 w-4 text-primary" aria-hidden="true" /> Hot · сегодня
+                      <Flame className="h-4 w-4 text-primary" aria-hidden="true" /> {t("page.hotToday")}
                     </h2>
                     {tileGrid(hotRows, coreRows.length, true)}
                   </>

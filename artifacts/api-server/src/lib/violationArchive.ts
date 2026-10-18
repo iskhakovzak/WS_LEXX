@@ -10,6 +10,8 @@
  * Archived rows live in rule_violations itself (archived_at / archived_reason). Every count, score and default list
  * reads active rows only (`archived_at IS NULL`, see activeViolationSql).
  */
+import { reviewT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 export const ARCHIVE_REASONS = ["rule_disabled", "rule_deleted", "stale"] as const;
 export type ArchiveReason = (typeof ARCHIVE_REASONS)[number];
@@ -18,16 +20,20 @@ export function isArchiveReason(v: unknown): v is ArchiveReason {
   return typeof v === "string" && (ARCHIVE_REASONS as readonly string[]).includes(v);
 }
 
-/** Human-facing label (Russian UI). */
+/** Human-facing label in `lang` (review namespace `archive.*`). */
+export function archiveReasonText(reason: ArchiveReason, lang: Lang = "ru"): string {
+  return reviewT.tFor(lang)(`archive.${reason}`);
+}
+/** RU labels (kept for older imports). */
 export const ARCHIVE_REASON_LABEL: Record<ArchiveReason, string> = {
-  rule_disabled: "правило выключено",
-  rule_deleted: "правило удалено",
-  stale: "неактуально",
+  rule_disabled: archiveReasonText("rule_disabled"),
+  rule_deleted: archiveReasonText("rule_deleted"),
+  stale: archiveReasonText("stale"),
 };
 
 /** Label for a stored archived_reason; null when the row is not archived / the reason is unknown. */
-export function archiveReasonLabel(v: unknown): string | null {
-  return isArchiveReason(v) ? ARCHIVE_REASON_LABEL[v] : null;
+export function archiveReasonLabel(v: unknown, lang: Lang = "ru"): string | null {
+  return isArchiveReason(v) ? archiveReasonText(v, lang) : null;
 }
 
 /** The rule_violations columns that hold human input (trader / curator). */

@@ -9,12 +9,16 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@
 import { QueryError } from "@/components/query-error";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { MARKET_BIAS, TICKER_BIAS, fmtTime, gpApi, gpKeys, type GamePlan, type InPlayItem, type MyPlanResponse, type PlanStatus, type TraderPlan } from "./types";
+import { MARKET_BIAS, TICKER_BIAS, gpApi, gpKeys, type GamePlan, type InPlayItem, type MyPlanResponse, type PlanStatus, type TraderPlan } from "./types";
+import { fmtDate } from "@/lib/format";
 import { applyTemplate, docToDraft, draftToDoc, isDraftEmpty, sameDoc, validateDraft, type DraftErrors, type PlanDraft } from "./plan-draft";
 import { PlanEditor, type SetDraft, type TickerSuggestion } from "./plan-editor";
 import { PlanDocView } from "./plan-doc-view";
 import { TemplateMenu } from "./plan-templates";
 import { FocusBanner, shortDay } from "./plan-briefing";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personName } from "@/i18n";
+import { ApiError } from "@/lib/api/http";
 
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: string } | { kind: "error"; message: string } | { kind: "invalid" };
 
@@ -72,6 +76,7 @@ function MyPlanEditor({
   deskPlan: GamePlan | null;
   onSaved: (p: TraderPlan) => void;
 }) {
+  const { t } = gpI18n.useT();
   const start = useMemo(() => docToDraft(initial.plan?.doc), [initial.plan]);
   const [draft, setDraftState] = useState<PlanDraft>(start);
   const [status, setStatus] = useState<PlanStatus>(initial.plan?.status ?? "draft");
@@ -118,7 +123,7 @@ function MyPlanEditor({
         return true;
       } catch (e) {
         if (ac.signal.aborted) return false;
-        setSave({ kind: "error", message: e instanceof Error ? e.message : "Ошибка сети" });
+        setSave({ kind: "error", message: e instanceof Error ? e.message : gpI18n.t("my.networkError") });
         return false;
       }
     },
@@ -165,11 +170,11 @@ function MyPlanEditor({
       const errs = validateDraft(draft);
       setErrors(errs);
       if (Object.keys(errs).length) {
-        toast({ title: "Проверьте поля", description: Object.values(errs)[0], variant: "destructive" });
+        toast({ title: t("my.checkFields"), description: Object.values(errs)[0], variant: "destructive" });
         return;
       }
       if (isDraftEmpty(draft)) {
-        toast({ title: "План пустой", description: "Добавьте хотя бы тикер или правило дня" });
+        toast({ title: t("my.emptyPlan"), description: t("my.emptyPlanDesc") });
         return;
       }
     }
@@ -178,7 +183,7 @@ function MyPlanEditor({
     const ok = await flush();
     if (ok && next === "ready") {
       setEditing(false);
-      toast({ title: "План готов", description: "Куратор увидит его в разделе «Трейдеры»" });
+      toast({ title: t("my.ready"), description: t("my.readyDesc") });
     }
   }
 
@@ -187,12 +192,12 @@ function MyPlanEditor({
     setCopying(true);
     try {
       const r = await gpApi.my(initial.prevDate);
-      if (!r.plan) throw new Error("План не найден");
+      if (!r.plan) throw new Error(t("my.notFound"));
       const prev = docToDraft(r.plan.doc);
       setDraft(() => prev);
-      toast({ title: "Скопировано", description: `Мой план от ${shortDay(initial.prevDate)} — обновите уровни` });
+      toast({ title: t("my.copied"), description: t("my.copiedDesc", { date: shortDay(initial.prevDate) }) });
     } catch (e) {
-      toast({ title: "Не удалось скопировать", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      toast({ title: t("my.copyFailed"), description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     } finally {
       setCopying(false);
     }
@@ -213,12 +218,12 @@ function MyPlanEditor({
           onClick={() => void markReady(status === "ready" ? "draft" : "ready")}
         >
           {status === "ready" ? <CheckCircle2 aria-hidden="true" /> : <Check aria-hidden="true" />}
-          {status === "ready" ? "Готов · вернуть в черновик" : "План готов"}
+          {status === "ready" ? t("my.readyBack") : t("my.ready")}
         </Button>
       ) : (
         <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
           <Pencil aria-hidden="true" />
-          Редактировать
+          {t("page.edit")}
         </Button>
       )}
     </div>
@@ -229,16 +234,16 @@ function MyPlanEditor({
       <Panel
         title={
           <span className="flex items-center gap-2">
-            Мой план · {shortDay(date)}
+            {t("my.title", { date: shortDay(date) })}
             {status === "ready" && (
               <Pill tone="accent" dot>
-                Готов
+                {t("my.readyPill")}
               </Pill>
             )}
           </span>
         }
         icon={NotebookPen}
-        description={editing ? "Сохраняется само. Ctrl+V — скриншот в блок под курсором." : undefined}
+        description={editing ? t("my.autosaveHint") : undefined}
         actions={header}
       >
         {editing ? (
@@ -252,9 +257,9 @@ function MyPlanEditor({
             navSlot={
               <>
                 {initial.prevDate && (
-                  <Button type="button" variant="ghost" size="sm" onClick={copyPrev} disabled={copying} title={`Скопировать мой план от ${shortDay(initial.prevDate)}`}>
+                  <Button type="button" variant="ghost" size="sm" onClick={copyPrev} disabled={copying} title={t("my.copyFrom", { date: shortDay(initial.prevDate) })}>
                     {copying ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                    Как {shortDay(initial.prevDate)}
+                    {t("my.likeDay", { date: shortDay(initial.prevDate) })}
                   </Button>
                 )}
                 <TemplateMenu
@@ -262,7 +267,7 @@ function MyPlanEditor({
                   currentDoc={() => draftToDoc(draft)}
                   onApply={(doc, name) => {
                     setDraft((d) => applyTemplate(d, doc));
-                    toast({ title: `Шаблон «${name}»`, description: "Заполнены только пустые блоки" });
+                    toast({ title: t("templates.applied", { name }), description: t("templates.appliedDesc") });
                   }}
                 />
               </>
@@ -310,30 +315,31 @@ function suggestionToItem(s: TickerSuggestion): InPlayItem {
 }
 
 function SaveIndicator({ state, pending, onRetry }: { state: SaveState; pending: boolean; onRetry: () => void }) {
+  const { t } = gpI18n.useT();
   let content: React.ReactNode = null;
   if (state.kind === "saving")
     content = (
       <>
-        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Сохраняю…
+        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> {t("my.saving")}
       </>
     );
   else if (state.kind === "error")
     content = (
       <button type="button" onClick={onRetry} className="inline-flex items-center gap-1.5 text-destructive hover:underline" title={state.message}>
-        <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> Не сохранено — повторить
+        <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> {t("my.saveRetry")}
       </button>
     );
   else if (state.kind === "invalid")
     content = (
       <span className="inline-flex items-center gap-1.5 text-destructive">
-        <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> Исправьте поля, чтобы сохранить
+        <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> {t("my.fixFields")}
       </span>
     );
-  else if (pending) content = <span>Изменения…</span>;
+  else if (pending) content = <span>{t("my.changes")}</span>;
   else if (state.kind === "saved")
     content = (
       <>
-        <Cloud className="h-3.5 w-3.5" aria-hidden="true" /> Сохранено {fmtTime(state.at)}
+        <Cloud className="h-3.5 w-3.5" aria-hidden="true" /> {t("my.savedAt", { time: fmtDate(state.at, "time") })}
       </>
     );
   return (
@@ -344,6 +350,7 @@ function SaveIndicator({ state, pending, onRetry }: { state: SaveState; pending:
 }
 
 function DeskTickerPicker({ items, taken, onPick }: { items: InPlayItem[]; taken: Set<string>; onPick: (l: TickerSuggestion[]) => void }) {
+  const { t } = gpI18n.useT();
   const [open, setOpen] = useState(false);
   const fresh = items.filter((i) => !taken.has(i.ticker.toUpperCase()));
   return (
@@ -351,14 +358,14 @@ function DeskTickerPicker({ items, taken, onPick }: { items: InPlayItem[]; taken
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <Plus aria-hidden="true" />
-          Из плана деска
+          {t("my.fromDesk")}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-72 p-0" align="end">
         <Command>
           <CommandList>
-            <CommandEmpty>Нет тикеров</CommandEmpty>
-            <CommandGroup heading="Тикеры деска">
+            <CommandEmpty>{t("editor.noTickers")}</CommandEmpty>
+            <CommandGroup heading={t("my.deskTickers")}>
               {fresh.length > 1 && (
                 <CommandItem
                   value="__all__"
@@ -369,7 +376,7 @@ function DeskTickerPicker({ items, taken, onPick }: { items: InPlayItem[]; taken
                   className="font-medium text-primary"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
-                  Добавить все ({fresh.length})
+                  {t("editor.addAll", { count: fresh.length })}
                 </CommandItem>
               )}
               {items.map((i) => {
@@ -387,7 +394,7 @@ function DeskTickerPicker({ items, taken, onPick }: { items: InPlayItem[]; taken
                   >
                     <span className="w-14 shrink-0 font-semibold">{i.ticker}</span>
                     <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{i.catalyst || TICKER_BIAS[i.bias]?.label}</span>
-                    {added && <Check className="h-4 w-4 shrink-0 text-primary" aria-label="Уже в плане" />}
+                    {added && <Check className="h-4 w-4 shrink-0 text-primary" aria-label={t("editor.inPlan")} />}
                   </CommandItem>
                 );
               })}
@@ -400,16 +407,17 @@ function DeskTickerPicker({ items, taken, onPick }: { items: InPlayItem[]; taken
 }
 
 function DeskSummary({ plan, taken, onAdd }: { plan: GamePlan | null; taken: Set<string>; onAdd: (l: TickerSuggestion[]) => void }) {
+  const { t } = gpI18n.useT();
   if (!plan)
     return (
-      <Panel title="План деска">
-        <p className="text-sm text-muted-foreground">Куратор ещё не опубликовал план на этот день.</p>
+      <Panel title={t("my.deskPlan")}>
+        <p className="text-sm text-muted-foreground">{t("my.deskNotPublished")}</p>
       </Panel>
     );
   const bias = MARKET_BIAS[plan.bias] ?? MARKET_BIAS.neutral;
   return (
-    <aside aria-label="План деска" className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
-      <Panel title="План деска" description={plan.author}>
+    <aside aria-label={t("my.deskPlan")} className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
+      <Panel title={t("my.deskPlan")} description={personName(plan.author)}>
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={bias.tone} dot>
@@ -420,7 +428,7 @@ function DeskSummary({ plan, taken, onAdd }: { plan: GamePlan | null; taken: Set
           {plan.marketView && <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{plan.marketView}</p>}
           {plan.inPlay.length > 0 && (
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-muted-foreground">Тикеры деска — нажмите, чтобы взять в свой план</span>
+              <span className="text-xs text-muted-foreground">{t("my.deskTickersHint")}</span>
               <ul className="flex flex-wrap gap-1.5">
                 {plan.inPlay.map((i) => {
                   const added = taken.has(i.ticker.toUpperCase());
@@ -445,7 +453,7 @@ function DeskSummary({ plan, taken, onAdd }: { plan: GamePlan | null; taken: Set
           )}
           {plan.riskNotes && (
             <div className="rounded-xl border border-[var(--field-border)] p-2.5">
-              <p className="text-xs text-muted-foreground">Риск деска</p>
+              <p className="text-xs text-muted-foreground">{t("my.deskRisk")}</p>
               <p className="whitespace-pre-wrap text-sm">{plan.riskNotes}</p>
             </div>
           )}
@@ -457,7 +465,7 @@ function DeskSummary({ plan, taken, onAdd }: { plan: GamePlan | null; taken: Set
 
 function MyPlanSkeleton() {
   return (
-    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]" aria-busy="true" aria-label="Загрузка плана">
+    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]" aria-busy="true" aria-label={gpI18n.t("page.loadingPlan")}>
       <div className="glass-panel flex flex-col gap-4 rounded-2xl p-[var(--panel-p)]">
         <Skeleton className="h-5 w-48 rounded-full" />
         <Skeleton className="h-9 w-80 rounded-full" />
@@ -472,5 +480,5 @@ function MyPlanSkeleton() {
 
 function serverMsg(e: unknown): string | undefined {
   if (!(e instanceof Error)) return undefined;
-  return /не подключён|404/.test(e.message) ? "Личный план заработает после обновления сервера" : e.message;
+  return e instanceof ApiError && e.status === 404 ? gpI18n.t("my.notDeployed") : e.message;
 }

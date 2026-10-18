@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, Segmented } from "@/components/ds";
 import {
   type Filters, type FilterKey, type TimeBucket, type Metric, EMPTY_FILTERS,
-  TIME_BUCKETS, DAY_OF_WEEK_OPTIONS, MONTH_OPTIONS,
+  TIME_BUCKETS, dayOfWeekOptions, monthOptions,
   applyFilters, groupByDay, buildWeeklySummaries, computeOhlc,
   computeClosureStats, buildOhlcCandles, computeEdgeStats, computePeriodExtremes,
   valueFnFor, autoMetric, rOf, yearOf, tagsOf, ymd,
@@ -18,8 +18,12 @@ import { EquityPanel } from "./pro-equity";
 import { BreakdownPanel } from "./pro-breakdown";
 import { ExtremesPanel, KpiGrid, TradingDaysInfo, WeeksPanel, type JumpKind } from "./pro-stats";
 import { loadPref, savePref } from "./pro-format";
+import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
+import { comparePersonNames, personName } from "@/i18n";
 
 type Props = { trades: Trade[] };
+
+const tp = analyticsProI18n.t;
 
 const SCHEMA_TAGS = new Set<string>(
   Object.values(TRADE_TAGS).flatMap((c) => c.groups.flatMap((g) => g.tags))
@@ -82,11 +86,11 @@ function uniqSorted(values: Iterable<string>): FilterOption[] {
 
 function buildOptions(trades: Trade[], key: FilterKey): FilterOption[] {
   switch (key) {
-    case "accounts": return uniqSorted(trades.map((t) => t.trader ?? "—"));
+    case "accounts": return [...new Set(trades.map((t) => t.trader ?? "—"))].sort(comparePersonNames).map((v) => ({ id: v, label: personName(v) }));
     case "symbols": return uniqSorted(trades.map((t) => t.ticker ?? "—"));
     case "years": return uniqSorted(trades.map(yearOf).filter((v) => v !== "—"));
-    case "months": return MONTH_OPTIONS;
-    case "daysOfWeek": return DAY_OF_WEEK_OPTIONS;
+    case "months": return monthOptions();
+    case "daysOfWeek": return dayOfWeekOptions();
     case "timeBuckets": return TIME_BUCKETS.map((b) => ({ id: b.id, label: b.label }));
     case "strategies": return uniqSorted(trades.map((t) => t.setup ?? "—"));
     case "types": return uniqSorted(trades.map((t) => t.side ?? "—"));
@@ -149,8 +153,8 @@ export default function AnalyticsPro({ trades }: Props) {
       <div className="glass-panel rounded-2xl">
         <EmptyState
           icon={Filter}
-          title="Пока нет сделок"
-          description="Добавьте сделки в журнал — здесь появятся календарь результатов, кривая капитала и разрезы по сетапам и времени."
+          title={tp("page.emptyTitle")}
+          description={tp("page.emptyHint")}
         />
       </div>
     );
@@ -159,20 +163,18 @@ export default function AnalyticsPro({ trades }: Props) {
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
       {/* Controls: metric + filters */}
-      <section aria-label="Параметры анализа" className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:p-4">
+      <section aria-label={tp("page.paramsAria")} className="glass-panel flex flex-col gap-3 rounded-2xl p-3 sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-muted-foreground">
-            <span className="font-semibold tabular-nums text-foreground">{filtered.length}</span> из{" "}
-            <span className="tabular-nums">{trades.length}</span> сделок ·{" "}
-            <span className="tabular-nums">{days.length}</span> торговых дней
-            {filterCount > 0 && <> · фильтров: <span className="tabular-nums">{filterCount}</span></>}
+          <p className="text-sm tabular-nums text-muted-foreground">
+            {tp("page.summary", { shown: filtered.length, total: tp("page.trades", { count: trades.length }), days: tp("page.tradingDays", { count: days.length }) })}
+            {filterCount > 0 && <> · {tp("page.filters", { count: filterCount })}</>}
           </p>
           <Segmented
             size="sm"
-            ariaLabel="Единица результата"
+            ariaLabel={tp("page.unitAria")}
             value={metric}
             onChange={setMetric}
-            options={[{ value: "pnl", label: "P&L, $" }, { value: "r", label: "R-мультипл" }]}
+            options={[{ value: "pnl", label: "P&L, $" }, { value: "r", label: tp("page.rMultiple") }]}
           />
         </div>
         <FilterBar filters={filters} onChange={setFilters} options={options} allTrades={trades} metric={metric} val={val} />
@@ -182,12 +184,12 @@ export default function AnalyticsPro({ trades }: Props) {
         <div className="glass-panel rounded-2xl">
           <EmptyState
             icon={Filter}
-            title="Нет сделок под эти фильтры"
-            description="Ослабьте условия или сбросьте фильтры, чтобы снова увидеть статистику."
+            title={tp("page.noMatch")}
+            description={tp("page.noMatchHint")}
             action={
               <Button variant="outline" onClick={() => setFilters(EMPTY_FILTERS)}>
                 <RotateCcw aria-hidden="true" />
-                Сбросить фильтры
+                {tp("page.resetFilters")}
               </Button>
             }
           />
@@ -197,8 +199,9 @@ export default function AnalyticsPro({ trades }: Props) {
           {hasROnly && (
             <div role="status" className="flex flex-wrap items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
               <Info className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-              <span className="min-w-0 flex-1">У сделок в выборке не заполнен P&L, но есть R-мультипл — денежные показатели пустые.</span>
-              <Button size="sm" variant="outline" onClick={() => setMetric("r")}>Считать в R</Button>
+              <span className="min-w-0 flex-1">{tp("page.noPnl")}</span>
+              <Button size="sm" variant="outline" onClick={() => setMetric("r")}>{tp("page.useR")}</Button>
+
             </div>
           )}
 

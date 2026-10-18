@@ -4,20 +4,10 @@
  * missing or fails — the report then simply shows fewer tips instead of an error.
  */
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { addDays } from "@/lib/trading-date";
 import type { BehaviorReport, DayReportLite, FeeReport, SimSuggestion } from "@/lib/weeklyInsights";
 import type { RiskStatus, WeekInfo } from "./api";
-
-async function tryJson<T>(path: string): Promise<T | null> {
-  try {
-    const r = await fetch(apiUrl(path));
-    if (!r.ok) return null;
-    return (await r.json()) as T;
-  } catch {
-    return null;
-  }
-}
 
 const qs = (p: Record<string, string | null | undefined>) => {
   const s = new URLSearchParams();
@@ -43,7 +33,7 @@ export function useWeekBehavior(trader: string | null, week: WeekInfo | null | u
   const to = week?.end ?? "";
   return useQuery({
     queryKey: insightKeys.behavior(trader ?? "", from, to),
-    queryFn: () => tryJson<BehaviorReport>(`/api/behavior?${qs({ trader, from, to })}`),
+    queryFn: () => http.get<BehaviorReport>(`/api/behavior?${qs({ trader, from, to })}`).catch(() => null),
     enabled: !!trader && !!week,
     staleTime: STALE,
   });
@@ -55,7 +45,7 @@ export function useWeekFees(trader: string | null, week: WeekInfo | null | undef
   const to = week?.end ?? "";
   return useQuery({
     queryKey: insightKeys.fees(trader ?? "", from, to),
-    queryFn: () => tryJson<FeeReport>(`/api/whatif/fees?${qs({ trader, from, to })}`),
+    queryFn: () => http.get<FeeReport>(`/api/whatif/fees?${qs({ trader, from, to })}`).catch(() => null),
     enabled: !!trader && !!week,
     staleTime: STALE,
   });
@@ -69,7 +59,7 @@ export function useSimSuggestions(trader: string | null, week: WeekInfo | null |
   const to = week?.end ?? "";
   return useQuery({
     queryKey: insightKeys.sim(trader ?? "", from, to),
-    queryFn: async () => (await tryJson<{ suggestions?: SimSuggestion[] }>(`/api/whatif/suggestions?${qs({ trader, from, to })}`))?.suggestions ?? null,
+    queryFn: async () => (await http.get<{ suggestions?: SimSuggestion[] }>(`/api/whatif/suggestions?${qs({ trader, from, to })}`).catch(() => null))?.suggestions ?? null,
     enabled: !!trader && !!week,
     staleTime: STALE,
   });
@@ -86,7 +76,7 @@ export function useWeekDayReports(trader: string | null, dates: string[]) {
   return useQueries({
     queries: dates.map((date) => ({
       queryKey: insightKeys.day(trader ?? "", date),
-      queryFn: () => tryJson<DayReportLite>(`/api/day-report?${qs({ trader, date })}`),
+      queryFn: () => http.get<DayReportLite>(`/api/day-report?${qs({ trader, date })}`).catch(() => null),
       enabled: !!trader,
       staleTime: STALE,
     })),
@@ -125,7 +115,7 @@ export function useWeekBenchmark(week: WeekInfo | null | undefined, enabled = tr
   const to = week?.end ?? "";
   return useQuery({
     queryKey: insightKeys.bench(from, to),
-    queryFn: () => tryJson<Benchmark>(`/api/benchmark?${qs({ period: "week", from, to })}`),
+    queryFn: () => http.get<Benchmark>(`/api/benchmark?${qs({ period: "week", from, to })}`).catch(() => null),
     enabled: enabled && !!week,
     staleTime: STALE,
   });
@@ -138,7 +128,7 @@ export function useRiskDeskNow(enabled: boolean) {
   return useQuery({
     queryKey: insightKeys.riskDesk(),
     queryFn: async () => {
-      const r = await tryJson<{ traders?: RiskDeskRow[] }>("/api/risk/desk");
+      const r = await http.get<{ traders?: RiskDeskRow[] }>("/api/risk/desk").catch(() => null);
       if (!r?.traders) return null;
       const m = new Map<string, RiskStatus>();
       for (const t of r.traders) m.set(t.trader, t.status === "breach" ? "breach" : t.status === "warn" ? "warn" : t.status === "ok" ? "ok" : "none");

@@ -5,39 +5,33 @@
 import { useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useListEvents, type MarketEvent } from "@workspace/api-client-react";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { KEYS, STALE } from "@/lib/api/keys";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { useHolidaysRange } from "@/lib/market-intel";
 import { useTradesWindow } from "@/hooks/use-trades-window";
-import { useEarningsWatch, type CallType, type EarningsHistory, type UpcomingData, type UpcomingItem } from "@/components/research/earnings-api";
+import { useEarningsWatch, type CallType, type EarningsHistory, type UpcomingData, type UpcomingItem } from "@/components/shared/market/earnings-api";
 import {
   buildDayBook, categoriesByDate, closedDates, edgeByCategory, earningsEdge, focusDay, frequentTickers, nyMinutesOf,
   prevTradingDay, type BookTrade, type MacroRow, type TickerHistory,
 } from "./catalyst-math";
 import { dayOf } from "./event-meta";
+import { eventsI18n } from "@/i18n/ns/events";
 
 const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(apiUrl(path), { signal });
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch { /* ignore */ }
-    throw new Error(msg);
-  }
-  return r.json() as Promise<T>;
-}
 
 type WatchRow = { ticker: string; status?: string | null; deletedAt?: string | null };
 
+/** Active (not archived) watchlist tickers. Shares the ["watchlist"] cache with the watchlist page, so adds show up here at once. */
 export function useWatchlistTickers() {
   return useQuery({
-    queryKey: ["catalysts", "watchlist"],
-    queryFn: ({ signal }) => getJson<WatchRow[]>("/api/watchlist", signal),
-    staleTime: 5 * 60_000,
-    select: (rows) =>
+    queryKey: KEYS.watchlist(),
+    queryFn: ({ signal }) => http.get<WatchRow[]>("/api/watchlist", { signal }),
+    staleTime: STALE.short,
+    select: (rows: WatchRow[]) =>
       (Array.isArray(rows) ? rows : [])
-        .filter((r) => !r.deletedAt && r.status !== "archived")
+        .filter((r) => !r.deletedAt && !["passed", "archived"].includes(String(r.status ?? "").toLowerCase()))
         .map((r) => String(r.ticker ?? "").trim().toUpperCase())
         .filter((t) => TICKER_RE.test(t)),
   });
@@ -50,7 +44,7 @@ export function useMyEarnings(tickers: string[]) {
   const csv = [...tickers].sort().join(",");
   return useQuery({
     queryKey: ["catalysts", "earnings", csv],
-    queryFn: ({ signal }) => getJson<UpcomingData>(`/api/earnings/upcoming?days=10&limit=60${csv ? `&tickers=${encodeURIComponent(csv)}` : ""}`, signal),
+    queryFn: ({ signal }) => http.get<UpcomingData>(`/api/earnings/upcoming?days=10&limit=60${csv ? `&tickers=${encodeURIComponent(csv)}` : ""}`, { signal }),
     enabled: tickers.length > 0,
     staleTime: 15 * 60_000,
     retry: 1,
@@ -62,7 +56,7 @@ export function useHistories(tickers: string[]) {
   const results = useQueries({
     queries: tickers.map((t) => ({
       queryKey: ["earnings", "history", t, ""],
-      queryFn: ({ signal }: { signal?: AbortSignal }) => getJson<EarningsHistory>(`/api/earnings/history/${encodeURIComponent(t)}`, signal),
+      queryFn: ({ signal }: { signal?: AbortSignal }) => http.get<EarningsHistory>(`/api/earnings/history/${encodeURIComponent(t)}`, { signal }),
       staleTime: 60 * 60_000,
       retry: 0,
     })),
@@ -168,4 +162,4 @@ export function edgesFrom(trades: BookTrade[], tickers: string[], histories: Map
 }
 
 export const callLabel = (c: CallType | string | null | undefined) =>
-  c === "BMO" ? "до открытия" : c === "AMC" ? "после закрытия" : "время не указано";
+  eventsI18n.t(c === "BMO" ? "call.bmo" : c === "AMC" ? "call.amc" : "call.unknown");

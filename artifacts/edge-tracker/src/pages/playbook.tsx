@@ -11,7 +11,7 @@
  * ?tags= (comma list); gallery filters gt/gp/gs/gtr live in gallery.tsx. ?q= and ?highlight= are one-shot.
  * Example trades can be dragged from the «Эталоны» board onto a setup row in the tree to move them.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -29,14 +29,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ToastAction } from "@/components/ui/toast";
 import { EmptyState, Kbd, Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
-import { IconAction, lsGet, lsSet, plural } from "@/components/playbook-sub/bits";
+import { IconAction, lsGet, lsSet } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { localDateString } from "@/lib/local-date";
 import { cn } from "@/lib/utils";
-import { generatePlaybookMarkdown, downloadMarkdown, generateNotionZip, downloadBlob, type ExportEntry } from "@/lib/playbook-export";
+import { generatePlaybookMarkdown, downloadMarkdown, generateNotionZip, downloadBlob, type ExportEntry } from "@/components/playbook/export";
 import {
-  invalidateExamples, invalidatePlaybook, notLiveMessage, pbRequest, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer,
+  invalidateExamples, invalidatePlaybook, notLiveMessage, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer,
+  type InboxTrade,
 } from "@/components/playbook/api";
+import { http } from "@/lib/api/http";
 import {
   LS, accessOf, matchesQuickFilter, searchHaystack, sortEntries, spaceTabOf, splitTags,
   type PlaybookEntry, type QuickFilter, type SortKey, type SpaceTab,
@@ -54,51 +56,58 @@ import { TradePickerDialog } from "@/components/playbook/trade-picker-dialog";
 import { ShareDialog } from "@/components/playbook/share-dialog";
 import { hasExampleDrag, patchExample, readExampleDrag } from "@/components/playbook/examples-board";
 import { ActivitySheet, DeleteFolderDialog, DeleteSetupDialog, RenameFolderDialog } from "@/components/playbook/page-dialogs";
+import { useMoveToFolder } from "@/components/playbook/move-to-folder";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookI18n } from "@/i18n/ns/playbook";
 
+import { personName } from "@/i18n";
 type View = "library" | "gallery" | "grid";
 const VIEWS: View[] = ["library", "gallery", "grid"];
 const UNFILED = "__unfiled";
 const LS_SPACE = "playbook-space";
 
-/** `short` is what the closed select shows (the sidebar is 320px); `label` is the menu item. */
-const SORT_OPTIONS: { value: SortKey; label: string; short: string }[] = [
-  { value: "folder", label: "По папкам", short: "Папки" },
-  { value: "edge", label: "По edge, $ на сделку", short: "Edge $" },
-  { value: "used", label: "Недавно в работе", short: "Недавние" },
-  { value: "new", label: "Новые сверху", short: "Новые" },
-  { value: "name", label: "По алфавиту", short: "А–Я" },
-];
-const FILTERS: { value: QuickFilter; label: string; short: string }[] = [
-  { value: "all", label: "Все сетапы", short: "Все сетапы" },
-  { value: "today", label: "В работе сегодня", short: "Сегодня" },
-  { value: "edge", label: "С плюсовым edge", short: "С edge" },
-  { value: "untested", label: "Без сделок", short: "Без сделок" },
-  { value: "noExamples", label: "Без эталонов", short: "Без эталонов" },
-  { value: "unreviewed", label: "Не проверены", short: "На проверку" },
-];
+/** Labels are getters (current UI language): `short` is what the closed select shows (the sidebar is 320px); `label` is the menu item. */
+const pt = playbookI18n.t;
+const SORT_KEYS: SortKey[] = ["folder", "edge", "used", "new", "name"];
+const SORT_OPTIONS = SORT_KEYS.map((value) => ({
+  value,
+  get label() { return pt(`page.sort.${value}.label`); },
+  get short() { return pt(`page.sort.${value}.short`); },
+}));
+const FILTER_KEYS: QuickFilter[] = ["all", "today", "edge", "untested", "noExamples", "unreviewed"];
+const FILTERS = FILTER_KEYS.map((value) => ({
+  value,
+  get label() { return pt(`page.filter.${value}.label`); },
+  get short() { return pt(`page.filter.${value}.short`); },
+}));
 /** `label` — short (menus, export), `long` — the scope bar. */
-const SPACES: { value: SpaceTab; label: string; long: string; icon: LucideIcon; hint: string }[] = [
-  { value: "office", label: "Офис", long: "Плейбук офиса", icon: Building2, hint: "Общий плейбук офиса: читают все, правят кураторы. Свои сделки эталонами сюда может добавить каждый" },
-  { value: "mine", label: "Мой", long: "Мой плейбук", icon: User, hint: "Ваши личные сетапы: видите вы и кураторы. Сеньоры открывают доступ кнопкой «Поделиться» в сетапе" },
-  { value: "shared", label: "Общие", long: "Общие со мной", icon: Share2, hint: "Сетапы, которыми с вами поделились сеньоры: только чтение, «В „Мой“» сделает свою копию" },
-  { value: "team", label: "Команда", long: "Команда", icon: Users, hint: "Личные сетапы трейдеров — видно кураторам и админам" },
-];
+const spaceRow = (value: SpaceTab | "all", icon: LucideIcon) => ({
+  value, icon,
+  get label() { return pt(`page.space.${value}.label`); },
+  get long() { return pt(`page.space.${value}.long`); },
+  get hint() { return pt(`page.space.${value}.hint`); },
+});
+const SPACES = [spaceRow("office", Building2), spaceRow("mine", User), spaceRow("shared", Share2), spaceRow("team", Users)] as { value: SpaceTab; label: string; long: string; icon: LucideIcon; hint: string }[];
+const ALL_SCOPE = spaceRow("all", Library);
 /** Page scope: a space, or «Все» (gallery only). */
 type Scope = SpaceTab | "all";
 const isScope = (v: unknown): v is Scope => v === "all" || SPACES.some((s) => s.value === v);
 const urlParam = (k: string) => new URLSearchParams(window.location.search).get(k);
-const HOTKEYS: [string[], string][] = [
-  [["Ctrl", "K"], "Быстрый поиск сетапа"],
-  [["/"], "Быстрый поиск"],
-  [["J", "K"], "Следующий / предыдущий сетап"],
-  [["N"], "Новый сетап"],
-  [["E"], "Редактировать открытый"],
-  [["C"], "Сравнить сетапы"],
-  [["Esc"], "Закрыть сетап"],
-  [["1", "2", "3"], "Эталон: сменить тир (на карточке)"],
-  [["Alt", "↑↓"], "Эталон: переставить"],
-  [["M"], "Эталон: перенести в другой сетап"],
-  [["Ctrl", "V"], "Вставить скриншот в описание или эталон"],
+type HotkeyKey = keyof typeof import("@/i18n/locales/ru/playbook").default.page.hotkeys;
+const HOTKEYS: [string[], HotkeyKey][] = [
+  [["Ctrl", "K"], "quickFindSetup"],
+  [["/"], "quickFind"],
+  [["J", "K"], "nextPrev"],
+  [["N"], "newSetup"],
+  [["Ctrl", "S"], "saveForm"],
+  [["E"], "edit"],
+  [["A"], "addExamples"],
+  [["C"], "compare"],
+  [["Esc"], "close"],
+  [["1", "2", "3"], "tier"],
+  [["Alt", "↑↓"], "reorder"],
+  [["M"], "moveExample"],
+  [["Ctrl", "V"], "paste"],
 ];
 
 function isTypingTarget(t: EventTarget | null) {
@@ -114,6 +123,7 @@ const isView = (v: unknown): v is View => VIEWS.includes(v as View);
 const isSetupTab = (v: unknown): v is SetupTab => SETUP_TABS.includes(v as SetupTab);
 
 export default function Playbook() {
+  const { t } = playbookI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -123,7 +133,7 @@ export default function Playbook() {
   const searchStr = useSearch();
 
   /* ---------- data ---------- */
-  const { data: entries = [], isLoading, isError, error, refetch } = usePlaybookEntries();
+  const { data: entries = [], isLoading, isError, error, refetch, isFetching } = usePlaybookEntries();
   const summaryQ = usePlaybookSummary();
   const summary = summaryQ.map;
   const { data: folderSettings } = useFolderSettings();
@@ -134,6 +144,8 @@ export default function Playbook() {
   // The URL wins (shared links, back / forward), then the remembered choice.
   const [view, setViewState] = useState<View>(() => {
     const u = urlParam("view"); if (isView(u)) return u;
+    // A link to one setup (?id= / ?highlight=, e.g. from the feed) must show it — not a remembered grid / gallery.
+    if (urlParam("id") || urlParam("highlight")) return "library";
     const v = lsGet<string>(LS.view, "library"); return isView(v) ? v : "library";
   });
   const [space, setSpaceState] = useState<Scope>(() => {
@@ -240,7 +252,9 @@ export default function Playbook() {
     return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"));
   }, [spaceEntries]);
 
-  const q = query.trim().toLowerCase();
+  // The box updates at once; filtering the tree / grid follows at a lower priority (no lag while typing).
+  const deferredQuery = useDeferredValue(query);
+  const q = deferredQuery.trim().toLowerCase();
   const passes = useCallback(
     (e: PlaybookEntry) => {
       if (!matchesQuickFilter(e, quick, summary)) return false;
@@ -399,9 +413,46 @@ export default function Playbook() {
     const h = Number(params.get("highlight"));
     if (!h || !entries.length) return;
     if (byId.has(h)) { setView("library"); openSetup(h, { replace: true }); }
-    else { const next = patchSearch(window.location.search, { highlight: null }); navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true }); toast({ title: "Сетап не найден", description: "Возможно, он был удалён или к нему нет доступа." }); }
+    else { const next = patchSearch(window.location.search, { highlight: null }); navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true }); toast({ title: t("page.notFoundTitle"), description: t("page.toast.highlightMissing") }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, entries.length]);
+
+  // ?folder=Name — a link to a folder: library view, folder order, that folder open and scrolled into view (one-shot).
+  const urlFolder = params.get("folder");
+  useEffect(() => {
+    if (!urlFolder || !entries.length) return;
+    const inFolder = entries.filter((e) => !e.parentId && e.folder === urlFolder);
+    const next = patchSearch(window.location.search, { folder: null });
+    if (!inFolder.length) {
+      navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true });
+      toast({ title: t("page.toast.folderMissing"), description: t("page.toast.folderMissingDesc", { folder: urlFolder }) });
+      return;
+    }
+    const tabs = new Set(inFolder.map((e) => tabOf.get(e.id) ?? "office"));
+    if (!tabs.has(activeSpace)) {
+      const t = (["mine", "office", "shared", "team"] as SpaceTab[]).find((x) => tabs.has(x) && (x !== "team" || viewer.isCurator));
+      if (t) setSpace(t);
+    }
+    setView("library");
+    if (sort !== "folder") setSort("folder");
+    if (quick !== "all") setQuick("all");
+    setQuery("");
+    setOpenFolders((prev) => { if (prev.has(urlFolder)) return prev; const n = new Set(prev); n.add(urlFolder); lsSet(LS.openFolders, [...n]); return n; });
+    navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true });
+    window.setTimeout(() => {
+      document.querySelector(`[data-folder-key="${CSS.escape(urlFolder)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 120);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlFolder, entries.length]);
+  function copyFolderLink(folder: string) {
+    const qs = new URLSearchParams({ folder });
+    if (activeSpace !== "office") qs.set("space", activeSpace);
+    const url = `${window.location.origin}/playbook?${qs.toString()}`;
+    navigator.clipboard?.writeText(url).then(
+      () => toast({ title: t("page.toast.folderLinkCopied"), description: folder }),
+      () => toast({ title: t("page.toast.linkCopyFailed"), variant: "destructive" }),
+    );
+  }
 
   // Same-page navigation from the global search.
   useEffect(() => {
@@ -441,10 +492,26 @@ export default function Playbook() {
   };
   /** Folder actions: office folders — curators; «Мой» — the owner. Shared / team folders are read-only here. */
   const canManageFolders = activeSpace === "office" ? viewer.isCurator : activeSpace === "mine" ? viewer.canEdit : false;
+  const moveToFolder = useMoveToFolder();
+  const canDragSetup = useCallback((e: PlaybookEntry) => accessOf(e, viewer).canEdit, [viewer]);
+  async function moveSetupToFolder(id: number, folder: string | null) {
+    const e = byId.get(id);
+    if (!e || (e.folder ?? null) === folder || !accessOf(e, viewer).canEdit) return;
+    // Optimistic: the row jumps to its new folder right away; the hook toasts with «Вернуть».
+    qc.setQueryData<PlaybookEntry[]>(["playbook"], (old) => old?.map((x) => (x.id === id ? { ...x, folder } : x)));
+    const key = folder ?? UNFILED;
+    setOpenFolders((prev) => { if (prev.has(key)) return prev; const next = new Set(prev); next.add(key); lsSet(LS.openFolders, [...next]); return next; });
+    const ok = await moveToFolder(e, folder);
+    if (!ok) invalidatePlaybook(qc, id);
+  }
+  const selectInTree = useCallback((id: number) => openSetup(id, { tab: setupTab }), [openSetup, setupTab]);
 
+  /** Folder colour / order are desk-wide settings: only staff may write them (the API answers 403 to traders). */
+  const canFolderSettings = viewer.isCurator;
   async function saveFolderSettings(body: { folderName: string; colorIndex?: number; sortOrder?: number }[], errTitle: string) {
+    if (!canFolderSettings) return;
     try {
-      await pbRequest("/api/playbook/folder-settings", { method: "PATCH", json: body });
+      await http.patch("/api/playbook/folder-settings", body);
       qc.invalidateQueries({ queryKey: ["playbook-folder-settings"] });
     } catch {
       toast({ title: errTitle, variant: "destructive" });
@@ -452,7 +519,9 @@ export default function Playbook() {
   }
   function setFolderColor(folder: string, idx: number) {
     setFolderColors((prev) => { const next = { ...prev, [folder]: idx }; lsSet(LS.folderColors, next); return next; });
-    saveFolderSettings([{ folderName: folder, colorIndex: idx }], "Не удалось сохранить цвет папки");
+    // The API writes sort_order = 0 when it is omitted — send the current position so a colour change doesn't move the folder.
+    const pos = allFolders.indexOf(folder);
+    saveFolderSettings([{ folderName: folder, colorIndex: idx, ...(pos >= 0 ? { sortOrder: pos } : {}) }], t("page.toast.folderColorFailed"));
   }
   function moveFolder(folder: string, delta: -1 | 1) {
     const order = [...allFolders];
@@ -460,11 +529,23 @@ export default function Playbook() {
     const to = from + delta;
     if (from < 0 || to < 0 || to >= order.length) return;
     order.splice(to, 0, order.splice(from, 1)[0]);
+    applyFolderOrder(order);
+  }
+  /** Drag & drop: the dragged folder takes the target's place. */
+  function reorderFolder(folder: string, target: string | null) {
+    const order = allFolders.filter((f) => f !== folder);
+    const to = target ? allFolders.indexOf(target) : order.length;
+    if (to < 0 || allFolders.indexOf(folder) < 0 || folder === target) return;
+    order.splice(Math.min(to, order.length), 0, folder);
+    applyFolderOrder(order);
+  }
+  function applyFolderOrder(order: string[]) {
     const rest = folderOrder.filter((f) => !order.includes(f));
     const merged = [...order, ...rest];
     setFolderOrder(merged);
     lsSet(LS.folderOrder, merged);
-    saveFolderSettings(merged.map((f, i) => ({ folderName: f, sortOrder: i })), "Не удалось сохранить порядок папок");
+    // Only this space's folders: their relative order is what the tree shows (another space keeps its own numbers).
+    saveFolderSettings(order.map((f, i) => ({ folderName: f, sortOrder: i })), t("page.toast.folderOrderFailed"));
   }
   function onFolderRenamed(from: string, to: string, merged: boolean) {
     setFolderOrder((prev) => {
@@ -485,22 +566,19 @@ export default function Playbook() {
       const next = new Set(prev); next.delete(from); next.add(to); lsSet(LS.openFolders, [...next]); return next;
     });
     invalidatePlaybook(qc);
-    toast({ title: merged ? `Папки объединены в «${to}»` : `Папка переименована в «${to}»` });
+    toast({ title: merged ? t("page.toast.foldersMerged", { folder: to }) : t("page.toast.folderRenamed", { folder: to }) });
   }
   async function confirmDeleteFolder(password: string) {
     if (!deleteFolder) return;
     setDeleteFolderPending(true);
     try {
-      const r = await pbRequest<{ deleted?: number }>("/api/playbook/delete-folder", {
-        method: "DELETE",
-        json: { folder: deleteFolder, password, trader },
-      });
+      const r = await http.del<{ deleted?: number }>("/api/playbook/delete-folder", { folder: deleteFolder, password, trader });
       invalidatePlaybook(qc);
       if (selected && selected.folder === deleteFolder) openSetup(null, { replace: true });
-      toast({ title: `Папка «${deleteFolder}» удалена`, description: r?.deleted != null ? `${r.deleted} ${plural(r.deleted, "сетап", "сетапа", "сетапов")} в корзине` : undefined });
+      toast({ title: t("page.toast.folderDeleted", { folder: deleteFolder }), description: r?.deleted != null ? t("page.toast.setupsInTrash", { count: r.deleted }) : undefined });
       setDeleteFolder(null);
     } catch (e: any) {
-      toast({ title: "Не удалось удалить папку", description: e?.message, variant: "destructive" });
+      toast({ title: t("page.toast.folderDeleteFailed"), description: e?.message, variant: "destructive" });
     } finally {
       setDeleteFolderPending(false);
     }
@@ -509,11 +587,11 @@ export default function Playbook() {
   /* ---------- setup ops ---------- */
   async function restore(id: number) {
     try {
-      await pbRequest(`/api/playbook/${id}/restore`, { method: "POST", json: { trader } });
+      await http.post(`/api/playbook/${id}/restore`, { trader });
       invalidatePlaybook(qc, id);
-      toast({ title: "Сетап восстановлен" });
+      toast({ title: t("page.toast.restored") });
     } catch (e: any) {
-      toast({ title: "Не удалось восстановить", description: e?.message, variant: "destructive" });
+      toast({ title: t("page.toast.restoreFailed"), description: e?.message, variant: "destructive" });
     }
   }
   async function confirmDelete() {
@@ -521,13 +599,13 @@ export default function Playbook() {
     const { id, name } = deleting;
     setDeletePending(true);
     try {
-      await pbRequest(`/api/playbook/${id}`, { method: "DELETE", json: { trader } });
+      await http.del(`/api/playbook/${id}`, { trader });
       invalidatePlaybook(qc, id);
       if (selectedId === id) openSetup(null, { replace: true });
       setDeleting(null);
-      toast({ title: `«${name}» удалён`, action: <ToastAction altText="Отменить удаление" onClick={() => restore(id)}>Отменить</ToastAction> });
+      toast({ title: t("page.toast.deleted", { name }), action: <ToastAction altText={t("page.toast.undoDelete")} onClick={() => restore(id)}>{commonI18n.t("actions.undo")}</ToastAction> });
     } catch (e: any) {
-      toast({ title: "Не удалось удалить", description: e?.message, variant: "destructive" });
+      toast({ title: commonI18n.t("states.deleteFailed"), description: e?.message, variant: "destructive" });
     } finally {
       setDeletePending(false);
     }
@@ -565,21 +643,21 @@ export default function Playbook() {
       const r = await patchExample(p.fromSetupId, p.exampleId, { playbookId: target });
       invalidateExamples(qc, p.fromSetupId, target);
       toast({
-        title: r?.merged ? `Сделка уже была в «${name}» — объединено` : `Эталон перенесён в «${name}»`,
+        title: r?.merged ? t("page.toast.mergedInto", { name }) : t("page.toast.exampleMoved", { name }),
         action: r?.merged ? undefined : (
           <ToastAction
-            altText="Вернуть"
+            altText={t("page.toast.moveBack")}
             onClick={async () => {
               try { await patchExample(target, p.exampleId, { playbookId: p.fromSetupId }); invalidateExamples(qc, p.fromSetupId, target); }
-              catch (err) { toast({ title: "Не удалось вернуть", description: (err as Error)?.message, variant: "destructive" }); }
+              catch (err) { toast({ title: t("page.toast.moveBackFailed"), description: (err as Error)?.message, variant: "destructive" }); }
             }}
           >
-            Вернуть
+            {t("page.toast.moveBack")}
           </ToastAction>
         ),
       });
     } catch (err) {
-      toast({ title: "Не удалось перенести", description: notLiveMessage(err) ?? (err as Error)?.message, variant: "destructive" });
+      toast({ title: t("page.toast.moveFailed"), description: notLiveMessage(err) ?? (err as Error)?.message, variant: "destructive" });
     }
   }
 
@@ -588,9 +666,9 @@ export default function Playbook() {
     if (!spaceEntries.length) return;
     try {
       downloadMarkdown(generatePlaybookMarkdown(spaceEntries as unknown as ExportEntry[], allFolders), `playbook-${localDateString()}.md`);
-      toast({ title: "Плейбук экспортирован", description: `${topLevel.length} ${plural(topLevel.length, "сетап", "сетапа", "сетапов")} в .md` });
+      toast({ title: t("page.toast.exported"), description: t("page.toast.exportedDesc", { count: topLevel.length }) });
     } catch (e: any) {
-      toast({ title: "Не удалось экспортировать", description: e?.message, variant: "destructive" });
+      toast({ title: t("page.toast.exportFailed"), description: e?.message, variant: "destructive" });
     }
   }
   async function exportNotion() {
@@ -598,9 +676,9 @@ export default function Playbook() {
     setNotionBusy(true);
     try {
       downloadBlob(await generateNotionZip(spaceEntries as unknown as ExportEntry[], allFolders), `playbook-notion-${localDateString()}.zip`);
-      toast({ title: "ZIP для Notion готов", description: "Notion → Import → Markdown & CSV" });
+      toast({ title: t("page.toast.notionReady"), description: "Notion → Import → Markdown & CSV" });
     } catch (e: any) {
-      toast({ title: "Не удалось экспортировать в Notion", description: e?.message, variant: "destructive" });
+      toast({ title: t("page.toast.notionFailed"), description: e?.message, variant: "destructive" });
     } finally {
       setNotionBusy(false);
     }
@@ -620,14 +698,19 @@ export default function Playbook() {
     (folder?: string | null) => { if (canCreate) setFormMode({ kind: "create", folder: folder ?? null, space: newSpace }); },
     [canCreate, newSpace],
   );
-  const newLabel = newSpace === "office" ? "Новый в «Офис»" : "Новый в «Мой»";
+  const newLabel = newSpace === "office" ? t("page.newInOffice") : t("page.newInMine");
+  /** Inbox «Новый сетап из сделки»: a personal setup (office for curators on the office tab) with the trade as its first example. */
+  const newSetupFromTrade = useCallback(
+    (t: InboxTrade) => { if (canCreate) setFormMode({ kind: "create", space: newSpace, fromTrade: { id: t.id, ticker: t.ticker, date: t.closeDate ?? t.date, tier: t.suggestedTier } }); },
+    [canCreate, newSpace],
+  );
 
   /* ---------- keyboard ---------- */
   // Ctrl/⌘+K inside the section opens the playbook's own quick find (capture phase, before the global palette).
   useEffect(() => {
     function onCapture(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
-      if (e.key !== "k" && e.key !== "K" && e.key !== "л" && e.key !== "Л") return;
+      if (e.key !== "k" && e.key !== "K" && e.key !== "л" && e.key !== "Л") return; // i18n-ignore (RU keyboard layout keys)
       if (overlayOpen()) return;
       e.preventDefault();
       e.stopImmediatePropagation(); // the global palette listens on window (bubble) — the section's own search wins here
@@ -643,14 +726,20 @@ export default function Playbook() {
       const k = e.key;
       if (k === "/") { e.preventDefault(); setFindOpen(true); return; }
       if (k === "?") { e.preventDefault(); setHelpOpen((v) => !v); return; }
+      // Cyrillic letters below are the same physical keys on a RU keyboard layout.
+      // i18n-ignore
       if (k === "n" || k === "т") { if (canCreate) { e.preventDefault(); newSetup(selected?.folder ?? null); } return; }
       if (k === "Escape" && selected) { e.preventDefault(); openSetup(null); return; }
+      // i18n-ignore
       if ((k === "e" || k === "у") && selected && accessOf(selected, viewer).canEdit) { e.preventDefault(); setFormMode({ kind: "edit", entry: selected }); return; }
+      // i18n-ignore
       if ((k === "c" || k === "с") && selected) { e.preventDefault(); setCompareFor(selected); return; }
-      if (k === "j" || k === "k" || k === "о" || k === "л") {
+      // i18n-ignore
+      if ((k === "a" || k === "ф") && selected && live && accessOf(selected, viewer).canAddExamples) { e.preventDefault(); setPickerFor(selected); return; }
+      if (k === "j" || k === "k" || k === "о" || k === "л") { // i18n-ignore (RU layout)
         if (!navOrder.length) return;
         e.preventDefault();
-        const down = k === "j" || k === "о";
+        const down = k === "j" || k === "о"; // i18n-ignore (RU layout)
         const i = selectedId ? navOrder.indexOf(selectedId) : -1;
         const next = i < 0 ? (down ? 0 : navOrder.length - 1) : Math.min(navOrder.length - 1, Math.max(0, i + (down ? 1 : -1)));
         if (view !== "library") setView("library");
@@ -660,75 +749,75 @@ export default function Playbook() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canCreate, selected, selectedId, navOrder, openSetup, newSetup, view, viewer, setupTab]);
+  }, [canCreate, selected, selectedId, navOrder, openSetup, newSetup, view, viewer, setupTab, live]);
 
   /* ---------- render pieces ---------- */
   const helpPopover = (
     <Popover open={helpOpen} onOpenChange={setHelpOpen}>
       <PopoverTrigger asChild>
-        <IconAction aria-label="Горячие клавиши" aria-keyshortcuts="?" className="h-10 w-10"><HelpCircle /></IconAction>
+        <IconAction aria-label={t("page.hotkeysTitle")} title={t("page.hotkeysTitle")} aria-keyshortcuts="?" className="h-9 w-9"><HelpCircle /></IconAction>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
-        <p className="mb-2 text-sm font-semibold text-foreground">Горячие клавиши</p>
+        <p className="mb-2 text-sm font-semibold text-foreground">{t("page.hotkeysTitle")}</p>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 text-sm">
-          {HOTKEYS.map(([keys, label]) => (
-            <div key={label} className="contents">
+          {HOTKEYS.map(([keys, key]) => (
+            <div key={key} className="contents">
               <dt><Kbd keys={keys} className="[&_kbd]:text-xs" /></dt>
-              <dd className="text-muted-foreground">{label}</dd>
+              <dd className="text-muted-foreground">{t(`page.hotkeys.${key}`)}</dd>
             </div>
           ))}
         </dl>
-        <p className="mt-3 text-xs text-muted-foreground">Эталон можно перетащить мышью между тирами или на сетап в списке слева.</p>
+        <p className="mt-3 text-xs text-muted-foreground">{t("page.mouseHint")}</p>
       </PopoverContent>
     </Popover>
   );
 
   const header = (
     <PageHeader
-      title="Плейбук"
+      title={t("page.title")}
       icon={BookOpen}
-      description="Сетапы офиса, личные и общие — с эталонными сделками"
+      description={t("page.description")}
       actions={
         <>
-          <Button variant="outline" onClick={() => setFindOpen(true)} className="gap-2" aria-keyshortcuts="Control+K /" title="Ctrl+K или /">
+          <Button variant="outline" onClick={() => setFindOpen(true)} className="gap-2" aria-keyshortcuts="Control+K /" title={t("page.findTitle")}>
             <Search className="h-4 w-4" aria-hidden="true" />
-            <span>Найти</span>
+            <span>{t("page.find")}</span>
           </Button>
           <Segmented<View>
-            ariaLabel="Вид"
+            ariaLabel={t("page.viewAria")}
             value={view}
             onChange={setView}
             options={[
-              { value: "library", label: <><Library className="h-4 w-4" aria-hidden="true" />Библиотека</> },
-              { value: "gallery", label: <><Trophy className="h-4 w-4" aria-hidden="true" />Эталоны</> },
-              { value: "grid", label: <><LayoutGrid className="h-4 w-4" aria-hidden="true" />Сетка</> },
+              { value: "library", label: <><Library className="h-4 w-4" aria-hidden="true" />{t("page.view.library")}</> },
+              { value: "gallery", label: <><Trophy className="h-4 w-4" aria-hidden="true" />{t("page.view.gallery")}</> },
+              { value: "grid", label: <><LayoutGrid className="h-4 w-4" aria-hidden="true" />{t("page.view.grid")}</> },
             ]}
           />
           {helpPopover}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconAction aria-label="Ещё" className="h-10 w-10"><MoreHorizontal /></IconAction>
+              <IconAction aria-label={commonI18n.t("actions.more")} title={commonI18n.t("actions.more")} className="h-9 w-9"><MoreHorizontal /></IconAction>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuItem onSelect={() => setCompareFor(selected ?? topLevel[0] ?? entries[0] ?? null)} disabled={!entries.length}>
-                <Columns2 className="h-4 w-4" aria-hidden="true" /> Сравнить сетапы
+                <Columns2 className="h-4 w-4" aria-hidden="true" /> {t("page.compare")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setActivityOpen(true)}><Activity className="h-4 w-4" aria-hidden="true" /> Журнал изменений</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setActivityOpen(true)}><Activity className="h-4 w-4" aria-hidden="true" /> {t("page.activity")}</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Экспорт · {SPACES.find((s) => s.value === activeSpace)?.label}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={exportMd} disabled={!spaceEntries.length}><Download className="h-4 w-4" aria-hidden="true" /> В Markdown (.md)</DropdownMenuItem>
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("page.exportLabel", { space: SPACES.find((s) => s.value === activeSpace)?.label ?? "" })}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={exportMd} disabled={!spaceEntries.length}><Download className="h-4 w-4" aria-hidden="true" /> {t("page.exportMd")}</DropdownMenuItem>
               <DropdownMenuItem onSelect={exportNotion} disabled={!spaceEntries.length || notionBusy}>
-                <FileArchive className="h-4 w-4" aria-hidden="true" /> {notionBusy ? "Готовим ZIP…" : "Для Notion (ZIP)"}
+                <FileArchive className="h-4 w-4" aria-hidden="true" /> {notionBusy ? t("page.notionBusy") : t("page.notion")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Масштаб · {Math.round(zoom * 100)}%</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); changeZoom(0.05); }} disabled={zoom >= 1.5}><ZoomIn className="h-4 w-4" aria-hidden="true" /> Крупнее</DropdownMenuItem>
-              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); changeZoom(-0.05); }} disabled={zoom <= 0.65}><ZoomOut className="h-4 w-4" aria-hidden="true" /> Мельче</DropdownMenuItem>
-              {zoom !== 1 && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); changeZoom(0); }}>Сбросить до 100%</DropdownMenuItem>}
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("page.zoomLabel", { pct: Math.round(zoom * 100) })}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); changeZoom(0.05); }} disabled={zoom >= 1.5}><ZoomIn className="h-4 w-4" aria-hidden="true" /> {t("page.zoomIn")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); changeZoom(-0.05); }} disabled={zoom <= 0.65}><ZoomOut className="h-4 w-4" aria-hidden="true" /> {t("page.zoomOut")}</DropdownMenuItem>
+              {zoom !== 1 && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); changeZoom(0); }}>{t("page.zoomReset")}</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
           {canCreate && (
-            <Button className="bg-primary-solid" onClick={() => newSetup(selected?.folder ?? null)} aria-keyshortcuts="n" title={newSpace === "office" ? "Сетап в плейбук офиса" : "Личный сетап — виден вам и кураторам"}>
+            <Button className="bg-primary-solid" onClick={() => newSetup(selected?.folder ?? null)} aria-keyshortcuts="n" title={newSpace === "office" ? t("page.newOfficeTitle") : t("page.newPersonalTitle")}>
               <Plus className="h-4 w-4" aria-hidden="true" /> {newLabel}
             </Button>
           )}
@@ -739,7 +828,7 @@ export default function Playbook() {
 
   /** Page-level scope bar: full names + counts, the active space's rule underneath. «Все» only in the gallery. */
   const scopeOptions: { value: Scope; short: string; long: string; icon: LucideIcon; hint: string; count: number | null }[] = [
-    ...(view === "gallery" ? [{ value: "all" as Scope, short: "Все", long: "Все", icon: Library, hint: "Эталоны из всех сетапов, которые вам видны: офис, ваши и общие", count: null }] : []),
+    ...(view === "gallery" ? [{ value: "all" as Scope, short: ALL_SCOPE.label, long: ALL_SCOPE.long, icon: ALL_SCOPE.icon, hint: ALL_SCOPE.hint, count: null }] : []),
     ...visibleSpaces.map((s) => ({ value: s.value as Scope, short: s.label, long: s.long, icon: s.icon, hint: s.hint, count: spaceCounts[s.value] })),
   ];
   const activeScope = scopeOptions.find((s) => s.value === shownScope) ?? scopeOptions[0];
@@ -752,7 +841,7 @@ export default function Playbook() {
   };
   const scopeBar = (
     <div className="flex flex-col gap-1.5">
-      <div role="tablist" aria-label="Пространство плейбука" className="flex flex-wrap gap-1.5">
+      <div role="tablist" aria-label={t("page.spaceAria")} className="flex flex-wrap gap-1.5">
         {scopeOptions.map((s) => {
           const active = activeScope?.value === s.value;
           const Icon = s.icon;
@@ -788,17 +877,17 @@ export default function Playbook() {
   const tagPopover = (
     <Popover>
       <PopoverTrigger asChild>
-        <IconAction aria-label={tagFilter.length ? `Теги: выбрано ${tagFilter.length}` : "Фильтр по тегам"} aria-pressed={tagFilter.length > 0} disabled={!allTags.length} className={cn("relative h-9 w-9", tagFilter.length > 0 && "text-primary")}>
+        <IconAction aria-label={tagFilter.length ? t("page.tagsSelected", { count: tagFilter.length }) : t("page.tagFilter")} title={tagFilter.length ? t("page.tagsSelected", { count: tagFilter.length }) : t("page.tagFilter")} aria-pressed={tagFilter.length > 0} disabled={!allTags.length} className={cn("relative h-9 w-9", tagFilter.length > 0 && "text-primary")}>
           <Tag />
           {tagFilter.length > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-xs leading-none text-primary-foreground tabular-nums">{tagFilter.length}</span>}
         </IconAction>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-semibold">Фильтр по тегам</span>
-          {tagFilter.length > 0 && <button type="button" onClick={() => setTagFilter([])} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Сбросить</button>}
+          <span className="text-sm font-semibold">{t("page.tagFilter")}</span>
+          {tagFilter.length > 0 && <button type="button" onClick={() => setTagFilter([])} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">{commonI18n.t("actions.reset")}</button>}
         </div>
-        <p className="mb-2 text-xs text-muted-foreground">Показываются сетапы со всеми выбранными тегами.</p>
+        <p className="mb-2 text-xs text-muted-foreground">{t("page.tagFilterHint")}</p>
         <div className="flex max-h-[min(55dvh,420px)] flex-wrap gap-1.5 overflow-y-auto">
           {allTags.map(([t, n]) => (
             <button
@@ -820,17 +909,17 @@ export default function Playbook() {
   const filterRow = (
     <div className="grid min-w-0 grid-cols-2 items-center gap-1.5">
       <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-        <SelectTrigger className="h-9 min-w-0" aria-label="Вид списка" title="Вид списка"><SelectValue>{SORT_OPTIONS.find((o) => o.value === sort)?.short}</SelectValue></SelectTrigger>
+        <SelectTrigger className="h-9 min-w-0" aria-label={t("page.listView")} title={`${t("page.listView")}: ${SORT_OPTIONS.find((o) => o.value === sort)?.label ?? ""}`}><SelectValue>{SORT_OPTIONS.find((o) => o.value === sort)?.short}</SelectValue></SelectTrigger>
         <SelectContent>
           {SORT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>
       </Select>
       <Select value={quick} onValueChange={(v) => setQuick(v as QuickFilter)}>
-        <SelectTrigger className={cn("h-9 min-w-0", quick !== "all" && "border-primary/60")} aria-label="Фильтр" title="Фильтр"><SelectValue>{FILTERS.find((f) => f.value === quick)?.short}</SelectValue></SelectTrigger>
+        <SelectTrigger className={cn("h-9 min-w-0", quick !== "all" && "border-primary/60")} aria-label={t("page.filterAria")} title={`${t("page.filterAria")}: ${FILTERS.find((f) => f.value === quick)?.label ?? ""}`}><SelectValue>{FILTERS.find((f) => f.value === quick)?.short}</SelectValue></SelectTrigger>
         <SelectContent>
-          {FILTERS.map((f) => (
+          {FILTERS.filter((f) => f.value !== "unreviewed" || activeSpace === "office" || quick === "unreviewed").map((f) => (
             <SelectItem key={f.value} value={f.value}>
-              {f.value === "all" ? f.label : `${f.label} · ${quickCounts[f.value]}`}
+              {f.value === "all" ? f.label : t("page.filterCount", { label: f.label, count: quickCounts[f.value] })}
             </SelectItem>
           ))}
         </SelectContent>
@@ -842,7 +931,7 @@ export default function Playbook() {
       <div className="min-w-0 flex-1">{searchBox}</div>
       {tagPopover}
       {withCollapse && !flat && (
-        <IconAction aria-label={allOpen ? "Свернуть все папки" : "Развернуть все папки"} title={allOpen ? "Свернуть все папки" : "Развернуть все папки"} onClick={toggleAll} className="h-9 w-9">
+        <IconAction aria-label={allOpen ? t("page.collapseAll") : t("page.expandAll")} title={allOpen ? t("page.collapseAll") : t("page.expandAll")} onClick={toggleAll} className="h-9 w-9">
           {allOpen ? <ChevronsDownUp /> : <ChevronsUpDown />}
         </IconAction>
       )}
@@ -859,12 +948,12 @@ export default function Playbook() {
           if (e.key === "Escape") { e.stopPropagation(); setQuery(""); (e.target as HTMLInputElement).blur(); }
           if (e.key === "Enter" && flat?.[0]) { setView("library"); openSetup(flat[0].id); }
         }}
-        placeholder="Поиск по сетапам"
-        aria-label="Поиск по сетапам"
+        placeholder={t("page.searchPlaceholder")}
+        aria-label={t("page.searchPlaceholder")}
         className="h-9 pl-9 pr-9"
       />
       {query && (
-        <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
+        <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       )}
@@ -874,20 +963,20 @@ export default function Playbook() {
   const activeFilterNote = filtering && (
     <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
       {tagFilter.map((t) => (
-        <button key={t} type="button" onClick={() => setTagFilter((p) => p.filter((x) => x !== t))} className="chip min-h-6 px-2 text-xs" aria-label={`Убрать тег ${t}`}>
+        <button key={t} type="button" onClick={() => setTagFilter((p) => p.filter((x) => x !== t))} className="chip min-h-6 px-2 text-xs" aria-label={playbookI18n.t("page.removeTag", { tag: t })}>
           #{t} <X className="h-3 w-3" aria-hidden="true" />
         </button>
       ))}
       <button type="button" onClick={() => { setQuery(""); setQuick("all"); setTagFilter([]); }} className="underline underline-offset-2 hover:text-foreground">
-        Сбросить фильтры
+        {commonI18n.t("actions.resetFilters")}
       </button>
     </div>
   );
 
   const proposedBlock = activeSpace === "office" && proposed.length > 0 && (
-    <section aria-label="Предложено в Офис" className="rounded-xl border border-primary/30 bg-primary/5 p-2">
+    <section aria-label={t("page.proposed")} className="rounded-xl border border-primary/30 bg-primary/5 p-2">
       <h3 className="flex items-center gap-1.5 px-1 pb-1 text-xs font-semibold text-foreground">
-        <Send className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Предложено в Офис <span className="tabular-nums text-muted-foreground">{proposed.length}</span>
+        <Send className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> {t("page.proposed")} <span className="tabular-nums text-muted-foreground">{proposed.length}</span>
       </h3>
       <ul className="space-y-0.5">
         {proposed.slice(0, 6).map((e) => (
@@ -899,7 +988,7 @@ export default function Playbook() {
               title={e.officeProposedNote ?? undefined}
             >
               <span className="min-w-0 flex-1 truncate">{e.name}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{e.officeProposedBy ?? e.trader}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{personName(e.officeProposedBy ?? e.trader)}</span>
             </button>
           </li>
         ))}
@@ -912,25 +1001,25 @@ export default function Playbook() {
       {activeSpace === "office" ? (
         <EmptyState
           icon={Building2}
-          title="В плейбуке офиса пока нет сетапов"
-          description={viewer.isCurator ? "Опишите сетапы, которые торгует офис: контекст, триггер, вход, стоп, цели и эталонные сделки." : "Кураторы ещё не добавили сетапы. Пока можно вести свои в «Мой»."}
-          action={viewer.isCurator ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> Первый сетап офиса</Button> : undefined}
+          title={t("page.empty.officeTitle")}
+          description={viewer.isCurator ? t("page.empty.officeCurator") : t("page.empty.officeTrader")}
+          action={viewer.isCurator ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.officeAction")}</Button> : undefined}
         />
       ) : activeSpace === "mine" ? (
         <EmptyState
           icon={User}
-          title="Ваш личный плейбук пуст"
-          description="Заведите свой сетап или скопируйте сетап из «Офис» / «Общие» кнопкой «В „Мой“» — и добавляйте к нему свои эталонные сделки."
-          action={canCreate ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> Новый личный сетап</Button> : undefined}
+          title={t("page.empty.mineTitle")}
+          description={t("page.empty.mineDesc")}
+          action={canCreate ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.mineAction")}</Button> : undefined}
         />
       ) : activeSpace === "shared" ? (
         <EmptyState
           icon={Share2}
-          title="С вами пока не поделились сетапами"
-          description="Когда сеньор откроет доступ к своему сетапу — всему офису, вам или вашему потоку — он появится здесь с указанием автора."
+          title={t("page.empty.sharedTitle")}
+          description={t("page.empty.sharedDesc")}
         />
       ) : (
-        <EmptyState icon={Users} title="Личных сетапов трейдеров нет" />
+        <EmptyState icon={Users} title={t("page.empty.teamTitle")} />
       )}
     </div>
   );
@@ -950,9 +1039,9 @@ export default function Playbook() {
       <div className="glass-panel rounded-2xl">
         <EmptyState
           icon={BookOpen}
-          title="Не удалось загрузить плейбук"
+          title={t("page.loadFailed")}
           description={(error as Error)?.message}
-          action={<Button variant="outline" onClick={() => refetch()}>Повторить</Button>}
+          action={<Button variant="outline" onClick={() => refetch()}>{commonI18n.t("actions.retry")}</Button>}
         />
       </div>
     );
@@ -962,7 +1051,7 @@ export default function Playbook() {
     const list = flat ?? sortEntries(topLevel.filter(passes), "name", summary);
     const sections: { title: string | null; items: PlaybookEntry[] }[] = flat
       ? [{ title: null, items: list }]
-      : [...allFolders, null].map((f) => ({ title: f ?? "Без папки", items: list.filter((e) => (e.folder ?? null) === f) })).filter((s) => s.items.length);
+      : [...allFolders, null].map((f) => ({ title: f ?? commonI18n.t("fields.noFolder"), items: list.filter((e) => (e.folder ?? null) === f) })).filter((s) => s.items.length);
     body = (
       <div className="flex flex-col gap-[var(--grid-gap)]">
         {topLevel.length > 0 && (
@@ -973,10 +1062,10 @@ export default function Playbook() {
         )}
         {activeFilterNote}
         {topLevel.length === 0 ? spaceEmpty : list.length === 0 ? (
-          <div className="glass-panel rounded-2xl"><EmptyState icon={Search} title="Ничего не найдено" description="Измените фильтры или поиск." /></div>
+          <div className="glass-panel rounded-2xl"><EmptyState icon={Search} title={commonI18n.t("states.nothingFound")} description={t("page.changeFilters")} /></div>
         ) : (
           sections.map((sec) => (
-            <section key={sec.title ?? "all"} aria-label={sec.title ?? "Сетапы"}>
+            <section key={sec.title ?? "all"} aria-label={sec.title ?? commonI18n.t("trading.setups")}>
               {sec.title && <h2 className="mb-2 px-1 text-sm font-semibold text-foreground">{sec.title} <span className="font-normal text-muted-foreground">{sec.items.length}</span></h2>}
               <div className="grid grid-cols-2 gap-[var(--grid-gap)] xl:grid-cols-3 2xl:grid-cols-4">
                 {sec.items.map((e) => (
@@ -989,10 +1078,12 @@ export default function Playbook() {
       </div>
     );
   } else {
+    // An empty space with nothing proposed: no sidebar — the empty state takes the full width.
+    const showAside = topLevel.length > 0 || !!proposedBlock || !!selected;
     body = (
-      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside
-          aria-label="Сетапы"
+      <div className={cn("grid grid-cols-1 items-start gap-[var(--grid-gap)]", showAside && "lg:grid-cols-[320px_minmax(0,1fr)]")}>
+        {showAside && <aside
+          aria-label={commonI18n.t("trading.setups")}
           className={cn("glass-panel flex min-w-0 flex-col gap-3 rounded-2xl p-3 lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:max-h-[calc(100dvh-7rem)]", selected ? "hidden lg:flex" : "max-h-[60dvh]")}
           onDragOver={onTreeDragOver}
           onDragLeave={onTreeDragLeave}
@@ -1009,22 +1100,26 @@ export default function Playbook() {
                   groups={groups}
                   flat={flat}
                   selectedId={selectedId}
-                  onSelect={(id) => openSetup(id, { tab: setupTab })}
+                  onSelect={selectInTree}
                   openFolders={filtering ? new Set(groups.map((g) => g.folder ?? UNFILED)) : openFolders}
                   onToggleFolder={toggleFolder}
                   summary={summary}
                   folderColors={folderColors}
                   childrenOf={childrenOf}
-                  query={query}
+                  query={deferredQuery}
                   canEdit={canManageFolders}
                   folderOrder={allFolders}
                   showOwner={showOwner}
                   dropTargetId={dropTarget}
+                  canDragSetup={canManageFolders ? canDragSetup : undefined}
                   actions={{
                     onNewIn: (f) => newSetup(f),
                     onRename: setRenameFolder,
-                    onColor: setFolderColor,
-                    onMove: moveFolder,
+                    onColor: canFolderSettings ? setFolderColor : undefined,
+                    onMove: canFolderSettings ? moveFolder : undefined,
+                    onReorder: canFolderSettings ? reorderFolder : undefined,
+                    onMoveSetup: moveSetupToFolder,
+                    onCopyLink: copyFolderLink,
                     onDelete: activeSpace === "office" ? setDeleteFolder : undefined,
                   }}
                 />
@@ -1033,10 +1128,10 @@ export default function Playbook() {
           ) : (
             <>
               {proposedBlock}
-              <p className="px-1 py-2 text-sm text-muted-foreground">В этом пространстве пока нет сетапов.</p>
+              <p className="px-1 py-2 text-sm text-muted-foreground">{t("page.empty.inSpace")}</p>
             </>
           )}
-        </aside>
+        </aside>}
 
         <div className="min-w-0">
           {selected ? (
@@ -1067,12 +1162,23 @@ export default function Playbook() {
               onAddExamples={setPickerFor}
               onShare={setShareFor}
             />
+          ) : selectedId && isFetching ? (
+            // Just created / opened from a link before the list refetched: wait instead of flashing «не найден».
+            <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true">
+              <Skeleton className="h-44 rounded-2xl" />
+              <Skeleton className="h-9 w-2/3 rounded-xl" />
+              <Skeleton className="h-72 rounded-2xl" />
+            </div>
           ) : selectedId ? (
             <div className="glass-panel rounded-2xl">
-              <EmptyState icon={BookOpen} title="Сетап не найден" description="Возможно, он удалён, доступ к нему закрыт или ссылка устарела." action={<Button variant="outline" onClick={() => openSetup(null)}>К обзору</Button>} />
+              <EmptyState icon={BookOpen} title={t("page.notFoundTitle")} description={t("page.notFoundDesc")} action={<Button variant="outline" onClick={() => openSetup(null)}>{t("page.toOverview")}</Button>} />
             </div>
           ) : topLevel.length === 0 ? (
-            spaceEmpty
+            // An empty «Мой» is where a trader starts: the inbox of own trades is the quickest way in.
+            <div className="flex flex-col gap-[var(--grid-gap)]">
+              {spaceEmpty}
+              {activeSpace === "mine" && <PlaybookInbox onNewSetup={newSetupFromTrade} />}
+            </div>
           ) : (
             <Overview
               entries={topLevel}
@@ -1081,9 +1187,10 @@ export default function Playbook() {
               onOpen={(id) => openSetup(id)}
               onQuickFilter={(f) => { setQuick(f); if (sort === "folder" && f !== "all") setSort("name"); }}
               showHealth={activeSpace === "office" && viewer.isCurator}
+              showReview={activeSpace === "office"}
               before={
                 <>
-                  <PlaybookInbox />
+                  <PlaybookInbox onNewSetup={newSetupFromTrade} />
                   <Tier1Strip
                     scope={activeSpace}
                     entries={entries}
@@ -1112,6 +1219,9 @@ export default function Playbook() {
         mode={formMode}
         onClose={() => setFormMode(null)}
         folders={everyFolder}
+        entries={entries}
+        live={live}
+        onOpenExisting={(id) => openFromElsewhere(id)}
         onSaved={(id) => { if (id && formMode?.kind !== "edit") openSetup(id); }}
       />
       <DeleteSetupDialog name={deleting?.name ?? null} open={!!deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} pending={deletePending} />
@@ -1147,12 +1257,12 @@ export default function Playbook() {
         onPick={(id) => openFromElsewhere(id)}
         actions={[
           ...(canCreate ? [{ id: "new", label: newLabel, icon: Plus, hint: "N", run: () => newSetup(selected?.folder ?? null) }] : []),
-          { id: "gallery", label: "Галерея эталонов", icon: Trophy, run: () => setView("gallery") },
-          { id: "compare", label: "Сравнить сетапы", icon: Columns2, hint: "C", run: () => setCompareFor(selected ?? topLevel[0] ?? entries[0] ?? null) },
-          ...visibleSpaces.map((s) => ({ id: `space-${s.value}`, label: `Пространство: ${s.label}`, icon: s.icon, run: () => { setView("library"); setSpace(s.value); openSetup(null); } })),
-          { id: "grid", label: view === "grid" ? "Вид: библиотека" : "Вид: сетка", icon: view === "grid" ? Library : LayoutGrid, run: () => setView(view === "grid" ? "library" : "grid") },
-          { id: "activity", label: "Журнал изменений", icon: Activity, run: () => setActivityOpen(true) },
-          { id: "export", label: "Экспорт в .md", icon: Download, run: exportMd },
+          { id: "gallery", label: t("page.action.gallery"), icon: Trophy, run: () => setView("gallery") },
+          { id: "compare", label: t("page.compare"), icon: Columns2, hint: "C", run: () => setCompareFor(selected ?? topLevel[0] ?? entries[0] ?? null) },
+          ...visibleSpaces.map((s) => ({ id: `space-${s.value}`, label: t("page.action.space", { name: s.label }), icon: s.icon, run: () => { setView("library"); setSpace(s.value); openSetup(null); } })),
+          { id: "grid", label: view === "grid" ? t("page.action.viewLibrary") : t("page.action.viewGrid"), icon: view === "grid" ? Library : LayoutGrid, run: () => setView(view === "grid" ? "library" : "grid") },
+          { id: "activity", label: t("page.activity"), icon: Activity, run: () => setActivityOpen(true) },
+          { id: "export", label: t("page.action.exportMd"), icon: Download, run: exportMd },
         ]}
       />
       <ActivitySheet open={activityOpen} onOpenChange={setActivityOpen} />

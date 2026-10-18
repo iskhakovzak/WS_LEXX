@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, StatCard, StatGrid, Toolbar, toneOf, toneText, type SegmentOption } from "@/components/ds";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import { KPI_FORMULAS, closeDate } from "@/lib/trade-math";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,11 @@ import {
 import { LeaderboardList, Podium, ScoreRing, fmtMetric } from "@/components/team/leaderboard-view";
 import { BestTradeCard, TradeDetailSheet } from "@/components/team/trade-cards";
 import { TraderAvatar } from "@/components/team/trader-avatar";
-import { downloadCsv, fmtMoney, fmtPct, fmtR, isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
+import { downloadCsv, isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { ratingsI18n } from "@/i18n/ns/ratings";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const VIEW_KEY = "ws_top_results_view_v2";
 type SavedView = { period: Period; metric: Metric; minTrades: number };
@@ -40,18 +44,12 @@ type Side = "all" | "plus" | "minus";
 
 const PERIODS: Period[] = ["week", "month", "quarter", "all"];
 const METRICS: Metric[] = ["score", "net", "r", "expectancy", "pf", "consistency", "drawdown", "winrate"];
-const PERIOD_OPTIONS: SegmentOption<Period>[] = [
-  { value: "week", label: "Неделя" },
-  { value: "month", label: "Месяц" },
-  { value: "quarter", label: "Квартал" },
-  { value: "all", label: "Всё время" },
-];
-const PREV_LABEL: Record<Period, string> = { week: "к пред. неделе", month: "к пред. месяцу", quarter: "к пред. кварталу", all: "" };
+/** Period options and «vs previous» labels are built at render time (current UI language). */
+const periodOptions = (): SegmentOption<Period>[] => PERIODS.map((value) => ({ value, label: ratingsI18n.t(`top.periods.${value}`) }));
+const prevLabel = (p: Period): string => (p === "all" ? "" : ratingsI18n.t(`top.prev.${p}`));
 
 async function fetchDesk(params: URLSearchParams): Promise<DeskLeaderboard> {
-  const res = await fetch(apiUrl(`/api/leaderboard?${params.toString()}`));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as DeskLeaderboard;
+  return http.get<DeskLeaderboard>(`/api/leaderboard?${params.toString()}`);
 }
 
 function deltaNode(cur: number | null, prev: number | null, fmt: (n: number) => string) {
@@ -63,6 +61,8 @@ function deltaNode(cur: number | null, prev: number | null, fmt: (n: number) => 
 
 export default function TopResultsPage() {
   const { isCurator, user } = useAuth();
+  const { t } = ratingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const saved = useMemo(() => lsGet<Partial<SavedView>>(VIEW_KEY, {}), []);
   const [period, setPeriod] = useState<Period>(PERIODS.includes(saved.period as Period) ? (saved.period as Period) : "week");
   const [metric, setMetric] = useState<Metric>(METRICS.includes(saved.metric as Metric) ? (saved.metric as Metric) : "score");
@@ -164,11 +164,11 @@ export default function TopResultsPage() {
   const exportCsv = () => {
     if (!desk) return;
     downloadCsv(`top-results_${desk.period.from}_${desk.period.to}.csv`, [
-      ["Место", "Трейдер", "В зачёте", "Desk score", "Закрытых сделок", "Прибыльных", "Убыточных", "Win rate", "P&L нетто", "P&L брутто", "Комиссии", "Сумма R", "Ожидание R", "Profit factor", "Зелёных дней", "Торговых дней", "Макс. просадка нетто", "Макс. просадка R", "Нарушений", "Оценка наставника", "Δ score"],
+      [t("top.csv.place"), t("top.csv.trader"), t("top.csv.qualified"), "Desk score", t("top.csv.closed"), t("top.csv.wins"), t("top.csv.losses"), "Win rate", t("top.csv.net"), t("top.csv.gross"), t("top.csv.fees"), t("top.csv.totalR"), t("top.csv.expR"), "Profit factor", t("top.csv.greenDays"), t("top.csv.tradingDays"), t("top.csv.maxDdNet"), t("top.csv.maxDdR"), t("top.csv.violations"), t("top.csv.mentorRating"), "Δ score"],
       ...rows.map((r) => [
         r.rank ?? "",
-        r.trader,
-        r.qualified ? "да" : "нет",
+        personName(r.trader),
+        r.qualified ? tc("yes") : tc("no"),
         r.score != null ? r.score.toFixed(1) : "",
         r.closed,
         r.wins,
@@ -194,13 +194,13 @@ export default function TopResultsPage() {
   if (!isCurator) {
     return (
       <Page>
-        <PageHeader title="Лучшие результаты" icon={Trophy} />
+        <PageHeader title={t("top.title")} icon={Trophy} />
         <Panel>
           <EmptyState
             icon={Lock}
-            title="Раздел доступен наставникам"
-            description="Рейтинг команды и разбор сделок видят только наставники и администраторы."
-            action={user?.traderName ? <Link href={links.risk(user.traderName)} className="text-sm font-medium text-primary hover:underline">Мой риск-деск</Link> : undefined}
+            title={t("top.lockedTitle")}
+            description={t("top.lockedDescription")}
+            action={user?.traderName ? <Link href={links.risk(user.traderName)} className="text-sm font-medium text-primary hover:underline">{t("top.myRiskDesk")}</Link> : undefined}
           />
         </Panel>
       </Page>
@@ -214,14 +214,14 @@ export default function TopResultsPage() {
   return (
     <Page>
       <PageHeader
-        title="Лучшие результаты"
+        title={t("top.title")}
         icon={Trophy}
-        description="Рейтинг деска по стабильности: ожидание, profit factor, P&L нетто к лимиту, зелёные дни, просадка и дисциплина — одни формулы с дашбордом и журналом"
+        description={t("top.description")}
         actions={
           <>
-            <label className="sr-only" htmlFor="tr-metric">Метрика рейтинга</label>
+            <label className="sr-only" htmlFor="tr-metric">{t("top.metricAria")}</label>
             <Select value={metric} onValueChange={(v) => setMetric(v as Metric)}>
-              <SelectTrigger id="tr-metric" className="h-9 w-[170px] text-sm" aria-label="Метрика рейтинга">
+              <SelectTrigger id="tr-metric" className="h-9 w-[170px] text-sm" aria-label={t("top.metricAria")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -238,28 +238,28 @@ export default function TopResultsPage() {
       />
 
       <Toolbar className="gap-y-3">
-        <Segmented<Period> ariaLabel="Период" options={PERIOD_OPTIONS} value={period} onChange={setPeriod} size="sm" />
+        <Segmented<Period> ariaLabel={t("top.periodAria")} options={periodOptions()} value={period} onChange={setPeriod} size="sm" />
         {period !== "all" && (
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Предыдущий период (←)" onClick={() => shift(-1)}>
+            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("top.prevPeriod")} onClick={() => shift(-1)}>
               <ChevronLeft />
             </Button>
             <span className="min-w-0 px-1 text-sm font-medium tabular-nums" aria-live="polite">
               {range.label}
             </span>
-            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Следующий период (→)" onClick={() => shift(1)} disabled={!canGoNext}>
+            <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("top.nextPeriod")} onClick={() => shift(1)} disabled={!canGoNext}>
               <ChevronRight />
             </Button>
           </div>
         )}
         {period !== "all" && (
           <>
-            <label className="sr-only" htmlFor="tr-date">Дата</label>
+            <label className="sr-only" htmlFor="tr-date">{t("top.date")}</label>
             <Input id="tr-date" type="date" value={anchor} max={todayNy()} onChange={(e) => e.target.value && setAnchor(e.target.value)} className="h-9 w-[150px] text-sm" />
           </>
         )}
         <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-          <span>Мин. сделок в зачёт</span>
+          <span>{t("top.minTrades")}</span>
           <Input
             type="number"
             min={1}
@@ -270,7 +270,7 @@ export default function TopResultsPage() {
               if (Number.isFinite(n) && n >= 1) setMinTrades(Math.min(100, Math.round(n)));
             }}
             className="h-9 w-[72px] text-sm tabular-nums"
-            aria-label="Минимум закрытых сделок для участия в рейтинге"
+            aria-label={t("top.minTradesAria")}
           />
         </label>
       </Toolbar>
@@ -283,44 +283,46 @@ export default function TopResultsPage() {
         <Panel>
           <EmptyState
             icon={Trophy}
-            title="За этот период закрытых сделок нет"
-            description="Рейтинг строится по закрытым сделкам (дата закрытия по Нью-Йорку). Выберите другой период."
-            action={period !== "all" ? <Button onClick={() => setPeriod("all")}>Показать за всё время</Button> : undefined}
+            title={t("top.emptyTitle")}
+            description={t("top.emptyDescription")}
+            action={period !== "all" ? <Button onClick={() => setPeriod("all")}>{t("top.showAll")}</Button> : undefined}
           />
         </Panel>
       ) : (
         <>
           <StatGrid className="xl:grid-cols-5">
             <StatCard
-              label={<span title={KPI_FORMULAS.netPnl}>P&L деска · нетто</span>}
-              value={kpi.net != null ? fmtMoney(kpi.net) : fmtR(kpi.totalR)}
+              label={<span title={KPI_FORMULAS.netPnl}>{t("top.deskPnl")}</span>}
+              value={kpi.net != null ? fmtUsd(kpi.net, { signed: true }) : fmtR(kpi.totalR)}
               tone={toneOf(kpi.net ?? kpi.totalR)}
-              delta={prevKpi ? deltaNode(kpi.net, prevKpi.net, fmtMoney) : undefined}
+              delta={prevKpi ? deltaNode(kpi.net, prevKpi.net, (n) => fmtUsd(n, { signed: true })) : undefined}
               deltaTone={prevKpi ? toneOf((kpi.net ?? 0) - (prevKpi.net ?? 0)) : undefined}
-              hint={kpi.net != null ? `${kpi.totalR != null ? `${fmtR(kpi.totalR)} суммарно` : "R неизвестен (нет стопов)"}${prevKpi && PREV_LABEL[period] ? ` · ${PREV_LABEL[period]}` : ""}` : "P&L не заполнен — показана сумма R"}
+              hint={kpi.net != null
+                ? `${kpi.totalR != null ? t("top.totalRSum", { r: fmtR(kpi.totalR) }) : t("top.rUnknown")}${prevKpi && prevLabel(period) ? ` · ${prevLabel(period)}` : ""}`
+                : t("top.pnlMissing")}
             />
             <StatCard
-              label={<span title={KPI_FORMULAS.expectancyR}>Ожидание на сделку</span>}
+              label={<span title={KPI_FORMULAS.expectancyR}>{t("top.expectancy")}</span>}
               value={fmtR(kpi.expectancyR)}
               tone={toneOf(kpi.expectancyR)}
-              hint={`по ${kpi.closed} закрытым`}
+              hint={t("top.overClosed", { count: kpi.closed })}
             />
             <StatCard
-              label={<span title={KPI_FORMULAS.winRate}>Win rate деска</span>}
-              value={fmtPct(kpi.winRate)}
+              label={<span title={KPI_FORMULAS.winRate}>{t("top.deskWinRate")}</span>}
+              value={fmtRate(kpi.winRate)}
               hint={`${kpi.wins} W / ${kpi.losses} L`}
             />
             <StatCard
-              label="Закрытых сделок"
+              label={t("top.closed")}
               value={kpi.closed}
               delta={prevKpi ? deltaNode(kpi.closed, prevKpi.closed, (d) => `${d > 0 ? "+" : "−"}${Math.abs(d)}`) : undefined}
               deltaTone="neutral"
-              hint={prevKpi && PREV_LABEL[period] ? PREV_LABEL[period] : undefined}
+              hint={prevKpi && prevLabel(period) ? prevLabel(period) : undefined}
             />
             <StatCard
-              label="Трейдеров в зачёте"
-              value={`${kpi.qualified} из ${kpi.traders}`}
-              hint={`${kpi.plus} в плюсе · ${kpi.minus} в минусе${unqualified ? ` · ${unqualified} вне зачёта (< ${minTrades} сд.)` : ""}`}
+              label={t("top.qualified")}
+              value={t("top.qualifiedValue", { qualified: kpi.qualified, total: kpi.traders })}
+              hint={`${t("top.qualifiedHint", { plus: kpi.plus, minus: kpi.minus })}${unqualified ? ` · ${t("top.unqualifiedHint", { count: unqualified, min: minTrades })}` : ""}`}
               className="col-span-2 md:col-span-1"
             />
           </StatGrid>
@@ -330,25 +332,25 @@ export default function TopResultsPage() {
           ) : (
             <div className="glass-panel flex flex-wrap items-center gap-3 rounded-2xl px-4 py-3 text-sm">
               <TriangleAlert className="h-4 w-4 text-[hsl(var(--chart-3))]" aria-hidden="true" />
-              <span className="flex-1 text-muted-foreground">Никто не набрал {minTrades} закрытых сделок за период — пьедестал пуст, список ниже без мест.</span>
-              <Button variant="outline" size="sm" onClick={() => setMinTrades(1)}>Снизить порог до 1</Button>
+              <span className="flex-1 text-muted-foreground">{t("top.noneQualified", { count: minTrades })}</span>
+              <Button variant="outline" size="sm" onClick={() => setMinTrades(1)}>{t("top.lowerThreshold")}</Button>
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:gap-5">
             <Panel
-              title="Рейтинг деска"
-              description={`По ${METRIC_LABEL[metric].toLowerCase()} · нажмите на трейдера — компоненты score и переходы`}
+              title={t("top.deskRating")}
+              description={t("top.deskRatingDescription", { metric: METRIC_LABEL[metric] })}
               actions={
                 <Segmented<Side>
-                  ariaLabel="Фильтр рейтинга"
+                  ariaLabel={t("top.filterAria")}
                   size="sm"
                   value={side}
                   onChange={setSide}
                   options={[
-                    { value: "all", label: "Все", count: rows.length },
-                    { value: "plus", label: "В плюсе", count: kpi.plus },
-                    { value: "minus", label: "В минусе", count: kpi.minus },
+                    { value: "all", label: tc("states.all"), count: rows.length },
+                    { value: "plus", label: t("top.plus"), count: kpi.plus },
+                    { value: "minus", label: t("top.minus"), count: kpi.minus },
                   ]}
                 />
               }
@@ -357,13 +359,13 @@ export default function TopResultsPage() {
               {listRows.length && desk ? (
                 <LeaderboardList rows={listRows} metric={metric} weights={desk.weights} expanded={expanded} onToggle={toggle} from={desk.period.from} to={desk.period.to} />
               ) : (
-                <EmptyState title={side === "plus" ? "Никто не в плюсе" : "Никто не в минусе"} description="Считается P&L нетто по закрытым сделкам." className="py-8" />
+                <EmptyState title={side === "plus" ? t("top.nobodyPlus") : t("top.nobodyMinus")} description={t("top.netNote")} className="py-8" />
               )}
             </Panel>
 
             <div className="flex min-w-0 flex-col gap-4 lg:gap-5">
               {mostImproved && mostImproved.deltaScore != null && mostImproved.deltaScore > 0 && (
-                <Panel title="Самый прогресс" icon={TrendingUp} description={PREV_LABEL[period] || "к прошлому периоду"}>
+                <Panel title={t("top.mostImproved")} icon={TrendingUp} description={prevLabel(period) || t("top.toPrev")}>
                   <button
                     type="button"
                     onClick={() => selectTrader(mostImproved.trader)}
@@ -371,23 +373,23 @@ export default function TopResultsPage() {
                   >
                     <TraderAvatar name={mostImproved.trader} size="md" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">{mostImproved.trader}</span>
+                      <span className="block truncate text-sm font-semibold" title={personName(mostImproved.trader)}>{personName(mostImproved.trader)}</span>
                       <span className="block text-xs text-muted-foreground tabular-nums">
                         score {mostImproved.prevScore != null ? Math.round(mostImproved.prevScore) : "—"} → {mostImproved.score != null ? Math.round(mostImproved.score) : "—"} · {fmtMetric(mostImproved.net ?? mostImproved.totalR, mostImproved.net != null ? "net" : "r")}
                       </span>
                     </span>
-                    <Pill tone="up">+{mostImproved.deltaScore.toFixed(1)}</Pill>
+                    <Pill tone="up">{fmtNum(mostImproved.deltaScore, { decimals: 1, signed: true })}</Pill>
                     <ScoreRing score={mostImproved.score} size={40} />
                   </button>
                 </Panel>
               )}
-              <Panel title="Лучшие сетапы" icon={Target} description="Σ R по закрытым сделкам периода · P&L нетто">
+              <Panel title={t("top.bestSetups")} icon={Target} description={t("top.bestSetupsDescription")}>
                 <SetupBars setups={setups} />
               </Panel>
               <Panel
-                title="Требуют разбора"
+                title={t("top.toReview")}
                 icon={TriangleAlert}
-                description="Убыточные сделки периода — оставьте ревью в журнале"
+                description={t("top.toReviewDescription")}
                 actions={reviewTrades.length ? <Pill tone="down">{reviewTrades.length}</Pill> : undefined}
               >
                 {reviewTrades.length ? (
@@ -404,7 +406,7 @@ export default function TopResultsPage() {
                             <span className="block text-sm font-semibold">{t.ticker}</span>
                             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <TraderAvatar name={t.trader} size="xs" />
-                              <span className="truncate">{t.trader ?? "—"} · {closeDate(t) ?? t.date}</span>
+                              <span className="truncate" title={`${t.trader ? personName(t.trader) : "—"} · ${closeDate(t) ?? t.date}`}>{t.trader ? personName(t.trader) : "—"} · {closeDate(t) ?? t.date}</span>
                             </span>
                           </span>
                           <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(tradeValue(t, prefer))))}>
@@ -415,16 +417,16 @@ export default function TopResultsPage() {
                     ))}
                   </ul>
                 ) : (
-                  <EmptyState icon={Sparkles} title="Убыточных сделок нет" description="Чистый период — разбирать нечего." className="py-6" />
+                  <EmptyState icon={Sparkles} title={t("top.noLosers")} description={t("top.noLosersDescription")} className="py-6" />
                 )}
               </Panel>
             </div>
           </div>
 
           <Panel
-            title="Лучшие сделки"
+            title={t("top.bestTrades")}
             icon={Sparkles}
-            description={`По ${prefer === "net" ? "P&L нетто" : "R"} · нажмите на карточку — откроются детали и скриншоты`}
+            description={prefer === "net" ? t("top.bestTradesNet") : t("top.bestTradesR")}
             actions={bestTrades.length ? <Pill tone="up">{bestTrades.length}</Pill> : undefined}
           >
             {tradesQ.isLoading && !tradesQ.data ? (
@@ -438,12 +440,12 @@ export default function TopResultsPage() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="Прибыльных сделок пока нет" description="Лучшие сделки периода появятся здесь." className="py-8" />
+              <EmptyState title={t("top.noWinners")} description={t("top.noWinnersDescription")} className="py-8" />
             )}
           </Panel>
 
           <p className="hidden text-center text-xs text-muted-foreground sm:block">
-            <kbd className="chip px-1.5 py-0.5 text-2xs">←</kbd> <kbd className="chip px-1.5 py-0.5 text-2xs">→</kbd> — переключать период
+            <kbd className="chip px-1.5 py-0.5 text-2xs">←</kbd> <kbd className="chip px-1.5 py-0.5 text-2xs">→</kbd> {t("top.switchPeriod")}
           </p>
         </>
       )}
@@ -454,26 +456,27 @@ export default function TopResultsPage() {
 }
 
 function SetupBars({ setups }: { setups: ReturnType<typeof rollupSetups> }) {
-  if (!setups.length) return <p className="text-sm text-muted-foreground">Нет закрытых сделок с сетапом за период</p>;
+  const { t } = ratingsI18n.useT();
+  if (!setups.length) return <p className="text-sm text-muted-foreground">{t("top.noSetups")}</p>;
   const maxAbs = Math.max(1e-9, ...setups.map((s) => Math.abs(s.r)));
   return (
     <ul className="flex flex-col gap-3">
       {setups.map((s) => (
         <li key={s.setup} className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-2 text-sm">
-            <Link href={links.playbookSearch(s.setup)} className="min-w-0 truncate hover:underline" title={`${s.setup} — найти в плейбуке`}>
+            <Link href={links.playbookSearch(s.setup)} className="min-w-0 truncate hover:underline" title={t("top.findInPlaybook", { setup: s.setup })}>
               {s.setup}
             </Link>
             <span className={cn("shrink-0 font-semibold tabular-nums", toneText(toneOf(s.r)))}>
               {fmtR(s.r)}
-              {s.net != null && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{fmtMoney(s.net)} нетто</span>}
+              {s.net != null && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{t("top.netSuffix", { value: fmtUsd(s.net, { signed: true }) })}</span>}
             </span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
             <div className={cn("h-full rounded-full", s.r >= 0 ? "bg-up/70" : "bg-down/70")} style={{ width: `${Math.max(4, (Math.abs(s.r) / maxAbs) * 100)}%` }} />
           </div>
           <span className="text-xs text-muted-foreground tabular-nums" title={KPI_FORMULAS.winRate}>
-            {s.count} сд. · WR {fmtPct(s.winRate)}
+            {t("top.setupMeta", { count: s.count, wr: fmtRate(s.winRate) })}
           </span>
         </li>
       ))}
@@ -483,7 +486,7 @@ function SetupBars({ setups }: { setups: ReturnType<typeof rollupSetups> }) {
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка">
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label={ratingsI18n.t("top.loading")}>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)}
       </div>

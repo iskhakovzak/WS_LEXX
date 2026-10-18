@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { actorName, auditSentence, describeAudit, type AuditLike } from "./audit-text";
+import { afterAll, describe, expect, it } from "vitest";
+import { setLang } from "@/i18n";
+import { adminAuditI18n } from "@/i18n/ns/adminAudit";
+import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
+import { actorName, auditSentence, describeAudit, objectLabel, type AuditLike } from "./audit-text";
 
 const entry = (action: string, details: Record<string, unknown> | string | null = null, extra: Partial<AuditLike> = {}): AuditLike => ({
   actor: "Ориф",
@@ -40,7 +43,7 @@ describe("describeAudit", () => {
 
   it("uses tier names from config, then the built-in ladder", () => {
     const e = entry("scaling.assign", { toTier: "junior", fromTier: "trainee" }, { targetType: "trader", targetId: "Умид" });
-    expect(describeAudit(e, { junior: "Джуниор" }).text).toBe("назначил тир Джуниор трейдеру Умид");
+    expect(describeAudit(e, { junior: "Джун" }).text).toBe("назначил тир Джун трейдеру Умид");
     expect(describeAudit(e).detail).toBe("был: Стажёр");
   });
 
@@ -62,6 +65,8 @@ describe("describeAudit", () => {
     const r = describeAudit(entry("risk.limits.template", { tierKey: "junior", fromTier: "junior", resync: true, changes: [] }, { targetType: "trader_risk_limits", targetId: "Умид" }));
     expect(r.text).toBe("сверил лимиты Умид с шаблоном тира Джун");
     expect(r.detail).toBe("лимиты уже совпадали");
+    const k = describeAudit(entry("risk.limits.template", { tierKey: "trainee", changes: ["позиций нет → 2", "тир нет → trainee"] }, { targetType: "trader_risk_limits", targetId: "Умид" }));
+    expect(k.detail).toBe("позиций нет → 2, тир нет → Стажёр");
   });
 
   it("describes the soft queue archive and stage changes", () => {
@@ -82,5 +87,50 @@ describe("actors and sentences", () => {
 
   it("builds a full sentence for CSV", () => {
     expect(auditSentence(entry("user.sessions.reset", { name: "Умид", reason: "смена пароля" }))).toBe("Ориф сбросил сессии Умид (смена пароля)");
+  });
+});
+
+describe("describeAudit in EN / UZ", () => {
+  afterAll(async () => { await setLang("ru"); });
+
+  it("renders actions, counters and stored Russian limit diffs in the UI language; user content stays", async () => {
+    await setLang("en");
+    await adminAuditI18n.ready();
+    expect(describeAudit(entry("user.freeze", { name: "Умид", reason: "нарушение лимита", bulk: true })).text).toBe("froze account Умид (bulk)");
+    expect(describeAudit(entry("user.freeze", { name: "Умид", reason: "нарушение лимита" })).detail).toBe("нарушение лимита");
+    const sync = describeAudit(entry("propreports.sync", { source: "file", fileName: "fills.csv", inserted: 3, updated: 536, unchanged: 10 }, { targetType: null, targetId: null }));
+    expect(sync.text).toBe("synced PropReports from file fills.csv");
+    expect(sync.detail).toBe("added 3, updated 536, unchanged 10");
+    const lim = describeAudit(entry("risk.limits.template", { tierKey: "trainee", changes: ["дневной нет → $150", "тир нет → trainee", "тир Стажёр → Джун"] }, { targetType: "trader_risk_limits", targetId: "Умид" }));
+    expect(lim.text).toBe("applied the Intern tier limit template to Умид");
+    expect(lim.detail).toBe("daily none → $150, tier none → Intern, tier Intern → Junior");
+    expect(actorName("system")).toBe("System");
+    expect(auditSentence(entry("user.sessions.reset", { name: "Умид", reason: "смена пароля" }))).toBe("Ориф reset sessions for Умид (смена пароля)");
+    expect(objectLabel("report", "4")).toBe("Report #4");
+    // A tier still named by its seeded Russian default is translated; a renamed tier stays as written.
+    const tierEntry = entry("scaling.assign", { toTier: "junior" }, { targetType: "trader", targetId: "Умид" });
+    expect(describeAudit(tierEntry, { junior: "Джун" }).text).toBe("assigned tier Junior to trader Умид");
+    expect(describeAudit(tierEntry, { junior: "Джун+" }).text).toBe("assigned tier Джун+ to trader Умид");
+
+    await setLang("uz");
+    await adminAuditI18n.ready();
+    expect(describeAudit(entry("user.freeze", { name: "Umid" })).text).toBe("Umid akkauntini muzlatdi");
+    expect(describeAudit(entry("curator.queue.archive_old", { archived: 5, byKind: { eod: 5 } }, { targetType: "curator_queue_acks", targetId: null })).detail).toBe("kunlar 5");
+
+    // People's names show their Latin name in EN / UZ when one is set; the stored name stays in RU.
+    setLatinNames([["Умид", "Umid"], ["Ориф", "Orif"], ["Антон", "Anton"]]);
+    try {
+      expect(describeAudit(entry("user.freeze", { name: "Умид" })).text).toBe("Umid akkauntini muzlatdi");
+      await setLang("en");
+      await adminAuditI18n.ready();
+      expect(auditSentence(entry("user.curator.assign", { name: "Умид", to: "Антон", from: "Ориф" }))).toContain("Orif");
+      expect(describeAudit(entry("user.curator.assign", { name: "Умид", to: "Антон" })).text).toContain("Anton");
+      expect(actorName("Ориф")).toBe("Orif");
+      expect(objectLabel("trader_risk_limits", "Умид")).toContain("Umid");
+      await setLang("ru");
+      expect(actorName("Ориф")).toBe("Ориф");
+    } finally {
+      clearLatinNames();
+    }
   });
 });

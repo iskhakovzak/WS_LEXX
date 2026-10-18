@@ -13,13 +13,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api/http";
+
+const TIGHT = "xl:p-3";
 import {
-  HttpError, feeLabel, fmtSigned, fmtUsd, orderedFeeKeys, useDeletePerformance, usePerformance,
+  feeLabel, orderedFeeKeys, useDeletePerformance, usePerformance,
   type PerfRow, type PerformanceReport, type PerformanceReportRow,
 } from "./api";
+import { fmtDate, fmtNum, fmtPct, fmtUsd, fmtWeekday } from "@/lib/format";
+import { PersonSelect } from "@/components/people/person-select";
+import { propreportsI18n } from "@/i18n/ns/propreports";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
-const WEEKDAY_RU: Record<string, string> = { monday: "Пн", tuesday: "Вт", wednesday: "Ср", thursday: "Чт", friday: "Пт", saturday: "Сб", sunday: "Вс" };
-const TIME_RU: Record<string, string> = { "pre-market": "Премаркет", "post-market": "Постмаркет" };
+const WEEKDAY_IDX: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
 function toneOf(v: number | null | undefined): Tone {
   if (v == null || v === 0) return "neutral";
@@ -29,14 +36,13 @@ function toneOf(v: number | null | undefined): Tone {
 export function fmtHold(seconds: number | null | undefined, raw?: string | null): string {
   if (seconds == null) return raw ?? "—";
   const h = Math.floor(seconds / 3600), m = Math.floor((seconds % 3600) / 60), s = seconds % 60;
-  if (h > 0) return `${h} ч ${m} м`;
-  if (m > 0) return `${m} м ${s} с`;
-  return `${s} с`;
+  if (h > 0) return propreportsI18n.t("perf.hold.h", { h, m });
+  if (m > 0) return propreportsI18n.t("perf.hold.m", { m, s });
+  return propreportsI18n.t("perf.hold.s", { s });
 }
 
-function pct(v: number | null | undefined, digits = 1): string {
-  return v == null ? "—" : `${v.toFixed(digits)}%`;
-}
+/** Win rate already in percent (PropReports): "57.1%". */
+const pct = (v: number | null | undefined, digits = 1) => fmtPct(v, { decimals: digits, signed: false });
 
 function periodText(r: { periodFrom: string; periodTo: string }): string {
   return `${r.periodFrom} — ${r.periodTo}`;
@@ -45,6 +51,7 @@ function periodText(r: { periodFrom: string; periodTo: string }): string {
 /* ── bars ─────────────────────────────────────────────────────────────────── */
 
 function NetBars({ rows, labelOf, title }: { rows: PerfRow[]; labelOf: (label: string) => string; title: string }) {
+  const { t } = propreportsI18n.useT();
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.totals.net)));
   if (!rows.length) return null;
   return (
@@ -55,7 +62,7 @@ function NetBars({ rows, labelOf, title }: { rows: PerfRow[]; labelOf: (label: s
           const w = Math.max(2, Math.round((Math.abs(r.totals.net) / max) * 100));
           const up = r.totals.net >= 0;
           return (
-            <div key={r.label} role="listitem" className="grid grid-cols-[88px_1fr_auto] items-center gap-2 text-xs" title={`${labelOf(r.label)}: ${r.trades} сделок, win rate ${pct(r.totals.winRate)}, gross ${fmtUsd(r.totals.gross)}, комиссии ${fmtUsd(r.totals.fees)}`}>
+            <div key={r.label} role="listitem" className="grid grid-cols-[88px_1fr_auto] items-center gap-2 text-xs" title={t("perf.barTitle", { label: labelOf(r.label), trades: commonI18n.t("units.trades", { count: r.trades }), winRate: pct(r.totals.winRate), gross: fmtUsd(r.totals.gross), fees: fmtUsd(r.totals.fees) })}>
               <span className="truncate text-muted-foreground">{labelOf(r.label)}</span>
               <div className="relative h-4 rounded bg-[var(--glass-bg)]">
                 <div
@@ -65,8 +72,8 @@ function NetBars({ rows, labelOf, title }: { rows: PerfRow[]; labelOf: (label: s
                 />
                 <div className="absolute inset-y-0 left-1/2 w-px bg-border" aria-hidden="true" />
               </div>
-              <span className={cn("w-24 text-right font-medium tabular-nums", up ? "text-up" : "text-down")}>{fmtSigned(r.totals.net)}</span>
-              <span className="sr-only">{r.trades} сделок</span>
+              <span className={cn("w-24 text-right font-medium tabular-nums", up ? "text-up" : "text-down")}>{fmtUsd(r.totals.net, { signed: true })}</span>
+              <span className="sr-only">{commonI18n.t("units.trades", { count: r.trades })}</span>
             </div>
           );
         })}
@@ -78,20 +85,21 @@ function NetBars({ rows, labelOf, title }: { rows: PerfRow[]; labelOf: (label: s
 /* ── side comparison ──────────────────────────────────────────────────────── */
 
 function SideCard({ title, row }: { title: string; row: PerfRow | null }) {
+  const { t } = propreportsI18n.useT();
   if (!row) return null;
   return (
     <div className="rounded-xl border border-[var(--glass-border)] p-3">
       <div className="mb-1 flex items-center justify-between">
         <span className="text-sm font-semibold">{title}</span>
-        <Pill tone={toneOf(row.totals.net)}>{fmtSigned(row.totals.net)} net</Pill>
+        <Pill tone={toneOf(row.totals.net)}>{t("perf.netPill", { value: fmtUsd(row.totals.net, { signed: true }) })}</Pill>
       </div>
-      <StatRow label="Сделок" value={`${row.trades} (${row.wins.count} W / ${row.losses.count} L)`} />
+      <StatRow label={t("perf.trades")} value={t("perf.tradesWL", { count: row.trades, wins: row.wins.count, losses: row.losses.count })} />
       <StatRow label="Win rate" value={pct(row.totals.winRate)} tone={row.totals.winRate != null && row.totals.winRate >= 50 ? "up" : "neutral"} />
-      <StatRow label="Gross" value={fmtSigned(row.totals.gross)} tone={toneOf(row.totals.gross)} />
-      <StatRow label="Комиссии" value={fmtUsd(row.totals.fees)} />
-      <StatRow label="Средний win / loss" value={`${fmtUsd(row.wins.avgGross)} / ${fmtUsd(row.losses.avgGross)}`} />
-      <StatRow label="W/L ratio" value={row.totals.wlRatio?.toFixed(2) ?? "—"} />
-      <StatRow label="Среднее удержание" value={fmtHold(row.totals.avgHoldSeconds, row.totals.avgHold)} />
+      <StatRow label="Gross" value={fmtUsd(row.totals.gross, { signed: true })} tone={toneOf(row.totals.gross)} />
+      <StatRow label={t("perf.fees")} value={fmtUsd(row.totals.fees)} />
+      <StatRow label={t("perf.avgWinLoss")} value={`${fmtUsd(row.wins.avgGross)} / ${fmtUsd(row.losses.avgGross)}`} />
+      <StatRow label="W/L ratio" value={fmtNum(row.totals.wlRatio)} />
+      <StatRow label={t("perf.avgHold")} value={fmtHold(row.totals.avgHoldSeconds, row.totals.avgHold)} />
     </div>
   );
 }
@@ -111,6 +119,7 @@ const SYMBOL_ACCESSORS = {
 };
 
 function SymbolTable({ rows }: { rows: PerfRow[] }) {
+  const { t } = propreportsI18n.useT();
   const [mode, setMode] = React.useState<"all" | "best" | "worst">("all");
   const sorted = useTableSort(rows, SYMBOL_ACCESSORS, "net");
   const visible = React.useMemo(() => {
@@ -125,30 +134,30 @@ function SymbolTable({ rows }: { rows: PerfRow[] }) {
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-medium text-muted-foreground">По тикерам · {rows.length}</div>
+        <div className="text-xs font-medium text-muted-foreground">{t("perf.bySymbol", { count: rows.length })}</div>
         <Segmented
-          ariaLabel="Фильтр тикеров"
+          ariaLabel={t("perf.symbolFilterAria")}
           value={mode}
           onChange={(m) => {
             setMode(m);
             if (m !== "all") { sorted.setSortKey("net"); sorted.setSortDir(m === "best" ? "desc" : "asc"); }
           }}
-          options={[{ value: "all", label: "Все" }, { value: "best", label: "Лучшие 15" }, { value: "worst", label: "Худшие 15" }]}
+          options={[{ value: "all", label: t("perf.all") }, { value: "best", label: t("perf.best") }, { value: "worst", label: t("perf.worst") }]}
         />
       </div>
-      <DataTable maxHeight="70vh" stickyFirstCol ariaLabel="Статистика по тикерам">
+      <DataTable maxHeight="70vh" stickyFirstCol ariaLabel={t("perf.symbolTableAria")}>
         <table>
           <thead>
             <tr>
-              <SortableTh {...sorted.thProps("label")}>Тикер</SortableTh>
-              <SortableTh {...sorted.thProps("trades")} align="right">Сделок</SortableTh>
+              <SortableTh {...sorted.thProps("label")}>{t("perf.col.ticker")}</SortableTh>
+              <SortableTh {...sorted.thProps("trades")} align="right">{t("perf.col.trades")}</SortableTh>
               <SortableTh {...sorted.thProps("winRate")} align="right">Win rate</SortableTh>
               <SortableTh {...sorted.thProps("gross")} align="right">Gross</SortableTh>
-              <SortableTh {...sorted.thProps("fees")} align="right">Комиссии</SortableTh>
+              <SortableTh {...sorted.thProps("fees")} align="right">{t("perf.col.fees")}</SortableTh>
               <SortableTh {...sorted.thProps("net")} align="right">Net</SortableTh>
-              <SortableTh {...sorted.thProps("avgWin")} align="right">Ср. win</SortableTh>
-              <SortableTh {...sorted.thProps("avgLoss")} align="right">Ср. loss</SortableTh>
-              <SortableTh {...sorted.thProps("hold")} align="right">Удержание</SortableTh>
+              <SortableTh {...sorted.thProps("avgWin")} align="right">{t("perf.col.avgWin")}</SortableTh>
+              <SortableTh {...sorted.thProps("avgLoss")} align="right">{t("perf.col.avgLoss")}</SortableTh>
+              <SortableTh {...sorted.thProps("hold")} align="right">{t("perf.col.hold")}</SortableTh>
             </tr>
           </thead>
           <tbody>
@@ -157,9 +166,9 @@ function SymbolTable({ rows }: { rows: PerfRow[] }) {
                 <td className="font-medium">{r.label}</td>
                 <td className="text-right">{r.trades}</td>
                 <td className="text-right">{pct(r.totals.winRate, 0)}</td>
-                <td className={cn("text-right", r.totals.gross > 0 ? "text-up" : r.totals.gross < 0 ? "text-down" : "")}>{fmtSigned(r.totals.gross)}</td>
+                <td className={cn("text-right", r.totals.gross > 0 ? "text-up" : r.totals.gross < 0 ? "text-down" : "")}>{fmtUsd(r.totals.gross, { signed: true })}</td>
                 <td className="text-right text-muted-foreground">{fmtUsd(r.totals.fees)}</td>
-                <td className={cn("text-right font-medium", r.totals.net > 0 ? "text-up" : r.totals.net < 0 ? "text-down" : "")}>{fmtSigned(r.totals.net)}</td>
+                <td className={cn("text-right font-medium", r.totals.net > 0 ? "text-up" : r.totals.net < 0 ? "text-down" : "")}>{fmtUsd(r.totals.net, { signed: true })}</td>
                 <td className="text-right">{r.wins.count ? fmtUsd(r.wins.avgGross) : "—"}</td>
                 <td className="text-right">{r.losses.count ? fmtUsd(r.losses.avgGross) : "—"}</td>
                 <td className="text-right text-muted-foreground">{fmtHold(r.totals.avgHoldSeconds, r.totals.avgHold)}</td>
@@ -175,24 +184,31 @@ function SymbolTable({ rows }: { rows: PerfRow[] }) {
 /* ── report body (shared by the panel and the import preview) ─────────────── */
 
 export function PerformanceReportBody({ data, compact = false }: { data: PerformanceReport; compact?: boolean }) {
+  const { t } = propreportsI18n.useT();
   const s = data.summary;
-  const timeLabel = (l: string) => TIME_RU[l.toLowerCase()] ?? l;
-  const dayLabel = (l: string) => WEEKDAY_RU[l.toLowerCase()] ?? l;
+  const timeLabel = (l: string) => propreportsI18n.tryT(`perf.time.${l.toLowerCase()}`) ?? l;
+  const dayLabel = (l: string) => {
+    const i = WEEKDAY_IDX[l.toLowerCase()];
+    if (i == null) return l;
+    const w = fmtWeekday(i, "short");
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  };
   return (
     <div className="grid gap-4">
-      <StatGrid className="md:grid-cols-4 xl:grid-cols-7">
-        <StatCard label="Сделок" value={s.trades} hint={`${s.wins} W / ${s.losses} L`} />
-        <StatCard label="Win rate" value={pct(s.winRate)} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
-        <StatCard label="Gross P&L" value={fmtSigned(s.gross)} tone={toneOf(s.gross)} />
-        <StatCard label="Комиссии" value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"} hint={s.feesPctOfGross != null ? `${s.feesPctOfGross.toFixed(0)}% от gross` : undefined} />
-        <StatCard label="Net P&L" value={fmtSigned(s.net)} tone={toneOf(s.net)} />
-        <StatCard label="W/L ratio" value={s.wlRatio?.toFixed(2) ?? "—"} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
-        <StatCard label="Ср. удержание" value={fmtHold(s.avgHoldSeconds, s.avgHold)} />
+      {/* Seven cards in one row from 1600 px (tighter padding); below that 4 + 3, so long EN/UZ values («20 daq 12 s») never truncate. */}
+      <StatGrid className="md:grid-cols-4 min-[1600px]:grid-cols-7">
+        <StatCard className={TIGHT} label={t("perf.trades")} value={s.trades} hint={`${s.wins} W / ${s.losses} L`} />
+        <StatCard className={TIGHT} label="Win rate" value={pct(s.winRate)} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
+        <StatCard className={TIGHT} label="Gross P&L" value={fmtUsd(s.gross, { signed: true })} tone={toneOf(s.gross)} />
+        <StatCard className={TIGHT} label={t("perf.fees")} value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"} hint={s.feesPctOfGross != null ? t("perf.feesHint", { pct: fmtPct(s.feesPctOfGross, { decimals: 0, signed: false }) }) : undefined} />
+        <StatCard className={TIGHT} label="Net P&L" value={fmtUsd(s.net, { signed: true })} tone={toneOf(s.net)} />
+        <StatCard className={TIGHT} label="W/L ratio" value={fmtNum(s.wlRatio)} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
+        <StatCard className={TIGHT} label={t("perf.avgHoldShort")} value={fmtHold(s.avgHoldSeconds, s.avgHold)} />
       </StatGrid>
 
       {s.feesPctOfGross != null && s.feesPctOfGross >= 50 && (
         <div className="rounded-xl border border-[hsl(var(--chart-3)/0.4)] bg-[hsl(var(--chart-3)/0.08)] px-3 py-2 text-xs">
-          Комиссии съедают {s.feesPctOfGross.toFixed(0)}% gross-прибыли: при {s.trades} сделках средняя комиссия {fmtUsd(s.trades ? s.fees / s.trades : 0)} на сделку против среднего net {fmtUsd(s.trades ? s.net / s.trades : 0)}.
+          {t("perf.feesWarn", { pct: fmtPct(s.feesPctOfGross, { decimals: 0, signed: false }), count: s.trades, fee: fmtUsd(s.trades ? s.fees / s.trades : 0), net: fmtUsd(s.trades ? s.net / s.trades : 0) })}
         </div>
       )}
 
@@ -203,8 +219,8 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
 
       {!compact && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <NetBars rows={data.byTime} labelOf={timeLabel} title="Net P&L по времени входа (ET)" />
-          <NetBars rows={data.byWeekday} labelOf={dayLabel} title="Net P&L по дням недели" />
+          <NetBars rows={data.byTime} labelOf={timeLabel} title={t("perf.byTime")} />
+          <NetBars rows={data.byWeekday} labelOf={dayLabel} title={t("perf.byWeekday")} />
         </div>
       )}
 
@@ -212,19 +228,19 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
 
       {data.perTradeAverages.length > 0 && (
         <div className="grid gap-2">
-          <div className="text-xs font-medium text-muted-foreground">Средняя сделка: комиссии по типам</div>
+          <div className="text-xs font-medium text-muted-foreground">{t("perf.perTrade")}</div>
           {data.perTradeAverages.map((a) => {
             const keys = orderedFeeKeys(a.fees);
             const total = keys.reduce((x, k) => x + (a.fees[k] ?? 0), 0);
             return (
               <div key={a.group} className="flex flex-wrap items-center gap-2 text-xs">
                 <Pill tone="accent">{a.group}</Pill>
-                {a.qty != null && <Pill tone="neutral">{a.qty.toFixed(0)} акций</Pill>}
+                {a.qty != null && <Pill tone="neutral">{t("perf.shares", { count: Math.round(a.qty) })}</Pill>}
                 {a.held && <Pill tone="neutral">{fmtHold(a.heldSeconds, a.held)}</Pill>}
                 {keys.filter((k) => (a.fees[k] ?? 0) !== 0).map((k) => (
-                  <span key={k} className="rounded-full border border-[var(--glass-border)] px-2 py-0.5 tabular-nums">{feeLabel(k)} ${a.fees[k].toFixed(4)}</span>
+                  <span key={k} className="rounded-full border border-[var(--glass-border)] px-2 py-0.5 tabular-nums">{feeLabel(k)} {fmtUsd(a.fees[k], { decimals: 4 })}</span>
                 ))}
-                <span className="font-medium tabular-nums">= ${total.toFixed(4)} / сделка</span>
+                <span className="font-medium tabular-nums">{t("perf.perTradeTotal", { value: fmtUsd(total, { decimals: 4 }) })}</span>
               </div>
             );
           })}
@@ -233,7 +249,7 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
 
       {data.issues.length > 0 && (
         <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Замечания парсера ({data.issues.length})</summary>
+          <summary className="cursor-pointer">{t("perf.issues", { count: data.issues.length })}</summary>
           <ul className="mt-1 list-disc pl-4">{data.issues.map((i, k) => <li key={k}>{i}</li>)}</ul>
         </details>
       )}
@@ -245,6 +261,7 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
 
 export function PerformanceReportPanel({ trader, staff = false, compact = false, className }: { trader?: string | null; staff?: boolean; compact?: boolean; className?: string }) {
   const { toast } = useToast();
+  const { t } = propreportsI18n.useT();
   const [traderFilter, setTraderFilter] = React.useState<string>("");
   const [reportId, setReportId] = React.useState<number | null>(null);
   const effectiveTrader = trader ?? (traderFilter || null);
@@ -257,11 +274,17 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
   // when the filter changes the chosen id may vanish → fall back to the newest report
   React.useEffect(() => { if (reportId && !reports.some((r) => r.id === reportId)) setReportId(null); }, [reports, reportId]);
 
-  const err = q.error instanceof HttpError ? q.error : null;
-  const title = "Брокерская статистика (PropReports)";
+  const err = q.error instanceof ApiError ? q.error : null;
+  const title = t("perf.title");
   const description = latest
-    ? `Отчёт Trade Performance · счёт ${latest.account} · ${periodText(latest)}${latest.traderName ? ` · ${latest.traderName}` : ""} · загружен ${new Date(latest.uploadedAt).toLocaleDateString("ru-RU")}${latest.uploadedBy ? ` (${latest.uploadedBy})` : ""}`
-    : "Агрегированный отчёт Trade Performance из PropReports (сделки в журнал из него не создаются)";
+    ? [
+        t("perf.descReport"),
+        t("perf.descAccount", { account: latest.account }),
+        periodText(latest),
+        latest.traderName ?? "",
+        latest.uploadedBy ? t("perf.descUploadedBy", { date: fmtDate(latest.uploadedAt, "short"), by: personName(latest.uploadedBy) }) : t("perf.descUploaded", { date: fmtDate(latest.uploadedAt, "short") }),
+      ].filter(Boolean).join(" · ")
+    : t("perf.descEmpty");
 
   return (
     <Panel
@@ -272,29 +295,23 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
       actions={
         <>
           {!trader && traders.length > 1 && (
-            <Select value={traderFilter || "__all"} onValueChange={(v) => { setTraderFilter(v === "__all" ? "" : v); setReportId(null); }}>
-              <SelectTrigger className="h-8 w-44 text-xs" aria-label="Трейдер"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">Все трейдеры</SelectItem>
-                {traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <PersonSelect value={traderFilter || ""} onValueChange={(v) => { setTraderFilter(v); setReportId(null); }} options={traders} allLabel={commonI18n.t("fields.allTraders")} ariaLabel={t("perf.traderAria")} className="h-8 w-44 text-xs" />
           )}
           {reports.length > 1 && (
             <Select value={String(latest?.id ?? reports[0]?.id ?? "")} onValueChange={(v) => setReportId(Number(v))}>
-              <SelectTrigger className="h-8 w-64 text-xs" aria-label="Период отчёта"><SelectValue placeholder="Период" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-64 text-xs" aria-label={t("perf.periodAria")}><SelectValue placeholder={t("perf.periodPlaceholder")} /></SelectTrigger>
               <SelectContent>
-                {reports.map((r) => <SelectItem key={r.id} value={String(r.id)}>{periodText(r)} · {r.account}{r.traderName ? ` · ${r.traderName}` : ""}</SelectItem>)}
+                {reports.map((r) => <SelectItem key={r.id} value={String(r.id)}>{periodText(r)} · {r.account}{r.traderName ? ` · ${personName(r.traderName)}` : ""}</SelectItem>)}
               </SelectContent>
             </Select>
           )}
           {staff && latest && (
             <Button
-              variant="ghost" size="icon" aria-label="Удалить отчёт" disabled={del.isPending}
+              variant="ghost" size="icon" aria-label={t("perf.deleteAria")} disabled={del.isPending}
               onClick={async () => {
-                if (!window.confirm(`Удалить отчёт ${latest.account} ${periodText(latest)}?`)) return;
-                try { await del.mutateAsync(latest.id); setReportId(null); toast({ title: "Отчёт удалён" }); }
-                catch (e) { toast({ title: "Не удалось удалить", description: e instanceof Error ? e.message : String(e), variant: "destructive" }); }
+                if (!window.confirm(t("perf.confirmDelete", { account: latest.account, period: periodText(latest) }))) return;
+                try { await del.mutateAsync(latest.id); setReportId(null); toast({ title: t("perf.deleted") }); }
+                catch (e) { toast({ title: commonI18n.t("states.deleteFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" }); }
               }}
             >
               <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -306,12 +323,12 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
       {q.isLoading ? (
         <Skeleton className="h-40 w-full rounded-xl" />
       ) : err ? (
-        <EmptyState icon={BarChart3} title="Не удалось загрузить статистику" description={err.message} />
+        <EmptyState icon={BarChart3} title={t("perf.loadFailed")} description={err.message} />
       ) : !latest ? (
         <EmptyState
           icon={BarChart3}
-          title="Отчётов пока нет"
-          description={trader ? `Для трейдера ${trader} ещё не загружен отчёт Trade Performance.` : "Загрузите XLS «Trade Performance» из PropReports (Reports → Trade Performance → Export) во вкладке «Импорт» — формат определится автоматически."}
+          title={t("perf.emptyTitle")}
+          description={trader ? t("perf.emptyTrader", { name: personName(trader) }) : t("perf.emptyStaff")}
         />
       ) : (
         <PerformanceReportBody data={latest.data} compact={compact} />

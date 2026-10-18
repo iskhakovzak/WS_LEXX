@@ -5,9 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  fmtDayShort, isUnread, lastTradingDays, localToday, moodMeta, nextTradingDay, prevTradingDay, streakOf,
+  isUnread, lastTradingDays, localToday, moodMeta, nextTradingDay, prevTradingDay, streakOf,
   type JuniorNote, type Reminder,
 } from "./junior-lib";
+import { fmtDate, fmtNum } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { notesI18n } from "@/i18n/ns/notes";
+import { personName } from "@/i18n";
 
 /** Longest run of consecutive trading days with a note. */
 function bestStreak(dates: Set<string>): number {
@@ -39,6 +43,7 @@ export function JuniorKpis({
   onPickDate: (d: string) => void;
   onShowUnread: () => void;
 }) {
+  const { t } = notesI18n.useT();
   const today = localToday();
   const byDate = React.useMemo(() => new Map(history.filter((n) => n.raw_text?.trim()).map((n) => [n.note_date, n])), [history]);
   const dates = React.useMemo(() => new Set(byDate.keys()), [byDate]);
@@ -63,47 +68,55 @@ export function JuniorKpis({
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatCard
-        label="Серия"
+        label={t("junior.kpi.streak")}
         icon={Flame}
-        value={`${streak} ${plural(streak, "день", "дня", "дней")}`}
+        value={commonI18n.t("units.days", { count: streak })}
         tone={streak >= 5 ? "up" : streak > 0 ? "accent" : "neutral"}
-        hint={todayWritten ? `рекорд ${best}` : streak > 0 ? "напиши сегодня, чтобы не прервать" : `рекорд ${best}`}
+        hint={todayWritten || streak === 0 ? t("junior.kpi.record", { count: best }) : t("junior.kpi.keepStreak")}
       />
       <StatCard
-        label="За 30 торговых дней"
+        label={t("junior.kpi.last30")}
         value={`${written30} / 30`}
         tone={written30 >= 25 ? "up" : written30 >= 15 ? "neutral" : "warn"}
-        hint={`${Math.round((written30 / 30) * 100)}% дисциплины`}
+        hint={t("junior.kpi.discipline", { pct: Math.round((written30 / 30) * 100) })}
       />
       <StatCard
-        label="Оценка куратора"
+        label={t("junior.kpi.curatorScore")}
         icon={Star}
-        value={avg == null ? "—" : avg.toFixed(1)}
+        value={avg == null ? "—" : fmtNum(avg, 1)}
         tone={avg == null ? "neutral" : avg >= 4 ? "up" : avg >= 3 ? "neutral" : "down"}
-        hint={scores.length ? `средняя по ${scores.length}` : "пока нет оценок"}
+        hint={scores.length ? t("junior.kpi.avgOf", { count: scores.length }) : t("junior.kpi.noScores")}
       />
       <StatCard
-        label="Ответы куратора"
+        label={t("junior.kpi.answers")}
         icon={MessageSquareQuote}
-        value={unread ? `${unread} новых` : "Всё прочитано"}
+        value={unread ? t("junior.kpi.newCount", { count: unread }) : t("junior.kpi.allRead")}
         tone={unread ? "accent" : "neutral"}
-        hint={`всего ${history.filter((n) => n.reviewed_at).length}`}
+        hint={t("junior.kpi.totalCount", { count: history.filter((n) => n.reviewed_at).length })}
         onClick={unread ? onShowUnread : undefined}
       />
 
       <div className="glass-panel col-span-2 rounded-2xl p-4 lg:col-span-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">Последние 30 торговых дней — нажми на день, чтобы открыть сводку</span>
+          <span className="text-xs text-muted-foreground">{t("junior.kpi.stripHint")}</span>
           <span className="flex items-center gap-3 text-xs text-muted-foreground">
-            <Legend className="bg-up/70" label="с ответом" />
-            <Legend className="bg-primary/60" label="написана" />
-            <Legend className="bg-[var(--glass-bg)] border border-[var(--field-border)]" label="пропуск" />
+            <Legend className="bg-up/70" label={t("junior.kpi.legendAnswered")} />
+            <Legend className="bg-primary/60" label={t("junior.kpi.legendWritten")} />
+            <Legend className="bg-[var(--glass-bg)] border border-[var(--field-border)]" label={t("junior.kpi.legendMissed")} />
           </span>
         </div>
-        <div className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(30,minmax(0,1fr))]" role="list" aria-label="Сводки по дням">
+        <div className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(30,minmax(0,1fr))]" role="list" aria-label={t("junior.kpi.stripAria")}>
           {days.map((d) => {
             const n = byDate.get(d);
-            const label = `${fmtDayShort(d)}: ${n ? (n.reviewed_at ? `есть ответ куратора${n.curator_score ? `, оценка ${n.curator_score}` : ""}` : "сводка написана") : "нет сводки"}${n?.mood ? `, ${moodMeta(n.mood)?.label.toLowerCase()}` : ""}`;
+            const day = fmtDate(d, "dayMonth");
+            const base = !n
+              ? t("junior.kpi.dayMissed", { date: day })
+              : !n.reviewed_at
+                ? t("junior.kpi.dayWritten", { date: day })
+                : n.curator_score
+                  ? t("junior.kpi.dayAnsweredScore", { date: day, score: n.curator_score })
+                  : t("junior.kpi.dayAnswered", { date: day });
+            const label = `${base}${n?.mood ? `, ${moodMeta(n.mood)?.label.toLowerCase()}` : ""}`;
             return (
               <button
                 key={d}
@@ -138,14 +151,6 @@ function Legend({ className, label }: { className: string; label: string }) {
   );
 }
 
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
 /** In-app nudges: curator reminders + unread curator answers. */
 export function JuniorBanners({
   reminders,
@@ -160,6 +165,7 @@ export function JuniorBanners({
   onDismiss: (id: number) => void;
   onOpenUnread: (date: string) => void;
 }) {
+  const { t } = notesI18n.useT();
   if (!reminders.length && !unread.length) return null;
   return (
     <div className="flex flex-col gap-2">
@@ -167,11 +173,11 @@ export function JuniorBanners({
         <div key={r.id} role="status" className="flex flex-wrap items-center gap-3 rounded-2xl bg-[hsl(var(--chart-3)/0.12)] px-4 py-3">
           <BellRing className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" />
           <p className="min-w-0 flex-1 text-sm">
-            <span className="font-medium">{r.curator}</span> напоминает: напиши сводку за {fmtDayShort(r.note_date)}
+            <span className="font-medium">{personName(r.curator)}</span> {t("junior.banners.reminder", { date: fmtDate(r.note_date, "dayMonth") })}
             {r.message ? ` — «${r.message}»` : ""}
           </p>
-          <Button size="sm" onClick={() => onWrite(r.note_date)}>Написать</Button>
-          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Скрыть напоминание" onClick={() => onDismiss(r.id)}>
+          <Button size="sm" onClick={() => onWrite(r.note_date)}>{t("junior.banners.write")}</Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("junior.banners.hideReminder")} onClick={() => onDismiss(r.id)}>
             <X />
           </Button>
         </div>
@@ -185,10 +191,10 @@ export function JuniorBanners({
         >
           <MessageSquareQuote className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-sm">
-            <span className="font-medium">Разбор</span> сводки за {fmtDayShort(n.note_date)}
-            {unread.length > 1 ? ` и ещё ${unread.length - 1}` : ""} — {n.reviewed_by}
+            <span className="font-medium">{t("junior.banners.feedback")}</span> {t("junior.banners.feedbackFor", { date: fmtDate(n.note_date, "dayMonth") })}
+            {unread.length > 1 ? ` ${t("junior.banners.andMore", { count: unread.length - 1 })}` : ""} — {personName(n.reviewed_by)}
           </span>
-          <span className="text-sm font-medium text-primary">Прочитать</span>
+          <span className="text-sm font-medium text-primary">{t("junior.banners.read")}</span>
         </button>
       ))}
     </div>

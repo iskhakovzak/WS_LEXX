@@ -4,6 +4,9 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { requireMember, scopeTrader, GUEST_SCOPE } from "../lib/auth";
+import { loadMoneyViewer } from "../lib/playbookAccess";
+import { canSeeTradeMoney } from "../lib/playbookPrivacy";
+import { AppError, unauthorized } from "../lib/http";
 
 /**
  * Indicator notes + favourites ("Мой набор") per user — audit P1-6 (they lived only in localStorage).
@@ -78,7 +81,7 @@ async function listFor(user: string) {
 router.get("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
   const requested = typeof req.query.user === "string" ? req.query.user : null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   await ensureIndicatorNotesTable();
   const user = scope ?? req.authUser?.name ?? null;
   if (!user || user === GUEST_SCOPE) { res.json({ user: null, items: [] }); return; }
@@ -88,10 +91,10 @@ router.get("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
 router.put("/indicator-notes/:key", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const key = keySchema.safeParse(req.params.key);
-  if (!key.success) { res.status(400).json({ error: "Некорректный ключ индикатора" }); return; }
+  if (!key.success) throw new AppError("INVALID_FIELD", undefined, { field: "key" });
   const body = rowPatch.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
-  if (body.data.note === undefined && body.data.favorite === undefined) { res.status(400).json({ error: "Нужно note или favorite" }); return; }
+  if (!body.success) throw body.error;
+  if (body.data.note === undefined && body.data.favorite === undefined) throw new AppError("FIELD_REQUIRED", undefined, { field: "note / favorite" });
   await ensureIndicatorNotesTable();
   const user = req.authUser!.name;
   const note = body.data.note === undefined ? null : body.data.note.trim();
@@ -112,7 +115,7 @@ router.put("/indicator-notes/:key", asyncHandler(async (req, res): Promise<void>
 router.put("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const body = bulkBody.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) throw body.error;
   await ensureIndicatorNotesTable();
   const user = req.authUser!.name;
   const onlyIfEmpty = !!body.data.onlyIfEmpty;
@@ -153,6 +156,63 @@ router.put("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
     client.release();
   }
   res.json({ user, items: await listFor(user) });
+}));
+
+/**
+ * GET /api/indicators/tagged-trades — the slim book behind «Индикаторы → Справочник» stats (P1-5 follow-up).
+ * The page used to pull GET /api/trades?tagged=1 — every column of every tagged trade (a curator: the whole desk,
+ * ~60 MB of JSON) — to read ten fields. Same rows, same scope and $ rule as GET /api/trades:
+ *   - scope via scopeTrader (staff may pass ?trader=, none = whole desk; members get their own book; guests nothing);
+ *   - pnl / fees are null on rows whose $ the viewer may not see (lib/playbookPrivacy canSeeTradeMoney).
+ * Columnar, strings dictionary-coded:
+ *   → { n, dict: string[], id[], ticker[], date[], result[], r[], pnl[], fees[], tags[], setup[], horizon[] }
+ *     ticker / result / tags / setup / horizon hold indexes into `dict` (-1 = null); date is YYYY-MM-DD.
+ */
+router.get("/indicators/tagged-trades", asyncHandler(async (req, res): Promise<void> => {
+  const requested = typeof req.query.trader === "string" ? req.query.trader : null;
+  const scope = await scopeTrader(req, requested);
+  if (scope === undefined) throw unauthorized();
+  const params: unknown[] = [];
+  let where = `deleted_at IS NULL
+    AND (NULLIF(TRIM(COALESCE(setup, '')), '') IS NOT NULL OR NULLIF(TRIM(COALESCE(tags, '')), '') IS NOT NULL)`;
+  if (scope !== null) { params.push(scope); where += ` AND trader = $1`; }
+  const { rows } = await pool.query<{
+    id: number; ticker: string; date: string; result: string; r_multiple: string | null; pnl: string | null; fees: string | null;
+    tags: string | null; setup: string | null; horizon: string | null; trader: string | null;
+  }>(`SELECT id, ticker, date, result, r_multiple, pnl, fees, tags, setup, horizon, trader FROM trades WHERE ${where} ORDER BY id`, params);
+  const viewer = await loadMoneyViewer(req);
+  const dict: string[] = [];
+  const at = new Map<string, number>();
+  const code = (v: string | null | undefined): number => {
+    if (v == null) return -1;
+    let k = at.get(v);
+    if (k === undefined) { k = dict.length; dict.push(v); at.set(v, k); }
+    return k;
+  };
+  const num = (v: string | null): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const out = {
+    n: rows.length, dict,
+    id: [] as number[], ticker: [] as number[], date: [] as string[], result: [] as number[], r: [] as (number | null)[],
+    pnl: [] as (number | null)[], fees: [] as (number | null)[], tags: [] as number[], setup: [] as number[], horizon: [] as number[],
+  };
+  for (const t of rows) {
+    const money = canSeeTradeMoney(viewer, t.trader);
+    out.id.push(t.id);
+    out.ticker.push(code(t.ticker));
+    out.date.push(String(t.date ?? "").slice(0, 10));
+    out.result.push(code(t.result));
+    out.r.push(num(t.r_multiple));
+    out.pnl.push(money ? num(t.pnl) : null);
+    out.fees.push(money ? num(t.fees) : null);
+    out.tags.push(code(t.tags));
+    out.setup.push(code(t.setup));
+    out.horizon.push(code(t.horizon));
+  }
+  res.json(out);
 }));
 
 export default router;

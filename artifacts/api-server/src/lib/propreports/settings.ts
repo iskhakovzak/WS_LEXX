@@ -14,6 +14,9 @@ export interface ConnectionState {
   mode: "v2" | "v1" | null;
   version: string | null;
   error: string | null;
+  /** `propreports` namespace key + params of `error` (re-rendered per reader language); absent for upstream texts. */
+  errorKey?: string;
+  errorParams?: Record<string, string | number>;
 }
 
 export interface IntegrationSettings {

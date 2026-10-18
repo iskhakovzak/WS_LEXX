@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getListDailyFeedQueryKey, type DailyFeed } from "@workspace/api-client-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { safeHttpUrl } from "@/lib/url";
+import { fmtDate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { feedI18n } from "@/i18n/ns/feed";
 
 /* ─────────────── server shape (additive fields on top of the generated DailyFeed) ─────────────── */
 
@@ -33,13 +37,6 @@ export function parseTickers(s?: string | null): string[] {
 
 export const dayOf = (f: Pick<DailyFeed, "date">) => f.date.substring(0, 10);
 
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
 export function parseDay(d: string): Date {
   return new Date(d + "T12:00:00");
 }
@@ -53,23 +50,18 @@ export function daysBetween(a: string, b: string): number {
   return Math.round((parseDay(b).getTime() - parseDay(a).getTime()) / 86400000);
 }
 
+/** «Пятница, 17 октября» — day heading, first letter capitalised. */
 export function formatDayLong(d: string): string {
-  try {
-    const s = parseDay(d).toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  } catch { return d; }
-}
-
-export function formatDayShort(d: string): string {
-  try { return parseDay(d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }); } catch { return d; }
+  const s = fmtDate(d, "weekdayDayMonthLong");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function relativeDayLabel(d: string, today = nyDate()): string | null {
   const diff = daysBetween(d, today);
-  if (diff === 0) return "Сегодня";
-  if (diff === 1) return "Вчера";
-  if (diff === -1) return "Завтра";
-  if (diff > 1 && diff < 7) return `${diff} ${pluralRu(diff, "день", "дня", "дней")} назад`;
+  if (diff === 0) return commonI18n.t("time.today");
+  if (diff === 1) return commonI18n.t("time.yesterday");
+  if (diff === -1) return commonI18n.t("time.tomorrow");
+  if (diff > 1 && diff < 7) return feedI18n.t("day.daysAgo", { count: diff });
   return null;
 }
 
@@ -100,11 +92,12 @@ export function parseShots(urls?: string | null, notes?: string | null): Shot[] 
 /** Plain-text version of an entry for pasting into Telegram / chat. */
 export function entryToText(f: DailyFeed): string {
   const lines = [`📅 ${formatDayLong(dayOf(f))}`];
-  if (f.marketTheme) lines.push(`Тема: ${f.marketTheme}`);
+  const t = feedI18n.t;
+  if (f.marketTheme) lines.push(t("text.theme", { text: f.marketTheme }));
   const tickers = parseTickers(f.bestTickers);
-  if (tickers.length) lines.push(`Тикеры: ${tickers.join(", ")}`);
-  if (f.whatWorksNow) lines.push(`✅ Работает: ${f.whatWorksNow}`);
-  if (f.whatDoesntWork) lines.push(`⛔ Не работает: ${f.whatDoesntWork}`);
+  if (tickers.length) lines.push(t("text.tickers", { text: tickers.join(", ") }));
+  if (f.whatWorksNow) lines.push(t("text.works", { text: f.whatWorksNow }));
+  if (f.whatDoesntWork) lines.push(t("text.doesntWork", { text: f.whatDoesntWork }));
   if (f.notes) lines.push("", f.notes);
   const tags = splitList(f.tags);
   if (tags.length) lines.push("", tags.map((t) => `#${t.replace(/\s+/g, "_")}`).join(" "));
@@ -225,16 +218,14 @@ export function useFeedAck(me: string) {
         users,
       };
     });
-    const r = await fetch(`${BASE}/api/dailyfeed/${id}/ack`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, on }),
-    });
-    if (r.status === 404) return null;
-    if (!r.ok) {
-      const j = (await r.json().catch(() => ({}))) as { error?: string };
+    let data: { id: number; acks: FeedAcks };
+    try {
+      data = await http.post<{ id: number; acks: FeedAcks }>(`/api/dailyfeed/${id}/ack`, { kind, on });
+    } catch (e) {
+      if (isNotFound(e)) return null;
       void qc.invalidateQueries({ queryKey: getListDailyFeedQueryKey() });
-      throw new Error(j.error ?? `HTTP ${r.status}`);
+      throw e;
     }
-    const data = (await r.json()) as { id: number; acks: FeedAcks };
     patch(id, () => data.acks);
     return data.acks;
   }, [me, patch, qc]);
@@ -284,9 +275,7 @@ export function useFeedContext(from: string | null, to: string | null) {
     enabled: !!from && !!to,
     staleTime: 60_000,
     queryFn: async (): Promise<Record<string, DayContext>> => {
-      const r = await fetch(`${BASE}/api/dailyfeed/context?from=${from}&to=${to}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = (await r.json()) as { days?: Record<string, DayContext> };
+      const data = await http.get<{ days?: Record<string, DayContext> }>(`/api/dailyfeed/context?from=${from}&to=${to}`);
       return data.days ?? {};
     },
   });

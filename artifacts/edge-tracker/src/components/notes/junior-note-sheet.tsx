@@ -9,11 +9,16 @@ import { Kbd, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  BUILTIN_SNIPPETS, addSnippet, api, appendSnippet, clearDraft, draftDiffers, fmtDayLong, loadDraft, loadMySnippets, qk,
+  builtinSnippets, addSnippet, appendSnippet, clearDraft, draftDiffers, loadDraft, loadMySnippets, qk,
   relTime, reviewKeyAction, saveDraft, saveMySnippets, sectionsOf, wordCount, type JuniorNote, type ReviewContext,
 } from "./junior-lib";
+import { fmtDate } from "@/lib/format";
+import { http } from "@/lib/api/http";
 import { FeedbackCard, MarkdownText, MoodPill, ScorePicker, SectionsView } from "./junior-ui";
 import { PrevFocusCard, ReviewContextRail } from "./junior-review-context";
+import { notesI18n } from "@/i18n/ns/notes";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export type SheetNav = {
   /** 0-based position in the list being reviewed. */
@@ -58,6 +63,8 @@ export function JuniorNoteSheet({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = notesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [feedback, setFeedback] = React.useState("");
   const [score, setScore] = React.useState<number | null>(null);
   const [restored, setRestored] = React.useState(false);
@@ -97,7 +104,7 @@ export function JuniorNoteSheet({
 
   const ctxQ = useQuery({
     queryKey: qk.context(n?.id ?? 0),
-    queryFn: () => api<ReviewContext>(`/junior-notes/${n!.id}/context`),
+    queryFn: () => http.get<ReviewContext>(`/api/junior-notes/${n!.id}/context`),
     enabled: open && isCurator && !!n,
     staleTime: 60_000,
     retry: 1,
@@ -106,7 +113,7 @@ export function JuniorNoteSheet({
   // The owner reading an unread curator answer marks it as read.
   React.useEffect(() => {
     if (!open || mode !== "owner" || !note || !note.reviewed_at || note.feedback_seen_at) return;
-    api<JuniorNote>(`/junior-notes/${note.id}/seen`, { method: "POST", json: {} })
+    http.post<JuniorNote>(`/api/junior-notes/${note.id}/seen`, {})
       .then((u) => {
         qc.setQueryData<JuniorNote[]>(qk.history(u.trader), (prev) => prev?.map((x) => (x.id === u.id ? u : x)));
         qc.setQueryData(qk.day(u.trader, u.note_date), u);
@@ -139,11 +146,11 @@ export function JuniorNoteSheet({
     });
   };
   const rememberSnippet = () => {
-    const t = feedback.trim();
-    if (!t) return;
-    const next = addSnippet(mySnippets, t);
+    const text = feedback.trim();
+    if (!text) return;
+    const next = addSnippet(mySnippets, text);
     setMySnippets(next);
-    toast({ title: saveMySnippets(next) ? "Сохранено в быстрые ответы" : "Не удалось сохранить в этом браузере" });
+    toast({ title: saveMySnippets(next) ? t("junior.sheet.savedToQuick") : t("junior.sheet.quickSaveFailed") });
   };
   const forgetSnippet = (s: string) => {
     const next = mySnippets.filter((x) => x !== s);
@@ -164,18 +171,15 @@ export function JuniorNoteSheet({
     if (!n || saving) return;
     setSaving(true);
     try {
-      const updated = await api<JuniorNote>(`/junior-notes/${n.id}/review`, {
-        method: "POST",
-        json: { feedback, score },
-      });
+      const updated = await http.post<JuniorNote>(`/api/junior-notes/${n.id}/review`, { feedback, score });
       clearDraft(n.id);
       setRestored(false);
       setCurrent(updated);
       syncCaches(updated);
-      toast({ title: updated.reviewed_at ? `Ответ отправлен ${n.trader}` : "Оценка снята" });
+      toast({ title: updated.reviewed_at ? t("junior.sheet.sentTo", { name: personName(n.trader) }) : t("junior.sheet.scoreRemoved") });
       if (updated.reviewed_at) onReviewed?.(updated);
     } catch (e) {
-      toast({ title: e instanceof Error ? e.message : "Не удалось сохранить", variant: "destructive" });
+      toast({ title: e instanceof Error ? e.message : tc("states.saveFailed"), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -185,13 +189,13 @@ export function JuniorNoteSheet({
     if (!n) return;
     setDeleting(true);
     try {
-      await api(`/junior-notes/${n.id}`, { method: "DELETE" });
+      await http.del(`/api/junior-notes/${n.id}`);
       qc.setQueryData<JuniorNote[]>(qk.history(n.trader), (prev) => prev?.filter((x) => x.id !== n.id));
       qc.setQueryData(qk.day(n.trader, n.note_date), null);
-      toast({ title: "Сводка удалена" });
+      toast({ title: t("noteDeleted") });
       onOpenChange(false);
     } catch {
-      toast({ title: "Ошибка удаления", variant: "destructive" });
+      toast({ title: t("deleteFailed"), variant: "destructive" });
     } finally {
       setDeleting(false);
     }
@@ -224,34 +228,34 @@ export function JuniorNoteSheet({
           <>
             <SheetHeader className="space-y-2 border-b border-border p-5 pr-12 text-left">
               <SheetTitle className="text-lg first-letter:uppercase">
-                {mode === "owner" ? fmtDayLong(n.note_date) : `${n.trader} · ${fmtDayLong(n.note_date)}`}
+                {mode === "owner" ? fmtDate(n.note_date, "weekdayDayMonthLong") : `${personName(n.trader)} · ${fmtDate(n.note_date, "weekdayDayMonthLong")}`}
               </SheetTitle>
               <SheetDescription asChild>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <MoodPill mood={n.mood} />
-                  <Pill tone="neutral">{wordCount(sections)} слов</Pill>
-                  <span>обновлено {relTime(n.updated_at)}</span>
-                  {isCurator && (n.reviewed_at ? <Pill tone="up">Есть ответ</Pill> : <Pill tone="accent" dot>Ждёт ответа</Pill>)}
+                  <Pill tone="neutral">{t("words", { count: wordCount(sections) })}</Pill>
+                  <span>{t("junior.sheet.updated", { ago: relTime(n.updated_at) })}</span>
+                  {isCurator && (n.reviewed_at ? <Pill tone="up">{t("answered")}</Pill> : <Pill tone="accent" dot>{t("waiting")}</Pill>)}
                 </div>
               </SheetDescription>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 {mode === "owner" && onOpenInEditor && (
                   <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); onOpenInEditor(n.note_date); }}>
-                    <PencilLine aria-hidden="true" />Открыть в редакторе
+                    <PencilLine aria-hidden="true" />{t("openInEditor")}
                   </Button>
                 )}
                 <Button asChild size="sm" variant="ghost">
-                  <Link href={`/game-plan?date=${n.note_date}`}><CalendarRange aria-hidden="true" />План дня</Link>
+                  <Link href={`/game-plan?date=${n.note_date}`}><CalendarRange aria-hidden="true" />{t("junior.day.gamePlan")}</Link>
                 </Button>
                 {nav && nav.total > 1 && (
-                  <div className="ml-auto flex items-center gap-1" role="group" aria-label="Навигация по сводкам">
-                    <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!nav.onPrev} onClick={nav.onPrev} aria-label="Предыдущая сводка (K)" title="Предыдущая (K или ←)">
+                  <div className="ml-auto flex items-center gap-1" role="group" aria-label={t("junior.sheet.navAria")}>
+                    <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!nav.onPrev} onClick={nav.onPrev} aria-label={t("junior.sheet.prevAria")} title={t("junior.sheet.prevTitle")}>
                       <ChevronLeft />
                     </Button>
                     <span className="min-w-[4.5rem] text-center text-xs tabular-nums text-muted-foreground" aria-live="polite">
-                      {nav.label ? `${nav.label} · ` : ""}{nav.index + 1} из {nav.total}
+                      {nav.label ? `${nav.label} · ` : ""}{t("junior.sheet.position", { index: nav.index + 1, total: nav.total })}
                     </span>
-                    <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!nav.onNext} onClick={nav.onNext} aria-label="Следующая сводка (J)" title="Следующая (J или →)">
+                    <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!nav.onNext} onClick={nav.onNext} aria-label={t("junior.sheet.nextAria")} title={t("junior.sheet.nextTitle")}>
                       <ChevronRight />
                     </Button>
                   </div>
@@ -270,14 +274,14 @@ export function JuniorNoteSheet({
                   {n.refined_text && (
                     <details className="rounded-xl bg-primary/10 px-4 py-3">
                       <summary className="flex cursor-pointer items-center gap-1.5 text-sm text-primary">
-                        <Sparkles className="h-4 w-4" aria-hidden="true" />AI-версия
+                        <Sparkles className="h-4 w-4" aria-hidden="true" />{t("aiVersion")}
                       </summary>
                       <div className="mt-3"><MarkdownText text={n.refined_text} /></div>
                     </details>
                   )}
                 </div>
                 {isCurator && (
-                  <aside aria-label="Контекст дня" className="min-w-0 lg:border-l lg:border-border lg:pl-5">
+                  <aside aria-label={t("contextAria")} className="min-w-0 lg:border-l lg:border-border lg:pl-5">
                     <ReviewContextRail ctx={ctx} isLoading={ctxQ.isLoading} isError={ctxQ.isError} />
                   </aside>
                 )}
@@ -285,24 +289,24 @@ export function JuniorNoteSheet({
             </div>
 
             {isCurator && (
-              <section className="space-y-2 border-t border-border bg-background/60 p-4 backdrop-blur" aria-label="Ответ трейдеру">
+              <section className="space-y-2 border-t border-border bg-background/60 p-4" aria-label={t("junior.sheet.answerAria")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <ScorePicker value={score} onChange={changeScore} />
                   <span className="text-xs text-muted-foreground">
                     {restored ? (
                       <span className="inline-flex items-center gap-1.5">
-                        Черновик восстановлен
+                        {t("junior.sheet.draftRestored")}
                         <button type="button" onClick={resetDraft} className="inline-flex items-center gap-1 rounded-full px-1.5 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                          <Undo2 className="h-3 w-3" aria-hidden="true" />сбросить
+                          <Undo2 className="h-3 w-3" aria-hidden="true" />{t("junior.sheet.resetDraft")}
                         </button>
                       </span>
                     ) : n.reviewed_at ? (
-                      `${n.reviewed_by} · ${relTime(n.reviewed_at)} · ${n.feedback_seen_at ? "прочитано" : "не прочитано"}`
+                      `${personName(n.reviewed_by)} · ${relTime(n.reviewed_at)} · ${n.feedback_seen_at ? t("junior.sheet.seen") : t("junior.sheet.notSeen")}`
                     ) : null}
                   </span>
                 </div>
 
-                <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label="Быстрые ответы">
+                <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label={t("junior.sheet.quickRepliesAria")}>
                   {mySnippets.map((s) => (
                     <span key={`my-${s}`} className="inline-flex shrink-0 items-center rounded-full border border-primary/40 bg-primary/10">
                       <button
@@ -316,14 +320,14 @@ export function JuniorNoteSheet({
                       <button
                         type="button"
                         onClick={() => forgetSnippet(s)}
-                        aria-label={`Удалить быстрый ответ «${s.slice(0, 40)}»`}
+                        aria-label={t("junior.sheet.deleteQuickReply", { text: s.slice(0, 40) })}
                         className="grid h-6 w-6 place-items-center rounded-r-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <X className="h-3 w-3" aria-hidden="true" />
                       </button>
                     </span>
                   ))}
-                  {BUILTIN_SNIPPETS.map((s) => (
+                  {builtinSnippets().map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -336,28 +340,28 @@ export function JuniorNoteSheet({
                   ))}
                 </div>
 
-                <label htmlFor="jn-feedback" className="sr-only">Комментарий для трейдера</label>
+                <label htmlFor="jn-feedback" className="sr-only">{t("junior.sheet.feedbackLabel")}</label>
                 <Textarea
                   id="jn-feedback"
                   ref={feedbackRef}
                   rows={3}
                   value={feedback}
                   onChange={(e) => changeFeedback(e.target.value)}
-                  placeholder="Что хорошо, что исправить, выполнен ли вчерашний фокус. Конкретно и по сделкам."
+                  placeholder={t("junior.sheet.feedbackPlaceholder")}
                   className="[field-sizing:content] max-h-[50vh] min-h-[76px]"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="ghost" disabled={!feedback.trim()} onClick={rememberSnippet} title="Сохранить текст ответа как быстрый ответ">
-                      <BookmarkPlus aria-hidden="true" />В быстрые ответы
+                    <Button size="sm" variant="ghost" disabled={!feedback.trim()} onClick={rememberSnippet} title={t("junior.sheet.rememberTitle")}>
+                      <BookmarkPlus aria-hidden="true" />{t("junior.sheet.remember")}
                     </Button>
                     <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex">
-                      <Kbd>1</Kbd>–<Kbd>5</Kbd> оценка <Kbd>R</Kbd> ответ {nav && nav.total > 1 && <><Kbd>J</Kbd>/<Kbd>K</Kbd> листать</>} <Kbd keys={["Ctrl", "Enter"]} /> отправить
+                      <Kbd>1</Kbd>–<Kbd>5</Kbd> {t("junior.sheet.kbdScore")} <Kbd>R</Kbd> {t("junior.sheet.kbdAnswer")} {nav && nav.total > 1 && <><Kbd>J</Kbd>/<Kbd>K</Kbd> {t("junior.sheet.kbdFlip")}</>} <Kbd keys={["Ctrl", "Enter"]} /> {t("junior.sheet.kbdSend")}
                     </span>
                   </div>
                   <Button onClick={() => void saveReview()} disabled={saving}>
                     {saving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
-                    {submitLabel ?? (n.reviewed_at ? "Обновить ответ" : "Отправить ответ")}
+                    {submitLabel ?? (n.reviewed_at ? t("junior.sheet.update") : t("junior.sheet.send"))}
                   </Button>
                 </div>
               </section>
@@ -367,15 +371,15 @@ export function JuniorNoteSheet({
               <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-4">
                 {confirmDelete ? (
                   <>
-                    <span role="alert" className="mr-auto text-sm text-down">Удалить сводку навсегда?</span>
-                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Отмена</Button>
+                    <span role="alert" className="mr-auto text-sm text-down">{t("junior.sheet.deleteForever")}</span>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>{tc("actions.cancel")}</Button>
                     <Button size="sm" variant="destructive" disabled={deleting} onClick={() => void doDelete()}>
-                      {deleting ? "Удаляю…" : "Да, удалить"}
+                      {deleting ? t("deleting") : t("junior.sheet.yesDelete")}
                     </Button>
                   </>
                 ) : (
                   <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-down" onClick={() => setConfirmDelete(true)}>
-                    <Trash2 aria-hidden="true" />Удалить
+                    <Trash2 aria-hidden="true" />{tc("actions.delete")}
                   </Button>
                 )}
               </div>

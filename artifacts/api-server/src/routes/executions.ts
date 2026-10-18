@@ -3,12 +3,14 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { pool } from "@workspace/db";
 import { isReadableExampleTrade, loadMoneyViewer } from "../lib/playbookAccess";
 import { redactExecutions, redactStructure } from "../lib/playbookPrivacy";
-import { ROLE_LABEL_RU } from "../lib/tradeStructure";
+import { roleLabel } from "../lib/tradeStructure";
+import { langOf } from "../i18n";
 import { refreshTradeStructures, structureForTrade } from "../lib/tradeStructureStore";
 import { structureSummary } from "../lib/tradeStructure";
 import { logger } from "../lib/logger";
 import { can, resolveActor } from "../lib/permissions";
 import { canReadTradeExecutions } from "../lib/accessRules";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -105,20 +107,19 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number, m
     [tradeId]
   );
   if (rows.length === 0) {
-    res.status(404).json({ error: "trade not found" });
+    sendError(res, notFound("TRADE_NOT_FOUND"));
     return false;
   }
   const owner = rows[0].trader;
   const actor = await resolveActor(req);
   if (!actor) {
-    res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" });
+    sendError(res, unauthorized());
     return false;
   }
   if (mode === "write") {
     const own = owner === actor.name && (await can(req, "trades.write.own", { trader: owner }));
     if (actor.guest || !(own || (await can(req, "trades.write.any", { trader: owner })))) {
-      res.status(403).json({ error: "Можно изменять исполнения только своих трейдов" });
-      return false;
+      throw new AppError("OWN_TRADES_ONLY");
     }
     return { trader: owner };
   }
@@ -126,8 +127,7 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number, m
   const teamAllowed = !isOwn && !actor.guest && (await can(req, "trades.read.team", { trader: owner }));
   const readableExample = !isOwn && !teamAllowed && !actor.guest && (await isReadableExampleTrade(req, tradeId));
   if (!canReadTradeExecutions(actor, owner, { teamAllowed, readableExample })) {
-    res.status(403).json({ error: "Можно просматривать исполнения только своих трейдов" });
-    return false;
+    throw new AppError("OWN_TRADES_ONLY");
   }
   return { trader: owner };
 }
@@ -138,8 +138,7 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const tradeId = Number(req.params.tradeId);
     if (!Number.isFinite(tradeId) || tradeId <= 0) {
-      res.status(400).json({ error: "invalid trade id" });
-      return;
+      throw badRequest("INVALID_ID");
     }
     const access = await assertTradeAccess(req, res, tradeId, "read");
     if (!access) return;
@@ -151,7 +150,7 @@ router.get(
       [tradeId]
     );
     // Structure is computed on read (always matches the fills); the stored copy only feeds lists and back-fills.
-    const computed = await structureForTrade(tradeId).catch((e) => {
+    const computed = await structureForTrade(tradeId, undefined, langOf(req)).catch((e) => {
       logger.warn({ err: e instanceof Error ? e.message : String(e), tradeId }, "trade structure failed");
       return null;
     });
@@ -168,7 +167,7 @@ router.get(
         note: r.note,
         sortOrder: r.sort_order,
         role: s?.role ?? null,
-        roleLabel: s ? ROLE_LABEL_RU[s.role] : null,
+        roleLabel: s ? roleLabel(s.role, langOf(req)) : null,
         roleInferred: s?.inferred ?? false,
         legIndex: s?.legIndex ?? null,
       };
@@ -177,9 +176,61 @@ router.get(
     // unless the viewer is staff.
     const viewer = await loadMoneyViewer(req);
     const structure = computed
-      ? { ...redactStructure({ legs: computed.structure.legs, stats: { ...computed.structure.stats, summary: structureSummary(computed.structure.stats) } }, viewer, access.trader), siblings: computed.siblings }
+      ? { ...redactStructure({ legs: computed.structure.legs, stats: { ...computed.structure.stats, summary: structureSummary(computed.structure.stats, langOf(req)) } }, viewer, access.trader), siblings: computed.siblings }
       : null;
     res.json({ tradeId, executions: redactExecutions(data, viewer, access.trader), structure });
+  })
+);
+
+/**
+ * GET /api/trade-executions/batch?ids=1,2,3 — fill times only (kind / price / executedAt) for many trades in one
+ * request: trade lists draw a sparkline per row and used to fire one /executions request per trade (N+1).
+ * Same read rule as the single endpoint for own / team trades; ids the viewer may not read this way (e.g. a playbook
+ * example of another trader) are simply absent — the client falls back to GET /trades/:id/executions for those.
+ * Response: { items: { [tradeId]: { kind, price, executedAt }[] } } (an empty array = no fills).
+ */
+router.get(
+  "/trade-executions/batch",
+  asyncHandler(async (req: Request, res: Response) => {
+    const ids = [...new Set(String(req.query.ids ?? "").split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 200);
+    const actor = await resolveActor(req);
+    if (!actor) {
+      throw unauthorized();
+    }
+    if (!ids.length || actor.guest) {
+      res.json({ items: {} });
+      return;
+    }
+    const { rows: trades } = await pool.query<{ id: number; trader: string | null }>(
+      `SELECT id, trader FROM trades WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+      [ids],
+    );
+    const teamByTrader = new Map<string | null, boolean>();
+    const allowed: number[] = [];
+    for (const t of trades) {
+      const isOwn = !!t.trader && t.trader === actor.name;
+      let teamAllowed = false;
+      if (!isOwn) {
+        if (!teamByTrader.has(t.trader)) teamByTrader.set(t.trader, await can(req, "trades.read.team", { trader: t.trader }));
+        teamAllowed = teamByTrader.get(t.trader) ?? false;
+      }
+      if (canReadTradeExecutions(actor, t.trader, { teamAllowed, readableExample: false })) allowed.push(Number(t.id));
+    }
+    const items: Record<number, { kind: string; price: string; executedAt: string | null }[]> = {};
+    for (const id of allowed) items[id] = [];
+    if (allowed.length) {
+      const { rows } = await pool.query(
+        `SELECT trade_id, kind, price, executed_at
+           FROM trade_executions
+          WHERE trade_id = ANY($1::int[])
+          ORDER BY trade_id, sort_order ASC, id ASC`,
+        [allowed],
+      );
+      for (const r of rows) {
+        items[r.trade_id]?.push({ kind: r.kind, price: String(r.price), executedAt: r.executed_at ? new Date(r.executed_at).toISOString() : null });
+      }
+    }
+    res.json({ items });
   })
 );
 
@@ -189,13 +240,11 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const tradeId = Number(req.params.tradeId);
     if (!Number.isFinite(tradeId) || tradeId <= 0) {
-      res.status(400).json({ error: "invalid trade id" });
-      return;
+      throw badRequest("INVALID_ID");
     }
     const parsed = parseCreateBody(req.body);
     if (!parsed.ok) {
-      res.status(400).json({ error: parsed.error });
-      return;
+      throw new AppError("VALIDATION", 400, undefined, parsed.error);
     }
     if (!(await assertTradeAccess(req, res, tradeId))) return;
     const v = parsed.value;
@@ -218,8 +267,7 @@ router.delete(
     const execId = Number(req.params.execId);
     const validId = (n: number) => Number.isInteger(n) && n > 0;
     if (!validId(tradeId) || !validId(execId)) {
-      res.status(400).json({ error: "invalid id" });
-      return;
+      throw badRequest("INVALID_ID");
     }
     if (!(await assertTradeAccess(req, res, tradeId))) return;
     const { rowCount } = await pool.query(
@@ -227,8 +275,7 @@ router.delete(
       [execId, tradeId]
     );
     if (rowCount === 0) {
-      res.status(404).json({ error: "not found" });
-      return;
+      throw notFound();
     }
     await refreshAfterEdit(tradeId);
     res.status(204).end();

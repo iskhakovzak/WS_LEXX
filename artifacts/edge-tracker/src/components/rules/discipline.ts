@@ -1,5 +1,8 @@
 import { addDays, nyDate } from "@/lib/trading-date";
 import type { DisciplineTrade, Mistake, Violation } from "./types";
+import { fmtDate } from "@/lib/format";
+import { rulesI18n } from "@/i18n/ns/rules";
+import { mistakeLabel } from "./constants";
 
 export type DayStat = {
   date: string;
@@ -168,7 +171,7 @@ export function summarize(
   for (let w = mondayOf(from); w <= today; w = addDays(w, 7)) {
     const ws: WeekStat = {
       week: w,
-      label: new Date(`${w}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }),
+      label: fmtDate(w, "dayMonth"),
       violations: 0, mistakes: 0, trades: 0,
     };
     weekly.push(ws);
@@ -196,10 +199,10 @@ export function summarize(
     if (tradeId != null) g.tradeIds.add(tradeId);
   };
   for (const v of violations) {
-    bump(`rule:${v.ruleId}`, v.ruleName ?? "Правило", "rule", v.tradeId, violationDay(v));
+    bump(`rule:${v.ruleId}`, v.ruleName ?? rulesI18n.t("ruleFallback"), "rule", v.tradeId, violationDay(v));
   }
   for (const m of mistakes) {
-    bump(`m:${m.errorType}`, m.errorType, "mistake", m.tradeId, mistakeDate(m));
+    bump(`m:${m.errorType}`, mistakeLabel(m.errorType), "mistake", m.tradeId, mistakeDate(m));
   }
   const rOf = (id: number): { r: number | null; pnl: number | null } => {
     const t = tradeById.get(id);

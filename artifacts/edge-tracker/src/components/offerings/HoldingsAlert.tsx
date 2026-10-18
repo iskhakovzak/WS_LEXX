@@ -3,31 +3,37 @@ import { cn } from "@/lib/utils";
 import { Pill } from "@/components/ds";
 import { DEAL_TYPE_LABEL, SCORE_LEVEL_TONE, dealTypeOf, dilutionScore, discountOf } from "./score";
 import {
-  HORIZON_LABEL, fmtM, fmtPctCap, fmtPrice, pctOfMcap,
+  HORIZON_LABEL, fmtM, fmtPctCap, pctOfMcap,
   type Exposure, type Offering,
 } from "./types";
+import { fmtPrice } from "@/lib/format";
+import { offeringsI18n } from "@/i18n/ns/offerings";
 
+import { personName } from "@/i18n";
 type Match = { o: Offering; e: Exposure };
 
 function holdLine(e: Exposure): string {
-  if (!e.held.length) return "в вотчлисте";
+  const tr = offeringsI18n.t;
+  if (!e.held.length) return tr("holdings.inWatch");
   const parts = e.held.slice(0, 3).map((t) => {
-    const side = t.side ? (/short|шорт/i.test(t.side) ? "шорт" : "лонг") : null;
-    const hz = HORIZON_LABEL[t.horizon ?? "intraday"] ?? "интрадей";
-    return [side, hz, t.trader].filter(Boolean).join(" · ");
+    // Side is stored as a code or legacy Russian text — parse both.
+    const side = t.side ? (/short|шорт/i.test(t.side) ? tr("holdings.short") : tr("holdings.long")) : null; // i18n-ignore
+    const hz = HORIZON_LABEL[t.horizon ?? "intraday"] ?? HORIZON_LABEL.intraday;
+    return [side, hz, t.trader ? personName(t.trader) : null].filter(Boolean).join(" · ");
   });
-  return `позиция: ${parts.join("; ")}${e.held.length > 3 ? ` +${e.held.length - 3}` : ""}`;
+  return tr("holdings.position", { list: `${parts.join("; ")}${e.held.length > 3 ? ` +${e.held.length - 3}` : ""}` });
 }
 
 function whyLine(o: Offering): string {
+  const t = offeringsI18n.t;
   const bits: string[] = [DEAL_TYPE_LABEL[dealTypeOf(o)]];
   const size = o.dealSizeM ?? o.shelfCapacityM;
   if (size != null) bits.push(fmtM(size));
   const p = pctOfMcap(o);
-  if (p != null) bits.push(`${fmtPctCap(p, 0)} мкап`);
+  if (p != null) bits.push(t("watch.pctMcap", { pct: fmtPctCap(p, 0) }));
   const d = discountOf(o);
-  if (d != null) bits.push(`дисконт ${Math.abs(d).toFixed(1)}%`);
-  if (o.offerPrice != null) bits.push(`оффер ${fmtPrice(o.offerPrice)}`);
+  if (d != null) bits.push(t("watch.discount", { pct: Math.abs(d).toFixed(1) }));
+  if (o.offerPrice != null) bits.push(t("watch.offer", { price: fmtPrice(o.offerPrice, { dollar: true }) }));
   return bits.join(" · ");
 }
 
@@ -44,6 +50,7 @@ export function HoldingsAlert({
   exposure: Map<string, Exposure>;
   onOpen: (o: Offering) => void;
 }) {
+  const { t } = offeringsI18n.useT();
   const matches: Match[] = [];
   for (const o of offerings) {
     if (o.status === "withdrawn") continue;
@@ -60,7 +67,7 @@ export function HoldingsAlert({
   return (
     <section
       role="alert"
-      aria-label="Свежие заявки по вашим тикерам"
+      aria-label={t("holdings.aria")}
       className={cn(
         "glass-panel rounded-2xl border p-4 sm:p-5",
         severe ? "border-down/40 bg-down/[0.06]" : "border-[hsl(var(--chart-3)/0.4)] bg-[hsl(var(--chart-3)/0.06)]",
@@ -73,15 +80,15 @@ export function HoldingsAlert({
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-foreground">
             {severe
-              ? `Свежая заявка по открытой позиции: ${held.map((m) => m.o.ticker).join(", ")}`
-              : `Заявки по тикерам из вотчлиста: ${matches.map((m) => m.o.ticker).join(", ")}`}
+              ? t("holdings.titleHeld", { tickers: held.map((m) => m.o.ticker).join(", ") })
+              : t("holdings.titleWatch", { tickers: matches.map((m) => m.o.ticker).join(", ") })}
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {carry.length
-              ? "Перенос через ночь под размещение — классический гэп вниз к цене оффера. Проверьте размер и стоп до закрытия."
+              ? t("holdings.carry")
               : severe
-                ? "Размещение давит на цену внутри дня: учитывайте оффер как магнит и не усредняйтесь против supply."
-                : "Обновите план: оффер часто становится уровнем, а ATM/шелф — навесом предложения."}
+                ? t("holdings.intraday")
+                : t("holdings.watch")}
           </p>
         </div>
       </div>
@@ -98,7 +105,7 @@ export function HoldingsAlert({
                 <span className="block truncate text-xs text-foreground">{whyLine(o)}</span>
                 <span className="block truncate text-xs text-muted-foreground">{holdLine(e)}</span>
               </span>
-              <Pill tone={SCORE_LEVEL_TONE[dilutionScore(o).level]} className="text-2xs" title="Скор разводнения">{dilutionScore(o).score}</Pill>
+              <Pill tone={SCORE_LEVEL_TONE[dilutionScore(o).level]} className="text-2xs" title={t("holdings.scoreTitle")}>{dilutionScore(o).score}</Pill>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             </button>
           </li>

@@ -3,6 +3,8 @@
 // while the running API predates `?preset=` (then the client filters the full filtered list itself).
 import type { Trade } from "@workspace/api-client-react";
 import { MISTAKE_TAGS } from "@/components/eod/eod-api";
+import { tradesI18n } from "@/i18n/ns/trades";
+export { tagLabel, tagMatches } from "@/components/shared/trade-labels";
 import { holdSeconds, netPnl, resultKey, splitTags, tradeWall, type SortConfig } from "./trade-utils";
 
 export const PRESETS = ["review", "worst", "best", "scalp", "fees", "revenge"] as const;
@@ -23,50 +25,24 @@ export type PresetMeta = {
   tone: "warn" | "down" | "up" | "accent" | "purple";
 };
 
-export const PRESET_META: Record<Preset, PresetMeta> = {
-  review: {
-    key: "review",
-    label: "Требуют разбора",
-    why: "Нет сетапа, тегов и заметок. Сверху самые дорогие по модулю $: крупные убытки и выбросы. Разметьте их, и статистика по сетапам и ошибкам станет честной.",
-    sort: { col: "impact", dir: "desc" },
-    tone: "warn",
-  },
-  worst: {
-    key: "worst",
-    label: "Худшие",
-    why: "Крупнейшие убытки. Обычно 3–5 таких сделок съедают месяц, и почти всегда за ними стоит нарушение плана или поздний выход.",
-    sort: { col: "pnl", dir: "asc" },
-    tone: "down",
-  },
-  best: {
-    key: "best",
-    label: "Лучшие",
-    why: "Что стоит повторять: какой у лучших сделок сетап, время входа и удержание.",
-    sort: { col: "pnl", dir: "desc" },
-    tone: "up",
-  },
-  scalp: {
-    key: "scalp",
-    label: "Скальпы < 2 мин",
-    why: "Сделки короче двух минут. Комиссия здесь съедает почти всё движение. Проверьте, окупаются ли они вообще.",
-    sort: { col: "date", dir: "desc" },
-    tone: "accent",
-  },
-  fees: {
-    key: "fees",
-    label: "Комиссии > 50%",
-    why: "Комиссии забрали половину брутто-результата или больше. Это главная тихая утечка: результат был, но достался брокеру.",
-    sort: { col: "fees", dir: "desc" },
-    tone: "warn",
-  },
-  revenge: {
-    key: "revenge",
-    label: "После убытка < 10 мин",
-    why: "Вход меньше чем через 10 минут после убыточной сделки в тот же день. Это типичный реванш: решение принимает эмоция, а не сетап.",
-    sort: { col: "date", dir: "desc" },
-    tone: "purple",
-  },
+const PRESET_BASE: Record<Preset, Pick<PresetMeta, "sort" | "tone">> = {
+  review: { sort: { col: "impact", dir: "desc" }, tone: "warn" },
+  worst: { sort: { col: "pnl", dir: "asc" }, tone: "down" },
+  best: { sort: { col: "pnl", dir: "desc" }, tone: "up" },
+  scalp: { sort: { col: "date", dir: "desc" }, tone: "accent" },
+  fees: { sort: { col: "fees", dir: "desc" }, tone: "warn" },
+  revenge: { sort: { col: "date", dir: "desc" }, tone: "purple" },
 };
+
+/** Label and «why» are read in the current language on access. */
+export const PRESET_META: Record<Preset, PresetMeta> = Object.fromEntries(
+  PRESETS.map((key) => [key, {
+    key,
+    get label() { return tradesI18n.t(`presets.${key}.label`); },
+    get why() { return tradesI18n.t(`presets.${key}.why`); },
+    ...PRESET_BASE[key],
+  }]),
+) as Record<Preset, PresetMeta>;
 
 export function isPreset(v: string | null | undefined): v is Preset {
   return !!v && (PRESETS as readonly string[]).includes(v);
@@ -76,7 +52,10 @@ export function isPreset(v: string | null | undefined): v is Preset {
 
 /** Mistakes: the same list as the EOD review (one vocabulary across the desk). */
 export const MISTAKES: readonly string[] = MISTAKE_TAGS;
+// Stored values (codes): the Russian word is what trades.tags keeps; `tagLabel` shows it in the UI language.
+// i18n-ignore (stored tag codes)
 export const EMOTIONS: readonly string[] = ["Спокойствие", "Уверенность", "Страх", "Жадность", "Тильт", "Скука", "Нетерпение", "Эйфория"];
+
 
 const MISTAKE_SET = new Set(MISTAKES.map((m) => m.toLowerCase()));
 const EMOTION_SET = new Set(EMOTIONS.map((m) => m.toLowerCase()));

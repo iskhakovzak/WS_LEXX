@@ -4,6 +4,8 @@
  * (linked setup → auto-classification → setup text written on the trade) and a suggested tier from the result.
  * SQL lives in routes/playbook-spaces.ts (GET /playbook-tools/inbox); this file has no DB access.
  */
+import { playbookT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 export type InboxSetup = {
   id: number;
@@ -73,19 +75,20 @@ function bestByLabel(label: string, setups: InboxSetup[]): InboxSetup | null {
  * Order: the setup the trade is already linked to → auto-classifier label → the setup text on the trade;
  * within a label the closest name wins, ties go to the viewer's own setup, then office.
  */
-export function suggestSetup(trade: InboxTradeInput, setups: InboxSetup[]): InboxSuggestion | null {
+export function suggestSetup(trade: InboxTradeInput, setups: InboxSetup[], lang: Lang = "ru"): InboxSuggestion | null {
+  const t = playbookT.tFor(lang);
   const writable = setups.filter((s) => s.canAddExamples).sort((a, b) => preference(a) - preference(b) || a.name.localeCompare(b.name, "ru"));
   if (trade.playbookId) {
     const s = writable.find((x) => x.id === trade.playbookId);
-    if (s) return { id: s.id, name: s.name, reason: "Сделка уже привязана к сетапу", via: "linked" };
+    if (s) return { id: s.id, name: s.name, reason: t("suggest.linked"), via: "linked" };
   }
   if (trade.autoSetup) {
     const s = bestByLabel(trade.autoSetup, writable);
-    if (s) return { id: s.id, name: s.name, reason: `Автоклассификация: ${trade.autoSetup}`, via: "auto" };
+    if (s) return { id: s.id, name: s.name, reason: t("suggest.auto", { label: trade.autoSetup }), via: "auto" };
   }
   if (trade.setup) {
     const s = bestByLabel(trade.setup, writable);
-    if (s) return { id: s.id, name: s.name, reason: `Сетап в сделке: ${trade.setup}`, via: "text" };
+    if (s) return { id: s.id, name: s.name, reason: t("suggest.text", { label: trade.setup }), via: "text" };
   }
   return null;
 }

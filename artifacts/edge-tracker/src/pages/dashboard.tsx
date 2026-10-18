@@ -24,6 +24,7 @@ import { StreaksPanel } from "@/components/dashboard/streaks-panel";
 import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { CustomizePopover } from "@/components/dashboard/customize-popover";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
 import {
   SECTION_WIDTH,
   useDashboardEquity,
@@ -104,6 +105,9 @@ export default function Dashboard() {
           .find((d) => d < tradingDate || (d === tradingDate && afterClose)) ?? null)
       : null;
   const lastDayEodQ = useEodDay(lastDay, userName, authed && scope === "me" && on("attention"));
+  // «Что важно сейчас» counts tasks from all of these: render it once they have answered (no 2 → 3 jump).
+  const attentionLoading = todayQ.isLoading || recentQ.isLoading || riskQ.isLoading || deskQ.isLoading || eodQ.isLoading
+    || eventsQ.isLoading || holidaysQ.isLoading || unreadQ.isLoading || lastDayEodQ.isLoading;
 
   const goToCheckin = useCallback(() => {
     if (prefs.hidden.includes("checkin")) update({ hidden: prefs.hidden.filter((h) => h !== "checkin") });
@@ -132,7 +136,7 @@ export default function Dashboard() {
             events={eventsQ.data}
             marketEvents={holidaysQ.data?.today ?? []}
             unread={unreadQ.data}
-            isLoading={todayQ.isLoading}
+            isLoading={attentionLoading}
             updatedAt={todayQ.dataUpdatedAt || undefined}
             onCheckin={goToCheckin}
           />
@@ -171,7 +175,7 @@ export default function Dashboard() {
         return today?.positions && today.positions.length > 0 ? <PositionsPanel data={today} /> : null;
       case "checkin":
         return (
-          <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label="Утренний чек-ин" className="scroll-mt-24 outline-none">
+          <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label={dashboardI18n.t("sections.checkin.label")} className="scroll-mt-24 outline-none">
             <MorningCheckin />
           </section>
         );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertCircle, RefreshCw, WifiOff, Lock, ChevronDown } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Props = {
   error?: unknown;
@@ -11,6 +12,8 @@ type Props = {
   title?: string;
   /** Optional: inline single-row variant for small panels and lists. */
   compact?: boolean;
+  /** Retry button text (default common `actions.retry`). */
+  retryLabel?: string;
   className?: string;
 };
 
@@ -27,21 +30,19 @@ function classify(error: unknown): { kind: Kind; status: number | null; raw: str
   return { kind: "generic", status, raw };
 }
 
-const COPY: Record<Kind, { title: string; hint: string; icon: typeof AlertCircle }> = {
-  network: { title: "Нет связи с сервером", hint: "Проверьте соединение — данные подтянутся после повтора.", icon: WifiOff },
-  auth: { title: "Нет доступа", hint: "Сессия могла истечь. Войдите снова или обратитесь к куратору.", icon: Lock },
-  server: { title: "Сервер не ответил", hint: "Временный сбой. Повторите через пару секунд.", icon: AlertCircle },
-  generic: { title: "Не удалось загрузить данные", hint: "Попробуйте ещё раз.", icon: AlertCircle },
-};
+const ICON: Record<Kind, typeof AlertCircle> = { network: WifiOff, auth: Lock, server: AlertCircle, generic: AlertCircle };
 
-export function QueryError({ error, onRetry, message, title, compact, className }: Props) {
+export function QueryError({ error, onRetry, message, title, compact, retryLabel: retryLabelProp, className }: Props) {
+  const { t } = commonI18n.useT();
   const [retrying, setRetrying] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const { kind, status, raw } = classify(error);
-  const copy = COPY[kind];
-  const Icon = copy.icon;
+  const copy = { title: t(`queryError.${kind}Title`), hint: t(`queryError.${kind}Hint`) };
+  const retryLabel = retryLabelProp ?? t("actions.retry");
+  const Icon = ICON[kind];
   const heading = title ?? message ?? copy.title;
-  const text = message && error == null ? null : copy.hint;
+  // With both a title and a message the message is the explanation line (it used to be dropped).
+  const text = title && message ? message : message && error == null ? null : copy.hint;
   const details = raw && raw !== heading ? raw : null;
 
   const retry = () => {
@@ -58,7 +59,7 @@ export function QueryError({ error, onRetry, message, title, compact, className 
         {onRetry && (
           <Button type="button" variant="ghost" size="sm" onClick={retry} disabled={retrying} className="h-7 text-down hover:text-down">
             <RefreshCw className={cn(retrying && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
-            Повторить
+            {retryLabel}
           </Button>
         )}
       </div>
@@ -80,7 +81,7 @@ export function QueryError({ error, onRetry, message, title, compact, className 
       {onRetry && (
         <Button type="button" variant="outline" size="sm" onClick={retry} disabled={retrying}>
           <RefreshCw className={cn(retrying && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
-          Повторить
+          {retryLabel}
         </Button>
       )}
       {details && (
@@ -91,7 +92,7 @@ export function QueryError({ error, onRetry, message, title, compact, className 
             aria-expanded={showDetails}
             className="inline-flex min-h-6 items-center gap-1 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            Подробности
+            {t("queryError.details")}
             <ChevronDown className={cn("h-3 w-3 transition-transform", showDetails && "rotate-180")} aria-hidden="true" />
           </button>
           {showDetails && (

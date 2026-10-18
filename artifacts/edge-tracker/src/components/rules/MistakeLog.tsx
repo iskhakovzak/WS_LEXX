@@ -9,8 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { apiJson } from "./api";
-import { fmtDay, fmtR, fmtUsd, severityMeta } from "./constants";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { mistakeLabel, severityMeta } from "./constants";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
+import { personName } from "@/i18n";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { mistakeDate } from "./discipline";
 import type { Mistake } from "./types";
 
@@ -41,6 +46,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   onEdit: (m: Mistake) => void;
   onChanged: () => void;
 }>(function MistakeLog({ mistakes, trader, onNew, onEdit, onChanged }, searchRef) {
+  const { t } = rulesI18n.useT();
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [query, setQuery] = useState("");
@@ -65,7 +71,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
       if (status === "done" && m.resolved !== "yes") return false;
       if (cats.length && !cats.includes(m.errorType)) return false;
       if (ql) {
-        const hay = `${m.errorType} ${m.description} ${m.lesson ?? ""} ${m.ticker ?? ""}`.toLowerCase();
+        const hay = `${m.errorType} ${mistakeLabel(m.errorType)} ${m.description} ${m.lesson ?? ""} ${m.ticker ?? ""}`.toLowerCase();
         if (!hay.includes(ql)) return false;
       }
       return true;
@@ -75,12 +81,12 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   async function patch(m: Mistake, body: Record<string, unknown>, okMsg: string) {
     setBusyId(m.id);
     try {
-      await apiJson(`/errors/${m.id}`, { method: "PATCH", json: body }, "Не удалось сохранить");
+      await http.patch(`/api/errors/${m.id}`, body);
       toast({ title: okMsg });
       onChanged();
       return true;
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e, commonI18n.t("states.saveFailed")), variant: "destructive" });
       return false;
     } finally {
       setBusyId(null);
@@ -91,45 +97,45 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   async function remove(m: Mistake) {
     setBusyId(m.id);
     try {
-      await apiJson(`/errors/${m.id}`, { method: "DELETE" }, "Не удалось удалить");
+      await http.del(`/api/errors/${m.id}`);
       onChanged();
       toast({
-        title: "Запись удалена",
-        description: m.errorType,
+        title: t("log.deleted"),
+        description: mistakeLabel(m.errorType),
         action: (
           <ToastAction
-            altText="Вернуть запись"
+            altText={t("log.restoreAlt")}
             onClick={async () => {
               try {
-                await apiJson(`/errors/${m.id}/restore`, { method: "POST" }, "Не удалось вернуть запись");
+                await http.post(`/api/errors/${m.id}/restore`);
                 onChanged();
               } catch (e) {
-                toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+                toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e, t("log.restoreFailed")), variant: "destructive" });
               }
             }}
           >
-            Вернуть
+            {commonI18n.t("actions.restore")}
           </ToastAction>
         ),
       });
     } catch (e) {
-      toast({ title: "Ошибка удаления", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: t("log.deleteError"), description: humanizeApiError(e, commonI18n.t("states.deleteFailed")), variant: "destructive" });
     } finally {
       setBusyId(null);
     }
   }
 
   function exportCsv() {
-    const head = ["Дата", "Категория", "Серьёзность", "Тикер", "Сделка", "R", "Нетто $", "Описание", "Урок", "Разобрано"];
+    const head = [t("log.csv.date"), t("log.csv.category"), t("log.csv.severity"), t("log.csv.ticker"), t("log.csv.trade"), "R", t("log.csv.net"), t("log.csv.description"), t("log.csv.lesson"), t("log.csv.reviewed")];
     const rows = filtered.map((m) => [
-      mistakeDate(m), m.errorType, severityMeta(m.severity).label, m.ticker ?? "", m.tradeId ?? "",
-      m.tradeR ?? "", m.tradeNetPnl ?? m.tradePnl ?? "", m.description, m.lesson ?? "", m.resolved === "yes" ? "да" : "нет",
+      mistakeDate(m), mistakeLabel(m.errorType), severityMeta(m.severity).label, m.ticker ?? "", m.tradeId ?? "",
+      m.tradeR ?? "", m.tradeNetPnl ?? m.tradePnl ?? "", m.description, m.lesson ?? "", m.resolved === "yes" ? commonI18n.t("yes") : commonI18n.t("no"),
     ]);
     const csv = "﻿" + [head, ...rows].map((r) => r.map(csvCell).join(";")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `oshibki-${trader}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${t("log.csv.file")}-${personName(trader)}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -139,9 +145,9 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
       <Panel>
         <EmptyState
           icon={NotebookPen}
-          title="Журнал ошибок пуст"
-          description="Нарушили правило, вошли на эмоциях, сдвинули стоп? Запишите за 5 секунд — со временем увидите, какие ошибки повторяются и сколько они стоят."
-          action={<Button onClick={onNew}>Записать первую ошибку</Button>}
+          title={t("log.emptyTitle")}
+          description={t("log.emptyDesc")}
+          action={<Button onClick={onNew}>{t("log.first")}</Button>}
         />
       </Panel>
     );
@@ -156,30 +162,30 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск по ошибкам, урокам, тикерам  ( / )"
-            aria-label="Поиск по журналу ошибок"
+            placeholder={t("log.searchPlaceholder")}
+            aria-label={t("log.searchAria")}
             className="pl-9"
             onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
           />
         </div>
         <Segmented<Status>
-          ariaLabel="Статус разбора"
+          ariaLabel={t("log.statusAria")}
           size="sm"
           value={status}
           onChange={setStatus}
           options={[
-            { value: "all", label: "Все", count: mistakes.length },
-            { value: "open", label: "Не разобраны", count: openCount },
-            { value: "done", label: "Разобраны", count: mistakes.length - openCount },
+            { value: "all", label: commonI18n.t("states.all"), count: mistakes.length },
+            { value: "open", label: t("log.open"), count: openCount },
+            { value: "done", label: t("log.done"), count: mistakes.length - openCount },
           ]}
         />
-        <Button variant="outline" size="icon" aria-label="Экспорт в CSV" title="Экспорт в CSV" onClick={exportCsv}>
+        <Button variant="outline" size="icon" aria-label={t("log.export")} title={t("log.export")} onClick={exportCsv}>
           <Download />
         </Button>
       </Toolbar>
 
       {catCounts.length > 1 && (
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Фильтр по категориям">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("log.catsAria")}>
           {catCounts.slice(0, 12).map(([c, n]) => (
             <FilterChip
               key={c}
@@ -188,17 +194,17 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
               className="min-h-7 px-2.5 text-xs"
               onClick={() => setCats((xs) => (xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c]))}
             >
-              {c}
+              {mistakeLabel(c)}
             </FilterChip>
           ))}
           {cats.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setCats([])}>Сбросить</Button>
+            <Button variant="ghost" size="sm" onClick={() => setCats([])}>{commonI18n.t("actions.reset")}</Button>
           )}
         </div>
       )}
 
       {filtered.length === 0 ? (
-        <Panel><EmptyState icon={Search} title="Ничего не найдено" description="Измените поиск или фильтры." /></Panel>
+        <Panel><EmptyState icon={Search} title={commonI18n.t("states.nothingFound")} description={t("log.changeFilters")} /></Panel>
       ) : (
         <ul className="flex flex-col gap-2">
           {filtered.map((m) => {
@@ -212,8 +218,9 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => patch(m, { resolved: done ? "no" : "yes" }, done ? "Возвращено в работу" : "Отмечено как разобранное")}
-                    aria-label={done ? "Отметить как не разобранное" : "Отметить как разобранное"}
+                    onClick={() => patch(m, { resolved: done ? "no" : "yes" }, done ? t("log.reopened") : t("log.markedDone"))}
+                    aria-label={done ? t("log.markUndone") : t("log.markDone")}
+                    title={done ? t("log.markUndone") : t("log.markDone")}
                     aria-pressed={done}
                     className="-ml-1 mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-up focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
@@ -222,7 +229,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={cn("font-semibold", done && "line-through decoration-muted-foreground/60")}>
-                        <Highlight text={m.errorType} q={q} />
+                        <Highlight text={mistakeLabel(m.errorType)} q={q} />
                       </span>
                       <Pill tone={sev.tone}>{sev.label}</Pill>
                       {m.tradeId ? (
@@ -230,19 +237,19 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                           type="button"
                           onClick={() => navigate(links.trade(m.tradeId!))}
                           className="chip inline-flex min-h-6 items-center gap-1 px-2 text-xs font-medium"
-                          title="Открыть сделку"
+                          title={t("log.openTrade")}
                         >
                           {m.ticker ?? `#${m.tradeId}`}
                           {m.tradeNetPnl != null ? (
-                            <span className={m.tradeNetPnl < 0 ? "text-down" : m.tradeNetPnl > 0 ? "text-up" : ""}>{fmtUsd(m.tradeNetPnl)}</span>
+                            <span className={m.tradeNetPnl < 0 ? "text-down" : m.tradeNetPnl > 0 ? "text-up" : ""}>{fmtUsd(m.tradeNetPnl, { signed: true, decimals: "trim" })}</span>
                           ) : m.tradeR != null ? (
-                            <span className={m.tradeR < 0 ? "text-down" : "text-up"}>{fmtR(m.tradeR)}</span>
+                            <span className={m.tradeR < 0 ? "text-down" : "text-up"}>{fmtR(m.tradeR, 1)}</span>
                           ) : null}
                         </button>
                       ) : m.ticker ? (
                         <Pill><Highlight text={m.ticker} q={q} /></Pill>
                       ) : null}
-                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtDay(mistakeDate(m))}</span>
+                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtDate(mistakeDate(m), "dayMonth")}</span>
                     </div>
                     {m.description && m.description !== m.errorType && (
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground"><Highlight text={m.description} q={q} /></p>
@@ -254,20 +261,20 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                           rows={2}
                           value={lessonDraft}
                           maxLength={4000}
-                          aria-label="Урок"
-                          placeholder="Что сделаю иначе в следующий раз"
+                          aria-label={t("log.lesson")}
+                          placeholder={t("log.lessonPlaceholder")}
                           onChange={(e) => setLessonDraft(e.target.value)}
                           onKeyDown={async (e) => {
                             if (e.key === "Escape") { e.stopPropagation(); setLessonFor(null); }
                             if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
                               e.preventDefault();
-                              if (await patch(m, { lesson: lessonDraft }, "Урок сохранён")) setLessonFor(null);
+                              if (await patch(m, { lesson: lessonDraft }, t("log.lessonSaved"))) setLessonFor(null);
                             }
                           }}
                         />
                         <div className="flex gap-2">
-                          <Button size="sm" disabled={busy} onClick={async () => { if (await patch(m, { lesson: lessonDraft }, "Урок сохранён")) setLessonFor(null); }}>Сохранить</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setLessonFor(null)}>Отмена</Button>
+                          <Button size="sm" disabled={busy} onClick={async () => { if (await patch(m, { lesson: lessonDraft }, t("log.lessonSaved"))) setLessonFor(null); }}>{commonI18n.t("actions.save")}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setLessonFor(null)}>{commonI18n.t("actions.cancel")}</Button>
                         </div>
                       </div>
                     ) : m.lesson ? (
@@ -275,9 +282,9 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                         type="button"
                         onClick={() => { setLessonFor(m.id); setLessonDraft(m.lesson ?? ""); }}
                         className="mt-2 block w-full rounded-xl bg-primary/10 px-3 py-2 text-left text-sm text-foreground hover:bg-primary/15"
-                        title="Изменить урок"
+                        title={t("log.editLesson")}
                       >
-                        <span className="micro-label mr-2 text-primary">Урок</span>
+                        <span className="micro-label mr-2 text-primary">{t("log.lesson")}</span>
                         <Highlight text={m.lesson} q={q} />
                       </button>
                     ) : (
@@ -286,15 +293,15 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                         onClick={() => { setLessonFor(m.id); setLessonDraft(""); }}
                         className="mt-1.5 text-xs font-medium text-primary hover:underline"
                       >
-                        + Добавить урок
+                        {t("log.addLesson")}
                       </button>
                     )}
                   </div>
                   <div className="flex shrink-0 gap-0.5">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Редактировать" title="Редактировать" onClick={() => onEdit(m)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("log.edit")} title={t("log.edit")} onClick={() => onEdit(m)}>
                       <Pencil className="!size-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-down" aria-label="Удалить" title="Удалить" disabled={busy} onClick={() => remove(m)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-down" aria-label={commonI18n.t("actions.delete")} title={commonI18n.t("actions.delete")} disabled={busy} onClick={() => remove(m)}>
                       <Trash2 className="!size-3.5" />
                     </Button>
                   </div>

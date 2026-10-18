@@ -20,6 +20,8 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql, resultSql, num } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
+import { badRequest, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -67,15 +69,6 @@ function normQuery(q: Request["query"]): Record<string, string> {
 
 /* ─── SQL fragments ───────────────────────────────────────────────────────── */
 
-/** Earliest entry/add execution and latest exit/stop/trim execution per trade. */
-const EXEC_CTE = `exec AS (
-  SELECT trade_id,
-         MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-         MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-  FROM trade_executions
-  WHERE executed_at IS NOT NULL
-  GROUP BY trade_id
-)`;
 
 /** Minutes since NY midnight of the entry: execution → time inside `date` → NULL. */
 const ENTRY_MIN_SQL = `(CASE
@@ -84,6 +77,7 @@ const ENTRY_MIN_SQL = `(CASE
   ELSE NULL END)`;
 
 /** Hold minutes: executions span → hold_time text ("1:30", "45 мин", "2h", "3 д"). */
+// i18n-ignore-next (parses RU / EN hold-time units)
 const HOLD_MIN_SQL = `(CASE
   WHEN e.first_entry IS NOT NULL AND e.last_exit IS NOT NULL AND e.last_exit > e.first_entry
     THEN EXTRACT(EPOCH FROM (e.last_exit - e.first_entry)) / 60
@@ -103,6 +97,7 @@ function moneySql(col: string): string {
   ELSE NULL END)`;
 }
 
+// i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
 const CAP_SQL = `(CASE
   WHEN ${moneySql("t.market_cap")} IS NULL THEN 'Нет капитализации'
   WHEN ${moneySql("t.market_cap")} < 50e6 THEN 'Нано < $50M'
@@ -111,6 +106,7 @@ const CAP_SQL = `(CASE
   WHEN ${moneySql("t.market_cap")} < 10e9 THEN 'Средняя $2–10B'
   ELSE 'Крупная > $10B' END)`;
 
+// i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
 const FLOAT_SQL = `(CASE
   WHEN ${moneySql("t.float")} IS NULL THEN 'Нет флоата'
   WHEN ${moneySql("t.float")} < 10e6 THEN 'Флоат < 10M'
@@ -119,6 +115,7 @@ const FLOAT_SQL = `(CASE
   ELSE 'Флоат > 200M' END)`;
 
 const GAP_PCT_SQL = `(CASE WHEN (t.context_snapshot->>'gapPct') ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (t.context_snapshot->>'gapPct')::numeric ELSE NULL END)`;
+// i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
 const GAP_SQL = `(CASE
   WHEN ${GAP_PCT_SQL} IS NOT NULL THEN (CASE
     WHEN ${GAP_PCT_SQL} <= -10 THEN 'Гэп ≤ −10%'
@@ -134,31 +131,44 @@ const GAP_SQL = `(CASE
 
 const CLOSE_DAY_SQL = `substring(${closeDateSql("t")} from 1 for 10)`;
 const CLOSE_DATE_CAST = `(CASE WHEN ${CLOSE_DAY_SQL} ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN ${CLOSE_DAY_SQL}::date ELSE NULL END)`;
+// i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
 const WEEKDAY_SQL = `(CASE EXTRACT(DOW FROM ${CLOSE_DATE_CAST})::int
   WHEN 1 THEN 'Пн' WHEN 2 THEN 'Вт' WHEN 3 THEN 'Ср' WHEN 4 THEN 'Чт' WHEN 5 THEN 'Пт' WHEN 6 THEN 'Сб' WHEN 0 THEN 'Вс' ELSE 'Без даты' END)`;
 
 function dimensionSql(dim: EdgeDimension, tod: number, hasJournal: boolean): string {
   switch (dim) {
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "setup": return `COALESCE(NULLIF(trim(t.setup), ''), 'Без сетапа')`;
     case "horizon": return horizonSql("t");
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "tod": return `(CASE WHEN ${ENTRY_MIN_SQL} IS NOT NULL THEN 'm' || (FLOOR(${ENTRY_MIN_SQL} / ${tod}) * ${tod})::int
       WHEN NULLIF(trim(t.session), '') IS NOT NULL THEN 's:' || trim(t.session) ELSE 'без времени' END)`;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "hold": return `(CASE WHEN ${HOLD_MIN_SQL} IS NULL THEN 'Не указано'
       WHEN ${HOLD_MIN_SQL} < 5 THEN 'До 5 мин' WHEN ${HOLD_MIN_SQL} < 15 THEN '5–15 мин' WHEN ${HOLD_MIN_SQL} < 60 THEN '15–60 мин'
       WHEN ${HOLD_MIN_SQL} < 240 THEN '1–4 ч' WHEN ${HOLD_MIN_SQL} < 1440 THEN 'Больше 4 ч' ELSE 'Больше дня' END)`;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "catalyst": return `COALESCE(NULLIF(trim(t.event_type), ''), 'Без катализатора')`;
     case "cap": return CAP_SQL;
     case "float": return FLOAT_SQL;
     case "gap": return GAP_SQL;
     case "weekday": return WEEKDAY_SQL;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "grade": return `COALESCE(NULLIF(trim(t.confidence_grade), ''), 'Без оценки')`;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "conviction": return `(CASE WHEN t.conviction IS NULL THEN 'Без уверенности' ELSE t.conviction::text || '/5' END)`;
     case "plan": return hasJournal
+      // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
       ? `(CASE WHEN j.followed_plan IS TRUE THEN 'По плану' WHEN j.followed_plan IS FALSE THEN 'Не по плану' ELSE 'Не отмечено' END)`
+      // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
       : `'Не отмечено'`;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "side": return `(CASE WHEN lower(COALESCE(t.side, '')) LIKE 's%' THEN 'Шорт' WHEN lower(COALESCE(t.side, '')) LIKE 'l%' THEN 'Лонг' ELSE 'Без стороны' END)`;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "trader": return `COALESCE(NULLIF(trim(t.trader), ''), 'Без трейдера')`;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "account": return `COALESCE(NULLIF(trim(t.broker_account), ''), 'Без счёта')`;
+    // i18n-ignore-next (stable bucket key: data, not display — the client maps it to a label in edge-api.ts)
     case "source": return `(CASE WHEN t.source = 'propreports' THEN 'PropReports' ELSE 'Вручную' END)`;
     case "month": return `substring(${closeDateSql("t")} from 1 for 7)`;
     case "ticker": return `upper(COALESCE(NULLIF(trim(t.ticker), ''), '?'))`;
@@ -194,9 +204,10 @@ function hasJournalDays(): Promise<boolean> {
   return journalProbe;
 }
 
-function fromClause(hasJournal: boolean): string {
-  return `FROM trades t
-    LEFT JOIN exec e ON e.trade_id = t.id` +
+/** Earliest entry/add and latest exit/stop/trim execution per trade (`e`), joined only when a dimension reads it
+ *  (tod / hold): one trader → per-trade index probe, desk-wide → one hash aggregate (lib/execSpan). */
+function fromClause(hasJournal: boolean, exec: "lateral" | "global" | null): string {
+  return `FROM trades t` + (exec ? `\n    ${execSpanJoin(exec)}` : "") +
     (hasJournal ? `\n    LEFT JOIN journal_days j ON j.trader = t.trader AND j.day = ${CLOSE_DATE_CAST}` : "");
 }
 
@@ -213,19 +224,22 @@ export type EdgeCell = {
 export type MatrixQuery = z.infer<typeof matrixSchema>;
 export type CostsQuery = z.infer<typeof costsSchema>;
 
-/** Pure SQL builder (exported for the offline check). */
+/** Pure SQL builder (exported for the offline check).
+ *  `base` is MATERIALIZED: inlined, Postgres re-evaluates res / r / net at every reference in the aggregates
+ *  (≈20 TRANSLATE/LOWER chains per row) — desk-wide 1.1 s → 0.25 s on 45k trades. */
 export function buildMatrixQuery(q: MatrixQuery, scope: string | null, hasJournal: boolean): { sql: string; params: unknown[] } {
   const tod = q.tod ?? 30;
   const { where, params } = buildWhere(q, scope);
   const rowSql = dimensionSql(q.rows, tod, hasJournal);
   const colSql = q.cols === q.rows ? `'—'` : dimensionSql(q.cols, tod, hasJournal);
-  const sql = `WITH ${EXEC_CTE},
-  base AS (
+  const needsExec = [q.rows, q.cols].some((d) => d === "tod" || d === "hold");
+  const exec = needsExec ? (scope != null ? "lateral" : "global") : null;
+  const sql = `WITH base AS MATERIALIZED (
     SELECT ${rowSql} AS row_key, ${colSql} AS col_key,
            ${resultSql("t")} AS res, ${decidedSql("t")} AS decided, ${closedSql("t")} AS closed,
            ${signedRSql("t")} AS r, t.pnl::float8 AS gross, ${netPnlSql("t")}::float8 AS net, ABS(COALESCE(t.fees, 0))::float8 AS fees,
            substring(${closeDateSql("t")} from 1 for 10) AS close_day, t.date AS entry_key, t.id
-    ${fromClause(hasJournal)}
+    ${fromClause(hasJournal, exec)}
     WHERE ${where}
   )
   SELECT row_key, col_key,
@@ -259,10 +273,10 @@ export function parseMatrixQuery(query: Record<string, unknown>): { ok: true; q:
 
 router.get("/edge/matrix", asyncHandler(async (req, res) => {
   const parsed = parseMatrixQuery(req.query);
-  if (!parsed.ok) { res.status(400).json({ error: "Неверные параметры", details: parsed.details }); return; }
+  if (!parsed.ok) throw badRequest("BAD_REQUEST", parsed.details);
   const q = parsed.q;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const hasJournal = (q.rows === "plan" || q.cols === "plan") ? await hasJournalDays() : false;
   const tod = q.tod ?? 30;
   const { sql, params } = buildMatrixQuery(q, scope, hasJournal);
@@ -302,14 +316,13 @@ export type EdgeCostRow = {
 export function buildCostsQuery(q: CostsQuery, scope: string | null): { sql: string; params: unknown[] } {
   const { where, params } = buildWhere(q, scope);
   const keySql = dimensionSql(q.group, 30, false);
-  const sql = `WITH ${EXEC_CTE},
-  base AS (
+  const sql = `WITH base AS MATERIALIZED (
     SELECT ${keySql} AS key, ${closedSql("t")} AS closed,
            t.pnl::float8 AS gross, ${netPnlSql("t")}::float8 AS net,
            (CASE WHEN t.pnl IS NOT NULL THEN ABS(COALESCE(t.fees, 0)) END)::float8 AS fees,
            t.fees IS NOT NULL AND t.fees <> 0 AS has_fees,
            t.qty::float8 AS qty, t.slippage::float8 AS slippage
-    ${fromClause(false)}
+    ${fromClause(false, null)}
     WHERE ${where}
   )
   SELECT key,
@@ -337,10 +350,10 @@ export function parseCostsQuery(query: Record<string, unknown>): { ok: true; q: 
 
 router.get("/edge/costs", asyncHandler(async (req, res) => {
   const parsed = parseCostsQuery(req.query);
-  if (!parsed.ok) { res.status(400).json({ error: "Неверные параметры", details: parsed.details }); return; }
+  if (!parsed.ok) throw badRequest("BAD_REQUEST", parsed.details);
   const q = parsed.q;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const { sql, params } = buildCostsQuery(q, scope);
   const { rows } = await pool.query<any>(sql, params);
   const items: EdgeCostRow[] = rows.map((r) => ({

@@ -3,6 +3,9 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { handleAiNotConfigured } from "../lib/aiErrors";
+import { AppError } from "../lib/http";
+import { aiLanguageEn } from "../i18n/ai";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 const cache = new Map<string, { data: unknown; ts: number }>();
@@ -187,16 +190,10 @@ async function fetchNasdaqChain(symbol: string): Promise<NasdaqResponse> {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 router.get("/options/chain", asyncHandler(async (req, res): Promise<void> => {
   const symbol = String(req.query.symbol || "").toUpperCase().trim();
-  if (!symbol || !/^[A-Z0-9.\-^=]{1,12}$/.test(symbol)) {
-    res.status(400).json({ error: "Valid symbol required" });
-    return;
-  }
+  if (!symbol || !/^[A-Z0-9.\-^=]{1,12}$/.test(symbol)) throw new AppError("INVALID_SYMBOL");
 
   const expiration = req.query.expiration ? String(req.query.expiration) : null; // "2026-05-30"
-  if (expiration !== null && !/^\d{4}-\d{2}-\d{2}$/.test(expiration)) {
-    res.status(400).json({ error: "expiration must be YYYY-MM-DD" });
-    return;
-  }
+  if (expiration !== null && !/^\d{4}-\d{2}-\d{2}$/.test(expiration)) throw new AppError("INVALID_DATE");
   const cacheKey = expiration ? `chain_${symbol}_${expiration}` : `exp_${symbol}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) {
@@ -207,10 +204,7 @@ router.get("/options/chain", asyncHandler(async (req, res): Promise<void> => {
   try {
     const raw = await fetchNasdaqChain(symbol);
     const rows = raw.data?.table?.rows;
-    if (!rows || rows.length === 0) {
-      res.status(404).json({ error: "No options data. Symbol may not have listed options or NASDAQ doesn't support it." });
-      return;
-    }
+    if (!rows || rows.length === 0) throw new AppError("NO_DATA");
 
     const spot = parseSpot(raw.data.lastTrade);
     const grouped = groupRows(rows);
@@ -256,11 +250,7 @@ router.get("/options/chain", asyncHandler(async (req, res): Promise<void> => {
       const available = Array.from(grouped.keys())
         .map(g => parseExpiryGroup(g)?.label)
         .filter(Boolean);
-      res.status(404).json({
-        error: `Expiration ${expiration} not found in available data`,
-        available,
-      });
-      return;
+      throw new AppError("EXPIRATION_NOT_FOUND", 404, { expiration }, { available });
     }
 
     const targetParsed = parseExpiryGroup(targetGroup)!;
@@ -288,8 +278,9 @@ router.get("/options/chain", asyncHandler(async (req, res): Promise<void> => {
     res.json(payload);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (e instanceof AppError) throw e;
     logger.warn({ symbol, error: msg }, "Options chain fetch error");
-    res.status(502).json({ error: "Failed to fetch options data", message: msg });
+    throw new AppError("UPSTREAM_FAILED");
   }
 }));
 
@@ -305,25 +296,13 @@ router.post("/options/ai-analyze", asyncHandler(async (req, res): Promise<void> 
     userPrompt: string;
   };
 
-  if (!symbol || typeof spot !== "number" || !userPrompt?.trim() || !Array.isArray(calls) || !Array.isArray(puts)) {
-    res.status(400).json({ error: "symbol, spot, calls, puts, userPrompt required" });
-    return;
-  }
-  if (userPrompt.length > 600) {
-    res.status(400).json({ error: "userPrompt too long (max 600 chars)" });
-    return;
-  }
+  if (!symbol || typeof spot !== "number" || !userPrompt?.trim() || !Array.isArray(calls) || !Array.isArray(puts)) throw new AppError("VALIDATION");
+  if (userPrompt.length > 600) throw new AppError("TEXT_TOO_LONG", undefined, { field: "userPrompt", max: 600 });
   // The prompt only ever uses ATM ±10 strikes — refuse oversized payloads instead of mapping them.
-  if (calls.length > 400 || puts.length > 400 || (Array.isArray(strikes) && strikes.length > 400)) {
-    res.status(400).json({ error: "calls/puts/strikes too large (max 400 each)" });
-    return;
-  }
+  if (calls.length > 400 || puts.length > 400 || (Array.isArray(strikes) && strikes.length > 400)) throw new AppError("TOO_MANY", undefined, { field: "calls / puts / strikes", max: 400 });
 
   const ip = (req.ip ?? "anon").slice(0, 64);
-  if (!checkAiRateLimit(ip)) {
-    res.status(429).json({ error: "Слишком много запросов к AI. Попробуй через час." });
-    return;
-  }
+  if (!checkAiRateLimit(ip)) throw new AppError("RATE_LIMITED");
 
   // Build compact chain table (ATM ±10 strikes)
   const sortedStrikes: number[] = Array.isArray(strikes) ? [...strikes].sort((a, b) => a - b) : [];
@@ -345,7 +324,7 @@ router.post("/options/ai-analyze", asyncHandler(async (req, res): Promise<void> 
     return `$${k.toFixed(1)}${atmTag} | C: ${cStr} | P: ${pStr}`;
   }).join("\n");
 
-  const systemPrompt = `You are a professional options strategist at a prop trading desk. Respond ONLY with valid JSON — no markdown fences, no text outside the JSON object.`;
+  const systemPrompt = `You are a professional options strategist at a prop trading desk. Respond ONLY with valid JSON — no markdown fences, no text outside the JSON object. Write every text field (strategy, reasoning, whyBest, keyRisk, altStrategies) in ${aiLanguageEn(langOf(req))}; keep tickers, numbers and option terms as is.`;
 
   const userMsg = `OPTIONS CHAIN — ${symbol} | Spot: $${spot.toFixed(2)} | DTE: ${daysToExpiry}d
 
@@ -381,15 +360,15 @@ Recommend the single best strategy. Return ONLY this JSON (numbers, not strings 
       parsed = JSON.parse(clean);
     } catch {
       logger.warn({ symbol, raw: clean.slice(0, 200) }, "Options AI returned invalid JSON");
-      res.status(502).json({ error: "AI returned invalid JSON", raw: clean.slice(0, 200) });
-      return;
+      throw new AppError("GENERATION_FAILED");
     }
     res.json(parsed);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (handleAiNotConfigured(e, res)) return; // 503 ai_not_configured (audit P2-3)
+    if (e instanceof AppError) throw e;
     logger.warn({ symbol, error: msg }, "Options AI analyze error");
-    res.status(502).json({ error: "AI analysis failed", message: msg });
+    throw new AppError("AI_UNAVAILABLE");
   }
 }));
 

@@ -1,12 +1,19 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dna, RefreshCw, Target, Info } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented, Pill, TermTooltip, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { WidgetShell, IconAction, WidgetError, fmtPct, fmtR, num, useStoredState } from "@/components/widgets/widget-kit";
+import { WidgetShell, IconAction, WidgetError, num, useStoredState } from "@/components/widgets/widget-kit";
+import { fmtPct, fmtR } from "@/lib/format";
+import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
+import { commonI18n } from "@/i18n/ns/common";
+
+const mt = marketWidgetsI18n.t;
 
 type Bucket = {
   regime?: string;
@@ -43,15 +50,8 @@ type Dna = {
   sample?: number;
 };
 
-const REGIME_LABEL: Record<string, string> = {
-  trend_up: "Тренд ↑",
-  trend_down: "Тренд ↓",
-  high_vol: "Высокая волатильность",
-  risk_off: "Risk-off",
-  low_vol_chop: "Низкая вол., чоп",
-  neutral: "Нейтральный",
-  unknown: "—",
-};
+/** Regime code → label in the UI language (unknown codes stay as delivered). */
+const regimeLabel = (k: string): string => (k === "risk_off" ? "Risk-off" : k === "unknown" ? "—" : marketWidgetsI18n.tryT(`dna.regime.${k}`) ?? k);
 const REGIME_TONE: Record<string, Tone> = {
   trend_up: "up",
   trend_down: "down",
@@ -67,13 +67,13 @@ const VIX_LABEL: Record<string, string> = {
   elevated: "VIX 22–28",
   high: "VIX ≥ 28",
 };
-const TREND_LABEL: Record<string, string> = { trend: "Трендовый день", chop: "Боковик" };
+const trendLabel = (k: string): string => marketWidgetsI18n.tryT(`dna.trend.${k}`) ?? k;
 
 type Dim = "regime" | "vix" | "trend";
 const DIMS = ["regime", "vix", "trend"] as const;
 
 const bucketKey = (b: Bucket, dim: Dim) => (dim === "regime" ? b.regime : dim === "vix" ? b.bucket : b.trend_day) ?? "";
-const bucketLabel = (k: string, dim: Dim) => (dim === "regime" ? REGIME_LABEL[k] : dim === "vix" ? VIX_LABEL[k] : TREND_LABEL[k]) ?? k;
+const bucketLabel = (k: string, dim: Dim) => (dim === "regime" ? regimeLabel(k) : dim === "vix" ? VIX_LABEL[k] ?? k : trendLabel(k));
 
 // API scope is "<setup> · <regime_key>"
 function splitScope(scope: string): { setup: string; regime: string } {
@@ -96,42 +96,29 @@ function EdgeRow({ label, b, overall }: { label: string; b: Bucket | undefined; 
           <span className="w-10 text-right text-2xs tabular-nums text-muted-foreground">n={b.sample}</span>
           {diff != null && Math.abs(diff) >= 3 ? (
             <Pill tone={diff > 0 ? "up" : "down"} className="w-16 justify-center">
-              {diff > 0 ? "+" : "−"}
-              {Math.abs(diff)} п.п.
+              {mt("dna.pp", { value: `${diff > 0 ? "+" : "−"}${Math.abs(diff)}` })}
             </Pill>
           ) : (
             <span className="w-16" />
           )}
         </>
       ) : (
-        <span className="text-xs text-muted-foreground">нет сделок</span>
+        <span className="text-xs text-muted-foreground">{mt("dna.noTrades")}</span>
       )}
     </li>
   );
 }
 
 export function MarketDnaWidget() {
+  const { t } = marketWidgetsI18n.useT();
   const { user } = useAuth();
   const userKey = user?.role === "trader" ? user.traderName ?? "" : "";
   const [dim, setDim] = useStoredState<Dim>("market_dna_dim", "regime", DIMS);
 
   const q = useQuery<Dna>({
     queryKey: ["market-dna", userKey],
-    queryFn: async () => {
-      const url = userKey
-        ? `${BASE}/api/market-conditions/dna?userKey=${encodeURIComponent(userKey)}`
-        : `${BASE}/api/market-conditions/dna`;
-      const r = await fetch(url);
-      const ct = r.headers.get("content-type") || "";
-      if (!r.ok) {
-        const j = ct.includes("application/json") ? await r.json().catch(() => null) : null;
-        const msg = j?.error || j?.message;
-        throw new Error(msg ? `HTTP ${r.status}: ${String(msg).slice(0, 120)}` : r.status >= 500 ? "Сервер недоступен" : `HTTP ${r.status}`);
-      }
-      if (!ct.includes("application/json")) throw new Error("Сервер недоступен");
-      return r.json();
-    },
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => http.get<Dna>("/api/market-conditions/dna", { query: { userKey }, signal }),
+    staleTime: STALE.long,
     retry: 1,
   });
 
@@ -165,13 +152,13 @@ export function MarketDnaWidget() {
   return (
     <WidgetShell
       icon={Dna}
-      title="DNA рынка"
-      meta={overall.n > 0 ? `${overall.n} сделок` : undefined}
-      actions={<IconAction icon={RefreshCw} label="Обновить DNA рынка" spinning={q.isFetching} disabled={q.isFetching} onClick={() => q.refetch()} />}
+      title={t("dna.title")}
+      meta={overall.n > 0 ? t("dna.trades", { count: overall.n }) : undefined}
+      actions={<IconAction icon={RefreshCw} label={t("dna.refresh")} spinning={q.isFetching} disabled={q.isFetching} onClick={() => q.refetch()} />}
       data-testid="market-dna-widget"
     >
       {q.isLoading ? (
-        <div className="space-y-3" data-testid="market-dna-skeleton" aria-busy="true" aria-label="Загрузка DNA рынка">
+        <div className="space-y-3" data-testid="market-dna-skeleton" aria-busy="true" aria-label={t("dna.loading")}>
           <Skeleton className="h-6 w-32 rounded-full" />
           <div className="grid grid-cols-3 gap-2">
             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
@@ -179,17 +166,17 @@ export function MarketDnaWidget() {
           <Skeleton className="h-20 w-full rounded-xl" />
         </div>
       ) : q.isError && !dna ? (
-        <WidgetError message={q.error instanceof Error ? q.error.message : "Не удалось загрузить"} onRetry={() => q.refetch()} />
+        <WidgetError message={humanizeApiError(q.error, commonI18n.t("states.loadFailed"))} onRetry={() => q.refetch()} />
       ) : (
         <div className="space-y-3">
           {/* Today's context */}
           {ctx && (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">Режим сегодня</span>
-                <Pill tone={regimeTone} dot>{regime ? REGIME_LABEL[regime] ?? regime : "не определён"}</Pill>
-                {ctx.isFomcWeek && <Pill tone="warn">Неделя FOMC</Pill>}
-                {ctx.isEarningsSeason && <Pill tone="purple">Сезон отчётов</Pill>}
+                <span className="text-xs text-muted-foreground">{t("dna.regimeToday")}</span>
+                <Pill tone={regimeTone} dot>{regime ? regimeLabel(regime) : t("dna.undetermined")}</Pill>
+                {ctx.isFomcWeek && <Pill tone="warn">{t("dna.fomcWeek")}</Pill>}
+                {ctx.isEarningsSeason && <Pill tone="purple">{t("dna.earningsSeason")}</Pill>}
                 {(ctx.events ?? []).slice(0, 2).map((e) => (
                   <Pill key={`${e.type}-${e.date}`} tone={e.importance === "high" ? "down" : "neutral"}>{e.name}</Pill>
                 ))}
@@ -213,10 +200,7 @@ export function MarketDnaWidget() {
           {!hasData ? (
             <div className="flex items-start gap-2 rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-xs text-muted-foreground">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span>
-                DNA собирается из закрытых сделок с рыночным контекстом — он сохраняется автоматически при добавлении сделки.
-                Нужно хотя бы 3 сделки в одном режиме, чтобы увидеть, где твой edge.
-              </span>
+              <span>{t("dna.emptyHint")}</span>
             </div>
           ) : (
             <>
@@ -224,31 +208,31 @@ export function MarketDnaWidget() {
               <div>
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-foreground">
                   <Target className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                  Твой результат в похожих условиях
-                  {overall.wr != null && <span className="font-normal text-muted-foreground">· в среднем {wrPct(overall.wr)}</span>}
+                  {t("dna.yourResult")}
+                  {overall.wr != null && <span className="font-normal text-muted-foreground">{t("dna.avg", { value: wrPct(overall.wr) })}</span>}
                 </div>
                 <ul className="divide-y divide-border/40">
-                  <EdgeRow label={regime ? REGIME_LABEL[regime] ?? regime : "Режим"} b={dna!.byRegime.find((b) => b.regime === regime)} overall={overall.wr} />
+                  <EdgeRow label={regime ? regimeLabel(regime) : t("dna.regimeLabel")} b={dna!.byRegime.find((b) => b.regime === regime)} overall={overall.wr} />
                   {vixBucket && <EdgeRow label={VIX_LABEL[vixBucket] ?? vixBucket} b={dna!.byVixBucket.find((b) => b.bucket === vixBucket)} overall={overall.wr} />}
-                  {trendKey && <EdgeRow label={TREND_LABEL[trendKey]} b={dna!.byTrendDay.find((b) => b.trend_day === trendKey)} overall={overall.wr} />}
+                  {trendKey && <EdgeRow label={trendLabel(trendKey)} b={dna!.byTrendDay.find((b) => b.trend_day === trendKey)} overall={overall.wr} />}
                 </ul>
               </div>
 
               {/* Breakdown by dimension */}
               <div className="space-y-2">
                 <Segmented<Dim>
-                  ariaLabel="Разрез DNA"
+                  ariaLabel={t("dna.sliceAria")}
                   size="sm"
                   value={dim}
                   onChange={setDim}
                   options={[
-                    { value: "regime", label: "Режим" },
+                    { value: "regime", label: t("dna.sliceRegime") },
                     { value: "vix", label: "VIX" },
-                    { value: "trend", label: "Тренд/боковик" },
+                    { value: "trend", label: t("dna.sliceTrend") },
                   ]}
                 />
                 {buckets.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Нет данных в этом разрезе.</p>
+                  <p className="text-xs text-muted-foreground">{t("dna.noSlice")}</p>
                 ) : (
                   <ul className="space-y-1">
                     {buckets.map((b) => {
@@ -287,8 +271,8 @@ export function MarketDnaWidget() {
               {(dna!.bestSetupRegime.length > 0 || dna!.worstSetupRegime.length > 0) && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {[
-                    { title: "Лучшие сетапы × режим", rows: dna!.bestSetupRegime.slice(0, 3), tone: "up" as Tone },
-                    { title: "Слабые сетапы × режим", rows: dna!.worstSetupRegime.slice(0, 3), tone: "down" as Tone },
+                    { title: t("dna.best"), rows: dna!.bestSetupRegime.slice(0, 3), tone: "up" as Tone },
+                    { title: t("dna.worst"), rows: dna!.worstSetupRegime.slice(0, 3), tone: "down" as Tone },
                   ].map((g) => (
                     <div key={g.title} className="min-w-0">
                       <div className="micro-label mb-1">{g.title}</div>
@@ -300,8 +284,8 @@ export function MarketDnaWidget() {
                             <li key={s.scope} className="flex items-center justify-between gap-2 text-xs" title={s.scope}>
                               <span className="min-w-0 truncate">
                                 <span className="font-medium">{setup}</span>
-                                <span className="text-muted-foreground"> · {REGIME_LABEL[r] ?? r}</span>
-                                {fits && <span className="ml-1 text-primary">· сегодня</span>}
+                                <span className="text-muted-foreground"> · {regimeLabel(r)}</span>
+                                {fits && <span className="ml-1 text-primary">{t("dna.today")}</span>}
                               </span>
                               <span className={cn("shrink-0 tabular-nums", g.tone === "up" ? "text-up" : "text-down")}>
                                 {wrPct(s.value?.winRate ?? null)} <span className="text-muted-foreground">n={s.sample}</span>

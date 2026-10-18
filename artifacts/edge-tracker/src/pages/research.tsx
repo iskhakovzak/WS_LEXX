@@ -1,14 +1,14 @@
 // /research — archive of the former «Исследования» notes. The section was merged away (Wave I):
 // earnings and price reactions live in «Катализаторы» (/events), repeatable patterns in the Playbook.
 // Old notes stay readable and can be moved to the Playbook with «В плейбук»; nothing new is written here.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListResearch, useUpdateResearch, useDeleteResearch, getListResearchQueryKey,
   type Research, type UpdateResearchBody,
 } from "@workspace/api-client-react";
-import { AlertTriangle, Archive, ArrowRight, BookMarked, CalendarClock, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowRight, BookMarked, CalendarClock, Download, RefreshCw, Search, X } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,14 +18,17 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
 import { UndoToast } from "@/components/undo-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { ResearchFormDialog, formToResearchBody, type ResearchFormData } from "@/components/research/research-form-dialog";
 import { ResearchPreview, type UpcomingByTicker } from "@/components/research/research-preview";
 import { ResearchRow } from "@/components/research/research-row";
 import {
-  highlightTerms, isEmptyQuery, matchResearch, parseQuery, splitTags, splitTickers, type ResearchNote, type SearchHit,
+  exportResearchCsv, highlightTerms, isEmptyQuery, matchResearch, parseQuery, splitTags, splitTickers, type ResearchNote, type SearchHit,
 } from "@/components/research/research-utils";
+import { humanizeApiError } from "@/lib/api/errors";
+import { commonI18n } from "@/i18n/ns/common";
+import { researchI18n } from "@/i18n/ns/research";
 
 const NO_UPCOMING: UpcomingByTicker = new Map();
 
@@ -61,6 +64,7 @@ export default function ResearchArchivePage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { canEdit } = useAuth();
+  const { t } = researchI18n.useT();
   const isDesktop = useIsDesktop();
 
   const { data: raw = [], isLoading, isError, error, refetch, isFetching } = useListResearch();
@@ -76,10 +80,10 @@ export default function ResearchArchivePage() {
   const itemsRef = useRef<ResearchNote[]>([]);
   itemsRef.current = items;
   const onMutErr = (e: unknown) =>
-    toast({ title: "Ошибка", description: (e as { data?: { error?: string } })?.data?.error ?? (e as Error)?.message ?? String(e), variant: "destructive" });
+    toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e), variant: "destructive" });
 
   const updateMut = useUpdateResearch({
-    mutation: { onSuccess: () => { invalidate(); setEditing(null); toast({ title: "Заметка обновлена" }); }, onError: onMutErr },
+    mutation: { onSuccess: () => { invalidate(); setEditing(null); toast({ title: researchI18n.t("toast.updated") }); }, onError: onMutErr },
   });
   const deleteMut = useDeleteResearch({
     mutation: {
@@ -88,7 +92,7 @@ export default function ResearchArchivePage() {
         invalidate();
         setSelectedId((cur) => (cur === vars.id ? null : cur));
         setMobileOpen(false);
-        undo.scheduleUndo(vars.id, "research", r?.patternName ? `«${r.patternName}»` : `Заметка #${vars.id}`);
+        undo.scheduleUndo(vars.id, "research", r?.patternName ? `«${r.patternName}»` : researchI18n.t("page.noteNumber", { id: vars.id }));
       },
       onError: onMutErr,
     },
@@ -99,21 +103,19 @@ export default function ResearchArchivePage() {
     const next = !itemsRef.current.find((x) => x.id === id)?.pinned;
     qc.setQueriesData<ResearchNote[]>({ queryKey: getListResearchQueryKey() }, (old) => old?.map((x) => (x.id === id ? { ...x, pinned: next } : x)));
     try {
-      const res = await fetch(`${BASE}/api/research/${id}/pin`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pinned: next }) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await http.post(`/api/research/${id}/pin`, { pinned: next });
     } catch (e) {
       invalidate();
-      toast({ title: "Не удалось изменить закрепление", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: researchI18n.t("toast.pinFailed"), description: humanizeApiError(e), variant: "destructive" });
     }
   }, [canEdit, qc, invalidate, toast]);
 
   async function saveScreenshotNotes(r: Research, notes: string) {
     try {
-      const res = await fetch(`${BASE}/api/research/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ screenshotNotes: notes }) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await http.patch(`/api/research/${r.id}`, { screenshotNotes: notes });
       invalidate();
     } catch (err) {
-      toast({ title: "Ошибка сохранения", description: String(err), variant: "destructive" });
+      toast({ title: researchI18n.t("toast.saveFailed"), description: humanizeApiError(err), variant: "destructive" });
     }
   }
 
@@ -155,6 +157,42 @@ export default function ResearchArchivePage() {
     if (!window.matchMedia("(min-width: 1024px)").matches) setMobileOpen(true);
   }, []);
 
+  // The open note is part of the URL (?id=), so a link to it can be shared or reopened.
+  useEffect(() => {
+    if (isLoading) return;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (selectedId != null) p.set("id", String(selectedId)); else p.delete("id");
+      const qs = p.toString();
+      const next = window.location.pathname + (qs ? `?${qs}` : "");
+      if (next !== window.location.pathname + window.location.search) window.history.replaceState(window.history.state, "", next);
+    } catch { /* ignore */ }
+  }, [selectedId, isLoading]);
+
+  // Keyboard: / — search, J/K or ↓/↑ — next/previous note (the selected row scrolls into view).
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      if (document.querySelector("[role=dialog], [role=alertdialog]")) return;
+      const k = e.key.toLowerCase();
+      if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
+      // J/K also on the Russian layout (О/Л are the same physical keys).
+      const dir = k === "j" || k === "о" || e.key === "ArrowDown" ? 1 : k === "k" || k === "л" || e.key === "ArrowUp" ? -1 : 0; // i18n-ignore
+      if (!dir || !list.length || !isDesktop) return;
+      e.preventDefault();
+      const idx = list.findIndex((r) => r.id === selectedId);
+      const next = list[Math.min(list.length - 1, Math.max(0, idx < 0 ? 0 : idx + dir))];
+      if (!next) return;
+      setSelectedId(next.id);
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-research-id="${next.id}"]`)?.scrollIntoView({ block: "nearest" }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [list, selectedId, isDesktop]);
+
   function handleSubmit(f: ResearchFormData) {
     const body = formToResearchBody(f);
     if (!body.patternName || !editing) return;
@@ -180,34 +218,43 @@ export default function ResearchArchivePage() {
     <Page>
       <PageHeader
         icon={Archive}
-        title="Архив исследований"
-        description="Старые заметки остаются здесь для чтения. Новое пишется в Плейбуке, отчёты и реакции — в Катализаторах."
+        title={t("page.title")}
+        description={t("page.description")}
       />
 
       <Panel>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <p className="min-w-0 flex-1 text-sm text-foreground">
-            Раздел объединён. <span className="text-muted-foreground">Если заметка описывает повторяемый сетап — перенесите её кнопкой «В плейбук» в карточке справа.</span>
+            {t("page.merged")} <span className="text-muted-foreground">{t("page.mergedHint")}</span>
           </p>
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">
-              <Link href="/events"><CalendarClock className="h-4 w-4" /> Катализаторы <ArrowRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/events"><CalendarClock className="h-4 w-4" /> {t("page.catalysts")} <ArrowRight className="h-3.5 w-3.5" /></Link>
             </Button>
             <Button asChild variant="outline" size="sm">
-              <Link href="/playbook"><BookMarked className="h-4 w-4" /> Плейбук <ArrowRight className="h-3.5 w-3.5" /></Link>
+              <Link href="/playbook"><BookMarked className="h-4 w-4" /> {t("page.playbook")} <ArrowRight className="h-3.5 w-3.5" /></Link>
             </Button>
           </div>
         </div>
       </Panel>
 
       <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <Panel padded={false} title="Заметки" description={isLoading ? "Загрузка…" : searching ? `Найдено ${list.length} из ${items.length}` : `${items.length} в архиве`}>
+        <Panel
+          padded={false}
+          title={t("page.notes")}
+          description={isLoading ? commonI18n.t("states.loading") : searching ? t("page.found", { count: list.length, total: items.length }) : t("page.inArchive", { count: items.length })}
+          actions={list.length > 0 ? (
+            <Button variant="ghost" size="sm" onClick={() => exportResearchCsv(list)} title={searching ? t("page.csvFound") : t("page.csvAll")}>
+              <Download className="h-4 w-4" aria-hidden="true" /> CSV
+            </Button>
+          ) : undefined}
+        >
           {items.length > 3 && (
             <div className="relative px-[var(--panel-p)] pt-3">
               <Search className="pointer-events-none absolute left-[calc(var(--panel-p)+0.875rem)] top-1/2 mt-1.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск: слова, #тег, $TICKER" aria-label="Поиск по архиву" className="pl-10 pr-10" />
+              <Input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("page.searchPlaceholder")} aria-label={t("page.searchAria")} className="pl-10 pr-10" />
               {query && (
-                <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" className="absolute right-[calc(var(--panel-p)+0.375rem)] top-1/2 mt-1.5 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
+                <button type="button" onClick={() => setQuery("")} aria-label={commonI18n.t("actions.clearSearch")} className="absolute right-[calc(var(--panel-p)+0.375rem)] top-1/2 mt-1.5 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
@@ -223,16 +270,16 @@ export default function ResearchArchivePage() {
             {isError && !isLoading && (
               <EmptyState
                 icon={AlertTriangle}
-                title="Не удалось загрузить архив"
-                description={(error as { message?: string } | null)?.message ?? ""}
-                action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching}><RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} /> Повторить</Button>}
+                title={t("page.loadFailed")}
+                description={humanizeApiError(error)}
+                action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching}><RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} /> {commonI18n.t("actions.retry")}</Button>}
               />
             )}
             {!isLoading && !isError && list.length === 0 && (
               items.length ? (
-                <EmptyState compact icon={Search} title="Ничего не найдено" description="Попробуйте другие слова." />
+                <EmptyState compact icon={Search} title={commonI18n.t("states.nothingFound")} description={t("page.tryOtherWords")} />
               ) : (
-                <EmptyState icon={Archive} title="Архив пуст" description="Паттерны записывайте в Плейбук, отчёты и реакции смотрите в Катализаторах." />
+                <EmptyState icon={Archive} title={t("page.emptyTitle")} description={t("page.emptyText")} />
               )
             )}
             {list.map((r) => (
@@ -262,7 +309,7 @@ export default function ResearchArchivePage() {
                 <Skeleton className="h-24 w-full rounded-xl" />
               </div>
             ) : (
-              <EmptyState icon={Archive} title="Выберите заметку" description="Здесь появится полный текст и кнопка «В плейбук»." />
+              <EmptyState icon={Archive} title={t("page.selectTitle")} description={t("page.selectText")} />
             )}
           </Panel>
         )}
@@ -272,8 +319,8 @@ export default function ResearchArchivePage() {
         <Sheet open={mobileOpen && !!previewProps} onOpenChange={setMobileOpen}>
           <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto rounded-t-3xl px-4 pb-8 pt-10">
             <SheetHeader className="sr-only">
-              <SheetTitle>{selected?.patternName ?? "Заметка"}</SheetTitle>
-              <SheetDescription>Просмотр заметки</SheetDescription>
+              <SheetTitle>{selected?.patternName ?? t("page.note")}</SheetTitle>
+              <SheetDescription>{t("page.noteView")}</SheetDescription>
             </SheetHeader>
             {previewProps && <ResearchPreview key={previewProps.r.id} {...previewProps} />}
           </SheetContent>
@@ -290,7 +337,7 @@ export default function ResearchArchivePage() {
       />
 
       {undo.pending && (
-        <UndoToast key={undo.pending.id} label={undo.pending.label} onUndo={undo.restore} onDismiss={undo.dismiss} restoring={undo.restoring} actionText="удалена" />
+        <UndoToast key={undo.pending.id} label={undo.pending.label} onUndo={undo.restore} onDismiss={undo.dismiss} restoring={undo.restoring} actionText={t("page.deleted")} />
       )}
     </Page>
   );

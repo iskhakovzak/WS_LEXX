@@ -6,6 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Kbd } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { adminI18n } from "@/i18n/ns/admin";
+import { commonI18n } from "@/i18n/ns/common";
 
 /**
  * One dialog for every admin action that needs confirmation and (usually) a reason.
@@ -31,6 +33,7 @@ export type ReasonDialogState = {
 } | null;
 
 export function ReasonDialog({ state, onClose, busy }: { state: ReasonDialogState; onClose: () => void; busy?: boolean }) {
+  const { t } = adminI18n.useT();
   const [value, setValue] = useState("");
   const fieldId = useId();
   useEffect(() => { setValue(state?.input?.initial ?? ""); }, [state]);
@@ -59,7 +62,7 @@ export function ReasonDialog({ state, onClose, busy }: { state: ReasonDialogStat
                 {input.label}{input.required && <span className="text-down"> *</span>}
               </Label>
               {input.presets && input.presets.length > 0 && (
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Быстрый выбор">
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("reason.presetsAria")}>
                   {input.presets.map((p) => (
                     <button
                       key={p}
@@ -98,22 +101,22 @@ export function ReasonDialog({ state, onClose, busy }: { state: ReasonDialogStat
                   autoFocus
                 />
               )}
-              {tooShort && <p id={`${fieldId}-err`} className="text-xs text-down">Минимум {input.minLength} символа</p>}
+              {tooShort && <p id={`${fieldId}-err`} className="text-xs text-down">{t("reason.minLength", { count: input.minLength ?? 0 })}</p>}
             </div>
           )}
           <DialogFooter className="items-center gap-2 sm:justify-between">
             <span className="hidden items-center gap-1 text-2xs text-muted-foreground sm:inline-flex">
-              <Kbd keys={["Ctrl", "Enter"]} /> подтвердить · <Kbd>Esc</Kbd> отмена
+              <Kbd keys={["Ctrl", "Enter"]} /> {t("reason.confirmHint")} · <Kbd>Esc</Kbd> {t("reason.cancelHint")}
             </span>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Отмена</Button>
+              <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{commonI18n.t("actions.cancel")}</Button>
               <Button
                 type="submit"
                 variant={state?.destructive ? "destructive" : "default"}
                 disabled={busy || invalid}
                 className={cn(state?.destructive && "font-semibold")}
               >
-                {busy ? "Сохраняю…" : state?.confirmLabel}
+                {busy ? t("reason.saving") : state?.confirmLabel}
               </Button>
             </div>
           </DialogFooter>

@@ -9,6 +9,9 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { gpApi, gpKeys, type PlanDoc } from "./types";
 import { BUILTIN_TEMPLATES } from "./plan-draft";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
 
 /**
  * Templates menu: built-in skeletons + saved templates (mine and shared). Applying a template only fills
@@ -24,6 +27,7 @@ export function TemplateMenu({
   /** Lazily built document for «Сохранить как шаблон». */
   currentDoc: () => PlanDoc;
 }) {
+  const { t: tr } = gpI18n.useT();
   const { user, can } = useAuth();
   const me = user?.traderName ?? "";
   const qc = useQueryClient();
@@ -45,14 +49,14 @@ export function TemplateMenu({
     onSuccess: (t) => {
       qc.invalidateQueries({ queryKey: gpKeys.templates(kind) });
       setName("");
-      toast({ title: "Шаблон сохранён", description: `${t.name} — скриншоты в шаблон не попадают` });
+      toast({ title: tr("templates.savedToast"), description: tr("templates.savedDesc", { name: t.name }) });
     },
-    onError: (e) => toast({ title: "Не удалось сохранить шаблон", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
+    onError: (e) => toast({ title: tr("templates.saveFailed"), description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
   });
   const remove = useMutation({
     mutationFn: (id: number) => gpApi.removeTemplate(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: gpKeys.templates(kind) }),
-    onError: (e) => toast({ title: "Не удалось убрать шаблон", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
+    onError: (e) => toast({ title: tr("templates.removeFailed"), description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
   });
 
   const apply = (doc: Partial<PlanDoc>, n: string) => {
@@ -66,11 +70,11 @@ export function TemplateMenu({
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <LayoutTemplate aria-hidden="true" />
-          Шаблон
+          {tr("templates.button")}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-2">
-        <p className="micro-label px-2 pb-1 pt-1">Заготовки</p>
+        <p className="micro-label px-2 pb-1 pt-1">{tr("templates.builtin")}</p>
         <ul className="flex flex-col">
           {BUILTIN_TEMPLATES.map((t) => (
             <li key={t.id}>
@@ -86,15 +90,15 @@ export function TemplateMenu({
           ))}
         </ul>
 
-        <p className="micro-label px-2 pb-1 pt-3">Сохранённые</p>
+        <p className="micro-label px-2 pb-1 pt-3">{tr("templates.saved")}</p>
         {q.isLoading ? (
           <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Загрузка…
+            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> {commonI18n.t("states.loading")}
           </div>
         ) : q.isError ? (
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">Недоступно — сервер ещё не обновлён</p>
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">{tr("templates.unavailable")}</p>
         ) : saved.length === 0 ? (
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">Пока нет — сохраните текущий план как шаблон</p>
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">{tr("templates.none")}</p>
         ) : (
           <ul className="flex max-h-[min(50dvh,420px)] flex-col overflow-y-auto">
             {saved.map((t) => (
@@ -105,7 +109,7 @@ export function TemplateMenu({
                   className="flex min-w-0 flex-1 flex-col rounded-lg px-2 py-1.5 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="truncate text-sm font-medium">{t.name}</span>
-                  <span className="text-xs text-muted-foreground">{t.author === me ? (t.shared ? "мой · общий" : "мой") : t.author}</span>
+                  <span className="text-xs text-muted-foreground">{t.author === me ? (t.shared ? tr("templates.mineShared") : tr("templates.mine")) : personName(t.author)}</span>
                 </button>
                 {t.author === me && (
                   <Button
@@ -113,7 +117,7 @@ export function TemplateMenu({
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 shrink-0"
-                    aria-label={`Убрать шаблон ${t.name}`}
+                    aria-label={tr("templates.remove", { name: t.name })}
                     disabled={remove.isPending}
                     onClick={() => remove.mutate(t.id)}
                   >
@@ -134,21 +138,21 @@ export function TemplateMenu({
         >
           <div className="flex gap-1.5">
             <Input
-              aria-label="Название шаблона"
-              placeholder="Сохранить текущий как…"
+              aria-label={tr("templates.nameAria")}
+              placeholder={tr("templates.namePlaceholder")}
               maxLength={80}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="h-8"
             />
-            <Button type="submit" size="sm" className="h-8 shrink-0" disabled={!name.trim() || save.isPending} aria-label="Сохранить шаблон">
+            <Button type="submit" size="sm" className="h-8 shrink-0" disabled={!name.trim() || save.isPending} aria-label={tr("templates.save")} title={tr("templates.save")}>
               {save.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <BookmarkPlus aria-hidden="true" />}
             </Button>
           </div>
           {kind === "personal" && canShare && (
             <label className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
               <Checkbox checked={shared} onCheckedChange={(v) => setShared(v === true)} />
-              Доступен всей команде
+              {tr("templates.shareTeam")}
             </label>
           )}
         </form>

@@ -22,10 +22,17 @@ import { ToastAction } from "@/components/ui/toast";
 import { toneText } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ApiError, invalidateExamples, invalidateTradeLinks, notLiveMessage, pbRequest } from "./api";
+import { invalidateExamples, invalidateTradeLinks, notLiveMessage } from "./api";
+import { http, ApiError } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage } from "./media";
-import { TIERS, ddmm, fmtR, fmtUsd, moneyTone, tierMeta, type Tier } from "./model";
-import { buildQuickRows, defaultTier, tradesWord, undoSteps, type AddResponse, type QuickSetup } from "./quick-add-logic";
+import { TIERS, moneyTone, tierMeta, type Tier } from "./model";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { buildQuickRows, defaultTier, undoSteps, type AddResponse, type QuickSetup } from "./quick-add-logic";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
+
+import { personName } from "@/i18n";
+const dt = playbookDialogsI18n.t; // called at render / call time only
 
 type ForTrade = {
   trade: {
@@ -39,18 +46,18 @@ type ForTrade = {
 };
 
 export function spaceShort(s: Pick<QuickSetup, "space" | "mine" | "owner">) {
-  if (s.space === "office") return "Офис";
-  if (s.mine) return "Мой";
-  return s.owner ?? "Общий";
+  if (s.space === "office") return dt("quick.spaceOffice");
+  if (s.mine) return dt("quick.spaceMine");
+  return s.owner ? personName(s.owner) : dt("quick.spaceShared");
 }
 
 /** Revert one save (see undoSteps). Errors surface as a toast by the caller. */
 async function runUndo(setupId: number, r: AddResponse) {
   for (const st of undoSteps(r)) {
     if (st.kind === "delete") {
-      await pbRequest(`/api/playbook/${setupId}/examples/${st.exampleId}${st.unlink ? "?unlink=1" : ""}`, { method: "DELETE" });
+      await http.del(`/api/playbook/${setupId}/examples/${st.exampleId}${st.unlink ? "?unlink=1" : ""}`);
     } else {
-      await pbRequest(`/api/playbook/${setupId}/examples/${st.exampleId}`, { method: "PATCH", json: { tier: st.tier, note: st.note } });
+      await http.patch(`/api/playbook/${setupId}/examples/${st.exampleId}`, { tier: st.tier, note: st.note });
     }
   }
 }
@@ -68,6 +75,7 @@ export function TradeQuickAdd({
   /** Leave room for the dialog's close button in the header. */
   inDialog?: boolean;
 }) {
+  const { t: tr } = playbookDialogsI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -76,7 +84,7 @@ export function TradeQuickAdd({
   const firstId = tradeIds[0];
   const q = useQuery<ForTrade>({
     queryKey: ["playbook-for-trade", firstId],
-    queryFn: () => pbRequest<ForTrade>(`/api/playbook-tools/for-trade/${firstId}`),
+    queryFn: () => http.get<ForTrade>(`/api/playbook-tools/for-trade/${firstId}`),
     staleTime: 15_000,
     enabled: Number.isSafeInteger(firstId) && firstId > 0,
     retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 1,
@@ -133,17 +141,14 @@ export function TradeQuickAdd({
 
   const add = useMutation({
     mutationFn: async (setupId: number) => {
-      const r = await pbRequest<AddResponse & { examples: { id: number; tradeId: number }[] }>(`/api/playbook/${setupId}/examples`, {
-        method: "POST",
-        json: { tradeIds, tier, note: note.trim() || null },
-      });
+      const r = await http.post<AddResponse & { examples: { id: number; tradeId: number }[] }>(`/api/playbook/${setupId}/examples`, { tradeIds, tier, note: note.trim() || null });
       let shotError: string | null = null;
       if (shot && r.examples?.length === 1) {
         try {
           const m = await uploadPlaybookImage(shot, setupId);
-          await pbRequest(`/api/playbook/${setupId}/examples/${r.examples[0].id}`, { method: "PATCH", json: { mediaId: m.id } });
+          await http.patch(`/api/playbook/${setupId}/examples/${r.examples[0].id}`, { mediaId: m.id });
         } catch (e) {
-          shotError = (e as Error)?.message ?? "ошибка";
+          shotError = (e as Error)?.message ?? dt("quick.error");
         }
       }
       return { r, shotError };
@@ -151,7 +156,7 @@ export function TradeQuickAdd({
     onSuccess: ({ r, shotError }, setupId) => {
       const n = r.examples?.length ?? 0;
       if (!n) {
-        toast({ title: "Не удалось добавить", description: r.skipped?.[0]?.reason === "forbidden" ? "Нет доступа к сделке" : undefined, variant: "destructive" });
+        toast({ title: dt("quick.addFailed"), description: r.skipped?.[0]?.reason === "forbidden" ? dt("quick.noAccess") : undefined, variant: "destructive" });
         return;
       }
       const s = byId.get(setupId);
@@ -163,37 +168,40 @@ export function TradeQuickAdd({
       refresh();
       const canUndo = undoSteps(r).length > 0;
       const updatedOnly = (r.created?.length ?? 1) === 0;
-      const t = tierMeta(tier);
+      const tm = tierMeta(tier);
+      const setupName = s?.name ?? dt("quick.setupFallback");
       toast({
         title: updatedOnly
-          ? `Обновлено в «${s?.name ?? "сетап"}» · ${t.label}`
-          : `${single ? "Сделка" : `${n} ${tradesWord(n)}`} → «${s?.name ?? "сетап"}» · ${t.short}`,
+          ? dt("quick.updatedIn", { name: setupName, tier: tm.label })
+          : single
+            ? dt("quick.addedOne", { name: setupName, tier: tm.short })
+            : dt("quick.addedMany", { trades: commonI18n.t("units.trades", { count: n }), name: setupName, tier: tm.short }),
         description: (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{s?.space === "office" ? "Плейбук офиса" : s?.mine ? "Мой плейбук" : spaceShort(s ?? { space: "personal", mine: false, owner: null })}</span>
-            {r.skipped?.length ? <span>· пропущено {r.skipped.length}</span> : null}
-            {shotError ? <span className="text-down">· скриншот не сохранён: {shotError}</span> : null}
+            <span>{s?.space === "office" ? dt("quick.group.office") : s?.mine ? dt("quick.group.mine") : spaceShort(s ?? { space: "personal", mine: false, owner: null })}</span>
+            {r.skipped?.length ? <span>{dt("quick.skipped", { count: r.skipped.length })}</span> : null}
+            {shotError ? <span className="text-down">{dt("quick.shotNotSaved", { error: shotError })}</span> : null}
             <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => navigate(`/playbook?id=${setupId}&tab=examples`)}>
-              Открыть сетап
+              {dt("quick.openSetup")}
             </button>
           </span>
         ),
         action: canUndo ? (
           <ToastAction
-            altText="Отменить добавление в плейбук"
+            altText={dt("quick.undoAlt")}
             onClick={() => {
               runUndo(setupId, r)
-                .then(() => { refresh(); toast({ title: "Отменено" }); })
-                .catch((e) => toast({ title: "Не удалось отменить", description: (e as Error)?.message, variant: "destructive" }));
+                .then(() => { refresh(); toast({ title: dt("quick.undone") }); })
+                .catch((e) => toast({ title: dt("quick.undoFailed"), description: (e as Error)?.message, variant: "destructive" }));
             }}
           >
-            Отменить
+            {commonI18n.t("actions.undo")}
           </ToastAction>
         ) : undefined,
       });
       onClose();
     },
-    onError: (e) => toast({ title: "Не удалось добавить", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
+    onError: (e) => toast({ title: dt("quick.addFailed"), description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
   });
   const canAdd = picked != null && !!target?.canAddExamples && !add.isPending;
   const submit = (id: number | null = picked) => { if (id != null && byId.get(id)?.canAddExamples && !add.isPending) add.mutate(id); };
@@ -227,10 +235,10 @@ export function TradeQuickAdd({
   if (q.isError) {
     return (
       <div className={cn("flex flex-col gap-3 p-[var(--panel-p)]", className)}>
-        <p className="text-sm text-down">{(q.error as Error)?.message ?? "Не удалось загрузить сетапы"}</p>
+        <p className="text-sm text-down">{(q.error as Error)?.message ?? tr("quick.loadFailed")}</p>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => q.refetch()}>Повторить</Button>
-          {onNewSetup && <Button size="sm" variant="ghost" onClick={onNewSetup}>Новый сетап из сделки</Button>}
+          <Button size="sm" variant="outline" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>
+          {onNewSetup && <Button size="sm" variant="ghost" onClick={onNewSetup}>{tr("quick.newFromTrade")}</Button>}
         </div>
       </div>
     );
@@ -251,17 +259,17 @@ export function TradeQuickAdd({
         <BookOpen className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
           {single
-            ? <>В плейбук{t ? ` · ${t.ticker}` : ""}{t?.date ? ` · ${ddmm(t.date)}` : ""}</>
-            : <>В плейбук · {tradeIds.length} {tradesWord(tradeIds.length)}</>}
+            ? (t ? tr("quick.titleTrade", { trade: `${t.ticker}${t.date ? ` · ${fmtDate(t.date, "dayMonthNumeric")}` : ""}` }) : tr("quick.title"))
+            : tr("quick.titleTrade", { trade: commonI18n.t("units.trades", { count: tradeIds.length }) })}
         </span>
         {single && t?.signedR != null && <span className={cn("shrink-0 text-xs font-medium tabular-nums", toneText(moneyTone(t.signedR)))}>{fmtR(t.signedR)}</span>}
-        {single && net != null && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", toneText(moneyTone(net)))}>{fmtUsd(net)}</span>}
+        {single && net != null && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", toneText(moneyTone(net)))}>{fmtUsd(net, { signed: true, decimals: 0 })}</span>}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-[var(--panel-p)]">
         {existing.size > 0 && (
           <p className="text-xs text-muted-foreground">
-            Уже в плейбуке:{" "}
+            {tr("quick.alreadyIn")}{" "}
             {[...existing.values()].map((ex, i) => (
               <span key={ex.id}>
                 {i > 0 && ", "}
@@ -275,7 +283,7 @@ export function TradeQuickAdd({
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={`${fid}-q`} className="text-xs font-medium text-muted-foreground">Сетап</label>
+          <label htmlFor={`${fid}-q`} className="text-xs font-medium text-muted-foreground">{tr("quick.setup")}</label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
@@ -288,7 +296,7 @@ export function TradeQuickAdd({
                 if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
                 if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); submit(); }
               }}
-              placeholder="Найти сетап: название, папка, тег, автор"
+              placeholder={tr("quick.searchPlaceholder")}
               aria-controls={`${fid}-list`}
               className="h-10 pl-9"
             />
@@ -297,22 +305,22 @@ export function TradeQuickAdd({
             id={`${fid}-list`}
             ref={listRef}
             role="listbox"
-            aria-label="Сетап"
+            aria-label={tr("quick.setup")}
             className="-mx-1 max-h-[min(45dvh,420px)] min-h-[160px] overflow-y-auto overscroll-contain px-1"
           >
             {rows.length === 0 ? (
               <li className="px-2 py-8 text-center text-sm text-muted-foreground">
-                {writableCount === 0 ? "Нет сетапов, куда можно добавить эталон. Создайте свой." : "Ничего не найдено"}
+                {writableCount === 0 ? tr("quick.noWritable") : commonI18n.t("states.nothingFound")}
               </li>
             ) : rows.map(({ s, group }) => {
-              const head = group !== lastGroup ? group : null;
+              const head = group !== lastGroup ? tr(`quick.group.${group}`) : null;
               lastGroup = group;
               const active = picked === s.id;
               const reason = reasons.get(s.id);
               const ex = existing.get(s.id);
               return (
                 <React.Fragment key={s.id}>
-                  {head && <li role="presentation" className="sticky top-0 z-raised bg-popover/95 px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground backdrop-blur-sm">{head}</li>}
+                  {head && <li role="presentation" className="sticky top-0 z-raised bg-popover px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{head}</li>}
                   <li
                     role="option"
                     aria-selected={active}
@@ -326,9 +334,9 @@ export function TradeQuickAdd({
                   >
                     <span className="min-w-0 flex-1">
                       <span className={cn("block truncate text-sm text-foreground", active ? "font-semibold" : "font-medium")}>{s.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{reason ?? s.folder ?? "Без папки"}</span>
+                      <span className="block truncate text-xs text-muted-foreground" title={reason ?? undefined}>{reason ?? s.folder ?? commonI18n.t("fields.noFolder")}</span>
                     </span>
-                    {ex && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">уже T{ex.tier}</span>}
+                    {ex && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{tr("quick.alreadyTier", { tier: ex.tier })}</span>}
                     <span className="shrink-0 rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-xs text-muted-foreground">{spaceShort(s)}</span>
                   </li>
                 </React.Fragment>
@@ -338,8 +346,8 @@ export function TradeQuickAdd({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">Тир</span>
-          <div role="radiogroup" aria-label="Тир" className="grid grid-cols-3 gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">{tr("quick.tier")}</span>
+          <div role="radiogroup" aria-label={tr("quick.tier")} className="grid grid-cols-3 gap-1.5">
             {TIERS.map((x) => {
               const [, name] = x.label.split(" · ");
               const on = tier === x.tier;
@@ -373,8 +381,8 @@ export function TradeQuickAdd({
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); submit(); } }}
           rows={2}
-          placeholder={tier === 3 ? "Что пошло не так и как надо было (необязательно)" : "Почему это эталон: что было по плану (необязательно)"}
-          aria-label="Заметка к эталону"
+          placeholder={tier === 3 ? tr("quick.noteLoss") : tr("quick.noteWin")}
+          aria-label={tr("quick.noteAria")}
           maxLength={2000}
           className="min-h-[60px] resize-y text-sm"
         />
@@ -383,17 +391,17 @@ export function TradeQuickAdd({
           <div className="flex items-center gap-2">
             {shotUrl ? (
               <div className="relative">
-                <img src={shotUrl} alt="Скриншот к эталону" className="h-16 w-28 rounded-lg border border-border/60 object-cover" />
-                <button type="button" aria-label="Убрать скриншот" onClick={() => setShot(null)} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-background shadow ring-1 ring-border">
+                <img src={shotUrl} alt={tr("quick.shotAlt")} className="h-16 w-28 rounded-lg border border-border/60 object-cover" />
+                <button type="button" aria-label={tr("quick.removeShot")} title={tr("quick.removeShot")} onClick={() => setShot(null)} className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-background shadow ring-1 ring-border">
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               </div>
             ) : (
               <Button type="button" variant="ghost" size="sm" className="h-9" onClick={() => fileRef.current?.click()}>
-                <ImagePlus className="h-4 w-4" aria-hidden="true" /> Скриншот
+                <ImagePlus className="h-4 w-4" aria-hidden="true" /> {tr("quick.shot")}
               </Button>
             )}
-            <span className="text-xs text-muted-foreground">{shotUrl ? "Сохранится вместе с эталоном" : "или вставьте Ctrl+V — необязательно"}</span>
+            <span className="text-xs text-muted-foreground">{shotUrl ? tr("quick.shotSaved") : tr("quick.shotHint")}</span>
             <input
               ref={fileRef}
               type="file"
@@ -410,14 +418,14 @@ export function TradeQuickAdd({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-[var(--panel-p)] py-3">
         {single && onNewSetup ? (
           <button type="button" onClick={onNewSetup} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-            Новый сетап из сделки
+            {tr("quick.newFromTrade")}
           </button>
         ) : <span className="text-xs text-muted-foreground">{target ? `→ ${target.name}` : ""}</span>}
         <div className="flex items-center gap-2">
           <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex"><Kbd>Enter</Kbd></span>
           <Button size="sm" className="h-9 bg-primary-solid" onClick={() => submit()} disabled={!canAdd} aria-busy={add.isPending}>
             {add.isPending && <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-            {already ? "Обновить" : single ? "Добавить" : `Добавить ${tradeIds.length}`}
+            {already ? tr("quick.update") : single ? tr("quick.add") : tr("quick.addN", { count: tradeIds.length })}
           </Button>
         </div>
       </div>
@@ -427,26 +435,29 @@ export function TradeQuickAdd({
 
 /** Dialog wrapper for bulk / inbox use (the trade sheet uses a popover via AddToPlaybookButton). */
 export function AddTradesToPlaybookDialog({
-  open, onOpenChange, tradeIds, presetSetupId, onDone,
+  open, onOpenChange, tradeIds, presetSetupId, onDone, onNewSetup,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tradeIds: number[];
   presetSetupId?: number | null;
   onDone?: () => void;
+  /** «Новый сетап из сделки» (single trade): the caller opens its setup form. */
+  onNewSetup?: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85dvh] w-[calc(100vw-1.5rem)] max-w-xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="sr-only">
-          <DialogTitle>В плейбук</DialogTitle>
-          <DialogDescription>Выберите сетап и тир для {tradeIds.length} {tradesWord(tradeIds.length)}</DialogDescription>
+          <DialogTitle>{dt("quick.title")}</DialogTitle>
+          <DialogDescription>{dt("quick.dialogDesc", { trades: commonI18n.t("units.trades", { count: tradeIds.length }) })}</DialogDescription>
         </DialogHeader>
         {open && tradeIds.length > 0 && (
           <TradeQuickAdd
             tradeIds={tradeIds}
             presetSetupId={presetSetupId}
             onClose={() => { onOpenChange(false); onDone?.(); }}
+            onNewSetup={onNewSetup && tradeIds.length === 1 ? () => { onOpenChange(false); onNewSetup(); } : undefined}
             className="min-h-0 flex-1"
             inDialog
           />

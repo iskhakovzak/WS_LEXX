@@ -12,6 +12,8 @@ import { suggestTagsFromFundamentals } from "@/lib/tags";
 import type { TickerFundamentals } from "@/lib/market-intel";
 import { Pill, toneText } from "@/components/ds";
 import { STATUSES, STATUS_LABELS, normStatus, splitTags, type WatchlistItem } from "./lib";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
+import { commonI18n } from "@/i18n/ns/common";
 
 const LazyVoiceRecorder = React.lazy(() => import("@/components/voice-recorder").then((m) => ({ default: m.VoiceRecorder })));
 
@@ -19,7 +21,7 @@ const TICKER_RE = /^[A-Z0-9.\-^=]{1,12}$/;
 function priceError(v: string): string | null {
   if (!v.trim()) return null;
   const n = Number(v.replace(",", "."));
-  return Number.isFinite(n) && n >= 0 ? null : "Введите число ≥ 0";
+  return Number.isFinite(n) && n >= 0 ? null : watchlistI18n.t("form.numberGe0");
 }
 
 export type WatchlistFormData = {
@@ -41,7 +43,10 @@ export function itemToForm(i: WatchlistItem): WatchlistFormData {
   };
 }
 
-const CATALYST_PRESETS = ["Отчёт BMO", "Отчёт AMC", "Апгрейд", "Даунгрейд", "FDA", "M&A", "Размещение", "Гайденс", "Сектор в игре"];
+type PresetId = "bmo" | "amc" | "upgrade" | "downgrade" | "offering" | "guidance" | "sector";
+/** Quick catalyst chips (the inserted text becomes the user's own catalyst note, in the UI language). */
+const CATALYST_PRESETS: (PresetId | "FDA" | "M&A")[] = ["bmo", "amc", "upgrade", "downgrade", "FDA", "M&A", "offering", "guidance", "sector"];
+const presetText = (p: (typeof CATALYST_PRESETS)[number]) => (p === "FDA" || p === "M&A" ? p : watchlistI18n.t(`form.presets.${p}`));
 
 function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -63,6 +68,7 @@ export function WatchlistFormDialog({
   onClose: () => void;
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
+  const { t } = watchlistI18n.useT();
   const [form, setForm] = React.useState<WatchlistFormData>(initial);
   const [errors, setErrors] = React.useState<{ ticker?: string; targetPrice?: string; stopPrice?: string }>({});
   React.useEffect(() => { if (open) { setForm(initial); setErrors({}); } }, [open, initial]);
@@ -93,7 +99,7 @@ export function WatchlistFormDialog({
 
   function handleSave() {
     const nextErrors = {
-      ticker: !tickerUp ? "Укажите тикер" : !TICKER_RE.test(tickerUp) ? "Только латиница, цифры и . - (до 12 символов)" : undefined,
+      ticker: !tickerUp ? t("form.tickerRequired") : !TICKER_RE.test(tickerUp) ? t("form.tickerInvalid") : undefined,
       targetPrice: priceError(form.targetPrice) ?? undefined,
       stopPrice: priceError(form.stopPrice) ?? undefined,
     };
@@ -114,37 +120,37 @@ export function WatchlistFormDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-h-[92vh] w-full max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? `Редактировать ${editing.ticker}` : "Добавить тикер"}</DialogTitle>
-          <DialogDescription>Score пересчитается автоматически по катализатору, float, ATR, rVol и сектору.</DialogDescription>
+          <DialogTitle>{editing ? t("form.editTitle", { ticker: editing.ticker }) : t("form.addTitle")}</DialogTitle>
+          <DialogDescription>{t("form.description")}</DialogDescription>
         </DialogHeader>
         <div
           className="space-y-5"
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (!saving) handleSave(); } }}
         >
-          <FieldGroup title="Основное">
+          <FieldGroup title={t("form.main")}>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className="col-span-2 space-y-1.5 sm:col-span-1">
-                <Label htmlFor="wl-ticker">Тикер *</Label>
+                <Label htmlFor="wl-ticker">{t("form.ticker")}</Label>
                 <Input id="wl-ticker" autoFocus className="uppercase" value={form.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase())} placeholder="AAPL" autoComplete="off"
                   aria-invalid={!!errors.ticker} aria-describedby={errors.ticker ? "wl-ticker-err" : duplicate ? "wl-ticker-dup" : undefined} />
                 {errors.ticker && <p id="wl-ticker-err" className="text-xs text-down">{errors.ticker}</p>}
-                {!errors.ticker && duplicate && <p id="wl-ticker-dup" className="text-xs text-[hsl(var(--chart-3))]">Уже есть в вотчлисте</p>}
+                {!errors.ticker && duplicate && <p id="wl-ticker-dup" className="text-xs text-[hsl(var(--chart-3))]">{t("form.duplicate")}</p>}
               </div>
               <div className="col-span-2 space-y-1.5 sm:col-span-1">
-                <Label htmlFor="wl-status">Статус</Label>
+                <Label htmlFor="wl-status">{t("form.status")}</Label>
                 <Select value={form.status} onValueChange={(v) => set("status", v)}>
                   <SelectTrigger id="wl-status"><SelectValue /></SelectTrigger>
                   <SelectContent>{STATUSES.map((s) => <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="wl-stop" className={toneText("down")}>Стоп, $</Label>
+                <Label htmlFor="wl-stop" className={toneText("down")}>{t("form.stop")}</Label>
                 <Input id="wl-stop" inputMode="decimal" value={form.stopPrice} onChange={(e) => set("stopPrice", e.target.value)} placeholder="170"
                   aria-invalid={!!errors.stopPrice} aria-describedby={errors.stopPrice ? "wl-stop-err" : undefined} />
                 {errors.stopPrice && <p id="wl-stop-err" className="text-xs text-down">{errors.stopPrice}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="wl-target" className={toneText("up")}>Цель, $</Label>
+                <Label htmlFor="wl-target" className={toneText("up")}>{t("form.target")}</Label>
                 <Input id="wl-target" inputMode="decimal" value={form.targetPrice} onChange={(e) => set("targetPrice", e.target.value)} placeholder="180"
                   aria-invalid={!!errors.targetPrice} aria-describedby={errors.targetPrice ? "wl-target-err" : undefined} />
                 {errors.targetPrice && <p id="wl-target-err" className="text-xs text-down">{errors.targetPrice}</p>}
@@ -152,54 +158,57 @@ export function WatchlistFormDialog({
             </div>
             {hasLevels && (
               <p className="text-xs text-muted-foreground">
-                Направление: <Pill tone={target > stop ? "up" : "down"} className="text-2xs">{target > stop ? "Лонг" : "Шорт"}</Pill> — определяется по взаимному положению стопа и цели.
+                {t("form.direction")} <Pill tone={target > stop ? "up" : "down"} className="text-2xs">{target > stop ? commonI18n.t("trading.long") : commonI18n.t("trading.short")}</Pill> {t("form.directionHint")}
               </p>
             )}
             <TickerFundamentalsBar ticker={form.ticker} onLoaded={handleFundamentalsLoaded} />
           </FieldGroup>
 
-          <FieldGroup title="Контекст">
+          <FieldGroup title={t("form.context")}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_2fr]">
               <div className="space-y-1.5">
-                <Label htmlFor="wl-sector">Сектор</Label>
+                <Label htmlFor="wl-sector">{t("form.sector")}</Label>
                 <Input id="wl-sector" value={form.sector} onChange={(e) => set("sector", e.target.value)} placeholder="Technology" />
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="wl-catalyst">Катализатор</Label>
+                  <Label htmlFor="wl-catalyst">{t("form.catalyst")}</Label>
                   <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={(text) => set("catalyst", form.catalyst ? `${form.catalyst}\n${text}` : text)} /></React.Suspense>
                 </div>
-                <Textarea id="wl-catalyst" className="min-h-[64px]" value={form.catalyst} onChange={(e) => set("catalyst", e.target.value)} placeholder="Отчёт, новость, FDA…" />
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Быстрые катализаторы">
-                  {CATALYST_PRESETS.map((p) => (
-                    <button key={p} type="button" className="chip min-h-7 px-2.5 text-xs"
-                      onClick={() => set("catalyst", form.catalyst.includes(p) ? form.catalyst : form.catalyst ? `${form.catalyst}, ${p}` : p)}>
-                      {p}
-                    </button>
-                  ))}
+                <Textarea id="wl-catalyst" className="min-h-[64px]" value={form.catalyst} onChange={(e) => set("catalyst", e.target.value)} placeholder={t("form.catalystPlaceholder")} />
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("form.quickCatalysts")}>
+                  {CATALYST_PRESETS.map((id) => {
+                    const p = presetText(id);
+                    return (
+                      <button key={id} type="button" className="chip min-h-7 px-2.5 text-xs"
+                        onClick={() => set("catalyst", form.catalyst.includes(p) ? form.catalyst : form.catalyst ? `${form.catalyst}, ${p}` : p)}>
+                        {p}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </FieldGroup>
 
-          <FieldGroup title="Теги">
+          <FieldGroup title={t("form.tags")}>
             <TagSelector selectedTags={splitTags(form.tags)} onChange={(tags) => set("tags", tags.join(", "))} />
           </FieldGroup>
 
-          <FieldGroup title="Сценарий и заметки">
+          <FieldGroup title={t("form.notes")}>
             <div className="flex justify-end">
               <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={(text) => set("notes", form.notes ? `${form.notes}\n${text}` : text)} /></React.Suspense>
             </div>
-            <Textarea aria-label="Сценарий и заметки" className="min-h-[88px]" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Вход от уровня…, стоп под…, частичная фиксация у…" />
+            <Textarea aria-label={t("form.notes")} className="min-h-[88px]" value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder={t("form.notesPlaceholder")} />
           </FieldGroup>
 
-          <FieldGroup title="Скриншоты">
+          <FieldGroup title={t("form.screenshots")}>
             <ScreenshotFields urls={form.screenshotUrls} onChange={(urls) => setForm((f) => ({ ...f, screenshotUrls: urls }))} />
           </FieldGroup>
 
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Отмена</Button>
-            <Button type="button" onClick={handleSave} disabled={!form.ticker.trim() || saving} title="Ctrl+Enter">{saving ? "Сохраняем…" : editing ? "Сохранить" : "Добавить"}</Button>
+            <Button type="button" variant="outline" onClick={onClose}>{commonI18n.t("actions.cancel")}</Button>
+            <Button type="button" onClick={handleSave} disabled={!form.ticker.trim() || saving} title="Ctrl+Enter">{saving ? t("form.saving") : editing ? commonI18n.t("actions.save") : commonI18n.t("actions.add")}</Button>
           </DialogFooter>
         </div>
       </DialogContent>

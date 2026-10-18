@@ -4,7 +4,6 @@ import { BarChart3, FileDown, Microscope, Printer, RefreshCw, SearchX } from "lu
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, Page, PageHeader, Panel, Segmented, Toolbar } from "@/components/ds";
 import { KpiGrid, KpiGridSkeleton } from "@/components/stats/kpi-grid";
 import { EquityPanel } from "@/components/stats/equity-panel";
@@ -19,10 +18,15 @@ import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
 import { usePerformance } from "@/components/propreports/api";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import {
-  HORIZON_LABEL, HORIZON_OPTIONS, PERIOD_OPTIONS, computeKpis, dailySeries, equitySeries, feeStats, horizonOf, inRange,
-  monthlySeries, parseKey, periodRanges, pluralTrades, preferredMetric,
+  horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, computeKpis, dailySeries, equitySeries, feeStats, horizonOf, inRange,
+  monthlySeries, parseKey, periodRanges, preferredMetric,
   type HorizonFilter, type Metric, type PeriodKey, type Range,
 } from "@/components/stats/metrics";
+import { PersonSelect } from "@/components/people/person-select";
+import { fmtDateCustom } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
+import { statsI18n } from "@/i18n/ns/stats";
 
 /**
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
@@ -51,18 +55,19 @@ function loadPrefs(): Prefs {
   }
 }
 
-const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 function fmtRange(r: Range): string {
   const f = (k: string) => {
     const d = parseKey(k);
-    return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}${d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : ""}`;
+    const otherYear = d.getFullYear() !== new Date().getFullYear();
+    return fmtDateCustom(d, { day: "numeric", month: "short", ...(otherYear ? { year: "numeric" } : {}) }).replace(".", "");
   };
-  if (!r.from) return "всё время";
-  return `${f(r.from)} — ${r.to ? f(r.to) : "сегодня"}`;
+  if (!r.from) return statsI18n.t("range.all");
+  return statsI18n.t("range.span", { from: f(r.from), to: r.to ? f(r.to) : statsI18n.t("range.today") });
 }
 
 export default function Stats() {
-  const { user } = useAuth();
+  const { t } = statsI18n.useT();
+  const { user, isCurator } = useAuth();
   const { toast } = useToast();
   const [prefs, setPrefs] = useState<Prefs>(() => {
     const p = loadPrefs();
@@ -92,8 +97,8 @@ export default function Stats() {
   const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs((p) => ({ ...p, [k]: v }));
 
   const traders = useMemo(
-    () => [...new Set([...(teamFacets.data?.traders ?? []), ...allTrades.map((t) => t.trader ?? "")].map((t) => t.trim()).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, "ru")),
+    () => [...new Set([...(teamFacets.data?.traders ?? []), ...allTrades.map((tr) => tr.trader ?? "")].map((x) => x.trim()).filter(Boolean))]
+      .sort(comparePersonNames),
     [allTrades, teamFacets.data],
   );
   // Trades in the scope regardless of the period (for the empty states).
@@ -108,18 +113,18 @@ export default function Stats() {
   // A trader whose results live only in PropReports opens straight onto their broker report.
   useEffect(() => {
     if (!me || prefs.trader !== "all" || isLoading || !perf.data) return;
-    const hasJournal = teamFacets.data ? teamFacets.data.traders.includes(me) : allTrades.some((t) => (t.trader ?? "").trim() === me);
+    const hasJournal = teamFacets.data ? teamFacets.data.traders.includes(me) : allTrades.some((tr) => (tr.trader ?? "").trim() === me);
     if (!hasJournal && perf.data.reports.some((r) => r.traderName === me)) setPrefs((p) => ({ ...p, trader: me }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, perf.data, isLoading]);
 
   // Trader scope (before horizon) — the horizon table compares all three horizons within it.
   const traderScoped = useMemo(
-    () => (prefs.trader === "all" ? allTrades : allTrades.filter((t) => (t.trader ?? "").trim() === prefs.trader)),
+    () => (prefs.trader === "all" ? allTrades : allTrades.filter((tr) => (tr.trader ?? "").trim() === prefs.trader)),
     [allTrades, prefs.trader],
   );
   const scoped = useMemo(
-    () => (prefs.horizon === "all" ? traderScoped : traderScoped.filter((t) => horizonOf(t) === prefs.horizon)),
+    () => (prefs.horizon === "all" ? traderScoped : traderScoped.filter((tr) => horizonOf(tr) === prefs.horizon)),
     [traderScoped, prefs.horizon],
   );
   const metric: Metric = prefs.metric ?? preferredMetric(scoped);
@@ -137,12 +142,14 @@ export default function Stats() {
   const horizonBase = useMemo(() => inRange(traderScoped, ranges.cur), [traderScoped, ranges]);
 
   const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
+  // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
+  const solo = !isCurator && traders.length <= 1 && reportTraders.length === 0;
   const scopeLabel =
-    (prefs.trader === "all" ? "Вся команда" : prefs.trader) + (prefs.horizon !== "all" ? ` · ${HORIZON_LABEL[prefs.horizon]}` : "");
+    (prefs.trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : personName(prefs.trader)) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
 
   const reportMeta = () => ({
-    title: `Отчёт WS_LEXX — ${scopeLabel}`,
-    periodLabel: `${periodOpt.label} (${fmtRange(ranges.cur)})`,
+    title: t("reportTitle", { scope: scopeLabel }),
+    periodLabel: t("reportPeriod", { label: periodOpt.label, range: fmtRange(ranges.cur) }),
     scopeLabel,
     metric,
     generatedAt: new Date(),
@@ -151,13 +158,13 @@ export default function Stats() {
 
   const header = (
     <PageHeader
-      title="Статистика"
+      title={t("title")}
       icon={BarChart3}
       description={
         <>
-          Сводный отчёт за период.{" "}
+          {t("description")}{" "}
           <Link href="/analytics" className="text-primary underline-offset-4 hover:underline">
-            Детальный разбор — в Аналитике
+            {t("deepLink")}
           </Link>
         </>
       }
@@ -165,7 +172,7 @@ export default function Stats() {
         <>
           <Button variant="outline" size="sm" className="rounded-full" asChild>
             <Link href="/analytics">
-              <Microscope className="mr-1.5 h-4 w-4" aria-hidden="true" /> Глубокий анализ
+              <Microscope className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("deepButton")}
             </Link>
           </Button>
           <Button
@@ -178,11 +185,11 @@ export default function Stats() {
             variant="outline" size="sm" className="rounded-full" disabled={!trades.length}
             onClick={() => {
               if (!openPrintReport(trades, kpis, prevKpis, reportMeta())) {
-                toast({ title: "Браузер заблокировал окно печати", description: "Разрешите всплывающие окна для этого сайта.", variant: "destructive" });
+                toast({ title: t("printBlocked"), description: t("printBlockedHint"), variant: "destructive" });
               }
             }}
           >
-            <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> Печать
+            <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("print")}
           </Button>
         </>
       }
@@ -196,11 +203,11 @@ export default function Stats() {
         <Panel>
           <EmptyState
             icon={SearchX}
-            title="Не удалось загрузить сделки"
-            description="Проверьте соединение и попробуйте ещё раз."
+            title={t("loadError")}
+            description={t("loadErrorHint")}
             action={
               <Button variant="outline" className="rounded-full" onClick={() => void refetch()} disabled={isFetching}>
-                <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> Повторить
+                <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}
               </Button>
             }
           />
@@ -219,16 +226,16 @@ export default function Stats() {
           <div className="glass-panel h-[360px] animate-pulse rounded-2xl xl:col-span-3" />
           <div className="glass-panel h-[360px] animate-pulse rounded-2xl xl:col-span-2" />
         </div>
-        <span className="sr-only" role="status">Загрузка статистики…</span>
+        <span className="sr-only" role="status">{t("loading")}</span>
       </Page>
     );
   }
 
   const prevNote = ranges.prev
     ? prevKpis && prevKpis.total > 0
-      ? `Сравнение с ${fmtRange(ranges.prev)} · ${prevKpis.total} ${pluralTrades(prevKpis.total)}`
-      : `В предыдущем периоде (${fmtRange(ranges.prev)}) сделок нет — сравнивать не с чем`
-    : "Выберите период, чтобы сравнить с предыдущим";
+      ? t("prevCompare", { range: fmtRange(ranges.prev), trades: commonI18n.t("units.trades", { count: prevKpis.total }) })
+      : t("prevEmpty", { range: fmtRange(ranges.prev) })
+    : t("prevNone");
 
   return (
     <Page>
@@ -237,36 +244,38 @@ export default function Stats() {
       <Toolbar className="justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Segmented<PeriodKey>
-            ariaLabel="Период"
+            ariaLabel={t("periodAria")}
             value={prefs.period}
             onChange={(v) => set("period", v)}
             options={PERIOD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
           <Segmented<Metric>
-            ariaLabel="Метрика"
+            ariaLabel={t("metricAria")}
             value={metric}
             onChange={(v) => set("metric", v)}
-            options={[{ value: "r", label: "R" }, { value: "net", label: "$ нетто" }, { value: "usd", label: "$ брутто" }]}
+            options={[{ value: "r", label: t("metric.r") }, { value: "net", label: t("metric.net") }, { value: "usd", label: t("metric.usd") }]}
           />
           <Segmented<HorizonFilter>
-            ariaLabel="Горизонт"
+            ariaLabel={t("horizonAria")}
             value={prefs.horizon}
             onChange={(v) => set("horizon", v)}
             options={HORIZON_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
         </div>
-        <Select value={prefs.trader} onValueChange={(v) => set("trader", v)}>
-          <SelectTrigger className="h-9 w-full rounded-full sm:w-[200px]" aria-label="Трейдер">
-            <SelectValue placeholder="Вся команда" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Вся команда</SelectItem>
-            {me && traders.includes(me) && <SelectItem value={me}>Мои сделки ({me})</SelectItem>}
-            {traders.filter((t) => t !== me).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            {reportTraders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            {prefs.trader !== "all" && !traders.includes(prefs.trader) && !reportTraders.includes(prefs.trader) && <SelectItem value={prefs.trader}>{prefs.trader}</SelectItem>}
-          </SelectContent>
-        </Select>
+        {!solo && <PersonSelect
+          value={prefs.trader}
+          onValueChange={(v) => set("trader", v)}
+          allValue="all"
+          allLabel={t("wholeTeam")}
+          options={[
+            ...(me && traders.includes(me) ? [{ value: me, label: t("myTradesOf", { name: personName(me) }) }] : []),
+            ...traders.filter((t) => t !== me),
+            ...reportTraders,
+            ...(prefs.trader !== "all" && !traders.includes(prefs.trader) && !reportTraders.includes(prefs.trader) ? [prefs.trader] : []),
+          ]}
+          className="h-9 w-full sm:w-[200px]"
+          ariaLabel={t("traderAria")}
+        />}
       </Toolbar>
 
       {hasBroker && (
@@ -280,26 +289,34 @@ export default function Stats() {
         <Panel>
           <EmptyState
             icon={BarChart3}
-            title="Пока нет сделок"
-            description="Сделки подтягиваются автоматически после торговой сессии — тогда здесь появится отчёт: win rate, матожидание, кривая результата, календарь и лучшие сделки."
+            title={t("bookEmpty")}
+            description={t("bookEmptyHint")}
           />
         </Panel>
       ) : trades.length === 0 && hasBroker ? null : trades.length === 0 ? (
         <Panel>
           <EmptyState
             icon={SearchX}
-            title={`Нет сделок за ${periodOpt.long}${prefs.trader !== "all" ? ` у ${prefs.trader}` : ""}${prefs.horizon !== "all" ? ` · ${HORIZON_LABEL[prefs.horizon]}` : ""}`}
-            description={`${bookTotal != null ? `Всего в журнале${prefs.trader !== "all" ? ` у ${prefs.trader}` : ""} ${bookTotal} ${pluralTrades(bookTotal)} — в` : "В"}ыберите период длиннее${prefs.trader !== "all" || prefs.horizon !== "all" ? " или снимите фильтры" : ""}.`}
+            title={`${prefs.trader !== "all" ? t("noTradesTitleOf", { period: periodOpt.long, trader: personName(prefs.trader) }) : t("noTradesTitle", { period: periodOpt.long })}${prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : ""}`}
+            description={[
+              bookTotal != null
+                ? prefs.trader !== "all"
+                  ? t("inJournalOf", { trader: personName(prefs.trader), trades: commonI18n.t("units.trades", { count: bookTotal }) })
+                  : t("inJournal", { trades: commonI18n.t("units.trades", { count: bookTotal }) })
+                : "",
+              prefs.trader !== "all" || prefs.horizon !== "all" ? t("pickLongerOrClear") : t("pickLonger"),
+            ].filter(Boolean).join(" ")}
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 {prefs.period !== "all" && (
-                  <Button className="rounded-full" onClick={() => set("period", "all")}>Показать всё время</Button>
+                  <Button className="rounded-full" onClick={() => set("period", "all")}>{t("showAll")}</Button>
                 )}
                 {prefs.trader !== "all" && (
-                  <Button variant="outline" className="rounded-full" onClick={() => set("trader", "all")}>Вся команда</Button>
+                  <Button variant="outline" className="rounded-full" onClick={() => set("trader", "all")}>{t("wholeTeam")}</Button>
                 )}
                 {prefs.horizon !== "all" && (
-                  <Button variant="outline" className="rounded-full" onClick={() => set("horizon", "all")}>Все горизонты</Button>
+                  <Button variant="outline" className="rounded-full" onClick={() => set("horizon", "all")}>{t("allHorizons")}</Button>
+
                 )}
               </div>
             }
@@ -310,7 +327,7 @@ export default function Stats() {
           <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
             <h2 className="text-sm font-semibold text-foreground">
               {scopeLabel} · {fmtRange(ranges.cur)}
-              <span className="ml-2 font-normal text-muted-foreground">{trades.length} {pluralTrades(trades.length)}</span>
+              <span className="ml-2 font-normal text-muted-foreground">{commonI18n.t("units.trades", { count: trades.length })}</span>
             </h2>
             <p className="text-xs text-muted-foreground">{prevNote}</p>
           </div>
@@ -339,6 +356,7 @@ export default function Stats() {
               dimension={prefs.dim}
               onDimension={(d) => set("dim", d)}
               onPickTrader={prefs.trader === "all" ? (name) => set("trader", name) : undefined}
+              hideTrader={solo}
             />
             <ExtremesPanel trades={trades} metric={metric} />
           </div>

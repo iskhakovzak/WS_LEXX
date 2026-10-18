@@ -9,12 +9,13 @@ import {
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
-import {
-  type AnalyticsFilters, periodRange, fmtR, fmtPct, fmtUsd, sdeal, pluralRu,
-  CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID,
-} from "./metrics";
+import { type AnalyticsFilters, periodRange, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { commonI18n } from "@/i18n/ns/common";
+import { analyticsI18n } from "@/i18n/ns/analytics";
+import { personName } from "@/i18n";
+import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 /* ───────────── API types ───────────── */
 
@@ -48,19 +49,20 @@ type PsychologyAnalytics = {
   convictionRCorrelation?: number | null;
 };
 
-const CONF_LABEL: Record<Confidence, string> = { low: "Мало данных", medium: "Предварительно", high: "Надёжно" };
 const CONF_TONE: Record<Confidence, Tone> = { low: "neutral", medium: "warn", high: "up" };
+const confLabel = (c: Confidence) => analyticsI18n.t(`psych.conf.${c}`);
 
 function corrSentence(r: number, what: string): { text: string; tone: Tone } {
+  const t = analyticsI18n.t;
   const a = Math.abs(r);
-  const strength = a < 0.1 ? "нет" : a < 0.3 ? "слабая" : a < 0.5 ? "умеренная" : "сильная";
-  const dir = r > 0 ? "прямая" : "обратная";
-  const rStr = `r = ${r > 0 ? "+" : r < 0 ? "−" : ""}${a.toFixed(2)}`;
-  if (a < 0.1) return { text: `${what}: связи с результатом нет (${rStr}). Пока эта оценка не помогает предсказать исход.`, tone: "neutral" };
-  if (a < 0.3) return { text: `${what}: ${strength} ${dir} связь (${rStr}). Тенденция есть, но полагаться на неё рано.`, tone: "neutral" };
+  const strength = a < 0.3 ? t("psych.corr.weak") : a < 0.5 ? t("psych.corr.moderate") : t("psych.corr.strong");
+  const dir = r > 0 ? t("psych.corr.direct") : t("psych.corr.inverse");
+  const rStr = `r = ${fmtNum(r, { signed: true })}`;
+  if (a < 0.1) return { text: t("psych.corr.noLink", { what, r: rStr }), tone: "neutral" };
+  if (a < 0.3) return { text: t("psych.corr.weakLink", { what, strength, dir, r: rStr }), tone: "neutral" };
   return r > 0
-    ? { text: `${what}: ${strength} прямая связь (${rStr}). Чем выше оценка, тем лучше результат — ей можно доверять при выборе размера позиции.`, tone: "up" }
-    : { text: `${what}: ${strength} обратная связь (${rStr}). Высокая уверенность чаще заканчивается хуже — признак переуверенности.`, tone: "down" };
+    ? { text: t("psych.corr.positive", { what, strength, r: rStr }), tone: "up" }
+    : { text: t("psych.corr.negative", { what, strength, r: rStr }), tone: "down" };
 }
 
 /* ───────────── Component ───────────── */
@@ -76,6 +78,7 @@ export function PsychologyTab({
   filters: AnalyticsFilters;
   trades: Trade[];
 }) {
+  const { t } = analyticsI18n.useT();
   const params = useMemo(() => {
     const sp = new URLSearchParams({ userId });
     const r = periodRange(filters.period);
@@ -91,11 +94,7 @@ export function PsychologyTab({
     queryKey: ["analytics-psychology", params],
     enabled: !!userId,
     staleTime: 60_000,
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/analytics/psychology?${params}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<PsychologyAnalytics>(`/api/analytics/psychology?${params}`, { signal }),
   });
 
   const myTrades = useMemo(() => trades.filter((t) => (t.trader ?? "") === userId), [trades, userId]);
@@ -105,12 +104,12 @@ export function PsychologyTab({
   }, [myTrades]);
 
   if (!userId) {
-    return <EmptyState icon={Brain} title="Выберите трейдера" description="Психология считается по одному трейдеру — выберите его в фильтре сверху." />;
+    return <EmptyState icon={Brain} title={t("psych.pickTrader")} description={t("psych.pickTraderHint")} />;
   }
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка психологии">
+      <div className="flex flex-col gap-4" aria-busy="true" aria-label={t("psych.loadingAria")}>
         <StatGrid>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[96px] rounded-2xl" />)}</StatGrid>
         <Skeleton className="h-[220px] rounded-2xl" />
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -126,9 +125,9 @@ export function PsychologyTab({
       <Panel>
         <EmptyState
           icon={Brain}
-          title="Не удалось загрузить психологическую аналитику"
-          description="Проверьте соединение и попробуйте ещё раз."
-          action={<Button variant="outline" onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> Повторить</Button>}
+          title={t("psych.loadError")}
+          description={t("psych.loadErrorHint")}
+          action={<Button variant="outline" onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
         />
       </Panel>
     );
@@ -150,31 +149,29 @@ export function PsychologyTab({
   return (
     <div className={cn("flex flex-col gap-4 sm:gap-5 transition-opacity", isFetching && "opacity-70")}>
       {!isOwn && (
-        <p className="text-sm text-muted-foreground">
-          Психология трейдера <span className="font-medium text-foreground">{userId}</span> — чек-ины личные, видны только кураторам.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("psych.ofTrader", { name: personName(userId) })}</p>
       )}
 
       <StatGrid>
-        <StatCard label="Чек-инов за период" value={cov?.checkins ?? psych.recentCheckins.length} icon={CalendarDays}
-          hint={cov?.checkins ? undefined : "утренний чек-ин на главной"} />
+        <StatCard label={t("psych.checkins")} value={cov?.checkins ?? psych.recentCheckins.length} icon={CalendarDays}
+          hint={cov?.checkins ? undefined : t("psych.checkinsHint")} />
         <StatCard
-          label="Сделок с чек-ином"
-          value={covPct != null ? fmtPct(covPct) : "—"}
+          label={t("psych.withCheckin")}
+          value={covPct != null ? fmtRate(covPct) : "—"}
           tone={covPct == null ? "neutral" : covPct >= 0.7 ? "up" : covPct >= 0.3 ? "warn" : "down"}
-          hint={cov ? `${cov.tradesWithCheckin} из ${cov.trades}` : undefined}
+          hint={cov ? t("psych.ofTotal", { value: cov.tradesWithCheckin, total: cov.trades }) : undefined}
           icon={Activity}
         />
         <StatCard
-          label="Средняя убеждённость"
-          value={avgConviction != null ? `${avgConviction.toFixed(1)}★` : "—"}
-          hint={cov ? `оценено ${cov.tradesWithConviction} из ${cov.trades}` : undefined}
+          label={t("psych.avgConviction")}
+          value={avgConviction != null ? `${fmtNum(avgConviction, { decimals: 1 })}★` : "—"}
+          hint={cov ? t("psych.rated", { value: cov.tradesWithConviction, total: cov.trades }) : undefined}
           icon={Gauge}
         />
         <StatCard
-          label="Сделок с оценкой A+…C"
+          label={t("psych.withGrade")}
           value={cov?.tradesWithGrade ?? 0}
-          hint={cov && cov.trades ? fmtPct(cov.tradesWithGrade / cov.trades) + " сделок" : undefined}
+          hint={cov && cov.trades ? t("psych.gradeShare", { share: fmtRate(cov.tradesWithGrade / cov.trades) }) : undefined}
           icon={Sparkles}
         />
       </StatGrid>
@@ -183,22 +180,20 @@ export function PsychologyTab({
         <Panel>
           <EmptyState
             icon={Brain}
-            title="Здесь появится связь состояния и результата"
-            description="Проходите утренний чек-ин (сон, стресс, фокус) и ставьте убеждённость и оценку A+…C при записи сделок. Через 2–3 недели станет видно, что помогает, а что мешает."
-            action={<Button asChild variant="outline"><Link href="/">Пройти чек-ин</Link></Button>}
+            title={t("psych.emptyTitle")}
+            description={t("psych.emptyHint")}
+            action={<Button asChild variant="outline"><Link href="/">{t("psych.doCheckin")}</Link></Button>}
           />
         </Panel>
       ) : (
         <>
           <Panel
             icon={Lightbulb}
-            title="Что сильнее всего влияет на результат"
-            description="Отсортировано по силе эффекта с учётом размера выборки"
+            title={t("psych.rankedTitle")}
+            description={t("psych.rankedHint")}
           >
             {ranked.length === 0 ? (
-              <p className="py-2 text-sm text-muted-foreground">
-                Пока недостаточно данных: для сравнения нужно минимум по 2 сделки в каждой группе (например, дни с хорошим сном и без).
-              </p>
+              <p className="py-2 text-sm text-muted-foreground">{t("psych.rankedEmpty")}</p>
             ) : (
               <ol className="flex flex-col gap-2">
                 {ranked.map((ins, i) => {
@@ -218,18 +213,18 @@ export function PsychologyTab({
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs tabular-nums text-muted-foreground">#{i + 1}</span>
                           <span className="text-sm font-semibold text-foreground">{ins.title}</span>
-                          <Pill tone={CONF_TONE[ins.confidence]}>{CONF_LABEL[ins.confidence]}</Pill>
+                          <Pill tone={CONF_TONE[ins.confidence]}>{confLabel(ins.confidence)}</Pill>
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">{ins.text}</p>
                         {ins.impact > 0 && (
-                          <div className="mt-2 flex items-center gap-2" title="Сила эффекта с учётом выборки">
+                          <div className="mt-2 flex items-center gap-2" title={t("psych.impactTitle")}>
                             <div className="h-1 w-full max-w-[220px] overflow-hidden rounded-full bg-[var(--glass-bg)]">
                               <div
                                 className={cn("h-full rounded-full", ins.tone === "down" ? "bg-down" : ins.tone === "up" ? "bg-up" : "bg-primary")}
                                 style={{ width: `${Math.max(6, (ins.impact / maxImpact) * 100)}%` }}
                               />
                             </div>
-                            <span className="text-2xs text-muted-foreground">влияние</span>
+                            <span className="text-2xs text-muted-foreground">{t("psych.impact")}</span>
                           </div>
                         )}
                       </div>
@@ -243,22 +238,22 @@ export function PsychologyTab({
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
             <ComparisonPanel
               icon={Moon}
-              title="Самочувствие и результат"
-              description="Сделки в дни с отмеченным состоянием против остальных дней с чек-ином"
+              title={t("psych.wellbeing")}
+              description={t("psych.wellbeingHint")}
               rows={factors}
-              empty="Нужны чек-ины минимум за несколько торговых дней — с сочетанием разных состояний."
+              empty={t("psych.wellbeingEmpty")}
             />
             <ComparisonPanel
               icon={Activity}
-              title="Поведение"
-              description="Работает и без чек-инов — по самим сделкам"
+              title={t("psych.behavior")}
+              description={t("psych.behaviorHint")}
               rows={behavior}
-              empty="Пока мало сделок для сравнения (после убытка, дни с 3+ сделками, убеждённость)."
+              empty={t("psych.behaviorEmpty")}
             />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
-            <Panel icon={Gauge} title="Убеждённость 1–5★" description="Win rate и число сделок на каждом уровне">
+            <Panel icon={Gauge} title={t("psych.conviction")} description={t("psych.convictionHint")}>
               {hasConviction ? (
                 <div className="h-[230px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -272,7 +267,7 @@ export function PsychologyTab({
                         cursor={CHART_CURSOR}
                         formatter={(v: number, _n, item) => {
                           const d = item.payload as { count: number; wr: number | null; avgR?: number | null };
-                          return [d.count ? `${d.wr == null ? "—" : `${v}%`} · ${sdeal(d.count)}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : "нет сделок", "Win rate"];
+                          return [d.count ? `${d.wr == null ? "—" : `${v}%`} · ${commonI18n.t("units.trades", { count: d.count })}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : t("psych.noTrades"), "Win rate"];
                         }}
                       />
                       <Bar dataKey="wr" radius={[6, 6, 0, 0]} isAnimationActive={false}>
@@ -284,21 +279,21 @@ export function PsychologyTab({
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <p className="py-6 text-sm text-muted-foreground">Ставьте убеждённость (1–5★) при записи сделки — здесь появится, оправдывается ли ваша уверенность.</p>
+                <p className="py-6 text-sm text-muted-foreground">{t("psych.convictionEmpty")}</p>
               )}
-              {convCorr != null && <CorrLine {...corrSentence(convCorr, "Убеждённость")} />}
+              {convCorr != null && <CorrLine {...corrSentence(convCorr, t("psych.convictionWhat"))} />}
             </Panel>
 
-            <Panel icon={Sparkles} title="Оценка A+ / A / B / C" description="Исходы по каждой оценке">
+            <Panel icon={Sparkles} title={t("psych.grades")} description={t("psych.gradesHint")}>
               {hasGrades ? <GradeMatrix psych={psych} /> : (
-                <p className="py-6 text-sm text-muted-foreground">Оценивайте качество сетапа (A+…C) при записи сделки — проверим, стоит ли брать B и C.</p>
+                <p className="py-6 text-sm text-muted-foreground">{t("psych.gradesEmpty")}</p>
               )}
-              {gradeCorr != null && <CorrLine {...corrSentence(gradeCorr, "Оценка сетапа")} />}
+              {gradeCorr != null && <CorrLine {...corrSentence(gradeCorr, t("psych.gradeWhat"))} />}
             </Panel>
           </div>
 
           {psych.emotionalByMonth.length > 0 && (
-            <Panel icon={CalendarDays} title="Состояния по месяцам" description="Сколько дней с каждым отмеченным состоянием">
+            <Panel icon={CalendarDays} title={t("psych.byMonth")} description={t("psych.byMonthHint")}>
               <div className="h-[240px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={psych.emotionalByMonth} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -307,25 +302,25 @@ export function PsychologyTab({
                     <YAxis {...AXIS} allowDecimals={false} />
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} />
                     <Legend wrapperStyle={{ fontSize: 12 }} iconSize={10} iconType="circle" />
-                    <Bar dataKey="sleepWell" name="Выспался" stackId="a" fill="hsl(var(--chart-1))" isAnimationActive={false} />
-                    <Bar dataKey="focused" name="Фокус" stackId="a" fill="hsl(var(--up))" isAnimationActive={false} />
-                    <Bar dataKey="stressed" name="Стресс" stackId="a" fill="hsl(var(--chart-3))" isAnimationActive={false} />
-                    <Bar dataKey="anxious" name="Тревога" stackId="a" fill="hsl(var(--chart-5))" isAnimationActive={false} />
-                    <Bar dataKey="tilted" name="Тильт" stackId="a" fill="hsl(var(--chart-4))" isAnimationActive={false} />
-                    <Bar dataKey="revenge" name="Реванш" stackId="a" fill="hsl(var(--down))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="sleepWell" name={t("psych.state.sleepWell")} stackId="a" fill="hsl(var(--chart-1))" isAnimationActive={false} />
+                    <Bar dataKey="focused" name={t("psych.state.focused")} stackId="a" fill="hsl(var(--up))" isAnimationActive={false} />
+                    <Bar dataKey="stressed" name={t("psych.state.stressed")} stackId="a" fill="hsl(var(--chart-3))" isAnimationActive={false} />
+                    <Bar dataKey="anxious" name={t("psych.state.anxious")} stackId="a" fill="hsl(var(--chart-5))" isAnimationActive={false} />
+                    <Bar dataKey="tilted" name={t("psych.state.tilted")} stackId="a" fill="hsl(var(--chart-4))" isAnimationActive={false} />
+                    <Bar dataKey="revenge" name={t("psych.state.revenge")} stackId="a" fill="hsl(var(--down))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </Panel>
           )}
 
-          <Panel icon={CalendarDays} title="История чек-инов" description="Состояние дня и результат сделок в этот день">
+          <Panel icon={CalendarDays} title={t("psych.history")} description={t("psych.historyHint")}>
             {psych.recentCheckins.length === 0 ? (
               <EmptyState
                 icon={CalendarDays}
-                title="Чек-инов за период нет"
-                description="Утренний чек-ин занимает 10 секунд и делается на главной."
-                action={<Button asChild variant="outline" size="sm"><Link href="/">Открыть главную</Link></Button>}
+                title={t("psych.noCheckins")}
+                description={t("psych.noCheckinsHint")}
+                action={<Button asChild variant="outline" size="sm"><Link href="/">{t("psych.openHome")}</Link></Button>}
                 className="py-6"
               />
             ) : (
@@ -376,10 +371,10 @@ function ComparisonPanel({
                   <span className="text-sm font-semibold text-foreground">{c.label}</span>
                   <div className="flex items-center gap-1.5">
                     <Pill tone={tone}>
-                      {c.deltaWinRatePp != null && <>{c.deltaWinRatePp > 0 ? "+" : c.deltaWinRatePp < 0 ? "−" : ""}{Math.abs(c.deltaWinRatePp)} п.п.</>}
+                      {c.deltaWinRatePp != null && commonI18n.t("units.percentPoints", { value: `${c.deltaWinRatePp > 0 ? "+" : c.deltaWinRatePp < 0 ? "−" : ""}${Math.abs(c.deltaWinRatePp)}` })}
                       {c.deltaR != null && `${c.deltaWinRatePp != null ? " · " : ""}${fmtR(c.deltaR)}`}
                     </Pill>
-                    <Pill tone={CONF_TONE[c.confidence]}>{CONF_LABEL[c.confidence]}</Pill>
+                    <Pill tone={CONF_TONE[c.confidence]}>{confLabel(c.confidence)}</Pill>
                   </div>
                 </div>
                 <div className="mt-2 flex flex-col gap-1.5">
@@ -410,9 +405,9 @@ function CompareBar({ label, g, strong }: { label: string; g: GroupAgg; strong?:
         )}
       </div>
       <span className="w-[8.5rem] text-right text-muted-foreground">
-        <span className="text-foreground">{fmtPct(g.winRate)}</span>
+        <span className="text-foreground">{fmtRate(g.winRate)}</span>
         {g.avgR != null && <> · {fmtR(g.avgR, 1)}</>}
-        {g.avgR == null && g.avgPnl != null && <> · {fmtUsd(g.avgPnl)}</>}
+        {g.avgR == null && g.avgPnl != null && <> · {fmtUsd(g.avgPnl, { signed: true, decimals: "auto" })}</>}
         {" · "}{g.count}
       </span>
     </div>
@@ -420,11 +415,12 @@ function CompareBar({ label, g, strong }: { label: string; g: GroupAgg; strong?:
 }
 
 function GradeMatrix({ psych }: { psych: PsychologyAnalytics }) {
+  const { t } = analyticsI18n.useT();
   const grades = ["A+", "A", "B", "C"];
   const outcomes = [
-    { k: "win", label: "Плюс", cls: "bg-up/15 text-up" },
-    { k: "breakeven", label: "Б/у", cls: "bg-[var(--glass-bg)] text-muted-foreground" },
-    { k: "loss", label: "Минус", cls: "bg-down/15 text-down" },
+    { k: "win", label: t("psych.win"), cls: "bg-up/15 text-up" },
+    { k: "breakeven", label: t("psych.be"), cls: "bg-[var(--glass-bg)] text-muted-foreground" },
+    { k: "loss", label: t("psych.loss"), cls: "bg-down/15 text-down" },
   ];
   const map: Record<string, Record<string, number>> = {};
   psych.heatmap.forEach(({ grade, outcome, count }) => {
@@ -435,9 +431,9 @@ function GradeMatrix({ psych }: { psych: PsychologyAnalytics }) {
     <table className="w-full text-sm tabular-nums">
       <thead>
         <tr className="text-left text-xs text-muted-foreground">
-          <th className="py-1.5 pr-2 font-normal">Оценка</th>
+          <th className="py-1.5 pr-2 font-normal">{t("psych.colGrade")}</th>
           {outcomes.map((o) => <th key={o.k} className="px-1 py-1.5 text-center font-normal">{o.label}</th>)}
-          <th className="py-1.5 pl-2 text-right font-normal">WR · ср. R</th>
+          <th className="py-1.5 pl-2 text-right font-normal">{t("psych.colWrR")}</th>
         </tr>
       </thead>
       <tbody>
@@ -453,13 +449,13 @@ function GradeMatrix({ psych }: { psych: PsychologyAnalytics }) {
                 return (
                   <td key={o.k} className="p-1">
                     <div className={cn("rounded-lg px-2 py-1.5 text-center", n ? o.cls : "text-muted-foreground")}>
-                      {n ? <>{n}<span className="ml-1 text-2xs opacity-80">{Math.round((n / total) * 100)}%</span></> : "—"}
+                      {n ? <>{n}<span className="ml-1 text-2xs opacity-80">{fmtRate(n / total)}</span></> : "—"}
                     </div>
                   </td>
                 );
               })}
               <td className="py-1 pl-2 text-right text-xs text-muted-foreground">
-                {st ? <>{fmtPct(st.winRate)}{st.avgR != null && <> · {fmtR(st.avgR, 1)}</>}</> : "—"}
+                {st ? <>{fmtRate(st.winRate)}{st.avgR != null && <> · {fmtR(st.avgR, 1)}</>}</> : "—"}
               </td>
             </tr>
           );
@@ -469,34 +465,37 @@ function GradeMatrix({ psych }: { psych: PsychologyAnalytics }) {
   );
 }
 
-const STATE_PILLS: { k: keyof Checkin; label: string; tone: Tone }[] = [
-  { k: "sleepWell", label: "Выспался", tone: "accent" },
-  { k: "focused", label: "Фокус", tone: "up" },
-  { k: "stressed", label: "Стресс", tone: "warn" },
-  { k: "anxious", label: "Тревога", tone: "purple" },
-  { k: "tilted", label: "Тильт", tone: "down" },
-  { k: "revenge", label: "Реванш", tone: "down" },
+type StateKey = "sleepWell" | "focused" | "stressed" | "anxious" | "tilted" | "revenge";
+const STATE_PILLS: { k: StateKey; tone: Tone }[] = [
+  { k: "sleepWell", tone: "accent" },
+  { k: "focused", tone: "up" },
+  { k: "stressed", tone: "warn" },
+  { k: "anxious", tone: "purple" },
+  { k: "tilted", tone: "down" },
+  { k: "revenge", tone: "down" },
 ];
 
 function CheckinTile({ c }: { c: Checkin }) {
+  const { t } = analyticsI18n.useT();
   const states = STATE_PILLS.filter((s) => c[s.k]);
   const d = new Date(`${c.date}T00:00:00`);
-  const label = isNaN(d.getTime()) ? c.date : d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+  const label = isNaN(d.getTime()) ? c.date : fmtDate(d, "weekdayDayMonth");
   return (
     <li className="flex flex-col gap-2 rounded-xl bg-[var(--glass-bg)] p-3">
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-medium text-foreground">{label}</span>
         {c.trades ? (
           <span className="tabular-nums text-muted-foreground">
-            {c.trades} {pluralRu(c.trades, "сделка", "сделки", "сделок")} · {c.wins ?? 0} в плюс
+            {commonI18n.t("units.trades", { count: c.trades })} · {t("psych.winsCount", { count: c.wins ?? 0 })}
             {c.sumR != null && <span className={cn("ml-1 font-medium", c.sumR >= 0 ? "text-up" : "text-down")}>{fmtR(c.sumR, 1)}</span>}
           </span>
         ) : (
-          <span className="text-muted-foreground">без сделок</span>
+          <span className="text-muted-foreground">{t("psych.noTradesDay")}</span>
         )}
       </div>
       <div className="flex flex-wrap gap-1">
-        {states.length ? states.map((s) => <Pill key={s.k} tone={s.tone}>{s.label}</Pill>) : <span className="text-xs text-muted-foreground">Без отметок</span>}
+        {states.length ? states.map((s) => <Pill key={s.k} tone={s.tone}>{t(`psych.state.${s.k}`)}</Pill>) : <span className="text-xs text-muted-foreground">{t("psych.noMarks")}</span>}
+
       </div>
     </li>
   );

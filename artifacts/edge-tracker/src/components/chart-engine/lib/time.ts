@@ -2,6 +2,8 @@
  * New-York time helpers (DST-correct via Intl). Pure: no React, no DOM.
  * Candle times are UTC epoch seconds; everything the trader sees is ET.
  */
+import { fmtDate, fmtDateCustom } from "@/lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
 import type { Candle, Session } from "../types";
 
 export const ET_TZ = "America/New_York";
@@ -10,12 +12,6 @@ const PARTS_FMT = new Intl.DateTimeFormat("en-US", {
   timeZone: ET_TZ, hourCycle: "h23",
   year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", weekday: "short",
 });
-const TIME_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: ET_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const TIME_S_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: ET_TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
-const DAY_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: ET_TZ, day: "numeric", month: "short" });
-const DAY_FULL_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: ET_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
-const MONTH_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: ET_TZ, month: "short", year: "2-digit" });
-const YEAR_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: ET_TZ, year: "numeric" });
 
 export type EtParts = {
   dayKey: string;
@@ -99,15 +95,16 @@ export function isoToEpoch(iso: string | null | undefined): number {
 }
 
 // ── Formatting ─────────────────────────────────────────────────────────────
+// Display labels follow the UI language (resolved at call time); the zone is always New York.
+const ET = { timeZone: ET_TZ };
 export function fmtEtTime(epochSec: number, withSeconds = false): string {
-  const d = new Date(epochSec * 1000);
-  return withSeconds ? TIME_S_FMT.format(d) : TIME_FMT.format(d);
+  return fmtDate(epochSec * 1000, withSeconds ? "timeSeconds" : "time", ET);
 }
 export function fmtEtDay(epochSec: number): string {
-  return DAY_FMT.format(new Date(epochSec * 1000));
+  return fmtDate(epochSec * 1000, "dayMonth", ET);
 }
 export function fmtEtDayFull(epochSec: number): string {
-  return DAY_FULL_FMT.format(new Date(epochSec * 1000));
+  return fmtDate(epochSec * 1000, "short", ET);
 }
 export function fmtEtDateTime(epochSec: number, withSeconds = false): string {
   return `${fmtEtDay(epochSec)} ${fmtEtTime(epochSec, withSeconds)} ET`;
@@ -118,13 +115,13 @@ export function fmtEtDateTime(epochSec: number, withSeconds = false): string {
  * (the numeric values of the TickMarkType enum — kept numeric so this file does not import the library).
  */
 export function tickMarkLabel(epochSec: number, tickMarkType: number): string {
-  const d = new Date(epochSec * 1000);
+  const ms = epochSec * 1000;
   switch (tickMarkType) {
-    case 0: return YEAR_FMT.format(d);
-    case 1: return MONTH_FMT.format(d);
-    case 2: return DAY_FMT.format(d);
-    case 4: return TIME_S_FMT.format(d);
-    default: return TIME_FMT.format(d);
+    case 0: return fmtDateCustom(ms, { timeZone: ET_TZ, year: "numeric" });
+    case 1: return fmtDateCustom(ms, { timeZone: ET_TZ, month: "short", year: "2-digit" });
+    case 2: return fmtDate(ms, "dayMonth", ET);
+    case 4: return fmtDate(ms, "timeSeconds", ET);
+    default: return fmtDate(ms, "time", ET);
   }
 }
 
@@ -137,10 +134,10 @@ export function formatDuration(seconds: number): string {
   const h = Math.floor(s / 3600); s -= h * 3600;
   const m = Math.floor(s / 60); s -= m * 60;
   let out: string;
-  if (d > 0) out = `${d} дн ${h} ч`;
-  else if (h > 0) out = `${h} ч ${String(m).padStart(2, "0")} мин`;
-  else if (m > 0) out = `${m} мин ${s} с`;
-  else out = `${s} с`;
+  if (d > 0) out = chartI18n.t("dur.dh", { d, h });
+  else if (h > 0) out = chartI18n.t("dur.hm", { h, m: String(m).padStart(2, "0") });
+  else if (m > 0) out = chartI18n.t("dur.ms", { m, s });
+  else out = chartI18n.t("dur.s", { s });
   return neg ? `−${out}` : out;
 }
 

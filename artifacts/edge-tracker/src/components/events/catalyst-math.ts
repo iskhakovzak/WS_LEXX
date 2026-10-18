@@ -4,6 +4,9 @@
 // Covered by catalyst-math.test.ts (synthetic books).
 import { isOpen, netPnl, resultOf, type TradeLike } from "@/lib/trade-math";
 import { addDays } from "@/lib/trading-date";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { eventsI18n } from "@/i18n/ns/events";
 
 /* ───────────── Inputs ───────────── */
 
@@ -27,17 +30,19 @@ export type TickerHistory = { ticker: string; quarters: ReactionQuarter[] };
 
 export type CatKey = "cpi" | "ppi" | "nfp" | "fomc" | "opex" | "month_end" | "short_day";
 
-export const CATS: { key: CatKey; label: string; hint: string }[] = [
-  { key: "cpi", label: "CPI", hint: "Инфляция, 8:30 ET — гэп и волатильность на открытии" },
-  { key: "nfp", label: "NFP", hint: "Рынок труда, 8:30 ET" },
-  { key: "fomc", label: "FOMC (решение)", hint: "Решение по ставке 14:00 ET, пресс-конференция 14:30" },
-  { key: "ppi", label: "PPI", hint: "Цены производителей, 8:30 ET" },
-  { key: "opex", label: "Экспирация", hint: "Месячная / квартальная экспирация опционов" },
-  { key: "month_end", label: "Конец месяца", hint: "Ребалансировка фондов" },
-  { key: "short_day", label: "Короткий день", hint: "Биржа закрывается раньше (13:00 ET)" },
-];
+/** CPI / NFP / PPI are codes in every language; the rest are translated (events.cat.label.*). */
+export const catLabel = (k: CatKey): string =>
+  k === "cpi" || k === "nfp" || k === "ppi" ? k.toUpperCase() : eventsI18n.t(`cat.label.${k}`);
+export const catHint = (k: CatKey): string => eventsI18n.t(`cat.hint.${k}`);
 
-export const catLabel = (k: CatKey) => CATS.find((c) => c.key === k)?.label ?? k;
+const catDef = (key: CatKey) => ({
+  key,
+  get label() { return catLabel(key); },
+  get hint() { return catHint(key); },
+});
+export const CATS: { key: CatKey; readonly label: string; readonly hint: string }[] = (
+  ["cpi", "nfp", "fomc", "ppi", "opex", "month_end", "short_day"] as const
+).map(catDef);
 
 const isWeekendYmd = (d: string) => {
   const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -368,34 +373,18 @@ export function pooledEarnings(edges: EarningsEdge[]) {
 
 /* ───────────── Copy ───────────── */
 
-export function fmtUsd(n: number | null | undefined, digits = 2): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${s}`;
-}
-
-export function fmtSignedPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
-}
-
-export function daysWord(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  const w = m10 === 1 && m100 !== 11 ? "день" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "дня" : "дней";
-  return `${n} ${w}`;
-}
-
 /**
  * One-line takeaway for a category row: what the numbers say and what to do about it.
  * Deliberately cautious with thin samples.
  */
 export function takeaway(row: CategoryEdge, _base: DayAgg): string {
+  const t = eventsI18n.t;
   const a = row.agg;
-  if (a.days === 0) return row.calendarDays ? `В такие дни вы не торговали (${daysWord(row.calendarDays)} в календаре).` : "В вашем периоде таких дней не было.";
-  if (row.verdict === "low") return `Всего ${daysWord(a.days)} — пока наблюдение, не правило.`;
-  if (row.verdict === "noise") return "Не отличается от случайного разброса — отдельное правило не нужно.";
+  if (a.days === 0) return row.calendarDays ? t("takeaway.noTradesCal", { days: commonI18n.t("units.days", { count: row.calendarDays }) }) : t("takeaway.noneInPeriod");
+  if (row.verdict === "low") return t("takeaway.low", { days: commonI18n.t("units.days", { count: a.days }) });
+  if (row.verdict === "noise") return t("takeaway.noise");
   const d = row.delta ?? 0;
   return d < 0
-    ? `Хуже обычного на ${fmtUsd(Math.abs(d), 0).slice(1)}/день — уменьшите размер или ждите выхода цифр.`
-    : `Лучше обычного на ${fmtUsd(d, 0).slice(1)}/день — ваш день: план и лимиты как обычно.`;
+    ? t("takeaway.worse", { amount: fmtUsd(Math.abs(d), { decimals: 0 }) })
+    : t("takeaway.better", { amount: fmtUsd(d, { decimals: 0 }) });
 }

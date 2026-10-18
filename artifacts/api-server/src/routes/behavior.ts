@@ -22,12 +22,17 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
 import { scopeTrader, isGuestUser, GUEST_SCOPE } from "../lib/auth";
-import { can } from "../lib/permissions";
+import { can, readScope } from "../lib/permissions";
 import { resultSql, netPnlSql, horizonSql, num } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { nyMinutes, nyDate } from "../lib/tradingDate";
-import { etWallToUtcSeconds, parseDateStrict } from "./candles";
+import { etWallToUtcSeconds, parseDateStrict } from "../lib/candles/market";
 import { analyzeBehavior, dayTimeline, groupByDay, parseHoldText, shiftDate, type BehaviorTrade } from "../lib/behaviorEngine";
-import { TRIGGER_KINDS, TRIGGER_KIND_SET, describeTrigger, evaluateTrigger, validateTriggerParams } from "../lib/behaviorTriggers";
+import { TRIGGER_KIND_SET, describeTrigger, evaluateTrigger, isAutoTriggerName, triggerKindsFor, validateTriggerParams } from "../lib/behaviorTriggers";
+import { behaviorT } from "../lib/behaviorI18n";
+import { setupLabelOf } from "../lib/setupClassifier";
+import { langOf } from "../i18n";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -74,14 +79,6 @@ export type BehaviorRow = {
   trader: string | null;
 };
 
-const EXEC_CTE = `exec AS (
-  SELECT trade_id,
-         MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-         MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-  FROM trade_executions
-  WHERE executed_at IS NOT NULL
-  GROUP BY trade_id
-)`;
 
 /** Настенное время ET без зоны ("2026-10-15T15:59:16") → epoch ms (DST-aware). */
 export function etWallIsoToMs(iso: string | null | undefined): number | null {
@@ -115,7 +112,7 @@ export function rowToBehaviorTrade(r: BehaviorRow): BehaviorTrade {
     if (holdMin != null && entryAt != null && exitAt == null) exitAt = entryAt + holdMin * 60000;
   }
   const sideRaw = (r.side ?? "").trim().toLowerCase();
-  const side = sideRaw.startsWith("s") || sideRaw.startsWith("ш") ? "short" : sideRaw ? "long" : null;
+  const side = sideRaw.startsWith("s") || sideRaw.startsWith("ш") ? "short" : sideRaw ? "long" : null; // i18n-ignore (stored side values)
   const res = r.result;
   const horizonRaw = r.horizon;
   return {
@@ -141,7 +138,7 @@ export function rowToBehaviorTrade(r: BehaviorRow): BehaviorTrade {
  * Сделки трейдера за период (без удалённых). `scope` = имя трейдера, null = все (staff), GUEST_SCOPE — пусто.
  * Переиспользуется классификатором сетапов (routes/setups-auto.ts).
  */
-export async function loadBehaviorRows(scope: string | null, from?: string, to?: string, ids?: number[]): Promise<BehaviorRow[]> {
+export async function loadBehaviorRows(scope: string | null, from?: string, to?: string, ids?: number[], traders?: string[]): Promise<BehaviorRow[]> {
   const params: unknown[] = [];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   const cond = ["t.deleted_at IS NULL"];
@@ -149,7 +146,10 @@ export async function loadBehaviorRows(scope: string | null, from?: string, to?:
   if (from) cond.push(`substring(t.date, 1, 10) >= ${p(from)}`);
   if (to) cond.push(`substring(t.date, 1, 10) <= ${p(to)}`);
   if (ids && ids.length) cond.push(`t.id = ANY(${p(ids)}::int[])`);
-  const sql = `WITH ${EXEC_CTE}
+  if (traders) cond.push(`t.trader = ANY(${p(traders)}::text[])`);
+  // One trader / explicit ids → per-trade index probe; desk-wide scans → one hash aggregate (cheaper above ~10k trades).
+  const execJoin = execSpanJoin(scope != null || (ids && ids.length) || (traders && traders.length <= 12) ? "lateral" : "global");
+  const sql = `
     SELECT t.id, t.ticker, t.date, t.side, t.setup, t.trader,
            ${resultSql("t")} AS result,
            ${netPnlSql("t")}::float8 AS net,
@@ -164,7 +164,7 @@ export async function loadBehaviorRows(scope: string | null, from?: string, to?:
            t.context_snapshot->>'closedAt' AS closed_at,
            e.first_entry, e.last_exit
     FROM trades t
-    LEFT JOIN exec e ON e.trade_id = t.id
+    ${execJoin}
     WHERE ${cond.join(" AND ")}
     ORDER BY substring(t.date, 1, 10), e.first_entry NULLS LAST, t.id`;
   const { rows } = await pool.query<BehaviorRow>(sql, params);
@@ -199,15 +199,19 @@ async function withAutoSetups(trades: BehaviorTrade[]): Promise<BehaviorTrade[]>
 
 router.get("/behavior", asyncHandler(async (req, res) => {
   const parsed = querySchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
-  if (q.from && q.to && q.from > q.to) { res.status(400).json({ error: "from позже to" }); return; }
+  if (q.from && q.to && q.from > q.to) throw badRequest("DATE_RANGE_INVALID");
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
   const trades = await withAutoSetups(rows.map(rowToBehaviorTrade));
-  const report = analyzeBehavior(trades, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin });
+  const lang = langOf(req);
+  const report = analyzeBehavior(trades, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin }, lang);
+  // Auto-classifier setups carry their canonical (RU) name; show the class label in the reader's language.
+  const relabel = <T extends { label: string } | null>(b: T): T => (b ? { ...b, label: setupLabelOf(b.label, lang) } : b);
+  report.profile.setups = { ...report.profile.setups, best: relabel(report.profile.setups.best), worst: relabel(report.profile.setups.worst), rows: report.profile.setups.rows.map(relabel) };
   res.json({
     scope,
     from: q.from ?? null,
@@ -217,20 +221,59 @@ router.get("/behavior", asyncHandler(async (req, res) => {
   });
 }));
 
+/**
+ * GET /behavior/top-patterns?traders=A,B&from=&to=&limit=2 — the costliest behaviour patterns per trader in ONE request
+ * (the curator group view used to fire one full /behavior report per trader card). Only traders the caller may read
+ * (team.read scope) are returned: { from, to, traders: { [name]: [{ key, title, n, cost, severity }] } }.
+ */
+const topSchema = z.object({
+  traders: z.string().max(8000),
+  from: z.string().regex(YMD_RE),
+  to: z.string().regex(YMD_RE),
+  limit: z.coerce.number().int().min(1).max(10).optional(),
+});
+router.get("/behavior/top-patterns", asyncHandler(async (req, res) => {
+  const parsed = topSchema.safeParse(normQuery(req.query));
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
+  const q = parsed.data;
+  if (q.from > q.to) throw badRequest("DATE_RANGE_INVALID");
+  if (!req.authUser) throw unauthorized();
+  if (isGuestUser(req.authUser)) { res.json({ from: q.from, to: q.to, traders: {} }); return; }
+  const wanted = [...new Set(q.traders.split(",").map((t) => t.trim()).filter((t) => t && t.length <= 120))].slice(0, 300);
+  const allowed = await readScope(req, "team.read");
+  const list = allowed === null ? wanted : wanted.filter((t) => allowed.includes(t));
+  const out: Record<string, { key: string; title: string; n: number; cost: number | null; severity: string | null }[]> = {};
+  if (list.length) {
+    const rows = await loadBehaviorRows(null, q.from, q.to, undefined, list);
+    const trades = await withAutoSetups(rows.map(rowToBehaviorTrade));
+    const by = new Map<string, BehaviorTrade[]>();
+    rows.forEach((r, i) => { const k = String(r.trader); const arr = by.get(k); if (arr) arr.push(trades[i]!); else by.set(k, [trades[i]!]); });
+    for (const name of list) {
+      const report = analyzeBehavior(by.get(name) ?? [], {}, langOf(req));
+      out[name] = ((report as { patterns?: any[] }).patterns ?? [])
+        .filter((p) => p.n > 0 && p.severity && p.severity !== "none")
+        .sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0))
+        .slice(0, q.limit ?? 2)
+        .map((p) => ({ key: String(p.key), title: String(p.title), n: Number(p.n), cost: p.cost ?? null, severity: p.severity ?? null }));
+    }
+  }
+  res.json({ from: q.from, to: q.to, traders: out });
+}));
+
 const daySchema = querySchema.extend({ date: z.string().regex(YMD_RE) });
 
 router.get("/behavior/day", asyncHandler(async (req, res) => {
   const parsed = daySchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   // Нормы (медиана сделок/день, паузы) — по периоду отчёта, если день в нём; иначе 90 дней до дня включительно.
   const inPeriod = (!q.from || q.date >= q.from) && (!q.to || q.date <= q.to);
   const from = inPeriod ? q.from : shiftDate(q.date, -89);
   const to = inPeriod ? q.to : q.date;
   const rows = await loadBehaviorRows(scope, from, to);
-  const tl = dayTimeline(rows.map(rowToBehaviorTrade), q.date, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin });
+  const tl = dayTimeline(rows.map(rowToBehaviorTrade), q.date, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin }, langOf(req));
   res.json({ scope, normsFrom: from ?? null, normsTo: to ?? null, ...tl, generatedAt: new Date().toISOString() });
 }));
 
@@ -295,11 +338,12 @@ const triggersQuery = z.object({
 
 router.get("/behavior/triggers", asyncHandler(async (req, res) => {
   const parsed = triggersQuery.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scoped = await scopeTrader(req, q.trader);
-  if (scoped === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
-  const base = { kinds: TRIGGER_KINDS, today: nyDate(), from: q.from ?? null, to: q.to ?? null };
+  if (scoped === undefined) throw unauthorized();
+  const lang = langOf(req);
+  const base = { kinds: triggerKindsFor(lang), today: nyDate(), from: q.from ?? null, to: q.to ?? null };
   if (scoped === GUEST_SCOPE || (scoped == null && !req.authUser?.name)) {
     res.json({ ...base, trader: null, canEdit: false, lastTradingDate: null, tradingDays: 0, items: [] });
     return;
@@ -319,14 +363,14 @@ router.get("/behavior/triggers", asyncHandler(async (req, res) => {
     canEdit: await canWriteTriggers(req, trader),
     lastTradingDate: dates[dates.length - 1] ?? null,
     tradingDays: dates.length,
-    items: rows.map((r) => ({ ...shapeTrigger(r), eval: evaluateTrigger(r.kind, r.params ?? {}, byDay) })),
+    items: rows.map((r) => ({ ...shapeTrigger(r), eval: evaluateTrigger(r.kind, r.params ?? {}, byDay, lang) })),
     generatedAt: new Date().toISOString(),
   });
 }));
 
 const createSchema = z.object({
   trader: z.string().trim().min(1).max(120).optional(),
-  kind: z.string().refine((k) => TRIGGER_KIND_SET.has(k), "Неизвестный вид триггера"),
+  kind: z.string().refine((k) => TRIGGER_KIND_SET.has(k), "TRIGGER_KIND_INVALID"),
   params: z.record(z.string(), z.unknown()).optional(),
   name: z.string().trim().max(MAX_NAME).optional(),
   note: z.string().trim().max(MAX_NOTE).optional(),
@@ -335,16 +379,21 @@ const createSchema = z.object({
 
 router.post("/behavior/triggers", asyncHandler(async (req, res) => {
   const body = createSchema.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: body.error.issues[0]?.message ?? "Неверные данные" }); return; }
+  if (!body.success) {
+    if (body.error.issues.some((i) => i.message === "TRIGGER_KIND_INVALID")) throw badRequest("TRIGGER_KIND_INVALID");
+    throw badRequest("VALIDATION", body.error.issues.map((i) => ({ path: `body.${i.path.join(".")}`, message: i.message })));
+  }
   const b = body.data;
+  const lang = langOf(req);
   const me = req.authUser;
-  if (!me || isGuestUser(me)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (!me || isGuestUser(me)) throw new AppError("GUEST_READ_ONLY");
   const trader = b.trader ?? me.name;
-  if (!(await canWriteTriggers(req, trader))) { res.status(403).json({ error: "Можно создавать только свои триггеры" }); return; }
-  const params = validateTriggerParams(b.kind, b.params ?? {});
-  if (!params.ok) { res.status(400).json({ error: params.error }); return; }
-  if (b.kind === "custom" && !b.name && !b.note) { res.status(400).json({ error: "Для напоминания нужен текст" }); return; }
-  const name = b.name || describeTrigger(b.kind, params.value);
+  if (!(await canWriteTriggers(req, trader))) throw new AppError("TRIGGERS_OWN_ONLY", 403);
+  const params = validateTriggerParams(b.kind, b.params ?? {}, lang);
+  if (!params.ok) throw new AppError(params.code, 400, params.params);
+  if (b.kind === "custom" && !b.name && !b.note) throw badRequest("TRIGGER_TEXT_REQUIRED");
+  // Default name in the author's language; once saved it is user content.
+  const name = b.name || describeTrigger(b.kind, params.value, lang);
   await ensureTriggersTable();
   // Повторное «Сделать правилом» не плодит дубли: тот же вид + параметры (+ название для напоминаний).
   const dup = await pool.query<TriggerRow>(
@@ -363,7 +412,10 @@ router.post("/behavior/triggers", asyncHandler(async (req, res) => {
      VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7) RETURNING *`,
     [trader, b.kind, name, JSON.stringify(params.value), b.note || null, b.sourcePattern ?? null, me.name],
   );
-  logActivity({ action: "created", section: "behavior", entityId: String(rows[0].id), entityTitle: name, trader: me.name, details: `триггер для ${trader}` });
+  logActivity({
+    action: "created", section: "behavior", entityId: String(rows[0].id), entityTitle: name, trader: me.name,
+    details: behaviorT.tFor("ru")("activity.triggerCreated", { trader }), params: { detailsKey: "behavior.activity.triggerCreated", trader },
+  });
   res.status(201).json(shapeTrigger(rows[0]));
 }));
 
@@ -377,18 +429,18 @@ const idParam = z.coerce.number().int().positive();
 
 async function loadWritableTrigger(req: Request, res: import("express").Response): Promise<TriggerRow | null> {
   const id = idParam.safeParse(req.params.id);
-  if (!id.success) { res.status(400).json({ error: "Неверный id" }); return null; }
-  if (!req.authUser || isGuestUser(req.authUser)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return null; }
+  if (!id.success) { sendError(res, badRequest("INVALID_ID")); return null; }
+  if (!req.authUser || isGuestUser(req.authUser)) { sendError(res, new AppError("GUEST_READ_ONLY")); return null; }
   await ensureTriggersTable();
   const { rows } = await pool.query<TriggerRow>(`SELECT * FROM behavior_triggers WHERE id = $1 AND deleted_at IS NULL`, [id.data]);
-  if (!rows[0]) { res.status(404).json({ error: "Триггер не найден" }); return null; }
-  if (!(await canWriteTriggers(req, rows[0].trader))) { res.status(403).json({ error: "Можно менять только свои триггеры" }); return null; }
+  if (!rows[0]) { sendError(res, notFound("TRIGGER_NOT_FOUND")); return null; }
+  if (!(await canWriteTriggers(req, rows[0].trader))) { sendError(res, new AppError("TRIGGERS_OWN_ONLY", 403)); return null; }
   return rows[0];
 }
 
 router.patch("/behavior/triggers/:id", asyncHandler(async (req, res) => {
   const body = patchSchema.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: body.error.issues[0]?.message ?? "Неверные данные" }); return; }
+  if (!body.success) throw badRequest("VALIDATION", body.error.issues.map((i) => ({ path: `body.${i.path.join(".")}`, message: i.message })));
   const row = await loadWritableTrigger(req, res);
   if (!row) return;
   const b = body.data;
@@ -396,18 +448,19 @@ router.patch("/behavior/triggers/:id", asyncHandler(async (req, res) => {
   const params: unknown[] = [];
   const push = (col: string, v: unknown, cast = "") => { params.push(v); sets.push(`${col} = $${params.length}${cast}`); };
   if (b.params !== undefined) {
-    const v = validateTriggerParams(row.kind, b.params);
-    if (!v.ok) { res.status(400).json({ error: v.error }); return; }
+    const lang = langOf(req);
+    const v = validateTriggerParams(row.kind, b.params, lang);
+    if (!v.ok) throw new AppError(v.code, 400, v.params);
     push("params", JSON.stringify(v.value), "::jsonb");
-    // Автоназвание следует за параметрами, если его не переименовывали вручную.
-    if (b.name === undefined && row.kind !== "custom" && row.name === describeTrigger(row.kind, row.params ?? {})) {
-      push("name", describeTrigger(row.kind, v.value));
+    // Автоназвание следует за параметрами, если его не переименовывали вручную (сгенерировано на любом языке).
+    if (b.name === undefined && row.kind !== "custom" && isAutoTriggerName(row.kind, row.params ?? {}, row.name)) {
+      push("name", describeTrigger(row.kind, v.value, lang));
     }
   }
   if (b.name !== undefined) push("name", b.name);
   if (b.note !== undefined) push("note", b.note || null);
   if (b.enabled !== undefined) push("enabled", b.enabled);
-  if (!sets.length) { res.status(400).json({ error: "Нечего менять" }); return; }
+  if (!sets.length) throw badRequest("NO_FIELDS");
   params.push(row.id);
   const { rows } = await pool.query<TriggerRow>(
     `UPDATE behavior_triggers SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $${params.length} RETURNING *`,
@@ -421,7 +474,10 @@ router.delete("/behavior/triggers/:id", asyncHandler(async (req, res) => {
   const row = await loadWritableTrigger(req, res);
   if (!row) return;
   await pool.query(`UPDATE behavior_triggers SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1`, [row.id]);
-  logActivity({ action: "deleted", section: "behavior", entityId: String(row.id), entityTitle: row.name, trader: req.authUser?.name, details: `триггер ${row.trader} (мягкое удаление)` });
+  logActivity({
+    action: "deleted", section: "behavior", entityId: String(row.id), entityTitle: row.name, trader: req.authUser?.name,
+    details: behaviorT.tFor("ru")("activity.triggerDeleted", { trader: row.trader }), params: { detailsKey: "behavior.activity.triggerDeleted", trader: row.trader },
+  });
   res.json({ ok: true, id: Number(row.id) });
 }));
 

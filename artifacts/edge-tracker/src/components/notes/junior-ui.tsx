@@ -7,6 +7,9 @@ import {
   SECTION_KEYS, SECTION_META, TRADE_SECTIONS, moodMeta, moodTone, relTime,
   type JuniorNote, type Sections,
 } from "./junior-lib";
+import { notesI18n } from "@/i18n/ns/notes";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName, personInitials } from "@/i18n";
 
 /** Wraps case-insensitive matches of `q` in <mark>. */
 export function Highlight({ text, q }: { text: string; q?: string }) {
@@ -56,15 +59,16 @@ export function MarkdownText({ text }: { text: string }) {
 
 /** Read-only rendering of a note's structured sections. */
 export function SectionsView({ sections, q, className }: { sections: Sections; q?: string; className?: string }) {
+  const { t } = notesI18n.useT();
   const keys = SECTION_KEYS.filter((k) => sections[k]?.trim());
-  if (!keys.length) return <p className="text-sm text-muted-foreground">Пустая запись</p>;
+  if (!keys.length) return <p className="text-sm text-muted-foreground">{t("junior.emptyEntry")}</p>;
   return (
     <div className={cn("space-y-4", className)}>
       {keys.map((k) => (
         <section key={k} className="space-y-1">
           {k !== "free" && (
             <h4 className="micro-label">
-              {TRADE_SECTIONS.includes(k) ? `Сделки · ${SECTION_META[k].title}` : SECTION_META[k].title}
+              {TRADE_SECTIONS.includes(k) ? t("junior.tradesSection", { title: SECTION_META[k].title }) : SECTION_META[k].title}
             </h4>
           )}
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
@@ -86,7 +90,7 @@ export function MoodPill({ mood }: { mood: string | null | undefined }) {
 export function ScoreStars({ score, className }: { score: number | null | undefined; className?: string }) {
   if (score == null) return null;
   return (
-    <span className={cn("inline-flex items-center gap-0.5", className)} aria-label={`Оценка ${score} из 5`} role="img">
+    <span className={cn("inline-flex items-center gap-0.5", className)} aria-label={notesI18n.t("junior.score.aria", { score })} role="img">
       {[1, 2, 3, 4, 5].map((i) => (
         <Star
           key={i}
@@ -100,9 +104,10 @@ export function ScoreStars({ score, className }: { score: number | null | undefi
 
 /** Interactive 1–5 score picker. */
 export function ScorePicker({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
-  const labels = ["", "Слабо", "Есть над чем работать", "Нормально", "Хорошо", "Отлично"];
+  const { t } = notesI18n.useT();
+  const labels = ["", t("junior.score.labels.s1"), t("junior.score.labels.s2"), t("junior.score.labels.s3"), t("junior.score.labels.s4"), t("junior.score.labels.s5")];
   return (
-    <div role="radiogroup" aria-label="Оценка куратора" className="flex flex-wrap items-center gap-1">
+    <div role="radiogroup" aria-label={t("junior.score.pickerAria")} className="flex flex-wrap items-center gap-1">
       {[1, 2, 3, 4, 5].map((i) => {
         const active = value != null && i <= value;
         return (
@@ -123,13 +128,14 @@ export function ScorePicker({ value, onChange }: { value: number | null; onChang
           </button>
         );
       })}
-      <span className="ml-1 text-xs text-muted-foreground">{value ? labels[value] : "Без оценки"}</span>
+      <span className="ml-1 text-xs text-muted-foreground">{value ? labels[value] : t("junior.score.none")}</span>
     </div>
   );
 }
 
 /** Curator's answer card shown to the junior (and in sheets). */
 export function FeedbackCard({ note, fresh, className }: { note: JuniorNote; fresh?: boolean; className?: string }) {
+  const { t } = notesI18n.useT();
   if (!note.reviewed_at) return null;
   return (
     <div
@@ -141,17 +147,17 @@ export function FeedbackCard({ note, fresh, className }: { note: JuniorNote; fre
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <MessageSquareQuote className="h-4 w-4 text-primary" aria-hidden="true" />
-        <span className="text-sm font-semibold">Разбор сводки</span>
-        {fresh && <Pill tone="accent" dot>Новое</Pill>}
+        <span className="text-sm font-semibold">{t("junior.feedbackTitle")}</span>
+        {fresh && <Pill tone="accent" dot>{commonI18n.t("states.new")}</Pill>}
         <ScoreStars score={note.curator_score} className="ml-auto" />
       </div>
       {note.curator_feedback ? (
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{note.curator_feedback}</p>
       ) : (
-        <p className="text-sm text-muted-foreground">Куратор поставил оценку без комментария.</p>
+        <p className="text-sm text-muted-foreground">{t("junior.feedbackNoComment")}</p>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
-        {note.reviewed_by ?? "Наставник"} · {relTime(note.reviewed_at)}
+        {note.reviewed_by ? personName(note.reviewed_by) : t("junior.mentorFallback")} · {relTime(note.reviewed_at)}
       </p>
     </div>
   );
@@ -166,7 +172,7 @@ export function LoadError({ text, onRetry }: { text: string; onRetry: () => void
       </p>
       <Button size="sm" variant="outline" onClick={onRetry}>
         <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-        Повторить
+        {commonI18n.t("actions.retry")}
       </Button>
     </div>
   );
@@ -179,7 +185,7 @@ export function Initial({ name, className }: { name: string; className?: string 
       aria-hidden="true"
       className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary", className)}
     >
-      {name.slice(0, 1).toUpperCase()}
+      {personInitials(name).slice(0, 1)}
     </span>
   );
 }

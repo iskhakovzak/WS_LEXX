@@ -5,13 +5,13 @@
  * keys are kept compatible with the old page. On the first successful server load the browser's data is migrated
  * once (per user) with onlyIfEmpty semantics — it never overwrites what the server already has.
  */
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 
 const FAV_KEY = "indicator-favorites";
 const NOTES_KEY = "indicator-notes";
 const PREFS_KEY = "indicators-prefs-v2";
 const MIGRATED_KEY = "indicator-notes-migrated-v1:";
-const API = `${BASE}/api/indicator-notes`;
+const API = "/api/indicator-notes";
 /** Rows of the same table that hold market-indicator alert thresholds (market/alerts.ts) — not library notes. */
 const ALERT_PREFIX = "mkt-alert.";
 
@@ -65,9 +65,7 @@ function orderLike(local: string[], server: string[]): string[] {
 
 async function getServer(): Promise<ServerList | null> {
   try {
-    const r = await fetch(API);
-    if (!r.ok) return null;
-    const d = (await r.json()) as ServerList;
+    const d = await http.get<ServerList>(API);
     return d && Array.isArray(d.items) ? d : null;
   } catch {
     return null;
@@ -77,9 +75,7 @@ async function getServer(): Promise<ServerList | null> {
 async function putBulk(items: { key: string; note?: string; favorite?: boolean }[], onlyIfEmpty: boolean): Promise<ServerList | null> {
   if (!items.length) return null;
   try {
-    const r = await fetch(API, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, onlyIfEmpty }) });
-    if (!r.ok) return null;
-    return (await r.json()) as ServerList;
+    return await http.put<ServerList>(API, { items, onlyIfEmpty });
   } catch {
     return null;
   }
@@ -126,12 +122,8 @@ export async function syncIndicatorState(): Promise<IndicatorState | null> {
 /** Persist one indicator's favourite flag and/or note on the server. false ⇒ only the local cache has it. */
 export async function pushIndicator(key: string, patch: { note?: string; favorite?: boolean }): Promise<boolean> {
   try {
-    const r = await fetch(`${API}/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    return r.ok;
+    await http.put(`${API}/${encodeURIComponent(key)}`, patch);
+    return true;
   } catch {
     return false;
   }

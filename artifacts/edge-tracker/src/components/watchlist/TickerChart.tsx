@@ -6,7 +6,7 @@ import {
 } from "lightweight-charts";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/ds";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { addDays } from "@/lib/trading-date";
 import type { Candle } from "@/components/chart-engine/types";
 import { readChartTheme } from "@/components/chart-engine/theme";
@@ -14,14 +14,13 @@ import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion
 import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { tickMarkLabel, fmtEtDateTime, fmtEtDay } from "@/components/chart-engine/lib/time";
 import { fetchSessionBars, levelsFromBars, sessionDays, type DayLevelSet } from "./use-market";
-import { fmtPrice, num } from "./lib";
+import { num } from "./lib";
+import { fmtPrice } from "@/lib/format";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
 
 type Tf = "5m" | "1m" | "D";
-const TF_OPTIONS = [
-  { value: "5m", label: "5м" },
-  { value: "1m", label: "1м" },
-  { value: "D", label: "День" },
-] as const;
+const TF_IDS: readonly Tf[] = ["5m", "1m", "D"];
+const tfLabel = (tf: Tf) => watchlistI18n.t(tf === "5m" ? "chart.tf5m" : tf === "1m" ? "chart.tf1m" : "chart.tfD");
 
 type ChartPayload = { bars: Candle[]; levels: DayLevelSet | null };
 
@@ -29,9 +28,10 @@ async function loadBars(ticker: string, tf: Tf): Promise<ChartPayload> {
   const days = sessionDays();
   if (tf === "D") {
     const from = addDays(days.lastSession, -180);
-    const r = await fetch(`${BASE}/api/candles/${encodeURIComponent(ticker)}/range?from=${from}&to=${days.lastSession}&interval=1d`);
-    if (!r.ok) return { bars: [], levels: null };
-    const j = (await r.json()) as { candles?: Candle[] };
+    const j = await http
+      .get<{ candles?: Candle[] }>(`/api/candles/${encodeURIComponent(ticker)}/range?from=${from}&to=${days.lastSession}&interval=1d`)
+      .catch(() => null);
+    if (!j) return { bars: [], levels: null };
     return { bars: Array.isArray(j.candles) ? j.candles : [], levels: null };
   }
   // Intraday: the session + the previous one (levels need yesterday), pre/post market included.
@@ -48,6 +48,7 @@ async function loadBars(ticker: string, tf: Tf): Promise<ChartPayload> {
 export function TickerChart({
   ticker, stop, target, height = 280, className,
 }: { ticker: string; stop?: string | number | null; target?: string | number | null; height?: number; className?: string }) {
+  const { t } = watchlistI18n.useT();
   const [tf, setTf] = React.useState<Tf>("5m");
   const days = sessionDays();
   const q = useQuery<ChartPayload>({
@@ -123,8 +124,8 @@ export function TickerChart({
       addLine(levels.pmh, "PMH", th.c1(0.7), LineStyle.Dotted);
       addLine(levels.pml, "PML", th.c1(0.7), LineStyle.Dotted);
     }
-    addLine(stopN, "Стоп", th.down(0.85), LineStyle.Solid);
-    addLine(targetN, "Цель", th.up(0.85), LineStyle.Solid);
+    addLine(stopN, watchlistI18n.t("level.stop"), th.down(0.85), LineStyle.Solid);
+    addLine(targetN, watchlistI18n.t("level.target"), th.up(0.85), LineStyle.Solid);
 
     // Intraday: show the current session (last ~ 130 bars of 5m / 240 of 1m); daily: last ~ 90 sessions.
     const visible = tf === "5m" ? 130 : tf === "1m" ? 240 : 90;
@@ -144,20 +145,20 @@ export function TickerChart({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented ariaLabel="Таймфрейм графика" size="sm" value={tf} onChange={setTf} options={TF_OPTIONS} />
+        <Segmented ariaLabel={t("chart.tfAria")} size="sm" value={tf} onChange={setTf} options={TF_IDS.map((v) => ({ value: v, label: tfLabel(v) }))} />
         {last && (
           <span className="text-xs tabular-nums text-muted-foreground" aria-live="off">
             O <span className="text-foreground">{fmtPrice(last.o)}</span> · H <span className="text-foreground">{fmtPrice(last.h)}</span> · L <span className="text-foreground">{fmtPrice(last.l)}</span> · C <span className="text-foreground">{fmtPrice(last.c)}</span>
           </span>
         )}
-        {tf !== "D" && <span className="ml-auto text-xs text-muted-foreground">VWAP · PDH/PDL · время ET</span>}
+        {tf !== "D" && <span className="ml-auto text-xs text-muted-foreground">{t("chart.legend")}</span>}
       </div>
       <div className="relative" style={{ height }}>
-        <div ref={wrapRef} className="absolute inset-0" role="img" aria-label={`График ${ticker}, ${tf === "D" ? "дневной" : tf}`} />
-        {q.isLoading && <div className="absolute inset-0 animate-pulse rounded-xl bg-[var(--glass-bg)] motion-reduce:animate-none" aria-label="Загружаем график" />}
+        <div ref={wrapRef} className="absolute inset-0" role="img" aria-label={t("chart.aria", { ticker, tf: tf === "D" ? t("chart.daily") : tf })} />
+        {q.isLoading && <div className="absolute inset-0 animate-pulse rounded-xl bg-[var(--glass-bg)] motion-reduce:animate-none" aria-label={t("chart.loading")} />}
         {!q.isLoading && !bars.length && (
           <div className="absolute inset-0 grid place-items-center rounded-xl border border-dashed border-[var(--glass-border)] text-sm text-muted-foreground">
-            {q.isError ? "График недоступен" : "Нет свечей за последнюю сессию"}
+            {q.isError ? t("chart.unavailable") : t("chart.noBars")}
           </div>
         )}
       </div>

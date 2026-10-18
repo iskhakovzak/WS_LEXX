@@ -1,4 +1,5 @@
-import { apiUrl } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { gpI18n } from "@/i18n/ns/gamePlan";
 import { nyDate } from "@/lib/trading-date";
 import type { Tone } from "@/components/ds";
 
@@ -130,18 +131,12 @@ export type ReadsResponse = {
 export type PlanPayload = PlanDoc;
 
 // ── API ───────────────────────────────────────────────────────────────────────
-async function asJson<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let msg = `Ошибка ${res.status}`;
-    try {
-      const body = await res.json();
-      if (body && typeof body.error === "string") msg = body.error;
-    } catch {
-      if (res.status === 404) msg = "Раздел «План дня» ещё не подключён на сервере";
-    }
-    throw new Error(msg);
+/** An API build without the game-plan routes answers a bare 404 → a readable message (UI matches «не подключён»). */
+function notDeployed(e: unknown): never {
+  if (e instanceof ApiError && e.status === 404 && !e.field("error")) {
+    throw new ApiError({ status: 404, code: e.code, message: gpI18n.t("labels.notDeployed"), body: e.body, method: e.method, url: e.url });
   }
-  return res.json() as Promise<T>;
+  throw e;
 }
 
 export const gpKeys = {
@@ -154,39 +149,20 @@ export const gpKeys = {
 };
 
 export const gpApi = {
-  day: (date: string) => fetch(apiUrl(`/api/game-plan?date=${encodeURIComponent(date)}`)).then((r) => asJson<GamePlanResponse>(r)),
-  history: (limit = 90) => fetch(apiUrl(`/api/game-plan/history?limit=${limit}`)).then((r) => asJson<GamePlanSummary[]>(r)),
-  reads: (id: number) => fetch(apiUrl(`/api/game-plan/${id}/reads`)).then((r) => asJson<ReadsResponse>(r)),
-  save: (date: string, body: PlanPayload) =>
-    fetch(apiUrl(`/api/game-plan/${encodeURIComponent(date)}`), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then((r) => asJson<GamePlan>(r)),
-  remove: (date: string) =>
-    fetch(apiUrl(`/api/game-plan/${encodeURIComponent(date)}`), { method: "DELETE" }).then((r) => asJson<{ ok: true }>(r)),
-  markRead: (id: number) =>
-    fetch(apiUrl(`/api/game-plan/${id}/read`), { method: "POST" }).then((r) => asJson<{ readAt: string }>(r)),
-  my: (date: string) => fetch(apiUrl(`/api/game-plan/my?date=${encodeURIComponent(date)}`)).then((r) => asJson<MyPlanResponse>(r)),
+  day: (date: string) => http.get<GamePlanResponse>("/api/game-plan", { query: { date } }).catch(notDeployed),
+  history: (limit = 90) => http.get<GamePlanSummary[]>("/api/game-plan/history", { query: { limit } }).catch(notDeployed),
+  reads: (id: number) => http.get<ReadsResponse>(`/api/game-plan/${id}/reads`).catch(notDeployed),
+  save: (date: string, body: PlanPayload) => http.put<GamePlan>(`/api/game-plan/${encodeURIComponent(date)}`, body).catch(notDeployed),
+  remove: (date: string) => http.del<{ ok: true }>(`/api/game-plan/${encodeURIComponent(date)}`).catch(notDeployed),
+  markRead: (id: number) => http.post<{ readAt: string }>(`/api/game-plan/${id}/read`).catch(notDeployed),
+  my: (date: string) => http.get<MyPlanResponse>("/api/game-plan/my", { query: { date } }).catch(notDeployed),
   saveMy: (date: string, body: PlanDoc & { status: PlanStatus }, signal?: AbortSignal) =>
-    fetch(apiUrl(`/api/game-plan/my/${encodeURIComponent(date)}`), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal,
-    }).then((r) => asJson<TraderPlan>(r)),
-  traders: (date: string) =>
-    fetch(apiUrl(`/api/game-plan/traders?date=${encodeURIComponent(date)}`)).then((r) => asJson<TraderPlansResponse>(r)),
-  templates: (kind: "desk" | "personal") =>
-    fetch(apiUrl(`/api/game-plan/templates?kind=${kind}`)).then((r) => asJson<PlanTemplate[]>(r)),
+    http.put<TraderPlan>(`/api/game-plan/my/${encodeURIComponent(date)}`, body, { signal }).catch(notDeployed),
+  traders: (date: string) => http.get<TraderPlansResponse>("/api/game-plan/traders", { query: { date } }).catch(notDeployed),
+  templates: (kind: "desk" | "personal") => http.get<PlanTemplate[]>("/api/game-plan/templates", { query: { kind } }).catch(notDeployed),
   saveTemplate: (body: { name: string; kind: "desk" | "personal"; shared?: boolean; doc: PlanDoc }) =>
-    fetch(apiUrl(`/api/game-plan/templates`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then((r) => asJson<PlanTemplate>(r)),
-  removeTemplate: (id: number) =>
-    fetch(apiUrl(`/api/game-plan/templates/${id}`), { method: "DELETE" }).then((r) => asJson<{ ok: true }>(r)),
+    http.post<PlanTemplate>("/api/game-plan/templates", body).catch(notDeployed),
+  removeTemplate: (id: number) => http.del<{ ok: true }>(`/api/game-plan/templates/${id}`).catch(notDeployed),
 };
 
 // ── Dates (desk calendar = New York) ──────────────────────────────────────────
@@ -214,45 +190,32 @@ export function dateObj(date: string): Date {
   return new Date(y, m - 1, d, 12);
 }
 
-export function fmtTime(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-}
-
 // ── Labels / tones ────────────────────────────────────────────────────────────
-export const MARKET_BIAS: Record<MarketBias, { label: string; tone: Tone }> = {
-  bull: { label: "Бычий", tone: "up" },
-  bear: { label: "Медвежий", tone: "down" },
-  neutral: { label: "Нейтральный", tone: "neutral" },
-  mixed: { label: "Смешанный", tone: "warn" },
+// Labels are getters: they read the current UI language at render time (never frozen at module load).
+const L = (key: Parameters<typeof gpI18n.t>[0]) => gpI18n.t(key);
+export const MARKET_BIAS: Record<MarketBias, { readonly label: string; tone: Tone }> = {
+  bull: { get label() { return L("labels.bias.bull"); }, tone: "up" },
+  bear: { get label() { return L("labels.bias.bear"); }, tone: "down" },
+  neutral: { get label() { return L("labels.bias.neutral"); }, tone: "neutral" },
+  mixed: { get label() { return L("labels.bias.mixed"); }, tone: "warn" },
 };
-export const TICKER_BIAS: Record<TickerBias, { label: string; tone: Tone }> = {
-  bull: { label: "Лонг", tone: "up" },
-  bear: { label: "Шорт", tone: "down" },
-  neutral: { label: "Оба направления", tone: "neutral" },
+export const TICKER_BIAS: Record<TickerBias, { readonly label: string; tone: Tone }> = {
+  bull: { get label() { return L("labels.tickerBias.bull"); }, tone: "up" },
+  bear: { get label() { return L("labels.tickerBias.bear"); }, tone: "down" },
+  neutral: { get label() { return L("labels.tickerBias.neutral"); }, tone: "neutral" },
 };
-export const HORIZON: Record<Horizon, { label: string; tone: Tone; hint: string }> = {
-  intraday: { label: "Интрадей", tone: "accent", hint: "Закрыть до конца сессии" },
-  overnight: { label: "Овернайт", tone: "warn", hint: "Перенос через ночь — гэп-риск" },
-  swing: { label: "Свинг", tone: "purple", hint: "Удержание дни–недели" },
+export const HORIZON: Record<Horizon, { readonly label: string; tone: Tone; readonly hint: string }> = {
+  intraday: { get label() { return L("labels.horizon.intraday"); }, tone: "accent", get hint() { return L("labels.horizon.intradayHint"); } },
+  overnight: { get label() { return L("labels.horizon.overnight"); }, tone: "warn", get hint() { return L("labels.horizon.overnightHint"); } },
+  swing: { get label() { return L("labels.horizon.swing"); }, tone: "purple", get hint() { return L("labels.horizon.swingHint"); } },
 };
-export const RISK_MODE: Record<RiskMode, { label: string; tone: Tone; hint: string }> = {
-  normal: { label: "Обычный размер", tone: "neutral", hint: "Стандартный риск на сделку" },
-  reduced: { label: "Сниженный размер", tone: "warn", hint: "Size down: риск на сделку ×0.5, только A+ сетапы" },
-  aggressive: { label: "Повышенный размер", tone: "up", hint: "Size up на A+ сетапах в рамках лимитов" },
+export const RISK_MODE: Record<RiskMode, { readonly label: string; tone: Tone; readonly hint: string }> = {
+  normal: { get label() { return L("labels.riskMode.normal"); }, tone: "neutral", get hint() { return L("labels.riskMode.normalHint"); } },
+  reduced: { get label() { return L("labels.riskMode.reduced"); }, tone: "warn", get hint() { return L("labels.riskMode.reducedHint"); } },
+  aggressive: { get label() { return L("labels.riskMode.aggressive"); }, tone: "up", get hint() { return L("labels.riskMode.aggressiveHint"); } },
 };
-export const IMPACT: Record<Impact, { label: string; tone: Tone }> = {
-  high: { label: "Высокое", tone: "down" },
-  medium: { label: "Среднее", tone: "warn" },
-  low: { label: "Низкое", tone: "neutral" },
+export const IMPACT: Record<Impact, { readonly label: string; tone: Tone }> = {
+  high: { get label() { return L("labels.impact.high"); }, tone: "down" },
+  medium: { get label() { return L("labels.impact.medium"); }, tone: "warn" },
+  low: { get label() { return L("labels.impact.low"); }, tone: "neutral" },
 };
-
-export function fmtLevel(n: number): string {
-  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-}
-
-export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-}

@@ -6,6 +6,8 @@ import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fmtDate, fmtRelative } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tone } from "@/components/ds";
 
@@ -99,7 +101,7 @@ export const IconAction = React.forwardRef<
 /* ───────────────────────────── States ───────────────────────────── */
 
 export function WidgetError({
-  message = "Не удалось загрузить данные",
+  message,
   onRetry,
   className,
 }: {
@@ -113,14 +115,14 @@ export function WidgetError({
       className={cn("flex flex-wrap items-center gap-2 rounded-xl bg-down/10 px-3 py-2.5 text-sm text-down", className)}
     >
       <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-      <span className="min-w-0 flex-1">{message}</span>
+      <span className="min-w-0 flex-1">{message ?? commonI18n.t("queryError.genericTitle")}</span>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
           className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium"
         >
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Повторить
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> {commonI18n.t("actions.retry")}
         </button>
       )}
     </div>
@@ -219,7 +221,7 @@ export function Sparkline({
   const nums = values.filter((v): v is number => v != null && Number.isFinite(v));
   if (values.length < 2 || nums.length === 0) {
     return (
-      <svg width={width} height={height} className={className} role="img" aria-label={label ?? "Недостаточно данных"}>
+      <svg width={width} height={height} className={className} role="img" aria-label={label ?? commonI18n.t("widgets.notEnoughData")}>
         <line x1="0" x2={width} y1={height / 2} y2={height / 2} stroke="hsl(var(--border))" strokeDasharray="3 3" />
       </svg>
     );
@@ -293,50 +295,15 @@ export function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** "+1.23%" / "−0.40%" with a real minus sign. */
-export function fmtPct(v: unknown, digits = 2): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
-}
-
-export function fmtR(v: unknown): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(2)}R`;
-}
-
-export function fmtMoney(v: unknown): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
-
-export function fmtPrice(v: unknown): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return n >= 1000 ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n.toFixed(2);
-}
-
-/** "только что" / "5 мин назад" / "2 ч назад" / date. */
+/** "только что" / "5 минут назад" / "2 часа назад" / date (UI language). */
 export function relTime(iso: string | number | Date | null | undefined, now = Date.now()): string {
   if (iso == null) return "—";
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return "—";
   const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 45) return "только что";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  return new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-export function clockTime(iso: string | number | Date | null | undefined): string {
-  if (iso == null) return "—";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "—";
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  if (s < 45) return commonI18n.t("time.justNow");
+  if (s < 22 * 3600) return fmtRelative(t, { now });
+  return fmtDate(t, "dayMonth");
 }
 
 /** Re-render every `ms` (for relative timestamps / clocks). */
@@ -390,11 +357,12 @@ export function nySession(now = new Date()): NySession & { hhmm: string } {
   const hh = Number(parts.find((p) => p.type === "hour")?.value || "0") % 24;
   const mm = Number(parts.find((p) => p.type === "minute")?.value || "0");
   const hhmm = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-  if (wd === "Sat" || wd === "Sun") return { key: "weekend", label: "Выходной", tone: "neutral", hhmm };
+  const s = (key: NySession["key"], tone: Tone) => ({ key, label: commonI18n.t(`widgets.session.${key}`), tone, hhmm });
+  if (wd === "Sat" || wd === "Sun") return s("weekend", "neutral");
   const t = hh * 60 + mm;
-  if (t >= 4 * 60 && t < 9 * 60 + 30) return { key: "premarket", label: "Премаркет", tone: "warn", hhmm };
-  if (t >= 9 * 60 + 30 && t < 10 * 60 + 30) return { key: "open", label: "Открытие", tone: "up", hhmm };
-  if (t >= 10 * 60 + 30 && t < 16 * 60) return { key: "regular", label: "Сессия", tone: "up", hhmm };
-  if (t >= 16 * 60 && t < 20 * 60) return { key: "after", label: "Афтермаркет", tone: "purple", hhmm };
-  return { key: "closed", label: "Рынок закрыт", tone: "neutral", hhmm };
+  if (t >= 4 * 60 && t < 9 * 60 + 30) return s("premarket", "warn");
+  if (t >= 9 * 60 + 30 && t < 10 * 60 + 30) return s("open", "up");
+  if (t >= 10 * 60 + 30 && t < 16 * 60) return s("regular", "up");
+  if (t >= 16 * 60 && t < 20 * 60) return s("after", "purple");
+  return s("closed", "neutral");
 }

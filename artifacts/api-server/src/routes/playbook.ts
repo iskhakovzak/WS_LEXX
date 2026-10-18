@@ -4,7 +4,9 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
+import { activityDetails, activityTitle } from "../lib/activityText";
 import { logger } from "../lib/logger";
+import { config } from "../config";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { computeEdge, bucketBy, vixBucket, scoreBucket, edgeScore, type EdgeTrade } from "../lib/playbookEdge";
 import { canAccessTrade, isGuest, requireAuth, scopeTrader } from "../lib/auth";
@@ -15,6 +17,9 @@ import {
   spaceOf, spaceSql, visibleSql,
 } from "../lib/playbookAccess";
 import { canSeeAggregateMoney, canSeeTradeMoney, redactEdgeStats, redactSummaryRow, redactTradeRow } from "../lib/playbookPrivacy";
+import { AppError, badRequest, notFound, sendError, sendErrorWith, unauthorized } from "../lib/http";
+import { aiLanguageEn } from "../i18n/ai";
+import { langOf } from "../i18n";
 
 /**
  * Playbook (setups) + per-setup edge.
@@ -205,7 +210,7 @@ ensureTables().catch((err) => logger.warn({ err }, "playbook: ensure tables fail
 async function tradeScope(req: Request, res: Response): Promise<string | null | undefined> {
   const requested = typeof req.query.userKey === "string" ? req.query.userKey : typeof req.query.trader === "string" ? req.query.trader : null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) res.status(401).json({ error: "Требуется вход" });
+  if (scope === undefined) sendError(res, unauthorized());
   return scope;
 }
 
@@ -217,13 +222,13 @@ async function canEditSetup(req: Request, row: { trader: string | null; space?: 
 
 /** 403 unless the caller may edit setup `id`; returns the row otherwise. A setup the caller cannot read → 404. */
 async function requireSetupEditor(req: Request, res: Response, id: number, includeDeleted = false) {
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   const row = await loadSetupAccess(id, includeDeleted);
-  if (!row) { res.status(404).json({ error: "Not found" }); return null; }
+  if (!row) { sendError(res, notFound()); return null; }
   const v = await loadViewer(req);
-  if (!canReadPure(v, row)) { res.status(404).json({ error: "Not found" }); return null; }
+  if (!canReadPure(v, row)) { sendError(res, notFound()); return null; }
   if (!(await canEditSetup(req, row))) {
-    res.status(403).json({ error: spaceOf(row) === "office" ? "Офисный плейбук редактируют кураторы" : "Менять сетап может его автор или куратор" });
+    sendError(res, new AppError(spaceOf(row) === "office" ? "OFFICE_PLAYBOOK_STAFF_EDIT" : "SETUP_EDITOR_ONLY"));
     return null;
   }
   return row;
@@ -231,24 +236,25 @@ async function requireSetupEditor(req: Request, res: Response, id: number, inclu
 
 /** 404 unless the caller may read setup `id`. */
 async function requireSetupReader(req: Request, res: Response, id: number) {
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   const row = await loadSetupAccess(id);
-  if (!row || !canReadPure(await loadViewer(req), row)) { res.status(404).json({ error: "Not found" }); return null; }
+  if (!row || !canReadPure(await loadViewer(req), row)) { sendError(res, notFound()); return null; }
   return row;
 }
 
 /** Trade ownership for link/checklist writes (shared canAccessTrade: staff any, member own, guest never). */
-async function canTouchTrade(req: Request, tradeId: number): Promise<{ ok: boolean; status: number; error?: string }> {
-  if (!req.authUser) return { ok: false, status: 401, error: "Требуется вход" };
+/** Throws 401 / 404 / 403 AppErrors unless the caller may touch the trade. */
+async function canTouchTrade(req: Request, tradeId: number): Promise<{ ok: true }> {
+  if (!req.authUser) throw new AppError("AUTH_REQUIRED");
   const access = await canAccessTrade(req, tradeId);
-  if (access === null) return { ok: false, status: 404, error: "Сделка не найдена" };
-  if (!access) return { ok: false, status: 403, error: "Можно работать только со своими сделками" };
-  return { ok: true, status: 200 };
+  if (access === null) throw new AppError("TRADE_NOT_FOUND");
+  if (!access) throw new AppError("OWN_TRADES_ONLY");
+  return { ok: true };
 }
 
 /** Curator review actions (verdicts, folder rename/delete) = playbook.review. */
 async function requireStaffOr403(req: Request, res: Response): Promise<boolean> {
-  return requireCap(req, res, "playbook.review", null, "Только для кураторов");
+  return requireCap(req, res, "playbook.review", null, "STAFF_ONLY");
 }
 
 const AI_COOLDOWN_MS = 10 * 60 * 1000;
@@ -276,6 +282,17 @@ router.get("/playbook", asyncHandler(async (req, res): Promise<void> => {
   const v = await loadViewer(req);
   const params: unknown[] = [];
   const vis = visibleSql(v, params, "p");
+  // ?lite=1 — ids / names / folders / source only (duplicate checks, pickers): no review join, no access hints.
+  if (req.query.lite === "1") {
+    const { rows } = await pool.query<any>(
+      `SELECT p.id, p.name, p.folder, p.parent_id AS "parentId", p.source_type AS "sourceType", p.source_id AS "sourceId"
+         FROM playbook p WHERE p.deleted_at IS NULL AND ${vis}
+        ORDER BY p.created_at DESC`,
+      params,
+    );
+    res.json(rows);
+    return;
+  }
   const { rows } = await pool.query<any>(
     `SELECT q.*, rv.verdict AS "reviewVerdict", rv.created_at AS "reviewVerdictAt"
        FROM (SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook p WHERE p.deleted_at IS NULL AND ${vis}) q
@@ -650,7 +667,7 @@ router.post("/playbook/auto-link", asyncHandler(async (req, res): Promise<void> 
      WHERE p.deleted_at IS NULL AND LOWER(TRIM(p.name)) = LOWER(TRIM(t.setup)) AND (${spaceSql("p")} = 'office' OR p.trader = t.trader)
        AND ${where.join(" AND ")}
   `, params);
-  if (rowCount) await logActivity({ action: "updated", section: "playbook", entityTitle: "Автопривязка сделок", trader: auth.name, details: `Привязано сделок: ${rowCount}` });
+  if (rowCount) await logActivity({ action: "updated", section: "playbook", entityTitle: activityTitle("autolink"), trader: auth.name, details: activityDetails("autolinked", { count: rowCount }), params: { titleKey: "autolink", detailsKey: "autolinked", count: rowCount } });
   res.json({ success: true, linked: rowCount ?? 0 });
 }));
 
@@ -667,8 +684,8 @@ router.patch("/playbook/rename-folder", asyncHandler(async (req, res): Promise<v
   const scopeWhere = personal ? `AND ${spaceSql("playbook")} = 'personal' AND trader = $3` : `AND ${spaceSql("playbook")} = 'office'`;
   const fromName = typeof fromRaw === "string" ? fromRaw : "";
   const toName = typeof toRaw === "string" ? toRaw.trim() : "";
-  if (!fromName || !toName) { res.status(400).json({ error: "from and to required" }); return; }
-  if (toName.length > 120) { res.status(400).json({ error: "Название папки слишком длинное" }); return; }
+  if (!fromName || !toName) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
+  if (toName.length > 120) throw new AppError("TEXT_TOO_LONG", undefined, { field: "folder", max: 80 });
   if (toName === fromName) { res.json({ success: true, moved: 0, merged: false }); return; }
   // Renaming onto an existing folder used to merge the two silently. Now it's an explicit choice (merge: true).
   const { rows: existing } = await pool.query<{ n: number }>(
@@ -677,11 +694,7 @@ router.patch("/playbook/rename-folder", asyncHandler(async (req, res): Promise<v
   );
   const targetCount = existing[0]?.n ?? 0;
   if (targetCount > 0 && merge !== true) {
-    res.status(409).json({
-      error: `Папка «${toName}» уже существует (${targetCount}). Объединить папки?`,
-      code: "FOLDER_EXISTS",
-      targetCount,
-    });
+    sendErrorWith(res, new AppError("FOLDER_EXISTS", 409, { folder: toName, count: targetCount }), { targetCount });
     return;
   }
   const { rowCount } = await pool.query(`UPDATE playbook SET folder = $1 WHERE folder = $2 ${scopeWhere}`, [toName, fromName, ...scopeParams]);
@@ -697,8 +710,8 @@ router.patch("/playbook/rename-folder", asyncHandler(async (req, res): Promise<v
       [toName, fromName]
     );
   }
-  const what = targetCount > 0 ? "объединена" : "переименована";
-  await logActivity({ action: "updated", section: "playbook", entityTitle: fromName, trader: actor, details: `Папка ${what}: "${fromName}" → "${toName}"` });
+  const folderKey = targetCount > 0 ? "folderMerged" : "folderRenamed";
+  await logActivity({ action: "updated", section: "playbook", entityTitle: fromName, trader: actor, details: activityDetails(folderKey, { from: fromName, to: toName }), params: { detailsKey: folderKey, from: fromName, to: toName } });
   res.json({ success: true, moved: rowCount ?? 0, merged: targetCount > 0 });
 }));
 
@@ -709,15 +722,15 @@ router.post("/playbook/:id/reviewed", asyncHandler(async (req, res): Promise<voi
   await ensureTables();
   if (!(await requireStaffOr403(req, res))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const reviewer = req.authUser!.name;
   const { reviewed, verdict, comment } = req.body as { reviewed?: unknown; verdict?: unknown; comment?: unknown };
   const v = typeof verdict === "string" && VERDICTS.has(verdict) ? verdict : null;
-  if (verdict !== undefined && verdict !== null && !v) { res.status(400).json({ error: "verdict: approved | needs_work | retired" }); return; }
+  if (verdict !== undefined && verdict !== null && !v) throw new AppError("INVALID_FIELD", undefined, { field: "verdict" });
   const flag = typeof reviewed === "boolean" ? reviewed : v != null ? v === "approved" : null;
-  if (flag == null && !v) { res.status(400).json({ error: "reviewed or verdict required" }); return; }
+  if (flag == null && !v) throw new AppError("FIELD_REQUIRED", undefined, { field: "reviewed / verdict" });
   const { rows } = await pool.query<any>(`SELECT name FROM playbook WHERE id = $1`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   if (flag != null) {
     await pool.query(
       `UPDATE playbook SET reviewed = $1, reviewed_by = $2, reviewed_at = $3 WHERE id = $4`,
@@ -730,8 +743,8 @@ router.post("/playbook/:id/reviewed", asyncHandler(async (req, res): Promise<voi
       [id, reviewer, v, typeof comment === "string" && comment.trim() ? comment.trim().slice(0, 2000) : null],
     );
   }
-  const label = v === "approved" ? "Сетап одобрен" : v === "needs_work" ? "Сетап отправлен на доработку" : v === "retired" ? "Сетап выведен из работы" : flag ? "Сетап отмечен проверенным" : "Снята отметка «проверено»";
-  await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: reviewer, details: label });
+  const labelKey = v === "approved" ? "verdictApproved" : v === "needs_work" ? "verdictNeedsWork" : v === "retired" ? "verdictRetired" : flag ? "reviewed" : "unreviewed";
+  await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: reviewer, details: activityDetails(labelKey), params: { detailsKey: labelKey } });
   res.json({ success: true, reviewed: flag ?? undefined, verdict: v });
 }));
 
@@ -739,7 +752,7 @@ router.get("/playbook/:id/reviews", asyncHandler(async (req, res): Promise<void>
   await ensureTables();
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", reviewer, verdict, comment, created_at AS "createdAt"
        FROM playbook_reviews WHERE playbook_id = $1 ORDER BY created_at DESC LIMIT 50`,
@@ -755,19 +768,36 @@ router.get("/playbook/folder-settings", asyncHandler(async (_req, res): Promise<
   res.json(rows.map(r => ({ folderName: r.folder_name, colorIndex: r.color_index, sortOrder: r.sort_order })));
 }));
 
+/** One row of PATCH /playbook/folder-settings; null fields = «leave as is». Exported for tests. */
+export function parseFolderSettingUpdates(body: unknown): { folderName: string; colorIndex: number | null; sortOrder: number | null }[] | null {
+  if (!Array.isArray(body) || body.length === 0 || body.length > 500) return null;
+  const out: { folderName: string; colorIndex: number | null; sortOrder: number | null }[] = [];
+  for (const raw of body) {
+    if (!raw || typeof raw !== "object") continue;
+    const u = raw as Record<string, unknown>;
+    const folderName = typeof u.folderName === "string" ? u.folderName.trim().slice(0, 200) : "";
+    if (!folderName) continue;
+    const int = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 100_000 ? v : null);
+    out.push({ folderName, colorIndex: int(u.colorIndex), sortOrder: int(u.sortOrder) });
+  }
+  return out;
+}
+
+// Folder order / colours are desk-wide (the office library's folders): only staff change them. A field that is not
+// sent keeps its value — an update without `sortOrder` used to write 0 and jump the folder to the top.
 router.patch("/playbook/folder-settings", asyncHandler(async (req, res): Promise<void> => {
-  const updates = req.body as { folderName: string; colorIndex?: number | null; sortOrder?: number }[];
-  if (!Array.isArray(updates) || updates.length === 0) { res.status(400).json({ error: "array required" }); return; }
+  if (!(await requireStaffOr403(req, res))) return;
+  const updates = parseFolderSettingUpdates(req.body);
+  if (!updates) throw new AppError("VALIDATION");
   for (const u of updates) {
-    if (!u.folderName) continue;
     await pool.query(
       `INSERT INTO playbook_folder_settings (folder_name, color_index, sort_order, updated_at)
-       VALUES ($1, $2, $3, NOW())
+       VALUES ($1, $2, COALESCE($3::int, (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM playbook_folder_settings)), NOW())
        ON CONFLICT (folder_name) DO UPDATE
        SET color_index = COALESCE($2, playbook_folder_settings.color_index),
-           sort_order  = COALESCE($3, playbook_folder_settings.sort_order),
+           sort_order  = COALESCE($3::int, playbook_folder_settings.sort_order),
            updated_at  = NOW()`,
-      [u.folderName, u.colorIndex ?? null, u.sortOrder ?? 0]
+      [u.folderName, u.colorIndex, u.sortOrder]
     );
   }
   res.json({ success: true });
@@ -778,32 +808,32 @@ router.delete("/playbook/delete-folder", asyncHandler(async (req, res): Promise<
   if (!(await requireStaffOr403(req, res))) return;
   const actor = req.authUser!.name;
   const { folder, password } = req.body as { folder: string; password?: string };
-  if (!folder) { res.status(400).json({ error: "folder required" }); return; }
-  const expected = process.env.PLAYBOOK_PASSWORD;
-  if (!expected) { res.status(500).json({ error: "PLAYBOOK_PASSWORD не задан в окружении" }); return; }
-  if (password !== expected) { res.status(403).json({ error: "Неверный пароль" }); return; }
+  if (!folder) throw new AppError("FIELD_REQUIRED", undefined, { field: "folder" });
+  const expected = config.playbookPassword;
+  if (!expected) throw new AppError("NOT_CONFIGURED", 500, { what: "PLAYBOOK_PASSWORD" });
+  if (password !== expected) throw new AppError("WRONG_PASSWORD");
   const { rowCount } = await pool.query(
     `UPDATE playbook SET deleted_at = NOW() WHERE folder = $1 AND deleted_at IS NULL AND ${spaceSql("playbook")} = 'office'`,
     [folder]
   );
-  await logActivity({ action: "deleted", section: "playbook", entityTitle: folder, trader: actor, details: `Папка удалена (${rowCount} стратегий)` });
+  await logActivity({ action: "deleted", section: "playbook", entityTitle: folder, trader: actor, details: activityDetails("folderDeleted", { count: rowCount ?? 0 }), params: { detailsKey: "folderDeleted", count: rowCount ?? 0 } });
   res.json({ success: true, deleted: rowCount });
 }));
 
 router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const auth = req.authUser!;
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const v = await loadViewer(req);
   const staff = v.editAny;
   const body = req.body as Record<string, unknown>;
   const { name, folder, setupType, conditions, checklist, checklistItems, notes, confidenceLevel, screenshotUrl, screenshotNotes, screenshots, tags, sourceType, sourceId, parentId, trader, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName } = body;
-  if (!name) { res.status(400).json({ error: "name required" }); return; }
+  if (!name) throw new AppError("NAME_REQUIRED_GENERIC");
   // Space: explicit body.space wins. Legacy callers: staff with trader null → «Офис»; everyone else → «Мой».
   const requestedSpace = body.space === "office" || body.space === "personal" ? body.space : null;
   const space = requestedSpace ?? (staff && trader === null ? "office" : "personal");
-  if (space === "office" && !staff) { res.status(403).json({ error: "В офисный плейбук добавляют кураторы. Создайте сетап в «Мой» и предложите его в Офис." }); return; }
-  if (space === "personal" && !v.editOwn && !staff) { res.status(403).json({ error: "Недостаточно прав: Вести плейбук" }); return; }
+  if (space === "office" && !staff) throw new AppError("OFFICE_PLAYBOOK_STAFF_ONLY");
+  if (space === "personal" && !v.editOwn && !staff) throw new AppError("FORBIDDEN");
   // Identity comes from the session: office setups have no owner (author kept in created_by); a personal setup belongs
   // to the caller — staff may file one for a trader.
   const owner = space === "office" ? null : staff && typeof trader === "string" && trader.trim() ? trader.trim() : auth.name;
@@ -863,7 +893,7 @@ router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
   }
   const upd = await pool.query<any>(`UPDATE playbook SET ${sets.join(", ")} WHERE id = $1 RETURNING ${PLAYBOOK_SELECT_FIELDS}`, vals);
   row = upd.rows[0] ?? row;
-  await logActivity({ action: "created", section: "playbook", entityId: String(row.id), entityTitle: String(name), trader: auth.name, details: `${space === "office" ? "Офис" : "Мой"}${folder ? ` · папка: ${folder}` : ""}` });
+  await logActivity({ action: "created", section: "playbook", entityId: String(row.id), entityTitle: String(name), trader: auth.name, ...(() => { const k = `created${space === "office" ? "Office" : "Mine"}${folder ? "Folder" : ""}`; return { details: activityDetails(k, folder ? { folder: String(folder) } : {}), params: { detailsKey: k, ...(folder ? { folder: String(folder) } : {}) } }; })() });
   res.json({ ...row, access: accessHints(v, row) });
 }));
 
@@ -871,15 +901,16 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const id = Number(req.params.id);
   const auth = req.authUser!;
-  const { name, folder, setupType, conditions, checklist, checklistItems, notes, confidenceLevel, screenshotUrl, screenshotNotes, screenshots, tags, parentId, trader, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName } = req.body as Record<string, unknown>;
+  // `trader` is NOT read here: editors send the whole form (owner included), and for staff that silently took over a
+  // trader's personal setup. Re-assigning the owner needs the explicit `reassignTo` (staff, personal setups only).
+  const { name, folder, setupType, conditions, checklist, checklistItems, notes, confidenceLevel, screenshotUrl, screenshotNotes, screenshots, tags, parentId, reassignTo, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName } = req.body as Record<string, unknown>;
 
   const { rows: prevRows } = await pool.query<any>(`SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook WHERE id = $1`, [id]);
-  if (!prevRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!prevRows[0]) throw notFound();
   const v = await loadViewer(req);
-  if (!canReadPure(v, prevRows[0])) { res.status(404).json({ error: "Not found" }); return; }
+  if (!canReadPure(v, prevRows[0])) throw notFound();
   if (!(await canEditSetup(req, prevRows[0]))) {
-    res.status(403).json({ error: prevRows[0].space === "office" ? "Офисный плейбук редактируют кураторы" : "Менять сетап может его автор или куратор" });
-    return;
+    throw new AppError(prevRows[0].space === "office" ? "OFFICE_PLAYBOOK_STAFF_EDIT" : "SETUP_EDITOR_ONLY");
   }
   const staff = v.editAny;
   const body = req.body as Record<string, unknown>;
@@ -921,9 +952,17 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   if (tags !== undefined) { fields.push(`tags = $${i++}`); vals.push(tags ? String(tags) : null); }
   if (parentId !== undefined) { fields.push(`parent_id = $${i++}`); vals.push(parentId ? Number(parentId) : null); }
-  // Reassigning authorship of a personal setup is a curator action; a trader's `trader` field is ignored.
+  // Reassigning authorship of a personal setup is a curator action (explicit `reassignTo`); traders get 403.
   // Office setups stay ownerless (moving between spaces = copy / promote endpoints).
-  if (trader !== undefined && staff && prevRows[0].space === "personal" && trader) { fields.push(`trader = $${i++}`); vals.push(String(trader)); }
+  const newOwner = typeof reassignTo === "string" ? reassignTo.trim().slice(0, 120) : "";
+  if (reassignTo !== undefined) {
+    if (!staff) throw new AppError("STAFF_ONLY");
+    if (prevRows[0].space !== "personal") throw new AppError("OFFICE_SETUP_NO_AUTHOR");
+    if (!newOwner) throw new AppError("TRADER_REQUIRED");
+    const { rowCount } = await pool.query(`SELECT 1 FROM users WHERE name = $1`, [newOwner]);
+    if (!rowCount) throw new AppError("TRADER_NOT_FOUND", 400);
+    fields.push(`trader = $${i++}`); vals.push(newOwner);
+  }
   for (const [key, col] of STRUCTURED_FIELDS) {
     if (body[key] === undefined) continue;
     fields.push(`${col} = $${i++}`); vals.push(textOrNull(body[key]));
@@ -945,7 +984,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (shortInterest !== undefined) { fields.push(`short_interest = $${i++}`); vals.push(shortInterest ? Number(shortInterest) : null); }
   if (sector !== undefined) { fields.push(`sector = $${i++}`); vals.push(sector ? String(sector) : null); }
   if (longName !== undefined) { fields.push(`long_name = $${i++}`); vals.push(longName ? String(longName) : null); }
-  if (!fields.length) { res.status(400).json({ error: "No fields to update" }); return; }
+  if (!fields.length) throw badRequest("NO_FIELDS");
   fields.push(`updated_at = NOW()`);
   vals.push(id);
   const { rows } = await pool.query<any>(
@@ -953,8 +992,8 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
      RETURNING ${PLAYBOOK_SELECT_FIELDS}`,
     vals
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
-  await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: auth.name, details: `Обновлён сетап` });
+  if (!rows[0]) throw notFound();
+  await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: auth.name, details: activityDetails("setupUpdated"), params: { detailsKey: "setupUpdated" } });
   res.json({ ...rows[0], access: accessHints(v, rows[0]) });
 }));
 
@@ -991,7 +1030,7 @@ function toEdgeTrade(r: any): EdgeTrade {
 router.get("/playbook/:id/edge", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const params: unknown[] = [id];
@@ -1018,17 +1057,14 @@ router.get("/playbook/:id/edge", asyncHandler(async (req, res): Promise<void> =>
 
 router.post("/playbook/:id/checklist-run", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const auth = req.authUser!;
   const { tradeId: rawTradeId, checkedItems, score, total } = req.body as any;
-  if (!Array.isArray(checkedItems) || typeof score !== "number" || typeof total !== "number") {
-    res.status(400).json({ error: "checkedItems, score, total required" }); return;
-  }
+  if (!Array.isArray(checkedItems) || typeof score !== "number" || typeof total !== "number") throw new AppError("VALIDATION");
   const tradeId = rawTradeId ? Number(rawTradeId) : null;
   if (tradeId) {
     // Writing a setup score onto a trade requires owning that trade (or being staff).
     const own = await canTouchTrade(req, tradeId);
-    if (!own.ok) { res.status(own.status).json({ error: own.error }); return; }
     await pool.query(`DELETE FROM playbook_checklist_runs WHERE playbook_id = $1 AND trade_id = $2`, [id, tradeId]);
     await pool.query(`UPDATE trades SET setup_score = $1 WHERE id = $2`, [score, tradeId]).catch(() => {});
   } else {
@@ -1052,7 +1088,7 @@ router.post("/playbook/:id/checklist-run", requireAuth, asyncHandler(async (req,
 router.get("/playbook/:id/checklist-runs", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const tradeId = req.query.tradeId ? Number(req.query.tradeId) : null;
@@ -1073,7 +1109,7 @@ router.get("/playbook/:id/checklist-runs", asyncHandler(async (req, res): Promis
 router.get("/playbook/:id/marks", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const trader = req.authUser?.name ?? "";
   const { rows } = await pool.query<{ item_id: string; scope: string; trader: string; done: boolean }>(
     `SELECT item_id, scope, trader, done
@@ -1093,12 +1129,12 @@ router.get("/playbook/:id/marks", requireAuth, asyncHandler(async (req, res): Pr
 router.put("/playbook/:id/marks/:itemId", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const itemId = String(req.params.itemId);
-  if (isNaN(id) || !itemId) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id) || !itemId) throw badRequest("INVALID_ID");
   const { scope, done } = req.body as { scope?: string; done?: boolean };
-  if (scope !== "shared" && scope !== "personal") { res.status(400).json({ error: "scope must be shared|personal" }); return; }
-  if (typeof done !== "boolean") { res.status(400).json({ error: "done required" }); return; }
+  if (scope !== "shared" && scope !== "personal") throw new AppError("INVALID_FIELD", undefined, { field: "scope" });
+  if (typeof done !== "boolean") throw new AppError("FIELD_REQUIRED", undefined, { field: "done" });
   const sessionTrader = req.authUser?.name ?? "";
-  if (scope === "personal" && !sessionTrader) { res.status(400).json({ error: "trader name required for personal scope" }); return; }
+  if (scope === "personal" && !sessionTrader) throw new AppError("TRADER_REQUIRED");
   const traderKey = scope === "personal" ? sessionTrader : "";
   await pool.query(
     `INSERT INTO playbook_checklist_marks (playbook_id, item_id, scope, trader, done, updated_at)
@@ -1113,7 +1149,7 @@ router.put("/playbook/:id/marks/:itemId", requireAuth, asyncHandler(async (req, 
 router.get("/playbook/:id/revisions", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", trader, snapshot, created_at AS "createdAt"
      FROM playbook_revisions WHERE playbook_id = $1 ORDER BY created_at DESC LIMIT 50`,
@@ -1127,15 +1163,15 @@ router.get("/playbook/:id/revisions", asyncHandler(async (req, res): Promise<voi
 router.post("/playbook/:id/ai-critique", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rows: pbRows } = await pool.query<any>(`SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook WHERE id = $1`, [id]);
-  if (!pbRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!pbRows[0]) throw notFound();
   const pb = pbRows[0];
-  if (!(await canEditSetup(req, pb))) { res.status(403).json({ error: "AI-разбор доступен автору сетапа и кураторам" }); return; }
+  if (!(await canEditSetup(req, pb))) throw new AppError("SETUP_EDITOR_ONLY");
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const left = aiRateLimited(`critique:${id}`);
-  if (left > 0) { res.status(429).json({ error: `AI-разбор уже запускали недавно — повторите через ${Math.ceil(left / 60000)} мин`, retryAfterMs: left }); return; }
+  if (left > 0) { sendErrorWith(res, new AppError("AI_COOLDOWN", 429, { minutes: Math.ceil(left / 60000) }), { retryAfterMs: left }); return; }
   const params: unknown[] = [id];
   let filter = "";
   if (scope) { params.push(scope); filter = `AND t.trader = $2`; }
@@ -1151,8 +1187,9 @@ router.post("/playbook/:id/ai-critique", requireAuth, asyncHandler(async (req, r
   const mvAi = await loadMoneyViewer(req);
   for (const t of trRows) if (!canSeeTradeMoney(mvAi, t.trader)) t.netPnl = null;
 
-  const sys = "You are a senior trading coach reviewing a saved playbook setup against its actual linked trades. Reply in Russian. Be terse, factual, structured. No emojis. Identify contradictions between the description/conditions/checklist and what actually happened, missing rules, vague language. End with 1-3 concrete edits to the playbook text.";
+  const sys = "You are a senior trading coach reviewing a saved playbook setup against its actual linked trades. Reply in " + aiLanguageEn(langOf(req)) + ". Be terse, factual, structured. No emojis. Identify contradictions between the description/conditions/checklist and what actually happened, missing rules, vague language. End with 1-3 concrete edits to the playbook text.";
   const fmt = (v: unknown, d = 2) => (v == null ? "—" : Number(v).toFixed(d));
+  // i18n-ignore-next (AI prompt — model input)
   const usr = `Сетап: ${pb.name}
 Тип: ${pb.setupType ?? "—"}
 Уверенность: ${pb.confidenceLevel ?? "—"}
@@ -1169,11 +1206,12 @@ ${pb.checklist ?? "—"}
 ${pb.notes ?? "—"}
 
 Последние ${trRows.length} трейдов (P&L нетто, R со знаком):
-${trRows.map((t: any, i: number) => `${i + 1}. ${t.ticker} ${t.date} ${t.side ?? ""} ${t.result ?? "?"} net=${fmt(t.netPnl, 0)} R=${fmt(t.signedR)} hz=${t.horizon} rVol=${t.relativeVolume ?? "—"} ses=${t.session ?? "—"}${t.whatFailed ? " | fail: " + String(t.whatFailed).slice(0, 80) : ""}${t.conclusion ? " | вывод: " + String(t.conclusion).slice(0, 80) : ""}`).join("\n")}`;
+${trRows.map((t: any, i: number) => // i18n-ignore (AI prompt context)
+   `${i + 1}. ${t.ticker} ${t.date} ${t.side ?? ""} ${t.result ?? "?"} net=${fmt(t.netPnl, 0)} R=${fmt(t.signedR)} hz=${t.horizon} rVol=${t.relativeVolume ?? "—"} ses=${t.session ?? "—"}${t.whatFailed ? " | fail: " + String(t.whatFailed).slice(0, 80) : ""}${t.conclusion ? " | вывод: " + String(t.conclusion).slice(0, 80) : ""}`).join("\n")}`;
 
   try {
     const result: any = await anthropic.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+      model: config.ai.anthropicModel,
       max_tokens: 1500,
       system: sys,
       messages: [{ role: "user", content: usr }],
@@ -1185,27 +1223,26 @@ ${trRows.map((t: any, i: number) => `${i + 1}. ${t.ticker} ${t.date} ${t.side ??
   } catch (e: any) {
     aiLastCall.delete(`critique:${id}`);
     if (handleAiNotConfigured(e, res)) return; // 503 ai_not_configured (audit P2-3)
-    res.status(500).json({ error: "AI critique failed", detail: e?.message ?? String(e) });
+    sendError(res, new AppError("AI_UNAVAILABLE", 500));
   }
 }));
 
 router.post("/playbook/:id/generate-checklist", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   await ensureTables();
   const { rows } = await pool.query<any>(`SELECT name, trader, space, setup_type AS "setupType", conditions, notes, checklist FROM playbook WHERE id = $1`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   const pb = rows[0];
-  if (!(await canEditSetup(req, pb))) { res.status(403).json({ error: "Генерация чеклиста доступна автору сетапа и кураторам" }); return; }
+  if (!(await canEditSetup(req, pb))) throw new AppError("SETUP_EDITOR_ONLY");
   const body = req.body as Record<string, unknown>;
   const conditions = (body.conditions && typeof body.conditions === "string" ? body.conditions : pb.conditions) ?? "";
   const notes = (body.notes && typeof body.notes === "string" ? body.notes : pb.notes) ?? "";
-  if (!conditions && !notes) {
-    res.status(400).json({ error: "Сначала заполните условия входа или заметки" }); return;
-  }
+  if (!conditions && !notes) throw new AppError("SETUP_TEXT_REQUIRED");
   const left = aiRateLimited(`checklist:${id}`);
-  if (left > 0) { res.status(429).json({ error: `Чеклист уже генерировали недавно — повторите через ${Math.ceil(left / 60000)} мин`, retryAfterMs: left }); return; }
-  const sys = "You generate concise pre-trade checklists in Russian for a day-trading playbook setup. Return ONLY a plain text list of 6-12 short imperative items, one per line, no numbering, no bullets, no comments, no preamble, no markdown. Each item must be verifiable before taking the trade. No emojis.";
+  if (left > 0) { sendErrorWith(res, new AppError("AI_COOLDOWN", 429, { minutes: Math.ceil(left / 60000) }), { retryAfterMs: left }); return; }
+  const sys = "You generate concise pre-trade checklists in " + aiLanguageEn(langOf(req)) + " for a day-trading playbook setup. Return ONLY a plain text list of 6-12 short imperative items, one per line, no numbering, no bullets, no comments, no preamble, no markdown. Each item must be verifiable before taking the trade. No emojis.";
+  // i18n-ignore-next (AI prompt — model input)
   const usr = `Сетап: ${pb.name}
 Тип: ${pb.setupType ?? "—"}
 
@@ -1215,10 +1252,10 @@ ${conditions || "—"}
 Заметки:
 ${notes || "—"}
 
-${pb.checklist ? `Текущий чек-лист (улучши, не дублируй):\n${pb.checklist}` : ""}`;
+${pb.checklist ? /* i18n-ignore (AI prompt) */ `Текущий чек-лист (улучши, не дублируй):\n${pb.checklist}` : ""}`;
   try {
     const result: any = await anthropic.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+      model: config.ai.anthropicModel,
       max_tokens: 800,
       system: sys,
       messages: [{ role: "user", content: usr }],
@@ -1235,7 +1272,7 @@ ${pb.checklist ? `Текущий чек-лист (улучши, не дубли�
   } catch (e: any) {
     aiLastCall.delete(`checklist:${id}`);
     if (handleAiNotConfigured(e, res)) return; // 503 ai_not_configured (audit P2-3)
-    res.status(500).json({ error: "Generation failed", detail: e?.message ?? String(e) });
+    sendError(res, new AppError("GENERATION_FAILED", 500));
   }
 }));
 
@@ -1245,7 +1282,7 @@ router.delete("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!row) return;
   const actor = req.authUser!.name;
   await pool.query(`UPDATE playbook SET deleted_at = NOW() WHERE id = $1`, [id]);
-  await logActivity({ action: "deleted", section: "playbook", entityId: String(id), entityTitle: row.name ?? `#${id}`, trader: actor, details: row.folder ? `Папка: ${row.folder}` : undefined });
+  await logActivity({ action: "deleted", section: "playbook", entityId: String(id), entityTitle: row.name ?? `#${id}`, trader: actor, details: row.folder ? activityDetails("folder", { folder: row.folder }) : undefined, params: row.folder ? { detailsKey: "folder", folder: row.folder } : undefined });
   res.json({ success: true });
 }));
 
@@ -1255,7 +1292,7 @@ router.post("/playbook/:id/restore", asyncHandler(async (req, res): Promise<void
   if (!row) return;
   const actor = req.authUser!.name;
   await pool.query(`UPDATE playbook SET deleted_at = NULL WHERE id = $1`, [id]);
-  await logActivity({ action: "created", section: "playbook", entityId: String(id), entityTitle: row.name ?? `#${id}`, trader: actor, details: "Восстановлен из корзины" });
+  await logActivity({ action: "created", section: "playbook", entityId: String(id), entityTitle: row.name ?? `#${id}`, trader: actor, details: activityDetails("restored"), params: { detailsKey: "restored" } });
   res.json({ success: true });
 }));
 
@@ -1319,7 +1356,7 @@ router.get("/playbook/trades/bulk", asyncHandler(async (req, res): Promise<void>
 router.get("/playbook/:id/trades", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const params: unknown[] = [id];
@@ -1336,11 +1373,10 @@ router.get("/playbook/:id/trades", asyncHandler(async (req, res): Promise<void> 
 router.post("/playbook/:id/link-trade", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const { tradeId } = req.body as { tradeId: number };
-  if (isNaN(id) || !tradeId) { res.status(400).json({ error: "Invalid params" }); return; }
+  if (isNaN(id) || !tradeId) throw new AppError("VALIDATION");
   const pb = await loadSetupAccess(id);
-  if (!pb || !canReadPure(await loadViewer(req), pb)) { res.status(404).json({ error: "Сетап не найден" }); return; }
+  if (!pb || !canReadPure(await loadViewer(req), pb)) throw new AppError("SETUP_NOT_FOUND");
   const own = await canTouchTrade(req, Number(tradeId));
-  if (!own.ok) { res.status(own.status).json({ error: own.error }); return; }
   await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2`, [id, Number(tradeId)]);
   res.json({ success: true });
 }));
@@ -1348,9 +1384,8 @@ router.post("/playbook/:id/link-trade", asyncHandler(async (req, res): Promise<v
 router.delete("/playbook/:id/link-trade/:tradeId", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const tradeId = Number(req.params.tradeId);
-  if (isNaN(tradeId)) { res.status(400).json({ error: "Invalid tradeId" }); return; }
+  if (isNaN(tradeId)) throw badRequest("INVALID_ID");
   const own = await canTouchTrade(req, tradeId);
-  if (!own.ok) { res.status(own.status).json({ error: own.error }); return; }
   await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`, [tradeId, Number.isInteger(id) ? id : null]);
   res.json({ success: true });
 }));
@@ -1370,7 +1405,7 @@ const PLAYBOOK_IDEA_SELECT = `
 router.get("/playbook/:id/ideas", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
     `SELECT ${PLAYBOOK_IDEA_SELECT} FROM trade_ideas
      WHERE playbook_id = $1 AND deleted_at IS NULL AND status = ANY($2)
@@ -1386,7 +1421,7 @@ router.post("/playbook/:id/ideas", asyncHandler(async (req, res): Promise<void> 
   if (!setup) return;
   const b = req.body as Record<string, unknown>;
   const { ticker, side, entryZone, target, stop, status, notes, date } = b;
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
   const n = (v: unknown) => (v !== undefined && v !== null && v !== "" ? String(v) : null);
   const { rows } = await pool.query<any>(
     `INSERT INTO trade_ideas
@@ -1397,14 +1432,14 @@ router.post("/playbook/:id/ideas", asyncHandler(async (req, res): Promise<void> 
     [id, String(ticker).toUpperCase(), side ?? null, entryZone ?? null, target ?? null, stop ?? null, status ?? "watching", notes ?? null, date ?? null,
      n(b.marketCap), n(b.float), n(b.adv), n(b.atr), n(b.relativeVolume), n(b.beta), n(b.shortInterest), n(b.sector), n(b.longName)]
   );
-  await logActivity({ action: "created", section: "playbook", entityId: String(id), entityTitle: `Пример: ${rows[0].ticker}`, trader: req.authUser!.name });
+  await logActivity({ action: "created", section: "playbook", entityId: String(id), entityTitle: activityTitle("example", { ticker: rows[0].ticker }), trader: req.authUser!.name, params: { titleKey: "example", ticker: rows[0].ticker } });
   res.json(rows[0]);
 }));
 
 router.patch("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const ideaId = Number(req.params.ideaId);
-  if (isNaN(ideaId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(ideaId) || isNaN(id)) throw badRequest("INVALID_ID");
   const setup = await requireSetupEditor(req, res, id);
   if (!setup) return;
   const b = req.body as Record<string, unknown>;
@@ -1426,7 +1461,7 @@ router.patch("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promi
     vals.push(conv(b[key]));
     sets.push(`${col} = $${vals.length}`);
   }
-  if (!sets.length) { res.status(400).json({ error: "No fields to update" }); return; }
+  if (!sets.length) throw badRequest("NO_FIELDS");
   vals.push(ideaId, id);
   const { rows } = await pool.query<any>(
     `UPDATE trade_ideas SET ${sets.join(", ")}
@@ -1434,15 +1469,15 @@ router.patch("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promi
      RETURNING ${PLAYBOOK_IDEA_SELECT}`,
     vals
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
-  await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: `Пример: ${rows[0].ticker}`, trader: req.authUser!.name });
+  if (!rows[0]) throw notFound();
+  await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: activityTitle("example", { ticker: rows[0].ticker }), trader: req.authUser!.name, params: { titleKey: "example", ticker: rows[0].ticker } });
   res.json(rows[0]);
 }));
 
 router.delete("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const ideaId = Number(req.params.ideaId);
-  if (isNaN(ideaId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(ideaId) || isNaN(id)) throw badRequest("INVALID_ID");
   const setup = await requireSetupEditor(req, res, id);
   if (!setup) return;
   const { rows: prev } = await pool.query<any>(`SELECT ticker FROM trade_ideas WHERE id = $1 AND playbook_id = $2`, [ideaId, id]);
@@ -1450,7 +1485,7 @@ router.delete("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Prom
     `UPDATE trade_ideas SET deleted_at = NOW() WHERE id = $1 AND playbook_id = $2`,
     [ideaId, id]
   );
-  await logActivity({ action: "deleted", section: "playbook", entityId: String(id), entityTitle: prev[0]?.ticker ? `Пример: ${prev[0].ticker}` : `#${ideaId}`, trader: req.authUser!.name });
+  await logActivity({ action: "deleted", section: "playbook", entityId: String(id), entityTitle: prev[0]?.ticker ? activityTitle("example", { ticker: prev[0].ticker }) : `#${ideaId}`, trader: req.authUser!.name, params: prev[0]?.ticker ? { titleKey: "example", ticker: prev[0].ticker } : undefined });
   res.json({ success: true });
 }));
 

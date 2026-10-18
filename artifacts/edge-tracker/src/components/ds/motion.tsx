@@ -9,6 +9,7 @@
 import * as React from "react";
 import { useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { fmtCount } from "@/lib/format";
 
 export const EASE = [0.2, 0.8, 0.2, 1] as const;
 export const EASE_IN_OUT = [0.65, 0, 0.35, 1] as const;
@@ -36,7 +37,7 @@ export function fadeRise(reduce: boolean | null, delay = 0) {
  */
 export function AnimatedNumber({
   value,
-  format = (n) => n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }),
+  format = (n) => fmtCount(n),
   duration = 240,
   className,
   title,

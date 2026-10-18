@@ -12,6 +12,8 @@
  * for trades without a structure. GET /trades/:id/executions computes on read (always fresh).
  */
 import { pool } from "@workspace/db";
+import { cleanCandles, type Ohlcv } from "./candleClean";
+import type { Lang } from "../i18n";
 import {
   classifyTrade, linkTrades, structureSummary,
   type ExecIn, type ExecKind, type Leg, type Side, type StructureStats, type TradeHead, type TradeSource, type TradeStructure,
@@ -56,7 +58,7 @@ export interface ExecRowLite {
 }
 
 /** Bump when the stored shape / rules change: the startup back-fill then recomputes every trade. */
-export const STRUCTURE_VERSION = 1;
+export const STRUCTURE_VERSION = 2; // 2: reasons / notes also stored as data (localizeStats)
 
 /** Persisted shape (trades.structure). */
 export type PersistedStructure = StructureStats & { summary: string };
@@ -113,7 +115,7 @@ function headOf(t: TradeRowLite, execs: readonly ExecRowLite[]): TradeHead {
  * Pure: structures for a set of trades (pass whole day chains so links are right). `extremes` = most adverse price
  * during each trade's hold from cached candles (optional, feeds the inferred-stop heuristic).
  */
-export function computeStructures(trades: readonly TradeRowLite[], execs: readonly ExecRowLite[], extremes?: ReadonlyMap<number, number>): Map<number, TradeStructure> {
+export function computeStructures(trades: readonly TradeRowLite[], execs: readonly ExecRowLite[], extremes?: ReadonlyMap<number, number>, lang: Lang = "ru"): Map<number, TradeStructure> {
   const byTrade = new Map<number, ExecRowLite[]>();
   for (const e of execs) {
     const l = byTrade.get(e.trade_id);
@@ -130,6 +132,7 @@ export function computeStructures(trades: readonly TradeRowLite[], execs: readon
       tradeQty: num(t.qty),
       link: links.get(t.id) ?? null,
       adverseExtreme: extremes?.get(t.id) ?? null,
+      lang,
     }));
   }
   return out;
@@ -165,7 +168,8 @@ async function loadExecs(q: Queryable, tradeIds: readonly number[]): Promise<Exe
 }
 
 /**
- * Most adverse price inside each trade's hold window from candles ALREADY in candles_cache (1m / 5m). Never fetches:
+ * Most adverse price inside each trade's hold window from candles ALREADY in candles_cache (1m / 5m), cleaned of stray
+ * prints by lib/candleClean like every other candle read. Never fetches:
  * no cached candles → no entry → the heuristic simply does not fire.
  */
 async function loadExtremes(q: Queryable, trades: readonly TradeRowLite[], execs: readonly ExecRowLite[]): Promise<Map<number, number>> {
@@ -186,7 +190,8 @@ async function loadExtremes(q: Queryable, trades: readonly TradeRowLite[], execs
   const bars = new Map<string, { sec: number; list: { t: number; h: number; l: number }[] }>();
   for (const r of rows as { ticker: string; date: string; interval: string; ohlcv: unknown }[]) {
     if (!Array.isArray(r.ohlcv)) continue;
-    bars.set(`${r.ticker}|${r.date}`, { sec: r.interval === "1m" ? 60 : 300, list: r.ohlcv as { t: number; h: number; l: number }[] });
+    // Same bad-print cleaning as the chart (routes/candles.ts): a stray Yahoo wick must not become the trade's MAE.
+    bars.set(`${r.ticker}|${r.date}`, { sec: r.interval === "1m" ? 60 : 300, list: cleanCandles(r.ohlcv as Ohlcv[]) });
   }
   for (const t of trades) {
     const w = window.get(t.id);
@@ -209,18 +214,19 @@ export interface SiblingTrade {
 }
 
 /** Structure of one trade, computed now, plus the light-weight legs of its day chain (for the chart's re-entry links). */
-export async function structureForTrade(tradeId: number, q: Queryable = pool): Promise<{ structure: TradeStructure; siblings: SiblingTrade[] } | null> {
+/** `lang` = language of labels / reasons / notes / summaries in the answer (computed on read). */
+export async function structureForTrade(tradeId: number, q: Queryable = pool, lang: Lang = "ru"): Promise<{ structure: TradeStructure; siblings: SiblingTrade[] } | null> {
   const chain = await loadChains(q, [tradeId]);
   if (!chain.some((t) => t.id === tradeId)) return null;
   const execs = await loadExecs(q, chain.map((t) => t.id));
   const extremes = await loadExtremes(q, chain.filter((t) => t.id === tradeId), execs);
-  const all = computeStructures(chain, execs, extremes);
+  const all = computeStructures(chain, execs, extremes, lang);
   const structure = all.get(tradeId)!;
   const siblings: SiblingTrade[] = chain
     .map((t) => {
       const s = all.get(t.id)!;
       return {
-        id: t.id, side: sideOfRow(t.side), reentryIndex: s.stats.reentryIndex, isCurrent: t.id === tradeId, summary: structureSummary(s.stats),
+        id: t.id, side: sideOfRow(t.side), reentryIndex: s.stats.reentryIndex, isCurrent: t.id === tradeId, summary: structureSummary(s.stats, lang),
         legs: s.legs.map((l) => ({ role: l.role, label: l.label, price: l.price, at: l.at, opening: l.opening })),
       };
     })

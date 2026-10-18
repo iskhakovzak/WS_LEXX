@@ -5,6 +5,7 @@ import { scopeTrader } from "../lib/auth";
 import { captureContext } from "../lib/marketContext";
 import { closedSql, netPnl, normResult, signedR } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
+import { unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -112,7 +113,7 @@ router.get("/market-conditions/dna", asyncHandler(async (req, res): Promise<void
   // lib/auth scopeTrader: members see DNA built from their own trades; staff may pick any trader or the whole team
   // (null); a guest gets the no-match sentinel → empty buckets (the live market context is still returned).
   const userKey = await scopeTrader(req, requested);
-  if (userKey === undefined) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (userKey === undefined) throw unauthorized();
   const today = nyDate();
 
   const currentContext = await captureContext({ tradeDate: today }).catch(() => null);

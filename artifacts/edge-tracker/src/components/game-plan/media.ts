@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { apiUrl } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { gpI18n } from "@/i18n/ns/gamePlan";
 
 /**
  * Plan screenshots: client-side compression → POST /api/plan-media (raw bytes) → { id }.
- * Images are read back with fetch() (the global fetch adds the Bearer token) and shown as blob: URLs,
+ * Images are read back with http.raw (the global fetch patch adds the Bearer token) and shown as blob: URLs,
  * so no token ever ends up in an <img src>. Blob URLs are cached for the session.
  */
 export type MediaContext = "desk" | "personal";
@@ -43,13 +44,13 @@ async function decode(file: Blob): Promise<{ draw: (ctx: CanvasRenderingContext2
 
 /** Resize to ≤1600px on the long edge and re-encode as WebP (JPEG fallback) ~0.8; steps down until ≤2.4 MB. */
 export async function compressImage(file: Blob): Promise<{ blob: Blob; width: number; height: number }> {
-  if (!file.type.startsWith("image/")) throw new Error("Это не картинка");
-  if (file.size > MAX_SOURCE_BYTES) throw new Error("Файл больше 25 МБ");
+  if (!file.type.startsWith("image/")) throw new Error(gpI18n.t("media.notImage"));
+  if (file.size > MAX_SOURCE_BYTES) throw new Error(gpI18n.t("media.tooBig"));
   let src;
   try {
     src = await decode(file);
   } catch {
-    throw new Error("Не удалось прочитать картинку");
+    throw new Error(gpI18n.t("media.readFailed"));
   }
   try {
     const attempts: [number, number][] = [
@@ -66,41 +67,35 @@ export async function compressImage(file: Blob): Promise<{ blob: Blob; width: nu
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas недоступен");
+      if (!ctx) throw new Error(gpI18n.t("media.noCanvas"));
       src.draw(ctx, w, h);
       let blob = await canvasToBlob(canvas, "image/webp", q);
       // Safari < 17 silently falls back to PNG for unsupported types — use JPEG there.
       if (!blob || blob.type !== "image/webp") blob = await canvasToBlob(canvas, "image/jpeg", Math.min(0.85, q + 0.02));
       if (blob && blob.size <= MAX_UPLOAD_BYTES) return { blob, width: w, height: h };
     }
-    throw new Error("Картинка слишком большая даже после сжатия");
+    throw new Error(gpI18n.t("media.tooBigAfter"));
   } finally {
     src.close();
   }
 }
 
-async function errorText(res: Response): Promise<string> {
-  try {
-    const body = await res.json();
-    if (body && typeof body.error === "string") return body.error;
-  } catch {
-    /* not json */
-  }
-  if (res.status === 404) return "Загрузка скриншотов включится после обновления сервера";
-  return `Ошибка ${res.status}`;
-}
-
 /** Compress + upload one image. The compressed blob doubles as the instant preview (no refetch). */
 export async function uploadPlanImage(file: Blob, context: MediaContext, date: string): Promise<UploadedMedia> {
   const { blob, width, height } = await compressImage(file);
-  const qs = new URLSearchParams({ context, date, w: String(width), h: String(height) });
-  const res = await fetch(apiUrl(`/api/plan-media?${qs.toString()}`), {
-    method: "POST",
-    headers: { "Content-Type": blob.type || "image/jpeg" },
-    body: blob,
-  });
-  if (!res.ok) throw new Error(await errorText(res));
-  const out = (await res.json()) as UploadedMedia;
+  let out: UploadedMedia;
+  try {
+    out = await http.post<UploadedMedia>("/api/plan-media", blob, {
+      query: { context, date, w: width, h: height },
+      headers: { "Content-Type": blob.type || "image/jpeg" },
+    });
+  } catch (e) {
+    // An API build without the media route answers a bare 404.
+    if (e instanceof ApiError && e.status === 404 && !e.field("error")) {
+      throw new ApiError({ status: 404, message: gpI18n.t("media.uploadsNotDeployed"), body: e.body, method: e.method, url: e.url });
+    }
+    throw e;
+  }
   blobUrls.set(out.id, URL.createObjectURL(blob));
   return out;
 }
@@ -124,9 +119,9 @@ export function loadPlanImage(id: number): Promise<string> {
   if (cached) return Promise.resolve(cached);
   const pending = inflight.get(id);
   if (pending) return pending;
-  const p = fetch(apiUrl(`/api/plan-media/${id}`))
+  const p = http
+    .raw(`/api/plan-media/${id}`)
     .then(async (r) => {
-      if (!r.ok) throw new Error(String(r.status));
       const url = URL.createObjectURL(await r.blob());
       blobUrls.set(id, url);
       return url;

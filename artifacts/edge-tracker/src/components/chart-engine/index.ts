@@ -29,7 +29,6 @@ export { sessionVwap, anchoredVwap } from "./lib/vwap";
 export { dayLevels } from "./lib/levels";
 export { volumeProfile, type ProfileOptions } from "./lib/profile";
 export { rvolSeries } from "./lib/rvol";
-export { fmtPrice, fmtVol, fmtMoney, fmtPct, fmtR, fmtQty } from "./lib/format";
 export {
   KIND_LABEL, sideOf, toNum, isOpening, resolveFills, firstEntryIdx, lastExitIdx, avgEntryPrice, avgExitPrice, positionSize, positionAt, positionSeries,
   excursion, riskPerShare, grossFromFills,

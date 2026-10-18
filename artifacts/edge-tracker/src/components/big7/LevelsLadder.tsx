@@ -16,9 +16,12 @@ import { canModifyOwned, createdByOf } from "@/lib/ownership";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  ACTION_OPTIONS, ACTION_RU, LEVEL_LABELS, actionTone, fmt2, fmtSigned, levelLabel, num, splitLevelNotes,
+  ACTION_OPTIONS, LEVEL_LABELS, actionLabel, actionTone, levelLabel, num, splitLevelNotes,
   type GapStats, type StockQuote,
 } from "./lib";
+import { fmtPct, fmtPrice } from "@/lib/format";
+import { big7I18n } from "@/i18n/ns/big7";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Form = { label: string; price: string; notes: string; action: string };
 const EMPTY: Form = { label: "support", price: "", notes: "", action: "" };
@@ -28,6 +31,7 @@ const selectCls = "glass-field h-9 min-w-0 rounded-full px-3 text-sm text-foregr
 function LevelForm({
   form, setForm, onSave, onCancel, saving, autoFocus = true,
 }: { form: Form; setForm: (f: (p: Form) => Form) => void; onSave: () => void; onCancel: () => void; saving: boolean; autoFocus?: boolean }) {
+  const { t } = big7I18n.useT();
   const price = num(form.price);
   const valid = price !== null && price > 0;
   return (
@@ -36,39 +40,39 @@ function LevelForm({
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }}
     >
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_6rem_1fr]">
-        <select aria-label="Тип уровня" value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} className={selectCls}>
+        <select aria-label={t("levels.typeAria")} value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} className={selectCls}>
           {LEVEL_LABELS.map((l) => <option key={l} value={l}>{levelLabel(l)}</option>)}
           {!LEVEL_LABELS.includes(form.label) && <option value={form.label}>{levelLabel(form.label)}</option>}
         </select>
         <Input
-          aria-label="Цена уровня"
+          aria-label={t("levels.priceAria")}
           aria-invalid={!!form.price && !valid}
           inputMode="decimal"
           autoFocus={autoFocus}
           value={form.price}
           onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
           onKeyDown={(e) => { if (e.key === "Enter") onSave(); }}
-          placeholder="Цена"
+          placeholder={t("levels.pricePlaceholder")}
           className="h-9 tabular-nums"
         />
-        <select aria-label="Действие" value={form.action} onChange={(e) => setForm((f) => ({ ...f, action: e.target.value }))} className={cn(selectCls, "col-span-2 sm:col-span-1")}>
-          <option value="">Действие…</option>
-          {ACTION_OPTIONS.map((a) => <option key={a} value={a}>{ACTION_RU[a] ?? a}</option>)}
+        <select aria-label={t("levels.actionAria")} value={form.action} onChange={(e) => setForm((f) => ({ ...f, action: e.target.value }))} className={cn(selectCls, "col-span-2 sm:col-span-1")}>
+          <option value="">{t("levels.actionPlaceholder")}</option>
+          {ACTION_OPTIONS.map((a) => <option key={a} value={a}>{actionLabel(a)}</option>)}
         </select>
       </div>
       <div className="flex items-center gap-2">
         <Input
-          aria-label="Заметка к уровню"
+          aria-label={t("levels.noteAria")}
           value={form.notes}
           onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
           onKeyDown={(e) => { if (e.key === "Enter") onSave(); }}
-          placeholder="Почему уровень важен, план…"
+          placeholder={t("levels.notePlaceholder")}
           className="h-9 min-w-0 flex-1"
         />
-        <Button size="icon" className="h-9 w-9 shrink-0" aria-label="Сохранить уровень" onClick={onSave} disabled={!valid || saving}>
+        <Button size="icon" className="h-9 w-9 shrink-0" aria-label={t("levels.save")} onClick={onSave} disabled={!valid || saving}>
           {saving ? <Loader2 className="animate-spin" /> : <Check />}
         </Button>
-        <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label="Отменить" onClick={onCancel}>
+        <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label={commonI18n.t("actions.cancel")} onClick={onCancel}>
           <X />
         </Button>
       </div>
@@ -78,6 +82,7 @@ function LevelForm({
 
 /** Support/resistance ladder around the live price, with distance in % and ATR. */
 export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; quote?: StockQuote; stats?: GapStats; atr: number | null }) {
+  const { t } = big7I18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user, isCurator } = useAuth();
@@ -120,31 +125,31 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
       await invalidate();
       reset();
     } catch (e) {
-      toast({ title: "Не удалось сохранить уровень", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("levels.saveFailed"), description: errMsg(e), variant: "destructive" });
     }
   };
 
   const quickAdd = async (label: string, p: number | null | undefined) => {
     if (p == null || !(p > 0)) return;
     if (levels.some((l) => Math.abs(Number(l.price) - p) < 0.005)) {
-      toast({ title: `${levelLabel(label)} ${fmt2(p)} уже на лесенке` });
+      toast({ title: t("levels.exists", { label: levelLabel(label), price: fmtPrice(p) }) });
       return;
     }
     try {
       await createM.mutateAsync({ data: { ticker, label, price: +p.toFixed(2), notes: null } });
       await invalidate();
     } catch (e) {
-      toast({ title: "Не удалось добавить уровень", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("levels.addFailed"), description: errMsg(e), variant: "destructive" });
     }
   };
 
   const remove = async (l: Big7Level) => {
-    if (!window.confirm(`Удалить уровень ${levelLabel(l.label)} ${fmt2(Number(l.price))} (${ticker})?`)) return;
+    if (!window.confirm(t("levels.confirmDelete", { label: levelLabel(l.label), price: fmtPrice(Number(l.price)), ticker }))) return;
     try {
       await deleteM.mutateAsync({ id: l.id });
       await invalidate();
     } catch (e) {
-      toast({ title: "Не удалось удалить уровень", description: errMsg(e), variant: "destructive" });
+      toast({ title: t("levels.deleteFailed"), description: errMsg(e), variant: "destructive" });
     }
   };
 
@@ -157,7 +162,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
 
   const quick: Array<{ label: string; text: string; price: number | null | undefined }> = [
     { label: "yesterday close", text: "PDC", price: quote?.prevClose },
-    { label: "open", text: "Открытие", price: quote?.open },
+    { label: "open", text: levelLabel("open"), price: quote?.open },
     { label: "resistance", text: "HOD", price: quote?.high },
     { label: "support", text: "LOD", price: quote?.low },
     { label: "pivot", text: "SMA20", price: stats?.sma20 },
@@ -185,13 +190,13 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
       >
         <span className={cn("absolute inset-y-1.5 left-0 w-0.5 rounded-full", price == null ? "bg-border" : isAbove ? "bg-down" : "bg-up")} aria-hidden="true" />
         <span className="w-[5.5rem] shrink-0 truncate text-xs text-muted-foreground" title={l.label}>{levelLabel(l.label)}</span>
-        <span className="w-16 shrink-0 font-semibold tabular-nums text-foreground">{fmt2(lp)}</span>
+        <span className="w-16 shrink-0 font-semibold tabular-nums text-foreground">{fmtPrice(lp)}</span>
         <span className="hidden w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline" title={distAtr != null ? `${distAtr.toFixed(2)} ATR` : undefined}>
-          {dist != null ? fmtSigned(dist, 1) : ""}
+          {dist != null ? fmtPct(dist, 1) : ""}
           {distAtr != null && <span className="block text-2xs">{Math.abs(distAtr).toFixed(1)} ATR</span>}
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          {action && <Pill tone={actionTone(action)} className="shrink-0">{ACTION_RU[action] ?? action}</Pill>}
+          {action && <Pill tone={actionTone(action)} className="shrink-0">{actionLabel(action)}</Pill>}
           {note && <span className="truncate text-xs text-muted-foreground" title={note}>{note}</span>}
         </span>
         {canModifyOwned(createdByOf(l), me, isCurator) && <WriteOnly>
@@ -199,15 +204,15 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label={`Действия с уровнем ${levelLabel(l.label)} ${fmt2(lp)}`}
+                aria-label={t("levels.rowActions", { label: levelLabel(l.label), price: fmtPrice(lp) })}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
               >
                 <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => startEdit(l)}><Pencil className="mr-2 h-4 w-4" />Изменить</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => remove(l)} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />Удалить</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => startEdit(l)}><Pencil className="mr-2 h-4 w-4" />{commonI18n.t("actions.edit")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => remove(l)} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />{commonI18n.t("actions.delete")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </WriteOnly>}
@@ -217,17 +222,17 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
 
   return (
     <Panel
-      title="Лесенка уровней"
+      title={t("levels.title")}
       icon={Layers}
       description={
         nearestR || nearestS
-          ? `Ближайшие: ${nearestR ? `R ${fmt2(Number(nearestR.price))}` : "R —"} · ${nearestS ? `S ${fmt2(Number(nearestS.price))}` : "S —"}`
-          : "Поддержка ниже цены, сопротивление выше"
+          ? t("levels.nearest", { r: nearestR ? `R ${fmtPrice(Number(nearestR.price))}` : "R —", s: nearestS ? `S ${fmtPrice(Number(nearestS.price))}` : "S —" })
+          : t("levels.hint")
       }
       actions={
         <WriteOnly>
           <Button size="sm" variant="outline" onClick={() => { setEditingId(null); setFormState(EMPTY); setAdding(true); }}>
-            <Plus /> Уровень
+            <Plus /> {t("levels.add")}
           </Button>
         </WriteOnly>
       }
@@ -241,8 +246,8 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
       )}
       {isError && !isLoading && (
         <div role="alert" className="flex items-center justify-between gap-2 rounded-xl bg-down/15 px-3 py-2 text-sm text-down">
-          Не удалось загрузить уровни
-          <Button size="sm" variant="ghost" onClick={() => refetch()}>Повторить</Button>
+          {t("levels.loadFailed")}
+          <Button size="sm" variant="ghost" onClick={() => refetch()}>{commonI18n.t("actions.retry")}</Button>
         </div>
       )}
       {!isLoading && !isError && (
@@ -251,17 +256,17 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
           {levels.length === 0 && !adding ? (
             <EmptyState
               icon={Layers}
-              title="Уровней пока нет"
-              description="Отметьте PDH/PDL, премаркет и ключевые зоны — они появятся на лесенке относительно цены."
+              title={t("levels.emptyTitle")}
+              description={t("levels.emptyText")}
               className="py-6"
             />
           ) : (
-            <ul className="space-y-0.5" aria-label={`Уровни ${ticker}`}>
+            <ul className="space-y-0.5" aria-label={t("levels.listAria", { ticker })}>
               {above.map(row)}
               {price != null && (
-                <li className="flex items-center gap-2 py-1" aria-label={`Текущая цена ${fmt2(price)}`}>
+                <li className="flex items-center gap-2 py-1" aria-label={t("levels.currentPrice", { price: fmtPrice(price) })}>
                   <span className="h-px flex-1 bg-primary/50" aria-hidden="true" />
-                  <Pill tone="accent" className="shrink-0">Цена {fmt2(price)}</Pill>
+                  <Pill tone="accent" className="shrink-0">{t("levels.price", { price: fmtPrice(price) })}</Pill>
                   <span className="h-px flex-1 bg-primary/50" aria-hidden="true" />
                 </li>
               )}
@@ -271,7 +276,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
           {quick.length > 0 && (
             <WriteOnly>
               <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
-                <span className="text-xs text-muted-foreground">Быстро:</span>
+                <span className="text-xs text-muted-foreground">{t("levels.quick")}</span>
                 {quick.map((q) => (
                   <button
                     key={q.text}
@@ -279,9 +284,9 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
                     disabled={createM.isPending}
                     onClick={() => quickAdd(q.label, q.price)}
                     className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs tabular-nums disabled:opacity-50"
-                    title={`Добавить ${q.text} ${fmt2(q.price!)} на лесенку`}
+                    title={t("levels.quickTitle", { label: q.text, price: fmtPrice(q.price!) })}
                   >
-                    <Plus className="h-3 w-3" aria-hidden="true" />{q.text} <span className="text-muted-foreground">{fmt2(q.price!)}</span>
+                    <Plus className="h-3 w-3" aria-hidden="true" />{q.text} <span className="text-muted-foreground">{fmtPrice(q.price!)}</span>
                   </button>
                 ))}
               </div>

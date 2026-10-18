@@ -31,11 +31,14 @@
  * runs unless `isConfigured()` and a curator triggers a sync (or PROPREPORTS_SYNC_MINUTES is set).
  */
 import { logger } from "../logger";
+import { config } from "../../config";
 import { parseCsvTable, type CsvTable } from "./csv";
 import { parseFillsCsv } from "./parse-fills";
 import type { DetectedFeeColumn } from "./fees";
 import { getSettings, setSetting, type ConnectionState } from "./settings";
 import type { Fill } from "./types";
+import { propreportsT } from "../../i18n/ns";
+import type { Lang } from "../../i18n";
 
 export interface PropReportsConfig {
   domain: string; // "<firm>" or "<firm>.propreports.com"
@@ -69,7 +72,7 @@ export const ENV_VARS = {
   syncMinutes: "PROPREPORTS_SYNC_MINUTES",
 } as const;
 
-const env = (k: string): string => (process.env[k] ?? "").trim();
+const env = (k: string): string => config.propreportsEnv(k);
 
 export function readConfig(): PropReportsConfig | null {
   const domain = env(ENV_VARS.domain).toLowerCase();
@@ -96,11 +99,11 @@ export function syncMinutes(): number | null {
   return Number.isFinite(n) && n >= 5 ? Math.round(n) : null;
 }
 
-export function statusConfig(): PropReportsStatusConfig {
+export function statusConfig(lang: Lang = "ru"): PropReportsStatusConfig {
   const cfg = readConfig();
   const missing: string[] = [];
   if (!env(ENV_VARS.domain)) missing.push(ENV_VARS.domain);
-  if (!env(ENV_VARS.token) && !(env(ENV_VARS.user) && env(ENV_VARS.password))) missing.push(`${ENV_VARS.token} (или ${ENV_VARS.user} + ${ENV_VARS.password})`);
+  if (!env(ENV_VARS.token) && !(env(ENV_VARS.user) && env(ENV_VARS.password))) missing.push(propreportsT.tFor(lang)("wizard.env.or", { token: ENV_VARS.token, user: ENV_VARS.user, password: ENV_VARS.password }));
   return {
     configured: !!cfg,
     domain: cfg ? hostFor(cfg.domain) : null,
@@ -119,13 +122,18 @@ export function isConfigured(): boolean {
 
 function hostFor(domain: string): string {
   const d = domain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (!/^[a-z0-9][a-z0-9.-]*$/i.test(d)) throw new PropReportsError(`${ENV_VARS.domain} содержит недопустимые символы`, 0);
+  if (!/^[a-z0-9][a-z0-9.-]*$/i.test(d)) throw new PropReportsError(propreportsT.tFor("ru")("conn.domainInvalid", { name: ENV_VARS.domain }), 0, "conn.domainInvalid", { name: ENV_VARS.domain });
   return d.endsWith(".propreports.com") ? d : `${d}.propreports.com`;
 }
 
 export class PropReportsError extends Error {
-  constructor(message: string, public readonly status: number) {
+  /** `propreports` namespace key + params for the message (rendered per reader language), when it is ours. */
+  key?: string;
+  params?: Record<string, string | number>;
+  constructor(message: string, public readonly status: number, key?: string, params?: Record<string, string | number>) {
     super(message);
+    this.key = key;
+    this.params = params;
     this.name = "PropReportsError";
   }
 }
@@ -220,11 +228,11 @@ export class PropReportsClient {
   /** v1 legacy login → ~2 h token; v2 tokens are static. */
   private async ensureToken(): Promise<string> {
     if (this.token && Date.now() < this.tokenExpires) return this.token;
-    if (!this.cfg.user || !this.cfg.password) throw new PropReportsError("Нет токена и нет логина/пароля PropReports", 0);
+    if (!this.cfg.user || !this.cfg.password) throw new PropReportsError(propreportsT.tFor("ru")("conn.noCredentials"), 0, "conn.noCredentials");
     this.mode = "v1";
     const { text } = await this.post({ action: "login", user: this.cfg.user, password: this.cfg.password });
     const tok = text.trim();
-    if (!/^[A-Za-z0-9:]{16,128}$/.test(tok)) throw new PropReportsError("PropReports login: неожиданный ответ", 0);
+    if (!/^[A-Za-z0-9:]{16,128}$/.test(tok)) throw new PropReportsError(propreportsT.tFor("ru")("conn.loginUnexpected"), 0, "conn.loginUnexpected");
     this.token = tok;
     this.tokenExpires = Date.now() + 100 * 60 * 1000; // docs: ~2 h; refresh after 100 min
     return tok;
@@ -261,14 +269,18 @@ export class PropReportsClient {
   async checkConnection(): Promise<ConnectionState & { apiVersionHeader: string | null; host: string }> {
     let version: string | null = null;
     let error: string | null = null;
+    let errorKey: string | undefined;
+    let errorParams: Record<string, string | number> | undefined;
     try {
       version = await this.version();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
+      if (e instanceof PropReportsError && e.key) { errorKey = e.key; errorParams = e.params; }
       if (e instanceof PropReportsError && (e.status === 401 || e.status === 403)) {
-        error = this.hasStaticToken && !this.hasLoginCredentials
-          ? `Токен отклонён (${e.status}). Если фирма ещё на legacy API — добавьте ${ENV_VARS.user} и ${ENV_VARS.password}.`
-          : `Авторизация отклонена (${e.status}): ${error}`;
+        const tokenOnly = this.hasStaticToken && !this.hasLoginCredentials;
+        errorKey = tokenOnly ? "conn.tokenRejected" : "conn.authRejected";
+        errorParams = tokenOnly ? { status: e.status, user: ENV_VARS.user, password: ENV_VARS.password } : { status: e.status, error };
+        error = propreportsT.tryFor("ru", errorKey, errorParams) ?? error;
       }
     }
     const state: ConnectionState = {
@@ -277,6 +289,7 @@ export class PropReportsClient {
       mode: error == null ? (this.mode ?? (this.hasStaticToken ? "v2" : "v1")) : null,
       version,
       error,
+      ...(errorKey ? { errorKey, errorParams } : {}),
     };
     this.lastCheck = state;
     if (this.persistChecks) await setSetting("connection", state).catch((err) => logger.warn({ err }, "propreports: could not persist connection check"));
@@ -329,7 +342,7 @@ export class PropReportsClient {
   }
 
   /** Fills for a date range; scope = accountIds (comma list) or groupId (defaults to env, then "-4" My Accounts). */
-  async fills(startDate: string, endDate: string, scope: { accountIds?: string[]; groupId?: string } = {}): Promise<{ fills: Fill[]; raw: string; issues: Array<{ line: number; message: string }>; feeColumns: DetectedFeeColumn[] }> {
+  async fills(startDate: string, endDate: string, scope: { accountIds?: string[]; groupId?: string; lang?: Lang } = {}): Promise<{ fills: Fill[]; raw: string; issues: Array<{ line: number; message: string }>; feeColumns: DetectedFeeColumn[] }> {
     const params: Record<string, string> = { startDate, endDate, optionalFields: "fillId,propReportsId" };
     const accountIds = scope.accountIds ?? this.cfg.accountIds;
     if (accountIds?.length) params.accountId = accountIds.join(",");
@@ -338,7 +351,7 @@ export class PropReportsClient {
     const t = await this.callCsvAllPages("fills", params);
     const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const raw = [t.header, ...t.rows].map((r) => r.map(esc).join(",")).join("\n");
-    const parsed = parseFillsCsv(raw);
+    const parsed = parseFillsCsv(raw, scope.lang);
     return { fills: parsed.fills, raw, issues: parsed.issues, feeColumns: parsed.feeColumns };
   }
 

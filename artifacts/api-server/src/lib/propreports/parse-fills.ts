@@ -12,6 +12,8 @@
 import { parseCsvTable, normHeader, parseNum } from "./csv";
 import { detectFeeColumns } from "./fees";
 import type { FeeBreakdown, Fill, FillSide, FillsParseResult } from "./types";
+import { propreportsT } from "../../i18n/ns";
+import type { Lang } from "../../i18n";
 
 const COLUMN_ALIASES: Record<string, string[]> = {
   dateTime: ["date/time", "datetime", "date time", "time", "exec time", "execution time"],
@@ -91,7 +93,8 @@ export function isFillsCsv(text: string): boolean {
   return idx.has("dateTime") && idx.has("side") && idx.has("qty") && idx.has("symbol") && idx.has("price");
 }
 
-export function parseFillsCsv(text: string): FillsParseResult {
+export function parseFillsCsv(text: string, lang: Lang = "ru"): FillsParseResult {
+  const tr = propreportsT.tFor(lang);
   const table = parseCsvTable(text);
   const idx = mapColumns(table.header);
   const issues: FillsParseResult["issues"] = [];
@@ -101,7 +104,7 @@ export function parseFillsCsv(text: string): FillsParseResult {
   const required = ["dateTime", "side", "qty", "symbol", "price"];
   const missing = required.filter((k) => !idx.has(k));
   if (missing.length) {
-    issues.push({ line: 0, message: `Не найдены колонки: ${missing.join(", ")}. Ожидается Fills CSV из PropReports (Date/Time, Account, B/S, Qty, Symbol, Price…)` });
+    issues.push({ line: 0, message: tr("parse.fillsColumns", { cols: missing.join(", ") }) });
     return { fills, issues, columns: table.header, skipped, feeColumns: [] };
   }
   const feeColumns = detectFeeColumns(table.header, table.rows, new Set(idx.values()));
@@ -114,17 +117,17 @@ export function parseFillsCsv(text: string): FillsParseResult {
   table.rows.forEach((row, n) => {
     const line = n + 2; // 1-based incl. header
     const dt = normalizeDateTime(get(row, "dateTime"));
-    if (!dt) { issues.push({ line, message: `Непонятная дата/время: "${get(row, "dateTime")}"` }); return; }
+    if (!dt) { issues.push({ line, message: tr("parse.badDate", { value: get(row, "dateTime") }) }); return; }
     const status = get(row, "status").toUpperCase() || null;
     if (status && SKIP_STATUS.has(status.split(" ")[0])) { skipped++; return; }
     const side = parseSide(get(row, "side"));
-    if (!side) { issues.push({ line, message: `Неизвестная сторона B/S: "${get(row, "side")}"` }); return; }
+    if (!side) { issues.push({ line, message: tr("parse.badSide", { value: get(row, "side") }) }); return; }
     const qty = parseNum(get(row, "qty"));
     const price = parseNum(get(row, "price"));
-    if (!Number.isFinite(qty) || qty <= 0) { issues.push({ line, message: `Некорректное количество: "${get(row, "qty")}"` }); return; }
-    if (!Number.isFinite(price) || price < 0) { issues.push({ line, message: `Некорректная цена: "${get(row, "price")}"` }); return; }
+    if (!Number.isFinite(qty) || qty <= 0) { issues.push({ line, message: tr("parse.badQty", { value: get(row, "qty") }) }); return; }
+    if (!Number.isFinite(price) || price < 0) { issues.push({ line, message: tr("parse.badPrice", { value: get(row, "price") }) }); return; }
     const symbol = get(row, "symbol").toUpperCase();
-    if (!symbol) { issues.push({ line, message: "Пустой символ" }); return; }
+    if (!symbol) { issues.push({ line, message: tr("parse.emptySymbol") }); return; }
     const fees: FeeBreakdown = {};
     for (const [k, i] of feeIdx) {
       const v = parseNum((row[i] ?? "").trim());

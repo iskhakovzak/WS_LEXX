@@ -1,17 +1,19 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { History, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { MARKET_BIAS, dateObj, gpApi, gpKeys, type GamePlanSummary } from "./types";
+import { fmtDate } from "@/lib/format";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
 
 function matches(p: GamePlanSummary, q: string) {
   if (!q) return true;
-  const hay = `${p.date} ${p.author} ${p.marketView} ${p.tickers.join(" ")} ${format(dateObj(p.date), "d MMMM", { locale: ru })}`.toLowerCase();
+  const hay = `${p.date} ${p.author} ${personName(p.author)} ${p.marketView} ${p.tickers.join(" ")} ${fmtDate(dateObj(p.date), "dayMonthLong")}`.toLowerCase();
   return q
     .toLowerCase()
     .split(/\s+/)
@@ -28,20 +30,21 @@ export function HistoryPanel({
   onPick: (date: string) => void;
   searchRef?: React.Ref<HTMLInputElement>;
 }) {
+  const { t } = gpI18n.useT();
   const [q, setQ] = useState("");
   const hq = useQuery({ queryKey: gpKeys.history, queryFn: () => gpApi.history(120), staleTime: 60_000 });
   const list = useMemo(() => (hq.data ?? []).filter((p) => matches(p, q.trim())), [hq.data, q]);
 
   return (
-    <Panel title="История планов" icon={History} description={hq.data ? `${hq.data.length} опубликовано` : undefined}>
+    <Panel title={t("history.title")} icon={History} description={hq.data ? t("history.published", { count: hq.data.length }) : undefined}>
       <label className="relative block">
-        <span className="sr-only">Поиск по планам</span>
+        <span className="sr-only">{t("history.searchAria")}</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
           ref={searchRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Тикер, дата, текст…  /"
+          placeholder={t("history.searchPlaceholder")}
           className="pl-9"
           onKeyDown={(e) => {
             if (e.key === "Escape") {
@@ -59,9 +62,9 @@ export function HistoryPanel({
             ))}
           </div>
         ) : hq.isError ? (
-          <p className="py-4 text-sm text-muted-foreground">История недоступна.</p>
+          <p className="py-4 text-sm text-muted-foreground">{t("history.unavailable")}</p>
         ) : list.length === 0 ? (
-          <p className="py-4 text-sm text-muted-foreground">{q ? "Ничего не найдено" : "Планов пока нет"}</p>
+          <p className="py-4 text-sm text-muted-foreground">{q ? commonI18n.t("states.nothingFound") : t("history.none")}</p>
         ) : (
           <ul className="flex flex-col gap-1">
             {list.map((p) => {
@@ -80,16 +83,16 @@ export function HistoryPanel({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium capitalize">
-                        {format(dateObj(p.date), "EEEEEE, d MMM", { locale: ru })}
+                        {fmtDate(dateObj(p.date), "weekdayDayMonth")}
                       </span>
                       <Pill tone={b.tone} dot>
                         {b.label}
                       </Pill>
                     </div>
                     <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                      <span className="truncate">{p.tickers.length ? p.tickers.slice(0, 6).join(" · ") : "Без тикеров"}</span>
-                      <span className="shrink-0 tabular-nums" title="Прочитали">
-                        {p.readCount} прочит.
+                      <span className="truncate">{p.tickers.length ? p.tickers.slice(0, 6).join(" · ") : t("history.noTickers")}</span>
+                      <span className="shrink-0 tabular-nums" title={t("history.readTitle")}>
+                        {t("history.readShort", { count: p.readCount })}
                       </span>
                     </div>
                   </button>

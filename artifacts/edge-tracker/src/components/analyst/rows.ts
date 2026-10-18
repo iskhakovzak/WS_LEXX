@@ -7,6 +7,7 @@ import {
   gapOf, isTopFirm, ptChangePct, scoreAction,
   type FeedAction, type FirmWeightLite, type OpenPosition, type Quote, type ScoreReason,
 } from "./lib";
+import { analystI18n } from "@/i18n/ns/analyst";
 
 export type Row = {
   a: FeedAction;
@@ -36,13 +37,11 @@ export function reactionKindOf(a: FeedAction): ReactionKind | null {
   return p > 0 ? "ptUp" : "ptDown";
 }
 
-export const REACTION_KIND_LABEL: Record<ReactionKind, string> = {
-  up: "апгрейд",
-  down: "даунгрейд",
-  init: "покрытие",
-  ptUp: "PT вверх",
-  ptDown: "PT вниз",
-};
+/** Reaction kind → lower-case label in the UI language (getters: read at access time). */
+export const REACTION_KIND_LABEL = {} as Record<ReactionKind, string>;
+for (const k of ["up", "down", "init", "ptUp", "ptDown"] as const) {
+  Object.defineProperty(REACTION_KIND_LABEL, k, { get: () => analystI18n.t(`reactionKind.${k}`), enumerable: true });
+}
 
 export function weightMap(firms: FirmWeightRow[] | null | undefined): Map<string, FirmWeightLite> {
   const m = new Map<string, FirmWeightLite>();

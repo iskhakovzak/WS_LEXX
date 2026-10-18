@@ -8,49 +8,57 @@ import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { TraderAvatar } from "./trader-avatar";
-import { fmtMoney, fmtPct, fmtR } from "./utils";
+import { fmtCount, fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 import {
   actionTone,
   describe,
   describeBurst,
   itemHref,
+  itemTitle,
   relTime,
   sectionMeta,
   timeLabel,
   type ActivitySummary,
   type Burst,
   type FeedItem,
+  detailsText,
+  isExampleChange,
+  ratingLabel,
 } from "./activity-model";
+import { activityI18n } from "@/i18n/ns/activity";
 
 const SOCIAL = new Set(["reviewed", "commented", "reacted", "liked", "rated", "acknowledged"]);
 
 function actorName(t: string | null) {
-  return !t || t === "system" ? "Система" : t;
+  return !t || t === "system" ? activityI18n.t("system") : personName(t);
 }
 
 function UnreadDot({ show }: { show: boolean }) {
   if (!show) return null;
   return (
-    <span className="absolute left-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-primary" aria-label="Новое" role="img" />
+    <span className="absolute left-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-primary" aria-label={activityI18n.t("newAria")} role="img" />
   );
 }
 
 /** One activity row: avatar, sentence, quoted detail, section pill, time, open action. */
 export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
+  const { t } = activityI18n.useT();
   const meta = sectionMeta(item.section);
   const href = itemHref(item);
   const tone = actionTone(item.action);
   const Icon = meta.icon;
   const social = SOCIAL.has(item.action);
-  const title = item.entityTitle?.trim();
+  const title = itemTitle(item);
   return (
     <li className={cn("relative flex items-start gap-3 rounded-xl py-2.5 pl-4 pr-2 transition-colors hover:bg-[var(--glass-hover-bg)]", unread && "bg-primary/[0.06]")}>
       <UnreadDot show={unread} />
       <TraderAvatar name={item.trader} size="sm" className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-snug">
-          <span className="font-semibold">{actorName(item.trader)}</span>{" "}
-          <span className="text-muted-foreground">{describe(item)}</span>
+          <span className="font-semibold">{actorName(item.trader)}</span>
+          <span className="text-muted-foreground">: {describe(item)}</span>
           {title && (
             <>
               {" "}
@@ -59,7 +67,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
                   {title}
                 </Link>
               ) : (
-                <span className={cn("font-semibold", item.action === "deleted" && "text-muted-foreground line-through decoration-down/60")}>{title}</span>
+                <span className={cn("font-semibold", item.action === "deleted" && !isExampleChange(item) && "text-muted-foreground line-through decoration-down/60")}>{title}</span>
               )}
             </>
           )}
@@ -71,7 +79,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
               social && "border-l-2 border-border pl-2 italic",
             )}
           >
-            {item.details}
+            {detailsText(item)}
           </p>
         )}
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -79,10 +87,10 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
             <Icon className="h-3 w-3" aria-hidden="true" />
             {meta.label}
           </Pill>
-          {item.rating && <Pill tone="purple" className="text-2xs">Оценка: {item.rating}</Pill>}
+          {item.rating && <Pill tone="purple" className="text-2xs">{t("ratingPill", { rating: ratingLabel(item.rating) })}</Pill>}
           <time
             dateTime={item.createdAt}
-            title={new Date(item.createdAt).toLocaleString("ru-RU")}
+            title={fmtDate(item.createdAt, "shortDateTime")}
             className="text-xs tabular-nums text-muted-foreground sm:hidden"
           >
             {timeLabel(item.createdAt)}
@@ -91,14 +99,14 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
       </div>
       <time
         dateTime={item.createdAt}
-        title={`${new Date(item.createdAt).toLocaleString("ru-RU")} · ${relTime(item.createdAt)}`}
+        title={`${fmtDate(item.createdAt, "shortDateTime")} · ${relTime(item.createdAt)}`}
         className="hidden shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground sm:block"
       >
         {timeLabel(item.createdAt)}
       </time>
       {href && (
         <Button asChild variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-          <Link href={href} aria-label={`Открыть: ${title ?? meta.label}`}>
+          <Link href={href} aria-label={t("openAria", { title: title ?? meta.label })}>
             <ArrowUpRight />
           </Link>
         </Button>
@@ -107,15 +115,16 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
   );
 }
 
-/** A collapsed run of ≥3 identical actions ("Закир удалил 12 сделок"), expandable. */
+/** A collapsed run of ≥3 identical actions («Закир: удалено 12 сделок»), expandable. */
 export function BurstRow({ burst, isUnread }: { burst: Burst; isUnread: (it: FeedItem) => boolean }) {
+  const { t } = activityI18n.useT();
   const [open, setOpen] = useState(false);
   const first = burst.items[0];
   const last = burst.items[burst.items.length - 1];
   const meta = sectionMeta(first.section);
   const Icon = meta.icon;
   const unread = burst.items.some(isUnread);
-  const titles = burst.items.map((i) => i.entityTitle?.trim()).filter(Boolean) as string[];
+  const titles = burst.items.map(itemTitle).filter(Boolean) as string[];
   const uniq = [...new Set(titles)];
   return (
     <li className="relative">
@@ -124,13 +133,12 @@ export function BurstRow({ burst, isUnread }: { burst: Burst; isUnread: (it: Fee
         <TraderAvatar name={first.trader} size="sm" className="mt-0.5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm leading-snug">
-            <span className="font-semibold">{actorName(first.trader)}</span>{" "}
-            <span className="text-muted-foreground">{describeBurst(first.action, first.section, burst.items.length)}</span>
+            <span className="font-semibold">{actorName(first.trader)}</span>
+            <span className="text-muted-foreground">: {describeBurst(first.action, first.section, burst.items.length, isExampleChange(first))}</span>
           </p>
           {uniq.length > 0 && (
             <p className="mt-1 truncate text-xs text-muted-foreground" title={uniq.join(", ")}>
-              {uniq.slice(0, 8).join(", ")}
-              {uniq.length > 8 ? ` и ещё ${uniq.length - 8}` : ""}
+              {uniq.length > 8 ? t("moreTitles", { list: uniq.slice(0, 8).join(", "), count: uniq.length - 8 }) : uniq.join(", ")}
             </p>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -144,7 +152,7 @@ export function BurstRow({ burst, isUnread }: { burst: Burst; isUnread: (it: Fee
               aria-expanded={open}
               className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs"
             >
-              {open ? "Свернуть" : `Показать все ${burst.items.length}`}
+              {open ? commonI18n.t("actions.collapse") : t("showAllCount", { count: burst.items.length })}
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden="true" />
             </button>
           </div>
@@ -191,6 +199,7 @@ export function DigestCard({
   tradesHref?: string;
   journalHref?: string;
 }) {
+  const { t: tr } = activityI18n.useT();
   const sections = new Map<string, number>();
   for (const r of summary?.bySection ?? []) {
     if (r.section === "digest") continue;
@@ -203,64 +212,64 @@ export function DigestCard({
   const total = sectionList.reduce((s, [, n]) => s + n, 0);
 
   return (
-    <section className="glass-panel overflow-hidden rounded-2xl" aria-label="Дайджест дня">
+    <section className="glass-panel overflow-hidden rounded-2xl" aria-label={tr("digest.title")}>
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
         <div className="flex items-center gap-2">
           <Newspaper className="h-4 w-4 text-primary" aria-hidden="true" />
-          <h2 className="text-sm font-semibold">Дайджест дня</h2>
+          <h2 className="text-sm font-semibold">{tr("digest.title")}</h2>
           <span className="text-sm text-muted-foreground">· {dayLabel}</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onPrev} aria-label="Предыдущий день">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onPrev} aria-label={tr("digest.prevDay")}>
             <ChevronLeft />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNext} disabled={!canNext} aria-label="Следующий день">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNext} disabled={!canNext} aria-label={tr("digest.nextDay")}>
             <ChevronRight />
           </Button>
         </div>
       </div>
 
       {unavailable ? (
-        <p className="px-4 pb-4 pt-3 text-sm text-muted-foreground sm:px-5">Сводка за день пока недоступна — обновите API-сервер.</p>
+        <p className="px-4 pb-4 pt-3 text-sm text-muted-foreground sm:px-5">{tr("digest.unavailable")}</p>
       ) : loading ? (
         <div className="grid grid-cols-2 gap-3 p-4 sm:p-5 md:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 p-4 sm:p-5 md:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.3fr)]">
-          <DigestStat label="Действий в команде" value={total} hint={social ? `${social} ревью и реакций` : "без ревью"} />
+          <DigestStat label={tr("digest.teamActions")} value={fmtCount(total)} hint={social ? tr("digest.socialHint", { count: social }) : tr("digest.noSocial")} />
           <DigestStat
-            label="Сделок за день"
-            value={t?.count ?? 0}
-            hint={t?.count ? `WR ${fmtPct(wr)} · ${t.traders} трейд.` : "никто не торговал"}
+            label={tr("digest.tradesOfDay")}
+            value={fmtCount(t?.count ?? 0)}
+            hint={t?.count ? tr("digest.tradesHint", { wr: fmtRate(wr), count: t.traders }) : tr("digest.nobodyTraded")}
           />
           <DigestStat
-            label={t?.net != null ? "P&L нетто · Σ R" : "Сумма R"}
-            value={t?.net != null ? fmtMoney(t.net) : t?.sumR != null ? fmtR(t.sumR) : "—"}
+            label={t?.net != null ? tr("digest.netAndR") : tr("digest.sumR")}
+            value={t?.net != null ? fmtUsd(t.net, { signed: true }) : t?.sumR != null ? fmtR(t.sumR) : "—"}
             valueClass={toneText(toneOf(t?.net ?? t?.sumR))}
-            hint={t?.net != null ? `${fmtR(t.sumR)}${t.avgR != null ? ` · в среднем ${fmtR(t.avgR)}` : ""}` : t?.avgR != null ? `в среднем ${fmtR(t.avgR)}` : undefined}
+            hint={t?.net != null ? `${fmtR(t.sumR)}${t.avgR != null ? ` · ${tr("digest.avg", { value: fmtR(t.avgR) })}` : ""}` : t?.avgR != null ? tr("digest.avg", { value: fmtR(t.avgR) }) : undefined}
             title={t?.net != null ? KPI_FORMULAS.netPnl : KPI_FORMULAS.expectancyR}
           />
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="text-xs text-muted-foreground">Самые активные</span>
+            <span className="text-xs text-muted-foreground">{tr("digest.mostActive")}</span>
             {summary?.topTraders.length ? (
               <div className="flex flex-wrap gap-1.5">
-                {summary.topTraders.map((tr) => (
+                {summary.topTraders.map((x) => (
                   <button
-                    key={tr.trader}
+                    key={x.trader}
                     type="button"
-                    onClick={() => onPickTrader(tr.trader)}
+                    onClick={() => onPickTrader(x.trader)}
                     className="chip inline-flex min-h-8 items-center gap-1.5 py-0.5 pl-0.5 pr-2.5 text-xs"
-                    aria-label={`Показать действия: ${tr.trader}, ${tr.count}`}
+                    aria-label={tr("digest.traderChipAria", { name: personName(x.trader), count: x.count })}
                   >
-                    <TraderAvatar name={tr.trader} size="xs" />
-                    <span className="font-medium text-foreground">{tr.trader}</span>
-                    <span className="tabular-nums">{tr.count}</span>
+                    <TraderAvatar name={x.trader} size="xs" />
+                    <span className="font-medium text-foreground">{personName(x.trader)}</span>
+                    <span className="tabular-nums">{fmtCount(x.count)}</span>
                   </button>
                 ))}
               </div>
             ) : (
-              <span className="text-sm text-muted-foreground">Тишина</span>
+              <span className="text-sm text-muted-foreground">{tr("digest.quiet")}</span>
             )}
           </div>
         </div>
@@ -277,11 +286,11 @@ export function DigestCard({
                 type="button"
                 onClick={() => onPickSection(s)}
                 className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs"
-                aria-label={`Фильтр: ${m.label}`}
+                aria-label={tr("digest.filterAria", { name: m.label })}
               >
                 <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                 {m.label}
-                <span className="tabular-nums">{n}</span>
+                <span className="tabular-nums">{fmtCount(n)}</span>
               </button>
             );
           })}
@@ -289,13 +298,13 @@ export function DigestCard({
           {tradesHref && !!t?.count && (
             <Link href={tradesHref} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs">
               <List className="h-3.5 w-3.5" aria-hidden="true" />
-              Сделки дня
+              {tr("digest.dayTrades")}
             </Link>
           )}
           {journalHref && (
             <Link href={journalHref} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs">
               <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" />
-              Журнал дня
+              {tr("digest.dayJournal")}
             </Link>
           )}
           {t?.best && (
@@ -304,9 +313,9 @@ export function DigestCard({
               className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs"
             >
               <Trophy className="h-3.5 w-3.5 text-[hsl(var(--chart-3))]" aria-hidden="true" />
-              Лучшая сделка: <span className="font-semibold text-foreground">{t.best.ticker}</span>
+              {tr("digest.bestTrade")} <span className="font-semibold text-foreground">{t.best.ticker}</span>
               <span className={cn("tabular-nums", toneText(toneOf(t.best.rMultiple)))}>{fmtR(t.best.rMultiple)}</span>
-              {t.best.trader && <span>· {t.best.trader}</span>}
+              {t.best.trader && <span>· {personName(t.best.trader)}</span>}
             </Link>
           )}
           </span>

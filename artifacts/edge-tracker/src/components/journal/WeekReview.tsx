@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type JournalEntry } from "./use-journal-days";
 import type { ReviewMark } from "./MonthCalendar";
-import { type DayStats, WEEKDAYS_SHORT, addDays, dayValue, fmtDayShort, fmtPct, fmtUnit, parseDate, pickUnit } from "./utils";
+import { type DayStats, addDays, dayValue, fmtUnit, parseDate, pickUnit, weekdaysShortMonFirst } from "./utils";
+import { fmtDate, fmtRate } from "@/lib/format";
+import { journalI18n } from "@/i18n/ns/journal";
+import { commonI18n } from "@/i18n/ns/common";
 
 /**
  * Compact week strip inside the journal: Mon–Fri bars with review marks, the week's net / win rate / green-red days,
@@ -71,32 +74,34 @@ export function WeekReview({
   }, [days, statsByDate, unit]);
 
   const decided = agg.wins + agg.losses;
+  const { t } = journalI18n.useT();
+  const { t: tc } = commonI18n.useT();
 
   return (
     <Panel
-      title="Неделя"
+      title={t("week.title")}
       icon={CalendarRange}
-      description={`${fmtDayShort(days[0])} — ${fmtDayShort(days[4])}`}
+      description={`${fmtDate(days[0], "dayMonth")} — ${fmtDate(days[4], "dayMonth")}`}
       actions={
         weeklyHref ? (
           <Button asChild variant="ghost" size="sm">
-            <Link href={weeklyHref}>Недельный обзор<ArrowUpRight aria-hidden="true" /></Link>
+            <Link href={weeklyHref}>{t("week.weeklyReview")}<ArrowUpRight aria-hidden="true" /></Link>
           </Button>
         ) : undefined
       }
     >
       <div className="space-y-4">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-          <Cell label="Итог" value={agg.total != null ? fmtUnit(agg.total, unit) : "—"} tone={toneText(toneOf(agg.total))} />
-          <Cell label="Винрейт" value={decided ? fmtPct(agg.wins / decided) : "—"} hint={agg.trades ? `${agg.trades} сд.` : undefined} />
+          <Cell label={t("week.total")} value={agg.total != null ? fmtUnit(agg.total, unit) : "—"} tone={toneText(toneOf(agg.total))} />
+          <Cell label={tc("trading.winRate")} value={decided ? fmtRate(agg.wins / decided) : "—"} hint={agg.trades ? t("calendar.tradesShort", { count: agg.trades }) : undefined} />
           <Cell
-            label="Дни + / −"
+            label={t("week.days")}
             value={agg.traded ? <><span className="text-up">{agg.green}</span> / <span className="text-down">{agg.red}</span></> : "—"}
           />
-          {showJournal && <Cell label="Разборы" value={agg.traded ? `${agg.reviewed}/${agg.traded}` : "—"} tone={agg.traded && agg.reviewed >= agg.traded ? "text-up" : undefined} />}
+          {showJournal && <Cell label={t("week.reviews")} value={agg.traded ? `${agg.reviewed}/${agg.traded}` : "—"} tone={agg.traded && agg.reviewed >= agg.traded ? "text-up" : undefined} />}
         </dl>
 
-        <div className="grid grid-cols-5 gap-1.5" role="group" aria-label="Результат по дням недели">
+        <div className="grid grid-cols-5 gap-1.5" role="group" aria-label={t("week.byDayAria")}>
           {days.map((d, i) => {
             const s = statsByDate.get(d);
             const v = dayValue(s, unit);
@@ -109,7 +114,7 @@ export function WeekReview({
                 type="button"
                 onClick={() => onSelect(d)}
                 aria-pressed={isActive}
-                aria-label={`${fmtDayShort(d)}: ${s ? `${s.trades} сделок, ${fmtUnit(v, unit, 2)}` : "нет сделок"}`}
+                aria-label={s ? t("week.dayAria", { date: fmtDate(d, "dayMonth"), trades: t("calendar.dayTrades", { count: s.trades }), value: fmtUnit(v, unit, 2) }) : t("week.dayAriaEmpty", { date: fmtDate(d, "dayMonth") })}
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive && "bg-[var(--glass-hover-bg)] ring-1 ring-primary",
@@ -125,14 +130,14 @@ export function WeekReview({
                   />
                 </span>
                 <span className={cn("flex items-center gap-1 text-2xs", d === today ? "font-semibold text-primary" : "text-muted-foreground")}>
-                  {WEEKDAYS_SHORT[i]} {parseDate(d).getDate()}
-                  {showJournal && mark === "reviewed" && <CheckCheck className="h-3 w-3 text-up" aria-label="проверен куратором" />}
+                  {weekdaysShortMonFirst()[i]} {parseDate(d).getDate()}
+                  {showJournal && mark === "reviewed" && <CheckCheck className="h-3 w-3 text-up" aria-label={t("week.reviewed")} />}
                 </span>
                 {showJournal && mark && mark !== "reviewed" && (
                   <span
                     className={cn("h-1 w-4 rounded-full", mark === "missing" ? "bg-warn/50" : "bg-primary")}
                     aria-hidden="true"
-                    title={mark === "missing" ? "Без разбора" : "Разбор заполнен"}
+                    title={mark === "missing" ? t("week.noReview") : t("week.reviewFilled")}
                   />
                 )}
               </button>
@@ -142,7 +147,7 @@ export function WeekReview({
 
         {showJournal && agg.lessons.length > 0 && (
           <div className="space-y-1.5 border-t border-[var(--glass-border)] pt-3">
-            <div className="micro-label">Уроки недели</div>
+            <div className="micro-label">{t("week.lessons")}</div>
             <ul className="space-y-1">
               {agg.lessons.slice(0, 3).map((l) => (
                 <li key={`${l.who}-${l.d}`}>
@@ -151,13 +156,13 @@ export function WeekReview({
                     onClick={() => onSelect(l.d)}
                     className="w-full rounded-lg px-2 py-1 text-left text-xs transition-colors hover:bg-[var(--glass-hover-bg)]"
                   >
-                    <span className="mr-2 tabular-nums text-muted-foreground">{fmtDayShort(l.d)}</span>
+                    <span className="mr-2 tabular-nums text-muted-foreground">{fmtDate(l.d, "dayMonth")}</span>
                     <span className="line-clamp-2 inline text-foreground/90">{l.text}</span>
                   </button>
                 </li>
               ))}
             </ul>
-            {agg.lessons.length > 3 && <p className="px-2 text-2xs text-muted-foreground">и ещё {agg.lessons.length - 3} — в недельном обзоре</p>}
+            {agg.lessons.length > 3 && <p className="px-2 text-2xs text-muted-foreground">{t("week.moreLessons", { count: agg.lessons.length - 3 })}</p>}
           </div>
         )}
       </div>

@@ -7,6 +7,7 @@
  * Fills past the replay cursor (or explicitly hidden ids) are not drawn.
  */
 import type { PrimitiveHoveredItem } from "lightweight-charts";
+import { chartI18n } from "@/i18n/ns/chart";
 import type { Fill, Side, TradeRole } from "../types";
 import type { ChartTheme } from "../theme";
 import { fmtEtTime } from "../lib/time";
@@ -129,7 +130,7 @@ export class FillsPrimitive extends SeriesPrimitiveBase {
       const f = hov.fill;
       const lines = fillDetails(f);
       if (f.time != null) lines[0] += ` · ${fmtEtTime(f.time, true)} ET`;
-      else if (f.byPrice) lines[0] += " · по цене (время неизвестно)";
+      else if (f.byPrice) lines[0] += ` · ${chartI18n.t("canvas.byPrice")}`;
       const buy = (this.side === "long") === isOpening(f.kind);
       // Stack the lines away from the marker; each line is its own pill so long reasons stay readable.
       let y = buy ? hov.y + 14 : hov.y - 14;

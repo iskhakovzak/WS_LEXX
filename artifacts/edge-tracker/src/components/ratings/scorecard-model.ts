@@ -1,5 +1,9 @@
 import { BookOpen, Shield, Sparkles, Star, Target, TrendingUp, type LucideIcon } from "lucide-react";
 import { nyDate, addDays } from "@/lib/trading-date";
+import { fmtDate } from "@/lib/format";
+import { ratingsI18n } from "@/i18n/ns/ratings";
+import { comparePersonNames } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type Rating = {
   id: number; trader: string; curator: string; week: string;
@@ -14,14 +18,23 @@ export type Rating = {
 export type CriterionKey = "discipline" | "riskManagement" | "execution" | "journaling" | "improvement";
 export type ScoreKey = CriterionKey | "overall";
 
-export const CRITERIA: { key: CriterionKey; label: string; short: string; icon: LucideIcon; hint: string }[] = [
-  { key: "discipline", label: "Дисциплина", short: "Дисц.", icon: Shield, hint: "Следование плану и правилам" },
-  { key: "riskManagement", label: "Риск-менеджмент", short: "Риск", icon: Target, hint: "Размер позиции, стопы, дневной лимит" },
-  { key: "execution", label: "Исполнение", short: "Исп.", icon: Sparkles, hint: "Входы, выходы, сопровождение" },
-  { key: "journaling", label: "Журналирование", short: "Журнал", icon: BookOpen, hint: "Полнота и честность записей" },
-  { key: "improvement", label: "Прогресс", short: "Прогр.", icon: TrendingUp, hint: "Работа над ошибками, рост" },
+type CriterionDef = { key: CriterionKey; readonly label: string; readonly short: string; icon: LucideIcon; readonly hint: string };
+/** Labels are getters: read at render time in the current UI language. */
+const criterion = (key: CriterionKey, icon: LucideIcon): CriterionDef => ({
+  key,
+  icon,
+  get label() { return ratingsI18n.t(`criteria.${key}.label`); },
+  get short() { return ratingsI18n.t(`criteria.${key}.short`); },
+  get hint() { return ratingsI18n.t(`criteria.${key}.hint`); },
+});
+export const CRITERIA: CriterionDef[] = [
+  criterion("discipline", Shield),
+  criterion("riskManagement", Target),
+  criterion("execution", Sparkles),
+  criterion("journaling", BookOpen),
+  criterion("improvement", TrendingUp),
 ];
-export const OVERALL = { key: "overall" as const, label: "Общая оценка", icon: Star };
+export const OVERALL = { key: "overall" as const, get label() { return ratingsI18n.t("overall"); }, icon: Star };
 
 /** Monday of the week containing the given YYYY-MM-DD (default: today on the NY trading calendar). */
 export function weekOf(d: Date | string = new Date()): string {
@@ -35,7 +48,7 @@ export function shiftWeek(week: string, delta: number): string {
 }
 
 export function weekLabel(week: string): string {
-  const fmt = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" }).replace(".", "");
+  const fmt = (iso: string) => fmtDate(iso.slice(0, 10), "dayMonth").replace(".", "");
   return `${fmt(week)} – ${fmt(addDays(week, 4))}`;
 }
 
@@ -114,7 +127,7 @@ export function buildScorecards(ratings: Rating[], currentWeek = weekOf(), maxWe
       weakest, strongest,
     });
   }
-  return out.sort((a, b) => (b.latest?.overall ?? 0) - (a.latest?.overall ?? 0) || a.trader.localeCompare(b.trader));
+  return out.sort((a, b) => (b.latest?.overall ?? 0) - (a.latest?.overall ?? 0) || comparePersonNames(a.trader, b.trader));
 }
 
 export function criterionLabel(k: CriterionKey): string {
@@ -142,7 +155,14 @@ export type RatingEvidence = {
   currentRating: Rating | null;
 };
 
-export const TIER_LABELS: Record<string, string> = {
-  starter: "Старт", junior: "Junior", standard: "Стандарт", senior: "Senior", lead: "Лид",
+/** Tier choices: the desk ladder Стажёр → Джун → Трейдер → Сеньор (same codes as trader_risk_limits.tier). */
+export const TIER_CODES = ["trainee", "junior", "trader", "senior"] as const;
+const TIER_COMMON = { trainee: "tiers.intern", junior: "tiers.junior", trader: "tiers.trader", senior: "tiers.senior" } as const;
+const isTierCode = (t: string): t is (typeof TIER_CODES)[number] => (TIER_CODES as readonly string[]).includes(t);
+/** Ladder tier label in the UI language; older pre-ladder codes (starter / standard / lead) too; unknown codes as is. */
+export const tierLabel = (t: string | null | undefined): string => {
+  if (!t) return "";
+  if (isTierCode(t)) return commonI18n.t(TIER_COMMON[t]);
+  return ratingsI18n.tryT(`legacyTier.${t}`) ?? t;
 };
-export const tierLabel = (t: string | null | undefined): string => (t ? TIER_LABELS[t] ?? t : "");
+export const isLadderTier = isTierCode;

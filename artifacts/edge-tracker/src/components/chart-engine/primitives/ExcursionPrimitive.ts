@@ -4,7 +4,7 @@
  * case (entry/exit bar range partially excluded).
  */
 import type { ExcursionResult } from "../types";
-import { fmtMoney, fmtPct, fmtPrice, fmtR } from "../lib/format";
+import { fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, vline } from "./canvas";
 
 export type ExcursionData = {
@@ -38,7 +38,7 @@ export class ExcursionPrimitive extends SeriesPrimitiveBase {
       hline(ctx, x - 5, x + 5, y, color(1), 2);
       hline(ctx, x - 3, x + 3, yEntry, color(0.6), 1);
       const parts = [`${title} ${approx}${fmtPrice(price)}`];
-      if (usd != null) parts.push(fmtMoney(usd));
+      if (usd != null) parts.push(fmtUsd(usd, { signed: true, decimals: "auto" }));
       if (pct != null) parts.push(fmtPct(pct));
       if (rr != null) parts.push(fmtR(rr));
       label(ctx, theme, parts.join(" · "), x + 6, above ? y - 4 : y + 4, { anchor: above ? "bl" : "tl", bg: color(0.9), clamp: { width, height }, size: 10 });

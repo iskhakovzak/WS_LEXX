@@ -7,6 +7,8 @@ import {
   signedR, grossPnl, netPnl, feesOf as feesOfTrade, isOpen, isClosed as isClosedTrade, resultOf, closeDate,
   horizonOf as horizonOfTrade,
 } from "@/lib/trade-math";
+import { fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
+import { statsI18n } from "@/i18n/ns/stats";
 
 /*
  * R / P&L / result buckets come from @/lib/trade-math — the single desk definition shared with /analytics,
@@ -24,28 +26,32 @@ export const tx = (t: Trade) => t as TradeX;
 
 export type Horizon = "intraday" | "overnight" | "swing";
 export type HorizonFilter = "all" | Horizon;
-export const HORIZON_OPTIONS: { value: HorizonFilter; label: string }[] = [
-  { value: "all", label: "Все" },
-  { value: "intraday", label: "Интрадей" },
-  { value: "overnight", label: "Овернайт" },
-  { value: "swing", label: "Свинг" },
-];
-export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
+const HORIZON_FILTERS: HorizonFilter[] = ["all", "intraday", "overnight", "swing"];
+/** Horizon filter options (labels are getters: they follow the UI language). */
+export const HORIZON_OPTIONS: { value: HorizonFilter; readonly label: string }[] = HORIZON_FILTERS.map((value) => ({
+  value, get label() { return statsI18n.t(`horizon.${value}`); },
+}));
+/** "Интрадей" / "Intraday" — read at call time. */
+export const horizonLabel = (h: Horizon): string => statsI18n.t(`horizon.${h}`);
 /** Null / unknown horizon is treated as intraday. */
 export function horizonOf(t: Trade): Horizon {
   return horizonOfTrade(t);
 }
 export type PeriodKey = "7d" | "30d" | "90d" | "ytd" | "all";
 
-export const PERIOD_OPTIONS: { value: PeriodKey; label: string; long: string }[] = [
-  { value: "7d", label: "7 дней", long: "последние 7 дней" },
-  { value: "30d", label: "30 дней", long: "последние 30 дней" },
-  { value: "90d", label: "90 дней", long: "последние 90 дней" },
-  { value: "ytd", label: "С начала года", long: "с начала года" },
-  { value: "all", label: "Всё время", long: "всё время" },
-];
+const PERIOD_KEYS: PeriodKey[] = ["7d", "30d", "90d", "ytd", "all"];
+/** Period options (labels are getters: they follow the UI language). */
+export const PERIOD_OPTIONS: { value: PeriodKey; readonly label: string; readonly long: string }[] = PERIOD_KEYS.map((value) => ({
+  value,
+  get label() { return statsI18n.t(`period.${value}.label`); },
+  get long() { return statsI18n.t(`period.${value}.long`); },
+}));
 
-export const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
+/** Short weekday for a Monday-first index 0–6 (weekdayIdx): «Пн» / «Mon» / «Du». Language read at call time. */
+export function weekdayLabel(i: number): string {
+  const s = fmtWeekday((i + 1) % 7, "short");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 /* ───────────── dates ───────────── */
 
@@ -352,74 +358,45 @@ export function groupBy(trades: Trade[], keyFn: (t: Trade) => string | null | un
   }));
 }
 
-export const SESSION_LABELS: Record<string, string> = {
-  premarket: "Премаркет",
-  pre: "Премаркет",
-  regular: "Основная",
-  rth: "Основная",
-  afterhours: "Постмаркет",
-  "after-hours": "Постмаркет",
-  postmarket: "Постмаркет",
-  after: "Постмаркет",
+/** Raw session values → session code. */
+const SESSION_CODES: Record<string, "premarket" | "regular" | "afterhours"> = {
+  premarket: "premarket",
+  pre: "premarket",
+  regular: "regular",
+  rth: "regular",
+  afterhours: "afterhours",
+  "after-hours": "afterhours",
+  postmarket: "afterhours",
+  after: "afterhours",
 };
 
 export function sessionKey(t: Trade): string {
   const s = (t.session ?? "").toString().trim().toLowerCase();
   if (!s) return "none";
-  const label = SESSION_LABELS[s];
-  if (label === "Премаркет") return "premarket";
-  if (label === "Основная") return "regular";
-  if (label === "Постмаркет") return "afterhours";
-  return s;
+  return SESSION_CODES[s] ?? s;
 }
 
+/** Display text of a session code; unknown raw values are shown as they are. */
 export function sessionLabel(k: string): string {
-  if (k === "none") return "Не указана";
-  return SESSION_LABELS[k] ?? k;
+  if (k === "none" || k === "premarket" || k === "regular" || k === "afterhours") return statsI18n.t(`session.${k}`);
+  const code = SESSION_CODES[k];
+  return code ? statsI18n.t(`session.${code}`) : k;
 }
+
 
 /* ───────────── formatting ───────────── */
 
-const MINUS = "−";
-
+/** Value of the selected metric: +0.21R or +$1,234 / −$12.50 (no cents from $1,000). */
 export function fmtValue(v: number | null | undefined, metric: Metric, opts: { sign?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const sign = opts.sign === false ? (v < 0 ? MINUS : "") : v > 0 ? "+" : v < 0 ? MINUS : "";
-  const a = Math.abs(v);
-  if (metric === "r") return `${sign}${a.toFixed(2)}R`;
-  const digits = a >= 1000 ? 0 : 2;
-  return `${sign}$${a.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  const signed = opts.sign !== false;
+  return metric === "r" ? fmtR(v, { signed }) : fmtUsd(v, { signed, decimals: "auto" });
 }
 
-/** Compact value for tiny cells: +1.2R / +$1.2k. */
-export function fmtCompact(v: number | null | undefined, metric: Metric): string {
-  if (v == null || !Number.isFinite(v)) return "";
-  const sign = v > 0 ? "+" : v < 0 ? MINUS : "";
-  const a = Math.abs(v);
-  if (metric === "r") return `${sign}${a >= 10 ? a.toFixed(0) : a.toFixed(1)}R`;
-  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k`;
-  return `${sign}$${a.toFixed(0)}`;
+/** Compact value for tiny cells and axes: +1.2R / +$1.2K; "" when missing. */
+export function fmtMetricCompact(v: number | null | undefined, metric: Metric): string {
+  if (metric === "r") return fmtR(v, { decimals: v != null && Math.abs(v) >= 10 ? 0 : 1, fallback: "" });
+  return fmtUsd(v, { signed: true, compact: true, fallback: "" });
 }
-
-export function fmtPct(v: number | null | undefined): string {
-  return v == null || !Number.isFinite(v) ? "—" : `${Math.round(v * 100)}%`;
-}
-
-export function fmtRatio(v: number | null | undefined): string {
-  if (v == null) return "—";
-  if (v === Infinity) return "∞";
-  return Number.isFinite(v) ? v.toFixed(2) : "—";
-}
-
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-export const pluralTrades = (n: number) => pluralRu(n, "сделка", "сделки", "сделок");
 
 /** Background colour for a heat cell: intensity ∝ |v| / max. Uses theme tokens only. */
 export function heatBg(v: number | null | undefined, max: number): string | undefined {

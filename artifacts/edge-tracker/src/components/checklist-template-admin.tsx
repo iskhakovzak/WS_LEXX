@@ -11,18 +11,15 @@ import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { Pencil, Trash2, Plus, ArrowUp, ArrowDown, ClipboardCheck, RotateCcw } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
+import { commonI18n } from "@/i18n/ns/common";
+import { checklistI18n } from "@/i18n/ns/checklist";
 
 // Access is enforced server-side by the caller's role (curator/admin) from the auth token.
 
 type Item = { id: number; label: string; description: string | null; required: boolean; sortOrder: number; active: boolean };
 type FormData = { label: string; description: string; required: boolean; sortOrder: number; active: boolean };
-
-async function readError(r: Response): Promise<string> {
-  const text = await r.text().catch(() => "");
-  try { return (JSON.parse(text) as { error?: string }).error || text || `HTTP ${r.status}`; } catch { return text || `HTTP ${r.status}`; }
-}
 
 function ItemForm({
   initial, onSubmit, onCancel, pending, submitLabel, showActive,
@@ -31,34 +28,36 @@ function ItemForm({
 }) {
   const [form, setForm] = useState<FormData>(initial);
   const idp = React.useId();
+  const { t } = checklistI18n.useT();
+  const { t: tc } = commonI18n.useT();
   return (
     <form
       className="flex flex-col gap-3 rounded-xl bg-primary/8 p-3 ring-1 ring-primary/30"
       onSubmit={(e) => { e.preventDefault(); if (form.label.trim()) onSubmit({ ...form, label: form.label.trim() }); }}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }}
     >
-      <Input aria-label="Название пункта" placeholder="Например: «Есть катализатор и объём»" value={form.label} autoFocus
+      <Input aria-label={t("admin.itemNameAria")} placeholder={t("admin.itemNamePlaceholder")} value={form.label} autoFocus
         onChange={(e) => setForm({ ...form, label: e.target.value })} maxLength={200} />
-      <Textarea aria-label="Описание пункта" className="min-h-[60px] rounded-xl" placeholder="Пояснение для трейдера (необязательно)"
+      <Textarea aria-label={t("admin.itemDescAria")} className="min-h-[60px] rounded-xl" placeholder={t("admin.itemDescPlaceholder")}
         value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
         <label htmlFor={`${idp}-req`} className="flex items-center gap-2 text-foreground">
-          <Switch id={`${idp}-req`} checked={form.required} onCheckedChange={(v) => setForm({ ...form, required: v })} /> Обязательный
+          <Switch id={`${idp}-req`} checked={form.required} onCheckedChange={(v) => setForm({ ...form, required: v })} /> {t("admin.required")}
         </label>
         {showActive && (
           <label htmlFor={`${idp}-act`} className="flex items-center gap-2 text-foreground">
-            <Switch id={`${idp}-act`} checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} /> Активен
+            <Switch id={`${idp}-act`} checked={form.active} onCheckedChange={(v) => setForm({ ...form, active: v })} /> {t("admin.active")}
           </label>
         )}
         <label htmlFor={`${idp}-ord`} className="flex items-center gap-2 text-muted-foreground">
-          Порядок
+          {t("admin.order")}
           <Input id={`${idp}-ord`} className="h-8 w-20 tabular-nums" type="number" value={form.sortOrder}
             onChange={(e) => setForm({ ...form, sortOrder: Number(e.target.value) || 0 })} />
         </label>
       </div>
       <div className="flex justify-end gap-2">
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Отмена</Button>
-        <Button type="submit" size="sm" variant="secondary" disabled={!form.label.trim() || pending}>{pending ? "Сохранение…" : submitLabel}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>{tc("actions.cancel")}</Button>
+        <Button type="submit" size="sm" variant="secondary" disabled={!form.label.trim() || pending}>{pending ? tc("states.saving") : submitLabel}</Button>
       </div>
     </form>
   );
@@ -68,67 +67,47 @@ export function ChecklistTemplateAdmin() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { isCurator } = useAuth();
+  const { t } = checklistI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Item | null>(null);
 
   const { data: items = [], isLoading, isError, error, refetch } = useQuery<Item[]>({
     queryKey: ["checklist-template", "admin"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/checklist-template?includeInactive=true`);
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<Item[]>("/api/checklist-template", { query: { includeInactive: true }, signal }),
     enabled: isCurator,
   });
 
   const createMut = useMutation({
     mutationFn: async (data: FormData) => {
       const { active: _a, ...rest } = data;
-      const r = await fetch(`${BASE}/api/checklist-template`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rest),
-      });
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json();
+      return http.post("/api/checklist-template", rest);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist-template"] });
       setCreating(false);
-      toast({ title: "Пункт чек-листа добавлен" });
+      toast({ title: t("admin.added") });
     },
-    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: tc("states.error"), description: e.message, variant: "destructive" }),
   });
 
   const updateMut = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<FormData> }) => {
-      const r = await fetch(`${BASE}/api/checklist-template/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json();
-    },
+    mutationFn: ({ id, data }: { id: number; data: Partial<FormData> }) => http.patch(`/api/checklist-template/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist-template"] });
       setEditingId(null);
     },
-    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: tc("states.error"), description: e.message, variant: "destructive" }),
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await fetch(`${BASE}/api/checklist-template/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json().catch(() => null);
-    },
+    mutationFn: (id: number) => http.del(`/api/checklist-template/${id}`, undefined, { responseType: "auto" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist-template"] });
-      toast({ title: "Пункт деактивирован" });
+      toast({ title: t("admin.deactivated") });
     },
-    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: tc("states.error"), description: e.message, variant: "destructive" }),
     onSettled: () => setDeleting(null),
   });
 
@@ -159,13 +138,13 @@ export function ChecklistTemplateAdmin() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <Pill tone="accent">{activeCount} активных</Pill>
-          <Pill tone="down">{requiredCount} обязательных</Pill>
-          {items.length > activeCount && <Pill>{items.length - activeCount} скрыто</Pill>}
+          <Pill tone="accent">{t("admin.activeCount", { count: activeCount })}</Pill>
+          <Pill tone="down">{t("admin.requiredCount", { count: requiredCount })}</Pill>
+          {items.length > activeCount && <Pill>{t("admin.hiddenCount", { count: items.length - activeCount })}</Pill>}
         </div>
         {!creating && (
           <Button size="sm" variant="secondary" onClick={() => { setCreating(true); setEditingId(null); }} className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Новый пункт
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" /> {t("admin.newItem")}
           </Button>
         )}
       </div>
@@ -176,7 +155,7 @@ export function ChecklistTemplateAdmin() {
           onSubmit={(d) => createMut.mutate(d)}
           onCancel={() => setCreating(false)}
           pending={createMut.isPending}
-          submitLabel="Добавить"
+          submitLabel={tc("actions.add")}
         />
       )}
 
@@ -193,10 +172,10 @@ export function ChecklistTemplateAdmin() {
               <li key={item.id}>
                 <ItemForm
                   initial={{ label: item.label, description: item.description ?? "", required: item.required, sortOrder: item.sortOrder, active: item.active }}
-                  onSubmit={(d) => updateMut.mutate({ id: item.id, data: d }, { onSuccess: () => toast({ title: "Сохранено" }) })}
+                  onSubmit={(d) => updateMut.mutate({ id: item.id, data: d }, { onSuccess: () => toast({ title: tc("states.saved") }) })}
                   onCancel={() => setEditingId(null)}
                   pending={updateMut.isPending}
-                  submitLabel="Сохранить"
+                  submitLabel={tc("actions.save")}
                   showActive
                 />
               </li>
@@ -209,29 +188,29 @@ export function ChecklistTemplateAdmin() {
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--glass-thick-bg)] text-xs font-semibold tabular-nums text-muted-foreground">{idx + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <span className="truncate text-sm font-medium text-foreground">{item.label}</span>
-                  {item.required && <Pill tone="down" className="text-2xs">обязательный</Pill>}
-                  {!item.active && <Pill className="text-2xs">скрыт</Pill>}
+                  <span className="truncate text-sm font-medium text-foreground" title={item.label}>{item.label}</span>
+                  {item.required && <Pill tone="down" className="text-2xs">{t("admin.requiredPill")}</Pill>}
+                  {!item.active && <Pill className="text-2xs">{t("admin.hiddenPill")}</Pill>}
                 </div>
-                {item.description && <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.description}</p>}
+                {item.description && <p className="mt-0.5 truncate text-xs text-muted-foreground" title={item.description}>{item.description}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100">
-                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Выше: «${item.label}»`} disabled={idx === 0 || updateMut.isPending} onClick={() => move(item, -1)}>
+                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("admin.moveUp", { label: item.label })} disabled={idx === 0 || updateMut.isPending} onClick={() => move(item, -1)}>
                   <ArrowUp aria-hidden="true" />
                 </Button>
-                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Ниже: «${item.label}»`} disabled={idx === sorted.length - 1 || updateMut.isPending} onClick={() => move(item, 1)}>
+                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("admin.moveDown", { label: item.label })} disabled={idx === sorted.length - 1 || updateMut.isPending} onClick={() => move(item, 1)}>
                   <ArrowDown aria-hidden="true" />
                 </Button>
-                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Редактировать «${item.label}»`} onClick={() => { setEditingId(item.id); setCreating(false); }}>
+                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("admin.edit", { label: item.label })} onClick={() => { setEditingId(item.id); setCreating(false); }}>
                   <Pencil aria-hidden="true" />
                 </Button>
                 {item.active ? (
-                  <Button size="icon" variant="ghost" className="h-8 w-8 hover:text-down" aria-label={`Деактивировать «${item.label}»`} onClick={() => setDeleting(item)}>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 hover:text-down" aria-label={t("admin.deactivate", { label: item.label })} onClick={() => setDeleting(item)}>
                     <Trash2 aria-hidden="true" />
                   </Button>
                 ) : (
-                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Вернуть «${item.label}»`}
-                    onClick={() => updateMut.mutate({ id: item.id, data: { active: true } }, { onSuccess: () => toast({ title: "Пункт снова активен" }) })}>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("admin.restore", { label: item.label })}
+                    onClick={() => updateMut.mutate({ id: item.id, data: { active: true } }, { onSuccess: () => toast({ title: t("admin.reactivated") }) })}>
                     <RotateCcw aria-hidden="true" />
                   </Button>
                 )}
@@ -242,27 +221,27 @@ export function ChecklistTemplateAdmin() {
       </ol>
 
       {items.length === 0 && !isLoading && !isError && !creating && (
-        <EmptyState icon={ClipboardCheck} title="Чек-лист пуст"
-          description="Добавьте пункты, которые трейдер должен подтвердить перед входом: катализатор, уровень, риск в R."
-          action={<Button size="sm" variant="secondary" onClick={() => setCreating(true)}>Добавить первый пункт</Button>} />
+        <EmptyState icon={ClipboardCheck} title={t("admin.emptyTitle")}
+          description={t("admin.emptyHint")}
+          action={<Button size="sm" variant="secondary" onClick={() => setCreating(true)}>{t("admin.addFirst")}</Button>} />
       )}
 
       <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v && !deleteMut.isPending) setDeleting(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Деактивировать пункт?</AlertDialogTitle>
+            <AlertDialogTitle>{t("admin.confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              «{deleting?.label}» исчезнет из чек-листа трейдеров. Вернуть можно кнопкой восстановления в списке.
+              {t("admin.confirmText", { label: deleting?.label ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={deleteMut.isPending}
               onClick={(e) => { e.preventDefault(); if (deleting) deleteMut.mutate(deleting.id); }}
               className="bg-destructive text-destructive-foreground hover:brightness-110"
             >
-              {deleteMut.isPending ? "…" : "Деактивировать"}
+              {deleteMut.isPending ? "…" : t("admin.deactivateAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

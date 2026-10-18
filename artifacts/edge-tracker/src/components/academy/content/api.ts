@@ -3,13 +3,19 @@
  * endpoints) and response types mirrored from api-server/src/routes/academy-content.ts + lib/academyContent.ts.
  */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { academyI18n } from "@/i18n/ns/academy";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type ItemKind = "lesson" | "quiz" | "assignment";
 export type ItemStatus = "not_started" | "in_progress" | "completed";
 export type Stage = "trainee" | "junior" | "trader" | "senior";
 export const STAGES: readonly Stage[] = ["trainee", "junior", "trader", "senior"];
-export const STAGE_LABELS: Record<Stage, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
+const STAGE_TIER = { trainee: "intern", junior: "junior", trader: "trader", senior: "senior" } as const;
+/** Ladder stage name in the UI language (stage key `trainee` = tier «Стажёр» / Intern). Call at render time. */
+export const stageLabel = (s: Stage): string => commonI18n.t(`tiers.${STAGE_TIER[s]}`);
+/** Same for a stage code that may come from the server as a plain string. */
+export const stageLabelOf = (s: string | null | undefined): string => (s && (STAGES as readonly string[]).includes(s) ? stageLabel(s as Stage) : s ?? "");
 
 export type Attachment = { title: string; url: string };
 export type VideoEmbed = { provider: "youtube" | "vimeo" | "loom"; id: string; embedUrl: string; watchUrl: string };
@@ -139,41 +145,6 @@ export type SetupLesson = { id: number; title: string; summary: string | null; d
 
 const BASE = "/api/academy/content";
 
-export class ApiError extends Error {
-  status: number;
-  errors?: string[];
-  constructor(message: string, status: number, errors?: string[]) {
-    super(message);
-    this.status = status;
-    this.errors = errors;
-  }
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(`${BASE}${path}`));
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try { const j = (await r.json()) as { error?: string }; if (j?.error) msg = j.error; } catch { /* no body */ }
-    throw new ApiError(msg, r.status);
-  }
-  return r.json() as Promise<T>;
-}
-
-export async function sendJson<T>(path: string, method: "POST" | "PATCH", body?: unknown): Promise<T> {
-  const r = await fetch(apiUrl(`${BASE}${path}`), {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-  });
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    let errors: string[] | undefined;
-    try { const j = (await r.json()) as { error?: string; errors?: string[] }; if (j?.error) msg = j.error; errors = j?.errors; } catch { /* no body */ }
-    throw new ApiError(msg, r.status, errors);
-  }
-  return r.json() as Promise<T>;
-}
-
 const qs = (p: Record<string, string | number | null | undefined | boolean>) => {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(p)) if (v !== null && v !== undefined && v !== "" && v !== false) sp.set(k, String(v));
@@ -203,45 +174,45 @@ export const invalidateAcademy = (qc: QueryClient) => qc.invalidateQueries({ que
 
 /* ─── hooks ─────────────────────────────────────────────────────────────── */
 
-export const useAcademyMeta = () => useQuery({ queryKey: academyKeys.meta(), queryFn: () => getJson<Meta>("/meta"), staleTime: 60_000 });
+export const useAcademyMeta = () => useQuery({ queryKey: academyKeys.meta(), queryFn: () => http.get<Meta>(`${BASE}/meta`), staleTime: 60_000 });
 
 export const usePrograms = (user?: string) =>
-  useQuery({ queryKey: academyKeys.programs(user), queryFn: () => getJson<{ user: string; programs: CatalogProgram[] }>(`/programs${qs({ user })}`) });
+  useQuery({ queryKey: academyKeys.programs(user), queryFn: () => http.get<{ user: string; programs: CatalogProgram[] }>(`${BASE}/programs${qs({ user })}`) });
 
 export const useProgramTree = (id: number | null, user?: string) =>
-  useQuery({ queryKey: academyKeys.program(id ?? 0, user), queryFn: () => getJson<ProgramTree>(`/programs/${id}${qs({ user })}`), enabled: !!id });
+  useQuery({ queryKey: academyKeys.program(id ?? 0, user), queryFn: () => http.get<ProgramTree>(`${BASE}/programs/${id}${qs({ user })}`), enabled: !!id });
 
 export const useLesson = (id: number | null, user?: string) =>
-  useQuery({ queryKey: academyKeys.lesson(id ?? 0, user), queryFn: () => getJson<LessonResponse>(`/lessons/${id}${qs({ user })}`), enabled: !!id });
+  useQuery({ queryKey: academyKeys.lesson(id ?? 0, user), queryFn: () => http.get<LessonResponse>(`${BASE}/lessons/${id}${qs({ user })}`), enabled: !!id });
 
 export const useQuiz = (id: number | null, user?: string) =>
-  useQuery({ queryKey: academyKeys.quiz(id ?? 0, user), queryFn: () => getJson<QuizResponse>(`/quizzes/${id}${qs({ user })}`), enabled: !!id });
+  useQuery({ queryKey: academyKeys.quiz(id ?? 0, user), queryFn: () => http.get<QuizResponse>(`${BASE}/quizzes/${id}${qs({ user })}`), enabled: !!id });
 
 export const useAssignment = (id: number | null, user?: string, all?: boolean) =>
-  useQuery({ queryKey: academyKeys.assignment(id ?? 0, user, all), queryFn: () => getJson<AssignmentResponse>(`/assignments/${id}${qs({ user, all: all ? 1 : null })}`), enabled: !!id });
+  useQuery({ queryKey: academyKeys.assignment(id ?? 0, user, all), queryFn: () => http.get<AssignmentResponse>(`${BASE}/assignments/${id}${qs({ user, all: all ? 1 : null })}`), enabled: !!id });
 
 export const useReviewQueue = (status: string, cohortId?: number | null, enabled = true) =>
-  useQuery({ queryKey: academyKeys.review(status, cohortId), queryFn: () => getJson<{ status: string; items: ReviewItem[] }>(`/review-queue${qs({ status, cohortId })}`), enabled });
+  useQuery({ queryKey: academyKeys.review(status, cohortId), queryFn: () => http.get<{ status: string; items: ReviewItem[] }>(`${BASE}/review-queue${qs({ status, cohortId })}`), enabled });
 
 export const useProgressMatrix = (programId: number | null, cohortId: number | null, enabled = true) =>
-  useQuery({ queryKey: academyKeys.progress(programId, cohortId), queryFn: () => getJson<ProgressResponse>(`/progress${qs({ programId, cohortId })}`), enabled });
+  useQuery({ queryKey: academyKeys.progress(programId, cohortId), queryFn: () => http.get<ProgressResponse>(`${BASE}/progress${qs({ programId, cohortId })}`), enabled });
 
 export const useAdminTree = (programId: number | null, archived = false) =>
-  useQuery({ queryKey: academyKeys.admin(programId, archived), queryFn: () => getJson<AdminTree>(`/admin/tree${qs({ programId, archived: archived ? 1 : null })}`) });
+  useQuery({ queryKey: academyKeys.admin(programId, archived), queryFn: () => http.get<AdminTree>(`${BASE}/admin/tree${qs({ programId, archived: archived ? 1 : null })}`) });
 
 export const useSetups = (enabled = true) =>
-  useQuery({ queryKey: academyKeys.setups(), queryFn: () => getJson<{ setups: SetupRef[] }>("/setups"), enabled, staleTime: 5 * 60_000 });
+  useQuery({ queryKey: academyKeys.setups(), queryFn: () => http.get<{ setups: SetupRef[] }>(`${BASE}/setups`), enabled, staleTime: 5 * 60_000 });
 
 export const useSetupLessons = (playbookId?: number | null, setup?: string | null) =>
   useQuery({
     queryKey: academyKeys.bySetup(playbookId, setup),
-    queryFn: () => getJson<{ lessons: SetupLesson[] }>(`/lessons/by-setup${qs({ playbookId, setup })}`),
+    queryFn: () => http.get<{ lessons: SetupLesson[] }>(`${BASE}/lessons/by-setup${qs({ playbookId, setup })}`),
     enabled: !!playbookId || !!setup?.trim(),
     staleTime: 5 * 60_000,
   });
 
 export const useMyTrades = (q: string, user?: string, enabled = true) =>
-  useQuery({ queryKey: academyKeys.myTrades(q, user), queryFn: () => getJson<{ user: string; trades: TradeRef[] }>(`/my-trades${qs({ q, user, limit: 80 })}`), enabled });
+  useQuery({ queryKey: academyKeys.myTrades(q, user), queryFn: () => http.get<{ user: string; trades: TradeRef[] }>(`${BASE}/my-trades${qs({ q, user, limit: 80 })}`), enabled });
 
 /** Generic mutation that refreshes every academy query afterwards. */
 export function useAcademyMutation<TVars, TRes>(fn: (v: TVars) => Promise<TRes>) {
@@ -250,29 +221,30 @@ export function useAcademyMutation<TVars, TRes>(fn: (v: TVars) => Promise<TRes>)
 }
 
 export const api = {
-  lessonProgress: (id: number, completed?: boolean) => sendJson<{ completed: boolean }>(`/lessons/${id}/progress`, "POST", completed === undefined ? {} : { completed }),
-  attempt: (id: number, answers: Record<string, unknown>) => sendJson<AttemptResponse>(`/quizzes/${id}/attempts`, "POST", { answers }),
-  submit: (id: number, body: { text: string; url: string | null; tradeIds: number[] }) => sendJson<{ submission: Submission; notified: number }>(`/assignments/${id}/submissions`, "POST", body),
-  editSubmission: (id: number, body: { text: string; url: string | null; tradeIds: number[] }) => sendJson<{ submission: Submission }>(`/submissions/${id}`, "PATCH", body),
-  withdrawSubmission: (id: number) => sendJson<{ ok: true }>(`/submissions/${id}/archive`, "POST"),
-  grade: (id: number, body: { decision: "graded" | "returned"; scores?: Record<string, number>; comment: string }) => sendJson<{ submission: Submission }>(`/submissions/${id}/grade`, "POST", body),
-  createProgram: (body: Partial<Program> & { title: string }) => sendJson<{ program: Program }>("/programs", "POST", body),
-  updateProgram: (id: number, body: Partial<Program>) => sendJson<{ program: Program }>(`/programs/${id}`, "PATCH", body),
-  createModule: (body: { programId: number; title: string; description?: string | null }) => sendJson<{ module: { id: number } }>("/modules", "POST", body),
-  updateModule: (id: number, body: { title?: string; description?: string | null }) => sendJson<{ module: { id: number } }>(`/modules/${id}`, "PATCH", body),
-  createLesson: (body: Record<string, unknown>) => sendJson<{ lesson: Lesson }>("/lessons", "POST", body),
-  updateLesson: (id: number, body: Record<string, unknown>) => sendJson<{ lesson: Lesson }>(`/lessons/${id}`, "PATCH", body),
-  createQuiz: (body: Record<string, unknown>) => sendJson<{ quiz: AdminQuiz }>("/quizzes", "POST", body),
-  updateQuiz: (id: number, body: Record<string, unknown>) => sendJson<{ quiz: AdminQuiz }>(`/quizzes/${id}`, "PATCH", body),
-  createAssignment: (body: Record<string, unknown>) => sendJson<{ assignment: Assignment }>("/assignments", "POST", body),
-  updateAssignment: (id: number, body: Record<string, unknown>) => sendJson<{ assignment: Assignment }>(`/assignments/${id}`, "PATCH", body),
+  lessonProgress: (id: number, completed?: boolean) => http.post<{ completed: boolean }>(`${BASE}/lessons/${id}/progress`, completed === undefined ? {} : { completed }),
+  attempt: (id: number, answers: Record<string, unknown>) => http.post<AttemptResponse>(`${BASE}/quizzes/${id}/attempts`, { answers }),
+  submit: (id: number, body: { text: string; url: string | null; tradeIds: number[] }) => http.post<{ submission: Submission; notified: number }>(`${BASE}/assignments/${id}/submissions`, body),
+  editSubmission: (id: number, body: { text: string; url: string | null; tradeIds: number[] }) => http.patch<{ submission: Submission }>(`${BASE}/submissions/${id}`, body),
+  withdrawSubmission: (id: number) => http.post<{ ok: true }>(`${BASE}/submissions/${id}/archive`, {}),
+  grade: (id: number, body: { decision: "graded" | "returned"; scores?: Record<string, number>; comment: string }) => http.post<{ submission: Submission }>(`${BASE}/submissions/${id}/grade`, body),
+  createProgram: (body: Partial<Program> & { title: string }) => http.post<{ program: Program }>(`${BASE}/programs`, body),
+  updateProgram: (id: number, body: Partial<Program>) => http.patch<{ program: Program }>(`${BASE}/programs/${id}`, body),
+  createModule: (body: { programId: number; title: string; description?: string | null }) => http.post<{ module: { id: number } }>(`${BASE}/modules`, body),
+  updateModule: (id: number, body: { title?: string; description?: string | null }) => http.patch<{ module: { id: number } }>(`${BASE}/modules/${id}`, body),
+  createLesson: (body: Record<string, unknown>) => http.post<{ lesson: Lesson }>(`${BASE}/lessons`, body),
+  updateLesson: (id: number, body: Record<string, unknown>) => http.patch<{ lesson: Lesson }>(`${BASE}/lessons/${id}`, body),
+  createQuiz: (body: Record<string, unknown>) => http.post<{ quiz: AdminQuiz }>(`${BASE}/quizzes`, body),
+  updateQuiz: (id: number, body: Record<string, unknown>) => http.patch<{ quiz: AdminQuiz }>(`${BASE}/quizzes/${id}`, body),
+  createAssignment: (body: Record<string, unknown>) => http.post<{ assignment: Assignment }>(`${BASE}/assignments`, body),
+  updateAssignment: (id: number, body: Record<string, unknown>) => http.patch<{ assignment: Assignment }>(`${BASE}/assignments/${id}`, body),
   archive: (kind: "programs" | "modules" | "lessons" | "quizzes" | "assignments", id: number, restore = false) =>
-    sendJson<{ ok: true }>(`/${kind}/${id}/${restore ? "restore" : "archive"}`, "POST"),
-  reorderModules: (programId: number, moduleIds: number[]) => sendJson<{ ok: true }>(`/programs/${programId}/reorder`, "POST", { moduleIds }),
-  reorderItems: (moduleId: number, items: { kind: ItemKind; id: number }[]) => sendJson<{ ok: true }>(`/modules/${moduleId}/reorder`, "POST", { items }),
-  moveItem: (kind: ItemKind, id: number, moduleId: number) => sendJson<{ ok: true }>("/items/move", "POST", { kind, id, moduleId }),
-  seedDemo: () => sendJson<{ programId: number; created: Record<string, number>; alreadySeeded: boolean }>("/seed-demo", "POST"),
+    http.post<{ ok: true }>(`${BASE}/${kind}/${id}/${restore ? "restore" : "archive"}`, {}),
+  reorderModules: (programId: number, moduleIds: number[]) => http.post<{ ok: true }>(`${BASE}/programs/${programId}/reorder`, { moduleIds }),
+  reorderItems: (moduleId: number, items: { kind: ItemKind; id: number }[]) => http.post<{ ok: true }>(`${BASE}/modules/${moduleId}/reorder`, { items }),
+  moveItem: (kind: ItemKind, id: number, moduleId: number) => http.post<{ ok: true }>(`${BASE}/items/move`, { kind, id, moduleId }),
+  seedDemo: () => http.post<{ programId: number; created: Record<string, number>; alreadySeeded: boolean }>(`${BASE}/seed-demo`, {}),
 };
 
 export const KIND_ARCHIVE: Record<ItemKind, "lessons" | "quizzes" | "assignments"> = { lesson: "lessons", quiz: "quizzes", assignment: "assignments" };
-export const KIND_LABEL: Record<ItemKind, string> = { lesson: "Урок", quiz: "Тест", assignment: "Задание" };
+/** «Урок» / «Тест» / «Задание» in the UI language. Call at render time. */
+export const kindLabel = (k: ItemKind): string => academyI18n.t(`kind.${k}`);

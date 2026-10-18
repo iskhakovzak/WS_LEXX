@@ -12,6 +12,8 @@
  *   - profit factor = Σ⁺ / |Σ⁻|, null (never ∞) when there is no losing side;
  *   - R metrics only over trades that have an R (stop / stored R / risk $) — `rCoverage` says how many.
  */
+import { benchmarkT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -238,16 +240,16 @@ export function parseHoldMinutes(raw: unknown): number | null {
   const hm = s.match(/^(\d+):(\d{1,2})(?::(\d{1,2}))?$/);
   if (hm) return Number(hm[1]) * 60 + Number(hm[2]) + (hm[3] ? Number(hm[3]) / 60 : 0);
   let total = 0, found = false;
-  const re = /(\d+(?:\.\d+)?)\s*(d|д|дн|день|дня|дней|h|hr|hrs|ч|час|часа|часов|m|min|mins|м|мин|минут|минуты|s|sec|с|сек)?/g;
+  const re = /(\d+(?:\.\d+)?)\s*(d|д|дн|день|дня|дней|h|hr|hrs|ч|час|часа|часов|m|min|mins|м|мин|минут|минуты|s|sec|с|сек)?/g; // i18n-ignore (parses RU / EN hold-time input)
   let m: RegExpExecArray | null;
   while ((m = re.exec(s))) {
     if (!m[1]) continue;
     const v = Number(m[1]);
     const u = m[2] ?? "m";
     found = true;
-    if (/^(d|д)/.test(u)) total += v * 1440;
-    else if (/^(h|ч)/.test(u)) total += v * 60;
-    else if (/^(s|с)/.test(u)) total += v / 60;
+    if (/^(d|д)/.test(u)) total += v * 1440; // i18n-ignore (input parsing)
+    else if (/^(h|ч)/.test(u)) total += v * 60; // i18n-ignore (input parsing)
+    else if (/^(s|с)/.test(u)) total += v / 60; // i18n-ignore (input parsing)
     else total += v;
   }
   return found ? total : null;
@@ -387,26 +389,33 @@ export interface MetricDef {
   radar?: boolean;
 }
 
-export const METRIC_DEFS: readonly MetricDef[] = [
-  { key: "net", label: "Нетто", unit: "usd", better: "higher", hint: "Σ (pnl − |комиссии|)", radar: true },
-  { key: "expectancy", label: "Ожидание $", unit: "usd", better: "higher", hint: "Нетто / сделки с $", radar: true },
-  { key: "winRate", label: "Win rate", unit: "pct", better: "higher", hint: "W / (W + L), безубыток исключён", radar: true },
-  { key: "profitFactor", label: "PF", unit: "ratio", better: "higher", hint: "Σ нетто⁺ / |Σ нетто⁻|; нет убытков → —", radar: true },
-  { key: "payoff", label: "Avg win / loss", unit: "ratio", better: "higher", hint: "Средний плюс / |средний минус|" },
-  { key: "sharpe", label: "Sharpe", unit: "ratio", better: "higher", hint: "Среднее / σ дневного нетто × √252 (≥ 5 дней)", radar: true },
-  { key: "sortino", label: "Sortino", unit: "ratio", better: "higher", hint: "Среднее / нисходящее σ × √252 (≥ 5 дней)" },
-  { key: "dailyVol", label: "Волатильность дня", unit: "usd", better: "lower", hint: "σ дневного нетто" },
-  { key: "maxDd", label: "Макс. просадка", unit: "usd", better: "lower", hint: "Пик → дно дневной кривой нетто", radar: true },
-  { key: "recoveryDays", label: "Восстановление", unit: "days", better: "lower", hint: "Торговых дней от дна до прежнего пика" },
-  { key: "greenShare", label: "Зелёные дни", unit: "pct", better: "higher", hint: "Доля дней с нетто > 0", radar: true },
-  { key: "bestDayShare", label: "Лучший день / прибыль", unit: "pct", better: "lower", hint: "Правило консистентности: > 30% — внимание, > 40% — нарушение", radar: true },
-  { key: "feeShare", label: "Комиссии / брутто", unit: "pct", better: "lower", hint: "Доля брутто-прибыли, ушедшая в комиссии" },
-  { key: "tradesPerDay", label: "Сделок в день", unit: "count", better: "higher", hint: "Сделки / торговые дни (нейтральная: активность)" },
-  { key: "maxLossStreak", label: "Серия минусов", unit: "count", better: "lower", hint: "Самая длинная серия убыточных сделок" },
-  { key: "avgHoldMin", label: "Удержание", unit: "min", better: "higher", hint: "Среднее время в позиции (нейтральная)" },
-  { key: "first15Share", label: "Первые 15 мин", unit: "pct", better: "lower", hint: "Доля входов 9:30–9:45 ET (нейтральная)" },
-  { key: "expectancyR", label: "Ожидание R", unit: "r", better: "higher", hint: "Только сделки со стопом / риском" },
+const METRIC_BASE: readonly Omit<MetricDef, "label" | "hint">[] = [
+  { key: "net", unit: "usd", better: "higher", radar: true },
+  { key: "expectancy", unit: "usd", better: "higher", radar: true },
+  { key: "winRate", unit: "pct", better: "higher", radar: true },
+  { key: "profitFactor", unit: "ratio", better: "higher", radar: true },
+  { key: "payoff", unit: "ratio", better: "higher" },
+  { key: "sharpe", unit: "ratio", better: "higher", radar: true },
+  { key: "sortino", unit: "ratio", better: "higher" },
+  { key: "dailyVol", unit: "usd", better: "lower" },
+  { key: "maxDd", unit: "usd", better: "lower", radar: true },
+  { key: "recoveryDays", unit: "days", better: "lower" },
+  { key: "greenShare", unit: "pct", better: "higher", radar: true },
+  { key: "bestDayShare", unit: "pct", better: "lower", radar: true },
+  { key: "feeShare", unit: "pct", better: "lower" },
+  { key: "tradesPerDay", unit: "count", better: "higher" },
+  { key: "maxLossStreak", unit: "count", better: "lower" },
+  { key: "avgHoldMin", unit: "min", better: "higher" },
+  { key: "first15Share", unit: "pct", better: "lower" },
+  { key: "expectancyR", unit: "r", better: "higher" },
 ];
+/** Metric catalogue with labels / hints in `lang` (benchmark namespace `metric.*`). */
+export function metricDefs(lang: Lang = "ru"): MetricDef[] {
+  const t = benchmarkT.tFor(lang);
+  return METRIC_BASE.map((d) => ({ ...d, label: benchmarkT.tryFor(lang, `metric.${d.key}.label`) ?? d.key, hint: benchmarkT.tryFor(lang, `metric.${d.key}.hint`) ?? "" }));
+}
+/** RU catalogue (kept for older imports). */
+export const METRIC_DEFS: readonly MetricDef[] = metricDefs("ru");
 
 /** Metrics whose direction is a style choice, not quality — shown on the heatmap greyed, excluded from badges. */
 export const NEUTRAL_METRICS: ReadonlySet<string> = new Set(["tradesPerDay", "avgHoldMin", "first15Share"]);
@@ -466,28 +475,29 @@ export interface Badge { kind: "strength" | "weakness"; key: string; label: stri
  * Strengths / weaknesses of one trader: absolute prop-desk rules always; desk-relative ones (top / bottom
  * quartile) only when the desk has ≥ `minPeers` traders and this trader has ≥ `minTrades` trades (no badges off one trade).
  */
-export function badgesFor(m: TraderMetrics, pct: PercentileMap | undefined, deskSize: number, minPeers = 3, minTrades = 10): Badge[] {
+export function badgesFor(m: TraderMetrics, pct: PercentileMap | undefined, deskSize: number, minPeers = 3, minTrades = 10, lang: Lang = "ru"): Badge[] {
+  const t = benchmarkT.tFor(lang);
   const out: Badge[] = [];
   const pctTxt = (x: number) => `${Math.round(x * 100)}%`;
-  if (m.consistencyFlag === "breach" && m.bestDay) out.push({ kind: "weakness", key: "consistency", label: "Один день делает период", detail: `Лучший день ${m.bestDay.day} = ${pctTxt(m.bestDayShare ?? 0)} прибыли (> 40%)` });
-  else if (m.consistencyFlag === "warn" && m.bestDay) out.push({ kind: "weakness", key: "consistency", label: "Консистентность на грани", detail: `Лучший день = ${pctTxt(m.bestDayShare ?? 0)} прибыли (> 30%)` });
-  else if (m.consistencyFlag === "ok" && m.days >= 10) out.push({ kind: "strength", key: "consistency", label: "Ровная прибыль", detail: `Лучший день = ${pctTxt(m.bestDayShare ?? 0)} прибыли` });
-  if (m.feeShare != null && m.feeShare > 0.3) out.push({ kind: "weakness", key: "fees", label: "Комиссии съедают", detail: `${pctTxt(m.feeShare)} брутто уходит в комиссии` });
-  if (m.profitFactor != null && m.pnlTrades >= 20 && m.profitFactor >= 2) out.push({ kind: "strength", key: "pf", label: "Высокий PF", detail: `PF ${m.profitFactor.toFixed(2)}` });
-  if (m.profitFactor != null && m.pnlTrades >= 20 && m.profitFactor < 1) out.push({ kind: "weakness", key: "pf", label: "PF < 1", detail: `PF ${m.profitFactor.toFixed(2)} — система теряет` });
-  if (m.payoff != null && m.payoff < 0.7 && (m.winRate ?? 0) < 0.6) out.push({ kind: "weakness", key: "payoff", label: "Режет плюс, держит минус", detail: `Avg win / loss ${m.payoff.toFixed(2)}` });
-  if (m.maxLossStreak >= 6) out.push({ kind: "weakness", key: "streak", label: "Длинные серии минусов", detail: `${m.maxLossStreak} убыточных подряд` });
-  if (m.first15Trades >= 10 && m.first15Net != null && m.first15Net < 0) out.push({ kind: "weakness", key: "open", label: "Минус на открытии", detail: `${m.first15Trades} входов 9:30–9:45, нетто ${r2(m.first15Net)} $` });
-  if (m.ddRecovered === false && (m.maxDd ?? 0) > 0) out.push({ kind: "weakness", key: "dd", label: "Ещё в просадке", detail: `Не восстановлен пик ${m.maxDd} $` });
+  if (m.consistencyFlag === "breach" && m.bestDay) out.push({ kind: "weakness", key: "consistency", label: t("badge.consistencyBreach"), detail: t("badge.consistencyBreachDetail", { day: m.bestDay.day, share: pctTxt(m.bestDayShare ?? 0) }) });
+  else if (m.consistencyFlag === "warn" && m.bestDay) out.push({ kind: "weakness", key: "consistency", label: t("badge.consistencyWarn"), detail: t("badge.consistencyWarnDetail", { share: pctTxt(m.bestDayShare ?? 0) }) });
+  else if (m.consistencyFlag === "ok" && m.days >= 10) out.push({ kind: "strength", key: "consistency", label: t("badge.consistencyOk"), detail: t("badge.consistencyOkDetail", { share: pctTxt(m.bestDayShare ?? 0) }) });
+  if (m.feeShare != null && m.feeShare > 0.3) out.push({ kind: "weakness", key: "fees", label: t("badge.fees"), detail: t("badge.feesDetail", { share: pctTxt(m.feeShare) }) });
+  if (m.profitFactor != null && m.pnlTrades >= 20 && m.profitFactor >= 2) out.push({ kind: "strength", key: "pf", label: t("badge.pfHigh"), detail: `PF ${m.profitFactor.toFixed(2)}` });
+  if (m.profitFactor != null && m.pnlTrades >= 20 && m.profitFactor < 1) out.push({ kind: "weakness", key: "pf", label: t("badge.pfLow"), detail: t("badge.pfLowDetail", { pf: m.profitFactor.toFixed(2) }) });
+  if (m.payoff != null && m.payoff < 0.7 && (m.winRate ?? 0) < 0.6) out.push({ kind: "weakness", key: "payoff", label: t("badge.payoff"), detail: t("badge.payoffDetail", { value: m.payoff.toFixed(2) }) });
+  if (m.maxLossStreak >= 6) out.push({ kind: "weakness", key: "streak", label: t("badge.streak"), detail: t("badge.streakDetail", { n: m.maxLossStreak }) });
+  if (m.first15Trades >= 10 && m.first15Net != null && m.first15Net < 0) out.push({ kind: "weakness", key: "open", label: t("badge.open"), detail: t("badge.openDetail", { n: m.first15Trades, net: r2(m.first15Net) }) });
+  if (m.ddRecovered === false && (m.maxDd ?? 0) > 0) out.push({ kind: "weakness", key: "dd", label: t("badge.dd"), detail: t("badge.ddDetail", { value: String(m.maxDd) }) });
   if (m.avgHoldWinMin != null && m.avgHoldLossMin != null && m.wins >= 10 && m.losses >= 10 && m.avgHoldLossMin > m.avgHoldWinMin * 1.5)
-    out.push({ kind: "weakness", key: "hold", label: "Пересиживает убытки", detail: `Минус держит ${Math.round(m.avgHoldLossMin)} мин vs плюс ${Math.round(m.avgHoldWinMin)} мин` });
+    out.push({ kind: "weakness", key: "hold", label: t("badge.hold"), detail: t("badge.holdDetail", { loss: Math.round(m.avgHoldLossMin), win: Math.round(m.avgHoldWinMin) }) });
   if (pct && deskSize >= minPeers && m.trades >= minTrades) {
-    for (const d of METRIC_DEFS) {
+    for (const d of metricDefs(lang)) {
       if (NEUTRAL_METRICS.has(d.key) || out.some((b) => b.key === d.key)) continue;
       const p = pct[d.key];
       if (p == null) continue;
-      if (p >= 0.75 && out.filter((b) => b.kind === "strength").length < 4) out.push({ kind: "strength", key: d.key, label: `${d.label}: топ деска`, detail: `Перцентиль ${Math.round(p * 100)}` });
-      else if (p <= 0.25 && out.filter((b) => b.kind === "weakness").length < 4) out.push({ kind: "weakness", key: d.key, label: `${d.label}: низ деска`, detail: `Перцентиль ${Math.round(p * 100)}` });
+      if (p >= 0.75 && out.filter((b) => b.kind === "strength").length < 4) out.push({ kind: "strength", key: d.key, label: t("badge.top", { metric: d.label }), detail: t("badge.percentile", { p: Math.round(p * 100) }) });
+      else if (p <= 0.25 && out.filter((b) => b.kind === "weakness").length < 4) out.push({ kind: "weakness", key: d.key, label: t("badge.bottom", { metric: d.label }), detail: t("badge.percentile", { p: Math.round(p * 100) }) });
     }
   }
   return out;

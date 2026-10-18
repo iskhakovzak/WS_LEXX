@@ -1,11 +1,12 @@
 // /trades — a REVIEW tool, not a data-entry form. Trades arrive automatically from the broker; the trader's job
 // here is to look back: by trading day (default) or through smart presets, tag setup / mistake / emotion with the
 // keyboard, and jump to the day report, behaviour patterns or the trade card.
-// Manual entry survives only for staff (?new / ?fromIdea deep links) and for editing legacy manual trades.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// Trades come only from PropReports (ARCHITECTURE §0.1): nothing is created here. The form edits the trader's markup
+// (stop, setup, tags, review); old ?new / ?fromIdea links just open the list (filtered by ?ticker when given).
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { useCreateTrade, useUpdateTrade, getTrade } from "@workspace/api-client-react";
-import type { Trade, CreateTradeBody, UpdateTradeBody } from "@workspace/api-client-react";
+import { useUpdateTrade, getTrade } from "@workspace/api-client-react";
+import type { Trade, UpdateTradeBody } from "@workspace/api-client-react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { BookText, CheckCircle2, Download, Filter, Keyboard, Loader2 } from "lucide-react";
 import { EmptyState, Kbd, Page, PageHeader, Panel } from "@/components/ds";
@@ -17,67 +18,54 @@ import {
 } from "@/components/ui/alert-dialog";
 import { QueryError } from "@/components/query-error";
 import { UndoToast } from "@/components/undo-toast";
-import type { ChecklistResult } from "@/components/pre-trade-checklist";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useHolidaysRange, type HolidayEvent } from "@/lib/market-intel";
-import { BASE } from "@/lib/api";
 import { invalidateTradeDependents } from "@/lib/query-keys";
-import {
-  ENTRY_DECISION_FIELDS,
-  HORIZONS,
-  HORIZON_LABEL,
-  RESULT_LABEL,
-  advancedFilterCount,
-  apiErrorMessage,
-  blankForm,
-  dayOf,
-  downloadCsv,
-  formToBody,
-  isBrokerTrade,
-  isDefaultFilters,
-  isTypingTarget,
-  plural,
-  resultKey,
-  tradeToForm,
-  type FormData,
-  type Outcome,
-} from "@/components/trades/trade-utils";
+import { ENTRY_DECISION_FIELDS, HORIZONS, HORIZON_LABEL, RESULT_LABEL, advancedFilterCount, apiErrorMessage, blankForm, dayOf, downloadCsv, formToBody, isBrokerTrade, isDefaultFilters, isTypingTarget, resultKey, tradeToForm, type FormData, type Outcome } from "@/components/trades/trade-utils";
 import { useTradeFilters } from "@/components/trades/use-trade-filters";
 import { useTradesPage, useTradeDays, dayTradesQuery, patchTradeInPages } from "@/hooks/use-trades-page";
 import { TradeFilterBar } from "@/components/trades/TradeFilterBar";
 import { TradePagination } from "@/components/trades/TradePagination";
 import { TradeDetailSheet, type TradePatch } from "@/components/trades/TradeDetailSheet";
-import { TradeFormDialog, ChecklistDialog, formSaveError } from "@/components/trades/TradeFormDialog";
+import { TradeFormDialog, formSaveError } from "@/components/trades/TradeFormDialog";
 import { useTradesQuality } from "@/components/replay/hooks";
 import { useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { BulkActionBar } from "@/components/trades/BulkActionBar";
 import { AddTradesToPlaybookDialog } from "@/components/playbook/quick-add";
+import { AddToPlaybookDialog } from "@/components/add-to-playbook";
+import { tradePlaybookPayload } from "@/components/trades/trade-utils";
 import { bulkTrades, type BulkBody } from "@/components/trades/bulk-api";
-import { PRESET_META, hasTag, toggleTag, type Preset, type TagKind } from "@/components/trades/review-presets";
+import { PRESET_META, hasTag, tagLabel, toggleTag, type Preset, type TagKind } from "@/components/trades/review-presets";
 import type { PickerTarget, PickState } from "@/components/trades/review-tagging";
 import { DayCard, PresetBar, ReviewKpis, ReviewTradeRow, RowsHeader, RowsSkeleton } from "@/components/trades/review-list";
+import { commonI18n } from "@/i18n/ns/common";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { shellI18n } from "@/i18n/ns/shell";
 
-const PERIOD_LABEL = { all: "всё время", today: "сегодня", week: "эта неделя", month: "этот месяц", custom: "диапазон" } as const;
-
-const SHORTCUTS: [string, string][] = [
-  ["J / K", "Следующая / предыдущая сделка"],
-  ["Enter", "Открыть карточку"],
-  ["S", "Сетап"],
-  ["M", "Ошибка"],
-  ["E", "Эмоция"],
-  ["1–9", "Выбрать вариант в списке"],
-  ["X", "Выбрать строку (Shift — диапазон)"],
-  ["/", "Поиск"],
-  ["← / →", "Страница (в режиме списка)"],
-  ["Esc", "Снять выделение"],
-  ["?", "Эта подсказка"],
-];
+/** Built in render: labels follow the UI language. */
+function shortcuts(): [string, string][] {
+  const t = tradesI18n.t, tc = commonI18n.t;
+  return [
+    ["J / K", t("page.shortcuts.next")],
+    ["Enter", t("page.shortcuts.open")],
+    ["S", t("tagging.kind.setup.label")],
+    ["M", t("tagging.kind.mistake.label")],
+    ["E", t("tagging.kind.emotion.label")],
+    ["1–9", t("page.shortcuts.pick")],
+    ["X", t("page.shortcuts.select")],
+    ["/", tc("actions.search")],
+    ["← / →", t("page.shortcuts.page")],
+    ["Esc", t("page.shortcuts.clear")],
+    ["?", t("page.shortcuts.help")],
+  ];
+}
 
 const EMPTY_OUTCOMES: Record<Outcome, number> = { all: 0, win: 0, loss: 0, breakeven: 0, open: 0 };
 const DAYS_PAGE = 30;
 /** Min width of the ROW_GRID rows (sum of its fixed tracks + gaps + padding). */
 const ROWS_MIN_W = "min-w-[900px]";
+// Keys, not text: the same physical keys on a Russian layout. i18n-ignore
 const KEY_KIND: Record<string, TagKind> = { s: "setup", "ы": "setup", m: "mistake", "ь": "mistake", e: "emotion", "у": "emotion" };
 
 /** Strip a one-shot param (?highlight, ?new, ?fromIdea) without touching the filter state in the URL. */
@@ -90,6 +78,8 @@ function stripParam(name: string) {
 }
 
 export default function Trades() {
+  const { t: tt } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const qc = useQueryClient();
   const { user, dbUsers, canEdit } = useAuth();
   const { toast } = useToast();
@@ -188,14 +178,14 @@ export default function Trades() {
   }, [D.days]);
 
   const scopeLabel = useMemo(() => {
-    const parts: string[] = [PERIOD_LABEL[filters.period]];
-    if (filters.outcome !== "all") parts.push(filters.outcome === "open" ? "открытые позиции" : RESULT_LABEL[filters.outcome].toLowerCase());
+    const parts: string[] = [tradesI18n.t(`page.scope.${filters.period}`)];
+    if (filters.outcome !== "all") parts.push(filters.outcome === "open" ? tradesI18n.t("page.openPositions") : RESULT_LABEL[filters.outcome].toLowerCase());
     if (filters.horizon) parts.push(HORIZON_LABEL[filters.horizon].toLowerCase());
-    if (filters.side) parts.push(filters.side);
+    if (filters.side) parts.push(filters.side === "Long" ? commonI18n.t("trading.long") : filters.side === "Short" ? commonI18n.t("trading.short") : filters.side);
     if (filters.setup) parts.push(filters.setup);
     if (filters.ticker) parts.push(filters.ticker);
     const adv = advancedFilterCount(filters) - (filters.period === "custom" ? 1 : 0) - (filters.ticker ? 1 : 0);
-    if (adv > 0) parts.push(`+${adv} ${plural(adv, ["фильтр", "фильтра", "фильтров"])}`);
+    if (adv > 0) parts.push(tradesI18n.t("page.moreFilters", { count: adv }));
     if (filters.q.trim()) parts.push(`«${filters.q.trim()}»`);
     return parts.join(" · ");
   }, [filters]);
@@ -217,6 +207,8 @@ export default function Trades() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // «В плейбук» from a row icon or the bulk bar (one dialog for the page).
   const [pbTradeIds, setPbTradeIds] = useState<number[] | null>(null);
+  /** «Новый сетап из сделки» from that dialog (single trade) → the full setup dialog, like the trade sheet. */
+  const [newSetupFrom, setNewSetupFrom] = useState<Trade | null>(null);
   const lastToggledRef = useRef<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -319,7 +311,7 @@ export default function Trades() {
       setActiveId(id);
       return true;
     } catch {
-      toast({ title: "Сделка не найдена", description: `#${id} нет в журнале или нет доступа.`, variant: "destructive" });
+      toast({ title: tradesI18n.t("page.toast.notFound"), description: tradesI18n.t("page.toast.notFoundHint", { id }), variant: "destructive" });
       return false;
     }
   }, [scrollTo, toast]);
@@ -356,40 +348,12 @@ export default function Trades() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Trade | null>(null);
   const [form, setForm] = useState<FormData>(blankForm());
-  const [checklistOpen, setChecklistOpen] = useState(false);
-  const [checklistResult, setChecklistResult] = useState<ChecklistResult | null>(null);
-  const [fromIdeaId, setFromIdeaId] = useState<number | null>(null);
   const [voiceNoteKey, setVoiceNoteKey] = useState(0);
 
-  const createMut = useCreateTrade({
-    mutation: {
-      onSuccess: async (data: { id: number } | undefined) => {
-        invalidateTrades();
-        if (fromIdeaId && data?.id) {
-          try {
-            await fetch(`${BASE}/api/trade-ideas/${fromIdeaId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: "converted", convertedTradeId: data.id }),
-            });
-            qc.invalidateQueries({ queryKey: ["trade-ideas"] });
-          } catch {
-            // non-blocking: the trade exists; the idea can be re-linked from the ideas page
-          }
-        }
-        setFromIdeaId(null);
-        setFormOpen(false);
-        setChecklistResult(null);
-        toast({ title: "Сделка сохранена" });
-        if (data?.id) setActiveId(data.id);
-      },
-      onError: (e: unknown) => toast({ title: "Ошибка сохранения сделки", description: apiErrorMessage(e), variant: "destructive" }),
-    },
-  });
   const updateMut = useUpdateTrade({
     mutation: {
-      onSuccess: (_d, vars) => { invalidateTrades(vars?.id); setVoiceNoteKey((k) => k + 1); setFormOpen(false); setEditing(null); toast({ title: "Сделка обновлена" }); },
-      onError: (e: unknown) => toast({ title: "Ошибка обновления сделки", description: apiErrorMessage(e), variant: "destructive" }),
+      onSuccess: (_d, vars) => { invalidateTrades(vars?.id); setVoiceNoteKey((k) => k + 1); setFormOpen(false); setEditing(null); toast({ title: tradesI18n.t("page.toast.updated") }); },
+      onError: (e: unknown) => toast({ title: tradesI18n.t("page.toast.updateFailed"), description: apiErrorMessage(e), variant: "destructive" }),
     },
   });
   const patchMut = useUpdateTrade();
@@ -403,7 +367,7 @@ export default function Trades() {
       if (opts?.silent) invalidateSoon();
       else {
         invalidateTrades(t.id);
-        toast({ title: patch.result ? `${t.ticker}: ${RESULT_LABEL[resultKey(patch.result)]}` : `${t.ticker}: сохранено` });
+        toast({ title: patch.result ? tradesI18n.t("page.toast.resultSet", { ticker: t.ticker, result: RESULT_LABEL[resultKey(patch.result)] }) : tradesI18n.t("page.toast.savedShort", { ticker: t.ticker }) });
       }
       return true;
     } catch (e) {
@@ -411,9 +375,9 @@ export default function Trades() {
       setDetached((d) => (d && d.id === t.id ? t : d));
       const msg = apiErrorMessage(e);
       toast({
-        title: "Не удалось сохранить",
+        title: commonI18n.t("states.saveFailed"),
         // An API build older than this page still gates `setup` on imported trades behind the pre-trade checklist.
-        description: /checklist/i.test(msg) ? "Сервер ещё не обновлён: сетап для этой сделки сохранится после обновления API. Ошибки и эмоции сохраняются уже сейчас." : msg,
+        description: /checklist/i.test(msg) ? tradesI18n.t("page.toast.serverOutdated") : msg,
         variant: "destructive",
       });
       return false;
@@ -432,108 +396,43 @@ export default function Trades() {
     void patchTrade(t, { tags: toggleTag(t.tags, value) }, { silent: true });
   }, [canEditTrade, patchTrade]);
 
-  // ?fromIdea=id → prefilled full form (staff only: traders' trades come from the broker).
-  const prefillHandledRef = useRef(false);
+  // Old deep links (?new=1, ?fromIdea=id from the palette / ideas) created a trade by hand; trades now come only from
+  // PropReports, so the params are dropped (a ?ticker that came with them still filters the list).
   useEffect(() => {
-    if (prefillHandledRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const id = Number(params.get("fromIdea"));
-    if (!id) return;
-    if (!user || !dbUsers.length) return;
-    prefillHandledRef.current = true;
-    if (!isStaff) { stripParam("fromIdea"); return; }
-    (async () => {
-      try {
-        const r = await fetch(`${BASE}/api/trade-ideas/${id}`);
-        if (!r.ok) {
-          toast({ title: "Не удалось загрузить идею", description: `Статус ${r.status}`, variant: "destructive" });
-          return;
-        }
-        const idea = await r.json();
-        const f = blankForm();
-        f.ticker = idea.ticker ?? "";
-        if (idea.side === "Long" || idea.side === "Short") f.side = idea.side;
-        f.setup = idea.setup ?? "";
-        const entryFirst = idea.entryZone ? String(idea.entryZone).split(/[-/]/)[0]?.trim() : "";
-        if (entryFirst) f.entry = entryFirst;
-        if (idea.stop) f.stop = String(idea.stop);
-        f.result = "open";
-        f.notes = idea.thesis ?? "";
-        if (idea.tags) f.tags = idea.tags;
-        f.trader = idea.trader ?? user?.traderName ?? "";
-        setForm(f);
-        setEditing(null);
-        setChecklistResult(null);
-        setFromIdeaId(id);
-        setFormOpen(true);
-      } catch (err) {
-        toast({ title: "Ошибка загрузки идеи", description: String((err as Error)?.message ?? err), variant: "destructive" });
-      } finally {
-        stripParam("fromIdea");
-      }
-    })();
-  }, [location, user, dbUsers.length, isStaff, toast]);
-
-  const openCreate = useCallback(() => {
-    const f = blankForm();
-    if (user?.traderName) f.trader = user.traderName;
-    setForm(f);
-    setEditing(null);
-    setChecklistResult(null);
-    setFromIdeaId(null);
-    setFormOpen(true);
-  }, [user?.traderName]);
-
-  // ?new=1 → full form, staff only (hidden route for manual corrections). Traders just get the param stripped.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (!params.get("new")) return;
-    if (!user || !dbUsers.length) return;
-    if (isStaff && canEdit) openCreate();
     stripParam("new");
-  }, [location, canEdit, user, dbUsers.length, isStaff, openCreate]);
+    stripParam("fromIdea");
+  }, [location]);
 
   const openEdit = useCallback((t: Trade) => {
-    setForm(tradeToForm(t)); setEditing(t); setChecklistResult(null); setFromIdeaId(null); setFormOpen(true);
+    setForm(tradeToForm(t)); setEditing(t); setFormOpen(true);
   }, []);
-
-  function createWithChecklist(r: ChecklistResult) {
-    const payload: CreateTradeBody & Record<string, unknown> = { ...formToBody(form) };
-    if (r.responseId > 0) payload.checklistResponseId = r.responseId;
-    if (r.responseId === 0) payload.skipChecklist = true;
-    createMut.mutate({ data: payload as CreateTradeBody });
-  }
 
   function handleSave() {
     const body = formToBody(form);
     if (!body.ticker || !body.result) return;
     if (!form.conviction || form.conviction < 1 || form.conviction > 5) {
-      toast({ title: "Укажите убеждённость (1–5)", variant: "destructive" });
+      toast({ title: tradesI18n.t("page.toast.conviction"), variant: "destructive" });
       return;
     }
     if (!["A+", "A", "B", "C"].includes(form.confidenceGrade)) {
-      toast({ title: "Укажите грейд уверенности (A+, A, B или C)", variant: "destructive" });
+      toast({ title: tradesI18n.t("page.toast.grade"), variant: "destructive" });
       return;
     }
     if (form.horizon !== "intraday" && form.exitDate && form.exitDate < form.date) {
-      toast({ title: "Дата выхода раньше даты входа", variant: "destructive" });
+      toast({ title: tradesI18n.t("page.toast.exitBeforeEntry"), variant: "destructive" });
       return;
     }
     const saveErr = formSaveError(form);
     if (saveErr) {
-      toast({ title: "Проверьте стоп и вход", description: saveErr, variant: "destructive" });
+      toast({ title: tradesI18n.t("page.toast.checkStop"), description: saveErr, variant: "destructive" });
       return;
     }
-    if (editing) {
-      // Untouched entry-decision fields are omitted so that editing notes etc. doesn't hit the checklist gate.
-      const original: Record<string, unknown> = { ...formToBody(tradeToForm(editing)) };
-      const patch: Record<string, unknown> = { ...body };
-      for (const f of ENTRY_DECISION_FIELDS) if (patch[f] === original[f]) delete patch[f];
-      updateMut.mutate({ id: editing.id, data: patch as UpdateTradeBody });
-      return;
-    }
-    if (!checklistResult) { setChecklistOpen(true); return; }
-    createWithChecklist(checklistResult);
+    if (!editing) return;
+    // Untouched entry-decision fields are omitted so that editing notes etc. doesn't hit the checklist gate.
+    const original: Record<string, unknown> = { ...formToBody(tradeToForm(editing)) };
+    const patch: Record<string, unknown> = { ...body };
+    for (const f of ENTRY_DECISION_FIELDS) if (patch[f] === original[f]) delete patch[f];
+    updateMut.mutate({ id: editing.id, data: patch as UpdateTradeBody });
   }
 
   // ── Delete with undo + bulk actions ──────────────────────────────────────
@@ -548,7 +447,7 @@ export default function Trades() {
       invalidateTrades();
       return done;
     } catch (e) {
-      toast({ title: "Действие не выполнено", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: tradesI18n.t("page.toast.bulkFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
       return null;
     } finally {
       setBulkPending(false);
@@ -559,13 +458,13 @@ export default function Trades() {
     if (!ids.length) return;
     const label = ids.length === 1
       ? (rowsRef.current.find((t) => t.id === ids[0]) ?? (detached?.id === ids[0] ? detached : null))?.ticker ?? `#${ids[0]}`
-      : `${ids.length} ${plural(ids.length, ["сделка", "сделки", "сделок"])}`;
+      : `${commonI18n.t("units.trades", { count: ids.length })}`;
     const done = await runBulk({ action: "delete", ids });
     if (!done?.length) return;
     setOpenId((cur) => (cur != null && done.includes(cur) ? null : cur));
     setSelected(new Set());
     setUndo({ ids: done, label, key: Date.now() });
-    if (done.length < ids.length) toast({ title: `Удалено ${done.length} из ${ids.length}`, description: "Чужие сделки удалить нельзя." });
+    if (done.length < ids.length) toast({ title: tradesI18n.t("page.toast.deletedPartial", { done: done.length, total: ids.length }), description: tradesI18n.t("page.toast.deletedPartialHint") });
   }, [runBulk, toast, detached]);
 
   const restoreUndo = useCallback(async () => {
@@ -575,7 +474,7 @@ export default function Trades() {
     setUndo({ ...u, restoring: true });
     const done = await runBulk({ action: "restore", ids: u.ids });
     setUndo((cur) => (cur?.key === u.key ? null : cur));
-    if (done) toast({ title: `${u.label}: восстановлено` });
+    if (done) toast({ title: tradesI18n.t("page.toast.restored", { label: u.label }) });
   }, [undo, runBulk, toast]);
 
   const selectedTrades = useMemo(() => visibleRows.filter((t) => selected.has(t.id)), [visibleRows, selected]);
@@ -586,7 +485,7 @@ export default function Trades() {
     return n === 0 ? "none" : n === selectedTrades.length ? "all" : "some";
   }, [selectedTrades]);
   const canDeleteSelection = selectedTrades.length > 0 && selectedTrades.every((t) => canEditForm(t));
-  const nTrades = (n: number) => `${n} ${plural(n, ["сделка", "сделки", "сделок"])}`;
+  const nTrades = (n: number) => commonI18n.t("units.trades", { count: n });
 
   // ── CSV export of the whole filtered set ────────────────────────────────
   const [exporting, setExporting] = useState(false);
@@ -594,11 +493,11 @@ export default function Trades() {
     setExporting(true);
     try {
       const all = await P.fetchAll();
-      if (!all.length) { toast({ title: "Нечего экспортировать" }); return; }
+      if (!all.length) { toast({ title: tradesI18n.t("page.toast.nothingToExport") }); return; }
       downloadCsv(all);
-      toast({ title: `CSV: ${nTrades(all.length)}` });
+      toast({ title: tradesI18n.t("page.toast.csv", { trades: nTrades(all.length) }) });
     } catch (e) {
-      toast({ title: "Экспорт не удался", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: tradesI18n.t("page.toast.exportFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setExporting(false);
     }
@@ -606,7 +505,7 @@ export default function Trades() {
 
   // ── Keyboard ─────────────────────────────────────────────────────────────
   const [helpOpen, setHelpOpen] = useState(false);
-  const modalOpen = formOpen || checklistOpen || confirmBulkDelete || !!pbTradeIds;
+  const modalOpen = formOpen || confirmBulkDelete || !!pbTradeIds;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || modalOpen) return;
@@ -615,14 +514,14 @@ export default function Trades() {
       const k = e.key;
       if (k === "?") { e.preventDefault(); setHelpOpen((v) => !v); return; }
       const lower = k.toLowerCase();
-      if (lower === "j" || lower === "k" || lower === "о" || lower === "л") { e.preventDefault(); stepOpen(lower === "j" || lower === "о" ? 1 : -1); return; }
+      if (lower === "j" || lower === "k" || lower === "о" || lower === "л") { e.preventDefault(); stepOpen(lower === "j" || lower === "о" ? 1 : -1); return; } // i18n-ignore (Russian keyboard layout keys)
       if (openId != null) return; // the sheet owns the rest of the keyboard
       if (k === "ArrowRight" && listMode && P.hasMore) { e.preventDefault(); F.setPage((p) => p + 1); return; }
       if (k === "ArrowLeft" && listMode && page > 1) { e.preventDefault(); F.setPage((p) => p - 1); return; }
       if (k === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
       const active = activeId != null ? rowsRef.current.find((t) => t.id === activeId) : undefined;
       if (k === "Enter" && active) { e.preventDefault(); openTradeSheet(active); return; }
-      if ((lower === "x" || lower === "ч") && active) { e.preventDefault(); toggle(active.id, e.shiftKey); return; }
+      if ((lower === "x" || lower === "ч") && active) { e.preventDefault(); toggle(active.id, e.shiftKey); return; } // i18n-ignore (Russian keyboard layout key)
       const kind = KEY_KIND[lower];
       if (kind && !e.shiftKey && active && canEditTrade(active)) { e.preventDefault(); setPicker({ id: active.id, kind }); return; }
       if (k === "Escape" && selected.size) { e.preventDefault(); setSelected(new Set()); }
@@ -651,52 +550,54 @@ export default function Trades() {
     onAddToPlaybook: user?.role !== "guest" ? (t: Trade) => setPbTradeIds([t.id]) : undefined,
   });
 
-  const isPending = createMut.isPending || updateMut.isPending;
+  const isPending = updateMut.isPending;
   const noFilters = isDefaultFilters(filters);
   const isLoading = P.isLoading;
   const isError = P.isError || (!listMode && D.isError);
   const noTrades = !isLoading && !P.isError && total === 0 && noFilters && !preset;
   const days = summary?.days ?? D.totalDays;
   const headerText = isLoading
-    ? "Загрузка…"
-    : `${nTrades(total)}${days ? ` · ${days} ${plural(days, ["торговый день", "торговых дня", "торговых дней"])}` : ""} · ${scopeLabel}`;
+    ? tc("states.loading")
+    : days
+      ? tt("page.headerDays", { trades: nTrades(total), days: tc("units.tradingDays", { count: days }), scope: scopeLabel })
+      : tt("page.header", { trades: nTrades(total), scope: scopeLabel });
   const presetMeta = preset ? PRESET_META[preset] : null;
 
   const presetEmpty = (p: Preset) => (
     <EmptyState
       icon={p === "review" ? CheckCircle2 : Filter}
-      title={p === "review" ? "Все сделки размечены" : `«${PRESET_META[p].label}»: пусто`}
-      description={p === "review" ? "Неразобранных сделок нет в выбранном периоде." : `Сейчас: ${scopeLabel}. Расширьте период или снимите фильтры.`}
-      action={<Button variant="outline" onClick={() => F.setPreset(null)}>К дням</Button>}
+      title={p === "review" ? tt("page.empty.allTaggedTitle") : tt("page.empty.presetTitle", { preset: PRESET_META[p].label })}
+      description={p === "review" ? tt("page.empty.allTaggedDesc") : tt("page.empty.presetDesc", { scope: scopeLabel })}
+      action={<Button variant="outline" onClick={() => F.setPreset(null)}>{tt("page.empty.backToDays")}</Button>}
     />
   );
 
   return (
     <Page className="pb-24">
       <PageHeader
-        title="Сделки"
+        title={shellI18n.t("nav.trades")}
         icon={BookText}
         description={headerText}
         actions={
           <>
             <Popover open={helpOpen} onOpenChange={setHelpOpen}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Горячие клавиши (?)" title="Горячие клавиши (?)"><Keyboard /></Button>
+                <Button variant="ghost" size="icon-sm" aria-label={tt("page.shortcuts.aria")} title={tt("page.shortcuts.aria")}><Keyboard /></Button>
               </PopoverTrigger>
               <PopoverContent align="end" side="bottom" collisionPadding={12} className="w-72 p-3">
-                <p className="pb-2 text-sm font-semibold">Горячие клавиши</p>
+                <p className="pb-2 text-sm font-semibold">{tt("page.shortcuts.title")}</p>
                 <ul className="space-y-1.5">
-                  {SHORTCUTS.map(([key, label]) => (
+                  {shortcuts().map(([key, label]) => (
                     <li key={key} className="flex items-center justify-between gap-3 text-sm">
                       <span className="text-muted-foreground">{label}</span>
                       <Kbd>{key}</Kbd>
                     </li>
                   ))}
                 </ul>
-                <p className="pt-2 text-xs text-muted-foreground">Разбор без мыши: J, затем S / M / E и цифра.</p>
+                <p className="pt-2 text-xs text-muted-foreground">{tt("page.shortcuts.hint")}</p>
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" className="gap-1.5" disabled={!total || exporting} onClick={() => void exportAll()} aria-label={`Экспорт ${total} сделок в CSV`}>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={!total || exporting} onClick={() => void exportAll()} aria-label={tt("page.exportAria", { count: total })}>
               {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} CSV
             </Button>
           </>
@@ -714,11 +615,10 @@ export default function Trades() {
           traders={distinctTraders}
           sectors={facets?.sectors ?? []}
           views={F.views}
-          onSaveView={(n) => { F.saveView(n); toast({ title: `Вид «${n}» сохранён` }); }}
+          onSaveView={(n) => { F.saveView(n); toast({ title: tt("page.toast.viewSaved", { name: n }) }); }}
           onApplyView={F.applyView}
           onRemoveView={F.removeView}
           searchRef={searchRef}
-          showSource={isStaff}
         />
       )}
 
@@ -745,20 +645,20 @@ export default function Trades() {
         <Panel>
           <EmptyState
             icon={BookText}
-            title="Сделок пока нет"
-            description="Сделки появятся здесь автоматически после торговой сессии. Тогда их можно будет разобрать по дням."
+            title={tt("page.empty.noTradesTitle")}
+            description={tt("page.empty.noTradesDesc")}
           />
         </Panel>
       ) : listMode ? (
-        <Panel padded={false} className="overflow-hidden" aria-label={presetMeta ? presetMeta.label : "Все сделки"}>
+        <Panel padded={false} className="overflow-hidden" aria-label={presetMeta ? presetMeta.label : tt("page.allTrades")}>
           {isLoading ? (
             <RowsSkeleton rows={8} />
           ) : total === 0 ? (
             preset ? presetEmpty(preset) : (
-              <EmptyState icon={Filter} title="Нет сделок по фильтрам" description={`Сейчас: ${scopeLabel}. Попробуйте расширить период или снять часть фильтров.`} action={<Button variant="outline" onClick={F.reset}>Сбросить фильтры</Button>} />
+              <EmptyState icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button variant="outline" onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
             )
           ) : (
-            <div role="table" aria-label="Сделки" className={P.isPlaceholder ? "opacity-70 transition-opacity" : "transition-opacity"} aria-busy={P.isPlaceholder || undefined}>
+            <div role="table" aria-label={shellI18n.t("nav.trades")} className={P.isPlaceholder ? "opacity-70 transition-opacity" : "transition-opacity"} aria-busy={P.isPlaceholder || undefined}>
               {/* Fixed-width grid columns (~900px): scroll sideways on narrow screens instead of clipping Нетто/Захват. */}
               <div className="overflow-x-auto">
                 <div className={ROWS_MIN_W}>
@@ -783,7 +683,7 @@ export default function Trades() {
         <Panel padded={false}><RowsSkeleton rows={6} /></Panel>
       ) : !D.days.length ? (
         <Panel>
-          <EmptyState icon={Filter} title="Нет сделок по фильтрам" description={`Сейчас: ${scopeLabel}. Попробуйте расширить период или снять часть фильтров.`} action={<Button variant="outline" onClick={F.reset}>Сбросить фильтры</Button>} />
+          <EmptyState icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button variant="outline" onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
         </Panel>
       ) : (
         <div className="space-y-[var(--grid-gap)]" aria-busy={D.isFetching || undefined}>
@@ -793,7 +693,7 @@ export default function Trades() {
             return (
               <DayCard key={d.date} day={d} expanded={isOpen} onToggle={() => toggleDay(d.date)} trader={traderForLinks}>
                 {rows == null ? <RowsSkeleton rows={Math.min(6, d.count)} /> : (
-                  <div role="table" aria-label={`Сделки за ${d.date}`}>
+                  <div role="table" aria-label={tt("page.dayTableAria", { date: d.date })}>
                     <div className="overflow-x-auto">
                       <div className={ROWS_MIN_W}>
                         <RowsHeader showDate={false} />
@@ -801,7 +701,7 @@ export default function Trades() {
                       </div>
                     </div>
                     {rows.length >= 500 && d.count > rows.length && (
-                      <p className="px-3 py-2 text-xs text-muted-foreground">Показаны первые 500 из {d.count}. Остальные — в режиме «Списком» с фильтром по дате.</p>
+                      <p className="px-3 py-2 text-xs text-muted-foreground">{tt("page.first500", { count: d.count })}</p>
                     )}
                   </div>
                 )}
@@ -811,8 +711,8 @@ export default function Trades() {
           {D.hasMore && (
             <div className="flex justify-center pt-1">
               <Button variant="outline" onClick={D.loadMore} disabled={D.isFetching} className="gap-1.5">
-                {D.isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Показать ещё дни
-                <span className="text-muted-foreground">· {D.days.length} из {D.totalDays}</span>
+                {D.isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {tt("page.moreDays")}
+                <span className="text-muted-foreground">{tt("page.daysShown", { shown: D.days.length, total: D.totalDays })}</span>
               </Button>
             </div>
           )}
@@ -828,16 +728,16 @@ export default function Trades() {
           stateOf={bulkStateOf}
           onSetSetup={async (setup) => {
             const done = await runBulk({ action: "setSetup", ids: selectedIds, setup });
-            if (done) toast({ title: setup ? `Сетап «${setup}»: ${nTrades(done.length)}` : `Сетап убран: ${nTrades(done.length)}` });
+            if (done) toast({ title: setup ? tt("page.toast.setupSet", { setup, trades: nTrades(done.length) }) : tt("page.toast.setupCleared", { trades: nTrades(done.length) }) });
           }}
           onToggleTag={async (tag, mode) => {
             const done = await runBulk({ action: mode === "add" ? "addTags" : "removeTags", ids: selectedIds, tags: [tag] });
-            if (done) toast({ title: mode === "add" ? `«${tag}» добавлено` : `«${tag}» убрано`, description: nTrades(done.length) });
+            if (done) toast({ title: tt(mode === "add" ? "page.toast.tagAdded" : "page.toast.tagRemoved", { tag: tagLabel(tag) }), description: nTrades(done.length) });
           }}
           onExport={() => downloadCsv(selectedTrades, `trades-selected-${selectedIds.length}.csv`)}
           onSetResult={isStaff ? async (r) => {
             const done = await runBulk({ action: "setResult", ids: selectedIds, result: r });
-            if (done) toast({ title: `${RESULT_LABEL[r]}: ${nTrades(done.length)}` });
+            if (done) toast({ title: tt("page.toast.resultBulk", { result: RESULT_LABEL[r], trades: nTrades(done.length) }) });
           } : undefined}
           onDelete={canDeleteSelection ? () => (selectedIds.length === 1 ? deleteTrades(selectedIds) : setConfirmBulkDelete(true)) : undefined}
           onClear={() => setSelected(new Set())}
@@ -848,7 +748,19 @@ export default function Trades() {
         open={!!pbTradeIds}
         onOpenChange={(v) => { if (!v) setPbTradeIds(null); }}
         tradeIds={pbTradeIds ?? []}
+        onNewSetup={() => {
+          const id = pbTradeIds?.[0];
+          const t = visibleRows.find((x) => x.id === id) ?? (detached?.id === id ? detached : null);
+          if (t) setNewSetupFrom(t);
+        }}
       />
+      {newSetupFrom && (
+        <AddToPlaybookDialog
+          open
+          onOpenChange={(v) => { if (!v) setNewSetupFrom(null); }}
+          payload={tradePlaybookPayload(newSetupFrom)}
+        />
+      )}
 
       <TradeDetailSheet
         trade={openTrade}
@@ -875,40 +787,30 @@ export default function Trades() {
 
       <TradeFormDialog
         open={formOpen}
-        onClose={() => { setFormOpen(false); setEditing(null); setFromIdeaId(null); setChecklistResult(null); }}
+        onClose={() => { setFormOpen(false); setEditing(null); }}
         form={form}
         setForm={setForm}
         editing={editing}
         traderNames={traderNames}
-        checklistResult={checklistResult}
-        onResetChecklist={() => setChecklistResult(null)}
         onSave={handleSave}
         isPending={isPending}
         onVoiceUploaded={() => setVoiceNoteKey((k) => k + 1)}
       />
 
-      <ChecklistDialog
-        open={checklistOpen}
-        onClose={() => setChecklistOpen(false)}
-        ticker={form.ticker}
-        date={form.date}
-        trader={form.trader}
-        onConfirm={(r) => { setChecklistResult(r); setChecklistOpen(false); createWithChecklist(r); }}
-      />
 
       <AlertDialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить {selectedIds.length} {plural(selectedIds.length, ["сделку", "сделки", "сделок"])}?</AlertDialogTitle>
-            <AlertDialogDescription>Отменить удаление можно будет в течение 8 секунд.</AlertDialogDescription>
+            <AlertDialogTitle>{tt("page.confirmDelete", { count: selectedIds.length })}</AlertDialogTitle>
+            <AlertDialogDescription>{tt("page.confirmDeleteDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => { setConfirmBulkDelete(false); void deleteTrades(selectedIds); }}
               className="border border-destructive/30 bg-destructive/15 text-destructive hover:bg-destructive/25"
             >
-              Удалить
+              {tc("actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

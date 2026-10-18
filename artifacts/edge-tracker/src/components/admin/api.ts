@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { POLL } from "@/lib/api/keys";
 import { nyDate } from "@/lib/trading-date";
+import { fmtDate, fmtRelative } from "@/lib/format";
+import { adminI18n } from "@/i18n/ns/admin";
+import RU_ADMIN from "@/i18n/locales/ru/admin";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -106,21 +110,10 @@ export interface RiskDeskLite {
 
 /* ── Fetch helpers ───────────────────────────────────────────────────────── */
 
-export async function errorFrom(r: Response, fallback: string): Promise<Error> {
-  const j = (await r.json().catch(() => null)) as { error?: string } | null;
-  return new Error(j?.error || `${fallback} (HTTP ${r.status})`);
-}
-
 export function adminUrl(path: string, actor: string, params?: Record<string, string | number | undefined | null>) {
   const qs = new URLSearchParams({ actor });
   for (const [k, v] of Object.entries(params ?? {})) if (v != null && v !== "") qs.set(k, String(v));
-  return `${BASE}/api${path}?${qs.toString()}`;
-}
-
-export async function postJson<T>(url: string, body: unknown, fallback: string): Promise<T> {
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw await errorFrom(r, fallback);
-  return r.json() as Promise<T>;
+  return `/api${path}?${qs.toString()}`;
 }
 
 /** Desk "today" = the America/New_York trading date, whatever the curator's browser timezone is. */
@@ -136,12 +129,8 @@ const DESK_TZ = "America/New_York";
 export function useDeskPulse(actor: string) {
   return useQuery<DeskPulse>({
     queryKey: ["admin-desk-pulse", actor],
-    queryFn: async () => {
-      const r = await fetch(adminUrl("/admin/desk-pulse", actor, { date: nyDate(), tz: DESK_TZ }));
-      if (!r.ok) throw await errorFrom(r, "Не удалось загрузить активность деска");
-      return r.json();
-    },
-    refetchInterval: 60_000,
+    queryFn: ({ signal }) => http.get<DeskPulse>(adminUrl("/admin/desk-pulse", actor, { date: nyDate(), tz: DESK_TZ }), { signal }),
+    refetchInterval: POLL.minute,
     staleTime: 20_000,
   });
 }
@@ -149,12 +138,8 @@ export function useDeskPulse(actor: string) {
 export function useAdminOverview(actor: string) {
   return useQuery<Overview>({
     queryKey: ["admin-overview", actor],
-    queryFn: async () => {
-      const r = await fetch(adminUrl("/admin/overview", actor));
-      if (!r.ok) throw await errorFrom(r, "Не удалось загрузить обзор");
-      return r.json();
-    },
-    refetchInterval: 60_000,
+    queryFn: ({ signal }) => http.get<Overview>(adminUrl("/admin/overview", actor), { signal }),
+    refetchInterval: POLL.minute,
   });
 }
 
@@ -165,62 +150,44 @@ export function useAdminOverview(actor: string) {
 export function useRiskDesk() {
   return useQuery<RiskDeskLite | null>({
     queryKey: ["admin-risk-desk-lite"],
-    queryFn: async () => {
-      try {
-        const r = await fetch(`${BASE}/api/risk/desk?date=${nyDate()}`);
-        if (!r.ok) return null;
-        const j = await r.json().catch(() => null);
-        return j && typeof j === "object" && j.summary ? (j as RiskDeskLite) : null;
-      } catch {
-        return null;
-      }
+    queryFn: async ({ signal }) => {
+      const j = await http.get<RiskDeskLite | null>("/api/risk/desk", { query: { date: nyDate() }, signal }).catch(() => null);
+      return j && typeof j === "object" && j.summary ? j : null;
     },
     retry: false,
-    refetchInterval: 60_000,
+    refetchInterval: POLL.minute,
   });
 }
 
 export function useReports(actor: string, status: string) {
   return useQuery<ContentReport[]>({
     queryKey: ["admin-reports", actor, status],
-    queryFn: async () => {
-      const r = await fetch(adminUrl("/admin/reports", actor, { status }));
-      if (!r.ok) throw await errorFrom(r, "Не удалось загрузить жалобы");
-      return r.json();
-    },
-    refetchInterval: 60_000,
+    queryFn: ({ signal }) => http.get<ContentReport[]>(adminUrl("/admin/reports", actor, { status }), { signal }),
+    refetchInterval: POLL.minute,
   });
 }
 
 /* ── Formatting ──────────────────────────────────────────────────────────── */
 
-export const ROLE_LABEL: Record<string, string> = { admin: "Админ", curator: "Куратор", trader: "Трейдер" };
-
-export const ACTION_LABEL: Record<string, string> = {
-  "user.ban": "Бан",
-  "user.unban": "Разбан",
-  "user.role.change": "Смена роли",
-  "report.resolve": "Жалоба решена",
-  "report.dismiss": "Жалоба отклонена",
-  "report.ban_author": "Бан автора по жалобе",
-  "discussion.delete": "Удалено обсуждение",
-  "comment.delete": "Удалён комментарий",
-  "propreports.import": "Импорт PropReports",
-  "db.export": "Экспорт БД",
-};
-
-export function actionLabel(a: string) {
-  return ACTION_LABEL[a] ?? a;
+/** Role name in the UI language («Админ» / «Admin»); unknown codes show as is. Call at render time. */
+export function roleLabel(role: string | null | undefined): string {
+  if (!role) return "";
+  return adminI18n.tryT(`role.${role}`) ?? role;
 }
 
-/** Tone used for an audit action pill. */
-export function actionTone(a: string): "down" | "up" | "accent" | "warn" | "purple" | "neutral" {
-  if (a.includes("ban_author") || a === "user.ban" || a.endsWith(".delete")) return "down";
-  if (a === "user.unban" || a === "report.resolve") return "up";
-  if (a.startsWith("user.role")) return "purple";
-  if (a === "report.dismiss") return "neutral";
-  if (a.includes("import") || a.includes("export")) return "accent";
-  return "neutral";
+/** Built-in tier name for a key («trainee» → «Стажёр»); a tier renamed in «Масштабирование» comes from /tiers. */
+export function tierFallbackLabel(key: string): string {
+  return adminI18n.tryT(`tier.${key}`) ?? key;
+}
+
+/**
+ * Name of a configured tier for display: a tier still carrying its seeded Russian default name («Стажёр» for
+ * `trainee`) shows the built-in translation; a name a curator changed is shown as written (user content).
+ */
+export function tierDisplayName(key: string, name: string | null | undefined): string {
+  const seeded = (RU_ADMIN.tier as Record<string, string>)[key];
+  if (!name || (seeded && name === seeded)) return tierFallbackLabel(key);
+  return name;
 }
 
 export function parseDetails(raw: string | null): Record<string, unknown> | null {
@@ -233,28 +200,14 @@ export function parseDetails(raw: string | null): Record<string, unknown> | null
   }
 }
 
+/** «5 мин назад» / «5 min ago» (short relative time in the UI language); «никогда» when there is no date. */
 export function timeAgo(iso: string | null | undefined, now = Date.now()): string {
-  if (!iso) return "никогда";
+  if (!iso) return adminI18n.t("never");
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "—";
-  const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 60) return "только что";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  const d = Math.floor(h / 24);
-  if (d === 1) return "вчера";
-  if (d < 30) return `${d} дн назад`;
-  return new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-export function fmtDateTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
-  }
+  // Older than a month: a date reads better than «2 months ago».
+  if (now - t >= 30 * 86_400_000) return fmtDate(t, "dayMonth");
+  return fmtRelative(Math.min(t, now), { now, style: "short" });
 }
 
 /* ── CSV / download ──────────────────────────────────────────────────────── */

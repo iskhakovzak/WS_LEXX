@@ -5,6 +5,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { logger } from "../lib/logger";
 import { logActivity } from "../lib/activity";
+import { activityDetails, activityTitle } from "../lib/activityText";
 import { requireMember, scopeTrader } from "../lib/auth";
 import { can, readScope, requireCap, resolveActor } from "../lib/permissions";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
@@ -21,6 +22,9 @@ import {
   GetDailyFeedResponse,
   UpdateDailyFeedResponse,
 } from "@workspace/api-zod";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { langOf, localeTagFor } from "../i18n";
+import { feedT } from "../i18n/ns";
 
 /**
  * Daily feed ("Дейли-фид") — the desk's briefing per trading date.
@@ -130,7 +134,7 @@ async function canModify(req: Request, r: FeedRow): Promise<boolean> {
 
 function parseId(req: Request, res: Response): number | null {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -143,9 +147,9 @@ const ListQuery = z.object({
 
 router.get("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const q = ListQuery.safeParse({ from: req.query.from || undefined, to: req.query.to || undefined, limit: req.query.limit, offset: req.query.offset });
-  if (!q.success) { res.status(400).json({ error: "from/to must be YYYY-MM-DD; limit 1..2000" }); return; }
+  if (!q.success) throw new AppError("INVALID_RANGE", undefined, { max: 2000 });
   const where: string[] = ["deleted_at IS NULL"];
   const params: unknown[] = [];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
@@ -185,12 +189,12 @@ type DayContext = {
 router.get("/dailyfeed/context", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const parsed = ContextQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: "from and to (YYYY-MM-DD) are required" }); return; }
+  if (!parsed.success) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
   const { from, to } = parsed.data;
   const span = (Date.parse(to) - Date.parse(from)) / 86400000;
-  if (!Number.isFinite(span) || span < 0 || span > 400) { res.status(400).json({ error: "Invalid range (max 400 days)" }); return; }
+  if (!Number.isFinite(span) || span < 0 || span > 400) throw new AppError("RANGE_TOO_LONG", undefined, { max: 400 });
 
   const D = `substring(${closeDateSql("t")}, 1, 10)`;
   const base = `FROM trades t WHERE t.deleted_at IS NULL AND ${D} BETWEEN $1 AND $2 AND ($3::text IS NULL OR t.trader = $3)`;
@@ -275,11 +279,11 @@ const StreamQuery = z.object({
  * `lastSeenAt` = the viewer's previous visit (POST /dailyfeed/stream/seen moves it).
  */
 router.get("/dailyfeed/stream", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const parsed = StreamQuery.safeParse({ to: req.query.to || undefined, days: req.query.days || undefined });
-  if (!parsed.success) { res.status(400).json({ error: "to must be YYYY-MM-DD; days 1..62" }); return; }
+  if (!parsed.success) throw new AppError("INVALID_RANGE", undefined, { max: 62 });
   const today = nyDate();
   const to = parsed.data.to && parsed.data.to < today ? parsed.data.to : today;
   const from = addDays(to, -((parsed.data.days ?? 14) - 1));
@@ -291,7 +295,7 @@ router.get("/dailyfeed/stream", asyncHandler(async (req, res): Promise<void> => 
     riskTeam: !actor.guest && (await can(req, "risk.read.team")),
   };
   const [stream, lastSeenAt] = await Promise.all([
-    buildFeedStream(viewer, from, to),
+    buildFeedStream(viewer, from, to, new Date(), langOf(req)),
     actor.guest ? Promise.resolve(null) : getLastSeen(actor.name).catch(() => null),
   ]);
   res.json({
@@ -313,9 +317,9 @@ router.post("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateDailyFeedBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const d = parsed.data as Record<string, unknown> & { date: string };
-  if (!ISO_DATE.test(String(d.date).slice(0, 10))) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!ISO_DATE.test(String(d.date).slice(0, 10))) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query<FeedRow>(
     `INSERT INTO daily_feed (date, what_works_now, what_doesnt_work, best_tickers, market_theme, notes, tags, screenshot_url, screenshot_notes, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${COLS}`,
@@ -350,8 +354,7 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
   if (propReportsConfigured() && !force) {
     const sched = schedulerStatus();
     if (sched.running) {
-      res.status(409).json({ error: "Идёт синхронизация PropReports — подождите", code: "SYNC_RUNNING", scheduler: sched });
-      return;
+      throw new AppError("SYNC_RUNNING", 409, undefined, { scheduler: sched });
     }
     const { rows } = await pool.query<{ last: Date | null; n: string }>(
       `SELECT MAX(synced_at) AS last, COUNT(*)::text AS n FROM trades WHERE deleted_at IS NULL AND source = 'propreports' AND substring(${closeDateSql("trades")}, 1, 10) = $1`,
@@ -359,15 +362,14 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
     );
     const synced = Number(rows[0]?.n ?? 0);
     if (synced === 0) {
-      res.status(409).json({
-        error: "Ждём синхронизацию PropReports: за эту дату ещё нет импортированных сделок",
-        code: "SYNC_PENDING", date, lastSyncedAt: rows[0]?.last ? new Date(rows[0].last).toISOString() : null, scheduler: sched,
-      });
-      return;
+      throw new AppError("SYNC_PENDING", 409, undefined, { date, lastSyncedAt: rows[0]?.last ? new Date(rows[0].last).toISOString() : null, scheduler: sched });
     }
   }
 
   const D = `substring(${closeDateSql("t")}, 1, 10)`;
+  // The EOD entry is a post by the curator who runs it → written in their language.
+  const lang = langOf(req);
+  const tr = feedT.tFor(lang);
   const [perTrader, perSetup, perTicker, carries] = await Promise.all([
     pool.query<Record<string, unknown>>(
       `SELECT COALESCE(t.trader, '—') AS trader, COUNT(*)::text AS n,
@@ -380,10 +382,10 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
               BOOL_OR(t.source = 'propreports') AS synced
          FROM trades t WHERE t.deleted_at IS NULL AND ${D} = $1 GROUP BY 1 ORDER BY SUM(${netPnlSql("t")}) DESC NULLS LAST, 1`, [date]),
     pool.query<Record<string, unknown>>(
-      `SELECT COALESCE(NULLIF(TRIM(t.setup), ''), 'без сетапа') AS setup, COUNT(*)::text AS n,
+      `SELECT COALESCE(NULLIF(TRIM(t.setup), ''), $2) AS setup, COUNT(*)::text AS n,
               COUNT(*) FILTER (WHERE ${resultSql("t")} = 'win')::text AS wins, COUNT(*) FILTER (WHERE ${resultSql("t")} = 'loss')::text AS losses,
               SUM(${signedRSql("t")})::text AS sum_r, SUM(${netPnlSql("t")})::text AS net
-         FROM trades t WHERE t.deleted_at IS NULL AND ${D} = $1 GROUP BY 1 ORDER BY SUM(${netPnlSql("t")}) DESC NULLS LAST, SUM(${signedRSql("t")}) DESC NULLS LAST`, [date]),
+         FROM trades t WHERE t.deleted_at IS NULL AND ${D} = $1 GROUP BY 1 ORDER BY SUM(${netPnlSql("t")}) DESC NULLS LAST, SUM(${signedRSql("t")}) DESC NULLS LAST`, [date, tr("eod.noSetup")]),
     pool.query<Record<string, unknown>>(
       `SELECT UPPER(t.ticker) AS ticker, COUNT(*)::text AS n, SUM(${netPnlSql("t")})::text AS net, SUM(${signedRSql("t")})::text AS sum_r
          FROM trades t WHERE t.deleted_at IS NULL AND ${D} = $1 GROUP BY 1 ORDER BY SUM(${netPnlSql("t")}) DESC NULLS LAST, COUNT(*) DESC LIMIT 8`, [date]),
@@ -394,7 +396,7 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
          ORDER BY t.trader, t.ticker LIMIT 50`, [date]),
   ]);
 
-  const money = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`);
+  const money = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString(localeTagFor(lang), { maximumFractionDigits: 0 })}`);
   const rr = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}R`);
   const traders: EodTrader[] = perTrader.rows.map((r) => {
     const gross = strToNum(r.gross), fees = strToNum(r.fees), net = strToNum(r.net), sr = strToNum(r.sum_r);
@@ -409,25 +411,29 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
   const setups = perSetup.rows.map((r) => ({ setup: String(r.setup), n: Number(r.n), wins: Number(r.wins), losses: Number(r.losses), sumR: strToNum(r.sum_r), net: strToNum(r.net) }));
   const good = setups.filter((s) => (s.net != null ? s.net > 0 : (s.sumR ?? 0) > 0));
   const bad = setups.filter((s) => (s.net != null ? s.net < 0 : (s.sumR ?? 0) < 0));
-  const fmtSetup = (s: typeof setups[number]) => `${s.setup} — ${s.n} сд., ${s.wins}W/${s.losses}L, ${s.net != null ? money(s.net) + " нетто" : rr(s.sumR)}`;
+  const fmtSetup = (s: typeof setups[number]) => tr("eod.setupLine", { setup: s.setup, n: s.n, wins: s.wins, losses: s.losses, result: s.net != null ? tr("eod.net", { money: money(s.net) }) : rr(s.sumR) });
   const tickers = perTicker.rows.map((r) => String(r.ticker)).filter(Boolean);
 
   const lines: string[] = [];
-  lines.push(`Итоги дня ${date}: ${totalN} сделок, ${totalNet != null ? `${money(totalNet)} нетто` : "P&L не заполнен"}${totalR != null ? `, ${rr(totalR)}` : ""}.`);
+  lines.push(tr("eod.head", { date, trades: tr("eod.trades", { count: totalN }), result: totalNet != null ? tr("eod.net", { money: money(totalNet) }) : tr("eod.pnlMissing"), r: totalR != null ? `, ${rr(totalR)}` : "" }));
   for (const t of traders) {
     const decided = t.wins + t.losses;
     const wr = decided ? `${Math.round((t.wins / decided) * 100)}% WR` : "WR —";
-    lines.push(`• ${t.trader}: ${t.n} сд., ${t.wins}W/${t.losses}L${t.be ? `/${t.be}BE` : ""}${t.open ? `, открыто ${t.open}` : ""}, ${t.net != null ? `${money(t.net)} нетто (брутто ${money(t.gross)}, комиссии $${(t.fees ?? 0).toFixed(0)})` : rr(t.sumR)}, ${wr}${t.synced ? "" : " · вручную"}`);
+    lines.push(tr("eod.traderLine", {
+      trader: t.trader, n: t.n, wl: `${t.wins}W/${t.losses}L${t.be ? `/${t.be}BE` : ""}`, open: t.open ? tr("eod.open", { n: t.open }) : "",
+      result: t.net != null ? tr("eod.netDetail", { net: money(t.net), gross: money(t.gross), fees: `$${(t.fees ?? 0).toFixed(0)}` }) : rr(t.sumR),
+      wr, manual: t.synced ? "" : tr("eod.manual"),
+    }));
   }
   if (carries.rows.length) {
     lines.push("");
-    lines.push("Переносим через ночь:");
+    lines.push(tr("eod.carries"));
     for (const c of carries.rows) lines.push(`• ${c.trader ?? "—"}: ${c.ticker} ${String(c.side ?? "").toUpperCase()}${c.qty != null ? ` ×${strToNum(c.qty)}` : ""} (${c.horizon})`);
   }
   const whatWorks = good.slice(0, 5).map(fmtSetup).join("\n") || null;
   const whatFails = bad.slice(0, 5).map(fmtSetup).join("\n") || null;
   const payload = {
-    date, marketTheme: `Итоги дня · ${totalNet != null ? `${money(totalNet)} нетто` : `${totalN} сделок`}`,
+    date, marketTheme: tr("eod.theme", { value: totalNet != null ? tr("eod.net", { money: money(totalNet) }) : tr("eod.trades", { count: totalN }) }),
     whatWorksNow: whatWorks, whatDoesntWork: whatFails, bestTickers: tickers.join(", ") || null, notes: lines.join("\n"),
     tags: EOD_TAG, stats: { traders, setups, tickers: perTicker.rows.map((r) => ({ ticker: String(r.ticker), n: Number(r.n), net: strToNum(r.net), sumR: strToNum(r.sum_r) })), totalNet, totalR, totalN, carries: carries.rows.length },
   };
@@ -453,7 +459,7 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
     );
     entry = rows[0];
   }
-  logActivity({ action: existing[0] ? "eod_updated" : "eod_created", section: "dailyfeed", entityId: String(entry.id), entityTitle: `Итоги дня ${date}`, trader: req.authUser!.name, details: totalNet != null ? `${totalNet} нетто` : undefined });
+  logActivity({ action: existing[0] ? "eod_updated" : "eod_created", section: "dailyfeed", entityId: String(entry.id), entityTitle: activityTitle("eod_day", { date }), trader: req.authUser!.name, details: totalNet != null ? activityDetails("eodNet", { net: totalNet }) : undefined, params: { titleKey: "eod_day", ...(totalNet != null ? { detailsKey: "eodNet" } : {}), date, net: totalNet ?? null } });
   res.status(existing[0] ? 200 : 201).json({ entry: serializeFeed(entry), updated: !!existing[0], ...payload });
 }));
 
@@ -461,11 +467,11 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const params = GetDailyFeedParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const entry = await loadFeed(params.data.id);
-  if (!entry) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!entry) throw notFound("FEED_ENTRY_NOT_FOUND");
   const acks = await acksFor([entry.id], req.authUser.name);
   res.json(serializeFeed(entry, acks.get(entry.id)));
 }));
@@ -479,14 +485,14 @@ router.patch("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = UpdateDailyFeedParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const parsed = UpdateDailyFeedBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const existing = await loadFeed(params.data.id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Изменять запись может только автор или куратор" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   const d = parsed.data as Record<string, unknown>;
-  if (d.date !== undefined && !ISO_DATE.test(String(d.date).slice(0, 10))) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (d.date !== undefined && !ISO_DATE.test(String(d.date).slice(0, 10))) throw badRequest("INVALID_DATE");
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, v] of Object.entries(d)) {
@@ -498,7 +504,7 @@ router.patch("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
   if (sets.length) {
     vals.push(existing.id);
     const { rows } = await pool.query<FeedRow>(`UPDATE daily_feed SET ${sets.join(", ")} WHERE id = $${vals.length} AND deleted_at IS NULL RETURNING ${COLS}`, vals);
-    if (!rows[0]) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+    if (!rows[0]) throw notFound("FEED_ENTRY_NOT_FOUND");
     entry = rows[0];
   }
   logActivity({ action: "updated", section: "dailyfeed", entityId: String(entry.id), entityTitle: `${entry.date}${entry.market_theme ? ` · ${entry.market_theme}` : ""}`, trader: req.authUser!.name });
@@ -512,10 +518,10 @@ router.delete("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => 
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteDailyFeedParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const existing = await loadFeed(params.data.id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Удалить запись может только автор или куратор" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await pool.query(`UPDATE daily_feed SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [existing.id]);
   logActivity({ action: "deleted", section: "dailyfeed", entityId: String(existing.id), entityTitle: existing.date, trader: req.authUser!.name });
   res.sendStatus(204);
@@ -526,8 +532,8 @@ router.post("/dailyfeed/:id/restore", asyncHandler(async (req, res): Promise<voi
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadFeed(id, true);
-  if (!existing || !existing.deleted_at) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Восстановить запись может только автор или куратор" }); return; }
+  if (!existing || !existing.deleted_at) throw notFound("FEED_ENTRY_NOT_FOUND");
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await pool.query(`UPDATE daily_feed SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
   logActivity({ action: "restored", section: "dailyfeed", entityId: String(id), entityTitle: existing.date, trader: req.authUser!.name });
   res.json({ success: true });
@@ -542,9 +548,9 @@ router.post("/dailyfeed/:id/ack", asyncHandler(async (req, res): Promise<void> =
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = AckBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: "kind must be read | ack | trading_this" }); return; }
+  if (!body.success) throw new AppError("INVALID_FIELD", undefined, { field: "kind" });
   const existing = await loadFeed(id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
   const on = body.data.on ?? true;
   const me = req.authUser!.name;
   if (on) {
@@ -561,10 +567,10 @@ router.post("/dailyfeed/:id/ack", asyncHandler(async (req, res): Promise<void> =
 
 router.get("/dailyfeed/:id/acks", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadFeed(id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
   const { rows } = await pool.query<{ user_name: string; kind: string; created_at: Date }>(
     `SELECT user_name, kind, created_at FROM feed_acks WHERE entry_id = $1 ORDER BY created_at`, [id],
   );

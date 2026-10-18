@@ -8,15 +8,20 @@ import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { PHASE_LABEL, formatCountdown, getSessionState, type SessionPhase } from "./market-session";
-import { fmtMoney, fmtR, plural, shortDate } from "./fmt";
+import { shortDate } from "./fmt";
+import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import type { DashboardToday, RiskDesk, RiskMe, Scope } from "./use-dashboard";
+import { commonI18n } from "@/i18n/ns/common";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { personName } from "@/i18n";
 
 function greeting(d: Date) {
   const h = d.getHours();
-  if (h < 5) return "Доброй ночи";
-  if (h < 12) return "Доброе утро";
-  if (h < 18) return "Добрый день";
-  return "Добрый вечер";
+  const t = dashboardI18n.t;
+  if (h < 5) return t("hero.greeting.night");
+  if (h < 12) return t("hero.greeting.morning");
+  if (h < 18) return t("hero.greeting.day");
+  return t("hero.greeting.evening");
 }
 
 const PHASE_TONE: Record<SessionPhase, Tone> = { pre: "warn", regular: "up", after: "purple", closed: "neutral" };
@@ -54,11 +59,13 @@ function Cell({
     </>
   );
   const cls = "flex min-w-0 flex-col gap-0.5 lg:border-l lg:border-[var(--glass-border)] lg:pl-4";
+  // Narrow cells truncate the hint: keep the full text reachable on hover.
+  const tip = title ?? (typeof hint === "string" ? hint : undefined);
   if (href) {
     return (
       <Link
         href={href}
-        title={title}
+        title={tip}
         className={cn(cls, "rounded-lg transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
       >
         {body}
@@ -66,7 +73,7 @@ function Cell({
     );
   }
   return (
-    <div className={cls} title={title}>
+    <div className={cls} title={tip}>
       {body}
     </div>
   );
@@ -80,7 +87,7 @@ function MarketCell({ holidays }: { holidays: { date: string; name: string }[] }
     return () => window.clearInterval(id);
   }, []);
   const s = getSessionState(now, holidays);
-  const reason = s.phase === "closed" ? (s.holiday ?? (s.weekend ? "выходной" : null)) : null;
+  const reason = s.phase === "closed" ? (s.holiday ?? (s.weekend ? dashboardI18n.t("hero.weekend") : null)) : null;
   return (
     <Cell
       label={
@@ -89,7 +96,7 @@ function MarketCell({ holidays }: { holidays: { date: string; name: string }[] }
           {reason ? ` · ${reason}` : ""}
         </StatusDot>
       }
-      title="Время Нью-Йорка (ET)"
+      title={dashboardI18n.t("hero.nyTime")}
       value={
         <>
           <time dateTime={`${s.nyDate}T${s.nyTime}`}>{s.nyTime.slice(0, 5)}</time>
@@ -102,41 +109,42 @@ function MarketCell({ holidays }: { holidays: { date: string; name: string }[] }
 }
 
 function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefined; desk: RiskDesk | null | undefined; team: boolean; loading: boolean }) {
+  const { t } = dashboardI18n.useT();
   if (team) {
-    if (desk === undefined && loading) return <Cell label="Риск-лимиты деска" value="" loading />;
-    if (!desk) return <Cell label="Риск-лимиты деска" value="—" hint="Риск-деск недоступен" href={links.risk()} />;
+    if (desk === undefined && loading) return <Cell label={t("hero.deskLimits")} value="" loading />;
+    if (!desk) return <Cell label={t("hero.deskLimits")} value="—" hint={t("hero.riskUnavailable")} href={links.risk()} />;
     const s = desk.summary;
     const bad = s.halted + s.breach;
-    const value = bad > 0 ? `${bad} ${plural(bad, ["стоп", "стопа", "стопов"])}` : s.warn > 0 ? `${s.warn} близко к лимиту` : "Все в лимитах";
+    const value = bad > 0 ? t("hero.stops", { count: bad }) : s.warn > 0 ? t("hero.nearLimit", { count: s.warn }) : t("hero.allWithin");
     const tone: Tone = bad > 0 ? "down" : s.warn > 0 ? "warn" : "up";
     return (
       <Cell
-        label="Риск-лимиты деска"
+        label={t("hero.deskLimits")}
         value={value}
         tone={tone}
-        hint={s.noLimits > 0 ? `${s.noLimits} ${plural(s.noLimits, ["трейдер", "трейдера", "трейдеров"])} без лимитов` : `${s.traders} ${plural(s.traders, ["трейдер", "трейдера", "трейдеров"])}`}
+        hint={s.noLimits > 0 ? t("hero.noLimits", { traders: commonI18n.t("units.traders", { count: s.noLimits }) }) : commonI18n.t("units.traders", { count: s.traders })}
         href={links.risk()}
       />
     );
   }
-  if (risk === undefined && loading) return <Cell label="Дневной лимит" value="" loading />;
-  if (!risk) return <Cell label="Дневной лимит" value="—" hint="Риск-деск недоступен" />;
+  if (risk === undefined && loading) return <Cell label={t("hero.dailyLimit")} value="" loading />;
+  if (!risk) return <Cell label={t("hero.dailyLimit")} value="—" hint={t("hero.riskUnavailable")} />;
   if (risk.halted) {
-    return <Cell label="Дневной лимит" value={risk.stop.label} tone="down" hint={risk.stop.message} href={links.risk(risk.trader)} title={risk.stop.message} />;
+    return <Cell label={t("hero.dailyLimit")} value={risk.stop.label} tone="down" hint={risk.stop.message} href={links.risk(risk.trader)} title={risk.stop.message} />;
   }
   const limit = risk.limits?.dailyLossLimit ?? null;
   if (!risk.limits || limit == null || limit <= 0) {
-    return <Cell label="Дневной лимит" value="Не задан" hint="Лимиты задаёт куратор" href={links.risk(risk.trader)} />;
+    return <Cell label={t("hero.dailyLimit")} value={t("hero.notSet")} hint={t("hero.setByCurator")} href={links.risk(risk.trader)} />;
   }
   const loss = Math.max(0, -(risk.today.pnlNet ?? 0));
   const remaining = risk.today.dailyRemainingUsd ?? Math.max(0, limit - loss);
   const lt = limitTone(loss, limit, 0.6);
   return (
     <Cell
-      label="Остаток дневного лимита"
-      value={`$${Math.round(remaining).toLocaleString("ru-RU")}`}
+      label={t("hero.remaining")}
+      value={fmtUsd(remaining, { decimals: 0 })}
       tone={lt === "ok" ? "neutral" : limitToneToTone(lt)}
-      hint={`из $${Math.round(limit).toLocaleString("ru-RU")} · использовано ${Math.round(Math.min(1, loss / limit) * 100)}%`}
+      hint={t("hero.usedOf", { limit: fmtUsd(limit, { decimals: 0 }), pct: fmtRate(Math.min(1, loss / limit)) })}
       href={links.risk(risk.trader)}
       extra={<LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" />}
     />
@@ -174,53 +182,61 @@ export function DashboardHeader({
   userName: string | null;
   customize: ReactNode;
 }) {
+  const { t: tr } = dashboardI18n.useT();
   const now = new Date();
-  const dateLabel = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+  const rawDate = fmtDate(now, "weekdayDayMonthLong");
+  // «Суббота, 17 октября»: only the first letter is capital (CSS `capitalize` would also give «Октября»).
+  const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
   const t = data?.today;
   const w = data?.week;
   const loading = isLoading && !data;
   const team = scope === "team";
   const quietDay = !!data && (data.market.weekend || !!data.market.holidayToday);
 
-  const todayValue = t?.pnlNet != null ? fmtMoney(t.pnlNet) : t && t.rCount > 0 ? fmtR(t.r) : "—";
+  const todayValue = t?.pnlNet != null ? fmtUsd(t.pnlNet, { signed: true }) : t && t.rCount > 0 ? fmtR(t.r) : "—";
   const todayHint = t
     ? t.closed > 0
-      ? `${t.closed} ${plural(t.closed, ["сделка", "сделки", "сделок"])} · ${t.wins}W / ${t.losses}L${t.pnlNet != null && t.rCount > 0 ? ` · ${fmtR(t.r)}` : ""}${t.fees ? ` · комиссии ${fmtMoney(-Math.abs(t.fees))}` : ""}`
+      ? [
+          commonI18n.t("units.trades", { count: t.closed }),
+          `${t.wins}W / ${t.losses}L`,
+          t.pnlNet != null && t.rCount > 0 ? fmtR(t.r) : null,
+          t.fees ? tr("hero.fees", { amount: fmtUsd(-Math.abs(t.fees), { signed: true }) }) : null,
+        ].filter(Boolean).join(" · ")
       : quietDay
-        ? "Рынок закрыт"
-        : "Закрытых сделок пока нет"
+        ? tr("hero.marketClosed")
+        : tr("hero.noClosed")
     : undefined;
 
-  const weekValue = w?.pnlNet != null ? fmtMoney(w.pnlNet) : w && w.rCount > 0 ? fmtR(w.r) : "—";
+  const weekValue = w?.pnlNet != null ? fmtUsd(w.pnlNet, { signed: true }) : w && w.rCount > 0 ? fmtR(w.r) : "—";
   const weekHint = w
     ? w.closed > 0
-      ? `${w.closed} ${plural(w.closed, ["сделка", "сделки", "сделок"])} · ${w.greenDays}/${w.tradingDays} дн. в плюсе`
-      : "Сделок на неделе нет"
+      ? tr("hero.weekHint", { trades: commonI18n.t("units.trades", { count: w.closed }), green: w.greenDays, days: w.tradingDays })
+      : tr("hero.noWeekTrades")
     : undefined;
 
   return (
     <section aria-labelledby="dash-hero-title" className="glass-panel rounded-2xl p-[var(--panel-p)]">
-      <div className="grid items-center gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(250px,1.25fr)_repeat(4,minmax(0,1fr))]">
+      <div className="grid items-center gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(270px,1.35fr)_repeat(4,minmax(0,1fr))]">
         <div className="flex min-w-0 items-start justify-between gap-2 sm:col-span-2 lg:col-span-1">
           <div className="min-w-0">
-            <p className="truncate text-xs capitalize text-muted-foreground">
+            <p className="truncate text-xs text-muted-foreground">
               {dateLabel}
-              {data && data.market.nyDate !== data.date ? ` · торговый день ${shortDate(data.date)}` : ""}
+              {data && data.market.nyDate !== data.date ? ` · ${tr("hero.tradingDay", { date: shortDate(data.date) })}` : ""}
             </p>
-            <h1 id="dash-hero-title" className="truncate text-xl font-semibold leading-7 tracking-tight">
+            <h1 id="dash-hero-title" className="line-clamp-2 text-xl font-semibold leading-7 tracking-tight [overflow-wrap:anywhere]">
               {greeting(now)}
-              {userName ? `, ${userName}` : ""}
+              {userName ? `, ${personName(userName)}` : ""}
             </h1>
             {canChooseScope && !guest && (
               <Segmented<Scope>
-                ariaLabel="Чьи данные показывать"
+                ariaLabel={tr("hero.scopeAria")}
                 size="sm"
                 className="mt-1.5"
                 value={scope}
                 onChange={onScopeChange}
                 options={[
-                  { value: "me", label: "Мои" },
-                  { value: "team", label: "Команда" },
+                  { value: "me", label: tr("hero.mine") },
+                  { value: "team", label: tr("hero.team") },
                 ]}
               />
             )}
@@ -232,21 +248,21 @@ export function DashboardHeader({
 
         {guest ? (
           <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
-            <span className="text-sm font-medium">Гостевой режим</span>
-            <span className="text-xs text-muted-foreground">Войдите под своим именем, чтобы видеть P&L, задачи и кривую капитала.</span>
+            <span className="text-sm font-medium">{tr("hero.guest")}</span>
+            <span className="text-xs text-muted-foreground">{tr("hero.guestHint")}</span>
           </div>
         ) : isError && !data ? (
           <div className="flex min-w-0 items-center gap-3 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
-            <span className="text-sm">Не удалось загрузить сводку дня</span>
+            <span className="text-sm">{tr("hero.loadFailed")}</span>
             <Button variant="outline" size="sm" onClick={onRetry}>
               <RefreshCw aria-hidden="true" />
-              Повторить
+              {commonI18n.t("actions.retry")}
             </Button>
           </div>
         ) : (
           <>
             <Cell
-              label={team ? "Деск сегодня · нетто" : "Сегодня · нетто"}
+              label={team ? tr("hero.deskToday") : tr("hero.today")}
               title={KPI_FORMULAS.netPnl}
               loading={loading}
               value={todayValue}
@@ -254,8 +270,8 @@ export function DashboardHeader({
               hint={todayHint}
             />
             <Cell
-              label={w ? `Неделя с ${shortDate(w.from)} · нетто` : "Неделя · нетто"}
-              title="Понедельник–пятница по Нью-Йорку, по дате закрытия сделки"
+              label={w ? tr("hero.weekFrom", { date: shortDate(w.from) }) : tr("hero.week")}
+              title={tr("hero.weekTitle")}
               loading={loading}
               value={weekValue}
               tone={toneOf(w?.pnlNet ?? (w && w.rCount > 0 ? w.r : null))}

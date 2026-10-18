@@ -25,8 +25,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Bar, ChartMode, Drawing, DrawingPoint, DrawingType, Execution, Timeframe, TradeLike, TradeStructureDto, TrainingResult } from "./types";
 import { TIMEFRAMES, TF_LABEL, TF_SECONDS } from "./types";
 import { aggregate, availableTimeframes, barSeconds, baseBarLabel } from "./lib/aggregate";
-import { barIndexForTime, fmtEtDateTime, fmtEtDay, fmtEtTime, logicalToTime, tickMarkLabel } from "./lib/time";
-import { fmtPrice } from "./lib/format";
+import { barIndexForTime, etDayKey, fmtEtDateTime, fmtEtDay, fmtEtTime, logicalToTime, tickMarkLabel } from "./lib/time";
+import { fmtPrice, fmtUsd, localeTag } from "@/lib/format";
 import { buildGeometry, type Geometry } from "./lib/geometry";
 import { isOpening, positionAt } from "./lib/position";
 import { DRAWING_POINTS, loadDrawings, makeDrawing, saveDrawings } from "./lib/drawings";
@@ -36,7 +36,8 @@ import {
   type SimAction, type SimState, type TrainingOutcome,
 } from "./lib/training-sim";
 import { buildTradeSummary } from "./lib/trade-summary";
-import { capVolumes, defaultViewRange, followCursor } from "./lib/view";
+import { capVolumes, daySpanOf, defaultViewRange, followCursor, isViewMode, type ViewMode } from "./lib/view";
+import { chartI18n } from "@/i18n/ns/chart";
 import { readChartTheme, type ChartTheme } from "./theme";
 import { useChartData } from "./hooks/useChartData";
 import { useThemeVersion } from "./hooks/useThemeVersion";
@@ -120,6 +121,8 @@ type ChartRefs = {
 const OVERLAYS_KEY = "ws-chart:overlays:v3";
 const PANES_KEY = "ws-chart:panes:v2";
 const REPLAY_KEY = "ws-chart:replay:v2";
+/** Default zoom of a trade: the whole day (owner: «график должен полностью показываться за тот день»). */
+const VIEW_KEY = "ws-chart:view:v1";
 const TICKET_KEY = "ws-chart:ticket:v1";
 type ReplayPrefs = { speed: ReplaySpeed; start: ReplayStart; trainStart: ReplayStart; pauseOnFills: boolean };
 const DEFAULT_REPLAY: ReplayPrefs = { speed: 5, start: "15", trainStart: "30", pauseOnFills: true };
@@ -440,13 +443,30 @@ export function WsChart({
   const updateDrawings = React.useCallback((fn: (d: Drawing[]) => Drawing[]) => setDrawings((d) => { const n = fn(d); saveDrawings(trade.id, n); return n; }), [trade.id]);
   const [tool, setTool] = React.useState<DrawingType | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
+  const clearDrawings = React.useCallback(() => { updateDrawings(() => []); setSelected(null); }, [updateDrawings]);
   const pendingRef = React.useRef<DrawingPoint[]>([]);
   const [pendingCount, setPendingCount] = React.useState(0);
-  const [hover, setHover] = React.useState<number | null>(null);
+  // Hovered bar lives outside React state: the crosshair updates only the legend, not the whole chart + panels.
+  const [hoverStore] = React.useState(createHoverStore);
 
   live.current = { mode, tool, bars, barSec, cursorIdx, revealAll, replayActive, startIdx, speed, last, limitIdx, pauseIdx, pauseOnFills: prefs.pauseOnFills, hideReal };
 
   // ── View ─────────────────────────────────────────────────────────────────
+  const { t: tc } = chartI18n.useT();
+  const [viewMode, setViewModeState] = React.useState<ViewMode>(() => {
+    try { const v = localStorage.getItem(VIEW_KEY); return isViewMode(v) ? v : "day"; } catch { return "day"; }
+  });
+  const setViewMode = React.useCallback((v: ViewMode) => {
+    setViewModeState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* storage unavailable */ }
+  }, []);
+  // Every bar of the trade's day(s): premarket → after-hours of the entry day … the exit day (context days excluded).
+  const daySpan = React.useMemo(
+    () => (intraday && bars.length ? daySpanOf(bars.map((b) => etDayKey(b.t)), data.dateKey, data.toKey || data.dateKey) : null),
+    [intraday, bars, data.dateKey, data.toKey],
+  );
+  /** «День / Сделка» only makes sense for a trade on intraday bars outside replay (replay follows its cursor). */
+  const showViewSwitch = hasTrade && daySpan != null && !replayActive;
   const fitView = React.useCallback(() => {
     const r = refs.current;
     if (!r) return;
@@ -454,13 +474,19 @@ export function WsChart({
     const ts = r.chart.timeScale();
     if (s.replayActive && !s.revealAll && s.cursorIdx != null) ts.setVisibleLogicalRange({ from: s.cursorIdx - 70, to: s.cursorIdx + 30 });
     else {
-      const range = defaultViewRange({ count: s.bars.length, entryIdx: geo.entryIdx, exitIdx: geo.exitIdx, dayRange: geo.dayRange });
+      const range = defaultViewRange({ count: s.bars.length, entryIdx: geo.entryIdx, exitIdx: geo.exitIdx, dayRange: geo.dayRange, daySpan, mode: hasTrade ? viewMode : "trade" });
       if (range) ts.setVisibleLogicalRange(range); else ts.fitContent();
     }
     r.chart.priceScale("right").applyOptions({ autoScale: true });
-  }, [geo.entryIdx, geo.exitIdx, geo.dayRange]);
+  }, [geo.entryIdx, geo.exitIdx, geo.dayRange, daySpan, viewMode, hasTrade]);
   const fitRef = React.useRef(fitView);
   fitRef.current = fitView;
+  // Switching «День / Сделка» re-frames at once (the chart itself is not rebuilt).
+  const viewInit = React.useRef(true);
+  React.useEffect(() => {
+    if (viewInit.current) { viewInit.current = false; return; }
+    fitRef.current();
+  }, [viewMode]);
 
   // ── Chart build ──────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -479,7 +505,7 @@ export function WsChart({
         shiftVisibleRangeOnNewBar: false,
         tickMarkFormatter: (time: Time, type: number) => (typeof time === "number" ? tickMarkLabel(time, type) : ""),
       },
-      localization: { locale: "ru-RU", timeFormatter: (time: Time) => (typeof time === "number" ? fmtEtDateTime(time) : String(time)), priceFormatter: (p: number) => fmtPrice(p) },
+      localization: { locale: localeTag(), timeFormatter: (time: Time) => (typeof time === "number" ? fmtEtDateTime(time) : String(time)), priceFormatter: (p: number) => fmtPrice(p) },
       rightPriceScale: { borderColor: theme.border(), scaleMargins: { top: 0.08, bottom: 0.2 } },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -553,7 +579,7 @@ export function WsChart({
       }
       if (idx !== lastHover) {
         lastHover = idx;
-        if (!raf) raf = window.requestAnimationFrame(() => { raf = 0; setHover(lastHover); });
+        if (!raf) raf = window.requestAnimationFrame(() => { raf = 0; hoverStore.set(lastHover); });
       }
       if (st.tool && pendingRef.current.length && param.point && param.paneIndex === 0 && param.logical != null) {
         const price = candles.coordinateToPrice(param.point.y);
@@ -608,7 +634,7 @@ export function WsChart({
       for (const p of seriesPrims) candles.detachPrimitive(p);
       chart.remove();
       refs.current = null;
-      setHover(null);
+      hoverStore.set(null);
     };
     // Rebuild only when the bar set, timeframe or theme changes; everything else is pushed by the effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -632,7 +658,7 @@ export function WsChart({
         topLineColor: th.up(1), topFillColor1: th.up(0.3), topFillColor2: th.up(0.03),
         bottomLineColor: th.down(1), bottomFillColor1: th.down(0.03), bottomFillColor2: th.down(0.3),
         lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true,
-        priceFormat: { type: "custom", formatter: (p: number) => `${p < 0 ? "−" : ""}$${Math.abs(p).toFixed(0)}`, minMove: 0.01 },
+        priceFormat: { type: "custom", formatter: (p: number) => fmtUsd(p, { decimals: 0 }), minMove: 0.01 },
         title: "P&L",
       }, 1);
       r.pnl.getPane().setStretchFactor(STRETCH.pnl);
@@ -757,13 +783,14 @@ export function WsChart({
     if ((k === "Delete" || k === "Backspace") && selected) { e.preventDefault(); updateDrawings((d) => d.filter((x) => x.id !== selected)); setSelected(null); return; }
     if (code === "KeyF") { e.preventDefault(); if (e.shiftKey) toggleFullscreen(); else fitView(); return; }
     if (code === "KeyT") { e.preventDefault(); cycleTf(); return; }
+    if (!replayActive && showViewSwitch && (code === "KeyD" || code === "KeyZ")) { e.preventDefault(); setViewMode(code === "KeyD" ? "day" : "trade"); return; }
     if (!replayActive) return;
     const btn = (e.target as HTMLElement | null)?.tagName === "BUTTON";
-    if (k === " ") { e.preventDefault(); togglePlay(); return; }
+    if (k === " " || code === "Space") { e.preventDefault(); togglePlay(); return; }
     if (k === "ArrowRight") { e.preventDefault(); step(e.shiftKey ? 10 : 1); return; }
     if (k === "ArrowLeft") { e.preventDefault(); step(e.shiftKey ? -10 : -1); return; }
-    if (k === "+" || k === "=") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, 1) }); return; }
-    if (k === "-" || k === "_") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, -1) }); return; }
+    if (k === "+" || k === "=" || code === "Equal" || code === "NumpadAdd") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, 1) }); return; }
+    if (k === "-" || k === "_" || code === "Minus" || code === "NumpadSubtract") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, -1) }); return; }
     if (k === "Home") { e.preventDefault(); if (training) resetSession(); else { setPlaying(false); setCursor(startIdx); } return; }
     if (training) {
       if (code === "KeyB") { e.preventDefault(); placeOrder("buy"); }
@@ -772,6 +799,7 @@ export function WsChart({
       else if (code === "KeyH") { e.preventDefault(); placeOrder("half"); }
       else if (code === "KeyE") { e.preventDefault(); breakeven(); }
       else if (k === "Enter" && !btn) { e.preventDefault(); reveal(); }
+      else if (code === "KeyN" && revealed && onNextTask) { e.preventDefault(); onNextTask(); }
       return;
     }
     if (code === "KeyE") { e.preventDefault(); jumpEntry(); }
@@ -821,7 +849,7 @@ export function WsChart({
     return Math.max(0, (idx === geo.entryIdx ? bar.t + Math.min(barSec, 60) : bar.t + barSec) - entryT);
   }, [bars, geo.entryTime, geo.entryIdx, barSec]);
 
-  const legend: LegendInfo | null = React.useMemo(() => {
+  const legendAt = React.useCallback((hover: number | null): LegendInfo | null => {
     if (!bars.length) return null;
     const idx = hover ?? (cursorIdx != null && !revealAll ? cursorIdx : (cursorIdx ?? (geo.exitIdx ?? last)));
     const bar = bars[idx];
@@ -830,7 +858,7 @@ export function WsChart({
     const v = ov.vwap && geo.vwap.length ? bsearch(geo.vwap, idx) : null;
     const av = ov.avwap && geo.avwap.length ? bsearch(geo.avwap, idx) : null;
     return { bar, idx, hovered: hover != null, position: pos, sinceEntry: sinceEntryAt(idx), vwap: v, avwap: av?.vwap ?? null, rvol: geo.rvol[idx] ?? null, risk: geo.risk, side: geo.side, prevClose: geo.levels.pdc ?? data.prevClose, redacted };
-  }, [bars, hover, cursorIdx, revealAll, geo, last, hideReal, visibleFills, trade.qty, ov.vwap, ov.avwap, sinceEntryAt, data.prevClose, redacted]);
+  }, [bars, cursorIdx, revealAll, geo, last, hideReal, visibleFills, trade.qty, ov.vwap, ov.avwap, sinceEntryAt, data.prevClose, redacted]);
 
   const marks: ReplayMark[] = React.useMemo(() => visibleFills.map((f) => ({ idx: f.idx, kind: f.kind, label: f.label })), [visibleFills]);
   const livePosition = React.useMemo(() => {
@@ -844,19 +872,24 @@ export function WsChart({
   const suggestLong = cursorIdx != null && training ? suggestStop(bars, cursorIdx, 1) : null;
   const suggestShort = cursorIdx != null && training ? suggestStop(bars, cursorIdx, -1) : null;
 
+  const hasNextTask = !!onNextTask;
   const hotkeys: HotkeyRow[] = React.useMemo(() => {
     const rows: HotkeyRow[] = [];
     if (replayActive) {
-      rows.push([["Space"], "играть / пауза"], [["→"], "бар вперёд (Shift — 10)"]);
-      if (!training) rows.push([["←"], "бар назад (Shift — 10)"]);
-      rows.push([["+", "−"], "быстрее / медленнее"]);
-      if (training) rows.push([["B"], "купить"], [["S"], "продать / шорт"], [["H"], "закрыть половину"], [["E"], "стоп в безубыток"], [["C"], "закрыть позицию"], [["Enter"], "показать, как было"]);
-      else rows.push([["E"], "к входу"], [["X"], "к выходу"], [["N"], "к следующему исполнению"], [["P"], "пауза на исполнениях"]);
-      rows.push([["Home"], "в начало"]);
+      rows.push([[tc("hotkeys.keySpace")], tc("hotkeys.playPause")], [["→"], tc("hotkeys.stepForward")]);
+      if (!training) rows.push([["←"], tc("hotkeys.stepBack")]);
+      rows.push([["+", "−"], tc("hotkeys.speed")]);
+      if (training) {
+        rows.push([["B"], tc("hotkeys.buy")], [["S"], tc("hotkeys.sell")], [["H"], tc("hotkeys.half")], [["E"], tc("hotkeys.breakeven")], [["C"], tc("hotkeys.flat")], [["Enter"], tc("hotkeys.reveal")]);
+        if (hasNextTask) rows.push([["N"], tc("hotkeys.nextTask")]);
+      }
+      else rows.push([["E"], tc("hotkeys.toEntry")], [["X"], tc("hotkeys.toExit")], [["N"], tc("hotkeys.nextFill")], [["P"], tc("hotkeys.pauseOnFills")]);
+      rows.push([["Home"], tc("hotkeys.toStart")]);
     }
-    rows.push([["T"], "сменить таймфрейм"], [["F"], "показать сделку целиком"], [["Shift", "F"], "на весь экран"], [["Колесо"], "масштаб"], [["Esc"], "отменить рисование"]);
+    if (showViewSwitch) rows.push([["D"], tc("hotkeys.day")], [["Z"], tc("hotkeys.trade")]);
+    rows.push([["T"], tc("hotkeys.cycleTf")], [["F"], tc("hotkeys.fit")], [["Shift", "F"], tc("hotkeys.fullscreen")], [[tc("hotkeys.keyWheel")], tc("hotkeys.zoom")], [["Esc"], tc("hotkeys.cancelDrawing")]);
     return rows;
-  }, [replayActive, training]);
+  }, [replayActive, training, hasNextTask, showViewSwitch, tc]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   const isWorkspace = layout === "workspace" || fullscreen;
@@ -870,18 +903,19 @@ export function WsChart({
       <div className={cn("flex w-full min-w-0 flex-col gap-2", isWorkspace && "h-full min-h-0", className)} aria-busy="true">
         <Skeleton className="h-8 w-full max-w-[34rem] rounded-full" />
         <Skeleton className={cn("rounded-2xl", isWorkspace && "min-h-[280px] flex-1")} style={isWorkspace ? undefined : { height }} />
-        <span className="sr-only" role="status">Загружаем график…</span>
+        <span className="sr-only" role="status">{tc("engine.loading")}</span>
       </div>
     );
   }
   if (data.error || !bars.length) {
     const err = data.error;
-    const text = err?.reason === "weekend" ? `${data.dateKey} — выходной, биржа закрыта`
-      : err?.reason === "future" ? `${data.dateKey} ещё не наступило`
-      : err?.status === 404 ? `Нет свечей ${trade.ticker} за ${data.fromKey}…${data.toKey}`
-      : err ? `Не удалось загрузить свечи: ${err.message}`
-      : useDaily && data.daily.loading ? "Загружаем дневные бары…"
-      : `Нет свечей за ${data.dateKey}`;
+    const reason = err?.field<string>("reason");
+    const text = reason === "weekend" ? tc("engine.weekend", { date: data.dateKey })
+      : reason === "future" ? tc("engine.future", { date: data.dateKey })
+      : err?.status === 404 ? tc("engine.noCandlesRange", { ticker: trade.ticker, from: data.fromKey, to: data.toKey })
+      : err ? tc("engine.loadFailed", { message: err.message })
+      : useDaily && data.daily.loading ? tc("engine.loadingDaily")
+      : tc("engine.noCandles", { date: data.dateKey });
     return (
       <div className={cn("flex items-center gap-2 rounded-2xl bg-[var(--glass-bg)] px-4 py-6 text-sm text-muted-foreground", className)} role="status">
         <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" /> {text}
@@ -889,9 +923,10 @@ export function WsChart({
     );
   }
 
-  const fmtBarTime = (t: number) => (intraday ? `${fmtEtTime(t)} ET` : fmtEtDay(t));
+  // A multi-day trade (overnight / swing) spans several days: the replay labels carry the day too.
+  const fmtBarTime = (t: number) => (intraday ? (data.multiDay ? fmtEtDateTime(t) : `${fmtEtTime(t)} ET`) : fmtEtDay(t));
   const dockEnd = training ? sessionEnd : Math.min(last, Math.max(sessionEnd, geo.exitIdx ?? 0));
-  const hint = tool ? `${pendingCount ? "Вторая точка" : "Первая точка"}: кликните на графике · Esc — отмена` : selected ? "Delete — удалить выбранный рисунок" : null;
+  const hint = tool ? (pendingCount ? tc("engine.secondPoint") : tc("engine.firstPoint")) : selected ? tc("engine.deleteDrawing") : null;
   const replayDone = mode === "replay" && cursorIdx != null && geo.exitIdx != null && cursorIdx >= geo.exitIdx;
 
   let aside: React.ReactNode[] = [];
@@ -903,7 +938,7 @@ export function WsChart({
     if (hasTrade) aside.push(<FillLog key="log" fills={geo.fills} cursor={cursorIdx} redacted={redacted} onJump={(i) => { setPlaying(false); setCursor(i); }} />);
   } else if (training && cursorIdx != null) {
     if (outcome) {
-      const decisions: DecisionRow[] = sim.fills.map((f) => ({ idx: barIndexForTime(bars, f.t, barSec), time: fmtEtTime(f.t), price: f.price, qty: f.qty, reason: f.reason }));
+      const decisions: DecisionRow[] = sim.fills.map((f) => ({ idx: barIndexForTime(bars, f.t, barSec), time: data.multiDay ? `${fmtEtDay(f.t)} ${fmtEtTime(f.t)}` : fmtEtTime(f.t), price: f.price, qty: f.qty, reason: f.reason }));
       aside.push(
         <TrainingOutcomeCard
           key="out" o={outcome} decisions={decisions} traderName={hasTrade ? (trade.trader ?? undefined) : null}
@@ -933,30 +968,32 @@ export function WsChart({
       className={cn("ws-chart flex w-full min-w-0 max-w-full flex-col gap-2 outline-none", isWorkspace && "h-full min-h-0", fullscreen && "bg-background p-3", className)}
       tabIndex={-1}
       onKeyDown={global ? undefined : (e) => { if (!isTyping(e.target)) keyRef.current(e.nativeEvent); }}
-      aria-label="График: пробел — играть/пауза, стрелки — шаг, T — таймфрейм, F — показать сделку, Shift+F — весь экран"
+      aria-label={tc("engine.aria")}
     >
       <ChartToolbar
         timeframe={tf} timeframes={timeframes} allTimeframes={TIMEFRAMES} baseSec={data.baseSec} onTimeframe={setTf}
         mode={mode} onMode={setMode} showModes={showModes}
         overlays={overlays} onOverlay={setOverlay} panes={panes} onPane={setPane} hasPosition={geo.position.length > 0}
         hasEvents={geo.events.length > 0} hasStopOrTarget={geo.stop != null || geo.target != null} lockTrade={hideReal}
-        tool={tool} onTool={setTool} drawingsCount={drawings.length} onClearDrawings={() => { updateDrawings(() => []); setSelected(null); }}
+        tool={tool} onTool={setTool} drawingsCount={drawings.length} onClearDrawings={clearDrawings}
         onScreenshot={screenshot} onFit={fitView} onFullscreen={toggleFullscreen} fullscreen={fullscreen}
+        view={showViewSwitch ? viewMode : undefined} onView={setViewMode}
         fetching={data.fetching || (useDaily && data.daily.loading)} hotkeys={hotkeys}
       />
       <div className={cn("flex min-w-0 flex-col gap-2", isWorkspace && "min-h-0 flex-1 lg:flex-row")}>
         <div className={cn("flex min-w-0 flex-col gap-2", isWorkspace && "min-h-0 lg:flex-1")}>
           <div className={chartBoxCls} style={isWorkspace ? undefined : { height }}>
             <div ref={containerRef} className={cn("absolute inset-0 isolate overflow-hidden tabular-nums", tool && "cursor-crosshair")} />
-            <ChartLegend info={legend} ticker={trade.ticker} tfLabel={TF_LABEL[tf]} />
+            <LiveLegend store={hoverStore} build={legendAt} ticker={trade.ticker} tfLabel={TF_LABEL[tf]} />
             <FillsKey fills={visibleFills} structure={hideReal ? null : geo.structure} layer={structureLayer} />
-            {hint && <div className="pointer-events-none absolute bottom-8 left-2 z-raised rounded-full bg-background/80 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur">{hint}</div>}
-            {training && (
+            {hint && <div className="pointer-events-none absolute bottom-8 left-2 z-raised rounded-full bg-background/90 px-2.5 py-1 text-xs text-muted-foreground">{hint}</div>}
+            {((training && hideReal) || (data.baseSec > 60 && intraday)) && (
               <div className="pointer-events-none absolute bottom-8 right-[4.5rem] z-raised flex max-w-[calc(100%-6rem)] flex-wrap justify-end gap-1">
-                {hideReal && <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs text-muted-foreground backdrop-blur">будущее скрыто</span>}
+                {training && hideReal && <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-muted-foreground">{tc("engine.futureHidden")}</span>}
                 {data.baseSec > 60 && intraday && (
-                  <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))] backdrop-blur" title="Мельче баров за этот день нет: 1-минутки Yahoo хранит 7 дней, 5-минутки — 60 дней (если день не попал в кэш)">
-                    бары {baseBarLabel(data.baseSec)}: мельче за этот день нет
+                  // Honest bar size: an old day may only exist in 5-minute / hourly bars.
+                  <span className="pointer-events-auto cursor-help rounded-full bg-background/90 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))]" title={tc("bars.coarseTitle")}>
+                    {tc("bars.coarse", { tf: baseBarLabel(data.baseSec) })}
                   </span>
                 )}
               </div>
@@ -977,7 +1014,7 @@ export function WsChart({
         {showAside && (
           <aside
             className={cn("flex min-w-0 flex-col gap-2", isWorkspace ? "lg:min-h-0 lg:w-[320px] lg:shrink-0 lg:overflow-y-auto lg:pr-0.5" : "sm:grid sm:grid-cols-2 sm:items-start")}
-            aria-label={training ? "Тренировка" : "Сделка"}
+            aria-label={training ? tc("engine.asideTraining") : tc("engine.asideTrade")}
           >
             {aside}
           </aside>
@@ -1009,6 +1046,25 @@ function applyReveal(r: ChartRefs, limit: number | null): void {
     }
   }
   r.revealed = target;
+}
+
+/** Hovered bar index as a tiny external store (see `hoverStore` in WsChart). */
+function createHoverStore() {
+  let value: number | null = null;
+  const subs = new Set<() => void>();
+  return {
+    get: (): number | null => value,
+    set: (v: number | null): void => { if (v === value) return; value = v; for (const f of subs) f(); },
+    subscribe: (f: () => void): (() => void) => { subs.add(f); return () => { subs.delete(f); }; },
+  };
+}
+type HoverStore = ReturnType<typeof createHoverStore>;
+
+/** The legend is the only thing that follows the mouse: it alone re-renders on hover. */
+function LiveLegend({ store, build, ticker, tfLabel }: { store: HoverStore; build: (hover: number | null) => LegendInfo | null; ticker: string; tfLabel: string }) {
+  const hover = React.useSyncExternalStore(store.subscribe, store.get);
+  const info = React.useMemo(() => build(hover), [build, hover]);
+  return <ChartLegend info={info} ticker={ticker} tfLabel={tfLabel} />;
 }
 
 /** Last point with idx <= i, or null (points sorted by idx). */

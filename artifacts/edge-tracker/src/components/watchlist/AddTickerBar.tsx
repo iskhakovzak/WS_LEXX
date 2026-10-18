@@ -5,8 +5,11 @@ import { Kbd, toneText } from "@/components/ds";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { LISTS, LIST_LABELS, TICKER_TOKEN_RE, fmtMoney, parseTickers, type ListName } from "./lib";
+import { LISTS, LIST_LABELS, TICKER_TOKEN_RE, parseTickers, type ListName } from "./lib";
 import type { TickerHistory } from "./use-history";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
 
 type Suggestion = {
   ticker: string;
@@ -37,6 +40,7 @@ export function AddTickerBar({
   /** Put a value into the input (deep link ?ticker= for a ticker not on the list). `nonce` re-applies the same value. */
   prefill?: { value: string; nonce: number } | null;
 }) {
+  const { t } = watchlistI18n.useT();
   const [value, setValue] = React.useState("");
   React.useEffect(() => {
     if (!prefill) return;
@@ -64,48 +68,48 @@ export function AddTickerBar({
     const out: Suggestion[] = [];
     const seen = new Set<string>();
     const histMeta = (h: TickerHistory): Pick<Suggestion, "meta" | "metaTone"> => ({
-      meta: `${h.n} сд · ${fmtMoney(h.net)}`,
+      meta: t("add.metaHistory", { count: h.n, net: fmtUsd(h.net, { signed: true, decimals: 0 }) }),
       metaTone: h.net > 0 ? "up" : h.net < 0 ? "down" : "neutral",
     });
-    const push = (t: string) => {
-      if (seen.has(t) || parsed.tickers.slice(0, -1).includes(t)) return;
-      seen.add(t);
-      const a = active.get(t);
-      const h = history.get(t);
+    const push = (tk: string) => {
+      if (seen.has(tk) || parsed.tickers.slice(0, -1).includes(tk)) return;
+      seen.add(tk);
+      const a = active.get(tk);
+      const h = history.get(tk);
       if (a && !a.archived) {
-        out.push({ ticker: t, meta: a.list ? (a.list === target ? `уже в «${LIST_LABELS[a.list]}»` : `из «${LIST_LABELS[a.list]}» → «${LIST_LABELS[target]}»`) : "уже в вотчлисте", metaTone: "neutral" });
+        out.push({ ticker: tk, meta: a.list ? (a.list === target ? t("add.alreadyIn", { list: LIST_LABELS[a.list] }) : t("add.fromTo", { from: LIST_LABELS[a.list], to: LIST_LABELS[target] })) : t("add.alreadyInWatchlist"), metaTone: "neutral" });
       } else if (h) {
-        out.push({ ticker: t, ...histMeta(h), hint: a?.archived ? "из архива" : undefined });
+        out.push({ ticker: tk, ...histMeta(h), hint: a?.archived ? t("add.fromArchive") : undefined });
       } else if (a?.archived) {
-        out.push({ ticker: t, meta: "из архива", metaTone: "neutral" });
+        out.push({ ticker: tk, meta: t("add.fromArchive"), metaTone: "neutral" });
       } else {
-        out.push({ ticker: t, meta: "новый тикер", metaTone: "neutral" });
+        out.push({ ticker: tk, meta: t("add.newTicker"), metaTone: "neutral" });
       }
     };
     const q = lastToken;
     if (!q) {
       // Empty input: the names you trade most that are not on the working lists yet.
-      for (const [t] of historyRanked) {
-        const a = active.get(t);
+      for (const [tk] of historyRanked) {
+        const a = active.get(tk);
         if (a && !a.archived) continue;
-        push(t);
+        push(tk);
         if (out.length >= 6) break;
       }
       return out;
     }
     if (TICKER_TOKEN_RE.test(q)) push(q);
-    for (const [t] of historyRanked) { if (out.length >= 8) break; if (t.startsWith(q)) push(t); }
-    for (const t of archived) { if (out.length >= 8) break; if (t.startsWith(q)) push(t); }
-    for (const [t] of active) { if (out.length >= 8) break; if (t.startsWith(q)) push(t); }
+    for (const [tk] of historyRanked) { if (out.length >= 8) break; if (tk.startsWith(q)) push(tk); }
+    for (const tk of archived) { if (out.length >= 8) break; if (tk.startsWith(q)) push(tk); }
+    for (const [tk] of active) { if (out.length >= 8) break; if (tk.startsWith(q)) push(tk); }
     return out.slice(0, 8);
-  }, [lastToken, historyRanked, archived, active, history, parsed.tickers, target]);
+  }, [lastToken, historyRanked, archived, active, history, parsed.tickers, target, t]);
 
   React.useEffect(() => { setHi(0); }, [lastToken]);
 
   const commit = async (pick?: string) => {
     let tickers = parsed.tickers;
     if (pick) {
-      const rest = tickers.filter((t) => t !== lastToken);
+      const rest = tickers.filter((x) => x !== lastToken);
       tickers = Array.from(new Set([...rest, pick]));
     }
     if (!tickers.length) return;
@@ -143,8 +147,8 @@ export function AddTickerBar({
   const activeDesc = showList ? `${listId}-opt-${hi}` : undefined;
 
   return (
-    <div className="relative min-w-[300px] flex-[1_1_400px]">
-      <div className={cn("glass-field flex h-10 items-center gap-2 pl-3 pr-1.5", showList && "ring-1 ring-primary/40")}>
+    <div className="relative min-w-[280px] flex-[1_1_320px]">
+      <div className={cn("glass-field flex h-9 items-center gap-2 pl-3 pr-1", showList && "ring-1 ring-primary/40")}>
         {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
           : <Plus className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
         <input
@@ -154,22 +158,22 @@ export function AddTickerBar({
           aria-controls={listId}
           aria-activedescendant={activeDesc}
           aria-autocomplete="list"
-          aria-label="Добавить тикеры: через запятую или пробел, можно вставить список"
+          aria-label={t("add.aria")}
           value={value}
           onChange={(e) => { setValue(e.target.value.toUpperCase()); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onBlur={() => window.setTimeout(() => setOpen(false), 120)}
           onKeyDown={onKeyDown}
           onPaste={() => setOpen(true)}
-          placeholder="Добавить тикеры…"
-          title="Например: AAPL, NVDA TSLA — через запятую или пробел, можно вставить список"
+          placeholder={t("add.placeholder")}
+          title={t("add.title")}
           autoComplete="off"
           spellCheck={false}
           className="h-full min-w-0 flex-1 bg-transparent text-sm uppercase tracking-wide outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-muted-foreground"
         />
         {multiPreview && (
           <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground md:inline">
-            {parsed.tickers.length} {tickerWord(parsed.tickers.length)}{parsed.invalid.length ? ` · пропущу ${parsed.invalid.length}` : ""}
+            {commonI18n.t("units.tickers", { count: parsed.tickers.length })}{parsed.invalid.length ? ` · ${t("add.skipped", { count: parsed.invalid.length })}` : ""}
           </span>
         )}
         <DropdownMenu>
@@ -177,13 +181,13 @@ export function AddTickerBar({
             <button
               type="button"
               className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={`Добавлять в список: ${LIST_LABELS[target]}`}
+              aria-label={t("add.targetAria", { list: LIST_LABELS[target] })}
             >
-              в «{LIST_LABELS[target]}»<ChevronDown className="h-3 w-3" aria-hidden="true" />
+              {t("add.target", { list: LIST_LABELS[target] })}<ChevronDown className="h-3 w-3" aria-hidden="true" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Куда добавлять</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">{t("add.whereTo")}</DropdownMenuLabel>
             {LISTS.map((l) => (
               <DropdownMenuItem key={l} onSelect={() => onTargetChange(l)}>
                 <Check className={cn("mr-2 h-4 w-4", l === target ? "opacity-100" : "opacity-0")} />{LIST_LABELS[l]}
@@ -196,8 +200,8 @@ export function AddTickerBar({
           onClick={() => void commit()}
           disabled={!parsed.tickers.length || busy}
           className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary-solid text-primary-foreground transition-opacity disabled:opacity-40"
-          aria-label="Добавить"
-          title="Добавить (Enter)"
+          aria-label={commonI18n.t("actions.add")}
+          title={t("add.addTitle")}
         >
           <CornerDownLeft className="h-3.5 w-3.5" />
         </button>
@@ -207,10 +211,10 @@ export function AddTickerBar({
         <ul
           id={listId}
           role="listbox"
-          aria-label="Подсказки тикеров"
-          className="glass-thick absolute inset-x-0 top-[calc(100%+6px)] z-popover max-h-80 overflow-auto rounded-2xl bg-popover p-1.5 shadow-xl"
+          aria-label={t("add.suggestAria")}
+          className="glass-thick absolute inset-x-0 top-[calc(100%+4px)] z-popover max-h-80 overflow-auto rounded-xl bg-popover p-1 shadow-xl"
         >
-          {!lastToken && <li className="px-2.5 pb-1 pt-0.5 text-xs text-muted-foreground" aria-hidden="true">Часто торгуешь, нет в списках</li>}
+          {!lastToken && <li className="px-2.5 pb-1 pt-0.5 text-xs text-muted-foreground" aria-hidden="true">{t("add.frequent")}</li>}
           {suggestions.map((s, i) => (
             <li
               key={s.ticker}
@@ -220,7 +224,7 @@ export function AddTickerBar({
               onMouseDown={(e) => { e.preventDefault(); void commit(s.ticker); }}
               onMouseEnter={() => setHi(i)}
               className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-1.5 text-sm",
+                "flex cursor-pointer items-center gap-3 rounded-item px-2.5 py-1.5 text-sm",
                 i === hi ? "bg-[var(--glass-hover-bg)] text-foreground" : "text-foreground/90",
               )}
             >
@@ -230,17 +234,10 @@ export function AddTickerBar({
             </li>
           ))}
           <li className="flex items-center gap-1.5 border-t border-[var(--glass-border)] px-2.5 pb-0.5 pt-1.5 text-xs text-muted-foreground" aria-hidden="true">
-            <Kbd>↑</Kbd><Kbd>↓</Kbd> выбрать · <Kbd>Tab</Kbd> дополнить · <Kbd>Enter</Kbd> добавить
+            <Kbd>↑</Kbd><Kbd>↓</Kbd> {t("add.keysPick")} · <Kbd>Tab</Kbd> {t("add.keysComplete")} · <Kbd>Enter</Kbd> {t("add.keysAdd")}
           </li>
         </ul>
       )}
     </div>
   );
-}
-
-function tickerWord(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "тикер";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "тикера";
-  return "тикеров";
 }

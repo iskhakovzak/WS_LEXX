@@ -4,6 +4,8 @@ import { ArrowUpRight, Bell, Database, Palette, Plug, Search, ShieldCheck, Slide
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import type { Capability } from "@/lib/permissions";
+import { settingsI18n } from "@/i18n/ns/settings";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type SectionId = "profile" | "appearance" | "trading" | "notifications" | "team" | "permissions" | "data" | "integrations";
 
@@ -12,7 +14,7 @@ export type SectionMeta = {
   label: string;
   description: string;
   icon: LucideIcon;
-  /** Extra words the settings search matches (Russian + common English terms). */
+  /** Extra words the settings search matches (Russian, English and Uzbek terms), on top of the translated label. */
   keywords: string;
   /** Shown only when the viewer holds at least one of these capabilities (see auth-context `can`). */
   requiresAny?: Capability[];
@@ -20,23 +22,34 @@ export type SectionMeta = {
   href?: string;
 };
 
+/** Section entry whose label/description follow the UI language (getters). */
+function section(id: SectionId, icon: LucideIcon, extra: Pick<SectionMeta, "keywords" | "requiresAny" | "href">): SectionMeta {
+  return {
+    id, icon, ...extra,
+    get label() { return settingsI18n.t(`sections.${id}.label`); },
+    get description() { return settingsI18n.t(`sections.${id}.description`); },
+  };
+}
+
 export const SECTIONS: SectionMeta[] = [
-  { id: "profile", label: "Профиль", description: "Имя, роль, команда, пароль", icon: UserRound,
-    keywords: "профиль пароль сессии выйти куратор ментор риск-менеджер аккаунт password profile" },
-  { id: "appearance", label: "Внешний вид", description: "Тема интерфейса", icon: Palette,
-    keywords: "тема тёмная темная светлая сумеречная dim dark light оформление вид" },
-  { id: "trading", label: "Торговля", description: "Счёт, риск, комиссии, плечо", icon: SlidersHorizontal,
-    keywords: "счёт счет риск комиссия плечо leverage горизонт интрадей овернайт свинг чек-лист checklist покупательная buying power размер позиции" },
-  { id: "notifications", label: "Уведомления", description: "Дайджест и Telegram-оповещения", icon: Bell,
-    keywords: "уведомления дайджест digest email почта утро вечер расписание оповещения" },
-  { id: "team", label: "Команда", description: "Пользователи, роли, назначения", icon: Users, requiresAny: ["users.read.team"], href: "/admin?tab=people",
-    keywords: "команда пользователи роли пригласить добавить деактивировать куратор ментор риск-менеджер назначения users team invite" },
-  { id: "permissions", label: "Права доступа", description: "Матрица прав по ролям", icon: ShieldCheck, requiresAny: ["users.read.team", "permissions.manage"], href: "/admin?tab=roles",
-    keywords: "права доступ роли матрица разрешения permissions capabilities куратор админ трейдер scope закреплённые" },
-  { id: "data", label: "Данные и бэкапы", description: "Экспорт CSV, бэкап БД", icon: Database,
-    keywords: "данные экспорт импорт csv json бэкап backup база выгрузка" },
-  { id: "integrations", label: "Интеграции", description: "Telegram-бот, рассылки", icon: Plug,
-    keywords: "интеграции telegram телеграм бот привязать отвязать рассылка broadcast" },
+  section("profile", UserRound, {
+    keywords: "профиль пароль сессии выйти куратор ментор риск-менеджер аккаунт password profile sessions account profil parol sessiya" }),
+  section("appearance", Palette, {
+    keywords: "тема тёмная темная светлая сумеречная dim dark light оформление вид theme appearance mavzu koʻrinish" }),
+  section("trading", SlidersHorizontal, {
+    keywords: "счёт счет риск комиссия плечо leverage горизонт интрадей овернайт свинг чек-лист checklist покупательная buying power размер позиции account risk fees horizon hisob komissiya leverej savdo" }),
+  section("notifications", Bell, {
+    keywords: "уведомления дайджест digest email почта утро вечер расписание оповещения notifications alerts bildirishnoma dayjest xabarnoma" }),
+  section("team", Users, {
+    keywords: "команда пользователи роли пригласить добавить деактивировать куратор ментор риск-менеджер назначения users team invite roles jamoa foydalanuvchi",
+    requiresAny: ["users.read.team"], href: "/admin?tab=people" }),
+  section("permissions", ShieldCheck, {
+    keywords: "права доступ роли матрица разрешения permissions capabilities куратор админ трейдер scope закреплённые access huquq ruxsat",
+    requiresAny: ["users.read.team", "permissions.manage"], href: "/admin?tab=roles" }),
+  section("data", Database, {
+    keywords: "данные экспорт импорт csv json бэкап backup база выгрузка data export maʼlumot eksport zaxira" }),
+  section("integrations", Plug, {
+    keywords: "интеграции telegram телеграм бот привязать отвязать рассылка broadcast integrations bot integratsiya" }),
 ];
 
 export function visibleSections(can: (cap: Capability) => boolean): SectionMeta[] {
@@ -63,6 +76,7 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
   { sections, active, onSelect, query, onQuery, badges },
   searchRef,
 ) {
+  const { t } = settingsI18n.useT();
   const filtered = matchSections(sections, query);
   const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -76,7 +90,7 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
   }
 
   return (
-    <nav aria-label="Разделы настроек" className="flex flex-col gap-2 lg:sticky lg:top-4">
+    <nav aria-label={t("nav.aria")} className="flex flex-col gap-2 lg:sticky lg:top-4">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <input
@@ -88,15 +102,15 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
             if (e.key === "Enter" && filtered[0]) { onSelect(filtered[0].id); onQuery(""); (e.target as HTMLInputElement).blur(); }
             if (e.key === "Escape") { onQuery(""); (e.target as HTMLInputElement).blur(); }
           }}
-          placeholder="Найти настройку"
-          aria-label="Поиск по настройкам"
+          placeholder={t("nav.search")}
+          aria-label={t("nav.searchAria")}
           className="glass-field h-9 w-full rounded-full pl-10 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         />
         <Kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 lg:inline-flex">/</Kbd>
       </div>
 
       {/* Mobile / tablet: chips */}
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden" role="tablist" aria-label="Разделы">
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden" role="tablist" aria-label={t("nav.sections")}>
         {filtered.map((s) => (
           <button
             key={s.id}
@@ -112,7 +126,7 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
           >
             <s.icon className="h-3.5 w-3.5" aria-hidden="true" />
             {s.label}
-            {s.href && <ArrowUpRight className="h-3 w-3 text-muted-foreground" aria-label="в пульте деска" />}
+            {s.href && <ArrowUpRight className="h-3 w-3 text-muted-foreground" aria-label={t("nav.inConsole")} />}
           </button>
         ))}
       </div>
@@ -143,14 +157,14 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
                 <span className="line-clamp-2 text-xs leading-snug text-muted-foreground">{s.description}</span>
               </span>
               {badges?.[s.id]}
-              {s.href && <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Откроется в пульте деска" />}
+              {s.href && <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={t("nav.opensInConsole")} />}
               {idx <= 9 && <Kbd className="opacity-0 transition-opacity group-hover:opacity-100">{idx}</Kbd>}
             </button>
           );
         })}
-        {filtered.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">Ничего не найдено</p>}
+        {filtered.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">{commonI18n.t("states.nothingFound")}</p>}
       </div>
-      {filtered.length === 0 && <p className="px-1 text-xs text-muted-foreground lg:hidden">Ничего не найдено</p>}
+      {filtered.length === 0 && <p className="px-1 text-xs text-muted-foreground lg:hidden">{commonI18n.t("states.nothingFound")}</p>}
     </nav>
   );
 });

@@ -8,6 +8,10 @@ import {
 } from "lucide-react";
 import type { Tone } from "@/components/ds";
 import { nyDate } from "@/lib/trading-date";
+import { fmtWeekday } from "@/lib/format";
+import { big7I18n } from "@/i18n/ns/big7";
+
+const bt = big7I18n.t;
 
 // ─── dates ──────────────────────────────────────────────────────────────────
 /** Local YYYY-MM-DD (toISOString is UTC and jumps a day in the evening). */
@@ -17,8 +21,14 @@ export function localDateStr(d = new Date()) {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-/** Trading date (New York) — the desk convention; the browser's local date jumps a day for Asian time zones. */
-export const TODAY = nyDate();
+/**
+ * Trading date (New York) — the desk convention; the browser's local date jumps a day for Asian time zones.
+ * Read at call time (not once at module load): a tab left open overnight must roll over to the new day.
+ * Components re-render on the NY date change through useBig7Today() (use-big7.ts).
+ */
+export function big7Today(): string {
+  return nyDate();
+}
 
 export function parseLocalDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
@@ -40,7 +50,7 @@ export function addTradingDays(from: string, n: number): string {
   return localDateStr(d);
 }
 /** Trading days from `from` to `to` (0 = same day, negative if past). */
-export function tradingDaysUntil(to: string, from = TODAY): number {
+export function tradingDaysUntil(to: string, from = big7Today()): number {
   if (to === from) return 0;
   const sign = to > from ? 1 : -1;
   const d = parseLocalDate(from);
@@ -66,20 +76,18 @@ export function addDays(dateStr: string, n: number): string {
   d.setDate(d.getDate() + n);
   return localDateStr(d);
 }
-const WD = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+/** «Пн», «Вт»… in the UI language, capitalised for column heads. */
 export function weekdayShort(dateStr: string) {
-  return WD[parseLocalDate(dateStr).getDay()];
-}
-export function dayMonth(dateStr: string) {
-  const [, m, d] = dateStr.split("-");
-  return `${d}.${m}`;
+  const s = fmtWeekday(parseLocalDate(dateStr), "short");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 export function relDayLabel(dateStr: string): string {
-  if (dateStr === TODAY) return "сегодня";
-  const n = tradingDaysUntil(dateStr);
-  if (dateStr === addTradingDays(TODAY, 1)) return "завтра";
-  if (n > 0) return `через ${n} т.д.`;
-  return `${Math.abs(n)} т.д. назад`;
+  const today = big7Today();
+  if (dateStr === today) return bt("rel.today");
+  const n = tradingDaysUntil(dateStr, today);
+  if (dateStr === addTradingDays(today, 1)) return bt("rel.tomorrow");
+  if (n > 0) return bt("rel.inDays", { count: n });
+  return bt("rel.daysAgo", { count: Math.abs(n) });
 }
 
 // ─── numbers ────────────────────────────────────────────────────────────────
@@ -90,21 +98,6 @@ export function num(v: unknown): number | null {
   if (s === "" || s === "+" || s === "-") return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
-}
-export const fmt2 = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-export const fmtUsd = (n: number, digits = 2) =>
-  `$${n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-export const fmtInt = (n: number) => n.toLocaleString("ru-RU");
-export function fmtSigned(n: number | null | undefined, digits = 2, suffix = "%") {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}${suffix}`;
-}
-export function fmtVol(v: number | null | undefined) {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return String(v);
 }
 
 // ─── localStorage ───────────────────────────────────────────────────────────
@@ -149,11 +142,11 @@ export const DEFAULT_DAY: TickerDay = {
   sessionScore: 0, sessionNotes: "", openPrice: "", prevClose: "",
 };
 export function getTickerDay(ticker: string): TickerDay {
-  return { ...DEFAULT_DAY, ...ls<Partial<TickerDay>>(`big7_day_${ticker}_${TODAY}`, {}) };
+  return { ...DEFAULT_DAY, ...ls<Partial<TickerDay>>(`big7_day_${ticker}_${big7Today()}`, {}) };
 }
 export function updateTickerDayField<K extends keyof TickerDay>(ticker: string, key: K, val: TickerDay[K]): TickerDay {
   const next = { ...getTickerDay(ticker), [key]: val };
-  lsSet(`big7_day_${ticker}_${TODAY}`, next);
+  lsSet(`big7_day_${ticker}_${big7Today()}`, next);
   notifyDayChange();
   return next;
 }
@@ -169,10 +162,10 @@ export function saveTickerStats(ticker: string, stats: TickerStats) {
 
 export type MarketCtx = { spyBias: Bias; qqBias: Bias; vixLevel: string; marketNotes: string; gapDirection: string };
 export function getMarketContext(): MarketCtx {
-  return { spyBias: "", qqBias: "", vixLevel: "", marketNotes: "", gapDirection: "", ...ls<Partial<MarketCtx>>(`big7_market_${TODAY}`, {}) };
+  return { spyBias: "", qqBias: "", vixLevel: "", marketNotes: "", gapDirection: "", ...ls<Partial<MarketCtx>>(`big7_market_${big7Today()}`, {}) };
 }
 export function saveMarketContext(ctx: MarketCtx) {
-  lsSet(`big7_market_${TODAY}`, ctx);
+  lsSet(`big7_market_${big7Today()}`, ctx);
   notifyDayChange();
 }
 
@@ -196,21 +189,21 @@ export const DEFAULT_BIG7: Array<{ symbol: string; name: string; exchange: strin
   { symbol: "TSLA", name: "Tesla", exchange: "NASDAQ" },
 ];
 
-export const BIAS_OPTIONS: Array<{ value: Exclude<Bias, "">; label: string; short: string; tone: Tone }> = [
-  { value: "bullish", label: "Лонг", short: "▲ Bull", tone: "up" },
-  { value: "bearish", label: "Шорт", short: "▼ Bear", tone: "down" },
-  { value: "neutral", label: "Флэт", short: "● Flat", tone: "neutral" },
-  { value: "watching", label: "Наблюдаю", short: "◎ Watch", tone: "warn" },
-];
-export const biasMeta = (b: string) => BIAS_OPTIONS.find((o) => o.value === b) ?? null;
-
-export const CATALYST_TYPES: Array<{ value: string; label: string; icon: LucideIcon; tone: Tone }> = [
-  { value: "earnings", label: "Отчёт", icon: BarChart3, tone: "warn" },
-  { value: "fomc", label: "FOMC/ФРС", icon: Landmark, tone: "accent" },
-  { value: "ex-div", label: "Экс-дивиденд", icon: DollarSign, tone: "up" },
-  { value: "product", label: "Презентация", icon: Rocket, tone: "purple" },
-  { value: "sector", label: "Сектор", icon: TrendingUp, tone: "accent" },
-  { value: "news", label: "Новость", icon: Newspaper, tone: "neutral" },
+type CatalystType = "earnings" | "fomc" | "ex-div" | "product" | "sector" | "news";
+const catalystType = (value: CatalystType, icon: LucideIcon, tone: Tone) => ({
+  value: value as string,
+  icon,
+  tone,
+  get label() { return bt(`catalyst.type.${value}`); },
+});
+/** Catalyst types (stored as codes); labels are getters in the UI language. */
+export const CATALYST_TYPES: Array<{ value: string; readonly label: string; icon: LucideIcon; tone: Tone }> = [
+  catalystType("earnings", BarChart3, "warn"),
+  catalystType("fomc", Landmark, "accent"),
+  catalystType("ex-div", DollarSign, "up"),
+  catalystType("product", Rocket, "purple"),
+  catalystType("sector", TrendingUp, "accent"),
+  catalystType("news", Newspaper, "neutral"),
 ];
 export const catalystMeta = (t: string) => CATALYST_TYPES.find((c) => c.value === t) ?? CATALYST_TYPES[CATALYST_TYPES.length - 1];
 
@@ -218,41 +211,30 @@ export const catalystMeta = (t: string) => CATALYST_TYPES.find((c) => c.value ==
 export const MARKET_WIDE = new Set(["SPY", "QQQ", "ALL", "MKT", "MARKET", "ES", "NQ"]);
 export const isMarketWide = (c: { ticker: string; type: string }) => MARKET_WIDE.has(c.ticker) || c.type === "fomc";
 
-export const RS_LABELS: Record<number, { label: string; tone: Tone }> = {
-  1: { label: "Очень слабый", tone: "down" },
-  2: { label: "Слабый", tone: "down" },
-  3: { label: "Нейтральный", tone: "neutral" },
-  4: { label: "Сильный", tone: "up" },
-  5: { label: "Очень сильный", tone: "up" },
-};
-
 export const LEVEL_LABELS = [
   "support", "resistance", "pivot", "vwap", "pre-market high", "pre-market low", "ath",
   "gap fill", "open", "yesterday close", "yesterday high", "yesterday low",
 ];
-export const LEVEL_LABEL_RU: Record<string, string> = {
-  support: "Поддержка",
-  resistance: "Сопротивление",
-  pivot: "Пивот",
+/** Level kinds shown as codes in every language (the rest go through `levels.kind.*`). */
+const LEVEL_LABEL_CODE: Record<string, string> = {
   vwap: "VWAP",
   "pre-market high": "PM high",
   "pre-market low": "PM low",
   ath: "ATH",
   atl: "ATL",
-  "gap fill": "Закрытие гэпа",
-  open: "Открытие",
   "yesterday close": "PDC",
   "yesterday high": "PDH",
   "yesterday low": "PDL",
   "52w high": "52w high",
   "52w low": "52w low",
 };
-export const levelLabel = (l: string) => LEVEL_LABEL_RU[l.toLowerCase()] ?? l;
-export const ACTION_OPTIONS = ["buy", "sell", "watch", "add size", "trim", "breakout long", "breakdown short", "fade"];
-export const ACTION_RU: Record<string, string> = {
-  buy: "покупка", sell: "продажа", watch: "наблюдать", "add size": "добор", trim: "сокращать",
-  "breakout long": "пробой лонг", "breakdown short": "пробой шорт", fade: "фейд",
+export const levelLabel = (l: string) => {
+  const k = l.toLowerCase();
+  return LEVEL_LABEL_CODE[k] ?? big7I18n.tryT(`levels.kind.${k}`) ?? l;
 };
+export const ACTION_OPTIONS = ["buy", "sell", "watch", "add size", "trim", "breakout long", "breakdown short", "fade"];
+/** Display name of a level action code (unknown codes stay as written). */
+export const actionLabel = (a: string) => big7I18n.tryT(`levels.action.${a}`) ?? a;
 export function actionTone(a: string): Tone {
   if (a === "buy" || a === "breakout long" || a === "add size") return "up";
   if (a === "sell" || a === "breakdown short" || a === "trim") return "down";
@@ -264,43 +246,6 @@ export function splitLevelNotes(notes: string | null | undefined): { action: str
   const s = notes ?? "";
   const m = s.match(/^\[([^\]]+)\]\s*/);
   return m ? { action: m[1], note: s.replace(m[0], "") } : { action: "", note: s };
-}
-
-// ─── chart settings ─────────────────────────────────────────────────────────
-export type Timeframe = "5" | "15" | "60" | "D";
-export type ChartStyle = "1" | "0" | "2";
-export type GridCols = 1 | 2 | 3;
-export const TIMEFRAMES: Array<{ value: Timeframe; label: string }> = [
-  { value: "5", label: "5м" },
-  { value: "15", label: "15м" },
-  { value: "60", label: "1ч" },
-  { value: "D", label: "1д" },
-];
-export const CHART_STYLES: Array<{ value: ChartStyle; label: string }> = [
-  { value: "1", label: "Свечи" },
-  { value: "0", label: "Бары" },
-  { value: "2", label: "Линия" },
-];
-export type StudyDef = string | { id: string; inputs: Record<string, number> };
-const MA_PERIODS = [9, 21, 50, 100, 200];
-export const CHART_INDICATORS: Array<{ key: string; label: string; desc: string; studies: StudyDef[] }> = [
-  { key: "sma", label: "SMA", desc: "9 / 21 / 50 / 100 / 200", studies: MA_PERIODS.map((len) => ({ id: "MASimple@tv-basicstudies", inputs: { length: len } })) },
-  { key: "ema", label: "EMA", desc: "9 / 21 / 50 / 100 / 200", studies: MA_PERIODS.map((len) => ({ id: "MAExp@tv-basicstudies", inputs: { length: len } })) },
-  { key: "vwap", label: "VWAP", desc: "± отклонения", studies: ["VWAP@tv-basicstudies"] },
-  { key: "rsi", label: "RSI", desc: "", studies: ["RSI@tv-basicstudies"] },
-  { key: "macd", label: "MACD", desc: "", studies: ["MACD@tv-basicstudies"] },
-  { key: "bb", label: "Bollinger Bands", desc: "", studies: ["BB@tv-basicstudies"] },
-  { key: "vol", label: "Объём", desc: "", studies: ["Volume@tv-basicstudies"] },
-  { key: "srsi", label: "Stoch RSI", desc: "", studies: ["StochasticRSI@tv-basicstudies"] },
-  { key: "atr", label: "ATR", desc: "", studies: ["ATR@tv-basicstudies"] },
-];
-export function buildStudies(keys: string[]): StudyDef[] {
-  const out: StudyDef[] = [];
-  for (const k of keys) {
-    const ind = CHART_INDICATORS.find((i) => i.key === k);
-    if (ind) out.push(...ind.studies);
-  }
-  return out;
 }
 
 // ─── API shapes ─────────────────────────────────────────────────────────────
@@ -401,6 +346,8 @@ export type MergedCatalyst = {
   impact: string;
   auto: boolean;
   marketWide: boolean;
+  /** Report timing of an auto (calendar) earnings row. */
+  callType?: "BMO" | "AMC" | null;
   id?: number;
   createdBy?: string | null;
 };
@@ -414,8 +361,8 @@ export function mergeCatalysts(catalysts: Catalyst[], auto: AutoEarning[]): Merg
     if (manualEarnings.has(`${a.ticker}|${a.date}`)) continue;
     out.push({
       key: `a${a.ticker}${a.date}`, ticker: a.ticker, date: a.date, type: "earnings",
-      description: `${a.callType === "BMO" ? "до открытия" : a.callType === "AMC" ? "после закрытия" : "время не указано"}${a.epsEstimate != null ? ` · EPS est ${a.epsEstimate}` : ""}`,
-      impact: "high", auto: true, marketWide: false,
+      description: `${bt(a.callType === "BMO" ? "earnings.bmo" : a.callType === "AMC" ? "earnings.amc" : "earnings.unknown")}${a.epsEstimate != null ? ` · EPS est ${a.epsEstimate}` : ""}`,
+      impact: "high", auto: true, marketWide: false, callType: a.callType === "BMO" || a.callType === "AMC" ? a.callType : null,
     });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.ticker.localeCompare(b.ticker));

@@ -1,140 +1,208 @@
 import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
-import { FlaskConical, Check } from "lucide-react";
+import { ArrowRight, Check, FlaskConical, Receipt } from "lucide-react";
 import { Panel, EmptyState, Pill, toneOf } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type Unit, fmtR, fmtUsd, fmtPct, fmtPf, fmtSigned, sdeal, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { type AnalyticsFilters, type Unit, NONE } from "./metrics";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analyticsI18n } from "@/i18n/ns/analytics";
+import { encodeRules, type Rule } from "@/components/shared/what-if-rules";
 import { toSimTrades } from "./edge-api";
-import { applyWhatIf, kpisOf, equityCurve, WHAT_IF_RULES, type WhatIfRuleId, type ValueKpis } from "./edge-stats";
+import { applyWhatIf, kpisOf, WHAT_IF_RULE_IDS, type WhatIfRuleId, type ValueKpis } from "./edge-stats";
+import { CostsSummary } from "./CostsTab";
 
-export function WhatIfTab({ trades, unit }: { trades: Trade[]; unit: Unit | null }) {
+/**
+ * Compact «Что если» tab of /analytics. The full simulator (server engine, own rules, suggestions, saved scenarios,
+ * tariffs) is /what-if; this tab keeps what only the analytics page can do — quick discipline rules on the trades
+ * under the page filters, in R or $ — plus the gross → net fee strip, and links into /what-if with the same scope.
+ */
+
+/** Analytics rule → the equivalent /what-if rule (null: the rule exists only here). */
+function toWhatIfRule(id: WhatIfRuleId, worstSetup: string | null): Rule | null {
+  switch (id) {
+    case "dropWorstSetup": return worstSetup && worstSetup !== NONE ? { type: "excludeSetups", setups: [worstSetup] } : null;
+    case "onlyAGrade": return { type: "minGrade", grade: "A" };
+    case "noEarly": return { type: "timeWindow", from: "09:45", to: null };
+    case "stopAfter2Losses": return { type: "stopAfterLosses", n: 2 };
+    default: return null;
+  }
+}
+const ONLY_HERE: ReadonlySet<WhatIfRuleId> = new Set(["capLoss1R", "noOvernight"]);
+
+/** /what-if link with the same trader and period (7 days has no twin there → 30 days). */
+export function whatIfHref(filters: AnalyticsFilters, rules: Rule[] = [], hash = ""): string {
+  const sp = new URLSearchParams();
+  const r = encodeRules(rules);
+  if (r) sp.set("r", r);
+  const p = filters.period === "7d" ? "30d" : filters.period;
+  if (p !== "all") sp.set("p", p);
+  // No trader picked here = the whole scope; /what-if reads "__all__" as «Вся команда» (ignored for traders).
+  sp.set("trader", filters.trader || "__all__");
+  const q = sp.toString();
+  return `/what-if${q ? `?${q}` : ""}${hash}`;
+}
+
+export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Unit | null; filters: AnalyticsFilters }) {
+  const { t } = analyticsI18n.useT();
   const u: Unit = unit ?? "r";
   const [rules, setRules] = useState<Set<WhatIfRuleId>>(new Set());
   const sim = useMemo(() => toSimTrades(trades), [trades]);
 
   const base = useMemo(() => {
-    const values = sim.map((t) => (u === "r" ? t.r : t.net)).filter((v): v is number => v != null);
+    const values = sim.map((s) => (u === "r" ? s.r : s.net)).filter((v): v is number => v != null);
     return { values, kpis: kpisOf(values) };
   }, [sim, u]);
   const alt = useMemo(() => {
     const r = applyWhatIf(sim, rules, u);
     return { ...r, kpis: kpisOf(r.values) };
   }, [sim, rules, u]);
+  /** Each rule on its own: Δ total and why it could not apply. */
+  const single = useMemo(() => {
+    const out = new Map<WhatIfRuleId, { delta: number | null; skip: string | null; worstSetup: string | null }>();
+    for (const id of WHAT_IF_RULE_IDS) {
+      const r = applyWhatIf(sim, new Set([id]), u);
+      const skip = r.skipped[0]?.reason ?? null;
+      out.set(id, { delta: skip ? null : kpisOf(r.values).total - base.kpis.total, skip, worstSetup: r.worstSetup });
+    }
+    return out;
+  }, [sim, u, base.kpis.total]);
 
-  const chart = useMemo(() => {
-    const a = equityCurve(base.values), b = equityCurve(alt.values);
-    const n = Math.max(a.length, b.length);
-    return Array.from({ length: n + 1 }, (_, i) => ({ i, Факт: i === 0 ? 0 : a[i - 1] ?? a[a.length - 1] ?? 0, "Что если": i === 0 ? 0 : b[i - 1] ?? b[b.length - 1] ?? 0 }));
-  }, [base.values, alt.values]);
-
-  const fmt = (v: number | null | undefined, digits = 2) => (u === "r" ? fmtR(v, digits) : fmtUsd(v));
+  const fmt = (v: number | null | undefined, digits = 2) => (u === "r" ? fmtR(v, digits) : fmtUsd(v, { signed: true, decimals: "auto" }));
   const toggle = (id: WhatIfRuleId) => setRules((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  if (base.values.length === 0) {
-    return (
-      <Panel><EmptyState icon={FlaskConical} title="Нечего моделировать" description={u === "r" ? "В закрытых сделках нет R — заполните стоп и выход или R в карточке сделки." : "В закрытых сделках нет P&L."} /></Panel>
-    );
-  }
+  const mapped = [...rules].map((id) => toWhatIfRule(id, single.get(id)?.worstSetup ?? null)).filter((r): r is Rule => r != null);
+  const openHref = whatIfHref(filters, mapped);
+  const setupLabel = (s: string) => (s === NONE ? t("bucket.noSetup") : s);
 
-  const rows: { label: string; a: number | null; b: number | null; fmt: (v: number | null) => string; invert?: boolean; pct?: boolean }[] = [
-    { label: `Итог, ${u === "r" ? "R" : "$ нетто"}`, a: base.kpis.total, b: alt.kpis.total, fmt: (v) => fmt(v, 1) },
-    { label: "Сделок", a: base.kpis.n, b: alt.kpis.n, fmt: (v) => String(v ?? "—") },
-    { label: "Win rate", a: base.kpis.winRate, b: alt.kpis.winRate, fmt: (v) => fmtPct(v), pct: true },
-    { label: "Ожидание на сделку", a: base.kpis.expectancy, b: alt.kpis.expectancy, fmt: (v) => fmt(v) },
-    { label: "Profit factor", a: base.kpis.profitFactor, b: alt.kpis.profitFactor, fmt: (v) => fmtPf(v) },
-    { label: "Средний плюс", a: base.kpis.avgWin, b: alt.kpis.avgWin, fmt: (v) => fmt(v) },
-    { label: "Средний минус", a: base.kpis.avgLoss, b: alt.kpis.avgLoss, fmt: (v) => fmt(v) },
-    { label: "Макс. просадка", a: base.kpis.maxDrawdown, b: alt.kpis.maxDrawdown, fmt: (v) => fmt(v, 1) },
-    { label: "Макс. серия убытков", a: base.kpis.maxLossStreak, b: alt.kpis.maxLossStreak, fmt: (v) => String(v ?? "—"), invert: true },
+  const rows: { id: string; label: string; a: number | null; b: number | null; fmt: (v: number | null) => string; delta: (d: number) => string; invert?: boolean }[] = [
+    { id: "total", label: t("whatIf.rowTotal", { unit: u === "r" ? "R" : t("unit.usdShort") }), a: base.kpis.total, b: alt.kpis.total, fmt: (v) => fmt(v, 1), delta: (d) => fmt(d, 2) },
+    { id: "trades", label: t("whatIf.rowTrades"), a: base.kpis.n, b: alt.kpis.n, fmt: (v) => (v == null ? "—" : String(v)), delta: (d) => fmtNum(d, { decimals: 0, signed: true }) },
+    { id: "winRate", label: t("whatIf.rowWinRate"), a: base.kpis.winRate, b: alt.kpis.winRate, fmt: (v) => fmtRate(v), delta: (d) => commonI18n.t("units.percentPoints", { value: fmtNum(d * 100, { decimals: 0, signed: true }) }) },
+    { id: "expectancy", label: t("whatIf.rowExpectancy"), a: base.kpis.expectancy, b: alt.kpis.expectancy, fmt: (v) => fmt(v), delta: (d) => fmt(d, 2) },
+    { id: "maxDd", label: t("whatIf.rowMaxDd"), a: base.kpis.maxDrawdown, b: alt.kpis.maxDrawdown, fmt: (v) => fmt(v, 1), delta: (d) => fmt(d, 2) },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <Panel title="Правила" description="Включите правило — кривая и показатели пересчитаются по тем же сделкам" icon={FlaskConical}>
-        <ul className="flex flex-col gap-1.5">
-          {WHAT_IF_RULES.map((r) => {
-            const on = rules.has(r.id);
-            const skipped = alt.skipped.find((s) => s.rule === r.id);
-            return (
-              <li key={r.id}>
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={on}
-                  onClick={() => toggle(r.id)}
-                  className={cn("flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left transition-colors", on ? "bg-primary/10 ring-1 ring-primary/40" : "bg-[var(--glass-bg)] hover:bg-primary/5")}
-                >
-                  <span className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border", on ? "border-primary bg-primary text-primary-foreground" : "border-border")} aria-hidden="true">
-                    {on && <Check className="h-3 w-3" />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{r.label}{r.id === "dropWorstSetup" && on && alt.worstSetup ? `: ${alt.worstSetup}` : ""}</span>
-                    <span className="block text-2xs text-muted-foreground">{skipped ? `Не применено — ${skipped.reason}` : r.hint}</span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-        {rules.size > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {alt.removed > 0 && <Pill tone="neutral">убрано {sdeal(alt.removed)}</Pill>}
-            {alt.modified > 0 && <Pill tone="neutral">обрезано {sdeal(alt.modified)}</Pill>}
-            {alt.removed === 0 && alt.modified === 0 && <Pill tone="neutral">правила ничего не изменили</Pill>}
-          </div>
-        )}
-      </Panel>
-
-      <div className="flex flex-col gap-4 lg:col-span-2">
-        <Panel title="Кривая капитала: факт против «что если»" description={`${sdeal(base.kpis.n)} закрытых в хронологии закрытия · ${u === "r" ? "в R" : "в $ нетто"}`}>
-          <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis dataKey="i" {...AXIS} />
-                <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v))} width={64} />
-                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => fmt(v, 1)} labelFormatter={(i) => `Сделка ${i}`} />
-                <Legend />
-                <ReferenceLine y={0} stroke={GRID} />
-                <Line type="monotone" dataKey="Факт" stroke="hsl(var(--muted-foreground))" dot={false} strokeWidth={1.5} isAnimationActive={false} />
-                <Line type="monotone" dataKey="Что если" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
-
-        <Panel title="Показатели рядом">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground">
-                <th className="py-1.5 text-left font-medium">Показатель</th>
-                <th className="py-1.5 text-right font-medium">Факт</th>
-                <th className="py-1.5 text-right font-medium">Что если</th>
-                <th className="py-1.5 text-right font-medium">Δ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const d = r.a != null && r.b != null ? r.b - r.a : null;
-                const tone = d == null || Math.abs(d) < 1e-9 ? "neutral" : toneOf(r.invert ? -d : d);
+    <div className="flex flex-col gap-4">
+      <Panel
+        title={t("whatIf.quickTitle")}
+        description={t("whatIf.quickHint", { unit: u === "r" ? t("unit.r") : t("unit.usd") })}
+        icon={FlaskConical}
+        actions={
+          <Button asChild size="sm" className="rounded-full">
+            <Link href={openHref}>
+              {mapped.length ? t("whatIf.openWithRules", { count: mapped.length }) : t("whatIf.open")} <ArrowRight aria-hidden="true" />
+            </Link>
+          </Button>
+        }
+      >
+        {base.values.length === 0 ? (
+          <EmptyState icon={FlaskConical} title={t("whatIf.nothing")} description={u === "r" ? t("whatIf.nothingR") : t("whatIf.nothingUsd")} className="py-6" />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <ul className="flex flex-col gap-1.5 lg:col-span-3">
+              {WHAT_IF_RULE_IDS.map((id) => {
+                const on = rules.has(id);
+                const one = single.get(id);
+                const skipped = alt.skipped.find((s) => s.rule === id);
+                const worst = id === "dropWorstSetup" ? one?.worstSetup ?? null : null;
+                const ruleLabel = t(`whatIf.rule.${id}.label`);
                 return (
-                  <tr key={r.label} className="border-t border-border/50 tabular-nums">
-                    <td className="py-1.5">{r.label}</td>
-                    <td className="py-1.5 text-right text-muted-foreground">{r.fmt(r.a)}</td>
-                    <td className="py-1.5 text-right font-medium">{r.fmt(r.b)}</td>
-                    <td className={cn("py-1.5 text-right", tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-muted-foreground")}>
-                      {d == null ? "—" : r.pct ? `${fmtSigned(d * 100, 0)} п.п.` : r.label === "Сделок" || r.label.startsWith("Макс. серия") ? fmtSigned(d, 0) : r.label === "Profit factor" ? fmtSigned(d, 2) : fmt(d, 2)}
-                    </td>
-                  </tr>
+                  <li key={id}>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={on}
+                      onClick={() => toggle(id)}
+                      className={cn("flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left transition-colors", on ? "bg-primary/10 ring-1 ring-primary/40" : "bg-[var(--glass-bg)] hover:bg-primary/5")}
+                    >
+                      <span className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border", on ? "border-primary bg-primary text-primary-foreground" : "border-border")} aria-hidden="true">
+                        {on && <Check className="h-3 w-3" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">{worst ? t("whatIf.worstSetup", { label: ruleLabel, setup: setupLabel(worst) }) : ruleLabel}</span>
+                        <span className="block text-2xs text-muted-foreground">
+                          {skipped ? t("whatIf.notApplied", { reason: t(`whatIf.skip.${skipped.reason}`) }) : t(`whatIf.rule.${id}.hint`)}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 flex-col items-end gap-0.5">
+                        {one?.delta != null && (
+                          <span className={cn("text-xs font-medium tabular-nums", Math.abs(one.delta) < 1e-9 ? "text-muted-foreground" : one.delta > 0 ? "text-up" : "text-down")} title={t("whatIf.alone", { value: fmt(one.delta) })}>
+                            {fmt(one.delta)}
+                          </span>
+                        )}
+                        {ONLY_HERE.has(id) && <span className="text-2xs text-muted-foreground" title={t("whatIf.onlyHereHint")}>{t("whatIf.onlyHere")}</span>}
+                      </span>
+                    </button>
+                  </li>
                 );
               })}
-            </tbody>
-          </table>
-          <p className="mt-2 text-2xs text-muted-foreground">Правила применяются к прошлым сделкам как есть: они не учитывают, что без ранних входов вы могли бы взять другие сделки. «Убытки не хуже −1R» уменьшает и $ пропорционально.</p>
-        </Panel>
-      </div>
+            </ul>
+
+            <div className="flex flex-col gap-2 lg:col-span-2">
+              <KpiCompare rows={rows} t={t} />
+              <div className="flex flex-wrap gap-1.5">
+                {rules.size > 0 && alt.removed > 0 && <Pill tone="neutral">{t("whatIf.removed", { trades: commonI18n.t("units.trades", { count: alt.removed }) })}</Pill>}
+                {rules.size > 0 && alt.modified > 0 && <Pill tone="neutral">{t("whatIf.trimmed", { trades: commonI18n.t("units.trades", { count: alt.modified }) })}</Pill>}
+                {rules.size > 0 && alt.removed === 0 && alt.modified === 0 && <Pill tone="neutral">{t("whatIf.nothingChanged")}</Pill>}
+              </div>
+              <p className="text-2xs text-muted-foreground">{t("whatIf.footnote")}</p>
+            </div>
+          </div>
+        )}
+        <p className="mt-3 border-t border-border/50 pt-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{t("whatIf.bridgeTitle")}.</span> {t("whatIf.bridgeText")}
+        </p>
+      </Panel>
+
+      <Panel
+        title={t("whatIf.feesTitle")}
+        description={t("whatIf.feesHint")}
+        icon={Receipt}
+        actions={
+          <Link href={whatIfHref(filters, [], "#fees")} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+            {t("whatIf.feesLink")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        }
+      >
+        <CostsSummary filters={filters} />
+      </Panel>
     </div>
+  );
+}
+
+function KpiCompare({ rows, t }: {
+  rows: { id: string; label: string; a: number | null; b: number | null; fmt: (v: number | null) => string; delta: (d: number) => string; invert?: boolean }[];
+  t: ReturnType<typeof analyticsI18n.useT>["t"];
+}) {
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-xs text-muted-foreground">
+          <th className="py-1.5 text-left font-medium">{t("whatIf.colMetric")}</th>
+          <th className="py-1.5 text-right font-medium">{t("whatIf.colFact")}</th>
+          <th className="py-1.5 text-right font-medium">{t("whatIf.colWhatIf")}</th>
+          <th className="py-1.5 text-right font-medium">Δ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const d = r.a != null && r.b != null ? r.b - r.a : null;
+          const tone = d == null || Math.abs(d) < 1e-9 ? "neutral" : toneOf(r.invert ? -d : d);
+          return (
+            <tr key={r.id} className="border-t border-border/50 tabular-nums">
+              <td className="py-1.5">{r.label}</td>
+              <td className="py-1.5 text-right text-muted-foreground">{r.fmt(r.a)}</td>
+              <td className="py-1.5 text-right font-medium">{r.fmt(r.b)}</td>
+              <td className={cn("py-1.5 text-right", tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-muted-foreground")}>{d == null ? "—" : r.delta(d)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 

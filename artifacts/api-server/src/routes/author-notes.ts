@@ -14,6 +14,9 @@ import {
   buildAudience, daySnapshot, groupTradesByDay, isAudienceStage,
   type AudienceMemberInput, type AudienceStage, type SnapshotTrade,
 } from "../lib/authorNotesLogic";
+import { AppError, badRequest, forbidden, notFound, sendError } from "../lib/http";
+import { aiAnswerLanguage } from "../i18n/ai";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 const AI_MODEL = "claude-sonnet-4-6";
@@ -128,7 +131,7 @@ function getWeekEnd(weekStart: string): string {
 
 router.get("/author-notes/team", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM author_notes WHERE note_date = $1 ORDER BY trader ASC`,
@@ -140,8 +143,8 @@ router.get("/author-notes/team", requireAuth, asyncHandler(async (req, res): Pro
 router.get("/author-notes", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM author_notes WHERE trader = $1 AND note_date = $2 LIMIT 1`,
@@ -153,7 +156,7 @@ router.get("/author-notes", requireAuth, asyncHandler(async (req, res): Promise<
 router.get("/author-notes/history", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const limit = parseLimit(req.query["limit"], 30, 366);
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM author_notes WHERE trader = $1 ORDER BY note_date DESC LIMIT $2`,
@@ -165,8 +168,8 @@ router.get("/author-notes/history", requireAuth, asyncHandler(async (req, res): 
 router.get("/author-notes/weekly-summary", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const weekStart = (req.query["week_start"] as string | undefined) || getWeekStart(todayNy());
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
-  if (!isIsoDate(weekStart)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
+  if (!isIsoDate(weekStart)) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query(
     `SELECT ${WEEKLY_COLS}
      FROM author_weekly_summaries WHERE trader = $1 AND week_start = $2 LIMIT 1`,
@@ -180,8 +183,8 @@ router.get("/author-notes/feed", requireAuth, asyncHandler(async (req, res): Pro
   const me = req.authUser!.name;
   const to = (req.query["to"] as string | undefined) || todayNy();
   const from = (req.query["from"] as string | undefined) || addDaysIso(to, -6);
-  if (!isIsoDate(from) || !isIsoDate(to) || from > to) { res.status(400).json({ error: "Некорректный период" }); return; }
-  if (Date.parse(to) - Date.parse(from) > 92 * 86_400_000) { res.status(400).json({ error: "Период не больше 3 месяцев" }); return; }
+  if (!isIsoDate(from) || !isIsoDate(to) || from > to) throw new AppError("INVALID_RANGE", undefined, { max: 92 });
+  if (Date.parse(to) - Date.parse(from) > 92 * 86_400_000) throw new AppError("RANGE_TOO_LONG", undefined, { max: 92 });
   const rawTrader = req.query["trader"];
   const trader = typeof rawTrader === "string" && rawTrader.trim() ? rawTrader.trim() : null;
   await ensureReadsTable();
@@ -233,7 +236,7 @@ router.get("/author-notes/feed", requireAuth, asyncHandler(async (req, res): Pro
 router.get("/author-notes/day-context", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser!;
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const rawTrader = req.query["trader"];
   const qTrader = typeof rawTrader === "string" ? rawTrader.trim() : "";
   // Traders only see their own book; curators/admins may look at anyone's.
@@ -308,11 +311,11 @@ router.get("/author-notes/day-context", requireAuth, asyncHandler(async (req, re
 router.get("/author-notes/:id/reads", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser!;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
-  if (!noteRows[0]) { res.status(404).json({ error: "Not found" }); return; }
-  if (noteRows[0].trader !== auth.name && !(await can(req, "journal.read.team", { trader: noteRows[0].trader }))) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!noteRows[0]) throw notFound();
+  if (noteRows[0].trader !== auth.name && !(await can(req, "journal.read.team", { trader: noteRows[0].trader }))) throw forbidden();
   const { rows } = await pool.query(
     `SELECT reader, read_at FROM author_note_reads WHERE note_id = $1 ORDER BY read_at ASC`,
     [id],
@@ -325,12 +328,12 @@ router.get("/author-notes/:id/reads", requireAuth, asyncHandler(async (req, res)
 router.get("/author-notes/:id/audience", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser!;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
-  if (!noteRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!noteRows[0]) throw notFound();
   const author = noteRows[0].trader as string;
-  if (author !== auth.name && !(await can(req, "journal.read.team", { trader: author }))) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (author !== auth.name && !(await can(req, "journal.read.team", { trader: author }))) throw forbidden();
   const [{ rows: users }, { rows: reads }] = await Promise.all([
     pool.query<{ name: string; role: string }>(
       `SELECT name, role FROM users
@@ -347,11 +350,11 @@ router.get("/author-notes/:id/audience", requireAuth, asyncHandler(async (req, r
 router.post("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
-  if (!noteRows[0]) { res.status(404).json({ error: "Not found" }); return; }
-  if (noteRows[0].trader === me) { res.status(400).json({ error: "Это твоя запись" }); return; }
+  if (!noteRows[0]) throw notFound();
+  if (noteRows[0].trader === me) throw new AppError("OWN_ENTRY");
   const { rows } = await pool.query(
     `INSERT INTO author_note_reads (note_id, reader) VALUES ($1, $2)
      ON CONFLICT (note_id, reader) DO UPDATE SET read_at = author_note_reads.read_at
@@ -364,7 +367,7 @@ router.post("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res)
 router.delete("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   await pool.query(`DELETE FROM author_note_reads WHERE note_id = $1 AND reader = $2`, [id, me]);
   res.json({ ok: true });
@@ -374,11 +377,11 @@ router.put("/author-notes", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { raw_text, note_date, mood } = req.body as { raw_text?: string; note_date?: string; mood?: string };
   const date = note_date || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
-  if (raw_text != null && typeof raw_text !== "string") { res.status(400).json({ error: "raw_text must be a string" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
+  if (raw_text != null && typeof raw_text !== "string") throw new AppError("INVALID_FIELD", undefined, { field: "raw_text" });
   const text = (raw_text ?? "").trim();
-  if (text.length > 50_000) { res.status(400).json({ error: "Слишком длинная запись" }); return; }
-  if (mood != null && (typeof mood !== "string" || mood.length > 32)) { res.status(400).json({ error: "Некорректное настроение" }); return; }
+  if (text.length > 50_000) throw new AppError("TEXT_TOO_LONG", undefined, { field: "text", max: 20000 });
+  if (mood != null && (typeof mood !== "string" || mood.length > 32)) throw new AppError("INVALID_FIELD", undefined, { field: "mood" });
   const { rows } = await pool.query(
     `INSERT INTO author_notes (trader, note_date, raw_text, mood, updated_at)
      VALUES ($1, $2, $3, $4, NOW())
@@ -395,33 +398,33 @@ router.put("/author-notes", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/author-notes/:id/refined", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { refined_text } = req.body as { refined_text: string };
   const { rows } = await pool.query(
     `UPDATE author_notes SET refined_text = $1, updated_at = NOW()
      WHERE id = $2 AND trader = $3 RETURNING ${NOTE_COLS}`,
     [refined_text, id, trader],
   );
-  if (!rows[0]) { res.status(404).json({ error: "Note not found" }); return; }
+  if (!rows[0]) throw new AppError("NOTE_NOT_FOUND");
   res.json(rows[0]);
 }));
 
 router.delete("/author-notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rowCount } = await pool.query(
     `DELETE FROM author_notes WHERE id = $1 AND trader = $2`,
     [id, trader],
   );
-  if (!rowCount) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rowCount) throw notFound();
   res.json({ ok: true });
 }));
 
 router.patch("/author-notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { raw_text, mood } = req.body as { raw_text?: string; mood?: string };
   const { rows } = await pool.query(
     `UPDATE author_notes
@@ -433,14 +436,14 @@ router.patch("/author-notes/:id", asyncHandler(async (req, res): Promise<void> =
      RETURNING ${NOTE_COLS}`,
     [raw_text ?? null, mood ?? null, id, trader],
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   res.json(rows[0]);
 }));
 
 router.post("/author-notes/improve", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { text, note_id, note_date } = req.body as { text: string; note_id?: number; note_date?: string };
-  if (!text?.trim()) { res.status(400).json({ error: "text required" }); return; }
+  if (!text?.trim()) throw new AppError("COMMENT_EMPTY");
 
   const date = isIsoDate(note_date) ? note_date : todayNy();
   const tradesRes = await pool.query(
@@ -448,12 +451,13 @@ router.post("/author-notes/improve", aiTextLimiter, asyncHandler(async (req, res
      FROM trades t WHERE t.trader = $1 AND t.date = $2 AND t.deleted_at IS NULL ORDER BY t.created_at LIMIT 15`,
     [trader, date],
   );
-  const tradesContext = tradesRes.rows.length > 0
-    ? `\nТрейды ${trader} за ${date}:\n${tradesRes.rows.map(t =>
+  const tradesContext = tradesRes.rows.length > 0 // i18n-ignore (AI prompt context)
+    ? `\nТрейды ${trader} за ${date}:\n${tradesRes.rows.map(t => // i18n-ignore (AI prompt context)
         `- ${t.ticker}: ${t.result}${t.pnl_net != null ? ` | PnL нетто: $${t.pnl_net}` : ""}${t.r_signed != null ? ` | R: ${t.r_signed}` : ""}${t.setup ? ` | Сетап: ${t.setup}` : ""}`
       ).join("\n")}`
     : "";
 
+  // i18n-ignore-next (AI prompt — model input; the answer language follows the reader)
   const prompt = `Ты — опытный ментор трейдеров. Трейдер ${trader} сделал голосовую (или текстовую) запись о своём торговом дне. Твоя задача — структурировать и улучшить его мысли, сохранив оригинальный голос и суть.
 ${tradesContext}
 
@@ -474,7 +478,8 @@ ${text.slice(0, 4000)}
 
 **🎯 Фокус на завтра** — конкретный план или фокус
 
-Пиши в живом разговорном стиле от первого лица. Сохраняй специфические тикеры, числа и термины из оригинала. Не добавляй ничего, чего трейдер не упоминал.`;
+Пиши в живом разговорном стиле от первого лица. Сохраняй специфические тикеры, числа и термины из оригинала. Не добавляй ничего, чего трейдер не упоминал.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
@@ -498,7 +503,7 @@ ${text.slice(0, 4000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message, trader }, "author-notes improve failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 
@@ -506,7 +511,7 @@ router.post("/author-notes/weekly-summary", aiTextLimiter, asyncHandler(async (r
   const trader = req.authUser!.name;
   const { week_start } = req.body as { week_start?: string };
   const weekStart = week_start || getWeekStart(todayNy());
-  if (!isIsoDate(weekStart)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(weekStart)) throw badRequest("INVALID_DATE");
   const weekEnd = getWeekEnd(weekStart);
 
   const { rows: notes } = await pool.query(
@@ -514,10 +519,7 @@ router.post("/author-notes/weekly-summary", aiTextLimiter, asyncHandler(async (r
      WHERE trader = $1 AND note_date >= $2 AND note_date <= $3 ORDER BY note_date`,
     [trader, weekStart, weekEnd],
   );
-  if (notes.length === 0) {
-    res.status(400).json({ error: "Нет записей за эту неделю" });
-    return;
-  }
+  if (notes.length === 0) throw new AppError("NOT_FOUND", 400);
 
   const { rows: trades } = await pool.query(
     `SELECT t.date, t.ticker, t.result, ROUND(${netPnlSql("t")}, 2) AS pnl_net, ROUND(${signedRSql("t")}, 2) AS r_signed, t.setup FROM trades t
@@ -525,16 +527,17 @@ router.post("/author-notes/weekly-summary", aiTextLimiter, asyncHandler(async (r
     [trader, weekStart, weekEnd],
   );
 
-  const notesText = notes.map(n =>
+  const notesText = notes.map(n => // i18n-ignore (AI prompt context)
     `=== ${n.note_date} (настроение: ${n.mood || "не указано"}) ===\n${n.refined_text || n.raw_text}`
   ).join("\n\n");
 
-  const tradesText = trades.length > 0
-    ? `\nРезультаты по трейдам за неделю:\n${trades.map((t: any) =>
+  const tradesText = trades.length > 0 // i18n-ignore (AI prompt context)
+    ? `\nРезультаты по трейдам за неделю:\n${trades.map((t: any) => // i18n-ignore (AI prompt context)
         `${t.date} | ${t.ticker} | ${t.result}${t.pnl_net != null ? ` | нетто $${t.pnl_net}` : ""}${t.r_signed != null ? ` | R:${t.r_signed}` : ""}${t.setup ? ` | ${t.setup}` : ""}`
       ).join("\n")}`
     : "";
 
+  // i18n-ignore-next (AI prompt — model input)
   const prompt = `Ты — ментор трейдеров. Проведи детальный разбор недели ${weekStart} — ${weekEnd} для трейдера ${trader}.
 ${tradesText}
 
@@ -558,7 +561,8 @@ ${notesText.slice(0, 8000)}
 ---
 **Цитата недели:** «[самая точная или ценная фраза трейдера из его записей, дословно]»
 
-Пиши на русском, живо и конкретно. Только то, что есть в записях.`;
+Пиши живо и конкретно. Только то, что есть в записях. Цитату приводи дословно, на языке оригинала.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
@@ -587,27 +591,26 @@ ${notesText.slice(0, 8000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message, trader }, "author-notes weekly summary failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 
 router.post("/author-notes/team-summary", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const raw = (req.body as { note_ids?: unknown }).note_ids;
   const note_ids = Array.isArray(raw) ? raw.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 100) : [];
-  if (note_ids.length === 0) {
-    res.status(400).json({ error: "Выбери хотя бы одну запись" }); return;
-  }
+  if (note_ids.length === 0) throw new AppError("SELECT_AT_LEAST_ONE");
   const { rows } = await pool.query(
     `SELECT trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date, raw_text, refined_text, mood
      FROM author_notes WHERE id = ANY($1) ORDER BY trader, note_date`,
     [note_ids],
   );
-  if (rows.length === 0) { res.status(400).json({ error: "Записи не найдены" }); return; }
+  if (rows.length === 0) throw new AppError("NOT_FOUND", 400);
 
-  const notesText = rows.map((n: any) =>
+  const notesText = rows.map((n: any) => // i18n-ignore (AI prompt context)
     `### ${n.trader} (${n.note_date}${n.mood ? `, настроение: ${n.mood}` : ""})\n${n.refined_text || n.raw_text}`
   ).join("\n\n");
 
+  // i18n-ignore-next (AI prompt — model input)
   const prompt = `Ты — ментор проп трейдинг деска. Создай общую командную сводку на основе ежедневных записей трейдеров.
 
 ЗАПИСИ КОМАНДЫ:
@@ -625,7 +628,8 @@ ${notesText.slice(0, 8000)}
 
 **🔮 Фокус команды на завтра** — что стоит держать в голове
 
-Пиши конкретно, ссылайся на реальные примеры из записей. Не придумывай ничего, чего нет в записях. На русском.`;
+Пиши конкретно, ссылайся на реальные примеры из записей. Не придумывай ничего, чего нет в записях.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
@@ -642,7 +646,7 @@ ${notesText.slice(0, 8000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message }, "author-notes team-summary failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 

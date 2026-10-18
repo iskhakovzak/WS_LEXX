@@ -4,9 +4,10 @@
  */
 import { SkeletonBlock } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtSigned } from "./lib";
+import { fmtNum } from "@/lib/format";
 import { toneHint, type BoardAgg, type Big7Row, type Phase, type Tone } from "./context";
 import { Signed } from "./ui";
+import { big7I18n } from "@/i18n/ns/big7";
 
 const TONE_CLS: Record<Tone["kind"], { dot: string; text: string; ring: string }> = {
   on: { dot: "bg-up", text: "text-up", ring: "bg-up/10" },
@@ -14,12 +15,8 @@ const TONE_CLS: Record<Tone["kind"], { dot: string; text: string; ring: string }
   mixed: { dot: "bg-warn", text: "text-warn", ring: "bg-warn/10" },
 };
 
-export const PHASE_LABEL: Record<Phase, string> = {
-  pre: "Премаркет",
-  rth: "Основная сессия",
-  post: "Постмаркет",
-  closed: "Сессия закрыта",
-};
+/** Session phase name in the UI language. */
+export const phaseLabel = (p: Phase) => big7I18n.t(`phaseLabel.${p}`);
 
 function Cell({ label, children, title }: { label: React.ReactNode; children: React.ReactNode; title?: string }) {
   return (
@@ -44,7 +41,7 @@ function Breadth({ up, down, n }: { up: number; down: number; n: number }) {
   );
 }
 
-const names = (rows: Big7Row[]) => rows.map((r) => `${r.symbol} ${fmtSigned(r.rsQqq, 1, "")}`).join(" · ");
+const names = (rows: Big7Row[]) => rows.map((r) => `${r.symbol} ${fmtNum(r.rsQqq, { decimals: 1, signed: true })}`).join(" · ");
 
 export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
   tone: Tone | null;
@@ -54,9 +51,10 @@ export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
   phase: Phase;
   loading: boolean;
 }) {
+  const { t } = big7I18n.useT();
   if (loading && !tone) {
     return (
-      <section aria-label="Тон рынка" aria-busy="true" className="glass-panel flex min-h-[92px] items-center gap-6 rounded-2xl p-[var(--panel-p)]">
+      <section aria-label={t("tone.aria")} aria-busy="true" className="glass-panel flex min-h-[92px] items-center gap-6 rounded-2xl p-[var(--panel-p)]">
         <SkeletonBlock className="h-12 w-56 rounded-xl" />
         <div className="grid flex-1 grid-cols-5 gap-4">
           {Array.from({ length: 5 }, (_, i) => <SkeletonBlock key={i} className="h-9 rounded-lg" />)}
@@ -67,8 +65,8 @@ export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
   const cls = tone ? TONE_CLS[tone.kind] : null;
   return (
     <section
-      aria-label="Тон рынка"
-      className="glass-panel grid min-h-[92px] grid-cols-1 items-center gap-x-6 gap-y-3 rounded-2xl p-[var(--panel-p)] lg:grid-cols-[minmax(240px,1.1fr)_2fr]"
+      aria-label={t("tone.aria")}
+      className="glass-panel grid min-h-[92px] grid-cols-1 items-center gap-x-6 gap-y-3 rounded-2xl p-[var(--panel-p)] lg:grid-cols-[minmax(240px,1fr)_minmax(0,2.2fr)]"
     >
       <div className="flex min-w-0 items-center gap-3">
         <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", cls?.ring ?? "bg-[var(--glass-bg)]")} aria-hidden="true">
@@ -77,35 +75,34 @@ export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <span className={cn("text-lg font-semibold leading-tight", cls?.text ?? "text-muted-foreground")}>
-              {tone?.label ?? "Нет данных"}
+              {tone?.label ?? t("tone.noData")}
             </span>
-            <span className="text-xs text-muted-foreground">{PHASE_LABEL[phase]}</span>
+            <span className="text-xs text-muted-foreground">{phaseLabel(phase)}</span>
           </div>
-          <p className="truncate text-xs text-muted-foreground" title={tone ? `${tone.reasons.join(" · ")}\n${toneHint(tone)}` : undefined}>
-            {tone ? tone.reasons.join(" · ") : "Котировки ещё не пришли"}
+          <p className="line-clamp-2 text-xs text-muted-foreground" title={tone ? `${tone.reasons.join(" · ")}\n${toneHint(tone)}` : undefined}>
+            {tone ? tone.reasons.join(" · ") : t("tone.noQuotes")}
           </p>
-          {tone && <p className="truncate text-xs text-foreground/90">{toneHint(tone)}</p>}
+          {tone && <p className="truncate text-xs text-foreground/90" title={toneHint(tone)}>{toneHint(tone)}</p>}
         </div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-3 gap-x-5 gap-y-3 sm:grid-cols-6">
+      <div className="grid min-w-0 grid-cols-3 gap-x-6 gap-y-3 sm:grid-cols-[repeat(5,auto)_minmax(0,1fr)]">
         <Cell label="QQQ"><Signed value={qqq?.chg} /></Cell>
         <Cell label="SPY"><Signed value={spy?.chg} /></Cell>
-        <Cell label="В плюсе"><Breadth up={agg.up} down={agg.down} n={agg.n} /></Cell>
-        <Cell label="Big 7 ≈ взвеш." title="Изменение доски, взвешенное по примерному весу в QQQ">
+        <Cell label={t("tone.breadth")}><Breadth up={agg.up} down={agg.down} n={agg.n} /></Cell>
+        <Cell label={t("tone.weighted")} title={t("tone.weightedTitle")}>
           <Signed value={agg.weighted} />
         </Cell>
-        <Cell label="Вклад в QQQ" title="≈ Σ вес × изменение, процентные пункты; в скобках — доля движения QQQ">
+        <Cell label={t("tone.contrib")} title={t("tone.contribTitle")}>
           <span className="inline-flex items-baseline gap-1">
-            <Signed value={agg.contribQqq} suffix=" п.п." />
+            <Signed value={agg.contribQqq} suffix={t("tone.ppSuffix")} />
             {agg.shareQqq != null && <span className="text-xs font-normal text-muted-foreground">({Math.round(agg.shareQqq * 100)}%)</span>}
           </span>
         </Cell>
-        <Cell label="Ведут / отстают" title="RS к QQQ, п.п.">
-          <span className="block truncate text-xs font-medium">
-            <span className="text-up">{names(agg.leaders) || "—"}</span>
-            <span className="text-muted-foreground"> / </span>
-            <span className="text-down">{names(agg.laggards) || "—"}</span>
+        <Cell label={t("tone.leadLag")} title={t("tone.leadLagTitle")}>
+          <span className="flex flex-col text-xs font-medium leading-snug">
+            <span className="truncate text-up" title={names(agg.leaders) || undefined}>{names(agg.leaders) || "—"}</span>
+            <span className="truncate text-down" title={names(agg.laggards) || undefined}>{names(agg.laggards) || "—"}</span>
           </span>
         </Cell>
       </div>

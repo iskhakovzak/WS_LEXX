@@ -7,6 +7,7 @@
  * frame rate. `planAdvance` then moves the cursor, stopping on the end of the data or (optionally) on a fill.
  */
 import type { Candle } from "../types";
+import { chartI18n } from "@/i18n/ns/chart";
 import { etParts, RTH_OPEN_MIN, PRE_OPEN_MIN, RTH_CLOSE_MIN } from "./time";
 
 export const REPLAY_SPEEDS = [1, 2, 5, 10, 30, 60] as const;
@@ -58,13 +59,15 @@ export function planAdvance(cur: number, steps: number, opts: { last: number; li
 
 /** Where the replay starts. */
 export type ReplayStart = "pre" | "open" | "30" | "15" | "5";
-export const REPLAY_STARTS: { value: ReplayStart; label: string; title: string }[] = [
-  { value: "pre", label: "Премаркет", title: "С первого бара премаркета дня сделки" },
-  { value: "open", label: "Открытие", title: "С открытия основной сессии 9:30" },
-  { value: "30", label: "−30м", title: "За 30 минут до входа" },
-  { value: "15", label: "−15м", title: "За 15 минут до входа" },
-  { value: "5", label: "−5м", title: "За 5 минут до входа" },
-];
+export const REPLAY_START_VALUES: readonly ReplayStart[] = ["pre", "open", "30", "15", "5"];
+const START_KEY = { pre: "pre", open: "open", "30": "m30", "15": "m15", "5": "m5" } as const;
+/** Start presets with labels in the UI language (call at render time). */
+export function replayStarts(): { value: ReplayStart; label: string; title: string }[] {
+  return REPLAY_START_VALUES.map((value) => {
+    const k = START_KEY[value];
+    return { value, label: chartI18n.t(`replay.starts.${k}`), title: chartI18n.t(`replay.starts.${k}Title`) };
+  });
+}
 export function isReplayStart(v: unknown): v is ReplayStart {
   return v === "pre" || v === "open" || v === "30" || v === "15" || v === "5";
 }

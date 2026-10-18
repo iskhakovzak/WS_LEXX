@@ -27,17 +27,33 @@ export type ScoreInputs = {
   liquidityScore: number;
 };
 
+/**
+ * One score component. `reason` is the English fallback text (older clients / stored rows); `reasonCode` + `reasonParams`
+ * are the same reason as data so the UI renders it in the reader's language (codes listed in ScoreReasonCode).
+ */
+export type ScoreComponent = { weight: number; raw: number; weighted: number; reason: string; reasonCode?: ScoreReasonCode; reasonParams?: ScoreReasonParams };
 export type ScoreBreakdown = {
   total: number;
   components: {
-    catalyst: { weight: number; raw: number; weighted: number; reason: string };
-    float: { weight: number; raw: number; weighted: number; reason: string };
-    atr: { weight: number; raw: number; weighted: number; reason: string };
-    relativeVolume: { weight: number; raw: number; weighted: number; reason: string };
-    sectorStrength: { weight: number; raw: number; weighted: number; reason: string };
-    liquidity: { weight: number; raw: number; weighted: number; reason: string };
+    catalyst: ScoreComponent;
+    float: ScoreComponent;
+    atr: ScoreComponent;
+    relativeVolume: ScoreComponent;
+    sectorStrength: ScoreComponent;
+    liquidity: ScoreComponent;
   };
 };
+
+/** Stable reason codes of the watchlist score (`<component>.<case>`). Params: pct / usd / x / count / sector / m / k. */
+export type ScoreReasonCode =
+  | "float.none" | "float.extremelyLow" | "float.low" | "float.midLow" | "float.mid" | "float.high" | "float.veryHigh"
+  | "atr.none" | "atr.pctVeryHigh" | "atr.pctHigh" | "atr.pctGood" | "atr.pctModerate" | "atr.pctLow" | "atr.usd" | "atr.usdLow"
+  | "rvol.none" | "rvol.massive" | "rvol.veryHigh" | "rvol.high" | "rvol.elevated" | "rvol.normal" | "rvol.light"
+  | "catalyst.explicitNews" | "catalyst.explicit" | "catalyst.manyNews" | "catalyst.someNews" | "catalyst.none"
+  | "sector.none" | "sector.noData" | "sector.strong" | "sector.up" | "sector.flat" | "sector.weak" | "sector.veryWeak" | "sector.error"
+  | "liquidity.none" | "liquidity.deep" | "liquidity.good" | "liquidity.ok" | "liquidity.thin" | "liquidity.veryThin";
+export type ScoreReasonParams = Record<string, string | number>;
+type Scored = { raw: number; reason: string; reasonCode: ScoreReasonCode; reasonParams?: ScoreReasonParams };
 
 const WEIGHTS = {
   catalyst: 25,
@@ -63,85 +79,85 @@ function parseNumeric(v: unknown): number | null {
   return Number.isFinite(n) ? n * mult : null;
 }
 
-function scoreFloat(floatRaw: unknown): { raw: number; reason: string } {
+function scoreFloat(floatRaw: unknown): Scored {
   const v = parseNumeric(floatRaw);
-  if (v == null) return { raw: 50, reason: "no float data (neutral)" };
-  if (v < 2_000_000) return { raw: 100, reason: "<2M (extremely low)" };
-  if (v < 10_000_000) return { raw: 90, reason: "<10M (low)" };
-  if (v < 30_000_000) return { raw: 75, reason: "<30M (mid-low)" };
-  if (v < 100_000_000) return { raw: 55, reason: "<100M (mid)" };
-  if (v < 500_000_000) return { raw: 35, reason: "<500M (high)" };
-  return { raw: 15, reason: ">500M (very high)" };
+  if (v == null) return { raw: 50, reason: "no float data (neutral)", reasonCode: "float.none" };
+  if (v < 2_000_000) return { raw: 100, reason: "<2M (extremely low)", reasonCode: "float.extremelyLow" };
+  if (v < 10_000_000) return { raw: 90, reason: "<10M (low)", reasonCode: "float.low" };
+  if (v < 30_000_000) return { raw: 75, reason: "<30M (mid-low)", reasonCode: "float.midLow" };
+  if (v < 100_000_000) return { raw: 55, reason: "<100M (mid)", reasonCode: "float.mid" };
+  if (v < 500_000_000) return { raw: 35, reason: "<500M (high)", reasonCode: "float.high" };
+  return { raw: 15, reason: ">500M (very high)", reasonCode: "float.veryHigh" };
 }
 
-function scoreAtr(atr: unknown, price: unknown): { raw: number; reason: string } {
+function scoreAtr(atr: unknown, price: unknown): Scored {
   const a = parseNumeric(atr);
   const p = parseNumeric(price);
-  if (a == null) return { raw: 50, reason: "no ATR data (neutral)" };
+  if (a == null) return { raw: 50, reason: "no ATR data (neutral)", reasonCode: "atr.none" };
   const atrPct = p && p > 0 ? (a / p) * 100 : null;
   if (atrPct != null) {
-    if (atrPct >= 8) return { raw: 100, reason: `ATR ${atrPct.toFixed(1)}% (very high vol)` };
-    if (atrPct >= 5) return { raw: 85, reason: `ATR ${atrPct.toFixed(1)}% (high vol)` };
-    if (atrPct >= 3) return { raw: 65, reason: `ATR ${atrPct.toFixed(1)}% (good vol)` };
-    if (atrPct >= 1.5) return { raw: 45, reason: `ATR ${atrPct.toFixed(1)}% (moderate)` };
-    return { raw: 25, reason: `ATR ${atrPct.toFixed(1)}% (low vol)` };
+    if (atrPct >= 8) return { raw: 100, reason: `ATR ${atrPct.toFixed(1)}% (very high vol)`, reasonCode: "atr.pctVeryHigh", reasonParams: { pct: atrPct.toFixed(1) } };
+    if (atrPct >= 5) return { raw: 85, reason: `ATR ${atrPct.toFixed(1)}% (high vol)`, reasonCode: "atr.pctHigh", reasonParams: { pct: atrPct.toFixed(1) } };
+    if (atrPct >= 3) return { raw: 65, reason: `ATR ${atrPct.toFixed(1)}% (good vol)`, reasonCode: "atr.pctGood", reasonParams: { pct: atrPct.toFixed(1) } };
+    if (atrPct >= 1.5) return { raw: 45, reason: `ATR ${atrPct.toFixed(1)}% (moderate)`, reasonCode: "atr.pctModerate", reasonParams: { pct: atrPct.toFixed(1) } };
+    return { raw: 25, reason: `ATR ${atrPct.toFixed(1)}% (low vol)`, reasonCode: "atr.pctLow", reasonParams: { pct: atrPct.toFixed(1) } };
   }
-  if (a >= 5) return { raw: 90, reason: `ATR $${a.toFixed(2)}` };
-  if (a >= 2) return { raw: 70, reason: `ATR $${a.toFixed(2)}` };
-  if (a >= 1) return { raw: 50, reason: `ATR $${a.toFixed(2)}` };
-  return { raw: 30, reason: `ATR $${a.toFixed(2)} (low)` };
+  if (a >= 5) return { raw: 90, reason: `ATR $${a.toFixed(2)}`, reasonCode: "atr.usd", reasonParams: { usd: a.toFixed(2) } };
+  if (a >= 2) return { raw: 70, reason: `ATR $${a.toFixed(2)}`, reasonCode: "atr.usd", reasonParams: { usd: a.toFixed(2) } };
+  if (a >= 1) return { raw: 50, reason: `ATR $${a.toFixed(2)}`, reasonCode: "atr.usd", reasonParams: { usd: a.toFixed(2) } };
+  return { raw: 30, reason: `ATR $${a.toFixed(2)} (low)`, reasonCode: "atr.usdLow", reasonParams: { usd: a.toFixed(2) } };
 }
 
-function scoreRVol(rvol: unknown): { raw: number; reason: string } {
+function scoreRVol(rvol: unknown): Scored {
   const v = parseNumeric(rvol);
-  if (v == null) return { raw: 50, reason: "no rVol data (neutral)" };
-  if (v >= 5) return { raw: 100, reason: `rVol ${v.toFixed(1)}x (massive)` };
-  if (v >= 3) return { raw: 90, reason: `rVol ${v.toFixed(1)}x (very high)` };
-  if (v >= 2) return { raw: 75, reason: `rVol ${v.toFixed(1)}x (high)` };
-  if (v >= 1.5) return { raw: 60, reason: `rVol ${v.toFixed(1)}x (elevated)` };
-  if (v >= 1) return { raw: 40, reason: `rVol ${v.toFixed(1)}x (normal)` };
-  return { raw: 20, reason: `rVol ${v.toFixed(1)}x (light)` };
+  if (v == null) return { raw: 50, reason: "no rVol data (neutral)", reasonCode: "rvol.none" };
+  if (v >= 5) return { raw: 100, reason: `rVol ${v.toFixed(1)}x (massive)`, reasonCode: "rvol.massive", reasonParams: { x: v.toFixed(1) } };
+  if (v >= 3) return { raw: 90, reason: `rVol ${v.toFixed(1)}x (very high)`, reasonCode: "rvol.veryHigh", reasonParams: { x: v.toFixed(1) } };
+  if (v >= 2) return { raw: 75, reason: `rVol ${v.toFixed(1)}x (high)`, reasonCode: "rvol.high", reasonParams: { x: v.toFixed(1) } };
+  if (v >= 1.5) return { raw: 60, reason: `rVol ${v.toFixed(1)}x (elevated)`, reasonCode: "rvol.elevated", reasonParams: { x: v.toFixed(1) } };
+  if (v >= 1) return { raw: 40, reason: `rVol ${v.toFixed(1)}x (normal)`, reasonCode: "rvol.normal", reasonParams: { x: v.toFixed(1) } };
+  return { raw: 20, reason: `rVol ${v.toFixed(1)}x (light)`, reasonCode: "rvol.light", reasonParams: { x: v.toFixed(1) } };
 }
 
-function scoreCatalyst(hasCatalystField: string | null, recentNews: number): { raw: number; reason: string } {
+function scoreCatalyst(hasCatalystField: string | null, recentNews: number): Scored {
   if (hasCatalystField && hasCatalystField.trim().length > 5) {
-    if (recentNews > 0) return { raw: 100, reason: "explicit catalyst + recent news" };
-    return { raw: 80, reason: "explicit catalyst noted" };
+    if (recentNews > 0) return { raw: 100, reason: "explicit catalyst + recent news", reasonCode: "catalyst.explicitNews" };
+    return { raw: 80, reason: "explicit catalyst noted", reasonCode: "catalyst.explicit" };
   }
-  if (recentNews >= 3) return { raw: 70, reason: `${recentNews} recent news items` };
-  if (recentNews > 0) return { raw: 50, reason: `${recentNews} recent news item(s)` };
-  return { raw: 15, reason: "no catalyst noted, no recent news" };
+  if (recentNews >= 3) return { raw: 70, reason: `${recentNews} recent news items`, reasonCode: "catalyst.manyNews", reasonParams: { count: recentNews } };
+  if (recentNews > 0) return { raw: 50, reason: `${recentNews} recent news item(s)`, reasonCode: "catalyst.someNews", reasonParams: { count: recentNews } };
+  return { raw: 15, reason: "no catalyst noted, no recent news", reasonCode: "catalyst.none" };
 }
 
-async function scoreSectorStrength(sector: string | null): Promise<{ raw: number; reason: string }> {
-  if (!sector) return { raw: 50, reason: "no sector data (neutral)" };
+async function scoreSectorStrength(sector: string | null): Promise<Scored> {
+  if (!sector) return { raw: 50, reason: "no sector data (neutral)", reasonCode: "sector.none" };
   try {
     const { rows } = await pool.query(
       `SELECT change_pct, trend_5d FROM sector_strength_cache WHERE LOWER(name) LIKE $1 OR LOWER(symbol) = $2 LIMIT 1`,
       [`%${sector.toLowerCase().replace(/[\\%_]/g, (m) => `\\${m}`)}%`, sector.toLowerCase()]
     );
-    if (rows.length === 0) return { raw: 50, reason: `${sector} (no data)` };
+    if (rows.length === 0) return { raw: 50, reason: `${sector} (no data)`, reasonCode: "sector.noData", reasonParams: { sector } };
     const change = Number(rows[0].change_pct ?? 0);
     const trend = Number(rows[0].trend_5d ?? 0);
     const composite = change * 0.6 + trend * 0.4;
-    if (composite >= 2) return { raw: 100, reason: `${sector} +${composite.toFixed(2)}% strong` };
-    if (composite >= 1) return { raw: 80, reason: `${sector} +${composite.toFixed(2)}%` };
-    if (composite >= 0) return { raw: 55, reason: `${sector} +${composite.toFixed(2)}% flat` };
-    if (composite >= -1) return { raw: 35, reason: `${sector} ${composite.toFixed(2)}% weak` };
-    return { raw: 15, reason: `${sector} ${composite.toFixed(2)}% very weak` };
+    if (composite >= 2) return { raw: 100, reason: `${sector} +${composite.toFixed(2)}% strong`, reasonCode: "sector.strong", reasonParams: { sector, pct: composite.toFixed(2) } };
+    if (composite >= 1) return { raw: 80, reason: `${sector} +${composite.toFixed(2)}%`, reasonCode: "sector.up", reasonParams: { sector, pct: composite.toFixed(2) } };
+    if (composite >= 0) return { raw: 55, reason: `${sector} +${composite.toFixed(2)}% flat`, reasonCode: "sector.flat", reasonParams: { sector, pct: composite.toFixed(2) } };
+    if (composite >= -1) return { raw: 35, reason: `${sector} ${composite.toFixed(2)}% weak`, reasonCode: "sector.weak", reasonParams: { sector, pct: composite.toFixed(2) } };
+    return { raw: 15, reason: `${sector} ${composite.toFixed(2)}% very weak`, reasonCode: "sector.veryWeak", reasonParams: { sector, pct: composite.toFixed(2) } };
   } catch {
-    return { raw: 50, reason: `${sector} (lookup error)` };
+    return { raw: 50, reason: `${sector} (lookup error)`, reasonCode: "sector.error", reasonParams: { sector } };
   }
 }
 
-function scoreLiquidity(adv: unknown): { raw: number; reason: string } {
+function scoreLiquidity(adv: unknown): Scored {
   const v = parseNumeric(adv);
-  if (v == null) return { raw: 50, reason: "no ADV data (neutral)" };
-  if (v >= 50_000_000) return { raw: 100, reason: `ADV ${(v / 1_000_000).toFixed(0)}M (deep)` };
-  if (v >= 10_000_000) return { raw: 85, reason: `ADV ${(v / 1_000_000).toFixed(0)}M (good)` };
-  if (v >= 2_000_000) return { raw: 65, reason: `ADV ${(v / 1_000_000).toFixed(1)}M (ok)` };
-  if (v >= 500_000) return { raw: 40, reason: `ADV ${(v / 1_000).toFixed(0)}K (thin)` };
-  return { raw: 15, reason: `ADV ${(v / 1_000).toFixed(0)}K (very thin)` };
+  if (v == null) return { raw: 50, reason: "no ADV data (neutral)", reasonCode: "liquidity.none" };
+  if (v >= 50_000_000) return { raw: 100, reason: `ADV ${(v / 1_000_000).toFixed(0)}M (deep)`, reasonCode: "liquidity.deep", reasonParams: { m: (v / 1_000_000).toFixed(0) } };
+  if (v >= 10_000_000) return { raw: 85, reason: `ADV ${(v / 1_000_000).toFixed(0)}M (good)`, reasonCode: "liquidity.good", reasonParams: { m: (v / 1_000_000).toFixed(0) } };
+  if (v >= 2_000_000) return { raw: 65, reason: `ADV ${(v / 1_000_000).toFixed(1)}M (ok)`, reasonCode: "liquidity.ok", reasonParams: { m: (v / 1_000_000).toFixed(1) } };
+  if (v >= 500_000) return { raw: 40, reason: `ADV ${(v / 1_000).toFixed(0)}K (thin)`, reasonCode: "liquidity.thin", reasonParams: { k: (v / 1_000).toFixed(0) } };
+  return { raw: 15, reason: `ADV ${(v / 1_000).toFixed(0)}K (very thin)`, reasonCode: "liquidity.veryThin", reasonParams: { k: (v / 1_000).toFixed(0) } };
 }
 
 export async function calcWatchlistScore(opts: {
@@ -196,12 +212,12 @@ export async function calcWatchlistScore(opts: {
   return {
     total: Math.max(0, Math.min(100, total)),
     components: {
-      catalyst: { weight: WEIGHTS.catalyst, raw: catalystScore.raw, weighted: Math.round(catalystScore.raw * WEIGHTS.catalyst / 100), reason: catalystScore.reason },
-      float: { weight: WEIGHTS.float, raw: floatScore.raw, weighted: Math.round(floatScore.raw * WEIGHTS.float / 100), reason: floatScore.reason },
-      atr: { weight: WEIGHTS.atr, raw: atrScore.raw, weighted: Math.round(atrScore.raw * WEIGHTS.atr / 100), reason: atrScore.reason },
-      relativeVolume: { weight: WEIGHTS.relativeVolume, raw: rVolScore.raw, weighted: Math.round(rVolScore.raw * WEIGHTS.relativeVolume / 100), reason: rVolScore.reason },
-      sectorStrength: { weight: WEIGHTS.sectorStrength, raw: sectorScore.raw, weighted: Math.round(sectorScore.raw * WEIGHTS.sectorStrength / 100), reason: sectorScore.reason },
-      liquidity: { weight: WEIGHTS.liquidity, raw: liquidityScore.raw, weighted: Math.round(liquidityScore.raw * WEIGHTS.liquidity / 100), reason: liquidityScore.reason },
+      catalyst: { weight: WEIGHTS.catalyst, raw: catalystScore.raw, weighted: Math.round(catalystScore.raw * WEIGHTS.catalyst / 100), reason: catalystScore.reason, reasonCode: catalystScore.reasonCode, ...(catalystScore.reasonParams ? { reasonParams: catalystScore.reasonParams } : {}) },
+      float: { weight: WEIGHTS.float, raw: floatScore.raw, weighted: Math.round(floatScore.raw * WEIGHTS.float / 100), reason: floatScore.reason, reasonCode: floatScore.reasonCode, ...(floatScore.reasonParams ? { reasonParams: floatScore.reasonParams } : {}) },
+      atr: { weight: WEIGHTS.atr, raw: atrScore.raw, weighted: Math.round(atrScore.raw * WEIGHTS.atr / 100), reason: atrScore.reason, reasonCode: atrScore.reasonCode, ...(atrScore.reasonParams ? { reasonParams: atrScore.reasonParams } : {}) },
+      relativeVolume: { weight: WEIGHTS.relativeVolume, raw: rVolScore.raw, weighted: Math.round(rVolScore.raw * WEIGHTS.relativeVolume / 100), reason: rVolScore.reason, reasonCode: rVolScore.reasonCode, ...(rVolScore.reasonParams ? { reasonParams: rVolScore.reasonParams } : {}) },
+      sectorStrength: { weight: WEIGHTS.sectorStrength, raw: sectorScore.raw, weighted: Math.round(sectorScore.raw * WEIGHTS.sectorStrength / 100), reason: sectorScore.reason, reasonCode: sectorScore.reasonCode, ...(sectorScore.reasonParams ? { reasonParams: sectorScore.reasonParams } : {}) },
+      liquidity: { weight: WEIGHTS.liquidity, raw: liquidityScore.raw, weighted: Math.round(liquidityScore.raw * WEIGHTS.liquidity / 100), reason: liquidityScore.reason, reasonCode: liquidityScore.reasonCode, ...(liquidityScore.reasonParams ? { reasonParams: liquidityScore.reasonParams } : {}) },
     },
   };
 }

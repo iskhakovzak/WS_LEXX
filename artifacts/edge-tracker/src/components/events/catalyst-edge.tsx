@@ -7,10 +7,14 @@ import { EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, toneOf, toneTe
 import { Skeleton } from "@/components/ui/skeleton";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { daysWord, fmtUsd, pooledEarnings, takeaway, type CategoryEdge, type EarningsEdge } from "./catalyst-math";
+import { pooledEarnings, takeaway, type CategoryEdge, type EarningsEdge } from "./catalyst-math";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { edgesFrom, useHistories, type CatalystData, type MyEarnings } from "./use-catalysts";
 import { verdictLabel, verdictTone } from "./catalyst-today";
 import { fmtDay } from "./event-meta";
+import { eventsI18n } from "@/i18n/ns/events";
+import { rich } from "./rich-text";
 
 const EARNINGS_TICKERS = 8;
 
@@ -36,6 +40,7 @@ const EARN_ACCESSORS: Record<EarnKey, (e: EarningsEdge) => number | string | nul
 };
 
 export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTicker: (e: Pick<MyEarnings, "ticker"> & Partial<MyEarnings>) => void }) {
+  const { t } = eventsI18n.useT();
   const { edge, trades } = data;
   const [open, setOpen] = React.useState<string | null>(null);
   const { rows: edgeRows, thProps } = useTableSort(edge.rows, EDGE_ACCESSORS, "days");
@@ -51,7 +56,7 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
   if (!edge.all.days) {
     return (
       <Panel>
-        <EmptyState icon={Scale} title="Пока нечего сравнивать" description="Когда появятся закрытые сделки, здесь будет видно, как вы торгуете в дни CPI, FOMC, экспираций и отчётов." />
+        <EmptyState icon={Scale} title={t("edge.emptyTitle")} description={t("edge.emptyText")} />
       </Panel>
     );
   }
@@ -64,53 +69,53 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <StatGrid cols={3}>
         <StatCard
-          label="Обычный день"
-          value={`${fmtUsd(edge.baseline.avgNetDay)}/день`}
+          label={t("edge.usualDay")}
+          value={t("today.perDay", { amount: fmtUsd(edge.baseline.avgNetDay, { signed: true }) })}
           tone={toneOf(edge.baseline.avgNetDay)}
-          hint={`${daysWord(edge.baseline.days)} без макро · WR ${edge.baseline.winRate ?? "—"}%`}
+          hint={t("edge.usualHint", { days: commonI18n.t("units.days", { count: edge.baseline.days }), wr: edge.baseline.winRate ?? "—" })}
         />
         <StatCard
-          label="Слабее всего"
+          label={t("edge.weakest")}
           value={worst && (worst.delta ?? 0) < 0 ? worst.label : "—"}
-          hint={worst && (worst.delta ?? 0) < 0 ? `${fmtUsd(worst.delta)}/день к обычному · ${verdictLabel(worst.verdict)}` : "нет дней хуже обычных"}
+          hint={worst && (worst.delta ?? 0) < 0 ? t("edge.vsUsual", { amount: fmtUsd(worst.delta, { signed: true }), verdict: verdictLabel(worst.verdict) }) : t("edge.noWorse")}
         />
         <StatCard
-          label="Сильнее всего"
+          label={t("edge.strongest")}
           value={best && (best.delta ?? 0) > 0 ? best.label : "—"}
-          hint={best && (best.delta ?? 0) > 0 ? `${fmtUsd(best.delta)}/день к обычному · ${verdictLabel(best.verdict)}` : "нет дней лучше обычных"}
+          hint={best && (best.delta ?? 0) > 0 ? t("edge.vsUsual", { amount: fmtUsd(best.delta, { signed: true }), verdict: verdictLabel(best.verdict) }) : t("edge.noBetter")}
         />
       </StatGrid>
 
       <Panel
         icon={Scale}
-        title="Макро-дни против обычных"
-        description={`Ваши закрытые сделки ${edge.from ? fmtDay(edge.from, { day: "numeric", month: "short", year: "numeric" }) : ""} — ${edge.to ? fmtDay(edge.to, { day: "numeric", month: "short", year: "numeric" }) : ""}, net после комиссий`}
+        title={t("edge.tableTitle")}
+        description={t("edge.tableDescription", { from: edge.from ? fmtDay(edge.from, "medium") : "", to: edge.to ? fmtDay(edge.to, "medium") : "" })}
         padded={false}
       >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-b border-[var(--glass-border)] text-left text-xs text-muted-foreground [&>th]:whitespace-nowrap">
-                <SortableTh {...thProps("label")} className="px-[var(--panel-p)] py-2 font-medium">Тип дня</SortableTh>
-                <SortableTh {...thProps("days")} align="right" className="px-2 py-2 font-medium">Торговали</SortableTh>
-                <SortableTh {...thProps("net")} align="right" className="px-2 py-2 font-medium">Net / день</SortableTh>
-                <SortableTh {...thProps("delta")} align="right" className="px-2 py-2 font-medium">К обычному</SortableTh>
-                <SortableTh {...thProps("green")} align="right" className="px-2 py-2 font-medium">Зелёных дней</SortableTh>
+                <SortableTh {...thProps("label")} className="px-[var(--panel-p)] py-2 font-medium">{t("edge.colDayType")}</SortableTh>
+                <SortableTh {...thProps("days")} align="right" className="px-2 py-2 font-medium">{t("edge.colTraded")}</SortableTh>
+                <SortableTh {...thProps("net")} align="right" className="px-2 py-2 font-medium">{t("edge.colNetDay")}</SortableTh>
+                <SortableTh {...thProps("delta")} align="right" className="px-2 py-2 font-medium">{t("edge.colVsUsual")}</SortableTh>
+                <SortableTh {...thProps("green")} align="right" className="px-2 py-2 font-medium">{t("edge.colGreen")}</SortableTh>
                 <SortableTh {...thProps("wr")} align="right" className="px-2 py-2 font-medium">WR</SortableTh>
-                <SortableTh {...thProps("tpd")} align="right" className="px-2 py-2 font-medium">Сделок / день</SortableTh>
-                <th className="px-[var(--panel-p)] py-2 font-medium">Вывод</th>
+                <SortableTh {...thProps("tpd")} align="right" className="px-2 py-2 font-medium">{t("edge.colTradesDay")}</SortableTh>
+                <th className="px-[var(--panel-p)] py-2 font-medium">{t("edge.colTakeaway")}</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-b border-[var(--glass-border)] bg-[var(--glass-bg)]">
-                <td className="px-[var(--panel-p)] py-2.5 font-medium text-foreground">Обычные дни</td>
+                <td className="px-[var(--panel-p)] py-2.5 font-medium text-foreground">{t("edge.usualDays")}</td>
                 <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{edge.baseline.days}</td>
-                <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(edge.baseline.avgNetDay)))}>{fmtUsd(edge.baseline.avgNetDay)}</td>
+                <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(edge.baseline.avgNetDay)))}>{fmtUsd(edge.baseline.avgNetDay, { signed: true })}</td>
                 <td className="px-2 py-2.5 text-right text-muted-foreground">—</td>
                 <td className="px-2 py-2.5 text-right tabular-nums">{edge.baseline.greenPct ?? "—"}%</td>
                 <td className="px-2 py-2.5 text-right tabular-nums">{edge.baseline.winRate ?? "—"}%</td>
                 <td className="px-2 py-2.5 text-right tabular-nums">{edge.baseline.avgTradesDay ?? "—"}</td>
-                <td className="px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">база сравнения: торговые дни без событий календаря</td>
+                <td className="px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">{t("edge.baseline")}</td>
               </tr>
               {edgeRows.map((r) => (
                 <EdgeRow key={r.key} r={r} base={edge.baseline} open={open === r.key} onToggle={() => setOpen((o) => (o === r.key ? null : r.key))} data={data} />
@@ -120,8 +125,7 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
         </div>
         <p className="flex items-start gap-1.5 px-[var(--panel-p)] py-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          «Устойчиво» — разница со средним обычного дня больше двух стандартных ошибок (t-тест Уэлча), «похоже» — больше 1.3, иначе это шум. Меньше 5 дней — только наблюдение.
-          FOMC — только день решения. Нажмите строку, чтобы увидеть сами дни.
+          {t("edge.method")}
         </p>
       </Panel>
 
@@ -131,6 +135,7 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
 }
 
 function EdgeRow({ r, base, open, onToggle, data }: { r: CategoryEdge; base: CatalystData["edge"]["baseline"]; open: boolean; onToggle: () => void; data: CatalystData }) {
+  const { t } = eventsI18n.useT();
   const a = r.agg;
   const vt = verdictTone(r);
   return (
@@ -148,9 +153,9 @@ function EdgeRow({ r, base, open, onToggle, data }: { r: CategoryEdge; base: Cat
             {r.label}
           </span>
         </td>
-        <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{a.days} из {r.calendarDays}</td>
-        <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(a.avgNetDay)))}>{fmtUsd(a.avgNetDay)}</td>
-        <td className="px-2 py-2.5 text-right tabular-nums">{r.delta != null ? <span className={toneText(r.verdict === "robust" || r.verdict === "maybe" ? toneOf(r.delta) : "neutral")}>{fmtUsd(r.delta)}</span> : "—"}</td>
+        <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{t("edge.ofCalendar", { days: a.days, total: r.calendarDays })}</td>
+        <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(a.avgNetDay)))}>{fmtUsd(a.avgNetDay, { signed: true })}</td>
+        <td className="px-2 py-2.5 text-right tabular-nums">{r.delta != null ? <span className={toneText(r.verdict === "robust" || r.verdict === "maybe" ? toneOf(r.delta) : "neutral")}>{fmtUsd(r.delta, { signed: true })}</span> : "—"}</td>
         <td className="px-2 py-2.5 text-right tabular-nums">{a.greenPct != null ? `${a.greenPct}%` : "—"}</td>
         <td className="px-2 py-2.5 text-right tabular-nums">{a.winRate != null ? `${a.winRate}%` : "—"}</td>
         <td className="px-2 py-2.5 text-right tabular-nums">{a.avgTradesDay ?? "—"}</td>
@@ -173,16 +178,16 @@ function EdgeRow({ r, base, open, onToggle, data }: { r: CategoryEdge; base: Cat
                       key={d}
                       href={links.journalDay(d)}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--glass-bg)] px-2 py-1 text-xs hover:bg-[var(--glass-hover-bg)]"
-                      title="Открыть день в журнале"
+                      title={t("edge.openDay")}
                     >
                       <span className="tabular-nums text-muted-foreground">{fmtDay(d)}</span>
-                      {s ? <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net, 0)}</span> : <span className="text-muted-foreground">не торговали</span>}
+                      {s ? <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net, { signed: true, decimals: 0 })}</span> : <span className="text-muted-foreground">{t("edge.notTraded")}</span>}
                     </Link>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">В вашем периоде таких дней не было.</p>
+              <p className="text-xs text-muted-foreground">{t("takeaway.noneInPeriod")}</p>
             )}
           </td>
         </tr>
@@ -192,6 +197,7 @@ function EdgeRow({ r, base, open, onToggle, data }: { r: CategoryEdge; base: Cat
 }
 
 function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenTicker: (e: Pick<MyEarnings, "ticker"> & Partial<MyEarnings>) => void }) {
+  const { t } = eventsI18n.useT();
   const tickers = React.useMemo(() => data.frequent.slice(0, EARNINGS_TICKERS).map((f) => f.ticker), [data.frequent]);
   const hist = useHistories(tickers);
   const edges = React.useMemo(() => edgesFrom(data.tradeRows, tickers, hist.map), [data.tradeRows, tickers, hist.map]);
@@ -207,30 +213,31 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
   return (
     <Panel
       icon={Megaphone}
-      title="Отчёты ваших тикеров"
-      description={`${EARNINGS_TICKERS} самых торгуемых: обычная реакция цены на отчёт и ваши сделки в день реакции`}
+      title={t("edge.earnTitle")}
+      description={t("edge.earnDescription", { count: EARNINGS_TICKERS })}
       padded={false}
     >
       {pooled.trades > 0 && (
         <p className="px-[var(--panel-p)] pb-1 pt-3 text-sm text-foreground">
-          В дни реакции на отчёт вы сделали {pooled.trades} сд. за {daysWord(pooled.days)}:{" "}
-          <span className={cn("font-semibold tabular-nums", toneText(toneOf(pooled.net)))}>{fmtUsd(pooled.net)}</span>, в среднем{" "}
-          <span className="tabular-nums">{fmtUsd(pooled.avgNetTrade)}</span> на сделку против{" "}
-          <span className="tabular-nums">{fmtUsd(pooled.otherAvgNetTrade)}</span> в те же тикеры в обычные дни.
-          {pooled.sample !== "ok" && <span className="text-muted-foreground"> Выборка маленькая — наблюдение, не правило.</span>}
+          {rich(t("edge.pooled", { count: pooled.trades, days: commonI18n.t("units.days", { count: pooled.days }), net: "{net}", avg: "{avg}", other: "{other}" }), {
+            net: <span className={cn("font-semibold tabular-nums", toneText(toneOf(pooled.net)))}>{fmtUsd(pooled.net, { signed: true })}</span>,
+            avg: <span className="tabular-nums">{fmtUsd(pooled.avgNetTrade, { signed: true })}</span>,
+            other: <span className="tabular-nums">{fmtUsd(pooled.otherAvgNetTrade, { signed: true })}</span>,
+          })}
+          {pooled.sample !== "ok" && <span className="text-muted-foreground">{t("edge.smallSample")}</span>}
         </p>
       )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-[var(--glass-border)] text-left text-xs text-muted-foreground [&>th]:whitespace-nowrap">
-              <SortableTh {...thProps("ticker")} className="px-[var(--panel-p)] py-2 font-medium">Тикер</SortableTh>
-              <SortableTh {...thProps("gap")} align="right" className="px-2 py-2 font-medium">Ср. |гэп|</SortableTh>
-              <SortableTh {...thProps("range")} align="right" className="px-2 py-2 font-medium">Ср. диапазон</SortableTh>
-              <SortableTh {...thProps("up")} align="right" className="px-2 py-2 font-medium">Закрылся выше</SortableTh>
-              <SortableTh {...thProps("event")} align="right" className="px-2 py-2 font-medium">Вы в день реакции</SortableTh>
-              <SortableTh {...thProps("other")} align="right" className="px-2 py-2 font-medium">Вы в обычные дни</SortableTh>
-              <th className="px-[var(--panel-p)] py-2 text-right font-medium">Следующий отчёт</th>
+              <SortableTh {...thProps("ticker")} className="px-[var(--panel-p)] py-2 font-medium">{commonI18n.t("trading.ticker")}</SortableTh>
+              <SortableTh {...thProps("gap")} align="right" className="px-2 py-2 font-medium">{t("edge.colAvgGap")}</SortableTh>
+              <SortableTh {...thProps("range")} align="right" className="px-2 py-2 font-medium">{t("edge.colAvgRange")}</SortableTh>
+              <SortableTh {...thProps("up")} align="right" className="px-2 py-2 font-medium">{t("edge.colClosedHigher")}</SortableTh>
+              <SortableTh {...thProps("event")} align="right" className="px-2 py-2 font-medium">{t("edge.colEventDay")}</SortableTh>
+              <SortableTh {...thProps("other")} align="right" className="px-2 py-2 font-medium">{t("edge.colOtherDays")}</SortableTh>
+              <th className="px-[var(--panel-p)] py-2 text-right font-medium">{t("edge.colNextReport")}</th>
             </tr>
           </thead>
           <tbody>
@@ -245,16 +252,16 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
                   <td className="px-[var(--panel-p)] py-2.5 font-semibold text-foreground">{e.ticker}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums">{e.avgAbsGap != null ? `${e.avgAbsGap.toFixed(1)}%` : "—"}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums">{e.avgRange != null ? `${e.avgRange.toFixed(1)}%` : "—"}</td>
-                  <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{e.upShare != null ? `${e.upShare}% (${e.reactions.length} кв.)` : "—"}</td>
+                  <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{e.upShare != null ? t("edge.upShare", { pct: e.upShare, count: e.reactions.length }) : "—"}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums">
                     {e.event.trades ? (
-                      <span><span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net)}</span> <span className="text-muted-foreground">· {e.event.trades} сд.{e.event.winRate != null ? ` · WR ${e.event.winRate}%` : ""}</span></span>
-                    ) : <span className="text-muted-foreground">не торговали</span>}
+                      <span><span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net, { signed: true })}</span> <span className="text-muted-foreground">{t("edge.eventTrades", { count: e.event.trades })}{e.event.winRate != null ? ` · WR ${e.event.winRate}%` : ""}</span></span>
+                    ) : <span className="text-muted-foreground">{t("edge.notTraded")}</span>}
                   </td>
                   <td className="px-2 py-2.5 text-right tabular-nums">
-                    {e.other.trades ? <span>{fmtUsd(e.other.avgNetTrade)}<span className="text-muted-foreground">/сд. · {e.other.trades} сд.</span></span> : "—"}
+                    {e.other.trades ? <span>{fmtUsd(e.other.avgNetTrade, { signed: true })}<span className="text-muted-foreground">{t("edge.perTrade", { count: e.other.trades })}</span></span> : "—"}
                   </td>
-                  <td className="px-[var(--panel-p)] py-2.5 text-right tabular-nums text-muted-foreground">{nx ? `${fmtDay(nx.date)} · ${nx.callType === "AMC" ? "после закрытия" : nx.callType === "BMO" ? "до открытия" : "время ?"}` : "—"}</td>
+                  <td className="px-[var(--panel-p)] py-2.5 text-right tabular-nums text-muted-foreground">{nx ? `${fmtDay(nx.date)} · ${nx.callType === "AMC" ? t("call.amc") : nx.callType === "BMO" ? t("call.bmo") : t("call.unknownShort")}` : "—"}</td>
                 </tr>
               );
             })}
@@ -266,12 +273,12 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
       </div>
       {missing.length > 0 && hist.loading === 0 && (
         <p className="px-[var(--panel-p)] py-3 text-xs text-muted-foreground">
-          Без истории отчётов: {missing.join(", ")} — фонды/ETF не отчитываются, либо источник недоступен.
+          {t("edge.missing", { list: missing.join(", ") })}
         </p>
       )}
       {edges.length > 0 && (
         <p className="px-[var(--panel-p)] pb-3 text-xs text-muted-foreground">
-          Гэп — открытие дня реакции к закрытию накануне, диапазон — high/low дня реакции. Нажмите строку — история кварталов.
+          {t("edge.legend")}
         </p>
       )}
     </Panel>

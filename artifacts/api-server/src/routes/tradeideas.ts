@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, isNull, sql, inArray } from "drizzle-orm";
-import { db, pool, tradeIdeasTable, tradeIdeaReactionsTable, tradesTable, preTradeChecklistResponsesTable } from "@workspace/db";
+import { db, pool, tradeIdeasTable, tradeIdeaReactionsTable, tradesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
 import { logger } from "../lib/logger";
@@ -8,8 +8,14 @@ import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { notifyReviewersOnPublish, applyIdeaReview } from "../lib/notifyUtils";
 import { GUEST_SCOPE, isGuest, requireMember, scopeTrader } from "../lib/auth";
 import { can, requireCap } from "../lib/permissions";
-import { nyDate, addDays, isWeekend } from "../lib/tradingDate";
+import { nyDate } from "../lib/tradingDate";
+import { defaultValidUntil, ensureIdeaLinkColumns, ensureIdeaLinksFresh } from "../lib/ideaTradeMatch";
+import { loadMoneyViewer } from "../lib/playbookAccess";
+import { redactTradeRow, type MoneyViewer } from "../lib/playbookPrivacy";
 import { signedR, netPnl, normResult } from "../lib/tradeMath";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { reviewT } from "../i18n/ns";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -21,7 +27,7 @@ let ensured: Promise<void> | null = null;
 function ensureIdeaColumns(): Promise<void> {
   if (!ensured) {
     ensured = pool
-      .query(
+      .query( // i18n-ignore (migration matches stored RU tags)
         `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS horizon TEXT;
          ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS valid_until TEXT;
          UPDATE trade_ideas SET horizon = CASE
@@ -44,25 +50,13 @@ const IDEA_TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,11}$/;
 
 function parseHorizon(v: unknown): "intraday" | "overnight" | "swing" | null {
   const s = String(v ?? "").trim().toLowerCase();
-  if (s === "интрадей" || s === "day") return "intraday";
-  if (s === "овернайт") return "overnight";
-  if (s === "свинг") return "swing";
+  if (s === "интрадей" || s === "day") return "intraday"; // i18n-ignore (input parsing)
+  if (s === "овернайт") return "overnight"; // i18n-ignore (input parsing)
+  if (s === "свинг") return "swing"; // i18n-ignore (input parsing)
   return HORIZONS.has(s) ? (s as "intraday" | "overnight" | "swing") : null;
 }
 
-/** Next trading day (weekends skipped; holidays are not consulted here — the UI treats them as expired a day early at worst). */
-function nextSession(date: string, n = 1): string {
-  let d = date;
-  for (let i = 0; i < n; i++) { do { d = addDays(d, 1); } while (isWeekend(d)); }
-  return d;
-}
-
-/** Default expiry of a published idea by horizon, counted from the publish (NY) date. */
-export function defaultValidUntil(horizon: string | null, from: string = nyDate()): string {
-  if (horizon === "overnight") return nextSession(from, 1);
-  if (horizon === "swing") return nextSession(from, 10);
-  return from;
-}
+export { defaultValidUntil };
 
 function parseDateOrNull(v: unknown): string | null {
   const s = String(v ?? "").trim();
@@ -86,7 +80,7 @@ function isVisible(v: Visibility, row: { status: string; trader: string | null }
 /** Parses a positive integer route id; responds 400 and returns null when invalid (avoids 500 from Postgres on NaN). */
 function parseId(raw: unknown, res: import("express").Response): number | null {
   const id = Number(raw);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -117,7 +111,12 @@ async function attachReactions<T extends IdeaRow>(rows: T[]): Promise<(T & { rea
   return rows.map((r) => ({ ...r, reactions: map.get(r.id) ?? [] }));
 }
 
-async function attachLinkedTrades<T extends IdeaRow>(rows: T[]): Promise<(T & { linkedTrade: LinkedTrade | null })[]> {
+/**
+ * Linked trade of each idea. $ facts (P&L, fees, size, risk $) follow the desk privacy rule (lib/playbookPrivacy):
+ * only the trade's owner and staff see them; others keep prices, R and the outcome. Ideas are team-wide and now
+ * auto-link to the author's broker trade, so this matters for every published idea.
+ */
+async function attachLinkedTrades<T extends IdeaRow>(rows: T[], viewer: MoneyViewer): Promise<(T & { linkedTrade: (LinkedTrade & { redacted: boolean }) | null })[]> {
   const tradeIds = rows.map((r) => r.convertedTradeId).filter((v): v is number => typeof v === "number");
   if (tradeIds.length === 0) return rows.map((r) => ({ ...r, linkedTrade: null }));
   const trades = await db
@@ -141,15 +140,16 @@ async function attachLinkedTrades<T extends IdeaRow>(rows: T[]): Promise<(T & { 
     })
     .from(tradesTable)
     .where(inArray(tradesTable.id, tradeIds));
-  const tradeMap = new Map<number, LinkedTrade>();
+  const tradeMap = new Map<number, LinkedTrade & { redacted: boolean }>();
   for (const t of trades) {
     if (t.deletedAt) continue;
-    tradeMap.set(t.id, {
+    const row = redactTradeRow({
       id: t.id, result: t.result, pnl: t.pnl, rMultiple: t.rMultiple, date: t.date,
       side: t.side, entry: t.entry, exit: t.exit, stop: t.stop, fees: t.fees, riskUsd: t.riskUsd, qty: t.qty,
       horizon: t.horizon, exitDate: t.exitDate, trader: t.trader,
       r: signedR(t), net: netPnl(t), outcome: normResult(t.result),
-    });
+    }, viewer);
+    tradeMap.set(t.id, row.redacted ? { ...row, net: null } : row); // `net` is not in TRADE_MONEY_FIELDS
   }
   return rows.map((r) => ({ ...r, linkedTrade: r.convertedTradeId ? tradeMap.get(r.convertedTradeId) ?? null : null }));
 }
@@ -159,6 +159,9 @@ type IdeaMeta = {
   commentCount: number; lastCommentAt: string | null; unreadCount: number;
   /** Real columns (see ensureIdeaColumns). `expired` = published, not converted, valid_until < NY today. */
   horizon: "intraday" | "overnight" | "swing" | null; validUntil: string | null; expired: boolean;
+  /** How `convertedTradeId` was set: 'auto' = matched to the author's PropReports trade (lib/ideaTradeMatch),
+   *  'manual' = linked by hand (legacy); null without a link. */
+  tradeLinkSource: "auto" | "manual" | null; tradeLinkedAt: string | null;
 };
 
 /**
@@ -172,9 +175,11 @@ async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string;
   const isReviewer = viewer?.role === "curator" || viewer?.role === "admin";
   const empty = { rows: [] as unknown[] };
   await ensureIdeaColumns().catch(() => undefined);
+  await ensureIdeaLinkColumns().catch(() => undefined);
   const [review, comments, unread] = await Promise.all([
     pool.query(
-      `SELECT id, review_status, review_reason, reviewed_by, reviewed_at, horizon, valid_until FROM trade_ideas WHERE id = ANY($1::int[])`,
+      `SELECT id, review_status, review_reason, reviewed_by, reviewed_at, horizon, valid_until, trade_link_source, trade_linked_at
+         FROM trade_ideas WHERE id = ANY($1::int[])`,
       [ids],
     ),
     pool.query(
@@ -197,7 +202,7 @@ async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string;
   ]);
   type ReviewRow = {
     id: number; review_status: string | null; review_reason: string | null; reviewed_by: string | null; reviewed_at: string | null;
-    horizon: string | null; valid_until: string | null;
+    horizon: string | null; valid_until: string | null; trade_link_source: string | null; trade_linked_at: Date | string | null;
   };
   const reviewMap = new Map((review.rows as ReviewRow[]).map((r) => [r.id, r]));
   const commentMap = new Map((comments.rows as { idea_id: number; cnt: number; last_at: string | null }[]).map((r) => [r.idea_id, r]));
@@ -221,6 +226,8 @@ async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string;
       horizon,
       validUntil,
       expired: status === "published" && !r.convertedTradeId && !!validUntil && validUntil < today,
+      tradeLinkSource: r.convertedTradeId ? (rv?.trade_link_source === "auto" ? "auto" : "manual") : null,
+      tradeLinkedAt: r.convertedTradeId && rv?.trade_linked_at ? new Date(rv.trade_linked_at).toISOString() : null,
     };
   });
 }
@@ -391,7 +398,8 @@ router.get("/trade-ideas/tracking", asyncHandler(async (req, res): Promise<void>
  */
 router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
   const vis = await ideaVisibility(req);
-  if (!vis) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!vis) throw unauthorized();
+  await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const { status, trader, ticker, horizon, expired } = req.query as Record<string, string | undefined>;
   const conds = [isNull(tradeIdeasTable.deletedAt)];
   if (status && IDEA_STATUSES.has(status)) conds.push(eq(tradeIdeasTable.status, status));
@@ -407,7 +415,7 @@ router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
     .orderBy(desc(tradeIdeasTable.createdAt))
     .limit(2000);
   const withReactions = await attachReactions(rows);
-  const withLinked = await attachLinkedTrades(withReactions);
+  const withLinked = await attachLinkedTrades(withReactions, await loadMoneyViewer(req));
   let out = await attachMeta(withLinked, req.authUser);
   const h = parseHorizon(horizon);
   if (h) out = out.filter((r) => r.horizon === h);
@@ -422,7 +430,8 @@ router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
  */
 router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
+  await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const from = parseDateOrNull(req.query.from);
   const to = parseDateOrNull(req.query.to);
   const conds = [isNull(tradeIdeasTable.deletedAt)];
@@ -528,13 +537,14 @@ router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> =>
     return "none";
   }
 
+  const rt = reviewT.tFor(langOf(req));
   const traderBuckets = new Map<string, Bucket>();
   const reactionBuckets = new Map<string, Bucket>();
   const overall = blank();
 
   for (const idea of ideas) {
     tally(overall, idea);
-    const tname = idea.trader ?? "(не указан)";
+    const tname = idea.trader ?? rt("ideas.noTrader");
     const tb = traderBuckets.get(tname) ?? blank();
     tally(tb, idea);
     traderBuckets.set(tname, tb);
@@ -557,19 +567,20 @@ router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> =>
     overall: finalize(overall),
     byTrader,
     byReactionMajority,
-    formulas: { winRate: "W/(W+L), безубыток не учитывается", r: "signed R (lib/tradeMath)", totalPnl: "нетто = брутто − комиссии" },
+    formulas: { winRate: rt("ideas.formulaWinRate"), r: "signed R (lib/tradeMath)", totalPnl: rt("ideas.formulaNet") },
   });
 }));
 
 router.get("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id, res); if (id == null) return;
   const vis = await ideaVisibility(req);
-  if (!vis) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!vis) throw unauthorized();
+  await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const [row] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   // Another trader's draft is indistinguishable from a missing idea (no draft leaks).
-  if (!row || row.deletedAt || !isVisible(vis, row)) { res.status(404).json({ error: "not found" }); return; }
+  if (!row || row.deletedAt || !isVisible(vis, row)) throw notFound();
   const [withR] = await attachReactions([row]);
-  const [withLinked] = await attachLinkedTrades([withR]);
+  const [withLinked] = await attachLinkedTrades([withR], await loadMoneyViewer(req));
   const [withMeta] = await attachMeta([withLinked], req.authUser);
   res.json(withMeta);
 }));
@@ -577,8 +588,8 @@ router.get("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
 function parseSide(v: unknown): "Long" | "Short" | null | "invalid" {
   if (v === undefined || v === null || v === "") return null;
   const s = String(v).trim().toLowerCase();
-  if (s === "long" || s === "лонг" || s === "buy") return "Long";
-  if (s === "short" || s === "шорт" || s === "sell") return "Short";
+  if (s === "long" || s === "лонг" || s === "buy") return "Long"; // i18n-ignore (input parsing)
+  if (s === "short" || s === "шорт" || s === "sell") return "Short"; // i18n-ignore (input parsing)
   return "invalid";
 }
 
@@ -592,21 +603,15 @@ router.post("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
   await ensureIdeaColumns().catch(() => undefined);
   const b = req.body as Record<string, unknown>;
   const ticker = String(b.ticker ?? "").trim().toUpperCase();
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
-  if (!IDEA_TICKER_RE.test(ticker)) { res.status(400).json({ error: "invalid ticker" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
+  if (!IDEA_TICKER_RE.test(ticker)) throw badRequest("INVALID_TICKER");
   const side = parseSide(b.side);
-  if (side === "invalid") { res.status(400).json({ error: "side must be Long | Short" }); return; }
+  if (side === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "side" });
   const status = b.status === undefined || b.status === null || b.status === "" ? "draft" : String(b.status);
-  if (status !== "draft" && status !== "published") { res.status(400).json({ error: "status must be draft | published" }); return; }
-  if (b.score !== undefined && b.score !== null && b.score !== "" && (typeof b.score !== "number" || !Number.isFinite(b.score) || b.score < 0 || b.score > 100)) {
-    res.status(400).json({ error: "score must be 0..100" }); return;
-  }
-  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) {
-    res.status(400).json({ error: "horizon must be intraday | overnight | swing" }); return;
-  }
-  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) {
-    res.status(400).json({ error: "validUntil must be YYYY-MM-DD" }); return;
-  }
+  if (status !== "draft" && status !== "published") throw new AppError("INVALID_FIELD", undefined, { field: "status" });
+  if (b.score !== undefined && b.score !== null && b.score !== "" && (typeof b.score !== "number" || !Number.isFinite(b.score) || b.score < 0 || b.score > 100)) throw new AppError("INVALID_FIELD", undefined, { field: "score" });
+  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) throw new AppError("INVALID_FIELD", undefined, { field: "horizon" });
+  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) throw new AppError("INVALID_FIELD", undefined, { field: "validUntil" });
   const staff = await can(req, "ideas.review");
   // Identity comes from the token; only staff may author an idea for someone else.
   const trader = staff && b.trader ? String(b.trader).trim() : req.authUser!.name;
@@ -658,7 +663,7 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   const b = req.body as Record<string, unknown>;
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt, status: tradeIdeasTable.status })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!existing || existing.deletedAt) { res.status(404).json({ error: "not found" }); return; }
+  if (!existing || existing.deletedAt) throw notFound();
   const staff = await can(req, "ideas.review", existing.trader ? { trader: existing.trader } : undefined);
   const manager = staff || (!!existing.trader && existing.trader === req.authUser!.name);
   if (!manager) {
@@ -666,29 +671,21 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
     const keys = Object.keys(b);
     const linkOnly = keys.length > 0 && keys.every((k) => k === "status" || k === "convertedTradeId")
       && (b.status === undefined || b.status === "converted") && existing.status !== "draft";
-    if (!linkOnly) { res.status(403).json({ error: "Редактировать идею может только автор или куратор" }); return; }
+    if (!linkOnly) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   }
-  if (b.status !== undefined && !["draft", "published", "converted"].includes(String(b.status))) {
-    res.status(400).json({ error: "invalid status" }); return;
-  }
-  if (b.score !== undefined && b.score !== null && (typeof b.score !== "number" || b.score < 0 || b.score > 100)) {
-    res.status(400).json({ error: "score must be 0..100" }); return;
-  }
-  if (b.trader !== undefined && !staff) { res.status(403).json({ error: "Переназначить автора может только куратор" }); return; }
-  if (b.ticker !== undefined && !IDEA_TICKER_RE.test(String(b.ticker).trim().toUpperCase())) { res.status(400).json({ error: "invalid ticker" }); return; }
+  if (b.status !== undefined && !["draft", "published", "converted"].includes(String(b.status))) throw new AppError("INVALID_FIELD", undefined, { field: "status" });
+  if (b.score !== undefined && b.score !== null && (typeof b.score !== "number" || b.score < 0 || b.score > 100)) throw new AppError("INVALID_FIELD", undefined, { field: "score" });
+  if (b.trader !== undefined && !staff) throw new AppError("STAFF_ONLY");
+  if (b.ticker !== undefined && !IDEA_TICKER_RE.test(String(b.ticker).trim().toUpperCase())) throw badRequest("INVALID_TICKER");
   const side = b.side !== undefined ? parseSide(b.side) : undefined;
-  if (side === "invalid") { res.status(400).json({ error: "side must be Long | Short" }); return; }
-  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) {
-    res.status(400).json({ error: "horizon must be intraday | overnight | swing" }); return;
-  }
-  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) {
-    res.status(400).json({ error: "validUntil must be YYYY-MM-DD" }); return;
-  }
+  if (side === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "side" });
+  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) throw new AppError("INVALID_FIELD", undefined, { field: "horizon" });
+  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) throw new AppError("INVALID_FIELD", undefined, { field: "validUntil" });
   if (b.convertedTradeId !== undefined && b.convertedTradeId !== null) {
     const tid = Number(b.convertedTradeId);
     const { rows: tr } = await pool.query<{ trader: string | null }>(`SELECT trader FROM trades WHERE id = $1 AND deleted_at IS NULL`, [tid]);
-    if (!tr[0]) { res.status(400).json({ error: "trade not found" }); return; }
-    if (!staff && tr[0].trader !== req.authUser!.name) { res.status(403).json({ error: "Можно привязать только свою сделку" }); return; }
+    if (!tr[0]) throw new AppError("TRADE_NOT_FOUND", 400);
+    if (!staff && tr[0].trader !== req.authUser!.name) throw new AppError("OWN_TRADES_ONLY");
   }
   const update: Record<string, unknown> = {};
   if (b.ticker !== undefined) update.ticker = String(b.ticker).trim().toUpperCase();
@@ -724,13 +721,21 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   const extra: { horizon?: string | null; validUntil?: string | null } = {};
   if (b.horizon !== undefined) extra.horizon = parseHorizon(b.horizon);
   if (b.validUntil !== undefined) extra.validUntil = parseDateOrNull(b.validUntil);
-  if (Object.keys(update).length === 0 && Object.keys(extra).length === 0) { res.status(400).json({ error: "no fields to update" }); return; }
+  if (Object.keys(update).length === 0 && Object.keys(extra).length === 0) throw new AppError("NO_FIELDS");
   const [row] = Object.keys(update).length
     ? await db.update(tradeIdeasTable).set(update).where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt))).returning()
     : await db.select().from(tradeIdeasTable).where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt)));
-  if (!row) { res.status(404).json({ error: "not found" }); return; }
+  if (!row) throw notFound();
   if (extra.horizon !== undefined) await pool.query(`UPDATE trade_ideas SET horizon = $2 WHERE id = $1`, [id, extra.horizon]);
   if (extra.validUntil !== undefined) await pool.query(`UPDATE trade_ideas SET valid_until = $2 WHERE id = $1`, [id, extra.validUntil]);
+  if (b.convertedTradeId !== undefined) {
+    // A hand-set link is never moved by the auto-matcher; a hand-removed one switches auto-matching off for the idea.
+    await ensureIdeaLinkColumns().catch(() => undefined);
+    await pool.query(
+      `UPDATE trade_ideas SET trade_link_source = CASE WHEN converted_trade_id IS NULL THEN 'off' ELSE 'manual' END, trade_linked_at = NOW() WHERE id = $1`,
+      [id],
+    ).catch(() => undefined);
+  }
   const [withMeta] = await attachMeta([{ ...row, reactions: [], linkedTrade: null }], req.authUser);
   res.json(withMeta);
 }));
@@ -741,14 +746,14 @@ router.post("/trade-ideas/:id/publish", asyncHandler(async (req, res): Promise<v
   await ensureIdeaColumns().catch(() => undefined);
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt, status: tradeIdeasTable.status })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!existing || existing.deletedAt) { res.status(404).json({ error: "not found" }); return; }
-  if (!(await canManageIdea(req, existing.trader))) { res.status(403).json({ error: "Опубликовать идею может только автор или куратор" }); return; }
-  if (existing.status === "converted") { res.status(409).json({ error: "Идея уже в сделке" }); return; }
+  if (!existing || existing.deletedAt) throw notFound();
+  if (!(await canManageIdea(req, existing.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
+  if (existing.status === "converted") throw new AppError("IDEA_ALREADY_TRADED");
   const [row] = await db.update(tradeIdeasTable)
     .set({ status: "published", publishedAt: new Date() })
     .where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt)))
     .returning();
-  if (!row) { res.status(404).json({ error: "not found" }); return; }
+  if (!row) throw notFound();
   // Expiry starts at publish: intraday = this session, overnight = next, swing = +10 sessions (unless set by hand).
   const { rows: hv } = await pool.query<{ horizon: string | null; valid_until: string | null }>(`SELECT horizon, valid_until FROM trade_ideas WHERE id = $1`, [id]);
   if (hv[0] && !hv[0].valid_until) {
@@ -765,9 +770,9 @@ router.post("/trade-ideas/:id/resubmit", asyncHandler(async (req, res): Promise<
   const id = parseId(req.params.id, res); if (id == null) return;
   if (!requireMember(req, res)) return;
   const [idea] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!idea || idea.deletedAt) { res.status(404).json({ error: "not found" }); return; }
-  if (!(await canManageIdea(req, idea.trader))) { res.status(403).json({ error: "Отправить на ревью может только автор или куратор" }); return; }
-  if (idea.status === "converted") { res.status(409).json({ error: "Идея уже в сделке" }); return; }
+  if (!idea || idea.deletedAt) throw notFound();
+  if (!(await canManageIdea(req, idea.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
+  if (idea.status === "converted") throw new AppError("IDEA_ALREADY_TRADED");
   await pool.query(
     `UPDATE trade_ideas SET review_status = NULL, status = 'published', published_at = COALESCE(published_at, NOW()) WHERE id = $1`,
     [id],
@@ -785,12 +790,8 @@ router.post("/trade-ideas/:id/review", asyncHandler(async (req, res): Promise<vo
   const { review_status, review_reason } = req.body as { review_status?: string; review_reason?: string };
   const reviewer = req.authUser!.name;
 
-  if (!review_status || !["approved", "rejected", "needs_work"].includes(review_status)) {
-    res.status(400).json({ error: "review_status must be approved | rejected | needs_work" }); return;
-  }
-  if (review_reason && String(review_reason).length > 2000) {
-    res.status(400).json({ error: "Комментарий ревьюера слишком длинный (макс. 2000 символов)" }); return;
-  }
+  if (!review_status || !["approved", "rejected", "needs_work"].includes(review_status)) throw new AppError("INVALID_FIELD", undefined, { field: "review_status" });
+  if (review_reason && String(review_reason).length > 2000) throw new AppError("TEXT_TOO_LONG", undefined, { field: "reviewComment", max: 2000 });
 
   const updated = await applyIdeaReview(
     id,
@@ -798,7 +799,7 @@ router.post("/trade-ideas/:id/review", asyncHandler(async (req, res): Promise<vo
     review_reason?.trim() || null,
     reviewer,
   );
-  if (!updated) { res.status(404).json({ error: "not found" }); return; }
+  if (!updated) throw notFound();
 
   const [fresh] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   const [withMeta] = await attachMeta([fresh], req.authUser);
@@ -806,162 +807,38 @@ router.post("/trade-ideas/:id/review", asyncHandler(async (req, res): Promise<vo
 }));
 
 /**
- * POST /trade-ideas/:id/convert — open a trade from a published idea (author or staff).
- * Maps the idea plan onto the trade: horizon → trades.horizon, riskAmount → trades.risk_usd, plus
- * qty/fees/brokerAccount from the body. Date = NY trading date. Returns the full trade for the client.
+ * POST /trade-ideas/:id/convert — retired. It created a manual trade, but trades come only from PropReports now:
+ * a published idea is linked to the author's broker trade automatically (lib/ideaTradeMatch).
  */
-router.post("/trade-ideas/:id/convert", asyncHandler(async (req, res): Promise<void> => {
-  const id = parseId(req.params.id, res); if (id == null) return;
-  if (!requireMember(req, res)) return;
-  await ensureIdeaColumns().catch(() => undefined);
-  const b = req.body as Record<string, unknown>;
-  const [idea] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!idea || idea.deletedAt) { res.status(404).json({ error: "idea not found" }); return; }
-  const staff = await can(req, "ideas.review");
-  // A trader may take someone else's *published* idea into their own trade; drafts belong to the author.
-  if (idea.status === "draft" && !(await canManageIdea(req, idea.trader))) { res.status(404).json({ error: "idea not found" }); return; }
-  if (idea.status === "converted" || idea.convertedTradeId) {
-    res.status(409).json({
-      error: "Trade idea already converted",
-      code: "IDEA_ALREADY_CONVERTED",
-      message: `Idea #${idea.id} was already converted to trade #${idea.convertedTradeId ?? "?"}.`,
-      convertedTradeId: idea.convertedTradeId,
-    });
-    return;
-  }
-
-  const skipChecklist = req.query.skipChecklist === "true" || b.skipChecklist === true;
-  const submittedChecklistId = typeof b.checklistResponseId === "number" ? b.checklistResponseId : null;
-  let validatedChecklistId: number | null = null;
-  if (submittedChecklistId) {
-    const [row] = await db
-      .select({
-        id: preTradeChecklistResponsesTable.id,
-        ticker: preTradeChecklistResponsesTable.ticker,
-        trader: preTradeChecklistResponsesTable.trader,
-        tradeId: preTradeChecklistResponsesTable.tradeId,
-        passed: preTradeChecklistResponsesTable.passed,
-      })
-      .from(preTradeChecklistResponsesTable)
-      .where(eq(preTradeChecklistResponsesTable.id, submittedChecklistId))
-      .limit(1);
-    if (!row || row.ticker.toUpperCase() !== idea.ticker.toUpperCase()) {
-      res.status(422).json({
-        error: "Pre-trade checklist required",
-        code: "CHECKLIST_INVALID_ID",
-        message: `Checklist response does not exist or does not match idea ticker ${idea.ticker}.`,
-      });
-      return;
-    }
-    if (row.tradeId !== null) {
-      res.status(422).json({
-        error: "Pre-trade checklist already used",
-        code: "CHECKLIST_ALREADY_LINKED",
-        message: `Checklist response ${row.id} is already linked to trade ${row.tradeId}. Each checklist response is a 1:1 audit record and cannot be reused.`,
-      });
-      return;
-    }
-    if (!row.passed) {
-      res.status(422).json({
-        error: "Pre-trade checklist did not pass",
-        code: "CHECKLIST_NOT_PASSED",
-        message: `Checklist response ${row.id} is recorded as failed (passed=false). Re-complete the checklist with all required items checked, or pass skipChecklist=true to override (curator only).`,
-      });
-      return;
-    }
-    validatedChecklistId = row.id;
-  } else if (!skipChecklist) {
-    res.status(422).json({
-      error: "Pre-trade checklist required",
-      code: "CHECKLIST_REQUIRED",
-      message: "Convert requires a completed checklist response (checklistResponseId) or skipChecklist=true override. The recommended flow is to open the prefilled trade form in the UI.",
-    });
-    return;
-  }
-
-  if (skipChecklist && !submittedChecklistId && !staff) {
-    res.status(403).json({ error: "Пропустить чек-лист может только куратор", code: "CHECKLIST_SKIP_FORBIDDEN" }); return;
-  }
-
-  const date = parseDateOrNull(b.date) ?? nyDate();
-  const numOrNull = (v: unknown): string | null => {
-    if (v === undefined || v === null || v === "") return null;
-    const n = Number(String(v).replace(",", "."));
-    return Number.isFinite(n) ? String(n) : null;
-  };
-  const { rows: hv } = await pool.query<{ horizon: string | null }>(`SELECT horizon FROM trade_ideas WHERE id = $1`, [id]);
-  const horizon = parseHorizon(b.horizon) ?? parseHorizon(hv[0]?.horizon) ?? "intraday";
-  const result = b.result ? String(b.result) : "open";
-  if (normResult(result) === null) { res.status(400).json({ error: "result must be open | win | loss | be" }); return; }
-  // The trade belongs to the caller; staff may file it for the idea's author (or anyone named in the body).
-  const trader = staff && b.trader ? String(b.trader) : req.authUser!.name;
-  const plannedEntry = parseLevelNumbers(idea.entryZone);
-  const plannedStop = parseLevelNumbers(idea.stop);
-  const [trade] = await db.insert(tradesTable).values({
-    ticker: idea.ticker,
-    date,
-    setup: idea.setup ?? null,
-    side: idea.side ?? null,
-    result,
-    notes: b.notes ? String(b.notes) : (idea.thesis ?? null),
-    trader,
-    tags: idea.tags ?? null,
-    playbookId: idea.playbookId ?? null,
-    screenshotUrl: sanitizeMultiLineUrls(idea.screenshotUrl as string | null | undefined),
-    // Fill prices from the body; the idea's plan is the fallback so R can be computed from the plan.
-    entry: numOrNull(b.entry) ?? (plannedEntry.length ? String(plannedEntry.reduce((a, c) => a + c, 0) / plannedEntry.length) : null),
-    exit: numOrNull(b.exit),
-    stop: numOrNull(b.stop) ?? (plannedStop.length ? String(plannedStop[0]) : null),
-    pnl: numOrNull(b.pnl),
-    rMultiple: numOrNull(b.rMultiple),
-    horizon,
-    qty: numOrNull(b.qty),
-    fees: numOrNull(b.fees),
-    riskUsd: numOrNull(b.riskUsd) ?? (idea.riskAmount != null ? String(idea.riskAmount) : null),
-    brokerAccount: b.brokerAccount ? String(b.brokerAccount).slice(0, 100) : null,
-    exitDate: parseDateOrNull(b.exitDate),
-  }).returning();
-  if (validatedChecklistId) {
-    await db.update(preTradeChecklistResponsesTable)
-      .set({ tradeId: trade.id })
-      .where(eq(preTradeChecklistResponsesTable.id, validatedChecklistId));
-  }
-  await db.update(tradeIdeasTable)
-    .set({ status: "converted", convertedTradeId: trade.id })
-    .where(eq(tradeIdeasTable.id, id));
-
-  logActivity({ action: "converted", section: "trade-ideas", entityId: String(idea.id), entityTitle: idea.ticker, trader: idea.trader ?? undefined, details: `→ trade #${trade.id}` });
-  // Planned vs fill: how far the actual entry/stop drifted from the idea (positive entry slippage = worse fill).
-  const fillEntry = trade.entry != null ? Number(trade.entry) : null;
-  const fillStop = trade.stop != null ? Number(trade.stop) : null;
-  const isShort = (idea.side ?? "").toLowerCase() === "short";
-  const planEntry = plannedEntry.length ? plannedEntry.reduce((a, c) => a + c, 0) / plannedEntry.length : null;
-  const planStop = plannedStop[0] ?? null;
-  res.status(201).json({
-    trade: { ...trade, r: signedR(trade), net: netPnl(trade) },
-    ideaId: idea.id,
-    slippage: {
-      entry: planEntry != null && fillEntry != null ? (isShort ? planEntry - fillEntry : fillEntry - planEntry) : null,
-      stop: planStop != null && fillStop != null ? fillStop - planStop : null,
-    },
-  });
-}));
+router.post("/trade-ideas/:id/convert", (_req, _res): void => {
+  throw new AppError("IDEA_CONVERT_RETIRED");
+});
 
 router.delete("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id, res); if (id == null) return;
   if (!requireMember(req, res)) return;
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!existing || existing.deletedAt) { res.status(404).json({ error: "not found" }); return; }
+  if (!existing || existing.deletedAt) throw notFound();
   // Only the author or a curator/admin may delete an idea (unowned ideas: staff only).
-  if (!(await canManageIdea(req, existing.trader))) {
-    res.status(403).json({ error: "Удалить идею может только автор или куратор" }); return;
-  }
+  if (!(await canManageIdea(req, existing.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   const [row] = await db.update(tradeIdeasTable)
     .set({ deletedAt: new Date() })
     .where(eq(tradeIdeasTable.id, id))
     .returning();
-  if (!row) { res.status(404).json({ error: "not found" }); return; }
+  if (!row) throw notFound();
+  res.json({ success: true });
+}));
+
+/** Undo of DELETE (the page offers it for a few seconds): author or staff, only for an idea that is soft-deleted. */
+router.post("/trade-ideas/:id/restore", asyncHandler(async (req, res): Promise<void> => {
+  const id = parseId(req.params.id, res); if (id == null) return;
+  if (!requireMember(req, res)) return;
+  const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
+    .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
+  if (!existing || !existing.deletedAt) throw new AppError("IDEA_NOT_FOUND");
+  if (!(await canManageIdea(req, existing.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
+  await db.update(tradeIdeasTable).set({ deletedAt: null }).where(eq(tradeIdeasTable.id, id));
   res.json({ success: true });
 }));
 
@@ -971,16 +848,13 @@ router.post("/trade-ideas/:id/reactions", asyncHandler(async (req, res): Promise
   const { reaction, comment } = req.body as Record<string, unknown>;
   // Reactions are always attributed to the authenticated user (body `trader` is ignored to prevent spoofing).
   const trader = req.authUser!.name;
-  if (!reaction) { res.status(400).json({ error: "reaction required" }); return; }
+  if (!reaction) throw new AppError("FIELD_REQUIRED", undefined, { field: "reaction" });
   const vis = await ideaVisibility(req);
   const [idea] = await db.select({ status: tradeIdeasTable.status, trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, tradeIdeaId));
-  if (!idea || idea.deletedAt || !vis || !isVisible(vis, idea)) { res.status(404).json({ error: "not found" }); return; }
+  if (!idea || idea.deletedAt || !vis || !isVisible(vis, idea)) throw notFound();
   const reactionStr = String(reaction);
-  if (!["thumbs_up", "warning", "thumbs_down"].includes(reactionStr)) {
-    res.status(400).json({ error: "invalid reaction" });
-    return;
-  }
+  if (!["thumbs_up", "warning", "thumbs_down"].includes(reactionStr)) throw new AppError("INVALID_FIELD", undefined, { field: "reaction" });
   await db.delete(tradeIdeaReactionsTable).where(
     and(
       eq(tradeIdeaReactionsTable.tradeIdeaId, tradeIdeaId),

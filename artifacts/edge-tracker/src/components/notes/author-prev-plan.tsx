@@ -3,17 +3,21 @@ import { Check, CircleDashed, CornerDownLeft, History } from "lucide-react";
 import { Panel, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { fmtDayLong, fmtR, type DayTrade } from "./author-model";
+import { type DayTrade } from "./author-model";
+import { fmtDate, fmtR } from "@/lib/format";
 import { followThrough, planLines, type FollowItem, type PrevPlan } from "./author-plan";
 import { RichText } from "./author-reader";
+import { notesI18n } from "@/i18n/ns/notes";
+import { commonI18n } from "@/i18n/ns/common";
+import { rich, slots } from "@/i18n/rich";
 
 function Item({ it, graded }: { it: FollowItem; graded: boolean }) {
   return (
     <li className="flex items-start gap-2 py-1">
       {graded && it.status === "traded" ? (
-        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-up" aria-label="Торговал" />
+        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-up" aria-label={notesI18n.t("author.prevPlan.traded")} />
       ) : graded && it.status === "missed" ? (
-        <CircleDashed className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Не торговал" />
+        <CircleDashed className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={notesI18n.t("author.prevPlan.notTraded")} />
       ) : (
         <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" aria-hidden="true" />
       )}
@@ -23,7 +27,7 @@ function Item({ it, graded }: { it: FollowItem; graded: boolean }) {
           <span className="ml-1.5 whitespace-nowrap text-xs tabular-nums">
             {it.traded.map((t, i) => (
               <span key={t.ticker} className={cn(t.r != null && toneText(toneOf(t.r)))}>
-                {i > 0 ? ", " : ""}{t.ticker}{t.r != null ? ` ${fmtR(t.r)}` : ""}
+                {i > 0 ? ", " : ""}{t.ticker}{t.r != null ? ` ${fmtR(t.r, 1)}` : ""}
               </span>
             ))}
           </span>
@@ -52,13 +56,15 @@ export function AuthorPrevPlan({
   onInsert: (items: FollowItem[]) => void;
   onOpenDay: (date: string) => void;
 }) {
+  const { t, lang } = notesI18n.useT();
   const groups = React.useMemo(
     () =>
       [
-        { id: "hold", label: "Держал на ночь", lines: planLines(plan.hold) },
-        { id: "open", label: "На открытии", lines: planLines(plan.open) },
+        { id: "hold", label: t("author.prevPlan.heldOvernight"), lines: planLines(plan.hold) },
+        { id: "open", label: t("author.prevPlan.atOpen"), lines: planLines(plan.open) },
       ].filter((g) => g.lines.length > 0),
-    [plan],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [plan, lang],
   );
   const graded = !!trades;
   const all = React.useMemo(() => followThrough(groups.flatMap((g) => g.lines), trades ?? []), [groups, trades]);
@@ -68,17 +74,17 @@ export function AuthorPrevPlan({
 
   return (
     <Panel
-      title="План с прошлой сводки"
+      title={t("author.prevPlan.title")}
       icon={History}
       description={
-        <button type="button" onClick={() => onOpenDay(plan.date)} className="capitalize hover:text-foreground hover:underline">
-          {fmtDayLong(plan.date)}
+        <button type="button" onClick={() => onOpenDay(plan.date)} className="inline-block hover:text-foreground hover:underline first-letter:uppercase">
+          {fmtDate(plan.date, "weekdayDayMonthLong")}
         </button>
       }
       actions={
         canInsert && all.length > 0 ? (
-          <Button variant="ghost" size="sm" className="gap-1" onClick={() => onInsert(all)} title="Добавит в «Уроки» строку на каждый пункт плана">
-            <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />В уроки
+          <Button variant="ghost" size="sm" className="gap-1" onClick={() => onInsert(all)} title={t("author.prevPlan.insertTitle")}>
+            <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />{t("author.prevPlan.insert")}
           </Button>
         ) : undefined
       }
@@ -86,7 +92,9 @@ export function AuthorPrevPlan({
       <div className="flex flex-col gap-3">
         {graded && withTickers.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            По тикерам из плана: <span className="font-medium tabular-nums text-foreground">{hit} из {withTickers.length}</span> в сделках сегодня
+            {rich(t("author.prevPlan.byTickers", slots("hit")), {
+              hit: <span className="font-medium tabular-nums text-foreground">{commonI18n.t("states.ofTotal", { value: hit, total: withTickers.length })}</span>,
+            })}
           </p>
         )}
         {groups.map((g) => (

@@ -27,9 +27,14 @@ import {
   fetchOfferingsFresh, useAddToPlan, useAddToWatchlist, useExposure, useOfferings, useOfferingsDays,
 } from "@/components/offerings/use-offerings-data";
 import {
-  addBusinessDays, dayTitle, fmtDay, fmtM, fmtPct, offeringKey, pctOfMcap, todayNY,
+  addBusinessDays, dayTitle, fmtDay, fmtM, offeringKey, pctOfMcap, todayNY,
   type Offering,
 } from "@/components/offerings/types";
+import { fmtPct } from "@/lib/format";
+import { humanizeApiError } from "@/lib/api/errors";
+import { commonI18n } from "@/i18n/ns/common";
+import { offeringsI18n } from "@/i18n/ns/offerings";
+import { rich } from "@/components/events/rich-text";
 
 type Tab = "today" | "week" | "ipo" | "insiders" | "mine";
 type When = "today" | "next" | "prev" | "all";
@@ -75,8 +80,8 @@ function readUrl(): { day: string | null; ticker: string | null; tab: Tab | null
 }
 
 function isTypingTarget(t: EventTarget | null): boolean {
-  const el = t as HTMLElement | null;
-  if (!el) return false;
+  if (!(t instanceof HTMLElement)) return false;
+  const el = t;
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.getAttribute("role") === "combobox";
 }
 
@@ -113,6 +118,7 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.le
 
 export default function OfferingsPage() {
   const qc = useQueryClient();
+  const { t } = offeringsI18n.useT();
   const [, navigate] = useLocation();
   const initialUrl = useMemo(readUrl, []);
   const [day, setDay] = useState<string>(() => initialUrl.day ?? marketDay());
@@ -352,7 +358,7 @@ export default function OfferingsPage() {
   }, [active, isList]);
 
   const sourcesDown = data?.sources
-    ? (Object.entries(data.sources) as Array<[string, boolean]>).filter(([, ok]) => !ok).map(([k]) => ({ nasdaq: "NASDAQ", edgar: "SEC EDGAR", market: "котировки" } as Record<string, string>)[k] ?? k)
+    ? (Object.entries(data.sources) as Array<[string, boolean]>).filter(([, ok]) => !ok).map(([k]) => (k === "market" ? offeringsI18n.t("page.sourceMarket") : ({ nasdaq: "NASDAQ", edgar: "SEC EDGAR" } as Record<string, string>)[k] ?? k))
     : [];
   const busy = isFetching || refreshing;
   const enriching = data?.enrichment?.complete === false;
@@ -362,24 +368,24 @@ export default function OfferingsPage() {
   return (
     <Page>
       <PageHeader
-        title="Размещения"
-        description={<>Короткий катализатор: SPO, <TermTooltip term="atm" />, direct, PIPE, <TermTooltip term="shelf">шелфы</TermTooltip>, IPO и окончания lock-up</>}
+        title={t("page.title")}
+        description={<>{rich(t("page.description", { atm: "{atm}", shelves: "{shelves}" }), { atm: <TermTooltip term="atm" />, shelves: <TermTooltip term="shelf">{t("page.shelves")}</TermTooltip> })}</>}
         icon={Layers}
         meta={
           <>
-            {data?.fetchedAt ? <UpdatedAgo at={data.fetchedAt} prefix="данные" /> : <span>загружаем SEC и котировки…</span>}
-            {enriching && <span title="Сервер дособирает время подачи, реакцию по свечам и фундаментал — таблица обновится сама">· дособираем реакцию и фундаментал</span>}
-            {sourcesDown.length > 0 && <Pill tone="warn" className="text-2xs">недоступно: {sourcesDown.join(", ")}</Pill>}
+            {data?.fetchedAt ? <UpdatedAgo at={data.fetchedAt} prefix={t("page.dataPrefix")} /> : <span>{t("page.loadingData")}</span>}
+            {enriching && <span title={t("page.enrichingTitle")}>{t("page.enriching")}</span>}
+            {sourcesDown.length > 0 && <Pill tone="warn" className="text-2xs">{t("page.unavailable", { list: sourcesDown.join(", ") })}</Pill>}
           </>
         }
         actions={
           <>
-            <div className="glass-field flex items-center gap-0.5 p-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goDay(-1)} aria-label="Предыдущий торговый день ([)">
+            <div className="glass-field flex h-9 items-center gap-0.5 p-[3px]">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goDay(-1)} aria-label={t("page.prevDay")}>
                 <ChevronLeft aria-hidden="true" />
               </Button>
               <label className="relative">
-                <span className="sr-only">Дата</span>
+                <span className="sr-only">{t("page.date")}</span>
                 <span className={cn("block min-w-[9.5rem] px-2 text-center text-sm font-medium tabular-nums", day === todayMarket ? "text-primary" : "text-foreground")}>{dayTitle(day)}</span>
                 <input
                   type="date"
@@ -387,30 +393,30 @@ export default function OfferingsPage() {
                   max={todayMarket}
                   onChange={(e) => { if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) { setDay(e.target.value > todayMarket ? todayMarket : e.target.value); setActive(0); } }}
                   className="absolute inset-0 cursor-pointer opacity-0"
-                  aria-label="Выбрать дату"
+                  aria-label={t("page.pickDate")}
                 />
               </label>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goDay(1)} disabled={isLatest} aria-label="Следующий торговый день (])">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goDay(1)} disabled={isLatest} aria-label={t("page.nextDay")}>
                 <ChevronRight aria-hidden="true" />
               </Button>
             </div>
-            {!isLatest && <Button variant="outline" size="sm" onClick={() => { setDay(todayMarket); setActive(0); }}>К последнему дню</Button>}
-            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => void hardRefresh()} disabled={busy} aria-busy={busy} aria-label="Обновить (R)" title="Обновить (R)">
+            {!isLatest && <Button variant="outline" onClick={() => { setDay(todayMarket); setActive(0); }}>{t("page.latestDay")}</Button>}
+            <Button variant="ghost" size="icon" onClick={() => void hardRefresh()} disabled={busy} aria-busy={busy} aria-label={t("page.refresh")} title={t("page.refresh")}>
               <RefreshCw className={cn(busy && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
           </>
         }
       >
         <SectionTabs<Tab>
-          ariaLabel="Разделы размещений"
+          ariaLabel={t("page.sections")}
           value={tab}
           onChange={(t) => { setTab(t); setActive(0); }}
           tabs={[
-            { value: "today", label: "Сегодня", icon: Sun, count: data ? whenCounts.today : undefined },
-            { value: "week", label: "Неделя", icon: CalendarRange },
-            { value: "ipo", label: "IPO и lock-up", icon: CalendarDays },
-            { value: "insiders", label: "Инсайдеры", icon: UserCheck },
-            { value: "mine", label: "Мои сделки", icon: BarChart3 },
+            { value: "today", label: t("page.tab.today"), icon: Sun, count: data ? whenCounts.today : undefined },
+            { value: "week", label: t("page.tab.week"), icon: CalendarRange },
+            { value: "ipo", label: t("page.tab.ipo"), icon: CalendarDays },
+            { value: "insiders", label: t("page.tab.insiders"), icon: UserCheck },
+            { value: "mine", label: t("page.tab.mine"), icon: BarChart3 },
           ]}
         />
       </PageHeader>
@@ -422,10 +428,10 @@ export default function OfferingsPage() {
           <div role="alert" className="flex flex-wrap items-center gap-3">
             <AlertTriangle className="h-5 w-5 shrink-0 text-down" aria-hidden="true" />
             <span className="min-w-0 flex-1 text-sm text-foreground">
-              Не удалось загрузить размещения{error instanceof Error && error.message ? ` — ${error.message}` : ""}
+              {t("page.loadFailedWith", { message: humanizeApiError(error) })}
             </span>
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-              <RefreshCw className={cn(isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" /> Повторить
+              <RefreshCw className={cn(isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" /> {commonI18n.t("actions.retry")}
             </Button>
           </div>
         </Panel>
@@ -433,16 +439,16 @@ export default function OfferingsPage() {
 
       {isList && !noData && !error && (
         <StatGrid min="11rem">
-          <StatCard loading={listLoading} label={tab === "week" ? "Сделок за 5 дней" : "Сделок в игре"} value={kpi.n}
-            hint={kpi.raised > 0 ? `привлекают ${fmtM(kpi.raised)}` : tab === "week" ? `${weekLoaded}/5 дней загружено` : "торгуются в эту сессию"} />
-          <StatCard loading={listLoading} label="Сильное давление" value={kpi.strong} tone={kpi.strong ? "down" : "neutral"}
-            hint="скор ≥ 65 — нажмите, чтобы оставить их"
+          <StatCard loading={listLoading} label={tab === "week" ? t("page.kpiWeek") : t("page.kpiInPlay")} value={kpi.n}
+            hint={kpi.raised > 0 ? t("page.kpiRaising", { amount: fmtM(kpi.raised) }) : tab === "week" ? t("page.kpiWeekLoaded", { count: weekLoaded }) : t("page.kpiTradingNow")} />
+          <StatCard loading={listLoading} label={t("page.kpiStrong")} value={kpi.strong} tone={kpi.strong ? "down" : "neutral"}
+            hint={filters.minScore === 65 ? t("page.kpiStrongOn") : t("page.kpiStrongOff")}
             onClick={() => setFilters({ ...filters, minScore: filters.minScore === 65 ? null : 65 })} />
-          <StatCard loading={listLoading} label="Средний дисконт" value={kpi.avgDisc != null ? `${kpi.avgDisc.toFixed(1)}%` : "—"}
-            hint={kpi.deep ? `${kpi.deep} с дисконтом ≥ 15%` : "к закрытию до сделки"} />
-          <StatCard loading={listLoading} label={kpi.anyLive ? "Открытие → сейчас, ср." : "Открытие → закрытие, ср."}
-            value={kpi.o2c != null ? fmtPct(kpi.o2c) : "—"} tone={kpi.o2c == null ? "neutral" : kpi.o2c < 0 ? "down" : "up"}
-            hint={kpi.reacted ? `ниже открытия ${kpi.red} из ${kpi.reacted}` : "реакция по дневным свечам"} />
+          <StatCard loading={listLoading} label={t("page.kpiAvgDisc")} value={kpi.avgDisc != null ? fmtPct(kpi.avgDisc, 1) : "—"}
+            hint={kpi.deep ? t("page.kpiDeep", { count: kpi.deep }) : t("page.kpiToClose")} />
+          <StatCard loading={listLoading} label={kpi.anyLive ? t("page.kpiO2cLive") : t("page.kpiO2c")}
+            value={kpi.o2c != null ? fmtPct(kpi.o2c, 1) : "—"} tone={kpi.o2c == null ? "neutral" : kpi.o2c < 0 ? "down" : "up"}
+            hint={kpi.reacted ? t("page.kpiRed", { red: kpi.red, total: kpi.reacted }) : t("page.kpiByBars")} />
         </StatGrid>
       )}
 
@@ -466,48 +472,48 @@ export default function OfferingsPage() {
 
       {isList && (
         <Panel
-          title={tab === "week" ? "Сделки за неделю" : "Сделки"}
+          title={tab === "week" ? t("page.dealsWeek") : t("page.deals")}
           description={tab === "week"
-            ? `${fmtDay(weekDays[0])} – ${fmtDay(day)} · по дате торгов, внутри дня — по сортировке`
-            : "SEC 424B, ATM и IPO · время подачи по Нью-Йорку"}
+            ? t("page.weekDescription", { from: fmtDay(weekDays[0]), to: fmtDay(day) })
+            : t("page.dayDescription")}
           padded={false}
           bodyClassName="px-2 pb-2 pt-2 sm:px-3"
           className="min-w-0"
           actions={tab === "today" && data && !noData ? (
             <Segmented<When>
-              ariaLabel="Когда торгуется"
+              ariaLabel={t("page.whenAria")}
               size="sm"
               value={when}
               onChange={(v) => { setWhen(v); setActive(0); }}
               options={[
-                { value: "today", label: "В игре сегодня", count: whenCounts.today },
-                { value: "next", label: "На завтра", count: whenCounts.next, disabled: !whenCounts.next },
-                { value: "prev", label: "Вчера", count: whenCounts.prev, disabled: !whenCounts.prev },
-                { value: "all", label: "Все", count: whenCounts.all },
+                { value: "today", label: t("page.when.today"), count: whenCounts.today },
+                { value: "next", label: t("page.when.next"), count: whenCounts.next, disabled: !whenCounts.next },
+                { value: "prev", label: t("page.when.prev"), count: whenCounts.prev, disabled: !whenCounts.prev },
+                { value: "all", label: commonI18n.t("states.all"), count: whenCounts.all },
               ]}
             />
           ) : (
             <span className="hidden items-center gap-1.5 text-xs text-muted-foreground xl:flex">
-              <Kbd>J</Kbd><Kbd>K</Kbd> выбор <Kbd>↵</Kbd> карточка <Kbd>W</Kbd> вотчлист <Kbd>P</Kbd> план
+              <Kbd>J</Kbd><Kbd>K</Kbd> {t("page.keysSelect")} <Kbd>↵</Kbd> {t("page.keysCard")} <Kbd>W</Kbd> {t("page.keysWatch")} <Kbd>P</Kbd> {t("page.keysPlan")}
             </span>
           )}
         >
           {listLoading ? (
-            <div className="min-h-[420px]" aria-busy="true" aria-label="Загрузка размещений">
+            <div className="min-h-[420px]" aria-busy="true" aria-label={t("page.loadingList")}>
               <TableSkeleton rows={8} cols={8} />
               <p className="px-2 pt-2 text-xs text-muted-foreground">
-                {tab === "week" ? "Собираем пять торговых дней — каждый новый день до 10 секунд." : "Собираем SEC EDGAR, NASDAQ и котировки — первый запрос дня до 10 секунд."}
+                {tab === "week" ? t("page.loadingWeek") : t("page.loadingDay")}
               </p>
             </div>
           ) : noData && tab === "today" ? (
-            <EmptyState icon={Layers} title="За этот день заявок нет"
-              description="Выходной или тихая сессия. Листайте дни клавишами [ и ] или откройте вкладку «Неделя»."
-              action={<Button variant="outline" size="sm" onClick={() => setTab("week")}>Открыть неделю</Button>} />
+            <EmptyState icon={Layers} title={t("page.noDayTitle")}
+              description={t("page.noDayText")}
+              action={<Button variant="outline" size="sm" onClick={() => setTab("week")}>{t("page.openWeek")}</Button>} />
           ) : deals.length === 0 ? (
             <EmptyState compact icon={Layers}
-              title={activeFilterCount(filters) || q ? "Ничего не подходит под фильтры" : when === "today" && tab === "today" ? "Сегодня сделок нет" : "Сделок нет"}
-              description={activeFilterCount(filters) || q ? "Снимите часть фильтров или выберите другой набор." : tab === "today" ? "Посмотрите «На завтра» / «Вчера» или вкладку «Неделя»." : undefined}
-              action={activeFilterCount(filters) || q ? <Button variant="outline" size="sm" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>Сбросить фильтры</Button> : undefined} />
+              title={activeFilterCount(filters) || q ? t("page.noMatch") : when === "today" && tab === "today" ? t("page.noneToday") : t("page.none")}
+              description={activeFilterCount(filters) || q ? t("page.noMatchText") : tab === "today" ? t("page.noneTodayText") : undefined}
+              action={activeFilterCount(filters) || q ? <Button variant="outline" size="sm" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(""); }}>{commonI18n.t("actions.resetFilters")}</Button> : undefined} />
           ) : (
             <OfferingsList
               items={deals}
@@ -535,10 +541,10 @@ export default function OfferingsPage() {
             <button type="button" onClick={() => setOverhangOpen(!overhangOpen)} aria-expanded={overhangOpen}
               className="inline-flex items-center gap-1.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <ChevronDown className={cn("h-4 w-4 transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", !overhangOpen && "-rotate-90")} aria-hidden="true" />
-              Навес: шелфы и S-1 · {overhang.length}
+              {t("page.overhang", { count: overhang.length })}
             </button>
           }
-          description={<>Денег ещё не привлекли, но могут в любой день: S-3 — <TermTooltip term="shelf">шелф</TermTooltip>, S-1 у торгуемой компании — часто токсичная структура</>}
+          description={<>{rich(t("page.overhangDescription", { shelf: "{shelf}" }), { shelf: <TermTooltip term="shelf">{t("page.shelf")}</TermTooltip> })}</>}
         >
           {overhangOpen ? (
             <OfferingsList

@@ -1,353 +1,29 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
-import { fetchYahooWithSession } from "../lib/marketDataService";
-import { pool } from "@workspace/db";
 import { nyDate } from "../lib/tradingDate";
-import { INTRADAY_LADDER, intervalAllowedForAge, pickServedInterval, type CandleInterval } from "../lib/candleLimits";
-import { cleanCandles } from "../lib/candleClean";
+import { intervalAllowedForAge, pickServedInterval } from "../lib/candleLimits";
+import { dayWindowEpochSeconds, parseDateStrict } from "../lib/candleDay";
+import {
+  TF_SEC, ensureArchivedDay, isDayComplete,
+  listArchivedDays, type ArchiveTf, type ArchivedDay,
+} from "../lib/candleArchive";
+import { z } from "zod";
+import { AppError, badRequest, route, sendError } from "../lib/http";
 
 const router: IRouter = Router();
 
-export type Interval = "1m" | "5m" | "15m" | "30m" | "60m" | "1d";
+import {
+  ALLOWED_INTERVALS, ageDaysOf, barsFromArchive, collectTradingDays, computeSessionLevels, fetchDailyRange, fetchSingleDayWithCache,
+  getPrevDailyCloseCached, pickIntervalForAge, storedIntervals, tradingDaysBetween, type Candle, type Interval, type SessionLevels,
+} from "../lib/candles/market";
 
-const ALLOWED_INTERVALS: ReadonlySet<Interval> = new Set(["1m", "5m", "15m", "30m", "60m", "1d"]);
-
-/** Bar length in seconds per interval (shared with trade quality / replay). */
-export const INTERVAL_SECONDS: Record<Interval, number> = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "60m": 3600, "1d": 86400 };
-
-export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
-
-export function parseDateStrict(dateStr: string): { y: number; m: number; d: number } | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  if (
-    dt.getUTCFullYear() !== y ||
-    dt.getUTCMonth() !== m - 1 ||
-    dt.getUTCDate() !== d
-  ) return null;
-  return { y, m, d };
-}
-
-export function pickIntervalForAge(ageDays: number): Interval {
-  if (ageDays <= 7) return "1m";
-  if (ageDays <= 60) return "5m";
-  if (ageDays <= 730) return "60m";
-  return "1d";
-}
-
-export function ageDaysOf(parsed: { y: number; m: number; d: number }): number {
-  return (Date.now() - Date.UTC(parsed.y, parsed.m - 1, parsed.d)) / (1000 * 60 * 60 * 24);
-}
-
-function fmtDate(p: { y: number; m: number; d: number }): string {
-  return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
-}
-
-// Walk back N trading days from `parsed`, returning [oldest, ..., parsed].
-// Skips Sat/Sun. Does not (yet) check for US market holidays — those
-// just yield empty candles from Yahoo and get filtered out at assembly.
-export function collectTradingDays(parsed: { y: number; m: number; d: number }, daysBack: number): { y: number; m: number; d: number; str: string }[] {
-  const out: { y: number; m: number; d: number; str: string }[] = [
-    { ...parsed, str: fmtDate(parsed) },
-  ];
-  let cur = parsed;
-  for (let i = 0; i < daysBack; i++) {
-    const dt = new Date(Date.UTC(cur.y, cur.m - 1, cur.d));
-    do {
-      dt.setUTCDate(dt.getUTCDate() - 1);
-    } while (dt.getUTCDay() === 0 || dt.getUTCDay() === 6);
-    cur = { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
-    out.push({ ...cur, str: fmtDate(cur) });
-  }
-  return out.reverse(); // oldest first
-}
-
-// DST-aware: convert (date in ET, h:m wall time) to epoch seconds.
-// Uses Intl to read America/New_York offset at the candidate moment.
-export function etWallToUtcSeconds(parsed: { y: number; m: number; d: number }, h: number, m: number): number {
-  const candidateUtcMs = Date.UTC(parsed.y, parsed.m - 1, parsed.d, h, m, 0);
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const parts = fmt.formatToParts(new Date(candidateUtcMs));
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-  const etMs = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
-  const offsetMs = etMs - candidateUtcMs; // negative for ET (e.g. -4h EDT, -5h EST)
-  return Math.floor((candidateUtcMs - offsetMs) / 1000);
-}
-
-export function dayWindowEpochSeconds(parsed: { y: number; m: number; d: number }, includeExtended: boolean): { start: number; end: number } {
-  const start = includeExtended
-    ? etWallToUtcSeconds(parsed, 4, 0)
-    : etWallToUtcSeconds(parsed, 9, 30);
-  const end = includeExtended
-    ? etWallToUtcSeconds(parsed, 20, 0)
-    : etWallToUtcSeconds(parsed, 16, 0);
-  return { start, end };
-}
-
-export type SessionLevels = {
-  pmHigh: number | null;
-  pmLow: number | null;
-  open: number | null;
-  high: number | null;
-  low: number | null;
-  close: number | null;
-};
-
-const ET_PARTS_FMT = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  hourCycle: "h23",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-// Premarket = 04:00–09:29 ET, regular = 09:30–15:59 ET, for bars on `dateStr` (ET).
-export function computeSessionLevels(candles: Candle[], dateStr: string): SessionLevels {
-  const out: SessionLevels = { pmHigh: null, pmLow: null, open: null, high: null, low: null, close: null };
-  for (const c of candles) {
-    const parts = ET_PARTS_FMT.formatToParts(new Date(c.t * 1000));
-    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-    if (`${get("year")}-${get("month")}-${get("day")}` !== dateStr) continue;
-    const mins = (Number(get("hour")) % 24) * 60 + Number(get("minute"));
-    if (mins >= 240 && mins < 570) {
-      out.pmHigh = out.pmHigh == null ? c.h : Math.max(out.pmHigh, c.h);
-      out.pmLow = out.pmLow == null ? c.l : Math.min(out.pmLow, c.l);
-    } else if (mins >= 570 && mins < 960) {
-      if (out.open == null) out.open = c.o;
-      out.high = out.high == null ? c.h : Math.max(out.high, c.h);
-      out.low = out.low == null ? c.l : Math.min(out.low, c.l);
-      out.close = c.c;
-    }
-  }
-  return out;
-}
-
-// In-memory cache for previous-trading-day closes. Keyed by `TICKER:YYYY-MM-DD`.
-// Past days are stable forever; today's value is refreshed every 5 minutes so
-// intraday updates to the prior close (rare, e.g. corporate actions) propagate.
-const prevCloseCache = new Map<string, { value: number | null; fetchedAt: number }>();
-const PREV_CLOSE_TTL_MS = 5 * 60 * 1000;
-
-export async function getPrevDailyCloseCached(ticker: string, parsed: { y: number; m: number; d: number }, dateStr: string): Promise<number | null> {
-  const key = `${ticker}:${dateStr}`;
-  // Trading date = New York date: a day is "past" (stable) only once the ET calendar has moved on.
-  const today = nyDate();
-  const isPast = dateStr < today;
-  const cached = prevCloseCache.get(key);
-  if (cached && (isPast || Date.now() - cached.fetchedAt < PREV_CLOSE_TTL_MS)) {
-    return cached.value;
-  }
-  const value = await fetchPrevDailyClose(ticker, parsed);
-  prevCloseCache.set(key, { value, fetchedAt: Date.now() });
-  return value;
-}
-
-async function fetchPrevDailyClose(ticker: string, parsed: { y: number; m: number; d: number }): Promise<number | null> {
-  // Fetch ~14 calendar days of daily candles ending the day before `date` and
-  // return the last available close. This robustly handles weekends and
-  // holidays (just picks the most recent trading day).
-  const targetMidnight = Math.floor(Date.UTC(parsed.y, parsed.m - 1, parsed.d) / 1000);
-  const start = targetMidnight - 14 * 86400;
-  const end = targetMidnight; // exclusive upper bound: we want closes BEFORE the trade date
-  const params = (s: { cookie: string; crumb: string }) => {
-    const p = new URLSearchParams({
-      period1: String(start),
-      period2: String(end),
-      interval: "1d",
-      events: "div,split",
-      crumb: s.crumb,
-    });
-    return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?${p.toString()}`;
-  };
-  try {
-    const resp = await fetchYahooWithSession(params);
-    if (!resp || !resp.ok) return null;
-    const data: any = await resp.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
-    const ts: number[] = result.timestamp || [];
-    const closes: (number | null)[] = result.indicators?.quote?.[0]?.close || [];
-    for (let i = closes.length - 1; i >= 0; i--) {
-      const c = closes[i];
-      if (c != null && Number.isFinite(c) && ts[i] < targetMidnight) return Number(c);
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchYahooCandles(ticker: string, parsed: { y: number; m: number; d: number }, interval: Interval, extended: boolean): Promise<Candle[] | null> {
-  const { start, end } = dayWindowEpochSeconds(parsed, extended);
-  const params = (s: { cookie: string; crumb: string }) => {
-    const p = new URLSearchParams({
-      period1: String(start),
-      period2: String(end),
-      interval,
-      includePrePost: extended ? "true" : "false",
-      events: "div,split",
-      crumb: s.crumb,
-    });
-    return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?${p.toString()}`;
-  };
-  try {
-    const resp = await fetchYahooWithSession(params);
-    if (!resp || !resp.ok) return null;
-    const data: any = await resp.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
-    const ts: number[] = result.timestamp || [];
-    const q = result.indicators?.quote?.[0] || {};
-    const candles: Candle[] = ts.map((t, i) => ({
-      t,
-      o: q.open?.[i],
-      h: q.high?.[i],
-      l: q.low?.[i],
-      c: q.close?.[i],
-      v: q.volume?.[i] ?? 0,
-    })).filter((c: Candle) => c.o != null && c.h != null && c.l != null && c.c != null);
-    // Stray Yahoo prints (lib/candleClean): absurd wicks clamped, single-bar spikes dropped; bodies untouched.
-    return cleanCandles(candles);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Cache-only read of one day (no Yahoo call). Lets trade quality / replay use a finer interval than
- * Yahoo would still serve for an old day (e.g. 1m bars cached while the trade was fresh). Past days
- * are stable; today's rows must be fresh (5 min).
- */
-export async function readCachedDay(ticker: string, dateStr: string, interval: Interval, extended: boolean): Promise<Candle[] | null> {
-  const isPast = dateStr < nyDate();
-  const cacheCondition = isPast
-    ? `ticker = $1 AND date = $2 AND interval = $3 AND extended = $4`
-    : `ticker = $1 AND date = $2 AND interval = $3 AND extended = $4 AND fetched_at > NOW() - INTERVAL '5 minutes'`;
-  const { rows } = await pool.query(
-    `SELECT ohlcv FROM candles_cache WHERE ${cacheCondition} ORDER BY fetched_at DESC LIMIT 1`,
-    [ticker, dateStr, interval, extended],
-  );
-  const cached = rows[0]?.ohlcv as Candle[] | undefined;
-  // Days cached before the bad-tick filter existed may still hold stray wicks — clean on every read.
-  const clean = cached && cached.length > 0 ? cleanCandles(cached) : [];
-  return clean.length > 0 ? clean : null;
-}
-
-// Single-day cache lookup + Yahoo fetch + cache write. Returns candles + a
-// cached flag so callers can report aggregate cache status. Returns null if
-// Yahoo has no data for that day (e.g. holiday, new listing).
-export async function fetchSingleDayWithCache(
-  ticker: string,
-  parsed: { y: number; m: number; d: number },
-  dateStr: string,
-  interval: Interval,
-  extended: boolean,
-  force: boolean,
-  log?: any
-): Promise<{ candles: Candle[]; cached: boolean } | null> {
-  if (!force) {
-    const cached = await readCachedDay(ticker, dateStr, interval, extended);
-    if (cached) return { candles: cached, cached: true };
-  }
-
-  const candles = await fetchYahooCandles(ticker, parsed, interval, extended);
-  if (!candles || candles.length === 0) return null;
-
-  try {
-    await pool.query(
-      `INSERT INTO candles_cache (ticker, date, interval, extended, ohlcv, fetched_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
-       ON CONFLICT (ticker, date, interval, extended) DO UPDATE SET
-         ohlcv = EXCLUDED.ohlcv,
-         fetched_at = NOW()`,
-      [ticker, dateStr, interval, extended, JSON.stringify(candles)]
-    );
-  } catch (err) {
-    log?.warn?.({ err, ticker, dateStr, interval, extended }, "candles cache write failed");
-  }
-
-  return { candles, cached: false };
-}
-
-// ── Daily bars over a date range (one Yahoo call, in-memory TTL cache) ──────
-// Used by trade replay / execution quality for multi-week swings. Keyed by
-// ticker + from + to; past ranges are stable, ranges touching today expire.
-const dailyRangeCache = new Map<string, { candles: Candle[]; fetchedAt: number }>();
-const DAILY_RANGE_TTL_MS = 5 * 60 * 1000;
-const DAILY_RANGE_MAX = 200;
-
-export async function fetchDailyRange(ticker: string, fromStr: string, toStr: string): Promise<Candle[] | null> {
-  const from = parseDateStrict(fromStr);
-  const to = parseDateStrict(toStr);
-  if (!from || !to || fromStr > toStr) return null;
-  const key = `${ticker}:${fromStr}:${toStr}`;
-  const stable = toStr < nyDate();
-  const hit = dailyRangeCache.get(key);
-  if (hit && (stable || Date.now() - hit.fetchedAt < DAILY_RANGE_TTL_MS)) return hit.candles;
-
-  const start = Math.floor(Date.UTC(from.y, from.m - 1, from.d) / 1000);
-  const end = Math.floor(Date.UTC(to.y, to.m - 1, to.d) / 1000) + 86400; // inclusive upper day
-  const params = (s: { cookie: string; crumb: string }) => {
-    const p = new URLSearchParams({
-      period1: String(start),
-      period2: String(end),
-      interval: "1d",
-      events: "div,split",
-      crumb: s.crumb,
-    });
-    return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?${p.toString()}`;
-  };
-  try {
-    const resp = await fetchYahooWithSession(params);
-    if (!resp || !resp.ok) return null;
-    const data: any = await resp.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
-    const ts: number[] = result.timestamp || [];
-    const q = result.indicators?.quote?.[0] || {};
-    const candles: Candle[] = ts
-      .map((t, i) => ({ t, o: q.open?.[i], h: q.high?.[i], l: q.low?.[i], c: q.close?.[i], v: q.volume?.[i] ?? 0 }))
-      .filter((c: Candle) => c.o != null && c.h != null && c.l != null && c.c != null);
-    if (dailyRangeCache.size > DAILY_RANGE_MAX) {
-      const oldest = dailyRangeCache.keys().next().value;
-      if (oldest) dailyRangeCache.delete(oldest);
-    }
-    dailyRangeCache.set(key, { candles, fetchedAt: Date.now() });
-    return candles;
-  } catch {
-    return null;
-  }
-}
-
-// Trading days in [fromStr, toStr] (weekends skipped; holidays yield no bars and are dropped by callers).
-export function tradingDaysBetween(fromStr: string, toStr: string, cap = 30): { y: number; m: number; d: number; str: string }[] {
-  const from = parseDateStrict(fromStr);
-  const to = parseDateStrict(toStr);
-  if (!from || !to || fromStr > toStr) return [];
-  const out: { y: number; m: number; d: number; str: string }[] = [];
-  const dt = new Date(Date.UTC(from.y, from.m - 1, from.d));
-  const endMs = Date.UTC(to.y, to.m - 1, to.d);
-  while (dt.getTime() <= endMs && out.length < cap) {
-    const dow = dt.getUTCDay();
-    if (dow !== 0 && dow !== 6) {
-      const p = { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() };
-      out.push({ ...p, str: fmtDate(p) });
-    }
-    dt.setUTCDate(dt.getUTCDate() + 1);
-  }
-  return out;
+/** Long-lived HTTP caching for responses built only from archived (finished, immutable) days; 304 when unchanged. */
+function setArchiveCaching(req: Request, res: Response, parts: readonly ArchivedDay[], variant: string): boolean {
+  const etag = `"cv1-${variant}-${parts.map((p) => p.etag.replace(/"/g, "")).join(".")}"`;
+  res.setHeader("ETag", etag);
+  res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+  if (req.headers["if-none-match"] === etag) { res.status(304).end(); return true; }
+  return false;
 }
 
 // GET /candles/:ticker/range?from=&to=&interval=&extended=1
@@ -358,10 +34,10 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
   const fromStr = String(req.query.from || "").trim();
   const toStr = String(req.query.to || "").trim();
   const extended = req.query.extended === "1" || req.query.extended === "true";
-  if (!ticker || !/^[A-Z][A-Z0-9.\-]{0,10}$/.test(ticker)) { res.status(400).json({ error: "invalid ticker" }); return; }
+  if (!ticker || !/^[A-Z][A-Z0-9.\-]{0,10}$/.test(ticker)) throw badRequest("INVALID_TICKER");
   const from = parseDateStrict(fromStr);
   const to = parseDateStrict(toStr);
-  if (!from || !to || fromStr > toStr) { res.status(400).json({ error: "invalid range (expected from<=to, YYYY-MM-DD)" }); return; }
+  if (!from || !to || fromStr > toStr) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
 
   const days = tradingDaysBetween(fromStr, toStr, 30);
   if (!days.length) { res.status(422).json({ error: "non_trading_day", reason: "weekend", ticker, from: fromStr, to: toStr }); return; }
@@ -371,19 +47,10 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
   let interval: Interval = requested && intervalAllowedForAge(requested, oldestAge) ? requested : pickIntervalForAge(oldestAge);
   let rangeDays = days;
   if (requested && requested !== "1d" && interval !== requested) {
-    // Too old for the requested bars by age. Before coarsening, look in the cache: a day cached while it was fresh
-    // keeps its 1m / 5m bars. Serve the finest interval the trailing run of days (always the trade day) has — by age
-    // or cached — and drop older context days instead of coarsening the whole series (lib/candleLimits).
-    const { rows } = await pool.query(
-      `SELECT DISTINCT interval, date::text AS d FROM candles_cache WHERE ticker = $1 AND extended = $2 AND date = ANY($3::date[]) AND interval = ANY($4::text[])`,
-      [ticker, extended, days.map((d) => d.str), INTRADAY_LADDER],
-    ).catch(() => ({ rows: [] as { interval: string; d: string }[] }));
-    const cached = new Map<CandleInterval, Set<string>>();
-    for (const r of rows) {
-      const iv = r.interval as CandleInterval;
-      if (!cached.has(iv)) cached.set(iv, new Set());
-      cached.get(iv)!.add(String(r.d).slice(0, 10));
-    }
+    // Too old for the requested bars by age. Before coarsening, look in storage: a day archived (or cached) while it
+    // was fresh keeps its 1m / 5m bars. Serve the finest interval the trailing run of days (always the trade day) has —
+    // by age or stored — and drop older context days instead of coarsening the whole series (lib/candleLimits).
+    const cached = await storedIntervals(ticker, days.map((d) => d.str), extended);
     const pick = pickServedInterval(days.map((d) => ({ str: d.str, age: ageDaysOf(d) })), requested, interval, cached);
     interval = pick.interval;
     rangeDays = days.slice(pick.fromIndex);
@@ -396,6 +63,8 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
 
   let candles: Candle[] = [];
   let cached = true;
+  const archivedParts: ArchivedDay[] = [];
+  let allArchived = interval !== "1d";
   if (interval === "1d") {
     const daily = await fetchDailyRange(ticker, fromStr, toStr);
     candles = daily ?? [];
@@ -404,20 +73,94 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
     for (const day of rangeDays) {
       const r = await fetchSingleDayWithCache(ticker, day, day.str, interval, extended, false, req.log);
       if (r) { candles.push(...r.candles); if (!r.cached) cached = false; }
+      if (r?.archived) archivedParts.push(r.archived);
+      // A day with no bars (holiday) is fine once it is over; a live / unarchived day makes the answer mutable.
+      else if (r || !isDayComplete(day.str)) allArchived = false;
     }
   }
   candles.sort((a, b) => a.t - b.t);
   const dedup: Candle[] = [];
   let lastT = -1;
   for (const c of candles) if (c.t !== lastT) { dedup.push(c); lastT = c.t; }
-  if (!dedup.length) { res.status(404).json({ error: "no candles available", ticker, from: fromStr, to: toStr, interval }); return; }
+  if (!dedup.length) throw new AppError("NO_DATA", 404, undefined, { ticker, from: fromStr, to: toStr, interval });
 
   // The response `from` / `days` say which days were actually served (older context days may have been dropped).
   const servedDays = interval === "1d" ? days : rangeDays;
   const servedFrom = servedDays[0]?.str ?? fromStr;
   const prevClose = await getPrevDailyCloseCached(ticker, servedDays[0] ?? from, servedFrom);
-  res.json({ ticker, from: servedFrom, to: toStr, interval, extended, days: servedDays.length, candles: dedup, prevClose, cached, fetchedAt: new Date().toISOString() });
+  // Built only from archived days ⇒ immutable: the browser keeps it, a revalidation is a 304.
+  if (allArchived && archivedParts.length && setArchiveCaching(req, res, archivedParts, `r${interval}${extended ? "x" : ""}`)) return;
+  const tfs = [...new Set(archivedParts.map((a) => a.tf))];
+  res.json({
+    ticker, from: servedFrom, to: toStr, interval, extended, days: servedDays.length, candles: dedup, prevClose, cached,
+    source: allArchived && archivedParts.length ? "archive" : "live", archivedTf: tfs.length === 1 ? tfs[0] : null,
+    fetchedAt: new Date().toISOString(),
+  });
 }));
+
+// ── Candle archive endpoints ─────────────────────────────────────────────────
+const tickerSchema = z.string().trim().toUpperCase().regex(/^[A-Z][A-Z0-9.\-]{0,10}$/);
+const daySchema = z.string().refine((s) => parseDateStrict(s) != null, "YYYY-MM-DD");
+const tfSchema = z.enum(["1m", "5m", "15m", "30m", "60m"]);
+const boolFlag = z.enum(["0", "1", "true", "false"]).transform((v) => v === "1" || v === "true");
+
+/**
+ * GET /candles/:ticker/day/:date?tf=&extended=  — one whole trading day (04:00–20:00 ET by default).
+ * A finished day comes from the permanent archive (fetched once for the desk if missing) at its archived bar size, or
+ * aggregated to a coarser `tf`; immutable + ETag (304 on revalidation). The live day: best bars by age, no caching.
+ * Response: { ticker, date, tf, archivedTf, extended, candles, prevClose, source: "archive" | "live", fetchedAt }.
+ */
+router.get("/candles/:ticker/day/:date", route({
+  params: z.object({ ticker: tickerSchema, date: daySchema }),
+  query: z.object({ tf: tfSchema.optional(), extended: boolFlag.optional() }),
+}, async ({ params, query, req, res }) => {
+  const { ticker, date } = params;
+  const extended = query.extended ?? true;
+  const parsed = parseDateStrict(date)!;
+  const dow = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d)).getUTCDay();
+  if (dow === 0 || dow === 6) throw new AppError("BAD_REQUEST", 422, undefined, { reason: "weekend" });
+  if (date > nyDate()) throw new AppError("BAD_REQUEST", 422, undefined, { reason: "future" });
+
+  if (isDayComplete(date)) {
+    const a = await ensureArchivedDay(ticker, date, undefined, (d) => getPrevDailyCloseCached(ticker, parsed, d));
+    if (a && (a.extended || !extended)) {
+      const tf: ArchiveTf = query.tf && TF_SEC[query.tf] > TF_SEC[a.tf] ? query.tf : a.tf;
+      const candles = barsFromArchive(a, tf, extended);
+      if (candles) {
+        if (setArchiveCaching(req, res, [a], `d${tf}${extended ? "x" : ""}`)) return;
+        const prevClose = a.prevClose ?? await getPrevDailyCloseCached(ticker, parsed, date);
+        return { ticker, date, tf, archivedTf: a.tf, extended, candles, prevClose, source: "archive", fetchedAt: a.fetchedAt };
+      }
+    }
+  }
+  // Live day, or nothing archivable: the old path at the finest bars the provider serves for a day this old.
+  const best: Interval = query.tf ?? pickIntervalForAge(ageDaysOf(parsed));
+  const live = await fetchSingleDayWithCache(ticker, parsed, date, best, extended, false, req.log);
+  res.setHeader("Cache-Control", "private, no-cache");
+  if (!live?.candles.length) throw new AppError("NOT_FOUND", 404, undefined, { reason: "no_candles" });
+  return {
+    ticker, date, tf: best, archivedTf: null, extended, candles: live.candles,
+    prevClose: await getPrevDailyCloseCached(ticker, parsed, date), source: "live", fetchedAt: new Date().toISOString(),
+  };
+}));
+
+/**
+ * GET /candle-archive/days?from=&to=&symbol=&tf=&minRangePct=&minVolume=&limit=&offset=
+ * Archived symbol-days with regular-session stats (simulator scenario picking, admin). Finest bar size per day.
+ * Response: { items: ArchiveListItem[], total }.
+ */
+router.get("/candle-archive/days", route({
+  query: z.object({
+    from: daySchema.optional(),
+    to: daySchema.optional(),
+    symbol: tickerSchema.optional(),
+    tf: tfSchema.optional(),
+    minRangePct: z.coerce.number().min(0).max(1000).optional(),
+    minVolume: z.coerce.number().int().min(0).optional(),
+    limit: z.coerce.number().int().min(1).max(2000).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+  }),
+}, async ({ query }) => listArchivedDays(query)));
 
 router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const ticker = String(req.params.ticker || "").toUpperCase().trim();
@@ -428,14 +171,10 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
   const daysBack = Number.isFinite(daysBackRaw) ? Math.max(0, Math.min(10, Math.floor(daysBackRaw))) : 0;
 
   if (!ticker || !/^[A-Z][A-Z0-9.\-]{0,10}$/.test(ticker)) {
-    res.status(400).json({ error: "invalid ticker" });
-    return;
+    throw badRequest("INVALID_TICKER");
   }
   const parsed = parseDateStrict(dateStr);
-  if (!parsed) {
-    res.status(400).json({ error: "invalid date (expected calendar YYYY-MM-DD)" });
-    return;
-  }
+  if (!parsed) throw new AppError("INVALID_DATE");
 
   // Pre-check: weekend (Sat/Sun) → no trading
   const probe = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
@@ -470,13 +209,15 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
   const requestedRaw = String(req.query.interval || "").toLowerCase().trim();
   const requested = ALLOWED_INTERVALS.has(requestedRaw as Interval) ? (requestedRaw as Interval) : null;
   const auto = pickIntervalForAge(oldestAge);
-  function intervalAllowedForAge(iv: Interval, age: number): boolean {
-    if (iv === "1m") return age <= 7;
-    if (iv === "5m" || iv === "15m" || iv === "30m") return age <= 60;
-    if (iv === "60m") return age <= 730;
-    return true;
+  let interval: Interval = requested && intervalAllowedForAge(requested, oldestAge) ? requested : auto;
+  if (requested && requested !== "1d" && interval !== requested && !force) {
+    // Archived / cached days keep the bars they had while fresh (same rule as the range route): finest interval the
+    // trade day has, older context days that cannot match are dropped.
+    const stored = await storedIntervals(ticker, targetDays.map((d) => d.str), extended);
+    const pick = pickServedInterval(targetDays.map((d) => ({ str: d.str, age: ageDaysOf(d) })), requested, interval, stored);
+    interval = pick.interval;
+    targetDays.splice(0, pick.fromIndex);
   }
-  const interval: Interval = requested && intervalAllowedForAge(requested, oldestAge) ? requested : auto;
 
   // Fetch each requested trading day (cache-first), concatenate.
   // Holidays / no-data days are silently skipped.
@@ -497,7 +238,7 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
   }
 
   if (!anyFetched || allCandles.length === 0) {
-    res.status(404).json({ error: "no candles available", ticker, date: dateStr, interval, extended, daysBack });
+    sendError(res, new AppError("NO_DATA", 404, undefined, { ticker, date: dateStr, interval, extended, daysBack }));
     return;
   }
 
@@ -506,7 +247,7 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
   // Yahoo sometimes appends the *current* live bar (e.g. today's 60m bar) to
   // historical responses — and those got cached. Drop anything outside the
   // requested [oldest day open, trade day close] window.
-  const windowStart = dayWindowEpochSeconds(oldestDay, extended).start - (interval === "1d" ? 86400 : 0);
+  const windowStart = dayWindowEpochSeconds(targetDays[0] ?? oldestDay, extended).start - (interval === "1d" ? 86400 : 0);
   const windowEnd = dayWindowEpochSeconds(parsed, extended).end + (interval === "1d" ? 86400 : 0);
   allCandles.sort((a, b) => a.t - b.t);
   const dedup: Candle[] = [];
@@ -516,7 +257,7 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
     if (c.t !== lastT) { dedup.push(c); lastT = c.t; }
   }
   if (dedup.length === 0) {
-    res.status(404).json({ error: "no candles available", ticker, date: dateStr, interval, extended, daysBack });
+    sendError(res, new AppError("NO_DATA", 404, undefined, { ticker, date: dateStr, interval, extended, daysBack }));
     return;
   }
 

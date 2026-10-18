@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { FirmStat, FirmStatsResponse, FirmWeightResponse, FirmWeightRow } from "./api";
-import { fmtPct, isTopFirm, WEIGHT_MIN_N, type FirmWeightLite } from "./lib";
+import { isTopFirm, WEIGHT_MIN_N, type FirmWeightLite } from "./lib";
+import { fmtPct, fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
 
-function pct(v: number | null | undefined, digits = 0) {
-  return v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(digits)}%`;
-}
+/** Translator reference (called at render time, never at module scope). */
+const tf = analystI18n.t;
+const days = (n: number) => commonI18n.t("units.days", { count: n });
 
 /** Edge of a firm's confirmation rate over the street's base rate, in percentage points. */
 function edgePp(f: FirmStat, base: number | null): number | null {
@@ -56,12 +59,12 @@ export function FirmStatsPanel({
 
   return (
     <Panel
-      title="Надёжность фирм"
-      description={data ? `Подтверждение рынком за ${data.followDays} дн · база ${pct(base)}` : "Подтверждение рынком"}
+      title={tf("firms.reliability")}
+      description={data ? tf("firms.reliabilityDescription", { days: days(data.followDays), base: fmtRate(base) }) : tf("firms.confirmation")}
       icon={Building2}
       actions={
         data ? (
-          <Button variant="ghost" size="sm" onClick={onOpenAll}>Все фирмы</Button>
+          <Button variant="ghost" size="sm" onClick={onOpenAll}>{tf("firms.all")}</Button>
         ) : undefined
       }
     >
@@ -70,11 +73,11 @@ export function FirmStatsPanel({
           {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-xl" />)}
         </div>
       ) : !data ? (
-        <p className="text-xs text-muted-foreground">Статистика фирм появится после обновления API.</p>
+        <p className="text-xs text-muted-foreground">{tf("firms.apiLater")}</p>
       ) : top.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Недостаточно данных за период.</p>
+        <p className="text-xs text-muted-foreground">{tf("firms.notEnough")}</p>
       ) : (
-        <ul className="flex flex-col gap-1" aria-label="Самые активные фирмы">
+        <ul className="flex flex-col gap-1" aria-label={tf("firms.activeAria")}>
           {top.map(({ stat, firm, n }) => {
             const f = stat!;
             const e = edgePp(f, base);
@@ -90,16 +93,16 @@ export function FirmStatsPanel({
                     active && "bg-primary/10 ring-1 ring-primary/30",
                   )}
                 >
-                  <ProgressRing value={f.confirmRate ?? 0} max={1} size={34} stroke={3} tone={confirmTone(f, base)} ariaLabel={`Подтверждаемость ${pct(f.confirmRate)}`} label={f.confirmRate == null ? "—" : Math.round(f.confirmRate * 100)} />
+                  <ProgressRing value={f.confirmRate ?? 0} max={1} size={34} stroke={3} tone={confirmTone(f, base)} ariaLabel={tf("firms.confirmAria", { value: fmtRate(f.confirmRate) })} label={f.confirmRate == null ? "—" : Math.round(f.confirmRate * 100)} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-foreground">{firm}</span>
+                    <span className="block truncate text-sm font-medium text-foreground" title={firm}>{firm}</span>
                     <span className="block truncate text-2xs text-muted-foreground tabular-nums">
-                      {n ? `${n} за период · ` : ""}▲{f.upgrades} ▼{f.downgrades} · {f.total} за {data.days} дн
+                      {n ? tf("firms.inPeriod", { count: n }) : ""}▲{f.upgrades} ▼{f.downgrades} · {tf("firms.totalIn", { total: f.total, days: days(data.days) })}
                     </span>
                   </span>
                   {e != null && (
-                    <span title="Разница с базовой подтверждаемостью улицы, п.п.">
-                      <Delta value={e} suffix=" п.п." precision={0} showIcon={false} />
+                    <span title={tf("firms.edgeTitle")}>
+                      <Delta value={e} suffix={tf("firms.pp")} precision={0} showIcon={false} />
                     </span>
                   )}
                 </button>
@@ -144,20 +147,20 @@ export function FirmWeightPanel({
       icon={Scale}
       title={
         <span className="inline-flex items-center gap-1.5">
-          Вес фирм
+          {tf("firms.weight")}
           <TermTooltip term="firmWeight" icon />
         </span>
       }
-      description={`Реакция на смену рейтинга · ${Math.round(data.days / 365)} г · улица ×${data.street.avgRatio?.toFixed(1) ?? "—"}`}
-      actions={<Button variant="ghost" size="sm" onClick={onOpenAll}>Все фирмы</Button>}
+      description={tf("firms.weightDescription", { years: Math.round(data.days / 365), ratio: data.street.avgRatio?.toFixed(1) ?? "—" })}
+      actions={<Button variant="ghost" size="sm" onClick={onOpenAll}>{tf("firms.all")}</Button>}
       footer={
         <span className="tabular-nums">
-          Свечи есть по {cov.tickers} из {cov.ratedTickers} тикеров{cov.warming ? " · догружаются" : ""}
+          {tf("firms.coverage", { tickers: cov.tickers, total: cov.ratedTickers })}{cov.warming ? tf("firms.warming") : ""}
         </span>
       }
       bodyClassName="min-h-[220px]"
     >
-      <div className="mb-2 flex gap-1" role="group" aria-label="Какие фирмы показать">
+      <div className="mb-2 flex gap-1" role="group" aria-label={tf("firms.modeAria")}>
         {(["now", "all"] as const).map((m) => (
           <button
             key={m}
@@ -169,7 +172,7 @@ export function FirmWeightPanel({
               mode === m ? "bg-primary/12 text-accent-soft" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
             )}
           >
-            {m === "now" ? "В ленте за период" : "Все"}
+            {m === "now" ? tf("firms.modeNow") : tf("firms.modeAll")}
           </button>
         ))}
       </div>
@@ -177,10 +180,10 @@ export function FirmWeightPanel({
         <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-xl" />)}</div>
       ) : ranked.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          {mode === "now" ? "У фирм из текущей ленты пока мало измеренных событий." : "Недостаточно данных — свечи ещё догружаются."}
+          {mode === "now" ? tf("firms.fewNow") : tf("firms.fewAll")}
         </p>
       ) : (
-        <ul className="flex flex-col gap-0.5" aria-label="Фирмы по весу">
+        <ul className="flex flex-col gap-0.5" aria-label={tf("firms.byWeightAria")}>
           {ranked.map((f) => {
             const r = f.rating.avgRatio ?? 0;
             const active = activeFirm === f.firm;
@@ -198,8 +201,8 @@ export function FirmWeightPanel({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-sm font-medium text-foreground">{f.firm}</span>
-                      {inFeed > 0 && <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">· {inFeed} в ленте</span>}
+                      <span className="truncate text-sm font-medium text-foreground" title={f.firm}>{f.firm}</span>
+                      {inFeed > 0 && <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{tf("firms.inFeed", { count: inFeed })}</span>}
                     </span>
                     <span className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
                       <span className={cn("block h-full rounded-full", r >= 1.5 ? "bg-purple" : "bg-muted-foreground")} style={{ width: `${Math.min(100, (r / max) * 100)}%` }} />
@@ -208,7 +211,7 @@ export function FirmWeightPanel({
                   <span className="w-16 shrink-0 text-right tabular-nums">
                     <span className={cn("block text-sm font-semibold", r >= 1.5 ? "text-purple" : "text-foreground")}>×{r.toFixed(1)}</span>
                     <span className="block text-2xs text-muted-foreground">
-                      {f.rating.hitRate != null ? `${Math.round(f.rating.hitRate * 100)}% · ` : ""}n={f.rating.n}
+                      {f.rating.hitRate != null ? `${fmtRate(f.rating.hitRate)} · ` : ""}n={f.rating.n}
                     </span>
                   </span>
                 </button>
@@ -269,44 +272,42 @@ export function FirmStatsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-3xl xl:max-w-4xl">
+      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-3xl xl:max-w-4xl [&>*]:shrink-0">
         <SheetHeader>
-          <SheetTitle>Надёжность аналитических фирм</SheetTitle>
+          <SheetTitle>{tf("firms.sheetTitle")}</SheetTitle>
           <SheetDescription>
-            {data ? `${data.days} дн · ${data.totalActions.toLocaleString("ru-RU")} действий · базовая подтверждаемость ${pct(base)}` : "Загрузка…"}
+            {data ? tf("firms.sheetDescription", { days: days(data.days), actions: tf("firms.actionsCount", { count: data.totalActions }), base: fmtRate(base) }) : commonI18n.t("states.loading")}
           </SheetDescription>
         </SheetHeader>
         <div className="glass-panel flex items-start gap-2 rounded-xl p-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
-            <span className="font-medium text-foreground">Подтверждаемость</span> — доля направленных действий (апгрейд/даунгрейд или изменение таргета),
-            после которых другие фирмы в течение {data?.followDays ?? 30} дн двигались в ту же сторону. «Рейтинги» — то же только для смены рейтинга.
-            «Премаркет» — доля публикаций до 9:30 ET.
-            {hasW && <> <span className="font-medium text-foreground">Вес</span> — во сколько раз ход акции в день реакции на смену рейтинга больше её обычного дня (дневные свечи, от {WEIGHT_MIN_N} событий); «В сторону» — доля дней, закрывшихся по направлению рейтинга.</>}
-            {" "}Нажмите на фирму, чтобы отфильтровать ленту.
+            <span className="font-medium text-foreground">{tf("firms.helpConfirm")}</span> {tf("firms.helpConfirmText", { days: days(data?.followDays ?? 30) })}
+            {hasW && <> <span className="font-medium text-foreground">{tf("firms.helpWeight")}</span> {tf("firms.helpWeightText", { min: WEIGHT_MIN_N })}</>}
+            {" "}{tf("firms.helpClick")}
           </p>
         </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Найти фирму" aria-label="Найти фирму" className="pl-9" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tf("firms.find")} aria-label={tf("firms.find")} className="pl-9" />
         </div>
         {!data ? (
           <Skeleton className="h-64 w-full rounded-xl" />
         ) : sorted.length === 0 ? (
-          <EmptyState icon={Building2} title="Фирмы не найдены" />
+          <EmptyState icon={Building2} title={tf("firms.notFound")} />
         ) : (
-          <DataTable className="min-h-[280px] flex-1" ariaLabel="Таблица фирм" stickyFirstCol>
+          <DataTable className="min-h-[280px] flex-1" ariaLabel={tf("firms.tableAria")} stickyFirstCol>
             <table>
               <thead>
                 <tr>
-                  <SortableTh {...thProps("firm")}>Фирма</SortableTh>
-                  <SortableTh {...thProps("total")} align="right">Действий</SortableTh>
-                  <SortableTh {...thProps("confirm")} align="right">Подтвержд.</SortableTh>
-                  <SortableTh {...thProps("rating")} align="right">Рейтинги</SortableTh>
-                  <SortableTh {...thProps("pt")} align="right">Ср. PT</SortableTh>
-                  <SortableTh {...thProps("pre")} align="right">Премаркет</SortableTh>
-                  {hasW && <SortableTh {...thProps("weight")} align="right">Вес</SortableTh>}
-                  {hasW && <SortableTh {...thProps("hit")} align="right">В сторону</SortableTh>}
+                  <SortableTh {...thProps("firm")}>{tf("firms.colFirm")}</SortableTh>
+                  <SortableTh {...thProps("total")} align="right">{tf("firms.colActions")}</SortableTh>
+                  <SortableTh {...thProps("confirm")} align="right">{tf("firms.colConfirm")}</SortableTh>
+                  <SortableTh {...thProps("rating")} align="right">{tf("firms.colRatings")}</SortableTh>
+                  <SortableTh {...thProps("pt")} align="right">{tf("firms.colPt")}</SortableTh>
+                  <SortableTh {...thProps("pre")} align="right">{tf("firms.colPre")}</SortableTh>
+                  {hasW && <SortableTh {...thProps("weight")} align="right">{tf("firms.colWeight")}</SortableTh>}
+                  {hasW && <SortableTh {...thProps("hit")} align="right">{tf("firms.colHit")}</SortableTh>}
                 </tr>
               </thead>
               <tbody>
@@ -320,26 +321,27 @@ export function FirmStatsSheet({
                         <button
                           type="button"
                           onClick={() => { onPickFirm(f.firm); onOpenChange(false); }}
-                          className="truncate text-left font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                          title={f.firm}
+                          className="max-w-full truncate text-left font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                         >
                           {f.firm}
                         </button>
                         <div className="text-2xs text-muted-foreground">
-                          ▲{f.upgrades} ▼{f.downgrades} · {f.tickers} тик.{isTopFirm(f.firm, lite(w)) ? " · топ" : ""}
+                          ▲{f.upgrades} ▼{f.downgrades} · {tf("firms.tickersShort", { count: f.tickers })}{isTopFirm(f.firm, lite(w)) ? tf("firms.top") : ""}
                         </div>
                       </td>
                       <td className="text-right">{f.total}</td>
                       <td className="text-right">
-                        <div className="font-medium">{f.evaluated >= 5 ? pct(f.confirmRate) : "—"}</div>
-                        {e != null && <Delta value={e} suffix=" п.п." precision={0} showIcon={false} bare className="text-2xs" />}
+                        <div className="font-medium">{f.evaluated >= 5 ? fmtRate(f.confirmRate) : "—"}</div>
+                        {e != null && <Delta value={e} suffix={tf("firms.pp")} precision={0} showIcon={false} bare className="text-2xs" />}
                       </td>
                       <td className="text-right">
                         {f.ratingEvaluated >= 3 ? (
-                          <span>{pct(f.ratingConfirmRate)} <span className="text-2xs text-muted-foreground">n={f.ratingEvaluated}</span></span>
+                          <span>{fmtRate(f.ratingConfirmRate)} <span className="text-2xs text-muted-foreground">n={f.ratingEvaluated}</span></span>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="text-right"><Delta value={f.avgPtChange} suffix="%" bare showIcon={false} /></td>
-                      <td className="text-right">{pct(f.premarketShare)}</td>
+                      <td className="text-right">{fmtRate(f.premarketShare)}</td>
                       {hasW && (
                         <td className="text-right">
                           {wOk ? (
@@ -350,8 +352,8 @@ export function FirmStatsSheet({
                         </td>
                       )}
                       {hasW && (
-                        <td className="text-right" title={wOk ? `Средний ход в сторону рейтинга ${fmtPct(w!.rating.avgSignedDay)}` : undefined}>
-                          {wOk ? pct(w!.rating.hitRate) : <span className="text-muted-foreground">—</span>}
+                        <td className="text-right" title={wOk ? tf("firms.avgSigned", { value: fmtPct(w!.rating.avgSignedDay, 1) }) : undefined}>
+                          {wOk ? fmtRate(w!.rating.hitRate) : <span className="text-muted-foreground">—</span>}
                         </td>
                       )}
                     </tr>

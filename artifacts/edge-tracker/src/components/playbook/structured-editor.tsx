@@ -10,18 +10,24 @@ import { Check, ImagePlus, LayoutTemplate, Loader2, Split, StickyNote, Target, T
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToastAction } from "@/components/ui/toast";
 import { toneText } from "@/components/ds";
 import { InlineMd } from "@/components/playbook-sub/bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { invalidatePlaybook, notLiveMessage, pbRequest } from "./api";
+import { invalidatePlaybook, notLiveMessage } from "./api";
+import { http } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage, usePlaybookMediaUrl } from "./media";
 import { DocSection } from "./setup-bits";
 import { InlineTextSection, ThesisView, structureConditions } from "./setup-document";
 import {
-  HORIZON_LABEL, STRUCTURED, TIME_OF_DAY_OPTIONS, type PlaybookEntry, type SetupMedia, type StructuredKey,
+  HORIZON_LABEL, STRUCTURED, timeOfDayOptions, type PlaybookEntry, type SetupMedia, type StructuredKey,
 } from "./model";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookSetupI18n, type SetupTemplateId } from "@/i18n/ns/playbookSetup";
+
+const st = playbookSetupI18n.t; // called at render / call time only
 
 type Patch = Partial<Record<StructuredKey | "notes" | "timeOfDay" | "horizon" | "conditions", string | null>> & { media?: SetupMedia[] | null };
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -41,13 +47,15 @@ function useAutosave(entryId: number) {
     pending.current = {};
     setState("saving");
     try {
-      await pbRequest(`/api/playbook/${entryId}`, { method: "PATCH", json: body });
+      // keepalive: the request survives a tab close / navigation that triggered the flush (browser cap ≈ 64 KB).
+      await http.patch(`/api/playbook/${entryId}`, body, { keepalive: JSON.stringify(body).length < 60_000 });
       setState("saved");
       qc.invalidateQueries({ queryKey: ["playbook-revisions", entryId] });
+      qc.invalidateQueries({ queryKey: ["playbook-activity", "setup", entryId] });
       qc.invalidateQueries({ queryKey: ["playbook-children"] });
     } catch (e) {
       setState("error");
-      toast({ title: "Не удалось сохранить", description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
+      toast({ title: commonI18n.t("states.saveFailed"), description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
       invalidatePlaybook(qc, entryId);
     }
   }, [entryId, qc, toast]);
@@ -61,55 +69,39 @@ function useAutosave(entryId: number) {
   }, [entryId, flush, qc]);
 
   React.useEffect(() => () => { void flush(); }, [flush]);
+  // Draft safety: send pending edits when the tab is hidden; warn before closing the tab with a save in flight.
+  React.useEffect(() => {
+    const onHide = () => { if (document.visibilityState === "hidden") void flush(); };
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!Object.keys(pending.current).length) return;
+      void flush();
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [flush]);
   return { queue, flush, state };
 }
 
-const TEMPLATES: { id: string; label: string; fields: Partial<Record<StructuredKey, string>> }[] = [
-  {
-    id: "breakout", label: "Пробой уровня",
-    fields: {
-      contextText: "Бумага в игре (катализатор / RVOL > 2), рынок не против направления.",
-      triggerText: "Консолидация под уровнем, сужение диапазона, объём на подходе.",
-      entryText: "Вход на пробое уровня с объёмом / на ретесте.",
-      stopText: "Под лоу консолидации.",
-      targetsText: "Частичная фиксация на ближайшем уровне, остаток — по трейлингу.",
-      invalidationText: "Возврат под уровень и закрепление.",
-    },
-  },
-  {
-    id: "pullback", label: "Откат в тренде",
-    fields: {
-      contextText: "Сильный тренд с утра, бумага держит VWAP.",
-      triggerText: "Откат на низком объёме к VWAP / 9 EMA, разворотная свеча.",
-      entryText: "Вход на перехае разворотной свечи.",
-      stopText: "Под лоу отката.",
-      targetsText: "Хай дня, далее — трейлинг.",
-      invalidationText: "Закрепление под VWAP.",
-    },
-  },
-  {
-    id: "fade", label: "Шорт / фейд",
-    fields: {
-      contextText: "Перерастянутая бумага, слабый катализатор, оффер / офферинг.",
-      triggerText: "Неудачный перехай, продавец на уровне, потеря VWAP.",
-      entryText: "Вход в шорт на потере уровня / на отскоке к нему.",
-      stopText: "Над хаем.",
-      targetsText: "VWAP, затем уровень открытия.",
-      invalidationText: "Новый хай с объёмом.",
-    },
-  },
-  {
-    id: "gap", label: "Гэп на открытии",
-    fields: {
-      contextText: "Гэп > 4% на новости, премаркет-объём высокий.",
-      triggerText: "Удержание премаркет-уровня в первые минуты.",
-      entryText: "ORB 1–5 мин в сторону гэпа.",
-      stopText: "За лоу/хай первых минут.",
-      targetsText: "Премаркет-хай, далее — трейлинг.",
-      invalidationText: "Закрытие гэпа на объёме.",
-    },
-  },
-];
+/**
+ * Starter texts for an empty card (the «Описание» tab and the new-setup form). UI templates: the text is written in
+ * the current UI language and becomes the user's own text once applied.
+ */
+const TEMPLATE_IDS: SetupTemplateId[] = ["breakout", "pullback", "fade", "gap"];
+const TEMPLATE_FIELDS = ["contextText", "triggerText", "entryText", "stopText", "targetsText", "invalidationText"] as const;
+export function setupTemplates(): { id: SetupTemplateId; label: string; fields: Partial<Record<StructuredKey, string>> }[] {
+  const t = playbookSetupI18n.t;
+  return TEMPLATE_IDS.map((id) => ({
+    id,
+    label: t(`editor.templates.${id}.label`),
+    fields: Object.fromEntries(TEMPLATE_FIELDS.map((f) => [f, t(`editor.templates.${id}.${f}`)])),
+  }));
+}
 
 /** Legacy «Вход: … / Инвалидация: …» text → structured fields. */
 function splitLegacy(text: string): Partial<Record<StructuredKey, string>> | null {
@@ -139,6 +131,7 @@ export function StructuredDescription({
   live: boolean;
   aside?: React.ReactNode;
 }) {
+  const { t } = playbookSetupI18n.useT();
   const { toast } = useToast();
   const { queue, state } = useAutosave(entry.id);
   const [uploading, setUploading] = React.useState(0);
@@ -157,7 +150,7 @@ export function StructuredDescription({
         const up = await uploadPlaybookImage(f, entry.id);
         added.push({ id: up.id, note: "" });
       } catch (e) {
-        toast({ title: "Скриншот не загружен", description: (e as Error)?.message, variant: "destructive" });
+        toast({ title: t("editor.shotFailed"), description: (e as Error)?.message, variant: "destructive" });
       } finally {
         setUploading((n) => n - 1);
       }
@@ -175,17 +168,17 @@ export function StructuredDescription({
   const meta = (
     <div className="flex flex-wrap items-center gap-2">
       <Select value={entry.horizon ?? "__none"} onValueChange={(v) => queue({ horizon: v === "__none" ? null : v }, true)} disabled={!canEdit || !live}>
-        <SelectTrigger className="h-8 w-40 text-sm" aria-label="Горизонт"><SelectValue placeholder="Горизонт" /></SelectTrigger>
+        <SelectTrigger className="h-8 w-auto min-w-44 gap-2 text-sm" aria-label={t("editor.horizon")}><SelectValue placeholder={t("editor.horizon")} /></SelectTrigger>
         <SelectContent>
-          <SelectItem value="__none">Горизонт: любой</SelectItem>
+          <SelectItem value="__none">{t("editor.horizonAny")}</SelectItem>
           {Object.entries(HORIZON_LABEL).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
         </SelectContent>
       </Select>
       <Select value={entry.timeOfDay ?? "__none"} onValueChange={(v) => queue({ timeOfDay: v === "__none" ? null : v }, true)} disabled={!canEdit || !live}>
-        <SelectTrigger className="h-8 w-52 text-sm" aria-label="Время дня"><SelectValue placeholder="Время дня" /></SelectTrigger>
+        <SelectTrigger className="h-8 w-auto min-w-52 gap-2 text-sm" aria-label={t("editor.timeOfDay")}><SelectValue placeholder={t("editor.timeOfDay")} /></SelectTrigger>
         <SelectContent>
-          <SelectItem value="__none">Время: любое</SelectItem>
-          {[...TIME_OF_DAY_OPTIONS, ...(entry.timeOfDay && !TIME_OF_DAY_OPTIONS.includes(entry.timeOfDay) ? [entry.timeOfDay] : [])].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+          <SelectItem value="__none">{t("editor.timeAny")}</SelectItem>
+          {[...timeOfDayOptions(), ...(entry.timeOfDay && !timeOfDayOptions().some((o) => o.value === entry.timeOfDay) ? [{ value: entry.timeOfDay, label: entry.timeOfDay }] : [])].map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>
       </Select>
       {canEdit && live && <SaveBadge state={state} />}
@@ -193,51 +186,59 @@ export function StructuredDescription({
   );
 
   return (
-    <div className="grid min-w-0 gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_340px]" onPaste={onPaste}>
-      <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
+    // Sized by its own width, not the viewport: the checklist sits beside the card only when the card keeps ≥ ~700px
+    // (1920 screens). Narrower (1280–1440): one column — card, then checklist / profile side by side, then notes and
+    // screenshots (the left column dissolves via `contents` so `order` can slot the aside under the card).
+    <div className="@container min-w-0" onPaste={onPaste}>
+    <div className="grid min-w-0 gap-[var(--grid-gap)] @[68rem]:grid-cols-[minmax(0,1fr)_340px] @[68rem]:items-start">
+      <div className="contents @[68rem]:flex @[68rem]:min-w-0 @[68rem]:flex-col @[68rem]:gap-[var(--grid-gap)]">
+        <div className="order-1 min-w-0 @[68rem]:order-none">
         {live ? (
-          <DocSection title="Карточка сетапа" icon={Target} actions={meta}>
+          <DocSection title={t("editor.card")} icon={Target} actions={meta}>
             {canEdit && !anyStructured && (
               <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5">
                 {legacySplit ? (
                   <>
-                    <span className="text-sm text-muted-foreground">Старое описание можно разложить по полям.</span>
-                    <Button size="sm" variant="outline" onClick={() => queue(legacySplit, true)}><Split className="h-4 w-4" aria-hidden="true" /> Разложить по полям</Button>
+                    <span className="text-sm text-muted-foreground">{t("editor.legacyHint")}</span>
+                    <Button size="sm" variant="outline" onClick={() => queue(legacySplit, true)}><Split className="h-4 w-4" aria-hidden="true" /> {t("editor.split")}</Button>
                   </>
                 ) : (
                   <>
                     <LayoutTemplate className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <span className="text-sm text-muted-foreground">Шаблон:</span>
-                    {TEMPLATES.map((t) => (
-                      <button key={t.id} type="button" onClick={() => queue(t.fields, true)} className="chip min-h-7 px-2.5 text-xs">{t.label}</button>
+                    <span className="text-sm text-muted-foreground">{t("editor.template")}</span>
+                    {setupTemplates().map((tpl) => (
+                      <button key={tpl.id} type="button" onClick={() => queue(tpl.fields, true)} className="chip min-h-7 px-2.5 text-xs">{tpl.label}</button>
                     ))}
                   </>
                 )}
               </div>
             )}
             {canEdit ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {STRUCTURED.map((f) => (
-                  <FieldEditor key={`${entry.id}-${f.key}`} label={f.label} tone={f.tone} placeholder={f.placeholder} value={entry[f.key] ?? ""} onChange={(v) => queue({ [f.key]: v || null })} />
-                ))}
+              // Two columns only when the card itself is wide enough (it shares the row with the checklist aside).
+              <div className="@container">
+                <div className="grid gap-3 @xl:grid-cols-2">
+                  {STRUCTURED.map((f) => (
+                    <FieldEditor key={`${entry.id}-${f.key}`} label={f.label} tone={f.tone} placeholder={f.placeholder} value={entry[f.key] ?? ""} onChange={(v) => queue({ [f.key]: v || null })} />
+                  ))}
+                </div>
               </div>
             ) : anyStructured ? (
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="@container"><div className="grid gap-2 @xl:grid-cols-2">
                 {filled.map((f) => (
                   <div key={f.key} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
                     <div className={cn("mb-0.5 text-xs font-medium", toneText(f.tone))}>{f.label}</div>
                     <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground"><InlineMd text={entry[f.key] ?? ""} /></div>
                   </div>
                 ))}
-              </div>
+              </div></div>
             ) : entry.conditions ? (
               <ThesisView text={entry.conditions} />
             ) : (
-              <p className="text-sm text-muted-foreground">Описание ещё не заполнено.</p>
+              <p className="text-sm text-muted-foreground">{t("editor.notFilled")}</p>
             )}
             {anyStructured && entry.conditions && (
               <details className="mt-3 text-sm">
-                <summary className="cursor-pointer text-xs text-muted-foreground">Исходный текст условий</summary>
+                <summary className="cursor-pointer text-xs text-muted-foreground">{t("editor.sourceText")}</summary>
                 <div className="mt-2"><ThesisView text={entry.conditions} /></div>
               </details>
             )}
@@ -246,30 +247,34 @@ export function StructuredDescription({
           <InlineTextSection
             entry={entry}
             field="conditions"
-            title="Тезис и условия входа"
+            title={t("editor.thesisTitle")}
             icon={Target}
-            placeholder={"Контекст: …\nВход: триггер\nИнвалидация: где идея сломана\nЦели: уровни"}
-            empty="Опишите контекст, вход, инвалидацию и цели. Строки «Вход:», «Инвалидация:», «Цели:» станут отдельными блоками."
-            render={(t) => <ThesisView text={t} />}
+            placeholder={t("editor.thesisPlaceholder")}
+            empty={t("editor.thesisEmpty")}
+            render={(text) => <ThesisView text={text} />}
           />
         )}
+        </div>
 
+        <div className="order-3 min-w-0 @[68rem]:order-none">
         {live && canEdit ? (
-          <DocSection title="Заметки и типичные ошибки" icon={StickyNote}>
-            <FieldEditor label="" tone="neutral" placeholder="Нюансы, типичные ошибки, что отличает эталон от «почти того же»" value={entry.notes ?? ""} onChange={(v) => queue({ notes: v || null })} rows={4} />
+          <DocSection title={t("editor.notesTitle")} icon={StickyNote}>
+            <FieldEditor label="" tone="neutral" placeholder={t("editor.notesPlaceholderLive")} value={entry.notes ?? ""} onChange={(v) => queue({ notes: v || null })} rows={4} />
           </DocSection>
         ) : (
-          <InlineTextSection entry={entry} field="notes" title="Заметки и типичные ошибки" icon={StickyNote} placeholder="Нюансы, типичные ошибки" empty="Добавьте заметки: нюансы, типичные ошибки." />
+          <InlineTextSection entry={entry} field="notes" title={t("editor.notesTitle")} icon={StickyNote} placeholder={t("editor.notesPlaceholder")} empty={t("editor.notesEmpty")} />
         )}
+        </div>
 
         {(entry.screenshotUrl || media.length > 0 || (canEdit && live)) && (
           <DocSection
-            title="Скриншоты"
+            className="order-4 min-w-0 @[68rem]:order-none"
+            title={commonI18n.t("fields.screenshots")}
             icon={ImagePlus}
             actions={canEdit && live ? (
               <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} disabled={uploading > 0}>
                 {uploading > 0 ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <ImagePlus className="h-4 w-4" aria-hidden="true" />}
-                Добавить
+                {commonI18n.t("actions.add")}
               </Button>
             ) : undefined}
           >
@@ -277,20 +282,33 @@ export function StructuredDescription({
             {media.length > 0 && (
               <div className={cn("grid grid-cols-2 gap-2 lg:grid-cols-3", entry.screenshotUrl && "mt-3")}>
                 {media.map((m) => (
-                  <MediaTile key={m.id} m={m} canEdit={canEdit && live} onRemove={() => queue({ media: media.filter((x) => x.id !== m.id) }, true)} />
+                  <MediaTile
+                    key={m.id}
+                    m={m}
+                    canEdit={canEdit && live}
+                    onRemove={() => {
+                      const before = media;
+                      queue({ media: media.filter((x) => x.id !== m.id) }, true);
+                      toast({
+                        title: t("editor.shotRemoved"),
+                        action: <ToastAction altText={t("editor.shotRestoreAlt")} onClick={() => queue({ media: before }, true)}>{t("editor.restore")}</ToastAction>,
+                      });
+                    }}
+                  />
                 ))}
               </div>
             )}
             {canEdit && live && !entry.screenshotUrl && media.length === 0 && (
               <button type="button" onClick={() => fileRef.current?.click()} className="w-full rounded-xl border border-dashed border-border px-3 py-6 text-sm text-muted-foreground hover:text-foreground">
-                Вставьте скриншот (Ctrl+V) или выберите файл
+                {t("editor.pasteHint")}
               </button>
             )}
             <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ""; addImages(f); }} />
           </DocSection>
         )}
       </div>
-      {aside && <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)]" aria-label="Чеклист и профиль">{aside}</aside>}
+      {aside && <aside className="order-2 grid min-w-0 content-start items-start gap-[var(--grid-gap)] @[44rem]:grid-cols-2 @[68rem]:order-none @[68rem]:grid-cols-1" aria-label={t("editor.asideAria")}>{aside}</aside>}
+    </div>
     </div>
   );
 }
@@ -328,7 +346,7 @@ function SaveBadge({ state }: { state: SaveState }) {
   return (
     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
       {state === "saving" ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : state === "saved" ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
-      {state === "saving" ? "Сохраняем…" : state === "saved" ? "Сохранено" : "Ошибка сохранения"}
+      {state === "saving" ? st("editor.saving") : state === "saved" ? commonI18n.t("states.saved") : st("editor.saveError")}
     </span>
   );
 }
@@ -338,17 +356,18 @@ function MediaTile({ m, canEdit, onRemove }: { m: SetupMedia; canEdit: boolean; 
   return (
     <figure className="group relative overflow-hidden rounded-xl border border-border/60">
       {url && url !== "error" ? (
-        <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={m.note || "Скриншот сетапа"} className="h-36 w-full object-cover" /></a>
+        <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={m.note || st("editor.shotAlt")} className="h-36 w-full object-cover" /></a>
       ) : (
         <div className={cn("grid h-36 place-items-center text-xs text-muted-foreground", url !== "error" && "animate-pulse bg-[var(--glass-bg)] motion-reduce:animate-none")}>
-          {url === "error" ? "Недоступен" : null}
+          {url === "error" ? st("editor.unavailable") : null}
         </div>
       )}
       {canEdit && (
         <button
           type="button"
           onClick={onRemove}
-          aria-label="Убрать скриншот"
+          aria-label={st("editor.removeShot")}
+          title={st("editor.removeShot")}
           className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-background/85 text-muted-foreground opacity-0 transition-opacity duration-[var(--dur-1)] hover:text-down focus-visible:opacity-100 group-hover:opacity-100"
         >
           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

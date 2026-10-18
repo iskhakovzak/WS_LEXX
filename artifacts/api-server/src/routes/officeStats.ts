@@ -24,10 +24,13 @@ import { resolveActor, type Actor } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import {
   CLOSE_CROSS_FROM_SEC, CLOSE_CROSS_TO_SEC, DEFAULT_GOAL_PCT, MOC_IMBALANCE_FROM_SEC, OPEN_AUCTION_GRACE_SEC, OPG_EXIT_BY_SEC,
-  RTH_OPEN_SEC, STRATEGIES, STRATEGY_RULES_RU,
+  RTH_OPEN_SEC, STRATEGIES, strategyRule,
   buildOfficeView, classifyStrategy, nyParts, parsePeriod, parseYears, shiftYear, toMemberView,
   type OfficeTrade, type Result, type YearSetting,
 } from "../lib/officeStats";
+import { AppError, sendError, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { insightsT } from "../i18n/ns";
 
 const router: IRouter = Router();
 
@@ -79,10 +82,10 @@ async function loadSettings(): Promise<Map<number, FullSetting>> {
 
 /** Admin = partner (full view); any other signed-in member gets the % view; guests / anonymous are refused. */
 async function viewerOf(req: Request, res: Response): Promise<Actor | null> {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return null; }
+  if (!req.authUser) { sendError(res, unauthorized()); return null; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return null; }
-  if (actor.guest) { res.status(403).json({ error: "Гостевой режим: статистика офиса недоступна", code: "FORBIDDEN" }); return null; }
+  if (!actor) { sendError(res, unauthorized()); return null; }
+  if (actor.guest) { sendError(res, new AppError("GUEST_UNAVAILABLE")); return null; }
   return actor;
 }
 
@@ -153,22 +156,18 @@ async function loadTrades(years: number[]): Promise<OfficeTrade[]> {
 const hhmm = (sec: number) => `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}${sec % 60 ? `:${String(sec % 60).padStart(2, "0")}` : ""}`;
 
 /** The rules as the page's «Как считается» popover shows them (single source: lib/officeStats). */
-function rulesPayload() {
+function rulesPayload(lang: Lang) {
+  const t = insightsT.tFor(lang);
   return {
-    strategies: STRATEGIES.map((key) => ({ key, text: STRATEGY_RULES_RU[key] })),
-    order: "OPT → Overnight → AfterMarket (вход) → OPG / OPGtoDAY → MOC → AfterMarket (выход) → Day",
+    strategies: STRATEGIES.map((key) => ({ key, text: strategyRule(key, lang) })),
+    order: t("order"),
     thresholds: {
       openAuctionUntil: hhmm(RTH_OPEN_SEC + OPEN_AUCTION_GRACE_SEC),
       opgExitBy: hhmm(OPG_EXIT_BY_SEC),
       mocFrom: hhmm(MOC_IMBALANCE_FROM_SEC),
       closeCross: `${hhmm(CLOSE_CROSS_FROM_SEC)}–${hhmm(CLOSE_CROSS_TO_SEC)}`,
     },
-    notes: [
-      "Время — по Нью-Йорку, по первому входу и последнему выходу сделки.",
-      "Результат дня — нетто (после комиссий) по дате закрытия сделки.",
-      "% — нетто ÷ капитал офиса за год, который указывают партнёры.",
-      "Объём — число акций / контрактов по всем исполнениям.",
-    ],
+    notes: [t("note.time"), t("note.result"), t("note.pct"), t("note.volume")],
   };
 }
 
@@ -183,8 +182,8 @@ router.get("/office-stats", asyncHandler(async (req, res) => {
   const loadYears = [...new Set([...years, Number(from.slice(0, 4)), Number(to.slice(0, 4)), Number(shiftYear(from, -1).slice(0, 4)), Number(shiftYear(to, -1).slice(0, 4))])].sort();
   const [settings, trades] = await Promise.all([loadSettings(), loadTrades(loadYears)]);
   const isAdmin = actor.role === "admin";
-  const base = { years, period: { from, to }, today, rules: rulesPayload() };
-  const viewOpts = { years, settings, from, to, today };
+  const base = { years, period: { from, to }, today, rules: rulesPayload(langOf(req)) };
+  const viewOpts = { years, settings, from, to, today, lang: langOf(req) };
 
   res.setHeader("Cache-Control", "private, no-store");
   if (isAdmin) {
@@ -221,24 +220,23 @@ router.put("/office-stats/capital", asyncHandler(async (req, res) => {
   const actor = await viewerOf(req, res);
   if (!actor) return;
   if (actor.role !== "admin") {
-    res.status(403).json({ error: "Капитал офиса задают только партнёры (админ)", code: "FORBIDDEN" });
-    return;
+    throw new AppError("ADMIN_ONLY");
   }
   const body = (req.body ?? {}) as { year?: unknown; capital?: unknown; goalPct?: unknown };
   const ty = Number(nyDate().slice(0, 4));
   const year = Number(body.year);
-  if (!Number.isInteger(year) || year < 2000 || year > ty + 1) { res.status(400).json({ error: "Неверный год" }); return; }
+  if (!Number.isInteger(year) || year < 2000 || year > ty + 1) throw new AppError("INVALID_FIELD", undefined, { field: "year" });
   let capital: number | null;
   if (body.capital === null || body.capital === "") capital = null;
   else {
     capital = Number(body.capital);
-    if (!Number.isFinite(capital) || capital <= 0 || capital > 1e11) { res.status(400).json({ error: "Капитал — положительное число в $" }); return; }
+    if (!Number.isFinite(capital) || capital <= 0 || capital > 1e11) throw new AppError("INVALID_FIELD", undefined, { field: "capital" });
     capital = Math.round(capital * 100) / 100;
   }
   let goalPct: number | null = null;
   if (body.goalPct !== undefined && body.goalPct !== null && body.goalPct !== "") {
     goalPct = Number(body.goalPct);
-    if (!Number.isFinite(goalPct) || goalPct <= 0 || goalPct > 1000) { res.status(400).json({ error: "Цель — от 0 до 1000 %" }); return; }
+    if (!Number.isFinite(goalPct) || goalPct <= 0 || goalPct > 1000) throw new AppError("INVALID_FIELD", undefined, { field: "target" });
     goalPct = Math.round(goalPct * 100) / 100;
   }
   await ensureOfficeCapitalTable();

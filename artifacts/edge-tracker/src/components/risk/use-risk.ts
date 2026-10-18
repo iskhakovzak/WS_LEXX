@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { closeDate, feesOf, isOpen, netPnl, num as tmNum } from "@/lib/trade-math";
 import { wallMinutes, type DayTrade } from "./risk-math";
@@ -270,29 +272,7 @@ export type Quote = {
 export type EarningsHit = { date: string; callType: "BMO" | "AMC" | "TNS"; company?: string | null };
 export type OfferingHit = { date: string; type: string; status: string; dealSizeM: number | null; dilutionPct: number | null };
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string, public issues: { path: string; message: string }[] = []) {
-    super(message);
-  }
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(path));
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    let issues: { path: string; message: string }[] = [];
-    try {
-      const j = (await r.json()) as { error?: string; issues?: { path: string; message: string }[] };
-      if (j?.error) msg = j.error;
-      if (Array.isArray(j?.issues)) issues = j.issues;
-    } catch { /* not json */ }
-    throw new HttpError(r.status, msg, issues);
-  }
-  return (await r.json()) as T;
-}
-
 const REFRESH_MS = 60_000;
-const retry = (count: number, err: unknown) => !(err instanceof HttpError && [401, 403, 404].includes(err.status)) && count < 2;
 
 export const riskKeys = {
   all: ["risk"] as const,
@@ -310,22 +290,15 @@ export const riskKeys = {
 };
 
 export function useRiskMe(enabled = true) {
-  return useQuery({
-    queryKey: riskKeys.me(),
-    queryFn: () => getJson<RiskMe>(`/api/risk/me?date=${nyDate()}`),
-    enabled,
-    refetchInterval: REFRESH_MS,
-    retry,
-  });
+  return useQuery({ ...riskMeQuery<RiskMe>(), enabled, refetchInterval: REFRESH_MS });
 }
 
 export function useRiskDesk(enabled = true) {
   return useQuery({
     queryKey: riskKeys.desk(),
-    queryFn: () => getJson<RiskDesk>(`/api/risk/desk?date=${nyDate()}`),
+    queryFn: () => http.get<RiskDesk>(`/api/risk/desk?date=${nyDate()}`),
     enabled,
     refetchInterval: REFRESH_MS,
-    retry,
   });
 }
 
@@ -333,10 +306,9 @@ export function useRiskHistory(trader: string | null, days: number) {
   return useQuery({
     queryKey: riskKeys.history(trader ?? "", days),
     queryFn: () =>
-      getJson<RiskHistory>(`/api/risk/history?trader=${encodeURIComponent(trader ?? "")}&days=${days}&date=${nyDate()}`),
+      http.get<RiskHistory>(`/api/risk/history?trader=${encodeURIComponent(trader ?? "")}&days=${days}&date=${nyDate()}`),
     enabled: !!trader,
     placeholderData: keepPreviousData,
-    retry,
   });
 }
 
@@ -344,10 +316,9 @@ export function useRiskPositions(trader: string | null, enabled = true) {
   const q = trader ? `trader=${encodeURIComponent(trader)}&` : "";
   return useQuery({
     queryKey: riskKeys.positions(trader),
-    queryFn: () => getJson<RiskPositions>(`/api/risk/positions?${q}date=${nyDate()}`),
+    queryFn: () => http.get<RiskPositions>(`/api/risk/positions?${q}date=${nyDate()}`),
     enabled,
     refetchInterval: REFRESH_MS,
-    retry,
   });
 }
 
@@ -355,11 +326,10 @@ export function useOvernightBook(trader: string | null, preview: boolean, enable
   const q = trader ? `trader=${encodeURIComponent(trader)}&` : "";
   return useQuery({
     queryKey: riskKeys.overnight(trader, preview),
-    queryFn: () => getJson<OvernightBook>(`/api/risk/overnight?${q}date=${nyDate()}${preview ? "&all=1" : ""}`),
+    queryFn: () => http.get<OvernightBook>(`/api/risk/overnight?${q}date=${nyDate()}${preview ? "&all=1" : ""}`),
     enabled,
     refetchInterval: REFRESH_MS,
     placeholderData: keepPreviousData,
-    retry,
   });
 }
 
@@ -367,19 +337,17 @@ export function useRiskAlerts(trader: string | null, days = 14, enabled = true) 
   const q = trader ? `trader=${encodeURIComponent(trader)}&` : "";
   return useQuery({
     queryKey: riskKeys.alerts(trader, days),
-    queryFn: () => getJson<{ from: string; trader: string | null; alerts: RiskAlertRecord[] }>(`/api/risk/alerts?${q}days=${days}`),
+    queryFn: () => http.get<{ from: string; trader: string | null; alerts: RiskAlertRecord[] }>(`/api/risk/alerts?${q}days=${days}`),
     enabled,
     refetchInterval: REFRESH_MS,
-    retry,
   });
 }
 
 export function useLimitsHistory(trader: string | null, enabled = true) {
   return useQuery({
     queryKey: riskKeys.limitsHistory(trader ?? ""),
-    queryFn: () => getJson<LimitEvent[]>(`/api/risk/limits/${encodeURIComponent(trader ?? "")}/history`),
+    queryFn: () => http.get<LimitEvent[]>(`/api/risk/limits/${encodeURIComponent(trader ?? "")}/history`),
     enabled: enabled && !!trader,
-    retry,
   });
 }
 
@@ -393,7 +361,7 @@ export function useQuotes(tickers: string[], enabled = true) {
       const chunks: string[][] = [];
       for (let i = 0; i < key.length; i += 50) chunks.push(key.slice(i, i + 50));
       const parts = await Promise.all(
-        chunks.map((c) => getJson<Record<string, Quote>>(`/api/stockdata/quote?symbols=${encodeURIComponent(c.join(","))}`).catch(() => ({} as Record<string, Quote>))),
+        chunks.map((c) => http.get<Record<string, Quote>>(`/api/stockdata/quote?symbols=${encodeURIComponent(c.join(","))}`).catch(() => ({} as Record<string, Quote>))),
       );
       return Object.assign({}, ...parts) as Record<string, Quote>;
     },
@@ -412,7 +380,7 @@ export function useEarningsMap(enabled = true) {
     enabled,
     queryFn: async () => {
       type Day = { date: string; items: { ticker: string; callType: "BMO" | "AMC" | "TNS"; company?: string | null }[] };
-      const j = await getJson<{ days: Day[] }>(`/api/earnings/upcoming?days=10&limit=60`).catch(() => ({ days: [] as Day[] }));
+      const j = await http.get<{ days: Day[] }>(`/api/earnings/upcoming?days=10&limit=60`).catch(() => ({ days: [] as Day[] }));
       const map: Record<string, EarningsHit> = {};
       for (const d of j.days ?? []) for (const it of d.items ?? []) {
         const t = it.ticker.toUpperCase();
@@ -432,7 +400,7 @@ export function useOfferingsMap(enabled = true) {
     enabled,
     queryFn: async () => {
       type Row = { ticker: string; date: string; type: string; status: string; dealSizeM: number | null; dilutionPct: number | null };
-      const j = await getJson<{ offerings: Row[] }>(`/api/offerings/watch`).catch(() => ({ offerings: [] as Row[] }));
+      const j = await http.get<{ offerings: Row[] }>(`/api/offerings/watch`).catch(() => ({ offerings: [] as Row[] }));
       const map: Record<string, OfferingHit> = {};
       for (const o of j.offerings ?? []) {
         const t = o.ticker.toUpperCase();
@@ -521,12 +489,11 @@ export function useTraderDay(trader: string | null, enabled = true) {
     enabled: enabled && !!trader,
     queryFn: async () => {
       const from = addDays(today, -10);
-      const raw = await getJson<RawTrade[]>(`/api/trades?trader=${encodeURIComponent(trader ?? "")}&from=${from}&to=${today}`);
+      const raw = await http.get<RawTrade[]>(`/api/trades?trader=${encodeURIComponent(trader ?? "")}&from=${from}&to=${today}`);
       return buildTraderDay(Array.isArray(raw) ? raw : [], today);
     },
     refetchInterval: REFRESH_MS,
     placeholderData: keepPreviousData,
-    retry,
   });
 }
 
@@ -559,8 +526,8 @@ export function useBehaviorDay(trader: string | null, date: string | null, enabl
       const t = encodeURIComponent(trader ?? "");
       const d = date as string;
       const [day, hist] = await Promise.all([
-        getJson<BehaviorResp>(`/api/behavior?trader=${t}&from=${d}&to=${d}`).catch(() => null),
-        getJson<BehaviorResp>(`/api/behavior?trader=${t}&from=${addDays(d, -60)}&to=${d}`).catch(() => null),
+        http.get<BehaviorResp>(`/api/behavior?trader=${t}&from=${d}&to=${d}`).catch(() => null),
+        http.get<BehaviorResp>(`/api/behavior?trader=${t}&from=${addDays(d, -60)}&to=${d}`).catch(() => null),
       ]);
       if (!day) return null;
       const pat = (k: string) => day.patterns?.find((p) => p.key === k);
@@ -577,7 +544,7 @@ export function useBehaviorDay(trader: string | null, date: string | null, enabl
         overtrading: norm != null && trades > norm,
       };
     },
-    staleTime: 60_000,
+    staleTime: STALE.short,
     refetchInterval: REFRESH_MS,
     retry: 0,
   });
@@ -589,22 +556,7 @@ export function useSaveLimits(trader: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: LimitsInput) => {
-      const r = await fetch(apiUrl(`/api/risk/limits/${encodeURIComponent(trader)}`), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        let msg = `HTTP ${r.status}`;
-        let issues: { path: string; message: string }[] = [];
-        try {
-          const j = (await r.json()) as { error?: string; issues?: { path: string; message: string }[] };
-          if (j?.error) msg = j.error;
-          if (Array.isArray(j?.issues)) issues = j.issues;
-        } catch { /* ignore */ }
-        throw new HttpError(r.status, msg, issues);
-      }
-      return (await r.json()) as RiskLimits;
+      return http.put<RiskLimits>(`/api/risk/limits/${encodeURIComponent(trader)}`, body);
     },
     onSuccess: (saved) => {
       // optimistic-ish: patch desk row limits immediately, then refetch metrics

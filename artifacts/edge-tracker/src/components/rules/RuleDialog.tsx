@@ -9,26 +9,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { apiJson, useRulePreview } from "./api";
-import { fmtPct, fmtUsd, violationsWord } from "./constants";
+import { useRulePreview } from "./api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
+import { personName } from "@/i18n";
+import { rich } from "./rich";
 import { autoName, type RuleDraft } from "./templates";
 import type { Rule, RuleField, RuleGroup, RuleKindDef, RuleReport } from "./types";
 
-const GROUP_META: Record<RuleGroup, { label: string; icon: LucideIcon }> = {
-  loss: { label: "Убытки и тильт", icon: ShieldAlert },
-  volume: { label: "Количество сделок", icon: ListChecks },
-  time: { label: "Время", icon: Clock },
-  size: { label: "Размер позиции", icon: Gauge },
-  process: { label: "Процесс", icon: Layers },
-  self: { label: "Самооценка", icon: ClipboardCheck },
+const GROUP_ICON: Record<RuleGroup, LucideIcon> = {
+  loss: ShieldAlert,
+  volume: ListChecks,
+  time: Clock,
+  size: Gauge,
+  process: Layers,
+  self: ClipboardCheck,
 };
 const GROUP_ORDER: RuleGroup[] = ["loss", "volume", "time", "size", "process", "self"];
-
-const RISK_LIMIT_LABEL: Record<string, string> = {
-  daily_loss_limit: "дневной лимит убытка",
-  max_position_usd: "макс. позиция",
-  max_risk_per_trade: "макс. риск на сделку",
-};
 
 /** Form values are kept as strings (inputs); converted on save/preview. */
 type FormValues = Record<string, string>;
@@ -96,6 +96,7 @@ export function RuleDialog({
   canManageDesk: boolean;
   onSaved: () => void;
 }) {
+  const { t } = rulesI18n.useT();
   const { toast } = useToast();
   const [kind, setKind] = useState("");
   const [name, setName] = useState("");
@@ -175,24 +176,24 @@ export function RuleDialog({
   async function save() {
     if (!kindDef || !threshold) return;
     const n = name.trim();
-    if (!n) { setError("Введите название"); return; }
+    if (!n) { setError(t("dialog.nameRequired")); return; }
     setSaving(true);
     setError(null);
     try {
       if (editing) {
-        await apiJson(`/rules/${editing.id}`, { method: "PATCH", json: { name: n, threshold, enabled, note: note.trim() || null } }, "Не удалось сохранить правило");
-        toast({ title: "Правило обновлено" });
+        await http.patch(`/api/rules/${editing.id}`, { name: n, threshold, enabled, note: note.trim() || null });
+        toast({ title: t("dialog.updated") });
       } else {
         const body: Record<string, unknown> = { name: n, kind, threshold, enabled, note: note.trim() || null };
         if (scope === "desk") body.desk = true;
         else body.trader = trader;
-        await apiJson(`/rules`, { method: "POST", json: body }, "Не удалось создать правило");
-        toast({ title: "Правило добавлено", description: kindDef.auto === false ? "Отмечайте его раз в день в журнале" : "Проверяется по всем сделкам автоматически" });
+        await http.post(`/api/rules`, body);
+        toast({ title: t("dialog.added"), description: kindDef.auto === false ? t("dialog.addedSelf") : t("dialog.addedAuto") });
       }
       onSaved();
       onOpenChange(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanizeApiError(e, editing ? t("dialog.saveFailed") : t("dialog.createFailed")));
     } finally {
       setSaving(false);
     }
@@ -207,23 +208,20 @@ export function RuleDialog({
         onKeyDown={(e) => { if (!showGallery && (e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (!saving) save(); } }}
       >
         <DialogHeader>
-          <DialogTitle>{showGallery ? "Новое правило" : kindDef?.label ?? "Правило"}</DialogTitle>
+          <DialogTitle>{showGallery ? t("dialog.newTitle") : kindDef?.label ?? t("ruleFallback")}</DialogTitle>
           <DialogDescription>
-            {showGallery
-              ? "Выберите, что контролировать. Сделки проверяются автоматически — вы сразу увидите, сколько раз правило нарушалось и во что это обошлось."
-              : kindDef?.hint ?? ""}
+            {showGallery ? t("dialog.galleryDesc") : kindDef?.hint ?? ""}
           </DialogDescription>
         </DialogHeader>
 
         {showGallery ? (
           <div className="flex flex-col gap-4">
             {grouped.map(([g, list]) => {
-              const meta = GROUP_META[g];
-              const Icon = meta.icon;
+              const Icon = GROUP_ICON[g];
               return (
                 <section key={g} className="flex flex-col gap-2">
                   <h3 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />{meta.label}
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`dialog.groups.${g}`)}
                   </h3>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {list.map((k) => (
@@ -246,7 +244,7 @@ export function RuleDialog({
           <div className="flex flex-col gap-4">
             {!isEdit && !draft && (
               <button type="button" onClick={() => setKind("")} className="-mt-1 inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Другой тип правила
+                <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> {t("dialog.otherKind")}
               </button>
             )}
 
@@ -260,12 +258,12 @@ export function RuleDialog({
 
             {kindDef.auto === false && (
               <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm text-foreground">
-                Это правило нельзя проверить по сделкам. Раз в день в журнале появится отметка «соблюдал / нарушил» — из неё считается соблюдение и разница в результате.
+                {t("dialog.selfNote")}
               </p>
             )}
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="rule-name" className="text-sm font-medium">Название</Label>
+              <Label htmlFor="rule-name" className="text-sm font-medium">{t("dialog.name")}</Label>
               <Input
                 id="rule-name"
                 value={name}
@@ -276,25 +274,25 @@ export function RuleDialog({
             </div>
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="rule-note" className="text-sm font-medium">Зачем это правило <span className="font-normal text-muted-foreground">— необязательно</span></Label>
-              <Textarea id="rule-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Например: после трёх стопов я начинаю отыгрываться" />
+              <Label htmlFor="rule-note" className="text-sm font-medium">{t("dialog.why")} <span className="font-normal text-muted-foreground">{t("dialog.optional")}</span></Label>
+              <Textarea id="rule-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("dialog.whyPlaceholder")} />
             </div>
 
             {!isEdit && (canManageDesk || canManageTeam) && (
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Для кого</span>
+                <span className="text-sm font-medium">{t("dialog.forWhom")}</span>
                 <Segmented<"trader" | "desk">
-                  ariaLabel="Для кого правило"
+                  ariaLabel={t("dialog.forWhomAria")}
                   size="sm"
                   value={scope}
                   onChange={setScope}
                   options={[
-                    { value: "trader", label: canManageTeam ? `${trader} · правило офиса` : trader },
-                    ...(canManageDesk ? [{ value: "desk" as const, label: <span className="inline-flex items-center gap-1"><Building2 className="h-3.5 w-3.5" aria-hidden="true" />Весь деск</span> }] : []),
+                    { value: "trader", label: canManageTeam ? t("dialog.officeRuleFor", { name: personName(trader) }) : personName(trader) },
+                    ...(canManageDesk ? [{ value: "desk" as const, label: <span className="inline-flex items-center gap-1"><Building2 className="h-3.5 w-3.5" aria-hidden="true" />{t("dialog.wholeDesk")}</span> }] : []),
                   ]}
                 />
                 {(scope === "desk" || canManageTeam) && (
-                  <span className="text-xs text-muted-foreground">Трейдер увидит правило с пометкой «Офис» и не сможет его изменить или выключить.</span>
+                  <span className="text-xs text-muted-foreground">{t("dialog.officeHint")}</span>
                 )}
               </div>
             )}
@@ -303,11 +301,11 @@ export function RuleDialog({
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
                   <Switch id="rule-enabled" checked={enabled} onCheckedChange={setEnabled} />
-                  <Label htmlFor="rule-enabled" className="cursor-pointer text-sm">Правило активно</Label>
+                  <Label htmlFor="rule-enabled" className="cursor-pointer text-sm">{t("dialog.active")}</Label>
                 </div>
                 {editing?.enabled && !enabled && (
                   <span className="text-xs text-muted-foreground">
-                    Правило перестанет проверяться. Найденные нарушения и комментарии к ним сохранятся в архиве и вернутся, если включить его снова.
+                    {t("dialog.disableHint")}
                   </span>
                 )}
               </div>
@@ -320,8 +318,8 @@ export function RuleDialog({
 
         {!showGallery && (
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
-            <Button onClick={save} disabled={saving || !kindDef}>{saving ? "Сохранение…" : isEdit ? "Сохранить" : "Добавить правило"}</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
+            <Button onClick={save} disabled={saving || !kindDef}>{saving ? commonI18n.t("states.saving") : isEdit ? commonI18n.t("actions.save") : t("dialog.addRule")}</Button>
           </DialogFooter>
         )}
       </DialogContent>
@@ -330,8 +328,9 @@ export function RuleDialog({
 }
 
 function FieldInput({ field, value, onChange }: { field: RuleField; value: string; onChange: (v: string) => void }) {
+  const { t } = rulesI18n.useT();
   const id = `rule-f-${field.key}`;
-  const placeholder = field.optional && field.riskLimit ? `из риск-деска (${RISK_LIMIT_LABEL[field.riskLimit]})` : undefined;
+  const placeholder = field.optional && field.riskLimit ? t("dialog.fromRiskDesk", { limit: t(`dialog.riskLimit.${field.riskLimit}`) }) : undefined;
   return (
     <div className={cn("flex flex-col gap-1", field.type === "tickers" && "sm:col-span-2")}>
       <Label htmlFor={id} className="text-sm font-medium">
@@ -353,29 +352,31 @@ function FieldInput({ field, value, onChange }: { field: RuleField; value: strin
 }
 
 function PreviewBox({ q, days }: { q: ReturnType<typeof useRulePreview>; days: number }) {
+  const { t } = rulesI18n.useT();
   const r = q.data;
   return (
     <div className="tile flex min-h-[84px] flex-col gap-1.5 p-3" aria-live="polite">
-      <span className="text-xs font-medium text-muted-foreground">Если бы правило действовало последние {days} дней</span>
+      <span className="text-xs font-medium text-muted-foreground">{t("dialog.previewTitle", { days })}</span>
       {q.isLoading || q.isFetching && !r ? (
         <span className="skeleton block h-5 w-3/4" aria-hidden="true" />
       ) : q.error ? (
-        <span className="text-sm text-muted-foreground">{q.error instanceof Error ? q.error.message : "Предпросмотр недоступен"}</span>
+        <span className="text-sm text-muted-foreground">{humanizeApiError(q.error, t("preview.unavailable"))}</span>
       ) : !r ? null : r.status === "no_data" ? (
-        <span className="text-sm text-muted-foreground">По вашим сделкам это правило проверить нельзя — нет нужных данных.</span>
+        <span className="text-sm text-muted-foreground">{t("dialog.previewNoData")}</span>
       ) : r.violations === 0 ? (
-        <span className="text-sm text-foreground">Ни одного нарушения за {r.days} торговых дней — правило уже соблюдается.</span>
+        <span className="text-sm text-foreground">{t("dialog.previewClean", { days: commonI18n.t("units.tradingDays", { count: r.days }) })}</span>
       ) : (
         <>
-          <span className="text-sm text-foreground">
-            <b className="tabular-nums">{r.violations}</b> {violationsWord(r.violations)} в <b className="tabular-nums">{r.violatedDays}</b> из {r.days} дней · соблюдение <b className="tabular-nums">{fmtPct(r.compliance)}</b>
+          <span className="text-sm font-medium text-foreground">
+            {t("preview.violations", { count: r.violations, violated: r.violatedDays, days: r.days })} · {t("dialog.previewCompliance", { rate: fmtRate(r.compliance) })}
           </span>
           {r.impact != null && (
             <span className="text-sm">
-              {r.impact < 0 ? "Нарушения стоили " : r.impact > 0 ? "Нарушения принесли " : "Влияние на результат "}
-              <b className={cn("tabular-nums", r.impact < 0 ? "text-down" : r.impact > 0 ? "text-up" : "")}>{fmtUsd(r.impact, { sign: false })}</b>
+              {rich(t(r.impact < 0 ? "dialog.impactCost" : r.impact > 0 ? "dialog.impactGain" : "dialog.impactZero", { amount: "{amount}" }), {
+                amount: <b className={cn("tabular-nums", r.impact < 0 ? "text-down" : r.impact > 0 ? "text-up" : "")}>{fmtUsd(r.impact, { decimals: "trim" })}</b>,
+              })}
               {r.broken.avg != null && r.clean.avg != null && (
-                <span className="text-muted-foreground"> · сделка с нарушением в среднем {fmtUsd(r.broken.avg)} против {fmtUsd(r.clean.avg)}</span>
+                <span className="text-muted-foreground"> · {t("dialog.avgCompare", { broken: fmtUsd(r.broken.avg, { signed: true, decimals: "trim" }), clean: fmtUsd(r.clean.avg, { signed: true, decimals: "trim" }) })}</span>
               )}
             </span>
           )}

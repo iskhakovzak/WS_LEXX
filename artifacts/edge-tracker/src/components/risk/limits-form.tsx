@@ -11,8 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { LimitsInput, RiskLimits } from "./use-risk";
-import { HttpError, useSaveLimits } from "./use-risk";
-import { TIERS, fmtUsd } from "./primitives";
+import { ApiError } from "@/lib/api/http";
+import { useSaveLimits } from "./use-risk";
+import { TIERS, tierLabel } from "./primitives";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Scaling plan: default limits per tier (curator can override any field). */
 export const TIER_PRESETS: Record<string, Omit<LimitsInput, "tier" | "notes">> = {
@@ -23,40 +28,45 @@ export const TIER_PRESETS: Record<string, Omit<LimitsInput, "tier" | "notes">> =
   lead: { accountSize: 250_000, dailyLossLimit: 2_500, weeklyLossLimit: 7_000, maxDrawdown: 15_000, maxRiskPerTrade: 800, maxPositionUsd: 250_000, maxOvernightExposure: 120_000, maxOpenPositions: 12, allowOvernight: true, allowSwing: true },
 };
 
-const moneyStr = z
-  .string()
-  .trim()
-  .refine((s) => s === "" || (/^\d+(\.\d{1,2})?$/.test(s.replace(/[\s,]/g, "")) && Number(s.replace(/[\s,]/g, "")) <= 1e12), "Введите сумму ≥ 0 (до 2 знаков после точки)");
-const intStr = z.string().trim().refine((s) => s === "" || (/^\d+$/.test(s) && Number(s) <= 1000), "Целое число от 0 до 1000");
+const clean = (s: string) => s.replace(/[\s,]/g, "");
 
-const schema = z
-  .object({
-    tier: z.string(),
-    accountSize: moneyStr,
-    dailyLossLimit: moneyStr,
-    weeklyLossLimit: moneyStr,
-    maxDrawdown: moneyStr,
-    maxRiskPerTrade: moneyStr,
-    maxPositionUsd: moneyStr,
-    maxOvernightExposure: moneyStr,
-    maxOpenPositions: intStr,
-    allowOvernight: z.boolean(),
-    allowSwing: z.boolean(),
-    notes: z.string().max(2000, "Не больше 2000 символов"),
-    reason: z.string().max(500, "Не больше 500 символов"),
-  })
-  .superRefine((v, ctx) => {
-    const n = (s: string) => (s === "" ? null : Number(s.replace(/[\s,]/g, "")));
-    const d = n(v.dailyLossLimit), w = n(v.weeklyLossLimit), dd = n(v.maxDrawdown), r = n(v.maxRiskPerTrade);
-    if (d != null && w != null && w < d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["weeklyLossLimit"], message: "Недельный лимит не может быть меньше дневного" });
-    if (d != null && r != null && r > d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxRiskPerTrade"], message: "Риск на сделку больше дневного лимита" });
-    if (d != null && dd != null && dd < d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxDrawdown"], message: "Макс. просадка меньше дневного лимита" });
-  });
+/** Built per mount (messages follow the UI language; a language switch re-mounts the tree). */
+function buildSchema() {
+  const t = riskI18n.t;
+  const moneyStr = z
+    .string()
+    .trim()
+    .refine((s) => s === "" || (/^\d+(\.\d{1,2})?$/.test(clean(s)) && Number(clean(s)) <= 1e12), t("form.errMoney"));
+  const intStr = z.string().trim().refine((s) => s === "" || (/^\d+$/.test(s) && Number(s) <= 1000), t("form.errInt"));
+  return z
+    .object({
+      tier: z.string(),
+      accountSize: moneyStr,
+      dailyLossLimit: moneyStr,
+      weeklyLossLimit: moneyStr,
+      maxDrawdown: moneyStr,
+      maxRiskPerTrade: moneyStr,
+      maxPositionUsd: moneyStr,
+      maxOvernightExposure: moneyStr,
+      maxOpenPositions: intStr,
+      allowOvernight: z.boolean(),
+      allowSwing: z.boolean(),
+      notes: z.string().max(2000, t("form.errMax", { max: 2000 })),
+      reason: z.string().max(500, t("form.errMax", { max: 500 })),
+    })
+    .superRefine((v, ctx) => {
+      const n = (s: string) => (s === "" ? null : Number(clean(s)));
+      const d = n(v.dailyLossLimit), w = n(v.weeklyLossLimit), dd = n(v.maxDrawdown), r = n(v.maxRiskPerTrade);
+      if (d != null && w != null && w < d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["weeklyLossLimit"], message: t("form.errWeekly") });
+      if (d != null && r != null && r > d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxRiskPerTrade"], message: t("form.errRisk") });
+      if (d != null && dd != null && dd < d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxDrawdown"], message: t("form.errDrawdown") });
+    });
+}
 
-type FormValues = z.infer<typeof schema>;
+type FormValues = z.infer<ReturnType<typeof buildSchema>>;
 
 const s = (v: number | null | undefined) => (v == null ? "" : String(v));
-const toNum = (v: string) => (v.trim() === "" ? null : Number(v.replace(/[\s,]/g, "")));
+const toNum = (v: string) => (v.trim() === "" ? null : Number(clean(v)));
 
 function toForm(l: RiskLimits | null): FormValues {
   return {
@@ -76,19 +86,23 @@ function toForm(l: RiskLimits | null): FormValues {
   };
 }
 
-const MONEY_FIELDS: { name: keyof FormValues; label: string; hint?: string }[] = [
-  { name: "accountSize", label: "Размер счёта, $", hint: "База для % просадки" },
-  { name: "maxPositionUsd", label: "Buying power на позицию, $" },
-  { name: "dailyLossLimit", label: "Дневной лимит убытка, $", hint: "дневной стоп" },
-  { name: "weeklyLossLimit", label: "Недельный лимит убытка, $" },
-  { name: "maxDrawdown", label: "Макс. просадка от пика, $" },
-  { name: "maxRiskPerTrade", label: "Макс. риск на сделку, $", hint: "1R" },
-  { name: "maxOvernightExposure", label: "Макс. овернайт-экспозиция, $", hint: "Позиции через закрытие" },
+type MoneyField = "accountSize" | "maxPositionUsd" | "dailyLossLimit" | "weeklyLossLimit" | "maxDrawdown" | "maxRiskPerTrade" | "maxOvernightExposure";
+const MONEY_FIELDS: { name: MoneyField; hint?: "accountSize" | "dailyLossLimit" | "maxRiskPerTrade" | "maxOvernightExposure" }[] = [
+  { name: "accountSize", hint: "accountSize" },
+  { name: "maxPositionUsd" },
+  { name: "dailyLossLimit", hint: "dailyLossLimit" },
+  { name: "weeklyLossLimit" },
+  { name: "maxDrawdown" },
+  { name: "maxRiskPerTrade", hint: "maxRiskPerTrade" },
+  { name: "maxOvernightExposure", hint: "maxOvernightExposure" },
 ];
+const NUMBER_FIELDS: (MoneyField | "maxOpenPositions")[] = [...MONEY_FIELDS.map((f) => f.name), "maxOpenPositions"];
 
 export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits: RiskLimits | null; onSaved?: () => void }) {
   const { toast } = useToast();
+  const { t } = riskI18n.useT();
   const save = useSaveLimits(trader);
+  const schema = React.useMemo(() => buildSchema(), []);
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: toForm(limits) });
 
   // Reset when switching trader or after server data changes (not while user edits).
@@ -99,13 +113,32 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
   }, [key]);
 
   const tier = form.watch("tier");
-  const applyPreset = () => {
-    const p = TIER_PRESETS[tier];
+  const preset = TIER_PRESETS[tier];
+  const applyPreset = (code: string = tier) => {
+    const p = TIER_PRESETS[code];
     if (!p) return;
     (Object.keys(p) as (keyof typeof p)[]).forEach((k) => {
       const v = p[k];
       form.setValue(k as keyof FormValues, (typeof v === "boolean" ? v : s(v as number | null)) as never, { shouldDirty: true, shouldValidate: true });
     });
+  };
+
+  // Prefill: picking a tier on an empty form fills the tier's limits; a tier change suggests the reason.
+  const onTierChange = (code: string, set: (v: string) => void) => {
+    set(code);
+    const empty = NUMBER_FIELDS.every((f) => !String(form.getValues(f) ?? "").trim());
+    if (empty && TIER_PRESETS[code]) applyPreset(code);
+    const before = limits?.tier ?? "";
+    if (!form.getValues("reason").trim() && limits && code !== before) {
+      const name = (c: string) => tierLabel(c) ?? commonI18n.t("tiers.noTier");
+      form.setValue("reason", t("form.reasonTier", { from: name(before), to: name(code) }), { shouldDirty: true });
+    }
+  };
+
+  const placeholderFor = (name: MoneyField | "maxOpenPositions") => {
+    const v = preset?.[name];
+    if (v == null) return t("form.notSet");
+    return t("form.byTier", { value: name === "maxOpenPositions" ? String(v) : fmtUsd(v as number, { decimals: 0 }) });
   };
 
   const onSubmit = (v: FormValues) => {
@@ -126,12 +159,12 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
     };
     save.mutate(body, {
       onSuccess: () => {
-        toast({ title: "Лимиты сохранены", description: trader });
+        toast({ title: t("form.saved"), description: personName(trader) });
         onSaved?.();
       },
       onError: (e) => {
         // Server-side validation: map each issue to its field; the rest goes to the toast.
-        const issues = e instanceof HttpError ? e.issues : [];
+        const issues = e instanceof ApiError ? e.field<{ path: string; message: string }[]>("issues") ?? [] : [];
         let mapped = 0;
         for (const it of issues) {
           const path = String(it.path ?? "");
@@ -141,8 +174,8 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
           }
         }
         toast({
-          title: "Не удалось сохранить",
-          description: mapped ? `Проверьте поля: ${issues.map((i) => i.message).join("; ")}` : (e as Error).message,
+          title: commonI18n.t("states.saveFailed"),
+          description: mapped ? t("form.checkFields", { list: issues.map((i) => i.message).join("; ") }) : (e as Error).message,
           variant: "destructive",
         });
       },
@@ -158,15 +191,17 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
             name="tier"
             render={({ field }) => (
               <FormItem className="min-w-[180px] flex-1">
-                <FormLabel>Тир (план масштабирования)</FormLabel>
-                <Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}>
+                <FormLabel>{t("form.tier")}</FormLabel>
+                <Select value={field.value || "none"} onValueChange={(v) => onTierChange(v === "none" ? "" : v, field.onChange)}>
                   <FormControl>
-                    <SelectTrigger><SelectValue placeholder="Без тира" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder={commonI18n.t("tiers.noTier")} /></SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="none">Без тира</SelectItem>
-                    {TIERS.map((t, i) => (
-                      <SelectItem key={t.value} value={t.value}>{i + 1}. {t.label} — BP {fmtUsd(TIER_PRESETS[t.value]?.maxPositionUsd ?? null, { compact: true })}</SelectItem>
+                    <SelectItem value="none">{commonI18n.t("tiers.noTier")}</SelectItem>
+                    {TIERS.map((x, i) => (
+                      <SelectItem key={x.value} value={x.value}>
+                        {t("form.tierOption", { n: i + 1, label: x.label, bp: fmtUsd(TIER_PRESETS[x.value]?.maxPositionUsd ?? null, { decimals: 0, compact: 10_000 }) })}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -174,9 +209,9 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
               </FormItem>
             )}
           />
-          <Button type="button" variant="outline" size="sm" onClick={applyPreset} disabled={!TIER_PRESETS[tier]}>
+          <Button type="button" variant="outline" size="sm" onClick={() => applyPreset()} disabled={!preset}>
             <Wand2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Заполнить по тиру
+            {t("form.applyPreset")}
           </Button>
         </div>
 
@@ -188,11 +223,11 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
               name={f.name}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{f.label}</FormLabel>
+                  <FormLabel>{t(`form.field.${f.name}`)}</FormLabel>
                   <FormControl>
-                    <Input inputMode="decimal" placeholder="не задан" autoComplete="off" {...field} value={field.value as string} />
+                    <Input inputMode="decimal" placeholder={placeholderFor(f.name)} autoComplete="off" {...field} value={field.value as string} />
                   </FormControl>
-                  {f.hint && <FormDescription className="text-2xs">{f.hint}</FormDescription>}
+                  {f.hint && <FormDescription className="text-2xs">{t(`form.hint.${f.hint}`)}</FormDescription>}
                   <FormMessage />
                 </FormItem>
               )}
@@ -203,9 +238,9 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
             name="maxOpenPositions"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Макс. открытых позиций</FormLabel>
+                <FormLabel>{t("form.maxOpen")}</FormLabel>
                 <FormControl>
-                  <Input inputMode="numeric" placeholder="не задан" autoComplete="off" {...field} />
+                  <Input inputMode="numeric" placeholder={placeholderFor("maxOpenPositions")} autoComplete="off" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -215,8 +250,8 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {([
-            { name: "allowOvernight", label: "Разрешён овернайт", hint: "Перенос позиций через закрытие" },
-            { name: "allowSwing", label: "Разрешён свинг", hint: "Удержание дни–недели" },
+            { name: "allowOvernight", label: t("form.allowOvernight"), hint: t("form.allowOvernightHint") },
+            { name: "allowSwing", label: t("form.allowSwing"), hint: t("form.allowSwingHint") },
           ] as const).map((f) => (
             <FormField
               key={f.name}
@@ -224,7 +259,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
               name={f.name}
               render={({ field }) => (
                 <FormItem className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2.5 ring-1 ring-inset ring-[var(--field-border)]">
-                  <div>
+                  <div className="min-w-0">
                     <FormLabel className="text-sm">{f.label}</FormLabel>
                     <FormDescription className="text-2xs">{f.hint}</FormDescription>
                   </div>
@@ -242,9 +277,9 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
           name="notes"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Заметка куратора</FormLabel>
+              <FormLabel>{t("form.notes")}</FormLabel>
               <FormControl>
-                <Textarea rows={2} placeholder="Например: после 3 зелёных недель — повышение до «Трейдер»" {...field} />
+                <Textarea rows={2} placeholder={t("form.notesPh")} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -256,11 +291,11 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
           name="reason"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Причина изменения</FormLabel>
+              <FormLabel>{t("form.reason")}</FormLabel>
               <FormControl>
-                <Input placeholder="Например: 2 недели без нарушений — повышение тира" autoComplete="off" {...field} />
+                <Input placeholder={t("form.reasonPh")} autoComplete="off" {...field} />
               </FormControl>
-              <FormDescription className="text-2xs">Попадёт в историю изменений лимитов</FormDescription>
+              <FormDescription className="text-2xs">{t("form.reasonHint")}</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -268,14 +303,18 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">
-            {limits?.updatedBy ? `Изменено: ${limits.updatedBy}${limits.updatedAt ? `, ${new Date(limits.updatedAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}` : ""}` : "Лимиты ещё не заданы"}
+            {limits?.updatedBy
+              ? limits.updatedAt
+                ? t("form.changedAt", { name: personName(limits.updatedBy), date: fmtDate(limits.updatedAt, "shortDateTime") })
+                : t("form.changed", { name: personName(limits.updatedBy) })
+              : t("form.notSetYet")}
           </span>
           <div className="flex gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => form.reset(toForm(limits))} disabled={!form.formState.isDirty || save.isPending}>
-              Сбросить
+              {commonI18n.t("actions.reset")}
             </Button>
             <Button type="submit" size="sm" disabled={save.isPending || !form.formState.isDirty}>
-              {save.isPending ? "Сохранение…" : "Сохранить лимиты"}
+              {save.isPending ? commonI18n.t("states.saving") : t("form.save")}
             </Button>
           </div>
         </div>

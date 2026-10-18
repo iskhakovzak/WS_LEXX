@@ -138,7 +138,13 @@ scripts/
 
 ```bash
 pnpm install                                        # Установить зависимости
-pnpm run typecheck                                  # Typecheck всех пакетов
+pnpm run typecheck                                  # Typecheck всех пакетов (включая тесты)
+pnpm verify                                         # lint + typecheck + test + храповики + build (то же, что CI)
+pnpm lint                                           # Biome (весь репо) + ESLint (edge-tracker: hooks deps, TanStack Query)
+pnpm checks                                         # храповики: i18n, "ru-RU", тела ошибок API, размеры, lint, слои, z-index, права
+pnpm checks:update                                  # зафиксировать уменьшившийся долг (только после зелёного pnpm checks)
+pnpm --filter @workspace/scripts run local-db       # локальный Postgres (dev-база edge_tracker)
+pnpm db:test:create                                 # один раз: тестовая база edge_tracker_test (API-тесты не трогают edge_tracker)
 pnpm --filter @workspace/api-spec run codegen       # Regenerate API хуки из OpenAPI
 bash scripts/build-prod.sh                          # Production build
 

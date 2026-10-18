@@ -11,16 +11,20 @@ import {
 } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { buildDeskConclusions, type DeskRow } from "@/lib/weeklyInsights";
-import { STATUS_LABEL, fmtPct, fmtUsd, fmtX, useWeeklyOverview, weekLabel, type OverviewRow, type RiskStatus } from "./api";
+import { STATUS_LABEL, useWeeklyOverview, weekLabel, type OverviewRow, type RiskStatus } from "./api";
+import { fmtNum, fmtRate, fmtUsd } from "@/lib/format";
 import { ReviewStatusPill } from "./collab";
 import { VERDICT_LABEL, VERDICT_TONE } from "./insight-panels";
 import { useRiskDeskNow, useWeekBenchmark, type BenchTrend } from "./insights-api";
+import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
-const RISK_META: Record<RiskStatus, { label: string; tone: Tone }> = {
-  ok: { label: "в лимитах", tone: "up" },
-  warn: { label: "на грани", tone: "warn" },
-  breach: { label: "нарушение", tone: "down" },
-  none: { label: "лимиты не заданы", tone: "neutral" },
+const RISK_META: Record<RiskStatus, { readonly label: string; tone: Tone }> = {
+  ok: { get label() { return weeklyI18n.t("partners.risk.ok"); }, tone: "up" },
+  warn: { get label() { return weeklyI18n.t("partners.risk.warn"); }, tone: "warn" },
+  breach: { get label() { return weeklyI18n.t("partners.risk.breach"); }, tone: "down" },
+  none: { get label() { return weeklyI18n.t("partners.risk.none"); }, tone: "neutral" },
 };
 
 type Row = OverviewRow & { trend: BenchTrend | null; riskStatus: RiskStatus | null; riskNow: boolean; note: string | null };
@@ -28,13 +32,14 @@ type Row = OverviewRow & { trend: BenchTrend | null; riskStatus: RiskStatus | nu
 const RISK_ORDER: Record<RiskStatus, number> = { breach: 0, warn: 1, ok: 2, none: 3 };
 const VERDICT_ORDER: Record<BenchTrend["verdict"], number | null> = { worse: 0, flat: 1, better: 2, nodata: null };
 const PARTNER_ACCESSORS = {
-  trader: (r: Row) => r.trader,
+  trader: (r: Row) => personName(r.trader),
   net: (r: Row) => r.netPnl,
   trend: (r: Row) => (r.trend ? VERDICT_ORDER[r.trend.verdict] : null),
   risk: (r: Row) => (r.riskStatus ? RISK_ORDER[r.riskStatus] : null),
 };
 
 export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: string) => void }) {
+  const { t } = weeklyI18n.useT();
   const q = useWeeklyOverview(week);
   const ov = q.data;
   const bench = useWeekBenchmark(ov?.week ?? null, !!ov);
@@ -84,7 +89,7 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
   const deskPf = s.posNet != null && s.negNet != null && s.negNet < 0 ? s.posNet / Math.abs(s.negNet) : null;
 
   const deskRows: DeskRow[] = rows.map((r) => ({
-    trader: r.trader, trades: r.trades, netPnl: r.netPnl, fees: r.fees, grossPnl: r.grossPnl ?? null,
+    trader: personName(r.trader), trades: r.trades, netPnl: r.netPnl, fees: r.fees, grossPnl: r.grossPnl ?? null,
     riskStatus: r.riskStatus, verdict: r.trend?.verdict ?? null, weakness: r.note && !r.curatorComment ? r.note : null,
   }));
   const conclusions = buildDeskConclusions(
@@ -99,27 +104,27 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]" data-partners-report>
-      <p data-print-title className="hidden text-lg font-semibold">Деск · отчёт недели {weekLabel(ov.week.key)}</p>
+      <p data-print-title className="hidden text-lg font-semibold">{t("partners.printTitle", { week: weekLabel(ov.week.key) })}</p>
       <StatGrid cols={4}>
-        <StatCard label="Нетто деска" term="net" value={fmtUsd(s.netPnl, { signed: true })} tone={toneOf(s.netPnl)} hint={`${s.trades} сделок за неделю`} />
-        <StatCard label="Активные трейдеры" value={`${s.active} из ${s.traders}`} hint={s.active ? `в плюсе ${green} из ${s.active}` : "никто не торговал"} />
+        <StatCard label={t("partners.deskNet")} term="net" value={fmtUsd(s.netPnl, { signed: true, decimals: "auto" })} tone={toneOf(s.netPnl)} hint={t("partners.tradesWeek", { count: s.trades })} />
+        <StatCard label={t("partners.activeTraders")} value={t("partners.activeOf", { active: s.active, total: s.traders })} hint={s.active ? t("partners.greenOf", { green, active: s.active }) : t("partners.nobodyTraded")} />
         <StatCard
-          label="Комиссии"
+          label={t("partners.fees")}
           term="fees"
-          value={fmtUsd(fees)}
+          value={fmtUsd(fees, { decimals: "auto" })}
           tone={feeShare != null && feeShare > 0.4 ? "down" : "neutral"}
-          hint={feeShare != null ? `${fmtPct(feeShare)} брутто` : gross != null ? "брутто ≤ 0 — доля не считается" : "доля брутто — после обновления API"}
+          hint={feeShare != null ? t("partners.feesGross", { share: fmtRate(feeShare) }) : gross != null ? t("partners.grossNeg") : t("partners.grossLater")}
         />
         <StatCard
-          label="Нетто на сделку"
-          value={fmtUsd(perTrade, { signed: true })}
+          label={t("partners.perTrade")}
+          value={fmtUsd(perTrade, { signed: true, decimals: "auto" })}
           tone={toneOf(perTrade)}
-          hint={deskPf != null ? `PF деска ${fmtX(deskPf)}` : "PF деска: —"}
+          hint={deskPf != null ? t("partners.deskPf", { value: fmtNum(deskPf, { suffix: "×" }) }) : t("partners.deskPfNone")}
         />
       </StatGrid>
 
       <BentoGrid>
-        <Panel title="Главное за неделю" icon={ListChecks} fill className="min-w-0 lg:col-span-7">
+        <Panel title={t("partners.main")} icon={ListChecks} fill className="min-w-0 lg:col-span-7">
           <ul className="flex flex-col gap-2">
             {conclusions.map((c, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-foreground">
@@ -129,9 +134,9 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
             ))}
           </ul>
         </Panel>
-        <Panel title="Лидер и зона внимания" icon={Award} fill className="min-w-0 lg:col-span-5">
+        <Panel title={t("partners.leaderTitle")} icon={Award} fill className="min-w-0 lg:col-span-5">
           {!top && !problem ? (
-            <EmptyState compact icon={Users} title="Нет торговавших трейдеров" description="За неделю закрытых сделок на деске нет." />
+            <EmptyState compact icon={Users} title={t("partners.noActive")} description={t("partners.noActiveDesc")} />
           ) : (
             <div className="flex flex-col gap-2">
               {top && <TraderTile row={top} kind="top" onOpen={onOpen} />}
@@ -142,20 +147,20 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
       </BentoGrid>
 
       <Panel
-        title="Трейдеры"
-        description={`${weekLabel(ov.week.key)} · нетто после комиссий · тренд — 9 недель`}
+        title={t("partners.traders")}
+        description={t("partners.tradersDesc", { week: weekLabel(ov.week.key) })}
         icon={Briefcase}
         padded={false}
         className="min-w-0"
       >
         {active.length === 0 ? (
-          <EmptyState compact icon={Users} title="За неделю никто не торговал" className="px-[var(--panel-p)]" />
+          <EmptyState compact icon={Users} title={t("partners.nobodyWeek")} className="px-[var(--panel-p)]" />
         ) : (
           <PartnersTable rows={active} onOpen={onOpen} />
         )}
         {idle.length > 0 && (
           <p className="border-t border-[var(--glass-border)] px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">
-            Без сделок: {idle.map((r) => r.trader).join(", ")}
+            {t("partners.idle", { names: idle.map((r) => personName(r.trader)).join(", ") })}
           </p>
         )}
       </Panel>
@@ -165,31 +170,32 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
 
 /** Sorted by net desc like the original list; headers re-sort for printing/reading. */
 function PartnersTable({ rows, onOpen }: { rows: Row[]; onOpen: (trader: string) => void }) {
+  const { t } = weeklyI18n.useT();
   const { rows: sorted, thProps } = useTableSort(rows, PARTNER_ACCESSORS, "net");
   return (
-    <DataTable ariaLabel="Трейдеры за неделю">
+    <DataTable ariaLabel={t("partners.tableAria")}>
       <table>
         <thead>
           <tr>
-            <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
-            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
-            <SortableTh {...thProps("trend")}>Тренд</SortableTh>
-            <SortableTh {...thProps("risk")}>Риск-статус</SortableTh>
-            <th>Заметка</th>
+            <SortableTh {...thProps("trader")}>{t("partners.trader")}</SortableTh>
+            <SortableTh {...thProps("net")} align="right">{t("partners.net")}</SortableTh>
+            <SortableTh {...thProps("trend")}>{t("partners.trend")}</SortableTh>
+            <SortableTh {...thProps("risk")}>{t("partners.riskStatus")}</SortableTh>
+            <th>{t("partners.note")}</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((r) => (
             <tr key={r.trader}>
               <td>
-                <button type="button" onClick={() => onOpen(r.trader)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{r.trader}</button>
-                <div className="text-xs text-muted-foreground">{r.trades} сд. · WR {fmtPct(r.winRate)} · <span title={STATUS_LABEL[r.status]}>{STATUS_LABEL[r.status].toLowerCase()}</span></div>
+                <button type="button" onClick={() => onOpen(r.trader)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{personName(r.trader)}</button>
+                <div className="text-xs text-muted-foreground">{t("partners.rowMeta", { trades: commonI18n.t("units.tradesShort", { count: r.trades }), wr: fmtRate(r.winRate) })} · <span title={STATUS_LABEL[r.status]}>{STATUS_LABEL[r.status].toLowerCase()}</span></div>
               </td>
-              <td className={cn("text-right font-semibold", (r.netPnl ?? 0) > 0 ? "text-up" : (r.netPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.netPnl, { signed: true })}</td>
+              <td className={cn("text-right font-semibold", (r.netPnl ?? 0) > 0 ? "text-up" : (r.netPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.netPnl, { signed: true, decimals: "auto" })}</td>
               <td>
                 {r.trend ? (
                   <div className="flex items-center gap-2">
-                    <Sparkline data={r.trend.weeks.map((w) => w.net)} width={88} height={24} baseline={0} ariaLabel={`Нетто по неделям: ${r.trader}`} />
+                    <Sparkline data={r.trend.weeks.map((w) => w.net)} width={88} height={24} baseline={0} ariaLabel={t("partners.sparkAria", { name: personName(r.trader) })} />
                     <Pill tone={VERDICT_TONE[r.trend.verdict]}>{VERDICT_LABEL[r.trend.verdict]}</Pill>
                   </div>
                 ) : <span className="text-xs text-muted-foreground">—</span>}
@@ -198,7 +204,7 @@ function PartnersTable({ rows, onOpen }: { rows: Row[]; onOpen: (trader: string)
                 {r.riskStatus ? (
                   <span className="inline-flex items-center gap-1.5">
                     <Pill tone={RISK_META[r.riskStatus].tone} dot>{RISK_META[r.riskStatus].label}</Pill>
-                    {r.riskNow && <span className="text-xs text-muted-foreground">сейчас</span>}
+                    {r.riskNow && <span className="text-xs text-muted-foreground">{t("partners.now")}</span>}
                     {r.risk?.events[0] && <span className="max-w-[16rem] whitespace-normal text-xs text-muted-foreground">{r.risk.events.map((e) => e.label).join(", ")}</span>}
                   </span>
                 ) : <span className="text-xs text-muted-foreground">—</span>}
@@ -215,22 +221,26 @@ function PartnersTable({ rows, onOpen }: { rows: Row[]; onOpen: (trader: string)
 }
 
 function TraderTile({ row, kind, onOpen }: { row: Row; kind: "top" | "problem"; onOpen: (t: string) => void }) {
+  const { t } = weeklyI18n.useT();
   const why =
     kind === "top"
-      ? [row.trend?.verdict === "better" ? "растёт 4 недели" : null, row.riskStatus === "ok" ? "в лимитах" : null, row.winRate != null ? `WR ${fmtPct(row.winRate)}` : null]
-      : [row.riskStatus === "breach" ? `нарушение лимитов${row.risk?.events[0] ? `: ${row.risk.events[0].label}` : ""}` : null, row.trend?.verdict === "worse" ? "хуже своих 4 недель" : null, row.violations ? `${row.violations} наруш. правил` : null];
+      ? [row.trend?.verdict === "better" ? t("partners.growing") : null, row.riskStatus === "ok" ? t("partners.inLimits") : null, row.winRate != null ? `WR ${fmtRate(row.winRate)}` : null]
+      : [row.riskStatus === "breach" ? (row.risk?.events[0] ? t("partners.breachLimitsOf", { label: row.risk.events[0].label }) : t("partners.breachLimits")) : null, row.trend?.verdict === "worse" ? t("partners.worse4") : null, row.violations ? t("partners.ruleViolations", { count: row.violations }) : null];
   return (
     <Tile onClick={() => onOpen(row.trader)} className="flex items-center gap-3">
       <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", kind === "top" ? "bg-up/15 text-up" : "bg-down/15 text-down")} aria-hidden="true">
         {kind === "top" ? <Award className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-muted-foreground">{kind === "top" ? "Лидер недели" : "Зона внимания"}</p>
-        <p className="truncate text-sm font-semibold text-foreground">{row.trader}</p>
-        <p className="truncate text-xs text-muted-foreground">{why.filter(Boolean).join(" · ") || `${row.trades} сделок`}</p>
+        <p className="text-xs text-muted-foreground">{kind === "top" ? t("partners.leader") : t("partners.attention")}</p>
+        <p className="truncate text-sm font-semibold text-foreground" title={personName(row.trader)}>{personName(row.trader)}</p>
+        {(() => {
+          const line = why.filter(Boolean).join(" · ") || commonI18n.t("units.trades", { count: row.trades });
+          return <p className="truncate text-xs text-muted-foreground" title={line}>{line}</p>;
+        })()}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className={cn("text-base font-semibold tabular-nums", (row.netPnl ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtUsd(row.netPnl, { signed: true })}</span>
+        <span className={cn("text-base font-semibold tabular-nums", (row.netPnl ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtUsd(row.netPnl, { signed: true, decimals: "auto" })}</span>
         <ReviewStatusPill status={row.status} />
       </div>
     </Tile>

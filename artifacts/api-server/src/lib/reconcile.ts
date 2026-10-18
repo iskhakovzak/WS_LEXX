@@ -19,6 +19,8 @@
  *   error otherwise (and every count mismatch / missing data).
  */
 import { netPnl, normResult, num } from "./tradeMath";
+import { reconcileT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 export type Severity = "ok" | "warn" | "error";
 export type CompareStatus = Severity | "na";
@@ -101,6 +103,8 @@ export interface ReconcileOptions {
   warnBelow?: number;
   /** issues list cap (summary counts stay exact). */
   maxIssues?: number;
+  /** language of labels / messages / hints (default ru). */
+  lang?: Lang;
 }
 
 export interface Compare {
@@ -142,9 +146,8 @@ export interface Issue {
 }
 
 export type DiscrepancyCause = "fee_rounding";
-export const FEE_ROUNDING_LABEL = "расхождение из-за округления комиссий";
-const FEE_ROUNDING_HINT =
-  "Известная причина: при импорте PropReports комиссии сделки округляются до центов по каждой колонке (lib/propreports — исправляется), поэтому нетто журнала отличается от брокерского на копейки × число сделок. После исправления импорта и повторного импорта расхождение уйдёт.";
+/** RU label (kept for older imports / tests); the engine renders it in `opts.lang`. */
+export const FEE_ROUNDING_LABEL = reconcileT.tFor("ru")("rounding.label");
 
 /**
  * Diagnostic: a non-zero money gap that fits in $0.01 per trade is explained by per-trade fee rounding on import.
@@ -256,12 +259,12 @@ export function classify(diff: number | null, tolerance: number, warnBelow = 1):
   return a < warnBelow ? "warn" : "error";
 }
 
-export function compareMoney(key: string, label: string, journal: number | null, broker: number | null, tolerance: number, warnBelow = 1): Compare {
+export function compareMoney(key: string, label: string, journal: number | null, broker: number | null, tolerance: number, warnBelow = 1, lang: Lang = "ru"): Compare {
   if (journal == null || broker == null) return { key, label, journal, broker, diff: null, tolerance, status: "na" };
   const diff = r4(journal - broker);
   const status = classify(diff, tolerance, warnBelow);
   const c: Compare = { key, label, journal: r2(journal), broker: r2(broker), diff: r2(diff), tolerance, status };
-  if (status === "ok" && Math.abs(diff) > 0.01 + 1e-9) c.note = "в пределах округления брокера";
+  if (status === "ok" && Math.abs(diff) > 0.01 + 1e-9) c.note = reconcileT.tFor(lang)("rounding.note");
   return c;
 }
 
@@ -272,7 +275,11 @@ export function compareCount(key: string, label: string, journal: number, broker
 }
 
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-export const WEEKDAY_RU: Record<string, string> = { monday: "Пн", tuesday: "Вт", wednesday: "Ср", thursday: "Чт", friday: "Пт", saturday: "Сб", sunday: "Вс" };
+/** Short weekday label in `lang` (weekday codes from weekdayOf). */
+export function weekdayLabel(code: string, lang: Lang = "ru"): string {
+  return reconcileT.tryFor(lang, `weekday.${code}`) ?? code;
+}
+export const WEEKDAY_RU: Record<string, string> = Object.fromEntries(WEEKDAYS.map((w) => [w, weekdayLabel(w, "ru")]));
 export function weekdayOf(ymd: string): string {
   const [y, m, d] = ymd.split("-").map(Number);
   return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
@@ -334,6 +341,11 @@ export function reconcile(
   const from = opts.from ?? null;
   const to = opts.to ?? null;
   const inRange = (d: string) => (!from || d >= from) && (!to || d <= to);
+  const lang: Lang = opts.lang ?? "ru";
+  const tx = reconcileT.tFor(lang);
+  const ROUND_LABEL = tx("rounding.label");
+  const ROUND_HINT = tx("rounding.hint");
+  const nTrades = (count: number) => tx("trades", { count });
 
   const issues: Issue[] = [];
   let seq = 0;
@@ -362,27 +374,27 @@ export function reconcile(
     const open = isOpenTrade(t);
 
     if (t.fees != null && t.fees < 0) {
-      push({ ...base, severity: "warn", kind: "negative_fees", message: `Комиссия записана со знаком минус (${fmt(t.fees)}): net считается как pnl − |fees|, ребейт превращается в расход`, actual: t.fees });
+      push({ ...base, severity: "warn", kind: "negative_fees", message: tx("issue.negativeFees", { fees: fmt(t.fees) }), actual: t.fees });
     }
 
     if (t.source === "propreports") {
       if (!b) {
-        push({ ...base, severity: "warn", kind: "no_snapshot", message: "Брокерская сделка без снимка PropReports — сверить суммы с брокером нельзя" });
+        push({ ...base, severity: "warn", kind: "no_snapshot", message: tx("issue.noSnapshot") });
       } else {
         if (b.feesByType) for (const [k, v] of Object.entries(b.feesByType)) feesByType[k] = (feesByType[k] ?? 0) + (num(v) ?? 0);
         if (!open && t.pnl != null && b.gross != null) {
           const st = classify(t.pnl - b.gross, tol, warnBelow);
-          if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "gross_edited", message: `Брутто в журнале ${fmt(t.pnl)} ≠ брокер ${fmt(b.gross)}`, expected: r2(b.gross), actual: r2(t.pnl), diff: r2(t.pnl - b.gross) });
+          if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "gross_edited", message: tx("issue.grossEdited", { journal: fmt(t.pnl), broker: fmt(b.gross) }), expected: r2(b.gross), actual: r2(t.pnl), diff: r2(t.pnl - b.gross) });
         }
         if (!open && b.totalFees != null) {
           const jf = Math.abs(t.fees ?? 0);
           const st = classify(jf - Math.abs(b.totalFees), tol, warnBelow);
-          if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "fees_edited", message: `Комиссии в журнале ${fmt(jf)} ≠ брокер ${fmt(Math.abs(b.totalFees))}`, expected: r2(Math.abs(b.totalFees)), actual: r2(jf), diff: r2(jf - Math.abs(b.totalFees)) });
+          if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "fees_edited", message: tx("issue.feesEdited", { journal: fmt(jf), broker: fmt(Math.abs(b.totalFees)) }), expected: r2(Math.abs(b.totalFees)), actual: r2(jf), diff: r2(jf - Math.abs(b.totalFees)) });
         }
         if (!open && b.gross != null && b.net != null && b.totalFees != null) {
           const d = b.net - (b.gross - b.totalFees);
           const st = classify(d, tol, warnBelow);
-          if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "net_inconsistent", message: `Снимок брокера: net ${fmt(b.net)} ≠ gross ${fmt(b.gross)} − комиссии ${fmt(b.totalFees)}`, diff: r2(d) });
+          if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "net_inconsistent", message: tx("issue.netInconsistent", { net: fmt(b.net), gross: fmt(b.gross), fees: fmt(b.totalFees) }), diff: r2(d) });
         }
         if (b.feesByType && b.totalFees != null) {
           const vals = Object.values(b.feesByType).map((v) => num(v) ?? 0);
@@ -392,11 +404,11 @@ export function reconcile(
           // every fee column is rounded to cents by the broker → up to 0.005 per non-zero column is rounding, not an error
           if (Math.abs(d) > cols * 0.005 + 1e-9) {
             const st = classify(d, tol, warnBelow);
-            if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "fee_breakdown_mismatch", message: `Сумма комиссий по типам ${fmt(sum)} ≠ итог ${fmt(b.totalFees)}`, expected: r2(b.totalFees), actual: r2(sum), diff: r2(d) });
+            if (st !== "ok" && st !== "na") push({ ...base, severity: st, kind: "fee_breakdown_mismatch", message: tx("issue.feeBreakdown", { sum: fmt(sum), total: fmt(b.totalFees) }), expected: r2(b.totalFees), actual: r2(sum), diff: r2(d) });
           }
         }
         if (b.qty != null && t.qty != null && Math.abs(b.qty - t.qty) > 1e-6) {
-          push({ ...base, severity: "error", kind: "qty_mismatch", message: `Объём в журнале ${t.qty} ≠ брокер ${b.qty}`, expected: b.qty, actual: t.qty });
+          push({ ...base, severity: "error", kind: "qty_mismatch", message: tx("issue.qtyMismatch", { journal: t.qty, broker: b.qty }), expected: b.qty, actual: t.qty });
         }
       }
     }
@@ -406,7 +418,7 @@ export function reconcile(
     const net = netPnl(t);
     if (!open && net != null && (r === "win" || r === "loss" || r === "be")) {
       const bad = (r === "win" && net < -tol) || (r === "loss" && net > tol) || (r === "be" && Math.abs(net) >= warnBelow);
-      if (bad) push({ ...base, severity: "warn", kind: "result_sign", message: `Результат «${r}» не совпадает со знаком нетто ${fmt(net)}`, actual: r2(net) });
+      if (bad) push({ ...base, severity: "warn", kind: "result_sign", message: tx("issue.resultSign", { result: r, net: fmt(net) }), actual: r2(net) });
     }
 
     /* executions */
@@ -415,28 +427,28 @@ export function reconcile(
       withoutFills++;
       if (t.source === "propreports") {
         brokerWithoutFills++;
-        push({ ...base, severity: "error", kind: "no_fills", message: "Брокерская сделка без исполнений (fills)" });
+        push({ ...base, severity: "error", kind: "no_fills", message: tx("issue.noFills") });
       }
       continue;
     }
     withFills++;
     const entries = ex.filter((e) => e.kind === "entry" || e.kind === "add");
     const exits = ex.filter((e) => e.kind === "exit" || e.kind === "trim");
-    if (!entries.length) push({ ...base, severity: "error", kind: "no_entry", message: "Нет исполнения входа" });
-    if (!exits.length && !open) push({ ...base, severity: "error", kind: "no_exit", message: "Закрытая сделка без исполнения выхода" });
+    if (!entries.length) push({ ...base, severity: "error", kind: "no_entry", message: tx("issue.noEntry") });
+    if (!exits.length && !open) push({ ...base, severity: "error", kind: "no_exit", message: tx("issue.noExit") });
     if (entries.length && exits.length) {
       const firstEntry = Math.min(...entries.map((e) => (e.executedAt ? Date.parse(e.executedAt) : Infinity)));
       const early = exits.filter((e) => e.executedAt && Date.parse(e.executedAt) < firstEntry);
       if (Number.isFinite(firstEntry) && early.length) {
-        push({ ...base, severity: "error", kind: "exit_before_entry", message: `Выход (${early[0].executedAt}) раньше первого входа` });
+        push({ ...base, severity: "error", kind: "exit_before_entry", message: tx("issue.exitBeforeEntry", { at: String(early[0].executedAt) }) });
       }
     }
     const qIn = entries.reduce((s, e) => s + (e.qty ?? 0), 0);
     const qOut = exits.reduce((s, e) => s + (e.qty ?? 0), 0);
     if (entries.length && exits.length && !open && Math.abs(qIn - qOut) > 1e-6) {
-      push({ ...base, severity: "error", kind: "fill_qty_mismatch", message: `Объём входов ${qIn} ≠ объём выходов ${qOut}`, expected: qIn, actual: qOut });
+      push({ ...base, severity: "error", kind: "fill_qty_mismatch", message: tx("issue.fillQtyInOut", { in: qIn, out: qOut }), expected: qIn, actual: qOut });
     } else if (t.qty != null && entries.length && Math.abs(qIn - t.qty) > 1e-6) {
-      push({ ...base, severity: "error", kind: "fill_qty_mismatch", message: `Объём сделки ${t.qty} ≠ сумма входов ${qIn}`, expected: t.qty, actual: qIn });
+      push({ ...base, severity: "error", kind: "fill_qty_mismatch", message: tx("issue.fillQtyTrade", { qty: t.qty, in: qIn }), expected: t.qty, actual: qIn });
     }
     const vwap = (list: RecExecution[]) => {
       const q = list.reduce((s, e) => s + (e.price != null ? e.qty ?? 0 : 0), 0);
@@ -447,7 +459,7 @@ export function reconcile(
     const badIn = avgIn != null && t.entry != null && Math.abs(avgIn - t.entry) > priceTol;
     const badOut = avgOut != null && t.exit != null && !open && Math.abs(avgOut - t.exit) > priceTol;
     if (badIn || badOut) {
-      push({ ...base, severity: "warn", kind: "fill_price_mismatch", message: badIn ? `Средняя цена входа по fills ${avgIn!.toFixed(4)} ≠ ${t.entry}` : `Средняя цена выхода по fills ${avgOut!.toFixed(4)} ≠ ${t.exit}` });
+      push({ ...base, severity: "warn", kind: "fill_price_mismatch", message: badIn ? tx("issue.fillPriceIn", { avg: avgIn!.toFixed(4), price: String(t.entry) }) : tx("issue.fillPriceOut", { avg: avgOut!.toFixed(4), price: String(t.exit) }) });
     }
     // gross from fills: (exit − entry)·qty with side sign; report-derived fills carry avg prices rounded to cents
     if (!open && avgIn != null && avgOut != null && t.pnl != null && qOut > 0) {
@@ -456,7 +468,7 @@ export function reconcile(
       const ptol = (b?.fromReport ?? false) ? 0.01 + qOut * 0.01 : 0.01 + qOut * 0.0001;
       const st = classify(fillGross - t.pnl, ptol, Math.max(warnBelow, ptol * 2));
       if (st !== "ok" && st !== "na") {
-        push({ ...base, severity: st, kind: "fill_gross_mismatch", message: `Брутто по исполнениям ${fmt(fillGross)} ≠ брутто сделки ${fmt(t.pnl)}`, expected: r2(t.pnl), actual: r2(fillGross), diff: r2(fillGross - t.pnl), hint: "Проверьте сторону сделки и объём исполнений" });
+        push({ ...base, severity: st, kind: "fill_gross_mismatch", message: tx("issue.fillGross", { fills: fmt(fillGross), trade: fmt(t.pnl) }), expected: r2(t.pnl), actual: r2(fillGross), diff: r2(fillGross - t.pnl), hint: tx("hint.fillGross") });
       }
     }
   }
@@ -482,13 +494,13 @@ export function reconcile(
     if (list.length < 2) continue;
     const ids = list.map((t) => t.id).sort((a, b) => a - b);
     dupReported.add(ids.join(","));
-    push({ date: closeDate(list[0]), ticker: list[0].ticker, trader: list[0].trader, tradeIds: ids, severity: "error", kind: "duplicate_external_id", message: `${list.length} сделки с одним внешним id (${k.split("|").slice(1).join("|")}) — P&L учтён дважды` });
+    push({ date: closeDate(list[0]), ticker: list[0].ticker, trader: list[0].trader, tradeIds: ids, severity: "error", kind: "duplicate_external_id", message: tx("issue.dupExternal", { trades: nTrades(list.length), id: k.split("|").slice(1).join("|") }) });
   }
   for (const list of byFillKey.values()) {
     if (list.length < 2) continue;
     const ids = list.map((t) => t.id).sort((a, b) => a - b);
     if (dupReported.has(ids.join(","))) continue;
-    push({ date: closeDate(list[0]), ticker: list[0].ticker, trader: list[0].trader, tradeIds: ids, severity: "error", kind: "duplicate_fill_key", message: `Дубль: ${list[0].ticker}, то же время входа и объём ${list[0].qty} (${list.length} сделки)` });
+    push({ date: closeDate(list[0]), ticker: list[0].ticker, trader: list[0].trader, tradeIds: ids, severity: "error", kind: "duplicate_fill_key", message: tx("issue.dupFillKey", { ticker: list[0].ticker, qty: String(list[0].qty), trades: nTrades(list.length) }) });
   }
   // manual trade that mirrors a broker trade (same trader + ticker + date + side) — double counting
   const brokerKey = new Map<string, RecTrade[]>();
@@ -499,7 +511,7 @@ export function reconcile(
   for (const t of trades) if (t.source === "manual") {
     const twins = brokerKey.get(`${t.trader ?? ""}|${t.ticker.toUpperCase()}|${t.date}|${sideKey(t.side) ?? ""}`);
     if (twins?.length) {
-      push({ date: closeDate(t), ticker: t.ticker, trader: t.trader, tradeIds: [t.id, ...twins.map((x) => x.id)], severity: "warn", kind: "manual_twin", message: `Ручная сделка ${t.ticker} ${t.date} повторяет брокерскую — возможен двойной учёт P&L`, hint: "Объедините её с брокерской во «Входящих сверки» на /integrations" });
+      push({ date: closeDate(t), ticker: t.ticker, trader: t.trader, tradeIds: [t.id, ...twins.map((x) => x.id)], severity: "warn", kind: "manual_twin", message: tx("issue.manualTwin", { ticker: t.ticker, date: t.date }), hint: tx("hint.manualTwin") });
     }
   }
 
@@ -553,10 +565,10 @@ export function reconcile(
       const n = Math.max(d.journal.trades, brokerRef.trades);
       const band = brokerSource === "report-days" ? roundingTolerance(n, tol) : tol;
       compares.push(
-        compareCount("trades", "Сделок", d.journal.trades, brokerRef.trades),
-        compareMoney("gross", "Брутто", d.journal.gross, brokerRef.gross, band, warnBelow),
-        tagRounding(compareMoney("fees", "Комиссии", d.journal.fees, brokerRef.fees, band, warnBelow), n),
-        tagRounding(compareMoney("net", "Нетто", d.journal.net, brokerRef.net, band, warnBelow), n),
+        compareCount("trades", tx("compare.trades"), d.journal.trades, brokerRef.trades),
+        compareMoney("gross", tx("compare.gross"), d.journal.gross, brokerRef.gross, band, warnBelow, lang),
+        tagRounding(compareMoney("fees", tx("compare.fees"), d.journal.fees, brokerRef.fees, band, warnBelow, lang), n),
+        tagRounding(compareMoney("net", tx("compare.net"), d.journal.net, brokerRef.net, band, warnBelow, lang), n),
       );
       const bad = compares.filter((c) => c.status === "warn" || c.status === "error");
       if (bad.length) {
@@ -565,19 +577,19 @@ export function reconcile(
         const rounding = bad.every((c) => c.cause === "fee_rounding");
         dayIssues.push(push({
           date, ticker: null, trader: null, tradeIds: d.ids.slice(0, 50), severity: worst(...bad.map((c) => c.status)), kind: "day_mismatch",
-          message: `День ${date}: ${bad.map((c) => `${c.label.toLowerCase()} ${c.key === "trades" ? c.journal : fmt(c.journal)} vs ${c.key === "trades" ? c.broker : fmt(c.broker)}`).join("; ")}${rounding ? ` — ${FEE_ROUNDING_LABEL}` : ""}`,
+          message: tx("issue.dayMismatch", { date, parts: bad.map((c) => `${c.label.toLowerCase()} ${c.key === "trades" ? c.journal : fmt(c.journal)} vs ${c.key === "trades" ? c.broker : fmt(c.broker)}`).join("; ") }) + (rounding ? ` — ${ROUND_LABEL}` : ""),
           expected: net.broker, actual: net.journal, diff: net.diff,
-          ...(rounding ? { cause: "fee_rounding" as const, hint: FEE_ROUNDING_HINT } : {}),
+          ...(rounding ? { cause: "fee_rounding" as const, hint: ROUND_HINT } : {}),
         }));
       }
     }
     if (bd && d.journal.trades === 0) {
-      dayIssues.push(push({ date, ticker: null, trader: null, tradeIds: [], severity: "error", kind: "day_missing_in_journal", message: `День ${date} есть у брокера (${bd.trades} сделок, нетто ${fmt(bd.net)}), но в журнале брокерских сделок нет` }));
+      dayIssues.push(push({ date, ticker: null, trader: null, tradeIds: [], severity: "error", kind: "day_missing_in_journal", message: tx("issue.dayMissingInJournal", { date, trades: nTrades(bd.trades), net: fmt(bd.net) }) }));
     } else if (hasBrokerDays && !bd && d.journal.trades > 0) {
-      dayIssues.push(push({ date, ticker: null, trader: null, tradeIds: d.ids.slice(0, 50), severity: "error", kind: "day_missing_at_broker", message: `День ${date}: ${d.journal.trades} брокерских сделок в журнале, но у брокера этого дня нет` }));
+      dayIssues.push(push({ date, ticker: null, trader: null, tradeIds: d.ids.slice(0, 50), severity: "error", kind: "day_missing_at_broker", message: tx("issue.dayMissingAtBroker", { date, n: d.journal.trades }) }));
     }
     if (d.manual.trades > 0 && d.journal.trades === 0 && brokerCovers(date)) {
-      dayIssues.push(push({ date, ticker: null, trader: null, tradeIds: d.ids.slice(0, 50), severity: "warn", kind: "day_missing_at_broker", message: `День ${date}: только ручные сделки (${d.manual.trades}), у брокера за этот день сделок нет`, hint: "Ручные сделки не входят в брокерскую отчётность — проверьте, не пропущен ли импорт" }));
+      dayIssues.push(push({ date, ticker: null, trader: null, tradeIds: d.ids.slice(0, 50), severity: "warn", kind: "day_missing_at_broker", message: tx("issue.dayOnlyManual", { date, n: d.manual.trades }), hint: tx("hint.dayOnlyManual") }));
     }
     const tradeIssueIds = issues.filter((i) => i.date === date && !dayIssues.includes(i)).map((i) => i.id);
     const allIds = [...dayIssues.map((i) => i.id), ...tradeIssueIds];
@@ -602,12 +614,12 @@ export function reconcile(
     for (const t of manualIn) addTrade(M, t);
     const band = roundingTolerance(book.length, tol);
     const compares = [
-      compareCount("trades", "Сделок", J.trades, rep.totals.trades),
-      compareCount("wins", "Прибыльных", J.wins, rep.totals.wins),
-      compareCount("losses", "Убыточных", J.losses, rep.totals.losses),
-      compareMoney("gross", "Брутто", J.gross, rep.totals.gross, band, warnBelow),
-      tagRounding(compareMoney("fees", "Комиссии", J.fees, rep.totals.fees, band, warnBelow), book.length),
-      tagRounding(compareMoney("net", "Нетто", J.net, rep.totals.net, band, warnBelow), book.length),
+      compareCount("trades", tx("compare.trades"), J.trades, rep.totals.trades),
+      compareCount("wins", tx("compare.wins"), J.wins, rep.totals.wins),
+      compareCount("losses", tx("compare.losses"), J.losses, rep.totals.losses),
+      compareMoney("gross", tx("compare.gross"), J.gross, rep.totals.gross, band, warnBelow, lang),
+      tagRounding(compareMoney("fees", tx("compare.fees"), J.fees, rep.totals.fees, band, warnBelow, lang), book.length),
+      tagRounding(compareMoney("net", tx("compare.net"), J.net, rep.totals.net, band, warnBelow, lang), book.length),
     ];
     // fees by type: journal Σ snapshot breakdown vs report per-trade average × trades
     const feeTypes: Compare[] = [];
@@ -621,7 +633,7 @@ export function reconcile(
         const est = (rep.feeAverages[k] ?? 0) * rep.totals.trades;
         const jv = jf[k] ?? 0;
         if (Math.abs(est) < 0.005 && Math.abs(jv) < 0.005) continue;
-        feeTypes.push(compareMoney(`fee:${k}`, k, jv, est, ftol, warnBelow));
+        feeTypes.push(compareMoney(`fee:${k}`, k, jv, est, ftol, warnBelow, lang));
       }
     }
     // groups
@@ -647,40 +659,40 @@ export function reconcile(
         groups.push(g);
       }
     };
-    groupOf("side", (t) => sideKey(t.side), rep.bySide as Record<string, MoneyWL>, (k) => (k === "long" ? "Лонг" : "Шорт"));
-    groupOf("weekday", (t) => weekdayOf(t.date), rep.byWeekday, (k) => WEEKDAY_RU[k] ?? k);
+    groupOf("side", (t) => sideKey(t.side), rep.bySide as Record<string, MoneyWL>, (k) => tx(k === "long" ? "side.long" : "side.short"));
+    groupOf("weekday", (t) => weekdayOf(t.date), rep.byWeekday, (k) => weekdayLabel(k, lang));
     groupOf("symbol", (t) => t.ticker.toUpperCase(), rep.bySymbol, (k) => k);
     const jSyms = new Set(book.map((t) => t.ticker.toUpperCase()));
     const rSyms = new Set(Object.keys(rep.bySymbol));
     const symbolsMissingInJournal = Object.keys(rep.bySymbol).filter((s) => !jSyms.has(s)).sort();
     const symbolsMissingInReport = Object.keys(rep.bySymbol).length ? [...jSyms].filter((s) => !rSyms.has(s)).sort() : [];
 
-    const label = `Отчёт брокера ${rep.account ?? ""} ${rep.periodFrom}…${rep.periodTo}`.replace(/\s+/g, " ");
+    const label = tx("issue.reportLabel", { account: rep.account ?? "", from: rep.periodFrom, to: rep.periodTo }).replace(/\s+/g, " ");
     const badTotals = compares.filter((c) => c.status === "warn" || c.status === "error");
     for (const c of badTotals) {
-      const hint = c.cause === "fee_rounding" ? FEE_ROUNDING_HINT
-        : c.key === "fees" || c.key === "net" ? feeHint(J.fees - rep.totals.fees, book.length)
-        : c.key === "trades" ? "Не все сделки периода импортированы или есть лишние/дубли — см. дни и символы ниже" : undefined;
+      const hint = c.cause === "fee_rounding" ? ROUND_HINT
+        : c.key === "fees" || c.key === "net" ? feeHint(J.fees - rep.totals.fees, book.length, lang)
+        : c.key === "trades" ? tx("hint.totalTrades") : undefined;
       push({
         date: null, ticker: null, trader: rep.trader, tradeIds: [], severity: c.status as Severity, kind: "total_mismatch",
-        message: `${label}: ${c.label.toLowerCase()} журнал ${c.key === "trades" || c.key === "wins" || c.key === "losses" ? c.journal : fmt(c.journal)} vs брокер ${c.key === "trades" || c.key === "wins" || c.key === "losses" ? c.broker : fmt(c.broker)}${c.cause === "fee_rounding" ? ` — ${FEE_ROUNDING_LABEL}` : ""}`,
+        message: tx("issue.totalMismatch", { label, what: c.label.toLowerCase(), journal: String(c.key === "trades" || c.key === "wins" || c.key === "losses" ? c.journal : fmt(c.journal)), broker: String(c.key === "trades" || c.key === "wins" || c.key === "losses" ? c.broker : fmt(c.broker)) }) + (c.cause === "fee_rounding" ? ` — ${ROUND_LABEL}` : ""),
         expected: c.broker, actual: c.journal, diff: c.diff, hint, cause: c.cause,
       });
     }
     for (const c of feeTypes.filter((x) => x.status === "warn" || x.status === "error")) {
-      push({ date: null, ticker: null, trader: rep.trader, tradeIds: [], severity: c.status as Severity, kind: "fee_type_mismatch", message: `${label}: комиссия ${c.label} журнал ${fmt(c.journal)} vs брокер ≈${fmt(c.broker)}`, expected: c.broker, actual: c.journal, diff: c.diff, hint: "Оценка брокера = средняя комиссия на сделку × число сделок" });
+      push({ date: null, ticker: null, trader: rep.trader, tradeIds: [], severity: c.status as Severity, kind: "fee_type_mismatch", message: tx("issue.feeTypeMismatch", { label, fee: c.label, journal: fmt(c.journal), broker: fmt(c.broker) }), expected: c.broker, actual: c.journal, diff: c.diff, hint: tx("hint.feeType") });
     }
     for (const g of groups.filter((x) => x.status !== "ok")) {
       const ids = book.filter((t) => (g.scope === "symbol" ? t.ticker.toUpperCase() === g.key : g.scope === "side" ? sideKey(t.side) === g.key : weekdayOf(t.date) === g.key)).map((t) => t.id);
       push({
         date: null, ticker: g.scope === "symbol" ? g.key : null, trader: rep.trader, tradeIds: ids.slice(0, 50), severity: g.status, kind: g.journal.trades === 0 ? "symbol_missing_in_journal" : g.broker.trades === 0 ? "symbol_missing_in_report" : "group_mismatch",
-        message: `${label}: ${g.scope === "symbol" ? "символ" : g.scope === "side" ? "сторона" : "день недели"} ${g.label} — журнал ${g.journal.trades} сд. / ${fmt(g.journal.net)}, брокер ${g.broker.trades} сд. / ${fmt(g.broker.net)}${g.cause ? ` — ${FEE_ROUNDING_LABEL}` : ""}`,
+        message: tx("issue.group", { label, scope: tx(`scope.${g.scope}`), group: g.label, jn: g.journal.trades, jnet: fmt(g.journal.net), bn: g.broker.trades, bnet: fmt(g.broker.net) }) + (g.cause ? ` — ${ROUND_LABEL}` : ""),
         expected: g.broker.net, actual: g.journal.net, diff: g.diffNet,
-        ...(g.cause ? { cause: g.cause, hint: FEE_ROUNDING_HINT } : {}),
+        ...(g.cause ? { cause: g.cause, hint: ROUND_HINT } : {}),
       });
     }
     if (M.trades > 0) {
-      push({ date: null, ticker: null, trader: rep.trader, tradeIds: manualIn.map((t) => t.id).slice(0, 50), severity: "warn", kind: "manual_in_broker_period", message: `${label}: ${M.trades} ручных сделок в периоде отчёта (нетто ${fmt(r2(M.net))}) — их нет у брокера`, hint: "Если это те же сделки, что у брокера, — объедините; иначе они завышают/занижают итог журнала" });
+      push({ date: null, ticker: null, trader: rep.trader, tradeIds: manualIn.map((t) => t.id).slice(0, 50), severity: "warn", kind: "manual_in_broker_period", message: tx("issue.manualInPeriod", { label, n: M.trades, net: fmt(r2(M.net)) }), hint: tx("hint.manualInPeriod") });
     }
     reportChecks.push({
       reportId: rep.id, account: rep.account, trader: rep.trader, periodFrom: rep.periodFrom, periodTo: rep.periodTo,
@@ -704,7 +716,7 @@ export function reconcile(
   return {
     summary: {
       status,
-      label: discrepancies === 0 ? "Данные сходятся с брокером" : `${discrepancies} ${plural(discrepancies, "расхождение", "расхождения", "расхождений")}`,
+      label: discrepancies === 0 ? tx("summary.ok") : tx("summary.discrepancies", { count: discrepancies }),
       discrepancies, counts,
       period: { from, to }, tolerance: tol, warnBelow,
       journal: { ...roundMoney(J), feesByType: fbt }, manual: roundMoney(Mn),
@@ -722,14 +734,11 @@ export function reconcile(
 }
 
 /** Explains a small fee/net gap vs the broker's own total. */
-export function feeHint(feeDiff: number, n: number): string | undefined {
+export function feeHint(feeDiff: number, n: number, lang: Lang = "ru"): string | undefined {
   if (!Number.isFinite(feeDiff) || Math.abs(feeDiff) < 0.005) return undefined;
-  if (Math.abs(feeDiff) <= 0.02 * Math.max(1, n)) {
-    return feeDiff > 0
-      ? "Комиссии журнала больше брокерских на копейки: вероятно, итог комиссии сделки собран из колонок, округлённых до центов, вместо gross − Net брокера"
-      : "Комиссии журнала меньше брокерских на копейки: проверьте округление и исключённые колонки комиссий в настройках PropReports";
-  }
-  return "Комиссии заметно расходятся: проверьте исключённые колонки комиссий в настройках PropReports и знак ребейтов (ECN)";
+  const t = reconcileT.tFor(lang);
+  if (Math.abs(feeDiff) <= 0.02 * Math.max(1, n)) return t(feeDiff > 0 ? "hint.feesMore" : "hint.feesLess");
+  return t("hint.feesLarge");
 }
 
 export function plural(n: number, one: string, few: string, many: string): string {

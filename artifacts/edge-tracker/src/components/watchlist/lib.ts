@@ -1,9 +1,18 @@
 /** Watchlist domain types, derived metrics and small fetch helpers. */
 import type { Tone } from "@/components/ds";
+import { fmtPct } from "@/lib/format";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
+
+/** Record whose values are read from the dictionary on access (UI language at render time, never frozen). */
+function labelRecord<K extends string>(keys: readonly K[], get: (k: K) => string): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const k of keys) Object.defineProperty(o, k, { get: () => get(k), enumerable: true });
+  return o;
+}
 
 export const STATUSES = ["watching", "passed", "traded"] as const;
 export type Status = (typeof STATUSES)[number];
-export const STATUS_LABELS: Record<string, string> = { watching: "Наблюдаю", passed: "Пропустил", traded: "Торговал" };
+export const STATUS_LABELS: Record<string, string> = labelRecord(STATUSES, (s) => watchlistI18n.t(`status.${s}`));
 export const STATUS_TONE: Record<string, Tone> = { watching: "accent", passed: "neutral", traded: "up" };
 
 /** Legacy rows carry statuses like "Active" — map them onto the known set so filters/counters/select work. */
@@ -36,12 +45,8 @@ export type WatchlistItem = {
 /** Working lists of the day. «Сегодня» ⇔ the team «В игре» flag. */
 export const LISTS = ["today", "swing", "watch"] as const;
 export type ListName = (typeof LISTS)[number];
-export const LIST_LABELS: Record<ListName, string> = { today: "Сегодня", swing: "Свинги", watch: "Наблюдаю" };
-export const LIST_HINT: Record<ListName, string> = {
-  today: "Работаю сегодня: в игре, уровни, триггеры",
-  swing: "Держу или готовлю перенос на несколько дней",
-  watch: "На радаре, ещё не готов",
-};
+export const LIST_LABELS: Record<ListName, string> = labelRecord(LISTS, (l) => watchlistI18n.t(`list.${l}`));
+export const LIST_HINT: Record<ListName, string> = labelRecord(LISTS, (l) => watchlistI18n.t(`list.hint.${l}`));
 export function isListName(v: unknown): v is ListName {
   return typeof v === "string" && (LISTS as readonly string[]).includes(v);
 }
@@ -82,13 +87,14 @@ export type EarningsHit = { callType: "BMO" | "AMC" | "TNS"; when: "today" | "re
 
 export type Breakdown = {
   total: number;
-  components: Record<string, { weight: number; raw: number; weighted: number; reason: string }>;
+  components: Record<string, { weight: number; raw: number; weighted: number; reason: string; reasonCode?: string; reasonParams?: Record<string, string | number> }>;
 };
 
-export const SCORE_LABELS: Record<string, string> = {
-  catalyst: "Катализатор", float: "Float", atr: "ATR", relativeVolume: "rVol",
-  sectorStrength: "Сектор", liquidity: "Ликвидность",
-};
+const SCORE_STATIC: Record<string, string> = { float: "Float", atr: "ATR", relativeVolume: "rVol" };
+export const SCORE_LABELS: Record<string, string> = labelRecord(
+  ["catalyst", "float", "atr", "relativeVolume", "sectorStrength", "liquidity"] as const,
+  (k) => SCORE_STATIC[k] ?? watchlistI18n.t(`score.${k as "catalyst" | "sectorStrength" | "liquidity"}`),
+);
 
 export function parseBreakdown(raw: string | null): Breakdown | null {
   if (!raw) return null;
@@ -106,22 +112,6 @@ export function num(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function fmtPrice(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return v >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 0 }) : v.toFixed(2);
-}
-export function fmtPct(v: number | null | undefined, digits = 1): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits);
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${s}%`;
-}
-export function fmtVol(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return String(v);
-}
 
 export function scoreTone(score: number | null | undefined): Tone {
   if (score == null) return "neutral";
@@ -173,39 +163,24 @@ export function computePlan(item: WatchlistItem, q: Quote | undefined): Plan {
 export type PlayReason = { key: string; label: string; tone: Tone };
 
 export function inPlayReasons(item: WatchlistItem, q: Quote | undefined, news: NewsDigest | undefined, earn: EarningsHit | undefined, plan: Plan): PlayReason[] {
+  const t = watchlistI18n.t;
   const out: PlayReason[] = [];
-  if (earn?.when === "today") out.push({ key: "earn", label: `Отчёт ${earn.callType === "TNS" ? "сегодня" : earn.callType}`, tone: earn.callType === "AMC" ? "purple" : "warn" });
-  else if (earn) out.push({ key: "earn", label: `Отчёт ${earn.callType} вчера`, tone: "purple" });
+  if (earn?.when === "today") out.push({ key: "earn", label: earn.callType === "TNS" ? t("reason.earnToday") : t("reason.earnTodayCall", { call: earn.callType }), tone: earn.callType === "AMC" ? "purple" : "warn" });
+  else if (earn) out.push({ key: "earn", label: t("reason.earnYesterday", { call: earn.callType }), tone: "purple" });
   const gap = q?.gapPct ?? null;
-  if (gap != null && Math.abs(gap) >= 3) out.push({ key: "gap", label: `Гэп ${fmtPct(gap)}`, tone: gap > 0 ? "up" : "down" });
+  if (gap != null && Math.abs(gap) >= 3) out.push({ key: "gap", label: t("reason.gap", { value: fmtPct(gap, 1) }), tone: gap > 0 ? "up" : "down" });
   const rv = q?.relativeVolume ?? null;
   if (rv != null && rv >= 1.5) out.push({ key: "rvol", label: `rVol ${rv.toFixed(1)}×`, tone: "accent" });
-  if (news && news.count24h > 0) out.push({ key: "news", label: `Новости ${news.count24h}`, tone: "neutral" });
-  if (plan.alert === "near-stop" || plan.alert === "near-target") out.push({ key: "lvl", label: plan.alert === "near-stop" ? "У стопа" : "У цели", tone: "warn" });
-  if (plan.alert === "stop-hit") out.push({ key: "lvl", label: "Стоп пробит", tone: "down" });
-  if (plan.alert === "target-hit") out.push({ key: "lvl", label: "Цель достигнута", tone: "up" });
+  if (news && news.count24h > 0) out.push({ key: "news", label: t("reason.news", { count: news.count24h }), tone: "neutral" });
+  if (plan.alert === "near-stop" || plan.alert === "near-target") out.push({ key: "lvl", label: plan.alert === "near-stop" ? t("reason.nearStop") : t("reason.nearTarget"), tone: "warn" });
+  if (plan.alert === "stop-hit") out.push({ key: "lvl", label: t("reason.stopHit"), tone: "down" });
+  if (plan.alert === "target-hit") out.push({ key: "lvl", label: t("reason.targetHit"), tone: "up" });
   return out;
 }
 
 export function splitTags(tags?: string | null): string[] {
   return tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
 }
-
-/** fetch → JSON, throwing a readable error on non-2xx (API returns { error }). */
-export async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* non-JSON body */ }
-    throw new Error(msg);
-  }
-  return r.json() as Promise<T>;
-}
-export const jsonInit = (method: string, body?: unknown): RequestInit => ({
-  method,
-  headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-  body: body !== undefined ? JSON.stringify(body) : undefined,
-});
 
 export function readLS<T>(key: string, fallback: T): T {
   try {
@@ -219,30 +194,13 @@ export function writeLS(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ }
 }
 
-export function timeAgoRu(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(diff) || diff < 0) return "";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "сейчас";
-  if (min < 60) return `${min} мин`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} ч`;
-  const d = Math.floor(hr / 24);
-  return `${d} дн`;
-}
-
-/** Signed money with thin formatting: +$1,240 / −$300. */
-export function fmtMoney(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}$${s}`;
-}
 
 export type KeyLevelKey = "pdh" | "pdl" | "vwap" | "pmh" | "pml" | "stop" | "target";
-export const KEY_LEVEL_LABEL: Record<KeyLevelKey, string> = {
-  pdh: "PDH", pdl: "PDL", vwap: "VWAP", pmh: "PMH", pml: "PML", stop: "Стоп", target: "Цель",
-};
+const KEY_LEVEL_STATIC: Partial<Record<KeyLevelKey, string>> = { pdh: "PDH", pdl: "PDL", vwap: "VWAP", pmh: "PMH", pml: "PML" };
+export const KEY_LEVEL_LABEL: Record<KeyLevelKey, string> = labelRecord(
+  ["pdh", "pdl", "vwap", "pmh", "pml", "stop", "target"] as const,
+  (k) => KEY_LEVEL_STATIC[k] ?? watchlistI18n.t(k === "stop" ? "level.stop" : "level.target"),
+);
 export type KeyLevel = {
   key: KeyLevelKey; label: string; price: number;
   /** (level − price) / price in %: positive = level above the price. */
@@ -286,4 +244,49 @@ export function quoteDateIso(d: string | null | undefined): string | null {
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(d);
   if (!m) return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
   return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+}
+
+const NY_STAMP = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+/** «YYYY-MM-DD HH:mm» in New York for an ISO instant (null when unparsable). */
+export function nyStamp(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(NY_STAMP.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+/**
+ * Was the row put into «Сегодня» for an earlier session? `prevSession` = the trading day before the session
+ * being prepared; anything moved in before its 16:00 ET close belonged to that (or an older) session.
+ * Rows without a timestamp are not judged.
+ */
+export function isStaleToday(inPlayAt: string | null | undefined, prevSession: string): boolean {
+  const s = nyStamp(inPlayAt);
+  return s != null && s < `${prevSession} 16:00`;
+}
+
+/** Copy text to the clipboard; false when the browser refuses (no permission / insecure context). */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Unfocused document / no permission: the legacy selection copy still works from a user gesture.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
 }

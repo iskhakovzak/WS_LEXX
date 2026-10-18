@@ -5,10 +5,13 @@
  * year. The coarsest level that still keeps ~`minPx` between labels wins; month and year starts are «major».
  */
 import type { EquityAgg } from "./model";
+import { fmtMonth, fmtWeekday } from "@/lib/format";
+import { equityChartI18n } from "@/i18n/ns/equityChart";
 
-export const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-export const MONTHS_LONG = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
-const WEEKDAYS_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+/** Three-letter month for the axis in the UI language: «янв», «фев», «сен» / «Jan» / «Yan» (Intl short form without the dot). */
+export function monthShort(m: number): string {
+  return fmtMonth(m, "short").replace(".", "").slice(0, 3);
+}
 
 export interface TimeTick { index: number; label: string; major: boolean }
 
@@ -40,10 +43,10 @@ function labelOf(d: string, level: Level, prev: string | null): { label: string;
   const newMonth = prev == null || prev.slice(0, 7) !== d.slice(0, 7);
   if (level === "year") return { label: year(d), major: true };
   if (level === "month" || level === "quarter") {
-    return newYear ? { label: year(d), major: true } : { label: MONTHS_SHORT[month(d)], major: false };
+    return newYear ? { label: year(d), major: true } : { label: monthShort(month(d)), major: false };
   }
   // day / week: the day number, with the month name where a new month starts.
-  if (newMonth) return { label: newYear && prev != null ? year(d) : MONTHS_SHORT[month(d)], major: true };
+  if (newMonth) return { label: newYear && prev != null ? year(d) : monthShort(month(d)), major: true };
   return { label: String(Number(d.slice(8, 10))), major: false };
 }
 
@@ -70,7 +73,7 @@ export function timeTicks(keys: string[], i0: number, i1: number, slotPx: number
       const out = thin(idx, slotPx, minPx).map((i) => ({ index: i, ...labelOf(keys[i], level, i > 0 ? keys[i - 1] : null) }));
       // Zoomed into the middle of a month: the first label carries the month for context («29 июн»).
       const first = out[0];
-      if (first && !first.major && (level === "day" || level === "week")) first.label = `${first.label} ${MONTHS_SHORT[month(keys[first.index])]}`;
+      if (first && !first.major && (level === "day" || level === "week")) first.label = `${first.label} ${monthShort(month(keys[first.index]))}`;
       return out;
     }
   }
@@ -89,8 +92,8 @@ function thin(idx: number[], slotPx: number, minPx: number): number[] {
 /** «пт, 15 окт» / «пт, 15 окт 2025» — crosshair pill on the time axis. */
 export function crosshairDate(d: string, agg: EquityAgg, currentYear: string): string {
   const y = year(d) !== currentYear ? ` ${year(d)}` : "";
-  if (agg === "month") return `${MONTHS_LONG[month(d)]} ${year(d)}`;
-  const day = `${Number(d.slice(8, 10))} ${MONTHS_SHORT[month(d)]}${y}`;
-  if (agg === "week") return `нед. ${day}`;
-  return `${WEEKDAYS_SHORT[new Date(`${d}T12:00:00Z`).getUTCDay()]}, ${day}`;
+  if (agg === "month") return `${fmtMonth(month(d), "long")} ${year(d)}`;
+  const day = `${Number(d.slice(8, 10))} ${monthShort(month(d))}${y}`;
+  if (agg === "week") return equityChartI18n.t("axis.week", { day });
+  return equityChartI18n.t("axis.day", { weekday: fmtWeekday(new Date(`${d}T12:00:00Z`).getUTCDay(), "short"), day });
 }

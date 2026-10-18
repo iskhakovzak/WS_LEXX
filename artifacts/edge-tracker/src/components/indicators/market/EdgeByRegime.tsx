@@ -4,15 +4,18 @@ import { EmptyState, Panel, Pill, Segmented, usePersistentState } from "@/compon
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { MIN_DAYS, type BucketStats, type Dimension, type IndicatorDef } from "./engine";
-import { daysWord, pctText, toneOfMoney, usd } from "./format";
+import { toneOfMoney, usd } from "./format";
+import { fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
 
 export type DimResult = { dim: Pick<Dimension, "id" | "label" | "explain" | "when">; buckets: BucketStats[]; today: string | null; todayNote?: string };
 
 type View = "indicator" | "pre" | "day";
 
 export function reliability(b: BucketStats): { label: string; tone: "up" | "neutral" | "warn" } | null {
-  if (b.days < MIN_DAYS) return { label: "мало данных", tone: "warn" };
-  if (b.t != null && Math.abs(b.t) >= 2) return { label: "устойчиво", tone: "up" };
+  if (b.days < MIN_DAYS) return { label: indicatorsI18n.t("edge.unreliable"), tone: "warn" };
+  if (b.t != null && Math.abs(b.t) >= 2) return { label: indicatorsI18n.t("edge.solid"), tone: "up" };
   return null;
 }
 
@@ -31,12 +34,13 @@ export function NetBar({ v, max, dim }: { v: number; max: number; dim?: boolean 
 }
 
 function DimHeader({ r }: { r: DimResult }) {
+  const { t } = indicatorsI18n.useT();
   return (
     <div className="flex min-w-0 items-center gap-1.5">
       <h3 className="truncate text-sm font-medium text-foreground">{r.dim.label}</h3>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" aria-label={`Как считается: ${r.dim.label}`} className="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-foreground">
+          <button type="button" aria-label={t("edge.howCounted", { label: r.dim.label })} className="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-foreground">
             <Info className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </TooltipTrigger>
@@ -47,17 +51,18 @@ function DimHeader({ r }: { r: DimResult }) {
 }
 
 function DimTable({ r, max }: { r: DimResult; max: number }) {
+  const { t } = indicatorsI18n.useT();
   return (
     <div className="flex flex-col gap-1.5">
       <DimHeader r={r} />
       <div role="table" aria-label={r.dim.label} className="flex flex-col">
         <div role="row" className="grid grid-cols-[minmax(0,1.5fr)_3.5rem_minmax(5rem,1.2fr)_5rem_3.5rem_4.5rem] items-center gap-3 px-2 pb-1 text-xs text-muted-foreground">
-          <span role="columnheader">Условие</span>
-          <span role="columnheader" className="text-right">Дней</span>
-          <span role="columnheader" className="text-center">Нетто за день</span>
-          <span role="columnheader" className="text-right">$ / день</span>
+          <span role="columnheader">{t("edge.colCondition")}</span>
+          <span role="columnheader" className="text-right">{t("edge.colDays")}</span>
+          <span role="columnheader" className="text-center">{t("edge.colNetPerDay")}</span>
+          <span role="columnheader" className="text-right">{t("edge.colPerDay")}</span>
           <span role="columnheader" className="text-right">WR</span>
-          <span role="columnheader" className="text-right">$ / сделку</span>
+          <span role="columnheader" className="text-right">{t("edge.colPerTrade")}</span>
         </div>
         {r.buckets.map((b) => {
           const rel = reliability(b);
@@ -74,13 +79,13 @@ function DimTable({ r, max }: { r: DimResult; max: number }) {
             >
               <span role="cell" className="flex min-w-0 items-center gap-1.5">
                 <span className={cn("truncate", small && "text-muted-foreground")}>{b.label}</span>
-                {isToday && <Pill tone="accent" className="shrink-0" title={r.todayNote}>сегодня</Pill>}
+                {isToday && <Pill tone="accent" className="shrink-0" title={r.todayNote}>{t("edge.today")}</Pill>}
                 {rel && <Pill tone={rel.tone} className="shrink-0">{rel.tone === "up" && <ShieldCheck className="h-3 w-3" aria-hidden="true" />}{rel.label}</Pill>}
               </span>
               <span role="cell" className="text-right text-muted-foreground">{b.days}</span>
               <span role="cell">{b.days ? <NetBar v={b.netPerDay} max={max} dim={small} /> : null}</span>
               <span role="cell" className={cn("text-right font-medium", b.days ? toneText(b.netPerDay) : "text-muted-foreground")}>{b.days ? usd(b.netPerDay) : "—"}</span>
-              <span role="cell" className="text-right text-muted-foreground">{pctText(b.winRate)}</span>
+              <span role="cell" className="text-right text-muted-foreground">{fmtRate(b.winRate)}</span>
               <span role="cell" className="text-right text-muted-foreground">{b.perTrade != null ? usd(b.perTrade) : "—"}</span>
             </div>
           );
@@ -105,7 +110,8 @@ export function findings(results: DimResult[], base: number): { good: Finding[];
 }
 
 function FindingRow({ f, kind }: { f: Finding; kind: "good" | "bad" }) {
-  const rel = f.b.t != null && Math.abs(f.b.t) >= 2 ? "устойчиво" : f.b.t != null && Math.abs(f.b.t) >= 1 ? "похоже на закономерность" : "может быть случайностью";
+  const { t } = indicatorsI18n.useT();
+  const rel = t(f.b.t != null && Math.abs(f.b.t) >= 2 ? "edge.solid" : f.b.t != null && Math.abs(f.b.t) >= 1 ? "edge.likely" : "edge.random");
   const Icon = kind === "good" ? TrendingUp : TrendingDown;
   return (
     <li className="tile flex min-w-0 items-start gap-2.5 p-3">
@@ -118,8 +124,8 @@ function FindingRow({ f, kind }: { f: Finding; kind: "good" | "bad" }) {
           <span className="font-medium">{f.b.label}</span>
         </p>
         <p className="text-xs text-muted-foreground tabular-nums">
-          <span className={cn("font-medium", kind === "good" ? "text-up" : "text-down")}>{usd(f.b.netPerDay)} в день</span>
-          {" · "}{daysWord(f.b.days)} · WR {pctText(f.b.winRate)} · {rel}
+          <span className={cn("font-medium", kind === "good" ? "text-up" : "text-down")}>{t("edge.perDay", { value: usd(f.b.netPerDay) })}</span>
+          {" · "}{commonI18n.t("units.days", { count: f.b.days })} · WR {fmtRate(f.b.winRate)} · {rel}
         </p>
       </div>
     </li>
@@ -137,6 +143,7 @@ export function EdgeByRegime({
   totalDays: number;
   totalTrades: number;
 }) {
+  const { t } = indicatorsI18n.useT();
   const [view, setView] = usePersistentState<View>("indicators.edge.view", "pre");
   const shown: DimResult[] = view === "indicator" ? (focusResult ? [focusResult] : []) : view === "pre" ? pre : day;
   const max = useMemo(() => Math.max(1, ...shown.flatMap((r) => r.buckets.filter((b) => b.days).map((b) => Math.abs(b.netPerDay)))), [shown]);
@@ -144,17 +151,21 @@ export function EdgeByRegime({
 
   return (
     <Panel
-      title="Где ты зарабатываешь"
-      description={`Твой нетто-результат по дням с разным рынком · ${daysWord(totalDays)}, ${totalTrades} сделок · в среднем ${usd(base.netPerDay)} в день`}
+      title={t("edge.title")}
+      description={t("edge.description", {
+        days: commonI18n.t("units.days", { count: totalDays }),
+        trades: commonI18n.t("units.trades", { count: totalTrades }),
+        avg: usd(base.netPerDay),
+      })}
       actions={
         <Segmented
           size="sm"
-          ariaLabel="Какие условия"
+          ariaLabel={t("edge.viewAria")}
           value={view}
           onChange={setView}
           options={[
-            { value: "pre", label: "До открытия" },
-            { value: "day", label: "По итогу дня" },
+            { value: "pre", label: t("edge.viewPre") },
+            { value: "day", label: t("edge.viewDay") },
             { value: "indicator", label: focusDef.label },
           ]}
         />
@@ -164,24 +175,24 @@ export function EdgeByRegime({
       {(good.length > 0 || bad.length > 0) && (
         <div className="mb-4 grid gap-[var(--grid-gap)] md:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-xs font-medium text-muted-foreground">В такие дни ты зарабатываешь</p>
-            {good.length ? <ul className="flex flex-col gap-2">{good.map((f) => <FindingRow key={`${f.r.dim.id}-${f.b.id}`} f={f} kind="good" />)}</ul> : <p className="text-xs text-muted-foreground">Явных плюсовых условий пока нет.</p>}
+            <p className="text-xs font-medium text-muted-foreground">{t("edge.goodTitle")}</p>
+            {good.length ? <ul className="flex flex-col gap-2">{good.map((f) => <FindingRow key={`${f.r.dim.id}-${f.b.id}`} f={f} kind="good" />)}</ul> : <p className="text-xs text-muted-foreground">{t("edge.goodEmpty")}</p>}
           </div>
           <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-xs font-medium text-muted-foreground">В такие дни ты теряешь</p>
-            {bad.length ? <ul className="flex flex-col gap-2">{bad.map((f) => <FindingRow key={`${f.r.dim.id}-${f.b.id}`} f={f} kind="bad" />)}</ul> : <p className="text-xs text-muted-foreground">Явных минусовых условий пока нет.</p>}
+            <p className="text-xs font-medium text-muted-foreground">{t("edge.badTitle")}</p>
+            {bad.length ? <ul className="flex flex-col gap-2">{bad.map((f) => <FindingRow key={`${f.r.dim.id}-${f.b.id}`} f={f} kind="bad" />)}</ul> : <p className="text-xs text-muted-foreground">{t("edge.badEmpty")}</p>}
           </div>
         </div>
       )}
 
       <p className="mb-3 text-xs text-muted-foreground">
-        {view === "pre" && "Условия, которые известны до первой сделки: закрытие накануне и гэп на открытии. По ним можно заранее решить, торговать ли полным размером."}
-        {view === "day" && "Как прошёл сам день на рынке. Заранее это не известно, но показывает, какой рынок тебе подходит."}
-        {view === "indicator" && `${focusDef.label} на закрытии накануне, твои дни поделены на три равные группы. Выбери другую карточку выше, чтобы сменить индикатор.`}
+        {view === "pre" && t("edge.hintPre")}
+        {view === "day" && t("edge.hintDay")}
+        {view === "indicator" && t("edge.hintIndicator", { label: focusDef.label })}
       </p>
 
       {shown.length === 0 ? (
-        <EmptyState compact icon={Info} title="Мало дней для разбиения" description={`Нужно хотя бы ${MIN_DAYS * 3} торговых дней с данными по ${focusDef.label}.`} />
+        <EmptyState compact icon={Info} title={t("edge.fewTitle")} description={t("edge.fewText", { count: MIN_DAYS * 3, label: focusDef.label })} />
       ) : (
         <div className="flex flex-col gap-5">
           {shown.map((r) => <DimTable key={r.dim.id} r={r} max={max} />)}

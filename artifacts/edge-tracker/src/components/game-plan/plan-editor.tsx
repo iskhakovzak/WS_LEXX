@@ -10,9 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Segmented } from "@/components/ds";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
-import { HORIZON, IMPACT, MARKET_BIAS, RISK_MODE, TICKER_BIAS, fmtLevel, type Horizon, type Impact, type MarketBias, type MediaRef, type RiskMode, type TickerBias } from "./types";
+import { HORIZON, IMPACT, MARKET_BIAS, RISK_MODE, TICKER_BIAS, type Horizon, type Impact, type MarketBias, type MediaRef, type RiskMode, type TickerBias } from "./types";
+import { fmtPrice } from "@/lib/format";
 import {
   MAX_PLAN_MEDIA,
   MAX_PLAN_TV,
@@ -28,19 +30,16 @@ import {
 } from "./plan-draft";
 import { MediaStrip, PasteRouterProvider, TvLinkField, useEditorPaste } from "./plan-media";
 import type { MediaContext } from "./media";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type SetDraft = (fn: (d: PlanDraft) => PlanDraft) => void;
 
 /** Ticker suggestion from another source (watchlist, desk plan). */
 export type TickerSuggestion = Partial<TickerDraft> & { ticker: string };
 
-const FOCUS_CHIPS = [
-  "Только A+ сетапы",
-  "Ждать подтверждения уровня — не догонять",
-  "После 2 стопов подряд — пауза 30 минут",
-  "Не торговать первые 5 минут",
-  "Фиксировать частями на уровнях",
-];
+/** Quick rules in the UI language (they are inserted into the trader's own focus text). */
+const FOCUS_CHIP_KEYS = ["a", "b", "c", "d", "e"] as const;
 
 /**
  * Block editor shared by the desk plan (sheet) and a personal plan (inline).
@@ -76,6 +75,7 @@ function EditorInner({
   navSlot,
   stickyClassName,
 }: Parameters<typeof PlanEditor>[0]) {
+  const { t: tr } = gpI18n.useT();
   const uid = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
@@ -122,10 +122,10 @@ function EditorInner({
     document.getElementById(`${uid}-${id}`)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
 
   const blocks: { id: string; label: string; done: boolean; count?: number }[] = [
-    { id: "market", label: "Рынок", done: done.market },
-    { id: "tickers", label: isDesk ? "Тикеры" : "Мои тикеры", done: done.tickers, count: draft.inPlay.length },
-    { id: "risk", label: "Риск", done: done.risk },
-    { id: "focus", label: "Фокус", done: done.focus },
+    { id: "market", label: tr("editor.blocks.market"), done: done.market },
+    { id: "tickers", label: isDesk ? tr("editor.blocks.tickers") : tr("editor.blocks.myTickers"), done: done.tickers, count: draft.inPlay.length },
+    { id: "risk", label: tr("editor.blocks.risk"), done: done.risk },
+    { id: "focus", label: tr("editor.blocks.focus"), done: done.focus },
   ];
 
   const takenTickers = draft.inPlay.map((t) => t.ticker.trim().toUpperCase()).filter(Boolean);
@@ -134,7 +134,7 @@ function EditorInner({
     <div ref={rootRef} className="flex flex-col gap-6">
       {/* Block nav */}
       <nav
-        aria-label="Блоки плана"
+        aria-label={tr("editor.blocksAria")}
         className={cn("sticky-top z-sticky -mx-1 flex flex-wrap items-center gap-1.5 rounded-full px-1 py-1", stickyClassName)}
       >
         <div className="glass-field flex flex-wrap items-center gap-0.5 p-1">
@@ -148,7 +148,7 @@ function EditorInner({
               <span className={cn("h-1.5 w-1.5 rounded-full", b.done ? "bg-primary" : "bg-muted-foreground/40")} aria-hidden="true" />
               {b.label}
               {b.count ? <span className="tabular-nums text-muted-foreground">{b.count}</span> : null}
-              <span className="sr-only">{b.done ? " — заполнено" : " — пусто"}</span>
+              <span className="sr-only">{b.done ? tr("editor.blockFilled") : tr("editor.blockEmpty")}</span>
             </button>
           ))}
         </div>
@@ -156,25 +156,25 @@ function EditorInner({
       </nav>
 
       {/* ── Рынок ── */}
-      <Block id={`${uid}-market`} icon={Globe2} title="Рынок" hint="Контекст, катализаторы, уровни индексов" pasteKey="plan">
+      <Block id={`${uid}-market`} icon={Globe2} title={tr("editor.blocks.market")} hint={tr("editor.marketHint")} pasteKey="plan">
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-muted-foreground">Настрой рынка</span>
+          <span className="text-xs text-muted-foreground">{tr("editor.bias")}</span>
           <Segmented<MarketBias>
-            ariaLabel="Настрой рынка"
+            ariaLabel={tr("editor.bias")}
             size="sm"
             value={draft.bias}
             onChange={(v) => patch({ bias: v })}
             options={(Object.keys(MARKET_BIAS) as MarketBias[]).map((k) => ({ value: k, label: MARKET_BIAS[k].label }))}
           />
         </div>
-        <Field label="Контекст и катализаторы" htmlFor={`${uid}-mv`}>
+        <Field label={tr("editor.context")} htmlFor={`${uid}-mv`}>
           <Textarea
             id={`${uid}-mv`}
             rows={4}
             maxLength={6000}
             value={draft.marketView}
             onChange={(e) => patch({ marketView: e.target.value })}
-            placeholder="Фьючерсы, гэпы, сектора-лидеры, новости и отчёты, что ждём от открытия…"
+            placeholder={tr("editor.contextPlaceholder")}
           />
         </Field>
 
@@ -188,7 +188,7 @@ function EditorInner({
             className="inline-flex w-fit items-center gap-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !showIdx && "-rotate-90")} aria-hidden="true" />
-            Уровни SPY / QQQ
+            {tr("editor.indexLevels")}
             {(draft.spyS || draft.spyR || draft.qqqS || draft.qqqR) && !showIdx && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
           </button>
           {showIdx && (
@@ -201,16 +201,16 @@ function EditorInner({
                   <div key={sym} className="flex flex-col gap-2 rounded-xl border border-[var(--field-border)] p-3">
                     <p className="text-sm font-semibold">{sym.toUpperCase()}</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <Field label="Поддержка" htmlFor={`${uid}-${S}`} error={errors[S]}>
+                      <Field label={tr("editor.support")} htmlFor={`${uid}-${S}`} error={errors[S]}>
                         <Input id={`${uid}-${S}`} inputMode="decimal" placeholder="578.2 575" value={draft[S]} onChange={(e) => patch({ [S]: e.target.value } as Partial<PlanDraft>)} />
                       </Field>
-                      <Field label="Сопротивление" htmlFor={`${uid}-${R}`} error={errors[R]}>
+                      <Field label={tr("editor.resistance")} htmlFor={`${uid}-${R}`} error={errors[R]}>
                         <Input id={`${uid}-${R}`} inputMode="decimal" placeholder="583.5 586" value={draft[R]} onChange={(e) => patch({ [R]: e.target.value } as Partial<PlanDraft>)} />
                       </Field>
                     </div>
                     <Input
-                      aria-label={`Комментарий ${sym.toUpperCase()}`}
-                      placeholder="Комментарий: выше VWAP — работаем от лонга"
+                      aria-label={tr("editor.indexComment", { symbol: sym.toUpperCase() })}
+                      placeholder={tr("editor.indexCommentPlaceholder")}
                       maxLength={500}
                       value={draft[N]}
                       onChange={(e) => patch({ [N]: e.target.value } as Partial<PlanDraft>)}
@@ -223,12 +223,12 @@ function EditorInner({
         </div>
 
         <div className="flex flex-col gap-2">
-          <span className="text-xs text-muted-foreground">Скриншоты и графики рынка</span>
+          <span className="text-xs text-muted-foreground">{tr("editor.marketMedia")}</span>
           <TvLinkField
             links={draft.tvLinks}
             max={MAX_PLAN_TV}
             onChange={(tvLinks) => patch({ tvLinks })}
-            label="Ссылка TradingView для плана"
+            label={tr("editor.planTvLink")}
           />
           <MediaStrip
             refs={draft.media}
@@ -237,7 +237,7 @@ function EditorInner({
             date={date}
             max={MAX_PLAN_MEDIA}
             pasteKey="plan"
-            label="Рынок"
+            label={tr("editor.blocks.market")}
             onAddTvLinks={(urls) => setDraft((d) => ({ ...d, tvLinks: [...new Set([...d.tvLinks, ...urls])].slice(0, MAX_PLAN_TV) }))}
           />
         </div>
@@ -247,15 +247,15 @@ function EditorInner({
       <Block
         id={`${uid}-tickers`}
         icon={Target}
-        title={isDesk ? "Тикеры в игре" : "Мои тикеры"}
-        hint="Уровни, сценарии A/B, триггер и где неправ"
+        title={isDesk ? tr("editor.tickersDesk") : tr("editor.blocks.myTickers")}
+        hint={tr("editor.tickersHint")}
         actions={
           <>
             {tickerActions}
             <WatchlistPicker taken={takenTickers} onPick={(list) => addTickers(list)} />
             <Button type="button" variant="outline" size="sm" onClick={addBlank} disabled={draft.inPlay.length >= MAX_TICKERS}>
               <Plus aria-hidden="true" />
-              Тикер
+              {tr("editor.addTicker")}
             </Button>
           </>
         }
@@ -266,7 +266,7 @@ function EditorInner({
             onClick={addBlank}
             className="rounded-xl border border-dashed border-[var(--field-border)] px-4 py-6 text-center text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Добавьте тикер — вручную, из вотчлиста{isDesk ? "" : " или из плана деска"}
+            {isDesk ? tr("editor.addTickerEmptyDesk") : tr("editor.addTickerEmpty")}
           </button>
         ) : (
           <div className="flex flex-col gap-2">
@@ -298,12 +298,12 @@ function EditorInner({
       </Block>
 
       {/* ── Риск ── */}
-      <Block id={`${uid}-risk`} icon={ShieldAlert} title="Риск на день" hint={isDesk ? "Режим размера и правила для деска" : "Лимиты, которые я не нарушаю сегодня"} pasteKey="plan">
+      <Block id={`${uid}-risk`} icon={ShieldAlert} title={tr("editor.riskTitle")} hint={isDesk ? tr("editor.riskHintDesk") : tr("editor.riskHint")} pasteKey="plan">
         {isDesk && (
           <div className="flex flex-col gap-2">
-            <span className="text-xs text-muted-foreground">Режим размера</span>
+            <span className="text-xs text-muted-foreground">{tr("editor.sizeMode")}</span>
             <Segmented<RiskMode>
-              ariaLabel="Режим риска"
+              ariaLabel={tr("editor.riskModeAria")}
               size="sm"
               value={draft.riskMode}
               onChange={(v) => patch({ riskMode: v })}
@@ -313,39 +313,39 @@ function EditorInner({
           </div>
         )}
         <div className="grid grid-cols-2 gap-3 sm:max-w-md">
-          <Field label="Макс. убыток за день, $" htmlFor={`${uid}-ml`} error={errors.maxLoss}>
+          <Field label={tr("editor.maxLoss")} htmlFor={`${uid}-ml`} error={errors.maxLoss}>
             <Input id={`${uid}-ml`} inputMode="decimal" placeholder="300" value={draft.maxLoss} onChange={(e) => patch({ maxLoss: e.target.value })} className="tabular-nums" />
           </Field>
-          <Field label="Макс. сделок" htmlFor={`${uid}-mt`} error={errors.maxTrades}>
+          <Field label={tr("editor.maxTrades")} htmlFor={`${uid}-mt`} error={errors.maxTrades}>
             <Input id={`${uid}-mt`} inputMode="numeric" placeholder="10" value={draft.maxTrades} onChange={(e) => patch({ maxTrades: e.target.value })} className="tabular-nums" />
           </Field>
         </div>
-        <Field label={isDesk ? "Риск-заметки для деска" : "Правила риска"} htmlFor={`${uid}-rn`}>
+        <Field label={isDesk ? tr("editor.riskNotesDesk") : tr("editor.riskNotes")} htmlFor={`${uid}-rn`}>
           <Textarea
             id={`${uid}-rn`}
             rows={3}
             maxLength={6000}
             value={draft.riskNotes}
             onChange={(e) => patch({ riskNotes: e.target.value })}
-            placeholder="Red day stop, лимиты на овернайт, чего избегать (первые 5 минут, low float)…"
+            placeholder={tr("editor.riskNotesPlaceholder")}
           />
         </Field>
       </Block>
 
       {/* ── Фокус ── */}
-      <Block id={`${uid}-focus`} icon={Compass} title="Фокус дня" hint="Одно правило, которое держим весь день" pasteKey="plan">
-        <Field label="Правило дня" htmlFor={`${uid}-fc`}>
+      <Block id={`${uid}-focus`} icon={Compass} title={tr("editor.focusTitle")} hint={tr("editor.focusHint")} pasteKey="plan">
+        <Field label={tr("editor.focusRule")} htmlFor={`${uid}-fc`}>
           <Input
             id={`${uid}-fc`}
             maxLength={1000}
             value={draft.focus}
             onChange={(e) => patch({ focus: e.target.value })}
-            placeholder="Например: только A+ сетапы от уровней, не догонять"
+            placeholder={tr("editor.focusPlaceholder")}
             className="font-medium"
           />
         </Field>
-        <div className="flex flex-wrap gap-1.5" aria-label="Быстрые правила">
-          {FOCUS_CHIPS.map((c) => {
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={tr("editor.quickRules")}>
+          {FOCUS_CHIP_KEYS.map((k) => tr(`editor.focusChips.${k}`)).map((c) => {
             const on = draft.focus.includes(c);
             return (
               <button
@@ -442,12 +442,13 @@ export function Field({
 }
 
 function MacroEditor({ uid, draft, setDraft, errors }: { uid: string; draft: PlanDraft; setDraft: SetDraft; errors: DraftErrors }) {
+  const { t: tr } = gpI18n.useT();
   const set = (key: string, p: Partial<PlanDraft["macro"][number]>) =>
     setDraft((d) => ({ ...d, macro: d.macro.map((m) => (m.key === key ? { ...m, ...p } : m)) }));
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">Макро-события · ET</span>
+        <span className="text-xs text-muted-foreground">{tr("editor.macroTitle")}</span>
         <Button
           type="button"
           variant="ghost"
@@ -457,14 +458,14 @@ function MacroEditor({ uid, draft, setDraft, errors }: { uid: string; draft: Pla
           onClick={() => setDraft((d) => ({ ...d, macro: [...d.macro, { key: newKey(), time: "08:30", title: "", impact: "high" }] }))}
         >
           <Plus aria-hidden="true" />
-          Событие
+          {tr("editor.addEvent")}
         </Button>
       </div>
       {draft.macro.map((m) => (
         <div key={m.key} className="grid grid-cols-[84px_minmax(0,1fr)_130px_32px] items-start gap-2">
           <div>
             <Input
-              aria-label="Время, ET"
+              aria-label={tr("editor.eventTime")}
               placeholder="08:30"
               inputMode="numeric"
               value={m.time}
@@ -476,7 +477,7 @@ function MacroEditor({ uid, draft, setDraft, errors }: { uid: string; draft: Pla
           </div>
           <div>
             <Input
-              aria-label="Событие"
+              aria-label={tr("editor.event")}
               placeholder="CPI m/m"
               maxLength={200}
               value={m.title}
@@ -486,7 +487,7 @@ function MacroEditor({ uid, draft, setDraft, errors }: { uid: string; draft: Pla
             {errors[`macro.${m.key}.title`] && <p className="mt-1 text-xs text-destructive">{errors[`macro.${m.key}.title`]}</p>}
           </div>
           <Select value={m.impact} onValueChange={(v) => set(m.key, { impact: v as Impact })}>
-            <SelectTrigger aria-label="Влияние">
+            <SelectTrigger aria-label={tr("editor.impact")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -502,7 +503,7 @@ function MacroEditor({ uid, draft, setDraft, errors }: { uid: string; draft: Pla
             variant="ghost"
             size="icon"
             className="h-9 w-8"
-            aria-label="Удалить событие"
+            aria-label={tr("editor.removeEvent")}
             onClick={() => setDraft((d) => ({ ...d, macro: d.macro.filter((x) => x.key !== m.key) }))}
           >
             <X aria-hidden="true" />
@@ -539,21 +540,22 @@ function TickerEditor({
   setMedia: (fn: (prev: MediaRef[]) => MediaRef[]) => void;
   onRemove: () => void;
 }) {
+  const { t: tr } = gpI18n.useT();
   const id = (k: string) => `${uid}-t-${t.key}${k ? `-${k}` : ""}`;
   const e = (k: string) => errors[`inPlay.${t.key}.${k}`];
-  const label = t.ticker.trim().toUpperCase() || `Тикер ${idx + 1}`;
+  const label = t.ticker.trim().toUpperCase() || tr("editor.tickerN", { n: idx + 1 });
   const summary = useMemo(() => {
     const parts: string[] = [];
     if (t.catalyst.trim()) parts.push(t.catalyst.trim());
     const sup = parseLevels(t.support).filter(Number.isFinite);
     const res = parseLevels(t.resistance).filter(Number.isFinite);
-    if (sup.length || res.length) parts.push(`S ${sup.map(fmtLevel).join("/") || "—"} · R ${res.map(fmtLevel).join("/") || "—"}`);
-    if (t.scenarioA.trim()) parts.push("сценарий A");
+    if (sup.length || res.length) parts.push(`S ${sup.map((v) => fmtPrice(v)).join("/") || "—"} · R ${res.map((v) => fmtPrice(v)).join("/") || "—"}`);
+    if (t.scenarioA.trim()) parts.push(tr("editor.scenarioA"));
     if (t.scenarioB.trim()) parts.push("B");
-    if (t.media.length) parts.push(`${t.media.length} скрин.`);
+    if (t.media.length) parts.push(tr("editor.shots", { count: t.media.length }));
     if (t.tvLink) parts.push("TradingView");
     return parts.join(" · ");
-  }, [t]);
+  }, [t, tr]);
   const hasError = Object.keys(errors).some((k) => k.startsWith(`inPlay.${t.key}.`));
 
   return (
@@ -565,7 +567,7 @@ function TickerEditor({
       <div className="flex flex-wrap items-center gap-2 p-2.5">
         <Input
           id={id("")}
-          aria-label="Тикер"
+          aria-label={tr("editor.ticker")}
           className="h-9 w-24 font-semibold uppercase"
           autoCapitalize="characters"
           placeholder="NVDA"
@@ -575,25 +577,25 @@ function TickerEditor({
           onChange={(ev) => patch({ ticker: ev.target.value.toUpperCase() })}
         />
         <Segmented<TickerBias>
-          ariaLabel={`Направление ${label}`}
+          ariaLabel={tr("editor.direction", { label })}
           size="sm"
           value={t.bias}
           onChange={(v) => patch({ bias: v })}
-          options={(Object.keys(TICKER_BIAS) as TickerBias[]).map((k) => ({ value: k, label: k === "neutral" ? "Оба" : TICKER_BIAS[k].label }))}
+          options={(Object.keys(TICKER_BIAS) as TickerBias[]).map((k) => ({ value: k, label: k === "neutral" ? tr("labels.tickerBias.neutralShort") : TICKER_BIAS[k].label }))}
         />
         <Select value={t.grade} onValueChange={(v) => patch({ grade: v as TickerDraft["grade"] })}>
-          <SelectTrigger aria-label={`Оценка сетапа ${label}`} className="h-9 w-[92px]">
+          <SelectTrigger aria-label={tr("editor.grade", { label })} className="h-9 min-w-[92px] w-auto">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">Без оценки</SelectItem>
+            <SelectItem value="none">{tr("editor.noGrade")}</SelectItem>
             <SelectItem value="A+">A+</SelectItem>
             <SelectItem value="A">A</SelectItem>
             <SelectItem value="B">B</SelectItem>
           </SelectContent>
         </Select>
         <Select value={t.horizon} onValueChange={(v) => patch({ horizon: v as Horizon })}>
-          <SelectTrigger aria-label={`Горизонт ${label}`} className="h-9 w-[124px]">
+          <SelectTrigger aria-label={tr("editor.horizon", { label })} className="h-9 min-w-[124px] w-auto">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -605,7 +607,7 @@ function TickerEditor({
           </SelectContent>
         </Select>
         <div className="ml-auto flex items-center gap-1">
-          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label={`Убрать ${label}`} onClick={onRemove}>
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label={tr("editor.remove", { label })} title={tr("editor.remove", { label })} onClick={onRemove}>
             <Trash2 aria-hidden="true" />
           </Button>
           <Button
@@ -615,7 +617,7 @@ function TickerEditor({
             className="h-8 w-8"
             aria-expanded={open}
             aria-controls={id("body")}
-            aria-label={open ? `Свернуть ${label}` : `Развернуть ${label}`}
+            aria-label={open ? tr("editor.collapse", { label }) : tr("editor.expand", { label })}
             onClick={onToggle}
           >
             <ChevronDown className={cn("transition-transform", !open && "-rotate-90")} aria-hidden="true" />
@@ -624,55 +626,55 @@ function TickerEditor({
         {e("ticker") && <p className="basis-full text-xs text-destructive">{e("ticker")}</p>}
         {!open && (
           <button type="button" onClick={onToggle} className="basis-full truncate text-left text-xs text-muted-foreground hover:text-foreground">
-            {summary || "Пусто — раскройте, чтобы заполнить"}
+            {summary || tr("editor.emptyCard")}
           </button>
         )}
       </div>
 
       {open && (
         <div id={id("body")} className="flex flex-col gap-3 border-t border-[var(--field-border)] p-3">
-          <Field label="Катализатор" htmlFor={id("c")}>
-            <Input id={id("c")} maxLength={500} placeholder="Отчёт beat & raise, апгрейд, гэп +8% на объёме" value={t.catalyst} onChange={(ev) => patch({ catalyst: ev.target.value })} />
+          <Field label={tr("editor.catalyst")} htmlFor={id("c")}>
+            <Input id={id("c")} maxLength={500} placeholder={tr("editor.catalystPlaceholder")} value={t.catalyst} onChange={(ev) => patch({ catalyst: ev.target.value })} />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Поддержка" htmlFor={id("s")} error={e("support")}>
+            <Field label={tr("editor.support")} htmlFor={id("s")} error={e("support")}>
               <Input id={id("s")} inputMode="decimal" placeholder="121.5 119" value={t.support} onChange={(ev) => patch({ support: ev.target.value })} className="tabular-nums" />
             </Field>
-            <Field label="Сопротивление" htmlFor={id("r")} error={e("resistance")}>
+            <Field label={tr("editor.resistance")} htmlFor={id("r")} error={e("resistance")}>
               <Input id={id("r")} inputMode="decimal" placeholder="125 127.8" value={t.resistance} onChange={(ev) => patch({ resistance: ev.target.value })} className="tabular-nums" />
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Сценарий A — основной" htmlFor={id("a")}>
-              <Textarea id={id("a")} rows={2} maxLength={1500} placeholder="Удержание 121.5 → лонг на пробой 125, цель 127.8" value={t.scenarioA} onChange={(ev) => patch({ scenarioA: ev.target.value })} />
+            <Field label={tr("editor.scenarioALabel")} htmlFor={id("a")}>
+              <Textarea id={id("a")} rows={2} maxLength={1500} placeholder={tr("editor.scenarioAPlaceholder")} value={t.scenarioA} onChange={(ev) => patch({ scenarioA: ev.target.value })} />
             </Field>
-            <Field label="Сценарий B — альтернатива" htmlFor={id("b")}>
-              <Textarea id={id("b")} rows={2} maxLength={1500} placeholder="Потеря 121.5 → шорт на ретесте снизу, цель 119" value={t.scenarioB} onChange={(ev) => patch({ scenarioB: ev.target.value })} />
+            <Field label={tr("editor.scenarioBLabel")} htmlFor={id("b")}>
+              <Textarea id={id("b")} rows={2} maxLength={1500} placeholder={tr("editor.scenarioBPlaceholder")} value={t.scenarioB} onChange={(ev) => patch({ scenarioB: ev.target.value })} />
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Триггер входа" htmlFor={id("tr")}>
-              <Input id={id("tr")} maxLength={1000} placeholder="Закрепление 5-мин свечи над 125 на объёме" value={t.trigger} onChange={(ev) => patch({ trigger: ev.target.value })} />
+            <Field label={tr("editor.trigger")} htmlFor={id("tr")}>
+              <Input id={id("tr")} maxLength={1000} placeholder={tr("editor.triggerPlaceholder")} value={t.trigger} onChange={(ev) => patch({ trigger: ev.target.value })} />
             </Field>
-            <Field label="Инвалидация — где неправ" htmlFor={id("iv")}>
-              <Input id={id("iv")} maxLength={1000} placeholder="Возврат под 123.8 / под VWAP" value={t.invalidation} onChange={(ev) => patch({ invalidation: ev.target.value })} />
+            <Field label={tr("editor.invalidation")} htmlFor={id("iv")}>
+              <Input id={id("iv")} maxLength={1000} placeholder={tr("editor.invalidationPlaceholder")} value={t.invalidation} onChange={(ev) => patch({ invalidation: ev.target.value })} />
             </Field>
           </div>
-          <Field label="Риск по тикеру" htmlFor={id("k")}>
-            <Input id={id("k")} maxLength={1000} placeholder="Max 0.5R до подтверждения; не держать через отчёт" value={t.risk_note} onChange={(ev) => patch({ risk_note: ev.target.value })} />
+          <Field label={tr("editor.tickerRisk")} htmlFor={id("k")}>
+            <Input id={id("k")} maxLength={1000} placeholder={tr("editor.tickerRiskPlaceholder")} value={t.risk_note} onChange={(ev) => patch({ risk_note: ev.target.value })} />
           </Field>
           {t.plan.trim() && (
-            <Field label="Заметки" htmlFor={id("p")}>
+            <Field label={tr("editor.notes")} htmlFor={id("p")}>
               <Textarea id={id("p")} rows={2} maxLength={3000} value={t.plan} onChange={(ev) => patch({ plan: ev.target.value })} />
             </Field>
           )}
           <div className="flex flex-col gap-2">
-            <span className="text-xs text-muted-foreground">График и скриншоты {t.ticker ? t.ticker.toUpperCase() : ""}</span>
+            <span className="text-xs text-muted-foreground">{t.ticker ? tr("editor.chartMediaOf", { ticker: t.ticker.toUpperCase() }) : tr("editor.chartMedia")}</span>
             <TvLinkField
               links={t.tvLink ? [t.tvLink] : []}
               max={1}
               onChange={(l) => patch({ tvLink: l[0] ?? "" })}
-              label={`Ссылка TradingView для ${label}`}
+              label={tr("editor.tickerTvLink", { label })}
             />
             <MediaStrip
               refs={t.media}
@@ -717,16 +719,13 @@ function fromWatch(w: WatchItem): TickerSuggestion {
 }
 
 function WatchlistPicker({ taken, onPick }: { taken: string[]; onPick: (list: TickerSuggestion[]) => void }) {
+  const { t: tr } = gpI18n.useT();
   const [open, setOpen] = useState(false);
   const q = useQuery({
     queryKey: ["game-plan", "watchlist-picker"],
-    queryFn: async () => {
-      const r = await fetch(apiUrl("/api/watchlist"));
-      if (!r.ok) throw new Error(`Ошибка ${r.status}`);
-      return (await r.json()) as WatchItem[];
-    },
+    queryFn: ({ signal }) => http.get<WatchItem[]>("/api/watchlist", { signal }),
     enabled: open,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   });
   const { hot, watching } = useMemo(() => {
     const rows = Array.isArray(q.data) ? q.data : [];
@@ -750,7 +749,7 @@ function WatchlistPicker({ taken, onPick }: { taken: string[]; onPick: (list: Ti
       >
         <span className="w-14 shrink-0 font-semibold">{w.ticker}</span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{w.catalyst ?? "—"}</span>
-        {added && <Check className="h-4 w-4 shrink-0 text-primary" aria-label="Уже в плане" />}
+        {added && <Check className="h-4 w-4 shrink-0 text-primary" aria-label={tr("editor.inPlan")} />}
       </CommandItem>
     );
   };
@@ -760,24 +759,24 @@ function WatchlistPicker({ taken, onPick }: { taken: string[]; onPick: (list: Ti
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <Eye aria-hidden="true" />
-          Из вотчлиста
+          {tr("editor.fromWatchlist")}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="end">
         <Command>
-          <CommandInput placeholder="Тикер…" />
+          <CommandInput placeholder={tr("editor.tickerSearch")} />
           <CommandList>
             {q.isLoading ? (
               <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Загрузка…
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {commonI18n.t("states.loading")}
               </div>
             ) : q.isError ? (
-              <div className="p-3 text-sm text-muted-foreground">Вотчлист недоступен</div>
+              <div className="p-3 text-sm text-muted-foreground">{tr("editor.watchlistUnavailable")}</div>
             ) : (
               <>
-                <CommandEmpty>Нет тикеров</CommandEmpty>
+                <CommandEmpty>{tr("editor.noTickers")}</CommandEmpty>
                 {hot.length > 0 && (
-                  <CommandGroup heading="В игре на вотчлисте">
+                  <CommandGroup heading={tr("editor.hotOnWatchlist")}>
                     {freshHot.length > 1 && (
                       <CommandItem
                         value="__all_in_play__"
@@ -788,13 +787,13 @@ function WatchlistPicker({ taken, onPick }: { taken: string[]; onPick: (list: Ti
                         className="font-medium text-primary"
                       >
                         <Plus className="h-4 w-4" aria-hidden="true" />
-                        Добавить все ({freshHot.length})
+                        {tr("editor.addAll", { count: freshHot.length })}
                       </CommandItem>
                     )}
                     {hot.map(item)}
                   </CommandGroup>
                 )}
-                {watching.length > 0 && <CommandGroup heading="Вотчлист">{watching.map(item)}</CommandGroup>}
+                {watching.length > 0 && <CommandGroup heading={tr("editor.watchlist")}>{watching.map(item)}</CommandGroup>}
               </>
             )}
           </CommandList>

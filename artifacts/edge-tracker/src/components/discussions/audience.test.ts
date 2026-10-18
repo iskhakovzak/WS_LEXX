@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addressedToMe, audienceReach, audienceText, isRestricted, peopleWord, sortTokens, tokenLabel, type AudienceOptions } from "./audience";
+import { addressedToMe, audienceReach, audienceText, isRestricted, sortTokens, tokenLabel, type AudienceOptions } from "./audience";
 import { isActiveToday, isFreshThread, isLiveNow, type Thread } from "./lib";
+import { pluralRu } from "@/lib/format";
 
 const opts: AudienceOptions = {
   everyone: ["Антон", "Артур", "Закир", "Максат", "Ориф", "Тимур", "Умид"],
@@ -53,7 +54,7 @@ describe("audience helpers", () => {
   });
 
   it("Russian plural for people", () => {
-    expect([1, 2, 5, 11, 12, 21, 22, 25].map((n) => `${n} ${peopleWord(n)}`)).toEqual([
+    expect([1, 2, 5, 11, 12, 21, 22, 25].map((n) => `${n} ${pluralRu(n, "человек", "человека", "человек")}`)).toEqual([
       "1 человек", "2 человека", "5 человек", "11 человек", "12 человек", "21 человек", "22 человека", "25 человек",
     ]);
   });

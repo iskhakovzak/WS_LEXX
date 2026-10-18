@@ -12,15 +12,20 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, FilterChip, Pill, Segmented, SortableTh, toneText, useTableSort } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
-import { invalidateExamples, invalidateTradeLinks, notLiveMessage, pbRequest, useTradePicker } from "./api";
-import { TIERS, ddmm, fmtR, fmtUsd, moneyTone, type PickerTrade, type PlaybookEntry, type Tier } from "./model";
-import { REDACTED_HINT, RedactedHint } from "./setup-bits";
+import { invalidateExamples, invalidateTradeLinks, notLiveMessage, useTradePicker } from "./api";
+import { http } from "@/lib/api/http";
+import { TIERS, moneyTone, type PickerTrade, type PlaybookEntry, type Tier } from "./model";
+import { redactedHint, RedactedHint } from "./setup-bits";
+import { PersonSelect } from "@/components/people/person-select";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
 
+import { personName } from "@/i18n";
 type Period = "30" | "90" | "365" | "all";
 type PickKey = "ticker" | "date" | "trader" | "auto" | "setup" | "net";
 /** Net column: $ for own trades, R for someone else's (redacted) — sorted by what the cell shows. */
@@ -40,6 +45,7 @@ export function TradePickerDialog({
   onOpenChange: (v: boolean) => void;
   entry: PlaybookEntry;
 }) {
+  const { t: tr } = playbookExamplesI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user, isCurator, dbUsers } = useAuth();
@@ -98,20 +104,17 @@ export function TradePickerDialog({
     if (!selected.size || saving) return;
     setSaving(true);
     try {
-      const r = await pbRequest<{ examples: unknown[]; skipped: unknown[]; linked: number }>(`/api/playbook/${entry.id}/examples`, {
-        method: "POST",
-        json: { tradeIds: [...selected], tier, note: note.trim() || null },
-      });
+      const r = await http.post<{ examples: unknown[]; skipped: unknown[]; linked: number }>(`/api/playbook/${entry.id}/examples`, { tradeIds: [...selected], tier, note: note.trim() || null });
       invalidateExamples(qc, entry.id);
       if (r.linked) invalidateTradeLinks(qc);
       const n = r.examples?.length ?? selected.size;
       toast({
-        title: `${n} ${n === 1 ? "сделка добавлена" : "сделок добавлено"} в эталоны`,
-        description: [TIERS.find((t) => t.tier === tier)?.label, r.skipped?.length ? `пропущено ${r.skipped.length}` : ""].filter(Boolean).join(" · "),
+        title: tr("picker.added", { count: n }),
+        description: [TIERS.find((t) => t.tier === tier)?.label, r.skipped?.length ? tr("picker.skipped", { count: r.skipped.length }) : ""].filter(Boolean).join(" · "),
       });
       onOpenChange(false);
     } catch (e) {
-      toast({ title: "Не удалось добавить примеры", description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
+      toast({ title: tr("picker.addFailed"), description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -127,40 +130,34 @@ export function TradePickerDialog({
         onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } }}
       >
         <DialogHeader>
-          <DialogTitle>Добавить примеры · {entry.name}</DialogTitle>
-          <DialogDescription>Выберите сделки, которые показывают сетап. Подходящие по автоклассификации отмечены значком.</DialogDescription>
+          <DialogTitle>{tr("picker.title", { name: entry.name })}</DialogTitle>
+          <DialogDescription>{tr("picker.description")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-48">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={q} onChange={(e) => setQ(e.target.value.toUpperCase())} placeholder="Тикер" aria-label="Фильтр по тикеру" className="h-9 pl-9" />
+            <Input value={q} onChange={(e) => setQ(e.target.value.toUpperCase())} placeholder={tr("picker.tickerPlaceholder")} aria-label={tr("picker.tickerAria")} className="h-9 pl-9" />
           </div>
           <Segmented<Period>
-            ariaLabel="Период"
+            ariaLabel={tr("picker.periodAria")}
             size="sm"
             value={period}
             onChange={setPeriod}
-            options={[{ value: "30", label: "30 дн" }, { value: "90", label: "90 дн" }, { value: "365", label: "Год" }, { value: "all", label: "Всё" }]}
+            options={[{ value: "30", label: tr("picker.period.d30") }, { value: "90", label: tr("picker.period.d90") }, { value: "365", label: tr("picker.period.year") }, { value: "all", label: tr("picker.period.all") }]}
           />
           <Segmented<"" | "win" | "loss">
-            ariaLabel="Результат"
+            ariaLabel={tr("picker.resultAria")}
             size="sm"
             value={result}
             onChange={setResult}
-            options={[{ value: "", label: "Все" }, { value: "win", label: "Плюс" }, { value: "loss", label: "Минус" }]}
+            options={[{ value: "", label: tr("picker.resultAll") }, { value: "win", label: commonI18n.t("trading.win") }, { value: "loss", label: commonI18n.t("trading.loss") }]}
           />
           <FilterChip active={match} onClick={() => setMatch((v) => !v)} className="min-h-8 px-3 text-xs">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Подходят по сетапу
+            <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {tr("picker.matchSetup")}
           </FilterChip>
           {isCurator && (
-            <Select value={trader || "__all"} onValueChange={(v) => setTrader(v === "__all" ? "" : v)}>
-              <SelectTrigger className="h-9 w-44" aria-label="Трейдер"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">Все трейдеры</SelectItem>
-                {traders.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <PersonSelect value={trader || ""} onValueChange={setTrader} options={traders} allLabel={tr("picker.allTraders")} ariaLabel={tr("picker.traderAria")} className="h-9 w-44" />
           )}
         </div>
 
@@ -170,13 +167,13 @@ export function TradePickerDialog({
               {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-[var(--glass-bg)] motion-reduce:animate-none" />)}
             </div>
           ) : pick.isError ? (
-            <EmptyState icon={Search} title={liveError ?? "Не удалось загрузить сделки"} description={liveError ? "Подбор сделок появится после перезапуска API." : (pick.error as Error)?.message} />
+            <EmptyState icon={Search} title={liveError ?? tr("picker.loadFailed")} description={liveError ? tr("picker.notLiveDesc") : (pick.error as Error)?.message} />
           ) : trades.length === 0 ? (
             <EmptyState
               icon={Search}
-              title={period === "all" ? "Сделок не найдено" : `За ${period === "365" ? "год" : `${period} дней`} сделок не найдено`}
-              description={period === "all" ? "Измените тикер или снимите фильтр «Подходят по сетапу»." : "Сделки старше периода не показаны. Расширьте период, измените тикер или снимите фильтр «Подходят по сетапу»."}
-              action={period !== "all" ? <Button variant="outline" onClick={() => setPeriod("all")}>Показать за всё время</Button> : undefined}
+              title={period === "all" ? tr("picker.emptyAll") : period === "365" ? tr("picker.emptyYear") : tr("picker.emptyDays", { count: period })}
+              description={period === "all" ? tr("picker.emptyAllDesc") : tr("picker.emptyPeriodDesc")}
+              action={period !== "all" ? <Button variant="outline" onClick={() => setPeriod("all")}>{tr("picker.showAllTime")}</Button> : undefined}
             />
           ) : (
             <table className="w-full min-w-[640px] text-sm">
@@ -184,17 +181,17 @@ export function TradePickerDialog({
                 <tr className="border-b border-border/60">
                   <th className="w-10 px-3 py-2 text-left">
                     <Checkbox
-                      aria-label={allSelected ? "Снять выбор" : "Выбрать все"}
+                      aria-label={allSelected ? tr("picker.deselectAll") : tr("picker.selectAll")}
                       checked={allSelected}
                       onCheckedChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map((t) => t.id)))}
                     />
                   </th>
-                  <SortableTh {...thProps("ticker")} className="px-2 py-2">Тикер</SortableTh>
-                  <SortableTh {...thProps("date")} className="px-2 py-2">Дата</SortableTh>
-                  {isCurator && <SortableTh {...thProps("trader")} className="px-2 py-2">Трейдер</SortableTh>}
-                  <SortableTh {...thProps("auto")} className="px-2 py-2">Автоклассификация</SortableTh>
-                  <SortableTh {...thProps("setup")} className="px-2 py-2">Сетап сейчас</SortableTh>
-                  <SortableTh {...thProps("net")} align="right" className="px-3 py-2">Нетто</SortableTh>
+                  <SortableTh {...thProps("ticker")} className="px-2 py-2">{tr("picker.colTicker")}</SortableTh>
+                  <SortableTh {...thProps("date")} className="px-2 py-2">{tr("picker.colDate")}</SortableTh>
+                  {isCurator && <SortableTh {...thProps("trader")} className="px-2 py-2">{tr("picker.colTrader")}</SortableTh>}
+                  <SortableTh {...thProps("auto")} className="px-2 py-2">{tr("picker.colAuto")}</SortableTh>
+                  <SortableTh {...thProps("setup")} className="px-2 py-2">{tr("picker.colSetupNow")}</SortableTh>
+                  <SortableTh {...thProps("net")} align="right" className="px-3 py-2">{tr("picker.colNet")}</SortableTh>
                 </tr>
               </thead>
               <tbody>
@@ -213,7 +210,7 @@ export function TradePickerDialog({
                     >
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
-                          aria-label={`${t.ticker} ${ddmm(t.closeDate ?? t.date)}`}
+                          aria-label={`${t.ticker} ${fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}`}
                           checked={on || t.inSetup}
                           disabled={t.inSetup}
                           onCheckedChange={() => toggle(t, false)}
@@ -223,24 +220,24 @@ export function TradePickerDialog({
                         {t.ticker}
                         {t.side && <span className={cn("ml-1.5 text-xs font-normal", t.side.toLowerCase().startsWith("s") ? "text-down" : "text-up")}>{t.side.toLowerCase().startsWith("s") ? "S" : "L"}</span>}
                       </td>
-                      <td className="px-2 py-2 tabular-nums text-muted-foreground">{ddmm(t.closeDate ?? t.date)}</td>
-                      {isCurator && <td className="px-2 py-2 text-muted-foreground">{t.trader ?? "—"}</td>}
+                      <td className="px-2 py-2 tabular-nums text-muted-foreground">{fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}</td>
+                      {isCurator && <td className="px-2 py-2 text-muted-foreground">{t.trader ? personName(t.trader) : "—"}</td>}
                       <td className="px-2 py-2">
                         {t.autoSetup ? (
                           <span className={cn("inline-flex items-center gap-1 text-xs", t.autoMatch ? "text-primary" : "text-muted-foreground")}>
-                            {t.autoMatch && <Sparkles className="h-3 w-3" aria-label="Совпадает с сетапом" />}
+                            {t.autoMatch && <Sparkles className="h-3 w-3" aria-label={tr("picker.autoMatch")} />}
                             {t.autoSetup}
                             {t.autoConfidence != null && <span className="tabular-nums opacity-70">{Math.round(t.autoConfidence * (t.autoConfidence <= 1 ? 100 : 1))}%</span>}
                           </span>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                       <td className="max-w-[180px] truncate px-2 py-2 text-xs text-muted-foreground">
-                        {t.inSetup ? <Pill tone="accent">уже в эталонах</Pill> : t.linkedHere ? "этот сетап" : t.playbookName ?? "—"}
+                        {t.inSetup ? <Pill tone="accent">{tr("picker.alreadyIn")}</Pill> : t.linkedHere ? tr("picker.thisSetup") : t.playbookName ?? "—"}
                       </td>
                       {t.redacted ? (
-                        <td className={cn("px-3 py-2 text-right font-medium tabular-nums", toneText(moneyTone(t.signedR)))} title={REDACTED_HINT}>{fmtR(t.signedR)}</td>
+                        <td className={cn("px-3 py-2 text-right font-medium tabular-nums", toneText(moneyTone(t.signedR)))} title={redactedHint()}>{fmtR(t.signedR)}</td>
                       ) : (
-                        <td className={cn("px-3 py-2 text-right font-medium tabular-nums", toneText(moneyTone(t.netPnl)))}>{fmtUsd(t.netPnl)}</td>
+                        <td className={cn("px-3 py-2 text-right font-medium tabular-nums", toneText(moneyTone(t.netPnl)))}>{fmtUsd(t.netPnl, { signed: true, decimals: 0 })}</td>
                       )}
                     </tr>
                   );
@@ -248,14 +245,14 @@ export function TradePickerDialog({
               </tbody>
             </table>
           )}
-          {pick.data?.truncated && <p className="px-3 py-2 text-xs text-muted-foreground">Показаны последние 300 сделок — сузьте период или тикер.</p>}
+          {pick.data?.truncated && <p className="px-3 py-2 text-xs text-muted-foreground">{tr("picker.truncated")}</p>}
           {trades.some((t) => t.redacted) && <RedactedHint className="px-3 py-2" />}
         </div>
 
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-muted-foreground">Тир для выбранных</span>
-            <div className="flex gap-1.5" role="radiogroup" aria-label="Тир">
+            <span className="text-xs text-muted-foreground">{tr("picker.tierForSelected")}</span>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={tr("picker.tierAria")}>
               {TIERS.map((t) => (
                 <button
                   key={t.tier}
@@ -276,26 +273,26 @@ export function TradePickerDialog({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            placeholder="Заметка ко всем выбранным (необязательно)"
-            aria-label="Заметка"
+            placeholder={tr("picker.notePlaceholder")}
+            aria-label={tr("picker.noteAria")}
             className="min-w-[240px] flex-1 resize-none text-sm"
           />
         </div>
 
         <DialogFooter className="items-center gap-2 sm:justify-between">
           <span className="text-sm tabular-nums text-muted-foreground">
-            Выбрано: {selected.size}
+            {tr("picker.selected", { count: selected.size })}
             {selected.size > 0 && (
               <button type="button" onClick={() => setSelected(new Set())} className="ml-2 inline-flex items-center gap-0.5 text-xs underline-offset-2 hover:underline">
-                <X className="h-3 w-3" aria-hidden="true" /> сбросить
+                <X className="h-3 w-3" aria-hidden="true" /> {tr("picker.reset")}
               </button>
             )}
           </span>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
             <Button onClick={save} disabled={!selected.size || saving}>
               {saving && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-              Добавить {selected.size || ""}
+              {selected.size ? tr("picker.addN", { count: selected.size }) : tr("picker.add")}
             </Button>
           </div>
         </DialogFooter>

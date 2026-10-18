@@ -2,16 +2,22 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "@workspace/db";
+import { config } from "../config";
 import { can, readScope, resolveActor, type Capability } from "./permissions";
 import { canReadPersonal, guestModeEnabled } from "./accessRules";
+import { AppError, sendError, unauthorized } from "./http/errors";
 
-const SECRET = process.env.JWT_SECRET;
+const SECRET = config.jwtSecret;
 if (!SECRET) {
   throw new Error("JWT_SECRET is not set");
 }
 const SECRET_OK: string = SECRET;
-const TOKEN_TTL = "30d";
+/** Member session: 7 days, re-issued by GET /auth/me once the current token is older than REFRESH_AFTER_SEC (sliding). */
+export const TOKEN_TTL_SEC = 7 * 24 * 3600;
+export const REFRESH_AFTER_SEC = 24 * 3600;
 const GUEST_TOKEN_TTL = "12h";
+/** The only algorithm we sign with — and the only one jwt.verify accepts (no `alg` confusion). */
+const JWT_ALG = "HS256" as const;
 const BCRYPT_ROUNDS = 10;
 
 export type AuthUser = { id: number; name: string; role: string };
@@ -23,7 +29,7 @@ export type AuthUser = { id: number; name: string; role: string };
 // cannot be revoked individually — rotating JWT_SECRET invalidates them all.
 export const GUEST_ROLE = "guest";
 export const GUEST_USER_ID = 0;
-export const GUEST_NAME = "Гость";
+export const GUEST_NAME = "Гость"; // i18n-ignore (identity of the guest session: JWT name / scope sentinel; the UI shows its own label)
 /**
  * Sentinel returned by scopeTrader() for guests. It is not a real trader name, so every
  * `WHERE trader = $scope` query yields zero rows: a guest sees only team-wide/non-personal
@@ -37,7 +43,7 @@ export const GUEST_SCOPE = "∅guest";
  * When off, POST /auth/guest answers 403 GUEST_DISABLED and already-issued guest tokens stop working.
  */
 export function isGuestModeEnabled(): boolean {
-  return guestModeEnabled(process.env);
+  return guestModeEnabled({ GUEST_MODE: config.guestMode, NODE_ENV: config.nodeEnv });
 }
 
 export function isGuestUser(u: AuthUser | null | undefined): boolean {
@@ -52,7 +58,7 @@ export function signGuestToken(): string {
   return jwt.sign(
     { sub: GUEST_USER_ID, name: GUEST_NAME, role: GUEST_ROLE, tv: 0, kind: "guest" },
     SECRET_OK,
-    { expiresIn: GUEST_TOKEN_TTL },
+    { expiresIn: GUEST_TOKEN_TTL, algorithm: JWT_ALG },
   );
 }
 
@@ -80,9 +86,21 @@ function invalidateTvCache(userId: number): void {
   tvCache.delete(userId);
 }
 
-export async function signToken(u: AuthUser): Promise<string> {
+/**
+ * `pwc` (password change required): staff whose secret is shorter than the staff minimum (lib/security/passwordPolicy).
+ * While it is set, apiAuthGate allows only PASSWORD_CHANGE_ROUTES.
+ */
+export async function signToken(u: AuthUser, opts: { pwc?: boolean } = {}): Promise<string> {
   const tv = (await getTokenVersion(u.id)) ?? 0;
-  return jwt.sign({ sub: u.id, name: u.name, role: u.role, tv }, SECRET_OK, { expiresIn: TOKEN_TTL });
+  return jwt.sign({ sub: u.id, name: u.name, role: u.role, tv, ...(opts.pwc ? { pwc: true } : {}) }, SECRET_OK, {
+    expiresIn: TOKEN_TTL_SEC,
+    algorithm: JWT_ALG,
+  });
+}
+
+/** Sliding session: should GET /auth/me hand out a fresh token? (`iat` in seconds.) */
+export function shouldRefreshToken(iat: number | undefined, nowMs = Date.now()): boolean {
+  return typeof iat === "number" && nowMs / 1000 - iat > REFRESH_AFTER_SEC;
 }
 
 export async function bumpTokenVersion(userId: number): Promise<void> {
@@ -90,18 +108,19 @@ export async function bumpTokenVersion(userId: number): Promise<void> {
   invalidateTvCache(userId);
 }
 
-type DecodedToken = { id: number; name: string; role: string; tv: number; guest: boolean };
+type DecodedToken = { id: number; name: string; role: string; tv: number; guest: boolean; iat?: number; pwc: boolean };
 
 function decodeToken(token: string): DecodedToken | null {
   try {
-    const decoded = jwt.verify(token, SECRET_OK) as Record<string, unknown>;
+    const decoded = jwt.verify(token, SECRET_OK, { algorithms: [JWT_ALG] }) as Record<string, unknown>;
     if (!decoded || typeof decoded !== "object") return null;
     if (typeof decoded.sub !== "number" || typeof decoded.name !== "string" || typeof decoded.role !== "string") return null;
     const tv = typeof decoded.tv === "number" ? decoded.tv : 0;
     const guest = decoded.kind === "guest" && decoded.role === GUEST_ROLE && decoded.sub === GUEST_USER_ID;
     // A token claiming the guest role without the signed guest marker (or vice versa) is rejected.
     if ((decoded.role === GUEST_ROLE || decoded.sub === GUEST_USER_ID) && !guest) return null;
-    return { id: decoded.sub, name: decoded.name, role: decoded.role, tv, guest };
+    const iat = typeof decoded.iat === "number" ? decoded.iat : undefined;
+    return { id: decoded.sub, name: decoded.name, role: decoded.role, tv, guest, iat, pwc: decoded.pwc === true };
   } catch {
     return null;
   }
@@ -126,22 +145,18 @@ declare global {
   namespace Express {
     interface Request {
       authUser?: AuthUser;
+      /** Facts about the bearer token itself (set with authUser for members). */
+      authMeta?: { iat?: number; pwc: boolean };
     }
   }
 }
 
 /**
- * Media URLs loaded by the browser itself (<audio src>, <img src>) cannot carry an Authorization
- * header, so for these GET paths the token may also come as `?access_token=`.
+ * Tokens come ONLY from the Authorization header. Media the browser loads by itself (<audio src>) uses short-lived
+ * HMAC media tokens bound to one object (routes/voicenotes.ts `/audio-url`), never the session token in a URL.
  */
-const QUERY_TOKEN_PATHS: RegExp[] = [/^\/voice-notes\/\d+\/audio$/];
-
 export async function authMiddleware(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  let token = readBearer(req);
-  if (!token && req.method === "GET" && QUERY_TOKEN_PATHS.some((re) => re.test(req.path))) {
-    const q = req.query.access_token;
-    if (typeof q === "string" && q.trim()) token = q.trim();
-  }
+  const token = readBearer(req);
   if (token) {
     const decoded = decodeToken(token);
     if (decoded) {
@@ -151,6 +166,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
         const currentTv = await getTokenVersion(decoded.id);
         if (currentTv !== null && currentTv === decoded.tv) {
           req.authUser = { id: decoded.id, name: decoded.name, role: decoded.role };
+          req.authMeta = { iat: decoded.iat, pwc: decoded.pwc };
         }
       }
     }
@@ -170,7 +186,8 @@ export const PUBLIC_API_ROUTES: readonly PublicRoute[] = [
   { method: "POST", path: "/auth/login" },
   { method: "POST", path: "/auth/init-passwords" },
   { method: "POST", path: "/auth/guest" },
-  { method: "GET", path: "/users" },           // login screen list (moderation fields already stripped)
+  { method: "POST", path: "/client-errors" },  // browser error reports (also from the login screen); own limiter + 32 KB
+  { method: "POST", path: "/csp-report" },     // CSP violation reports (browsers send them without credentials)
   { method: "GET", path: "/holidays" },        // market calendar for the login/shell clock
   { method: "POST", path: "/telegram/webhook" }, // Telegram calls us; verified by its own secret
   { method: "GET", path: /^\/voice-notes\/\d+\/audio$/ }, // media_token checked by the route itself
@@ -197,8 +214,15 @@ export function isPublicApiRoute(method: string, path: string): boolean {
   return matches(PUBLIC_API_ROUTES, m === "HEAD" ? "GET" : m, normalizePath(path));
 }
 
-export const AUTH_REQUIRED_BODY = { error: "Требуется вход", code: "AUTH_REQUIRED" } as const;
-export const GUEST_READ_ONLY_BODY = { error: "Гостевой режим: только просмотр", code: "GUEST_READ_ONLY" } as const;
+/** The only routes a `pwc` token (staff with a too-short password) may call until the password is changed. */
+const PASSWORD_CHANGE_ROUTES: readonly PublicRoute[] = [
+  { method: "GET", path: "/auth/me" },
+  { method: "POST", path: "/auth/logout" },
+  { method: "POST", path: "/users/me/password" },
+  { method: "PATCH", path: "/users/me/locale" },
+];
+
+// Error answers go through lib/http (codes AUTH_REQUIRED / GUEST_READ_ONLY / PASSWORD_CHANGE_REQUIRED, texts in the request language).
 
 /**
  * 401 for anonymous callers on every non-public route; 403 for guests on every mutation.
@@ -209,11 +233,15 @@ export function apiAuthGate(req: Request, res: Response, next: NextFunction): vo
   const path = normalizePath(req.path);
   if (isPublicApiRoute(method, path)) return next();
   if (!req.authUser) {
-    res.status(401).json(AUTH_REQUIRED_BODY);
+    sendError(res, unauthorized());
     return;
   }
   if (MUTATION_METHODS.has(method) && isGuestUser(req.authUser) && !matches(GUEST_ALLOWED_MUTATIONS, method, path)) {
-    res.status(403).json(GUEST_READ_ONLY_BODY);
+    sendError(res, new AppError("GUEST_READ_ONLY"));
+    return;
+  }
+  if (req.authMeta?.pwc && !matches(PASSWORD_CHANGE_ROUTES, method === "HEAD" ? "GET" : method, path)) {
+    sendError(res, new AppError("PASSWORD_CHANGE_REQUIRED"));
     return;
   }
   next();
@@ -230,7 +258,7 @@ export function getActorRoleFromToken(req: Request): string | null {
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   if (!req.authUser) {
-    res.status(401).json(AUTH_REQUIRED_BODY);
+    sendError(res, unauthorized());
     return;
   }
   next();
@@ -238,8 +266,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
 /** Sends 401 (anonymous) / 403 (guest) and returns false unless the caller is a real signed-in member. */
 export function requireMember(req: Request, res: Response): boolean {
-  if (!req.authUser) { res.status(401).json(AUTH_REQUIRED_BODY); return false; }
-  if (isGuestUser(req.authUser)) { res.status(403).json(GUEST_READ_ONLY_BODY); return false; }
+  if (!req.authUser) { sendError(res, unauthorized()); return false; }
+  if (isGuestUser(req.authUser)) { sendError(res, new AppError("GUEST_READ_ONLY")); return false; }
   return true;
 }
 
@@ -269,8 +297,8 @@ export async function viewerRole(req: Request): Promise<string | null> {
 
 /** Sends 401/403 and returns false unless the caller is a curator/admin. */
 export async function requireStaff(req: Request, res: Response): Promise<boolean> {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return false; }
-  if (!isStaffRole(await viewerRole(req))) { res.status(403).json({ error: "Только для кураторов" }); return false; }
+  if (!req.authUser) { sendError(res, unauthorized()); return false; }
+  if (!isStaffRole(await viewerRole(req))) { sendError(res, new AppError("STAFF_ONLY")); return false; }
   return true;
 }
 
@@ -305,13 +333,13 @@ export async function requirePersonalAccess(
   req: Request, res: Response, raw: unknown, cap: Capability = "journal.read.team",
 ): Promise<string | null> {
   const owner = typeof raw === "string" ? raw.trim() : "";
-  if (!owner || owner.length > 120) { res.status(400).json({ error: "userId is required" }); return null; }
-  if (!req.authUser) { res.status(401).json(AUTH_REQUIRED_BODY); return null; }
+  if (!owner || owner.length > 120) { sendError(res, new AppError("TRADER_REQUIRED")); return null; }
+  if (!req.authUser) { sendError(res, unauthorized()); return null; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json(AUTH_REQUIRED_BODY); return null; }
-  if (actor.guest) { res.status(403).json({ error: "Гостевой режим: личные данные трейдеров недоступны", code: "FORBIDDEN" }); return null; }
+  if (!actor) { sendError(res, unauthorized()); return null; }
+  if (actor.guest) { sendError(res, new AppError("GUEST_NO_PERSONAL")); return null; }
   const teamAllowed = owner !== actor.name && (await can(req, cap, { trader: owner }));
-  if (!canReadPersonal(actor, owner, teamAllowed)) { res.status(403).json({ error: "Эти данные видит только сам трейдер или его куратор", code: "FORBIDDEN" }); return null; }
+  if (!canReadPersonal(actor, owner, teamAllowed)) { sendError(res, new AppError("PERSONAL_DATA_FORBIDDEN")); return null; }
   return owner;
 }
 

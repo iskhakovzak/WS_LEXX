@@ -12,8 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { KIND_LABEL, api, invalidateAcademy, type AdminItem, type AdminModule, type ItemKind } from "./api";
+import { kindLabel, api, invalidateAcademy, type AdminItem, type AdminModule, type ItemKind } from "./api";
 import { KindIcon } from "./bits";
+import { academyI18n } from "@/i18n/ns/academy";
 
 export type Selection =
   | { type: "program" }
@@ -26,6 +27,13 @@ type Drag = { type: "module"; id: number } | { type: "item"; kind: ItemKind; id:
 type DropTarget = { moduleId: number; index: number } | { moduleIndex: number } | null;
 
 const MIME = "application/x-ws-academy";
+
+/** One translated sentence with an inline icon: the key carries `{icon}`, filled with a slot marker and split here. */
+const ICON_SLOT = "\u0000";
+function withIcon(text: string, icon: React.ReactNode): React.ReactNode {
+  const [before, after = ""] = text.split(ICON_SLOT);
+  return <>{before}{icon}{after}</>;
+}
 const sameItem = (a: { kind: ItemKind; id: number }, b: { kind: ItemKind; id: number }) => a.kind === b.kind && a.id === b.id;
 
 function move<T>(arr: T[], from: number, to: number): T[] {
@@ -40,6 +48,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = academyI18n.useT();
   const [modules, setModules] = useState(serverModules);
   useEffect(() => setModules(serverModules), [serverModules]);
   const drag = useRef<Drag | null>(null);
@@ -53,7 +62,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
     try {
       await fn();
     } catch (e) {
-      toast({ title: "Порядок не сохранён", description: (e as Error).message, variant: "destructive" });
+      toast({ title: t("tree.orderFailed"), description: (e as Error).message, variant: "destructive" });
       setModules(serverModules);
     } finally {
       setBusy(false);
@@ -65,7 +74,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
     if (from === to || to < 0 || to >= modules.length) return;
     const next = move(modules, from, to);
     setModules(next);
-    void persist(() => api.reorderModules(programId, next.map((m) => m.id)), `Модуль «${modules[from].title}» — позиция ${to + 1} из ${next.length}`);
+    void persist(() => api.reorderModules(programId, next.map((m) => m.id)), t("tree.announceModule", { title: modules[from].title, pos: to + 1, total: next.length }));
   };
 
   const moveItem = (it: { kind: ItemKind; id: number }, fromModuleId: number, toModuleId: number, toIndex: number) => {
@@ -80,7 +89,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
       if (target === from || target < 0 || target >= src.items.length) return;
       const items = move(src.items, from, target);
       setModules(modules.map((m) => (m.id === src.id ? { ...m, items } : m)));
-      void persist(() => api.reorderItems(src.id, items.map((x) => ({ kind: x.kind, id: x.id }))), `«${item.title}» — позиция ${target + 1} из ${items.length}`);
+      void persist(() => api.reorderItems(src.id, items.map((x) => ({ kind: x.kind, id: x.id }))), t("tree.announceItem", { title: item.title, pos: target + 1, total: items.length }));
       return;
     }
     const srcItems = src.items.filter((_, k) => k !== from);
@@ -90,7 +99,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
     void persist(async () => {
       await api.moveItem(item.kind, item.id, dst.id);
       await api.reorderItems(dst.id, dstItems.map((x) => ({ kind: x.kind, id: x.id })));
-    }, `«${item.title}» перенесён в модуль «${dst.title}», позиция ${Math.min(dstItems.length, toIndex + 1)}`);
+    }, t("tree.announceMoved", { title: item.title, module: dst.title, pos: Math.min(dstItems.length, toIndex + 1) }));
   };
 
   /* drag handlers */
@@ -158,8 +167,8 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
   return (
     <div className="flex flex-col gap-2" onDragEnd={onDragEnd}>
       <p className="sr-only" aria-live="polite">{announce}</p>
-      {!readOnly && <p className="px-1 text-xs text-muted-foreground">Перетаскивайте за <GripVertical className="inline h-3 w-3" aria-hidden="true" /> или используйте ↑↓ и Alt+↑/↓.</p>}
-      <ol className="flex flex-col gap-2" aria-label="Модули программы">
+      {!readOnly && <p className="px-1 text-xs text-muted-foreground">{withIcon(t("tree.dragHint", { icon: ICON_SLOT }), <GripVertical className="inline h-3 w-3" aria-hidden="true" />)}</p>}
+      <ol className="flex flex-col gap-2" aria-label={t("tree.modulesAria")}>
         {modules.map((m, i) => {
           const modDrop = dropAt && "moduleIndex" in dropAt ? dropAt.moduleIndex : null;
           const archived = !!m.archivedAt;
@@ -177,7 +186,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
             >
               <div className="flex items-center gap-1">
                 {!readOnly && (
-                  <span draggable={dndOn} onDragStart={onDragStart({ type: "module", id: m.id })} className="cursor-grab p-1 text-muted-foreground active:cursor-grabbing" aria-hidden="true" title="Перетащить модуль">
+                  <span draggable={dndOn} onDragStart={onDragStart({ type: "module", id: m.id })} className="cursor-grab p-1 text-muted-foreground active:cursor-grabbing" aria-hidden="true" title={t("tree.dragModule")}>
                     <GripVertical className="h-4 w-4" />
                   </span>
                 )}
@@ -191,15 +200,15 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
                 >
                   {i + 1}. {m.title}
                 </button>
-                {archived && <Pill tone="neutral">архив</Pill>}
+                {archived && <Pill tone="neutral">{t("tree.archived")}</Pill>}
                 {!readOnly && (
                   <>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveModule(i, i - 1)} disabled={!dndOn || i === 0} aria-label={`Поднять модуль ${m.title}`}><ChevronUp aria-hidden="true" /></Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveModule(i, i + 1)} disabled={!dndOn || i === modules.length - 1} aria-label={`Опустить модуль ${m.title}`}><ChevronDown aria-hidden="true" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveModule(i, i - 1)} disabled={!dndOn || i === 0} aria-label={t("tree.moveModuleUp", { title: m.title })}><ChevronUp aria-hidden="true" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveModule(i, i + 1)} disabled={!dndOn || i === modules.length - 1} aria-label={t("tree.moveModuleDown", { title: m.title })}><ChevronDown aria-hidden="true" /></Button>
                   </>
                 )}
               </div>
-              <ol className="mt-1 flex min-h-[2rem] flex-col" onDragOver={overModuleBody(m.id, m.items.length)} onDrop={onDrop} aria-label={`Материалы модуля ${m.title}`}>
+              <ol className="mt-1 flex min-h-[2rem] flex-col" onDragOver={overModuleBody(m.id, m.items.length)} onDrop={onDrop} aria-label={t("tree.moduleItems", { title: m.title })}>
                 {m.items.map((it, k) => {
                   const d = dropAt && "moduleId" in dropAt && dropAt.moduleId === m.id ? dropAt.index : null;
                   const sel = isSel({ type: "item", kind: it.kind, id: it.id });
@@ -217,7 +226,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
                       )}
                     >
                       {!readOnly && (
-                        <span draggable={dndOn} onDragStart={onDragStart({ type: "item", kind: it.kind, id: it.id, moduleId: m.id })} className="cursor-grab p-1 text-muted-foreground active:cursor-grabbing" aria-hidden="true" title="Перетащить">
+                        <span draggable={dndOn} onDragStart={onDragStart({ type: "item", kind: it.kind, id: it.id, moduleId: m.id })} className="cursor-grab p-1 text-muted-foreground active:cursor-grabbing" aria-hidden="true" title={t("tree.drag")}>
                           <GripVertical className="h-3.5 w-3.5" />
                         </span>
                       )}
@@ -227,30 +236,30 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
                         onKeyDown={readOnly ? undefined : itemKey(m, k)}
                         aria-current={sel ? "true" : undefined}
                         aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-                        aria-label={`${KIND_LABEL[it.kind]}: ${it.title}${it.draft ? ", черновик" : ""}${it.archivedAt ? ", в архиве" : ""}`}
+                        aria-label={`${t("tree.itemAria", { kind: kindLabel(it.kind), title: it.title })}${it.draft ? t("tree.draftFlag") : ""}${it.archivedAt ? t("tree.archivedFlag") : ""}`}
                         className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm hover:text-primary", sel && "font-medium text-primary")}
                       >
                         <KindIcon kind={it.kind} className="shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate">{it.title}</span>
-                        {it.draft && <Pill tone="warn">черн.</Pill>}
-                        {it.archivedAt && <Pill tone="neutral">архив</Pill>}
+                        <span className="min-w-0 flex-1 truncate" title={it.title}>{it.title}</span>
+                        {it.draft && <Pill tone="warn">{t("tree.draftShort")}</Pill>}
+                        {it.archivedAt && <Pill tone="neutral">{t("tree.archived")}</Pill>}
                       </button>
                       {!readOnly && (
                         <>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveItem(it, m.id, m.id, k - 1)} disabled={!dndOn || k === 0} aria-label={`Поднять «${it.title}»`}><ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /></Button>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveItem(it, m.id, m.id, k + 2)} disabled={!dndOn || k === m.items.length - 1} aria-label={`Опустить «${it.title}»`}><ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveItem(it, m.id, m.id, k - 1)} disabled={!dndOn || k === 0} aria-label={t("tree.moveUp", { title: it.title })}><ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /></Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveItem(it, m.id, m.id, k + 2)} disabled={!dndOn || k === m.items.length - 1} aria-label={t("tree.moveDown", { title: it.title })}><ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></Button>
                         </>
                       )}
                     </li>
                   );
                 })}
-                {!m.items.length && <li className="px-2 py-1.5 text-xs text-muted-foreground">Пусто — добавьте урок или перетащите сюда</li>}
+                {!m.items.length && <li className="px-2 py-1.5 text-xs text-muted-foreground">{t("tree.emptyModule")}</li>}
               </ol>
               {!readOnly && !archived && (
                 <div className="mt-1 flex flex-wrap gap-1 border-t border-border/40 pt-1.5">
                   {(["lesson", "quiz", "assignment"] as const).map((kind) => (
-                    <Button key={kind} variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onSelect({ type: "new-item", kind, moduleId: m.id })} aria-label={`Добавить ${KIND_LABEL[kind].toLowerCase()} в модуль ${m.title}`}>
-                      <Plus className="h-3 w-3" aria-hidden="true" />{KIND_LABEL[kind]}
+                    <Button key={kind} variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => onSelect({ type: "new-item", kind, moduleId: m.id })} aria-label={t(`tree.addToModule.${kind}`, { module: m.title })}>
+                      <Plus className="h-3 w-3" aria-hidden="true" />{kindLabel(kind)}
                     </Button>
                   ))}
                 </div>
@@ -260,7 +269,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
         })}
       </ol>
       {!readOnly && (
-        <Button variant="outline" size="sm" className="self-start" onClick={() => onSelect({ type: "new-module" })}><Plus aria-hidden="true" />Модуль</Button>
+        <Button variant="outline" size="sm" className="self-start" onClick={() => onSelect({ type: "new-module" })}><Plus aria-hidden="true" />{t("tree.addModule")}</Button>
       )}
     </div>
   );

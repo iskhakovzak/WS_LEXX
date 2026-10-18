@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Plus, Star, Trophy, UserRound } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -11,12 +13,15 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { useToast } from "@/hooks/use-toast";
 import { Page, PageHeader, Segmented } from "@/components/ds";
-import { fetchJson, useStoredState } from "@/components/ratings/shared";
+import { useStoredState } from "@/components/ratings/shared";
 import { LeaderboardTab } from "@/components/ratings/leaderboard-tab";
 import { ScorecardsTab } from "@/components/ratings/scorecards-tab";
 import { MyProgressTab } from "@/components/ratings/my-progress-tab";
 import { RatingDialog } from "@/components/ratings/rating-dialog";
 import { weekLabel, weekOf, type Rating } from "@/components/ratings/scorecard-model";
+import { ratingsI18n } from "@/i18n/ns/ratings";
+import { personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Tab = "leaderboard" | "curator" | "me";
 const TABS: readonly Tab[] = ["leaderboard", "curator", "me"];
@@ -25,6 +30,8 @@ export default function RatingsPage() {
   const { user, isCurator, isAdmin, dbUsers } = useAuth();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = ratingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
 
   const [tab, setTab] = useStoredState<Tab>("ratings.tab", isCurator ? "curator" : me ? "me" : "leaderboard", TABS);
@@ -39,24 +46,20 @@ export default function RatingsPage() {
 
   const ratingsQ = useQuery<Rating[]>({
     queryKey: ["ratings", "all"],
-    queryFn: () => fetchJson<Rating[]>(`${BASE}/api/ratings`),
-    staleTime: 0,
+    queryFn: ({ signal }) => http.get<Rating[]>("/api/ratings", { signal }),
+    // The full history (~850 rows / 400 KB for staff) feeds trends; mutations invalidate it, so no refetch per visit.
+    staleTime: STALE.short,
   });
   const ratings = ratingsQ.data ?? [];
 
   const deleteMut = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await fetch(`${BASE}/api/ratings/${id}`, { method: "DELETE" });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось удалить оценку");
-      return body;
-    },
+    mutationFn: (id: number) => http.del(`/api/ratings/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ratings"] });
       setDeleting(null);
-      toast({ title: "Оценка удалена" });
+      toast({ title: ratingsI18n.t("page.deleted") });
     },
-    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e, ratingsI18n.t("page.deleteFailed")), variant: "destructive" }),
   });
 
   const openRate = (trader?: string) => setDialog({ open: true, trader, editing: null });
@@ -65,10 +68,10 @@ export default function RatingsPage() {
   useEffect(() => {
     if (!isCurator) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "n" && e.key.toLowerCase() !== "т") return;
+      if (e.key.toLowerCase() !== "n" && e.key.toLowerCase() !== "т") return; // i18n-ignore (Russian-layout N)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       if (document.querySelector("[role='dialog'], [role='alertdialog']")) return;
       e.preventDefault();
       openRate();
@@ -78,16 +81,16 @@ export default function RatingsPage() {
   }, [isCurator]);
 
   const thisWeek = weekOf();
-  const pendingCount = isCurator ? ratingTraders.filter((t) => !ratings.some((r) => r.trader === t && r.week === thisWeek)).length : 0;
+  const pendingCount = isCurator ? ratingTraders.filter((name) => !ratings.some((r) => r.trader === name && r.week === thisWeek)).length : 0;
 
   const tabOptions = [
-    { value: "leaderboard" as const, label: <span className="inline-flex items-center gap-1.5"><BarChart3 className="hidden h-4 w-4 sm:block" aria-hidden="true" />Лидерборд</span> },
+    { value: "leaderboard" as const, label: <span className="inline-flex items-center gap-1.5"><BarChart3 className="hidden h-4 w-4 sm:block" aria-hidden="true" />{t("page.tabLeaderboard")}</span> },
     {
       value: "curator" as const,
-      label: <span className="inline-flex items-center gap-1.5"><Star className="hidden h-4 w-4 sm:block" aria-hidden="true" /><span className="sm:hidden">Оценки</span><span className="hidden sm:inline">Оценки кураторов</span></span>,
+      label: <span className="inline-flex items-center gap-1.5"><Star className="hidden h-4 w-4 sm:block" aria-hidden="true" /><span className="sm:hidden">{t("page.tabCuratorShort")}</span><span className="hidden sm:inline">{t("page.tabCurator")}</span></span>,
       count: isCurator && pendingCount > 0 && !ratingsQ.isLoading ? pendingCount : undefined,
     },
-    ...(me ? [{ value: "me" as const, label: <span className="inline-flex items-center gap-1.5"><UserRound className="hidden h-4 w-4 sm:block" aria-hidden="true" />Мой прогресс</span> }] : []),
+    ...(me ? [{ value: "me" as const, label: <span className="inline-flex items-center gap-1.5"><UserRound className="hidden h-4 w-4 sm:block" aria-hidden="true" />{t("page.tabMe")}</span> }] : []),
   ];
   const activeTab: Tab = tab === "me" && !me ? "leaderboard" : tab;
 
@@ -95,20 +98,20 @@ export default function RatingsPage() {
     <Page>
       <PageHeader
         icon={Trophy}
-        title="Рейтинг трейдеров"
-        description="Автоматический лидерборд по сделкам, еженедельные оценки кураторов и личный прогресс"
+        title={t("page.title")}
+        description={t("page.description")}
         actions={isCurator ? (
-          <Button onClick={() => openRate()} className="gap-1.5" title="Горячая клавиша N">
-            <Plus className="h-4 w-4" aria-hidden="true" /> Оценить трейдера
+          <Button onClick={() => openRate()} className="gap-1.5" title={t("page.hotkey")}>
+            <Plus className="h-4 w-4" aria-hidden="true" /> {t("dialog.titleNew")}
             <Kbd className="ml-1 hidden sm:inline-flex">N</Kbd>
           </Button>
         ) : undefined}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented ariaLabel="Раздел рейтинга" options={tabOptions} value={activeTab} onChange={setTab} />
+          <Segmented ariaLabel={t("page.tabsAria")} options={tabOptions} value={activeTab} onChange={setTab} />
           {isCurator && pendingCount > 0 && activeTab !== "curator" && (
             <button type="button" className="chip min-h-8 px-3 text-sm" onClick={() => setTab("curator")}>
-              Не оценено на неделе {weekLabel(thisWeek)}: {pendingCount}
+              {t("page.pending", { week: weekLabel(thisWeek), count: pendingCount })}
             </button>
           )}
         </div>
@@ -148,19 +151,19 @@ export default function RatingsPage() {
       <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить оценку?</AlertDialogTitle>
+            <AlertDialogTitle>{t("page.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleting?.trader} · неделя {deleting ? weekLabel(deleting.week) : ""}. Это нельзя отменить.
+              {deleting ? t("page.deleteDescription", { trader: personName(deleting.trader), week: weekLabel(deleting.week) }) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); if (deleting) deleteMut.mutate(deleting.id); }}
               disabled={deleteMut.isPending}
               className="bg-down text-primary-foreground hover:bg-down/90"
             >
-              {deleteMut.isPending ? "Удаляем…" : "Удалить"}
+              {deleteMut.isPending ? t("page.deleting") : tc("actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

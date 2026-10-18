@@ -13,18 +13,23 @@
  * Trading day = the NY date stored in trades.date; entry time / hold come from trade_executions, else the
  * PropReports snapshot (openedAt/closedAt in ET), else the hold_time text.
  */
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, isGuest } from "../lib/auth";
 import { num, normResult, signedR } from "../lib/tradeMath";
 import { nyMinutes } from "../lib/tradingDate";
+import { execSpanJoin } from "../lib/execSpan";
 import { logger } from "../lib/logger";
 import {
   type SimTrade, type Rule, type Side, type Horizon,
-  computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, PRESETS, RULE_TYPES, GRADES,
+  computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, presets, RULE_TYPES, GRADES,
 } from "../lib/whatIf";
+import { AppError, badRequest, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -97,15 +102,15 @@ export function parseHoldSeconds(raw: string | null | undefined): number | null 
   const hm = /^(\d{1,3}):(\d{2})(?::(\d{2}))?$/.exec(s);
   if (hm) return Number(hm[1]) * 3600 + Number(hm[2]) * 60 + Number(hm[3] ?? 0);
   let total = 0, matched = false;
-  const re = /(\d+(?:\.\d+)?)\s*(d|д|дн|h|ч|m|min|мин|м|s|sec|с|сек)\b/g;
+  const re = /(\d+(?:\.\d+)?)\s*(d|д|дн|h|ч|m|min|мин|м|s|sec|с|сек)\b/g; // i18n-ignore (parses RU / EN duration input)
   let m: RegExpExecArray | null;
   while ((m = re.exec(s))) {
     matched = true;
     const v = Number(m[1]);
     const u = m[2];
-    if (u.startsWith("d") || u.startsWith("д")) total += v * 86400;
-    else if (u.startsWith("h") || u.startsWith("ч")) total += v * 3600;
-    else if (u.startsWith("s") || u === "с" || u === "сек") total += v;
+    if (u.startsWith("d") || u.startsWith("д")) total += v * 86400; // i18n-ignore (input parsing)
+    else if (u.startsWith("h") || u.startsWith("ч")) total += v * 3600; // i18n-ignore (input parsing)
+    else if (u.startsWith("s") || u === "с" || u === "сек") total += v; // i18n-ignore (input parsing)
     else total += v * 60;
   }
   if (matched) return total;
@@ -178,22 +183,41 @@ export function rowToSim(r: Row, seq: number): SimTrade {
 }
 
 /** Closed trades with a money result for the scope/period, in simulation order. */
+/*
+ * The page fires /base, /suggestions, /fees (and /run) at once for the same scope: one SQL load serves them all.
+ * Short TTL — trades only change on a PropReports sync, and a 20 s old snapshot is fine for a what-if.
+ * The engine never mutates trade objects (it sorts copies), so callers share them; each gets its own array.
+ */
+const SIM_CACHE_TTL_MS = 20_000;
+const SIM_CACHE_MAX = 24;
+const simCache = new Map<string, { at: number; promise: Promise<SimTrade[]> }>();
+
 export async function loadSimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
+  const key = `${scope ?? "*"}|${from ?? ""}|${to ?? ""}`;
+  const now = Date.now();
+  const hit = simCache.get(key);
+  if (hit && now - hit.at < SIM_CACHE_TTL_MS) return (await hit.promise).slice();
+  const promise = querySimTrades(scope, from, to);
+  simCache.set(key, { at: now, promise });
+  promise.catch(() => simCache.delete(key));
+  if (simCache.size > SIM_CACHE_MAX) {
+    for (const [k, v] of simCache) if (now - v.at >= SIM_CACHE_TTL_MS || simCache.size > SIM_CACHE_MAX) simCache.delete(k);
+  }
+  return (await promise).slice();
+}
+
+async function querySimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
   const params: unknown[] = [];
   const cond: string[] = [`t.deleted_at IS NULL`, `t.pnl IS NOT NULL`, `LOWER(TRIM(t.result)) <> 'open'`];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   if (scope != null) cond.push(`t.trader = ${p(scope)}`);
   if (from) cond.push(`substring(t.date from 1 for 10) >= ${p(from)}`);
   if (to) cond.push(`substring(t.date from 1 for 10) <= ${p(to)}`);
-  const sql = `WITH exec AS (
-      SELECT trade_id,
-             MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-             MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-      FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
-    )
+  // One trader → per-trade index probe; desk-wide → one hash aggregate (lib/execSpan).
+  const sql = `
     SELECT t.id, t.ticker, t.date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
            t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit
-    FROM trades t LEFT JOIN exec e ON e.trade_id = t.id
+    FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
     WHERE ${cond.join(" AND ")}
     ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;
   const { rows } = await pool.query<Row>(sql, params);
@@ -215,23 +239,50 @@ function periodMeta(trades: SimTrade[], from?: string, to?: string) {
   };
 }
 
+/**
+ * What the page needs per trade for its live previews (rule builder, questions, fees) — the engine fields it never
+ * reads (exit, r, stop, tags, horizon, result) stay on the server. Team-wide «всё время» was 19 MB of JSON.
+ */
+function previewOf(t: SimTrade) {
+  return {
+    id: t.id, day: t.day, entryMin: t.entryMin == null ? null : Math.round(t.entryMin * 100) / 100, ticker: t.ticker, side: t.side,
+    qty: t.qty, entry: t.entry, gross: t.gross, fees: t.fees, holdSec: t.holdSec, seq: t.seq,
+    fills: t.fills ?? null, feeBreakdown: t.feeBreakdown ?? null, setup: t.setup, grade: t.grade ?? null,
+  };
+}
+
+const gzipAsync = promisify(gzip);
+
+/** Large JSON gzipped when the client accepts it (no compression middleware in the app); small bodies as is. */
+async function sendJsonGz(req: Request, res: Response, body: unknown): Promise<void> {
+  const json = JSON.stringify(body);
+  if (json.length < 64 * 1024 || !/gzip/.test(String(req.headers["accept-encoding"] ?? ""))) {
+    res.type("application/json").send(json);
+    return;
+  }
+  const buf = await gzipAsync(json, { level: 6 });
+  res.setHeader("Content-Encoding", "gzip");
+  res.setHeader("Vary", "Accept-Encoding");
+  res.type("application/json").send(buf);
+}
+
 /* ─── Routes ─────────────────────────────────────────────────────────────── */
 
 router.get("/whatif/base", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
   const daily = dailyResults(trades);
-  res.json({
+  await sendJsonGz(req, res, {
     scope, period: periodMeta(trades, q.from, q.to),
-    trades,
+    trades: trades.map(previewOf),
     baseline: computeMetrics(trades),
     equity: equityByDay(daily),
     daily,
-    presets: PRESETS,
+    presets: presets(langOf(req)),
     ruleTypes: RULE_TYPES,
     generatedAt: new Date().toISOString(),
   });
@@ -239,29 +290,29 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
 
 router.post("/whatif/run", asyncHandler(async (req, res) => {
   const parsed = runSchema.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
-  const result = runScenario(trades, q.rules, { iters: q.iters ?? 1000 });
+  const result = runScenario(trades, q.rules, { iters: q.iters ?? 1000, lang: langOf(req) });
   res.json({
     scope, period: periodMeta(trades, q.from, q.to),
     ...result,
-    ruleLabels: result.rules.map(describeRule),
+    ruleLabels: result.rules.map((r) => describeRule(r, langOf(req))),
     generatedAt: new Date().toISOString(),
   });
 }));
 
 router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
   const baseline = computeMetrics(trades);
-  const suggestions = findSuggestions(trades);
+  const suggestions = findSuggestions(trades, { lang: langOf(req) });
   res.json({
     scope, period: periodMeta(trades, q.from, q.to),
     baselineNet: baseline.net, trades: baseline.trades, days: baseline.days,
@@ -273,12 +324,12 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
 
 router.get("/whatif/fees", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
-  res.json({ scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades), generatedAt: new Date().toISOString() });
+  res.json({ scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades, langOf(req)), generatedAt: new Date().toISOString() });
 }));
 
 /* ─── Saved scenarios ────────────────────────────────────────────────────── */
@@ -308,30 +359,30 @@ function ensureTables(): Promise<void> {
 
 type ScenarioRow = { id: number; trader: string; name: string; rules: Rule[]; created_by: string | null; created_at: string; updated_at: string };
 
-function scenarioJson(r: ScenarioRow) {
-  return { id: r.id, trader: r.trader, name: r.name, rules: r.rules, labels: r.rules.map(describeRule), createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at };
+function scenarioJson(r: ScenarioRow, lang: Lang = "ru") {
+  return { id: r.id, trader: r.trader, name: r.name, rules: r.rules, labels: r.rules.map((x) => describeRule(x, lang)), createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at };
 }
 
 router.get("/whatif/scenarios", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры" }); return; }
+  if (!parsed.success) throw badRequest();
   const scope = await resolveScope(req, parsed.data.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (isGuest(req)) { res.json([]); return; }
   try { await ensureTables(); } catch (err) { logger.warn({ err }, "whatif: ensure tables failed"); res.json([]); return; }
   const params: unknown[] = [];
   let where = `archived_at IS NULL`;
   if (scope != null) { params.push(scope); where += ` AND trader = $1`; }
   const { rows } = await pool.query<ScenarioRow>(`SELECT id, trader, name, rules, created_by, created_at, updated_at FROM whatif_scenarios WHERE ${where} ORDER BY updated_at DESC LIMIT 100`, params);
-  res.json(rows.map(scenarioJson));
+  res.json(rows.map((r) => scenarioJson(r, langOf(req))));
 }));
 
 router.post("/whatif/scenarios", asyncHandler(async (req, res) => {
   const parsed = scenarioBodySchema.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
-  if (!req.authUser || isGuest(req)) { res.status(403).json({ error: "Только для участников" }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
+  if (!req.authUser || isGuest(req)) throw new AppError("MEMBERS_ONLY");
   const scope = await resolveScope(req, parsed.data.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   // Staff without an explicit trader save under their own name.
   const trader = scope ?? req.authUser.name;
   await ensureTables();
@@ -340,19 +391,19 @@ router.post("/whatif/scenarios", asyncHandler(async (req, res) => {
      RETURNING id, trader, name, rules, created_by, created_at, updated_at`,
     [trader, parsed.data.name, JSON.stringify(parsed.data.rules), req.authUser.name],
   );
-  res.status(201).json(scenarioJson(rows[0]));
+  res.status(201).json(scenarioJson(rows[0], langOf(req)));
 }));
 
 router.delete("/whatif/scenarios/:id", asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Неверный id" }); return; }
-  if (!req.authUser || isGuest(req)) { res.status(403).json({ error: "Только для участников" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
+  if (!req.authUser || isGuest(req)) throw new AppError("MEMBERS_ONLY");
   await ensureTables();
   const { rows } = await pool.query<{ trader: string }>(`SELECT trader FROM whatif_scenarios WHERE id = $1 AND archived_at IS NULL`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Сценарий не найден" }); return; }
+  if (!rows[0]) throw new AppError("SCENARIO_NOT_FOUND");
   const scope = await resolveScope(req, rows[0].trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (scope != null && scope !== rows[0].trader) { res.status(403).json({ error: "Чужой сценарий" }); return; }
+  if (scope === undefined) throw unauthorized();
+  if (scope != null && scope !== rows[0].trader) throw new AppError("FORBIDDEN");
   await pool.query(`UPDATE whatif_scenarios SET archived_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
   res.json({ ok: true, id });
 }));

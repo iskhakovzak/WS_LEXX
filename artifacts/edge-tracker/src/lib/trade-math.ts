@@ -2,6 +2,7 @@
 // must use these (server mirror: api-server/src/lib/tradeMath.ts) so the same book never shows
 // different numbers on different screens.
 import { normalizeResult, type TradeResult } from "@/lib/trade-result";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Loose trade shape: works with api-client types and raw JSON (numbers may arrive as strings). */
 export interface TradeLike {
@@ -208,11 +209,11 @@ export function computeKpis(trades: TradeLike[]): Kpis {
   };
 }
 
-/** Formula hints for KPI tooltips (Russian). */
+/** Formula hints for KPI tooltips, in the UI language (getters: read at render, never frozen at import). */
 export const KPI_FORMULAS = {
-  winRate: "Win rate = прибыльные / (прибыльные + убыточные); безубыточные не учитываются",
-  expectancyR: "Ожидание = средний R по закрытым сделкам",
-  profitFactorR: "Profit factor = сумма R прибыльных / |сумма R убыточных|",
-  netPnl: "P&L нетто = брутто − комиссии",
-  maxDrawdown: "Просадка = максимальное падение накопленного результата от пика",
-} as const;
+  get winRate() { return commonI18n.t("kpiFormulas.winRate"); },
+  get expectancyR() { return commonI18n.t("kpiFormulas.expectancyR"); },
+  get profitFactorR() { return commonI18n.t("kpiFormulas.profitFactorR"); },
+  get netPnl() { return commonI18n.t("kpiFormulas.netPnl"); },
+  get maxDrawdown() { return commonI18n.t("kpiFormulas.maxDrawdown"); },
+};

@@ -14,19 +14,24 @@ import { useToast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { api, invalidateAcademy, useMyTrades, type AssignmentResponse, type RubricCriterion, type Submission, type TradeRef } from "./api";
-import { fmtMoney, fmtR, SubmissionPill, toneOfNum } from "./bits";
+import { SubmissionPill, toneOfNum } from "./bits";
 import { Markdown } from "./markdown";
 import { DualTime } from "./time";
+import { fmtR, fmtUsd } from "@/lib/format";
+import { academyI18n } from "@/i18n/ns/academy";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export function RubricTable({ rubric, scores }: { rubric: RubricCriterion[]; scores?: Record<string, number> | null }) {
+  const { t } = academyI18n.useT();
   const max = rubric.reduce((s, c) => s + c.maxPoints, 0);
   return (
     <table className="w-full text-sm tabular-nums">
-      <caption className="sr-only">Рубрика оценки</caption>
+      <caption className="sr-only">{t("assignment.rubricCaption")}</caption>
       <thead>
         <tr className="text-left text-xs text-muted-foreground">
-          <th scope="col" className="py-1.5 font-medium">Критерий</th>
-          <th scope="col" className="py-1.5 text-right font-medium">{scores ? "Оценка" : "Баллы"}</th>
+          <th scope="col" className="py-1.5 font-medium">{t("assignment.criterion")}</th>
+          <th scope="col" className="py-1.5 text-right font-medium">{scores ? t("assignment.score") : t("assignment.points")}</th>
         </tr>
       </thead>
       <tbody>
@@ -40,7 +45,7 @@ export function RubricTable({ rubric, scores }: { rubric: RubricCriterion[]; sco
           </tr>
         ))}
         <tr className="border-t border-[var(--glass-border)] font-medium">
-          <td className="py-2">Итого</td>
+          <td className="py-2">{commonI18n.t("fields.total")}</td>
           <td className="py-2 text-right">{scores ? `${rubric.reduce((s, c) => s + (scores[c.key] ?? 0), 0)} / ${max}` : max}</td>
         </tr>
       </tbody>
@@ -49,19 +54,20 @@ export function RubricTable({ rubric, scores }: { rubric: RubricCriterion[]; sco
 }
 
 export function TradeChips({ trades }: { trades: TradeRef[] }) {
+  const { t } = academyI18n.useT();
   if (!trades.length) return null;
   return (
-    <ul className="flex flex-wrap gap-1.5" aria-label="Привязанные сделки">
-      {trades.map((t) => (
-        <li key={t.id}>
-          {t.missing ? (
-            <Pill tone="neutral" title="Сделка удалена или недоступна">#{t.id}</Pill>
+    <ul className="flex flex-wrap gap-1.5" aria-label={t("assignment.linkedTrades")}>
+      {trades.map((tr) => (
+        <li key={tr.id}>
+          {tr.missing ? (
+            <Pill tone="neutral" title={t("assignment.tradeMissing")}>#{tr.id}</Pill>
           ) : (
-            <a href={links.trade(t.id)} className="chip inline-flex min-h-7 items-center gap-1.5 px-2.5 text-xs tabular-nums" title={t.setup ?? undefined}>
-              <b className="font-semibold">{t.ticker}</b>
-              <span className="text-muted-foreground">{t.date}</span>
-              <span className={cn(toneOfNum(t.net) === "up" ? "text-up" : toneOfNum(t.net) === "down" ? "text-down" : "text-muted-foreground")}>{fmtMoney(t.net)}</span>
-              {t.r != null && <span className="text-muted-foreground">{fmtR(t.r)}</span>}
+            <a href={links.trade(tr.id)} className="chip inline-flex min-h-7 items-center gap-1.5 px-2.5 text-xs tabular-nums" title={tr.setup ?? undefined}>
+              <b className="font-semibold">{tr.ticker}</b>
+              <span className="text-muted-foreground">{tr.date}</span>
+              <span className={cn(toneOfNum(tr.net) === "up" ? "text-up" : toneOfNum(tr.net) === "down" ? "text-down" : "text-muted-foreground")}>{fmtUsd(tr.net, { signed: true })}</span>
+              {tr.r != null && <span className="text-muted-foreground">{fmtR(tr.r)}</span>}
             </a>
           )}
         </li>
@@ -71,11 +77,12 @@ export function TradeChips({ trades }: { trades: TradeRef[] }) {
 }
 
 function TradePicker({ selected, onChange, user }: { selected: number[]; onChange: (ids: number[]) => void; user?: string }) {
+  const { t } = academyI18n.useT();
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(q.trim()), 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebounced(q.trim()), 250);
+    return () => clearTimeout(timer);
   }, [q]);
   const trades = useMyTrades(debounced, user);
   const list = trades.data?.trades ?? [];
@@ -84,24 +91,24 @@ function TradePicker({ selected, onChange, user }: { selected: number[]; onChang
     <div className="flex flex-col gap-2">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Тикер, сетап или дата (2026-10)" className="pl-9" aria-label="Поиск по своим сделкам" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("assignment.tradeSearchPh")} className="pl-9" aria-label={t("assignment.tradeSearchAria")} />
       </div>
-      <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-[var(--glass-border)]" role="group" aria-label="Мои сделки">
+      <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-[var(--glass-border)]" role="group" aria-label={t("assignment.myTrades")}>
         {trades.isLoading ? (
-          <p className="p-3 text-sm text-muted-foreground">Загрузка…</p>
+          <p className="p-3 text-sm text-muted-foreground">{commonI18n.t("states.loading")}</p>
         ) : !list.length ? (
-          <p className="p-3 text-sm text-muted-foreground">Сделок не найдено.</p>
+          <p className="p-3 text-sm text-muted-foreground">{t("assignment.noTrades")}</p>
         ) : (
           <ul className="divide-y divide-border/50">
-            {list.map((t) => (
-              <li key={t.id}>
+            {list.map((tr) => (
+              <li key={tr.id}>
                 <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-[var(--glass-bg)]">
-                  <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggle(t.id)} className="accent-[hsl(var(--primary))]" />
-                  <span className="w-24 shrink-0 tabular-nums text-muted-foreground">{t.date}</span>
-                  <b className="w-16 shrink-0">{t.ticker}</b>
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.setup || "без сетапа"}</span>
-                  <span className={cn("tabular-nums", toneOfNum(t.net) === "up" ? "text-up" : toneOfNum(t.net) === "down" ? "text-down" : "")}>{fmtMoney(t.net)}</span>
-                  <span className="w-16 text-right tabular-nums text-muted-foreground">{fmtR(t.r)}</span>
+                  <input type="checkbox" checked={selected.includes(tr.id)} onChange={() => toggle(tr.id)} className="accent-[hsl(var(--primary))]" />
+                  <span className="w-24 shrink-0 tabular-nums text-muted-foreground">{tr.date}</span>
+                  <b className="w-16 shrink-0">{tr.ticker}</b>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground" title={tr.setup || undefined}>{tr.setup || commonI18n.t("trading.noSetup")}</span>
+                  <span className={cn("tabular-nums", toneOfNum(tr.net) === "up" ? "text-up" : toneOfNum(tr.net) === "down" ? "text-down" : "")}>{fmtUsd(tr.net, { signed: true })}</span>
+                  <span className="w-16 text-right tabular-nums text-muted-foreground">{fmtR(tr.r)}</span>
                 </label>
               </li>
             ))}
@@ -110,10 +117,10 @@ function TradePicker({ selected, onChange, user }: { selected: number[]; onChang
       </div>
       {selected.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Выбрано: {selected.length}</span>
+          <span className="text-xs text-muted-foreground">{commonI18n.t("states.selected", { count: selected.length })}</span>
           {selected.map((id) => (
-            <button key={id} type="button" onClick={() => toggle(id)} className="chip inline-flex min-h-7 items-center gap-1 px-2 text-xs tabular-nums" aria-label={`Убрать сделку ${id}`}>
-              #{list.find((t) => t.id === id)?.ticker ?? id} <X className="h-3 w-3" aria-hidden="true" />
+            <button key={id} type="button" onClick={() => toggle(id)} className="chip inline-flex min-h-7 items-center gap-1 px-2 text-xs tabular-nums" aria-label={t("assignment.removeTrade", { id })}>
+              #{list.find((tr) => tr.id === id)?.ticker ?? id} <X className="h-3 w-3" aria-hidden="true" />
             </button>
           ))}
         </div>
@@ -129,6 +136,7 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
   const [url, setUrl] = useState(editing?.url ?? "");
   const [tradeIds, setTradeIds] = useState<number[]>(editing?.tradeIds ?? []);
   const [busy, setBusy] = useState(false);
+  const { t } = academyI18n.useT();
   const short = minTrades > 0 && tradeIds.length < minTrades;
 
   const submit = async (e: React.FormEvent) => {
@@ -139,12 +147,12 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
       if (editing) await api.editSubmission(editing.id, body);
       else {
         const r = await api.submit(assignmentId, body);
-        toast({ title: "Задание отправлено", description: r.notified ? `Наставник получил уведомление (${r.notified})` : "Задание попало в очередь проверки" });
+        toast({ title: t("assignment.submitted"), description: r.notified ? t("assignment.mentorNotified", { count: r.notified }) : t("assignment.queued") });
       }
       void invalidateAcademy(qc);
       onDone();
     } catch (err) {
-      toast({ title: "Не удалось отправить", description: (err as Error).message, variant: "destructive" });
+      toast({ title: t("quiz.sendFailed"), description: (err as Error).message, variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -153,23 +161,23 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="sub-text">Ответ</Label>
-        <Textarea id="sub-text" value={text} onChange={(e) => setText(e.target.value)} rows={10} placeholder="Разбор, план, выводы. Поддерживается markdown: **жирный**, списки, таблицы." />
+        <Label htmlFor="sub-text">{t("assignment.answer")}</Label>
+        <Textarea id="sub-text" value={text} onChange={(e) => setText(e.target.value)} rows={10} placeholder={t("assignment.answerPh")} />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="sub-url">Ссылка (документ, скриншот, разметка графика)</Label>
+        <Label htmlFor="sub-url">{t("assignment.link")}</Label>
         <Input id="sub-url" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label>Сделки {minTrades > 0 && <span className="text-muted-foreground">(минимум {minTrades})</span>}</Label>
+        <Label>{commonI18n.t("trading.trades")} {minTrades > 0 && <span className="text-muted-foreground">{t("assignment.minHint", { count: minTrades })}</span>}</Label>
         <TradePicker selected={tradeIds} onChange={setTradeIds} />
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {short && <span className="text-xs text-[hsl(var(--chart-3))]">Привяжите ещё {minTrades - tradeIds.length}</span>}
-        {editing && <Button type="button" variant="ghost" onClick={onDone}>Отмена</Button>}
+        {short && <span className="text-xs text-[hsl(var(--chart-3))]">{t("assignment.attachMore", { count: minTrades - tradeIds.length })}</span>}
+        {editing && <Button type="button" variant="ghost" onClick={onDone}>{commonI18n.t("actions.cancel")}</Button>}
         <Button type="submit" disabled={busy || short || (!text.trim() && !url.trim() && !tradeIds.length)}>
           {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
-          {editing ? "Сохранить" : "Отправить на проверку"}
+          {editing ? commonI18n.t("actions.save") : t("assignment.sendForReview")}
         </Button>
       </div>
     </form>
@@ -177,13 +185,14 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
 }
 
 export function SubmissionCard({ s, rubric, showUser, actions }: { s: Submission; rubric: RubricCriterion[]; showUser?: boolean; actions?: React.ReactNode }) {
+  const { t } = academyI18n.useT();
   return (
-    <article className="glass-panel flex flex-col gap-3 rounded-2xl p-4" aria-label={`Сдача от ${s.userName}`}>
+    <article className="glass-panel flex flex-col gap-3 rounded-2xl p-4" aria-label={t("assignment.submissionFrom", { name: personName(s.userName) })}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          {showUser && <b className="text-foreground">{s.userName}</b>}
+          {showUser && <b className="text-foreground">{personName(s.userName)}</b>}
           <SubmissionPill status={s.status} passed={s.passed} />
-          <span className="text-xs text-muted-foreground">отправлено <DualTime iso={s.createdAt} /></span>
+          <span className="text-xs text-muted-foreground">{t("assignment.sent")} <DualTime iso={s.createdAt} /></span>
         </div>
         {actions}
       </header>
@@ -197,7 +206,7 @@ export function SubmissionCard({ s, rubric, showUser, actions }: { s: Submission
       {(s.status === "graded" || s.status === "returned") && (
         <div className="rounded-xl bg-[var(--glass-bg)] p-3">
           <p className="mb-2 text-xs text-muted-foreground">
-            {s.gradedBy ?? "Наставник"} · <DualTime iso={s.gradedAt} />
+            {s.gradedBy ? personName(s.gradedBy) : commonI18n.t("roles.mentor")} · <DualTime iso={s.gradedAt} />
             {s.status === "graded" && s.pct != null && <> · <b className="tabular-nums text-foreground">{s.total} / {s.maxTotal} ({Math.round(s.pct)}%)</b></>}
           </p>
           {s.status === "graded" && s.scores && rubric.length > 0 && <RubricTable rubric={rubric} scores={s.scores} />}
@@ -216,6 +225,7 @@ export function GradeForm({ submission, rubric, passPct, onDone }: { submission:
     Object.fromEntries(rubric.map((c) => [c.key, submission.scores?.[c.key] != null ? String(submission.scores[c.key]) : ""])));
   const [comment, setComment] = useState(submission.mentorComment ?? "");
   const [busy, setBusy] = useState<"graded" | "returned" | null>(null);
+  const { t } = academyI18n.useT();
   const nums = rubric.map((c) => Math.max(0, Math.min(c.maxPoints, Number((scores[c.key] ?? "").replace(",", ".")) || 0)));
   const total = nums.reduce((s, v) => s + v, 0);
   const max = rubric.reduce((s, c) => s + c.maxPoints, 0);
@@ -230,11 +240,11 @@ export function GradeForm({ submission, rubric, passPct, onDone }: { submission:
         scores: decision === "graded" ? Object.fromEntries(rubric.map((c, i) => [c.key, nums[i]])) : undefined,
         comment,
       });
-      toast({ title: decision === "graded" ? "Оценка сохранена" : "Возвращено на доработку", description: `${submission.userName} получит уведомление` });
+      toast({ title: decision === "graded" ? t("assignment.gradeSaved") : t("assignment.returned"), description: t("assignment.willBeNotified", { name: personName(submission.userName) }) });
       void invalidateAcademy(qc);
       onDone?.();
     } catch (e) {
-      toast({ title: "Ошибка", description: (e as Error).message, variant: "destructive" });
+      toast({ title: commonI18n.t("states.error"), description: (e as Error).message, variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -242,7 +252,7 @@ export function GradeForm({ submission, rubric, passPct, onDone }: { submission:
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-[var(--glass-border)] p-3">
-      <p className="text-xs font-medium text-muted-foreground">Оценка по рубрике</p>
+      <p className="text-xs font-medium text-muted-foreground">{t("assignment.rubricGrade")}</p>
       <div className="flex flex-col gap-2">
         {rubric.map((c) => (
           <div key={c.key} className="flex items-center gap-3">
@@ -262,18 +272,18 @@ export function GradeForm({ submission, rubric, passPct, onDone }: { submission:
         ))}
       </div>
       <p className="text-sm tabular-nums">
-        Итого: <b>{total} / {max}</b> ({Math.round(pct)}%) — {pct >= passPct ? <span className="text-up">зачёт</span> : <span className="text-down">незачёт</span>} (порог {passPct}%)
+        <b>{t("assignment.totalOf", { total, max, pct: Math.round(pct) })}</b> — {pct >= passPct ? <span className="text-up">{t("assignment.pass")}</span> : <span className="text-down">{t("assignment.fail")}</span>} {t("assignment.threshold", { pct: passPct })}
       </p>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`gc-${submission.id}`}>Комментарий наставника</Label>
-        <Textarea id={`gc-${submission.id}`} rows={4} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Что хорошо, что исправить, конкретное действие на следующую неделю" />
+        <Label htmlFor={`gc-${submission.id}`}>{t("assignment.mentorComment")}</Label>
+        <Textarea id={`gc-${submission.id}`} rows={4} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t("assignment.commentPh")} />
       </div>
       <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="outline" onClick={() => send("returned")} disabled={!!busy || !comment.trim()} title={!comment.trim() ? "Нужен комментарий" : undefined}>
-          {busy === "returned" ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Undo2 aria-hidden="true" />}На доработку
+        <Button variant="outline" onClick={() => send("returned")} disabled={!!busy || !comment.trim()} title={!comment.trim() ? t("assignment.needComment") : undefined}>
+          {busy === "returned" ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Undo2 aria-hidden="true" />}{t("assignment.toRevision")}
         </Button>
-        <Button onClick={() => send("graded")} disabled={!!busy || !complete} title={!complete ? "Оцените все критерии" : undefined}>
-          {busy === "graded" ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}Сохранить оценку
+        <Button onClick={() => send("graded")} disabled={!!busy || !complete} title={!complete ? t("assignment.gradeAll") : undefined}>
+          {busy === "graded" ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}{t("assignment.saveGrade")}
         </Button>
       </div>
     </div>
@@ -287,6 +297,7 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
   const [editing, setEditing] = useState<Submission | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [gradingId, setGradingId] = useState<number | null>(focusSubmission ?? null);
+  const { t } = academyI18n.useT();
   const latest = submissions[0];
   const mine = !data.all;
   const canNew = canSubmit && mine && (!latest || latest.status !== "submitted");
@@ -299,40 +310,40 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
   }, [focusSubmission, submissions.length]);
 
   const withdraw = async (s: Submission) => {
-    if (!window.confirm("Отозвать сдачу? Она исчезнет из очереди проверки.")) return;
+    if (!window.confirm(t("assignment.withdrawConfirm"))) return;
     try {
       await api.withdrawSubmission(s.id);
       void invalidateAcademy(qc);
     } catch (e) {
-      toast({ title: "Ошибка", description: (e as Error).message, variant: "destructive" });
+      toast({ title: commonI18n.t("states.error"), description: (e as Error).message, variant: "destructive" });
     }
   };
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <Panel title="Задание">
+        <Panel title={t("kind.assignment")}>
           <Markdown source={assignment.bodyMd} />
         </Panel>
 
         {showForm && !editing && (
-          <Panel title={latest ? "Новая сдача" : "Сдать задание"} description={latest?.status === "returned" ? "Учтите комментарий наставника" : undefined}>
+          <Panel title={latest ? t("assignment.newSubmission") : t("assignment.submitAssignment")} description={latest?.status === "returned" ? t("assignment.considerComment") : undefined}>
             <SubmissionForm assignmentId={assignment.id} minTrades={assignment.minTrades} onDone={() => setNewOpen(false)} />
           </Panel>
         )}
         {editing && (
-          <Panel title="Редактирование сдачи">
+          <Panel title={t("assignment.editing")}>
             <SubmissionForm assignmentId={assignment.id} minTrades={assignment.minTrades} editing={editing} onDone={() => setEditing(null)} />
           </Panel>
         )}
 
-        <section className="flex flex-col gap-3" aria-label="Сдачи">
+        <section className="flex flex-col gap-3" aria-label={t("assignment.submissionsAria")}>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-foreground">{data.all ? `Сдачи учеников (${submissions.length})` : "Мои сдачи"}</h2>
-            {canNew && latest && !newOpen && <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>Сдать заново</Button>}
+            <h2 className="text-sm font-semibold text-foreground">{data.all ? t("assignment.studentSubmissions", { count: submissions.length }) : t("assignment.mySubmissions")}</h2>
+            {canNew && latest && !newOpen && <Button size="sm" variant="outline" onClick={() => setNewOpen(true)}>{t("assignment.resubmit")}</Button>}
           </div>
           {!sorted.length ? (
-            <EmptyState title="Сдач пока нет" description={mine ? "Заполните форму выше — наставник получит уведомление." : undefined} />
+            <EmptyState title={t("assignment.noSubmissions")} description={mine ? t("assignment.noSubmissionsHint") : undefined} />
           ) : (
             sorted.map((s) => (
               <div key={s.id} id={`submission-${s.id}`} className={cn("flex flex-col gap-2 rounded-2xl", focusSubmission === s.id && "ring-1 ring-primary/50")}>
@@ -344,13 +355,13 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
                     <div className="flex gap-1.5">
                       {mine && canSubmit && s.status === "submitted" && (
                         <>
-                          <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>Изменить</Button>
-                          <Button size="sm" variant="ghost" onClick={() => withdraw(s)}>Отозвать</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>{commonI18n.t("actions.edit")}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => withdraw(s)}>{t("assignment.withdraw")}</Button>
                         </>
                       )}
                       {staff && (
                         <Button size="sm" variant={gradingId === s.id ? "secondary" : "outline"} onClick={() => setGradingId(gradingId === s.id ? null : s.id)} aria-expanded={gradingId === s.id}>
-                          {s.status === "submitted" ? "Проверить" : "Изменить оценку"}
+                          {s.status === "submitted" ? t("review.grade") : t("review.regrade")}
                         </Button>
                       )}
                     </div>
@@ -366,7 +377,7 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
       </div>
 
       <aside className="flex flex-col gap-4">
-        <Panel title="Как оценивается" description={`Зачёт от ${assignment.passPct}%${assignment.minTrades ? ` · минимум ${assignment.minTrades} сделки` : ""}`}>
+        <Panel title={t("assignment.howGraded")} description={[t("assignment.passFrom", { pct: assignment.passPct }), assignment.minTrades ? t("assignment.minTrades", { count: assignment.minTrades }) : null].filter(Boolean).join(" · ")}>
           <RubricTable rubric={assignment.rubric} />
         </Panel>
       </aside>

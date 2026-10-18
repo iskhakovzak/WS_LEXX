@@ -12,10 +12,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
-import { Callout, InlineError, fmtDate, readApiError } from "./shared";
+import { ApiError, http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { Callout, InlineError } from "./shared";
+import { fmtDate } from "@/lib/format";
 import { useTeam } from "./team-api";
 import { PROFILE_QUERY_KEY } from "./ProfileSection";
+import { settingsI18n } from "@/i18n/ns/settings";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 type TgStatus = { connected: boolean; linked_at: string | null };
 type LinkData = { token: string; deep_link: string; bot_username: string; expires_in?: number };
@@ -23,6 +28,8 @@ type LinkData = { token: string; deep_link: string; bot_username: string; expire
 const LINK_TTL_S = 600;
 
 function TelegramConnect() {
+  const { t } = settingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -38,9 +45,7 @@ function TelegramConnect() {
   const loadStatus = useCallback(async (): Promise<TgStatus | null> => {
     if (!user?.traderName) return null;
     try {
-      const r = await fetch(`${BASE}/api/telegram/status?trader=${encodeURIComponent(user.traderName)}`);
-      if (!r.ok) throw new Error(String(r.status));
-      const d = (await r.json()) as TgStatus;
+      const d = await http.get<TgStatus>("/api/telegram/status", { query: { trader: user.traderName } });
       setStatus(d);
       setStatusError(false);
       return d;
@@ -66,7 +71,7 @@ function TelegramConnect() {
       if (d?.connected) {
         setLinkData(null);
         qc.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
-        toast({ title: "Telegram подключён", description: "Бот будет присылать уведомления." });
+        toast({ title: settingsI18n.t("telegram.connected"), description: settingsI18n.t("telegram.connectedDesc") });
       }
     }, 5000);
     return () => { clearInterval(tick); clearInterval(poll); };
@@ -75,13 +80,11 @@ function TelegramConnect() {
   async function handleConnect() {
     setLoading(true);
     try {
-      const r = await fetch(`${BASE}/api/telegram/link-token`, { method: "POST", headers: { "Content-Type": "application/json" } });
-      if (!r.ok) throw new Error(await readApiError(r, "Не удалось получить код"));
-      setLinkData((await r.json()) as LinkData);
+      setLinkData(await http.post<LinkData>("/api/telegram/link-token"));
       setIssuedAt(Date.now());
       setNow(Date.now());
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: tc("states.error"), description: humanizeApiError(e, t("telegram.codeFailed")), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -90,14 +93,19 @@ function TelegramConnect() {
   async function handleDisconnect() {
     setDisconnecting(true);
     try {
-      const r = await fetch(`${BASE}/api/telegram/disconnect`, { method: "DELETE" });
-      if (!r.ok) { toast({ title: "Не удалось отвязать Telegram", description: await readApiError(r), variant: "destructive" }); return; }
+      try {
+        await http.del("/api/telegram/disconnect");
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        toast({ title: t("telegram.unlinkFailed"), description: humanizeApiError(e), variant: "destructive" });
+        return;
+      }
       setStatus({ connected: false, linked_at: null });
       setLinkData(null);
       qc.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
-      toast({ title: "Telegram отвязан" });
+      toast({ title: t("telegram.unlinked") });
     } catch {
-      toast({ title: "Сетевая ошибка", variant: "destructive" });
+      toast({ title: tc("states.networkError"), variant: "destructive" });
     } finally {
       setDisconnecting(false);
       setConfirmDisconnect(false);
@@ -105,8 +113,8 @@ function TelegramConnect() {
   }
 
   async function copy(text: string) {
-    try { await navigator.clipboard.writeText(text); toast({ title: "Скопировано" }); }
-    catch { toast({ title: "Не удалось скопировать", variant: "destructive" }); }
+    try { await navigator.clipboard.writeText(text); toast({ title: tc("states.copied") }); }
+    catch { toast({ title: tc("states.copyFailed"), variant: "destructive" }); }
   }
 
   const header = (
@@ -114,42 +122,42 @@ function TelegramConnect() {
       <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/15 text-primary"><Send className="h-5 w-5" aria-hidden="true" /></span>
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-base font-semibold text-foreground">Telegram-бот</span>
-          {status && <Pill tone={status.connected ? "up" : "neutral"} dot>{status.connected ? "Подключён" : "Не подключён"}</Pill>}
+          <span className="text-base font-semibold text-foreground">{t("telegram.bot")}</span>
+          {status && <Pill tone={status.connected ? "up" : "neutral"} dot>{status.connected ? t("telegram.statusOn") : t("telegram.statusOff")}</Pill>}
         </div>
-        <p className="text-xs text-muted-foreground">Уведомления об идеях и ревью, ответы прямо из мессенджера</p>
+        <p className="text-xs text-muted-foreground">{t("telegram.botDesc")}</p>
       </div>
     </div>
   );
 
   if (!user?.traderName || user.role === "guest") {
-    return <Panel>{header}<Callout className="mt-4">Войдите в аккаунт, чтобы подключить Telegram.</Callout></Panel>;
+    return <Panel>{header}<Callout className="mt-4">{t("telegram.guest")}</Callout></Panel>;
   }
 
   return (
     <Panel>
       <div className="flex flex-col gap-4">
         {header}
-        {!status && statusError && <InlineError message="Не удалось загрузить статус Telegram" onRetry={() => loadStatus()} />}
+        {!status && statusError && <InlineError message={t("telegram.statusFailed")} onRetry={() => loadStatus()} />}
         {!status && !statusError && <Skeleton className="h-16 rounded-xl" />}
 
         {status?.connected && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-up/10 px-3 py-3">
             <span className="flex items-center gap-2 text-sm text-foreground">
               <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" />
-              Привязан{status.linked_at ? ` с ${fmtDate(status.linked_at)}` : ""}. Пауза уведомлений — в разделе «Уведомления».
+              {status.linked_at ? t("telegram.linkedSince", { date: fmtDate(status.linked_at) }) : t("telegram.linked")}
             </span>
             <Button size="sm" variant="ghost" onClick={() => setConfirmDisconnect(true)} disabled={disconnecting} className="gap-1.5 text-down">
-              <Unlink className="h-3.5 w-3.5" aria-hidden="true" /> Отвязать
+              <Unlink className="h-3.5 w-3.5" aria-hidden="true" /> {t("telegram.unlink")}
             </Button>
           </div>
         )}
 
         {status && !status.connected && !linkData && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-3">
-            <span className="text-sm text-muted-foreground">Займёт 30 секунд: получите код, откройте бота и нажмите Start.</span>
+            <span className="text-sm text-muted-foreground">{t("telegram.howTo")}</span>
             <Button size="sm" onClick={handleConnect} disabled={loading} className="gap-1.5">
-              <Link2 className="h-3.5 w-3.5" aria-hidden="true" /> {loading ? "Получаем код…" : "Подключить"}
+              <Link2 className="h-3.5 w-3.5" aria-hidden="true" /> {loading ? t("telegram.gettingCode") : t("telegram.connect")}
             </Button>
           </div>
         )}
@@ -159,7 +167,7 @@ function TelegramConnect() {
             <li className="flex items-start gap-3">
               <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary-solid text-xs font-semibold text-primary-foreground">1</span>
               <div className="min-w-0 flex-1">
-                <div className="text-sm text-foreground">Откройте бота</div>
+                <div className="text-sm text-foreground">{t("telegram.openBot")}</div>
                 <Button asChild size="sm" variant="outline" className="mt-1.5 gap-1.5">
                   <a href={linkData.deep_link} target="_blank" rel="noopener noreferrer">@{linkData.bot_username} <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /></a>
                 </Button>
@@ -168,10 +176,10 @@ function TelegramConnect() {
             <li className="flex items-start gap-3">
               <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary-solid text-xs font-semibold text-primary-foreground">2</span>
               <div className="min-w-0 flex-1">
-                <div className="text-sm text-foreground">Нажмите «Start» или отправьте команду</div>
+                <div className="text-sm text-foreground">{t("telegram.pressStart")}</div>
                 <div className="mt-1.5 flex items-center gap-2">
                   <code className="select-all rounded-full bg-[var(--glass-thick-bg)] px-3 py-1.5 text-sm font-semibold tracking-wider text-primary">/start {linkData.token}</code>
-                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Скопировать команду" onClick={() => copy(`/start ${linkData.token}`)}><Copy aria-hidden="true" /></Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("telegram.copyCommand")} onClick={() => copy(`/start ${linkData.token}`)}><Copy aria-hidden="true" /></Button>
                 </div>
               </div>
             </li>
@@ -179,18 +187,18 @@ function TelegramConnect() {
               <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--glass-thick-bg)] text-xs font-semibold text-muted-foreground">3</span>
               <div className="min-w-0 flex-1 text-sm" aria-live="polite">
                 {expired ? (
-                  <span className="text-down">Код истёк.</span>
+                  <span className="text-down">{t("telegram.expired")}</span>
                 ) : (
                   <span className="flex items-center gap-2 text-muted-foreground">
                     <RefreshCw className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                    Ждём подтверждения от бота… код действует ещё {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
+                    {t("telegram.waiting", { time: `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}` })}
                   </span>
                 )}
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={handleConnect} disabled={loading} className="gap-1.5">
-                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Новый код
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> {t("telegram.newCode")}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setLinkData(null)}>Отмена</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setLinkData(null)}>{tc("actions.cancel")}</Button>
                 </div>
               </div>
             </li>
@@ -201,13 +209,13 @@ function TelegramConnect() {
       <AlertDialog open={confirmDisconnect} onOpenChange={(v) => { if (!disconnecting) setConfirmDisconnect(v); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Отвязать Telegram?</AlertDialogTitle>
-            <AlertDialogDescription>Уведомления перестанут приходить. Чтобы подключить снова, понадобится новый код.</AlertDialogDescription>
+            <AlertDialogTitle>{t("telegram.unlinkTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("telegram.unlinkDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction disabled={disconnecting} onClick={(e) => { e.preventDefault(); handleDisconnect(); }} className="bg-destructive text-destructive-foreground hover:brightness-110">
-              {disconnecting ? "…" : "Отвязать"}
+              {disconnecting ? "…" : t("telegram.unlink")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -216,13 +224,12 @@ function TelegramConnect() {
   );
 }
 
-const BROADCAST_TEMPLATES: { label: string; text: string }[] = [
-  { label: "Премаркет", text: "<b>Премаркет</b>\nЗаполните game plan до открытия: in-play тикеры, катализаторы, уровни." },
-  { label: "Ред-дэй стоп", text: "<b>Риск</b>\nНапоминание: при достижении дневного лимита убытка — стоп торговли на сегодня." },
-  { label: "Разбор дня", text: "<b>Итоги дня</b>\nЗакройте журнал до конца дня: результаты, ошибки, скриншоты сетапов." },
-];
+/** Message templates (the message goes out in the language the admin picked them in). */
+const BROADCAST_TEMPLATES = ["premarket", "redDay", "dayReview"] as const;
 
 function TelegramBroadcast() {
+  const { t } = settingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const { can } = useAuth();
   const { toast } = useToast();
   const { data: team } = useTeam(can("users.read.team"));
@@ -243,19 +250,25 @@ function TelegramBroadcast() {
     setSending(true);
     setLastResult(null);
     try {
-      const r = await fetch(`${BASE}/api/telegram/broadcast`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: message.trim() }),
-      });
-      const d = (await r.json().catch(() => ({}))) as { ok?: boolean; sent?: number; failed?: number; total?: number; error?: string };
-      if (r.ok && d.ok) {
+      type BroadcastResp = { ok?: boolean; sent?: number; failed?: number; total?: number; error?: string };
+      let status = 200;
+      let d: BroadcastResp;
+      try {
+        d = (await http.post<BroadcastResp | null>("/api/telegram/broadcast", { message: message.trim() })) ?? {};
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        status = e.status;
+        d = { error: e.field<string>("error") };
+      }
+      if (status < 300 && d.ok) {
         setLastResult({ sent: d.sent ?? 0, failed: d.failed ?? 0, total: d.total ?? 0 });
-        toast({ title: `Отправлено: ${d.sent} из ${d.total}` });
+        toast({ title: t("broadcast.sent", { sent: d.sent ?? 0, total: d.total ?? 0 }) });
         setMessage("");
       } else {
-        toast({ title: d.error ?? `Ошибка рассылки (HTTP ${r.status})`, variant: "destructive" });
+        toast({ title: d.error ?? t("broadcast.failed", { status }), variant: "destructive" });
       }
     } catch {
-      toast({ title: "Сетевая ошибка", variant: "destructive" });
+      toast({ title: tc("states.networkError"), variant: "destructive" });
     } finally {
       setSending(false);
       setConfirmOpen(false);
@@ -263,33 +276,33 @@ function TelegramBroadcast() {
   }
 
   return (
-    <Panel title="Рассылка в Telegram" description="Ручное сообщение всем, кто привязал бота" icon={Radio}
-      actions={recipients ? <Pill tone="accent">{recipients.length} получателей</Pill> : undefined}>
+    <Panel title={t("broadcast.title")} description={t("broadcast.description")} icon={Radio}
+      actions={recipients ? <Pill tone="accent">{t("broadcast.recipients", { count: recipients.length })}</Pill> : undefined}>
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-1.5">
-          {BROADCAST_TEMPLATES.map((t) => (
-            <button key={t.label} type="button" className="chip min-h-8 px-3 text-xs font-medium" onClick={() => setMessage(t.text)}>{t.label}</button>
+          {BROADCAST_TEMPLATES.map((k) => (
+            <button key={k} type="button" className="chip min-h-8 px-3 text-xs font-medium" onClick={() => setMessage(t(`broadcast.templates.${k}.text`))}>{t(`broadcast.templates.${k}.label`)}</button>
           ))}
         </div>
-        <Textarea value={message} onChange={(e) => setMessage(e.target.value)} aria-label="Текст рассылки" rows={5} maxLength={4000}
-          placeholder="Текст сообщения. Поддерживается <b>жирный</b>, <i>курсив</i>, <code>код</code>" className="rounded-xl" />
+        <Textarea value={message} onChange={(e) => setMessage(e.target.value)} aria-label={t("broadcast.textAria")} rows={5} maxLength={4000}
+          placeholder={t("broadcast.placeholder")} className="rounded-xl" />
         {message.trim() && (
           <div className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
-            <div className="micro-label mb-1">Так увидят получатели</div>
+            <div className="micro-label mb-1">{t("broadcast.preview")}</div>
             <TelegramPreview text={message} />
           </div>
         )}
-        {unbalanced && <Callout tone="warn">Похоже, не закрыт HTML-тег — Telegram может отклонить сообщение.</Callout>}
+        {unbalanced && <Callout tone="warn">{t("broadcast.unbalanced")}</Callout>}
         {recipients && recipients.length > 0 && (
-          <p className="text-xs text-muted-foreground">Получат: {recipients.map((r) => r.name).join(", ")}</p>
+          <p className="text-xs text-muted-foreground">{t("broadcast.receivers", { names: recipients.map((r) => personName(r.name)).join(", ") })}</p>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
             {message.length}/4000
-            {lastResult && <span className="ml-2 text-up">· доставлено {lastResult.sent}/{lastResult.total}{lastResult.failed > 0 && <span className="text-down"> · ошибок {lastResult.failed}</span>}</span>}
+            {lastResult && <span className="ml-2 text-up">{t("broadcast.delivered", { sent: lastResult.sent, total: lastResult.total })}{lastResult.failed > 0 && <span className="text-down"> {t("broadcast.errors", { count: lastResult.failed })}</span>}</span>}
           </span>
           <Button size="sm" variant="secondary" onClick={() => setConfirmOpen(true)} disabled={sending || !message.trim() || recipients?.length === 0} className="gap-1.5">
-            <Radio className="h-3.5 w-3.5" aria-hidden="true" /> {sending ? "Отправка…" : "Отправить всем"}
+            <Radio className="h-3.5 w-3.5" aria-hidden="true" /> {sending ? t("broadcast.sending") : t("broadcast.sendAll")}
           </Button>
         </div>
       </div>
@@ -297,12 +310,12 @@ function TelegramBroadcast() {
       <AlertDialog open={confirmOpen} onOpenChange={(v) => { if (!sending) setConfirmOpen(v); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Отправить рассылку{recipients ? ` ${recipients.length} получателям` : ""}?</AlertDialogTitle>
-            <AlertDialogDescription>Сообщение уйдёт всем пользователям с привязанным Telegram. Отозвать его будет нельзя.</AlertDialogDescription>
+            <AlertDialogTitle>{recipients ? t("broadcast.confirmTitleCount", { count: recipients.length }) : t("broadcast.confirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("broadcast.confirmDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction disabled={sending} onClick={(e) => { e.preventDefault(); handleBroadcast(); }}>{sending ? "Отправка…" : "Отправить"}</AlertDialogAction>
+            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction disabled={sending} onClick={(e) => { e.preventDefault(); handleBroadcast(); }}>{sending ? t("broadcast.sending") : t("broadcast.send")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -329,13 +342,12 @@ function TelegramPreview({ text }: { text: string }) {
 
 export function IntegrationsSection() {
   const { can } = useAuth();
+  const { t } = settingsI18n.useT();
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <TelegramConnect />
       {can("telegram.broadcast") ? <TelegramBroadcast /> : (
-        <Callout icon={Send}>
-          Через бота приходят уведомления о новых идеях, ревью куратора и комментариях. На уведомления об идеях можно отвечать прямо в Telegram.
-        </Callout>
+        <Callout icon={Send}>{t("telegram.about")}</Callout>
       )}
     </div>
   );

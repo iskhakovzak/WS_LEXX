@@ -6,6 +6,7 @@ import { DataTable, Panel, SortableTh, TableSkeleton, useTableSort } from "@/com
 import { cn } from "@/lib/utils";
 import type { Big7Row } from "./context";
 import { LevelChip, RsBar, Signed, fmtRvol } from "./ui";
+import { big7I18n } from "@/i18n/ns/big7";
 
 type Key = "symbol" | "chg" | "rs" | "rs30" | "gap" | "rvol" | "vwap" | "corr" | "contrib";
 
@@ -28,30 +29,31 @@ export function LeadershipTable({ rows, loading, onOpen, preOpen }: {
   /** Before the open the gap column shows the premarket move and VWAP is not meaningful. */
   preOpen: boolean;
 }) {
+  const { t } = big7I18n.useT();
   const { rows: sorted, thProps } = useTableSort(rows, ACCESSORS, "rs");
   return (
     <Panel
-      title="Лидерство к QQQ"
-      description="RS — изменение минус изменение QQQ; 30м — сдвиг RS за последние 30 минут"
+      title={t("leadership.title")}
+      description={t("leadership.description")}
       bodyClassName="pt-1"
     >
       {loading && !rows.length ? (
         <TableSkeleton rows={7} cols={9} />
       ) : (
-        <DataTable ariaLabel="Лидерство мегакэпов">
+        <DataTable ariaLabel={t("leadership.aria")}>
           <table>
             <thead>
               <tr>
-                <SortableTh {...thProps("symbol")}>Тикер</SortableTh>
-                <SortableTh {...thProps("chg")} align="right">Изм.</SortableTh>
-                <SortableTh {...thProps("rs")} className="w-[180px]">RS к QQQ</SortableTh>
-                <SortableTh {...thProps("rs30")} align="right">30м</SortableTh>
-                <SortableTh {...thProps("gap")} align="right">{preOpen ? "Премаркет" : "Гэп"}</SortableTh>
+                <SortableTh {...thProps("symbol")}>{t("leadership.ticker")}</SortableTh>
+                <SortableTh {...thProps("chg")} align="right">{t("leadership.chg")}</SortableTh>
+                <SortableTh {...thProps("rs")} className="w-[180px]">{t("leadership.rs")}</SortableTh>
+                <SortableTh {...thProps("rs30")} align="right">{t("leadership.rs30")}</SortableTh>
+                <SortableTh {...thProps("gap")} align="right">{preOpen ? t("leadership.premarket") : t("leadership.gap")}</SortableTh>
                 <SortableTh {...thProps("rvol")} align="right" term="rvol">RVOL</SortableTh>
-                <SortableTh {...thProps("vwap")} align="right" term="vwap">от VWAP</SortableTh>
-                <th scope="col">Ближайшие уровни</th>
-                <SortableTh {...thProps("corr")} align="right">Корр. / β</SortableTh>
-                <SortableTh {...thProps("contrib")} align="right">Вклад QQQ</SortableTh>
+                <SortableTh {...thProps("vwap")} align="right" term="vwap">{t("leadership.fromVwap")}</SortableTh>
+                <th scope="col">{t("leadership.nearest")}</th>
+                <SortableTh {...thProps("corr")} align="right">{t("leadership.corr")}</SortableTh>
+                <SortableTh {...thProps("contrib")} align="right">{t("leadership.contrib")}</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -62,7 +64,7 @@ export function LeadershipTable({ rows, loading, onOpen, preOpen }: {
                   onClick={() => onOpen(r.symbol)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(r.symbol); } }}
                   className="cursor-pointer outline-none focus-visible:bg-[var(--tile-hover-bg)]"
-                  aria-label={`${r.symbol}: открыть детали`}
+                  aria-label={t("leadership.openRow", { symbol: r.symbol })}
                 >
                   <td className="font-semibold">{r.symbol}</td>
                   <td className="text-right"><Signed value={r.chg} /></td>
@@ -82,12 +84,12 @@ export function LeadershipTable({ rows, loading, onOpen, preOpen }: {
                       <LevelChip level={r.below} dir="down" />
                     </span>
                   </td>
-                  <td className="text-right text-xs tabular-nums text-muted-foreground" title="Корреляция и бета 5-минутных доходностей с QQQ за сессию">
+                  <td className="text-right text-xs tabular-nums text-muted-foreground" title={t("leadership.corrTitle")}>
                     {r.corr != null ? (
                       <><span className="text-foreground">{r.corr.toFixed(2)}</span> / {r.beta != null ? r.beta.toFixed(2) : "—"}</>
                     ) : "—"}
                   </td>
-                  <td className="text-right" title={r.wQqq != null ? `Вес в QQQ ≈ ${r.wQqq}%` : "Не входит в расчёт веса"}>
+                  <td className="text-right" title={r.wQqq != null ? t("leadership.weightTitle", { value: r.wQqq }) : t("leadership.noWeight")}>
                     <Signed value={r.contribQqq} digits={2} suffix="" threshold={0.005} />
                   </td>
                 </tr>

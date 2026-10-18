@@ -11,7 +11,7 @@ import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { preview as textPreview, uniqueRecipients } from "../lib/notifyEventsCore";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import {
-  AUDIENCE_LABELS, AUDIENCE_STAGES, STAFF_TOKEN, audienceLabel, audienceOf, audienceRecipients, audienceSql, cohortOf, cohortToken,
+  AUDIENCE_LABELS, AUDIENCE_STAGES, STAFF_TOKEN, audienceOf, audienceRecipients, audienceSql, cohortOf, cohortToken,
   filterVisibleNames, isPublicAudience, loadAudienceViewer, loadProfiles, parseAudience, viewerTokens, type AudienceViewer,
 } from "../lib/discussionAudience";
 import {
@@ -23,6 +23,7 @@ import {
   ListDiscussionsResponse,
   GetDiscussionResponse,
 } from "@workspace/api-zod";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Discussions ("Обсуждения") — the desk's threads, now contextual.
@@ -88,8 +89,8 @@ const COMMENT_MAX = 10000;
 const NOTES_MAX = 20000;
 
 /** Reserved tags used as thread flags (no dedicated columns → no schema change). */
-const TAG_PINNED = "закреплено";
-const TAG_RESOLVED = "решено";
+const TAG_PINNED = "закреплено"; // i18n-ignore (stored tag, data)
+const TAG_RESOLVED = "решено"; // i18n-ignore (stored tag, data)
 
 function splitTags(tags: string | null | undefined): string[] {
   return (tags ?? "").split(",").map((t) => t.trim()).filter(Boolean);
@@ -127,7 +128,7 @@ async function canModifyComment(req: Request, commentTrader: string | null, op: 
 
 function parseId(req: Request, res: Response): number | null {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -254,10 +255,10 @@ const ListQuery = z.object({
 
 router.get("/discussions", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const viewer = req.authUser.name;
   const q = ListQuery.safeParse(Object.fromEntries(Object.entries(req.query).filter(([, v]) => v !== "" && v !== undefined)));
-  if (!q.success) { res.status(400).json({ error: q.error.message }); return; }
+  if (!q.success) throw q.error;
   const f = q.data;
   const av = await loadAudienceViewer(req);
   const limit = f.limit ?? 200, cursor = f.cursor ?? 0;
@@ -271,7 +272,7 @@ router.get("/discussions", asyncHandler(async (req, res): Promise<void> => {
     where.push(mine.length ? `(cardinality(d.audience) > 0 AND d.audience && ${p(mine)}::text[])` : "FALSE");
   } else if (f.audience) {
     const parsedAud = parseAudience(f.audience);
-    if (!parsedAud.ok || parsedAud.audience.length !== 1) { res.status(400).json({ error: "Некорректный фильтр аудитории" }); return; }
+    if (!parsedAud.ok || parsedAud.audience.length !== 1) throw new AppError("AUDIENCE_FILTER_INVALID");
     where.push(`${p(parsedAud.audience[0])} = ANY(d.audience)`);
   }
   if (f.ticker) where.push(`UPPER(d.ticker) = ${p(f.ticker.toUpperCase())}`);
@@ -336,8 +337,7 @@ async function notifyReviewRequest(author: string, threadId: number, topic: stri
     for (const name of targets) {
       await notifyUser({
         userName: name, type: "review_request", actor: author,
-        title: `${author} просит разбор${ticker ? ` ${ticker}` : ""}`.slice(0, 200),
-        message: `«${textPreview(topic, 120)}»`,
+        params: { author, ticker: ticker || null, preview: textPreview(topic, 120) },
         link: threadLink(threadId), entityType: "thread", entityId: threadId,
       });
     }
@@ -348,9 +348,9 @@ async function notifyReviewRequest(author: string, threadId: number, topic: stri
 
 /**
  * Cohort tokens must name live cohorts; a member who is not staff may address only cohorts they study in.
- * `keep` = cohorts already on the thread (an edit may leave them as they are). Returns an error text or null.
+ * `keep` = cohorts already on the thread (an edit may leave them as they are). Returns an error code or null.
  */
-async function checkCohorts(audience: string[], av: AudienceViewer, keep: readonly string[] = []): Promise<string | null> {
+async function checkCohorts(audience: string[], av: AudienceViewer, keep: readonly string[] = []): Promise<"COHORT_NOT_FOUND" | "COHORT_OWN_ONLY" | null> {
   const ids = audience.filter((t) => !keep.includes(t)).map(cohortOf).filter((x): x is number => x != null);
   if (!ids.length) return null;
   let live: number[] = [];
@@ -358,8 +358,8 @@ async function checkCohorts(audience: string[], av: AudienceViewer, keep: readon
     const { rows } = await pool.query<{ id: number }>(`SELECT id FROM academy_cohorts WHERE id = ANY($1::int[]) AND archived_at IS NULL`, [ids]);
     live = rows.map((r) => Number(r.id));
   } catch { /* academy tables not created yet */ }
-  if (ids.some((id) => !live.includes(id))) return "Когорта не найдена";
-  if (!av.moderator && !av.staff && ids.some((id) => !av.cohorts.includes(id))) return "Можно выбрать только свою когорту";
+  if (ids.some((id) => !live.includes(id))) return "COHORT_NOT_FOUND";
+  if (!av.moderator && !av.staff && ids.some((id) => !av.cohorts.includes(id))) return "COHORT_OWN_ONLY";
   return null;
 }
 
@@ -381,12 +381,16 @@ async function notifyNewThread(o: { author: string; id: number; topic: string; t
   try {
     const targets = (await audienceRecipients(o.audience)).filter((n) => n !== o.author && !o.skip.has(n));
     if (!targets.length) return;
-    const label = isPublicAudience(o.audience) ? null : audienceLabel(o.audience, await cohortNames());
+    // Audience as data (tokens + the cohort names it mentions): the label is rendered in each reader's language.
+    const names = isPublicAudience(o.audience) ? null : await cohortNames();
+    const cohorts = names ? Object.fromEntries(o.audience.map(cohortOf).filter((c): c is number => c != null && names.has(c)).map((c) => [c, names.get(c)!])) : {};
     for (const name of targets) {
       await notifyUser({
         userName: name, type: "thread_new", actor: o.author,
-        title: `${o.author}: новая тема${o.ticker ? ` ${o.ticker}` : ""}${label ? ` · ${label}` : ""}`.slice(0, 200),
-        message: `«${textPreview(o.topic, 140)}»`,
+        params: {
+          author: o.author, ticker: o.ticker || null, preview: textPreview(o.topic, 140),
+          audience: isPublicAudience(o.audience) ? null : o.audience.join(","), cohorts: Object.keys(cohorts).length ? JSON.stringify(cohorts) : null,
+        },
         link: threadLink(o.id), entityType: "thread", entityId: o.id,
       });
     }
@@ -399,31 +403,31 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateDiscussionBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const extra = CreateExtra.safeParse(req.body);
-  if (!extra.success) { res.status(400).json({ error: extra.error.message }); return; }
+  if (!extra.success) throw extra.error;
   const topic = parsed.data.topic.trim();
-  if (!topic) { res.status(400).json({ error: "Тема обязательна" }); return; }
-  if (topic.length > TOPIC_MAX) { res.status(400).json({ error: `Тема слишком длинная (макс. ${TOPIC_MAX} символов)` }); return; }
-  if ((parsed.data.notes ?? "").length > NOTES_MAX) { res.status(400).json({ error: "Текст слишком длинный" }); return; }
+  if (!topic) throw new AppError("TOPIC_REQUIRED");
+  if (topic.length > TOPIC_MAX) throw new AppError("TEXT_TOO_LONG", 400, { field: "topic", max: TOPIC_MAX });
+  if ((parsed.data.notes ?? "").length > NOTES_MAX) throw new AppError("TEXT_TOO_LONG", 400, { field: "notes", max: NOTES_MAX });
   // The authenticated user is the author — the body value is ignored.
   const author = req.authUser!.name;
-  if (await isBanned(author)) { res.status(403).json({ error: "Вы забанены и не можете создавать обсуждения" }); return; }
+  if (await isBanned(author)) throw new AppError("BANNED_ACTION");
   const type = parsed.data.type?.trim().slice(0, 40) || null;
   let ticker = parsed.data.ticker?.trim().toUpperCase() || null;
   const ctx = extra.data;
   // Audience: absent / "all" → everyone (the historic behaviour).
   const aud = parseAudience((req.body as { audience?: unknown } | undefined)?.audience);
-  if (!aud.ok) { res.status(400).json({ error: aud.error }); return; }
+  if (!aud.ok) throw new AppError(aud.code, 400, aud.params);
   const av = await loadAudienceViewer(req);
   const cohortErr = await checkCohorts(aud.audience, av);
-  if (cohortErr) { res.status(400).json({ error: cohortErr }); return; }
+  if (cohortErr) throw new AppError(cohortErr);
   const audience = aud.audience;
   // Linked trade: must be readable by the author; its ticker fills the thread ticker when absent.
   if (ctx.tradeId) {
     const access = await canAccessTrade(req, ctx.tradeId);
-    if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-    if (!access) { res.status(403).json({ error: "Нельзя обсуждать чужую сделку" }); return; }
+    if (access === null) throw notFound("TRADE_NOT_FOUND");
+    if (!access) throw new AppError("TRADE_NOT_YOURS");
     if (!ticker) {
       const { rows } = await pool.query<{ ticker: string }>(`SELECT ticker FROM trades WHERE id = $1`, [ctx.tradeId]);
       ticker = rows[0]?.ticker?.toUpperCase() ?? null;
@@ -442,7 +446,7 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
   const row = { trader: author, audience };
   inBackground("discussions.create", async () => {
     const mentioned = await notifyMentions({
-      text: `${topic}\n${parsed.data.notes ?? ""}`, authorName: author, context: `в обсуждении${ticker ? ` ${ticker}` : ""}`, link: threadLink(id), telegram: false,
+      text: `${topic}\n${parsed.data.notes ?? ""}`, authorName: author, where: { kind: "discussion", subject: ticker || null }, link: threadLink(id), telegram: false,
       filter: (names) => filterVisibleNames(names, row),
     });
     if (type === "review_request") await notifyReviewRequest(author, id, topic, ticker);
@@ -456,7 +460,7 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/discussions/tickers", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const av = await loadAudienceViewer(req);
   const params: unknown[] = [];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
@@ -476,7 +480,7 @@ router.get("/discussions/tickers", asyncHandler(async (req, res): Promise<void> 
  */
 router.get("/discussions/unread-count", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const viewer = req.authUser.name;
   const av = await loadAudienceViewer(req);
   const params: unknown[] = [viewer, `%@${viewer}%`];
@@ -526,7 +530,7 @@ router.post("/discussions/read-all", asyncHandler(async (req, res): Promise<void
  */
 router.get("/discussions/audience", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const av = await loadAudienceViewer(req);
   const [people, names] = await Promise.all([loadProfiles(null), cohortNames()]);
   const sortRu = (a: string, b: string) => a.localeCompare(b, "ru");
@@ -552,13 +556,14 @@ router.get("/discussions/audience", asyncHandler(async (req, res): Promise<void>
 /** Questions / review requests nobody answered (for the curator digest and the "needs answer" filter). */
 router.get("/discussions/unanswered", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const hoursRaw = Number(req.query.hours);
   const hours = Number.isFinite(hoursRaw) && hoursRaw >= 0 ? Math.min(24 * 30, hoursRaw) : 2;
   const av = await loadAudienceViewer(req);
   const params: unknown[] = [hours];
   const vis = audienceSql(av, (v) => { params.push(v); return `$${params.length}`; });
   const { rows } = await pool.query<ThreadRow & { age_hours: string }>(
+    // i18n-ignore (the SQL matches the stored tag «решено»)
     `SELECT ${T_COLS}, EXTRACT(EPOCH FROM (NOW() - d.created_at))::text AS age_hours
        FROM discussions d
       WHERE d.deleted_at IS NULL AND LOWER(COALESCE(d.type, '')) IN ('question', 'review_request')
@@ -587,9 +592,9 @@ const TickerParam = z.object({ ticker: z.string().trim().min(1).max(12).regex(/^
 
 router.get("/discussions/ticker-context/:ticker", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const params = TickerParam.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: "Некорректный тикер" }); return; }
+  if (!params.success) throw badRequest("INVALID_TICKER");
   const ticker = params.data.ticker.toUpperCase();
   const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v);
   const [watch, ideas, trades, threads, events] = await Promise.all([
@@ -633,7 +638,7 @@ router.get("/discussions/ticker-context/:ticker", asyncHandler(async (req, res):
 }));
 
 router.get("/discussions/votes/all", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   // The viewer is the signed-in user; `?trader=` is ignored.
   const trader = req.authUser.name;
   // Only threads in the viewer's audience.
@@ -662,21 +667,21 @@ router.get("/discussions/votes/all", asyncHandler(async (req, res): Promise<void
 
 router.get("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const params = GetDiscussionParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const full = await fullThread(params.data.id, req.authUser.name, await loadAudienceViewer(req));
-  if (!full) { res.status(404).json({ error: "Discussion not found" }); return; }
+  if (!full) throw notFound("DISCUSSION_NOT_FOUND");
   res.json(full);
 }));
 
 /** The entity a thread is about — for the header card (trade is scoped: own or staff). */
 router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const id = parseId(req, res); if (id == null) return;
   const d = await loadThread(id, req.authUser.name, await loadAudienceViewer(req));
-  if (!d) { res.status(404).json({ error: "Discussion not found" }); return; }
+  if (!d) throw notFound("DISCUSSION_NOT_FOUND");
   const out: Record<string, unknown> = { id, tradeId: d.trade_id, eventId: d.event_id, ideaId: d.idea_id, playbookId: d.playbook_id, journalDate: d.journal_date, ticker: d.ticker };
   if (d.trade_id) {
     const access = await canAccessTrade(req, d.trade_id);
@@ -726,7 +731,7 @@ router.post("/discussions/:id/read", asyncHandler(async (req, res): Promise<void
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const d = await loadThread(id, req.authUser!.name, await loadAudienceViewer(req));
-  if (!d) { res.status(404).json({ error: "Discussion not found" }); return; }
+  if (!d) throw notFound("DISCUSSION_NOT_FOUND");
   await markRead(req.authUser!.name, id);
   res.json({ id, readAt: new Date().toISOString() });
 }));
@@ -735,10 +740,10 @@ router.delete("/discussions/:id", asyncHandler(async (req, res): Promise<void> =
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteDiscussionParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const existing = await loadThread(params.data.id, null, await loadAudienceViewer(req));
-  if (!existing) { res.status(404).json({ error: "Discussion not found" }); return; }
-  if (!(await canModifyDiscussion(req, existing.trader))) { res.status(403).json({ error: "Удалить обсуждение может только автор или куратор" }); return; }
+  if (!existing) throw notFound("DISCUSSION_NOT_FOUND");
+  if (!(await canModifyDiscussion(req, existing.trader))) throw new AppError("DISCUSSION_AUTHOR_ONLY");
   await pool.query(`UPDATE discussions SET deleted_at = NOW() WHERE id = $1`, [existing.id]);
   logActivity({ action: "deleted", section: "discussions", entityId: String(existing.id), entityTitle: existing.topic, trader: req.authUser!.name });
   res.sendStatus(204);
@@ -766,13 +771,13 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = PatchDiscussionBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) throw body.error;
   const viewer = req.authUser!.name;
   const av = await loadAudienceViewer(req);
   const existing = await loadThread(id, viewer, av);
-  if (!existing) { res.status(404).json({ error: "Discussion not found" }); return; }
-  if (!(await canModifyDiscussion(req, existing.trader))) { res.status(403).json({ error: "Редактировать обсуждение может только автор или куратор" }); return; }
-  if (await isBanned(viewer)) { res.status(403).json({ error: "Вы забанены" }); return; }
+  if (!existing) throw notFound("DISCUSSION_NOT_FOUND");
+  if (!(await canModifyDiscussion(req, existing.trader))) throw new AppError("DISCUSSION_AUTHOR_ONLY");
+  if (await isBanned(viewer)) throw new AppError("BANNED_ACTION");
   const b = body.data;
   const sets: string[] = [];
   const vals: unknown[] = [];
@@ -785,14 +790,14 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
     const next = Array.from(new Set(splitTags(b.tags)));
     const wasPinned = splitTags(existing.tags).map((t) => t.toLowerCase()).includes(TAG_PINNED);
     const isPinned = next.map((t) => t.toLowerCase()).includes(TAG_PINNED);
-    if (wasPinned !== isPinned && !(await isModerator(req))) { res.status(403).json({ error: "Закреплять обсуждения может только куратор" }); return; }
+    if (wasPinned !== isPinned && !(await isModerator(req))) throw new AppError("PIN_STAFF_ONLY");
     set("tags", next.length ? next.join(", ") : null);
   }
   if (b.tradeId !== undefined) {
     if (b.tradeId) {
       const access = await canAccessTrade(req, b.tradeId);
-      if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-      if (!access) { res.status(403).json({ error: "Нельзя привязать чужую сделку" }); return; }
+      if (access === null) throw notFound("TRADE_NOT_FOUND");
+      if (!access) throw new AppError("TRADE_NOT_YOURS");
     }
     set("trade_id", b.tradeId ?? null);
   }
@@ -802,19 +807,19 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
   if (b.journalDate !== undefined) set("journal_date", b.journalDate ?? null);
   if (b.audience !== undefined) {
     const aud = parseAudience(b.audience);
-    if (!aud.ok) { res.status(400).json({ error: aud.error }); return; }
+    if (!aud.ok) throw new AppError(aud.code, 400, aud.params);
     const cohortErr = await checkCohorts(aud.audience, av, audienceOf(existing.audience));
-    if (cohortErr) { res.status(400).json({ error: cohortErr }); return; }
+    if (cohortErr) throw new AppError(cohortErr);
     set("audience", aud.audience.length ? aud.audience : null);
   }
   if (b.acceptedCommentId !== undefined) {
     if (b.acceptedCommentId) {
       const { rows } = await pool.query(`SELECT 1 FROM comments WHERE id = $1 AND discussion_id = $2`, [b.acceptedCommentId, id]);
-      if (!rows.length) { res.status(404).json({ error: "Комментарий не найден в этом обсуждении" }); return; }
+      if (!rows.length) throw new AppError("COMMENT_NOT_IN_THREAD");
     }
     set("accepted_comment_id", b.acceptedCommentId ?? null);
   }
-  if (!sets.length) { res.status(400).json({ error: "Нет изменений" }); return; }
+  if (!sets.length) throw new AppError("NO_FIELDS");
   vals.push(id);
   await pool.query(`UPDATE discussions SET ${sets.join(", ")} WHERE id = $${vals.length}`, vals);
   if (b.acceptedCommentId) {
@@ -825,8 +830,8 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
       inBackground("discussions.accept", async () => {
         if (!(await filterVisibleNames([who], row)).length) return;
         await notifyUser({
-          userName: who, type: "reply", actor: viewer, title: `${viewer} отметил ваш ответ как решение`,
-          message: `«${textPreview(existing.topic, 100)}»`, link: threadLink(id), entityType: "thread", entityId: id,
+          userName: who, type: "reply", actor: viewer, params: { variant: "accepted", actor: viewer, preview: textPreview(existing.topic, 100) },
+          link: threadLink(id), entityType: "thread", entityId: id,
         });
       });
     }
@@ -847,8 +852,8 @@ router.post("/discussions/:id/restore", asyncHandler(async (req, res): Promise<v
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadThread(id, null, await loadAudienceViewer(req), true);
-  if (!existing) { res.status(404).json({ error: "Discussion not found" }); return; }
-  if (!(await canModifyDiscussion(req, existing.trader))) { res.status(403).json({ error: "Восстановить обсуждение может только автор или куратор" }); return; }
+  if (!existing) throw notFound("DISCUSSION_NOT_FOUND");
+  if (!(await canModifyDiscussion(req, existing.trader))) throw new AppError("DISCUSSION_AUTHOR_ONLY");
   await pool.query(`UPDATE discussions SET deleted_at = NULL WHERE id = $1`, [id]);
   logActivity({ action: "restored", section: "discussions", entityId: String(id), entityTitle: existing.topic, trader: req.authUser!.name });
   res.json({ success: true });
@@ -857,21 +862,24 @@ router.post("/discussions/:id/restore", asyncHandler(async (req, res): Promise<v
 // ─── Comments ───────────────────────────────────────────────────────────────
 
 const RE_REPLY = /\[re:(\d+)\]/;
+/** Comment text without the machine prefixes «[Наблюдаю] [re:12] » — what a person actually wrote (for notification previews). */
+const COMMENT_PREFIX = /^(\[(?:Observing|In Position|Exited|Наблюдаю|В позиции|Вышел)\]\s*)?(\[re:\d+\]\s*)?/;
+const plainComment = (text: string) => text.replace(COMMENT_PREFIX, "").trim();
 
 router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = AddCommentParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const parsed = AddCommentBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const text = parsed.data.text.trim();
-  if (!text) { res.status(400).json({ error: "Комментарий не может быть пустым" }); return; }
-  if (text.length > COMMENT_MAX) { res.status(400).json({ error: "Комментарий слишком длинный" }); return; }
+  if (!text) throw new AppError("COMMENT_EMPTY");
+  if (text.length > COMMENT_MAX) throw new AppError("TEXT_TOO_LONG", 400, { field: "text", max: COMMENT_MAX });
   const thread = await loadThread(params.data.id, null, await loadAudienceViewer(req));
-  if (!thread) { res.status(404).json({ error: "Обсуждение не найдено" }); return; }
+  if (!thread) throw notFound("DISCUSSION_NOT_FOUND");
   const me = req.authUser!.name;
-  if (await isBanned(me)) { res.status(403).json({ error: "Вы забанены и не можете комментировать" }); return; }
+  if (await isBanned(me)) throw new AppError("BANNED_ACTION");
   const { rows } = await pool.query<CommentRow>(
     `INSERT INTO comments (discussion_id, trader, text) VALUES ($1, $2, $3) RETURNING id, discussion_id, trader, text, created_at`,
     [params.data.id, me, text],
@@ -888,11 +896,12 @@ router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<
   const row = { trader: thread.trader, audience: audienceOf(thread.audience) };
   inBackground("discussions.comment", async () => {
     const link = threadLink(threadId);
+    const plain = plainComment(text);
     const mentioned = new Set(await notifyMentions({
-      text, authorName: me, context: `в обсуждении «${topicShort}»`, link, telegram: false,
+      text: plain, authorName: me, where: { kind: "discussion", subject: topicShort }, link, telegram: false,
       filter: (names) => filterVisibleNames(names, row),
     }));
-    const body = `«${textPreview(text, 120)}»`;
+    const preview = textPreview(plain, 120);
     const notified = new Set<string>([me, ...mentioned]);
     const reTo = RE_REPLY.exec(text)?.[1];
     if (reTo) {
@@ -900,11 +909,11 @@ router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<
       const who = parent[0]?.trader;
       if (who && !notified.has(who) && (await filterVisibleNames([who], row)).length) {
         notified.add(who);
-        await notifyUser({ userName: who, type: "reply", actor: me, title: `${me} ответил вам в «${topicShort}»`, message: body, link, entityType: "thread", entityId: threadId });
+        await notifyUser({ userName: who, type: "reply", actor: me, params: { variant: "toYou", actor: me, topic: topicShort, preview }, link, entityType: "thread", entityId: threadId });
       }
     }
     if (thread.trader && !notified.has(thread.trader)) {
-      await notifyUser({ userName: thread.trader, type: "reply", actor: me, title: `${me} ответил в вашем обсуждении «${topicShort}»`, message: body, link, entityType: "thread", entityId: threadId });
+      await notifyUser({ userName: thread.trader, type: "reply", actor: me, params: { variant: "inYours", actor: me, topic: topicShort, preview }, link, entityType: "thread", entityId: threadId });
     }
   });
   res.status(201).json({ id: comment.id, discussionId: comment.discussion_id, trader: comment.trader, text: comment.text, createdAt: comment.created_at.toISOString() });
@@ -917,16 +926,16 @@ router.patch("/discussions/:id/comments/:commentId", asyncHandler(async (req, re
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = CommentParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const body = PatchCommentBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) throw body.error;
   const text = body.data.text.trim();
-  if (!text || text.length > COMMENT_MAX) { res.status(400).json({ error: "Некорректный текст комментария" }); return; }
-  if (!(await loadThread(params.data.id, null, await loadAudienceViewer(req)))) { res.status(404).json({ error: "Comment not found" }); return; }
+  if (!text || text.length > COMMENT_MAX) throw new AppError("INVALID_FIELD", 400, { field: "text" });
+  if (!(await loadThread(params.data.id, null, await loadAudienceViewer(req)))) throw notFound("COMMENT_NOT_FOUND");
   const { rows } = await pool.query<CommentRow>(`SELECT id, discussion_id, trader, text, created_at FROM comments WHERE id = $1 AND discussion_id = $2`, [params.data.commentId, params.data.id]);
   const existing = rows[0];
-  if (!existing) { res.status(404).json({ error: "Comment not found" }); return; }
-  if (!(await canModifyComment(req, existing.trader, "edit"))) { res.status(403).json({ error: "Можно редактировать только свои комментарии" }); return; }
+  if (!existing) throw notFound("COMMENT_NOT_FOUND");
+  if (!(await canModifyComment(req, existing.trader, "edit"))) throw new AppError("COMMENT_OWN_ONLY");
   const { rows: upd } = await pool.query<CommentRow>(`UPDATE comments SET text = $1 WHERE id = $2 RETURNING id, discussion_id, trader, text, created_at`, [text, params.data.commentId]);
   const c = upd[0];
   res.json({ id: c.id, discussionId: c.discussion_id, trader: c.trader, text: c.text, createdAt: c.created_at.toISOString() });
@@ -936,12 +945,12 @@ router.delete("/discussions/:id/comments/:commentId", asyncHandler(async (req, r
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = CommentParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  if (!(await loadThread(params.data.id, null, await loadAudienceViewer(req)))) { res.status(404).json({ error: "Comment not found" }); return; }
+  if (!params.success) throw params.error;
+  if (!(await loadThread(params.data.id, null, await loadAudienceViewer(req)))) throw notFound("COMMENT_NOT_FOUND");
   const { rows } = await pool.query<CommentRow>(`SELECT id, discussion_id, trader, text, created_at FROM comments WHERE id = $1 AND discussion_id = $2`, [params.data.commentId, params.data.id]);
   const existing = rows[0];
-  if (!existing) { res.status(404).json({ error: "Comment not found" }); return; }
-  if (!(await canModifyComment(req, existing.trader, "delete"))) { res.status(403).json({ error: "Можно удалять только свои комментарии" }); return; }
+  if (!existing) throw notFound("COMMENT_NOT_FOUND");
+  if (!(await canModifyComment(req, existing.trader, "delete"))) throw new AppError("COMMENT_OWN_ONLY");
   await pool.query(`UPDATE discussions SET accepted_comment_id = NULL WHERE id = $1 AND accepted_comment_id = $2`, [params.data.id, params.data.commentId]);
   await pool.query(`DELETE FROM comments WHERE id = $1`, [params.data.commentId]);
   res.sendStatus(204);
@@ -954,12 +963,12 @@ router.post("/discussions/:id/vote", asyncHandler(async (req, res): Promise<void
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const thread = await loadThread(id, null, await loadAudienceViewer(req));
-  if (!thread) { res.status(404).json({ error: "Обсуждение не найдено" }); return; }
+  if (!thread) throw notFound("DISCUSSION_NOT_FOUND");
   const { value } = req.body as { value?: number };
   // One vote per authenticated user — the client never picks the voter.
   const trader = req.authUser!.name;
-  if (value !== 1 && value !== -1 && value !== 0) { res.status(400).json({ error: "value must be 1, -1 or 0 (clear)" }); return; }
-  if (await isBanned(trader)) { res.status(403).json({ error: "Вы забанены и не можете голосовать" }); return; }
+  if (value !== 1 && value !== -1 && value !== 0) throw new AppError("INVALID_FIELD", 400, { field: "value" });
+  if (await isBanned(trader)) throw new AppError("BANNED_ACTION");
   if (value === 0) {
     await pool.query(`DELETE FROM discussion_votes WHERE discussion_id = $1 AND trader = $2`, [id, trader]);
   } else {

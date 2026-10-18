@@ -9,7 +9,7 @@
  * The legacy dedup key (`contextSnapshot.dedupKey`) is kept byte-identical so trades imported by the
  * old admin endpoint are recognised and adopted instead of duplicated.
  */
-import XLSX from "xlsx";
+import XLSX from "./xlsx";
 import { parseCsvRows, parseNum, round4 } from "./csv";
 import { detectFeeColumns, type DetectedFeeColumn } from "./fees";
 import type { FeeBreakdown, RoundTrip, Session } from "./types";

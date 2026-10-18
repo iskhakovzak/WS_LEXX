@@ -5,18 +5,25 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { FilterChip } from "@/components/ds";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { useToast } from "@/hooks/use-toast";
+import { discussionsI18n } from "@/i18n/ns/discussions";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export type ReportTarget = { type: "discussion" | "comment"; id: number; preview: string; author?: string | null };
 
-const REASONS = ["Спам или реклама", "Оскорбление", "Дезинформация", "Не по теме", "Другое"];
+const REASONS = ["spam", "abuse", "misinformation", "offTopic", "other"] as const;
+type Reason = (typeof REASONS)[number];
 
 /** Replaces the old window.prompt: preset reasons + optional details. */
 /** The reporter is the signed-in member — the server takes it from the token. */
 export function ReportDialog({ target, onClose }: { target: ReportTarget | null; onClose: () => void }) {
   const { toast } = useToast();
-  const [reason, setReason] = React.useState<string | null>(null);
+  const { t } = discussionsI18n.useT();
+  const tc = commonI18n.useT().t;
+  const [reason, setReason] = React.useState<Reason | null>(null);
   const [details, setDetails] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   // Last opened target: keeps the title/preview stable while the dialog animates out (target is already null then).
@@ -26,27 +33,20 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget | null;
     if (target) { setShown(target); setReason(null); setDetails(""); setBusy(false); }
   }, [target]);
 
-  const needsDetails = reason === "Другое";
+  const needsDetails = reason === "other";
   const canSubmit = !!reason && (!needsDetails || details.trim().length > 0) && !busy;
 
   async function submit() {
     if (!target || !canSubmit) return;
     setBusy(true);
     try {
-      const full = [reason, details.trim()].filter(Boolean).join(": ");
-      const r = await fetch(`${BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetType: target.type, targetId: target.id, reason: full.slice(0, 2000) }),
-      });
-      if (!r.ok) {
-        const body = await r.json().catch(() => null);
-        throw new Error(body?.error ?? "Не удалось отправить жалобу");
-      }
-      toast({ title: "Жалоба отправлена", description: "Кураторы рассмотрят её в админке." });
+      // The reason is sent as text in the reporter's language (moderators read it as written).
+      const full = [reason ? t(`report.reasons.${reason}`) : "", details.trim()].filter(Boolean).join(": ");
+      await http.post("/api/reports", { targetType: target.type, targetId: target.id, reason: full.slice(0, 2000) });
+      toast({ title: t("report.sent"), description: t("report.sentHint") });
       onClose();
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: tc("states.error"), description: humanizeApiError(e, t("report.failed")), variant: "destructive" });
       setBusy(false);
     }
   }
@@ -55,20 +55,20 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget | null;
     <Dialog open={!!target} onOpenChange={(v) => { if (!v && !busy) onClose(); }}>
       <DialogContent className="max-w-md rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Flag className="h-4 w-4 text-down" aria-hidden="true" />Пожаловаться на {shown?.type === "comment" ? "комментарий" : "тему"}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Flag className="h-4 w-4 text-down" aria-hidden="true" />{shown?.type === "comment" ? t("report.titleComment") : t("report.titleThread")}</DialogTitle>
           <DialogDescription className="line-clamp-2">
-            {shown?.author ? `${shown.author}: ` : ""}{shown?.preview}
+            {shown?.author ? `${personName(shown.author)}: ` : ""}{shown?.preview}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div role="radiogroup" aria-label="Причина жалобы" className="flex flex-wrap gap-2">
+          <div role="radiogroup" aria-label={t("report.reasonAria")} className="flex flex-wrap gap-2">
             {REASONS.map((r) => (
-              <FilterChip key={r} active={reason === r} onClick={() => setReason(r)}>{r}</FilterChip>
+              <FilterChip key={r} active={reason === r} onClick={() => setReason(r)}>{t(`report.reasons.${r}`)}</FilterChip>
             ))}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="report-details" className="text-xs text-muted-foreground">
-              Подробности{needsDetails ? " (обязательно)" : " (необязательно)"}
+              {t("report.details")}{needsDetails ? t("report.requiredMark") : t("report.optionalMark")}
             </Label>
             <Textarea
               id="report-details"
@@ -76,14 +76,14 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget | null;
               onChange={(e) => setDetails(e.target.value)}
               rows={3}
               maxLength={1500}
-              placeholder="Что именно не так?"
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}
+              placeholder={t("report.placeholder")}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void submit(); } }}
             />
           </div>
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>Отмена</Button>
-          <Button variant="destructive" onClick={submit} disabled={!canSubmit}>{busy ? "Отправляем…" : "Отправить жалобу"}</Button>
+          <Button variant="outline" onClick={onClose} disabled={busy}>{tc("actions.cancel")}</Button>
+          <Button variant="destructive" onClick={submit} disabled={!canSubmit}>{busy ? t("report.sending") : t("report.submit")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

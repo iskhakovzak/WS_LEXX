@@ -3,8 +3,11 @@
  * react-query hooks, trading-day navigation (weekends + market holidays) and formatting.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { dayReportI18n } from "@/i18n/ns/dayReport";
+import { commonI18n } from "@/i18n/ns/common";
+import { http } from "@/lib/api/http";
 import { addDays, nyDate } from "@/lib/trading-date";
+import { fmtDate, } from "@/lib/format";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type Side = "long" | "short";
@@ -77,27 +80,6 @@ export type DayReport = {
 };
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(path));
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try {
-      const j = (await r.json()) as { error?: string };
-      if (j?.error) msg = j.error;
-    } catch { /* not json */ }
-    throw new HttpError(r.status, msg);
-  }
-  return (await r.json()) as T;
-}
-
-const retry = (count: number, err: unknown) => !(err instanceof HttpError && [400, 401, 403, 404].includes(err.status)) && count < 2;
-
 export const dayReportKeys = {
   all: ["day-report"] as const,
   doc: (trader: string, date: string) => ["day-report", trader, date] as const,
@@ -110,12 +92,11 @@ export function useDayReport(trader: string | null, date: string, enabled = true
     queryFn: () => {
       const q = new URLSearchParams({ date });
       if (trader) q.set("trader", trader);
-      return getJson<DayReport>(`/api/day-report?${q.toString()}`);
+      return http.get<DayReport>(`/api/day-report?${q.toString()}`);
     },
     enabled: enabled && isYmd(date),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
-    retry,
   });
 }
 
@@ -127,11 +108,10 @@ export function useMarketHolidays(date: string) {
   return useQuery({
     queryKey: dayReportKeys.holidays(year),
     queryFn: async () => {
-      const j = await getJson<{ events: HolidayEvent[] }>(`/api/holidays?from=${year - 1}-12-01&to=${year + 1}-01-31&types=holiday`);
+      const j = await http.get<{ events: HolidayEvent[] }>(`/api/holidays?from=${year - 1}-12-01&to=${year + 1}-01-31&types=holiday`);
       return new Set(j.events.filter((e) => String(e.type).toLowerCase() === "holiday").map((e) => String(e.date).slice(0, 10)));
     },
     staleTime: 6 * 60 * 60_000,
-    retry,
   });
 }
 
@@ -168,49 +148,32 @@ export function lastTradingDay(holidays: ReadonlySet<string> | undefined): strin
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────────
-export function fmtUsd(v: number | null | undefined, signed = false): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const a = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}$${a}`;
-}
-
-export function fmtPct(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${(v * 100).toFixed(digits)}%`;
-}
-
+// Money / percent: @/lib/format (fmtUsd, fmtRate).
 export function fmtHold(min: number | null | undefined): string {
   if (min == null || !Number.isFinite(min)) return "—";
-  if (min < 1) return `${Math.max(1, Math.round(min * 60))} с`;
-  if (min < 60) return `${Math.round(min)} мин`;
+  const t = dayReportI18n.t;
+  if (min < 1) return t("hold.s", { n: Math.max(1, Math.round(min * 60)) });
+  if (min < 60) return t("hold.m", { n: Math.round(min) });
   const h = Math.floor(min / 60);
   const m = Math.round(min - h * 60);
-  return m ? `${h} ч ${m} мин` : `${h} ч`;
+  return m ? t("hold.hm", { h, m }) : t("hold.h", { h });
 }
 
-const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-const WEEKDAYS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
-
-/** "Чт, 15 октября 2026". */
+/** "Чт, 15 октября 2026 г." (UI language). */
 export function fmtDayLong(ymd: string): string {
   if (!isYmd(ymd)) return ymd;
-  const [y, m, d] = ymd.split("-").map(Number);
-  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${WEEKDAYS[wd]}, ${d} ${MONTHS_GEN[m - 1]} ${y}`;
+  const s = fmtDate(ymd, "fullShortWeekday");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** "15 окт". */
+/** "15 окт" (UI language). */
 export function fmtDayShort(ymd: string): string {
   if (!isYmd(ymd)) return ymd;
-  const [, m, d] = ymd.split("-").map(Number);
-  return `${d} ${MONTHS_GEN[m - 1].slice(0, 3)}`;
+  return fmtDate(ymd, "dayMonth").replace(".", "");
 }
 
-export const SIDE_LABEL: Record<Side, string> = { long: "Лонг", short: "Шорт" };
-
-export function pluralTrades(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "сделка";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "сделки";
-  return "сделок";
-}
+/** Side code → label in the current language (read on access). */
+export const SIDE_LABEL: Record<Side, string> = Object.defineProperties({} as Record<Side, string>, {
+  long: { get: () => commonI18n.t("trading.long"), enumerable: true },
+  short: { get: () => commonI18n.t("trading.short"), enumerable: true },
+});

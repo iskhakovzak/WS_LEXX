@@ -1,5 +1,7 @@
 import type { Trade } from "@workspace/api-client-react";
 import { signedR, priceR, netPnl, isOpen, closeDate, resultOf } from "@/lib/trade-math";
+import { fmtDate, fmtMonth, fmtWeekday } from "@/lib/format";
+import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
 
 export type TimeBucket =
   | "before-8:30"
@@ -13,8 +15,9 @@ export type TimeBucket =
   | "after-16:00"
   | "unknown";
 
-export const TIME_BUCKETS: { id: TimeBucket; label: string }[] = [
-  { id: "before-8:30", label: "до 8:30" },
+/** Entry-time buckets; ids are stable codes (filters, URL), labels are read at call time (UI language). */
+export const TIME_BUCKETS: { id: TimeBucket; readonly label: string }[] = [
+  { id: "before-8:30", get label() { return analyticsProI18n.t("time.before"); } },
   { id: "8:30-9:30", label: "8:30–9:30" },
   { id: "9:30-9:50", label: "9:30–9:50" },
   { id: "9:50-10:10", label: "9:50–10:10" },
@@ -22,15 +25,20 @@ export const TIME_BUCKETS: { id: TimeBucket; label: string }[] = [
   { id: "11:15-13:30", label: "11:15–13:30" },
   { id: "13:30-15:30", label: "13:30–15:30" },
   { id: "15:30-16:00", label: "15:30–16:00" },
-  { id: "after-16:00", label: "после 16:00" },
-  { id: "unknown", label: "без времени" },
+  { id: "after-16:00", get label() { return analyticsProI18n.t("time.after"); } },
+  { id: "unknown", get label() { return analyticsProI18n.t("time.unknown"); } },
 ];
 
-const DAY_LABELS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
-const MONTH_LABELS = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export const DAY_OF_WEEK_OPTIONS = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ id: String(d), label: DAY_LABELS[d] }));
-export const MONTH_OPTIONS = MONTH_LABELS.map((m, i) => ({ id: String(i + 1), label: m }));
+/** Weekday filter options Mon…Sun ("Пн"); id = Date#getDay(). Built at call time (follows the UI language). */
+export function dayOfWeekOptions(): { id: string; label: string }[] {
+  return [1, 2, 3, 4, 5, 6, 0].map((d) => ({ id: String(d), label: cap(fmtWeekday(d, "short")) }));
+}
+/** Month filter options ("Янв."); id = 1…12. Built at call time (follows the UI language). */
+export function monthOptions(): { id: string; label: string }[] {
+  return Array.from({ length: 12 }, (_, i) => ({ id: String(i + 1), label: cap(fmtMonth(i, "short")) }));
+}
 
 export function dateOnly(d: string): string {
   return (d ?? "").substring(0, 10);
@@ -246,10 +254,28 @@ export function mondayOf(d: Date): Date {
   return m;
 }
 
-export function fmtRange(monday: Date): string {
+/**
+ * Mon–Sun range in the UI language: «13 окт. – 19 окт.» / "Oct 13 – Oct 19" / «13-okt – 19-okt»;
+ * with `year` the end carries it: «… – 19 окт. 2026 г.» / "… – Oct 19, 2026" / «… – 19-okt, 2026».
+ */
+export function fmtWeekRange(monday: Date, opts: { year?: boolean } = {}): string {
   const sun = new Date(monday); sun.setDate(monday.getDate() + 6);
-  const f = (x: Date) => `${String(x.getDate()).padStart(2, "0")}.${String(x.getMonth() + 1).padStart(2, "0")}`;
-  return `${f(monday)}–${f(sun)}`;
+  return `${fmtDate(monday, "dayMonth")} – ${fmtDate(sun, opts.year ? "medium" : "dayMonth")}`;
+}
+
+/** Week range without the year (recent weeks). Kept for callers of the old name. */
+export function fmtRange(monday: Date): string {
+  return fmtWeekRange(monday);
+}
+
+/** ISO week key "2026-W42" → «12 окт. – 18 окт. 2026 г.» (Monday of that ISO week); other strings unchanged. */
+export function fmtIsoWeekKey(key: string): string {
+  const m = /^(\d{4})-W(\d{1,2})$/.exec(key);
+  if (!m) return key;
+  const jan4 = new Date(Number(m[1]), 0, 4);
+  const week1Monday = mondayOf(jan4);
+  const monday = new Date(week1Monday.getFullYear(), week1Monday.getMonth(), week1Monday.getDate() + (Number(m[2]) - 1) * 7);
+  return fmtWeekRange(monday, { year: true });
 }
 
 export type WeekSummary = {
@@ -292,9 +318,9 @@ export function buildWeeklySummaries(days: DaySummary[], now: Date = new Date())
   const prev = new Date(cur); prev.setDate(cur.getDate() - 7);
   const prev2 = new Date(cur); prev2.setDate(cur.getDate() - 14);
   return [
-    summarizeWeek("Текущая неделя", cur, days),
-    summarizeWeek("Прошлая неделя", prev, days),
-    summarizeWeek("Позапрошлая неделя", prev2, days),
+    summarizeWeek(analyticsProI18n.t("week.current"), cur, days),
+    summarizeWeek(analyticsProI18n.t("week.previous"), prev, days),
+    summarizeWeek(analyticsProI18n.t("week.beforePrevious"), prev2, days),
   ];
 }
 
@@ -602,24 +628,19 @@ export type PeriodExtremes = {
   bestMonth: PeriodPoint | null; worstMonth: PeriodPoint | null;
 };
 
-const MONTH_FULL = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const MONTH_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-export const MONTH_NAMES = MONTH_FULL;
+/** "Октябрь" (capitalised month name in the UI language); `i` = 0…11. */
+export function monthName(i: number): string {
+  return cap(fmtMonth(i, "long"));
+}
 
 export function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function fmtDayLong(date: string): string {
-  const dt = parseDate(date);
-  if (!dt) return date;
-  return `${dt.getDate()} ${MONTH_GEN[dt.getMonth()]} ${dt.getFullYear()}`;
-}
-
 export function fmtMonthKey(key: string): string {
   const [y, m] = key.split("-");
   const i = Number(m) - 1;
-  return i >= 0 && i < 12 ? `${MONTH_FULL[i]} ${y}` : key;
+  return i >= 0 && i < 12 ? cap(fmtDate(new Date(Number(y), i, 1), "monthYear")) : key;
 }
 
 function aggregate(days: DaySummary[], keyOf: (d: DaySummary) => string): Map<string, { net: number; trades: number; valued: number }> {
@@ -648,10 +669,11 @@ export function computePeriodExtremes(days: DaySummary[]): PeriodExtremes {
   };
   const dayPts: PeriodPoint[] = days
     .filter((d) => (d.valued ?? d.trades) > 0)
-    .map((d) => ({ key: d.date, label: fmtDayLong(d.date), net: d.net, trades: d.trades }));
+    .map((d) => ({ key: d.date, label: fmtDate(d.date, "long"), net: d.net, trades: d.trades }));
   const weekPts: PeriodPoint[] = [...aggregate(days, (d) => weekStartKey(d.date)).entries()]
     .filter(([, v]) => v.valued > 0)
-    .map(([k, v]) => ({ key: k, label: fmtRange(new Date(`${k}T00:00:00`)) + "." + k.slice(0, 4), net: v.net, trades: v.trades }));
+    .map(([k, v]) => ({ key: k, label: fmtWeekRange(new Date(`${k}T00:00:00`), { year: true }), net: v.net, trades: v.trades }));
+
   const monthPts: PeriodPoint[] = [...aggregate(days, (d) => d.date.substring(0, 7)).entries()]
     .filter(([, v]) => v.valued > 0)
     .map(([k, v]) => ({ key: k, label: fmtMonthKey(k), net: v.net, trades: v.trades }));

@@ -1,45 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Metric } from "@/lib/analytics-pro";
+import { fmtR, fmtUsd } from "@/lib/format";
 
-const CUR_FMT = new Intl.NumberFormat("en-US", {
-  style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2,
-});
-const CUR_FMT_0 = new Intl.NumberFormat("en-US", {
-  style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 0,
-});
-
-/** Signed money: +$1,234.50 / −$80.00. */
-export function fmtMoney(v: number | null | undefined, opts: { compact?: boolean; sign?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const sign = v < 0 ? "−" : opts.sign && v > 0 ? "+" : "";
-  const abs = Math.abs(v);
-  if (opts.compact) {
-    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
-    if (abs >= 10_000) return `${sign}$${(abs / 1000).toFixed(0)}K`;
-    if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}K`;
-    return `${sign}${CUR_FMT_0.format(abs)}`;
-  }
-  return `${sign}${CUR_FMT.format(abs)}`;
-}
-
-/** Signed R: +2.5R / −1R. */
-export function fmtR(v: number | null | undefined, opts: { compact?: boolean; sign?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const sign = v < 0 ? "−" : opts.sign !== false && v > 0 ? "+" : "";
-  const abs = Math.abs(v);
-  const digits = opts.compact ? (abs >= 10 ? 0 : 1) : 2;
-  const s = abs.toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
-  return `${sign}${s}R`;
-}
-
-/** Format a value in the active metric. */
+/**
+ * Format a value in the active metric: R ("+2.50R", compact "+2.5R" / "+12R") or money ("+$1,234.50", compact
+ * "$12.3K"). `sign`: "+" on positives (R: default on, money: default off).
+ */
 export function fmtVal(metric: Metric, v: number | null | undefined, opts: { compact?: boolean; sign?: boolean } = {}): string {
-  return metric === "r" ? fmtR(v, opts) : fmtMoney(v, opts);
-}
-
-export function fmtPct(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${(v * 100).toFixed(digits)}%`;
+  if (metric === "r") return fmtR(v, { decimals: opts.compact ? (Math.abs(v ?? 0) >= 10 ? 0 : 1) : 2, signed: opts.sign !== false });
+  return fmtUsd(v, { signed: !!opts.sign, compact: !!opts.compact });
 }
 
 export const METRIC_LABEL: Record<Metric, string> = { pnl: "P&L, $", r: "R" };

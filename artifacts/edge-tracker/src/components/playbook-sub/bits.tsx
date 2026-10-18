@@ -6,16 +6,6 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { toneText, type Tone } from "@/components/ds";
 
-/** Russian plural: plural(5, "сделка", "сделки", "сделок"). */
-export function plural(n: number, one: string, few: string, many: string) {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b > 1 && b < 5) return few;
-  if (b === 1) return one;
-  return many;
-}
-
 /** Tone for a checklist readiness percentage. 0 → neutral (nothing marked yet is not "bad"). */
 export function readinessTone(pct: number): Tone {
   if (pct <= 0) return "neutral";

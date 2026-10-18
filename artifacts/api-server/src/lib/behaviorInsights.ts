@@ -8,6 +8,8 @@
 import type { PatternKey } from "./behaviorEngine";
 import type { TriggerKind } from "./behaviorTriggers";
 import { describeTrigger } from "./behaviorTriggers";
+import { behaviorT, fmtDurFor } from "./behaviorI18n";
+import { DEFAULT_LANG, type Lang } from "../i18n";
 
 export type TriggerDraft = { kind: TriggerKind; params: Record<string, number>; name: string };
 export type RuleDraft = { kind: string; threshold: Record<string, number>; name: string };
@@ -30,99 +32,102 @@ type InsightInput = {
 };
 
 const num = (v: number | string | null | undefined, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
-const fmtMin = (m: number) => (m < 60 ? `${Math.round(m)} мин` : `${Math.floor(m / 60)} ч ${Math.round(m % 60)} мин`);
 const clock = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 
-function trig(kind: TriggerKind, params: Record<string, number>): TriggerDraft {
-  return { kind, params, name: describeTrigger(kind, params) };
+function trig(kind: TriggerKind, params: Record<string, number>, lang: Lang): TriggerDraft {
+  return { kind, params, name: describeTrigger(kind, params, lang) };
 }
 
-export function insightFor({ key, extra, opts }: InsightInput): PatternInsight {
+/** Insight texts in `lang`; rule / trigger names are the defaults offered to the user (user content once saved). */
+export function insightFor({ key, extra, opts }: InsightInput, lang: Lang = DEFAULT_LANG): PatternInsight {
+  const t = behaviorT.tFor(lang);
   switch (key) {
     case "revenge": {
       const pause = Math.max(10, Math.ceil(opts.revengeMin * 1.5 / 5) * 5);
       return {
-        why: "После убытка решение принимает эмоция: вход без сетапа, часто тем же тикером и бóльшим размером — попытка «вернуть» деньги, а не торговля по плану.",
-        recommendation: `Пауза не меньше ${pause} мин после каждой убыточной сделки: записать причину убытка, вернуться только по сетапу из плана.`,
-        ruleText: `После убыточной сделки — пауза ${pause} мин. Следующий вход только по сетапу из плана.`,
+        why: t("insights.revenge.why"),
+        recommendation: t("insights.revenge.recommendation", { pause }),
+        ruleText: t("insights.revenge.ruleText", { pause }),
         rule: null,
-        trigger: trig("quick_after_loss", { minutes: pause }),
+        trigger: trig("quick_after_loss", { minutes: pause }, lang),
       };
     }
     case "martingale": {
       const r = opts.martingaleRatio;
       return {
-        why: "Рост размера после убытка превращает обычную серию минусов в крупный дневной убыток: риск растёт именно тогда, когда качество решений хуже всего.",
-        recommendation: "Размер после убытка — не больше предыдущего; после двух убытков подряд — половина обычного размера.",
-        ruleText: "После убытка размер не увеличиваю. После 2 убытков подряд — половина обычного размера.",
+        why: t("insights.martingale.why"),
+        recommendation: t("insights.martingale.recommendation"),
+        ruleText: t("insights.martingale.ruleText"),
         rule: null,
-        trigger: trig("size_up_after_loss", { ratio: r }),
+        trigger: trig("size_up_after_loss", { ratio: r }, lang),
       };
     }
     case "overtrading": {
       const n = Math.max(1, Math.round(num(extra.norm, 10)));
       return {
-        why: "Сделки сверх нормы — обычно не A+-сетапы, а скука или погоня за движением: средний результат хуже, а комиссии съедают остаток.",
-        recommendation: `Лимит ${n} сделок в день (ваша медиана ${num(extra.medianPerDay, 0)}). После лимита — только разбор и план на завтра.`,
-        ruleText: `Не больше ${n} сделок в день.`,
-        rule: { kind: "max_trades_per_day", threshold: { n }, name: `Не больше ${n} сделок в день` },
-        trigger: trig("max_trades_day", { n }),
+        why: t("insights.overtrading.why"),
+        recommendation: t("insights.overtrading.recommendation", { n, median: num(extra.medianPerDay, 0) }),
+        ruleText: t("insights.overtrading.ruleText", { n }),
+        rule: { kind: "max_trades_per_day", threshold: { n }, name: t("insights.overtrading.ruleName", { n }) },
+        trigger: trig("max_trades_day", { n }, lang),
       };
     }
     case "fatigue": {
       const cut = Math.max(2, Math.round(num(extra.cut, 5)));
       return {
-        why: "К концу дня падает концентрация: поздние сделки берутся по инерции, без свежего анализа, и ухудшают итог дня.",
-        recommendation: `После ${cut} сделок — перерыв 15 мин и пересмотр плана; дальше только A+-сетапы.`,
-        ruleText: `После ${cut} сделок — перерыв 15 мин, дальше только A+.`,
+        why: t("insights.fatigue.why"),
+        recommendation: t("insights.fatigue.recommendation", { cut }),
+        ruleText: t("insights.fatigue.ruleText", { cut }),
         rule: null,
-        trigger: trig("max_trades_day", { n: cut }),
+        trigger: trig("max_trades_day", { n: cut }, lang),
       };
     }
     case "chase": {
       const usd = Math.max(1, Math.round(num(extra.threshold, 150)));
+      const time = clock(opts.morningEndMin);
       return {
-        why: "После красного утра появляется желание отыграться: частота и размер растут, а избирательность падает — минус утра превращается в минус дня.",
-        recommendation: `Если к ${clock(opts.morningEndMin)} минус больше $${usd} — после ${clock(opts.morningEndMin)} только половинный размер или стоп на день.`,
-        ruleText: `Утро в минусе больше $${usd} → после ${clock(opts.morningEndMin)} не торгую (или половинный размер).`,
+        why: t("insights.chase.why"),
+        recommendation: t("insights.chase.recommendation", { usd, time }),
+        ruleText: t("insights.chase.ruleText", { usd, time }),
         rule: null,
-        trigger: trig("red_morning", { usd }),
+        trigger: trig("red_morning", { usd }, lang),
       };
     }
     case "tilt":
       return {
-        why: "Серия убытков ломает дисциплину: паузы между сделками сокращаются, входы становятся импульсивными — классический тильт.",
-        recommendation: "После 3 убытков подряд — стоп минимум на 30 минут; если серия повторилась — стоп на день.",
-        ruleText: "После 3 убытков подряд — стоп на 30 минут, при повторе — на день.",
-        rule: { kind: "no_trade_after_n_losses", threshold: { n: 3 }, name: "Не торговать после 3 убытков подряд" },
-        trigger: trig("loss_streak", { n: 3 }),
+        why: t("insights.tilt.why"),
+        recommendation: t("insights.tilt.recommendation"),
+        ruleText: t("insights.tilt.ruleText"),
+        rule: { kind: "no_trade_after_n_losses", threshold: { n: 3 }, name: t("insights.tilt.ruleName") },
+        trigger: trig("loss_streak", { n: 3 }, lang),
       };
     case "disposition": {
       const m = Math.max(1, Math.round(num(extra.medianHoldWinMin, 10) * 2));
+      const hold = fmtDurFor(lang, m);
       return {
-        why: "Прибыль фиксируется рано, а убыток «пересиживается» в надежде на возврат — средний убыток растёт быстрее среднего выигрыша.",
-        recommendation: `Тайм-стоп: если сделка в минусе дольше ${fmtMin(m)} (2 × медиана удержания прибыльных) — закрыть.`,
-        ruleText: `Тайм-стоп: убыточную позицию закрываю через ${fmtMin(m)}.`,
+        why: t("insights.disposition.why"),
+        recommendation: t("insights.disposition.recommendation", { hold }),
+        ruleText: t("insights.disposition.ruleText", { hold }),
         rule: null,
-        trigger: trig("long_loser_hold", { minutes: m }),
+        trigger: trig("long_loser_hold", { minutes: m }, lang),
       };
     }
     case "firstTrade":
       return {
-        why: "Первая сделка задаёт тон дню: торопливый вход до формирования уровней даёт ранний минус и запускает реванш.",
-        recommendation: "Первая сделка — только A+-сетап из плана, половинным размером и не раньше 9:35.",
-        ruleText: "Первая сделка дня: только A+ из плана, половинный размер, не раньше 9:35.",
+        why: t("insights.firstTrade.why"),
+        recommendation: t("insights.firstTrade.recommendation"),
+        ruleText: t("insights.firstTrade.ruleText"),
         rule: null,
-        trigger: { kind: "custom", params: {}, name: "Первая сделка — только A+, половинный размер" },
+        trigger: { kind: "custom", params: {}, name: t("insights.firstTrade.triggerName") },
       };
     case "euphoria": {
       const usd = Math.max(1, Math.round(num(extra.bigWinThreshold, 100)));
       return {
-        why: "После крупного выигрыша растёт уверенность и падает избирательность: следующие сделки берутся «на кураже» и отдают часть прибыли.",
-        recommendation: `После выигрыша ≥ $${usd} — пауза ${opts.euphoriaMin} мин, следующая сделка обычным размером.`,
-        ruleText: `После выигрыша ≥ $${usd} — пауза ${opts.euphoriaMin} мин.`,
+        why: t("insights.euphoria.why"),
+        recommendation: t("insights.euphoria.recommendation", { usd, min: opts.euphoriaMin }),
+        ruleText: t("insights.euphoria.ruleText", { usd, min: opts.euphoriaMin }),
         rule: null,
-        trigger: trig("after_big_win", { usd, minutes: opts.euphoriaMin }),
+        trigger: trig("after_big_win", { usd, minutes: opts.euphoriaMin }, lang),
       };
     }
   }

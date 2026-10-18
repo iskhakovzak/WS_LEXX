@@ -4,8 +4,10 @@ import { eq, and, desc, gte, isNull, sql } from "drizzle-orm";
 import { anthropic, AnthropicNotConfiguredError, isAnthropicConfigured } from "@workspace/integrations-anthropic-ai";
 import { isAiNotConfigured } from "./aiErrors";
 import { logger } from "./logger";
+import { config } from "../config";
 import { nyDate } from "./tradingDate";
 import type { ContextSnapshot } from "./marketContext";
+import { localeOfUser, type Lang } from "../i18n";
 
 const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4096;
@@ -20,7 +22,7 @@ const AI_TIMEOUT_MS = 60_000;
 const AI_MAX_RETRIES = 2;
 const AI_RETRY_BASE_MS = 3_000;
 
-const DAILY_COST_BUDGET_USD = Number(process.env.AI_DAILY_COST_BUDGET_USD ?? "5.0");
+const DAILY_COST_BUDGET_USD = config.ai.dailyCostBudgetUsd;
 
 interface DailyBudget {
   date: string;
@@ -171,7 +173,15 @@ async function loadPlaybook(setup: string | null) {
   };
 }
 
+/** Answer-language line of the system prompt (RU text unchanged → existing cached reviews keep their prompt hash). */
+const REPLY_IN: Record<Lang, string> = {
+  ru: "Reply in Russian (the trader is Russian-speaking).",
+  en: "Reply in English (the trader reads the app in English). Keep tickers, numbers and trading terms as is.",
+  uz: "Reply in Uzbek, Latin script (the trader reads the app in Uzbek). Keep tickers, numbers and trading terms as is.",
+};
+
 function buildPrompt(args: {
+  lang?: Lang;
   trade: typeof tradesTable.$inferSelect;
   context: ContextSnapshot | null;
   similar: ReturnType<typeof tradeSnapshotForPrompt>[];
@@ -182,7 +192,7 @@ function buildPrompt(args: {
   const t = tradeSnapshotForPrompt(trade as unknown as Record<string, unknown>);
   const stats = (() => {
     if (!similar.length) return null;
-    const wins = similar.filter((s) => s.result === "win" || s.result === "прибыль").length;
+    const wins = similar.filter((s) => s.result === "win" || s.result === "прибыль").length; // i18n-ignore (legacy stored result value)
     const validR = similar.filter((s) => s.rMultiple != null);
     const avgR = validR.length ? validR.reduce((a, s) => a + (s.rMultiple || 0), 0) / validR.length : null;
     const totalPnl = similar.reduce((a, s) => a + (s.pnl || 0), 0);
@@ -199,7 +209,7 @@ function buildPrompt(args: {
     "Be specific, evidence-driven, and concise. Reference the data provided.",
     "Your job is to find what went well, what went wrong, and concrete improvements grounded in this trader's own historical statistics and the market context.",
     "Do NOT invent facts. Only use what is in the data. If something is missing, say so.",
-    "Reply in Russian (the trader is Russian-speaking).",
+    REPLY_IN[args.lang ?? "ru"],
     "Return STRICT JSON matching the requested schema. No prose outside the JSON.",
   ].join(" ");
 
@@ -210,18 +220,18 @@ function buildPrompt(args: {
   };
 
   const schema = {
-    summary: "string — короткое (1-2 предложения) общее резюме",
-    entryTiming: "string — анализ тайминга входа: рано/поздно/норм + почему (по данным)",
-    statisticalComparison: "string — сравнение со статистикой похожих трейдов трейдера (использовать stats)",
-    playbookDeviation: "string — соответствие/отклонение от playbook условий (если playbook есть)",
-    riskErrors: "string — ошибки риск-менеджмента (R, стоп, размер, slippage, missed confirmation)",
-    alternativeExecution: "string — лучшая альтернатива исполнения",
-    psychologyImpact: "string — как убеждённость, грейд уверенности и эмоциональное состояние повлияли на трейд (если данные есть, иначе null)",
-    grade: "string — общая оценка: A/B/C/D/F",
-    confidence: "number — уверенность в анализе 0..1",
-    strengths: "string[] — 1-4 конкретные сильные стороны сделки (что сделано правильно), каждая — одно короткое предложение; [] если нет",
-    mistakes: "string[] — 1-4 конкретные ошибки (вход, риск, плейбук, психология), каждая — одно короткое предложение; [] если нет",
-    nextTime: "string[] — 1-3 конкретных действия на следующий раз (что делать иначе), в повелительном наклонении",
+    summary: "string — короткое (1-2 предложения) общее резюме", // i18n-ignore (AI schema — model input)
+    entryTiming: "string — анализ тайминга входа: рано/поздно/норм + почему (по данным)", // i18n-ignore (AI schema — model input)
+    statisticalComparison: "string — сравнение со статистикой похожих трейдов трейдера (использовать stats)", // i18n-ignore (AI schema — model input)
+    playbookDeviation: "string — соответствие/отклонение от playbook условий (если playbook есть)", // i18n-ignore (AI schema — model input)
+    riskErrors: "string — ошибки риск-менеджмента (R, стоп, размер, slippage, missed confirmation)", // i18n-ignore (AI schema — model input)
+    alternativeExecution: "string — лучшая альтернатива исполнения", // i18n-ignore (AI schema — model input)
+    psychologyImpact: "string — как убеждённость, грейд уверенности и эмоциональное состояние повлияли на трейд (если данные есть, иначе null)", // i18n-ignore (AI schema — model input)
+    grade: "string — общая оценка: A/B/C/D/F", // i18n-ignore (AI schema — model input)
+    confidence: "number — уверенность в анализе 0..1", // i18n-ignore (AI schema — model input)
+    strengths: "string[] — 1-4 конкретные сильные стороны сделки (что сделано правильно), каждая — одно короткое предложение; [] если нет", // i18n-ignore (AI schema — model input)
+    mistakes: "string[] — 1-4 конкретные ошибки (вход, риск, плейбук, психология), каждая — одно короткое предложение; [] если нет", // i18n-ignore (AI schema — model input)
+    nextTime: "string[] — 1-3 конкретных действия на следующий раз (что делать иначе), в повелительном наклонении", // i18n-ignore (AI schema — model input)
   };
 
   const user = [
@@ -345,7 +355,7 @@ export type ReviewResult = {
   generatedAt: string;
 };
 
-export async function generateReview(args: { tradeId: number; userKey: string; force?: boolean }): Promise<ReviewResult> {
+export async function generateReview(args: { tradeId: number; userKey: string; force?: boolean; lang?: Lang }): Promise<ReviewResult> {
   const { tradeId, force } = args;
 
   const [trade] = await db.select().from(tradesTable).where(eq(tradesTable.id, tradeId));
@@ -363,7 +373,9 @@ export async function generateReview(args: { tradeId: number; userKey: string; f
     loadEmotionalState(trade.trader ?? null, trade.date ?? null),
   ]);
 
-  const { system, user } = buildPrompt({ trade, context, similar, playbook, emotionalState });
+  // Answer language: the requester's (route) or, for auto-reviews, the trader's own locale. It is part of the prompt → of promptHash.
+  const lang = args.lang ?? (await localeOfUser(trade.trader ?? null));
+  const { system, user } = buildPrompt({ trade, context, similar, playbook, emotionalState, lang });
   const promptHash = hashPrompt(system + "\n" + user + MODEL);
 
   if (!force) {
@@ -446,7 +458,7 @@ export async function generateReview(args: { tradeId: number; userKey: string; f
 function isClosedResult(result: string | null | undefined): boolean {
   if (!result) return false;
   const s = String(result).toLowerCase();
-  return s === "win" || s === "loss" || s === "be" || s === "прибыль" || s === "убыток";
+  return s === "win" || s === "loss" || s === "be" || s === "прибыль" || s === "убыток"; // i18n-ignore (legacy stored result values)
 }
 
 const AUTO_REVIEW_DELAY_MS = 8_000;

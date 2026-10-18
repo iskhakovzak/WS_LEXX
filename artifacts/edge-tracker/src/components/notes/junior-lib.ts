@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
-import { BASE } from "@/lib/api";
+import { fmtRelative } from "@/lib/format";
+import { notesI18n } from "@/i18n/ns/notes";
+import { comparePersonNames } from "@/i18n";
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -128,43 +130,24 @@ export type Reminder = { id: number; trader: string; note_date: string; curator:
 
 /* ───────────────────────── Sections ───────────────────────── */
 
-export const SECTION_META: Record<SectionKey, { title: string; hint: string; placeholder: string }> = {
-  free: { title: "Заметки", hint: "Свободный текст", placeholder: "Всё, что не легло в разделы ниже…" },
-  plan: {
-    title: "План",
-    hint: "Что планировал до открытия",
-    placeholder: "Имена в игре, катализаторы, уровни. Какой A+ сетап ждал? Риск на день?",
-  },
-  intraday: {
-    title: "Интрадей",
-    hint: "Закрыто до закрытия сессии",
-    placeholder: "AAPL лонг от VWAP после гэпа, +1.2R. Вход по плану? Что с размером?",
-  },
-  overnight: {
-    title: "Овернайт",
-    hint: "Перенос через ночь — гэп-риск",
-    placeholder: "Что держишь на ночь и почему. Где стоп на гэп, какой размер позиции?",
-  },
-  swing: {
-    title: "Свинг",
-    hint: "Позиции на дни–недели",
-    placeholder: "Тезис позиции, уровни выхода, что изменилось сегодня.",
-  },
-  mistakes: {
-    title: "Ошибки",
-    hint: "Где отошёл от плана",
-    placeholder: "Ранний вход, двинул стоп, FOMO, переторговка, размер больше лимита…",
-  },
-  lessons: {
-    title: "Уроки",
-    hint: "Что забираешь с собой",
-    placeholder: "Один-два вывода, которые изменят твою торговлю завтра.",
-  },
-  focus: {
-    title: "Фокус на завтра",
-    hint: "Одна конкретная цель",
-    placeholder: "Например: только A+ сетапы, не больше 3 сделок, стоп на красный день −$300.",
-  },
+/** Section texts are getters: read at render time in the current UI language. */
+function meta(k: SectionKey): { readonly title: string; readonly hint: string; readonly placeholder: string } {
+  return {
+    get title() { return notesI18n.t(`junior.sections.${k}.title`); },
+    get hint() { return notesI18n.t(`junior.sections.${k}.hint`); },
+    get placeholder() { return notesI18n.t(`junior.sections.${k}.placeholder`); },
+  };
+}
+
+export const SECTION_META: Record<SectionKey, { readonly title: string; readonly hint: string; readonly placeholder: string }> = {
+  free: meta("free"),
+  plan: meta("plan"),
+  intraday: meta("intraday"),
+  overnight: meta("overnight"),
+  swing: meta("swing"),
+  mistakes: meta("mistakes"),
+  lessons: meta("lessons"),
+  focus: meta("focus"),
 };
 
 export const TRADE_SECTIONS: SectionKey[] = ["intraday", "overnight", "swing"];
@@ -180,13 +163,33 @@ export function sectionsOf(note: JuniorNote | null | undefined): Sections {
   return note.raw_text?.trim() ? { free: note.raw_text } : {};
 }
 
-/** Flat text for AI/search — mirrors composeSections() on the server. */
+/**
+ * Flat text for AI/search — mirrors composeSections() on the server byte for byte, so the headings are the
+ * server's RU storage headings in every UI language (not display text).
+ */
+const COMPOSE_TITLES: Record<SectionKey, string> = {
+  free: "",
+  plan: "План", // i18n-ignore (server format)
+  intraday: "Сделки — интрадей", // i18n-ignore (server format)
+  overnight: "Сделки — овернайт", // i18n-ignore (server format)
+  swing: "Сделки — свинг", // i18n-ignore (server format)
+  mistakes: "Ошибки", // i18n-ignore (server format)
+  lessons: "Уроки", // i18n-ignore (server format)
+  focus: "Фокус на завтра", // i18n-ignore (server format)
+};
 export function composeSections(s: Sections): string {
   return SECTION_KEYS.filter((k) => s[k]?.trim())
+    .map((k) => (COMPOSE_TITLES[k] ? `${COMPOSE_TITLES[k]}:\n${s[k]!.trim()}` : s[k]!.trim()))
+    .join("\n\n");
+}
+
+/** Flat text for previews and search in the UI: the same blocks with headings in the UI language. */
+export function previewSections(s: Sections): string {
+  return SECTION_KEYS.filter((k) => s[k]?.trim())
     .map((k) => {
-      const title =
-        k === "free" ? "" : TRADE_SECTIONS.includes(k) ? `Сделки — ${SECTION_META[k].title.toLowerCase()}` : SECTION_META[k].title;
-      return title ? `${title}:\n${s[k]!.trim()}` : s[k]!.trim();
+      if (k === "free") return s[k]!.trim();
+      const title = TRADE_SECTIONS.includes(k) ? notesI18n.t("junior.tradesSection", { title: SECTION_META[k].title }) : SECTION_META[k].title;
+      return `${title}: ${s[k]!.trim()}`;
     })
     .join("\n\n");
 }
@@ -201,50 +204,35 @@ export function wordCount(s: Sections): number {
 
 /* ───────────────────────── Templates ───────────────────────── */
 
-export type Template = { id: string; label: string; sections: Sections };
+export type Template = { id: string; readonly label: string; readonly sections: Sections };
 
-export const BUILTIN_TEMPLATES: Template[] = [
-  {
-    id: "regular",
-    label: "Обычный день",
-    sections: {
-      plan: "В игре: \nКатализаторы: \nКлючевые уровни: \nРиск на день: ",
-      intraday: "Тикер · сетап · вход/выход · R\n",
-      mistakes: "1. ",
-      lessons: "1. ",
-      focus: "",
-    },
+type BuiltinId = "regular" | "red" | "carry" | "flat";
+/** Prompts come in the UI language when applied; plain list markers and empty blocks are the same everywhere. */
+const TEMPLATE_FIXED: Record<BuiltinId, Sections> = {
+  regular: { mistakes: "1. ", lessons: "1. ", focus: "" },
+  red: {},
+  carry: {},
+  flat: { lessons: "" },
+};
+const TEMPLATE_TEXT: Record<BuiltinId, readonly SectionKey[]> = {
+  regular: ["plan", "intraday"],
+  red: ["plan", "intraday", "mistakes", "lessons", "focus"],
+  carry: ["overnight", "swing", "focus"],
+  flat: ["plan", "mistakes"],
+};
+const builtin = (id: BuiltinId): Template => ({
+  id,
+  get label() { return notesI18n.t(`junior.templates.${id}.label`); },
+  get sections() {
+    const out: Sections = {};
+    for (const k of SECTION_KEYS) {
+      if (TEMPLATE_TEXT[id].includes(k)) out[k] = notesI18n.tryT(`junior.templates.${id}.${k}`) ?? "";
+      else if (TEMPLATE_FIXED[id][k] != null) out[k] = TEMPLATE_FIXED[id][k];
+    }
+    return out;
   },
-  {
-    id: "red",
-    label: "Красный день",
-    sections: {
-      plan: "Что было в плане: ",
-      intraday: "Сделки, которые дали минус: \n",
-      mistakes: "Где сработал / не сработал стоп на день: \nЭмоции после первого лосса: \n",
-      lessons: "Что сделаю иначе: ",
-      focus: "Завтра: уменьшить размер до первой плюсовой сделки.",
-    },
-  },
-  {
-    id: "carry",
-    label: "Перенос позиций",
-    sections: {
-      overnight: "Тикер · размер · средняя · стоп на гэп · причина переноса\n",
-      swing: "Тикер · тезис · цель · уровень отмены тезиса\n",
-      focus: "Утром: проверить премаркет по переносам до открытия.",
-    },
-  },
-  {
-    id: "flat",
-    label: "Без сделок",
-    sections: {
-      plan: "Что смотрел: ",
-      mistakes: "Пропущенные сетапы и почему не вошёл: ",
-      lessons: "",
-    },
-  },
-];
+});
+export const BUILTIN_TEMPLATES: Template[] = [builtin("regular"), builtin("red"), builtin("carry"), builtin("flat")];
 
 const MY_TEMPLATE_KEY = "ws_lexx_junior_template";
 
@@ -253,7 +241,7 @@ export function loadMyTemplate(): Template | null {
     const raw = localStorage.getItem(MY_TEMPLATE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as Sections;
-    return s && typeof s === "object" ? { id: "mine", label: "Мой шаблон", sections: s } : null;
+    return s && typeof s === "object" ? { id: "mine", get label() { return notesI18n.t("myTemplate"); }, sections: s } : null;
   } catch {
     return null;
   }
@@ -280,13 +268,19 @@ export function applyTemplate(current: Sections, t: Template): Sections {
 
 /* ───────────────────────── Mood ───────────────────────── */
 
+// `label` is a getter: read at render time in the current UI language.
 export const MOODS = [
-  { value: "focused", label: "Сосредоточен", score: 5 },
-  { value: "confident", label: "Уверен", score: 4 },
-  { value: "neutral", label: "Нейтрально", score: 3 },
-  { value: "stressed", label: "Напряжён", score: 2 },
-  { value: "frustrated", label: "Раздражён", score: 1 },
+  { value: "focused", score: 5, get label() { return notesI18n.t("junior.mood.focused"); } },
+  { value: "confident", score: 4, get label() { return notesI18n.t("junior.mood.confident"); } },
+  { value: "neutral", score: 3, get label() { return notesI18n.t("junior.mood.neutral"); } },
+  { value: "stressed", score: 2, get label() { return notesI18n.t("junior.mood.stressed"); } },
+  { value: "frustrated", score: 1, get label() { return notesI18n.t("junior.mood.frustrated"); } },
 ] as const;
+
+/** Mood label by its 1–5 score (charts). */
+export function moodLabelByScore(v: number): string {
+  return MOODS.find((m) => m.score === v)?.label ?? String(v);
+}
 
 export function moodMeta(v: string | null | undefined) {
   return MOODS.find((m) => m.value === v) ?? null;
@@ -353,42 +347,11 @@ export function streakOf(dates: Set<string>, today = localToday()): number {
   return n;
 }
 
-export function fmtDayLong(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
-  } catch {
-    return iso;
-  }
-}
-
-export function fmtDayShort(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-  } catch {
-    return iso;
-  }
-}
-
-export function fmtWeekday(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("ru-RU", { weekday: "short" });
-  } catch {
-    return "";
-  }
-}
-
 export function relTime(ts: string | number | null | undefined, now = Date.now()): string {
   if (ts == null) return "";
   const t = typeof ts === "number" ? ts : Date.parse(ts);
   if (!Number.isFinite(t)) return "";
-  const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 5) return "только что";
-  if (s < 60) return `${s} сек назад`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  return `${Math.round(h / 24)} дн назад`;
+  return fmtRelative(t, { now });
 }
 
 export function hasFeedback(n: Pick<JuniorNote, "reviewed_at">): boolean {
@@ -399,27 +362,7 @@ export function isUnread(n: Pick<JuniorNote, "reviewed_at" | "feedback_seen_at">
   return !!n.reviewed_at && !n.feedback_seen_at;
 }
 
-/* ───────────────────────── API ───────────────────────── */
-
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-export async function api<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  const { json, ...rest } = init ?? {};
-  const res = await fetch(`${BASE}/api${path}`, {
-    ...rest,
-    headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new HttpError(res.status, data.error ?? `HTTP ${res.status}`);
-  }
-  return (await res.json()) as T;
-}
+/* ───────────────────────── API (requests: lib/api/http) ───────────────────────── */
 
 export const qk = {
   all: ["junior-notes"] as const,
@@ -439,16 +382,11 @@ export type ReviewScopeFilter = "all" | "mine";
 
 /* ───────────────────────── Review flow (senior) ───────────────────────── */
 
-/** Built-in quick replies — short, concrete, in the desk's voice. */
-export const BUILTIN_SNIPPETS: readonly string[] = [
-  "Хороший разбор — так держать.",
-  "Опиши конкретнее: вход, стоп, выход и почему именно там.",
-  "Где был стоп? Укажи уровень и риск в R до входа.",
-  "Ошибку видишь — теперь сформулируй правило, которое её предотвратит.",
-  "Фокус на завтра слишком общий — одно измеримое правило.",
-  "Сверь сделки с планом: какие были вне плана и почему?",
-  "Вчерашний фокус не выполнен — разберём на 1:1.",
-];
+/** Built-in quick replies — short, concrete, in the desk's voice; in the reviewer's UI language. */
+const SNIPPET_KEYS = ["good", "specific", "stop", "rule", "focus", "plan", "missedFocus"] as const;
+export function builtinSnippets(): string[] {
+  return SNIPPET_KEYS.map((k) => notesI18n.t(`junior.snippets.${k}`));
+}
 
 const SNIPPETS_KEY = "ws_lexx_junior_snippets";
 const MAX_SNIPPETS = 10;
@@ -535,9 +473,10 @@ export function reviewKeyAction(
   if (inField || e.ctrlKey || e.metaKey || e.altKey) return null;
   if (digit != null && !e.shiftKey) return { type: "score", value: digit === "0" ? null : Number(digit) };
   const k = e.key.toLowerCase();
-  if (k === "j" || k === "о" || e.key === "ArrowRight") return { type: "next" };
-  if (k === "k" || k === "л" || e.key === "ArrowLeft") return { type: "prev" };
-  if (k === "r" || k === "к") return { type: "focus" };
+  // Russian-layout twins of J / K / R (physical keys), not UI text.
+  if (k === "j" || k === "о" || e.key === "ArrowRight") return { type: "next" }; // i18n-ignore
+  if (k === "k" || k === "л" || e.key === "ArrowLeft") return { type: "prev" }; // i18n-ignore
+  if (k === "r" || k === "к") return { type: "focus" }; // i18n-ignore
   return null;
 }
 
@@ -556,7 +495,7 @@ export function nextUnanswered<T extends { id: number; reviewed_at?: string | nu
 
 /** Roster order for the senior: attention priority first, then name. */
 export function byAttention<T extends { trader: string; priority?: number }>(rows: readonly T[]): T[] {
-  return [...rows].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.trader.localeCompare(b.trader, "ru"));
+  return [...rows].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || comparePersonNames(a.trader, b.trader));
 }
 
 /** Whole calendar days between a note date and today (for «ждёт 3 дн.»). */

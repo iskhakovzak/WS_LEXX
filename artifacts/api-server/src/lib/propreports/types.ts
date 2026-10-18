@@ -13,8 +13,9 @@ export type FeeKey = (typeof FEE_KEYS)[number];
 /** Canonical keys (FEE_KEYS) plus any extra fee column detected in the file (slug of its header, see fees.ts). */
 export type FeeBreakdown = Record<string, number>;
 
+/** Fee column labels (codes as is); the localized ones (comm / clr / misc) come from the `propreports` namespace `fee.*` via feeLabel(). */
 export const FEE_LABEL_RU: Record<FeeKey, string> = {
-  comm: "Комиссия",
+  comm: "Комиссия", // i18n-ignore (RU fallback; display via feeLabel → propreports fee.comm)
   ecn: "ECN",
   sec: "SEC",
   orf: "ORF",
@@ -23,8 +24,8 @@ export const FEE_LABEL_RU: Record<FeeKey, string> = {
   cat: "CAT",
   nscc: "NSCC",
   acc: "Access",
-  clr: "Клиринг",
-  misc: "Прочее",
+  clr: "Клиринг", // i18n-ignore (RU fallback; fee.clr)
+  misc: "Прочее", // i18n-ignore (RU fallback; fee.misc)
 };
 
 export interface Fill {

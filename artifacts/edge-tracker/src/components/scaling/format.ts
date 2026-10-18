@@ -1,89 +1,108 @@
 import type { Tone } from "@/components/ds";
 import type { Action, MetricUnit, Op, RuleStatus, Tier, Unit } from "./use-scaling";
+import { MINUS, fmtCount, fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { scalingI18n } from "@/i18n/ns/scaling";
 
-export function fmtUsd(v: number | null | undefined, opts: { compact?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const abs = Math.abs(v);
-  const s = opts.compact && abs >= 1000
-    ? `${(abs / 1000).toLocaleString("ru-RU", { maximumFractionDigits: abs >= 100_000 ? 0 : 1 })}k`
-    : abs.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
-  return `${v < 0 ? "−" : ""}$${s}`;
-}
+// Labels are resolved at call time (scalingI18n.t), never at module scope — tones and codes are static.
 
 export function fmtMetric(unit: MetricUnit, v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "—";
   switch (unit) {
-    case "usd": return fmtUsd(v);
-    case "r": return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)}R`;
-    case "pct": return `${v.toFixed(0)}%`;
-    case "x": return `${v.toFixed(2)}×`;
-    case "score": return `${v.toFixed(1)}/10`;
-    default: return v.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+    case "usd": return fmtUsd(v, { decimals: 0 });
+    case "r": return fmtR(v);
+    case "pct": return fmtPct(v, { decimals: 0, signed: false });
+    case "x": return fmtNum(v, { suffix: "×" });
+    case "score": return fmtNum(v, { decimals: 1, suffix: "/10" });
+    default: return fmtCount(Math.round(v));
   }
 }
 
 export const OP_LABEL: Record<Op, string> = { ">=": "≥", ">": ">", "<=": "≤", "<": "<", "=": "=" };
 
 export function fmtThreshold(unit: MetricUnit, raw: number, ruleUnit: Unit, resolved: number | null): string {
-  if (ruleUnit === "x_daily_limit") return `${raw}× дневной лимит${resolved != null ? ` (${fmtUsd(resolved)})` : ""}`;
-  if (ruleUnit === "pct_account") return `${raw}% счёта${resolved != null ? ` (${fmtUsd(resolved)})` : ""}`;
+  const t = scalingI18n.t;
+  const value = String(raw).replace("-", MINUS);
+  const amount = resolved != null ? fmtUsd(resolved, { decimals: 0 }) : null;
+  if (ruleUnit === "x_daily_limit") return amount ? t("threshold.xDailyLimitResolved", { value, amount }) : t("threshold.xDailyLimit", { value });
+  if (ruleUnit === "pct_account") return amount ? t("threshold.pctAccountResolved", { value, amount }) : t("threshold.pctAccount", { value });
   return fmtMetric(unit, raw);
 }
 
-export const ACTION_META: Record<Action, { label: string; tone: Tone; verb: string }> = {
-  promote: { label: "Повышение", tone: "up", verb: "Повысить" },
-  demote: { label: "Понижение", tone: "down", verb: "Понизить" },
-  assign: { label: "Назначить тир", tone: "accent", verb: "Назначить" },
-  hold: { label: "Удержание", tone: "neutral", verb: "Оставить" },
+export const ACTION_TONE: Record<Action, Tone> = { promote: "up", demote: "down", assign: "accent", hold: "neutral" };
+
+/** «Повышение» / «Понижение» / «Назначить тир» / «Удержание». */
+export function actionLabel(a: Action): string {
+  return scalingI18n.t(`action.${a}`);
+}
+
+/** «Повысить» / «Понизить» / «Назначить» / «Оставить». */
+export function actionVerb(a: Action): string {
+  return scalingI18n.t(`verb.${a}`);
+}
+
+export const STATUS_TONE: Record<RuleStatus, Tone> = { pass: "up", fail: "down", na: "neutral" };
+
+export function ruleStatusLabel(s: RuleStatus): string {
+  return scalingI18n.t(`ruleStatus.${s}`);
+}
+
+type ProposalStatus = "pending" | "approved" | "rejected";
+const PROPOSAL_TONE: Record<ProposalStatus, Tone> = { pending: "warn", approved: "up", rejected: "down" };
+
+export function proposalStatusMeta(status: string): { label: string; tone: Tone } {
+  const s: ProposalStatus = status === "approved" || status === "rejected" ? status : "pending";
+  return { label: scalingI18n.t(`proposalStatus.${s}`), tone: PROPOSAL_TONE[s] };
+}
+
+/**
+ * The ladder's default tiers (seeded with Russian names) are shown in the UI language; a tier the admin renamed or
+ * added keeps its own name (user content).
+ */
+const DEFAULT_TIERS: Record<string, { ru: string; word: "intern" | "junior" | "trader" | "senior" }> = {
+  trainee: { ru: "Стажёр", word: "intern" }, // i18n-ignore — seeded name (data) to compare with
+  junior: { ru: "Джун", word: "junior" }, // i18n-ignore
+  trader: { ru: "Трейдер", word: "trader" }, // i18n-ignore
+  senior: { ru: "Сеньор", word: "senior" }, // i18n-ignore
 };
 
-export const STATUS_META: Record<RuleStatus, { label: string; tone: Tone }> = {
-  pass: { label: "выполнено", tone: "up" },
-  fail: { label: "не выполнено", tone: "down" },
-  na: { label: "нет данных", tone: "neutral" },
-};
-
-export const PROPOSAL_STATUS: Record<string, { label: string; tone: Tone }> = {
-  pending: { label: "на рассмотрении", tone: "warn" },
-  approved: { label: "одобрено", tone: "up" },
-  rejected: { label: "отклонено", tone: "down" },
-};
+/** Display name of a tier: the default ladder in the UI language, custom names as written. */
+export function tierLabel(t: { key: string; name: string } | null | undefined): string {
+  if (!t) return commonI18n.t("tiers.noTier");
+  const d = DEFAULT_TIERS[t.key];
+  return d && t.name === d.ru ? commonI18n.t(`tiers.${d.word}`) : t.name;
+}
 
 export function tierName(tiers: Tier[], key: string | null | undefined): string {
-  if (!key) return "Без тира";
-  return tiers.find((t) => t.key === key)?.name ?? key;
+  if (!key) return commonI18n.t("tiers.noTier");
+  const t = tiers.find((x) => x.key === key);
+  return t ? tierLabel(t) : key;
 }
 
-export function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", year: "numeric" });
-}
+type TierFieldKey =
+  | "accountSize" | "dailyLossLimit" | "weeklyLossLimit" | "maxDrawdown" | "maxRiskPerTrade" | "maxPositionUsd"
+  | "maxOvernightExposure" | "maxOpenPositions" | "allowOvernight" | "allowSwing";
 
-export function fmtDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-}
-
-/** Rows for the limits comparison (current tier → next tier). */
-export const TIER_FIELDS: { key: keyof Tier; label: string; kind: "usd" | "int" | "bool" }[] = [
-  { key: "accountSize", label: "Buying power", kind: "usd" },
-  { key: "dailyLossLimit", label: "Дневной лимит убытка", kind: "usd" },
-  { key: "weeklyLossLimit", label: "Недельный лимит убытка", kind: "usd" },
-  { key: "maxDrawdown", label: "Макс. просадка", kind: "usd" },
-  { key: "maxRiskPerTrade", label: "Риск на сделку", kind: "usd" },
-  { key: "maxPositionUsd", label: "Макс. позиция", kind: "usd" },
-  { key: "maxOvernightExposure", label: "Овернайт-экспозиция", kind: "usd" },
-  { key: "maxOpenPositions", label: "Открытых позиций", kind: "int" },
-  { key: "allowOvernight", label: "Овернайт", kind: "bool" },
-  { key: "allowSwing", label: "Свинг", kind: "bool" },
+/** Rows for the limits comparison (current tier → next tier); label: `tierFieldLabel(key)`. */
+export const TIER_FIELDS: { key: TierFieldKey; kind: "usd" | "int" | "bool" }[] = [
+  { key: "accountSize", kind: "usd" },
+  { key: "dailyLossLimit", kind: "usd" },
+  { key: "weeklyLossLimit", kind: "usd" },
+  { key: "maxDrawdown", kind: "usd" },
+  { key: "maxRiskPerTrade", kind: "usd" },
+  { key: "maxPositionUsd", kind: "usd" },
+  { key: "maxOvernightExposure", kind: "usd" },
+  { key: "maxOpenPositions", kind: "int" },
+  { key: "allowOvernight", kind: "bool" },
+  { key: "allowSwing", kind: "bool" },
 ];
 
+export function tierFieldLabel(key: TierFieldKey): string {
+  return scalingI18n.t(`limit.${key}`);
+}
+
 export function fmtTierField(kind: "usd" | "int" | "bool", v: unknown): string {
-  if (kind === "bool") return v ? "разрешён" : "запрещён";
+  if (kind === "bool") return scalingI18n.t(v ? "limit.allowed" : "limit.forbidden");
   if (v == null || v === "") return "—";
-  return kind === "usd" ? fmtUsd(Number(v)) : String(v);
+  return kind === "usd" ? fmtUsd(Number(v), { decimals: 0 }) : fmtCount(Number(v));
 }

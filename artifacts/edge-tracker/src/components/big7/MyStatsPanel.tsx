@@ -6,10 +6,12 @@ import * as React from "react";
 import { Link } from "wouter";
 import { ArrowUpRight } from "lucide-react";
 import { DataTable, Panel, Segmented, SortableTh, TermTooltip, toneOf, toneText, useTableSort } from "@/components/ds";
-import { fmtMoney } from "@/components/chart-engine/lib/format";
+import { fmtUsd } from "@/lib/format";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { MyHour, MyStats, MyTicker } from "./use-big7";
+import { big7I18n } from "@/i18n/ns/big7";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type StatsPeriod = "90" | "0";
 
@@ -29,10 +31,11 @@ const wrText = (wr: number | null) => (wr == null ? "—" : `${Math.round(wr)}%`
 const wrTone = (wr: number | null) => (wr == null ? "text-muted-foreground" : wr >= 60 ? "text-up" : wr <= 40 ? "text-down" : "text-foreground");
 
 function HoursStrip({ hours }: { hours: MyHour[] }) {
+  const { t } = big7I18n.useT();
   const max = Math.max(1, ...hours.map((h) => Math.abs(h.net)));
   return (
     <div className="flex h-full min-h-[148px] flex-col gap-2">
-      <span className="text-xs text-muted-foreground">Нетто по времени входа (ET)</span>
+      <span className="text-xs text-muted-foreground">{t("my.hours")}</span>
       <div className="grid flex-1 grid-cols-8 items-stretch gap-1.5" role="list">
         {hours.map((h) => {
           const pct = (Math.abs(h.net) / max) * 50;
@@ -41,7 +44,7 @@ function HoursStrip({ hours }: { hours: MyHour[] }) {
               key={h.key}
               role="listitem"
               className="flex min-w-0 flex-col items-center gap-1"
-              title={`${h.label}: ${h.n} сд. · ${fmtMoney(h.net)} · WR ${wrText(h.wr)}`}
+              title={t("my.hourTitle", { label: h.label, trades: commonI18n.t("units.tradesShort", { count: h.n }), net: fmtUsd(h.net, { signed: true, decimals: "auto" }), wr: wrText(h.wr) })}
             >
               <div className="relative w-full flex-1 rounded-md bg-[var(--glass-bg)]">
                 <span className="absolute inset-x-0 top-1/2 h-px bg-border" aria-hidden="true" />
@@ -71,38 +74,39 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
 }) {
   const traded = React.useMemo(() => stats.tickers.filter((t) => t.n > 0), [stats.tickers]);
   const { rows: tickers, thProps } = useTableSort(traded, SORT_ACCESSORS, "net");
-  const t = stats.total;
+  const { t } = big7I18n.useT();
+  const tot = stats.total;
   return (
     <Panel
-      title="Мои сделки в мегакэпах"
+      title={t("my.title")}
       description={
-        t.n > 0
-          ? <>{t.n} сд. · <span className={toneText(toneOf(t.net))}>{fmtMoney(t.net)}</span> <TermTooltip term="net">нетто</TermTooltip> · WR {wrText(t.wr)}</>
-          : "За этот период сделок нет"
+        tot.n > 0
+          ? <>{commonI18n.t("units.tradesShort", { count: tot.n })} · <span className={toneText(toneOf(tot.net))}>{fmtUsd(tot.net, { signed: true, decimals: "auto" })}</span> <TermTooltip term="net">{t("my.net")}</TermTooltip> · WR {wrText(tot.wr)}</>
+          : t("my.noTrades")
       }
       actions={
         <Segmented
-          ariaLabel="Период"
+          ariaLabel={t("my.periodAria")}
           size="sm"
           value={period}
           onChange={onPeriod}
-          options={[{ value: "90", label: "90 дней" }, { value: "0", label: "Всё время" }]}
+          options={[{ value: "90", label: t("my.days90") }, { value: "0", label: t("my.allTime") }]}
         />
       }
     >
-      {t.n > 0 && (
+      {tot.n > 0 && (
         <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <DataTable ariaLabel="Мои результаты по тикерам">
+          <DataTable ariaLabel={t("my.tableAria")}>
             <table>
               <thead>
                 <tr>
-                  <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-                  <SortableTh {...thProps("n")} align="right">Сделок</SortableTh>
-                  <SortableTh {...thProps("net")} align="right" term="net">Нетто</SortableTh>
+                  <SortableTh {...thProps("ticker")}>{t("my.ticker")}</SortableTh>
+                  <SortableTh {...thProps("n")} align="right">{t("my.trades")}</SortableTh>
+                  <SortableTh {...thProps("net")} align="right" term="net">{t("my.netCol")}</SortableTh>
                   <SortableTh {...thProps("wr")} align="right" term="winrate">WR</SortableTh>
-                  <SortableTh {...thProps("long")} align="right">Лонг / шорт</SortableTh>
-                  <SortableTh {...thProps("best")}>Лучшее время</SortableTh>
-                  <th scope="col"><span className="sr-only">Сделки</span></th>
+                  <SortableTh {...thProps("long")} align="right">{t("my.longShort")}</SortableTh>
+                  <SortableTh {...thProps("best")}>{t("my.bestTime")}</SortableTh>
+                  <th scope="col"><span className="sr-only">{t("my.tradesCol")}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -110,16 +114,16 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
                   <tr key={r.ticker} className="cursor-pointer" onClick={() => onOpen(r.ticker)}>
                     <td className="font-semibold">{r.ticker}</td>
                     <td className="text-right">{r.n}</td>
-                    <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtMoney(r.net)}</td>
+                    <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true, decimals: "auto" })}</td>
                     <td className={cn("text-right", wrTone(r.wr))}>{wrText(r.wr)}</td>
                     <td className="text-right text-xs">
-                      <span className={toneText(toneOf(r.longNet))}>{fmtMoney(r.longNet, 0)}</span>
+                      <span className={toneText(toneOf(r.longNet))}>{fmtUsd(r.longNet, { signed: true, decimals: 0 })}</span>
                       <span className="text-muted-foreground"> / </span>
-                      <span className={toneText(toneOf(r.shortNet))}>{fmtMoney(r.shortNet, 0)}</span>
+                      <span className={toneText(toneOf(r.shortNet))}>{fmtUsd(r.shortNet, { signed: true, decimals: 0 })}</span>
                     </td>
                     <td className="text-xs">
                       {r.bestHour ? (
-                        <span className="whitespace-nowrap"><span className="text-foreground">{r.bestHour.label}</span> <span className="text-up">{fmtMoney(r.bestHour.net, 0)}</span></span>
+                        <span className="whitespace-nowrap"><span className="text-foreground">{r.bestHour.label}</span> <span className="text-up">{fmtUsd(r.bestHour.net, { signed: true, decimals: 0 })}</span></span>
                       ) : <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="text-right">
@@ -127,7 +131,7 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
                         href={links.trades({ ticker: r.ticker })}
                         onClick={(e: React.MouseEvent) => e.stopPropagation()}
                         className="inline-flex items-center gap-0.5 text-xs text-muted-foreground hover:text-primary"
-                        aria-label={`Сделки по ${r.ticker}`}
+                        aria-label={t("my.tradesBy", { ticker: r.ticker })}
                       >
                         <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                       </Link>
@@ -146,21 +150,22 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
 
 /** Compact block for the detail sheet: one ticker's numbers. */
 export function MyTickerStats({ row }: { row: MyTicker | undefined }) {
+  const { t } = big7I18n.useT();
   if (!row || row.n === 0) return null;
   const cells: Array<[string, React.ReactNode]> = [
-    ["Сделок", row.n],
-    ["Нетто", <span className={toneText(toneOf(row.net))}>{fmtMoney(row.net)}</span>],
+    [t("my.trades"), row.n],
+    [t("my.netCol"), <span className={toneText(toneOf(row.net))}>{fmtUsd(row.net, { signed: true, decimals: "auto" })}</span>],
     ["WR", <span className={wrTone(row.wr)}>{wrText(row.wr)}</span>],
-    ["Средняя", <span className={toneText(toneOf(row.avg))}>{fmtMoney(row.avg)}</span>],
-    ["Лучшее время", row.bestHour ? `${row.bestHour.label} · ${fmtMoney(row.bestHour.net, 0)}` : "—"],
-    ["Худшее время", row.worstHour ? `${row.worstHour.label} · ${fmtMoney(row.worstHour.net, 0)}` : "—"],
+    [t("my.avg"), <span className={toneText(toneOf(row.avg))}>{fmtUsd(row.avg, { signed: true, decimals: "auto" })}</span>],
+    [t("my.bestTime"), row.bestHour ? `${row.bestHour.label} · ${fmtUsd(row.bestHour.net, { signed: true, decimals: 0 })}` : "—"],
+    [t("my.worstTime"), row.worstHour ? `${row.worstHour.label} · ${fmtUsd(row.worstHour.net, { signed: true, decimals: 0 })}` : "—"],
   ];
   return (
     <Panel
-      title={`Мои сделки ${row.ticker}`}
+      title={t("my.titleTicker", { ticker: row.ticker })}
       actions={
         <Link href={links.trades({ ticker: row.ticker })} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">
-          Все сделки <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+          {t("my.allTrades")} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       }
     >

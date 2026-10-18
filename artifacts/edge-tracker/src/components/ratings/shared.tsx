@@ -2,49 +2,11 @@ import * as React from "react";
 import { ArrowDown, ArrowUp, Minus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toneOf, toneText, type Tone } from "@/components/ds";
+import { fmtNum } from "@/lib/format";
+import { ratingsI18n } from "@/i18n/ns/ratings";
+import { personInitials } from "@/i18n";
 
-export async function fetchJson<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  const body = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(body?.error ?? `Ошибка загрузки (${r.status})`);
-  return body as T;
-}
-
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const m10 = Math.abs(n) % 10, m100 = Math.abs(n) % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-const MINUS = "−";
-
-/** "+$1,234" / "−$12" */
-export function fmtUsd(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${v < 0 ? MINUS : v > 0 ? "+" : ""}$${abs}`;
-}
-
-/** "+1.25R" / "−0.5R" */
-export function fmtR(v: number | null | undefined, digits = 2): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits);
-  if (Number(s) === 0) return "0R";
-  return `${v < 0 ? MINUS : "+"}${s}R`;
-}
-
-export function fmtPct(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${v.toFixed(digits)}%`;
-}
-
-export function fmtSigned(v: number | null | undefined, digits = 1): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits);
-  if (Number(s) === 0) return s;
-  return `${v < 0 ? MINUS : "+"}${s}`;
-}
+// Money / R / percent / signed numbers: @/lib/format (fmtUsd, fmtR, fmtPct, fmtNum).
 
 /** Glass tooltip style for recharts. */
 export const CHART_TOOLTIP: React.CSSProperties = {
@@ -97,7 +59,7 @@ export function Sparkline({
   if (values.length < 2) {
     return (
       <span className={cn("inline-flex items-center text-2xs text-muted-foreground", className)} style={{ width, height }}>
-        {values.length === 1 ? "1 точка" : "—"}
+        {values.length === 1 ? ratingsI18n.t("shared.onePoint") : "—"}
       </span>
     );
   }
@@ -122,7 +84,7 @@ export function Sparkline({
       viewBox={`0 0 ${width} ${height}`}
       className={cn("shrink-0 overflow-visible", className)}
       role="img"
-      aria-label={label ?? `Тренд: ${values.map((v) => v.toFixed(1)).join(", ")}`}
+      aria-label={label ?? ratingsI18n.t("shared.trendAria", { values: values.map((v) => fmtNum(v, 1)).join(", ") })}
     >
       <defs>
         <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
@@ -141,7 +103,7 @@ export function Sparkline({
 export function RankDelta({ delta, isNew }: { delta: number | null; isNew?: boolean }) {
   if (isNew) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-2xs font-medium text-primary" title="Новый в рейтинге">
+      <span className="inline-flex items-center gap-0.5 text-2xs font-medium text-primary" title={ratingsI18n.t("shared.newInRating")}>
         <Sparkles className="h-3 w-3" aria-hidden="true" />
         new
       </span>
@@ -149,7 +111,7 @@ export function RankDelta({ delta, isNew }: { delta: number | null; isNew?: bool
   }
   if (delta == null || delta === 0) {
     return (
-      <span className="inline-flex items-center text-muted-foreground" aria-label="Без изменений" title="Без изменений">
+      <span className="inline-flex items-center text-muted-foreground" aria-label={ratingsI18n.t("shared.noChange")} title={ratingsI18n.t("shared.noChange")}>
         <Minus className="h-3 w-3" aria-hidden="true" />
       </span>
     );
@@ -158,8 +120,8 @@ export function RankDelta({ delta, isNew }: { delta: number | null; isNew?: bool
   return (
     <span
       className={cn("inline-flex items-center gap-0.5 text-2xs font-semibold tabular-nums", up ? "text-up" : "text-down")}
-      aria-label={up ? `Поднялся на ${delta}` : `Опустился на ${-delta}`}
-      title={up ? `+${delta} позиц.` : `${MINUS}${-delta} позиц.`}
+      aria-label={up ? ratingsI18n.t("shared.rankUp", { count: delta }) : ratingsI18n.t("shared.rankDown", { count: -delta })}
+      title={up ? ratingsI18n.t("shared.rankUpTitle", { count: delta }) : ratingsI18n.t("shared.rankDownTitle", { count: -delta })}
     >
       {up ? <ArrowUp className="h-3 w-3" aria-hidden="true" /> : <ArrowDown className="h-3 w-3" aria-hidden="true" />}
       {Math.abs(delta)}
@@ -178,7 +140,7 @@ export function StreakBadge({ value, className }: { value: number; className?: s
         win ? "bg-up/15 text-up" : "bg-down/15 text-down",
         className,
       )}
-      title={win ? `${value} побед подряд` : `${-value} убытков подряд`}
+      title={win ? ratingsI18n.t("shared.winStreak", { count: value }) : ratingsI18n.t("shared.lossStreak", { count: -value })}
     >
       {win ? `W${value}` : `L${-value}`}
     </span>
@@ -195,7 +157,7 @@ export function ScoreBar({ value, max = 10, showValue = true, className }: { val
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--glass-hover-bg)]" role="presentation">
         <div className={cn("h-full rounded-full transition-[width] duration-200", bg)} style={{ width: `${pct}%` }} />
       </div>
-      {showValue && <span className={cn("w-7 text-right text-xs font-semibold tabular-nums", toneText(tone))}>{value.toFixed(1)}</span>}
+      {showValue && <span className={cn("w-7 text-right text-xs font-semibold tabular-nums", toneText(tone))}>{fmtNum(value, 1)}</span>}
     </div>
   );
 }
@@ -209,7 +171,9 @@ export function OutcomeBar({ wins, losses, be, open = 0, className }: { wins: nu
     <div
       className={cn("flex h-1.5 overflow-hidden rounded-full bg-[var(--glass-hover-bg)]", className)}
       role="img"
-      aria-label={`Прибыль ${wins}, убыток ${losses}, безубыток ${be}${open ? `, открыто ${open}` : ""}`}
+      aria-label={open
+        ? ratingsI18n.t("shared.outcomeAriaOpen", { wins, losses, be, open })
+        : ratingsI18n.t("shared.outcomeAria", { wins, losses, be })}
     >
       <div className="bg-up" style={{ width: seg(wins) }} />
       <div className="bg-[hsl(var(--chart-3))]" style={{ width: seg(be) }} />
@@ -221,7 +185,6 @@ export function OutcomeBar({ wins, losses, be, open = 0, className }: { wins: nu
 
 /** Two-letter avatar circle. */
 export function Avatar({ name, className, highlight }: { name: string; className?: string; highlight?: boolean }) {
-  const initials = name.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   return (
     <span
       className={cn(
@@ -231,7 +194,7 @@ export function Avatar({ name, className, highlight }: { name: string; className
       )}
       aria-hidden="true"
     >
-      {initials}
+      {personInitials(name)}
     </span>
   );
 }

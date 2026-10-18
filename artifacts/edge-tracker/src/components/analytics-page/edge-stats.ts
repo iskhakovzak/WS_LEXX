@@ -266,14 +266,11 @@ export type SimTrade = {
 
 export type WhatIfRuleId = "dropWorstSetup" | "onlyAGrade" | "noEarly" | "capLoss1R" | "stopAfter2Losses" | "noOvernight";
 
-export const WHAT_IF_RULES: { id: WhatIfRuleId; label: string; hint: string }[] = [
-  { id: "dropWorstSetup", label: "Убрать худший сетап", hint: "Исключить сетап с самым низким итогом (от 3 сделок)" },
-  { id: "onlyAGrade", label: "Только A / A+", hint: "Торговать лишь сетапы с оценкой A или A+" },
-  { id: "noEarly", label: "Не торговать до 9:45", hint: "Пропустить входы раньше 9:45 ET (нужно время входа)" },
-  { id: "capLoss1R", label: "Убытки не хуже −1R", hint: "Каждый убыток, превышающий 1R, ограничен −1R (дисциплина стопа)" },
-  { id: "stopAfter2Losses", label: "Стоп после 2 убытков", hint: "После двух убыточных сделок подряд в день — остальные сделки дня пропущены" },
-  { id: "noOvernight", label: "Без переносов", hint: "Исключить овернайт и свинг — только интрадей" },
-];
+/** Rule ids in display order (labels: analytics namespace `whatIf.rule.<id>`). */
+export const WHAT_IF_RULE_IDS: WhatIfRuleId[] = ["dropWorstSetup", "onlyAGrade", "noEarly", "capLoss1R", "stopAfter2Losses", "noOvernight"];
+
+/** Why a rule could not be applied (display: analytics namespace `whatIf.skip.<code>`). */
+export type WhatIfSkip = "noLosingSetup" | "noGrades" | "noEntryTime" | "noMultiDay" | "noR";
 
 export type WhatIfResult = {
   values: number[];
@@ -281,7 +278,7 @@ export type WhatIfResult = {
   removed: number;
   modified: number;
   /** Rules that could not be applied (no data) with the reason. */
-  skipped: { rule: WhatIfRuleId; reason: string }[];
+  skipped: { rule: WhatIfRuleId; reason: WhatIfSkip }[];
   worstSetup: string | null;
 };
 
@@ -316,22 +313,22 @@ export function applyWhatIf(input: SimTrade[], rules: ReadonlySet<WhatIfRuleId>,
   let worstSetup: string | null = null;
   if (rules.has("dropWorstSetup")) {
     worstSetup = worstSetupOf(trades, unit);
-    if (!worstSetup) skipped.push({ rule: "dropWorstSetup", reason: "нет убыточного сетапа с 3+ сделками" });
+    if (!worstSetup) skipped.push({ rule: "dropWorstSetup", reason: "noLosingSetup" });
     else { const before = trades.length; trades = trades.filter((t) => t.setup !== worstSetup); removed += before - trades.length; }
   }
   if (rules.has("onlyAGrade")) {
-    if (!trades.some((t) => t.grade)) skipped.push({ rule: "onlyAGrade", reason: "у сделок нет оценки сетапа" });
+    if (!trades.some((t) => t.grade)) skipped.push({ rule: "onlyAGrade", reason: "noGrades" });
     else { const before = trades.length; trades = trades.filter((t) => t.grade === "A" || t.grade === "A+"); removed += before - trades.length; }
   }
   if (rules.has("noEarly")) {
-    if (!trades.some((t) => t.entryMin != null)) skipped.push({ rule: "noEarly", reason: "в сделках нет времени входа" });
+    if (!trades.some((t) => t.entryMin != null)) skipped.push({ rule: "noEarly", reason: "noEntryTime" });
     else { const before = trades.length; trades = trades.filter((t) => t.entryMin == null || t.entryMin >= 9 * 60 + 45); removed += before - trades.length; }
   }
   if (rules.has("noOvernight")) {
     const before = trades.length;
     trades = trades.filter((t) => t.horizon === "intraday");
     removed += before - trades.length;
-    if (before === trades.length) skipped.push({ rule: "noOvernight", reason: "переносных сделок нет" });
+    if (before === trades.length) skipped.push({ rule: "noOvernight", reason: "noMultiDay" });
   }
   if (rules.has("stopAfter2Losses")) {
     const kept: SimTrade[] = [];
@@ -346,7 +343,7 @@ export function applyWhatIf(input: SimTrade[], rules: ReadonlySet<WhatIfRuleId>,
     trades = kept;
   }
   if (rules.has("capLoss1R")) {
-    if (!trades.some((t) => t.r != null)) skipped.push({ rule: "capLoss1R", reason: "у сделок нет R" });
+    if (!trades.some((t) => t.r != null)) skipped.push({ rule: "capLoss1R", reason: "noR" });
     else {
       trades = trades.map((t) => {
         if (t.r == null || t.r >= -1) return t;

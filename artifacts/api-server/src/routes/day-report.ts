@@ -15,8 +15,11 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, isStaffRole, viewerRole, GUEST_SCOPE } from "../lib/auth";
 import { closeDateSql, netPnlSql, resultSql } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { nyDate } from "../lib/tradingDate";
 import { buildDayReport, toDayTrade, type DailyNet } from "../lib/dayReport";
+import { badRequest, unauthorized } from "../lib/http";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -47,17 +50,11 @@ type Row = {
 
 async function loadDayTrades(trader: string, date: string): Promise<Row[]> {
   const { rows } = await pool.query<Row>(
-    `WITH ex AS (
-       SELECT trade_id,
-              MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-              MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-       FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
-     )
-     SELECT t.id, t.ticker, t.side, t.setup, t.playbook_id, ${resultSql("t")} AS result,
+    `SELECT t.id, t.ticker, t.side, t.setup, t.playbook_id, ${resultSql("t")} AS result,
             t.pnl::float8 AS pnl, t.fees::float8 AS fees, t.qty::float8 AS qty, t.entry::float8 AS entry, t.exit::float8 AS exit,
             t.context_snapshot->>'openedAt' AS opened_at, t.context_snapshot->>'closedAt' AS closed_at,
             e.first_entry, e.last_exit
-     FROM trades t LEFT JOIN ex e ON e.trade_id = t.id
+     FROM trades t ${execSpanJoin("lateral")}
      WHERE t.deleted_at IS NULL AND t.trader = $1 AND ${CDATE} = $2
      ORDER BY COALESCE(e.first_entry, e.last_exit) NULLS LAST, t.id`,
     [trader, date],
@@ -113,14 +110,14 @@ async function loadTraders(): Promise<string[]> {
 
 router.get("/day-report", asyncHandler(async (req, res) => {
   const parsed = querySchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const date = q.date ?? nyDate();
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   // Staff без ?trader= получает null (= вся команда) — отчёт дня строится по одному трейдеру: берём себя.
   const trader = scope ?? req.authUser?.name ?? null;
-  if (!trader) { res.status(400).json({ error: "Укажите трейдера", code: "TRADER_REQUIRED" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
 
   const isGuestScope = trader === GUEST_SCOPE;
   const staff = !isGuestScope && isStaffRole(await viewerRole(req));
@@ -143,7 +140,7 @@ router.get("/day-report", asyncHandler(async (req, res) => {
     trades,
     history,
     dailyLossLimit: limit.value,
-    options: { revengeMin: q.revengeMin },
+    options: { revengeMin: q.revengeMin, lang: langOf(req) },
   });
 
   res.json({

@@ -20,11 +20,12 @@ import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql, horizonSql, 
 import { nyDate, nyMinutes } from "../lib/tradingDate";
 import { readScope, resolveActor } from "../lib/permissions";
 import { resolveWindow } from "./leaderboard";
-import {
-  METRIC_DEFS, NEUTRAL_METRICS, MEDIAN_MIN_TRADERS, CONSISTENCY_WARN, CONSISTENCY_BREACH, FIRST_MINUTES,
+import {metricDefs, NEUTRAL_METRICS, MEDIAN_MIN_TRADERS, CONSISTENCY_WARN, CONSISTENCY_BREACH, FIRST_MINUTES,
   badgesFor, computeTraderMetrics, deskMedian, parseHoldMinutes, percentiles, sameTickerCases, trendFor,
   type BenchTrade, type Result, type Side,
 } from "../lib/benchmark";
+import { AppError, sendError, unauthorized } from "../lib/http";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -32,10 +33,10 @@ type Viewer = { name: string; staff: boolean; visible: string[] | null };
 
 /** Who may see what: team.read (desk → everyone, assigned → self + wards) or a plain member (own row only). */
 async function viewerOf(req: Request, res: Response): Promise<Viewer | null> {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return null; }
+  if (!req.authUser) { sendError(res, unauthorized()); return null; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return null; }
-  if (actor.guest) { res.status(403).json({ error: "Гостевой режим: бенчмарк недоступен", code: "FORBIDDEN" }); return null; }
+  if (!actor) { sendError(res, unauthorized()); return null; }
+  if (actor.guest) { sendError(res, new AppError("GUEST_UNAVAILABLE")); return null; }
   const scope = await readScope(req, "team.read");
   if (scope === null) return { name: actor.name, staff: true, visible: null };
   if (scope.length > 1) return { name: actor.name, staff: true, visible: scope };
@@ -147,7 +148,7 @@ router.get("/benchmark", asyncHandler(async (req, res): Promise<void> => {
       ...r,
       qualified: r.trades >= minTrades,
       percentiles: pct[r.trader] ?? null,
-      badges: badgesFor(r, pct[r.trader], qualified.length),
+      badges: badgesFor(r, pct[r.trader], qualified.length, 3, 10, langOf(req)),
     }))
     .sort((a, b) => (b.net ?? -Infinity) - (a.net ?? -Infinity) || (b.totalR ?? -Infinity) - (a.totalR ?? -Infinity) || b.trades - a.trades);
 
@@ -163,7 +164,7 @@ router.get("/benchmark", asyncHandler(async (req, res): Promise<void> => {
     minTrades,
     deskSize: qualified.length,
     rules: { consistencyWarn: CONSISTENCY_WARN, consistencyBreach: CONSISTENCY_BREACH, firstMinutes: FIRST_MINUTES, medianMinTraders: MEDIAN_MIN_TRADERS },
-    metrics: METRIC_DEFS.map((d) => ({ ...d, neutral: NEUTRAL_METRICS.has(d.key) })),
+    metrics: metricDefs(langOf(req)).map((d) => ({ ...d, neutral: NEUTRAL_METRICS.has(d.key) })),
     rows,
     // Percentiles of other traders are only exposed to staff (a trader gets their own via rows[0].percentiles).
     percentiles: viewer.staff ? Object.fromEntries(Object.entries(pct).filter(([t]) => canSee(t))) : null,
@@ -175,7 +176,7 @@ router.get("/benchmark", asyncHandler(async (req, res): Promise<void> => {
 router.get("/benchmark/same-ticker", asyncHandler(async (req, res): Promise<void> => {
   const viewer = await viewerOf(req, res);
   if (!viewer) return;
-  if (!viewer.staff) { res.status(403).json({ error: "Только для кураторов: сравнение с другими трейдерами", code: "FORBIDDEN", capability: "team.read" }); return; }
+  if (!viewer.staff) { sendError(res, new AppError("STAFF_COMPARE_ONLY", 403, undefined, { capability: "team.read" })); return; }
   const p = periodOf(req);
   const limRaw = Math.floor(Number(req.query.limit ?? 200));
   const limit = Number.isFinite(limRaw) && limRaw > 0 ? Math.min(limRaw, 1000) : 200;

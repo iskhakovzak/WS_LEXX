@@ -3,13 +3,16 @@
  * Raw fetch (no codegen); auth header is added by the global fetch hook (lib/install-fetch-auth).
  */
 import { useQuery } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { propreportsI18n } from "@/i18n/ns/propreports";
 
 export type Severity = "ok" | "warn" | "error";
 export type CompareStatus = Severity | "na";
 export type DiscrepancyCause = "fee_rounding";
 
-export const FEE_ROUNDING_LABEL = "расхождение из-за округления комиссий";
+/** «расхождение из-за округления комиссий» in the UI language. */
+export const feeRoundingLabel = () => propreportsI18n.t("reconcile.feeRounding");
 
 export type Money = { trades: number; gross: number; fees: number; net: number };
 export type MoneyWL = Money & { wins: number; losses: number };
@@ -59,10 +62,6 @@ export type ReconcileResponse = {
   issuesTruncated: boolean;
 };
 
-export class ReconcileHttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-
 export type ReconcileParams = { trader?: string | null; from?: string | null; to?: string | null };
 
 export function reconcilePath(p: ReconcileParams, format?: "csv"): string {
@@ -75,14 +74,8 @@ export function reconcilePath(p: ReconcileParams, format?: "csv"): string {
   return `/api/reconcile${s ? `?${s}` : ""}`;
 }
 
-export async function fetchReconcile(p: ReconcileParams): Promise<ReconcileResponse> {
-  const r = await fetch(apiUrl(reconcilePath(p)));
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch { /* not json */ }
-    throw new ReconcileHttpError(r.status, msg);
-  }
-  return (await r.json()) as ReconcileResponse;
+export function fetchReconcile(p: ReconcileParams, signal?: AbortSignal): Promise<ReconcileResponse> {
+  return http.get<ReconcileResponse>(reconcilePath(p), { signal });
 }
 
 export const reconcileKeys = {
@@ -93,10 +86,9 @@ export const reconcileKeys = {
 export function useReconcile(p: ReconcileParams, enabled = true) {
   return useQuery({
     queryKey: reconcileKeys.run(p),
-    queryFn: () => fetchReconcile(p),
+    queryFn: ({ signal }) => fetchReconcile(p, signal),
     enabled,
-    staleTime: 60_000,
-    retry: (count, err) => !(err instanceof ReconcileHttpError && [400, 401, 403, 404].includes(err.status)) && count < 2,
+    staleTime: STALE.short,
   });
 }
 
@@ -106,11 +98,12 @@ export function discrepanciesCsv(issues: Issue[]): string {
     const s = v == null ? "" : String(v);
     return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = ["Статус", "Тип", "Причина", "Дата", "Трейдер", "Тикер", "ID сделок", "Брокер", "Журнал", "Разница", "Описание", "Подсказка"];
+  const t = propreportsI18n.t;
+  const head = (["status", "kind", "cause", "date", "trader", "ticker", "ids", "broker", "journal", "diff", "message", "hint"] as const).map((k) => t(`reconcile.csv.${k}`));
   const rows = issues
     .filter((i) => i.severity !== "ok")
     .map((i) => [
-      i.severity === "error" ? "серьёзное" : "расхождение", i.kind, i.cause === "fee_rounding" ? FEE_ROUNDING_LABEL : "",
+      i.severity === "error" ? t("reconcile.csv.serious") : t("reconcile.csv.discrepancy"), i.kind, i.cause === "fee_rounding" ? feeRoundingLabel() : "",
       i.date, i.trader, i.ticker, i.tradeIds.join(" "), i.expected, i.actual, i.diff, i.message, i.hint,
     ].map(esc).join(","));
   return "﻿" + [head.join(","), ...rows].join("\n");

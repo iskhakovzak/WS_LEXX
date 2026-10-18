@@ -10,6 +10,7 @@ import {
   sniffImageMime,
   type MediaContext,
 } from "../lib/planMedia";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Screenshots for «План дня» (desk game plan and personal trader plans).
@@ -42,46 +43,33 @@ router.post(
     rawImage(req, res, (err: unknown) => {
       if (!err) return next();
       const tooBig = (err as { type?: string })?.type === "entity.too.large";
-      res.status(tooBig ? 413 : 400).json({ error: tooBig ? "Картинка больше 2,5 МБ — уменьшите её" : "Не удалось прочитать картинку" });
+      sendError(res, tooBig ? new AppError("IMAGE_TOO_LARGE", 413, { max: "2.5 MB" }) : new AppError("IMAGE_UNREADABLE"));
     });
   },
   asyncHandler(async (req, res): Promise<void> => {
     const context = req.query.context === "personal" ? "personal" : req.query.context === "desk" ? "desk" : null;
     const date = typeof req.query.date === "string" ? req.query.date : "";
-    if (!context || !ISO_DATE.test(date) || isNaN(Date.parse(date + "T00:00:00Z"))) {
-      res.status(400).json({ error: "context (desk|personal) и date (YYYY-MM-DD) обязательны" });
-      return;
-    }
+    if (!context || !ISO_DATE.test(date) || isNaN(Date.parse(date + "T00:00:00Z"))) throw new AppError("FIELD_REQUIRED", undefined, { field: "context, date" });
     const me = req.authUser?.name;
     if (!me) {
-      res.status(401).json({ error: "Требуется вход" });
-      return;
+      throw unauthorized();
     }
     const ok =
       context === "desk"
-        ? await requireCap(req, res, "gameplan.publish", null, "Загружать скриншоты в план деска может куратор")
+        ? await requireCap(req, res, "gameplan.publish", null, "DESK_PLAN_MEDIA_UPLOAD_STAFF_ONLY")
         : await requireCap(req, res, "journal.write.own", { trader: me });
     if (!ok) return;
 
     const body = req.body;
-    if (!Buffer.isBuffer(body) || body.length === 0) {
-      res.status(415).json({ error: "Нужна картинка WebP, JPEG или PNG" });
-      return;
-    }
+    if (!Buffer.isBuffer(body) || body.length === 0) throw new AppError("IMAGE_TYPE", 415);
     const mime = sniffImageMime(body);
-    if (!mime) {
-      res.status(415).json({ error: "Нужна картинка WebP, JPEG или PNG" });
-      return;
-    }
+    if (!mime) throw new AppError("IMAGE_TYPE", 415);
     await ensurePlanMedia();
     const { rows: quota } = await pool.query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM plan_media WHERE owner = $1 AND created_at > NOW() - INTERVAL '24 hours'`,
       [me],
     );
-    if ((quota[0]?.n ?? 0) >= PLAN_MEDIA_DAILY_LIMIT) {
-      res.status(429).json({ error: `Не больше ${PLAN_MEDIA_DAILY_LIMIT} скриншотов в сутки` });
-      return;
-    }
+    if ((quota[0]?.n ?? 0) >= PLAN_MEDIA_DAILY_LIMIT) throw new AppError("MEDIA_DAILY_LIMIT", undefined, { max: PLAN_MEDIA_DAILY_LIMIT });
     const { rows } = await pool.query<{ id: number; created_at: Date }>(
       `INSERT INTO plan_media (context, owner, plan_date, mime, bytes, size_bytes, width, height)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -106,12 +94,10 @@ type MediaRow = { id: number; context: MediaContext; owner: string; mime: string
 router.get("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) {
-    res.status(400).json({ error: "invalid id" });
-    return;
+    throw badRequest("INVALID_ID");
   }
   if (!req.authUser) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   await ensurePlanMedia();
   const { rows } = await pool.query<MediaRow>(
@@ -120,15 +106,13 @@ router.get("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
   );
   const row = rows[0];
   if (!row) {
-    res.status(404).json({ error: "Не найдено" });
-    return;
+    throw notFound();
   }
   if (row.context === "personal") {
     // Owner always; others only within their journal.read.team scope (guest → sentinel ≠ owner).
     const scope = await scopeTrader(req, row.owner, "journal.read.team");
     if (scope !== row.owner) {
-      res.status(404).json({ error: "Не найдено" });
-      return;
+      throw notFound();
     }
   }
   res.setHeader("Content-Type", row.mime);
@@ -142,13 +126,11 @@ router.get("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
 router.delete("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) {
-    res.status(400).json({ error: "invalid id" });
-    return;
+    throw badRequest("INVALID_ID");
   }
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   await ensurePlanMedia();
   const { rows } = await pool.query<{ context: MediaContext; owner: string }>(
@@ -157,14 +139,12 @@ router.delete("/plan-media/:id", asyncHandler(async (req, res): Promise<void> =>
   );
   const row = rows[0];
   if (!row) {
-    res.status(404).json({ error: "Не найдено" });
-    return;
+    throw notFound();
   }
   if (row.context === "desk") {
-    if (!(await requireCap(req, res, "gameplan.publish", null, "Удалять скриншоты плана деска может куратор"))) return;
+    if (!(await requireCap(req, res, "gameplan.publish", null, "DESK_PLAN_MEDIA_DELETE_STAFF_ONLY"))) return;
   } else if (row.owner !== me) {
-    res.status(404).json({ error: "Не найдено" });
-    return;
+    throw notFound();
   }
   await pool.query(`UPDATE plan_media SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [id]);
   res.json({ ok: true, id });

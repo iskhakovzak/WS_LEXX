@@ -15,7 +15,11 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { ReactionAgg } from "./api";
 import { REACTION_MIN_N } from "./rows";
-import { KIND_META, fmtPct, fmtUsd, num, ptChangePct, upsidePct, type FeedAction, type OpenPosition } from "./lib";
+import { KIND_META, num, ptChangePct, upsidePct, type FeedAction, type OpenPosition } from "./lib";
+import { fmtPct, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
+import { rich } from "@/i18n/rich";
 
 export function Highlight({ text, query }: { text: string; query: string }) {
   const q = query.trim();
@@ -31,7 +35,11 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export const HORIZON_LABEL: Record<OpenPosition["horizon"], string> = { intraday: "интрадей", overnight: "овернайт", swing: "свинг" };
+/** Horizon code → lower-case label in the UI language (common trading words, read at access time). */
+export const HORIZON_LABEL = {} as Record<OpenPosition["horizon"], string>;
+for (const k of ["intraday", "overnight", "swing"] as const) {
+  Object.defineProperty(HORIZON_LABEL, k, { get: () => commonI18n.t(`trading.${k}`).toLowerCase(), enumerable: true });
+}
 
 export function KindPill({ kind, className }: { kind: FeedAction["action"]; className?: string }) {
   const m = KIND_META[kind] ?? KIND_META.other;
@@ -71,17 +79,17 @@ export function TargetChange({ action, price, showUpside = true }: { action: Fee
     <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs tabular-nums">
       {from != null && to != null && from !== to ? (
         <>
-          <span className="text-muted-foreground">{fmtUsd(from)}</span>
+          <span className="text-muted-foreground">{fmtUsd(from, { decimals: "trim" })}</span>
           <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-          <span className="font-medium text-foreground">{fmtUsd(to)}</span>
+          <span className="font-medium text-foreground">{fmtUsd(to, { decimals: "trim" })}</span>
         </>
       ) : (
-        <span className="font-medium text-foreground">{fmtUsd(to ?? from)}</span>
+        <span className="font-medium text-foreground">{fmtUsd(to ?? from, { decimals: "trim" })}</span>
       )}
       {chg != null && chg !== 0 && <Delta value={chg} suffix="%" precision={0} showIcon={false} bare />}
       {up != null && (
-        <span className="text-muted-foreground" title="Апсайд нового таргета к текущей цене">
-          апсайд <span className={cn("font-medium", up >= 0 ? "text-up" : "text-down")}>{fmtPct(up, 0)}</span>
+        <span className="text-muted-foreground" title={analystI18n.t("row.upsideTitle")}>
+          {rich(analystI18n.t("row.upside", { value: "{value}" }), { value: <span className={cn("font-medium", up >= 0 ? "text-up" : "text-down")}>{fmtPct(up, 0)}</span> })}
         </span>
       )}
     </span>
@@ -90,27 +98,28 @@ export function TargetChange({ action, price, showUpside = true }: { action: Fee
 
 /** Icons for «позиция команды», «в вотчлисте», «я торговал». Each has a text label for screen readers. */
 export function Marks({ held, watched, traded, className }: { held: OpenPosition[]; watched: boolean; traded: number; className?: string }) {
+  const { t } = analystI18n.useT();
   if (!held.length && !watched && !traded) return null;
   const carry = held.find((h) => h.horizon !== "intraday");
   return (
     <span className={cn("inline-flex shrink-0 items-center gap-1", className)}>
       {held.length > 0 && (
-        <span title={`Позиция команды${carry ? ` · ${HORIZON_LABEL[carry.horizon]}` : ""}`} className="inline-flex text-warn">
+        <span title={carry ? t("row.heldTitleHz", { horizon: HORIZON_LABEL[carry.horizon] }) : t("row.heldTitle")} className="inline-flex text-warn">
           <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="sr-only">позиция команды</span>
+          <span className="sr-only">{t("row.heldSr")}</span>
         </span>
       )}
       {watched && (
-        <span title="В вотчлисте" className="inline-flex text-primary">
+        <span title={t("row.watchTitle")} className="inline-flex text-primary">
           <BookmarkCheck className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="sr-only">в вотчлисте</span>
+          <span className="sr-only">{t("row.watchSr")}</span>
         </span>
       )}
       {traded > 0 && (
-        <span title={`Я торговал: ${traded} сделок за год`} className="inline-flex items-center gap-0.5 text-2xs font-medium text-muted-foreground">
+        <span title={t("row.tradedTitle", { count: traded })} className="inline-flex items-center gap-0.5 text-2xs font-medium text-muted-foreground">
           <Repeat className="h-3 w-3" aria-hidden="true" />
           {traded}
-          <span className="sr-only">сделок по тикеру</span>
+          <span className="sr-only">{t("row.tradedSr")}</span>
         </span>
       )}
     </span>
@@ -121,7 +130,7 @@ export function Marks({ held, watched, traded, className }: { held: OpenPosition
 export function ReactionChip({ agg, compact = false }: { agg: ReactionAgg | null; compact?: boolean }) {
   if (!agg || agg.n < REACTION_MIN_N || agg.avgDay == null) return <span className="text-xs text-muted-foreground">—</span>;
   const hit = agg.hitRate != null ? Math.round(agg.hitRate * 100) : null;
-  const title = `Обычно в день реакции: ${fmtPct(agg.avgDay)} к закрытию, гэп ${fmtPct(agg.avgGap)}; в сторону рейтинга ${hit ?? "—"}%; событий ${agg.n}`;
+  const title = analystI18n.t("row.reactionTitle", { day: fmtPct(agg.avgDay, 1), gap: fmtPct(agg.avgGap, 1), hit: hit ?? "—", count: agg.n });
   return (
     <span className="inline-flex flex-col items-end leading-tight" title={title}>
       <Delta value={agg.avgDay} suffix="%" bare showIcon={false} />
@@ -156,14 +165,15 @@ export type RowActionsProps = {
 export function RowActions({
   action: a, watched, inPlan, addingWatch, addingPlan, canEdit, onAddWatch, onAddPlan, onOpen, onFilterFirm, onFilterTicker, className,
 }: RowActionsProps) {
+  const { t } = analystI18n.useT();
   return (
     <div className={cn("flex shrink-0 items-center gap-0.5", className)}>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onAddWatch(); }}
         disabled={!canEdit || watched || addingWatch}
-        aria-label={watched ? `${a.ticker} уже в вотчлисте` : `Добавить ${a.ticker} в вотчлист`}
-        title={watched ? "Уже в вотчлисте" : !canEdit ? "Нет прав на редактирование" : "В вотчлист"}
+        aria-label={watched ? t("row.inWatchAria", { ticker: a.ticker }) : t("row.addWatchAria", { ticker: a.ticker })}
+        title={watched ? t("row.inWatchTitle") : !canEdit ? t("row.noRights") : t("row.addWatchTitle")}
         className={ICON_BTN}
       >
         {addingWatch ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -174,8 +184,8 @@ export function RowActions({
         type="button"
         onClick={(e) => { e.stopPropagation(); onAddPlan(); }}
         disabled={!canEdit || inPlan || addingPlan}
-        aria-label={inPlan ? `${a.ticker} уже в плане дня` : `Добавить ${a.ticker} в мой план дня`}
-        title={inPlan ? "Уже в моём плане дня" : !canEdit ? "Нет прав на редактирование" : "В мой план дня"}
+        aria-label={inPlan ? t("row.inPlanAria", { ticker: a.ticker }) : t("row.addPlanAria", { ticker: a.ticker })}
+        title={inPlan ? t("row.inPlanTitle") : !canEdit ? t("row.noRights") : t("row.addPlanTitle")}
         className={ICON_BTN}
       >
         {addingPlan ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -185,8 +195,8 @@ export function RowActions({
       <Link
         href={links.newIdea(a.ticker)}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
-        aria-label={`Создать идею по ${a.ticker}`}
-        title="Создать идею"
+        aria-label={t("row.ideaAria", { ticker: a.ticker })}
+        title={t("row.idea")}
         className={ICON_BTN}
       >
         <Lightbulb className="h-4 w-4" aria-hidden="true" />
@@ -197,7 +207,7 @@ export function RowActions({
             <button
               type="button"
               onClick={(e) => e.stopPropagation()}
-              aria-label={`Ещё действия: ${a.ticker}, ${a.firm}`}
+              aria-label={t("row.moreAria", { ticker: a.ticker, firm: a.firm })}
               className={cn(ICON_BTN, "data-[state=open]:bg-[var(--glass-hover-bg)]")}
             >
               <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
@@ -206,17 +216,17 @@ export function RowActions({
           <DropdownMenuContent align="end" className="w-60" onClick={(e) => e.stopPropagation()}>
             {onOpen && (
               <DropdownMenuItem onSelect={onOpen}>
-                <History className="h-4 w-4" aria-hidden="true" /> История и реакция {a.ticker}
+                <History className="h-4 w-4" aria-hidden="true" /> {t("row.history", { ticker: a.ticker })}
               </DropdownMenuItem>
             )}
             {onFilterTicker && (
               <DropdownMenuItem onSelect={onFilterTicker}>
-                <Hash className="h-4 w-4" aria-hidden="true" /> Только {a.ticker}
+                <Hash className="h-4 w-4" aria-hidden="true" /> {t("row.only", { value: a.ticker })}
               </DropdownMenuItem>
             )}
             {onFilterFirm && (
               <DropdownMenuItem onSelect={onFilterFirm}>
-                <Building2 className="h-4 w-4" aria-hidden="true" /> Только {a.firm}
+                <Building2 className="h-4 w-4" aria-hidden="true" /> {t("row.only", { value: a.firm })}
               </DropdownMenuItem>
             )}
             {a.sourceUrl && (
@@ -224,7 +234,7 @@ export function RowActions({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
                   <a href={a.sourceUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4" aria-hidden="true" /> Источник ({a.source})
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" /> {t("row.source", { source: a.source })}
                   </a>
                 </DropdownMenuItem>
               </>

@@ -1,12 +1,14 @@
 import type { Tone } from "@/components/ds";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type TradeResult = "win" | "loss" | "be" | null;
 
 export function normalizeResult(result: string | null | undefined): TradeResult {
   const r = result?.trim().toLowerCase();
-  if (r === "win" || r === "прибыль" || r === "профит") return "win";
-  if (r === "loss" || r === "убыток" || r === "лосс") return "loss";
-  if (r === "be" || r === "breakeven" || r === "безубыток" || r === "бу") return "be";
+  // Legacy stored values (Russian synonyms written by older imports) are parsed, never shown. i18n-ignore
+  if (r === "win" || r === "прибыль" || r === "профит") return "win"; // i18n-ignore
+  if (r === "loss" || r === "убыток" || r === "лосс") return "loss"; // i18n-ignore
+  if (r === "be" || r === "breakeven" || r === "безубыток" || r === "бу") return "be"; // i18n-ignore
   return null;
 }
 
@@ -46,19 +48,9 @@ export function resultLabel(result: string | null | undefined): string {
   return result?.toUpperCase() ?? "—";
 }
 
-/** Russian long label, e.g. for tooltips / aria-labels. */
+/** Long label in the UI language (tooltips / aria-labels). The name is historical: it follows the UI language. */
 export function resultLabelRu(result: string | null | undefined): string {
   const r = normalizeResult(result);
-  if (r === "win") return "Прибыль";
-  if (r === "loss") return "Убыток";
-  if (r === "be") return "Безубыток";
-  return "Без результата";
+  return commonI18n.t(r ? `tradeResult.${r}` : "tradeResult.none");
 }
 
-/** Signed R-multiple text with a real minus sign: +2.5R / −1R / —. */
-export function formatR(r: number | null | undefined, digits = 1): string {
-  if (r == null || !Number.isFinite(r)) return "—";
-  const v = Number(r.toFixed(digits));
-  if (v === 0) return "0R";
-  return `${v > 0 ? "+" : "−"}${Math.abs(v)}R`;
-}

@@ -1,31 +1,27 @@
 import type { MarketEvent } from "@workspace/api-client-react";
 import type { Tone } from "@/components/ds";
 import { nyDate, addDays as addNyDays } from "@/lib/trading-date";
+import { fmtDate, fmtDateCustom, fmtDateRange, fmtWeekday, type DateStyle } from "@/lib/format";
+import { eventsI18n } from "@/i18n/ns/events";
 
 /* ───────────── Event types ───────────── */
 
 export const EVENT_TYPES = ["earnings", "momentum", "news", "ipo", "fed", "macro", "short_squeeze", "upg", "dwg", "other"] as const;
 
-const TYPE_META: Record<string, { label: string; tone: Tone }> = {
-  earnings: { label: "Отчёт", tone: "accent" },
-  momentum: { label: "Моментум", tone: "purple" },
-  news: { label: "Новость", tone: "warn" },
-  ipo: { label: "IPO", tone: "purple" },
-  fed: { label: "ФРС", tone: "accent" },
-  macro: { label: "Макро", tone: "accent" },
-  economic: { label: "Экономика", tone: "accent" },
-  short_squeeze: { label: "Шорт-сквиз", tone: "warn" },
-  upg: { label: "Апгрейд", tone: "up" },
-  dwg: { label: "Даунгрейд", tone: "down" },
-  other: { label: "Другое", tone: "neutral" },
+type TypeKey = "earnings" | "momentum" | "news" | "ipo" | "fed" | "macro" | "economic" | "short_squeeze" | "upg" | "dwg" | "other";
+const TYPE_TONE: Record<TypeKey, Tone> = {
+  earnings: "accent", momentum: "purple", news: "warn", ipo: "purple", fed: "accent", macro: "accent",
+  economic: "accent", short_squeeze: "warn", upg: "up", dwg: "down", other: "neutral",
 };
+const isTypeKey = (k: string): k is TypeKey => Object.prototype.hasOwnProperty.call(TYPE_TONE, k);
 
 /** Legacy rows store types in other casing ("News", "Earnings") — compare case-insensitively. */
 export const normType = (t: string | null | undefined) => (t ?? "").trim().toLowerCase();
 
 export function typeMeta(t: string | null | undefined): { label: string; tone: Tone } {
   const k = normType(t);
-  return TYPE_META[k] ?? { label: (t ?? "").trim() || "Другое", tone: "neutral" };
+  if (isTypeKey(k)) return { label: eventsI18n.t(`type.${k}`), tone: TYPE_TONE[k] };
+  return { label: (t ?? "").trim() || eventsI18n.t("type.other"), tone: "neutral" };
 }
 
 /** Recharts fill for a tone (tokens only). */
@@ -44,22 +40,17 @@ export function toneFill(tone: Tone): string {
 
 export const REACTIONS = ["gap_up", "gap_down", "grind_up", "grind_down", "flat", "reversal"] as const;
 
-const REACTION_META: Record<string, { label: string; tone: Tone }> = {
-  gap_up: { label: "Гэп вверх", tone: "up" },
-  gap_down: { label: "Гэп вниз", tone: "down" },
-  grind_up: { label: "Рост в течение дня", tone: "up" },
-  grind_down: { label: "Снижение в течение дня", tone: "down" },
-  flat: { label: "Без движения", tone: "neutral" },
-  reversal: { label: "Разворот", tone: "warn" },
-  bullish: { label: "Бычья", tone: "up" },
-  bearish: { label: "Медвежья", tone: "down" },
-  mixed: { label: "Смешанная", tone: "neutral" },
+type ReactionKey = (typeof REACTIONS)[number] | "bullish" | "bearish" | "mixed";
+const REACTION_TONE: Record<ReactionKey, Tone> = {
+  gap_up: "up", gap_down: "down", grind_up: "up", grind_down: "down", flat: "neutral", reversal: "warn",
+  bullish: "up", bearish: "down", mixed: "neutral",
 };
+const isReactionKey = (k: string): k is ReactionKey => Object.prototype.hasOwnProperty.call(REACTION_TONE, k);
 
 export function reactionMeta(r: string | null | undefined): { label: string; tone: Tone } | null {
   if (!r) return null;
   const k = r.trim().toLowerCase();
-  return REACTION_META[k] ?? { label: r, tone: "neutral" };
+  return isReactionKey(k) ? { label: eventsI18n.t(`reaction.${k}`), tone: REACTION_TONE[k] } : { label: r, tone: "neutral" };
 }
 
 /** Direction of an event: sign of the logged move, else the reaction's tone. */
@@ -74,10 +65,14 @@ export function eventTone(e: MarketEvent): Tone {
  * Legacy rows kept it as a tag ("BMO" / "RTH" / "AMC") or a mention in the headline/summary. */
 
 export type Session = "bmo" | "rth" | "amc";
-export const SESSIONS: { value: Session; label: string; hint: string; tone: Tone }[] = [
-  { value: "bmo", label: "BMO", hint: "До открытия", tone: "warn" },
-  { value: "rth", label: "RTH", hint: "В сессию", tone: "accent" },
-  { value: "amc", label: "AMC", hint: "После закрытия", tone: "purple" },
+const sessionDef = (value: Session, label: string, tone: Tone) => ({
+  value, label, tone,
+  get hint() { return eventsI18n.t(`session.${value}`); },
+});
+export const SESSIONS: { value: Session; label: string; readonly hint: string; tone: Tone }[] = [
+  sessionDef("bmo", "BMO", "warn"),
+  sessionDef("rth", "RTH", "accent"),
+  sessionDef("amc", "AMC", "purple"),
 ];
 const SESSION_TAGS = new Set(["bmo", "rth", "amc"]);
 
@@ -98,8 +93,9 @@ export function getSession(e: Pick<MarketEvent, "tags" | "headline" | "summary">
     if (SESSION_TAGS.has(k)) return k as Session;
   }
   const text = `${e.headline ?? ""} ${e.summary ?? ""}`;
-  if (/\bBMO\b/i.test(text) || /до открытия|premarket|pre-market/i.test(text)) return "bmo";
-  if (/\bAMC\b/i.test(text) || /после закрытия|after hours|after-hours/i.test(text)) return "amc";
+  // Parses free text written in any UI language (legacy notes are Russian) — not UI copy.
+  if (/\bBMO\b/i.test(text) || /до открытия|before the open|premarket|pre-market|ochilishdan oldin/i.test(text)) return "bmo"; // i18n-ignore
+  if (/\bAMC\b/i.test(text) || /после закрытия|after the close|after hours|after-hours|yopilishdan keyin/i.test(text)) return "amc"; // i18n-ignore
   return null;
 }
 
@@ -139,39 +135,24 @@ export function weekStartOf(ymd: string): string {
 /** Trading "today" — the New York calendar date, not the browser's. */
 export const today = () => nyDate();
 
-export function fmtDay(ymd: string, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }) {
+/** Calendar date of the events area in the UI language, without a trailing dot («17 окт»). */
+export function fmtDay(ymd: string, style: DateStyle | Intl.DateTimeFormatOptions = "dayMonth") {
   const d = parseYmd(ymd);
-  return Number.isNaN(d.getTime()) ? ymd : d.toLocaleDateString("ru-RU", opts).replace(/\.$/, "");
+  return (typeof style === "string" ? fmtDate(d, style) : fmtDateCustom(d, style)).replace(/\.$/, "");
 }
 
-export function fmtWeekday(ymd: string, style: "short" | "long" = "short") {
-  const s = parseYmd(ymd).toLocaleDateString("ru-RU", { weekday: style });
+/** Capitalised weekday for column / row heads: «Пн» / «Понедельник». */
+export function weekdayLabel(ymd: string, style: "short" | "long" = "short") {
+  const s = fmtWeekday(parseYmd(ymd), style);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function fmtRange(fromYmd: string, toYmd: string) {
-  const a = parseYmd(fromYmd), b = parseYmd(toYmd);
-  const sameMonth = a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
-  const left = sameMonth ? String(a.getDate()) : fmtDay(fromYmd);
-  return `${left} – ${fmtDay(toYmd)} ${b.getFullYear()}`;
+  // Shared range formatter: «19–23 окт. 2026 г.» / «Oct 19 – 23, 2026» / «19–23-okt, 2026» (Uzbek hand-written).
+  return fmtDateRange(parseYmd(fromYmd), parseYmd(toYmd), "short");
 }
 
 /* ───────────── Numbers / words ───────────── */
-
-export function plural(n: number, one: string, few: string, many: string) {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-export const eventsWord = (n: number) => `${n} ${plural(n, "событие", "события", "событий")}`;
-
-export function fmtPct(n: number | null | undefined, digits = 1) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toFixed(digits);
-  return n > 0 ? `+${s}%` : n < 0 ? `−${s}%` : `${s}%`;
-}
 
 /** Past event with neither a logged move nor a reaction — needs a follow-up. */
 export function needsOutcome(e: MarketEvent, todayYmd = today()): boolean {
@@ -180,13 +161,16 @@ export function needsOutcome(e: MarketEvent, todayYmd = today()): boolean {
 
 /* ───────────── Macro calendar (holiday_calendar rows) ───────────── */
 
-const MACRO_LABEL: Record<string, string> = {
-  fomc: "FOMC", cpi: "CPI", ppi: "PPI", nfp: "NFP", opex: "OPEX", quad_witching: "Квад. экспирация",
-  holiday: "Выходной", month_end: "Конец месяца", gdp: "ВВП", pce: "PCE",
-};
+/** Macro codes read the same in every language; the rest go through `events.macro.*`. */
+const MACRO_CODE: Record<string, string> = { fomc: "FOMC", cpi: "CPI", ppi: "PPI", nfp: "NFP", opex: "OPEX", pce: "PCE" };
+const MACRO_WORD = ["quad_witching", "holiday", "month_end", "gdp"] as const;
 
 export function macroLabel(type: string) {
-  return MACRO_LABEL[type?.toLowerCase()] ?? (type || "Событие").toUpperCase();
+  const k = type?.toLowerCase() ?? "";
+  if (MACRO_CODE[k]) return MACRO_CODE[k];
+  const w = MACRO_WORD.find((x) => x === k);
+  if (w) return eventsI18n.t(`macro.${w}`);
+  return type ? type.toUpperCase() : eventsI18n.t("macro.event");
 }
 
 export function importanceTone(imp: string): Tone {

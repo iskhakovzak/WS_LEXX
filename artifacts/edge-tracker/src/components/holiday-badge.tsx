@@ -1,24 +1,37 @@
-import React from "react";
+
 import { useTodayHolidays, type HolidayEvent } from "@/lib/market-intel";
 import { Pill, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { fmtDate } from "@/lib/format";
 import { CalendarDays, AlertTriangle, Zap } from "lucide-react";
+import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
 
-const TYPE_META: Record<string, { label: string; tone: Tone; hint?: string }> = {
-  fomc: { label: "FOMC", tone: "down", hint: "Решение ФРС — резкие движения в 14:00 ET, режьте размер до выхода" },
-  cpi: { label: "CPI", tone: "warn", hint: "Инфляция в 8:30 ET — гэпы на открытии, широкие спреды в премаркете" },
-  ppi: { label: "PPI", tone: "warn", hint: "Цены производителей в 8:30 ET" },
-  nfp: { label: "NFP", tone: "purple", hint: "Рынок труда в 8:30 ET — волатильный премаркет" },
-  opex: { label: "OPEX", tone: "accent", hint: "Экспирация опционов — пиннинг к страйкам, всплеск объёма на закрытии" },
-  quad_witching: { label: "QUAD", tone: "purple", hint: "Квадрупл-витчинг — огромный MOC-имбаланс" },
-  holiday: { label: "Праздник", tone: "warn", hint: "Короткий или закрытый день — низкая ликвидность" },
-  month_end: { label: "Конец мес.", tone: "accent", hint: "Ребалансировка фондов на закрытии" },
+const ht = marketWidgetsI18n.t;
+
+type EventType = "fomc" | "cpi" | "ppi" | "nfp" | "opex" | "quad_witching" | "holiday" | "month_end";
+const TYPE_META: Record<EventType, { code?: string; tone: Tone }> = {
+  fomc: { code: "FOMC", tone: "down" },
+  cpi: { code: "CPI", tone: "warn" },
+  ppi: { code: "PPI", tone: "warn" },
+  nfp: { code: "NFP", tone: "purple" },
+  opex: { code: "OPEX", tone: "accent" },
+  quad_witching: { code: "QUAD", tone: "purple" },
+  holiday: { tone: "warn" },
+  month_end: { tone: "accent" },
 };
+const isEventType = (t: string): t is EventType => t in TYPE_META;
 
+/** Label (macro codes stay as is), tone and trader hint of an event type, in the UI language. */
 function metaFor(type: string | null | undefined): { label: string; tone: Tone; hint?: string } {
   const t = type ?? "";
-  return TYPE_META[t] || { label: t ? t.replace(/_/g, " ").toUpperCase() : "Событие", tone: "neutral" };
+  if (!isEventType(t)) return { label: t ? t.replace(/_/g, " ").toUpperCase() : ht("events.event"), tone: "neutral" };
+  const m = TYPE_META[t];
+  return {
+    label: m.code ?? ht(t === "holiday" ? "events.type.holiday" : "events.type.month_end"),
+    tone: m.tone,
+    hint: ht(`events.hint.${t}`),
+  };
 }
 
 function parseLocal(d: string): Date {
@@ -30,7 +43,7 @@ function parseLocal(d: string): Date {
 function shortDate(d: string) {
   const date = parseLocal(d);
   if (Number.isNaN(date.getTime())) return d ?? "";
-  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" });
+  return fmtDate(date, "weekdayDayMonth");
 }
 
 function daysUntil(d: string): number | null {
@@ -43,9 +56,9 @@ function daysUntil(d: string): number | null {
 
 function relLabel(n: number | null) {
   if (n == null) return "";
-  if (n <= 0) return "сегодня";
-  if (n === 1) return "завтра";
-  return `через ${n} дн.`;
+  if (n <= 0) return ht("events.today");
+  if (n === 1) return ht("events.tomorrow");
+  return ht("events.inDays", { count: n });
 }
 
 export function DateHolidayBadge({ events }: { events: HolidayEvent[] }) {
@@ -64,6 +77,7 @@ export function DateHolidayBadge({ events }: { events: HolidayEvent[] }) {
 }
 
 export function TodayEventBanner({ className }: { className?: string } = {}) {
+  const { t } = marketWidgetsI18n.useT();
   const { data } = useTodayHolidays();
   const events = data?.today ?? [];
   const high = events.filter((e) => e.importance === "high");
@@ -74,7 +88,7 @@ export function TodayEventBanner({ className }: { className?: string } = {}) {
 
   return (
     <section
-      aria-label="События сегодня"
+      aria-label={t("events.todayAria")}
       className={cn(
         "glass-panel flex items-start gap-3 rounded-2xl p-3 sm:p-4",
         isHigh ? "ring-1 ring-down/40" : "ring-1 ring-[hsl(var(--chart-3)/0.4)]",
@@ -92,7 +106,7 @@ export function TodayEventBanner({ className }: { className?: string } = {}) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h2 className="text-sm font-semibold text-foreground">
-            {isHigh ? "Сегодня важные макро-события" : "События сегодня"}
+            {isHigh ? t("events.todayHigh") : t("events.todayTitle")}
           </h2>
           <span className="text-xs tabular-nums text-muted-foreground">{events.length}</span>
         </div>
@@ -120,6 +134,7 @@ export function TodayEventBanner({ className }: { className?: string } = {}) {
 }
 
 export function UpcomingEventsList({ limit = 6, className }: { limit?: number; className?: string }) {
+  const { t } = marketWidgetsI18n.useT();
   const { data, isLoading, isError } = useTodayHolidays();
   const upcoming = (data?.upcoming ?? []).slice(0, limit);
 
@@ -128,19 +143,19 @@ export function UpcomingEventsList({ limit = 6, className }: { limit?: number; c
       <div className="flex items-center justify-between gap-2 px-4 pt-4 sm:px-5">
         <h2 id="upcoming-events-title" className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <CalendarDays className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          Макро-календарь
+          {t("events.calendar")}
         </h2>
-        <span className="text-xs text-muted-foreground">14 дней</span>
+        <span className="text-xs text-muted-foreground">{t("events.days14")}</span>
       </div>
       <div className="px-4 pb-4 pt-2 sm:px-5">
         {isLoading && (
-          <div className="flex flex-col gap-2" role="status" aria-label="Загрузка">
+          <div className="flex flex-col gap-2" role="status" aria-label={t("events.loading")}>
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 rounded-xl" />)}
           </div>
         )}
-        {!isLoading && isError && <p className="py-3 text-sm text-muted-foreground">Календарь недоступен</p>}
+        {!isLoading && isError && <p className="py-3 text-sm text-muted-foreground">{t("events.unavailable")}</p>}
         {!isLoading && !isError && upcoming.length === 0 && (
-          <p className="py-3 text-sm text-muted-foreground">Ближайшие 2 недели без крупных событий</p>
+          <p className="py-3 text-sm text-muted-foreground">{t("events.none")}</p>
         )}
         <ul className="flex flex-col">
           {upcoming.map((e: HolidayEvent) => {

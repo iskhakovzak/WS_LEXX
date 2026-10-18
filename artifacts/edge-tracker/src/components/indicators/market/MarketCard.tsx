@@ -7,6 +7,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { alertFires, type AlertRule, type IndicatorDef, type Reading } from "./engine";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
+import { commonI18n } from "@/i18n/ns/common";
+
+const opWord = (op: AlertRule["op"]) => indicatorsI18n.t(op === "above" ? "mcard.above" : "mcard.below");
 
 const deltaTone = (def: IndicatorDef, d: number | null): Tone => {
   if (d == null || Math.abs(d) < 1e-9 || def.polarity === 0) return "neutral";
@@ -15,12 +19,13 @@ const deltaTone = (def: IndicatorDef, d: number | null): Tone => {
 
 /** Plain-language explanation of an indicator (the glossary tooltip only knows trade terms). */
 export function IndicatorExplain({ def }: { def: IndicatorDef }) {
+  const { t } = indicatorsI18n.useT();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={`Что такое ${def.label}?`}
+          aria-label={t("mcard.whatIs", { label: def.label })}
           onClick={(e) => e.stopPropagation()}
           className="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-1)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -43,6 +48,7 @@ function AlertEditor({ def, rule, current, onSave }: {
   current: number | null;
   onSave: (rule: AlertRule | null) => void;
 }) {
+  const { t } = indicatorsI18n.useT();
   const [open, setOpen] = useState(false);
   const [op, setOp] = useState<AlertRule["op"]>(rule?.op ?? def.alertHint.op);
   const [raw, setRaw] = useState(String(rule?.value ?? def.alertHint.value));
@@ -60,7 +66,7 @@ function AlertEditor({ def, rule, current, onSave }: {
         <button
           type="button"
           onClick={(e) => e.stopPropagation()}
-          aria-label={rule ? `Сигнал ${def.label}: ${rule.op === "above" ? "выше" : "ниже"} ${rule.value}. Изменить` : `Поставить сигнал на ${def.label}`}
+          aria-label={rule ? t("mcard.alertSet", { label: def.label, op: opWord(rule.op), value: rule.value }) : t("mcard.alertNew", { label: def.label })}
           className={cn(
             "grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             fired ? "text-warn" : rule ? "text-primary" : "text-muted-foreground",
@@ -75,11 +81,11 @@ function AlertEditor({ def, rule, current, onSave }: {
           onSubmit={(e) => { e.preventDefault(); if (valid) { onSave({ op, value }); setOpen(false); } }}
         >
           <div>
-            <p className="text-sm font-semibold">Сигнал: {def.label}</p>
-            <p className="text-xs text-muted-foreground">Карточка подсветится, когда условие выполнится. Сейчас: {current != null ? def.format(current) : "—"}</p>
+            <p className="text-sm font-semibold">{t("mcard.alertTitle", { label: def.label })}</p>
+            <p className="text-xs text-muted-foreground">{t("mcard.alertHint", { value: current != null ? def.format(current) : "—" })}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="glass-field inline-flex items-center gap-0.5 p-1" role="group" aria-label="Условие">
+            <div className="glass-field inline-flex items-center gap-0.5 p-1" role="group" aria-label={t("mcard.conditionAria")}>
               {(["above", "below"] as const).map((o) => (
                 <button
                   key={o}
@@ -88,7 +94,7 @@ function AlertEditor({ def, rule, current, onSave }: {
                   onClick={() => setOp(o)}
                   className={cn("min-h-7 rounded-full px-2.5 text-xs font-medium", op === o ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
                 >
-                  {o === "above" ? "выше" : "ниже"}
+                  {opWord(o)}
                 </button>
               ))}
             </div>
@@ -96,16 +102,16 @@ function AlertEditor({ def, rule, current, onSave }: {
               value={raw}
               onChange={(e) => setRaw(e.target.value)}
               inputMode="decimal"
-              aria-label="Порог"
+              aria-label={t("mcard.thresholdAria")}
               className="h-9 min-w-0 flex-1 tabular-nums"
               autoFocus
             />
           </div>
           <div className="flex items-center justify-between gap-2">
             {rule ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => { onSave(null); setOpen(false); }}>Убрать сигнал</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => { onSave(null); setOpen(false); }}>{t("mcard.removeAlert")}</Button>
             ) : <span />}
-            <Button type="submit" size="sm" disabled={!valid}>Сохранить</Button>
+            <Button type="submit" size="sm" disabled={!valid}>{commonI18n.t("actions.save")}</Button>
           </div>
         </form>
       </PopoverContent>
@@ -123,6 +129,7 @@ export const MarketCard = memo(function MarketCard({
   onFocus: (id: IndicatorDef["id"]) => void;
   onSaveAlert: (id: IndicatorDef["id"], rule: AlertRule | null) => void;
 }) {
+  const { t } = indicatorsI18n.useT();
   const v = reading?.value ?? null;
   const fired = rule ? alertFires(rule, v) : false;
   const word = v != null ? def.read(v) : "";
@@ -140,7 +147,7 @@ export const MarketCard = memo(function MarketCard({
         type="button"
         onClick={() => onFocus(def.id)}
         aria-pressed={focused}
-        aria-label={`${def.label}: ${v != null ? def.format(v) : "нет данных"}. Показать мой результат по этому индикатору`}
+        aria-label={t("mcard.focusAria", { label: def.label, value: v != null ? def.format(v) : t("mcard.noData") })}
         className="absolute inset-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <div className="pointer-events-none relative flex min-w-0 flex-1 flex-col gap-2 p-4">
@@ -173,23 +180,23 @@ export const MarketCard = memo(function MarketCard({
           height={32}
           baseline={rule?.value}
           className="h-8 w-full"
-          ariaLabel={`${def.label} за 3 месяца`}
+          ariaLabel={t("mcard.sparkAria", { label: def.label })}
         />
 
         <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums">
-          <span className="text-muted-foreground">день <Delta def={def} v={reading?.dDay ?? null} /></span>
-          <span className="text-muted-foreground">нед. <Delta def={def} v={reading?.dWeek ?? null} /></span>
+          <span className="text-muted-foreground">{t("mcard.day")} <Delta def={def} v={reading?.dDay ?? null} /></span>
+          <span className="text-muted-foreground">{t("mcard.week")} <Delta def={def} v={reading?.dWeek ?? null} /></span>
           {p != null && (
-            <span className="ml-auto inline-flex items-center gap-1.5 text-muted-foreground" title={`Сейчас выше, чем в ${Math.round(p * 100)}% дней за последний год`}>
+            <span className="ml-auto inline-flex items-center gap-1.5 text-muted-foreground" title={t("mcard.percentileTitle", { pct: Math.round(p * 100) })}>
               <span className="relative h-1.5 w-12 overflow-hidden rounded-full bg-[var(--glass-hover-bg)]" aria-hidden="true">
                 <span className="absolute inset-y-0 left-0 rounded-full bg-foreground/50" style={{ width: `${Math.max(4, p * 100)}%` }} />
               </span>
-              год {Math.round(p * 100)}%
+              {t("mcard.year", { pct: Math.round(p * 100) })}
             </span>
           )}
         </div>
         {fired && rule && (
-          <Pill tone="warn" dot className="self-start">Сработал: {rule.op === "above" ? "выше" : "ниже"} {def.format(rule.value)}</Pill>
+          <Pill tone="warn" dot className="self-start">{t("mcard.fired", { op: opWord(rule.op), value: def.format(rule.value) })}</Pill>
         )}
       </div>
     </article>

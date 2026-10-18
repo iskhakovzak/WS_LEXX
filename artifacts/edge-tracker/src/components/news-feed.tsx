@@ -5,41 +5,35 @@ import { ExternalLink, Newspaper, FileText, TrendingUp, TrendingDown, Zap, Alert
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pill, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { fmtDate, fmtDateCustom, fmtRelative } from "@/lib/format";
+import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
+import { commonI18n } from "@/i18n/ns/common";
 
-function articlesWord(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "статья";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "статьи";
-  return "статей";
-}
-
-const CATEGORY_META: Record<string, { label: string; icon: React.ElementType; tone: Tone }> = {
-  earnings: { label: "Отчёт", icon: TrendingUp, tone: "warn" },
+type CategoryMeta = { readonly label: string; icon: React.ElementType; tone: Tone };
+/** Category chips; codes like FDA / M&A / SEC stay as is, the rest are getters in the UI language. */
+const cat = (key: "earnings" | "upgrade" | "downgrade" | "insider" | "offering" | "guidance" | "news", icon: React.ElementType, tone: Tone): CategoryMeta => ({
+  icon, tone, get label() { return marketWidgetsI18n.t(`news.category.${key}`); },
+});
+const CATEGORY_META: Record<string, CategoryMeta> = {
+  earnings: cat("earnings", TrendingUp, "warn"),
   fda: { label: "FDA", icon: Zap, tone: "purple" },
-  upgrade: { label: "Апгрейд", icon: TrendingUp, tone: "up" },
-  downgrade: { label: "Даунгрейд", icon: TrendingDown, tone: "down" },
-  insider: { label: "Инсайдеры", icon: Building2, tone: "warn" },
+  upgrade: cat("upgrade", TrendingUp, "up"),
+  downgrade: cat("downgrade", TrendingDown, "down"),
+  insider: cat("insider", Building2, "warn"),
   "m&a": { label: "M&A", icon: Activity, tone: "accent" },
-  offering: { label: "Размещение", icon: AlertTriangle, tone: "down" },
-  guidance: { label: "Гайденс", icon: ScrollText, tone: "accent" },
+  offering: cat("offering", AlertTriangle, "down"),
+  guidance: cat("guidance", ScrollText, "accent"),
   sec: { label: "SEC", icon: FileText, tone: "neutral" },
-  news: { label: "Новость", icon: Newspaper, tone: "neutral" },
+  news: cat("news", Newspaper, "neutral"),
 };
 
+/** «5 min ago» for the last week, a date after that. */
 function timeAgo(iso: string | null): string {
   if (!iso) return "";
-  const t = new Date(iso).getTime();
-  const diff = Date.now() - t;
+  const diff = Date.now() - new Date(iso).getTime();
   if (!isFinite(diff) || diff < 0) return "";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "сейчас";
-  if (min < 60) return `${min} мин`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} ч`;
-  const d = Math.floor(hr / 24);
-  if (d < 7) return `${d} дн`;
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  if (diff < 7 * 86_400_000) return fmtRelative(iso, { style: "short" });
+  return fmtDate(iso, "dayMonth");
 }
 
 function isFresh(iso: string | null): boolean {
@@ -73,10 +67,10 @@ function NewsRow({ item, compact }: { item: NewsItem; compact: boolean }) {
         <div className={cn("leading-snug text-foreground", compact ? "text-sm" : "text-sm font-medium")}>{item.title}</div>
         {!compact && item.summary && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.summary}</p>}
         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-          {fresh && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Свежая (за 24 ч)" />}
+          {fresh && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label={marketWidgetsI18n.t("news.fresh")} />}
           {item.source && <span className="truncate">{item.source}</span>}
           {ago && (
-            <time dateTime={item.publishedAt ?? undefined} title={item.publishedAt ? new Date(item.publishedAt).toLocaleString("ru-RU") : undefined} className="shrink-0 tabular-nums">
+            <time dateTime={item.publishedAt ?? undefined} title={item.publishedAt ? fmtDate(item.publishedAt, "shortDateTime") : undefined} className="shrink-0 tabular-nums">
               {item.source ? "· " : ""}{ago}
             </time>
           )}
@@ -87,7 +81,7 @@ function NewsRow({ item, compact }: { item: NewsItem; compact: boolean }) {
   );
   if (safeUrl) {
     return (
-      <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={className} aria-label={`${item.title} (откроется в новой вкладке)`}>
+      <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={className} aria-label={marketWidgetsI18n.t("news.newTab", { title: item.title })}>
         {inner}
       </a>
     );
@@ -119,13 +113,12 @@ export function NewsFeed({
   /** When provided, only news published at or before this moment are shown (point-in-time). */
   cutoffDate?: string | Date | null;
 }) {
+  const { t } = marketWidgetsI18n.useT();
   const { data, isLoading, error, refetch, isFetching } = useTickerNews(ticker, { limit, before: cutoffDate });
   const items = useMemo(() => data?.items ?? [], [data]);
   const [rawFilter, setFilter] = useState<string>("all");
   const cutoffLabel = cutoffDate
-    ? new Date(cutoffDate instanceof Date ? cutoffDate.toISOString() : cutoffDate).toLocaleString("ru-RU", {
-        day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-      })
+    ? fmtDateCustom(cutoffDate, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
     : null;
 
   const categories = useMemo(() => {
@@ -148,22 +141,22 @@ export function NewsFeed({
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
             <Newspaper className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            Новости {ticker}
+            {t("news.title", { ticker })}
           </span>
-          {items.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{items.length}{freshCount ? ` · ${freshCount} за 24 ч` : ""}</span>}
+          {items.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{items.length}{freshCount ? ` · ${t("news.freshCount", { count: freshCount })}` : ""}</span>}
           {cutoffLabel && (
-            <Pill tone="warn" className="text-2xs"><History className="h-3 w-3" aria-hidden="true" />до {cutoffLabel}</Pill>
+            <Pill tone="warn" className="text-2xs"><History className="h-3 w-3" aria-hidden="true" />{t("news.until", { date: cutoffLabel })}</Pill>
           )}
         </div>
         {categories.length > 1 && (
-          <div className="flex max-w-full gap-1 overflow-x-auto" role="group" aria-label="Фильтр новостей по категории">
+          <div className="flex max-w-full gap-1 overflow-x-auto" role="group" aria-label={t("news.filterAria")}>
             <button
               type="button"
               onClick={() => setFilter("all")}
               aria-pressed={filter === "all"}
               className="chip min-h-7 shrink-0 px-2.5 text-xs"
             >
-              Все
+              {t("news.all")}
             </button>
             {categories.map(([c, n]) => (
               <button
@@ -181,39 +174,37 @@ export function NewsFeed({
       </div>
 
       {isLoading && (
-        <div className="space-y-2" aria-busy="true" aria-label="Загружаем новости">
+        <div className="space-y-2" aria-busy="true" aria-label={t("news.loading")}>
           {Array.from({ length: Math.min(3, limit) }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
         </div>
       )}
       {error && !isLoading && (
         <div className="flex items-center justify-between gap-2 rounded-xl bg-down/10 px-3 py-2.5 text-sm">
-          <span className="flex items-center gap-1.5 text-down"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> Не удалось загрузить новости</span>
+          <span className="flex items-center gap-1.5 text-down"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> {t("news.loadFailed")}</span>
           <button
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
             className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs disabled:opacity-50"
           >
-            <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" /> Повторить
+            <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" /> {commonI18n.t("actions.retry")}
           </button>
         </div>
       )}
       {!isLoading && !error && items.length === 0 && (
         <Notice
-          title={cutoffLabel ? `Нет новостей по ${ticker} на момент сделки` : `Нет напрямую релевантных новостей по ${ticker}`}
-          body={cutoffLabel
-            ? "Показываем только материалы, опубликованные до момента сделки. Более поздние новости скрыты."
-            : "Показываем только статьи, прямо упоминающие тикер. Широкие отраслевые новости отфильтрованы."}
+          title={cutoffLabel ? t("news.noneAtTrade", { ticker }) : t("news.noneRelevant", { ticker })}
+          body={cutoffLabel ? t("news.noneAtTradeText") : t("news.noneRelevantText")}
         />
       )}
       {!isLoading && !error && items.length > 0 && items.length < 3 && (
         <Notice
-          title={`Найдено только ${items.length} напрямую релевантных ${articlesWord(items.length)} по ${ticker}`}
-          body="Широкие отраслевые новости отфильтрованы, чтобы оставить только материалы, прямо упоминающие тикер."
+          title={t("news.fewFound", { count: items.length, ticker })}
+          body={t("news.fewFoundText")}
         />
       )}
       {!isLoading && !error && items.length > 0 && filtered.length === 0 && (
-        <p className="py-2 text-sm text-muted-foreground">Нет новостей в выбранной категории</p>
+        <p className="py-2 text-sm text-muted-foreground">{t("news.noneInCategory")}</p>
       )}
       <div className="space-y-1.5">
         {filtered.map((item) => <NewsRow key={item.guid} item={item} compact={compact} />)}

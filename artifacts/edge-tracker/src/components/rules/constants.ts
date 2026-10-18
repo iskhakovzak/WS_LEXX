@@ -1,10 +1,14 @@
 import type { SeverityMeta } from "./types";
+import { pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
 
+// Labels are getters: read in render with the current language (never translate at module scope).
 export const SEVERITY: Record<string, SeverityMeta> = {
-  low: { label: "Низкая", tone: "neutral", bar: "bg-muted-foreground/50" },
-  medium: { label: "Средняя", tone: "warn", bar: "bg-[hsl(var(--chart-3))]" },
-  high: { label: "Высокая", tone: "down", bar: "bg-down/70" },
-  critical: { label: "Критичная", tone: "down", bar: "bg-down" },
+  low: { get label() { return rulesI18n.t("severity.low"); }, tone: "neutral", bar: "bg-muted-foreground/50" },
+  medium: { get label() { return rulesI18n.t("severity.medium"); }, tone: "warn", bar: "bg-[hsl(var(--chart-3))]" },
+  high: { get label() { return rulesI18n.t("severity.high"); }, tone: "down", bar: "bg-down/70" },
+  critical: { get label() { return rulesI18n.t("severity.critical"); }, tone: "down", bar: "bg-down" },
 };
 export const SEVERITY_ORDER = ["low", "medium", "high", "critical"] as const;
 
@@ -12,48 +16,78 @@ export function severityMeta(s: string | null | undefined): SeverityMeta {
   return SEVERITY[s ?? "medium"] ?? SEVERITY.medium;
 }
 
-/** Common day-trading mistakes — one tap in the quick-log dialog. Stored as the label (readable in CSV). */
-export const MISTAKE_CATEGORIES: { label: string; hint: string; severity: "low" | "medium" | "high" | "critical" }[] = [
-  { label: "FOMO / погоня", hint: "Вошёл в уже ушедшее движение", severity: "medium" },
-  { label: "Вход не по плану", hint: "Сетапа нет в плейбуке или плане дня", severity: "high" },
-  { label: "Ранний вход", hint: "Не дождался подтверждения", severity: "medium" },
-  { label: "Сдвинул стоп", hint: "Отодвинул стоп от цены", severity: "high" },
-  { label: "Без стопа", hint: "Позиция без защитного стопа", severity: "critical" },
-  { label: "Усреднение убытка", hint: "Добирал против позиции", severity: "critical" },
-  { label: "Завышенный размер", hint: "Риск больше нормы", severity: "high" },
-  { label: "Переторговка", hint: "Лишние сделки без сетапа", severity: "medium" },
-  { label: "Отыгрыш после убытка", hint: "Revenge-trade", severity: "high" },
-  { label: "Ранний выход из прибыли", hint: "Закрыл до цели без причины", severity: "low" },
-  { label: "Пересидел убыток", hint: "Не вышел по стопу/плану", severity: "high" },
-  { label: "Проигнорировал новости", hint: "Отчёт, оффер, макро-событие", severity: "medium" },
+type MistakeCode = "fomo" | "offPlan" | "earlyEntry" | "movedStop" | "noStop" | "averagingDown" | "oversize" | "overtrading" | "revenge" | "earlyExit" | "heldLoser" | "ignoredNews";
+type Sev = "low" | "medium" | "high" | "critical";
+
+/**
+ * Common day-trading mistakes — one tap in the quick-log dialog. `value` is what gets stored (the original Russian
+ * label: readable in CSV, matched by the server's junior review) — it is data, never shown; `label` / `hint` are the
+ * display in the current language.
+ */
+function cat(code: MistakeCode, value: string, severity: Sev) {
+  return {
+    code,
+    value,
+    severity,
+    get label() { return rulesI18n.t(`mistakeCat.${code}.label`); },
+    get hint() { return rulesI18n.t(`mistakeCat.${code}.hint`); },
+  };
+}
+// Stored values below are data (see the doc comment above), hence the i18n-ignore marks.
+export const MISTAKE_CATEGORIES = [
+  cat("fomo", "FOMO / погоня", "medium"), // i18n-ignore
+  cat("offPlan", "Вход не по плану", "high"), // i18n-ignore
+  cat("earlyEntry", "Ранний вход", "medium"), // i18n-ignore
+  cat("movedStop", "Сдвинул стоп", "high"), // i18n-ignore
+  cat("noStop", "Без стопа", "critical"), // i18n-ignore
+  cat("averagingDown", "Усреднение убытка", "critical"), // i18n-ignore
+  cat("oversize", "Завышенный размер", "high"), // i18n-ignore
+  cat("overtrading", "Переторговка", "medium"), // i18n-ignore
+  cat("revenge", "Отыгрыш после убытка", "high"), // i18n-ignore
+  cat("earlyExit", "Ранний выход из прибыли", "low"), // i18n-ignore
+  cat("heldLoser", "Пересидел убыток", "high"), // i18n-ignore
+  cat("ignoredNews", "Проигнорировал новости", "medium"), // i18n-ignore
 ];
+
+/** Stored prefix of a mistake logged from a rule violation («Правило: <rule name>») — data, see mistakeLabel(). */
+export const RULE_PREFIX = "Правило: "; // i18n-ignore
+
+const CAT_BY_VALUE = new Map(MISTAKE_CATEGORIES.map((c) => [c.value, c]));
+
+/** Display text of a stored mistake category: built-in ones are translated, a rule-based one keeps the rule name, custom text stays as typed. */
+export function mistakeLabel(stored: string): string {
+  const c = CAT_BY_VALUE.get(stored);
+  if (c) return c.label;
+  if (stored.startsWith(RULE_PREFIX)) return rulesI18n.t("rulePrefixed", { name: stored.slice(RULE_PREFIX.length) });
+  return stored;
+}
 
 /** Status of a violation in the acknowledge → resolve workflow. */
 export const VIOLATION_STATUS: Record<string, { label: string; tone: "neutral" | "warn" | "up" | "down" | "accent" }> = {
-  open: { label: "Новое", tone: "warn" },
-  acknowledged: { label: "Принято", tone: "accent" },
-  resolved: { label: "Решено", tone: "neutral" },
+  open: { get label() { return rulesI18n.t("status.open"); }, tone: "warn" },
+  acknowledged: { get label() { return rulesI18n.t("status.acknowledged"); }, tone: "accent" },
+  resolved: { get label() { return rulesI18n.t("status.resolved"); }, tone: "neutral" },
 };
 export const VIOLATION_RESOLUTION: Record<string, { label: string; tone: "up" | "down" }> = {
-  upheld: { label: "Подтверждено", tone: "down" },
-  dismissed: { label: "Снято", tone: "up" },
+  upheld: { get label() { return rulesI18n.t("resolution.upheld"); }, tone: "down" },
+  dismissed: { get label() { return rulesI18n.t("resolution.dismissed"); }, tone: "up" },
 };
 
 /** Muted badge for archived violations (kept with comments, out of counts). */
+type ArchiveReason = "rule_disabled" | "rule_deleted" | "stale";
+const archived = (r: ArchiveReason) => ({
+  get label() { return rulesI18n.t(`archive.${r}.label`); },
+  get hint() { return rulesI18n.t(`archive.${r}.hint`); },
+});
 export const VIOLATION_ARCHIVE: Record<string, { label: string; hint: string }> = {
-  rule_disabled: { label: "правило выключено", hint: "Правило выключено — нарушение сохранено с комментариями, но не учитывается в статистике. Включите правило, чтобы вернуть его." },
-  rule_deleted: { label: "правило удалено", hint: "Правило удалено — нарушение сохранено в архиве с комментариями и не учитывается в статистике." },
-  stale: { label: "неактуально", hint: "Проверка больше не находит это нарушение (например, сделку исправили). Сохранено, потому что к нему есть комментарий или решение." },
+  rule_disabled: archived("rule_disabled"),
+  rule_deleted: archived("rule_deleted"),
+  stale: archived("stale"),
 };
 
-export const PERIODS = [
-  { value: "30", label: "30 дн" },
-  { value: "90", label: "90 дн" },
-  { value: "180", label: "180 дн" },
-] as const;
+const period = <V extends string>(value: V) => ({ value, get label() { return commonI18n.t("time.daysShort", { count: Number(value) }); } });
+export const PERIODS = [period("30"), period("90"), period("180")] as const;
 export type PeriodValue = (typeof PERIODS)[number]["value"];
-
-export const RULE_PREFIX = "Правило: ";
 
 export const LS_KEYS = {
   tab: "rules.tab.v2",
@@ -62,11 +96,17 @@ export const LS_KEYS = {
   showArchive: "rules.violations.archive",
 } as const;
 
+type Origin = "desk" | "office" | "personal";
+const origin = <T extends string>(o: Origin, tone: T) => ({
+  tone,
+  get label() { return rulesI18n.t(`origin.${o}.label`); },
+  get hint() { return rulesI18n.t(`origin.${o}.hint`); },
+});
 export const ORIGIN_LABEL = {
-  desk: { label: "Весь деск", tone: "purple", hint: "Правило офиса для всех трейдеров" },
-  office: { label: "Офис", tone: "accent", hint: "Правило задал куратор" },
-  personal: { label: "Моё", tone: "neutral", hint: "Личное правило трейдера" },
-} as const;
+  desk: origin("desk", "purple" as const),
+  office: origin("office", "accent" as const),
+  personal: origin("personal", "neutral" as const),
+};
 
 export function originOf(r: { desk?: boolean; origin?: string | null }): keyof typeof ORIGIN_LABEL {
   return r.desk ? "desk" : r.origin === "office" ? "office" : "personal";
@@ -79,40 +119,5 @@ export function lsSet(key: string, value: string) {
   try { localStorage.setItem(key, value); } catch { /* ignore */ }
 }
 
-export function fmtR(r: number | null | undefined, digits = 1): string {
-  if (r == null || !Number.isFinite(r)) return "—";
-  const s = Math.abs(r).toFixed(digits);
-  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${s}R`;
-}
-const USD = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const USD2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/** Signed net $: «+$1,234» / «−$56»; under $100 — with cents. */
-export function fmtUsd(v: number | null | undefined, opts: { sign?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const a = Math.abs(v);
-  const s = a < 100 && a !== Math.round(a) ? USD2.format(a) : USD.format(a);
-  const sign = opts.sign === false ? (v < 0 ? "−" : "") : v > 0 ? "+" : v < 0 ? "−" : "";
-  return `${sign}$${s}`;
-}
-/** 0..1 → «87%». */
-export function fmtPct(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v * 100)}%`;
-}
-export function fmtDay(d: string | null | undefined): string {
-  if (!d) return "";
-  const dt = new Date(`${d.slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(dt.getTime())) return d;
-  return dt.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-/** Russian plural form: 1 нарушение, 2 нарушения, 5 нарушений (11–14 → many). */
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const a = Math.abs(n) % 100, b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b === 1) return one;
-  if (b >= 2 && b <= 4) return few;
-  return many;
-}
-export const violationsWord = (n: number) => pluralRu(n, "нарушение", "нарушения", "нарушений");
+/** @deprecated Compatibility export (RU only) — rules screens use the `preview.violations` plural entry. */
+export const violationsWord = (n: number) => pluralRu(n, "нарушение", "нарушения", "нарушений"); // i18n-ignore

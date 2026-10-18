@@ -4,6 +4,7 @@
  * next trade's first leg, titled «Перезаход №2» / «Переворот». Hover a ghost marker for its role and trade id.
  */
 import type { PrimitiveHoveredItem } from "lightweight-charts";
+import { chartI18n } from "@/i18n/ns/chart";
 import type { ChainLink, ChainMark } from "../lib/geometry";
 import type { Side } from "../types";
 import { drawRoleGlyph, roleColor } from "./FillsPrimitive";
@@ -53,7 +54,7 @@ export class ChainPrimitive extends SeriesPrimitiveBase {
       line(ctx, x1, y1, x2, y2, col, 1.2, [4, 3]);
       if (l.toCurrent || l.fromCurrent) {
         const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-        label(ctx, theme, l.toCurrent ? l.title : `Дальше: ${l.title.toLowerCase()}`, mx, my - 4, { anchor: "bl", size: 9, pad: 3, bg: theme.bg(0.85), color: col, weight: 600, clamp: { width, height } });
+        label(ctx, theme, l.toCurrent ? l.title : chartI18n.t("structure.next", { title: l.title.toLowerCase() }), mx, my - 4, { anchor: "bl", size: 9, pad: 3, bg: theme.bg(0.85), color: col, weight: 600, clamp: { width, height } });
       }
     }
     if (this.hovered) {

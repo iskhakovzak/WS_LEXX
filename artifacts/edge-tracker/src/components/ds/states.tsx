@@ -20,6 +20,7 @@
 import * as React from "react";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
+import { commonI18n } from "@/i18n/ns/common";
 
 /* ── Error ─────────────────────────────────────────────────────────────────── */
 
@@ -30,6 +31,7 @@ export function ErrorState({
   message,
   compact = false,
   inset = false,
+  retryLabel,
   className,
 }: {
   error?: unknown;
@@ -40,6 +42,8 @@ export function ErrorState({
   compact?: boolean;
   /** Render without its own glass card (when already inside a Panel). */
   inset?: boolean;
+  /** Retry button text (default «Повторить»). */
+  retryLabel?: string;
   className?: string;
 }) {
   return (
@@ -49,6 +53,7 @@ export function ErrorState({
       title={title}
       message={message}
       compact={compact}
+      retryLabel={retryLabel}
       className={cn(inset && !compact && "border-0 bg-transparent bg-none py-8 shadow-none", className)}
     />
   );
@@ -66,7 +71,7 @@ export function StatGridSkeleton({ count = 4, min = "11rem", className }: { coun
   return (
     <div
       role="status"
-      aria-label="Загрузка показателей"
+      aria-label={commonI18n.t("ds.loadingKpis")}
       className={cn("grid gap-[var(--grid-gap)]", className)}
       style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}, 100%), 1fr))` }}
     >
@@ -84,7 +89,7 @@ export function StatGridSkeleton({ count = 4, min = "11rem", className }: { coun
 /** Rows of a list/feed: avatar-ish dot + two lines. */
 export function ListSkeleton({ rows = 5, className, dense = false }: { rows?: number; className?: string; dense?: boolean }) {
   return (
-    <div role="status" aria-label="Загрузка списка" className={cn("flex flex-col", dense ? "gap-1.5" : "gap-2.5", className)}>
+    <div role="status" aria-label={commonI18n.t("ds.loadingList")} className={cn("flex flex-col", dense ? "gap-1.5" : "gap-2.5", className)}>
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className={cn("flex items-center gap-3", dense ? "py-1" : "py-1.5")}>
           <SkeletonBlock className="h-8 w-8 shrink-0 rounded-full" />
@@ -101,7 +106,7 @@ export function ListSkeleton({ rows = 5, className, dense = false }: { rows?: nu
 /** Table placeholder: header + N rows with `cols` cells, compact density (matches DataTable). */
 export function TableSkeleton({ rows = 8, cols = 5, className }: { rows?: number; cols?: number; className?: string }) {
   return (
-    <div role="status" aria-label="Загрузка таблицы" className={cn("flex flex-col", className)}>
+    <div role="status" aria-label={commonI18n.t("ds.loadingTable")} className={cn("flex flex-col", className)}>
       <div className="flex gap-3 border-b border-[var(--glass-border)] px-3 py-2.5">
         {Array.from({ length: cols }, (_, c) => <SkeletonBlock key={c} className="h-3 flex-1" />)}
       </div>
@@ -119,7 +124,7 @@ export function TableSkeleton({ rows = 8, cols = 5, className }: { rows?: number
 /** Panel-shaped placeholder (title line + body of given height). */
 export function PanelSkeleton({ height = 240, title = true, className }: { height?: number | string; title?: boolean; className?: string }) {
   return (
-    <div role="status" aria-label="Загрузка" className={cn("glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)]", className)}>
+    <div role="status" aria-label={commonI18n.t("states.loading")} className={cn("glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)]", className)}>
       {title && <SkeletonBlock className="h-4 w-40" />}
       <SkeletonBlock className="w-full rounded-xl" style={{ height }} />
     </div>

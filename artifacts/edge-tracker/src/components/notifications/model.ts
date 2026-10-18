@@ -9,8 +9,11 @@ import {
   CheckCircle2, CalendarRange, Star, BadgeCheck, TriangleAlert, OctagonAlert, SlidersHorizontal, TrendingUp,
   Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert,
 } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { fmtDate } from "@/lib/format";
 import type { Tone } from "@/components/ds";
+import { notificationsI18n } from "@/i18n/ns/notifications";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type Severity = "info" | "warn" | "critical";
 export type NotificationGroup = "team" | "ideas" | "review" | "risk" | "scaling" | "academy" | "sync" | "system";
@@ -18,9 +21,14 @@ export type NotificationGroup = "team" | "ideas" | "review" | "risk" | "scaling"
 export type Notification = {
   id: number;
   type: string;
+  /** Server label (Russian on older API builds) — render `typeLabelOf(type)` instead. */
   typeLabel: string;
   group: NotificationGroup;
   severity: Severity;
+  /**
+   * Server-rendered title in the request language (rows stored as type + params), the stored Russian title of older
+   * rows, or "" when the row has no title of its own (the UI then shows the type label: `notificationTitle(n)`).
+   */
   title: string;
   body: string;
   link: string | null;
@@ -42,53 +50,77 @@ export type Prefs = { prefs: Pref[]; muteAllUntil: string | null };
 
 export const ALL_TYPES_KEY = "*";
 
-export const GROUP_LABELS: Record<NotificationGroup, string> = {
-  team: "Команда", ideas: "Идеи", review: "Разбор", risk: "Риск", scaling: "Масштабирование", academy: "Академия", sync: "Синхронизация", system: "Система",
+/** Group names in the UI language (getters: read at render). */
+export const GROUP_LABELS: Readonly<Record<NotificationGroup, string>> = {
+  get team() { return notificationsI18n.t("groups.team"); },
+  get ideas() { return notificationsI18n.t("groups.ideas"); },
+  get review() { return notificationsI18n.t("groups.review"); },
+  get risk() { return notificationsI18n.t("groups.risk"); },
+  get scaling() { return notificationsI18n.t("groups.scaling"); },
+  get academy() { return notificationsI18n.t("groups.academy"); },
+  get sync() { return notificationsI18n.t("groups.sync"); },
+  get system() { return notificationsI18n.t("groups.system"); },
 };
 export const GROUP_ORDER: NotificationGroup[] = ["team", "ideas", "review", "risk", "scaling", "academy", "sync", "system"];
 
+/** Label / description of a type in the UI language; unknown types show their code. */
+export function typeLabelOf(type: string): string {
+  return notificationsI18n.tryT(`types.${type}.label`) ?? type;
+}
+export function typeDescriptionOf(type: string): string {
+  return notificationsI18n.tryT(`types.${type}.description`) ?? "";
+}
+
+/** Registry entry whose label/description follow the UI language. */
+function meta(type: string, group: NotificationGroup, severity: Severity): TypeMeta {
+  return {
+    type, group, severity,
+    get label() { return typeLabelOf(type); },
+    get description() { return typeDescriptionOf(type); },
+  };
+}
+
 /** Local copy of the registry so filters/prefs render before (or without) GET /notifications/types. */
 export const TYPES: TypeMeta[] = [
-  { type: "mention", label: "Упоминание", group: "team", severity: "info", description: "Кто-то упомянул вас через @имя в обсуждении, идее или заметке" },
-  { type: "reply", label: "Ответ", group: "team", severity: "info", description: "Ответ на ваш пост или в вашем обсуждении, отметка «решение»" },
-  { type: "review_request", label: "Запрос разбора", group: "team", severity: "info", description: "Трейдер просит куратора разобрать сделку или тему" },
-  { type: "thread_new", label: "Новая тема", group: "team", severity: "info", description: "В «Обсуждениях» появилась тема для вас (для всех, вашей ступени, кураторов или вашей когорты)" },
-  { type: "idea_submitted", label: "Новая идея", group: "ideas", severity: "info", description: "Трейдер опубликовал идею на ревью" },
-  { type: "idea_review", label: "Решение по идее", group: "ideas", severity: "info", description: "Куратор одобрил, отклонил или вернул идею на доработку" },
-  { type: "idea_comment", label: "Комментарий к идее", group: "ideas", severity: "info", description: "Публичный комментарий или личный ответ к идее" },
-  { type: "eod_review_request", label: "День закрыт — ждёт разбора", group: "review", severity: "info", description: "Трейдер закрыл торговый день, он попал в очередь куратора" },
-  { type: "eod_overdue", label: "Разбор дня просрочен", group: "review", severity: "warn", description: "Закрытый день ждёт разбора дольше SLA (24 ч)" },
-  { type: "eod_reviewed", label: "Разбор дня готов", group: "review", severity: "info", description: "Куратор оставил комментарий и оценку за день" },
-  { type: "weekly_review", label: "Отчёт недели", group: "review", severity: "info", description: "Самооценка отправлена / куратор завершил разбор недели / цели обновлены" },
-  { type: "rating", label: "Оценка куратора", group: "review", severity: "info", description: "Новая или изменённая недельная оценка" },
-  { type: "rating_ack", label: "Оценка подтверждена", group: "review", severity: "info", description: "Трейдер прочитал и подтвердил вашу оценку" },
-  { type: "risk_warn", label: "Близко к лимиту", group: "risk", severity: "warn", description: "Использовано ≥ 70 % дневного / недельного лимита или просадки" },
-  { type: "risk_breach", label: "Лимит превышен", group: "risk", severity: "critical", description: "Дневной / недельный лимит или максимальная просадка пробиты — стоп торговли" },
-  { type: "risk_repeat_breach", label: "Повторное нарушение", group: "risk", severity: "critical", description: "Трейдер второй раз за неделю пробил лимит — нужен разбор куратора" },
-  { type: "risk_breach_review", label: "Разбор нарушения", group: "risk", severity: "info", description: "Куратор записал разбор вашего нарушения лимита" },
-  { type: "limit_change", label: "Изменение лимитов", group: "risk", severity: "info", description: "Куратор изменил ваши лимиты риска или тир" },
-  { type: "rule_violation", label: "Нарушение правила", group: "risk", severity: "warn", description: "Сканер нашёл нарушение правила дисциплины или куратор вынес по нему решение" },
-  { type: "scaling_proposal", label: "Предложение по масштабированию", group: "scaling", severity: "info", description: "Создано предложение повысить / понизить тир" },
-  { type: "scaling_decision", label: "Решение по масштабированию", group: "scaling", severity: "info", description: "Предложение одобрено или отклонено" },
-  // academy
-  { type: "academy_promotion_ready", label: "Готов к переводу", group: "academy", severity: "info", description: "Выполнены критерии перевода на следующую ступень" },
-  { type: "academy_promotion_request", label: "Заявка на перевод", group: "academy", severity: "info", description: "Ученик подал заявку на перевод на следующую ступень" },
-  { type: "academy_promotion_decision", label: "Решение по переводу", group: "academy", severity: "info", description: "Заявка на перевод одобрена или отклонена" },
-  { type: "academy_challenge_assigned", label: "Назначен экзамен", group: "academy", severity: "info", description: "Вам назначен экзамен с правилами и сроками" },
-  { type: "academy_challenge_passed", label: "Экзамен сдан", group: "academy", severity: "info", description: "Все правила экзамена выполнены" },
-  { type: "academy_challenge_failed", label: "Экзамен провален", group: "academy", severity: "warn", description: "Нарушено правило экзамена или истекло время" },
-  { type: "academy_enrolled", label: "Зачисление", group: "academy", severity: "info", description: "Вас зачислили в когорту Академии" },
-  { type: "academy_stage_change", label: "Смена ступени", group: "academy", severity: "info", description: "Изменилась ступень или статус обучения" },
-  { type: "academy_goal_assigned", label: "Новая цель ИПР", group: "academy", severity: "info", description: "Наставник поставил цель в индивидуальном плане" },
-  { type: "academy_goal_achieved", label: "Цель ИПР достигнута", group: "academy", severity: "info", description: "Цель индивидуального плана выполнена" },
-  { type: "academy_goal_missed", label: "Цель ИПР не достигнута", group: "academy", severity: "warn", description: "Срок цели прошёл, а метрика не выполнена" },
-  { type: "academy_action_assigned", label: "Новая договорённость", group: "academy", severity: "info", description: "По итогам встречи 1:1 появилась договорённость" },
-  { type: "academy_action_overdue", label: "Договорённость просрочена", group: "academy", severity: "warn", description: "Срок договорённости прошёл" },
-  { type: "academy_submitted", label: "Задание на проверку", group: "academy", severity: "info", description: "Ученик сдал задание курса на проверку" },
-  { type: "academy_graded", label: "Задание проверено", group: "academy", severity: "info", description: "Наставник проверил ваше задание" },
-  { type: "sync", label: "Синхронизация PropReports", group: "sync", severity: "info", description: "Итог синхронизации или импорта: добавлено / обновлено / ошибки" },
-  { type: "sync_unmatched", label: "Несопоставленные счета", group: "sync", severity: "warn", description: "В выписке есть счета, не привязанные к трейдерам" },
-  { type: "system", label: "Системное", group: "system", severity: "info", description: "Служебные сообщения" },
+  meta("mention", "team", "info"),
+  meta("reply", "team", "info"),
+  meta("review_request", "team", "info"),
+  meta("thread_new", "team", "info"),
+  meta("idea_submitted", "ideas", "info"),
+  meta("idea_review", "ideas", "info"),
+  meta("idea_comment", "ideas", "info"),
+  meta("eod_review_request", "review", "info"),
+  meta("eod_overdue", "review", "warn"),
+  meta("eod_reviewed", "review", "info"),
+  meta("weekly_review", "review", "info"),
+  meta("rating", "review", "info"),
+  meta("rating_ack", "review", "info"),
+  meta("risk_warn", "risk", "warn"),
+  meta("risk_breach", "risk", "critical"),
+  meta("risk_repeat_breach", "risk", "critical"),
+  meta("risk_breach_review", "risk", "info"),
+  meta("limit_change", "risk", "info"),
+  meta("rule_violation", "risk", "warn"),
+  meta("scaling_proposal", "scaling", "info"),
+  meta("scaling_decision", "scaling", "info"),
+  meta("academy_promotion_ready", "academy", "info"),
+  meta("academy_promotion_request", "academy", "info"),
+  meta("academy_promotion_decision", "academy", "info"),
+  meta("academy_challenge_assigned", "academy", "info"),
+  meta("academy_challenge_passed", "academy", "info"),
+  meta("academy_challenge_failed", "academy", "warn"),
+  meta("academy_enrolled", "academy", "info"),
+  meta("academy_stage_change", "academy", "info"),
+  meta("academy_goal_assigned", "academy", "info"),
+  meta("academy_goal_achieved", "academy", "info"),
+  meta("academy_goal_missed", "academy", "warn"),
+  meta("academy_action_assigned", "academy", "info"),
+  meta("academy_action_overdue", "academy", "warn"),
+  meta("academy_submitted", "academy", "info"),
+  meta("academy_graded", "academy", "info"),
+  meta("sync", "sync", "info"),
+  meta("sync_unmatched", "sync", "warn"),
+  meta("system", "system", "info"),
 ];
 
 const TYPE_INDEX = new Map(TYPES.map((t) => [t.type, t]));
@@ -96,7 +128,7 @@ const LEGACY: Record<string, string> = { comment_public: "idea_comment", reply_p
 
 export function typeMeta(type: string | null | undefined): TypeMeta {
   const t = LEGACY[type ?? ""] ?? (type ?? "system");
-  return TYPE_INDEX.get(t) ?? { type: t, label: t, group: "system", severity: "info", description: "" };
+  return TYPE_INDEX.get(t) ?? meta(t, "system", "info");
 }
 
 export const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -118,7 +150,11 @@ export function iconFor(type: string): LucideIcon {
   return TYPE_ICONS[typeMeta(type).type] ?? Bell;
 }
 
-export const SEVERITY_LABEL: Record<Severity, string> = { info: "Инфо", warn: "Внимание", critical: "Критично" };
+export const SEVERITY_LABEL: Readonly<Record<Severity, string>> = {
+  get info() { return notificationsI18n.t("severity.info"); },
+  get warn() { return notificationsI18n.t("severity.warn"); },
+  get critical() { return notificationsI18n.t("severity.critical"); },
+};
 export const SEVERITY_TONE: Record<Severity, Tone> = { info: "accent", warn: "warn", critical: "down" };
 export const SEVERITY_ORDER: Severity[] = ["critical", "warn", "info"];
 
@@ -145,16 +181,19 @@ export function normalizeNotification(raw: unknown): Notification | null {
   const ideaId = ideaIdRaw == null ? null : Number(ideaIdRaw);
   const linkRaw = typeof r.link === "string" ? r.link : null;
   const link = linkRaw ?? (ideaId != null && Number.isInteger(ideaId) ? `/trade-ideas?idea=${ideaId}` : (LINK_RE.exec(legacyMessage)?.[1] ?? null));
+  // A row without its own title gets the server's type label as title — show ours (UI language) instead.
+  const serverLabel = typeof r.typeLabel === "string" ? r.typeLabel : null;
+  const ownTitle = typeof r.title === "string" && r.title && r.title !== serverLabel ? r.title : "";
   const severity = (typeof r.severity === "string" && ["info", "warn", "critical"].includes(r.severity) ? r.severity : meta.severity) as Severity;
   const readAt = typeof r.readAt === "string" ? r.readAt : null;
   const isRead = typeof r.isRead === "boolean" ? r.isRead : typeof r.is_read === "boolean" ? r.is_read : readAt != null;
   return {
     id,
     type: meta.type,
-    typeLabel: typeof r.typeLabel === "string" ? r.typeLabel : meta.label,
+    typeLabel: serverLabel ?? meta.label,
     group: (typeof r.group === "string" ? r.group : meta.group) as NotificationGroup,
     severity,
-    title: typeof r.title === "string" && r.title ? r.title : meta.label,
+    title: ownTitle,
     body,
     link,
     entityType: typeof r.entityType === "string" ? r.entityType : null,
@@ -175,25 +214,25 @@ export function normalizePage(raw: unknown): NotificationPage {
   return { items, nextCursor: typeof r.nextCursor === "string" ? r.nextCursor : null };
 }
 
+/** Title to show: the notification's own text, else its type label in the UI language. */
+export function notificationTitle(n: Pick<Notification, "title" | "type">): string {
+  return n.title || typeLabelOf(n.type);
+}
+
 // ─── time helpers ───────────────────────────────────────────────────────────
 
+/** Compact age for the bell: «только что», «5 мин», «3 ч», «2 дн», then the date. */
 export function timeAgo(iso: string, now = Date.now()): string {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
   const m = Math.round((now - t) / 60000);
-  if (m < 1) return "только что";
-  if (m < 60) return `${m} мин`;
+  if (m < 1) return notificationsI18n.t("ago.justNow");
+  if (m < 60) return notificationsI18n.t("ago.minutes", { count: m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h} ч`;
+  if (h < 24) return notificationsI18n.t("ago.hours", { count: h });
   const d = Math.round(h / 24);
-  if (d < 7) return `${d} дн`;
-  return new Date(t).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
-}
-
-const TIME_FMT = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-export function timeOfDay(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : TIME_FMT.format(d);
+  if (d < 7) return notificationsI18n.t("ago.days", { count: d });
+  return fmtDate(t, "dayMonthNumeric");
 }
 
 function localYmd(d: Date): string {
@@ -205,10 +244,10 @@ export function dayLabel(iso: string, now = new Date()): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const key = localYmd(d);
-  if (key === localYmd(now)) return "Сегодня";
+  if (key === localYmd(now)) return commonI18n.t("time.today");
   const y = new Date(now); y.setDate(y.getDate() - 1);
-  if (key === localYmd(y)) return "Вчера";
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) });
+  if (key === localYmd(y)) return commonI18n.t("time.yesterday");
+  return fmtDate(d, d.getFullYear() !== now.getFullYear() ? "long" : "dayMonthLong");
 }
 
 export type DayGroup = { key: string; label: string; items: Notification[] };
@@ -258,47 +297,25 @@ export function filterParams(f: ListFilters): string {
   return p.toString();
 }
 
-async function readError(r: Response, fallback: string): Promise<Error> {
-  const data = (await r.json().catch(() => null)) as { error?: string } | null;
-  const e = new Error(data?.error || `${fallback} (HTTP ${r.status})`) as Error & { status?: number };
-  e.status = r.status;
-  return e;
-}
-
-async function sendJson(path: string, method: "POST" | "PATCH" | "PUT", body?: unknown): Promise<unknown> {
-  const r = await fetch(`${BASE}${path}`, {
-    method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!r.ok) throw await readError(r, "Не удалось выполнить действие");
-  return r.json().catch(() => ({}));
-}
-
 export const notificationsApi = {
   async count(): Promise<UnreadCount> {
-    const r = await fetch(`${BASE}/api/notifications/count`);
-    if (!r.ok) throw await readError(r, "Не удалось загрузить счётчик");
-    const d = (await r.json()) as Partial<UnreadCount>;
+    const d = await http.get<Partial<UnreadCount>>("/api/notifications/count");
     return { unread: Number(d.unread ?? 0), critical: Number(d.critical ?? 0), warn: Number(d.warn ?? 0) };
   },
   async list(params: string, cursor?: string | null): Promise<NotificationPage> {
-    const r = await fetch(`${BASE}/api/notifications?${params}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-    if (!r.ok) throw await readError(r, "Не удалось загрузить уведомления");
-    return normalizePage(await r.json());
+    return normalizePage(await http.get(`/api/notifications?${params}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`));
   },
   async prefs(): Promise<Prefs> {
-    const r = await fetch(`${BASE}/api/notifications/prefs`);
-    if (!r.ok) throw await readError(r, "Не удалось загрузить настройки");
-    const d = (await r.json()) as Partial<Prefs>;
+    const d = await http.get<Partial<Prefs>>("/api/notifications/prefs");
     return { prefs: Array.isArray(d.prefs) ? d.prefs : [], muteAllUntil: typeof d.muteAllUntil === "string" ? d.muteAllUntil : null };
   },
-  savePrefs: (p: Prefs) => sendJson(`/api/notifications/prefs`, "PUT", p) as Promise<Prefs>,
-  readAll: (type?: string) => sendJson(`/api/notifications/read-all`, "PATCH", type ? { type } : {}),
-  readMany: (ids: number[]) => sendJson(`/api/notifications/read-many`, "POST", { ids }),
-  unreadMany: (ids: number[]) => sendJson(`/api/notifications/unread-many`, "POST", { ids }),
-  archive: (ids: number[]) => sendJson(`/api/notifications/archive`, "POST", { ids }),
-  archiveRead: () => sendJson(`/api/notifications/archive`, "POST", { read: true }),
-  unarchive: (ids: number[]) => sendJson(`/api/notifications/unarchive`, "POST", { ids }),
-  readOne: (id: number) => sendJson(`/api/notifications/${id}/read`, "PATCH"),
+  savePrefs: (p: Prefs) => http.put<Prefs>(`/api/notifications/prefs`, p),
+  readAll: (type?: string) => http.patch(`/api/notifications/read-all`, type ? { type } : {}),
+  readMany: (ids: number[]) => http.post(`/api/notifications/read-many`, { ids }),
+  unreadMany: (ids: number[]) => http.post(`/api/notifications/unread-many`, { ids }),
+  archive: (ids: number[]) => http.post(`/api/notifications/archive`, { ids }),
+  /** `ids` — what was archived (for undo); absent on older API builds. */
+  archiveRead: () => http.post<{ updated?: number; ids?: number[] } | null>(`/api/notifications/archive`, { read: true }),
+  unarchive: (ids: number[]) => http.post(`/api/notifications/unarchive`, { ids }),
+  readOne: (id: number) => http.patch(`/api/notifications/${id}/read`),
 };

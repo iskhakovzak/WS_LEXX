@@ -2,10 +2,13 @@
  * <TradeSparkline/> — a tiny canvas price path of a trade with entry/exit dots, for trade lists.
  * Lazy: data is fetched only once the element is near the viewport (IntersectionObserver), results are
  * cached in memory per trade, so scrolling a list back and forth does not refetch.
- * Reads only: GET /api/trades/:id, GET /api/candles/:ticker/range, GET /api/trades/:id/executions.
+ * Reads only: GET /api/trades/:id, GET /api/candles/:ticker/range (shared per URL), GET /api/trade-executions/batch
+ * (fill times of all rows in one request; falls back to GET /api/trades/:id/executions).
  */
 import * as React from "react";
-import { BASE } from "@/lib/api";
+import { chartI18n } from "@/i18n/ns/chart";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import type { Candle, Execution, SparkData, TradeLike } from "./types";
 import { buildSparkData } from "./lib/sparkline";
@@ -27,6 +30,8 @@ export type TradeSparklineProps = {
   tone?: "pnl" | "neutral";
   className?: string;
   title?: string;
+  /** "trade" (default): the trade with ~2 h around it; "day": the whole trading day 4:00–20:00 ET, the trade highlighted. */
+  span?: "trade" | "day";
 };
 
 const cache = new Map<string, Promise<SparkData | null>>();
@@ -35,23 +40,69 @@ const MAX_CACHE = 400;
 /** Drop the in-memory cache (e.g. after a trade is edited). */
 export function invalidateSparkline(tradeId?: number): void {
   if (tradeId == null) cache.clear();
-  else cache.delete(`id:${tradeId}`);
+  else { cache.delete(`id:${tradeId}`); cache.delete(`day:${tradeId}`); }
 }
 
-async function getJson<T>(url: string): Promise<T | null> {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    return (await r.json()) as T;
-  } catch { return null; }
+
+/** Candles are shared by URL: two trades on the same ticker / day draw from one request. */
+const candleCache = new Map<string, Promise<{ candles: Candle[] } | null>>();
+function getCandles(url: string): Promise<{ candles: Candle[] } | null> {
+  const hit = candleCache.get(url);
+  if (hit) return hit;
+  if (candleCache.size >= MAX_CACHE) { const first = candleCache.keys().next().value; if (first !== undefined) candleCache.delete(first); }
+  const p = http.get<{ candles: Candle[] }>(url).catch(() => null).then((r) => { if (!r) candleCache.delete(url); return r; });
+  candleCache.set(url, p);
+  return p;
 }
 
-async function loadForTrade(trade: TradeLike): Promise<SparkData | null> {
+type FillLite = Pick<Execution, "kind" | "price" | "executedAt">;
+/**
+ * Fill times for many rows in one request (GET /api/trade-executions/batch): requests made in the same tick are
+ * merged. Ids the batch does not return (no access this way, or an older API without the route) fall back to the
+ * single GET /api/trades/:id/executions.
+ */
+let batchSupported = true;
+let pending: { id: number; resolve: (v: FillLite[] | null) => void }[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+const single = (id: number) =>
+  http.get<{ executions: Execution[] }>(`/api/trades/${id}/executions`).catch(() => null).then((r) => r?.executions ?? null);
+async function flushFills() {
+  flushTimer = null;
+  const queue = pending;
+  pending = [];
+  for (let i = 0; i < queue.length; i += 100) {
+    const chunk = queue.slice(i, i + 100);
+    let items: Record<string, FillLite[]> | null = null;
+    if (batchSupported) {
+      try {
+        const r = await http.get<{ items?: Record<string, FillLite[]> }>(`/api/trade-executions/batch?ids=${[...new Set(chunk.map((q) => q.id))].join(",")}`);
+        items = r?.items ?? {};
+      } catch (e) {
+        if (isNotFound(e)) batchSupported = false;
+        /* else network / other — per-trade fallback below */
+      }
+    }
+    for (const q of chunk) {
+      const hit = items?.[String(q.id)];
+      if (hit) q.resolve(hit);
+      else void single(q.id).then(q.resolve, () => q.resolve(null));
+    }
+  }
+}
+function getFills(id: number): Promise<FillLite[] | null> {
+  return new Promise((resolve) => {
+    pending.push({ id, resolve });
+    if (!flushTimer) flushTimer = setTimeout(() => void flushFills(), 20);
+  });
+}
+
+async function loadForTrade(trade: TradeLike, span: "trade" | "day" = "trade"): Promise<SparkData | null> {
   const { fromKey, toKey, dateKey } = tradeWindow(trade, 0);
-  const [range, ex] = await Promise.all([
-    getJson<{ candles: Candle[] }>(`${BASE}/api/candles/${encodeURIComponent(trade.ticker)}/range?from=${fromKey}&to=${toKey}&interval=5m&extended=1`),
-    trade.id > 0 ? getJson<{ executions: Execution[] }>(`${BASE}/api/trades/${trade.id}/executions`) : Promise.resolve(null),
+  const [range, fills] = await Promise.all([
+    getCandles(`/api/candles/${encodeURIComponent(trade.ticker)}/range?from=${fromKey}&to=${toKey}&interval=5m&extended=1`),
+    trade.id > 0 ? getFills(trade.id) : Promise.resolve(null),
   ]);
+  const ex = fills ? { executions: fills } : null;
   const bars = (range?.candles ?? []).filter((c) => Number.isFinite(c.c));
   if (!bars.length) return null;
   const execs = ex?.executions ?? [];
@@ -68,7 +119,7 @@ async function loadForTrade(trade: TradeLike): Promise<SparkData | null> {
     exitTime: Number.isFinite(exitTime as number) ? exitTime : null,
     entryPrice: toNum(trade.entry) ?? (opening.length ? toNum(opening[0].price) : null),
     exitPrice: toNum(trade.exit) ?? (closing.length ? toNum(closing[closing.length - 1].price) : null),
-    points: 120, padBars: 24,
+    points: span === "day" ? 160 : 120, padBars: span === "day" ? null : 24,
   });
 }
 
@@ -97,21 +148,22 @@ function useNearViewport<T extends Element>(): [React.RefObject<T | null>, boole
   return [ref, near];
 }
 
-export function TradeSparkline({ tradeId, trade, data: dataProp, width = 120, height = 36, tone = "pnl", className, title }: TradeSparklineProps) {
+export function TradeSparkline({ tradeId, trade, data: dataProp, width = 120, height = 36, tone = "pnl", className, title, span = "trade" }: TradeSparklineProps) {
   const [ref, near] = useNearViewport<HTMLCanvasElement>();
   const [data, setData] = React.useState<SparkData | null | undefined>(dataProp);
-  const key = dataProp !== undefined ? null : trade ? `id:${trade.id}` : tradeId != null ? `id:${tradeId}` : null;
+  const id = trade ? trade.id : tradeId;
+  const key = dataProp !== undefined || id == null ? null : span === "day" ? `day:${id}` : `id:${id}`;
 
   React.useEffect(() => {
     if (dataProp !== undefined) { setData(dataProp); return; }
     if (!near || !key) return;
     let alive = true;
     const loader = trade
-      ? () => loadForTrade(trade)
-      : async () => { const t = await getJson<TradeLike>(`${BASE}/api/trades/${tradeId}`); return t ? loadForTrade(t) : null; };
+      ? () => loadForTrade(trade, span)
+      : async () => { const t = await http.get<TradeLike>(`/api/trades/${tradeId}`).catch(() => null); return t ? loadForTrade(t, span) : null; };
     loadCached(key, loader).then((d) => { if (alive) setData(d); });
     return () => { alive = false; };
-  }, [near, key, dataProp, trade, tradeId]);
+  }, [near, key, dataProp, trade, tradeId, span]);
 
   React.useEffect(() => {
     const canvas = ref.current;
@@ -165,7 +217,9 @@ export function TradeSparkline({ tradeId, trade, data: dataProp, width = 120, he
     dot(data.exitIdx, data.exitPrice, color(1));
   }, [data, width, height, tone, ref]);
 
-  const label = title ?? (data ? `Спарклайн: ${data.closes.length} точек${data.entryPrice != null ? `, вход ${data.entryPrice}` : ""}${data.exitPrice != null ? `, выход ${data.exitPrice}` : ""}` : "Спарклайн сделки");
+  const label = title ?? (data
+    ? [chartI18n.t("sparkline.aria", { count: data.closes.length }), data.entryPrice != null ? chartI18n.t("sparkline.entry", { price: data.entryPrice }) : null, data.exitPrice != null ? chartI18n.t("sparkline.exit", { price: data.exitPrice }) : null].filter(Boolean).join(", ")
+    : chartI18n.t("sparkline.empty"));
   return (
     <canvas
       ref={ref}

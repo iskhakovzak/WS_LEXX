@@ -17,10 +17,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
-import { groupedCapabilities, type Capability, type CapabilityDef, type Role, type Scope } from "@/lib/permissions";
-import { Callout, InlineError, ROLE_LABEL, fetchJson, fmtDate } from "./shared";
+import { PERM_GROUP_CODE, groupedCapabilities, type Capability, type CapabilityDef, type Role, type Scope } from "@/lib/permissions";
+import { capabilityText, settingsI18n } from "@/i18n/ns/settings";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
+import { Callout, InlineError, ROLE_LABEL } from "./shared";
+import { fmtDate } from "@/lib/format";
 
 type Grant = { allowed: boolean; scope: Scope };
 type Matrix = Record<Role, Record<Capability, Grant>>;
@@ -41,7 +46,18 @@ type Cell = { role: Role; capability: Capability; allowed: boolean; scope?: Scop
 
 const QUERY_KEY = ["permissions", "matrix"] as const;
 const COLUMNS: Role[] = ["trader", "curator", "admin"];
-const SCOPE_LABEL: Record<Scope, string> = { desk: "Весь деск", assigned: "Подопечные" };
+const SCOPE_LABEL: Readonly<Record<Scope, string>> = {
+  get desk() { return settingsI18n.t("permissions.scopeDesk"); },
+  get assigned() { return settingsI18n.t("permissions.scopeAssigned"); },
+};
+/** Capability name / description in the UI language (server payloads carry Russian ones as a fallback). */
+const capName = (d: Pick<CapabilityDef, "key" | "label">) => capabilityText(d.key, "label") ?? d.label ?? d.key;
+const capDescription = (d: Pick<CapabilityDef, "key" | "description">) => capabilityText(d.key, "description") ?? d.description ?? "";
+/** Group header in the UI language; unknown groups show the API name. */
+const groupName = (group: string) => {
+  const code = PERM_GROUP_CODE[group];
+  return code ? settingsI18n.t(`permissions.groups.${code}`) : group;
+};
 
 function cloneMatrix(m: Matrix): Matrix {
   const out = {} as Matrix;
@@ -70,14 +86,16 @@ function diffCells(base: Matrix, draft: Matrix, defs: CapabilityDef[], roles: Ro
 
 export function PermissionsSection() {
   const { can, user, refreshPermissions } = useAuth();
+  const { t } = settingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const { toast } = useToast();
   const qc = useQueryClient();
   const editable = can("permissions.manage");
 
   const { data, isLoading, isError, error, refetch } = useQuery<MatrixPayload>({
     queryKey: QUERY_KEY,
-    queryFn: () => fetchJson<MatrixPayload>(`${BASE}/api/permissions/matrix`),
-    staleTime: 15_000,
+    queryFn: ({ signal }) => http.get<MatrixPayload>("/api/permissions/matrix", { signal }),
+    staleTime: STALE.live,
   });
 
   const [draft, setDraft] = useState<Matrix | null>(null);
@@ -92,7 +110,10 @@ export function PermissionsSection() {
   const editableRoles = useMemo(() => COLUMNS.filter((r) => !(data?.locked.roles ?? ["admin", "guest"]).includes(r)), [data]);
   const lockedCaps = useMemo(() => new Set<Capability>(data?.locked.capabilities ?? []), [data]);
   const changes = useMemo(() => (data && draft ? diffCells(data.matrix, draft, defs, editableRoles) : []), [data, draft, defs, editableRoles]);
-  const capLabel = (cap: Capability) => defs.find((d) => d.key === cap)?.label ?? cap;
+  const capLabel = (cap: Capability) => {
+    const d = defs.find((x) => x.key === cap);
+    return d ? capName(d) : cap;
+  };
 
   function setCell(role: Role, cap: Capability, patch: Partial<Grant>) {
     setDraft((d) => {
@@ -106,22 +127,13 @@ export function PermissionsSection() {
   async function submit(body: { cells: Cell[] } | { reset: true }) {
     setBusy(true);
     try {
-      const r = await fetch(`${BASE}/api/permissions/matrix`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const msg = await r.json().then((j: { error?: string }) => j?.error).catch(() => null);
-        throw new Error(msg || `HTTP ${r.status}`);
-      }
-      const payload = (await r.json()) as MatrixPayload & { changed: number };
+      const payload = await http.put<MatrixPayload & { changed: number }>("/api/permissions/matrix", body);
       qc.setQueryData(QUERY_KEY, payload);
       refreshPermissions();
-      toast({ title: "reset" in body ? "Права сброшены к умолчаниям" : "Права сохранены", description: `Изменено ячеек: ${payload.changed ?? 0}` });
+      toast({ title: "reset" in body ? t("permissions.reset") : t("permissions.saved"), description: t("permissions.changedCells", { count: payload.changed ?? 0 }) });
       setConfirm(null);
     } catch (e) {
-      toast({ title: "Не удалось сохранить права", description: e instanceof Error ? e.message : "Ошибка", variant: "destructive" });
+      toast({ title: t("permissions.saveFailed"), description: e instanceof Error ? e.message : tc("states.error"), variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -129,15 +141,15 @@ export function PermissionsSection() {
 
   if (isLoading) {
     return (
-      <Panel title="Права доступа" icon={ShieldCheck}>
+      <Panel title={t("permissions.title")} icon={ShieldCheck}>
         <div className="flex flex-col gap-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}</div>
       </Panel>
     );
   }
   if (isError || !data || !draft) {
     return (
-      <Panel title="Права доступа" icon={ShieldCheck}>
-        <InlineError message={error instanceof Error ? error.message : "Не удалось загрузить матрицу прав"} onRetry={() => refetch()} />
+      <Panel title={t("permissions.title")} icon={ShieldCheck}>
+        <InlineError message={error instanceof Error ? error.message : t("permissions.loadFailed")} onRetry={() => refetch()} />
       </Panel>
     );
   }
@@ -147,17 +159,17 @@ export function PermissionsSection() {
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title="Матрица прав"
-        description={editable ? "Переключатели действуют для трейдеров и кураторов. Админ всегда имеет всё." : "Только просмотр — менять права может администратор."}
+        title={t("permissions.matrix")}
+        description={editable ? t("permissions.editableDesc") : t("permissions.readOnlyDesc")}
         icon={ShieldCheck}
         actions={editable ? (
           <>
             <Button variant="ghost" size="sm" disabled={busy || (!customized && changes.length === 0)} onClick={() => setConfirm("reset")}>
-              <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />Сбросить
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />{tc("actions.reset")}
             </Button>
             <Button size="sm" disabled={busy || changes.length === 0} onClick={() => setConfirm("save")}>
               <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-              Сохранить{changes.length > 0 ? ` (${changes.length})` : ""}
+              {tc("actions.save")}{changes.length > 0 ? ` (${changes.length})` : ""}
             </Button>
           </>
         ) : undefined}
@@ -166,19 +178,21 @@ export function PermissionsSection() {
         <div className="px-4 pb-3 pt-3 sm:px-5">
           <Callout tone={customized ? "warn" : "neutral"} icon={customized ? Users : ShieldCheck}>
             {customized
-              ? <>У деска свои настройки прав ({data.overrides.length}). Обновлено {data.updatedBy ? `${data.updatedBy}, ` : ""}{fmtDate(data.updatedAt)}.</>
-              : <>Действуют права по умолчанию: кураторы работают со всем деском, трейдеры — только со своими данными. Назначения куратор / риск-менеджер / ментор влияют на доступ только при области «Подопечные».</>}
+              ? (data.updatedBy
+                ? t("permissions.customizedBy", { count: data.overrides.length, name: data.updatedBy, date: fmtDate(data.updatedAt) })
+                : t("permissions.customized", { count: data.overrides.length, date: fmtDate(data.updatedAt) }))
+              : t("permissions.defaults")}
           </Callout>
         </div>
         <TableScroll>
           <table className="w-full min-w-[640px] text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr className="border-b border-border/60">
-                <th scope="col" className="sticky left-0 z-raised bg-[var(--glass-bg)] px-4 py-2 text-left font-medium sm:px-5">Право</th>
+                <th scope="col" className="sticky left-0 z-raised bg-[var(--glass-bg)] px-4 py-2 text-left font-medium sm:px-5">{t("permissions.right")}</th>
                 {COLUMNS.map((r) => (
                   <th key={r} scope="col" className="px-3 py-2 text-center font-medium">
                     {ROLE_LABEL[r] ?? r}
-                    {!editableRoles.includes(r) && <Lock className="ml-1 inline h-3 w-3 opacity-60" aria-label="Закреплено" />}
+                    {!editableRoles.includes(r) && <Lock className="ml-1 inline h-3 w-3 opacity-60" aria-label={t("permissions.locked")} />}
                   </th>
                 ))}
               </tr>
@@ -186,17 +200,17 @@ export function PermissionsSection() {
             {groups.map((g) => (
               <tbody key={g.group}>
                 <tr>
-                  <th scope="rowgroup" colSpan={COLUMNS.length + 1} className="micro-label sticky left-0 bg-[var(--glass-bg)] px-4 pb-1 pt-3 text-left sm:px-5">{g.group}</th>
+                  <th scope="rowgroup" colSpan={COLUMNS.length + 1} className="micro-label sticky left-0 bg-[var(--glass-bg)] px-4 pb-1 pt-3 text-left sm:px-5">{groupName(g.group)}</th>
                 </tr>
                 {g.items.map((d) => (
                   <tr key={d.key} className="border-t border-border/40">
                     <th scope="row" className="sticky left-0 z-raised max-w-[280px] bg-[var(--glass-bg)] px-4 py-2 text-left font-normal sm:px-5">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-foreground">{d.label}</span>
-                        {d.adminOnly && <Pill tone="warn" className="text-2xs">только админ</Pill>}
-                        {d.team && <Pill tone="neutral" className="text-2xs">команда</Pill>}
+                        <span className="text-foreground">{capName(d)}</span>
+                        {d.adminOnly && <Pill tone="warn" className="text-2xs">{t("permissions.adminOnly")}</Pill>}
+                        {d.team && <Pill tone="neutral" className="text-2xs">{t("permissions.team")}</Pill>}
                       </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{d.description}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{capDescription(d)}</div>
                     </th>
                     {COLUMNS.map((role) => {
                       const cell = draft[role]?.[d.key];
@@ -211,7 +225,7 @@ export function PermissionsSection() {
                               <Switch
                                 checked={cell.allowed}
                                 disabled={busy}
-                                aria-label={`${d.label} — ${ROLE_LABEL[role] ?? role}`}
+                                aria-label={`${capName(d)} — ${ROLE_LABEL[role] ?? role}`}
                                 onCheckedChange={(v) => setCell(role, d.key, { allowed: v })}
                               />
                               {d.team && cell.allowed && (
@@ -220,7 +234,7 @@ export function PermissionsSection() {
                                   disabled={busy}
                                   onClick={() => setCell(role, d.key, { scope: cell.scope === "desk" ? "assigned" : "desk" })}
                                   className={cn("chip min-h-6 rounded-full px-2 text-2xs", cell.scope === "assigned" && "ring-1 ring-primary/50")}
-                                  title="Область действия: весь деск или только назначенные подопечные"
+                                  title={t("permissions.scopeTitle")}
                                 >
                                   {SCOPE_LABEL[cell.scope]}
                                 </button>
@@ -228,12 +242,12 @@ export function PermissionsSection() {
                             </div>
                           ) : cell.allowed ? (
                             <div className="flex flex-col items-center gap-1">
-                              <Pill tone="up" title={lockedCell ? "Закреплено" : undefined}><Check className="h-3 w-3" aria-hidden="true" />да</Pill>
+                              <Pill tone="up" title={lockedCell ? t("permissions.locked") : undefined}><Check className="h-3 w-3" aria-hidden="true" />{t("permissions.yes")}</Pill>
                               {d.team && cell.scope === "assigned" && <span className="text-2xs text-muted-foreground">{SCOPE_LABEL.assigned}</span>}
                             </div>
                           ) : (
-                            <Pill tone="neutral" title={lockedCell ? "Закреплено" : undefined}>
-                              {lockedCell ? <Lock className="h-3 w-3" aria-hidden="true" /> : <Minus className="h-3 w-3" aria-hidden="true" />}нет
+                            <Pill tone="neutral" title={lockedCell ? t("permissions.locked") : undefined}>
+                              {lockedCell ? <Lock className="h-3 w-3" aria-hidden="true" /> : <Minus className="h-3 w-3" aria-hidden="true" />}{t("permissions.no")}
                             </Pill>
                           )}
                         </td>
@@ -248,21 +262,21 @@ export function PermissionsSection() {
       </Panel>
 
       {editable && changes.length > 0 && (
-        <Panel title="Несохранённые изменения" description={`${changes.length} ячеек`} icon={Save}>
+        <Panel title={t("permissions.unsaved")} description={t("permissions.cells", { count: changes.length })} icon={Save}>
           <ul className="flex flex-col gap-1 text-sm">
             {changes.map((c) => (
               <li key={`${c.role}:${c.capability}`} className="flex flex-wrap items-center gap-2">
                 <Pill tone="neutral">{ROLE_LABEL[c.role] ?? c.role}</Pill>
                 <span className="text-foreground">{capLabel(c.capability)}</span>
                 <span className="text-muted-foreground">→</span>
-                <Pill tone={c.allowed ? "up" : "down"}>{c.allowed ? "разрешено" : "запрещено"}</Pill>
+                <Pill tone={c.allowed ? "up" : "down"}>{c.allowed ? t("permissions.allowed") : t("permissions.denied")}</Pill>
                 {c.scope && c.allowed && <span className="text-xs text-muted-foreground">{SCOPE_LABEL[c.scope]}</span>}
               </li>
             ))}
           </ul>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" disabled={busy} onClick={() => setConfirm("save")}>Сохранить</Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDraft(cloneMatrix(data.matrix))}>Отменить изменения</Button>
+            <Button size="sm" disabled={busy} onClick={() => setConfirm("save")}>{tc("actions.save")}</Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDraft(cloneMatrix(data.matrix))}>{t("permissions.discard")}</Button>
           </div>
         </Panel>
       )}
@@ -270,35 +284,35 @@ export function PermissionsSection() {
       <AlertDialog open={!!confirm} onOpenChange={(v) => { if (!v && !busy) setConfirm(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{confirm === "reset" ? "Сбросить права к умолчаниям?" : "Применить изменения прав?"}</AlertDialogTitle>
+            <AlertDialogTitle>{confirm === "reset" ? t("permissions.resetTitle") : t("permissions.applyTitle")}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="text-sm text-muted-foreground">
                 {confirm === "reset" ? (
-                  <p>Все переопределения деска ({data.overrides.length}) будут удалены. Кураторы снова получат полный доступ к деску, трейдеры — только к своим данным.</p>
+                  <p>{t("permissions.resetDesc", { count: data.overrides.length })}</p>
                 ) : (
                   <>
-                    <p className="mb-2">Изменения вступят в силу для всех пользователей роли в течение ~15 секунд (кэш API). Ваш собственный доступ администратора не изменится.</p>
+                    <p className="mb-2">{t("permissions.applyDesc")}</p>
                     <ul className="max-h-[45dvh] overflow-auto rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
                       {changes.map((c) => (
                         <li key={`${c.role}:${c.capability}`}>
-                          {ROLE_LABEL[c.role] ?? c.role}: {capLabel(c.capability)} — {c.allowed ? "разрешить" : "запретить"}{c.scope && c.allowed ? ` (${SCOPE_LABEL[c.scope].toLowerCase()})` : ""}
+                          {ROLE_LABEL[c.role] ?? c.role}: {capLabel(c.capability)} — {c.allowed ? t("permissions.allow") : t("permissions.deny")}{c.scope && c.allowed ? ` (${SCOPE_LABEL[c.scope].toLowerCase()})` : ""}
                         </li>
                       ))}
                     </ul>
                   </>
                 )}
-                {user?.traderName && <p className="mt-2">Запись в журнал аудита: {user.traderName}.</p>}
+                {user?.traderName && <p className="mt-2">{t("permissions.audit", { name: personName(user.traderName) })}</p>}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Отмена</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={busy}
               onClick={(e) => { e.preventDefault(); void submit(confirm === "reset" ? { reset: true } : { cells: changes }); }}
               className={confirm === "reset" ? "bg-destructive text-destructive-foreground hover:brightness-110" : undefined}
             >
-              {busy ? "…" : confirm === "reset" ? "Сбросить" : "Применить"}
+              {busy ? "…" : confirm === "reset" ? tc("actions.reset") : t("permissions.apply")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

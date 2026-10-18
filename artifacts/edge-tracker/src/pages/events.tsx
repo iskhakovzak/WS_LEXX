@@ -2,7 +2,7 @@
 // macro (CPI / NFP / FOMC / PPI / expirations), short days and closures, earnings of the trader's watchlist
 // and most traded tickers — all pulled automatically, plus «как я торгую в такие дни» from the trader's own
 // trades. The only manual input is a short day note (market_events), which keeps its sheet and «В плейбук».
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCreateEvent, useUpdateEvent, useDeleteEvent, getListEventsQueryKey,
@@ -11,11 +11,10 @@ import {
 import { CalendarClock, CalendarDays, Plus, Scale, Sun, AlertTriangle, RefreshCw } from "lucide-react";
 import { Page, PageHeader, Panel, Segmented, EmptyState, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UndoToast } from "@/components/undo-toast";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { dayOf, fmtDay, weekStartOf } from "@/components/events/event-meta";
@@ -28,7 +27,12 @@ import { DayBrief, MyTickerEarnings } from "@/components/events/catalyst-today";
 import { WeekGrid } from "@/components/events/catalyst-week";
 import { EdgeView } from "@/components/events/catalyst-edge";
 import { nextTradingDay, prevTradingDay } from "@/components/events/catalyst-math";
+import { PersonSelect } from "@/components/people/person-select";
+import { humanizeApiError } from "@/lib/api/errors";
+import { eventsI18n } from "@/i18n/ns/events";
+import { commonI18n } from "@/i18n/ns/common";
 
+import { personName, comparePersonNames } from "@/i18n";
 type View = "today" | "week" | "edge";
 const VIEWS: View[] = ["today", "week", "edge"];
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -43,6 +47,7 @@ function isTypingTarget(t: EventTarget | null) {
 export default function Events() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = eventsI18n.useT();
   const { user, isCurator, isAdmin, dbUsers } = useAuth();
   const isStaff = isCurator || isAdmin;
 
@@ -58,7 +63,7 @@ export default function Events() {
   const [traderPick, setTraderPick] = useState<string>(() => user?.traderName ?? DESK);
   const trader = isStaff ? (traderPick === DESK ? null : traderPick) : (user?.traderName ?? null);
   const traderOptions = useMemo(
-    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, "ru")),
+    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames),
     [dbUsers],
   );
 
@@ -93,13 +98,13 @@ export default function Events() {
     if (err?.status === 409 && err.data?.code === "DUPLICATE" && err.data.existingId) {
       const existingId = err.data.existingId;
       toast({
-        title: "Такая заметка уже есть",
-        description: "Тикер, дата и тип совпадают с существующей записью.",
-        action: <ToastAction altText="Открыть существующую заметку" onClick={() => { setFormOpen(false); setDetailId(existingId); }}>Открыть</ToastAction>,
+        title: eventsI18n.t("toast.duplicateTitle"),
+        description: eventsI18n.t("toast.duplicateText"),
+        action: <ToastAction altText={eventsI18n.t("toast.openExisting")} onClick={() => { setFormOpen(false); setDetailId(existingId); }}>{commonI18n.t("actions.open")}</ToastAction>,
       });
       return;
     }
-    toast({ title: "Ошибка", description: err?.data?.error ?? String(e), variant: "destructive" });
+    toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e), variant: "destructive" });
   };
   const invalidate = () => Promise.all([
     qc.invalidateQueries({ queryKey: getListEventsQueryKey() }),
@@ -128,13 +133,13 @@ export default function Events() {
   function handleSubmit(body: ReturnType<typeof formToBody>) {
     if (editing) {
       updateMut.mutate({ id: editing.id, data: body as UpdateEventBody }, {
-        onSuccess: () => { setFormOpen(false); setEditing(null); toast({ title: "Заметка обновлена" }); },
+        onSuccess: () => { setFormOpen(false); toast({ title: eventsI18n.t("toast.updated") }); },
       });
     } else {
       createMut.mutate({ data: body }, {
         onSuccess: (created) => {
           setFormOpen(false);
-          toast({ title: "Заметка добавлена", description: `${body.ticker} · ${fmtDay(body.date)}` });
+          toast({ title: eventsI18n.t("toast.added"), description: `${body.ticker} · ${fmtDay(body.date)}` });
           if (created && typeof (created as MarketEvent).id === "number") setDetailId((created as MarketEvent).id);
         },
       });
@@ -142,7 +147,7 @@ export default function Events() {
   }
   const quickCreate = useCallback(async (body: ReturnType<typeof formToBody>) => {
     await createMut.mutateAsync({ data: body });
-    toast({ title: "Заметка добавлена", description: `${body.ticker} · ${fmtDay(body.date)}` });
+    toast({ title: eventsI18n.t("toast.added"), description: `${body.ticker} · ${fmtDay(body.date)}` });
   }, [createMut, toast]);
   const handlePatch = useCallback(async (id: number, body: Record<string, unknown>) => {
     setPatching(true);
@@ -162,12 +167,11 @@ export default function Events() {
     setUndo(null);
     if (!u) return;
     try {
-      const r = await fetch(`${BASE}/api/events/${u.id}/restore`, { method: "POST" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await http.post(`/api/events/${u.id}/restore`, undefined, { responseType: "auto" });
       await invalidate();
-      toast({ title: "Заметка восстановлена" });
+      toast({ title: eventsI18n.t("toast.restored") });
     } catch (err) {
-      toast({ title: "Не удалось восстановить", description: String(err), variant: "destructive" });
+      toast({ title: eventsI18n.t("toast.restoreFailed"), description: humanizeApiError(err), variant: "destructive" });
     }
   }
   useEffect(() => {
@@ -194,8 +198,9 @@ export default function Events() {
       if (ev.key === "1") setView("today");
       else if (ev.key === "2") setView("week");
       else if (ev.key === "3") setView("edge");
-      else if (k === "t" || k === "е") { setPicked(null); setWeekAnchor(null); }
-      else if (k === "n" || k === "т") { ev.preventDefault(); openCreate({ date: selected }); }
+      // Same physical keys on the Russian layout (Т = N, Е = T).
+      else if (k === "t" || k === "е") { setPicked(null); setWeekAnchor(null); } // i18n-ignore
+      else if (k === "n" || k === "т") { ev.preventDefault(); openCreate({ date: selected }); } // i18n-ignore
       else if (view !== "edge" && ev.key === "ArrowLeft") { ev.preventDefault(); const d = prevTradingDay(selected, closed); setPicked(d); setWeekAnchor(d); }
       else if (view !== "edge" && ev.key === "ArrowRight") { ev.preventDefault(); const d = nextTradingDay(selected, closed); setPicked(d); setWeekAnchor(d); }
     }
@@ -204,41 +209,35 @@ export default function Events() {
   }, [view, selected, closed, openCreate, setView]);
 
   const viewOptions = [
-    { value: "today" as const, label: <span className="inline-flex items-center gap-1.5"><Sun className="h-3.5 w-3.5" aria-hidden="true" />{focus === data.today ? "Сегодня" : "К открытию"}</span> },
-    { value: "week" as const, label: <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />Неделя</span> },
-    { value: "edge" as const, label: <span className="inline-flex items-center gap-1.5"><Scale className="h-3.5 w-3.5" aria-hidden="true" />Как я торгую</span> },
+    { value: "today" as const, label: <span className="inline-flex items-center gap-1.5"><Sun className="h-3.5 w-3.5" aria-hidden="true" />{focus === data.today ? t("page.today") : t("page.toOpen")}</span> },
+    { value: "week" as const, label: <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />{t("page.week")}</span> },
+    { value: "edge" as const, label: <span className="inline-flex items-center gap-1.5"><Scale className="h-3.5 w-3.5" aria-hidden="true" />{t("page.edge")}</span> },
   ];
 
   const tradesError = data.trades.isError;
-  const scopeLabel = trader ?? "весь деск";
+  const scopeLabel = trader ? personName(trader) : t("page.wholeDesk");
 
   return (
     <Page>
       <PageHeader
-        title="Катализаторы"
+        title={t("page.title")}
         icon={CalendarClock}
-        description="Макро, отчёты ваших тикеров и короткие дни — и как вы торгуете в такие дни"
+        description={t("page.description")}
         meta={
           <span>
-            {focus === data.today ? "Сегодня" : `Следующая сессия — ${fmtDay(focus, { weekday: "long", day: "numeric", month: "long" })}`}
-            {data.myTickers.length > 0 && ` · следим за ${data.myTickers.length} тикерами`}
+            {focus === data.today ? t("page.today") : t("page.nextSession", { date: fmtDay(focus, "weekdayDayMonthLong") })}
+            {data.myTickers.length > 0 && ` · ${t("page.watching", { count: data.myTickers.length })}`}
             {isStaff && ` · ${scopeLabel}`}
           </span>
         }
         actions={
           <>
             {isStaff && (
-              <Select value={traderPick} onValueChange={setTraderPick}>
-                <SelectTrigger className="h-9 w-[180px] rounded-full" aria-label="Чьи сделки"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={DESK}>Весь деск</SelectItem>
-                  {traderOptions.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect value={traderPick} onValueChange={setTraderPick} allValue={DESK} allLabel={t("page.wholeDeskOption")} options={traderOptions} className="h-9 w-[180px]" ariaLabel={t("page.whoseTrades")} />
             )}
-            <Segmented<View> ariaLabel="Вид" value={view} onChange={setView} options={viewOptions} />
+            <Segmented<View> ariaLabel={t("page.view")} value={view} onChange={setView} options={viewOptions} />
             <Button variant="outline" onClick={() => openCreate({ date: selected })}>
-              <Plus /> Заметка
+              <Plus /> {t("page.note")}
             </Button>
           </>
         }
@@ -249,9 +248,9 @@ export default function Events() {
           <EmptyState
             compact
             icon={AlertTriangle}
-            title="Не удалось загрузить сделки"
-            description="Календарь показан, но сравнение «как я торгую» недоступно."
-            action={<Button variant="outline" size="sm" onClick={() => data.trades.refetch()}><RefreshCw className={cn(data.trades.isFetching && "animate-spin")} /> Повторить</Button>}
+            title={t("page.tradesErrorTitle")}
+            description={t("page.tradesErrorText")}
+            action={<Button variant="outline" size="sm" onClick={() => data.trades.refetch()}><RefreshCw className={cn(data.trades.isFetching && "animate-spin")} /> {commonI18n.t("actions.retry")}</Button>}
           />
         </Panel>
       )}
@@ -303,7 +302,7 @@ export default function Events() {
 
       <EventFormDialog
         open={formOpen}
-        onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
+        onOpenChange={setFormOpen}
         editing={editing}
         initial={formInitial}
         onSubmit={handleSubmit}

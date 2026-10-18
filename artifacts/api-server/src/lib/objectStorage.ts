@@ -1,6 +1,7 @@
 import { Storage, File } from "@google-cloud/storage";
 import { Readable } from "stream";
 import { randomUUID } from "crypto";
+import { config } from "../config";
 import {
   ObjectAclPolicy,
   ObjectPermission,
@@ -41,7 +42,7 @@ export class ObjectStorageService {
   constructor() {}
 
   getPublicObjectSearchPaths(): Array<string> {
-    const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
+    const pathsStr = config.storage.publicSearchPaths;
     const paths = Array.from(
       new Set(
         pathsStr
@@ -60,7 +61,7 @@ export class ObjectStorageService {
   }
 
   getPrivateObjectDir(): string {
-    const dir = process.env.PRIVATE_OBJECT_DIR || "";
+    const dir = config.storage.privateDir;
     if (!dir) {
       throw new Error(
         "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +

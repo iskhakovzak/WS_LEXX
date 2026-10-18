@@ -14,11 +14,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
-import { gpApi, gpKeys, fmtTime, type GamePlan, type GamePlanResponse } from "./types";
+import { gpApi, gpKeys, type GamePlan, type GamePlanResponse } from "./types";
+import { fmtDate } from "@/lib/format";
 import { applyTemplate, docToDraft, draftToDoc, isDraftEmpty, sameDoc, validateDraft, type DraftErrors, type PlanDraft } from "./plan-draft";
 import { PlanEditor, type SetDraft } from "./plan-editor";
 import { TemplateMenu } from "./plan-templates";
 import { shortDay } from "./plan-briefing";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { commonI18n } from "@/i18n/ns/common";
 
 /* Local draft autosave for the desk plan (publishing stays explicit — traders get the plan only on «Опубликовать»). */
 type LocalDraft = { v: 1; draft: PlanDraft; savedAt: string; baseUpdatedAt: string | null };
@@ -55,6 +58,7 @@ export function PlanEditorSheet({
   plan: GamePlan | null;
   prevDate: string | null;
 }) {
+  const { t } = gpI18n.useT();
   const qc = useQueryClient();
   const [base, setBase] = useState<PlanDraft>(() => docToDraft(plan));
   const [draft, setDraftState] = useState<PlanDraft>(base);
@@ -117,10 +121,10 @@ export function PlanEditorSheet({
       qc.invalidateQueries({ queryKey: gpKeys.day(date) });
       qc.invalidateQueries({ queryKey: gpKeys.history });
       qc.invalidateQueries({ queryKey: gpKeys.reads(saved.id) });
-      toast({ title: plan ? "План обновлён" : "План опубликован", description: shortDay(date) });
+      toast({ title: plan ? t("sheet.updated") : t("sheet.published"), description: shortDay(date) });
       onOpenChange(false);
     },
-    onError: (err) => toast({ title: "Не удалось опубликовать", description: err instanceof Error ? err.message : undefined, variant: "destructive" }),
+    onError: (err) => toast({ title: t("sheet.publishFailed"), description: err instanceof Error ? err.message : undefined, variant: "destructive" }),
   });
 
   const remove = useMutation({
@@ -128,10 +132,10 @@ export function PlanEditorSheet({
     onSuccess: () => {
       writeLocal(date, null);
       qc.invalidateQueries({ queryKey: ["game-plan"] });
-      toast({ title: "План снят с публикации" });
+      toast({ title: t("sheet.unpublished") });
       onOpenChange(false);
     },
-    onError: (err) => toast({ title: "Не удалось удалить", description: err instanceof Error ? err.message : undefined, variant: "destructive" }),
+    onError: (err) => toast({ title: t("sheet.deleteFailed"), description: err instanceof Error ? err.message : undefined, variant: "destructive" }),
   });
 
   function publish() {
@@ -139,7 +143,7 @@ export function PlanEditorSheet({
     const errs = validateDraft(draft);
     setErrors(errs);
     if (Object.keys(errs).length) {
-      toast({ title: "Проверьте поля", description: Object.values(errs)[0], variant: "destructive" });
+      toast({ title: t("my.checkFields"), description: Object.values(errs)[0], variant: "destructive" });
       requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>("[aria-invalid=true], [role=alert]")?.scrollIntoView({ block: "center" }));
       return;
     }
@@ -151,12 +155,12 @@ export function PlanEditorSheet({
     setCopying(true);
     try {
       const r = await gpApi.day(prevDate);
-      if (!r.plan) throw new Error("План не найден");
+      if (!r.plan) throw new Error(t("my.notFound"));
       const prev = docToDraft(r.plan);
       setDraft(() => prev);
-      toast({ title: "Скопировано", description: `План от ${shortDay(prevDate)} — проверьте уровни и катализаторы` });
+      toast({ title: t("my.copied"), description: t("sheet.copiedDesc", { date: shortDay(prevDate) }) });
     } catch (err) {
-      toast({ title: "Не удалось скопировать", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+      toast({ title: t("my.copyFailed"), description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setCopying(false);
     }
@@ -166,7 +170,7 @@ export function PlanEditorSheet({
     if (!next && dirty && !save.isPending) {
       // The draft is already in localStorage — closing never loses work.
       writeLocal(date, { v: 1, draft, savedAt: new Date().toISOString(), baseUpdatedAt: plan?.updatedAt ?? null });
-      toast({ title: "Черновик сохранён", description: "Он останется на этом устройстве до публикации" });
+      toast({ title: t("sheet.draftSaved"), description: t("sheet.draftSavedDesc") });
     }
     onOpenChange(next);
   }
@@ -186,17 +190,16 @@ export function PlanEditorSheet({
         >
           <SheetHeader className="border-b border-border px-[var(--panel-p)] pb-3 pt-[var(--panel-p)] text-left">
             <SheetTitle className="pr-10">
-              {plan ? "План деска" : "Новый план деска"} · {shortDay(date)}
+              {t(plan ? "sheet.titleEdit" : "sheet.titleNew", { date: shortDay(date) })}
             </SheetTitle>
-            <SheetDescription>Ctrl+V — вставить скриншот в блок, где стоит курсор. Черновик сохраняется сам.</SheetDescription>
+            <SheetDescription>{t("sheet.description")}</SheetDescription>
           </SheetHeader>
 
           {restore && (
             <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/8 px-[var(--panel-p)] py-2 text-sm">
               <History className="h-4 w-4 text-primary" aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                Несохранённый черновик от {fmtTime(restore.savedAt)}
-                {restore.baseUpdatedAt && plan && restore.baseUpdatedAt !== plan.updatedAt ? " — план с тех пор менялся" : ""}
+                {t(restore.baseUpdatedAt && plan && restore.baseUpdatedAt !== plan.updatedAt ? "sheet.unsavedDraftChanged" : "sheet.unsavedDraft", { time: fmtDate(restore.savedAt, "time") })}
               </span>
               <Button
                 type="button"
@@ -207,7 +210,7 @@ export function PlanEditorSheet({
                   setRestore(null);
                 }}
               >
-                Восстановить
+                {t("sheet.restore")}
               </Button>
               <Button
                 type="button"
@@ -218,7 +221,7 @@ export function PlanEditorSheet({
                   setRestore(null);
                 }}
               >
-                Отбросить
+                {t("sheet.discard")}
               </Button>
             </div>
           )}
@@ -232,13 +235,13 @@ export function PlanEditorSheet({
               errors={errors}
               navSlot={
                 <>
-                  <Button type="button" variant="ghost" size="sm" onClick={copyPrev} disabled={!prevDate || copying} title={prevDate ? `Скопировать план от ${shortDay(prevDate)}` : "Нет прошлого плана"}>
+                  <Button type="button" variant="ghost" size="sm" onClick={copyPrev} disabled={!prevDate || copying} title={prevDate ? t("sheet.copyFrom", { date: shortDay(prevDate) }) : t("sheet.noPrev")}>
                     {copying ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                    {prevDate ? `Как ${shortDay(prevDate)}` : "Копировать"}
+                    {prevDate ? t("my.likeDay", { date: shortDay(prevDate) }) : t("sheet.copy")}
                   </Button>
                   <TemplateMenu kind="desk" currentDoc={() => draftToDoc(draft)} onApply={(doc, name) => {
                     setDraft((d) => applyTemplate(d, doc));
-                    toast({ title: `Шаблон «${name}»`, description: "Заполнены только пустые блоки" });
+                    toast({ title: t("templates.applied", { name }), description: t("templates.appliedDesc") });
                   }} />
                 </>
               }
@@ -249,18 +252,18 @@ export function PlanEditorSheet({
             {plan && (
               <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => setConfirmDelete(true)}>
                 <Trash2 aria-hidden="true" />
-                Снять
+                {t("sheet.unpublish")}
               </Button>
             )}
             <span className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
-              {localSavedAt ? `Черновик · ${fmtTime(localSavedAt)}` : dirty ? "" : plan ? "Без изменений" : ""}
+              {localSavedAt ? t("sheet.draftAt", { time: fmtDate(localSavedAt, "time") }) : dirty ? "" : plan ? t("sheet.noChanges") : ""}
             </span>
             <Button type="button" variant="ghost" onClick={() => close(false)}>
-              Закрыть
+              {commonI18n.t("actions.close")}
             </Button>
             <Button type="button" className="bg-primary-solid" onClick={publish} disabled={save.isPending || (!!plan && !dirty)} title="Ctrl+Enter">
               {save.isPending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send aria-hidden="true" />}
-              {plan ? "Обновить" : "Опубликовать"}
+              {plan ? t("sheet.update") : t("sheet.publish")}
             </Button>
           </div>
         </SheetContent>
@@ -269,13 +272,13 @@ export function PlanEditorSheet({
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Снять план на {shortDay(date)}?</AlertDialogTitle>
-            <AlertDialogDescription>Трейдеры перестанут видеть брифинг. Отметки о прочтении сохранятся в истории.</AlertDialogDescription>
+            <AlertDialogTitle>{t("sheet.confirmTitle", { date: shortDay(date) })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("sheet.confirmDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{commonI18n.t("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={() => remove.mutate()} disabled={remove.isPending}>
-              Снять план
+              {t("sheet.confirmAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

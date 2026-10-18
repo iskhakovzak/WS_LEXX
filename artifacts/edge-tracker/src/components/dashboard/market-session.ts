@@ -4,9 +4,12 @@
  * Weekends and full-day market holidays (from /api/dashboard/today) are closed.
  */
 
+import { shellI18n } from "@/i18n/ns/shell";
+
 const TZ = "America/New_York";
 
 export type SessionPhase = "pre" | "regular" | "after" | "closed";
+export type NextKey = "toOpen" | "toClose" | "toAfterEnd" | "toPremarket";
 
 export type SessionState = {
   phase: SessionPhase;
@@ -16,7 +19,9 @@ export type SessionState = {
   nyDate: string;
   /** Milliseconds until the next relevant boundary. */
   msToNext: number;
-  /** What the countdown points to. */
+  /** What the countdown points to, as a code. */
+  nextKey: NextKey;
+  /** What the countdown points to, in the UI language (read when the state is computed: call at render). */
   nextLabel: string;
   /** 0..1 position within the 04:00–20:00 extended day, null when outside it / closed day. */
   dayProgress: number | null;
@@ -98,6 +103,8 @@ function nextTradingDay(fromYmd: string, holidays: Set<string>) {
   return d;
 }
 
+const next = (nextKey: NextKey) => ({ nextKey, nextLabel: shellI18n.t(`clock.next.${nextKey}`) });
+
 export function getSessionState(now: Date, holidays: { date: string; name: string }[] = []): SessionState {
   const p = wallParts(now);
   const nyDate = ymdOf(p);
@@ -120,7 +127,7 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
       nyTime,
       nyDate,
       msToNext: nextOpen(),
-      nextLabel: "до открытия",
+      ...next("toOpen"),
       dayProgress: null,
       holiday,
       weekend,
@@ -133,7 +140,7 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
       nyTime,
       nyDate,
       msToNext: nyWallToUtc(nyDate, OPEN_MIN) - t,
-      nextLabel: "до открытия",
+      ...next("toOpen"),
       dayProgress: progress,
       holiday,
       weekend,
@@ -145,7 +152,7 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
       nyTime,
       nyDate,
       msToNext: nyWallToUtc(nyDate, CLOSE_MIN) - t,
-      nextLabel: "до закрытия",
+      ...next("toClose"),
       dayProgress: progress,
       holiday,
       weekend,
@@ -157,7 +164,7 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
       nyTime,
       nyDate,
       msToNext: nyWallToUtc(nyDate, AFTER_END_MIN) - t,
-      nextLabel: "до конца постмаркета",
+      ...next("toAfterEnd"),
       dayProgress: progress,
       holiday,
       weekend,
@@ -168,7 +175,7 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
     nyTime,
     nyDate,
     msToNext: nextOpen(),
-    nextLabel: "до открытия",
+    ...next("toOpen"),
     dayProgress: progress,
     holiday,
     weekend,
@@ -182,12 +189,13 @@ export function formatCountdown(ms: number): string {
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
   const hms = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return days > 0 ? `${days}д ${hms}` : hms;
+  return days > 0 ? `${shellI18n.t("clock.daysPrefix", { count: days })} ${hms}` : hms;
 }
 
-export const PHASE_LABEL: Record<SessionPhase, string> = {
-  pre: "Премаркет",
-  regular: "Основная сессия",
-  after: "Постмаркет",
-  closed: "Рынок закрыт",
+/** Full phase names in the UI language (getters: read at render, never frozen at import). */
+export const PHASE_LABEL: Readonly<Record<SessionPhase, string>> = {
+  get pre() { return shellI18n.t("clock.phaseLong.pre"); },
+  get regular() { return shellI18n.t("clock.phaseLong.regular"); },
+  get after() { return shellI18n.t("clock.phaseLong.after"); },
+  get closed() { return shellI18n.t("clock.phaseLong.closed"); },
 };

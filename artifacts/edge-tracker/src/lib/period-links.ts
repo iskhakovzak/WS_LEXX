@@ -8,10 +8,15 @@
 import * as React from "react";
 import { useLocation } from "wouter";
 import { links } from "./links";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type PeriodKind = "day" | "week";
 
-export const PERIOD_HINT: Record<PeriodKind, string> = { day: "Открыть разбор дня", week: "Открыть неделю" };
+/** "Открыть разбор дня" / "Открыть неделю" in the UI language (getters: read at render). */
+export const PERIOD_HINT: Readonly<Record<PeriodKind, string>> = {
+  get day() { return commonI18n.t("periodNav.openDay"); },
+  get week() { return commonI18n.t("periodNav.openWeek"); },
+};
 
 const YMD = /^\d{4}-\d{2}-\d{2}/;
 const WEEK = /^\d{4}-W\d{2}$/;
@@ -66,7 +71,7 @@ export function PeriodHint({ kind }: { kind: PeriodKind }) {
   return React.createElement(
     "span",
     { className: "mt-1 block text-2xs font-medium text-primary" },
-    `Клик — ${PERIOD_HINT[kind].charAt(0).toLowerCase()}${PERIOD_HINT[kind].slice(1)} →`,
+    commonI18n.t(kind === "week" ? "periodNav.clickWeek" : "periodNav.clickDay"),
   );
 }
 
@@ -131,8 +136,8 @@ export function usePeriodNav({
     wrapperProps: {
       tabIndex: 0,
       role: "group" as const,
-      "aria-roledescription": "интерактивный график",
-      "aria-label": `${label ? `${label}. ` : ""}Клик или Enter — ${hint.toLowerCase()}; стрелки — выбор ${kind === "week" ? "недели" : "дня"}.`,
+      "aria-roledescription": commonI18n.t("periodNav.roleDescription"),
+      "aria-label": `${label ? `${label}. ` : ""}${commonI18n.t(kind === "week" ? "periodNav.ariaWeek" : "periodNav.ariaDay")}`,
       title: hint,
       onKeyDown,
       onBlur: () => setActive(-1),
@@ -144,7 +149,7 @@ export function usePeriodNav({
           "p",
           { className: "mt-1 text-2xs text-muted-foreground", "aria-live": "polite" },
           React.createElement("span", { className: "font-medium text-foreground" }, sel),
-          ` · Enter — ${hint.toLowerCase()}`,
+          ` · ${commonI18n.t(kind === "week" ? "periodNav.enterWeek" : "periodNav.enterDay")}`,
         )
       : null,
   };

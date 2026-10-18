@@ -1,5 +1,8 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { config } from "../config";
+import { localeOfUser } from "../i18n";
+import { renderNotification, type NotificationParams } from "./notificationText";
 import { sendMessage, sendIdeaNotification, buildTraderReplyKeyboard } from "./telegramBot";
 import {
   ALL_TYPES_KEY, defaultSeverity, deliveryVerdict, isSeverity, normalizeType, notifLinks, safeLink, typeMeta,
@@ -7,8 +10,7 @@ import {
 } from "./notificationCore";
 
 export function getSiteUrl(): string {
-  if (process.env["SITE_URL"]) return process.env["SITE_URL"].trim();
-  return "https://zakit.website";
+  return config.siteUrl;
 }
 
 // ─── schema (additive, idempotent; run once per process, retried on failure) ───
@@ -115,8 +117,13 @@ export async function saveNotificationPrefs(userName: string, prefs: readonly Pr
 export type NewNotification = {
   userName: string;
   type: string;
-  /** Body text (stored in the historical `message` column, exposed as `body`). */
-  message: string;
+  /** Body text (stored in the historical `message` column, exposed as `body`). Optional when `params` render it. */
+  message?: string | null;
+  /**
+   * Text as data: the params the `notifications` i18n namespace renders for this type (lib/notificationText.ts).
+   * Stored in notifications.params; title/message are then filled with the Russian rendering as the fallback.
+   */
+  params?: NotificationParams | null;
   title?: string | null;
   severity?: Severity | null;
   /** In-app path built like the frontend `links.*` (e.g. "/discussions?thread=12"); see notifLinks. */
@@ -146,17 +153,20 @@ export async function insertNotification(n: NewNotification): Promise<number | n
       return null;
     }
     const severity: Severity = n.severity && isSeverity(n.severity) ? n.severity : defaultSeverity(type);
-    const title = (n.title ?? typeMeta(type).label).slice(0, 200);
+    const ru = n.params ? renderNotification(type, n.params, "ru") : null;
+    const title = (n.title ?? ru?.title ?? typeMeta(type).label).slice(0, 200);
+    const message = n.message ?? ru?.body ?? "";
     const ideaId = n.ideaId != null && Number.isInteger(Number(n.ideaId)) ? Number(n.ideaId) : null;
     const link = safeLink(n.link) ?? (ideaId != null ? notifLinks.idea(ideaId) : null);
     const { rows } = await pool.query<{ id: number }>(
-      `INSERT INTO notifications (user_name, type, idea_id, message, source, severity, title, link, entity_type, entity_id, actor)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      `INSERT INTO notifications (user_name, type, idea_id, message, source, severity, title, link, entity_type, entity_id, actor, params)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb) RETURNING id`,
       [
-        userName, type, ideaId, (n.message ?? "").slice(0, 2000), (n.source ?? "system").slice(0, 40), severity, title, link,
+        userName, type, ideaId, message.slice(0, 2000), (n.source ?? "system").slice(0, 40), severity, title, link,
         n.entityType ? String(n.entityType).slice(0, 40) : null,
         n.entityId != null ? String(n.entityId).slice(0, 100) : null,
         n.actor ? String(n.actor).slice(0, 100) : null,
+        n.params ? JSON.stringify(n.params) : null,
       ],
     );
     return rows[0]?.id ?? null;
@@ -191,8 +201,10 @@ export type NotifyType =
 export type NotifyUserOpts = {
   userName: string | null | undefined;
   type: NotifyType | string;
-  /** Body text. */
-  message: string;
+  /** Body text (optional when `params` render it). */
+  message?: string | null;
+  /** Text as data (see NewNotification.params). With `telegram: true` the Telegram text is rendered in the recipient's language. */
+  params?: NotificationParams | null;
   title?: string | null;
   severity?: Severity | null;
   link?: string | null;
@@ -208,14 +220,24 @@ export type NotifyUserOpts = {
 export async function notifyUser(opts: NotifyUserOpts): Promise<number | null> {
   if (!opts.userName) return null;
   const id = await insertNotification({
-    userName: opts.userName, type: opts.type, message: opts.message, title: opts.title, severity: opts.severity,
+    userName: opts.userName, type: opts.type, message: opts.message, params: opts.params, title: opts.title, severity: opts.severity,
     link: opts.link, entityType: opts.entityType, entityId: opts.entityId, actor: opts.actor, ideaId: opts.ideaId ?? null,
     source: opts.source,
   });
   if (opts.telegram) {
-    await notifyTraderTelegram(opts.userName, typeof opts.telegram === "string" ? opts.telegram : opts.message, opts.ideaId ? { ideaId: opts.ideaId } : undefined);
+    const text = typeof opts.telegram === "string" ? opts.telegram : await telegramTextFor(opts.userName, opts.type, opts.params, opts.message);
+    if (text) await notifyTraderTelegram(opts.userName, text, opts.ideaId ? { ideaId: opts.ideaId } : undefined);
   }
   return id;
+}
+
+/** Telegram text for one recipient: rendered from params in their users.locale, else the stored Russian body. */
+export async function telegramTextFor(userName: string, type: string, params: NotificationParams | null | undefined, fallback?: string | null): Promise<string> {
+  if (params) {
+    const r = renderNotification(normalizeType(type), params, await localeOfUser(userName));
+    if (r) return r.telegram;
+  }
+  return fallback ?? "";
 }
 
 /** Same notification to several recipients (de-duplicated, `exclude` skipped — usually the actor). */
@@ -269,12 +291,14 @@ export async function extractMentions(text: string | null | undefined): Promise<
 
 /**
  * Notify everyone @mentioned in `text` (except the author). Returns the notified names.
- * Example: notifyMentions({ text, authorName, context: "в обсуждении NVDA", link: "/discussions?thread=12" }).
+ * Example: notifyMentions({ text, authorName, where: { kind: "discussion", subject: "NVDA" }, link: "/discussions?thread=12" }).
+ * The text is stored as type `mention` + params and rendered per reader (in-app: request language, Telegram: users.locale).
  */
 export async function notifyMentions(opts: {
   text: string | null | undefined;
   authorName: string;
-  context: string;
+  /** Where the mention happened (rendered per reader language). */
+  where: { kind: "discussion"; subject?: string | null };
   link?: string;
   ideaId?: number | null;
   telegram?: boolean;
@@ -285,13 +309,18 @@ export async function notifyMentions(opts: {
   if (names.length && opts.filter) names = await opts.filter(names);
   if (names.length === 0) return [];
   const preview = (opts.text ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-  const message = `${opts.authorName} упомянул вас ${opts.context}: «${preview}»`;
-  const tgText = `${message}${opts.link ? ` ${getSiteUrl()}${opts.link}` : ""}`;
+  const params: NotificationParams = { where: opts.where.kind, subject: opts.where.subject ?? null, actor: opts.authorName, preview };
+  const linkTail = opts.link ? ` ${getSiteUrl()}${opts.link}` : "";
   for (const name of names) {
+    let telegram: string | false = false;
+    if (opts.telegram ?? true) {
+      const r = renderNotification("mention", params, await localeOfUser(name));
+      telegram = r ? `${r.telegram}${linkTail}` : false;
+    }
     await notifyUser({
-      userName: name, type: "mention", title: `Упоминание ${opts.context}`.slice(0, 200), message,
+      userName: name, type: "mention", params,
       link: opts.link ?? null, actor: opts.authorName, ideaId: opts.ideaId ?? null,
-      telegram: (opts.telegram ?? true) ? tgText : false,
+      telegram,
     });
   }
   return names;
@@ -316,7 +345,7 @@ export async function notifyTraderTelegram(
     const notificationsEnabled = rows[0]?.tg_notifications_enabled as boolean ?? true;
     if (!chatId || !notificationsEnabled) return;
 
-    const keyboard = opts?.ideaId ? buildTraderReplyKeyboard(opts.ideaId) : undefined;
+    const keyboard = opts?.ideaId ? buildTraderReplyKeyboard(opts.ideaId, await localeOfUser(trader)) : undefined;
     await sendMessage(chatId, message, {
       ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
     });
@@ -370,7 +399,7 @@ export async function notifyReviewersOnPublish(idea: {
       );
       const chatId = rows[0]?.telegram_chat_id as string | undefined;
       if (chatId) {
-        await sendIdeaNotification(chatId, idea, siteUrl);
+        await sendIdeaNotification(chatId, idea, siteUrl, await localeOfUser(name));
         logger.info({ ideaId: idea.id, reviewer: name, chatId }, "notifyReviewersOnPublish: TG message sent");
       } else {
         logger.warn({ ideaId: idea.id, reviewer: name }, "notifyReviewersOnPublish: reviewer has no telegram_chat_id");
@@ -378,8 +407,7 @@ export async function notifyReviewersOnPublish(idea: {
       await insertNotification({
         userName: name, type: "idea_submitted", ideaId: idea.id, actor: idea.trader ?? null,
         entityType: "idea", entityId: idea.id,
-        title: `Новая идея ${idea.ticker}${idea.side ? ` ${idea.side}` : ""}`,
-        message: `Новая идея от ${idea.trader ?? "unknown"}: ${idea.ticker}${idea.side ? ` ${idea.side}` : ""}${idea.setup ? ` — ${idea.setup}` : ""}`,
+        params: { idea: `${idea.ticker}${idea.side ? ` ${idea.side}` : ""}`, actor: idea.trader ?? "unknown", setup: idea.setup ?? null },
       });
     }
 
@@ -399,9 +427,10 @@ export async function notifyPublicComment(opts: {
   source: "website" | "telegram";
 }): Promise<void> {
   const { ideaId, ticker, traderName, authorName, commentText, source } = opts;
-  const preview = commentText.slice(0, 150);
-  const tgMsg = `💬 Публичный комментарий к идее <b>#${ideaId} ${ticker}</b> от <b>${authorName}</b>:\n\n<i>"${preview}${commentText.length > 150 ? "…" : ""}"</i>`;
-  const notifMsg = `${authorName} оставил публичный комментарий к идее ${ticker}: "${commentText.slice(0, 100)}"`;
+  const params: NotificationParams = {
+    ideaId, ticker, actor: authorName,
+    preview: `${commentText.slice(0, 150)}${commentText.length > 150 ? "…" : ""}`,
+  };
 
   try {
     // 1. Assigned curator & risk manager (from trader's assignments)
@@ -431,11 +460,11 @@ export async function notifyPublicComment(opts: {
     for (const name of recipients) {
       await insertNotification({
         userName: name, type: "idea_comment", ideaId, actor: authorName, entityType: "idea", entityId: ideaId,
-        title: `Комментарий к идее ${ticker}`, message: notifMsg, source,
+        params, source,
       });
       // Trader (idea creator) gets the reply button; reviewers do not (they already have the idea keyboard)
       const isCreator = name === traderName;
-      await notifyTraderTelegram(name, tgMsg, isCreator ? { ideaId } : undefined);
+      await notifyTraderTelegram(name, await telegramTextFor(name, "idea_comment", params), isCreator ? { ideaId } : undefined);
     }
 
     logger.info({ ideaId, authorName, recipients, source }, "notifyPublicComment: notified");
@@ -460,19 +489,15 @@ export async function applyIdeaReview(
   if (!rows[0]) return null;
   const idea = rows[0] as { id: number; ticker: string; trader: string | null };
 
-  const statusLabel = status === "approved" ? "✅ Одобрена" : status === "rejected" ? "❌ Отклонена" : "🔄 На доработку";
-  const notifMsg = `Твоя идея <b>${idea.ticker}</b> — ${statusLabel}` +
-    (reason ? `\nКомментарий: <i>${reason.slice(0, 300)}</i>` : "") +
-    `\n(ревьюер: ${reviewerName})`;
+  const params: NotificationParams = { ticker: idea.ticker, status, reason: reason ? reason.slice(0, 300) : null, actor: reviewerName };
 
   await insertNotification({
     userName: idea.trader ?? "", type: "idea_review", ideaId, actor: reviewerName, entityType: "idea", entityId: ideaId,
     severity: status === "rejected" ? "warn" : "info",
-    title: `Идея ${idea.ticker} — ${statusLabel}`,
-    message: `Идея ${idea.ticker} — ${statusLabel}` + (reason ? `: ${reason.slice(0, 150)}` : "") + ` (от ${reviewerName})`,
+    params,
   });
   // Trader gets a "Reply" button so they can respond directly in Telegram
-  await notifyTraderTelegram(idea.trader, notifMsg, { ideaId });
+  if (idea.trader) await notifyTraderTelegram(idea.trader, await telegramTextFor(idea.trader, "idea_review", params), { ideaId });
 
   return idea;
 }

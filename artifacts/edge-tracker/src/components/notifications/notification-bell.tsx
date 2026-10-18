@@ -3,7 +3,7 @@
  * notifications grouped by day, «Прочитать все» and a link to the full /notifications page.
  * Unread count polls GET /notifications/count (45 s, paused in hidden tabs); the list loads on open.
  */
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Bell, Check, Inbox, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,12 +11,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { NotificationItem } from "./notification-item";
 import { groupByDay } from "./model";
 import { useNotificationActions, useNotificationList, useOpenNotification, useUnreadCount } from "./use-notifications";
+import { notificationsI18n } from "@/i18n/ns/notifications";
+import { commonI18n } from "@/i18n/ns/common";
 
 const iconBtn = "chip relative grid h-10 w-10 shrink-0 place-items-center focus-visible:ring-2 focus-visible:ring-ring";
 
 const POPOVER_FILTERS = { limit: 20 } as const;
 
 export function NotificationBell({ className }: { className?: string }) {
+  const { t } = notificationsI18n.useT();
   const [open, setOpen] = useState(false);
   const [, navigate] = useLocation();
   const { data: count } = useUnreadCount();
@@ -39,8 +42,8 @@ export function NotificationBell({ className }: { className?: string }) {
         <button
           type="button"
           className={cn(iconBtn, className)}
-          title="Уведомления"
-          aria-label={unread > 0 ? `Уведомления: ${unread} непрочитанных${critical ? ", есть критичные" : ""}` : "Уведомления"}
+          title={t("title")}
+          aria-label={unread > 0 ? t(critical ? "bell.ariaUnreadCritical" : "bell.ariaUnread", { count: unread }) : t("title")}
         >
           <Bell className={cn("h-4 w-4", critical && "text-down")} aria-hidden="true" />
           {unread > 0 && (
@@ -59,8 +62,8 @@ export function NotificationBell({ className }: { className?: string }) {
       <PopoverContent align="end" sideOffset={8} className="w-[min(400px,calc(100vw-1.5rem))] overflow-hidden rounded-2xl p-0">
         <div className="flex items-center justify-between gap-2 border-b border-[var(--glass-border)] px-4 py-3">
           <span className="text-sm font-semibold text-foreground">
-            Уведомления
-            {unread > 0 && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{unread} новых</span>}
+            {t("title")}
+            {unread > 0 && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{t("bell.newCount", { count: unread })}</span>}
           </span>
           <div className="flex items-center gap-1">
             {unread > 0 && (
@@ -71,34 +74,34 @@ export function NotificationBell({ className }: { className?: string }) {
                 className="chip inline-flex h-7 items-center gap-1 px-2.5 text-xs font-medium disabled:opacity-50"
               >
                 <Check className="h-3 w-3" aria-hidden="true" />
-                {readAll.isPending ? "…" : "Прочитать все"}
+                {readAll.isPending ? "…" : t("bell.readAll")}
               </button>
             )}
-            <button type="button" onClick={goToPage} className="chip grid h-7 w-7 place-items-center" title="Настройки уведомлений" aria-label="Открыть настройки уведомлений">
+            <button type="button" onClick={goToPage} className="chip grid h-7 w-7 place-items-center" title={t("bell.settingsTitle")} aria-label={t("bell.settingsAria")}>
               <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
         </div>
         {readAll.isError && (
           <div role="alert" className="border-b border-[var(--glass-border)] px-4 py-2 text-xs text-destructive">
-            Не удалось отметить уведомления прочитанными
+            {t("bell.readAllFailed")}
           </div>
         )}
         <div className="max-h-[70vh] overflow-y-auto overscroll-contain p-1.5">
           {list.isLoading ? (
             <div role="status" className="space-y-2 p-2">
-              {[0, 1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-[var(--glass-bg)]" />)}
-              <span className="sr-only">Загрузка…</span>
+              {[0, 1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-[var(--glass-bg)] motion-reduce:animate-none" />)}
+              <span className="sr-only">{commonI18n.t("states.loading")}</span>
             </div>
           ) : list.isError ? (
             <div className="space-y-2 py-8 text-center text-sm text-muted-foreground">
-              <div>Не удалось загрузить уведомления</div>
-              <button type="button" onClick={() => list.refetch()} className="chip h-8 px-3 text-xs font-medium">Повторить</button>
+              <div>{t("bell.loadFailed")}</div>
+              <button type="button" onClick={() => list.refetch()} className="chip h-8 px-3 text-xs font-medium">{commonI18n.t("actions.retry")}</button>
             </div>
           ) : list.items.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
               <Inbox className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-              <p className="text-sm text-muted-foreground">Уведомлений пока нет</p>
+              <p className="text-sm text-muted-foreground">{t("bell.empty")}</p>
             </div>
           ) : (
             groups.map((g) => (
@@ -121,7 +124,7 @@ export function NotificationBell({ className }: { className?: string }) {
             onClick={goToPage}
             className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-primary hover:bg-[var(--glass-hover-bg)]"
           >
-            Все уведомления
+            {t("bell.all")}
           </button>
         </div>
       </PopoverContent>

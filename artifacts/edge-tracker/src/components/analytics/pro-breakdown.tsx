@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   type Metric, type ValueFn, type GroupBreakdown,
-  TIME_BUCKETS, DAY_OF_WEEK_OPTIONS, buildGroupBreakdown, timeBucketFor, dayOfWeek,
+  TIME_BUCKETS, dayOfWeekOptions, buildGroupBreakdown, timeBucketFor, dayOfWeek,
 } from "@/lib/analytics-pro";
-import { fmtPct, fmtVal, loadPref, savePref } from "./pro-format";
+import { fmtVal, loadPref, savePref } from "./pro-format";
+import { fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
 
 type Dim = "setup" | "time" | "weekday" | "ticker" | "side";
 type Mode = "net" | "profit" | "loss";
@@ -16,20 +19,19 @@ const DIMS = ["setup", "time", "weekday", "ticker", "side"] as const;
 const DIM_KEY = "analyticsPro.breakdownDim";
 const LIMIT = 14;
 
-const DIM_LABEL: Record<Dim, string> = {
-  setup: "Сетап", time: "Время", weekday: "День", ticker: "Тикер", side: "Сторона",
-};
+const tp = analyticsProI18n.t;
+const dimLabel = (d: Dim) => tp(`breakdown.dim.${d}`);
 
 type Row = GroupBreakdown & { winRate: number | null; order: number };
 
 function bucketFor(dim: Dim) {
   return (t: Trade): { id: string; label: string } => {
     switch (dim) {
-      case "setup": return { id: t.setup || "—", label: t.setup || "Без сетапа" };
+      case "setup": return { id: t.setup || "—", label: t.setup || tp("breakdown.noSetup") };
       case "ticker": return { id: t.ticker || "—", label: t.ticker || "—" };
       case "side": {
         const s = (t.side ?? "").toLowerCase();
-        return s.startsWith("s") ? { id: "short", label: "Шорт" } : s.startsWith("l") ? { id: "long", label: "Лонг" } : { id: "—", label: "Не указана" };
+        return s.startsWith("s") ? { id: "short", label: commonI18n.t("trading.short") } : s.startsWith("l") ? { id: "long", label: commonI18n.t("trading.long") } : { id: "—", label: tp("breakdown.sideNotSet") };
       }
       case "time": {
         const id = timeBucketFor(t);
@@ -37,7 +39,7 @@ function bucketFor(dim: Dim) {
       }
       case "weekday": {
         const d = String(dayOfWeek(t));
-        return { id: d, label: DAY_OF_WEEK_OPTIONS.find((o) => o.id === d)?.label ?? "—" };
+        return { id: d, label: dayOfWeekOptions().find((o) => o.id === d)?.label ?? "—" };
       }
     }
   };
@@ -64,7 +66,7 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
     }
     const orderOf = (key: string) => {
       if (dim === "time") return TIME_BUCKETS.findIndex((b) => b.id === key);
-      if (dim === "weekday") return DAY_OF_WEEK_OPTIONS.findIndex((o) => o.id === key);
+      if (dim === "weekday") return dayOfWeekOptions().findIndex((o) => o.id === key);
       return 0;
     };
     return base.map((r) => {
@@ -89,31 +91,31 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
   return (
     <Panel
       icon={BarChart3}
-      title="Разрез результата"
-      description="Где зарабатываете и где теряете"
+      title={tp("breakdown.title")}
+      description={tp("breakdown.hint")}
       actions={
         <Segmented<Mode>
           size="sm"
-          ariaLabel="Что показывать"
+          ariaLabel={tp("breakdown.modeAria")}
           value={mode}
           onChange={setMode}
-          options={[{ value: "net", label: "Итог" }, { value: "profit", label: "Прибыль" }, { value: "loss", label: "Убыток" }]}
+          options={[{ value: "net", label: tp("breakdown.mode.net") }, { value: "profit", label: tp("breakdown.mode.profit") }, { value: "loss", label: tp("breakdown.mode.loss") }]}
         />
       }
     >
       <Segmented
         size="sm"
         className="mb-3"
-        ariaLabel="Группировать по"
+        ariaLabel={tp("breakdown.groupAria")}
         value={dim}
         onChange={(d) => { setDim(d); savePref(DIM_KEY, d); setShowAll(false); }}
-        options={DIMS.map((d) => ({ value: d, label: DIM_LABEL[d] }))}
+        options={DIMS.map((d) => ({ value: d, label: dimLabel(d) }))}
       />
       {shown.length === 0 ? (
         <EmptyState
           icon={BarChart3}
-          title={mode === "profit" ? "Нет групп с прибылью" : mode === "loss" ? "Нет групп с убытком" : "Нет данных"}
-          description={metric === "pnl" ? "Возможно, у сделок не заполнен P&L — попробуйте режим R." : undefined}
+          title={mode === "profit" ? tp("breakdown.noProfit") : mode === "loss" ? tp("breakdown.noLoss") : tp("breakdown.noData")}
+          description={metric === "pnl" ? tp("breakdown.tryR") : undefined}
           className="py-8"
         />
       ) : (
@@ -144,7 +146,7 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
                   {fmtVal(metric, v, { compact: true, sign: true })}
                 </span>
                 <span className="hidden w-[6.5rem] text-right text-xs tabular-nums text-muted-foreground sm:inline">
-                  {r.count} · {fmtPct(r.winRate)}
+                  {r.count} · {fmtRate(r.winRate)}
                 </span>
               </li>
             );
@@ -153,11 +155,12 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
       )}
       {all.length > LIMIT && (
         <Button variant="ghost" size="sm" className="mt-2 rounded-full" onClick={() => setShowAll((v) => !v)}>
-          {showAll ? "Свернуть" : `Показать все (${all.length})`}
+          {showAll ? tp("breakdown.collapse") : tp("breakdown.showAll", { count: all.length })}
         </Button>
       )}
       {shown.length > 0 && (
-        <p className="mt-3 hidden text-2xs text-muted-foreground sm:block">Справа: число сделок · доля прибыльных</p>
+        <p className="mt-3 hidden text-2xs text-muted-foreground sm:block">{tp("breakdown.legend")}</p>
+
       )}
     </Panel>
   );

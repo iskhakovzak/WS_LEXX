@@ -9,11 +9,14 @@ import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  SECTION_META, TOOLTIP_STYLE, composeSections, filledKeys, fmtDayShort, fmtWeekday, isUnread, moodMeta,
+  SECTION_META, TOOLTIP_STYLE, previewSections, filledKeys, isUnread, moodLabelByScore, moodMeta,
   sectionsOf, type JuniorNote,
 } from "./junior-lib";
+import { fmtDate, fmtWeekday } from "@/lib/format";
 import { Highlight, LoadError, MoodPill, ScoreStars } from "./junior-ui";
 import { JuniorNoteSheet } from "./junior-note-sheet";
+import { notesI18n } from "@/i18n/ns/notes";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Filter = "all" | "answered" | "unread" | "waiting";
 const FILTER_KEY = "ws_lexx_junior_history_filter";
@@ -51,6 +54,8 @@ export function JuniorHistory({
   onRetry: () => void;
   onOpenInEditor: (date: string) => void;
 }) {
+  const { t } = notesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [q, setQ] = React.useState("");
   const [filter, setFilterState] = React.useState<Filter>(readFilter);
   const [openId, setOpenId] = React.useState<number | null>(null);
@@ -88,7 +93,7 @@ export function JuniorHistory({
       if (filter === "unread" && !isUnread(n)) return false;
       if (filter === "waiting" && n.reviewed_at) return false;
       if (!needle) return true;
-      const hay = `${composeSections(sectionsOf(n))}\n${n.curator_feedback ?? ""}\n${moodMeta(n.mood)?.label ?? ""}`.toLowerCase();
+      const hay = `${previewSections(sectionsOf(n))}\n${n.curator_feedback ?? ""}\n${moodMeta(n.mood)?.label ?? ""}`.toLowerCase();
       return hay.includes(needle);
     });
   }, [history, filter, needle]);
@@ -100,7 +105,7 @@ export function JuniorHistory({
         .reverse()
         .map((n) => ({
           date: n.note_date,
-          label: fmtDayShort(n.note_date),
+          label: fmtDate(n.note_date, "dayMonth"),
           mood: moodMeta(n.mood)?.score ?? null,
           score: n.curator_score ?? null,
         })),
@@ -112,21 +117,21 @@ export function JuniorHistory({
 
   if (isLoading && history.length === 0) {
     return (
-      <div className="space-y-4" aria-busy="true" aria-label="Загрузка">
+      <div className="space-y-4" aria-busy="true" aria-label={tc("states.loading")}>
         <Skeleton className="h-48 w-full rounded-2xl" />
         <Skeleton className="h-12 w-full rounded-2xl" />
         {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
       </div>
     );
   }
-  if (isError && history.length === 0) return <LoadError text="Не удалось загрузить историю" onRetry={onRetry} />;
+  if (isError && history.length === 0) return <LoadError text={t("historyLoadFailed")} onRetry={onRetry} />;
   if (history.length === 0) {
     return (
       <Panel>
         <EmptyState
           icon={BookOpen}
-          title="История пока пустая"
-          description="Каждая сводка дня попадает сюда — с ответом куратора, оценкой и поиском по тексту."
+          title={t("junior.history.emptyTitle")}
+          description={t("junior.history.emptyDescription")}
         />
       </Panel>
     );
@@ -135,8 +140,8 @@ export function JuniorHistory({
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title="Настроение и оценки"
-        description="Последние 30 сводок: линия — твоё состояние, столбцы — оценка куратора (1–5)"
+        title={t("junior.history.trendTitle")}
+        description={t("junior.history.trendDescription")}
       >
         {hasTrend ? (
           <div className="h-44 w-full">
@@ -149,17 +154,17 @@ export function JuniorHistory({
                   contentStyle={TOOLTIP_STYLE}
                   cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }}
                   formatter={(v: number, name: string) => {
-                    if (name === "mood") return [moodLabelByScore(v), "Состояние"];
-                    return [`${v} из 5`, "Оценка куратора"];
+                    if (name === "mood") return [moodLabelByScore(v), t("stateLabel")];
+                    return [t("junior.score.ofFive", { score: v }), t("junior.history.curatorScore")];
                   }}
                 />
-                <Bar dataKey="score" name="score" fill="hsl(var(--chart-3) / 0.55)" radius={[6, 6, 0, 0]} maxBarSize={18} />
+                <Bar isAnimationActive={false} dataKey="score" name="score" fill="hsl(var(--chart-3) / 0.55)" radius={[6, 6, 0, 0]} maxBarSize={18} />
                 <Line dataKey="mood" name="mood" type="monotone" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 2.5 }} connectNulls isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Отмечай состояние в сводке — здесь появится тренд настроения рядом с оценками куратора.</p>
+          <p className="text-sm text-muted-foreground">{t("junior.history.noTrend")}</p>
         )}
       </Panel>
 
@@ -169,15 +174,15 @@ export function JuniorHistory({
           <Input
             ref={searchRef}
             type="search"
-            aria-label="Поиск по сводкам"
-            placeholder="Поиск: тикер, ошибка, слово из ответа куратора…"
+            aria-label={t("searchNotes")}
+            placeholder={t("junior.history.searchPlaceholder")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }}
             className="pl-10 pr-10"
           />
           {q ? (
-            <button type="button" aria-label="Очистить поиск" onClick={() => setQ("")} className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+            <button type="button" aria-label={tc("actions.clearSearch")} onClick={() => setQ("")} className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
               <X className="h-4 w-4" />
             </button>
           ) : (
@@ -185,25 +190,25 @@ export function JuniorHistory({
           )}
         </div>
         <Segmented
-          ariaLabel="Фильтр истории"
+          ariaLabel={t("junior.history.filterAria")}
           size="sm"
           value={filter}
           onChange={setFilter}
           options={[
-            { value: "all", label: "Все", count: counts.all },
-            { value: "answered", label: "С ответом", count: counts.answered },
-            { value: "unread", label: "Непрочитанные", count: counts.unread },
-            { value: "waiting", label: "Ждут ответа", count: counts.waiting },
+            { value: "all", label: t("junior.history.filters.all"), count: counts.all },
+            { value: "answered", label: t("junior.history.filters.answered"), count: counts.answered },
+            { value: "unread", label: t("junior.history.filters.unread"), count: counts.unread },
+            { value: "waiting", label: t("junior.history.filters.waiting"), count: counts.waiting },
           ]}
         />
       </Toolbar>
 
       {rows.length === 0 ? (
         <Panel>
-          <EmptyState icon={Search} title="Ничего не найдено" description="Измени запрос или фильтр." />
+          <EmptyState icon={Search} title={tc("states.nothingFound")} description={t("junior.history.notFoundDescription")} />
         </Panel>
       ) : (
-        <ul className="flex flex-col gap-2" aria-label="Сводки">
+        <ul className="flex flex-col gap-2" aria-label={t("junior.history.listAria")}>
           {rows.map((n) => {
             const s = sectionsOf(n);
             const keys = filledKeys(s).filter((k) => k !== "free");
@@ -224,21 +229,21 @@ export function JuniorHistory({
                   </div>
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-medium">{fmtDayShort(n.note_date)}</span>
+                      <span className="text-sm font-medium">{fmtDate(n.note_date, "dayMonth")}</span>
                       <MoodPill mood={n.mood} />
                       {n.reviewed_at && (
                         <Pill tone={unread ? "accent" : "neutral"} dot={unread}>
-                          {unread ? "Новый разбор сводки" : "Разбор сводки"}
+                          {unread ? t("junior.newFeedback") : t("junior.feedbackTitle")}
                         </Pill>
                       )}
                       <ScoreStars score={n.curator_score} className="ml-auto" />
                     </div>
                     <p className="line-clamp-2 text-sm text-muted-foreground">
-                      <Highlight text={snippet(composeSections(s) || n.raw_text, needle)} q={needle} />
+                      <Highlight text={snippet(previewSections(s) || n.raw_text, needle)} q={needle} />
                     </p>
                     {needle && n.curator_feedback?.toLowerCase().includes(needle) && (
                       <p className="line-clamp-1 text-xs text-primary">
-                        Куратор: <Highlight text={snippet(n.curator_feedback, needle, 100)} q={needle} />
+                        {t("junior.history.curatorPrefix")} <Highlight text={snippet(n.curator_feedback, needle, 100)} q={needle} />
                       </p>
                     )}
                     {keys.length > 0 && (
@@ -270,7 +275,3 @@ export function JuniorHistory({
   );
 }
 
-function moodLabelByScore(v: number): string {
-  const labels: Record<number, string> = { 5: "Сосредоточен", 4: "Уверен", 3: "Нейтрально", 2: "Напряжён", 1: "Раздражён" };
-  return labels[v] ?? String(v);
-}

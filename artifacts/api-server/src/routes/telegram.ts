@@ -8,29 +8,32 @@ import {
   answerCallbackQuery,
   buildIdeaHtml,
   buildIdeaKeyboard,
-  buildTraderReplyKeyboard,
   buildMainMenuKeyboard,
   escHtml,
   type InlineButton,
   type InlineKeyboard,
 } from "../lib/telegramBot";
 import {
-  createNotification,
   notifyTraderTelegram,
   notifyPublicComment,
   applyIdeaReview,
   getSiteUrl,
 } from "../lib/notifyUtils";
 import crypto from "crypto";
+import { config } from "../config";
+import { AppError, notFound, unauthorized } from "../lib/http";
+import { localeOfUser, parseLang, type Lang } from "../i18n";
+import { telegramT } from "../i18n/ns";
+import { personNameFor } from "../lib/people/latinNames";
+import { notifyUser } from "../lib/notifyUtils";
+import { notifLinks } from "../lib/notificationCore";
 
 const router: IRouter = Router();
 
-export const TELEGRAM_WEBHOOK_SECRET =
-  (process.env["TELEGRAM_WEBHOOK_SECRET"] ?? "").trim() ||
-  (() => {
-    const jwt = (process.env["JWT_SECRET"] ?? "").trim();
-    return jwt ? crypto.createHash("sha256").update(`tg:${jwt}`).digest("hex").slice(0, 32) : "ws-lexx-tg-secret";
-  })();
+/** Webhook secret (config.ts: required on its own in production; derived from JWT_SECRET only in development). */
+export function telegramWebhookSecret(): string {
+  return config.telegramWebhookSecret || "ws-lexx-tg-secret";
+}
 
 // ─── LINKING API ─────────────────────────────────────────────────────────────
 
@@ -45,7 +48,7 @@ router.post("/telegram/link-token", asyncHandler(async (req, res): Promise<void>
     [token, trader, expiresAt],
   );
 
-  const botUsername = (process.env["TELEGRAM_BOT_USERNAME"] ?? "").trim() || "DailyDigest_WS_bot";
+  const botUsername = config.telegram.botUsername;
   const deepLink = `https://t.me/${botUsername}?start=${token}`;
   res.json({ token, deep_link: deepLink, expires_in: 600, bot_username: botUsername });
 }));
@@ -53,7 +56,7 @@ router.post("/telegram/link-token", asyncHandler(async (req, res): Promise<void>
 router.get("/telegram/status", asyncHandler(async (req, res): Promise<void> => {
   const requested = typeof req.query["trader"] === "string" ? req.query["trader"] : undefined;
   const viewer = req.authUser;
-  if (!viewer) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!viewer) throw unauthorized();
   // Only staff may look up another user's Telegram link status.
   const trader = requested && requested !== viewer.name && ["curator", "admin"].includes(viewer.role ?? "")
     ? requested
@@ -79,9 +82,8 @@ router.delete("/telegram/disconnect", asyncHandler(async (req, res): Promise<voi
 
 router.post("/telegram/webhook", asyncHandler(async (req, res): Promise<void> => {
   const secretHeader = req.headers["x-telegram-bot-api-secret-token"];
-  if (secretHeader !== TELEGRAM_WEBHOOK_SECRET) {
-    res.status(403).json({ error: "forbidden" });
-    return;
+  if (secretHeader !== telegramWebhookSecret()) {
+    throw new AppError("FORBIDDEN");
   }
   res.json({ ok: true });
   const update = req.body as TelegramUpdate;
@@ -92,7 +94,16 @@ router.post("/telegram/webhook", asyncHandler(async (req, res): Promise<void> =>
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-interface TgFrom { id: number; username?: string; first_name?: string }
+interface TgFrom { id: number; username?: string; first_name?: string; language_code?: string }
+
+/** Language of a chat: the linked member's users.locale, else the Telegram client language, else RU. */
+async function chatLang(chatId: string, from?: TgFrom): Promise<Lang> {
+  const { rows } = await pool.query<{ name: string }>(`SELECT name FROM users WHERE telegram_chat_id = $1`, [chatId]).catch(() => ({ rows: [] as { name: string }[] }));
+  if (rows[0]?.name) return localeOfUser(rows[0].name);
+  return parseLang(from?.language_code) ?? "ru";
+}
+const tg = (lang: Lang) => telegramT.tFor(lang);
+const idParams = (id: number, ticker: string) => ({ id, ticker: escHtml(ticker) });
 interface TelegramUpdate {
   update_id: number;
   message?: { message_id: number; from: TgFrom; chat: { id: number }; text?: string };
@@ -109,12 +120,14 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
 async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promise<void> {
   const chatId = String(msg.chat.id);
   const text = (msg.text ?? "").trim();
+  const chatL = await chatLang(chatId, msg.from);
+  const L = tg(chatL);
 
   // /start TOKEN — link flow
   if (text.startsWith("/start")) {
     const token = text.slice(6).trim().toUpperCase();
     if (!token) {
-      await sendMessage(chatId, "👋 Привет! Это бот WS_LEXX Trade Desk.\n\nЧтобы привязать аккаунт, нажми <b>Connect Telegram</b> в Settings на сайте.");
+      await sendMessage(chatId, L("start.hello"));
       return;
     }
     const { rows } = await pool.query(
@@ -122,7 +135,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       [token],
     );
     if (!rows[0]) {
-      await sendMessage(chatId, "❌ Ссылка недействительна или истекла. Сгенерируй новую на сайте в разделе <b>Settings → Telegram</b>.");
+      await sendMessage(chatId, L("start.badToken"));
       return;
     }
     const userName = (rows[0] as { user_name: string }).user_name;
@@ -131,7 +144,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       [chatId],
     );
     if ((existing[0] as { name: string } | undefined)?.name && (existing[0] as { name: string }).name !== userName) {
-      await sendMessage(chatId, `❌ Этот Telegram аккаунт уже привязан к <b>${(existing[0] as { name: string }).name}</b>. Сначала отвяжи его в Settings.`);
+      await sendMessage(chatId, L("start.linkedElsewhere", { name: escHtml(personNameFor((existing[0] as { name: string }).name, chatL)) }));
       return;
     }
     await pool.query(
@@ -139,7 +152,8 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       [chatId, userName],
     );
     await pool.query(`UPDATE telegram_link_tokens SET used = TRUE WHERE token = $1`, [token]);
-    await sendMessage(chatId, `✅ Telegram привязан к аккаунту <b>${userName}</b>!\n\nТеперь ты будешь получать уведомления о trade ideas и сможешь реагировать прямо здесь.`);
+    const linkedLang = await localeOfUser(userName);
+    await sendMessage(chatId, tg(linkedLang)("start.linked", { name: escHtml(personNameFor(userName, linkedLang)) }));
     logger.info({ userName, chatId }, "Telegram account linked");
     return;
   }
@@ -149,15 +163,15 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
     const { rows: uRows } = await pool.query(`SELECT name, role FROM users WHERE telegram_chat_id = $1`, [chatId]);
     const u = uRows[0] as { name: string; role: string } | undefined;
     if (!u) {
-      await sendMessage(chatId, "❌ Аккаунт не привязан. Перейди в Settings на сайте.");
+      await sendMessage(chatId, L("notLinked"));
       return;
     }
     if (!["curator", "admin"].includes(u.role)) {
-      await sendMessage(chatId, "⛔ Меню доступно только для кураторов и администраторов.");
+      await sendMessage(chatId, L("menuStaffOnly"));
       return;
     }
-    await sendMessage(chatId, "📊 <b>Идеи трейдеров</b>\n\nВыбери раздел:", {
-      reply_markup: { inline_keyboard: buildMainMenuKeyboard() },
+    await sendMessage(chatId, L("menuTitle"), {
+      reply_markup: { inline_keyboard: buildMainMenuKeyboard(await localeOfUser(u.name)) },
     });
     return;
   }
@@ -182,7 +196,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
     [ideaId],
   );
   const idea = ideaRows[0] as { id: number; ticker: string; trader: string | null; status: string } | undefined;
-  if (!idea) { await sendMessage(chatId, "❌ Идея не найдена."); return; }
+  if (!idea) { await sendMessage(chatId, L("ideaNotFound")); return; }
 
   try {
     if (action === "comment_pub") {
@@ -190,7 +204,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
         `INSERT INTO trade_idea_comments (idea_id, author_name, text, is_private, source) VALUES ($1, $2, $3, FALSE, 'telegram')`,
         [ideaId, sender.name, text],
       );
-      await sendMessage(chatId, `✅ Публичный комментарий к идее <b>#${ideaId} ${idea.ticker}</b> сохранён.`);
+      await sendMessage(chatId, L("done.commentPublic", idParams(ideaId, idea.ticker)));
       // Fan-out to creator + curator + risk manager + prior commenters
       notifyPublicComment({
         ideaId, ticker: idea.ticker, traderName: idea.trader,
@@ -202,21 +216,27 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
         [ideaId, sender.name, text],
       );
       if (idea.trader && idea.trader !== sender.name) {
-        await createNotification(idea.trader, "reply_private", ideaId,
-          `${sender.name} отправил личный ответ по идее ${idea.ticker}: "${text.slice(0, 100)}"`);
+        await notifyUser({
+          userName: idea.trader, type: "idea_comment", ideaId, actor: sender.name, source: "telegram",
+          params: { variant: "private", ticker: idea.ticker, actor: sender.name, ideaId, preview: text.slice(0, 100) },
+          link: notifLinks.idea(ideaId), entityType: "idea", entityId: ideaId,
+        });
       }
-      await sendMessage(chatId, `✅ Личный ответ по идее <b>#${ideaId} ${idea.ticker}</b> отправлен.`);
-      await notifyTraderTelegram(idea.trader,
-        `🔒 Личный ответ по идее <b>#${ideaId} ${idea.ticker}</b> от <b>${sender.name}</b>:\n\n<i>"${text.slice(0, 300)}"</i>`,
-        { ideaId });
+      await sendMessage(chatId, L("done.replyPrivate", idParams(ideaId, idea.ticker)));
+      if (idea.trader) {
+        const traderLang = await localeOfUser(idea.trader);
+        await notifyTraderTelegram(idea.trader,
+          tg(traderLang)("privateReply", { ...idParams(ideaId, idea.ticker), author: escHtml(personNameFor(sender.name, traderLang)), text: escHtml(text.slice(0, 300)) }),
+          { ideaId });
+      }
     } else if (action === "reject_reason") {
       const updated = await applyIdeaReview(ideaId, "rejected", text, sender.name);
-      if (!updated) { await sendMessage(chatId, "❌ Идея не найдена."); return; }
-      await sendMessage(chatId, `❌ Идея <b>#${ideaId} ${idea.ticker}</b> отклонена. Уведомление отправлено автору.`);
+      if (!updated) { await sendMessage(chatId, L("ideaNotFound")); return; }
+      await sendMessage(chatId, L("done.rejected", idParams(ideaId, idea.ticker)));
     } else if (action === "needs_work_reason") {
       const updated = await applyIdeaReview(ideaId, "needs_work", text, sender.name);
-      if (!updated) { await sendMessage(chatId, "❌ Идея не найдена."); return; }
-      await sendMessage(chatId, `🔄 Идея <b>#${ideaId} ${idea.ticker}</b> отправлена на доработку. Уведомление отправлено автору.`);
+      if (!updated) { await sendMessage(chatId, L("ideaNotFound")); return; }
+      await sendMessage(chatId, L("done.needsWork", idParams(ideaId, idea.ticker)));
     } else if (action === "trader_reply") {
       // Trader sends a private reply to curator/risk on their own idea
       await pool.query(
@@ -240,18 +260,22 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
         const { rows: rRows } = await pool.query(`SELECT telegram_chat_id FROM users WHERE name = $1`, [reviewerName]);
         const rChatId = rRows[0]?.telegram_chat_id as string | undefined;
         if (rChatId) {
+          const rLang = await localeOfUser(reviewerName);
           await sendMessage(rChatId,
-            `📩 Ответ трейдера <b>${sender.name}</b> по идее <b>#${ideaId} ${idea.ticker}</b>:\n\n<i>"${text.slice(0, 300)}"</i>`,
-            { reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId) } });
+            tg(rLang)("traderReplyToStaff", { ...idParams(ideaId, idea.ticker), trader: escHtml(personNameFor(sender.name, rLang)), text: escHtml(text.slice(0, 300)) }),
+            { reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId, rLang) } });
         }
-        await createNotification(reviewerName, "reply_private", ideaId,
-          `${sender.name} ответил по идее ${idea.ticker}: "${text.slice(0, 100)}"`);
+        await notifyUser({
+          userName: reviewerName, type: "idea_comment", ideaId, actor: sender.name, source: "telegram",
+          params: { variant: "traderReply", ticker: idea.ticker, actor: sender.name, ideaId, preview: text.slice(0, 100) },
+          link: notifLinks.idea(ideaId), entityType: "idea", entityId: ideaId,
+        });
       }
-      await sendMessage(chatId, `✅ Ответ отправлен куратору/риску по идее <b>#${ideaId} ${idea.ticker}</b>.`);
+      await sendMessage(chatId, L("done.traderReply", idParams(ideaId, idea.ticker)));
     }
   } catch (e: any) {
     logger.warn({ error: e.message, action, ideaId, sender: sender.name }, "handleMessage: action processing failed");
-    await sendMessage(chatId, `❌ Произошла ошибка при обработке действия. Попробуй ещё раз или обратись к администратору.\n<i>${String(e.message ?? "").slice(0, 200)}</i>`).catch(() => {});
+    await sendMessage(chatId, L("actionFailed", { error: escHtml(String(e.message ?? "").slice(0, 200)) })).catch(() => {});
   }
 }
 
@@ -259,13 +283,15 @@ async function handleCallbackQuery(cq: NonNullable<TelegramUpdate["callback_quer
   const chatId = String(cq.from.id);
   const data = cq.data ?? "";
   const callbackId = cq.id;
+  const lang = await chatLang(chatId, cq.from);
+  const L = tg(lang);
 
   logger.info({ chatId, data }, "Telegram callback received");
 
   // ── Menu navigation (non-idea callbacks) ──────────────────────────────────
   if (data.startsWith("menu:")) {
     await answerCallbackQuery(callbackId);
-    await handleMenuCallback(chatId, data, cq.message).catch((e: Error) => {
+    await handleMenuCallback(chatId, data, cq.message, lang).catch((e: Error) => {
       logger.warn({ chatId, data, error: e.message }, "handleMenuCallback error");
     });
     return;
@@ -276,26 +302,17 @@ async function handleCallbackQuery(cq: NonNullable<TelegramUpdate["callback_quer
   if (colonIdx === -1) { await answerCallbackQuery(callbackId); return; }
   const action = data.slice(0, colonIdx);
   const ideaId = Number(data.slice(colonIdx + 1));
-  if (isNaN(ideaId)) { await answerCallbackQuery(callbackId, "Неверный формат"); return; }
+  if (isNaN(ideaId)) { await answerCallbackQuery(callbackId, L("badFormat")); return; }
 
   // Answer the callback IMMEDIATELY so the button never freezes,
   // regardless of how long the DB work takes.
-  const immediateAck: Record<string, string> = {
-    approve: "✅ Одобряю...",
-    reject: "⌨️ Напиши причину",
-    needs_work: "⌨️ Что доработать?",
-    comment_pub: "⌨️ Напиши комментарий",
-    reply_priv: "⌨️ Напиши личный ответ",
-    trader_reply: "⌨️ Напиши ответ",
-    open_idea: "",
-  };
-  await answerCallbackQuery(callbackId, immediateAck[action] ?? "");
+  await answerCallbackQuery(callbackId, telegramT.tryFor(lang, `ack.${action}`) ?? "");
 
   // Now do all DB work
   const { rows: senderRows } = await pool.query(`SELECT name, role FROM users WHERE telegram_chat_id = $1`, [chatId]);
   const sender = senderRows[0] as { name: string; role: string } | undefined;
   if (!sender) {
-    await sendMessage(chatId, "❌ Аккаунт не привязан. Перейди в Settings на сайте.");
+    await sendMessage(chatId, L("notLinked"));
     return;
   }
 
@@ -304,54 +321,54 @@ async function handleCallbackQuery(cq: NonNullable<TelegramUpdate["callback_quer
     [ideaId],
   );
   const idea = ideaRows[0] as { id: number; ticker: string; trader: string | null; status: string } | undefined;
-  if (!idea) { await sendMessage(chatId, "❌ Идея не найдена."); return; }
+  if (!idea) { await sendMessage(chatId, L("ideaNotFound")); return; }
 
   const isCuratorOrAdmin = ["curator", "admin"].includes(sender.role);
 
   if (action === "open_idea") {
     await sendMessage(chatId,
-      buildIdeaHtml(idea as Parameters<typeof buildIdeaHtml>[0], getSiteUrl()),
-      { reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId) } });
+      buildIdeaHtml(idea as Parameters<typeof buildIdeaHtml>[0], getSiteUrl(), { lang }),
+      { reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId, lang) } });
     return;
   }
 
   if (action === "approve") {
-    if (!isCuratorOrAdmin) { await sendMessage(chatId, "❌ Только куратор/администратор может одобрять идеи."); return; }
+    if (!isCuratorOrAdmin) { await sendMessage(chatId, L("staffOnlyApprove")); return; }
     await applyIdeaReview(ideaId, "approved", null, sender.name);
-    await sendMessage(chatId, `✅ Идея <b>#${ideaId} ${idea.ticker}</b> одобрена. Уведомление отправлено автору.`);
+    await sendMessage(chatId, L("done.approved", idParams(ideaId, idea.ticker)));
     logger.info({ ideaId, reviewer: sender.name }, "Idea approved via Telegram");
     return;
   }
 
   if (action === "reject") {
-    if (!isCuratorOrAdmin) { await sendMessage(chatId, "❌ Только куратор/администратор может отклонять идеи."); return; }
+    if (!isCuratorOrAdmin) { await sendMessage(chatId, L("staffOnlyReject")); return; }
     await setPendingAction(chatId, "reject_reason", ideaId);
-    await sendMessage(chatId, `❌ Укажи причину отклонения идеи <b>#${ideaId} ${idea.ticker}</b>:`);
+    await sendMessage(chatId, L("prompt.reject", idParams(ideaId, idea.ticker)));
     return;
   }
 
   if (action === "needs_work") {
-    if (!isCuratorOrAdmin) { await sendMessage(chatId, "❌ Только куратор/администратор."); return; }
+    if (!isCuratorOrAdmin) { await sendMessage(chatId, L("staffOnly")); return; }
     await setPendingAction(chatId, "needs_work_reason", ideaId);
-    await sendMessage(chatId, `🔄 Что нужно доработать в идее <b>#${ideaId} ${idea.ticker}</b>? Напиши конкретно:`);
+    await sendMessage(chatId, L("prompt.needsWork", idParams(ideaId, idea.ticker)));
     return;
   }
 
   if (action === "comment_pub") {
     await setPendingAction(chatId, "comment_pub", ideaId);
-    await sendMessage(chatId, `💬 Напиши публичный комментарий к идее <b>#${ideaId} ${idea.ticker}</b>.\nОн будет виден всем на сайте:`);
+    await sendMessage(chatId, L("prompt.commentPublic", idParams(ideaId, idea.ticker)));
     return;
   }
 
   if (action === "reply_priv") {
     await setPendingAction(chatId, "reply_priv", ideaId);
-    await sendMessage(chatId, `🔒 Личный ответ автору идеи <b>#${ideaId} ${idea.ticker}</b>.\nВиден только автору, тебе и администраторам:`);
+    await sendMessage(chatId, L("prompt.replyPrivate", idParams(ideaId, idea.ticker)));
     return;
   }
 
   if (action === "trader_reply") {
     await setPendingAction(chatId, "trader_reply", ideaId);
-    await sendMessage(chatId, `💬 Твой ответ куратору/риску по идее <b>#${ideaId} ${idea.ticker}</b>.\nНапиши — это будет приватный комментарий:`);
+    await sendMessage(chatId, L("prompt.traderReply", idParams(ideaId, idea.ticker)));
     return;
   }
 }
@@ -397,12 +414,14 @@ async function handleMenuCallback(
   chatId: string,
   data: string,
   message: NonNullable<TelegramUpdate["callback_query"]>["message"],
+  lang: Lang = "ru",
 ): Promise<void> {
+  const L = tg(lang);
   const { rows: senderRows } = await pool.query(`SELECT name, role FROM users WHERE telegram_chat_id = $1`, [chatId]);
   const sender = senderRows[0] as { name: string; role: string } | undefined;
-  if (!sender) { await sendMessage(chatId, "❌ Аккаунт не привязан. Перейди в Settings на сайте."); return; }
+  if (!sender) { await sendMessage(chatId, L("notLinked")); return; }
   if (!["curator", "admin"].includes(sender.role)) {
-    await sendMessage(chatId, "⛔ Меню доступно только для кураторов и администраторов."); return;
+    await sendMessage(chatId, L("menuStaffOnly")); return;
   }
 
   // Render into the existing message (edit) or send new if unavailable
@@ -421,7 +440,7 @@ async function handleMenuCallback(
 
   // ── Main menu ──────────────────────────────────────────────────────────────
   if (sub === "main") {
-    await render("📊 <b>Идеи трейдеров</b>\n\nВыбери раздел:", buildMainMenuKeyboard());
+    await render(L("menuTitle"), buildMainMenuKeyboard(lang));
     return;
   }
 
@@ -431,22 +450,22 @@ async function handleMenuCallback(
     const { rows } = await pool.query<IdeaRow>(
       isToday
         ? `SELECT id, ticker, side, status, trader, published_at FROM trade_ideas
-           WHERE published_at::date = CURRENT_DATE AND status != 'draft' AND deleted_at IS NULL
+           WHERE (published_at AT TIME ZONE 'America/New_York')::date = (now() AT TIME ZONE 'America/New_York')::date AND status != 'draft' AND deleted_at IS NULL
            ORDER BY published_at DESC LIMIT 15`
         : `SELECT id, ticker, side, status, trader, published_at FROM trade_ideas
            WHERE status != 'draft' AND deleted_at IS NULL
            ORDER BY published_at DESC NULLS LAST LIMIT 10`,
     );
 
-    const header = isToday ? "📅 <b>Идеи сегодня</b>" : "📋 <b>Последние 10 идей</b>";
+    const header = isToday ? L("menu.today") : L("menu.recent");
 
     let body: string;
     if (rows.length === 0) {
-      body = isToday ? "\n\nСегодня идей нет." : "\n\nИдей нет.";
+      body = `\n\n${isToday ? L("menu.noneToday") : L("menu.none")}`;
     } else {
       body = "\n\n" + rows.map((r) => {
         const side = r.side ? ` ${escHtml(r.side)}` : "";
-        const trader = r.trader ? ` · <b>${escHtml(r.trader)}</b>` : "";
+        const trader = r.trader ? ` · <b>${escHtml(personNameFor(r.trader, lang))}</b>` : "";
         return `${statusEmoji(r.status)} <code>#${r.id}</code> ${escHtml(r.ticker)}${side}${trader}`;
       }).join("\n");
     }
@@ -456,7 +475,7 @@ async function handleMenuCallback(
       3,
     );
 
-    await render(header + body, [...ideaBtns, [{ text: "🔙 Меню", callback_data: "menu:main" }]]);
+    await render(header + body, [...ideaBtns, [{ text: L("button.menu"), callback_data: "menu:main" }]]);
     return;
   }
 
@@ -468,12 +487,12 @@ async function handleMenuCallback(
        ORDER BY trader`,
     );
     const btns = chunkButtons(
-      rows.map((r) => ({ text: r.name, callback_data: `menu:trader:${r.name}` })),
+      rows.map((r) => ({ text: personNameFor(r.name, lang), callback_data: `menu:trader:${r.name}` })),
       2,
     );
     await render(
-      "👤 <b>По трейдеру</b>\n\nВыбери:",
-      [...btns, [{ text: "🔙 Меню", callback_data: "menu:main" }]],
+      L("menu.byTrader"),
+      [...btns, [{ text: L("button.menu"), callback_data: "menu:main" }]],
     );
     return;
   }
@@ -486,7 +505,7 @@ async function handleMenuCallback(
     const [{ rows: todayRows }, { rows: recentRows }] = await Promise.all([
       pool.query<IdeaRow>(
         `SELECT id, ticker, side, status, published_at FROM trade_ideas
-         WHERE trader = $1 AND published_at::date = CURRENT_DATE AND status != 'draft' AND deleted_at IS NULL
+         WHERE trader = $1 AND (published_at AT TIME ZONE 'America/New_York')::date = (now() AT TIME ZONE 'America/New_York')::date AND status != 'draft' AND deleted_at IS NULL
          ORDER BY published_at DESC LIMIT 5`,
         [traderName],
       ),
@@ -503,16 +522,16 @@ async function handleMenuCallback(
       return `  ${statusEmoji(r.status)} <code>#${r.id}</code> ${escHtml(r.ticker)}${side}`;
     };
 
-    let body = `👤 <b>${escHtml(traderName)}</b>\n`;
+    let body = `👤 <b>${escHtml(personNameFor(traderName, lang))}</b>\n`;
     if (todayRows.length > 0) {
-      body += `\n<b>Сегодня (${todayRows.length}):</b>\n${todayRows.map(fmtRow).join("\n")}`;
+      body += `\n${L("menu.todayCount", { count: todayRows.length })}\n${todayRows.map(fmtRow).join("\n")}`;
     } else {
-      body += "\n<b>Сегодня:</b> нет идей";
+      body += `\n${L("menu.todayNone")}`;
     }
     const todayIds = new Set(todayRows.map((r) => r.id));
     const older = recentRows.filter((r) => !todayIds.has(r.id));
     if (older.length > 0) {
-      body += `\n\n<b>Ранее:</b>\n${older.map(fmtRow).join("\n")}`;
+      body += `\n\n${L("menu.earlier")}\n${older.map(fmtRow).join("\n")}`;
     }
 
     const allShown = [...todayRows, ...older].slice(0, 9);
@@ -524,8 +543,8 @@ async function handleMenuCallback(
     await render(body, [
       ...ideaBtns,
       [
-        { text: "🔙 Трейдеры", callback_data: "menu:traders" },
-        { text: "🔙 Меню", callback_data: "menu:main" },
+        { text: L("button.traders"), callback_data: "menu:traders" },
+        { text: L("button.menu"), callback_data: "menu:main" },
       ],
     ]);
     return;
@@ -545,11 +564,11 @@ async function handleMenuCallback(
       [ideaId],
     );
     const idea = rows[0] as Parameters<typeof buildIdeaHtml>[0] | undefined;
-    if (!idea) { await sendMessage(chatId, "❌ Идея не найдена."); return; }
+    if (!idea) { await sendMessage(chatId, L("ideaNotFound")); return; }
     // Send as a new message so the menu message stays intact
-    await sendMessage(chatId, buildIdeaHtml(idea, getSiteUrl()), {
+    await sendMessage(chatId, buildIdeaHtml(idea, getSiteUrl(), { lang }), {
       disable_web_page_preview: !idea.screenshotUrl,
-      reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId) },
+      reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId, lang) },
     });
     return;
   }
@@ -560,14 +579,14 @@ async function handleMenuCallback(
 router.delete("/telegram/admin/disconnect/:name", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { name } = req.params;
   const { rowCount } = await pool.query(
     `UPDATE users SET telegram_chat_id = NULL, telegram_linked_at = NULL WHERE name = $1`,
     [name],
   );
-  if (!rowCount) { res.status(404).json({ error: "User not found" }); return; }
+  if (!rowCount) throw notFound("USER_NOT_FOUND");
   logger.info({ admin: viewer.name, target: name }, "Admin force-disconnected Telegram");
   res.json({ ok: true, updated: rowCount ?? 0 });
 }));
@@ -575,11 +594,11 @@ router.delete("/telegram/admin/disconnect/:name", asyncHandler(async (req, res):
 router.post("/telegram/broadcast", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { message } = req.body as { message?: string };
   if (!message || typeof message !== "string" || !message.trim()) {
-    res.status(400).json({ error: "message required" }); return;
+    throw new AppError("VALIDATION");
   }
   const text = message.trim().slice(0, 4000);
   const { rows } = await pool.query<{ name: string; telegram_chat_id: string }>(
@@ -605,7 +624,7 @@ router.post("/telegram/broadcast", asyncHandler(async (req, res): Promise<void> 
 router.get("/telegram/assignments", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { rows } = await pool.query(
     `SELECT name, role, active, telegram_chat_id, telegram_linked_at, assigned_curator, assigned_risk_manager, assigned_mentor
@@ -617,7 +636,7 @@ router.get("/telegram/assignments", asyncHandler(async (req, res): Promise<void>
 router.patch("/telegram/assignments/:name", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { name } = req.params;
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -629,13 +648,13 @@ router.patch("/telegram/assignments/:name", asyncHandler(async (req, res): Promi
       `SELECT name FROM users WHERE name = ANY($1::text[]) AND role IN ('curator', 'admin') AND active = true`,
       [named],
     );
-    if (staff.length !== named.length) { res.status(400).json({ error: "Assignee must be an active curator/admin" }); return; }
+    if (staff.length !== named.length) throw new AppError("ASSIGNEE_NOT_STAFF");
   }
   const { rowCount } = await pool.query(
     `UPDATE users SET assigned_curator = $1, assigned_risk_manager = $2, assigned_mentor = $3 WHERE name = $4`,
     [...assigned, name],
   );
-  if (!rowCount) { res.status(404).json({ error: "User not found" }); return; }
+  if (!rowCount) throw notFound("USER_NOT_FOUND");
   res.json({ ok: true });
 }));
 

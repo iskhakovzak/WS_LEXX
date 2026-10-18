@@ -13,6 +13,7 @@
 import { closeDate, feesOf, grossPnl, isOpen, netPnl, resultOf, signedR, type TradeLike } from "@/lib/trade-math";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { dayHref } from "@/lib/period-links";
+import { fmtDate, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
 
 export type EquityUnit = "net" | "gross" | "r";
 export type EquityAgg = "day" | "week";
@@ -256,45 +257,35 @@ export function dayReportHref(date: string, trader?: string | null): string {
   return dayHref(date, trader);
 }
 
-// ─── Formatting (Russian) ───
+// ─── Formatting ───
 
-const WEEKDAY = new Intl.DateTimeFormat("ru-RU", { weekday: "long", timeZone: "UTC" });
-const DAY_MONTH = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" });
-const DAY_MONTH_SHORT = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" });
-
-const utc = (ymd: string) => new Date(`${ymd}T12:00:00Z`);
-
-/** «пятница» */
+/** «пятница» (ymd is a calendar date, read as such). */
 export function weekdayRu(ymd: string): string {
-  return WEEKDAY.format(utc(ymd));
+  return fmtWeekday(ymd, "long");
 }
 
-/** «15 октября 2026» (year only when it differs from the current one). */
+/** «15 октября» / «15 октября 2026 г.» (year only when it differs from the current one). */
 export function dateRu(ymd: string, withYear = ymd.slice(0, 4) !== nyDate().slice(0, 4)): string {
-  return `${DAY_MONTH.format(utc(ymd))}${withYear ? ` ${ymd.slice(0, 4)}` : ""}`;
+  return fmtDate(ymd, withYear ? "long" : "dayMonthLong");
 }
 
 /** «13–17 окт.» / «29 сент. – 3 окт.» */
 export function rangeRu(from: string, to: string): string {
-  if (from === to) return DAY_MONTH_SHORT.format(utc(from));
-  if (from.slice(0, 7) === to.slice(0, 7)) return `${Number(from.slice(8))}–${DAY_MONTH_SHORT.format(utc(to))}`;
-  return `${DAY_MONTH_SHORT.format(utc(from))} – ${DAY_MONTH_SHORT.format(utc(to))}`;
+  if (from === to) return fmtDate(from, "dayMonth");
+  if (from.slice(0, 7) === to.slice(0, 7)) return `${Number(from.slice(8))}–${fmtDate(to, "dayMonth")}`;
+  return `${fmtDate(from, "dayMonth")} – ${fmtDate(to, "dayMonth")}`;
 }
 
 export function fmtValue(v: number | null | undefined, unit: EquityUnit, signed = true): string {
   if (v == null || !Number.isFinite(v)) return "—";
-  const sign = v > 0 ? (signed ? "+" : "") : v < 0 ? "−" : "";
-  const a = Math.abs(v);
-  if (unit === "r") return `${sign}${a.toFixed(a >= 100 ? 0 : 2)}R`;
-  return `${sign}$${a.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (unit === "r") return fmtR(v, { decimals: Math.abs(v) >= 100 ? 0 : 2, signed });
+  return fmtUsd(v, { signed });
 }
 
 /** Compact axis label: +$1.2K / −$85 / +3.5R. */
 export function fmtAxis(v: number, unit: EquityUnit): string {
   if (Math.abs(v) < 1e-9) return unit === "r" ? "0R" : "$0";
-  const sign = v < 0 ? "−" : "";
   const a = Math.abs(v);
-  if (unit === "r") return `${sign}${a.toFixed(a >= 10 ? 0 : 1)}R`;
-  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}K`;
-  return `${sign}$${a.toFixed(a >= 100 ? 0 : a >= 10 ? 0 : 2)}`;
+  if (unit === "r") return fmtR(v, { decimals: a >= 10 ? 0 : 1, signed: false });
+  return fmtUsd(v, { compact: true, decimals: a >= 10 ? 0 : 2 });
 }

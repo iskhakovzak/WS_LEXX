@@ -10,6 +10,8 @@
  * Everything here is deterministic and synchronous so it can be unit-tested with synthetic arrays
  * (no DB, no Date.now(), no Math.random()).
  */
+import { whatifT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -362,39 +364,40 @@ export function recomputeFees(t: SimTrade, plan: Extract<Rule, { type: "commissi
   return round2(commission + ecn + regulatory);
 }
 
-/* ───────────────────────── Rule descriptions (Russian) ───────────────────────── */
+/* ───────────────────────── Rule descriptions (whatif namespace, reader's language) ───────────────────────── */
 
-export function describeRule(r: Rule): string {
+export function describeRule(r: Rule, lang: Lang = "ru"): string {
+  const t = whatifT.tFor(lang);
   switch (r.type) {
-    case "dailyLossLimit": return `Дневной лимит убытка −$${r.usd}`;
-    case "maxTradesPerDay": return `Не больше ${r.n} сделок в день`;
-    case "stopAfterLosses": return `Стоп после ${r.n} убытков подряд за день`;
+    case "dailyLossLimit": return t("rule.dailyLossLimit", { usd: r.usd });
+    case "maxTradesPerDay": return t("rule.maxTradesPerDay", { n: r.n });
+    case "stopAfterLosses": return t("rule.stopAfterLosses", { n: r.n });
     case "timeWindow": {
-      if (r.from && r.to) return `Только ${r.from}–${r.to} ET`;
-      if (r.from) return `Не раньше ${r.from} ET`;
-      if (r.to) return `Не позже ${r.to} ET`;
-      return "Окно времени";
+      if (r.from && r.to) return t("rule.windowBoth", { from: r.from, to: r.to });
+      if (r.from) return t("rule.windowFrom", { from: r.from });
+      if (r.to) return t("rule.windowTo", { to: r.to });
+      return t("rule.window");
     }
     case "priceRange": {
-      if (r.min != null && r.max != null) return `Цена $${r.min}–$${r.max}`;
-      if (r.min != null) return `Без акций дешевле $${r.min}`;
-      if (r.max != null) return `Без акций дороже $${r.max}`;
-      return "Диапазон цены";
+      if (r.min != null && r.max != null) return t("rule.priceBoth", { min: r.min, max: r.max });
+      if (r.min != null) return t("rule.priceMin", { min: r.min });
+      if (r.max != null) return t("rule.priceMax", { max: r.max });
+      return t("rule.price");
     }
-    case "minHold": return `Без скальпов короче ${r.seconds < 120 ? `${r.seconds} с` : `${Math.round(r.seconds / 60)} мин`}`;
-    case "excludeTickers": return `Без ${r.tickers.join(", ")}`;
-    case "excludeSide": return r.side === "long" ? "Только шорт" : "Только лонг";
-    case "commissionPlan": return `Тариф $${r.perShare}/акц., мин. $${r.minPerOrder}/ордер, ECN $${r.ecnPerShare}/акц.`;
-    case "capLoss": return `Убыток не хуже −$${r.usd} (оценка)`;
+    case "minHold": return r.seconds < 120 ? t("rule.minHoldSec", { n: r.seconds }) : t("rule.minHoldMin", { n: Math.round(r.seconds / 60) });
+    case "excludeTickers": return t("rule.excludeTickers", { tickers: r.tickers.join(", ") });
+    case "excludeSide": return r.side === "long" ? t("rule.onlyShort") : t("rule.onlyLong");
+    case "commissionPlan": return t("rule.commissionPlan", { perShare: r.perShare, minPerOrder: r.minPerOrder, ecn: r.ecnPerShare });
+    case "capLoss": return t("rule.capLoss", { usd: r.usd });
     case "sizeRange": {
-      if (r.min != null && r.max != null) return `Размер ${r.min}–${r.max} акц.`;
-      if (r.min != null) return `Без позиций меньше ${r.min} акц.`;
-      if (r.max != null) return `Без позиций больше ${r.max} акц.`;
-      return "Размер позиции";
+      if (r.min != null && r.max != null) return t("rule.sizeBoth", { min: r.min, max: r.max });
+      if (r.min != null) return t("rule.sizeMin", { min: r.min });
+      if (r.max != null) return t("rule.sizeMax", { max: r.max });
+      return t("rule.size");
     }
-    case "afterLoss": return `Пауза ${r.minutes} мин после убыточной сделки`;
-    case "excludeSetups": return `Без сетапов: ${r.setups.join(", ")}`;
-    case "minGrade": return r.grade === "A+" ? "Только сделки A+" : `Только сделки ${r.grade} и лучше`;
+    case "afterLoss": return t("rule.afterLoss", { n: r.minutes });
+    case "excludeSetups": return t("rule.excludeSetups", { setups: r.setups.join(", ") });
+    case "minGrade": return r.grade === "A+" ? t("rule.onlyAPlus") : t("rule.minGrade", { grade: r.grade });
   }
 }
 
@@ -406,7 +409,9 @@ type Modified = SimTrade & { _before?: number };
  * Applies the rules in three passes: (1) static filters per trade, (2) money modifications (fees / capped loss),
  * (3) sequential day rules in chronological order using the modified net. Returns the scenario next to the baseline.
  */
-export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?: boolean; iters?: number; seed?: number } = {}): ScenarioResult {
+export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?: boolean; iters?: number; seed?: number; lang?: Lang } = {}): ScenarioResult {
+  const t = whatifT.tFor(opts.lang ?? "ru");
+  const T = t;
   const base = sortSim(input).filter((t) => t.gross != null);
   const baseline = computeMetrics(base);
   const baselineDaily = dailyResults(base);
@@ -416,7 +421,7 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
   const skipped: SkippedRule[] = [];
   const seen = new Set<RuleType>();
   for (const r of rules) {
-    if (seen.has(r.type)) skipped.push({ rule: r.type, reason: "правило указано дважды — учтено первое" });
+    if (seen.has(r.type)) skipped.push({ rule: r.type, reason: t("skip.duplicate") });
     seen.add(r.type);
   }
   const uniq = rules.filter((r, i) => rules.findIndex((x) => x.type === r.type) === i);
@@ -431,50 +436,51 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
   const tw = get("timeWindow");
   const twFrom = tw ? parseHm(tw.from) : null;
   const twTo = tw ? parseHm(tw.to) : null;
-  if (tw && twFrom == null && twTo == null) skipped.push({ rule: "timeWindow", reason: "границы окна не заданы" });
-  if (tw && (twFrom != null || twTo != null) && !base.some((t) => t.entryMin != null)) skipped.push({ rule: "timeWindow", reason: "в сделках нет времени входа" });
+  if (tw && twFrom == null && twTo == null) skipped.push({ rule: "timeWindow", reason: t("skip.noWindow") });
+  if (tw && (twFrom != null || twTo != null) && !base.some((t) => t.entryMin != null)) skipped.push({ rule: "timeWindow", reason: t("skip.noEntryTime") });
   const pr = get("priceRange");
-  if (pr && pr.min == null && pr.max == null) skipped.push({ rule: "priceRange", reason: "границы цены не заданы" });
+  if (pr && pr.min == null && pr.max == null) skipped.push({ rule: "priceRange", reason: t("skip.noPrice") });
   const mh = get("minHold");
-  if (mh && !base.some((t) => t.holdSec != null)) skipped.push({ rule: "minHold", reason: "в сделках нет времени удержания" });
+  if (mh && !base.some((t) => t.holdSec != null)) skipped.push({ rule: "minHold", reason: t("skip.noHold") });
   const et = get("excludeTickers");
   const etSet = new Set((et?.tickers ?? []).map((s) => s.trim().toUpperCase()).filter(Boolean));
-  if (et && !etSet.size) skipped.push({ rule: "excludeTickers", reason: "тикеры не заданы" });
+  if (et && !etSet.size) skipped.push({ rule: "excludeTickers", reason: t("skip.noTickers") });
   const es = get("excludeSide");
   const sr = get("sizeRange");
-  if (sr && sr.min == null && sr.max == null) skipped.push({ rule: "sizeRange", reason: "границы размера не заданы" });
-  if (sr && (sr.min != null || sr.max != null) && !base.some((t) => t.qty != null)) skipped.push({ rule: "sizeRange", reason: "в сделках нет количества акций" });
+  if (sr && sr.min == null && sr.max == null) skipped.push({ rule: "sizeRange", reason: t("skip.noSize") });
+  if (sr && (sr.min != null || sr.max != null) && !base.some((t) => t.qty != null)) skipped.push({ rule: "sizeRange", reason: t("skip.noQty") });
   const xs = get("excludeSetups");
   const xsSet = new Set((xs?.setups ?? []).map((v) => v.trim().toLowerCase()).filter(Boolean));
-  if (xs && !xsSet.size) skipped.push({ rule: "excludeSetups", reason: "сетапы не заданы" });
-  else if (xs && !base.some((t) => t.setup)) skipped.push({ rule: "excludeSetups", reason: "в сделках не размечены сетапы" });
+  if (xs && !xsSet.size) skipped.push({ rule: "excludeSetups", reason: t("skip.noSetups") });
+  else if (xs && !base.some((t) => t.setup)) skipped.push({ rule: "excludeSetups", reason: t("skip.noSetupLabels") });
   const mg = get("minGrade");
   const mgRank = mg ? gradeRank(mg.grade) : null;
   const mgActive = mg != null && mgRank != null && base.some((t) => gradeRank(t.grade) != null);
-  if (mg && mgRank == null) skipped.push({ rule: "minGrade", reason: "неизвестная оценка" });
-  else if (mg && !mgActive) skipped.push({ rule: "minGrade", reason: "в сделках нет оценок A+…C" });
+  if (mg && mgRank == null) skipped.push({ rule: "minGrade", reason: t("skip.unknownGrade") });
+  else if (mg && !mgActive) skipped.push({ rule: "minGrade", reason: t("skip.noGrades") });
 
-  for (const t of base) {
+  for (const tr of base) {
+    const t = tr;
     if (tw && t.entryMin != null) {
-      if (twFrom != null && t.entryMin < twFrom) { exclude(t, "timeWindow", `вход ${fmtHm(t.entryMin)} раньше ${fmtHm(twFrom)}`); continue; }
-      if (twTo != null && t.entryMin >= twTo) { exclude(t, "timeWindow", `вход ${fmtHm(t.entryMin)} позже ${fmtHm(twTo)}`); continue; }
+      if (twFrom != null && t.entryMin < twFrom) { exclude(t, "timeWindow", T("excl.entryBefore", { entry: fmtHm(t.entryMin), from: fmtHm(twFrom) })); continue; }
+      if (twTo != null && t.entryMin >= twTo) { exclude(t, "timeWindow", T("excl.entryAfter", { entry: fmtHm(t.entryMin), to: fmtHm(twTo) })); continue; }
     }
     if (pr && t.entry != null) {
-      if (pr.min != null && t.entry < pr.min) { exclude(t, "priceRange", `цена $${t.entry} < $${pr.min}`); continue; }
-      if (pr.max != null && t.entry > pr.max) { exclude(t, "priceRange", `цена $${t.entry} > $${pr.max}`); continue; }
+      if (pr.min != null && t.entry < pr.min) { exclude(t, "priceRange", T("excl.priceBelow", { price: t.entry, min: pr.min })); continue; }
+      if (pr.max != null && t.entry > pr.max) { exclude(t, "priceRange", T("excl.priceAbove", { price: t.entry, max: pr.max })); continue; }
     }
-    if (mh && t.holdSec != null && t.holdSec < mh.seconds) { exclude(t, "minHold", `удержание ${Math.round(t.holdSec)} с`); continue; }
-    if (etSet.size && etSet.has(t.ticker.toUpperCase())) { exclude(t, "excludeTickers", `тикер ${t.ticker}`); continue; }
-    if (es && t.side === es.side) { exclude(t, "excludeSide", es.side === "long" ? "лонг" : "шорт"); continue; }
+    if (mh && t.holdSec != null && t.holdSec < mh.seconds) { exclude(t, "minHold", T("excl.hold", { n: Math.round(t.holdSec) })); continue; }
+    if (etSet.size && etSet.has(t.ticker.toUpperCase())) { exclude(t, "excludeTickers", T("excl.ticker", { ticker: t.ticker })); continue; }
+    if (es && t.side === es.side) { exclude(t, "excludeSide", es.side === "long" ? T("excl.long") : T("excl.short")); continue; }
     if (sr && t.qty != null) {
-      if (sr.min != null && t.qty < sr.min) { exclude(t, "sizeRange", `${t.qty} акц. < ${sr.min}`); continue; }
-      if (sr.max != null && t.qty > sr.max) { exclude(t, "sizeRange", `${t.qty} акц. > ${sr.max}`); continue; }
+      if (sr.min != null && t.qty < sr.min) { exclude(t, "sizeRange", T("excl.sizeBelow", { qty: t.qty, min: sr.min })); continue; }
+      if (sr.max != null && t.qty > sr.max) { exclude(t, "sizeRange", T("excl.sizeAbove", { qty: t.qty, max: sr.max })); continue; }
     }
-    if (xsSet.size && t.setup && xsSet.has(t.setup.trim().toLowerCase())) { exclude(t, "excludeSetups", `сетап ${t.setup}`); continue; }
+    if (xsSet.size && t.setup && xsSet.has(t.setup.trim().toLowerCase())) { exclude(t, "excludeSetups", T("excl.setup", { setup: t.setup })); continue; }
     if (mgActive) {
       const g = gradeRank(t.grade);
-      if (g == null) { exclude(t, "minGrade", "без оценки"); continue; }
-      if (g > (mgRank as number)) { exclude(t, "minGrade", `оценка ${t.grade}`); continue; }
+      if (g == null) { exclude(t, "minGrade", T("excl.noGrade")); continue; }
+      if (g > (mgRank as number)) { exclude(t, "minGrade", T("excl.grade", { grade: String(t.grade) })); continue; }
     }
     kept.push({ ...t });
   }
@@ -488,11 +494,11 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
       if (f == null) return t;
       applied++;
       if (Math.abs(f - Math.abs(t.fees)) >= 0.005) {
-        changed.push({ id: t.id, day: t.day, ticker: t.ticker, reason: "commissionPlan", before: round2(Math.abs(t.fees)), after: f, detail: `комиссия $${round2(Math.abs(t.fees))} → $${f}`, estimate: false });
+        changed.push({ id: t.id, day: t.day, ticker: t.ticker, reason: "commissionPlan", before: round2(Math.abs(t.fees)), after: f, detail: T("excl.fee", { before: round2(Math.abs(t.fees)), after: f }), estimate: false });
       }
       return { ...t, fees: f };
     });
-    if (!applied) skipped.push({ rule: "commissionPlan", reason: "в сделках нет количества акций" });
+    if (!applied) skipped.push({ rule: "commissionPlan", reason: t("skip.noQty") });
   }
   const cap = get("capLoss");
   if (cap) {
@@ -501,7 +507,7 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
       if (net == null || net >= -cap.usd) return t;
       // Keep the fees; lift the gross so that net = −cap.
       const newGross = -cap.usd + Math.abs(t.fees);
-      changed.push({ id: t.id, day: t.day, ticker: t.ticker, reason: "capLoss", before: round2(net), after: -cap.usd, detail: `убыток $${round2(net)} ограничен до −$${cap.usd}`, estimate: true });
+      changed.push({ id: t.id, day: t.day, ticker: t.ticker, reason: "capLoss", before: round2(net), after: -cap.usd, detail: T("excl.capped", { loss: round2(net), cap: cap.usd }), estimate: true });
       return { ...t, gross: round2(newGross) };
     });
   }
@@ -511,7 +517,7 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
   const mtd = get("maxTradesPerDay");
   const sal = get("stopAfterLosses");
   const al = get("afterLoss");
-  if (al && !base.some((t) => t.entryMin != null)) skipped.push({ rule: "afterLoss", reason: "в сделках нет времени входа" });
+  if (al && !base.some((t) => t.entryMin != null)) skipped.push({ rule: "afterLoss", reason: t("skip.noEntryTime") });
   if (dll || mtd || sal || al) {
     const out: Modified[] = [];
     let day = "", dayNet = 0, count = 0, lossRun = 0, stoppedBy: ExclusionReason | null = null, stopDetail = "";
@@ -520,9 +526,9 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
     for (const t of sortSim(kept) as Modified[]) {
       if (t.day !== day) { day = t.day; dayNet = 0; count = 0; lossRun = 0; stoppedBy = null; stopDetail = ""; lastLossClose = null; }
       if (stoppedBy) { exclude(t, stoppedBy, stopDetail); continue; }
-      if (mtd && count >= mtd.n) { stoppedBy = "maxTradesPerDay"; stopDetail = `${mtd.n}-я сделка дня уже была`; exclude(t, stoppedBy, stopDetail); continue; }
+      if (mtd && count >= mtd.n) { stoppedBy = "maxTradesPerDay"; stopDetail = T("excl.nthTrade", { n: mtd.n }); exclude(t, stoppedBy, stopDetail); continue; }
       if (al && lastLossClose != null && t.entryMin != null && t.entryMin >= lastLossClose && t.entryMin < lastLossClose + al.minutes) {
-        exclude(t, "afterLoss", `вход через ${Math.max(0, Math.round(t.entryMin - lastLossClose))} мин после убытка`);
+        exclude(t, "afterLoss", T("excl.afterLoss", { n: Math.max(0, Math.round(t.entryMin - lastLossClose)) }));
         continue;
       }
       out.push(t);
@@ -531,8 +537,8 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
       dayNet += net;
       if (net < 0) lossRun++; else if (net > 0) lossRun = 0;
       if (net < 0 && t.entryMin != null) lastLossClose = t.entryMin + (t.holdSec ?? 0) / 60;
-      if (dll && dayNet <= -dll.usd) { stoppedBy = "dailyLossLimit"; stopDetail = `день уже −$${round2(Math.abs(dayNet))} (лимит −$${dll.usd})`; }
-      else if (sal && lossRun >= sal.n) { stoppedBy = "stopAfterLosses"; stopDetail = `${sal.n} убытка подряд`; }
+      if (dll && dayNet <= -dll.usd) { stoppedBy = "dailyLossLimit"; stopDetail = T("excl.dayLimit", { day: round2(Math.abs(dayNet)), limit: dll.usd }); }
+      else if (sal && lossRun >= sal.n) { stoppedBy = "stopAfterLosses"; stopDetail = T("excl.lossRun", { n: sal.n }); }
     }
     kept = out;
   }
@@ -721,7 +727,7 @@ export function suggestionGrid(trades: SimTrade[]): Rule[] {
  * weaker positive rules (CI crosses zero, `robust: false`) so the UI can show them marked as such.
  * One suggestion per rule type (the best one) keeps the list varied. These are historical facts, not forecasts.
  */
-export function findSuggestions(trades: SimTrade[], opts: { limit?: number; minTrades?: number; minExcluded?: number; iters?: number; seed?: number } = {}): Suggestion[] {
+export function findSuggestions(trades: SimTrade[], opts: { limit?: number; minTrades?: number; minExcluded?: number; iters?: number; seed?: number; lang?: Lang } = {}): Suggestion[] {
   const limit = opts.limit ?? 5, minTrades = opts.minTrades ?? 30, minExcluded = opts.minExcluded ?? 5;
   const all: Suggestion[] = [];
   for (const rule of suggestionGrid(trades)) {
@@ -731,7 +737,7 @@ export function findSuggestions(trades: SimTrade[], opts: { limit?: number; minT
     const improvement = round2(r.scenario.net - r.baseline.net);
     if (improvement <= 0 || !r.bootstrap) continue;
     all.push({
-      rule, label: describeRule(rule), improvement,
+      rule, label: describeRule(rule, opts.lang ?? "ru"), improvement,
       ci: { lo: r.bootstrap.diffTotal.lo, hi: r.bootstrap.diffTotal.hi },
       tradesLeft: r.scenario.trades, excluded: r.excluded.length,
       scenarioNet: r.scenario.net, scenarioWinRate: r.scenario.winRate, scenarioProfitFactor: r.scenario.profitFactor,
@@ -760,7 +766,10 @@ export const RULE_TYPES: RuleType[] = [
 /* ───────────────────────── Commission optimizer ───────────────────────── */
 
 export interface FeeGroupRow {
+  /** Stable bucket code (RU text the client matches on). */
   key: string;
+  /** Display label of the key in the requested language. */
+  label?: string;
   trades: number;
   wins: number;
   losses: number;
@@ -800,9 +809,15 @@ export interface FeeReport {
   recommendations: string[];
 }
 
+const NO_PRICE = "без цены"; // i18n-ignore (stable bucket key)
+const NO_SIZE = "без размера"; // i18n-ignore (stable bucket key)
+const NO_TIME = "без времени"; // i18n-ignore (stable bucket key)
 const PRICE_BUCKETS: [number, string][] = [[2, "< $2"], [5, "$2–5"], [20, "$5–20"], [50, "$20–50"], [100, "$50–100"], [300, "$100–300"], [Infinity, "> $300"]];
-const SIZE_BUCKETS: [number, string][] = [[50, "≤ 50 акц."], [100, "51–100"], [300, "101–300"], [1000, "301–1000"], [Infinity, "> 1000"]];
-const HOLD_BUCKETS: [number, string][] = [[30, "< 30 с"], [120, "30 с – 2 мин"], [600, "2–10 мин"], [3600, "10–60 мин"], [Infinity, "> 1 ч"]];
+const SIZE_BUCKETS: [number, string][] = [[50, "≤ 50 акц."], // i18n-ignore (stable bucket keys)
+  [100, "51–100"], [300, "101–300"], [1000, "301–1000"], [Infinity, "> 1000"]];
+// i18n-ignore-next (stable bucket keys, the client matches on them)
+const HOLD_BUCKETS: [number, string][] = [ // i18n-ignore
+  [30, "< 30 с"], [120, "30 с – 2 мин"], [600, "2–10 мин"], [3600, "10–60 мин"], [Infinity, "> 1 ч"]];
 
 function bucketOf(v: number | null, buckets: [number, string][], unknown: string): string {
   if (v == null) return unknown;
@@ -811,20 +826,33 @@ function bucketOf(v: number | null, buckets: [number, string][], unknown: string
 }
 
 export function hourBucket(entryMin: number | null): string {
-  if (entryMin == null) return "без времени";
-  if (entryMin < 9 * 60 + 30) return "до 09:30";
-  if (entryMin >= 16 * 60) return "после 16:00";
+  if (entryMin == null) return NO_TIME;
+  if (entryMin < 9 * 60 + 30) return "до 09:30"; // i18n-ignore (stable bucket key)
+  if (entryMin >= 16 * 60) return "после 16:00"; // i18n-ignore (stable bucket key)
   const h = Math.floor(entryMin / 60);
   const half = entryMin % 60 >= 30;
   if (h === 9) return "09:30–10:00";
   return half ? `${String(h).padStart(2, "0")}:30–${String(h + 1).padStart(2, "0")}:00` : `${String(h).padStart(2, "0")}:00–${String(h).padStart(2, "0")}:30`;
 }
 
-const FEE_TYPE_LABEL: Record<string, string> = {
-  comm: "Комиссия брокера", ecn: "ECN / биржа", sec: "SEC", taf: "FINRA TAF", cat: "CAT", nscc: "NSCC", clr: "Клиринг", orf: "ORF", nfa: "NFA", misc: "Прочее", exfee: "Биржевые сборы",
-};
+const FEE_TYPE_CODES: Record<string, string> = { sec: "SEC", taf: "FINRA TAF", cat: "CAT", nscc: "NSCC", orf: "ORF", nfa: "NFA" };
+/** Fee type label in `lang` (codes like SEC / TAF stay as is). */
+function feeTypeLabel(key: string, lang: Lang): string {
+  return FEE_TYPE_CODES[key] ?? whatifT.tryFor(lang, `feeType.${key}`) ?? key;
+}
 
-function groupRows(trades: SimTrade[], keyOf: (t: SimTrade) => string, order?: string[]): FeeGroupRow[] {
+/** Display label of a bucket key in `lang` (keys stay the stable RU codes the client matches on). */
+const BUCKET_KEY_LABEL: Record<string, string> = {
+  "Всего": "bucket.total", "без цены": "bucket.noPrice", "без размера": "bucket.noSize", "без времени": "bucket.noTime", // i18n-ignore (stable bucket keys)
+  "до 09:30": "bucket.before0930", "после 16:00": "bucket.after1600", "≤ 50 акц.": "bucket.size50", // i18n-ignore (stable bucket keys)
+  "< 30 с": "bucket.hold30s", "30 с – 2 мин": "bucket.hold2m", "2–10 мин": "bucket.hold10m", "10–60 мин": "bucket.hold60m", "> 1 ч": "bucket.hold1h", // i18n-ignore (stable bucket keys)
+};
+export function bucketLabel(key: string, lang: Lang = "ru"): string {
+  const k = BUCKET_KEY_LABEL[key];
+  return k ? whatifT.tryFor(lang, k) ?? key : key;
+}
+
+function groupRows(trades: SimTrade[], keyOf: (t: SimTrade) => string, order?: string[], lang: Lang = "ru"): FeeGroupRow[] {
   const map = new Map<string, FeeGroupRow>();
   for (const t of trades) {
     if (t.gross == null) continue;
@@ -844,6 +872,7 @@ function groupRows(trades: SimTrade[], keyOf: (t: SimTrade) => string, order?: s
   }
   const rows = [...map.values()].map((r) => ({
     ...r,
+    label: bucketLabel(r.key, lang),
     gross: round2(r.gross), grossWins: round2(r.grossWins), fees: round2(r.fees), net: round2(r.net),
     feePctOfGross: r.gross !== 0 ? r.fees / Math.abs(r.gross) : null,
     feePctOfGrossWins: r.grossWins > 0 ? r.fees / r.grossWins : null,
@@ -862,17 +891,19 @@ export function medianOf(values: number[]): number | null {
   return quantileSorted(s, 0.5);
 }
 
-export function feeReport(input: SimTrade[]): FeeReport {
+export function feeReport(input: SimTrade[], lang: Lang = "ru"): FeeReport {
+  const tw = whatifT.tFor(lang);
   const trades = input.filter((t) => t.gross != null);
-  const total: FeeGroupRow = groupRows(trades, () => "Всего")[0] ?? {
-    key: "Всего", trades: 0, wins: 0, losses: 0, gross: 0, grossWins: 0, fees: 0, net: 0, shares: 0,
+  const total: FeeGroupRow = groupRows(trades, () => "Всего", undefined, lang)[0] ?? { // i18n-ignore (stable bucket key)
+    key: "Всего", label: bucketLabel("Всего", lang), trades: 0, wins: 0, losses: 0, gross: 0, grossWins: 0, fees: 0, net: 0, shares: 0,
     feePctOfGross: null, feePctOfGrossWins: null, feePerTrade: null, feePerShare: null, breakEvenCents: null, eatenWinners: 0,
   };
-  const byPrice = groupRows(trades, (t) => bucketOf(t.entry, PRICE_BUCKETS, "без цены"), [...PRICE_BUCKETS.map((b) => b[1]), "без цены"]);
-  const bySize = groupRows(trades, (t) => bucketOf(t.qty, SIZE_BUCKETS, "без размера"), [...SIZE_BUCKETS.map((b) => b[1]), "без размера"]);
-  const byHold = groupRows(trades, (t) => bucketOf(t.holdSec, HOLD_BUCKETS, "без времени"), [...HOLD_BUCKETS.map((b) => b[1]), "без времени"]);
-  const byHour = groupRows(trades, (t) => hourBucket(t.entryMin)).sort((a, b) => a.key.localeCompare(b.key));
-  const byTicker = groupRows(trades, (t) => t.ticker.toUpperCase()).sort((a, b) => b.fees - a.fees).slice(0, 25);
+  // i18n-ignore-next: bucket keys below are stable codes (labels come from bucketLabel).
+  const byPrice = groupRows(trades, (t) => bucketOf(t.entry, PRICE_BUCKETS, NO_PRICE), [...PRICE_BUCKETS.map((b) => b[1]), NO_PRICE], lang);
+  const bySize = groupRows(trades, (t) => bucketOf(t.qty, SIZE_BUCKETS, NO_SIZE), [...SIZE_BUCKETS.map((b) => b[1]), NO_SIZE], lang);
+  const byHold = groupRows(trades, (t) => bucketOf(t.holdSec, HOLD_BUCKETS, NO_TIME), [...HOLD_BUCKETS.map((b) => b[1]), NO_TIME], lang);
+  const byHour = groupRows(trades, (t) => hourBucket(t.entryMin), undefined, lang).sort((a, b) => a.key.localeCompare(b.key));
+  const byTicker = groupRows(trades, (t) => t.ticker.toUpperCase(), undefined, lang).sort((a, b) => b.fees - a.fees).slice(0, 25);
 
   const typeTotals = new Map<string, number>();
   for (const t of trades) {
@@ -880,7 +911,7 @@ export function feeReport(input: SimTrade[]): FeeReport {
     for (const [k, v] of Object.entries(t.feeBreakdown)) typeTotals.set(k, (typeTotals.get(k) ?? 0) + Math.abs(v ?? 0));
   }
   const typeSum = [...typeTotals.values()].reduce((s, v) => s + v, 0);
-  const byType = [...typeTotals.entries()].filter(([, v]) => v > 0).map(([key, amount]) => ({ key, label: FEE_TYPE_LABEL[key] ?? key, amount: round2(amount), share: typeSum > 0 ? amount / typeSum : 0 })).sort((a, b) => b.amount - a.amount);
+  const byType = [...typeTotals.entries()].filter(([, v]) => v > 0).map(([key, amount]) => ({ key, label: feeTypeLabel(key, lang), amount: round2(amount), share: typeSum > 0 ? amount / typeSum : 0 })).sort((a, b) => b.amount - a.amount);
 
   const eatenAll = trades
     .filter((t) => t.gross! > 0 && Math.abs(t.fees) >= t.gross!)
@@ -895,30 +926,31 @@ export function feeReport(input: SimTrade[]): FeeReport {
 
   const recommendations: string[] = [];
   if (breakEvenCents != null && typicalQty != null) {
-    recommendations.push(`Безубыток при вашем типичном размере (${Math.round(typicalQty)} акц.) — ${breakEvenCents.toFixed(1)} ¢ хода. Минимальный целевой ход, чтобы комиссия забирала не больше трети, — ${(breakEvenCents * 3).toFixed(0)} ¢.`);
+    recommendations.push(tw("rec.breakEven", { qty: Math.round(typicalQty), cents: breakEvenCents.toFixed(1), target: (breakEvenCents * 3).toFixed(0) }));
   }
   if (total.feePctOfGross != null && total.feePctOfGross >= 0.5) {
-    recommendations.push(`Издержки составляют ${Math.round(total.feePctOfGross * 100)}% от брутто-результата — исторически почти весь результат уходит в комиссию.`);
+    recommendations.push(tw("rec.feeShare", { pct: Math.round(total.feePctOfGross * 100) }));
   }
   if (eatenAll.length) {
     const lost = eatenAll.reduce((s, x) => s + (x.gross - x.fees), 0);
-    recommendations.push(`${eatenAll.length} прибыльных по брутто сделок стали убыточными после комиссии (итого ${round2(lost).toFixed(2)} $).`);
+    recommendations.push(tw("rec.eaten", { count: eatenAll.length, total: usdText(lost) }));
   }
   const worstHold = byHold.filter((r) => r.trades >= 10 && r.feePctOfGross != null).sort((a, b) => (b.feePctOfGross ?? 0) - (a.feePctOfGross ?? 0))[0];
   if (worstHold && (worstHold.feePctOfGross ?? 0) > 1) {
-    recommendations.push(`Удержание «${worstHold.key}»: комиссия ${Math.round((worstHold.feePctOfGross ?? 0) * 100)}% от брутто на ${worstHold.trades} сделках — самые дорогие сделки относительно хода.`);
+    recommendations.push(tw("rec.hold", { bucket: bucketLabel(worstHold.key, lang), pct: Math.round((worstHold.feePctOfGross ?? 0) * 100), count: worstHold.trades }));
   }
   const smallSize = bySize.find((r) => r.key === SIZE_BUCKETS[0][1]);
   if (smallSize && smallSize.trades >= 10 && smallSize.breakEvenCents != null && total.breakEvenCents != null && smallSize.breakEvenCents > total.breakEvenCents * 1.3) {
-    recommendations.push(`Размер ≤ 50 акций: безубыток ${smallSize.breakEvenCents.toFixed(1)} ¢ против ${total.breakEvenCents.toFixed(1)} ¢ в среднем — минимальная комиссия за ордер бьёт по маленьким позициям.`);
+    recommendations.push(tw("rec.smallSize", { small: smallSize.breakEvenCents.toFixed(1), avg: total.breakEvenCents.toFixed(1) }));
   }
   const ecn = byType.find((t) => t.key === "ecn");
   if (ecn && ecn.share >= 0.2) {
-    recommendations.push(`ECN-сборы — ${Math.round(ecn.share * 100)}% всех издержек: лимитные ордера, добавляющие ликвидность, исторически обходятся дешевле рыночных.`);
+    recommendations.push(tw("rec.ecn", { pct: Math.round(ecn.share * 100) }));
   }
   const cheap = byPrice.filter((r) => (r.key === "< $2" || r.key === "$2–5") && r.trades >= 5 && r.net < 0);
   if (cheap.length) {
-    recommendations.push(`Дешёвые акции (${cheap.map((r) => r.key).join(", ")}): ${cheap.reduce((s, r) => s + r.trades, 0)} сделок, нетто ${round2(cheap.reduce((s, r) => s + r.net, 0)).toFixed(2)} $ — регуляторные сборы на цент хода там выше.`);
+    const cheapTrades = cheap.reduce((s, r) => s + r.trades, 0);
+    recommendations.push(tw("rec.cheap", { buckets: cheap.map((r) => r.key).join(", "), count: cheapTrades, net: usdText(cheap.reduce((s, r) => s + r.net, 0)) }));
   }
 
   return {
@@ -930,9 +962,23 @@ export function feeReport(input: SimTrade[]): FeeReport {
 
 /* ───────────────────────── Presets ───────────────────────── */
 
-export const PRESETS: { id: string; label: string; description: string; rules: Rule[] }[] = [
-  { id: "discipline", label: "Дисциплина", description: "Дневной лимит, стоп после серии убытков, не больше 8 сделок", rules: [{ type: "dailyLossLimit", usd: 100 }, { type: "stopAfterLosses", n: 3 }, { type: "maxTradesPerDay", n: 8 }] },
-  { id: "morning", label: "Только утро", description: "Входы только 09:30–11:30 ET", rules: [{ type: "timeWindow", from: "09:30", to: "11:30" }] },
-  { id: "nopenny", label: "Без пенни", description: "Без акций дешевле $5", rules: [{ type: "priceRange", min: 5 }] },
-  { id: "tariff", label: "Новый тариф", description: "$0.003/акц., мин. $0.50 за ордер, ECN $0.002/акц., регуляторные сборы сохраняются", rules: [{ type: "commissionPlan", perShare: 0.003, minPerOrder: 0.5, ecnPerShare: 0.002, keepRegulatory: true }] },
+const PRESET_RULES: { id: "discipline" | "morning" | "nopenny" | "tariff"; rules: Rule[] }[] = [
+  { id: "discipline", rules: [{ type: "dailyLossLimit", usd: 100 }, { type: "stopAfterLosses", n: 3 }, { type: "maxTradesPerDay", n: 8 }] },
+  { id: "morning", rules: [{ type: "timeWindow", from: "09:30", to: "11:30" }] },
+  { id: "nopenny", rules: [{ type: "priceRange", min: 5 }] },
+  { id: "tariff", rules: [{ type: "commissionPlan", perShare: 0.003, minPerOrder: 0.5, ecnPerShare: 0.002, keepRegulatory: true }] },
 ];
+/** Presets with labels / descriptions in `lang`. */
+export function presets(lang: Lang = "ru"): { id: string; label: string; description: string; rules: Rule[] }[] {
+  const t = whatifT.tFor(lang);
+  return PRESET_RULES.map((p) => ({ id: p.id, label: t(`preset.${p.id}.label`), description: t(`preset.${p.id}.description`), rules: p.rules }));
+}
+/** RU presets (kept for older imports). */
+export const PRESETS = presets("ru");
+
+/** «−$1,026.88» — the same money style as the page. */
+function usdText(v: number): string {
+  const abs = Math.abs(round2(v)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${v < 0 ? "−" : ""}$${abs}`;
+}
+

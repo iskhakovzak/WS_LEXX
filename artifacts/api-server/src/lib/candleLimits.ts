@@ -2,15 +2,17 @@
  * How fine the bars of a past day can be — pure (no DB, no network), shared by routes/candles.ts (what the range
  * route serves) and routes/training.ts (which training tasks have minute bars).
  *
- * Yahoo serves 1-minute bars only for the last 7 days and 5/15/30-minute bars for the last 60; hourly for ~2 years.
- * A day that was cached in `candles_cache` while it was fresh keeps its fine bars forever, so «too old for Yahoo»
- * does not mean «no minute bars» — the cache is checked too.
+ * Yahoo serves 1-minute bars for days whose window starts within the last 30 days and 5/15/30-minute bars within
+ * 60 (verified 2026-10-17 against the live API; the per-request span limit of 7–8 days is a different rule); hourly
+ * for ~2 years. Ages here are counted from UTC midnight, so 29 / 59 keep a safe margin. A day archived while it was
+ * fresh (candle_archive) or still in candles_cache keeps its fine bars forever, so «too old for Yahoo» does not mean
+ * «no minute bars» — callers check those too.
  */
 
 export type CandleInterval = "1m" | "5m" | "15m" | "30m" | "60m" | "1d";
 
-export const YAHOO_1M_MAX_AGE_DAYS = 7;
-export const YAHOO_INTRADAY_MAX_AGE_DAYS = 60;
+export const YAHOO_1M_MAX_AGE_DAYS = 29;
+export const YAHOO_INTRADAY_MAX_AGE_DAYS = 59;
 export const YAHOO_HOURLY_MAX_AGE_DAYS = 730;
 
 export const CANDLE_INTERVAL_SECONDS: Record<CandleInterval, number> = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "60m": 3600, "1d": 86400 };

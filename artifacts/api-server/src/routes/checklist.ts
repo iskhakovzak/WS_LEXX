@@ -3,7 +3,9 @@ import { eq, and, desc, isNull } from "drizzle-orm";
 import { db, preTradeChecklistTemplateTable, preTradeChecklistResponsesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { requireMember, scopeTrader, canAccessTrade, GUEST_SCOPE } from "../lib/auth";
-import { can, requireCap } from "../lib/permissions";
+import { can } from "../lib/permissions";
+import { z } from "zod";
+import { badRequest, conflict, forbidden, idParam, notFound, route, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -17,60 +19,67 @@ const router: IRouter = Router();
  * staff see everyone's, guests see nothing (scopeTrader → GUEST_SCOPE).
  */
 
-router.get("/checklist-template", asyncHandler(async (req, res): Promise<void> => {
-  const includeInactive = req.query.includeInactive === "true";
+const TemplateQuery = z.object({ includeInactive: z.string().optional() });
+const TemplateItemCreate = z.object({
+  label: z.string().trim().min(1).transform((v) => v.slice(0, 500)),
+  description: z.string().nullish(),
+  required: z.boolean().optional(),
+  sortOrder: z.number().finite().optional(),
+  active: z.boolean().optional(),
+});
+const TemplateItemPatch = z.object({
+  label: z.string().optional(),
+  description: z.string().nullish(),
+  required: z.boolean().optional(),
+  sortOrder: z.number().finite().optional(),
+  active: z.boolean().optional(),
+});
+const TemplateItemParams = z.object({ id: idParam });
+
+router.get("/checklist-template", route({ query: TemplateQuery }, async ({ query }) => {
   let rows = await db
     .select()
     .from(preTradeChecklistTemplateTable)
     .orderBy(preTradeChecklistTemplateTable.sortOrder, preTradeChecklistTemplateTable.id);
-  if (!includeInactive) rows = rows.filter((r) => r.active);
-  res.json(rows);
+  if (query.includeInactive !== "true") rows = rows.filter((r) => r.active);
+  return rows;
 }));
 
-router.post("/checklist-template", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "checklist.template.edit"))) return;
-  const { label, description, required, sortOrder, active } = req.body as Record<string, unknown>;
-  if (!label || typeof label !== "string" || !label.trim()) { res.status(400).json({ error: "Нужен текст пункта (label)" }); return; }
+router.post("/checklist-template", route({ cap: "checklist.template.edit", body: TemplateItemCreate }, async ({ body, res }) => {
   const [row] = await db.insert(preTradeChecklistTemplateTable).values({
-    label: label.trim().slice(0, 500),
-    description: description ? String(description).slice(0, 2000) : null,
-    required: required !== false,
-    sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
-    active: active !== false,
+    label: body.label,
+    description: body.description ? body.description.slice(0, 2000) : null,
+    required: body.required !== false,
+    sortOrder: body.sortOrder ?? 0,
+    active: body.active !== false,
   }).returning();
-  res.status(201).json(row);
+  res.status(201);
+  return row;
 }));
 
-router.patch("/checklist-template/:id", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "checklist.template.edit"))) return;
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Некорректный id" }); return; }
-  const { label, description, required, sortOrder, active } = req.body as Record<string, unknown>;
+router.patch("/checklist-template/:id", route({ cap: "checklist.template.edit", params: TemplateItemParams, body: TemplateItemPatch }, async ({ params, body }) => {
   const update: Record<string, unknown> = {};
-  if (typeof label === "string" && label.trim()) update.label = label.trim().slice(0, 500);
-  if (description !== undefined) update.description = description ? String(description).slice(0, 2000) : null;
-  if (typeof required === "boolean") update.required = required;
-  if (typeof sortOrder === "number") update.sortOrder = sortOrder;
-  if (typeof active === "boolean") update.active = active;
-  if (Object.keys(update).length === 0) { res.status(400).json({ error: "Нечего обновлять" }); return; }
+  if (body.label?.trim()) update.label = body.label.trim().slice(0, 500);
+  if (body.description !== undefined) update.description = body.description ? body.description.slice(0, 2000) : null;
+  if (body.required !== undefined) update.required = body.required;
+  if (body.sortOrder !== undefined) update.sortOrder = body.sortOrder;
+  if (body.active !== undefined) update.active = body.active;
+  if (Object.keys(update).length === 0) throw badRequest("NO_FIELDS");
   const [row] = await db.update(preTradeChecklistTemplateTable)
     .set(update)
-    .where(eq(preTradeChecklistTemplateTable.id, id))
+    .where(eq(preTradeChecklistTemplateTable.id, params.id))
     .returning();
-  if (!row) { res.status(404).json({ error: "Пункт чек-листа не найден" }); return; }
-  res.json(row);
+  if (!row) throw notFound("CHECKLIST_ITEM_NOT_FOUND");
+  return row;
 }));
 
-router.delete("/checklist-template/:id", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "checklist.template.edit"))) return;
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Некорректный id" }); return; }
+router.delete("/checklist-template/:id", route({ cap: "checklist.template.edit", params: TemplateItemParams }, async ({ params }) => {
   const [row] = await db.update(preTradeChecklistTemplateTable)
     .set({ active: false })
-    .where(eq(preTradeChecklistTemplateTable.id, id))
+    .where(eq(preTradeChecklistTemplateTable.id, params.id))
     .returning();
-  if (!row) { res.status(404).json({ error: "Пункт чек-листа не найден" }); return; }
-  res.json({ success: true });
+  if (!row) throw notFound("CHECKLIST_ITEM_NOT_FOUND");
+  return { success: true };
 }));
 
 /**
@@ -82,20 +91,18 @@ router.post("/checklist-responses", asyncHandler(async (req, res): Promise<void>
   if (!requireMember(req, res)) return;
   const me = req.authUser!;
   const { ticker, tradeDate, trader, tradeId, responses, passed } = req.body as Record<string, unknown>;
-  if (!ticker || typeof ticker !== "string" || !tradeDate || typeof tradeDate !== "string") {
-    res.status(400).json({ error: "Нужны ticker и tradeDate" }); return;
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) { res.status(400).json({ error: "tradeDate должен быть в формате YYYY-MM-DD" }); return; }
-  if (!responses) { res.status(400).json({ error: "Нужны ответы (responses)" }); return; }
+  if (!ticker || typeof ticker !== "string") throw badRequest("TICKER_REQUIRED");
+  if (!tradeDate || typeof tradeDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) throw badRequest("INVALID_DATE");
+  if (!responses) throw badRequest("CHECKLIST_RESPONSES_REQUIRED");
   const wanted = typeof trader === "string" && trader.trim() ? trader.trim() : "";
   const staff = !!wanted && wanted !== me.name && (await can(req, "trades.write.any", { trader: wanted }));
   const owner = staff ? wanted : me.name;
   let linkedTradeId: number | null = null;
   if (tradeId != null) {
-    if (typeof tradeId !== "number" || !Number.isInteger(tradeId)) { res.status(400).json({ error: "Некорректный tradeId" }); return; }
+    if (typeof tradeId !== "number" || !Number.isInteger(tradeId)) throw badRequest("INVALID_ID");
     const access = await canAccessTrade(req, tradeId);
-    if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-    if (!access) { res.status(403).json({ error: "Это не ваша сделка", code: "FORBIDDEN" }); return; }
+    if (access === null) throw notFound("TRADE_NOT_FOUND");
+    if (!access) throw forbidden(undefined, "TRADE_FORBIDDEN");
     linkedTradeId = tradeId;
   }
   const responsesStr = typeof responses === "string" ? responses : JSON.stringify(responses);
@@ -113,12 +120,12 @@ router.post("/checklist-responses", asyncHandler(async (req, res): Promise<void>
 router.get("/checklist-responses", asyncHandler(async (req, res): Promise<void> => {
   const { tradeId, ticker, trader, tradeDate } = req.query as Record<string, string | undefined>;
   const scope = await scopeTrader(req, trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (scope === GUEST_SCOPE) { res.json([]); return; }
   const conditions = [];
   if (tradeId) {
     const id = Number(tradeId);
-    if (!Number.isInteger(id)) { res.status(400).json({ error: "Некорректный tradeId" }); return; }
+    if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
     // Lookup by trade: ownership of the trade decides (legacy responses may have trader = null).
     const access = await canAccessTrade(req, id);
     if (!access) { res.json([]); return; }
@@ -137,25 +144,25 @@ router.get("/checklist-responses", asyncHandler(async (req, res): Promise<void> 
 router.patch("/checklist-responses/:id/link", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Некорректный id" }); return; }
+  if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const { tradeId } = req.body as Record<string, unknown>;
-  if (typeof tradeId !== "number" || !Number.isInteger(tradeId)) { res.status(400).json({ error: "Нужен tradeId" }); return; }
+  if (typeof tradeId !== "number" || !Number.isInteger(tradeId)) throw badRequest("INVALID_ID");
   const [existing] = await db
     .select({ id: preTradeChecklistResponsesTable.id, trader: preTradeChecklistResponsesTable.trader, tradeId: preTradeChecklistResponsesTable.tradeId })
     .from(preTradeChecklistResponsesTable)
     .where(eq(preTradeChecklistResponsesTable.id, id))
     .limit(1);
-  if (!existing) { res.status(404).json({ error: "Чек-лист не найден" }); return; }
+  if (!existing) throw notFound("CHECKLIST_NOT_FOUND");
   const staff = await can(req, "trades.write.any", existing.trader ? { trader: existing.trader } : undefined);
   if (!staff && existing.trader && existing.trader !== req.authUser!.name) {
-    res.status(403).json({ error: "Это не ваш чек-лист", code: "FORBIDDEN" }); return;
+    throw forbidden(undefined, "CHECKLIST_FORBIDDEN");
   }
   if (existing.tradeId != null && existing.tradeId !== tradeId) {
-    res.status(409).json({ error: "Этот чек-лист уже привязан к другой сделке", code: "CHECKLIST_ALREADY_LINKED" }); return;
+    throw conflict("CHECKLIST_ALREADY_LINKED");
   }
   const access = await canAccessTrade(req, tradeId);
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-  if (!access) { res.status(403).json({ error: "Это не ваша сделка", code: "FORBIDDEN" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
+  if (!access) throw forbidden(undefined, "TRADE_FORBIDDEN");
   const [row] = await db.update(preTradeChecklistResponsesTable)
     .set({ tradeId, ...(existing.trader ? {} : { trader: req.authUser!.name }) })
     .where(eq(preTradeChecklistResponsesTable.id, id))

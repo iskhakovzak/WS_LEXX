@@ -1,6 +1,7 @@
 /**
  * WS Chart — shared types. Pure data shapes, no React / DOM.
  */
+import { chartI18n } from "@/i18n/ns/chart";
 
 /** One OHLCV bar. `t` is a UTC epoch in seconds (as served by /api/candles). */
 export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
@@ -12,7 +13,16 @@ export type Timeframe = "1m" | "2m" | "3m" | "5m" | "15m" | "1h" | "D";
 
 export const TIMEFRAMES: readonly Timeframe[] = ["1m", "2m", "3m", "5m", "15m", "1h", "D"];
 export const TF_SECONDS: Record<Timeframe, number> = { "1m": 60, "2m": 120, "3m": 180, "5m": 300, "15m": 900, "1h": 3600, D: 86400 };
-export const TF_LABEL: Record<Timeframe, string> = { "1m": "1м", "2m": "2м", "3m": "3м", "5m": "5м", "15m": "15м", "1h": "1ч", D: "Д" };
+/** Chip label of a timeframe in the UI language («1м» / «1m»); getters, so every read follows the current language. */
+export const TF_LABEL: Readonly<Record<Timeframe, string>> = {
+  get "1m"() { return chartI18n.t("tf.1m"); },
+  get "2m"() { return chartI18n.t("tf.2m"); },
+  get "3m"() { return chartI18n.t("tf.3m"); },
+  get "5m"() { return chartI18n.t("tf.5m"); },
+  get "15m"() { return chartI18n.t("tf.15m"); },
+  get "1h"() { return chartI18n.t("tf.1h"); },
+  get D() { return chartI18n.t("tf.D"); },
+};
 
 /** Interval names the candles API speaks. */
 export type ApiInterval = "1m" | "5m" | "15m" | "30m" | "60m" | "1d";

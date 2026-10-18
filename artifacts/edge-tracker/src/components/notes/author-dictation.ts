@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getLang, localeTagFor, type Lang } from "@/i18n";
+import { notesI18n } from "@/i18n/ns/notes";
 
 /* Web Speech API dictation (Chrome / Edge / Safari). Final phrases are handed to `onFinal`,
    interim text is exposed for a live caption. */
 
-type SpeechRecognitionLike = {
+export type SpeechRecognitionLike = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -15,10 +17,21 @@ type SpeechRecognitionLike = {
   onerror: ((e: { error: string }) => void) | null;
 };
 
-function getSR(): (new () => SpeechRecognitionLike) | null {
+export function getSR(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as Record<string, unknown>;
   return ((w["SpeechRecognition"] || w["webkitSpeechRecognition"]) as (new () => SpeechRecognitionLike) | undefined) ?? null;
+}
+
+/**
+ * Dictation language = the UI language (an input language, the only locale tag kept outside lib/format).
+ * Uzbek recognition is not available in every browser: on «language-not-supported» the recognizer restarts
+ * with Russian, the desk's second language.
+ */
+const SPEECH_LANG: Record<Lang, string> = { ru: localeTagFor("ru"), en: localeTagFor("en"), uz: "uz-UZ" };
+export const SPEECH_FALLBACK = SPEECH_LANG.ru;
+export function speechLang(lang: Lang = getLang()): string {
+  return SPEECH_LANG[lang];
 }
 
 export function useDictation({
@@ -41,11 +54,12 @@ export function useDictation({
     try { recRef.current?.stop(); } catch { /* already stopped */ }
   }, []);
 
-  const start = useCallback(() => {
+  const startWith = useCallback((lang: string) => {
     const SR = getSR();
     if (!SR || recRef.current) return;
     const rec = new SR();
-    rec.lang = "ru-RU";
+    let retryLang: string | null = null;
+    rec.lang = lang;
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
@@ -61,15 +75,21 @@ export function useDictation({
     };
     rec.onend = () => {
       recRef.current = null;
-      setRecording(false);
       setInterim("");
+      if (retryLang) {
+        startWith(retryLang);
+        return;
+      }
+      setRecording(false);
       cb.current.onEnd?.();
     };
     rec.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        cb.current.onError("Нет доступа к микрофону — разреши его в настройках браузера");
+      if (e.error === "language-not-supported" && lang !== SPEECH_FALLBACK) {
+        retryLang = SPEECH_FALLBACK;
+      } else if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        cb.current.onError(notesI18n.t("author.toast.micDenied"));
       } else if (e.error !== "no-speech" && e.error !== "aborted") {
-        cb.current.onError(`Ошибка микрофона: ${e.error}`);
+        cb.current.onError(notesI18n.t("micError", { error: e.error }));
       }
     };
     try {
@@ -77,9 +97,12 @@ export function useDictation({
       recRef.current = rec;
       setRecording(true);
     } catch {
-      cb.current.onError("Не удалось запустить диктовку");
+      setRecording(false);
+      cb.current.onError(notesI18n.t("author.toast.dictationFailed"));
     }
   }, []);
+
+  const start = useCallback(() => startWith(speechLang()), [startWith]);
 
   useEffect(() => () => {
     try { recRef.current?.abort(); } catch { /* ignore */ }

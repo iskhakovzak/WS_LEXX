@@ -20,6 +20,8 @@ import {
   reconcile, snapshotFrom, reportFrom, issuesCsv,
   type RecTrade, type RecExecution, type RecReport,
 } from "../lib/reconcile";
+import { AppError, badRequest, unauthorized } from "../lib/http";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -89,13 +91,13 @@ async function loadReports(scope: string | null, reportId?: number): Promise<Rec
 
 router.get("/reconcile", asyncHandler(async (req, res): Promise<void> => {
   const q = querySchema.safeParse(req.query);
-  if (!q.success) { res.status(400).json({ error: "Неверные параметры", details: q.error.flatten() }); return; }
+  if (!q.success) throw badRequest("BAD_REQUEST", q.error.flatten());
   const scope = await scopeTrader(req, q.data.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (q.data.from && q.data.to && q.data.from > q.data.to) { res.status(400).json({ error: "from позже to" }); return; }
+  if (scope === undefined) throw unauthorized();
+  if (q.data.from && q.data.to && q.data.from > q.data.to) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
 
   const [trades, executions, reports] = await Promise.all([loadTrades(scope), loadExecutions(scope), loadReports(scope, q.data.reportId)]);
-  const result = reconcile(trades, executions, reports, { from: q.data.from ?? null, to: q.data.to ?? null });
+  const result = reconcile(trades, executions, reports, { from: q.data.from ?? null, to: q.data.to ?? null, lang: langOf(req) });
 
   if (q.data.format === "csv") {
     const name = `reconcile-${scope ?? "desk"}-${q.data.from ?? "all"}-${q.data.to ?? "all"}.csv`.replace(/[^\w.\-]+/g, "_");

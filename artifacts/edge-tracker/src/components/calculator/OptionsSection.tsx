@@ -10,6 +10,7 @@ import { newLegId, usePersistedState } from "./lib";
 import BlackScholesView, { type BsInputs } from "./BlackScholes";
 import StrategyBuilder, { type BuilderState, type LegDraft } from "./StrategyBuilder";
 import ChainAdvisor from "./ChainAdvisor";
+import { calculatorI18n } from "@/i18n/ns/calculator";
 
 type Mode = "chain" | "bs" | "builder";
 
@@ -49,11 +50,6 @@ function useBuilder(): BuilderState {
 }
 
 const MODES: Mode[] = ["chain", "bs", "builder"];
-const MODE_HINT: Record<Mode, string> = {
-  chain: "Загрузите цепочку по тикеру — советник подберёт стратегию под вашу цель и риск; любой контракт можно открыть в Black-Scholes или конструкторе.",
-  bs: "Один опцион: справедливая цена, греки простыми словами, безубыток и P&L при разных ценах акции.",
-  builder: "Соберите стратегию из нескольких ног (или выберите шаблон) — увидите выплаты, макс. прибыль/убыток и греки позиции.",
-};
 
 function isTypingTarget(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
@@ -61,6 +57,7 @@ function isTypingTarget(t: EventTarget | null): boolean {
 }
 
 export default function OptionsSection({ initialTicker }: { initialTicker?: string } = {}) {
+  const { t } = calculatorI18n.useT();
   const [mode, setMode] = usePersistedState<Mode>("opt_mode_v2", "chain");
   const bs = useBsInputs();
   const builder = useBuilder();
@@ -121,19 +118,19 @@ export default function OptionsSection({ initialTicker }: { initialTicker?: stri
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2" title="Alt+1 / Alt+2 / Alt+3 — переключить раздел">
+      <div className="flex flex-col gap-2" title={t("modes.shortcut")}>
       <Segmented<Mode>
-        ariaLabel="Раздел опционов"
+        ariaLabel={t("modes.aria")}
         value={current}
         onChange={setMode}
         className="self-start"
         options={[
-          { value: "chain", label: <><Table2 className="h-4 w-4" aria-hidden="true" />Цепочка и советник</> },
-          { value: "bs", label: <><Calculator className="h-4 w-4" aria-hidden="true" />Black-Scholes</> },
-          { value: "builder", label: <><Layers className="h-4 w-4" aria-hidden="true" />Конструктор{builder.legs.length ? ` · ${builder.legs.length}` : ""}</> },
+          { value: "chain", label: <><Table2 className="h-4 w-4" aria-hidden="true" />{t("modes.chain")}</> },
+          { value: "bs", label: <><Calculator className="h-4 w-4" aria-hidden="true" />{t("modes.bs")}</> },
+          { value: "builder", label: <><Layers className="h-4 w-4" aria-hidden="true" />{builder.legs.length ? t("modes.builderCount", { count: builder.legs.length }) : t("modes.builder")}</> },
         ]}
       />
-      <p className="max-w-3xl text-xs text-muted-foreground">{MODE_HINT[current]}</p>
+      <p className="max-w-3xl text-xs text-muted-foreground">{t(`modeHint.${current}`)}</p>
       </div>
       <div hidden={current !== "chain"}>
         <ChainAdvisor initialTicker={initialTicker} onUseInBs={useInBs} onOpenInBuilder={openInBuilder} builderLegCount={builder.legs.length} onShowBuilder={() => setMode("builder")} />

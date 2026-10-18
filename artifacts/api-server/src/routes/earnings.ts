@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
+import { AppError, badRequest, sendErrorWith } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -508,8 +509,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const ticker = String(req.params.ticker ?? "").trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker)) {
-      res.status(400).json({ error: "Invalid ticker" });
-      return;
+      throw badRequest("INVALID_TICKER");
     }
     const t = String(req.query.timing ?? "").toUpperCase();
     const timing: CallType | null = t === "BMO" || t === "AMC" ? t : null;
@@ -521,14 +521,14 @@ router.get(
     }
     const neg = historyNegative.get(key);
     if (neg && Date.now() - neg < HISTORY_NEGATIVE_TTL) {
-      res.status(503).json({ error: "Источник истории отчётов недоступен, попробуйте позже", code: "UPSTREAM_UNAVAILABLE", retryAfterSec: Math.ceil((HISTORY_NEGATIVE_TTL - (Date.now() - neg)) / 1000) });
+      sendErrorWith(res, new AppError("UPSTREAM_UNAVAILABLE"), { retryAfterSec: Math.ceil((HISTORY_NEGATIVE_TTL - (Date.now() - neg)) / 1000) });
       return;
     }
     const { upstreamFailed, ...data } = await buildHistory(ticker, timing);
     if (upstreamFailed && data.quarters.length === 0) {
       if (historyNegative.size > HISTORY_CACHE_MAX) historyNegative.clear();
       historyNegative.set(key, Date.now());
-      res.status(503).json({ error: "Источник истории отчётов недоступен, попробуйте позже", code: "UPSTREAM_UNAVAILABLE", retryAfterSec: Math.ceil(HISTORY_NEGATIVE_TTL / 1000) });
+      sendErrorWith(res, new AppError("UPSTREAM_UNAVAILABLE"), { retryAfterSec: Math.ceil(HISTORY_NEGATIVE_TTL / 1000) });
       return;
     }
     if (data.quarters.length > 0) {

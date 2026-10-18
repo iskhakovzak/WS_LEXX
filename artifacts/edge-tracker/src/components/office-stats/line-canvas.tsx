@@ -10,6 +10,7 @@ import { readChartTheme, type ChartTheme } from "@/components/chart-engine/theme
 import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion";
 import { niceTicks } from "@/components/equity-chart/scale";
 import { cn } from "@/lib/utils";
+import { fmtMonth, localeTag } from "@/lib/format";
 
 export type LinePoint = { x: number; y: number; date: string };
 export type LineSeries = {
@@ -267,7 +268,7 @@ export function LineCanvas({
       {visibleRows.length > 0 && hoverX != null && (
         <div
           className={cn(
-            "pointer-events-none absolute top-1 z-raised min-w-[9rem] max-w-[16rem] rounded-xl border border-[var(--glass-border)] bg-popover/95 px-3 py-2 text-xs shadow-lg backdrop-blur",
+            "pointer-events-none absolute top-1 z-raised min-w-[9rem] max-w-[16rem] rounded-xl border border-[var(--glass-border)] bg-popover/95 px-3 py-2 text-xs shadow-lg",
             compact && "px-2 py-1.5 text-2xs",
           )}
           style={tipLeft ? { right: Math.max(4, width - tipX + 12) } : { left: Math.min(width - 150, tipX + 12) }}
@@ -308,24 +309,88 @@ function withAlpha(c: string, a: number): string {
 }
 
 /** Saves the first canvas inside `root` as a PNG on the page background. */
-export function downloadCanvasPng(root: HTMLElement | null, filename: string) {
+export type PngMeta = {
+  title: string;
+  subtitle?: string;
+  legend?: { label: string; color: string; dashed?: boolean }[];
+};
+
+/**
+ * Saves the chart canvas found in `root` as a PNG on the page background. With `meta` the image gets a header
+ * (title, period / units) and a legend row, so a chart pasted into a chat or a report reads on its own.
+ */
+export function downloadCanvasPng(root: HTMLElement | null, filename: string, meta?: PngMeta) {
   const src = root?.querySelector("canvas");
   if (!src) return;
+  const th = readChartTheme();
+  const dpr = src.width / Math.max(1, src.clientWidth || src.width);
+  const pad = 16 * dpr;
+  const headH = meta ? (meta.subtitle ? 50 : 32) * dpr : 0;
+  const legH = meta?.legend?.length ? 24 * dpr : 0;
   const out = document.createElement("canvas");
-  out.width = src.width; out.height = src.height;
+  out.width = src.width + (meta ? pad * 2 : 0);
+  out.height = src.height + headH + legH + (meta ? pad * 2 : 0);
   const ctx = out.getContext("2d");
   if (!ctx) return;
-  ctx.fillStyle = readChartTheme().bg(1);
+  ctx.fillStyle = th.bg(1);
   ctx.fillRect(0, 0, out.width, out.height);
-  ctx.drawImage(src, 0, 0);
+  if (!meta) {
+    ctx.drawImage(src, 0, 0);
+  } else {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    const p = pad / dpr;
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillStyle = th.fg(0.95);
+    ctx.font = `600 15px ${th.font}`;
+    ctx.fillText(meta.title, p, p);
+    if (meta.subtitle) {
+      ctx.fillStyle = th.muted(0.95);
+      ctx.font = `500 12px ${th.font}`;
+      ctx.fillText(meta.subtitle, p, p + 22);
+    }
+    ctx.restore();
+    ctx.drawImage(src, pad, pad + headH);
+    if (meta.legend?.length) {
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      let x = pad / dpr;
+      const y = (pad + headH + src.height) / dpr + 12;
+      ctx.font = `500 12px ${th.font}`;
+      ctx.textBaseline = "middle";
+      for (const l of meta.legend) {
+        ctx.strokeStyle = l.color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash(l.dashed ? [4, 3] : []);
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 16, y); ctx.stroke();
+        ctx.fillStyle = th.muted(0.95);
+        ctx.fillText(l.label, x + 22, y);
+        x += 22 + ctx.measureText(l.label).width + 18;
+      }
+      ctx.restore();
+    }
+  }
   const a = document.createElement("a");
   a.href = out.toDataURL("image/png");
   a.download = filename;
   a.click();
 }
 
-/** Month ticks (1st of each month) on a day-of-year axis. */
-export const MONTH_TICKS: { x: number; label: string }[] = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"].map((label, i) => ({
-  x: Math.round((Date.UTC(2026, i, 1) - Date.UTC(2026, 0, 1)) / 86_400_000) + 1,
-  label,
-}));
+/**
+ * Month ticks (1st of each month) on a day-of-year axis; labels in the UI language («янв» / «Jan»). Built at call
+ * time and cached per language, so the array stays referentially stable between renders.
+ */
+let ticksCache: { tag: string; ticks: { x: number; label: string }[] } | null = null;
+export function monthTicks(): { x: number; label: string }[] {
+  const tag = localeTag();
+  if (ticksCache?.tag !== tag) {
+    ticksCache = {
+      tag,
+      ticks: Array.from({ length: 12 }, (_, i) => ({
+        x: Math.round((Date.UTC(2026, i, 1) - Date.UTC(2026, 0, 1)) / 86_400_000) + 1,
+        label: fmtMonth(i, "short").replace(".", ""),
+      })),
+    };
+  }
+  return ticksCache.ticks;
+}

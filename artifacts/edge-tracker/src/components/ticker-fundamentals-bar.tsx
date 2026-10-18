@@ -1,11 +1,14 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTickerFundamentals, type TickerFundamentals } from "@/lib/market-intel";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { Pill, toneOf, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Building2, Moon, CalendarClock } from "lucide-react";
+import { fmtDate, fmtNum, fmtPct } from "@/lib/format";
+import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
 
 type Props = {
   ticker: string;
@@ -30,11 +33,6 @@ type Candle = { t: number; o: number | null; h: number | null; l: number | null;
 
 type GapStats = { avgAbsGap: number; maxAbsGap: number; bigGapDays: number; sessions: number; atrPct: number | null };
 
-async function getJson<T>(url: string): Promise<T | null> {
-  const r = await fetch(url);
-  if (!r.ok) return null;
-  return (await r.json()) as T;
-}
 
 function gapStats(candles: Candle[]): GapStats | null {
   const bars = candles.filter((c) => c.o != null && c.c != null && c.h != null && c.l != null) as Array<Required<{ [K in keyof Candle]: number }>>;
@@ -64,9 +62,9 @@ type UpcomingEarnings = { today: string; days: { date: string; items: { ticker?:
 function useNextEarnings(ticker: string, enabled: boolean) {
   const q = useQuery({
     queryKey: ["fund-bar-earnings-upcoming"],
-    queryFn: () => getJson<UpcomingEarnings>(`${BASE}/api/earnings/upcoming?days=10&limit=60`),
+    queryFn: () => http.get<UpcomingEarnings>("/api/earnings/upcoming?days=10&limit=60").catch(() => null),
     enabled,
-    staleTime: 30 * 60 * 1000,
+    staleTime: STALE.static,
     retry: false,
   });
   return useMemo(() => {
@@ -92,33 +90,17 @@ function useDebounced<T>(value: T, ms: number): T {
 
 /* ---------- formatting ---------- */
 
-/** Numbers may arrive as strings/NaN from the upstream feed — never render "NaN" or throw on toFixed. */
-function fmtNum(v: unknown, digits: number): string | null {
-  if (v == null || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n.toFixed(digits) : null;
-}
-
 function fmtText(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s && s !== "NaN" && s !== "undefined" && s !== "null" ? s : null;
 }
 
-function signed(n: number, digits = 2) {
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
-}
-
-function shortDate(d: string) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
-  const date = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(d);
-  return Number.isNaN(date.getTime()) ? d : date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
 function gapRisk(avg: number): { label: string; tone: Tone } {
-  if (avg >= 3) return { label: "высокий", tone: "down" };
-  if (avg >= 1.25) return { label: "средний", tone: "warn" };
-  return { label: "низкий", tone: "up" };
+  const t = marketWidgetsI18n.t;
+  if (avg >= 3) return { label: t("fund.risk.high"), tone: "down" };
+  if (avg >= 1.25) return { label: t("fund.risk.mid"), tone: "warn" };
+  return { label: t("fund.risk.low"), tone: "up" };
 }
 
 /* ---------- UI ---------- */
@@ -166,13 +148,13 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
       if (myReqId !== reqIdRef.current) return;
       if (currentTickerRef.current !== requestedTicker) return;
       if (result?.ticker && result.ticker !== requestedTicker) return;
-      if (!result) { setError("Нет данных по тикеру"); setData(null); lastFetchedRef.current = ""; return; }
+      if (!result) { setError(marketWidgetsI18n.t("fund.noData")); setData(null); lastFetchedRef.current = ""; return; }
       setData(result);
       lastFetchedRef.current = requestedTicker;
       onLoaded?.(result);
     } catch (e: any) {
       if (myReqId === reqIdRef.current) {
-        setError(e?.message || "Не удалось загрузить фундаментал");
+        setError(e?.message || marketWidgetsI18n.t("fund.loadFailed"));
         lastFetchedRef.current = "";
       }
     } finally {
@@ -197,24 +179,25 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
   const symOk = showRisk && autoFetch && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(sym) && sym === ticker.trim().toUpperCase();
   const quoteQ = useQuery({
     queryKey: ["fund-bar-quote", sym],
-    queryFn: () => getJson<Quote>(`${BASE}/api/stockdata/quote?symbol=${encodeURIComponent(sym)}`),
+    queryFn: () => http.get<Quote>(`/api/stockdata/quote?symbol=${encodeURIComponent(sym)}`).catch(() => null),
     enabled: symOk,
-    staleTime: 60 * 1000,
+    staleTime: STALE.short,
     retry: false,
   });
   const barsQ = useQuery({
     queryKey: ["fund-bar-daily", sym],
     queryFn: async () => {
-      const r = await getJson<{ candles: Candle[] }>(`${BASE}/api/stockdata/chart?symbol=${encodeURIComponent(sym)}&range=3mo&interval=1d`);
+      const r = await http.get<{ candles: Candle[] }>(`/api/stockdata/chart?symbol=${encodeURIComponent(sym)}&range=3mo&interval=1d`).catch(() => null);
       return r?.candles ? gapStats(r.candles) : null;
     },
     enabled: symOk,
-    staleTime: 30 * 60 * 1000,
+    staleTime: STALE.static,
     retry: false,
   });
   const earnings = useNextEarnings(sym, symOk);
 
   if (!ticker) return null;
+  const t = marketWidgetsI18n.t;
   const shown = data && (!data.ticker || data.ticker.toUpperCase() === ticker.toUpperCase()) ? data : null;
   const quote = symOk ? quoteQ.data ?? null : null;
   const gaps = symOk ? barsQ.data ?? null : null;
@@ -227,7 +210,7 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
 
   return (
     <section
-      aria-label={`Фундаментал ${ticker}`}
+      aria-label={t("fund.aria", { ticker })}
       className={cn("rounded-2xl border border-[var(--field-border)] bg-[var(--glass-bg)] p-3", className)}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -244,7 +227,7 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
         {price != null && (
           <span className="flex items-center gap-1.5 text-sm font-semibold tabular-nums text-foreground">
             ${price.toFixed(price < 10 ? 3 : 2)}
-            {quote?.change != null && <Pill tone={toneOf(quote.change)} className="text-2xs">{signed(quote.change)}</Pill>}
+            {quote?.change != null && <Pill tone={toneOf(quote.change)} className="text-2xs">{fmtPct(quote.change)}</Pill>}
           </span>
         )}
         <button
@@ -252,8 +235,8 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
           onClick={() => { load(ticker, true); quoteQ.refetch(); barsQ.refetch(); }}
           disabled={busy}
           className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-          title="Обновить из Yahoo Finance"
-          aria-label={`Обновить данные ${ticker}`}
+          title={t("fund.refreshTitle")}
+          aria-label={t("fund.refreshAria", { ticker })}
         >
           <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
         </button>
@@ -264,36 +247,36 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
       )}
 
       {loading && !shown && !error ? (
-        <div className="mt-2.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6" role="status" aria-label="Загрузка">
+        <div className="mt-2.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6" role="status" aria-label={t("fund.loading")}>
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-11 rounded-xl" />)}
         </div>
       ) : (shown || quote || gaps) ? (
         <div className="mt-2.5 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-          <Stat label="Капитализация" value={fmtText(shown?.marketCap)} />
-          <Stat label="Флоат" value={fmtText(shown?.float)} sub={shown?.shortInterest != null ? `SI ${fmtNum(shown.shortInterest, 1)}%` : undefined} />
+          <Stat label={t("fund.marketCap")} value={fmtText(shown?.marketCap)} />
+          <Stat label={t("fund.float")} value={fmtText(shown?.float)} sub={shown?.shortInterest != null ? `SI ${fmtNum(shown.shortInterest, 1)}%` : undefined} />
           <Stat
-            label="Ср. объём"
+            label={t("fund.avgVolume")}
             value={fmtText(shown?.averageDailyVolume)}
             sub={(quote?.relativeVolume ?? shown?.relativeVolume) != null ? `rVol ${fmtNum(quote?.relativeVolume ?? shown?.relativeVolume, 2)}` : undefined}
             tone={(quote?.relativeVolume ?? 0) >= 2 ? "up" : "neutral"}
           />
           <Stat
-            label="ATR (14д)"
+            label={t("fund.atr")}
             value={atr != null ? `$${fmtNum(atr, 2)}` : null}
-            sub={atrPct != null ? `${atrPct.toFixed(1)}% цены` : shown?.beta != null ? `β ${fmtNum(shown.beta, 2)}` : undefined}
-            title="Средний истинный диапазон за 14 сессий — ориентир для стопа и размера позиции"
+            sub={atrPct != null ? t("fund.atrPct", { value: atrPct.toFixed(1) }) : shown?.beta != null ? `β ${fmtNum(shown.beta, 2)}` : undefined}
+            title={t("fund.atrTitle")}
           />
           <Stat
-            label="Ср. гэп 20д"
+            label={t("fund.avgGap")}
             value={gaps ? `${gaps.avgAbsGap.toFixed(2)}%` : null}
-            sub={gaps ? `макс ${gaps.maxAbsGap.toFixed(1)}%` : undefined}
+            sub={gaps ? t("fund.maxGap", { value: gaps.maxAbsGap.toFixed(1) }) : undefined}
             tone={risk?.tone ?? "neutral"}
-            title="Средний модуль гэпа открытия к прошлому закрытию за 20 сессий — риск переноса позиции через ночь"
+            title={t("fund.gapTitle")}
           />
           <Stat
-            label="Отчёт"
-            value={earnings?.date ? shortDate(earnings.date) : null}
-            sub={earnings?.date ? [earnings.tradingDaysAway === 0 ? "сегодня" : `через ${earnings.tradingDaysAway} т.д.`, earnings.timing].filter(Boolean).join(" · ") : earnings ? "нет в календаре 10 т.д." : undefined}
+            label={t("fund.earnings")}
+            value={earnings?.date ? fmtDate(earnings.date, "dayMonth") : null}
+            sub={earnings?.date ? [earnings.tradingDaysAway === 0 ? t("fund.today") : t("fund.inDays", { count: earnings.tradingDaysAway ?? 0 }), earnings.timing].filter(Boolean).join(" · ") : earnings ? t("fund.notInCalendar") : undefined}
             tone={earningsSoon ? "warn" : "neutral"}
           />
         </div>
@@ -304,14 +287,14 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
           {risk && gaps && (
             <Pill tone={risk.tone} className="gap-1">
               <Moon className="h-3 w-3" aria-hidden="true" />
-              Overnight-риск {risk.label}
-              {gaps.bigGapDays > 0 && <span className="opacity-90">· гэпов ≥3%: {gaps.bigGapDays} из {gaps.sessions}</span>}
+              {t("fund.overnightRisk", { level: risk.label })}
+              {gaps.bigGapDays > 0 && <span className="opacity-90">{t("fund.bigGaps", { count: gaps.bigGapDays, total: gaps.sessions })}</span>}
             </Pill>
           )}
           {earningsSoon && (
             <Pill tone="warn" className="gap-1">
               <CalendarClock className="h-3 w-3" aria-hidden="true" />
-              Отчёт {earnings?.tradingDaysAway === 0 ? "сегодня" : `через ${earnings?.tradingDaysAway} т.д.`} — учесть при свинге
+              {earnings?.tradingDaysAway === 0 ? t("fund.earningsSoonToday") : t("fund.earningsSoon", { count: earnings?.tradingDaysAway ?? 0 })}
             </Pill>
           )}
         </div>

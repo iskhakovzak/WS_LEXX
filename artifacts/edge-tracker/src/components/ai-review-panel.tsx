@@ -6,8 +6,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pill, EmptyState, type Tone } from "@/components/ds";
-import { BASE } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { humanizeApiError, nullIfMissing } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { commonI18n } from "@/i18n/ns/common";
 import {
   Sparkles, ThumbsUp, AlertTriangle, Target, Clock, ChevronDown, Copy, Check, RefreshCw, Brain, Loader2,
   type LucideIcon,
@@ -46,6 +50,7 @@ type EmotionalState = {
 
 type Point = { text: string; source?: string };
 
+// Parses model output (it may answer «нет данных»), not UI text. i18n-ignore
 const EMPTY_TEXT = /^(null|none|n\/a|нет данных|—|-)?$/i;
 
 /** Accepts a string (possibly bulleted / multi-line) or a string array; returns clean bullet items. */
@@ -77,28 +82,21 @@ function structure(sections: ReviewSections) {
   const mistakes = [
     ...toPoints(sections.mistakes ?? sections.errors),
     ...(sections.mistakes || sections.errors ? [] : [
-      ...toPoints(sections.riskErrors, "Риск-менеджмент"),
-      ...toPoints(sections.playbookDeviation, "Плейбук"),
+      ...toPoints(sections.riskErrors, tradesI18n.t("ai.source.risk")),
+      ...toPoints(sections.playbookDeviation, tradesI18n.t("ai.source.playbook")),
     ]),
   ];
   const nextTime = sections.nextTime || sections.improvements
     ? toPoints(sections.nextTime ?? sections.improvements)
-    : toPoints(sections.alternativeExecution, "Альтернативное исполнение");
+    : toPoints(sections.alternativeExecution, tradesI18n.t("ai.source.alternative"));
   const timing = toPoints(sections.entryTiming);
 
   const used = new Set(["summary", "grade", "confidence", "strengths", "whatWorked", "positives", "mistakes", "errors", "riskErrors", "playbookDeviation", "nextTime", "improvements", "alternativeExecution"]);
   if (!strengths.length) used.add("entryTiming");
-  const DETAIL_LABELS: Record<string, string> = {
-    entryTiming: "Тайминг входа",
-    statisticalComparison: "Сравнение с похожими сделками",
-    psychologyImpact: "Влияние психологии",
-    playbookDeviation: "Соответствие плейбуку",
-    riskErrors: "Риск-менеджмент",
-    alternativeExecution: "Альтернативное исполнение",
-  };
-  const details = Object.entries(DETAIL_LABELS)
-    .filter(([k]) => !used.has(k))
-    .map(([k, label]) => ({ label, text: str(sections[k]) }))
+  const DETAIL_KEYS = ["entryTiming", "statisticalComparison", "psychologyImpact", "playbookDeviation", "riskErrors", "alternativeExecution"] as const;
+  const details = DETAIL_KEYS
+    .filter((k) => !used.has(k))
+    .map((k) => ({ label: tradesI18n.t(`ai.detail.${k}`), text: str(sections[k]) }))
     .filter((d): d is { label: string; text: string } => !!d.text);
 
   return { strengths, mistakes, nextTime, timing, details };
@@ -121,7 +119,7 @@ function confidenceTone(pct: number): Tone {
 
 function ConvictionBars({ value }: { value: number }) {
   return (
-    <span className="inline-flex items-center gap-0.5" aria-label={`Убеждённость ${value} из 5`}>
+    <span className="inline-flex items-center gap-0.5" aria-label={tradesI18n.t("ai.conviction", { value })}>
       {Array.from({ length: 5 }, (_, i) => (
         <span
           key={i}
@@ -133,45 +131,47 @@ function ConvictionBars({ value }: { value: number }) {
   );
 }
 
-const EMO_FLAGS: { key: keyof EmotionalState; label: string; positive: boolean }[] = [
-  { key: "focused", label: "Сосредоточен", positive: true },
-  { key: "sleepWell", label: "Хорошо спал", positive: true },
-  { key: "stressed", label: "Стресс", positive: false },
-  { key: "anxious", label: "Тревога", positive: false },
-  { key: "tilted", label: "Тильт", positive: false },
-  { key: "revenge", label: "Реванш-трейд", positive: false },
+type EmoKey = "focused" | "sleepWell" | "stressed" | "anxious" | "tilted" | "revenge";
+const EMO_FLAGS: { key: EmoKey; positive: boolean }[] = [
+  { key: "focused", positive: true },
+  { key: "sleepWell", positive: true },
+  { key: "stressed", positive: false },
+  { key: "anxious", positive: false },
+  { key: "tilted", positive: false },
+  { key: "revenge", positive: false },
 ];
 
 function PsychologyStrip({
   conviction, confidenceGrade, emotionalState,
 }: { conviction: number | null | undefined; confidenceGrade: string | null | undefined; emotionalState: EmotionalState | null }) {
+  const { t } = tradesI18n.useT();
   if (conviction == null && !confidenceGrade && !emotionalState) return null;
   const active = emotionalState ? EMO_FLAGS.filter((f) => emotionalState[f.key] === true) : [];
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-[var(--glass-bg)] px-3 py-2">
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Brain className="h-3.5 w-3.5" aria-hidden="true" /> Психология
+        <Brain className="h-3.5 w-3.5" aria-hidden="true" /> {t("ai.psychology")}
       </span>
       {conviction != null && (
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          Убеждённость <ConvictionBars value={conviction} />
+          {t("ai.convictionLabel")} <ConvictionBars value={conviction} />
           <span className="font-semibold tabular-nums text-foreground">{conviction}/5</span>
         </span>
       )}
       {confidenceGrade && (
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          Грейд <Pill tone={gradeTone(confidenceGrade)}>{confidenceGrade}</Pill>
+          {t("ai.grade")} <Pill tone={gradeTone(confidenceGrade)}>{confidenceGrade}</Pill>
         </span>
       )}
       {active.map((f) => (
-        <Pill key={f.key} tone={f.positive ? "up" : "down"}>{f.label}</Pill>
+        <Pill key={f.key} tone={f.positive ? "up" : "down"}>{t(`ai.emo.${f.key}`)}</Pill>
       ))}
       {emotionalState?.freeText && (
         <span className="max-w-[240px] truncate text-xs italic text-muted-foreground" title={emotionalState.freeText}>
           «{emotionalState.freeText}»
         </span>
       )}
-      {!emotionalState && <span className="text-xs text-muted-foreground">Эмоциональное состояние не отмечено</span>}
+      {!emotionalState && <span className="text-xs text-muted-foreground">{t("ai.noEmotions")}</span>}
     </div>
   );
 }
@@ -208,12 +208,13 @@ function Column({ title, icon: Icon, tone, points, empty }: { title: string; ico
 }
 
 function reviewToText(review: Review, s: ReturnType<typeof structure>, summary: string | null, grade?: string): string {
-  const out: string[] = [`AI-разбор сделки #${review.tradeId}${grade ? ` · оценка ${grade}` : ""}`];
+  const t = tradesI18n.t;
+  const out: string[] = [grade ? t("ai.copyHeaderGrade", { id: review.tradeId, grade }) : t("ai.copyHeader", { id: review.tradeId })];
   if (summary) out.push("", summary);
   const block = (t: string, pts: Point[]) => { if (pts.length) out.push("", `${t}:`, ...pts.map((p) => `• ${p.source ? `${p.source}: ` : ""}${p.text}`)); };
-  block(s.strengths.length ? "Сильные стороны" : "Тайминг входа", s.strengths.length ? s.strengths : s.timing);
-  block("Ошибки", s.mistakes);
-  block("В следующий раз", s.nextTime);
+  block(s.strengths.length ? t("ai.strengths") : t("ai.timing"), s.strengths.length ? s.strengths : s.timing);
+  block(t("ai.mistakes"), s.mistakes);
+  block(t("ai.nextTime"), s.nextTime);
   for (const d of s.details) out.push("", `${d.label}: ${d.text}`);
   return out.join("\n");
 }
@@ -233,6 +234,8 @@ export function AiReviewPanel({
   trader?: string | null;
   className?: string;
 }) {
+  const { t } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [review, setReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -248,8 +251,7 @@ export function AiReviewPanel({
   const loadUsage = useCallback(async () => {
     try {
       // Usage is keyed by the signed-in member on the server (Bearer token from lib/install-fetch-auth).
-      const r = await fetch(`${BASE}/api/ai-review/usage`);
-      if (r.ok) setUsage(await r.json());
+      setUsage(await http.get<UsageInfo>("/api/ai-review/usage"));
     } catch {
       /* usage is informational */
     }
@@ -261,10 +263,8 @@ export function AiReviewPanel({
       return;
     }
     try {
-      const r = await fetch(
-        `${BASE}/api/emotional-state/by-date?userId=${encodeURIComponent(trader)}&date=${encodeURIComponent(tradeDate.slice(0, 10))}`
-      );
-      setEmotionalState(r.ok ? ((await r.json()) ?? null) : null);
+      const row = await http.get<EmotionalState | null>("/api/emotional-state/by-date", { query: { userId: trader, date: tradeDate.slice(0, 10) } });
+      setEmotionalState(row ?? null);
     } catch {
       setEmotionalState(null);
     }
@@ -274,12 +274,10 @@ export function AiReviewPanel({
     setLoading(true);
     setLoadErr(null);
     try {
-      const r = await fetch(`${BASE}/api/trades/${tradeId}/ai-review`);
-      if (r.status === 404) setReview(null);
-      else if (r.ok) setReview(await r.json());
-      else setLoadErr(`Не удалось загрузить разбор (HTTP ${r.status})`);
+      // 404 = no review yet.
+      setReview(await http.get<Review>(`/api/trades/${tradeId}/ai-review`).catch(nullIfMissing));
     } catch (e: unknown) {
-      setLoadErr(e instanceof Error ? e.message : "Сеть недоступна");
+      setLoadErr(humanizeApiError(e, tradesI18n.t("ai.loadFailed")));
     } finally {
       setLoading(false);
     }
@@ -293,25 +291,16 @@ export function AiReviewPanel({
     setErr(null);
     setGenerating(true);
     try {
-      const r = await fetch(`${BASE}/api/trades/${tradeId}/ai-review${force ? "?force=true" : ""}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        if (r.status === 429) {
-          setErr(`Лимит запросов. Повторите через ${data?.retryAfterSec ?? 60} с.`);
-          loadUsage();
-        } else {
-          setErr(data?.error || `Ошибка ${r.status}`);
-        }
-      } else {
-        setReview(data);
-        loadUsage();
-      }
+      const data = await http.post<Review>(`/api/trades/${tradeId}/ai-review`, { force }, { query: { force: force ? "true" : null } });
+      setReview(data);
+      loadUsage();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Сеть недоступна");
+      if (e instanceof ApiError && e.status === 429) {
+        setErr(tradesI18n.t("ai.rateLimit", { sec: String(e.field("retryAfterSec") ?? 60) }));
+        loadUsage();
+      } else {
+        setErr(humanizeApiError(e));
+      }
     } finally {
       setGenerating(false);
     }
@@ -332,7 +321,7 @@ export function AiReviewPanel({
 
   const nearLimit = usage != null && usage.hourlyCount >= Math.max(1, usage.hourlyLimit - 5);
   const atLimit = usage != null && usage.hourlyCount >= usage.hourlyLimit;
-  const dailyCostFormatted = usage ? `$${Number(usage.dailyCostUsd ?? 0).toFixed(4)}` : "—";
+  const dailyCostFormatted = usage ? fmtUsd(Number(usage.dailyCostUsd ?? 0), { decimals: 4 }) : "—";
 
   async function copyReview() {
     if (!review) return;
@@ -350,45 +339,45 @@ export function AiReviewPanel({
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="max-w-sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>{pendingForce ? "Обновить AI-разбор?" : "Запустить AI-разбор?"}</AlertDialogTitle>
+            <AlertDialogTitle>{pendingForce ? t("ai.confirmRefresh") : t("ai.confirmRun")}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 pt-1 text-sm text-muted-foreground">
-                <p>Каждый запрос тратит токены модели (~$0.001–0.005 за разбор).</p>
+                <p>{t("ai.costNote")}</p>
                 {usage && (
                   <p className="tabular-nums">
-                    Сегодня: <span className="font-semibold text-foreground">{dailyCostFormatted}</span>
-                    {" · "}за час: <span className={nearLimit ? "font-semibold text-[hsl(var(--chart-3))]" : "text-foreground"}>{usage.hourlyCount}/{usage.hourlyLimit}</span>
+                    <span className="text-foreground">{t("ai.todayCost", { cost: dailyCostFormatted })}</span>
+                    {" · "}<span className={nearLimit ? "font-semibold text-[hsl(var(--chart-3))]" : "text-foreground"}>{t("ai.perHour", { used: usage.hourlyCount, limit: usage.hourlyLimit })}</span>
                   </p>
                 )}
                 {pendingForce && (
-                  <p className="text-[hsl(var(--chart-3))]">Текущий разбор будет заменён новым.</p>
+                  <p className="text-[hsl(var(--chart-3))]">{t("ai.willReplace")}</p>
                 )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setConfirmOpen(false); generate(pendingForce); }}>Запустить</AlertDialogAction>
+            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmOpen(false); generate(pendingForce); }}>{t("ai.run")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <section className={cn("glass-panel space-y-4 rounded-2xl p-4", className)} data-testid="ai-review-panel" aria-label="AI-разбор сделки">
+      <section className={cn("glass-panel space-y-4 rounded-2xl p-4", className)} data-testid="ai-review-panel" aria-label={t("ai.title")}>
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/15 text-primary">
               <Sparkles className="h-4 w-4" aria-hidden="true" />
             </span>
-            <h3 className="text-sm font-semibold text-foreground">AI-разбор сделки</h3>
-            {grade && <Pill tone={gradeTone(grade)}>Оценка {grade}</Pill>}
+            <h3 className="text-sm font-semibold text-foreground">{t("ai.title")}</h3>
+            {grade && <Pill tone={gradeTone(grade)}>{t("ai.gradePill", { grade })}</Pill>}
             {confidencePct != null && (
-              <Pill tone={confidenceTone(confidencePct)} dot>Уверенность {confidencePct}%</Pill>
+              <Pill tone={confidenceTone(confidencePct)} dot>{t("ai.confidencePill", { pct: confidencePct })}</Pill>
             )}
           </div>
           <div className="flex items-center gap-1.5">
             {review && (
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={copyReview} aria-label="Скопировать разбор">
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={copyReview} aria-label={t("ai.copy")} title={t("ai.copy")}>
                 {copied ? <Check className="text-up" aria-hidden="true" /> : <Copy aria-hidden="true" />}
               </Button>
             )}
@@ -401,7 +390,7 @@ export function AiReviewPanel({
               data-testid="button-ai-review"
             >
               {generating ? <Loader2 className="animate-spin" aria-hidden="true" /> : review ? <RefreshCw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
-              {generating ? "Анализирую…" : review ? "Обновить" : "Запустить разбор"}
+              {generating ? t("ai.analyzing") : review ? t("ai.refresh") : t("ai.runReview")}
             </Button>
           </div>
         </div>
@@ -412,12 +401,12 @@ export function AiReviewPanel({
         {loadErr && (
           <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">
             {loadErr}
-            <button type="button" onClick={() => load()} className="font-medium text-primary hover:underline">Повторить</button>
+            <button type="button" onClick={() => load()} className="font-medium text-primary hover:underline">{tc("actions.retry")}</button>
           </div>
         )}
 
         {(loading || generating) && !review && (
-          <div className="space-y-3" aria-busy="true" aria-label={generating ? "Генерация AI-разбора" : "Загрузка AI-разбора"}>
+          <div className="space-y-3" aria-busy="true" aria-label={generating ? t("ai.generatingAria") : t("ai.loadingAria")}>
             <Skeleton className="h-4 w-3/4" />
             <div className="grid gap-3 md:grid-cols-3">
               {[0, 1, 2].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
@@ -429,8 +418,8 @@ export function AiReviewPanel({
           <EmptyState
             icon={Sparkles}
             className="py-6"
-            title="Разбора пока нет"
-            description="AI сравнит сделку с вашими похожими сделками и плейбуком и разложит её на сильные стороны, ошибки и план на следующий раз."
+            title={t("ai.emptyTitle")}
+            description={t("ai.emptyDesc")}
           />
         )}
 
@@ -443,12 +432,12 @@ export function AiReviewPanel({
             {hasStructured ? (
               <div className="grid gap-3 md:grid-cols-3">
                 {s.strengths.length > 0 ? (
-                  <Column title="Сильные стороны" icon={ThumbsUp} tone="up" points={s.strengths} empty="—" />
+                  <Column title={t("ai.strengths")} icon={ThumbsUp} tone="up" points={s.strengths} empty="—" />
                 ) : (
-                  <Column title="Тайминг входа" icon={Clock} tone="accent" points={s.timing} empty="Нет оценки тайминга" />
+                  <Column title={t("ai.timing")} icon={Clock} tone="accent" points={s.timing} empty={t("ai.noTiming")} />
                 )}
-                <Column title="Ошибки" icon={AlertTriangle} tone="down" points={s.mistakes} empty="Явных ошибок не найдено" />
-                <Column title="В следующий раз" icon={Target} tone="warn" points={s.nextTime} empty="Нет рекомендаций" />
+                <Column title={t("ai.mistakes")} icon={AlertTriangle} tone="down" points={s.mistakes} empty={t("ai.noMistakes")} />
+                <Column title={t("ai.nextTime")} icon={Target} tone="warn" points={s.nextTime} empty={t("ai.noRecommendations")} />
               </div>
             ) : (
               !summary && <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{review.reviewText}</p>
@@ -462,7 +451,7 @@ export function AiReviewPanel({
                   aria-expanded={detailsOpen}
                   className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  Подробный анализ
+                  {t("ai.details")}
                   <span className="flex items-center gap-2 text-xs text-muted-foreground">
                     {s.details.length}
                     <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", detailsOpen && "rotate-180")} aria-hidden="true" />
@@ -482,10 +471,10 @@ export function AiReviewPanel({
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--glass-border)] pt-2 text-2xs tabular-nums text-muted-foreground">
-              <span>{review.model} · {new Date(review.generatedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+              <span>{review.model} · {fmtDate(review.generatedAt, "dateTime")}</span>
               <span>
-                {review.inputTokens ?? "?"}→{review.outputTokens ?? "?"} токенов
-                {review.costUsd != null && <> · ${Number(review.costUsd).toFixed(4)}</>}
+                {t("ai.tokens", { input: review.inputTokens ?? "?", output: review.outputTokens ?? "?" })}
+                {review.costUsd != null && <> · {fmtUsd(Number(review.costUsd), { decimals: 4 })}</>}
               </span>
             </div>
           </div>
@@ -494,7 +483,7 @@ export function AiReviewPanel({
         {usage != null && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs tabular-nums text-muted-foreground">
             <span className="flex items-center gap-1.5">
-              За час
+              {t("ai.hour")}
               <span className="relative inline-block h-1.5 w-16 overflow-hidden rounded-full bg-muted-foreground/20" aria-hidden="true">
                 <span
                   className={cn("absolute inset-y-0 left-0 rounded-full", atLimit ? "bg-down" : nearLimit ? "bg-[hsl(var(--chart-3))]" : "bg-primary")}
@@ -503,8 +492,8 @@ export function AiReviewPanel({
               </span>
               <span className={cn(atLimit ? "text-down" : nearLimit && "text-[hsl(var(--chart-3))]")}>{usage.hourlyCount}/{usage.hourlyLimit}</span>
             </span>
-            <span>Сегодня: {usage.dailyCount} · {dailyCostFormatted}</span>
-            {atLimit && <span className="text-down">Лимит на час исчерпан — подождите сброса</span>}
+            <span>{t("ai.todayUsage", { count: usage.dailyCount, cost: dailyCostFormatted })}</span>
+            {atLimit && <span className="text-down">{t("ai.hourLimitReached")}</span>}
           </div>
         )}
       </section>

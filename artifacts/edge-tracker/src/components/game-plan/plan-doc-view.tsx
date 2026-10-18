@@ -3,28 +3,29 @@ import { Pill } from "@/components/ds";
 import { InPlayCard, FocusBanner } from "./plan-briefing";
 import { MediaGallery } from "./plan-media";
 import { MARKET_BIAS, type PlanDoc } from "./types";
-
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+import { fmtUsd } from "@/lib/format";
+import { gpI18n } from "@/i18n/ns/gamePlan";
 
 /** Read-only rendering of a personal plan (trader's own read mode and the curator's «Трейдеры» view). */
 export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; compactTickers?: boolean }) {
+  const { t } = gpI18n.useT();
   const bias = MARKET_BIAS[doc.bias ?? "neutral"] ?? MARKET_BIAS.neutral;
   const tickers = doc.inPlay ?? [];
   const hasRisk = doc.maxLossUsd != null || doc.maxTrades != null || !!doc.riskNotes?.trim();
   const hasMarket = !!doc.marketView?.trim() || !!doc.media?.length || !!doc.tvLinks?.length;
   const empty = !hasRisk && !hasMarket && tickers.length === 0 && !doc.focus?.trim();
 
-  if (empty) return <p className="text-sm text-muted-foreground">План пустой.</p>;
+  if (empty) return <p className="text-sm text-muted-foreground">{t("doc.empty")}</p>;
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <FocusBanner focus={doc.focus} />
 
       {hasMarket && (
-        <section aria-label="Рынок" className="flex flex-col gap-2">
+        <section aria-label={t("doc.market")} className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <Globe2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <h3 className="text-sm font-semibold">Рынок</h3>
+            <h3 className="text-sm font-semibold">{t("doc.market")}</h3>
             <Pill tone={bias.tone} dot>
               {bias.label}
             </Pill>
@@ -35,21 +36,21 @@ export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; co
       )}
 
       {hasRisk && (
-        <section aria-label="Риск на день" className="flex flex-col gap-2 rounded-xl border border-[var(--field-border)] bg-[var(--glass-bg)] p-3">
+        <section aria-label={t("doc.risk")} className="flex flex-col gap-2 rounded-xl border border-[var(--field-border)] bg-[var(--glass-bg)] p-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="flex items-center gap-1.5 text-sm font-semibold">
               <ShieldAlert className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              Риск на день
+              {t("doc.risk")}
             </span>
             {doc.maxLossUsd != null && (
               <span className="text-sm">
-                <span className="text-muted-foreground">Макс. убыток </span>
-                <span className="font-semibold tabular-nums">{usd.format(doc.maxLossUsd)}</span>
+                <span className="text-muted-foreground">{t("doc.maxLoss")} </span>
+                <span className="font-semibold tabular-nums">{fmtUsd(doc.maxLossUsd, { decimals: 0 })}</span>
               </span>
             )}
             {doc.maxTrades != null && (
               <span className="text-sm">
-                <span className="text-muted-foreground">Макс. сделок </span>
+                <span className="text-muted-foreground">{t("doc.maxTrades")} </span>
                 <span className="font-semibold tabular-nums">{doc.maxTrades}</span>
               </span>
             )}
@@ -59,11 +60,11 @@ export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; co
       )}
 
       {tickers.length > 0 && (
-        <section aria-label="Тикеры" className="flex flex-col gap-2">
+        <section aria-label={t("doc.tickers")} className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <h3 className="text-sm font-semibold">
-              Тикеры <span className="tabular-nums text-muted-foreground">{tickers.length}</span>
+              {t("doc.tickers")} <span className="tabular-nums text-muted-foreground">{tickers.length}</span>
             </h3>
           </div>
           <div className={compactTickers ? "grid gap-[var(--grid-gap)] xl:grid-cols-2" : "grid gap-[var(--grid-gap)] md:grid-cols-2 2xl:grid-cols-3"}>

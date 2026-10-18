@@ -13,6 +13,8 @@
  *   POST /curator/notes                 {trader, body, kind?, pinned?}
  *   PATCH /curator/notes/:id            {body?, kind?, pinned?}
  *   POST /curator/notes/:id/archive     мягкое удаление
+ *   POST /curator/notes/:id/restore     отмена архивации (в течение суток)
+ *   POST /curator/queue/restore         {ids} — вернуть элементы, убранные «архивировать старые»
  *   POST /curator/queue/archive-old     {scope?, olderThanDays?} — мягко скрыть из очереди элементы старше N дн. (curator_queue_acks)
  *
  * Доступ: journal.review (куратор / админ); ?scope=mine — подопечные (assigned_*), иначе весь деск в пределах readScope.
@@ -27,10 +29,15 @@ import { can, readScope, requireCap } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { ensureCuratorTables, rowToBreachReview, rowToNote } from "../lib/curatorStore";
 import {
-  QUEUE_DEFAULT_DAYS, STAGE_LABELS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, staleQueueIds, tradingPhase,
+  QUEUE_DEFAULT_DAYS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, stageLabel, staleQueueIds, tradingPhase,
   trendDirection, weeklyTrend, type NextAction, type QueueKind, type WeekPoint,
 } from "../lib/curatorLogic";
-import { BREACH_KIND_LABELS, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
+import { breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
+import { ensureNameLatin } from "../lib/peopleDirectory";
+import { AppError, badRequest, forbidden, notFound } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { riskT } from "../i18n/ns";
+import { fmtDateFor } from "../i18n/format";
 
 const router: IRouter = Router();
 
@@ -100,24 +107,35 @@ export type TraderSignal = {
   eod: { prevDay: string; prevTraded: boolean; prevClosed: boolean; todayTraded: boolean; todayClosed: boolean; pending: number; lastClosed: string | null; lastReviewedAt: string | null; lastScore: number | null };
   weekly: { currentStatus: string | null; submittedPending: boolean; lastReviewedWeek: string | null; lastReviewedAt: string | null };
   academy: { openActions: number; overdueActions: number; lastOneOnOne: string | null; daysSinceOneOnOne: number | null; pendingSubmissions: number; activeGoals: number };
-  breaches: { unreviewed: number; last30: number; lastDate: string | null };
+  /** week — breach alerts since Monday (NY). */
+  breaches: { unreviewed: number; last30: number; week: number; lastDate: string | null };
   lastNote: { body: string; author: string; createdAt: string } | null;
   lastTradeDate: string | null;
   nextAction: NextAction;
+  /** users.assigned_curator — the trader's group («Группа» = traders of one curator); null = «Без куратора». */
+  curator: string | null;
+  /** users.name_latin — optional Latin alias for cross-script search. */
+  nameLatin: string | null;
+  /** Calendar month to date (NY trading days): net P&L (null = no $ data) and trades. */
+  month: { pnl: number | null; trades: number };
+  /** Latest sign of life: activity log, closed day, weekly report or trade day (ISO / YYYY-MM-DD). */
+  lastActivityAt: string | null;
 };
 
 type Bulk = Awaited<ReturnType<typeof loadBulk>>;
 
-async function loadBulk(traders: string[], today: string) {
+/** `lang` = the reader's language of generated labels (stop texts, stage names, next steps, queue titles). */
+async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
   await ensureCuratorTables();
   const prev = prevTradingDay(today);
   const from35 = addDays(today, -35);
   const from42 = addDays(today, -42);
   const from30 = addDays(today, -29);
-  const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows] = await Promise.all([
+  await ensureNameLatin().catch(() => undefined);
+  const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
-    deskSnapshot(today),
-    templateStatus(traders),
+    deskSnapshot(today, null, lang),
+    templateStatus(traders, lang),
     safe(`SELECT trader, status FROM trader_plans WHERE date = $1 AND deleted_at IS NULL AND trader = ANY($2)`, [today, traders]),
     safe(`SELECT id, trader, date, closed_at, reviewed_at, discipline, curator_score FROM eod_days WHERE date >= $1 AND trader = ANY($2)`, [from35, traders]),
     safe(`SELECT id, trader, date, closed_at FROM eod_days WHERE closed_at IS NOT NULL AND reviewed_at IS NULL AND trader = ANY($1) ORDER BY closed_at DESC LIMIT 500`, [traders]),
@@ -137,12 +155,16 @@ async function loadBulk(traders: string[], today: string) {
     safe(`SELECT DISTINCT ON (trader) trader, body, author, created_at FROM curator_notes WHERE archived_at IS NULL AND trader = ANY($1) ORDER BY trader, pinned DESC, created_at DESC`, [traders]),
     safe(`SELECT student, COUNT(*)::int AS n FROM academy_idp_goals WHERE archived_at IS NULL AND status = 'active' AND student = ANY($1) GROUP BY student`, [traders]),
     safe<{ item_id: string }>(`SELECT item_id FROM curator_queue_acks WHERE revoked_at IS NULL AND trader = ANY($1)`, [traders]),
+    safe<{ name: string; ac: string | null; latin: string | null }>(`SELECT name, assigned_curator AS ac, name_latin AS latin FROM users WHERE name = ANY($1)`, [traders]),
+    safe<{ trader: string; at: Date }>(`SELECT trader, MAX(created_at) AS at FROM activity_log WHERE trader = ANY($1) GROUP BY trader`, [traders]),
   ]);
   // Элементы, мягко убранные из очереди («архивировать старые»), не считаются ожидающими разбора.
   const acked = new Set(ackRows.map((r) => String(r.item_id)));
   const eodPending = eodPendingAll.filter((e: any) => !acked.has(`eod:${e.id}`));
   const subs = subsAll.filter((x: any) => !acked.has(`academy:${x.id}`));
-  return { today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked };
+  const peopleBy = new Map(people.map((p) => [p.name, p]));
+  const activityBy = new Map(activity.map((a) => [a.trader, iso(a.at)]));
+  return { lang, today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked, peopleBy, activityBy };
 }
 
 function buildSignal(name: string, b: Bulk): TraderSignal {
@@ -175,10 +197,20 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
   const br = b.breaches.filter((x: any) => x.trader === name);
   const unreviewed = br.filter((x: any) => x.review_id == null).length;
   const note = b.notes.find((n: any) => n.trader === name);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const monthDays = days.filter((d) => d.date >= monthStart && d.date <= today);
+  const monthPriced = monthDays.filter((d) => d.pnl != null);
+  const weekStart = mondayOf(today);
+  const lastActivityAt = [
+    b.activityBy.get(name) ?? null,
+    maxIso(eod.map((e: any) => e.closed_at)),
+    maxIso(wk.map((w: any) => w.submitted_at)),
+    row?.lastTradeDate ? `${row.lastTradeDate}T21:00:00.000Z` : null,
+  ].filter((v): v is string => !!v).sort().pop() ?? null;
 
   const st = b.stages.find((s: any) => s.user_name === name);
   const en = b.enrolls.find((s: any) => s.user_name === name);
-  const stageKey: string | null = st?.stage ?? en?.stage ?? (tpl?.tier && STAGE_LABELS[tpl.tier] ? tpl.tier : null);
+  const stageKey: string | null = st?.stage ?? en?.stage ?? (tpl?.tier && stageLabel(tpl.tier) ? tpl.tier : null);
 
   const planRow = b.plans.find((p: any) => p.trader === name);
   const weekday = tradingPhase(today, 0) !== "weekend";
@@ -187,11 +219,11 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
 
   const signalBase = {
     trader: name,
-    stage: { key: stageKey, label: stageKey ? STAGE_LABELS[stageKey] ?? stageKey : null, since: st?.since ?? null },
+    stage: { key: stageKey, label: stageKey ? stageLabel(stageKey, b.lang) ?? stageKey : null, since: st?.since ?? null },
     tier: tpl?.tier ?? null,
     tierName: tpl?.tierName ?? null,
     risk: {
-      status: m?.status ?? "no_limits", state: m?.stop.state ?? "no_limits", label: m?.stop.label ?? "Нет лимитов", message: m?.stop.message ?? "",
+      status: m?.status ?? "no_limits", state: m?.stop.state ?? "no_limits", label: m?.stop.label ?? riskT.tFor(b.lang)("stop.no_limits.label"), message: m?.stop.message ?? "",
       halted: m?.stop.halted ?? false, nearStop: m?.stop.state === "warn",
       dailyPct: m?.stop.dailyPct ?? null, weeklyPct: m?.stop.weeklyPct ?? null, drawdownPct: m?.stop.drawdownPct ?? null,
       todayPnl: m?.today.pnlNet ?? null, todayTrades: m?.today.trades ?? 0, weekPnl: m?.week.pnlNet ?? null, openPositions: m?.today.openPositions ?? 0,
@@ -216,9 +248,13 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
       pendingSubmissions: b.subs.filter((s: any) => s.user_name === name).length,
       activeGoals: Number(b.goals.find((g: any) => g.student === name)?.n ?? 0),
     },
-    breaches: { unreviewed, last30: new Set(br.map((x: any) => x.date)).size, lastDate: br[0]?.date ?? null },
+    breaches: { unreviewed, last30: new Set(br.map((x: any) => x.date)).size, week: br.filter((x: any) => String(x.date) >= weekStart).length, lastDate: br[0]?.date ?? null },
     lastNote: note ? { body: String(note.body).slice(0, 280), author: String(note.author), createdAt: iso(note.created_at)! } : null,
     lastTradeDate: row?.lastTradeDate ?? null,
+    curator: b.peopleBy.get(name)?.ac ?? null,
+    nameLatin: b.peopleBy.get(name)?.latin ?? null,
+    month: { pnl: monthPriced.length ? Math.round(monthPriced.reduce((a, d) => a + (d.pnl ?? 0), 0) * 100) / 100 : null, trades: monthDays.reduce((a, d) => a + d.trades, 0) },
+    lastActivityAt,
   };
   const nextAction = nextActionFor({
     trader: name,
@@ -233,31 +269,42 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
     missingPlan: b.plansAvailable && weekday && !planRow && today === nyDate() && tradingPhase(today, nyMinutes()) !== "afterclose",
     missingEod: signalBase.eod.prevTraded && !signalBase.eod.prevClosed,
     daysSinceOneOnOne: daysSince1on1,
-  });
+  }, b.lang);
   return { ...signalBase, nextAction };
+}
+
+/** Latest timestamp of a list (Date / ISO / null) as ISO. */
+function maxIso(values: unknown[]): string | null {
+  return values.map(iso).filter((v): v is string => !!v).sort().pop() ?? null;
 }
 
 // ─── очередь разборов ───────────────────────────────────────────────────────
 
-type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string };
+/** `date` — торговый день / неделя элемента; `eodId` — id дня (eod_days) для разбора прямо в кабинете. */
+type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string; date?: string | null; eodId?: number };
 
 function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
+  const t = riskT.tFor(b.lang);
+  const day = (d: unknown) => fmtDateFor(b.lang, String(d), "dayMonth");
   return [
     ...b.eodPending.map((e: any) => ({
-      kind: "eod" as const, id: `eod:${e.id}`, trader: String(e.trader), title: `Закрытый день ${e.date}`,
-      since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now), href: "/journal?view=queue",
+      kind: "eod" as const, id: `eod:${e.id}`, trader: String(e.trader), title: t("queue.eod", { date: day(e.date) }),
+      since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now),
+      href: `/journal?date=${encodeURIComponent(String(e.date))}&trader=${encodeURIComponent(String(e.trader))}`,
+      date: String(e.date), eodId: Number(e.id),
     })),
     ...b.weekly.filter((w: any) => w.status === "submitted").map((w: any) => ({
-      kind: "weekly" as const, id: `weekly:${w.id}`, trader: String(w.trader), title: `Недельный отчёт ${w.week}`,
-      since: iso(w.submitted_at), hoursWaiting: hoursSince(w.submitted_at, now),
+      kind: "weekly" as const, id: `weekly:${w.id}`, trader: String(w.trader), title: t("queue.weekly", { week: String(w.week) }),
+      since: iso(w.submitted_at), hoursWaiting: hoursSince(w.submitted_at, now), date: w.week_start ? String(w.week_start) : null,
       href: `/weekly-review?view=curator&trader=${encodeURIComponent(String(w.trader))}&week=${encodeURIComponent(String(w.week))}`,
     })),
     ...b.subs.map((s: any) => ({
-      kind: "academy" as const, id: `academy:${s.id}`, trader: String(s.user_name), title: `Задание: ${String(s.title).slice(0, 80)}`,
+      kind: "academy" as const, id: `academy:${s.id}`, trader: String(s.user_name), title: t("queue.academy", { title: String(s.title).slice(0, 80) }),
       since: iso(s.created_at), hoursWaiting: hoursSince(s.created_at, now), href: "/academy/mentor",
     })),
     ...b.breaches.filter((x: any) => x.review_id == null).map((x: any) => ({
-      kind: "breach" as const, id: `breach:${x.id}`, trader: String(x.trader), title: `Разбор нарушения: ${BREACH_KIND_LABELS[String(x.kind)] ?? x.kind}, ${x.date}`,
+      // Тип «Нарушение» уже на плашке строки — в заголовке только что и когда.
+      kind: "breach" as const, id: `breach:${x.id}`, trader: String(x.trader), title: t("queue.breach", { kind: breachKindLabel(String(x.kind), b.lang), date: day(x.date) }), date: String(x.date),
       since: iso(breachSince(x)), hoursWaiting: hoursSince(breachSince(x), now), href: `/curator?trader=${encodeURIComponent(String(x.trader))}&tab=risk`,
     })),
   ];
@@ -277,7 +324,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const today = clientDate(req.query.date);
   const roster = await loadRoster(req, req.query.scope);
-  const b = await loadBulk(roster.traders, today);
+  const b = await loadBulk(roster.traders, today, langOf(req));
   const signals = roster.traders.map((t) => buildSignal(t, b));
   const phase = tradingPhase(today, today === nyDate() ? nyMinutes() : today < nyDate() ? 17 * 60 : 0);
   const now = Date.now();
@@ -354,10 +401,10 @@ const archiveOldSchema = z.object({
 router.post("/curator/queue/archive-old", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const parsed = archiveOldSchema.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Некорректные параметры" }); return; }
+  if (!parsed.success) throw badRequest();
   const days = parsed.data.olderThanDays ?? QUEUE_DEFAULT_DAYS;
   const roster = await loadRoster(req, parsed.data.scope);
-  const b = await loadBulk(roster.traders, nyDate());
+  const b = await loadBulk(roster.traders, nyDate(), langOf(req));
   const items = buildQueueItems(b, Date.now());
   const ids = new Set(staleQueueIds(items, days, b.acked));
   const stale = items.filter((q) => ids.has(q.id));
@@ -372,7 +419,25 @@ router.post("/curator/queue/archive-old", asyncHandler(async (req, res): Promise
   const byKind: Record<string, number> = {};
   for (const q of stale) byKind[q.kind] = (byKind[q.kind] ?? 0) + 1;
   await logAudit({ actor: req.authUser!.name, action: "curator.queue.archive_old", targetType: "curator_queue_acks", details: { olderThanDays: days, archived: stale.length, byKind, scope: roster.scope } });
-  res.json({ archived: stale.length, byKind, olderThanDays: days });
+  res.json({ archived: stale.length, byKind, olderThanDays: days, ids: stale.map((q) => q.id) });
+}));
+
+const restoreSchema = z.object({ ids: z.array(z.string().regex(/^(eod|weekly|academy|breach):\d{1,12}$/)).min(1).max(5000) });
+
+/** «Отменить» после «архивировать старые»: вернуть элементы в очередь (revoked_at), только в пределах доступных трейдеров. */
+router.post("/curator/queue/restore", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "journal.review"))) return;
+  const parsed = restoreSchema.safeParse(req.body ?? {});
+  if (!parsed.success) throw badRequest();
+  await ensureCuratorTables();
+  const readable = await readScope(req, "journal.review");
+  const { rowCount } = await pool.query(
+    `UPDATE curator_queue_acks SET revoked_at = NOW()
+      WHERE item_id = ANY($1::text[]) AND revoked_at IS NULL AND ($2::text[] IS NULL OR trader = ANY($2::text[]))`,
+    [parsed.data.ids, readable],
+  );
+  await logAudit({ actor: req.authUser!.name, action: "curator.queue.restore", targetType: "curator_queue_acks", details: { restored: rowCount ?? 0 } });
+  res.json({ restored: rowCount ?? 0 });
 }));
 
 // ─── traders ────────────────────────────────────────────────────────────────
@@ -381,18 +446,18 @@ router.get("/curator/traders", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const today = clientDate(req.query.date);
   const roster = await loadRoster(req, req.query.scope);
-  const b = await loadBulk(roster.traders, today);
+  const b = await loadBulk(roster.traders, today, langOf(req));
   res.json({ date: today, scope: roster.scope, wards: roster.wards.length, traders: roster.traders.map((t) => buildSignal(t, b)) });
 }));
 
 router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void> => {
   const name = String(req.params.name ?? "").trim();
-  if (!name || name.length > 100) { res.status(400).json({ error: "Invalid trader" }); return; }
+  if (!name || name.length > 100) throw badRequest("INVALID_TRADER");
   if (!(await requireCap(req, res, "journal.review", { trader: name }))) return;
   const { rows: u } = await pool.query(`SELECT name, role, assigned_curator, assigned_mentor, assigned_risk_manager FROM users WHERE name = $1 LIMIT 1`, [name]);
-  if (!u[0]) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!u[0]) throw notFound("TRADER_NOT_FOUND");
   const today = clientDate(req.query.date);
-  const b = await loadBulk([name], today);
+  const b = await loadBulk([name], today, langOf(req));
   const signal = buildSignal(name, b);
   const row = b.desk.rows.find((r) => r.trader === name);
   const from90 = addDays(today, -89);
@@ -421,10 +486,15 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
     limits: row?.limits ?? null,
     metrics: row ? { today: row.metrics.today, week: row.metrics.week, drawdown: row.metrics.drawdown, stop: row.metrics.stop, alerts: row.metrics.alerts } : null,
     breaches: breaches.map((r: any) => ({
-      id: Number(r.id), date: String(r.date), kind: String(r.kind), kindLabel: BREACH_KIND_LABELS[String(r.kind)] ?? String(r.kind),
+      id: Number(r.id), date: String(r.date), kind: String(r.kind), kindLabel: breachKindLabel(String(r.kind), b.lang),
       used: r.used == null ? null : Number(r.used), limit: r.limit == null ? null : Number(r.limit), message: String(r.message), createdAt: iso(r.created_at),
       review: r.review ? rowToBreachReview(r.review) : null,
     })),
+    // Все закрытые и не разобранные дни (без архивированных) — для разбора прямо из профиля, свежие сверху (как в очереди).
+    eodPending: b.eodPending
+      .filter((e: any) => e.trader === name)
+      .map((e: any) => ({ id: Number(e.id), date: String(e.date), closedAt: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, Date.now()) ?? 0 }))
+      .sort((x, y) => y.date.localeCompare(x.date)),
     eodDays: eodDays.map((e: any) => ({
       id: Number(e.id), date: String(e.date), closedAt: iso(e.closed_at), reviewedAt: iso(e.reviewed_at), reviewedBy: e.reviewed_by ?? null,
       discipline: e.discipline == null ? null : Number(e.discipline), curatorScore: e.curator_score == null ? null : Number(e.curator_score), curatorComment: e.curator_comment ?? null,
@@ -445,7 +515,7 @@ const NOTE_KINDS = ["note", "call", "concern", "praise"] as const;
 
 router.get("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const trader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
-  if (!trader || trader.length > 100) { res.status(400).json({ error: "Укажите трейдера" }); return; }
+  if (!trader || trader.length > 100) throw badRequest("TRADER_REQUIRED");
   if (!(await requireCap(req, res, "journal.review", { trader }))) return;
   await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE archived_at IS NULL AND trader = $1 ORDER BY pinned DESC, created_at DESC LIMIT 200`, [trader]);
@@ -454,18 +524,18 @@ router.get("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
 
 const NoteBody = z.object({
   trader: z.string().trim().min(1).max(100),
-  body: z.string().trim().min(1, "Пустая заметка").max(4000),
+  body: z.string().trim().min(1).max(4000),
   kind: z.enum(NOTE_KINDS).default("note"),
   pinned: z.boolean().default(false),
 }).strict();
 
 router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const parsed = NoteBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Проверьте поля" }); return; }
+  if (!parsed.success) throw parsed.error.issues[0]?.path[0] === "body" ? new AppError("NOTE_EMPTY", 400, undefined, parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }))) : parsed.error;
   const b = parsed.data;
   if (!(await requireCap(req, res, "journal.review", { trader: b.trader }))) return;
   const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
-  if (!exists.length) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!exists.length) throw notFound("TRADER_NOT_FOUND");
   await ensureCuratorTables();
   const { rows } = await pool.query(
     `INSERT INTO curator_notes (trader, author, body, kind, pinned) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
@@ -480,25 +550,25 @@ const NotePatch = z.object({
   pinned: z.boolean().optional(),
 }).strict();
 
-async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any } | { ok: false; status: number; error: string }> {
+/** Throws 404 NOTE_NOT_FOUND / 403 FORBIDDEN. */
+async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any }> {
   await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NULL`, [id]);
   const row = rows[0];
-  if (!row) return { ok: false, status: 404, error: "Заметка не найдена" };
-  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) return { ok: false, status: 403, error: "Нет доступа" };
+  if (!row) throw notFound("NOTE_NOT_FOUND");
+  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) throw forbidden("journal.review");
   // Body is edited by its author only; pin / kind — by any staff member of the trader.
   return { ok: true, row };
 }
 
 router.patch("/curator/notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = NotePatch.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Проверьте поля" }); return; }
+  if (!parsed.success) throw badRequest("VALIDATION");
   const found = await loadNoteForEdit(req, id);
-  if (!found.ok) { res.status(found.status).json({ error: found.error }); return; }
   const p = parsed.data;
-  if (p.body !== undefined && found.row.author !== req.authUser!.name) { res.status(403).json({ error: "Текст заметки меняет только автор" }); return; }
+  if (p.body !== undefined && found.row.author !== req.authUser!.name) throw new AppError("NOTE_AUTHOR_ONLY");
   const { rows } = await pool.query(
     `UPDATE curator_notes SET body = COALESCE($2, body), kind = COALESCE($3, kind), pinned = COALESCE($4, pinned), updated_at = NOW() WHERE id = $1 RETURNING *`,
     [id, p.body ?? null, p.kind ?? null, p.pinned ?? null],
@@ -508,12 +578,25 @@ router.patch("/curator/notes/:id", asyncHandler(async (req, res): Promise<void> 
 
 router.post("/curator/notes/:id/archive", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const found = await loadNoteForEdit(req, id);
-  if (!found.ok) { res.status(found.status).json({ error: found.error }); return; }
   await pool.query(`UPDATE curator_notes SET archived_at = NOW(), archived_by = $2 WHERE id = $1`, [id, req.authUser!.name]);
   await logAudit({ actor: req.authUser!.name, action: "curator.note.archive", targetType: "curator_notes", targetId: String(id), details: { trader: found.row.trader, author: found.row.author } });
   res.json({ ok: true });
+}));
+
+/** «Отменить» после архивации заметки: вернуть её (только недавно архивированную — за последние сутки). */
+router.post("/curator/notes/:id/restore", asyncHandler(async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
+  await ensureCuratorTables();
+  const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NOT NULL AND archived_at > NOW() - INTERVAL '1 day'`, [id]);
+  const row = rows[0];
+  if (!row) throw notFound("NOTE_NOT_FOUND");
+  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) throw forbidden();
+  const { rows: out } = await pool.query(`UPDATE curator_notes SET archived_at = NULL, archived_by = NULL WHERE id = $1 RETURNING *`, [id]);
+  await logAudit({ actor: req.authUser!.name, action: "curator.note.restore", targetType: "curator_notes", targetId: String(id), details: { trader: row.trader } });
+  res.json(rowToNote(out[0]));
 }));
 
 export default router;

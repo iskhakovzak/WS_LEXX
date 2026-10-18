@@ -1,4 +1,29 @@
 /* Fonts (Inter + IBM Plex Mono for code) are loaded from index.html so they don't block CSS parsing. */
+
+/* ══ Geometry scale (desktop). Primitives in components/ui + components/ds.tsx follow it; pages get it for free. ══
+   RADIUS
+     full  999px  every control: Button, Input, Select trigger, Segmented (track + segments), FilterChip, Tabs,
+                  Badge/Pill/Delta, Kbd, sidebar items, header icon buttons.
+     2xl   20px   page surfaces: Panel, Card, StatCard, Toolbar, Dialog/AlertDialog, command palette, header, toasts.
+     xl    16px   second level: .tile, DataTable box, Popover/Dropdown/Select/HoverCard surfaces, Textarea,
+                  PageHeader icon, EmptyState icon.
+     item  12px   rows inside an xl surface with 4px inset (menu / select / command items) = 16 − 4 (concentric).
+     lg    14px   Tooltip, small framed icons.      md 10px / sm 6px  micro (swatches, sort-button focus ring).
+   CONTROL HEIGHTS (a row of mixed controls lines up; border included)
+     sm  32px  h-8   Button sm, icon-sm, Segmented sm, FilterChip sm, Select/Input h-8 in dense bars, menu rows.
+     md  36px  h-9   DEFAULT: Button, icon, Input, Select, Segmented, FilterChip, TabsList.
+     lg  40px  h-10  Button lg, header controls (56px header), SectionTabs (underline tabs).
+     xs  28px  min-h-7  inline quick-pick chips inside forms / sheets (suggestions, «+ тег»), never in a toolbar row.
+     Badge / Pill / Delta 22px (min-h-5.5, grows only for an inline × button), Kbd 20px, Segmented inner segment = control − 2·(1px border + inset).
+   ICONS  16px (size-4) in md/lg controls and menu rows, 14px (size-3.5) in sm controls/chips, 12px in badges.
+   SPACING  --panel-p 16→20px (Panel/Card/Dialog-less surfaces), StatCard/Tile 16/12px, Toolbar 8px,
+            --grid-gap 12→16px between cards, --page-gap 20px between sections, header 56px.
+   TABLES  header row 36px (h-9, 12px label), body rows ≈40px compact / 44px comfortable, cell padding-x 12px,
+           numeric columns right-aligned + tabular-nums (SortableTh align="right" really aligns now).
+   FOCUS   2px ring in --ring (outline for native, ring-2 for primitives), offset 2px.
+   BORDERS 1px hairlines: --glass-border on surfaces, --field-border on controls, border/50 between table rows.
+   ELEVATION  canvas < glass-panel (shadow-sm) < overlay (glass-thick + --glass-shadow) ; tiles have no shadow.
+   ══════════════════════════════════════════════════════════════════════════════════════════════════════════ */
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -74,6 +99,8 @@
   --radius-xl: 16px;
   --radius-2xl: 20px;
   --radius-3xl: 24px;
+  /* Row inside a 16px floating surface with a 4px inset (menu / select / command items). */
+  --radius-item: 12px;
 
   /* Up / down (reference #4cc38a / #f06a6a in dark; deepened in light for 4.5:1).
      The app colours P&L with emerald-/red-300/400 in ~600 places, so those palette
@@ -558,13 +585,23 @@ body {
     }
   }
 
-  /* Skeleton with a soft sweep (static under reduced motion). Same box as the final content. */
+  /* Skeleton with a soft sweep (static under reduced motion). Same box as the final content.
+     The sweep is a pseudo element moved with transform, so it runs on the compositor: animating
+     background-position repainted every skeleton on every frame (a table skeleton is 40+ blocks). */
   .skeleton {
+    position: relative;
+    overflow: hidden;
     border-radius: var(--radius-lg);
-    background:
-      linear-gradient(90deg, transparent 0%, hsl(var(--foreground) / .05) 50%, transparent 100%) 0 0 / 200% 100% no-repeat,
-      hsl(var(--foreground) / .06);
+    background: hsl(var(--foreground) / .06);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, hsl(var(--foreground) / .05) 50%, transparent 100%);
+    transform: translateX(-100%);
     animation: skeleton-sweep 1.4s var(--ease-in-out) infinite;
+    pointer-events: none;
   }
 
   /* Long lists of cards/rows (not <tr>): skip layout/paint for off-screen items. */
@@ -610,8 +647,9 @@ body {
     transform: none;
     transition: none;
   }
-  .skeleton {
+  .skeleton::after {
     animation: none;
+    display: none;
   }
 }
 
@@ -663,7 +701,8 @@ body {
     height: 6px;
   }
 
-  ::-webkit-scrollbar-track {
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
     background: transparent;
   }
 
@@ -752,129 +791,9 @@ body {
     inset: -1px;
   }
 
-  /* Legacy page-level surfaces, now rendered as liquid glass (same tokens as .glass-panel). */
-  .glass-card {
-    background: linear-gradient(135deg, var(--glass-sheen), transparent 40%), hsl(var(--popover) / 0.9);
-    border: 1px solid var(--glass-border);
-    box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 var(--glass-lo), var(--glass-shadow);
-  }
-
-  .card-interactive {
-    background: linear-gradient(135deg, var(--glass-sheen), transparent 40%), var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 var(--glass-lo), var(--glass-shadow-sm);
-    transition: transform var(--dur-3) var(--ease), box-shadow var(--dur-3) var(--ease), border-color var(--dur-2) var(--ease), background-color var(--dur-2) var(--ease);
-  }
-
-  .card-interactive:hover {
-    background-color: var(--glass-hover-bg);
-    border-color: hsl(var(--primary) / 0.35);
-    box-shadow: inset 0 1px 0 var(--glass-hi), 0 14px 40px -12px rgb(0 0 0 / .5);
-    transform: translateY(-2px);
-  }
-
-  .glow-primary {
-    box-shadow: 0 0 24px hsl(var(--primary) / 0.2), 0 0 60px hsl(var(--primary) / 0.08);
-  }
-
-  .glow-primary-sm {
-    box-shadow: 0 0 12px hsl(var(--primary) / 0.15), 0 0 32px hsl(var(--primary) / 0.06);
-  }
-
-  .glow-success {
-    box-shadow: 0 0 16px hsl(142 70% 45% / 0.2), 0 0 48px hsl(142 70% 45% / 0.06);
-  }
-
   .number-tabular {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
-  }
-
-  .data-value {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum";
-    letter-spacing: -0.01em;
-  }
-
-  .gradient-border {
-    position: relative;
-  }
-
-  .gradient-border::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg, hsl(var(--primary) / 0.5), hsl(var(--primary) / 0.1), transparent);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-  }
-
-  .text-gradient {
-    background: linear-gradient(135deg, hsl(var(--primary)), hsl(210 100% 72%));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .bg-grid-pattern {
-    background-image:
-      linear-gradient(hsl(var(--primary) / 0.07) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--primary) / 0.07) 1px, transparent 1px);
-    background-size: 32px 32px;
-  }
-
-  .bg-noise {
-    position: relative;
-  }
-
-  .bg-noise::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    opacity: 0.015;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .animate-glow {
-    animation: glow 3s ease-in-out infinite alternate;
-  }
-
-  .animate-float {
-    animation: float 6s ease-in-out infinite;
-  }
-
-  .animate-gradient {
-    background-size: 200% 200%;
-    animation: gradient-shift 8s ease infinite;
-  }
-
-  .animate-scan {
-    animation: scan 4s linear infinite;
-  }
-
-  .shimmer {
-    background: linear-gradient(
-      90deg,
-      hsl(var(--muted) / 0.5) 0%,
-      hsl(var(--muted-foreground) / 0.12) 40%,
-      hsl(var(--primary) / 0.06) 50%,
-      hsl(var(--muted-foreground) / 0.12) 60%,
-      hsl(var(--muted) / 0.5) 100%
-    );
-    background-size: 250% 100%;
-    animation: shimmer-sweep 1.8s ease-in-out infinite;
-  }
-
-  .page-enter {
-    animation: page-enter var(--dur-2) var(--ease) both;
   }
 
   /* Hide scrollbars but keep scrolling (tab strips, segmented overflow). */
@@ -889,10 +808,6 @@ body {
   .pb-safe {
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
   }
-
-  .nav-glow-active {
-    box-shadow: inset 0 1px 0 hsl(var(--primary) / 0.15), 0 2px 12px hsl(var(--primary) / 0.12);
-  }
 }
 
 @keyframes shake {
@@ -905,156 +820,20 @@ body {
   90% { transform: translateX(3px); }
 }
 
-@keyframes glow {
-  from { box-shadow: 0 0 15px hsl(var(--primary) / 0.15), 0 0 45px hsl(var(--primary) / 0.05); }
-  to { box-shadow: 0 0 25px hsl(var(--primary) / 0.25), 0 0 65px hsl(var(--primary) / 0.1); }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
-}
-
-@keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-@keyframes scan {
-  0% { transform: translateY(-100%); opacity: 0; }
-  30% { opacity: 0.6; }
-  70% { opacity: 0.6; }
-  100% { transform: translateY(100vh); opacity: 0; }
-}
-
 @keyframes skeleton-sweep {
-  0% { background-position: 150% 0, 0 0; }
-  100% { background-position: -50% 0, 0 0; }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
-@keyframes shimmer-sweep {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-@keyframes page-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 0.6; }
-  100% { transform: scale(2.5); opacity: 0; }
-}
-
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.4s ease-out forwards;
-}
-
+/* OS «reduce motion»: every CSS animation/transition ends instantly (framer-motion follows the same setting
+   through <MotionConfig reducedMotion="user"> in App.tsx). */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-
-  .card-interactive:hover {
-    transform: none;
-  }
-}
-
-.war-room-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-sheet);
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(135deg, #0a0a0a 0%, #1a0a0a 30%, #0a0a0a 60%, #0a0f1a 100%);
-  color: #e5e5e5;
-  overflow: hidden;
-}
-
-.war-room-overlay::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 20% 50%, rgba(234, 88, 12, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(220, 38, 38, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(234, 88, 12, 0.03) 0%, transparent 50%);
-  pointer-events: none;
-}
-
-.war-room-overlay > * {
-  position: relative;
-  z-index: 1;
-}
-
-.war-room-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid rgba(234, 88, 12, 0.15);
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-}
-
-.war-room-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 20px;
-  border-top: 1px solid rgba(234, 88, 12, 0.1);
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.war-room-panel {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(234, 88, 12, 0.15);
-  padding: 16px;
-  backdrop-filter: blur(8px);
-}
-
-.war-room-panel:hover {
-  border-color: rgba(234, 88, 12, 0.25);
-}
-
-.war-room-input {
-  height: 32px;
-  font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(234, 88, 12, 0.2);
-  color: #e5e5e5;
-  border-radius: 0;
-  padding: 0 8px;
-}
-
-.war-room-input:focus {
-  outline: none;
-  border-color: rgba(234, 88, 12, 0.7);
-  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.35);
-}
-
-.war-room-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ea580c;
-  box-shadow: 0 0 8px rgba(234, 88, 12, 0.6);
-  animation: war-pulse 2s ease-in-out infinite;
-}
-
-@keyframes war-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(234, 88, 12, 0.6); }
-  50% { opacity: 0.5; box-shadow: 0 0 20px rgba(234, 88, 12, 0.3); }
 }
 
 /* ── Mobile & Safe Area ──────────────────────────────────────────── */

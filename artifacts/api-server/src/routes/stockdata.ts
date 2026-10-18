@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { getTickerFundamentals } from "../lib/marketDataService";
+import { AppError, badRequest, sendError } from "../lib/http";
 
 type YahooStockMeta = {
   regularMarketPrice?: number;
@@ -39,10 +40,10 @@ const router: IRouter = Router();
 
 router.get("/stockdata/fundamentals", asyncHandler(async (req, res): Promise<void> => {
   const ticker = String(req.query.ticker || "").toUpperCase().trim();
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
   const force = req.query.force === "1" || req.query.force === "true";
   const data = await getTickerFundamentals(ticker, { force });
-  if (!data) { res.status(404).json({ error: "No fundamentals available", ticker }); return; }
+  if (!data) throw new AppError("NO_DATA", 404, undefined, { ticker });
   res.json(data);
 }));
 
@@ -81,15 +82,15 @@ router.get("/stockdata/quote", asyncHandler(async (req, res): Promise<void> => {
   const symbols = Array.from(new Set(
     (single ?? String(req.query.symbols || "")).toUpperCase().split(",").map((s) => s.trim()).filter(Boolean),
   ));
-  if (!symbols.length) { res.status(400).json({ error: "symbols required" }); return; }
-  if (symbols.length > 50) { res.status(400).json({ error: "too many symbols (max 50)" }); return; }
+  if (!symbols.length) throw new AppError("FIELD_REQUIRED", undefined, { field: "symbols" });
+  if (symbols.length > 50) throw new AppError("TOO_MANY", undefined, { field: "symbols", max: 50 });
   const bad = symbols.find((s) => !SYMBOL_RE.test(s));
-  if (bad) { res.status(400).json({ error: "Invalid symbol", symbol: bad }); return; }
+  if (bad) throw new AppError("INVALID_SYMBOL", 400, undefined, { symbol: bad });
 
   const respond = (data: Record<string, any>) => {
     if (!single) { res.json(data); return; }
     const q = data[single];
-    if (!q) { res.status(404).json({ error: "Not found", symbol: single }); return; }
+    if (!q) { sendError(res, new AppError("NO_DATA", 404, undefined, { symbol: single })); return; }
     res.json({ symbol: single, ...q });
   };
 
@@ -186,7 +187,8 @@ router.get("/stockdata/quote", asyncHandler(async (req, res): Promise<void> => {
     respond(results);
   } catch (e: any) {
     logger.warn({ error: e.message }, "Yahoo Finance quote error");
-    res.status(502).json({ error: "Failed to fetch stock data", message: e.message });
+    if (e instanceof AppError) throw e;
+    throw new AppError("UPSTREAM_FAILED");
   }
 }));
 
@@ -194,10 +196,10 @@ router.get("/stockdata/chart", asyncHandler(async (req, res): Promise<void> => {
   const symbol = String(req.query.symbol || "").toUpperCase();
   const range = String(req.query.range || "5d");
   const interval = String(req.query.interval || "1d");
-  if (!symbol) { res.status(400).json({ error: "symbol required" }); return; }
-  if (!/^[A-Z0-9.\-^=]{1,12}$/.test(symbol)) { res.status(400).json({ error: "Invalid symbol" }); return; }
-  if (!/^[a-z0-9]{1,5}$/.test(range)) { res.status(400).json({ error: "Invalid range" }); return; }
-  if (!/^[a-z0-9]{1,5}$/.test(interval)) { res.status(400).json({ error: "Invalid interval" }); return; }
+  if (!symbol) throw new AppError("TICKER_REQUIRED");
+  if (!/^[A-Z0-9.\-^=]{1,12}$/.test(symbol)) throw new AppError("INVALID_SYMBOL");
+  if (!/^[a-z0-9]{1,5}$/.test(range)) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
+  if (!/^[a-z0-9]{1,5}$/.test(interval)) throw new AppError("INVALID_FIELD", undefined, { field: "interval" });
 
   const cKey = `chart_${symbol}_${range}_${interval}`;
   const cachedChart = cacheGet(cKey, CACHE_TTL * 5);
@@ -241,7 +243,7 @@ router.get("/stockdata/chart", asyncHandler(async (req, res): Promise<void> => {
     res.json(chartData);
   } catch (e: any) {
     logger.warn({ error: e.message }, "Yahoo Finance chart error");
-    res.status(502).json({ error: "Failed to fetch chart data" });
+    throw new AppError("UPSTREAM_FAILED");
   }
 }));
 

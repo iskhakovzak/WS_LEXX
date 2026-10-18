@@ -12,9 +12,10 @@
 import type { Request, Response } from "express";
 import { pool } from "@workspace/db";
 import {
-  buildEffectiveMatrix, capabilityDef, evaluate, readableTraders, normalizeRole, isCapability,
-  type Actor, type Capability, type EffectiveMatrix, type Override, type Role, type Scope, type Target,
+  buildEffectiveMatrix, evaluate, readableTraders, normalizeRole, isCapability,
+  type Actor, type Capability, type EffectiveMatrix, type Override, type Role, type Target,
 } from "./permissionsMatrix";
+import { AppError, errorMessage, forbidden, isErrorCode, sendError, unauthorized, type ErrorCode } from "./http/errors";
 
 export type { Actor, Capability, EffectiveMatrix, Override, Role, Scope, Target } from "./permissionsMatrix";
 export {
@@ -35,8 +36,6 @@ const GUEST_USER_ID = 0;
 const GUEST_ROLE = "guest";
 
 export const FORBIDDEN_CODE = "FORBIDDEN";
-const AUTH_REQUIRED = { error: "Требуется вход", code: "AUTH_REQUIRED" } as const;
-const GUEST_READ_ONLY = { error: "Гостевой режим: только просмотр", code: "GUEST_READ_ONLY" } as const;
 
 // ─── role_permissions table (additive, idempotent) ──────────────────────────
 
@@ -162,32 +161,34 @@ export async function canAny(req: Request, caps: readonly Capability[], target?:
   return caps.some((c) => evaluate(matrix, actor, c, target));
 }
 
-export function forbiddenBody(cap: Capability, message?: string) {
-  const def = capabilityDef(cap);
-  return { error: message ?? `Недостаточно прав: ${def?.label ?? cap}`, code: FORBIDDEN_CODE, capability: cap };
+/** 403 for a missing capability: `details.capability` names it; `code` picks a more specific text (e.g. STAFF_ONLY). */
+export function forbiddenError(cap: Capability, code?: ErrorCode | LegacyMessage): AppError {
+  return forbidden(cap, isErrorCode(code) ? code : "FORBIDDEN");
 }
+/** Older callers passed a Russian sentence instead of a code; it is ignored (the generic FORBIDDEN text is used). */
+type LegacyMessage = string & { readonly __legacy?: never };
 
 /**
  * Sends 401 (anonymous / inactive), 403 (guest or missing capability) and returns false; true when allowed.
- * `message` overrides the default Russian error text (keeps route-specific wording where it matters).
+ * `code` picks a more specific error text than FORBIDDEN (e.g. "STAFF_ONLY"); the text is translated by the middleware.
  */
-export async function requireCap(req: Request, res: Response, cap: Capability, target?: Target | null, message?: string): Promise<boolean> {
-  if (!req.authUser) { res.status(401).json(AUTH_REQUIRED); return false; }
+export async function requireCap(req: Request, res: Response, cap: Capability, target?: Target | null, code?: ErrorCode | LegacyMessage): Promise<boolean> {
+  if (!req.authUser) { sendError(res, unauthorized()); return false; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json(AUTH_REQUIRED); return false; }
-  if (actor.guest) { res.status(403).json(GUEST_READ_ONLY); return false; }
-  if (!evaluate(await getEffectiveMatrix(), actor, cap, target)) { res.status(403).json(forbiddenBody(cap, message)); return false; }
+  if (!actor) { sendError(res, unauthorized()); return false; }
+  if (actor.guest) { sendError(res, new AppError("GUEST_READ_ONLY")); return false; }
+  if (!evaluate(await getEffectiveMatrix(), actor, cap, target)) { sendError(res, forbiddenError(cap, code)); return false; }
   return true;
 }
 
 /** Like requireCap but accepts any of several capabilities (e.g. own OR team). The 403 names the first one. */
-export async function requireAnyCap(req: Request, res: Response, caps: readonly Capability[], target?: Target | null, message?: string): Promise<boolean> {
-  if (!req.authUser) { res.status(401).json(AUTH_REQUIRED); return false; }
+export async function requireAnyCap(req: Request, res: Response, caps: readonly Capability[], target?: Target | null, code?: ErrorCode | LegacyMessage): Promise<boolean> {
+  if (!req.authUser) { sendError(res, unauthorized()); return false; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json(AUTH_REQUIRED); return false; }
-  if (actor.guest) { res.status(403).json(GUEST_READ_ONLY); return false; }
+  if (!actor) { sendError(res, unauthorized()); return false; }
+  if (actor.guest) { sendError(res, new AppError("GUEST_READ_ONLY")); return false; }
   const matrix = await getEffectiveMatrix();
-  if (!caps.some((c) => evaluate(matrix, actor, c, target))) { res.status(403).json(forbiddenBody(caps[0]!, message)); return false; }
+  if (!caps.some((c) => evaluate(matrix, actor, c, target))) { sendError(res, forbiddenError(caps[0]!, code)); return false; }
   return true;
 }
 
@@ -202,6 +203,12 @@ export async function readScope(req: Request, cap: Capability): Promise<string[]
   return readableTraders(await getEffectiveMatrix(), actor, cap);
 }
 
+/** Failure of a scope helper: `throw failure.appError` (status/error kept for older callers; error is RU). */
+export type ScopeFailure = { ok: false; status: number; error: string; appError: AppError };
+function scopeFailure(appError: AppError): ScopeFailure {
+  return { ok: false, status: appError.status, error: errorMessage(appError.code, "ru", appError.params), appError };
+}
+
 /**
  * Resolve a `?trader=` request against a team capability. Returns the single trader to filter by
  * (null = whole desk) or an error. A member without the capability always gets their own name; a caller under
@@ -209,16 +216,16 @@ export async function readScope(req: Request, cap: Capability): Promise<string[]
  */
 export async function resolveTraderParam(
   req: Request, cap: Capability, requested: unknown, opts: { allowAll?: boolean } = {},
-): Promise<{ ok: true; trader: string | null; team: boolean; actor: Actor } | { ok: false; status: number; error: string }> {
+): Promise<{ ok: true; trader: string | null; team: boolean; actor: Actor } | ScopeFailure> {
   const actor = await resolveActor(req);
-  if (!actor) return { ok: false, status: 401, error: "Требуется вход" };
+  if (!actor) return scopeFailure(unauthorized());
   const raw = typeof requested === "string" ? requested.trim() : "";
-  if (raw.length > 120) return { ok: false, status: 400, error: "Invalid trader" };
+  if (raw.length > 120) return scopeFailure(new AppError("INVALID_TRADER"));
   const matrix = await getEffectiveMatrix();
   if (actor.guest) return { ok: true, trader: "∅guest", team: false, actor };
   const scope = readableTraders(matrix, actor, cap);
   if (scope === null) return { ok: true, trader: raw || (opts.allowAll ? null : actor.name), team: true, actor };
-  if (raw && raw !== actor.name && !scope.includes(raw)) return { ok: false, status: 403, error: forbiddenBody(cap).error };
+  if (raw && raw !== actor.name && !scope.includes(raw)) return scopeFailure(forbiddenError(cap));
   if (!raw) return { ok: true, trader: actor.name, team: scope.length > 1, actor };
   return { ok: true, trader: raw, team: scope.length > 1, actor };
 }

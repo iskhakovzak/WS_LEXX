@@ -7,6 +7,17 @@
  * Screenshots are stored as `![скриншот](url)` lines at the end of notes.
  */
 import type { Discussion, Comment } from "@workspace/api-client-react";
+import { matchesAny, prepareQuery } from "@workspace/text-search";
+import { fmtDate, fmtDateCustom, fmtRelative } from "@/lib/format";
+import { discussionsI18n } from "@/i18n/ns/discussions";
+import { personInitials } from "@/i18n";
+
+/** `{ key: label }` whose labels are read in the current language on every access (safe at module scope). */
+function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const k of keys) Object.defineProperty(o, k, { get: () => label(k), enumerable: true });
+  return o;
+}
 
 export type Thread = Discussion & {
   commentCount?: number;
@@ -36,19 +47,15 @@ export type VoteAgg = { upvotes: number; downvotes: number; score: number; myVot
 export type VoteMap = Record<number, VoteAgg>;
 export type TickerStat = { ticker: string; count: number };
 
-export const TAG_PINNED = "закреплено";
-export const TAG_RESOLVED = "решено";
+// Reserved tag values stored in `discussions.tags` and matched by the server: data, never shown or translated.
+export const TAG_PINNED = "закреплено"; // i18n-ignore
+export const TAG_RESOLVED = "решено"; // i18n-ignore
 const RESERVED = new Set([TAG_PINNED, TAG_RESOLVED]);
 
 export const TYPES = ["setup", "analysis", "strategy", "risk", "review_request", "general"] as const;
-export const TYPE_LABELS: Record<string, string> = {
-  strategy: "Стратегия",
-  analysis: "Анализ",
-  risk: "Риск",
-  setup: "Сетап",
-  review_request: "Разбор",
-  general: "Общее",
-};
+export type ThreadType = (typeof TYPES)[number];
+/** Type → label in the current language; unknown types are `undefined` (show the code). */
+export const TYPE_LABELS: Record<string, string> = liveLabels<ThreadType>(TYPES, (k) => discussionsI18n.t(`type.${k}`));
 export const TYPE_TONE: Record<string, "up" | "down" | "accent" | "warn" | "purple" | "neutral"> = {
   strategy: "up",
   risk: "down",
@@ -58,21 +65,21 @@ export const TYPE_TONE: Record<string, "up" | "down" | "accent" | "warn" | "purp
   general: "neutral",
 };
 
-/** Notes skeletons offered in the create dialog. */
-export const TEMPLATES: Record<string, string> = {
-  setup: "**Тезис:** \n**Вход:** \n**Стоп:** \n**Цель:** \n**Что инвалидирует:** ",
-  analysis: "**Контекст:** \n**Уровни:** \n**Сценарии:**\n- \n- ",
-  risk: "**Риск:** \n**Вероятность / влияние:** \n**Как хеджируем:** ",
-  strategy: "**Идея:** \n**Условия рынка:** \n**Правила входа/выхода:** \n**Метрики успеха:** ",
-  review_request: "**Что произошло:** \n**Что я сделал по плану / не по плану:** \n**Вопрос куратору:** ",
-  general: "",
-};
+/** Notes skeletons offered in the create dialog (in the writer's language; the result is their own text). */
+export const TEMPLATES: Record<string, string> = liveLabels<ThreadType>(TYPES, (k) => discussionsI18n.t(`template.${k}`));
 
 export type PositionStatus = "observing" | "in_position" | "exited";
-export const STATUS_LABELS: Record<PositionStatus, string> = {
-  observing: "Наблюдаю",
-  in_position: "В позиции",
-  exited: "Вышел",
+const POSITION_STATUSES: readonly PositionStatus[] = ["observing", "in_position", "exited"];
+/** Display label in the current language. */
+export const STATUS_LABELS: Record<PositionStatus, string> = liveLabels(POSITION_STATUSES, (k) => discussionsI18n.t(`status.${k}`));
+/**
+ * The machine prefix written into comment text («[Наблюдаю] …»). Stored data read by the server
+ * (routes/discussions.ts COMMENT_PREFIX) and by older clients: keep it identical in every UI language.
+ */
+const STATUS_STORED: Record<PositionStatus, string> = {
+  observing: "Наблюдаю", // i18n-ignore
+  in_position: "В позиции", // i18n-ignore
+  exited: "Вышел", // i18n-ignore
 };
 export const STATUS_TONE: Record<PositionStatus, "accent" | "up" | "neutral"> = {
   observing: "accent",
@@ -81,7 +88,7 @@ export const STATUS_TONE: Record<PositionStatus, "accent" | "up" | "neutral"> = 
 };
 const STATUS_FROM_LABEL: Record<string, PositionStatus> = {
   Observing: "observing", "In Position": "in_position", Exited: "exited",
-  "Наблюдаю": "observing", "В позиции": "in_position", "Вышел": "exited",
+  "Наблюдаю": "observing", "В позиции": "in_position", "Вышел": "exited", // i18n-ignore (stored prefixes)
 };
 
 export type ParsedComment = {
@@ -92,6 +99,7 @@ export type ParsedComment = {
   prefix: string;
 };
 
+// i18n-ignore (stored prefixes)
 const COMMENT_RE = /^(\[(Observing|In Position|Exited|Наблюдаю|В позиции|Вышел)\]\s*)?(\[re:(\d+)\]\s*)?([\s\S]*)$/;
 
 export function parseComment(text: string): ParsedComment {
@@ -106,7 +114,7 @@ export function parseComment(text: string): ParsedComment {
 }
 
 export function buildCommentText(body: string, status: PositionStatus | null, replyTo: number | null): string {
-  const s = status ? `[${STATUS_LABELS[status]}] ` : "";
+  const s = status ? `[${STATUS_STORED[status]}] ` : "";
   const r = replyTo ? `[re:${replyTo}] ` : "";
   return `${s}${r}${body.trim()}`;
 }
@@ -176,7 +184,8 @@ export function splitNotes(notes?: string | null): { text: string; images: strin
   return { text: lines.join("\n").trim(), images };
 }
 export function joinNotes(text: string, images: string[]): string {
-  const imgs = images.map((u) => u.trim()).filter(Boolean).map((u) => `![скриншот](${u})`);
+  // Stored markdown (alt text is not shown; IMG_LINE accepts any alt): kept stable across languages.
+  const imgs = images.map((u) => u.trim()).filter(Boolean).map((u) => `![скриншот](${u})`); // i18n-ignore
   return [text.trim(), imgs.join("\n")].filter(Boolean).join("\n\n");
 }
 
@@ -198,7 +207,8 @@ export const isPinned = (t: Thread) => t.pinned ?? hasTag(t.tags, TAG_PINNED);
 export const isResolved = (t: Thread) => t.resolved ?? hasTag(t.tags, TAG_RESOLVED);
 
 export type SortKey = "active" | "hot" | "new" | "top";
-export const SORT_LABELS: Record<SortKey, string> = { active: "Активные", hot: "Горячие", new: "Новые", top: "Топ" };
+const SORT_KEYS: readonly SortKey[] = ["active", "hot", "new", "top"];
+export const SORT_LABELS: Record<SortKey, string> = liveLabels(SORT_KEYS, (k) => discussionsI18n.t(`sort.${k}`));
 
 /** HN-style gravity: votes + replies, decayed by hours since last activity. */
 export function hotScore(t: Thread, votes: VoteMap): number {
@@ -224,6 +234,19 @@ export function mentions(text: string, name: string | null | undefined): boolean
   return text.toLowerCase().includes(`@${name.toLowerCase()}`);
 }
 
+/**
+ * The stored name written right after «@» at `at` (case-insensitive, whole word, longest of `names` first — like the
+ * server's extractMentions), or null. Lets a chip cover a multi-word name («@Дмитрий К.») and show its display name.
+ */
+export function mentionedName(text: string, at: number, names: readonly string[]): string | null {
+  const rest = text.slice(at).toLowerCase();
+  let best: string | null = null;
+  for (const n of names) {
+    if ((!best || n.length > best.length) && rest.startsWith(n.toLowerCase()) && !/[\p{L}\p{N}_]/u.test(rest[n.length] ?? "")) best = n;
+  }
+  return best;
+}
+
 export function threadMentions(t: Thread, me: string | null | undefined): boolean {
   if (t.mentionsMe !== undefined) return t.mentionsMe;
   if (!me) return false;
@@ -236,7 +259,9 @@ export function threadMatches(t: Thread, q: string): boolean {
   const needle = q.toLowerCase();
   const hay = [t.topic, t.notes, t.ticker, t.trader, t.tags, ...(t.comments ?? []).map((c) => `${c.trader ?? ""} ${c.text}`)]
     .filter(Boolean).join("\n").toLowerCase();
-  return hay.includes(needle);
+  if (hay.includes(needle)) return true;
+  // Authors by name in any script / layout: «olga», «Ольга», «Jkmuf» → threads of «Ольга Н.».
+  return matchesAny(prepareQuery(q), t.trader, ...(t.comments ?? []).map((c) => c.trader));
 }
 
 // ── Unread store ─────────────────────────────────────────────────────────
@@ -313,23 +338,17 @@ export function savePrefs(p: Prefs) {
 export function relTime(iso: string): string {
   const d = new Date(iso).getTime();
   if (!Number.isFinite(d)) return "";
-  const s = Math.round((Date.now() - d) / 1000);
-  if (s < 60) return "только что";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  const days = Math.round(h / 24);
-  if (days < 7) return `${days} дн назад`;
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: days > 300 ? "numeric" : undefined });
+  const days = (Date.now() - d) / 86_400_000;
+  if (days < 7) return fmtRelative(d, { style: "short" });
+  return fmtDate(iso, days > 300 ? "medium" : "dayMonth");
 }
 export function absTime(iso: string): string {
   const d = new Date(iso);
-  return Number.isFinite(d.getTime()) ? d.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" }) : iso;
+  return Number.isFinite(d.getTime()) ? fmtDateCustom(d, { dateStyle: "medium", timeStyle: "short", hourCycle: "h23" }) : iso;
 }
+/** Avatar initials of the person's display name (Latin in EN/UZ when set). */
 export function initials(name?: string | null): string {
-  if (!name) return "?";
-  return name.trim().slice(0, 2).toUpperCase();
+  return personInitials(name);
 }
 /** Stable chart-token colour per name (for avatars). */
 export function avatarTone(name?: string | null): string {

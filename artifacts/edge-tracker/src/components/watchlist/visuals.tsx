@@ -1,7 +1,9 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { toneText } from "@/components/ds";
-import { fmtPrice, scoreTone, type Plan } from "./lib";
+import { scoreTone, type Plan } from "./lib";
+import { fmtPct, fmtPrice } from "@/lib/format";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
 
 /** Circular 0–100 score gauge. */
 export function ScoreRing({ score, size = 36, className, pending }: { score: number | null; size?: number; className?: string; pending?: boolean }) {
@@ -15,7 +17,7 @@ export function ScoreRing({ score, size = 36, className, pending }: { score: num
       className={cn("relative inline-grid shrink-0 place-items-center", toneText(tone), className)}
       style={{ width: size, height: size }}
       role="img"
-      aria-label={pending ? "Score рассчитывается" : score == null ? "Score не рассчитан" : `Score ${score} из 100`}
+      aria-label={pending ? watchlistI18n.t("score.pending") : score == null ? watchlistI18n.t("score.none") : watchlistI18n.t("score.of100", { score })}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={cn("-rotate-90", pending && "animate-spin motion-reduce:animate-none")} aria-hidden="true">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth={stroke} />
@@ -62,7 +64,7 @@ export function Sparkline({ data, width = 88, height = 28, className, tone = "ne
       viewBox={`0 0 ${width} ${height}`}
       className={cn("shrink-0 overflow-visible", tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-muted-foreground", className)}
       role="img"
-      aria-label={`Динамика за ${data.length} дн.: ${change >= 0 ? "+" : "−"}${Math.abs(change).toFixed(1)}%`}
+      aria-label={watchlistI18n.t("spark.aria", { count: data.length, change: fmtPct(change, 1) })}
     >
       <defs>
         <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
@@ -81,13 +83,13 @@ export function Sparkline({ data, width = 88, height = 28, className, tone = "ne
 export function LevelLadder({ plan, compact = false }: { plan: Plan; compact?: boolean }) {
   const { stop, target, price, progress, side } = plan;
   if (stop == null && target == null) {
-    return compact ? <span className="text-xs text-muted-foreground">нет уровней</span> : null;
+    return compact ? <span className="text-xs text-muted-foreground">{watchlistI18n.t("ladder.none")}</span> : null;
   }
   if (stop == null || target == null || side == null) {
     return (
       <div className="flex items-center gap-2 text-xs tabular-nums">
-        {stop != null && <span className="text-down">Стоп {fmtPrice(stop)}</span>}
-        {target != null && <span className="text-up">Цель {fmtPrice(target)}</span>}
+        {stop != null && <span className="text-down">{watchlistI18n.t("ladder.stop", { price: fmtPrice(stop) })}</span>}
+        {target != null && <span className="text-up">{watchlistI18n.t("ladder.target", { price: fmtPrice(target) })}</span>}
       </div>
     );
   }
@@ -105,9 +107,9 @@ export function LevelLadder({ plan, compact = false }: { plan: Plan; compact?: b
         )}
       </div>
       <div className={cn("mt-1.5 flex items-center justify-between gap-2 tabular-nums", compact ? "text-2xs" : "text-xs")}>
-        <span className="text-down">Стоп {fmtPrice(stop)}</span>
+        <span className="text-down">{watchlistI18n.t("ladder.stop", { price: fmtPrice(stop) })}</span>
         {price != null && !compact && <span className="font-medium text-foreground">{fmtPrice(price)}</span>}
-        <span className="text-up">Цель {fmtPrice(target)}</span>
+        <span className="text-up">{watchlistI18n.t("ladder.target", { price: fmtPrice(target) })}</span>
       </div>
     </div>
   );

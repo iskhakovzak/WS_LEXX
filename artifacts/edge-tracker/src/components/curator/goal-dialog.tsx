@@ -9,10 +9,15 @@ import { QueryState } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { curatorApi, useCuratorMutation, useIdpMetrics } from "./api";
+import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** «Назначить цель»: an IDP goal through the Academy API (POST /api/academy/idp) — progress is tracked there. */
 export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: boolean; onOpenChange: (v: boolean) => void; trader: string; presetTitle?: string }) {
   const { toast } = useToast();
+  const { t } = curatorI18n.useT();
+  const tc = commonI18n.useT().t;
   const q = useIdpMetrics(open);
   const [metric, setMetric] = React.useState("journal_days");
   const [title, setTitle] = React.useState("");
@@ -45,8 +50,8 @@ export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: 
   const submit = () => {
     if (!valid || save.isPending) return;
     save.mutate(undefined, {
-      onSuccess: () => { toast({ title: "Цель назначена", description: `${trader} увидит её в Академии` }); onOpenChange(false); },
-      onError: (e) => toast({ title: "Не удалось назначить", description: (e as Error).message, variant: "destructive" }),
+      onSuccess: () => { toast({ title: t("goal.assigned"), description: t("goal.assignedHint", { name: personName(trader) }) }); onOpenChange(false); },
+      onError: (e) => toast({ title: t("goal.failed"), description: (e as Error).message, variant: "destructive" }),
     });
   };
 
@@ -55,16 +60,16 @@ export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: 
       <DialogContent className="sm:max-w-lg">
         <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Target className="h-4 w-4 text-primary" aria-hidden="true" />Цель для {trader}</DialogTitle>
-            <DialogDescription>Цель индивидуального плана развития: прогресс считается автоматически по сделкам и дневнику.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><Target className="h-4 w-4 text-primary" aria-hidden="true" />{t("goal.title", { name: personName(trader) })}</DialogTitle>
+            <DialogDescription>{t("goal.hint")}</DialogDescription>
           </DialogHeader>
           <QueryState query={q} skeleton={<div className="h-40" />}>
             {(data) => (
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 flex flex-col gap-1.5">
-                  <Label className="text-xs text-muted-foreground">Метрика</Label>
+                  <Label className="text-xs text-muted-foreground">{t("goal.metric")}</Label>
                   <Select value={metric} onValueChange={setMetric}>
-                    <SelectTrigger aria-label="Метрика"><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label={t("goal.metric")}><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {data.metrics.map((m) => <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>)}
                     </SelectContent>
@@ -72,29 +77,29 @@ export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: 
                   {def && <p className="text-xs text-muted-foreground">{def.description}</p>}
                 </div>
                 <div className="col-span-2 flex flex-col gap-1.5">
-                  <Label htmlFor="goal-title" className="text-xs text-muted-foreground">Формулировка</Label>
-                  <Input id="goal-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} placeholder="Например: закрыть 10 дней дневника с разбором" />
+                  <Label htmlFor="goal-title" className="text-xs text-muted-foreground">{t("goal.wording")}</Label>
+                  <Input id="goal-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={300} placeholder={t("goal.wordingPlaceholder")} />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="goal-target" className="text-xs text-muted-foreground">Цель{def ? `, ${def.unit}` : ""}</Label>
+                  <Label htmlFor="goal-target" className="text-xs text-muted-foreground">{def ? t("goal.targetUnit", { unit: def.unit }) : t("goal.target")}</Label>
                   <Input id="goal-target" type="number" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} className="tabular-nums" />
                 </div>
                 {def && (def.windowKind === "days" || def.windowKind === "trades") ? (
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="goal-window" className="text-xs text-muted-foreground">Окно, {def.windowKind === "days" ? "торговых дней" : "сделок"}</Label>
+                    <Label htmlFor="goal-window" className="text-xs text-muted-foreground">{def.windowKind === "days" ? t("goal.windowDays") : t("goal.windowTrades")}</Label>
                     <Input id="goal-window" type="number" min={1} value={windowN} onChange={(e) => setWindowN(e.target.value)} className="tabular-nums" />
                   </div>
                 ) : <div />}
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="goal-due" className="text-xs text-muted-foreground">Срок</Label>
+                  <Label htmlFor="goal-due" className="text-xs text-muted-foreground">{t("goal.due")}</Label>
                   <Input id="goal-due" type="date" value={dueOn} min={nyDate()} onChange={(e) => setDueOn(e.target.value)} className="tabular-nums" />
                 </div>
               </div>
             )}
           </QueryState>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={save.isPending}>Отмена</Button>
-            <Button type="submit" disabled={!valid || save.isPending || !q.data}>{save.isPending ? "Сохраняю…" : "Назначить цель"}</Button>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={save.isPending}>{tc("actions.cancel")}</Button>
+            <Button type="submit" disabled={!valid || save.isPending || !q.data}>{save.isPending ? t("saving") : t("goal.assign")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

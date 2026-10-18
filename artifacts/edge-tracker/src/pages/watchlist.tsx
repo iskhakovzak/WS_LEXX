@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { Radar, Search, AlertTriangle, RefreshCw, Archive, Flame, Clock } from "lucide-react";
+import { Radar, Search, AlertTriangle, RefreshCw, Archive, Flame, Clock, History } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { KEYS } from "@/lib/api/keys";
 import { links } from "@/lib/links";
-import { nyDate } from "@/lib/trading-date";
+import { nyDate, prevWeekday } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { EmptyState, Kbd, Page, PageHeader, Panel, TableSkeleton, usePersistentState, type SortDir } from "@/components/ds";
 import {
-  LISTS, LIST_LABELS, apiJson, computePlan, isListName, jsonInit, keyLevels, normStatus, readLS, writeLS, num,
+  LISTS, LIST_LABELS, computePlan, copyText, isListName, isStaleToday, keyLevels, normStatus, readLS, writeLS, num,
   type ListName, type WatchlistItem,
 } from "@/components/watchlist/lib";
 import { useWatchlistLevels, useWatchlistMarket, sessionDays } from "@/components/watchlist/use-market";
@@ -30,6 +31,11 @@ import {
 import { canModifyOwned } from "@/lib/ownership";
 import { gpApi, gpKeys, type InPlayItem } from "@/components/game-plan/types";
 import { docToDraft, draftToDoc } from "@/components/game-plan/plan-draft";
+import { commonI18n } from "@/i18n/ns/common";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
+import { fmtDate } from "@/lib/format";
+
+const wt = watchlistI18n.t;
 
 const LS_LISTS = "wl:lists";
 const LS_PINS = "wl:pins";
@@ -41,6 +47,19 @@ class DuplicateTickerError extends Error {
 }
 class NotDeployedError extends Error {}
 
+/** POST /api/watchlist; 409 → DuplicateTickerError (the server sends the existing row id). */
+async function createWatchRow(body: Record<string, unknown>, dupFallback: string): Promise<WatchlistItem> {
+  try {
+    return await http.post<WatchlistItem>("/api/watchlist", body);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) {
+      const id = e.field<number>("id");
+      throw new DuplicateTickerError(e.field<string>("error") ?? dupFallback, typeof id === "number" ? id : null);
+    }
+    throw e;
+  }
+}
+
 function isTypingTarget(t: EventTarget | null) {
   const el = t instanceof HTMLElement ? t : null;
   if (!el) return false;
@@ -51,6 +70,8 @@ function csvCell(v: unknown) {
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const round2 = (v: number) => Math.round(v * 100) / 100;
+/** «AVGO, COIN, MSTR и ещё 3» */
+const tickerList = (ts: string[], max = 6) => (ts.length <= max ? ts.join(", ") : wt("tickerList", { list: ts.slice(0, max).join(", "), count: ts.length - max }));
 
 /** Run async jobs with limited concurrency (fallback adds: each old POST scores the ticker synchronously). */
 async function pool<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
@@ -69,12 +90,15 @@ async function pool<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): 
 export default function Watchlist() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = watchlistI18n.useT();
   const { canEdit, user, isCurator } = useAuth();
   const me = user && user.role !== "guest" ? user.traderName ?? null : null;
   /** Content edit / delete of a row: its author or staff (server: 403 NOT_OWNER otherwise). */
   const mayModify = (i: WatchlistItem) => canEdit && canModifyOwned(i.createdBy, me, isCurator);
   const [, navigate] = useLocation();
   const today = nyDate();
+  // The session being prepared: today on weekdays, Monday on the weekend (same rule as «План дня»).
+  const planDay = sessionDays(today).levelsDay;
 
   // ── persisted view state ─────────────────────────────────────────────
   const [view, setViewRaw] = usePersistentState<View>("watchlist.view", "today");
@@ -114,8 +138,8 @@ export default function Watchlist() {
 
   // ── data ────────────────────────────────────────────────────────────
   const { data: rawItems, isLoading, isError, error, refetch, isFetching } = useQuery<WatchlistItem[]>({
-    queryKey: ["watchlist"],
-    queryFn: () => apiJson<WatchlistItem[]>(`${BASE}/api/watchlist`),
+    queryKey: KEYS.watchlist(),
+    queryFn: ({ signal }) => http.get<WatchlistItem[]>("/api/watchlist", { signal }),
   });
   const items = useMemo<WatchlistItem[]>(
     () => (Array.isArray(rawItems) ? rawItems.map((i) => ({ ...i, status: normStatus(i.status) })) : []),
@@ -232,24 +256,24 @@ export default function Watchlist() {
   }, [visible]);
 
   // ── mutations ───────────────────────────────────────────────────────
-  const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: ["watchlist"] }), [qc]);
+  const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: KEYS.watchlist() }), [qc]);
   const patchCache = useCallback((fn: (i: WatchlistItem) => WatchlistItem) => {
-    qc.setQueryData<WatchlistItem[]>(["watchlist"], (old) => old?.map(fn));
+    qc.setQueryData<WatchlistItem[]>(KEYS.watchlist(), (old) => old?.map(fn));
   }, [qc]);
 
   const bulk = useCallback(async (body: { ids: number[]; action: "status" | "delete" | "restore" | "inplay" | "list"; status?: string; inPlay?: boolean; list?: ListName }) => {
     try {
-      return await apiJson<{ count: number }>(`${BASE}/api/watchlist/bulk`, jsonInit("POST", body));
+      return await http.post<{ count: number }>("/api/watchlist/bulk", body);
     } catch {
       // Older API builds (no /bulk or no «list» action): apply per item.
       const res = await Promise.allSettled(body.ids.map((id) =>
-        body.action === "status" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", { status: body.status }))
-          : body.action === "inplay" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", { inPlay: body.inPlay }))
-          : body.action === "list" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", { list: body.list }))
-          : body.action === "delete" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("DELETE"))
-          : apiJson(`${BASE}/api/watchlist/${id}/restore`, jsonInit("POST"))));
+        body.action === "status" ? http.patch(`/api/watchlist/${id}`, { status: body.status })
+          : body.action === "inplay" ? http.patch(`/api/watchlist/${id}`, { inPlay: body.inPlay })
+          : body.action === "list" ? http.patch(`/api/watchlist/${id}`, { list: body.list })
+          : body.action === "delete" ? http.del(`/api/watchlist/${id}`)
+          : http.post(`/api/watchlist/${id}/restore`)));
       const count = res.filter((r) => r.status === "fulfilled").length;
-      if (!count) throw new Error("Не удалось применить действие");
+      if (!count) throw new Error(wt("toast.actionFailed"));
       return { count };
     }
   }, []);
@@ -293,14 +317,14 @@ export default function Watchlist() {
     try {
       await applyLists(moving.map((item) => ({ item, list })));
       if (!opts.silent) {
-        const label = moving.length === 1 ? `${moving[0].ticker} → «${LIST_LABELS[list]}»` : `${moving.length} тикеров → «${LIST_LABELS[list]}»`;
+        const what = moving.length === 1 ? moving[0].ticker : commonI18n.t("units.tickers", { count: moving.length });
         toast({
-          title: label,
-          action: <ToastAction altText="Отменить перенос" onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, list }, list: p.list }))); }}>Отменить</ToastAction>,
+          title: wt("toast.moved", { what, list: LIST_LABELS[list] }),
+          action: <ToastAction altText={wt("toast.undoMove")} onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, list }, list: p.list }))); }}>{commonI18n.t("actions.undo")}</ToastAction>,
         });
       }
     } catch (e) {
-      toast({ title: "Не удалось перенести", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.moveFailed"), description: errMsg(e), variant: "destructive" });
     }
   }, [applyLists, listOf, toast]);
 
@@ -317,11 +341,11 @@ export default function Watchlist() {
       const flagged = rows.filter((i) => i.inPlay).map((i) => i.id);
       if (flagged.length && serverInPlay) await bulk({ ids: flagged, action: "inplay", inPlay: false });
       toast({
-        title: rows.length === 1 ? `${rows[0].ticker} в архиве` : `В архив: ${rows.length}`,
-        action: <ToastAction altText="Вернуть из архива" onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, status: "passed" }, list: p.list }))); }}>Отменить</ToastAction>,
+        title: rows.length === 1 ? wt("toast.archivedOne", { ticker: rows[0].ticker }) : wt("toast.archivedMany", { count: rows.length }),
+        action: <ToastAction altText={wt("toast.undoArchive")} onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, status: "passed" }, list: p.list }))); }}>{commonI18n.t("actions.undo")}</ToastAction>,
       });
     } catch (e) {
-      toast({ title: "Не удалось отправить в архив", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.archiveFailed"), description: errMsg(e), variant: "destructive" });
     } finally {
       invalidate();
     }
@@ -329,20 +353,20 @@ export default function Watchlist() {
 
   const restore = useCallback((item: WatchlistItem, list: ListName = "watch") => {
     void applyLists([{ item, list }]).then(
-      () => toast({ title: `${item.ticker} → «${LIST_LABELS[list]}»` }),
-      (e) => toast({ title: "Не удалось вернуть", description: errMsg(e), variant: "destructive" }),
+      () => toast({ title: wt("toast.moved", { what: item.ticker, list: LIST_LABELS[list] }) }),
+      (e) => toast({ title: wt("toast.restoreFailed"), description: errMsg(e), variant: "destructive" }),
     );
   }, [applyLists, toast]);
 
   const notePatch = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => apiJson<WatchlistItem>(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", data)),
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => http.patch<WatchlistItem>(`/api/watchlist/${id}`, data),
     onMutate: async ({ id, data }) => {
-      await qc.cancelQueries({ queryKey: ["watchlist"] });
-      const prev = qc.getQueryData<WatchlistItem[]>(["watchlist"]);
+      await qc.cancelQueries({ queryKey: KEYS.watchlist() });
+      const prev = qc.getQueryData<WatchlistItem[]>(KEYS.watchlist());
       patchCache((i) => (i.id === id ? { ...i, ...data } as WatchlistItem : i));
       return { prev };
     },
-    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(["watchlist"], ctx.prev); toast({ title: "Заметка не сохранена", description: errMsg(e), variant: "destructive" }); },
+    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev); toast({ title: wt("toast.noteFailed"), description: errMsg(e), variant: "destructive" }); },
     onSettled: invalidate,
   });
 
@@ -352,28 +376,25 @@ export default function Watchlist() {
     const byTicker = new Map(realItems.map((i) => [i.ticker.toUpperCase(), i]));
     const existing = tickers.map((t) => byTicker.get(t)).filter((i): i is WatchlistItem => !!i);
     const fresh = tickers.filter((t) => !byTicker.has(t));
-    if (tickers.length > 30) { toast({ title: "Не больше 30 тикеров за раз", variant: "destructive" }); return false; }
+    if (tickers.length > 30) { toast({ title: wt("toast.max30"), variant: "destructive" }); return false; }
     setAdding(true);
     // Optimistic rows for the new tickers.
-    const prev = qc.getQueryData<WatchlistItem[]>(["watchlist"]);
+    const prev = qc.getQueryData<WatchlistItem[]>(KEYS.watchlist());
     const stamp = Date.now();
     if (fresh.length) {
       const temps: WatchlistItem[] = fresh.map((ticker, k) => ({
         id: -(stamp + k), ticker, catalyst: null, targetPrice: null, stopPrice: null, status: "watching", notes: null, sector: null, tags: null,
         createdAt: new Date().toISOString(), score: null, scoreBreakdown: null, scoredAt: null, inPlay: list === "today", list,
       }));
-      qc.setQueryData<WatchlistItem[]>(["watchlist"], (old) => [...(old ?? []), ...temps]);
+      qc.setQueryData<WatchlistItem[]>(KEYS.watchlist(), (old) => [...(old ?? []), ...temps]);
     }
     try {
       let createdCount = 0;
       try {
-        const r = await fetch(`${BASE}/api/watchlist/quick`, jsonInit("POST", { tickers, list }));
-        if (r.status === 404 || r.status === 405) throw new NotDeployedError();
-        if (!r.ok) {
-          const j = (await r.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `HTTP ${r.status}`);
-        }
-        const j = (await r.json()) as { created?: WatchlistItem[] };
+        const j = await http.post<{ created?: WatchlistItem[] }>("/api/watchlist/quick", { tickers, list }).catch((err: unknown) => {
+          if (err instanceof ApiError && (err.status === 404 || err.status === 405)) throw new NotDeployedError();
+          throw err;
+        });
         createdCount = j.created?.length ?? 0;
         // A server without list support still accepted the rows: keep the local override.
         if (!serverLists && list !== "watch") setLocalLists((cur) => { const n = { ...cur }; for (const t of tickers) n[t] = list; return n; });
@@ -383,17 +404,11 @@ export default function Watchlist() {
         // Fallback for API builds without /quick: one POST per ticker (2 at a time) + move the existing ones.
         if (list !== "watch") setLocalLists((cur) => { const n = { ...cur }; for (const t of tickers) n[t] = list; return n; });
         const res = await pool(fresh, 2, async (ticker) => {
-          const r = await fetch(`${BASE}/api/watchlist`, jsonInit("POST", { ticker, status: "watching", inPlay: list === "today", list }));
-          if (r.status === 409) {
-            const j = (await r.json().catch(() => ({}))) as { error?: string; id?: number };
-            throw new DuplicateTickerError(j.error ?? `${ticker} уже в вотчлисте`, typeof j.id === "number" ? j.id : null);
-          }
-          if (!r.ok) { const j = (await r.json().catch(() => ({}))) as { error?: string }; throw new Error(j.error ?? `HTTP ${r.status}`); }
-          return (await r.json()) as WatchlistItem;
+          return createWatchRow({ ticker, status: "watching", inPlay: list === "today", list }, wt("toast.duplicate", { ticker }));
         });
         createdCount = res.filter((x) => x.status === "fulfilled").length;
         const failed = res.map((x, k) => (x.status === "rejected" ? `${fresh[k]}: ${errMsg(x.reason)}` : null)).filter(Boolean);
-        if (failed.length) toast({ title: `Не добавлено: ${failed.length}`, description: failed.slice(0, 4).join("\n"), variant: "destructive" });
+        if (failed.length) toast({ title: wt("toast.notAdded", { count: failed.length }), description: failed.slice(0, 4).join("\n"), variant: "destructive" });
         if (existing.length) await moveTo(existing, list, { silent: true });
       }
       if (serverLists && existing.length) {
@@ -402,15 +417,15 @@ export default function Watchlist() {
       }
       const moved = existing.filter((i) => listOf(i) !== list);
       const parts = [
-        createdCount ? `добавлено ${createdCount}` : null,
-        moved.length ? `перенесено ${moved.length}` : null,
+        createdCount ? wt("toast.addedN", { count: createdCount }) : null,
+        moved.length ? wt("toast.movedN", { count: moved.length }) : null,
       ].filter(Boolean);
-      toast({ title: `«${LIST_LABELS[list]}»: ${parts.join(", ") || "уже в списке"}`, description: tickers.length <= 6 ? tickers.join(", ") : `${tickers.slice(0, 6).join(", ")} и ещё ${tickers.length - 6}` });
+      toast({ title: wt("toast.addResult", { list: LIST_LABELS[list], parts: parts.join(", ") || wt("toast.alreadyInList") }), description: tickerList(tickers) });
       if (isListName(view) && view !== list) setView(list);
       return true;
     } catch (e) {
-      if (prev) qc.setQueryData(["watchlist"], prev);
-      toast({ title: "Не удалось добавить", description: errMsg(e), variant: "destructive" });
+      if (prev) qc.setQueryData(KEYS.watchlist(), prev);
+      toast({ title: wt("toast.addFailed"), description: errMsg(e), variant: "destructive" });
       return false;
     } finally {
       setAdding(false);
@@ -419,29 +434,22 @@ export default function Watchlist() {
   }, [adding, realItems, qc, toast, serverLists, moveTo, patchCache, listOf, view, setView, invalidate]);
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => apiJson<WatchlistItem>(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", data)),
-    onSuccess: (row) => { void invalidate(); setFormOpen(false); setEditing(null); toast({ title: `${row?.ticker ?? "Тикер"} сохранён` }); },
-    onError: (e) => toast({ title: "Ошибка сохранения", description: errMsg(e), variant: "destructive" }),
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => http.patch<WatchlistItem>(`/api/watchlist/${id}`, data),
+    onSuccess: (row) => { void invalidate(); setFormOpen(false); toast({ title: wt("toast.saved", { ticker: row?.ticker ?? wt("toast.tickerWord") }) }); },
+    onError: (e) => toast({ title: wt("toast.saveFailed"), description: errMsg(e), variant: "destructive" }),
   });
   const createMut = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
-      const r = await fetch(`${BASE}/api/watchlist`, jsonInit("POST", { ...data, list: addTarget, inPlay: addTarget === "today" }));
-      if (r.status === 409) {
-        const j = (await r.json().catch(() => ({}))) as { error?: string; id?: number };
-        throw new DuplicateTickerError(j.error ?? "Тикер уже в вотчлисте", typeof j.id === "number" ? j.id : null);
-      }
-      if (!r.ok) { const j = (await r.json().catch(() => ({}))) as { error?: string }; throw new Error(j.error ?? `HTTP ${r.status}`); }
-      return (await r.json()) as WatchlistItem;
-    },
+    mutationFn: (data: Record<string, unknown>) =>
+      createWatchRow({ ...data, list: addTarget, inPlay: addTarget === "today" }, wt("toast.duplicateGeneric")),
     onSuccess: (row) => {
       if (!serverLists && addTarget !== "watch") setLocalLists((cur) => ({ ...cur, [row.ticker]: addTarget }));
       void invalidate(); setFormOpen(false);
-      toast({ title: `${row?.ticker ?? "Тикер"} добавлен в «${LIST_LABELS[addTarget]}»` });
+      toast({ title: wt("toast.addedTo", { ticker: row?.ticker ?? wt("toast.tickerWord"), list: LIST_LABELS[addTarget] }) });
     },
     onError: (e) => {
       const dup = e instanceof DuplicateTickerError ? e : null;
-      if (dup?.id) { setFormOpen(false); setOpenId(dup.id); toast({ title: dup.message, description: "Открыли существующую карточку" }); return; }
-      toast({ title: "Не удалось добавить", description: errMsg(e), variant: "destructive" });
+      if (dup?.id) { setFormOpen(false); setOpenId(dup.id); toast({ title: dup.message, description: wt("toast.openedExisting") }); return; }
+      toast({ title: wt("toast.addFailed"), description: errMsg(e), variant: "destructive" });
     },
   });
 
@@ -449,63 +457,63 @@ export default function Watchlist() {
     const list_items = all_items.filter(mayModify);
     const ids = list_items.filter((i) => i.id > 0).map((i) => i.id);
     if (!ids.length) return;
-    const label = ids.length === 1 ? `${list_items[0].ticker} удалён` : `Удалено тикеров: ${ids.length}`;
+    const label = ids.length === 1 ? wt("toast.deletedOne", { ticker: list_items[0].ticker }) : wt("toast.deletedMany", { count: ids.length });
     const undo = async () => {
       try {
-        if (ids.length === 1) await apiJson(`${BASE}/api/watchlist/${ids[0]}/restore`, jsonInit("POST"));
+        if (ids.length === 1) await http.post(`/api/watchlist/${ids[0]}/restore`);
         else await bulk({ ids, action: "restore" });
         void invalidate();
-        toast({ title: "Восстановлено" });
-      } catch (e) { toast({ title: "Не удалось восстановить", description: errMsg(e), variant: "destructive" }); }
+        toast({ title: wt("toast.restored") });
+      } catch (e) { toast({ title: wt("toast.restoreDeletedFailed"), description: errMsg(e), variant: "destructive" }); }
     };
     try {
       // Soft delete on the server (restorable).
-      if (ids.length === 1) await apiJson(`${BASE}/api/watchlist/${ids[0]}`, jsonInit("DELETE"));
+      if (ids.length === 1) await http.del(`/api/watchlist/${ids[0]}`);
       else await bulk({ ids, action: "delete" });
       void invalidate();
       setDeleting(null);
       setSelected(new Set());
       if (openId != null && ids.includes(openId)) setOpenId(null);
-      toast({ title: label, action: <ToastAction altText="Отменить удаление" onClick={undo}>Отменить</ToastAction> });
+      toast({ title: label, action: <ToastAction altText={wt("toast.undoDelete")} onClick={undo}>{commonI18n.t("actions.undo")}</ToastAction> });
     } catch (e) {
-      toast({ title: "Ошибка удаления", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.deleteFailed"), description: errMsg(e), variant: "destructive" });
     }
   };
 
   const scoreMut = useMutation({
-    mutationFn: (id: number) => apiJson<{ row: WatchlistItem }>(`${BASE}/api/watchlist/${id}/score`, jsonInit("POST")),
+    mutationFn: (id: number) => http.post<{ row: WatchlistItem }>(`/api/watchlist/${id}/score`),
     onMutate: (id) => setScoringIds((cur) => new Set(cur).add(id)),
     onSettled: (_d, _e, id) => setScoringIds((cur) => { const n = new Set(cur); n.delete(id); return n; }),
-    onSuccess: (data) => { void invalidate(); toast({ title: `${data.row.ticker} · Score: ${data.row.score}/100` }); },
-    onError: (e) => toast({ title: "Ошибка расчёта", description: errMsg(e), variant: "destructive" }),
+    onSuccess: (data) => { void invalidate(); toast({ title: wt("toast.scoreResult", { ticker: data.row.ticker, score: data.row.score ?? "—" }) }); },
+    onError: (e) => toast({ title: wt("toast.scoreFailed"), description: errMsg(e), variant: "destructive" }),
   });
   const scoreAllMut = useMutation({
-    mutationFn: () => apiJson<{ count: number; failed?: number; failures?: { ticker: string }[] }>(`${BASE}/api/watchlist/score-all`, jsonInit("POST")),
+    mutationFn: () => http.post<{ count: number; failed?: number; failures?: { ticker: string }[] }>("/api/watchlist/score-all"),
     onSuccess: (data) => {
       void invalidate();
       const failed = data.failed ?? 0;
       toast({
-        title: `Пересчитано ${data.count} тикеров`,
-        description: failed > 0 ? `Ошибка у ${failed}: ${(data.failures ?? []).map((f) => f.ticker).join(", ")}` : undefined,
+        title: wt("toast.rescored", { tickers: commonI18n.t("units.tickers", { count: data.count }) }),
+        description: failed > 0 ? wt("toast.rescoreErrors", { count: failed, list: (data.failures ?? []).map((f) => f.ticker).join(", ") }) : undefined,
         variant: failed > 0 && data.count === 0 ? "destructive" : undefined,
       });
     },
-    onError: (e) => toast({ title: "Ошибка пересчёта", description: errMsg(e), variant: "destructive" }),
+    onError: (e) => toast({ title: wt("toast.rescoreFailed"), description: errMsg(e), variant: "destructive" }),
   });
 
   /** «В план дня»: append the ticker to «В игре» of my plan for today (levels from PDH/PDL/stop/target, note → plan). */
   const addToPlan = useCallback(async (item: WatchlistItem) => {
-    if (!me) { toast({ title: "План дня ведёт трейдер под своим именем", variant: "destructive" }); return; }
+    if (!me) { toast({ title: wt("toast.planOwnerOnly"), variant: "destructive" }); return; }
     setPlanBusy(true);
     try {
-      const date = nyDate();
+      const date = planDay;
       const r = await gpApi.my(date);
       const doc = draftToDoc(docToDraft(r.plan?.doc));
       if (doc.inPlay.some((t) => t.ticker.toUpperCase() === item.ticker.toUpperCase())) {
-        toast({ title: `${item.ticker} уже в плане дня` });
+        toast({ title: wt("toast.alreadyInPlan", { ticker: item.ticker }) });
         return;
       }
-      if (doc.inPlay.length >= PLAN_MAX) { toast({ title: `В плане уже ${PLAN_MAX} тикеров`, variant: "destructive" }); return; }
+      if (doc.inPlay.length >= PLAN_MAX) { toast({ title: wt("toast.planFull", { count: PLAN_MAX }), variant: "destructive" }); return; }
       const q = market.quotes[item.ticker];
       const price = q?.price ?? null;
       const lv = levels[item.ticker];
@@ -516,28 +524,28 @@ export default function Watchlist() {
       const earn = market.earnings[item.ticker];
       const entry: InPlayItem = {
         ticker: item.ticker,
-        catalyst: item.catalyst ?? (earn ? `Отчёт ${earn.callType}${earn.when === "recent" ? " (вчера)" : ""}` : ""),
+        catalyst: item.catalyst ?? (earn ? wt(earn.when === "recent" ? "toast.planCatalystEarnRecent" : "toast.planCatalystEarn", { call: earn.callType }) : ""),
         bias: plan.side === "long" ? "bull" : plan.side === "short" ? "bear" : "neutral",
         grade: null,
         levels: { support, resistance },
         plan: item.notes ?? "",
         horizon: listOf(item) === "swing" ? "swing" : "intraday",
-        risk_note: plan.stop != null ? `Стоп ${plan.stop}` : "",
+        risk_note: plan.stop != null ? wt("toast.planStop", { price: plan.stop }) : "",
         trigger: "",
       };
       await gpApi.saveMy(date, { ...doc, inPlay: [...doc.inPlay, entry], status: r.plan?.status ?? "draft" });
       void qc.invalidateQueries({ queryKey: gpKeys.my(date) });
       toast({
-        title: `${item.ticker} добавлен в план дня`,
-        description: support.length || resistance.length ? `Уровни: ${[...support, ...resistance].sort((a, b) => a - b).join(" · ")}` : undefined,
-        action: <ToastAction altText="Открыть план дня" onClick={() => navigate(links.gamePlan(date))}>Открыть</ToastAction>,
+        title: date === today ? wt("toast.addedToPlanToday", { ticker: item.ticker }) : wt("toast.addedToPlanOn", { ticker: item.ticker, date: fmtDate(date, "dayMonthNumeric") }),
+        description: support.length || resistance.length ? wt("toast.planLevels", { levels: [...support, ...resistance].sort((a, b) => a - b).join(" · ") }) : undefined,
+        action: <ToastAction altText={wt("toast.openPlan")} onClick={() => navigate(links.gamePlan(date))}>{commonI18n.t("actions.open")}</ToastAction>,
       });
     } catch (e) {
-      toast({ title: "Не удалось добавить в план", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.planFailed"), description: errMsg(e), variant: "destructive" });
     } finally {
       setPlanBusy(false);
     }
-  }, [me, market.quotes, market.earnings, levels, listOf, qc, toast, navigate]);
+  }, [me, planDay, today, market.quotes, market.earnings, levels, listOf, qc, toast, navigate]);
 
   // ── row actions (stable identity for memoised rows) ─────────────────
   const impl = useRef({ moveTo, archive, restore, addToPlan, scoreMutate: scoreMut.mutate, notePatch: notePatch.mutate, scoringIds });
@@ -555,11 +563,19 @@ export default function Watchlist() {
     remove: (list_items) => setDeleting(list_items),
   }), []);
 
+  const copyTickers = useCallback(async (ts: string[]) => {
+    if (!ts.length) return;
+    const ok = await copyText(ts.join(", "));
+    toast(ok
+      ? { title: wt("toast.copiedTickers", { tickers: commonI18n.t("units.tickers", { count: ts.length }) }), description: tickerList(ts) }
+      : { title: commonI18n.t("states.copyFailed"), description: wt("toast.clipboardDenied"), variant: "destructive" });
+  }, [toast]);
+
   const exportCsv = () => {
-    const head = ["Тикер", "Список", "Цена", "Изм %", "Гэп %", "rVol", "ATR", "Ближайший уровень", "Цена уровня", "До уровня %", "Мои сделки", "Net $", "WR %", "Стоп", "Цель", "Катализатор", "Заметка", "Теги"];
+    const head = [t("csv.ticker"), t("csv.list"), t("csv.price"), t("csv.change"), t("csv.gap"), "rVol", "ATR", t("csv.nearest"), t("csv.levelPrice"), t("csv.toLevel"), t("csv.myTrades"), "Net $", "WR %", t("csv.stop"), t("csv.target"), t("csv.catalyst"), t("csv.note"), t("csv.tags")];
     const rowsCsv = visible.map((r) => {
       const q = r.quote; const k = r.keys[0]; const h = r.history;
-      return [r.item.ticker, r.list ? LIST_LABELS[r.list] : "Архив", q?.price ?? "", q?.change ?? "", q?.gapPct ?? "", q?.relativeVolume ?? "", q?.atr ?? "",
+      return [r.item.ticker, r.list ? LIST_LABELS[r.list] : t("list.archive"), q?.price ?? "", q?.change ?? "", q?.gapPct ?? "", q?.relativeVolume ?? "", q?.atr ?? "",
         k?.label ?? "", k?.price ?? "", k ? k.distPct.toFixed(2) : "", h?.n ?? "", h ? h.net.toFixed(2) : "", h?.wr != null ? Math.round(h.wr * 100) : "",
         r.item.stopPrice ?? "", r.item.targetPrice ?? "", r.item.catalyst ?? "", r.item.notes ?? "", r.item.tags ?? ""];
     });
@@ -573,8 +589,8 @@ export default function Watchlist() {
   };
 
   // ── keyboard ────────────────────────────────────────────────────────
-  const kb = useRef({ visible, focusedId, selected, canEdit, actions });
-  kb.current = { visible, focusedId, selected, canEdit, actions };
+  const kb = useRef({ visible, focusedId, selected, canEdit, actions, copyTickers });
+  kb.current = { visible, focusedId, selected, canEdit, actions, copyTickers };
   const blocked = formOpen || openId != null || !!ideaFor || !!deleting;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -585,7 +601,7 @@ export default function Watchlist() {
         return;
       }
       if (blocked) return;
-      const { visible: list, focusedId: fid, selected: sel, canEdit: edit, actions: act } = kb.current;
+      const { visible: list, focusedId: fid, selected: sel, canEdit: edit, actions: act, copyTickers: copy } = kb.current;
       const idx = list.findIndex((r) => r.item.id === fid);
       const cur = idx >= 0 ? list[idx] : null;
       const targets = () => (sel.size ? list.filter((r) => sel.has(r.item.id)) : cur ? [cur] : []).map((r) => r.item);
@@ -604,6 +620,12 @@ export default function Watchlist() {
       }
       if (code === "KeyR") { e.preventDefault(); market.refetchQuotes(); return; }
       if (code === "KeyD") { e.preventDefault(); setDensity((d) => (d === "compact" ? "comfortable" : "compact")); return; }
+      if (code === "KeyC") {
+        e.preventDefault();
+        const rows = sel.size ? list.filter((r) => sel.has(r.item.id)) : list;
+        void copy(rows.filter((r) => !r.pending).map((r) => r.item.ticker));
+        return;
+      }
       if (e.key === "Escape") { if (sel.size) setSelected(new Set()); else setFocusedId(null); return; }
       if (!cur) return;
       if (e.key === "Enter") { e.preventDefault(); act.open(cur.item); return; }
@@ -657,7 +679,7 @@ export default function Watchlist() {
         .then((r) => {
           setLocalLists({});
           void invalidate();
-          if (r.count) toast({ title: `Списки перенесены в общий вотчлист: ${r.count}` });
+          if (r.count) toast({ title: wt("toast.migrated", { count: r.count }) });
         })
         .catch(() => { /* keep local overrides; retry next load */ })
         .finally(() => { migrating.current = false; });
@@ -684,7 +706,7 @@ export default function Watchlist() {
     } else if (canEdit) {
       setPrefill({ value: ticker, nonce: Date.now() });
     } else {
-      toast({ title: `${ticker} нет в вотчлисте` });
+      toast({ title: wt("toast.notInWatchlist", { ticker }) });
     }
     try {
       const params = new URLSearchParams(window.location.search);
@@ -705,6 +727,13 @@ export default function Watchlist() {
   }, [allRows]);
   const archivedTickers = useMemo(() => allRows.filter((r) => r.list == null).map((r) => r.item.ticker.toUpperCase()), [allRows]);
   const existingTickers = useMemo(() => new Set(realItems.map((i) => i.ticker)), [realItems]);
+  // «Сегодня» left over from earlier sessions (moved in before the previous session's close).
+  const prevSession = prevWeekday(planDay);
+  const [staleDismissed, setStaleDismissed] = usePersistentState<string>("watchlist.staleDismissed", "");
+  const staleToday = useMemo(
+    () => (view === "today" ? inView.filter((r) => !r.pending && isStaleToday(r.item.inPlayAt, prevSession)).map((r) => r.item) : []),
+    [view, inView, prevSession],
+  );
   const losingInView = useMemo(() => inView.filter((r) => r.history && r.history.net < 0 && r.history.n >= 2), [inView]);
   const filtersActive = !!query.trim() || filters.size > 0;
   const days = sessionDays(today);
@@ -725,11 +754,9 @@ export default function Watchlist() {
   return (
     <Page>
       <PageHeader
-        title="Вотчлист"
+        title={t("page.title")}
         icon={Radar}
-        description={days.weekend
-          ? `Выходной: уровни PDH/PDL — на сессию ${days.levelsDay.slice(8, 10)}.${days.levelsDay.slice(5, 7)}, VWAP появится после открытия.`
-          : "Рабочий список дня: тикеры, уровни, сценарий и твоя история по каждому."}
+        description={days.weekend ? t("page.descWeekend", { date: fmtDate(days.levelsDay, "dayMonthNumeric") }) : t("page.desc")}
         actions={
           <>
             <QuoteStatus
@@ -746,6 +773,8 @@ export default function Watchlist() {
               canEdit={canEdit}
               canExport={visible.length > 0}
               onExport={exportCsv}
+              copyCount={visible.filter((r) => !r.pending).length}
+              onCopy={() => void copyTickers(visible.filter((r) => !r.pending).map((r) => r.item.ticker))}
               onAddDetailed={() => { setFormInitial(blankForm()); setEditing(null); setFormOpen(true); }}
               canScoreAll={realItems.length > 0}
               scoringAll={scoreAllMut.isPending}
@@ -784,14 +813,17 @@ export default function Watchlist() {
             prefill={prefill}
           />
         )}
-        <WatchlistSearch
-          inputRef={searchRef}
-          query={query}
-          onQuery={setQuery}
-          filters={filters}
-          onToggleFilter={(f) => setFilters((cur) => { const n = new Set(cur); if (n.has(f)) n.delete(f); else n.add(f); return n; })}
-          filterCounts={filterCounts}
-        />
+        {/* Search + chips wrap as one group (no lone chip on a second line). */}
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+          <WatchlistSearch
+            inputRef={searchRef}
+            query={query}
+            onQuery={setQuery}
+            filters={filters}
+            onToggleFilter={(f) => setFilters((cur) => { const n = new Set(cur); if (n.has(f)) n.delete(f); else n.add(f); return n; })}
+            filterCounts={filterCounts}
+          />
+        </div>
       </div>
 
       {canEdit && selectedItems.length > 0 && (
@@ -803,8 +835,21 @@ export default function Watchlist() {
           onMove={(l) => { void moveTo(selectedItems, l); setSelected(new Set()); }}
           onArchive={() => void archive(selectedItems)}
           onDelete={setDeleting}
+          onCopy={() => void copyTickers(selectedItems.map((i) => i.ticker))}
           onClear={() => setSelected(new Set())}
         />
+      )}
+
+      {canEdit && staleToday.length > 0 && staleDismissed !== prevSession && (
+        <div role="note" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-[var(--glass-bg)] px-3 py-2 text-sm">
+          <History className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            {t("stale.text", { tickers: commonI18n.t("units.tickers", { count: staleToday.length }), list: tickerList(staleToday.map((i) => i.ticker), 8) })}
+          </span>
+          <Button size="sm" variant="outline" onClick={() => void moveTo(staleToday, "watch")}>{t("stale.toWatch")}</Button>
+          <Button size="sm" variant="outline" onClick={() => void archive(staleToday)}><Archive className="h-4 w-4" />{t("stale.toArchive")}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setStaleDismissed(prevSession)} title={t("stale.keepTitle")}>{t("stale.keep")}</Button>
+        </div>
       )}
 
       <Panel padded={false}>
@@ -813,9 +858,9 @@ export default function Watchlist() {
         {isError && (
           <EmptyState
             icon={AlertTriangle}
-            title="Не удалось загрузить вотчлист"
+            title={t("empty.loadFailed")}
             description={errMsg(error)}
-            action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching}><RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin motion-reduce:animate-none")} />Повторить</Button>}
+            action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching}><RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin motion-reduce:animate-none")} />{commonI18n.t("actions.retry")}</Button>}
           />
         )}
 
@@ -848,20 +893,20 @@ export default function Watchlist() {
           filtersActive && inView.length > 0 ? (
             <EmptyState
               icon={Search}
-              title="Ничего не найдено"
-              description="Под фильтры не подходит ни один тикер этого списка."
-              action={<Button variant="outline" onClick={() => { setQuery(""); setFilters(new Set()); }}>Сбросить фильтры</Button>}
+              title={commonI18n.t("states.nothingFound")}
+              description={t("empty.noMatch")}
+              action={<Button variant="outline" onClick={() => { setQuery(""); setFilters(new Set()); }}>{commonI18n.t("actions.resetFilters")}</Button>}
             />
           ) : view === "archive" ? (
-            <EmptyState icon={Archive} title="Архив пуст" description="Сюда попадают тикеры, которые вы убрали из работы (Del или перетаскиванием на «Архив»). Отсюда их можно вернуть." compact />
+            <EmptyState icon={Archive} title={t("empty.archiveTitle")} description={t("empty.archiveText")} compact />
           ) : (
             <EmptyState
               icon={view === "today" ? Flame : view === "swing" ? Clock : Radar}
-              title={view === "all" ? "Вотчлист пуст" : `«${LIST_LABELS[view as ListName]}» пуст`}
+              title={view === "all" ? t("empty.allTitle") : t("empty.listTitle", { list: LIST_LABELS[view as ListName] })}
               description={canEdit
-                ? `Впишите тикеры в поле выше — можно сразу несколько через запятую или пробел. ${view === "today" ? "Сюда — то, что торгуете сегодня." : view === "swing" ? "Сюда — позиции и переносы на несколько дней." : ""}`
-                : "Тикеры добавляют трейдеры команды."}
-              action={canEdit ? <Button className="bg-primary-solid" onClick={() => addRef.current?.focus()}>Добавить тикеры <Kbd className="ml-1">A</Kbd></Button> : undefined}
+                ? t(view === "today" ? "empty.addHintToday" : view === "swing" ? "empty.addHintSwing" : "empty.addHint")
+                : t("empty.readOnly")}
+              action={canEdit ? <Button className="bg-primary-solid" onClick={() => addRef.current?.focus()}>{t("empty.addTickers")} <Kbd className="ml-1">A</Kbd></Button> : undefined}
             />
           )
         )}
@@ -875,6 +920,7 @@ export default function Watchlist() {
         actions={actions}
         onClose={() => setOpenId(null)}
         planBusy={planBusy}
+        planDay={planDay}
       />
 
       <WatchlistFormDialog
@@ -883,7 +929,8 @@ export default function Watchlist() {
         initial={formInitial}
         existingTickers={existingTickers}
         saving={createMut.isPending || updateMut.isPending}
-        onClose={() => { setFormOpen(false); setEditing(null); }}
+        // `editing` stays until the next open, so the closing dialog doesn't flip to «Добавить» / «Уже есть в вотчлисте».
+        onClose={() => setFormOpen(false)}
         onSubmit={(payload) => (editing ? updateMut.mutate({ id: editing.id, data: payload }) : createMut.mutate(payload))}
       />
 

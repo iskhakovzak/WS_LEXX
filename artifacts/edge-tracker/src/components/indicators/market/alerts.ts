@@ -8,12 +8,13 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import type { AlertRule, IndicatorId } from "./engine";
 
 export const MARKET_ALERT_PREFIX = "mkt-alert.";
 const LOCAL_KEY = "indicator-market-alerts-v1";
-const API = `${BASE}/api/indicator-notes`;
+const API = "/api/indicator-notes";
 const QK = ["indicator-notes", "market-alerts"] as const;
 
 export type AlertMap = Partial<Record<IndicatorId, AlertRule>>;
@@ -46,9 +47,7 @@ function saveLocal(m: AlertMap) {
 
 async function fetchAlerts(): Promise<AlertMap | null> {
   try {
-    const r = await fetch(API);
-    if (!r.ok) return null;
-    const d = (await r.json()) as { items?: Array<{ key?: string; note?: string }> };
+    const d = await http.get<{ items?: Array<{ key?: string; note?: string }> }>(API);
     const out: AlertMap = {};
     for (const it of d.items ?? []) {
       if (typeof it.key !== "string" || !it.key.startsWith(MARKET_ALERT_PREFIX)) continue;
@@ -65,7 +64,7 @@ async function fetchAlerts(): Promise<AlertMap | null> {
 export function useMarketAlerts() {
   const qc = useQueryClient();
   const [local, setLocal] = useState<AlertMap>(loadLocal);
-  const q = useQuery({ queryKey: QK, queryFn: fetchAlerts, staleTime: 5 * 60_000, refetchOnWindowFocus: false });
+  const q = useQuery({ queryKey: QK, queryFn: fetchAlerts, staleTime: STALE.long, refetchOnWindowFocus: false });
 
   useEffect(() => {
     if (q.data) { setLocal(q.data); saveLocal(q.data); }
@@ -79,19 +78,13 @@ export function useMarketAlerts() {
       return next;
     });
     try {
-      const r = await fetch(`${API}/${encodeURIComponent(MARKET_ALERT_PREFIX + id)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: rule ? JSON.stringify(rule) : "" }),
+      await http.put(`${API}/${encodeURIComponent(MARKET_ALERT_PREFIX + id)}`, { note: rule ? JSON.stringify(rule) : "" });
+      qc.setQueryData<AlertMap | null>(QK, (prev) => {
+        const next = { ...(prev ?? {}) };
+        if (rule) next[id] = rule; else delete next[id];
+        return next;
       });
-      if (r.ok) {
-        qc.setQueryData<AlertMap | null>(QK, (prev) => {
-          const next = { ...(prev ?? {}) };
-          if (rule) next[id] = rule; else delete next[id];
-          return next;
-        });
-      }
-      return r.ok;
+      return true;
     } catch {
       return false;
     }

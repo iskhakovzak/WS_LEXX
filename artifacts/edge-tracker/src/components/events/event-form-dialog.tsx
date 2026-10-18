@@ -18,6 +18,8 @@ import { nyDate } from "@/lib/trading-date";
 import {
   EVENT_TYPES, REACTIONS, SESSIONS, displayTags, getSession, normType, reactionMeta, typeMeta, withSession, type Session,
 } from "./event-meta";
+import { eventsI18n } from "@/i18n/ns/events";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type EventFormData = {
   ticker: string; date: string; eventType: string; session: Session | ""; headline: string; reaction: string;
@@ -80,7 +82,7 @@ export function formToBody(f: EventFormData): EventBody {
 export function SessionPicker({ value, onChange, size = "md" }: { value: Session | ""; onChange: (v: Session | "") => void; size?: "sm" | "md" }) {
   return (
     <Segmented<"none" | Session>
-      ariaLabel="Время выхода"
+      ariaLabel={eventsI18n.t("form.releaseTime")}
       size={size}
       value={value || "none"}
       onChange={(v) => onChange(v === "none" ? "" : v)}
@@ -99,6 +101,8 @@ export function TypeSelect({ id, value, onChange }: { id?: string; value: string
   );
 }
 
+const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+
 export function EventFormDialog({
   open, onOpenChange, editing, initial, onSubmit, saving,
 }: {
@@ -109,6 +113,7 @@ export function EventFormDialog({
   onSubmit: (body: ReturnType<typeof formToBody>) => void;
   saving: boolean;
 }) {
+  const { t } = eventsI18n.useT();
   const [form, setForm] = React.useState<EventFormData>(initial);
   React.useEffect(() => { if (open) setForm(initial); }, [open, initial]);
   const set = <K extends keyof EventFormData>(k: K, v: EventFormData[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -133,48 +138,54 @@ export function EventFormDialog({
     });
   }
 
-  const valid = form.ticker.trim() !== "" && form.headline.trim() !== "" && /^\d{4}-\d{2}-\d{2}$/.test(form.date);
+  // Legacy notes may carry a list («XOM, CVX, …») — editing keeps it valid while the ticker is untouched.
+  const tickerOk = TICKER_RE.test(form.ticker.trim()) || (!!editing && form.ticker === editing.ticker);
+  const valid = tickerOk && form.headline.trim() !== "" && /^\d{4}-\d{2}-\d{2}$/.test(form.date);
   const submit = () => { if (valid && !saving) onSubmit(formToBody(form)); };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] w-full max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? `Редактировать: ${editing.ticker}` : "Новое событие"}</DialogTitle>
-          <DialogDescription>Катализатор, время выхода и реакция рынка. Ctrl+Enter — сохранить.</DialogDescription>
+          <DialogTitle>{editing ? t("form.titleEdit", { ticker: editing.ticker }) : t("form.titleNew")}</DialogTitle>
+          <DialogDescription>{t("form.description")}</DialogDescription>
         </DialogHeader>
 
         <div
           className="flex flex-col gap-4"
           onKeyDown={(ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); submit(); } }}
         >
-          {form.ticker.trim().length >= 1 && <TickerFundamentalsBar ticker={form.ticker.trim()} onLoaded={handleFundamentalsLoaded} />}
+          {TICKER_RE.test(form.ticker.trim()) && <TickerFundamentalsBar ticker={form.ticker.trim()} onLoaded={handleFundamentalsLoaded} />}
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <div className="space-y-1.5">
-              <Label htmlFor="ev-ticker">Тикер *</Label>
-              <Input id="ev-ticker" autoFocus value={form.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase())} placeholder="NVDA" className="uppercase" />
+              <Label htmlFor="ev-ticker">{t("form.ticker")}</Label>
+              <Input
+                id="ev-ticker" autoFocus value={form.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder="NVDA" className="uppercase"
+                aria-invalid={form.ticker.trim() !== "" && !tickerOk} aria-describedby={form.ticker.trim() !== "" && !tickerOk ? "ev-ticker-err" : undefined}
+              />
+              {form.ticker.trim() !== "" && !tickerOk && <p id="ev-ticker-err" className="text-xs text-down">{t("form.tickerError")}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ev-date">Дата *</Label>
+              <Label htmlFor="ev-date">{t("form.date")}</Label>
               <Input id="ev-date" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ev-type">Тип *</Label>
+              <Label htmlFor="ev-type">{t("form.type")}</Label>
               <TypeSelect id="ev-type" value={form.eventType} onChange={(v) => set("eventType", v)} />
             </div>
             <div className="space-y-1.5">
-              <span className="block text-sm font-medium leading-none">Время выхода</span>
+              <span className="block text-sm font-medium leading-none">{t("form.releaseTime")}</span>
               <SessionPicker value={form.session} onChange={(v) => set("session", v)} size="sm" />
             </div>
 
             <div className="col-span-2 space-y-1.5 md:col-span-4">
-              <Label htmlFor="ev-headline">Заголовок *</Label>
-              <Input id="ev-headline" value={form.headline} onChange={(e) => set("headline", e.target.value)} placeholder="Отчёт Q3: выручка выше ожиданий, гайденс повышен" />
+              <Label htmlFor="ev-headline">{t("form.headline")}</Label>
+              <Input id="ev-headline" value={form.headline} onChange={(e) => set("headline", e.target.value)} placeholder={t("form.headlinePlaceholder")} />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="ev-reaction">Реакция</Label>
+              <Label htmlFor="ev-reaction">{t("form.reaction")}</Label>
               <Select value={form.reaction || "__none"} onValueChange={(v) => set("reaction", v === "__none" ? "" : v)}>
                 <SelectTrigger id="ev-reaction"><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent>
@@ -187,24 +198,24 @@ export function EventFormDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ev-pct">Движение, %</Label>
+              <Label htmlFor="ev-pct">{t("form.move")}</Label>
               <Input id="ev-pct" type="number" step="0.1" inputMode="decimal" value={form.percentMove} onChange={(e) => set("percentMove", e.target.value)} placeholder="+16.4" />
             </div>
             <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="ev-volume">Объём</Label>
-              <Input id="ev-volume" value={form.volume} onChange={(e) => set("volume", e.target.value)} placeholder="320M акций" />
+              <Label htmlFor="ev-volume">{t("form.volume")}</Label>
+              <Input id="ev-volume" value={form.volume} onChange={(e) => set("volume", e.target.value)} placeholder={t("form.volumePlaceholder")} />
             </div>
 
             <div className="col-span-2 space-y-1.5 md:col-span-4">
               <div className="flex items-center justify-between">
-                <Label htmlFor="ev-summary">Заметки</Label>
+                <Label htmlFor="ev-summary">{t("form.notes")}</Label>
                 <VoiceRecorder onTranscript={(text) => setForm((f) => ({ ...f, summary: f.summary ? `${f.summary}\n${text}` : text }))} />
               </div>
-              <Textarea id="ev-summary" value={form.summary} onChange={(e) => set("summary", e.target.value)} rows={3} placeholder="Что вышло, как отреагировал премаркет, уровни, план…" className="resize-y rounded-2xl" />
+              <Textarea id="ev-summary" value={form.summary} onChange={(e) => set("summary", e.target.value)} rows={3} placeholder={t("form.notesPlaceholder")} className="resize-y rounded-2xl" />
             </div>
 
             <div className="col-span-2 space-y-1.5 md:col-span-4">
-              <span className="flex items-center gap-1.5 text-sm font-medium leading-none"><Tag className="h-3.5 w-3.5" aria-hidden="true" />Теги</span>
+              <span className="flex items-center gap-1.5 text-sm font-medium leading-none"><Tag className="h-3.5 w-3.5" aria-hidden="true" />{t("form.tags")}</span>
               <TagSelector
                 selectedTags={form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : []}
                 onChange={(tags) => set("tags", tags.join(", "))}
@@ -222,8 +233,8 @@ export function EventFormDialog({
           </div>
 
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
-            <Button type="button" onClick={submit} disabled={saving || !valid}>{saving ? "Сохраняем…" : "Сохранить"}</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
+            <Button type="button" onClick={submit} disabled={saving || !valid}>{saving ? t("form.saving") : commonI18n.t("actions.save")}</Button>
           </DialogFooter>
         </div>
       </DialogContent>

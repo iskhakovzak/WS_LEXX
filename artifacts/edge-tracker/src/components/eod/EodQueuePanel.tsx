@@ -4,9 +4,13 @@ import { EmptyState, Panel, Pill, Segmented, toneOf, toneText } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { fmtDayShort, fmtMoney, plural } from "@/components/journal/utils";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
+import { commonI18n } from "@/i18n/ns/common";
+import { eodI18n } from "@/i18n/ns/eod";
 import { DISCIPLINE_LABELS, MOOD_LABELS, hoursText, slaText, useEodQueue, useEodReviewed, type QueueItem } from "./eod-api";
 import { EodReviewSheet } from "./EodReviewSheet";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Tab = "pending" | "reviewed";
 type Sort = "oldest" | "newest";
@@ -16,6 +20,8 @@ type Sort = "oldest" | "newest";
  * Filters: trader, «только просроченные», sort. A row opens the review sheet (read-only day + comment + score).
  */
 export function EodQueuePanel({ enabled }: { enabled: boolean }) {
+  const { t } = eodI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const pendingQ = useEodQueue(enabled);
   const [tab, setTab] = useState<Tab>("pending");
   const reviewedQ = useEodReviewed(enabled && tab === "reviewed");
@@ -30,7 +36,7 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
   const source = tab === "pending" ? pending : reviewed;
 
   const traders = useMemo(
-    () => Array.from(new Set([...pending, ...reviewed].map((i) => i.trader))).sort((a, b) => a.localeCompare(b, "ru")),
+    () => Array.from(new Set([...pending, ...reviewed].map((i) => i.trader))).sort(comparePersonNames),
     [pending, reviewed],
   );
 
@@ -58,44 +64,36 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
   return (
     <>
       <Panel
-        title="Очередь на проверку"
+        title={t("queue.title")}
         icon={ClipboardCheck}
-        description={`Закрытые трейдерами дни. Срок проверки — ${sla} ч с момента закрытия.`}
+        description={t("queue.desc", { sla })}
         actions={
           <Segmented<Tab>
             size="sm"
-            ariaLabel="Раздел очереди"
+            ariaLabel={t("queue.sectionAria")}
             value={tab}
             onChange={setTab}
             options={[
-              { value: "pending", label: "Ждут проверки", count: pending.length },
-              { value: "reviewed", label: "Проверено за 7 дней" },
+              { value: "pending", label: t("queue.pending"), count: pending.length },
+              { value: "reviewed", label: t("queue.reviewed7") },
             ]}
           />
         }
       >
         <div className="space-y-4">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-            <Kpi label="В очереди" value={pending.length} />
-            <Kpi label={`Просрочено (> ${sla} ч)`} value={kpi.overdue} tone={kpi.overdue ? "text-warn" : undefined} />
-            <Kpi label="Среднее ожидание" value={kpi.avgWait != null ? hoursText(kpi.avgWait) : "—"} />
+            <Kpi label={t("queue.inQueue")} value={pending.length} />
+            <Kpi label={t("queue.overdueKpi", { sla })} value={kpi.overdue} tone={kpi.overdue ? "text-warn" : undefined} />
+            <Kpi label={t("queue.avgWait")} value={kpi.avgWait != null ? hoursText(kpi.avgWait) : "—"} />
             <Kpi
-              label="Проверено в срок, 7 дн"
+              label={t("queue.inSla")}
               value={kpi.inSla != null ? `${Math.round(kpi.inSla * 100)}%` : tab === "reviewed" ? "—" : "…"}
-              hint={kpi.avgReview != null ? `в среднем ${hoursText(kpi.avgReview)}` : undefined}
+              hint={kpi.avgReview != null ? t("queue.avgReview", { time: hoursText(kpi.avgReview) }) : undefined}
             />
           </dl>
 
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              aria-label="Трейдер"
-              value={trader}
-              onChange={(e) => setTrader(e.target.value)}
-              className="glass-field h-8 rounded-full px-3 text-xs"
-            >
-              <option value="">Все трейдеры</option>
-              {traders.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <PersonSelect value={trader} onValueChange={setTrader} options={traders} allLabel={tc("fields.allTraders")} ariaLabel={tc("fields.trader")} className="h-8 w-44 px-3 text-xs" />
             {tab === "pending" && (
               <button
                 type="button"
@@ -103,23 +101,23 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
                 onClick={() => setOverdueOnly((v) => !v)}
                 className={cn("chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium", overdueOnly && "!border-transparent !bg-warn/15 !text-warn")}
               >
-                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />Только просроченные{kpi.overdue ? ` · ${kpi.overdue}` : ""}
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{t("queue.overdueOnly")}{kpi.overdue ? ` · ${kpi.overdue}` : ""}
               </button>
             )}
             <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSort((s) => (s === "oldest" ? "newest" : "oldest"))}>
-              <ArrowDownUp aria-hidden="true" />{sort === "oldest" ? (tab === "pending" ? "Сначала старые" : "Сначала новые") : (tab === "pending" ? "Сначала новые" : "Сначала старые")}
+              <ArrowDownUp aria-hidden="true" />{(sort === "oldest") === (tab === "pending") ? t("queue.oldestFirst") : t("queue.newestFirst")}
             </Button>
           </div>
 
           {loading ? (
             <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
           ) : unavailable ? (
-            <p className="text-sm text-muted-foreground">Раздел появится после обновления сервера.</p>
+            <p className="text-sm text-muted-foreground">{t("queue.afterUpdate")}</p>
           ) : items.length === 0 ? (
             <EmptyState
               icon={tab === "pending" ? Inbox : CheckCheck}
-              title={tab === "pending" ? (source.length ? "Ничего по фильтру" : "Очередь пуста") : "Нет проверок за 7 дней"}
-              description={tab === "pending" && !source.length ? "Все закрытые дни проверены." : undefined}
+              title={tab === "pending" ? (source.length ? t("queue.noMatch") : t("queue.empty")) : t("queue.noReviews")}
+              description={tab === "pending" && !source.length ? t("queue.allReviewed") : undefined}
               compact
             />
           ) : (
@@ -137,6 +135,7 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
 }
 
 function QueueRow({ it, sla, mode, onOpen }: { it: QueueItem; sla: number; mode: Tab; onOpen: () => void }) {
+  const { t } = eodI18n.useT();
   const pct = Math.min(100, (it.hoursWaiting / sla) * 100);
   return (
     <li>
@@ -149,29 +148,29 @@ function QueueRow({ it, sla, mode, onOpen }: { it: QueueItem; sla: number; mode:
         )}
       >
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-sm font-semibold">{it.trader}</span>
-          <span className="tabular-nums text-muted-foreground">{fmtDayShort(it.date)}</span>
-          <span className="tabular-nums">{it.trades} {plural(it.trades, "сделка", "сделки", "сделок")}</span>
-          {it.net != null && <span className={cn("tabular-nums font-medium", toneText(toneOf(it.net)))}>{fmtMoney(it.net)}</span>}
+          <span className="text-sm font-semibold">{personName(it.trader)}</span>
+          <span className="tabular-nums text-muted-foreground">{fmtDate(it.date, "dayMonth")}</span>
+          <span className="tabular-nums">{commonI18n.t("units.trades", { count: it.trades })}</span>
+          {it.net != null && <span className={cn("tabular-nums font-medium", toneText(toneOf(it.net)))}>{fmtUsd(it.net, { signed: true, decimals: "auto" })}</span>}
           {it.discipline != null && (
-            <Pill tone={it.discipline >= 4 ? "up" : it.discipline <= 2 ? "down" : "neutral"} title={DISCIPLINE_LABELS[it.discipline - 1]}>дисц. {it.discipline}/5</Pill>
+            <Pill tone={it.discipline >= 4 ? "up" : it.discipline <= 2 ? "down" : "neutral"} title={DISCIPLINE_LABELS[it.discipline - 1]}>{t("queue.disc", { n: it.discipline })}</Pill>
           )}
           {it.mood != null && <span className="text-muted-foreground">{MOOD_LABELS[it.mood - 1]}</span>}
         </span>
         <span className="flex items-center gap-2">
           {mode === "pending" ? (
             <>
-              {it.overdue && <Pill tone="warn">Просрочено</Pill>}
+              {it.overdue && <Pill tone="warn">{t("queue.overdue")}</Pill>}
               <span className="tabular-nums text-muted-foreground">
                 <Clock className="mr-1 inline h-3 w-3" aria-hidden="true" />{hoursText(it.hoursWaiting)}
               </span>
-              <span className="rounded-full bg-primary-solid px-3 py-1 font-medium text-primary-foreground">Проверить</span>
+              <span className="whitespace-nowrap rounded-full bg-primary-solid px-3 py-1 font-medium text-primary-foreground">{t("queue.review")}</span>
             </>
           ) : (
             <>
               {it.curatorScore != null && <Pill tone={it.curatorScore >= 4 ? "up" : it.curatorScore <= 2 ? "down" : "accent"}>{it.curatorScore}/5</Pill>}
-              <span className="text-muted-foreground">{it.reviewedBy}</span>
-              <span className={cn("tabular-nums", it.hoursWaiting > sla ? "text-warn" : "text-muted-foreground")}>за {hoursText(it.hoursWaiting)}</span>
+              <span className="text-muted-foreground">{personName(it.reviewedBy)}</span>
+              <span className={cn("tabular-nums", it.hoursWaiting > sla ? "text-warn" : "text-muted-foreground")}>{t("queue.reviewedIn", { time: hoursText(it.hoursWaiting) })}</span>
             </>
           )}
         </span>

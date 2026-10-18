@@ -8,9 +8,15 @@ import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, weekHref } from "@/lib/period-links";
 import {
   type DaySummary, type Metric, type ValueFn,
-  MONTH_NAMES, dateOnly, fmtDayLong, monthMatrix, ymd,
+  dateOnly, monthMatrix, monthName, ymd,
 } from "@/lib/analytics-pro";
 import { fmtVal, heatClass } from "./pro-format";
+import { fmtDate, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
+import { personName } from "@/i18n";
+
+const tp = analyticsProI18n.t;
 
 export type CalendarFocus = {
   view: "year" | "month";
@@ -21,14 +27,8 @@ export type CalendarFocus = {
   day: string | null;
 };
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-function pluralTrades(n: number) {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return `${n} сделка`;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} сделки`;
-  return `${n} сделок`;
-}
+/** Calendar header Mon…Sun ("Пн"), in the UI language. */
+const weekdayHeaders = () => [1, 2, 3, 4, 5, 6, 0].map((d) => { const s = fmtWeekday(d, "short"); return s.charAt(0).toUpperCase() + s.slice(1); });
 
 function hasValue(d: DaySummary | undefined) {
   return !!d && (d.valued ?? d.trades) > 0;
@@ -61,36 +61,36 @@ export function ProCalendar({
     }
   };
 
-  const title = focus.view === "year" ? String(focus.year) : `${MONTH_NAMES[focus.month]} ${focus.year}`;
+  const title = focus.view === "year" ? String(focus.year) : `${monthName(focus.month)} ${focus.year}`;
 
   return (
     <Panel
       icon={CalendarDays}
-      title="Календарь результатов"
-      description="Как брокерская выписка: клик по месяцу — детали, по дню — сделки дня"
+      title={tp("calendar.title")}
+      description={tp("calendar.hint")}
       actions={
         <Segmented
           size="sm"
-          ariaLabel="Масштаб календаря"
+          ariaLabel={tp("calendar.scaleAria")}
           value={focus.view}
           onChange={(v) => onFocus({ ...focus, view: v, day: null })}
-          options={[{ value: "year", label: "Год" }, { value: "month", label: "Месяц" }]}
+          options={[{ value: "year", label: tp("calendar.year") }, { value: "month", label: tp("calendar.month") }]}
         />
       }
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shift(-1)} aria-label={focus.view === "year" ? "Предыдущий год" : "Предыдущий месяц"}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shift(-1)} aria-label={focus.view === "year" ? tp("calendar.prevYear") : tp("calendar.prevMonth")}>
             <ChevronLeft aria-hidden="true" />
           </Button>
           <h3 className="min-w-[9.5rem] text-center text-base font-semibold tabular-nums" aria-live="polite">{title}</h3>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shift(1)} aria-label={focus.view === "year" ? "Следующий год" : "Следующий месяц"}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shift(1)} aria-label={focus.view === "year" ? tp("calendar.nextYear") : tp("calendar.nextMonth")}>
             <ChevronRight aria-hidden="true" />
           </Button>
         </div>
         {focus.view === "month" && (
           <Button variant="ghost" size="sm" onClick={() => onFocus({ ...focus, view: "year", day: null })}>
-            Весь {focus.year}
+            {tp("calendar.wholeYear", { year: focus.year })}
           </Button>
         )}
       </div>
@@ -156,14 +156,14 @@ function YearView({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground">Итог года</span>
+        <span className="text-muted-foreground">{tp("calendar.yearTotal")}</span>
         <span className={cn("font-semibold tabular-nums", toneText(toneOf(total)))}>{tradesTotal ? fmtVal(metric, total, { sign: true }) : "—"}</span>
         <span className="text-muted-foreground">·</span>
-        <span className="text-muted-foreground tabular-nums">{pluralTrades(tradesTotal)}</span>
+        <span className="text-muted-foreground tabular-nums">{commonI18n.t("units.trades", { count: tradesTotal })}</span>
         {(greenMonths > 0 || redMonths > 0) && (
           <>
-            <Pill tone="up">{greenMonths} в плюс</Pill>
-            <Pill tone="down">{redMonths} в минус</Pill>
+            <Pill tone="up">{tp("calendar.up", { count: greenMonths })}</Pill>
+            <Pill tone="down">{tp("calendar.down", { count: redMonths })}</Pill>
           </>
         )}
       </div>
@@ -176,11 +176,11 @@ function YearView({
                 type="button"
                 onClick={() => onMonth(m)}
                 className="mb-2 flex w-full items-baseline justify-between gap-2 rounded-lg text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`${MONTH_NAMES[m]} ${year}: ${trades ? fmtVal(metric, net, { sign: true }) : "нет сделок"}. Открыть месяц`}
+                aria-label={tp("calendar.monthAria", { month: `${monthName(m)} ${year}`, value: trades ? fmtVal(metric, net, { sign: true }) : tp("calendar.noTrades") })}
               >
-                <span className="text-sm font-semibold">{MONTH_NAMES[m]}</span>
+                <span className="text-sm font-semibold">{monthName(m)}</span>
                 <span className={cn("text-sm font-semibold tabular-nums", trades ? toneText(toneOf(net)) : "text-muted-foreground")}>
-                  {trades ? (valued ? fmtVal(metric, net, { compact: true, sign: true }) : pluralTrades(trades)) : "—"}
+                  {trades ? (valued ? fmtVal(metric, net, { compact: true, sign: true }) : commonI18n.t("units.trades", { count: trades })) : "—"}
                 </span>
               </button>
               <div className="grid grid-cols-7 gap-[3px]" role="presentation">
@@ -193,8 +193,8 @@ function YearView({
                       key={d}
                       type="button"
                       onClick={() => onDay(d)}
-                      title={`${fmtDayLong(d)}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "—"} · ${pluralTrades(s.trades)}`}
-                      aria-label={`${fmtDayLong(d)}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "без результата"}, ${pluralTrades(s.trades)}`}
+                      title={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "—"} · ${commonI18n.t("units.trades", { count: s.trades })}`}
+                      aria-label={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : tp("calendar.noResult")}, ${commonI18n.t("units.trades", { count: s.trades })}`}
                       className={cn(
                         "aspect-square rounded-[4px] border border-transparent transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:scale-100",
                         hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/25",
@@ -222,10 +222,10 @@ function YearView({
 function Legend({ metric }: { metric: Metric }) {
   return (
     <div className="flex flex-wrap items-center gap-3 text-2xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-down/45" aria-hidden="true" />Убыток</span>
-      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-up/45" aria-hidden="true" />Прибыль</span>
-      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-primary/25" aria-hidden="true" />Сделки без {metric === "r" ? "R" : "P&L"}</span>
-      <span>Насыщенность — размер результата дня</span>
+      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-down/45" aria-hidden="true" />{tp("calendar.legendLoss")}</span>
+      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-up/45" aria-hidden="true" />{tp("calendar.legendProfit")}</span>
+      <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded-[3px] bg-primary/25" aria-hidden="true" />{tp("calendar.legendNoValue", { unit: metric === "r" ? "R" : "P&L" })}</span>
+      <span>{tp("calendar.legendIntensity")}</span>
     </div>
   );
 }
@@ -257,7 +257,7 @@ function MonthView({
     return (
       <>
         <MonthGrid weeks={weeks} byDate={byDate} metric={metric} today={today} selected={selected} onDay={onDay} max={max} trader={trader} />
-        <p className="mt-3 text-center text-sm text-muted-foreground">В этом месяце нет сделок по выбранным фильтрам.</p>
+        <p className="mt-3 text-center text-sm text-muted-foreground">{tp("calendar.monthEmpty")}</p>
       </>
     );
   }
@@ -266,10 +266,10 @@ function MonthView({
     <div className="flex flex-col gap-3">
       <MonthGrid weeks={weeks} byDate={byDate} metric={metric} today={today} selected={selected} onDay={onDay} max={max} trader={trader} />
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <MiniStat label="Итог месяца" value={valued.length ? fmtVal(metric, total, { sign: true }) : "—"} className={toneText(toneOf(total))} />
-        <MiniStat label="Торговых дней" value={`${monthDays.length}`} hint={pluralTrades(tradesTotal)} />
-        <MiniStat label="Дни в плюс / минус" value={<><span className="text-up">{green}</span> / <span className="text-down">{red}</span></>} />
-        <MiniStat label="Средний день" value={valued.length ? fmtVal(metric, total / valued.length, { sign: true }) : "—"} className={toneText(toneOf(total))} />
+        <MiniStat label={tp("calendar.monthTotal")} value={valued.length ? fmtVal(metric, total, { sign: true }) : "—"} className={toneText(toneOf(total))} />
+        <MiniStat label={tp("calendar.tradingDays")} value={`${monthDays.length}`} hint={commonI18n.t("units.trades", { count: tradesTotal })} />
+        <MiniStat label={tp("calendar.upDown")} value={<><span className="text-up">{green}</span> / <span className="text-down">{red}</span></>} />
+        <MiniStat label={tp("calendar.avgDay")} value={valued.length ? fmtVal(metric, total / valued.length, { sign: true }) : "—"} className={toneText(toneOf(total))} />
       </dl>
     </div>
   );
@@ -301,10 +301,10 @@ function MonthGrid({
 }) {
   return (
     <div className="grid grid-cols-7 gap-1 sm:grid-cols-[repeat(7,minmax(0,1fr))_minmax(0,0.9fr)] sm:gap-1.5">
-      {WEEKDAYS.map((w, i) => (
+      {weekdayHeaders().map((w, i) => (
         <div key={w} className={cn("px-1 pb-1 text-center text-xs text-muted-foreground", i >= 5 && "opacity-80")}>{w}</div>
       ))}
-      <div className="hidden px-1 pb-1 text-center text-xs text-muted-foreground sm:block">Неделя</div>
+      <div className="hidden px-1 pb-1 text-center text-xs text-muted-foreground sm:block">{tp("calendar.week")}</div>
       {weeks.map((week, wi) => {
         const ws = week.map((d) => (d ? byDate.get(d) : undefined)).filter(Boolean) as DaySummary[];
         const wNet = ws.reduce((s, d) => s + d.net, 0);
@@ -353,7 +353,7 @@ function MonthGrid({
                   type="button"
                   onClick={() => onDay(d)}
                   aria-pressed={isSel}
-                  aria-label={`${fmtDayLong(d)}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "без результата"}, ${pluralTrades(s.trades)}`}
+                  aria-label={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : tp("calendar.noResult")}, ${commonI18n.t("units.trades", { count: s.trades })}`}
                   className={cn(
                     base,
                     hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/10",
@@ -370,13 +370,13 @@ function MonthGrid({
               <Link
                 href={weekHref(week.find(Boolean) as string, trader)}
                 title={PERIOD_HINT.week}
-                aria-label={`Неделя: ${wValued ? fmtVal(metric, wNet, { sign: true }) : "без результата"}, ${pluralTrades(wTrades)} — ${PERIOD_HINT.week.toLowerCase()}`}
+                aria-label={tp("calendar.weekAria", { value: wValued ? fmtVal(metric, wNet, { sign: true }) : tp("calendar.noResult"), trades: commonI18n.t("units.trades", { count: wTrades }), hint: PERIOD_HINT.week.toLowerCase() })}
                 className="hidden min-h-[84px] flex-col justify-center rounded-xl border border-dashed border-border/70 px-2 text-right transition-colors hover:border-primary/60 hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
               >
                 <span className={cn("text-sm font-semibold tabular-nums", wValued ? toneText(toneOf(wNet)) : "text-muted-foreground")}>
                   {wValued ? fmtVal(metric, wNet, { sign: true, compact: Math.abs(wNet) >= 10000 }) : "—"}
                 </span>
-                <span className="text-2xs tabular-nums text-muted-foreground">{pluralTrades(wTrades)}</span>
+                <span className="text-2xs tabular-nums text-muted-foreground">{commonI18n.t("units.trades", { count: wTrades })}</span>
               </Link>
             ) : (
               <div className="hidden min-h-[84px] flex-col justify-center rounded-xl border border-dashed border-border/70 px-2 text-right sm:flex">
@@ -405,26 +405,26 @@ function DayDetail({
 }) {
   const sorted = [...trades].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.id - b.id);
   return (
-    <section aria-label={`Сделки за ${fmtDayLong(date)}`} className="mt-4 rounded-xl border border-border/70 bg-[var(--glass-bg)]">
+    <section aria-label={tp("calendar.dayTrades", { date: fmtDate(date, "long") })} className="mt-4 rounded-xl border border-border/70 bg-[var(--glass-bg)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5 sm:px-4">
         <div className="flex flex-wrap items-baseline gap-2">
-          <h4 className="text-sm font-semibold">{fmtDayLong(date)}</h4>
+          <h4 className="text-sm font-semibold">{fmtDate(date, "long")}</h4>
           {summary && hasValue(summary) && (
             <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(summary.net)))}>{fmtVal(metric, summary.net, { sign: true })}</span>
           )}
-          <span className="text-xs text-muted-foreground">{pluralTrades(trades.length)}</span>
+          <span className="text-xs text-muted-foreground">{commonI18n.t("units.trades", { count: trades.length })}</span>
         </div>
         <span className="flex items-center gap-1">
           <Button asChild variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-primary">
             <Link href={dayHref(date, trader)}>{PERIOD_HINT.day} <ArrowRight aria-hidden="true" /></Link>
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Закрыть детали дня">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label={tp("calendar.closeDay")}>
             <X aria-hidden="true" />
           </Button>
         </span>
       </div>
       {sorted.length === 0 ? (
-        <EmptyState title="Сделок нет" description="В этот день нет сделок по текущим фильтрам." className="py-6" />
+        <EmptyState title={tp("calendar.noDayTrades")} description={tp("calendar.noDayTradesHint")} className="py-6" />
       ) : (
         <ul className="divide-y divide-border/50">
           {sorted.map((t) => {
@@ -434,20 +434,21 @@ function DayDetail({
             return (
               <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 sm:px-4">
                 <span className="w-16 truncate text-sm font-semibold">{t.ticker}</span>
-                {t.side && <Pill tone={isShort ? "purple" : "accent"}>{isShort ? "Шорт" : "Лонг"}</Pill>}
+                {t.side && <Pill tone={isShort ? "purple" : "accent"}>{isShort ? commonI18n.t("trading.short") : commonI18n.t("trading.long")}</Pill>}
                 {t.result && (
                   <Pill tone={t.result === "win" ? "up" : t.result === "loss" ? "down" : "neutral"}>
-                    {t.result === "win" ? "Прибыль" : t.result === "loss" ? "Убыток" : t.result === "breakeven" ? "В ноль" : t.result}
+                    {t.result === "win" || t.result === "loss" || t.result === "breakeven" ? tp(`calendar.result.${t.result}`) : t.result}
                   </Pill>
                 )}
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  {[time, t.setup, t.trader].filter(Boolean).join(" · ")}
+                  {[time, t.setup, personName(t.trader)].filter(Boolean).join(" · ")}
                 </span>
                 <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(v)))}>{fmtVal(metric, v, { sign: true })}</span>
                 <Link
                   href={`/trades?highlight=${t.id}`}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={`Открыть сделку ${t.ticker} в журнале`}
+                  aria-label={tp("calendar.openTrade", { ticker: t.ticker })}
+
                 >
                   <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                 </Link>

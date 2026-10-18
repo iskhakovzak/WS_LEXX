@@ -2,7 +2,10 @@
  * Client for /api/propreports/* (types mirror artifacts/api-server/src/routes/propreports.ts).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { fmtDate, fmtPrice as fmtPriceBase, fmtRelative } from "@/lib/format";
+import { propreportsI18n } from "@/i18n/ns/propreports";
 
 export type Horizon = "intraday" | "overnight" | "swing";
 export type Session = "premarket" | "regular" | "postmarket";
@@ -11,13 +14,14 @@ export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict
 
 export const FEE_KEYS = ["comm", "ecn", "sec", "orf", "taf", "nfa", "cat", "nscc", "acc", "clr", "misc"] as const;
 export type FeeKey = (typeof FEE_KEYS)[number];
-export const FEE_LABEL: Record<string, string> = {
-  comm: "Комиссия", ecn: "ECN", sec: "SEC", orf: "ORF", taf: "TAF", nfa: "NFA", cat: "CAT", nscc: "NSCC", acc: "Access", clr: "Клиринг", misc: "Прочее",
+/** Broker fee codes shown as is in every language; word labels (comm, clr, misc) come from propreportsI18n `fee.*`. */
+const FEE_CODE_LABEL: Record<string, string> = {
+  ecn: "ECN", sec: "SEC", orf: "ORF", taf: "TAF", nfa: "NFA", cat: "CAT", nscc: "NSCC", acc: "Access",
   exfee: "ExFee", finra: "FINRA", route: "Route", locate: "Locate", borrow: "Borrow", nasdaq: "Nasdaq", pass: "Pass-thru",
 };
 /** Label for any fee key (unknown columns keep their broker name). */
 export function feeLabel(key: string): string {
-  return FEE_LABEL[key] ?? key.replace(/_/g, " ").replace(/^w/, (c) => c.toUpperCase());
+  return propreportsI18n.tryT(`fee.${key}`) ?? FEE_CODE_LABEL[key] ?? key.replace(/_/g, " ").replace(/^w/, (c) => c.toUpperCase());
 }
 /** Known keys first (in FEE_KEYS order), then the rest alphabetically. */
 export function orderedFeeKeys(fees: Record<string, number>): string[] {
@@ -133,45 +137,19 @@ export type PerformancePreview = {
   periodFrom: string; periodTo: string; summary: PerfSummary; issues: string[]; bySide: PerformanceReport["bySide"]; byTime: PerfRow[]; byWeekday: PerfRow[];
   perTradeAverages: PerTradeAverage[]; symbols: number; note: string; reportId?: number; replaced?: boolean; uploadedAt?: string;
 };
+/** /integrations sections (`?tab=`). */
+export type IntegrationsTab = "setup" | "import" | "performance" | "accounts" | "reconcile" | "history";
 export type ImportKind = "auto" | "fills" | "trades" | "performance";
 export type ImportResponse = Preview | ApplyResult | PerformancePreview;
 export function isPerformanceResponse(r: ImportResponse): r is PerformancePreview {
   return (r as PerformancePreview).kind === "performance";
 }
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-
-async function readError(r: Response): Promise<HttpError> {
-  let msg = `HTTP ${r.status}`;
-  try {
-    const j = (await r.json()) as { error?: string; issues?: Array<{ path: string; message: string }> };
-    if (j?.error) msg = j.error;
-    if (j?.issues?.length) msg += `: ${j.issues.map((i) => `${i.path} ${i.message}`).join("; ")}`;
-  } catch { /* not json */ }
-  return new HttpError(r.status, msg);
-}
-
-export async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(path));
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-export async function sendJson<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
-  const r = await fetch(apiUrl(path), { method, headers: body !== undefined ? { "Content-Type": "application/json" } : undefined, body: body !== undefined ? JSON.stringify(body) : undefined });
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-export async function sendFile<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
+function sendFile<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
   const fd = new FormData();
   fd.append("file", file);
   for (const [k, v] of Object.entries(fields)) if (v) fd.append(k, v);
-  const r = await fetch(apiUrl(path), { method: "POST", body: fd });
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
+  return http.post<T>(path, fd);
 }
 
 export const prKeys = {
@@ -186,28 +164,28 @@ export const prKeys = {
   groups: ["propreports", "groups"] as const,
 };
 
-const retry = (count: number, err: unknown) => !(err instanceof HttpError && [401, 403, 404, 503].includes(err.status)) && count < 2;
+const retry = (count: number, err: unknown) => !(err instanceof ApiError && [401, 403, 404, 503].includes(err.status)) && count < 2;
 
 export function useStatus() {
-  return useQuery({ queryKey: prKeys.status, queryFn: () => getJson<Status>("/api/propreports/status"), refetchInterval: 60_000, retry });
+  return useQuery({ queryKey: prKeys.status, queryFn: () => http.get<Status>("/api/propreports/status"), refetchInterval: 60_000, retry });
 }
 export function useAccounts() {
-  return useQuery({ queryKey: prKeys.accounts, queryFn: () => getJson<AccountMapping[]>("/api/propreports/accounts"), retry });
+  return useQuery({ queryKey: prKeys.accounts, queryFn: () => http.get<AccountMapping[]>("/api/propreports/accounts"), retry });
 }
 export function useRuns(limit = 50) {
-  return useQuery({ queryKey: [...prKeys.runs, limit], queryFn: () => getJson<SyncRun[]>(`/api/propreports/runs?limit=${limit}`), retry });
+  return useQuery({ queryKey: [...prKeys.runs, limit], queryFn: () => http.get<SyncRun[]>(`/api/propreports/runs?limit=${limit}`), retry });
 }
 export function usePending() {
-  return useQuery({ queryKey: prKeys.reconcile, queryFn: () => getJson<PendingTrade[]>("/api/propreports/reconcile"), retry });
+  return useQuery({ queryKey: prKeys.reconcile, queryFn: () => http.get<PendingTrade[]>("/api/propreports/reconcile"), retry });
 }
 export function useSettings(enabled = true) {
-  return useQuery({ queryKey: prKeys.settings, queryFn: () => getJson<SettingsView>("/api/propreports/settings"), enabled, retry });
+  return useQuery({ queryKey: prKeys.settings, queryFn: () => http.get<SettingsView>("/api/propreports/settings"), enabled, retry });
 }
 export function useSaveSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { groupId?: string | null; fees?: { columns?: Record<string, { include: boolean; label?: string | null }>; confirm?: boolean }; unmatched?: string[] }) =>
-      sendJson<SettingsView>("/api/propreports/settings", "PUT", body),
+      http.put<SettingsView>("/api/propreports/settings", body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: prKeys.settings }); qc.invalidateQueries({ queryKey: prKeys.status }); },
   });
 }
@@ -215,26 +193,26 @@ export function useSaveSettings() {
 export function useCheckConnection() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => getJson<CheckResult>("/api/propreports/check"),
+    mutationFn: () => http.get<CheckResult>("/api/propreports/check"),
     onSettled: () => { qc.invalidateQueries({ queryKey: prKeys.status }); qc.invalidateQueries({ queryKey: prKeys.settings }); },
   });
 }
 export function useGroups(enabled: boolean) {
-  return useQuery({ queryKey: prKeys.groups, queryFn: () => getJson<GroupsResponse>("/api/propreports/groups"), enabled, staleTime: 5 * 60_000, retry });
+  return useQuery({ queryKey: prKeys.groups, queryFn: () => http.get<GroupsResponse>("/api/propreports/groups"), enabled, staleTime: STALE.long, retry });
 }
 export function usePerformance(trader?: string | null, id?: number | null) {
   const qs = new URLSearchParams();
   if (trader) qs.set("trader", trader);
   if (id) qs.set("id", String(id));
   const q = qs.toString();
-  return useQuery({ queryKey: [...prKeys.performance, trader ?? "", id ?? 0], queryFn: () => getJson<PerformanceResponse>(`/api/propreports/performance${q ? `?${q}` : ""}`), retry });
+  return useQuery({ queryKey: [...prKeys.performance, trader ?? "", id ?? 0], queryFn: () => http.get<PerformanceResponse>(`/api/propreports/performance${q ? `?${q}` : ""}`), retry });
 }
 export function useDeletePerformance() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: number) => sendJson<{ ok: true }>(`/api/propreports/performance/${id}`, "DELETE"), onSuccess: () => qc.invalidateQueries({ queryKey: prKeys.performance }) });
+  return useMutation({ mutationFn: (id: number) => http.del<{ ok: true }>(`/api/propreports/performance/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: prKeys.performance }) });
 }
 export function useUsers(enabled: boolean) {
-  return useQuery({ queryKey: prKeys.users, queryFn: () => getJson<UserRow[]>("/api/users"), enabled, staleTime: 5 * 60_000, retry });
+  return useQuery({ queryKey: prKeys.users, queryFn: () => http.get<UserRow[]>("/api/users"), enabled, staleTime: STALE.long, retry });
 }
 
 /** Invalidate everything that a write to the journal can change. */
@@ -252,19 +230,19 @@ export function useSaveAccounts() {
   const invalidate = useInvalidateAll();
   return useMutation({
     mutationFn: (accounts: Array<Partial<AccountMapping> & { account: string }>) =>
-      sendJson<AccountMapping[]>("/api/propreports/accounts", "PUT", { accounts: accounts.map((a) => ({ account: a.account, trader: a.trader ?? null, active: a.active, notes: a.notes ?? null, aliases: a.aliases })) }),
+      http.put<AccountMapping[]>("/api/propreports/accounts", { accounts: accounts.map((a) => ({ account: a.account, trader: a.trader ?? null, active: a.active, notes: a.notes ?? null, aliases: a.aliases })) }),
     onSuccess: invalidate,
   });
 }
 
 export function useRefreshAccounts() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: () => sendJson<{ fetched: number; accounts: AccountMapping[] }>("/api/propreports/accounts/refresh", "POST", {}), onSuccess: invalidate });
+  return useMutation({ mutationFn: () => http.post<{ fetched: number; accounts: AccountMapping[] }>("/api/propreports/accounts/refresh", {}), onSuccess: invalidate });
 }
 
 export function useDeleteAccount() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: (id: number) => sendJson<{ ok: true }>(`/api/propreports/accounts/${id}`, "DELETE"), onSuccess: invalidate });
+  return useMutation({ mutationFn: (id: number) => http.del<{ ok: true }>(`/api/propreports/accounts/${id}`), onSuccess: invalidate });
 }
 
 export function useImportFile() {
@@ -279,70 +257,53 @@ export function useImportFile() {
 export function useApiSync() {
   const invalidate = useInvalidateAll();
   return useMutation({
-    mutationFn: (body: { from: string; to: string; dryRun: boolean }) => sendJson<Preview | ApplyResult>("/api/propreports/sync", "POST", body),
+    mutationFn: (body: { from: string; to: string; dryRun: boolean }) => http.post<Preview | ApplyResult>("/api/propreports/sync", body),
     onSuccess: (_d, v) => { if (!v.dryRun) invalidate(); },
   });
 }
 
 export function useMerge() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: ({ pendingId, tradeId }: { pendingId: number; tradeId: number }) => sendJson<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/${tradeId}/merge`, "POST", { pendingId }), onSuccess: invalidate });
+  return useMutation({ mutationFn: ({ pendingId, tradeId }: { pendingId: number; tradeId: number }) => http.post<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/${tradeId}/merge`, { pendingId }), onSuccess: invalidate });
 }
 export function useKeepSeparate() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: (pendingId: number) => sendJson<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/pending/${pendingId}/keep`, "POST", {}), onSuccess: invalidate });
+  return useMutation({ mutationFn: (pendingId: number) => http.post<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/pending/${pendingId}/keep`, {}), onSuccess: invalidate });
 }
 export function useDismissPending() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: (pendingId: number) => sendJson<{ ok: true }>(`/api/propreports/reconcile/pending/${pendingId}`, "DELETE"), onSuccess: invalidate });
+  return useMutation({ mutationFn: (pendingId: number) => http.del<{ ok: true }>(`/api/propreports/reconcile/pending/${pendingId}`), onSuccess: invalidate });
 }
 
 // ─── formatting helpers ───
-const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-export function fmtUsd(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = usd2.format(Math.abs(v));
-  return v < 0 ? `−${s}` : s;
-}
-export function fmtSigned(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (v === 0) return "$0.00";
-  return `${v > 0 ? "+" : ""}${fmtUsd(v)}`;
-}
+// Money and dates: @/lib/format (fmtUsd, fmtUsd(v, { signed: true }), fmtDate(iso, "numericDateTime")).
+/** Broker precision with trailing zeros trimmed: 2 decimals from $100, else 4 ("12.3456", "12.5"). */
+/** Broker precision: 4 decimals under $100, 2 from $100, trailing zeros dropped ("12.5", "12.3456", "150"). */
 export function fmtPrice(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return v.toFixed(v >= 100 ? 2 : 4).replace(/\.?0+$/, "");
+  return fmtPriceBase(v, { decimals: v != null && Math.abs(v) >= 100 ? 2 : 4, trim: true });
 }
-export function fmtDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return iso;
-  return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
+/** «5 min ago» in the UI language; «ещё не было» when there is no date. Call at render time. */
 export function agoText(iso: string | null | undefined): string {
-  if (!iso) return "ещё не было";
-  const ms = Date.now() - Date.parse(iso);
-  if (!Number.isFinite(ms)) return iso;
-  const m = Math.round(ms / 60_000);
-  if (m < 1) return "только что";
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h} ч назад`;
-  return `${Math.round(h / 24)} дн назад`;
+  if (!iso) return propreportsI18n.t("never");
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso;
+  // Older than a month: the date reads better than «2 months ago».
+  if (Date.now() - t >= 30 * 86_400_000) return fmtDate(t, "dayMonth");
+  return fmtRelative(Math.min(t, Date.now()), { style: "short" });
 }
+/** «in 15 min» in the UI language («now» once the moment has passed). */
 export function untilText(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const ms = Date.parse(iso) - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return "сейчас";
-  const m = Math.round(ms / 60_000);
-  return m < 60 ? `через ${m} мин` : `через ${Math.round(m / 60)} ч`;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "—";
+  return fmtRelative(Math.max(t, Date.now()), { style: "short" });
 }
 
-export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
-export const SESSION_LABEL: Record<Session, string> = { premarket: "Премаркет", regular: "Сессия", postmarket: "Постмаркет" };
-export const ACTION_LABEL: Record<PlanAction, string> = { insert: "Новая", update: "Обновится", unchanged: "Без изменений", adopt: "Привяжется", conflict: "На сверку", skip: "Пропуск" };
-export const REASON_LABEL: Record<string, string> = { unmapped: "счёт не привязан", inactive: "счёт выключен", forbidden: "чужой счёт", deleted: "сделка удалена в журнале" };
-export const FIELD_LABEL: Record<string, string> = {
-  ticker: "Тикер", date: "Дата", side: "Сторона", entry: "Вход", exit: "Выход", qty: "Объём", fees: "Комиссии", pnl: "Gross P&L", result: "Результат",
-  session: "Сессия", horizon: "Горизонт", exitDate: "Дата выхода", holdTime: "Удержание", brokerAccount: "Счёт",
-};
+// Display labels for codes (call at render time; unknown codes show as is).
+export const horizonLabel = (h: string) => propreportsI18n.tryT(`horizon.${h}`) ?? h;
+export const sessionLabel = (s: string) => propreportsI18n.tryT(`session.${s}`) ?? s;
+export const actionLabel = (a: string) => propreportsI18n.tryT(`action.${a}`) ?? a;
+export const reasonLabel = (r: string) => propreportsI18n.tryT(`reason.${r}`) ?? r;
+export const fieldLabel = (f: string) => propreportsI18n.tryT(`field.${f}`) ?? f;
+export const resultLabel = (r: string) => propreportsI18n.tryT(`result.${r}`) ?? r;
+export const runStatusLabel = (s: string) => propreportsI18n.tryT(`runStatus.${s}`) ?? s;

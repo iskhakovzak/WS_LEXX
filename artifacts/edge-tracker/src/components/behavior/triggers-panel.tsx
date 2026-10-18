@@ -19,9 +19,14 @@ import { toast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  PATTERN_SHORT, fmtDateShort, fmtUsd, fmtUsdCompact, pluralDays, pluralTrades, useCreateTrigger, useDeleteTrigger,
+  PATTERN_SHORT, useCreateTrigger, useDeleteTrigger,
   useTriggers, useUpdateTrigger, type BehaviorTrigger, type PatternKey, type Range, type TriggerKind, type TriggerKindDef,
 } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
+
+const tb = behaviorI18n.t;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -58,8 +63,8 @@ function ParamFields({ def, value, onChange, idPrefix }: { def: TriggerKindDef; 
 function validParams(def: TriggerKindDef, v: Record<string, number>): string | null {
   for (const f of def.fields) {
     const x = v[f.key];
-    if (!Number.isFinite(x)) return `Заполните «${f.label}»`;
-    if (x < f.min || x > f.max) return `«${f.label}»: от ${f.min} до ${f.max}`;
+    if (!Number.isFinite(x)) return tb("trig.fill", { label: f.label });
+    if (x < f.min || x > f.max) return tb("trig.range", { label: f.label, min: f.min, max: f.max });
   }
   return null;
 }
@@ -81,20 +86,20 @@ function AddTriggerForm({ kinds, trader, onDone }: { kinds: TriggerKindDef[]; tr
     if (!def) return;
     const bad = validParams(def, params);
     if (bad) { toast({ title: bad, variant: "destructive" }); return; }
-    if (kind === "custom" && !name.trim()) { toast({ title: "Напишите текст напоминания", variant: "destructive" }); return; }
+    if (kind === "custom" && !name.trim()) { toast({ title: tb("trig.needText"), variant: "destructive" }); return; }
     create.mutate({ trader, kind, params, name: name.trim() || undefined }, {
-      onSuccess: (r) => { toast({ title: r.existing ? "Такой триггер уже есть" : "Триггер добавлен", description: r.name }); onDone(); },
-      onError: (err) => toast({ title: "Не удалось добавить триггер", description: errMsg(err), variant: "destructive" }),
+      onSuccess: (r) => { toast({ title: r.existing ? tb("trig.exists") : tb("trig.added"), description: r.name }); onDone(); },
+      onError: (err) => toast({ title: tb("trig.addFailed"), description: errMsg(err), variant: "destructive" }),
     });
   };
 
   return (
-    <form onSubmit={submit} className="tile flex flex-col gap-3 p-3" aria-label="Новый триггер">
+    <form onSubmit={submit} className="tile flex flex-col gap-3 p-3" aria-label={tb("trig.newAria")}>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span>Условие</span>
+          <span>{tb("trig.condition")}</span>
           <Select value={kind} onValueChange={(v) => setKind(v as TriggerKind)}>
-            <SelectTrigger className="h-8 w-64" aria-label="Условие триггера"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-64" aria-label={tb("trig.conditionAria")}><SelectValue /></SelectTrigger>
             <SelectContent>
               {kinds.map((k) => <SelectItem key={k.kind} value={k.kind}>{k.label}</SelectItem>)}
             </SelectContent>
@@ -102,14 +107,14 @@ function AddTriggerForm({ kinds, trader, onDone }: { kinds: TriggerKindDef[]; tr
         </label>
         {def && <ParamFields def={def} value={params} onChange={setParams} idPrefix={idPrefix} />}
         <label htmlFor={`${idPrefix}-name`} className="flex min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
-          <span>{kind === "custom" ? "Текст напоминания" : "Название (необязательно)"}</span>
-          <Input id={`${idPrefix}-name`} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className="h-8" placeholder={kind === "custom" ? "Например: первая сделка — только A+" : "по умолчанию — из условия"} />
+          <span>{kind === "custom" ? tb("trig.text") : tb("trig.name")}</span>
+          <Input id={`${idPrefix}-name`} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} className="h-8" placeholder={kind === "custom" ? tb("trig.textPlaceholder") : tb("trig.namePlaceholder")} />
         </label>
       </div>
       {def && <p className="text-xs text-muted-foreground">{def.hint}</p>}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={create.isPending} aria-busy={create.isPending}>Добавить</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>Отмена</Button>
+        <Button type="submit" size="sm" disabled={create.isPending} aria-busy={create.isPending}>{tb("trig.add")}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>{tb("trig.cancel")}</Button>
       </div>
     </form>
   );
@@ -140,7 +145,7 @@ const TriggerRow = React.memo(function TriggerRow({
     if (bad) { toast({ title: bad, variant: "destructive" }); return; }
     update.mutate({ id: t.id, params: draft }, {
       onSuccess: () => setEditing(false),
-      onError: (e) => toast({ title: "Не удалось сохранить", description: errMsg(e), variant: "destructive" }),
+      onError: (e) => toast({ title: tb("trig.saveFailed"), description: errMsg(e), variant: "destructive" }),
     });
   };
 
@@ -151,8 +156,8 @@ const TriggerRow = React.memo(function TriggerRow({
           {canEdit && (
             <Switch
               checked={t.enabled}
-              onCheckedChange={(v) => update.mutate({ id: t.id, enabled: v }, { onError: (e) => toast({ title: "Не удалось переключить", description: errMsg(e), variant: "destructive" }) })}
-              aria-label={`${t.enabled ? "Выключить" : "Включить"} триггер «${t.name}»`}
+              onCheckedChange={(v) => update.mutate({ id: t.id, enabled: v }, { onError: (e) => toast({ title: tb("trig.toggleFailed"), description: errMsg(e), variant: "destructive" }) })}
+              aria-label={t.enabled ? tb("trig.disable", { name: t.name }) : tb("trig.enable", { name: t.name })}
               className="mt-0.5"
             />
           )}
@@ -160,7 +165,7 @@ const TriggerRow = React.memo(function TriggerRow({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-foreground">{t.name}</span>
               {t.sourcePattern && PATTERN_SHORT[t.sourcePattern as PatternKey] && (
-                <Pill tone="neutral" title="Создан кнопкой «Сделать правилом» на карточке паттерна">из паттерна «{PATTERN_SHORT[t.sourcePattern as PatternKey]}»</Pill>
+                <Pill tone="neutral" title={tb("trig.fromPatternTitle")}>{tb("trig.fromPattern", { pattern: PATTERN_SHORT[t.sourcePattern as PatternKey] })}</Pill>
               )}
             </div>
             {t.note && t.note !== t.name && <p className="mt-0.5 text-xs text-muted-foreground">{t.note}</p>}
@@ -168,11 +173,11 @@ const TriggerRow = React.memo(function TriggerRow({
           {canEdit && (
             <div className="flex shrink-0 items-center gap-1">
               {def && def.fields.length > 0 && (
-                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setDraft(t.params); setEditing((v) => !v); }} aria-label={`Изменить порог «${t.name}»`} aria-expanded={editing}>
+                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setDraft(t.params); setEditing((v) => !v); }} aria-label={tb("trig.editAria", { name: t.name })} aria-expanded={editing}>
                   {editing ? <X className="h-3.5 w-3.5" aria-hidden="true" /> : <Pencil className="h-3.5 w-3.5" aria-hidden="true" />}
                 </Button>
               )}
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setConfirm(true)} aria-label={`Удалить триггер «${t.name}»`}>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setConfirm(true)} aria-label={tb("trig.deleteAria", { name: t.name })}>
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
               </Button>
             </div>
@@ -182,7 +187,7 @@ const TriggerRow = React.memo(function TriggerRow({
         {editing && def && (
           <div className="flex flex-wrap items-end gap-2">
             <ParamFields def={def} value={draft} onChange={setDraft} idPrefix={idPrefix} />
-            <Button size="sm" onClick={save} disabled={update.isPending}>Сохранить</Button>
+            <Button size="sm" onClick={save} disabled={update.isPending}>{tb("trig.save")}</Button>
           </div>
         )}
 
@@ -190,26 +195,26 @@ const TriggerRow = React.memo(function TriggerRow({
           ev.fires > 0 ? (
             <div className="flex flex-col gap-1.5">
               <p className="text-xs text-muted-foreground">
-                За период сработал бы <span className="font-medium tabular-nums text-foreground">{ev.fires}</span> раз в {pluralDays(ev.days)};
-                под триггером {pluralTrades(ev.trades)} с нетто{" "}
-                <span className={cn("font-medium tabular-nums", toneText(toneOf(ev.net)))}>{fmtUsd(ev.net)}</span>
-                {ev.net != null && ev.net < 0 && <> — соблюдение сохранило бы около {fmtUsd(-ev.net, { sign: false, digits: 0 })}</>}.
+                {tb("trig.fires", { count: ev.fires, days: commonI18n.t("units.days", { count: ev.days }) })}{" "}
+                {tb("trig.under", { trades: commonI18n.t("units.trades", { count: ev.trades }) })}{" "}
+                <span className={cn("font-medium tabular-nums", toneText(toneOf(ev.net)))}>{fmtUsd(ev.net, { signed: true, decimals: "auto" })}</span>
+                {ev.net != null && ev.net < 0 && <> {tb("trig.saved", { value: fmtUsd(-ev.net, { decimals: 0 }) })}</>}.
               </p>
               <div className="flex flex-wrap items-center gap-1">
                 {ev.recentDates.slice(-10).map((d) => (
                   onPickDay ? (
-                    <button key={d} type="button" onClick={() => onPickDay(d)} className="rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-xs tabular-nums text-muted-foreground hover:text-foreground" title={`Показать ${d} на ленте сессии`}>
-                      {fmtDateShort(d)}
+                    <button key={d} type="button" onClick={() => onPickDay(d)} className="rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-xs tabular-nums text-muted-foreground hover:text-foreground" title={tb("trig.showDay", { date: fmtDate(d, "medium") })}>
+                      {fmtDate(d, "dayMonthNumeric")}
                     </button>
-                  ) : <Pill key={d} tone="neutral">{fmtDateShort(d)}</Pill>
+                  ) : <Pill key={d} tone="neutral">{fmtDate(d, "dayMonthNumeric")}</Pill>
                 ))}
                 {ev.examples.length > 0 && (
                   <button type="button" onClick={() => setShowEx((v) => !v)} aria-expanded={showEx} className="ml-1 text-xs text-primary underline-offset-2 hover:underline">
-                    {showEx ? "скрыть примеры" : "примеры"}
+                    {showEx ? tb("trig.hideExamples") : tb("trig.examples")}
                   </button>
                 )}
                 {ev.tradeIds.length > 0 && (
-                  <Link href={links.trades({ ids: ev.tradeIds })} className="ml-auto text-xs text-primary underline-offset-2 hover:underline">все сделки</Link>
+                  <Link href={links.trades({ ids: ev.tradeIds })} className="ml-auto text-xs text-primary underline-offset-2 hover:underline">{tb("trig.allTrades")}</Link>
                 )}
               </div>
               {showEx && (
@@ -217,9 +222,9 @@ const TriggerRow = React.memo(function TriggerRow({
                   {ev.examples.map((e) => (
                     <li key={e.id}>
                       <Link href={links.trade(e.id)} className="flex min-h-8 items-center gap-2 rounded-lg px-2 hover:bg-[var(--glass-hover-bg)]">
-                        <span className="w-11 tabular-nums text-muted-foreground">{fmtDateShort(e.date)}</span>
+                        <span className="w-11 tabular-nums text-muted-foreground">{fmtDate(e.date, "dayMonthNumeric")}</span>
                         <span className="w-12 font-medium">{e.ticker}</span>
-                        <span className={cn("w-14 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsdCompact(e.net)}</span>
+                        <span className={cn("w-14 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsd(e.net, { signed: true, compact: true })}</span>
                         <span className="min-w-0 flex-1 truncate text-muted-foreground">{e.note}</span>
                       </Link>
                     </li>
@@ -228,25 +233,25 @@ const TriggerRow = React.memo(function TriggerRow({
               )}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">За период ни разу не сработал бы — порог соблюдается.</p>
+            <p className="text-xs text-muted-foreground">{tb("trig.never")}</p>
           )
         ) : (
-          <p className="text-xs text-muted-foreground">Напоминание без автоматической проверки.</p>
+          <p className="text-xs text-muted-foreground">{tb("trig.reminder")}</p>
         )}
       </Tile>
 
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить триггер?</AlertDialogTitle>
-            <AlertDialogDescription>«{t.name}» пропадёт из списка. Запись помечается удалённой, а не стирается — триггер можно создать заново.</AlertDialogDescription>
+            <AlertDialogTitle>{tb("trig.deleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{tb("trig.deleteText", { name: t.name })}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tb("trig.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => del.mutate({ id: t.id }, { onError: (e) => toast({ title: "Не удалось удалить", description: errMsg(e), variant: "destructive" }) })}
+              onClick={() => del.mutate({ id: t.id }, { onError: (e) => toast({ title: tb("trig.deleteFailed"), description: errMsg(e), variant: "destructive" }) })}
             >
-              Удалить
+              {tb("trig.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -274,11 +279,11 @@ export function TriggersPanel({ trader, range, onPickDay }: { trader: string | n
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs text-muted-foreground">
-          Проверка по истории сделок за период{d.tradingDays ? ` (${pluralDays(d.tradingDays)})` : ""}; уведомлений в реальном времени нет.
+          {tb("trig.history", { days: d.tradingDays ? ` (${commonI18n.t("units.days", { count: d.tradingDays })})` : "" })}
         </p>
         {canEdit && !adding && (
           <Button size="sm" variant="outline" className="ml-auto" onClick={() => setAdding(true)}>
-            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Добавить триггер
+            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {tb("trig.addTrigger")}
           </Button>
         )}
       </div>
@@ -289,12 +294,13 @@ export function TriggersPanel({ trader, range, onPickDay }: { trader: string | n
         !adding && (
           <EmptyState
             icon={BellRing}
-            title="Триггеров пока нет"
-            description={canEdit ? "Нажмите «Сделать правилом» на карточке паттерна или задайте порог вручную — например, «3 убытка подряд»." : "Трейдер ещё не задал себе пороги."}
+            title={tb("trig.none")}
+            description={canEdit ? tb("trig.noneEdit") : tb("trig.noneView")}
           />
         )
       ) : (
-        <ul className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2" aria-label="Мои триггеры">
+        <ul className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2" aria-label={tb("trig.listAria")}>
+
           {d.items.map((t) => <TriggerRow key={t.id} t={t} def={kindMap.get(t.kind)} canEdit={canEdit} onPickDay={onPickDay} />)}
         </ul>
       )}

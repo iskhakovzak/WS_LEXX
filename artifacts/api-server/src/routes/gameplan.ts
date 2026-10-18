@@ -14,6 +14,7 @@ import {
   parseTradingViewUrl,
   softDeleteDropped,
 } from "../lib/planMedia";
+import { AppError, badRequest, unauthorized } from "../lib/http";
 
 /**
  * «План дня».
@@ -137,7 +138,7 @@ const TvLink = z
   .string()
   .trim()
   .max(600)
-  .refine((s) => s === "" || parseTradingViewUrl(s) !== null, "нужна https-ссылка на tradingview.com")
+  .refine((s) => s === "" || parseTradingViewUrl(s) !== null, "https link to tradingview.com required")
   .transform((s) => (s === "" ? "" : parseTradingViewUrl(s)!.url));
 const text = (max: number) => z.string().trim().max(max).default("");
 const InPlayItem = z.object({
@@ -258,8 +259,7 @@ router.get("/game-plan", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
   if (!isIsoDate(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
+    throw badRequest("INVALID_DATE");
   }
   const { rows } = await pool.query<PlanRow>(
     `SELECT ${PLAN_COLS} FROM game_plans p WHERE p.date = $1 AND p.deleted_at IS NULL LIMIT 1`,
@@ -299,14 +299,12 @@ router.get("/game-plan", asyncHandler(async (req, res): Promise<void> => {
 router.get("/game-plan/my", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   if (!(await requireCap(req, res, "journal.write.own", { trader: me }))) return;
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
   if (!isIsoDate(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
+    throw badRequest("INVALID_DATE");
   }
   await ensureTables();
   const [{ rows }, { rows: prev }] = await Promise.all([
@@ -326,19 +324,16 @@ router.get("/game-plan/my", asyncHandler(async (req, res): Promise<void> => {
 router.put("/game-plan/my/:date", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   if (!(await requireCap(req, res, "journal.write.own", { trader: me }))) return;
   const date = req.params.date;
   if (!isIsoDate(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
+    throw badRequest("INVALID_DATE");
   }
   const parsed = TraderPlanBody.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ error: zodError(parsed.error) });
-    return;
+    throw parsed.error;
   }
   await ensureTables();
   const { status, ...rawDoc } = parsed.data;
@@ -363,13 +358,11 @@ router.put("/game-plan/my/:date", asyncHandler(async (req, res): Promise<void> =
 
 router.get("/game-plan/traders", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
   if (!isIsoDate(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
+    throw badRequest("INVALID_DATE");
   }
   await ensureTables();
   // null → whole desk; string[] → own name + wards; [] → guest/anonymous (nothing).
@@ -409,8 +402,7 @@ const TemplateBody = z.object({
 router.get("/game-plan/templates", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   const kind = req.query.kind === "desk" ? "desk" : req.query.kind === "personal" ? "personal" : null;
   await ensureTables();
@@ -428,18 +420,16 @@ router.get("/game-plan/templates", asyncHandler(async (req, res): Promise<void> 
 router.post("/game-plan/templates", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   const parsed = TemplateBody.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ error: zodError(parsed.error) });
-    return;
+    throw parsed.error;
   }
   const t = parsed.data;
   const ok =
     t.kind === "desk" || t.shared
-      ? await requireCap(req, res, "gameplan.publish", null, "Общие шаблоны и шаблоны плана деска — для кураторов")
+      ? await requireCap(req, res, "gameplan.publish", null, "DESK_TEMPLATES_STAFF_ONLY")
       : await requireCap(req, res, "journal.write.own", { trader: me });
   if (!ok) return;
   // Templates are skeletons: never carry screenshots (they belong to a specific day).
@@ -449,10 +439,7 @@ router.post("/game-plan/templates", asyncHandler(async (req, res): Promise<void>
     `SELECT COUNT(*)::int AS n FROM plan_templates WHERE author = $1 AND deleted_at IS NULL`,
     [me],
   );
-  if ((count[0]?.n ?? 0) >= 40) {
-    res.status(409).json({ error: "Не больше 40 шаблонов — удалите ненужные" });
-    return;
-  }
+  if ((count[0]?.n ?? 0) >= 40) throw new AppError("TOO_MANY", 409, { field: "templates", max: 40 });
   const { rows } = await pool.query(
     `INSERT INTO plan_templates (author, kind, name, doc, shared)
      VALUES ($1, $2, $3, $4::jsonb, $5)
@@ -465,13 +452,11 @@ router.post("/game-plan/templates", asyncHandler(async (req, res): Promise<void>
 router.delete("/game-plan/templates/:id", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   const id = parsePlanId(req.params.id);
   if (!id) {
-    res.status(400).json({ error: "invalid id" });
-    return;
+    throw badRequest("INVALID_ID");
   }
   await ensureTables();
   const { rows } = await pool.query<{ author: string; shared: boolean }>(
@@ -479,14 +464,8 @@ router.delete("/game-plan/templates/:id", asyncHandler(async (req, res): Promise
     [id],
   );
   const t = rows[0];
-  if (!t || (t.author !== me && !t.shared)) {
-    res.status(404).json({ error: "Шаблон не найден" });
-    return;
-  }
-  if (t.author !== me && !(await can(req, "gameplan.publish"))) {
-    res.status(403).json({ error: "Удалить общий шаблон может автор или куратор" });
-    return;
-  }
+  if (!t || (t.author !== me && !t.shared)) throw new AppError("TEMPLATE_NOT_FOUND");
+  if (t.author !== me && !(await can(req, "gameplan.publish"))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await pool.query(`UPDATE plan_templates SET deleted_at = NOW() WHERE id = $1`, [id]);
   res.json({ ok: true });
 }));
@@ -494,19 +473,16 @@ router.delete("/game-plan/templates/:id", asyncHandler(async (req, res): Promise
 // ── Desk plan mutations ───────────────────────────────────────────────────────
 router.put("/game-plan/:date", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
+    throw unauthorized();
   }
   if (!(await requireCap(req, res, "gameplan.publish", null, "Curator or admin role required"))) return;
   const date = req.params.date;
   if (!isIsoDate(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
+    throw badRequest("INVALID_DATE");
   }
   const parsed = PlanBody.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ error: zodError(parsed.error) });
-    return;
+    throw parsed.error;
   }
   await ensureTables();
   const b = await sanitizeMedia(parsed.data, "desk", null);
@@ -566,44 +542,34 @@ router.put("/game-plan/:date", asyncHandler(async (req, res): Promise<void> => {
 
 router.delete("/game-plan/:date", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
+    throw unauthorized();
   }
   if (!(await requireCap(req, res, "gameplan.publish", null, "Curator or admin role required"))) return;
   const date = req.params.date;
   if (!isIsoDate(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
+    throw badRequest("INVALID_DATE");
   }
   await ensureTables();
   const { rowCount } = await pool.query(
     `UPDATE game_plans SET deleted_at = NOW() WHERE date = $1 AND deleted_at IS NULL`,
     [date],
   );
-  if (!rowCount) {
-    res.status(404).json({ error: "Plan not found" });
-    return;
-  }
+  if (!rowCount) throw new AppError("PLAN_NOT_FOUND");
   res.json({ ok: true });
 }));
 
 router.post("/game-plan/:id/read", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
+    throw unauthorized();
   }
   const id = parsePlanId(req.params.id);
   if (!id) {
-    res.status(400).json({ error: "invalid id" });
-    return;
+    throw badRequest("INVALID_ID");
   }
   await ensureTables();
   const { rows: exists } = await pool.query(`SELECT 1 FROM game_plans WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists[0]) {
-    res.status(404).json({ error: "Plan not found" });
-    return;
-  }
+  if (!exists[0]) throw new AppError("PLAN_NOT_FOUND");
   // Re-reading after an update refreshes the timestamp (so "updated after read" clears).
   const { rows } = await pool.query<{ read_at: Date }>(
     `INSERT INTO game_plan_reads (plan_id, trader) VALUES ($1, $2)
@@ -616,24 +582,19 @@ router.post("/game-plan/:id/read", asyncHandler(async (req, res): Promise<void> 
 
 router.get("/game-plan/:id/reads", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
+    throw unauthorized();
   }
   if (!(await requireCap(req, res, "gameplan.publish", null, "Curator or admin role required"))) return;
   const id = parsePlanId(req.params.id);
   if (!id) {
-    res.status(400).json({ error: "invalid id" });
-    return;
+    throw badRequest("INVALID_ID");
   }
   await ensureTables();
   const { rows: planRows } = await pool.query<{ updated_at: Date }>(
     `SELECT updated_at FROM game_plans WHERE id = $1 AND deleted_at IS NULL`,
     [id],
   );
-  if (!planRows[0]) {
-    res.status(404).json({ error: "Plan not found" });
-    return;
-  }
+  if (!planRows[0]) throw new AppError("PLAN_NOT_FOUND");
   const updatedAt = new Date(planRows[0].updated_at);
   const { rows } = await pool.query<{ name: string; role: string; read_at: Date | null }>(
     `SELECT u.name, u.role, r.read_at

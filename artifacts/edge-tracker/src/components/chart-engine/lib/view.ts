@@ -4,17 +4,28 @@
 
 export type LogicalRange = { from: number; to: number };
 
+export type ViewMode = "day" | "trade";
+export const isViewMode = (v: unknown): v is ViewMode => v === "day" || v === "trade";
+
 /**
- * The view a trader expects when a trade opens: some lead-in before the entry (at least 30 bars), the whole trade and
- * some room after the exit. Without a trade: the regular session of the day; without that: the last 120 bars.
+ * The view a trader expects when a trade opens.
+ *  - "day" (default): every bar of the trade's day(s) — premarket 4:00 → after-hours 20:00 ET, each day a multi-day
+ *    trade spans — so the whole session is in sight and the fills sit in context.
+ *  - "trade": some lead-in before the entry (at least 30 bars), the whole trade and some room after the exit.
+ * Without a trade: the trade day(s) / the regular session of the day; without that: the last 120 bars.
  */
 export function defaultViewRange(o: {
   count: number;
   entryIdx: number | null;
   exitIdx: number | null;
   dayRange: { from: number; to: number } | null;
+  /** Index span of all bars on the trade's day(s) (extended hours included). */
+  daySpan?: { from: number; to: number } | null;
+  mode?: ViewMode;
 }): LogicalRange | null {
   if (o.count <= 0) return null;
+  const mode = o.mode ?? "trade";
+  if (mode === "day" && o.daySpan) return { from: o.daySpan.from - 2, to: o.daySpan.to + 3 };
   if (o.entryIdx != null) {
     const a = o.entryIdx, b = Math.max(a, o.exitIdx ?? a);
     const span = b - a;
@@ -22,6 +33,18 @@ export function defaultViewRange(o: {
   }
   if (o.dayRange) return { from: o.dayRange.from - 5, to: o.dayRange.to + 5 };
   return { from: Math.max(0, o.count - 120), to: o.count + 5 };
+}
+
+/** First / last index of bars whose New York day is in [fromKey, toKey] (bars sorted by time). */
+export function daySpanOf(dayKeys: readonly string[], fromKey: string, toKey: string): { from: number; to: number } | null {
+  let from = -1, to = -1;
+  for (let i = 0; i < dayKeys.length; i++) {
+    const d = dayKeys[i];
+    if (d < fromKey || d > toKey) continue;
+    if (from < 0) from = i;
+    to = i;
+  }
+  return from < 0 ? null : { from, to };
 }
 
 /**

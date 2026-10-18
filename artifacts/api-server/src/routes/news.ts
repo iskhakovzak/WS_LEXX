@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { getTickerNews } from "../lib/marketDataService";
 import { logger } from "../lib/logger";
+import { AppError, badRequest } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -17,10 +18,10 @@ router.get("/news/summary", asyncHandler(async (req, res): Promise<void> => {
   const tickers = Array.from(new Set(
     String(req.query.tickers || "").toUpperCase().split(",").map((s) => s.trim()).filter(Boolean),
   ));
-  if (!tickers.length) { res.status(400).json({ error: "tickers required" }); return; }
-  if (tickers.length > 100) { res.status(400).json({ error: "too many tickers (max 100)" }); return; }
+  if (!tickers.length) throw new AppError("FIELD_REQUIRED", undefined, { field: "tickers" });
+  if (tickers.length > 100) throw new AppError("TOO_MANY", undefined, { field: "tickers", max: 100 });
   const bad = tickers.find((t) => !SYMBOL_RE.test(t));
-  if (bad) { res.status(400).json({ error: "Invalid ticker", ticker: bad }); return; }
+  if (bad) throw new AppError("INVALID_TICKER", 400, undefined, { ticker: bad });
 
   const out: Record<string, {
     count24h: number; count7d: number; categories24h: string[];
@@ -80,7 +81,7 @@ router.get("/news/summary", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/news", asyncHandler(async (req, res): Promise<void> => {
   const ticker = String(req.query.ticker || "").toUpperCase().trim();
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
   const force = req.query.force === "1" || req.query.force === "true";
   let before: Date | null = null;

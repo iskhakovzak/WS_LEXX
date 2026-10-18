@@ -1,6 +1,7 @@
 // Offerings table filters: one plain object, persisted per user, with saved presets.
 import { dealTypeOf, dilutionScore, discountOf, type DealType } from "./score";
 import { pctOfMcap, type Offering } from "./types";
+import { offeringsI18n } from "@/i18n/ns/offerings";
 
 export type OfferingFilters = {
   types: DealType[];
@@ -30,24 +31,25 @@ export const EMPTY_FILTERS: OfferingFilters = {
   mine: false,
 };
 
-export type FilterPreset = { id: string; name: string; filters: OfferingFilters; builtin?: boolean };
+export type FilterPreset = { id: string; readonly name: string; filters: OfferingFilters; builtin?: boolean };
 
+/** Built-in preset names follow the UI language (getters); user presets keep the name they typed. */
 export const BUILTIN_PRESETS: FilterPreset[] = [
   {
     id: "short",
-    name: "Шорт-кандидаты",
+    get name() { return offeringsI18n.t("filters.presetShort"); },
     builtin: true,
     filters: { ...EMPTY_FILTERS, types: ["spo", "direct", "pipe", "atm"], minPctMcap: 10, priceMin: 1, mcapMaxM: 2000, minScore: 50 },
   },
   {
     id: "small",
-    name: "Малые капы",
+    get name() { return offeringsI18n.t("filters.presetSmall"); },
     builtin: true,
     filters: { ...EMPTY_FILTERS, mcapMaxM: 300, priceMax: 20 },
   },
   {
     id: "big",
-    name: "Крупные сделки",
+    get name() { return offeringsI18n.t("filters.presetBig"); },
     builtin: true,
     filters: { ...EMPTY_FILTERS, minPctMcap: 20, types: ["spo", "direct", "pipe", "atm", "s1"] },
   },
@@ -115,14 +117,15 @@ export function matchesFilters(o: Offering, f: OfferingFilters, isMine: (ticker:
 
 /** Short human summary of the set filters (preset tooltip, empty-state hint). */
 export function describeFilters(f: OfferingFilters): string {
+  const t = offeringsI18n.t;
   const parts: string[] = [];
-  if (f.types.length) parts.push(f.types.map((t) => t.toUpperCase()).join("/"));
-  if (f.minPctMcap != null) parts.push(`≥${f.minPctMcap}% мкап`);
-  if (f.minDiscount != null) parts.push(`дисконт ≥${f.minDiscount}%`);
-  if (f.priceMin != null || f.priceMax != null) parts.push(`цена ${f.priceMin ?? 0}–${f.priceMax ?? "∞"}`);
-  if (f.floatMaxM != null) parts.push(`флоут ≤${f.floatMaxM}M`);
-  if (f.mcapMaxM != null) parts.push(`мкап ≤$${f.mcapMaxM}M`);
-  if (f.minScore != null) parts.push(`скор ≥${f.minScore}`);
-  if (f.mine) parts.push("мои тикеры");
-  return parts.join(" · ") || "без фильтров";
+  if (f.types.length) parts.push(f.types.map((x) => x.toUpperCase()).join("/"));
+  if (f.minPctMcap != null) parts.push(t("filters.descPctMcap", { value: f.minPctMcap }));
+  if (f.minDiscount != null) parts.push(t("filters.descDiscount", { value: f.minDiscount }));
+  if (f.priceMin != null || f.priceMax != null) parts.push(t("filters.descPrice", { min: f.priceMin ?? 0, max: f.priceMax ?? "∞" }));
+  if (f.floatMaxM != null) parts.push(t("filters.descFloat", { value: f.floatMaxM }));
+  if (f.mcapMaxM != null) parts.push(t("filters.descMcap", { value: f.mcapMaxM }));
+  if (f.minScore != null) parts.push(t("filters.descScore", { value: f.minScore }));
+  if (f.mine) parts.push(t("filters.descMine"));
+  return parts.join(" · ") || t("filters.descNone");
 }

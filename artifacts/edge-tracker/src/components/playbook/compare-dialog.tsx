@@ -10,7 +10,19 @@ import { deriveChecklistItems } from "@/components/playbook-checklist-marks";
 import { IconAction } from "@/components/playbook-sub/bits";
 import { cn } from "@/lib/utils";
 import { EdgeMini, SetupTypePill } from "./setup-bits";
-import { fmtPct, fmtR, timeAgo, type PlaybookEntry, type SetupSummary } from "./model";
+import { STRUCTURED, timeAgo, type PlaybookEntry, type SetupSummary } from "./model";
+import { fmtR, fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
+
+const dt = playbookDialogsI18n.t; // called at render time only
+
+/** What the setup says about entry: the legacy free text, else the structured card (most setups live there now). */
+function describe(e: PlaybookEntry): { label: string; text: string } {
+  if (e.conditions?.trim()) return { label: dt("compare.conditions"), text: e.conditions };
+  const text = STRUCTURED.filter((f) => (e[f.key] ?? "").trim()).map((f) => `${f.label}: ${(e[f.key] ?? "").trim()}`).join("\n");
+  return { label: dt("compare.description2"), text: text || "—" };
+}
 
 function SetupPicker({
   value, entries, summary, onChange, exclude, label,
@@ -26,14 +38,14 @@ function SetupPicker({
           aria-label={label}
           className="glass-field flex min-h-10 w-full min-w-0 items-center gap-2 px-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {value ? <span className="truncate font-semibold">{value.name}</span> : <span className="text-muted-foreground">Выберите сетап…</span>}
+          {value ? <span className="truncate font-semibold" title={value.name}>{value.name}</span> : <span className="text-muted-foreground">{dt("compare.pickSetup")}</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[min(360px,calc(100vw-2rem))] p-0" align="start">
         <Command className="bg-transparent">
-          <CommandInput placeholder="Найти сетап" aria-label="Найти сетап" />
+          <CommandInput placeholder={dt("compare.findSetup")} aria-label={dt("compare.findSetup")} />
           <CommandList className="max-h-[min(55dvh,440px)]">
-            <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">Не найдено</CommandEmpty>
+            <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">{dt("compare.notFound")}</CommandEmpty>
             <CommandGroup>
               {entries.filter((e) => e.id !== exclude).map((e) => (
                 <CommandItem key={e.id} value={`${e.name} ${e.folder ?? ""} ${e.setupType ?? ""} #${e.id}`} onSelect={() => { onChange(e); setOpen(false); }}>
@@ -61,6 +73,7 @@ export function CompareDialog({
   summary: Map<number, SetupSummary>;
   onOpen: (id: number) => void;
 }) {
+  const { t } = playbookDialogsI18n.useT();
   const [aId, setAId] = useState<number | null>(null);
   const [bId, setBId] = useState<number | null>(null);
   const [lastInitial, setLastInitial] = useState<number | null>(null);
@@ -79,13 +92,13 @@ export function CompareDialog({
   const sb = b ? summary.get(b.id) : undefined;
 
   const metrics: Metric[] = [
-    { label: "Сделок", a: sa?.tradeCount ?? 0, b: sb?.tradeCount ?? 0, fmt: (v) => String(v ?? 0), higherIsBetter: true },
-    { label: "Win rate", a: sa?.winrate ?? null, b: sb?.winrate ?? null, fmt: fmtPct, higherIsBetter: true },
-    { label: "Средний R", a: sa?.avgR ?? null, b: sb?.avgR ?? null, fmt: fmtR, higherIsBetter: true },
-    { label: "Ожидание на сделку", a: sa?.expectancy ?? null, b: sb?.expectancy ?? null, fmt: fmtR, higherIsBetter: true },
-    { label: "Edge score (с поправкой на выборку)", a: sa?.edgeScore ?? null, b: sb?.edgeScore ?? null, fmt: fmtR, higherIsBetter: true },
-    { label: "Уверенность", a: a?.confidenceLevel ?? null, b: b?.confidenceLevel ?? null, fmt: (v) => (v == null ? "—" : `${v}%`), higherIsBetter: true },
-    { label: "Примеров", a: sa?.exampleCount ?? 0, b: sb?.exampleCount ?? 0, fmt: (v) => String(v ?? 0), higherIsBetter: true },
+    { label: t("compare.trades"), a: sa?.tradeCount ?? 0, b: sb?.tradeCount ?? 0, fmt: (v) => String(v ?? 0), higherIsBetter: true },
+    { label: "Win rate", a: sa?.winrate ?? null, b: sb?.winrate ?? null, fmt: fmtRate, higherIsBetter: true },
+    { label: t("compare.avgR"), a: sa?.avgR ?? null, b: sb?.avgR ?? null, fmt: fmtR, higherIsBetter: true },
+    { label: t("compare.expectancy"), a: sa?.expectancy ?? null, b: sb?.expectancy ?? null, fmt: fmtR, higherIsBetter: true },
+    { label: t("compare.edgeScore"), a: sa?.edgeScore ?? null, b: sb?.edgeScore ?? null, fmt: fmtR, higherIsBetter: true },
+    { label: t("compare.confidence"), a: a?.confidenceLevel ?? null, b: b?.confidenceLevel ?? null, fmt: (v) => (v == null ? "—" : `${v}%`), higherIsBetter: true },
+    { label: t("compare.examples"), a: sa?.exampleCount ?? 0, b: sb?.exampleCount ?? 0, fmt: (v) => String(v ?? 0), higherIsBetter: true },
   ];
 
   const items = useMemo(() => {
@@ -107,14 +120,14 @@ export function CompareDialog({
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setLastInitial(null); }}>
       <DialogContent className="max-h-[85dvh] w-full max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Сравнение сетапов</DialogTitle>
-          <DialogDescription>Лучшее значение подсвечено. Edge score штрафует маленькую выборку.</DialogDescription>
+          <DialogTitle>{t("compare.title")}</DialogTitle>
+          <DialogDescription>{t("compare.description")}</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-          <SetupPicker label="Первый сетап" value={a} entries={entries} summary={summary} onChange={(e) => setAId(e.id)} exclude={bId ?? undefined} />
-          <IconAction aria-label="Поменять местами" onClick={() => { setAId(bId); setBId(aId); }}><ArrowLeftRight /></IconAction>
-          <SetupPicker label="Второй сетап" value={b} entries={entries} summary={summary} onChange={(e) => setBId(e.id)} exclude={aId ?? undefined} />
+          <SetupPicker label={t("compare.first")} value={a} entries={entries} summary={summary} onChange={(e) => setAId(e.id)} exclude={bId ?? undefined} />
+          <IconAction aria-label={t("compare.swap")} title={t("compare.swap")} onClick={() => { setAId(bId); setBId(aId); }}><ArrowLeftRight /></IconAction>
+          <SetupPicker label={t("compare.second")} value={b} entries={entries} summary={summary} onChange={(e) => setBId(e.id)} exclude={aId ?? undefined} />
         </div>
 
         {a && b ? (
@@ -123,20 +136,20 @@ export function CompareDialog({
               {[a, b].map((e) => (
                 <div key={e.id} className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <SetupTypePill type={e.setupType} />
-                  <span className="truncate">{e.folder ?? "Без папки"}</span>
-                  <span>· {timeAgo(summary.get(e.id)?.lastUsedAt) ?? "не использовался"}</span>
+                  <span className="truncate">{e.folder ?? commonI18n.t("fields.noFolder")}</span>
+                  <span>· {timeAgo(summary.get(e.id)?.lastUsedAt) ?? t("compare.notUsed")}</span>
                 </div>
               ))}
             </div>
 
             <div className="overflow-hidden rounded-xl bg-[var(--glass-bg)]">
               <table className="w-full table-fixed text-sm">
-                <caption className="sr-only">Метрики сетапов</caption>
+                <caption className="sr-only">{t("compare.metricsCaption")}</caption>
                 <thead>
                   <tr className="text-xs text-muted-foreground">
-                    <th scope="col" className="w-[38%] px-3 py-2 text-left font-normal">Метрика</th>
-                    <th scope="col" className="truncate px-3 py-2 text-right font-normal">{a.name}</th>
-                    <th scope="col" className="truncate px-3 py-2 text-right font-normal">{b.name}</th>
+                    <th scope="col" className="w-[38%] px-3 py-2 text-left font-normal">{t("compare.metric")}</th>
+                    <th scope="col" className="truncate px-3 py-2 text-right font-normal" title={a.name}>{a.name}</th>
+                    <th scope="col" className="truncate px-3 py-2 text-right font-normal" title={b.name}>{b.name}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -151,22 +164,22 @@ export function CompareDialog({
               </table>
             </div>
             {((sa?.tradeCount ?? 0) < 10 || (sb?.tradeCount ?? 0) < 10) && (
-              <p className="text-xs text-muted-foreground">Меньше 10 сделок у одного из сетапов — разница может быть случайной.</p>
+              <p className="text-xs text-muted-foreground">{t("compare.smallSample")}</p>
             )}
 
             <div>
               <div className="mb-2 text-sm font-semibold">
-                Чеклист <span className="font-normal text-muted-foreground">· общих пунктов: {items.shared}</span>
+                {t("compare.checklist")} <span className="font-normal text-muted-foreground">{t("compare.sharedItems", { count: items.shared })}</span>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[items.a, items.b].map((list, idx) => (
                   <ul key={idx} className="space-y-1 rounded-xl bg-[var(--glass-bg)] p-3 text-sm">
-                    {list.length === 0 && <li className="text-muted-foreground">Чеклиста нет</li>}
+                    {list.length === 0 && <li className="text-muted-foreground">{t("compare.noChecklist")}</li>}
                     {list.map((it, i) => (
                       <li key={i} className={cn("flex gap-2", it.shared ? "text-muted-foreground" : "text-foreground")}>
                         <span aria-hidden="true" className={it.shared ? "text-muted-foreground" : "text-primary"}>{it.shared ? "=" : "+"}</span>
                         <span className="min-w-0 [overflow-wrap:anywhere]">{it.t}</span>
-                        {!it.shared && <span className="sr-only">(только здесь)</span>}
+                        {!it.shared && <span className="sr-only">{t("compare.onlyHere")}</span>}
                       </li>
                     ))}
                   </ul>
@@ -175,17 +188,20 @@ export function CompareDialog({
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {[a, b].map((e) => (
-                <div key={e.id} className="rounded-xl bg-[var(--glass-bg)] p-3">
-                  <div className="mb-1 text-xs text-muted-foreground">Условия входа</div>
-                  <p className="line-clamp-[12] whitespace-pre-wrap text-sm">{e.conditions || "—"}</p>
-                  <Button variant="ghost" size="sm" className="mt-2 h-8" onClick={() => { onOpen(e.id); onOpenChange(false); }}>Открыть сетап</Button>
-                </div>
-              ))}
+              {[a, b].map((e) => {
+                const d = describe(e);
+                return (
+                  <div key={e.id} className="rounded-xl bg-[var(--glass-bg)] p-3">
+                    <div className="mb-1 text-xs text-muted-foreground">{d.label}</div>
+                    <p className="line-clamp-[12] whitespace-pre-wrap text-sm">{d.text}</p>
+                    <Button variant="ghost" size="sm" className="mt-2 h-8" onClick={() => { onOpen(e.id); onOpenChange(false); }}>{t("compare.openSetup")}</Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
-          <p className="py-8 text-center text-sm text-muted-foreground">Выберите второй сетап для сравнения.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">{t("compare.pickSecond")}</p>
         )}
       </DialogContent>
     </Dialog>

@@ -31,9 +31,12 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { isGuest, isStaffRole, viewerRole } from "../lib/auth";
 import { ensureNotificationSchema, loadNotificationPrefs, saveNotificationPrefs } from "../lib/notifyUtils";
 import {
-  ALL_TYPES_KEY, GROUP_LABELS, NOTIFICATION_TYPES, clampLimit, decodeCursor, deriveLink, encodeCursor,
-  expandTypeFilter, isSeverity, normalizeType, parseList, sanitizePrefs, stripInlineLink, typeMeta,
+  ALL_TYPES_KEY, clampLimit, decodeCursor, deriveLink, encodeCursor,
+  expandTypeFilter, groupLabels, isSeverity, normalizeType, notificationTypes, parseList, sanitizePrefs, stripInlineLink, typeMeta,
 } from "../lib/notificationCore";
+import { AppError, badRequest, notFound, sendError } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { renderNotification, type NotificationParams } from "../lib/notificationText";
 
 const router: IRouter = Router();
 
@@ -54,9 +57,10 @@ type Row = {
   actor: string | null;
   read_at: Date | null;
   archived_at: Date | null;
+  params?: Record<string, unknown> | null;
 };
 
-const COLS = `id, user_name, type, idea_id, message, is_read, source, created_at, severity, title, link, entity_type, entity_id, actor, read_at, archived_at`;
+const COLS = `id, user_name, type, idea_id, message, is_read, source, created_at, severity, title, link, entity_type, entity_id, actor, read_at, archived_at, params`;
 
 function iso(d: Date | string | null | undefined): string | null {
   if (!d) return null;
@@ -65,10 +69,12 @@ function iso(d: Date | string | null | undefined): string | null {
 }
 
 /** API shape (camelCase). `message` is kept as an alias of `body` for older clients. */
-export function presentNotification(r: Row) {
-  const meta = typeMeta(r.type);
+export function presentNotification(r: Row, lang: Lang = "ru") {
+  const meta = typeMeta(r.type, lang);
   const legacy = !r.title;
-  const body = legacy ? stripInlineLink(r.message) : r.message;
+  // Text as data: rows with params are rendered in the reader's language; older rows keep their stored Russian text.
+  const rendered = r.params ? renderNotification(meta.type, r.params as NotificationParams, lang) : null;
+  const body = rendered ? rendered.body : legacy ? stripInlineLink(r.message) : r.message;
   return {
     id: r.id,
     userName: r.user_name,
@@ -76,7 +82,7 @@ export function presentNotification(r: Row) {
     typeLabel: meta.label,
     group: meta.group,
     severity: isSeverity(r.severity) ? r.severity : meta.severity,
-    title: r.title ?? meta.label,
+    title: rendered?.title ?? r.title ?? meta.label,
     body,
     message: body,
     link: deriveLink(r),
@@ -89,6 +95,7 @@ export function presentNotification(r: Row) {
     readAt: iso(r.read_at),
     archivedAt: iso(r.archived_at),
     createdAt: iso(r.created_at) ?? new Date(0).toISOString(),
+    params: r.params ?? null,
   };
 }
 
@@ -107,7 +114,7 @@ async function resolveTarget(req: Request): Promise<string | null> {
 /** Identity for mutations: the signed-in member only (guests cannot mutate; the gate already 403s them). */
 function me(req: Request, res: Response): string | null {
   const name = req.authUser?.name;
-  if (!name || isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр", code: "GUEST_READ_ONLY" }); return null; }
+  if (!name || isGuest(req)) { sendError(res, new AppError("GUEST_READ_ONLY")); return null; }
   return name;
 }
 
@@ -141,10 +148,11 @@ router.get("/notifications/count", asyncHandler(async (req, res): Promise<void> 
   res.json({ unread: Number(r?.unread ?? 0), critical: Number(r?.critical ?? 0), warn: Number(r?.warn ?? 0) });
 }));
 
-router.get("/notifications/types", asyncHandler(async (_req, res): Promise<void> => {
+router.get("/notifications/types", asyncHandler(async (req, res): Promise<void> => {
+  const lang = langOf(req);
   res.json({
-    types: NOTIFICATION_TYPES.map((t) => ({ ...t })),
-    groups: Object.entries(GROUP_LABELS).map(([id, label]) => ({ id, label })),
+    types: notificationTypes(lang),
+    groups: Object.entries(groupLabels(lang)).map(([id, label]) => ({ id, label })),
     allTypesKey: ALL_TYPES_KEY,
   });
 }));
@@ -168,8 +176,8 @@ router.put("/notifications/prefs", asyncHandler(async (req, res): Promise<void> 
   if (body.muteAllUntil === "forever") prefs.push({ type: ALL_TYPES_KEY, inApp: false, muteUntil: null });
   else if (typeof body.muteAllUntil === "string" && body.muteAllUntil.trim()) {
     const ms = Date.parse(body.muteAllUntil);
-    if (!Number.isFinite(ms)) { res.status(400).json({ error: "muteAllUntil: некорректная дата" }); return; }
-    if (ms - Date.now() > 366 * 86_400_000) { res.status(400).json({ error: "muteAllUntil: не больше года" }); return; }
+    if (!Number.isFinite(ms)) throw badRequest("INVALID_FIELD", undefined, { field: "muteAllUntil" });
+    if (ms - Date.now() > 366 * 86_400_000) throw badRequest("MUTE_TOO_LONG");
     prefs.push({ type: ALL_TYPES_KEY, inApp: true, muteUntil: new Date(ms).toISOString() });
   }
   await saveNotificationPrefs(name, prefs);
@@ -208,14 +216,14 @@ router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
   const sinceRaw = req.query["since"];
   if (typeof sinceRaw === "string" && sinceRaw.trim()) {
     const ms = Date.parse(sinceRaw);
-    if (!Number.isFinite(ms)) { res.status(400).json({ error: "since: ожидается ISO-дата" }); return; }
+    if (!Number.isFinite(ms)) throw badRequest("INVALID_FIELD", undefined, { field: "since" });
     where.push(add(`created_at > ?::timestamptz`, new Date(ms).toISOString()));
   }
 
   const cursorRaw = req.query["cursor"];
   if (cursorRaw !== undefined && cursorRaw !== "") {
     const cursor = decodeCursor(cursorRaw);
-    if (!cursor) { res.status(400).json({ error: "cursor: некорректный курсор" }); return; }
+    if (!cursor) throw badRequest("INVALID_FIELD", undefined, { field: "cursor" });
     params.push(cursor.createdAt, cursor.id);
     where.push(`(created_at, id) < ($${params.length - 1}::timestamptz, $${params.length})`);
   }
@@ -229,7 +237,7 @@ router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
   const page = hasMore ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
   res.json({
-    items: page.map(presentNotification),
+    items: page.map((r) => presentNotification(r, langOf(req))),
     nextCursor: hasMore && last ? encodeCursor(last.created_at, last.id) : null,
   });
 }));
@@ -251,7 +259,7 @@ router.patch("/notifications/read-all", asyncHandler(async (req, res): Promise<v
 /** Mark every unread notification about one trade idea as read (opening the idea counts as reading them). */
 router.patch("/notifications/read-idea/:ideaId", asyncHandler(async (req, res): Promise<void> => {
   const ideaId = parseId(String(req.params.ideaId));
-  if (!ideaId) { res.status(400).json({ error: "invalid id" }); return; }
+  if (!ideaId) throw badRequest("INVALID_ID");
   const name = me(req, res);
   if (!name) return;
   await ensureNotificationSchema();
@@ -267,7 +275,7 @@ router.post("/notifications/read-many", asyncHandler(async (req, res): Promise<v
   const name = me(req, res);
   if (!name) return;
   const ids = parseIds(req.body);
-  if (!ids) { res.status(400).json({ error: "ids: непустой массив чисел" }); return; }
+  if (!ids) throw badRequest("IDS_REQUIRED");
   await ensureNotificationSchema();
   const { rowCount } = await pool.query(
     `UPDATE notifications SET is_read = TRUE, read_at = COALESCE(read_at, NOW()) WHERE user_name = $1 AND id = ANY($2::int[]) AND (is_read = FALSE OR read_at IS NULL)`,
@@ -280,7 +288,7 @@ router.post("/notifications/unread-many", asyncHandler(async (req, res): Promise
   const name = me(req, res);
   if (!name) return;
   const ids = parseIds(req.body);
-  if (!ids) { res.status(400).json({ error: "ids: непустой массив чисел" }); return; }
+  if (!ids) throw badRequest("IDS_REQUIRED");
   await ensureNotificationSchema();
   const { rowCount } = await pool.query(
     `UPDATE notifications SET is_read = FALSE, read_at = NULL WHERE user_name = $1 AND id = ANY($2::int[])`,
@@ -295,15 +303,16 @@ router.post("/notifications/archive", asyncHandler(async (req, res): Promise<voi
   await ensureNotificationSchema();
   const body = (req.body ?? {}) as { ids?: unknown; read?: unknown };
   if (body.read === true) {
-    const { rowCount } = await pool.query(
-      `UPDATE notifications SET archived_at = NOW() WHERE user_name = $1 AND archived_at IS NULL AND (is_read = TRUE OR read_at IS NOT NULL)`,
+    const { rows } = await pool.query<{ id: number }>(
+      `UPDATE notifications SET archived_at = NOW() WHERE user_name = $1 AND archived_at IS NULL AND (is_read = TRUE OR read_at IS NOT NULL) RETURNING id`,
       [name],
     );
-    res.json({ ok: true, updated: rowCount ?? 0 });
+    // ids → the client can offer «Отменить» (POST /notifications/unarchive).
+    res.json({ ok: true, updated: rows.length, ids: rows.map((r) => Number(r.id)) });
     return;
   }
   const ids = parseIds(body);
-  if (!ids) { res.status(400).json({ error: "ids: непустой массив чисел (или read: true)" }); return; }
+  if (!ids) throw badRequest("IDS_REQUIRED");
   // Archiving also reads: an archived row never counts as unread.
   const { rowCount } = await pool.query(
     `UPDATE notifications SET archived_at = COALESCE(archived_at, NOW()), is_read = TRUE, read_at = COALESCE(read_at, NOW())
@@ -317,7 +326,7 @@ router.post("/notifications/unarchive", asyncHandler(async (req, res): Promise<v
   const name = me(req, res);
   if (!name) return;
   const ids = parseIds(req.body);
-  if (!ids) { res.status(400).json({ error: "ids: непустой массив чисел" }); return; }
+  if (!ids) throw badRequest("IDS_REQUIRED");
   await ensureNotificationSchema();
   const { rowCount } = await pool.query(
     `UPDATE notifications SET archived_at = NULL WHERE user_name = $1 AND id = ANY($2::int[]) AND archived_at IS NOT NULL`,
@@ -328,13 +337,13 @@ router.post("/notifications/unarchive", asyncHandler(async (req, res): Promise<v
 
 async function setOne(req: Request, res: Response, sql: string): Promise<void> {
   const id = parseId(String(req.params.id));
-  if (!id) { res.status(400).json({ error: "invalid id" }); return; }
+  if (!id) throw badRequest("INVALID_ID");
   const name = me(req, res);
   if (!name) return;
   await ensureNotificationSchema();
   const { rows } = await pool.query<Row>(`${sql} WHERE id = $1 AND user_name = $2 RETURNING ${COLS}`, [id, name]);
-  if (!rows[0]) { res.status(404).json({ error: "Уведомление не найдено" }); return; }
-  res.json({ ok: true, notification: presentNotification(rows[0]) });
+  if (!rows[0]) throw notFound("NOTIFICATION_NOT_FOUND");
+  res.json({ ok: true, notification: presentNotification(rows[0], langOf(req)) });
 }
 
 router.patch("/notifications/:id/read", asyncHandler((req, res) =>

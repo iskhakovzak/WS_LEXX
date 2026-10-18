@@ -3,7 +3,7 @@
  * and response types mirrored from api-server/src/lib/benchmark.ts + routes/benchmark.ts.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 
 export type Result = "win" | "loss" | "be";
 export type Side = "long" | "short";
@@ -91,20 +91,6 @@ export type SameTickerResponse = {
   pairs: { a: string; b: string; cases: number }[];
 };
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(apiUrl(path));
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try { const b = (await res.json()) as { error?: string }; if (b?.error) msg = b.error; } catch { /* not json */ }
-    throw new HttpError(res.status, msg);
-  }
-  return (await res.json()) as T;
-}
-
 export type BenchParams = { period: BenchPeriod; minTrades: number };
 
 function qs(p: BenchParams): string {
@@ -120,7 +106,7 @@ export const benchmarkKeys = {
 export function useBenchmark(p: BenchParams) {
   return useQuery({
     queryKey: benchmarkKeys.summary(p),
-    queryFn: () => getJson<BenchmarkResponse>(`/api/benchmark?${qs(p)}`),
+    queryFn: () => http.get<BenchmarkResponse>(`/api/benchmark?${qs(p)}`),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
@@ -129,7 +115,7 @@ export function useBenchmark(p: BenchParams) {
 export function useSameTicker(p: BenchParams, enabled: boolean) {
   return useQuery({
     queryKey: benchmarkKeys.sameTicker(p),
-    queryFn: () => getJson<SameTickerResponse>(`/api/benchmark/same-ticker?${qs(p)}&limit=300`),
+    queryFn: () => http.get<SameTickerResponse>(`/api/benchmark/same-ticker?${qs(p)}&limit=300`),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,

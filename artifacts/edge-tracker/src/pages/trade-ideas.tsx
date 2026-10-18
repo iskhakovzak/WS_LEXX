@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import {
@@ -17,12 +17,20 @@ import { TradeIdeaForm, type TradeIdeaFormData } from "@/components/trade-idea-f
 import { IdeaBoard } from "@/components/ideas/IdeaBoard";
 import { IdeaCard } from "@/components/ideas/IdeaCard";
 import { IdeaDetailSheet } from "@/components/ideas/IdeaDetailSheet";
-import { useIdeaMutations, useIdeas, useTracking } from "@/components/ideas/hooks";
+import { IDEAS_KEY, useIdeaMutations, useIdeas, useTracking } from "@/components/ideas/hooks";
 import {
-  HORIZONS, STAGES, fmtR, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
+  HORIZONS, STAGES, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
   type Horizon, type IdeaTracking, type Stage, type TradeIdea,
 } from "@/components/ideas/model";
+import { fmtDate, fmtNum, fmtR } from "@/lib/format";
 import { nyDate, addDays } from "@/lib/trading-date";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUndoDelete } from "@/hooks/use-undo-delete";
+import { UndoToast } from "@/components/undo-toast";
+import { PersonSelect } from "@/components/people/person-select";
+import { ideasI18n } from "@/i18n/ns/ideas";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName, comparePersonNames } from "@/i18n";
 
 type View = "board" | "list";
 type Scope = "all" | "mine";
@@ -32,8 +40,8 @@ type StageFilter = "all" | Stage;
 const PREF = { view: "ideas.view", scope: "ideas.scope", sort: "ideas.sort", author: "ideas.author" };
 
 function isTypingTarget(t: EventTarget | null): boolean {
-  const el = t as HTMLElement | null;
-  if (!el) return false;
+  if (!(t instanceof HTMLElement)) return false;
+  const el = t;
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[role=dialog]");
 }
 
@@ -51,7 +59,7 @@ function toFormInitial(i: TradeIdea): Partial<TradeIdeaFormData> {
 
 function BoardSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-busy="true" aria-label="Загрузка идей">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-busy="true" aria-label={ideasI18n.t("page.loadingIdeas")}>
       {[0, 1, 2, 3, 4].map((c) => (
         <div key={c} className={c > 1 ? "hidden flex-col gap-2 xl:flex" : "flex flex-col gap-2"}>
           <Skeleton className="h-5 w-24 rounded-full" />
@@ -64,11 +72,15 @@ function BoardSkeleton() {
 
 export default function TradeIdeas() {
   const { user, isCurator, isAdmin, canEdit } = useAuth();
+  const { t } = ideasI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const me = user?.traderName ?? "";
   const isReviewer = isCurator || isAdmin;
   const [, setLocation] = useLocation();
   const reduceMotion = useReducedMotion();
   const m = useIdeaMutations();
+  const qc = useQueryClient();
+  const undo = useUndoDelete(() => qc.invalidateQueries({ queryKey: IDEAS_KEY }));
 
   const { data: ideas = [], isLoading, isError, error, refetch } = useIdeas();
   const trackable = ideas.some((i) => i.status !== "draft");
@@ -107,7 +119,7 @@ export default function TradeIdeas() {
   }, [ideas, tracking]);
 
   const authors = useMemo(
-    () => Array.from(new Set(ideas.map((i) => i.trader).filter((t): t is string => !!t))).sort((a, b) => a.localeCompare(b, "ru")),
+    () => Array.from(new Set(ideas.map((i) => i.trader).filter((t): t is string => !!t))).sort(comparePersonNames),
     [ideas],
   );
 
@@ -120,7 +132,7 @@ export default function TradeIdeas() {
       if (tickerFilter && i.ticker !== tickerFilter) return false;
       if (horizon !== "all" && ideaHorizon(i) !== horizon) return false;
       if (q) {
-        const hay = [i.ticker, i.setup, i.thesis, i.tags, i.trader, i.longName].filter(Boolean).join(" ").toLowerCase();
+        const hay = [i.ticker, i.setup, i.thesis, i.tags, i.trader, personName(i.trader), i.longName].filter(Boolean).join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -242,7 +254,9 @@ export default function TradeIdeas() {
 
   function openCreate() { setEditing(null); setPrefillTicker(tickerFilter); setFormOpen(true); }
   function openEdit(i: TradeIdea) { setEditing(i); setFormOpen(true); }
-  function closeForm() { setFormOpen(false); setEditing(null); setPrefillTicker(null); }
+  // Only close here: `editing` is cleared after the close animation (onCloseAutoFocus), so the title doesn't flip
+  // to «Новая идея» while the dialog fades out.
+  function closeForm() { setFormOpen(false); }
 
   const formInitial = useMemo(
     () => (editing ? toFormInitial(editing) : prefillTicker ? { ticker: prefillTicker } : undefined),
@@ -256,12 +270,13 @@ export default function TradeIdeas() {
       if (sheetOpen && !formOpen && !deleting) {
         const t = e.target as HTMLElement | null;
         const typing = !!t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
-        if (!typing && (e.key === "j" || e.key === "о")) { e.preventDefault(); step(1); }
-        if (!typing && (e.key === "k" || e.key === "л")) { e.preventDefault(); step(-1); }
+        // Russian-layout twins of J / K / N (physical keys), not UI text.
+        if (!typing && (e.key === "j" || e.key === "о")) { e.preventDefault(); step(1); } // i18n-ignore
+        if (!typing && (e.key === "k" || e.key === "л")) { e.preventDefault(); step(-1); } // i18n-ignore
         return;
       }
       if (isTypingTarget(e.target) || formOpen) return;
-      if ((e.key === "n" || e.key === "т") && canEdit) { e.preventDefault(); openCreate(); }
+      if ((e.key === "n" || e.key === "т") && canEdit) { e.preventDefault(); openCreate(); } // i18n-ignore
       else if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
     }
     window.addEventListener("keydown", onKey);
@@ -289,31 +304,31 @@ export default function TradeIdeas() {
     for (const i of listItems) {
       const d = new Date(i.publishedAt ?? i.createdAt);
       const key = i.ideaDate ?? nyDate(d);
-      const label = key === today ? "Сегодня" : key === yesterday ? "Вчера"
-        : new Date(`${key}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+      const label = key === today ? tc("time.today") : key === yesterday ? tc("time.yesterday")
+        : fmtDate(key, "long");
       const last = out[out.length - 1];
       if (last && last.key === key) last.items.push(i); else out.push({ key, label, items: [i] });
     }
     return out;
-  }, [listItems, sort]);
+  }, [listItems, sort, tc]);
 
   const anim = reduceMotion ? {} : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.2, ease: [0.2, 0.8, 0.2, 1] as const } };
 
   return (
     <Page>
       <PageHeader
-        title="Идеи"
+        title={t("page.title")}
         icon={Lightbulb}
-        description={isLoading ? "Загрузка…" : `${kpi.active} активных · ${kpi.review} на ревью · ${ideas.length} всего`}
+        description={isLoading ? t("page.loading") : t("page.summary", { active: kpi.active, review: kpi.review, total: ideas.length })}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setLocation("/trade-idea-stats")} className="gap-1.5">
-              <BarChart3 className="h-4 w-4" aria-hidden="true" /> Статистика
+              <BarChart3 className="h-4 w-4" aria-hidden="true" /> {t("page.stats")}
             </Button>
             <WriteOnly>
-              <Button onClick={openCreate} className="hidden gap-1.5 sm:inline-flex" title="Новая идея (N)">
-                <Plus className="h-4 w-4" aria-hidden="true" /> Новая идея
-                <kbd className="ml-1 rounded-md bg-white/20 px-1.5 text-2xs font-medium">N</kbd>
+              <Button size="sm" onClick={openCreate} className="hidden gap-1.5 sm:inline-flex" title={t("page.newIdeaTitle")}>
+                <Plus className="h-4 w-4" aria-hidden="true" /> {t("page.newIdea")}
+                <kbd className="ml-0.5 rounded-full bg-white/20 px-1.5 text-2xs font-medium">N</kbd>
               </Button>
             </WriteOnly>
           </>
@@ -322,35 +337,41 @@ export default function TradeIdeas() {
 
       <StatGrid>
         <StatCard
-          label={isReviewer ? "Ждут ревью" : "На ревью"}
+          label={isReviewer ? t("page.awaitingReview") : t("page.onReview")}
           value={kpi.review}
           icon={Timer}
           tone={kpi.review > 0 ? "warn" : "neutral"}
-          hint={isReviewer ? (kpi.myReviewQueue > 0 ? `${kpi.myReviewQueue} от команды` : "очередь пуста") : "ждут решения куратора"}
+          hint={isReviewer ? (kpi.myReviewQueue > 0 ? t("page.fromTeam", { count: kpi.myReviewQueue }) : t("page.queueEmpty")) : t("page.awaitingCurator")}
           onClick={() => { setView("list"); setStageFilter("review"); }}
         />
         <StatCard
-          label="Активные"
+          label={t("page.active")}
           value={kpi.active}
           icon={TrendingUp}
           tone={kpi.active > 0 ? "accent" : "neutral"}
-          hint={kpi.active > 0 ? `${kpi.inProfit} в плюсе сейчас` : "одобренные и в сделке"}
+          hint={kpi.active > 0 ? t("page.inProfit", { count: kpi.inProfit }) : t("page.activeHint")}
           onClick={() => { setView("list"); setStageFilter("active"); }}
         />
         <StatCard
-          label="Точность идей"
+          label={t("page.accuracy")}
           value={kpi.hitRate != null ? `${Math.round(kpi.hitRate * 100)}%` : "—"}
           icon={Target}
           tone={kpi.hitRate == null ? "neutral" : kpi.hitRate >= 0.5 ? "up" : "down"}
-          hint={kpi.closed > 0 ? `${kpi.closedWon} из ${kpi.closed - kpi.be} сработали${kpi.be ? ` · ${kpi.be} в ноль` : ""}${kpi.expired ? ` · ${kpi.expired} истекли` : ""}` : "появится после первых исходов"}
+          hint={kpi.closed > 0
+            ? [
+                t("page.accuracyHint", { won: kpi.closedWon, decided: kpi.closed - kpi.be }),
+                kpi.be ? t("page.accuracyBe", { count: kpi.be }) : null,
+                kpi.expired ? t("page.accuracyExpired", { count: kpi.expired }) : null,
+              ].filter(Boolean).join(" · ")
+            : t("page.accuracyEmpty")}
           onClick={() => { setView("list"); setStageFilter("won"); }}
         />
         <StatCard
-          label="Средний R:R плана"
-          value={kpi.avgRR != null ? kpi.avgRR.toFixed(2) : "—"}
+          label={t("page.avgRr")}
+          value={fmtNum(kpi.avgRR, 2)}
           icon={Scale}
           tone={kpi.avgRR == null ? "neutral" : kpi.avgRR >= 2 ? "up" : kpi.avgRR >= 1 ? "warn" : "down"}
-          hint={kpi.avgMfe != null ? `ср. макс. ход ${fmtR(kpi.avgMfe)}` : "по опубликованным идеям"}
+          hint={kpi.avgMfe != null ? t("page.avgMfe", { r: fmtR(kpi.avgMfe, 1) }) : t("page.avgRrHint")}
         />
       </StatGrid>
 
@@ -363,56 +384,46 @@ export default function TradeIdeas() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
-            placeholder="Тикер, сетап, тезис…"
-            aria-label="Поиск идей"
+            placeholder={t("page.searchPlaceholder")}
+            aria-label={t("page.searchAria")}
             className="pl-10 pr-10"
           />
-          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
         </div>
         <Segmented<Scope>
-          ariaLabel="Чьи идеи"
-          size="sm"
+          ariaLabel={t("page.scopeAria")}
           value={scope}
           onChange={setScope}
-          options={[{ value: "all", label: "Все" }, { value: "mine", label: "Мои", disabled: !me }]}
+          options={[{ value: "all", label: tc("states.all") }, { value: "mine", label: tc("fields.mine"), disabled: !me }]}
         />
-        <Select value={author} onValueChange={setAuthor}>
-          <SelectTrigger className="h-9 w-[150px]" aria-label="Автор">
-            <SelectValue placeholder="Автор" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все авторы</SelectItem>
-            {authors.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <PersonSelect value={author} onValueChange={setAuthor} allValue="all" allLabel={t("page.allAuthors")} options={authors} placeholder={t("page.author")} ariaLabel={t("page.author")} className="h-9 w-auto min-w-[150px] max-w-[240px]" />
         <Select value={horizon} onValueChange={(v) => setHorizon(v as "all" | Horizon)}>
-          <SelectTrigger className="h-9 w-[150px]" aria-label="Горизонт">
+          <SelectTrigger className="h-9 w-auto min-w-[150px]" aria-label={t("page.horizon")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Любой горизонт</SelectItem>
+            <SelectItem value="all">{t("page.anyHorizon")}</SelectItem>
             {HORIZONS.map((h) => <SelectItem key={h.key} value={h.key}>{h.label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => setSort(v as Sort)}>
-          <SelectTrigger className="h-9 w-[140px]" aria-label="Сортировка">
+          <SelectTrigger className="h-9 w-auto min-w-[150px]" aria-label={t("page.sortAria")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="new">Сначала новые</SelectItem>
-            <SelectItem value="score">По score</SelectItem>
-            <SelectItem value="rr">По R:R</SelectItem>
+            <SelectItem value="new">{t("page.sortNew")}</SelectItem>
+            <SelectItem value="score">{t("page.sortScore")}</SelectItem>
+            <SelectItem value="rr">{t("page.sortRr")}</SelectItem>
           </SelectContent>
         </Select>
         <Segmented<View>
-          ariaLabel="Вид"
-          size="sm"
+          ariaLabel={t("page.viewAria")}
           className="sm:ml-auto"
           value={view}
           onChange={setView}
           options={[
-            { value: "board", label: <><Columns3 className="h-3.5 w-3.5" aria-hidden="true" />Доска</> },
-            { value: "list", label: <><List className="h-3.5 w-3.5" aria-hidden="true" />Список</> },
+            { value: "board", label: <><Columns3 className="h-3.5 w-3.5" aria-hidden="true" />{t("page.board")}</> },
+            { value: "list", label: <><List className="h-3.5 w-3.5" aria-hidden="true" />{t("page.list")}</> },
           ]}
         />
       </Toolbar>
@@ -421,7 +432,7 @@ export default function TradeIdeas() {
         <div className="flex flex-wrap items-center gap-2">
           {view === "list" && (
             <>
-              <FilterChip active={stageFilter === "all"} onClick={() => setStageFilter("all")} count={sorted.length}>Все</FilterChip>
+              <FilterChip active={stageFilter === "all"} onClick={() => setStageFilter("all")} count={sorted.length}>{tc("states.all")}</FilterChip>
               {STAGES.filter((s) => s.key !== "rejected" || groups.rejected.length > 0).map((s) => (
                 <FilterChip key={s.key} active={stageFilter === s.key} onClick={() => setStageFilter(s.key)} count={groups[s.key].length}>
                   {s.short}
@@ -431,15 +442,15 @@ export default function TradeIdeas() {
           )}
           {tickerFilter && (
             <FilterChip active onClick={() => setTickerFilter(null)}>
-              {tickerFilter} <X className="h-3 w-3" aria-label="Сбросить фильтр по тикеру" />
+              {tickerFilter} <X className="h-3 w-3" aria-label={t("page.resetTicker")} />
             </FilterChip>
           )}
           {filtersActive && (
             <Button size="sm" variant="ghost" onClick={resetFilters} className="gap-1 text-muted-foreground">
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Сбросить фильтры
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> {tc("actions.resetFilters")}
             </Button>
           )}
-          {trackingFetching && <span className="text-2xs text-muted-foreground">обновляем цены…</span>}
+          {trackingFetching && <span className="text-2xs text-muted-foreground">{t("page.updatingPrices")}</span>}
         </div>
       )}
 
@@ -448,9 +459,9 @@ export default function TradeIdeas() {
       {isError && (
         <Panel>
           <EmptyState
-            title="Не удалось загрузить идеи"
+            title={t("page.loadFailed")}
             description={(error as Error)?.message}
-            action={<Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5"><RotateCcw className="h-3.5 w-3.5" />Повторить</Button>}
+            action={<Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5"><RotateCcw className="h-3.5 w-3.5" />{tc("actions.retry")}</Button>}
           />
         </Panel>
       )}
@@ -459,9 +470,9 @@ export default function TradeIdeas() {
         <Panel>
           <EmptyState
             icon={Lightbulb}
-            title="Здесь появятся идеи команды"
-            description="Идея — это тикер, уровни входа, цели и стопа и короткий тезис. Опубликуйте её: куратор оценит, команда отреагирует, а система сама отследит, дошла ли цена до цели или до стопа."
-            action={canEdit ? <Button onClick={openCreate} className="gap-1.5"><Plus className="h-4 w-4" />Создать первую идею</Button> : undefined}
+            title={t("page.emptyTitle")}
+            description={t("page.emptyDescription")}
+            action={canEdit ? <Button onClick={openCreate} className="gap-1.5"><Plus className="h-4 w-4" />{t("page.createFirst")}</Button> : undefined}
           />
         </Panel>
       )}
@@ -470,9 +481,9 @@ export default function TradeIdeas() {
         <Panel>
           <EmptyState
             icon={Search}
-            title="Ничего не найдено"
-            description={scope === "mine" ? "У вас пока нет идей с такими фильтрами." : "Попробуйте изменить поиск или фильтры."}
-            action={<Button variant="outline" size="sm" onClick={resetFilters}>Сбросить фильтры</Button>}
+            title={tc("states.nothingFound")}
+            description={scope === "mine" ? t("page.noMine") : t("page.tryFilters")}
+            action={<Button variant="outline" size="sm" onClick={resetFilters}>{tc("actions.resetFilters")}</Button>}
           />
         </Panel>
       )}
@@ -487,11 +498,11 @@ export default function TradeIdeas() {
         <motion.div key={`list-${stageFilter}`} {...anim} className="flex flex-col gap-5">
           {listItems.length === 0 && (
             <Panel>
-              <EmptyState title="В этом статусе пусто" description={STAGES.find((s) => s.key === stageFilter)?.hint} />
+              <EmptyState title={t("page.emptyStage")} description={STAGES.find((s) => s.key === stageFilter)?.hint} />
             </Panel>
           )}
           {dayGroups.map((g) => (
-            <section key={g.key} className="flex flex-col gap-2" aria-label={g.label || "Идеи"}>
+            <section key={g.key} className="flex flex-col gap-2" aria-label={g.label || t("page.ideasAria")}>
               {g.label && (
                 <div className="flex items-center gap-3 px-1">
                   <h2 className="text-sm font-semibold text-foreground">{g.label}</h2>
@@ -522,7 +533,7 @@ export default function TradeIdeas() {
       <WriteOnly>
         <Button
           onClick={openCreate}
-          aria-label="Новая идея"
+          aria-label={t("page.newIdea")}
           className="fixed bottom-5 right-5 z-nav h-14 w-14 rounded-full p-0 shadow-lg sm:hidden"
         >
           <Plus className="h-6 w-6" aria-hidden="true" />
@@ -544,20 +555,23 @@ export default function TradeIdeas() {
       />
 
       <Dialog open={formOpen} onOpenChange={(v) => { if (!v) closeForm(); }}>
-        <DialogContent className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl">
+        <DialogContent
+          className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl"
+          onCloseAutoFocus={() => { setEditing(null); setPrefillTicker(null); }}
+        >
           <DialogHeader>
-            <DialogTitle>{editing ? `Редактировать ${editing.ticker}` : "Новая идея"}</DialogTitle>
+            <DialogTitle>{editing ? t("page.editTitle", { ticker: editing.ticker }) : t("page.newIdea")}</DialogTitle>
             <DialogDescription>
               {editing
-                ? editing.review_status === "needs_work" ? "После правок отправьте идею на повторное ревью." : "Изменения увидит вся команда."
-                : "Тикер, уровни и тезис. R:R и объём по риску считаются сами."}
+                ? editing.review_status === "needs_work" ? t("page.editNeedsWork") : t("page.editVisible")
+                : t("page.createDescription")}
             </DialogDescription>
           </DialogHeader>
           <TradeIdeaForm
             initial={formInitial}
             onSubmit={(d) => handleSave(d, false)}
             onSubmitAndPublish={!editing || editing.status === "draft" ? (d) => handleSave(d, true) : undefined}
-            submitLabel={editing && editing.status !== "draft" ? "Сохранить" : "Сохранить черновик"}
+            submitLabel={editing && editing.status !== "draft" ? tc("actions.save") : t("form.saveDraft")}
             onCancel={closeForm}
             submitting={submitting}
           />
@@ -567,28 +581,36 @@ export default function TradeIdeas() {
       <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить идею {deleting?.ticker}?</AlertDialogTitle>
-            <AlertDialogDescription>Идея исчезнет из ленты команды вместе с реакциями. Комментарии останутся в архиве.</AlertDialogDescription>
+            <AlertDialogTitle>{t("page.deleteTitle", { ticker: deleting?.ticker ?? "" })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("page.deleteDescription")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={m.remove.isPending}
               onClick={() => {
                 if (!deleting) return;
                 const id = deleting.id;
+                const ticker = deleting.ticker;
                 m.remove.mutate(id, {
-                  onSuccess: () => { if (selectedId === id) { setSheetOpen(false); syncUrl(null); } },
+                  onSuccess: () => {
+                    if (selectedId === id) { setSheetOpen(false); syncUrl(null); }
+                    undo.scheduleUndo(id, "trade-ideas", t("page.undoLabel", { ticker }));
+                  },
                   onSettled: () => setDeleting(null),
                 });
               }}
               className="border border-down/30 bg-down/15 text-down hover:bg-down/25"
             >
-              Удалить
+              {tc("actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {undo.pending && (
+        <UndoToast key={undo.pending.id} label={undo.pending.label} onUndo={undo.restore} onDismiss={undo.dismiss} restoring={undo.restoring} actionText={t("page.undoDeleted")} />
+      )}
     </Page>
   );
 }

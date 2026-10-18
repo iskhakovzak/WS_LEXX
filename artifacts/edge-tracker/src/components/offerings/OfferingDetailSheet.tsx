@@ -19,14 +19,20 @@ import {
 } from "./score";
 import { isMissingEndpoint, useMyTickerTrades, useTickerDetail, useTickerHistory } from "./use-offerings-data";
 import {
-  HORIZON_LABEL, fmtDay, fmtM, fmtPctCap, fmtPrice, fmtShares, fmtSignedUsd, fmtUsd, pctOfMcap,
+  HORIZON_LABEL, fmtDay, fmtM, fmtPctCap, pctOfMcap,
   type Exposure, type HistoryEvent, type InsiderTxn, type Offering, type TimelineKind,
 } from "./types";
+import { fmtCompact, fmtPrice, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { offeringsI18n } from "@/i18n/ns/offerings";
+import { rich } from "@/i18n/rich";
 
+import { personName } from "@/i18n";
 // The chart engine is heavy (lightweight-charts + primitives): load it only when a sheet opens.
 const WsChart = lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
 
-const TXN_LABEL: Record<string, string> = { P: "Покупка", S: "Продажа", A: "Грант", M: "Исполнение опц.", F: "Налог", G: "Подарок" };
+/** Form 4 transaction code → label (unknown codes show as is). */
+const txnLabel = (code: string) => offeringsI18n.tryT(`sheet.txn.${code}`) ?? code;
 
 const TXNS_COLLAPSED = 6;
 
@@ -39,23 +45,23 @@ function InsiderTxns({ txns }: { txns: InsiderTxn[] }) {
         {rows.map((t, i) => (
           <li key={`${t.url}-${i}`} className="flex items-center gap-3 px-3 py-1.5 text-sm">
             <span className="w-14 shrink-0 tabular-nums text-muted-foreground">{fmtDay(t.date)}</span>
-            <Pill tone={t.code === "P" ? "up" : t.code === "S" ? "down" : "neutral"} className="px-1.5 text-2xs">{TXN_LABEL[t.code] ?? t.code}</Pill>
+            <Pill tone={t.code === "P" ? "up" : t.code === "S" ? "down" : "neutral"} className="px-1.5 text-2xs">{txnLabel(t.code)}</Pill>
             <span className="min-w-0 flex-1 truncate" title={t.title ? `${t.owner} · ${t.title}` : t.owner}>{t.owner}{t.title && <span className="text-muted-foreground"> · {t.title}</span>}</span>
-            <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{t.usd != null ? fmtUsd(t.usd) : fmtShares(t.shares)}</span>
+            <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{t.usd != null ? fmtUsd(t.usd, { compact: true }) : fmtCompact(t.shares)}</span>
           </li>
         ))}
       </ul>
       {txns.length > TXNS_COLLAPSED && (
         <button type="button" className="self-start text-xs text-primary hover:underline" onClick={() => setAll((v) => !v)}>
-          {all ? "Свернуть" : `Показать все ${txns.length}`}
+          {all ? commonI18n.t("actions.collapse") : commonI18n.t("actions.showAllCount", { count: txns.length })}
         </button>
       )}
     </>
   );
 }
-const KIND_TEXT: Record<TimelineKind, string> = { priced: "Сделка", atm: "ATM", shelf: "Шелф", s1: "S-1", effect: "EFFECT" };
+const kindText = (k: TimelineKind): string =>
+  k === "priced" || k === "shelf" ? offeringsI18n.t(`sheet.timeline.${k}`) : k === "atm" ? "ATM" : k === "s1" ? "S-1" : "EFFECT";
 const KIND_TONE: Record<TimelineKind, "purple" | "warn" | "neutral" | "accent"> = { priced: "purple", atm: "warn", shelf: "neutral", s1: "accent", effect: "neutral" };
-const SESSION_SHORT = { pre: "до рынка", rth: "в сессию", post: "после закр." } as const;
 
 function Section({ title, icon: Icon, children, aside }: { title: string; icon?: typeof FileText; children: ReactNode; aside?: ReactNode }) {
   return (
@@ -81,6 +87,7 @@ function Num({ label, value, tone, title }: { label: ReactNode; value: ReactNode
 
 function ReactionTable({ events }: { events: HistoryEvent[] }) {
   const [all, setAll] = useState(false);
+  const { t } = offeringsI18n.useT();
   const rows = all ? events : events.slice(0, 10);
   return (
     <>
@@ -88,13 +95,13 @@ function ReactionTable({ events }: { events: HistoryEvent[] }) {
         <table className="w-full min-w-[520px] text-xs tabular-nums">
           <thead>
             <tr className="text-left text-muted-foreground">
-              <th className="px-3 py-2 font-medium">Дата</th>
-              <th className="px-2 py-2 font-medium">Событие</th>
-              <th className="px-2 py-2 text-right font-medium" title="Открытие к закрытию предыдущего дня">Гэп</th>
-              <th className="px-2 py-2 text-right font-medium" title="Открытие → закрытие">О→З</th>
-              <th className="px-2 py-2 text-right font-medium" title="Минимум дня от открытия">Мин.</th>
-              <th className="px-2 py-2 text-right font-medium" title="Следующий день, закрытие к закрытию">След.</th>
-              <th className="px-2 py-2"><span className="sr-only">Ссылка</span></th>
+              <th className="px-3 py-2 font-medium">{commonI18n.t("time.date")}</th>
+              <th className="px-2 py-2 font-medium">{t("sheet.colEvent")}</th>
+              <th className="px-2 py-2 text-right font-medium" title={t("sheet.gapTitle")}>{t("sheet.gap")}</th>
+              <th className="px-2 py-2 text-right font-medium" title={t("sheet.o2cTitle")}>{t("sheet.o2c")}</th>
+              <th className="px-2 py-2 text-right font-medium" title={t("sheet.lowTitle")}>{t("sheet.low")}</th>
+              <th className="px-2 py-2 text-right font-medium" title={t("sheet.nextTitle")}>{t("sheet.next")}</th>
+              <th className="px-2 py-2"><span className="sr-only">{t("sheet.link")}</span></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
@@ -105,11 +112,11 @@ function ReactionTable({ events }: { events: HistoryEvent[] }) {
                 <tr key={`${e.form}-${e.filingDate}-${i}`} className={cn(!r && e.kind !== "priced" && "text-muted-foreground")}>
                   <td className="whitespace-nowrap px-3 py-1.5">
                     {fmtDay(e.reactionDay ?? e.filingDate, { day: "numeric", month: "short", year: "2-digit" })}
-                    {e.session && <span className="ml-1 text-2xs text-muted-foreground">{SESSION_SHORT[e.session]}</span>}
+                    {e.session && <span className="ml-1 text-2xs text-muted-foreground">{t(`list.session.${e.session}`)}</span>}
                   </td>
                   <td className="px-2 py-1.5">
                     <span className="inline-flex items-center gap-1.5">
-                      <Pill tone={KIND_TONE[e.kind]} className="px-1.5 text-2xs">{KIND_TEXT[e.kind]}</Pill>
+                      <Pill tone={KIND_TONE[e.kind]} className="px-1.5 text-2xs">{kindText(e.kind)}</Pill>
                       <span className="text-2xs text-muted-foreground">{e.form}</span>
                     </span>
                   </td>
@@ -119,7 +126,7 @@ function ReactionTable({ events }: { events: HistoryEvent[] }) {
                   <td className="px-2 py-1.5 text-right">{r ? <SignedPct value={r.nextDayPct} /> : ""}</td>
                   <td className="px-2 py-1.5 text-right">
                     {u && (
-                      <a href={u} target="_blank" rel="noreferrer noopener" className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground" aria-label={`Открыть ${e.form} от ${e.filingDate}`}>
+                      <a href={u} target="_blank" rel="noreferrer noopener" className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground" aria-label={t("sheet.openFiling", { form: e.form, date: fmtDay(e.filingDate, "medium") })}>
                         <ExternalLink className="h-3 w-3" aria-hidden="true" />
                       </a>
                     )}
@@ -132,7 +139,7 @@ function ReactionTable({ events }: { events: HistoryEvent[] }) {
       </div>
       {events.length > 10 && (
         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setAll((v) => !v)}>
-          {all ? "Свернуть" : `Показать все ${events.length}`}
+          {all ? commonI18n.t("actions.collapse") : commonI18n.t("actions.showAllCount", { count: events.length })}
         </Button>
       )}
     </>
@@ -160,6 +167,7 @@ export function OfferingDetailSheet({
 }) {
   const o = offering;
   const { user } = useAuth();
+  const { t } = offeringsI18n.useT();
   const ticker = o?.ticker ?? null;
   const history = useTickerHistory(ticker);
   const detail = useTickerDetail(ticker);
@@ -239,27 +247,27 @@ export function OfferingDetailSheet({
           </div>
           <SheetDescription className="text-sm">
             {o.stub
-              ? (h?.company ?? d?.company ?? "Профиль SEC: на выбранный день заявок нет")
+              ? (h?.company ?? d?.company ?? t("sheet.secProfile"))
               : <>
                   {o.company} · {o.form ?? type.toUpperCase()}
-                  {o.acceptedAt ? ` · подана ${fmtDay(o.acceptedAt.slice(0, 10))} ${o.acceptedAt.slice(11, 16)} ET` : ` · ${fmtDay(o.date, { day: "numeric", month: "long" })}`}
-                  {o.reactionDate && o.reactionDate !== o.date ? ` · торгуется ${fmtDay(o.reactionDate, { weekday: "short", day: "numeric", month: "short" })}` : ""}
+                  {o.acceptedAt ? t("sheet.filed", { date: fmtDay(o.acceptedAt.slice(0, 10)), time: o.acceptedAt.slice(11, 16) }) : ` · ${fmtDay(o.date, "dayMonthLong")}`}
+                  {o.reactionDate && o.reactionDate !== o.date ? t("sheet.trades", { date: fmtDay(o.reactionDate, "weekdayDayMonth") }) : ""}
                 </>}
           </SheetDescription>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={watched || watchPending} onClick={() => onAddWatch(o)}>
               {watched ? <Check aria-hidden="true" /> : <Star aria-hidden="true" />}
-              {watched ? "В вотчлисте" : "В вотчлист"}
+              {watched ? t("sheet.inWatchlist") : t("sheet.toToday")}
             </Button>
-            <Button size="sm" variant="outline" disabled={planPending} onClick={() => onAddPlan(o)} title={`Мой план на ${fmtDay(planDate, { day: "numeric", month: "long" })}`}>
-              <CalendarPlus aria-hidden="true" /> В план дня
+            <Button size="sm" variant="outline" disabled={planPending} onClick={() => onAddPlan(o)} title={t("sheet.planTitle", { date: fmtDay(planDate, "dayMonthLong") })}>
+              <CalendarPlus aria-hidden="true" /> {t("sheet.toPlan")}
             </Button>
             <Button size="sm" asChild>
-              <Link href={links.newIdea(o.ticker)}><Lightbulb aria-hidden="true" /> Создать идею</Link>
+              <Link href={links.newIdea(o.ticker)}><Lightbulb aria-hidden="true" /> {t("sheet.newIdea")}</Link>
             </Button>
             {sec && (
               <Button size="sm" variant="ghost" asChild>
-                <a href={sec} target="_blank" rel="noreferrer noopener"><FileText aria-hidden="true" /> {o.form && o.form !== "IPO" ? o.form : "Заявка"}</a>
+                <a href={sec} target="_blank" rel="noreferrer noopener"><FileText aria-hidden="true" /> {o.form && o.form !== "IPO" ? o.form : t("sheet.filing")}</a>
               </Button>
             )}
             {edgar && (
@@ -275,10 +283,10 @@ export function OfferingDetailSheet({
             <div role="alert" className="flex gap-3 rounded-xl bg-down/10 p-3 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />
               <div>
-                <p className="font-medium text-foreground">Открытая позиция по {o.ticker}</p>
+                <p className="font-medium text-foreground">{t("sheet.openPosition", { ticker: o.ticker })}</p>
                 <p className="text-muted-foreground">
-                  {exposure.held.map((t) => [t.trader, t.side, HORIZON_LABEL[t.horizon ?? "intraday"], t.entry != null ? `вход ${fmtPrice(t.entry)}` : null].filter(Boolean).join(" · ")).join("; ")}.
-                  {" "}Оффер{o.offerPrice != null ? ` ${fmtPrice(o.offerPrice)}` : ""} — вероятная цель гэпа: держите стоп и размер под это.
+                  {exposure.held.map((h) => [h.trader ? personName(h.trader) : null, h.side, HORIZON_LABEL[h.horizon ?? "intraday"], h.entry != null ? t("sheet.entry", { price: fmtPrice(h.entry, { dollar: true }) }) : null].filter(Boolean).join(" · ")).join("; ")}.
+                  {" "}{t("sheet.offerTarget", { price: o.offerPrice != null ? ` ${fmtPrice(o.offerPrice, { dollar: true })}` : "" })}
                 </p>
               </div>
             </div>
@@ -286,29 +294,29 @@ export function OfferingDetailSheet({
 
           {!o.stub && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Num label={type === "shelf" ? <TermTooltip term="shelf">Ёмкость</TermTooltip> : "Размер"} value={fmtM(o.dealSizeM ?? o.shelfCapacityM)} />
-              <Num label="% мкап" value={fmtPctCap(pct)} tone={pctTone(pct) === "down" ? "text-down" : undefined}
-                title={pct != null && pct > 1000 ? "Больше 1000% — скорее всего устаревшее число акций" : undefined} />
-              <Num label={fl != null ? "% флоута" : "К ср. объёму"} value={fl != null ? fmtPctCap(fl) : adv != null ? `${adv.toFixed(1)}×` : "—"} />
-              <Num label={<TermTooltip term="offerDiscount" />} value={disc != null ? `${disc.toFixed(1)}%` : type === "atm" ? "по рынку" : "—"} tone={disc != null && disc <= -15 ? "text-down" : undefined} />
-              <Num label="Оффер" value={fmtPrice(o.offerPrice)} />
-              <Num label="Закрытие до" value={fmtPrice(o.prevClose)} />
-              <Num label="Мкап" value={fmtM(o.marketCapM)} />
-              <Num label="Флоут" value={fmtShares(merged.floatShares)} />
-              <Num label="Кэш" value={merged.cashM != null ? fmtM(merged.cashM) : "—"} />
-              <Num label={<TermTooltip term="runway" />} value={merged.burnM === 0 ? "CF > 0" : merged.runwayMonths != null ? `${merged.runwayMonths.toFixed(merged.runwayMonths < 10 ? 1 : 0)} мес` : "—"}
+              <Num label={type === "shelf" ? <TermTooltip term="shelf">{t("sheet.capacity")}</TermTooltip> : t("sheet.size")} value={fmtM(o.dealSizeM ?? o.shelfCapacityM)} />
+              <Num label={t("sheet.pctMcap")} value={fmtPctCap(pct)} tone={pctTone(pct) === "down" ? "text-down" : undefined}
+                title={pct != null && pct > 1000 ? t("sheet.staleShares") : undefined} />
+              <Num label={fl != null ? t("sheet.pctFloat") : t("sheet.toAdv")} value={fl != null ? fmtPctCap(fl) : adv != null ? `${adv.toFixed(1)}×` : "—"} />
+              <Num label={<TermTooltip term="offerDiscount" />} value={disc != null ? `${disc.toFixed(1)}%` : type === "atm" ? t("sheet.atMarket") : "—"} tone={disc != null && disc <= -15 ? "text-down" : undefined} />
+              <Num label={t("sheet.offer")} value={fmtPrice(o.offerPrice, { dollar: true })} />
+              <Num label={t("sheet.closeBefore")} value={fmtPrice(o.prevClose, { dollar: true })} />
+              <Num label={t("sheet.mcap")} value={fmtM(o.marketCapM)} />
+              <Num label={t("sheet.float")} value={fmtCompact(merged.floatShares)} />
+              <Num label={t("sheet.cash")} value={merged.cashM != null ? fmtM(merged.cashM) : "—"} />
+              <Num label={<TermTooltip term="runway" />} value={merged.burnM === 0 ? "CF > 0" : merged.runwayMonths != null ? t("sheet.months", { value: merged.runwayMonths.toFixed(merged.runwayMonths < 10 ? 1 : 0) }) : "—"}
                 tone={merged.runwayMonths != null && merged.runwayMonths < 6 ? "text-down" : undefined} />
-              <Num label="Шорт % флоута" value={merged.shortPctFloat != null ? `${merged.shortPctFloat.toFixed(1)}%` : "—"} />
-              <Num label="Андеррайтер" value={<span title={uw ?? undefined}>{uw ?? "—"}</span>} />
+              <Num label={t("sheet.shortFloat")} value={merged.shortPctFloat != null ? `${merged.shortPctFloat.toFixed(1)}%` : "—"} />
+              <Num label={t("sheet.underwriter")} value={<span title={uw ?? undefined}>{uw ?? "—"}</span>} />
             </div>
           )}
 
           {o.reaction && (
-            <Section title={o.reaction.live ? "Реакция сегодня (день идёт)" : "Реакция в день сделки"} icon={LineChart}>
+            <Section title={o.reaction.live ? t("sheet.reactionLive") : t("sheet.reactionDay")} icon={LineChart}>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <Num label="Гэп" value={<SignedPct value={o.reaction.gapPct} />} />
-                <Num label="Открытие → закрытие" value={<SignedPct value={o.reaction.o2cPct} />} />
-                <Num label="Мин. от открытия" value={<SignedPct value={o.reaction.lowFromOpenPct} />} />
+                <Num label={t("sheet.gap")} value={<SignedPct value={o.reaction.gapPct} />} />
+                <Num label={t("sheet.openToClose")} value={<SignedPct value={o.reaction.o2cPct} />} />
+                <Num label={t("sheet.lowFromOpen")} value={<SignedPct value={o.reaction.lowFromOpenPct} />} />
                 <Num label="RelVol" value={o.reaction.relVol != null ? `${o.reaction.relVol.toFixed(1)}×` : "—"} />
               </div>
             </Section>
@@ -317,14 +325,14 @@ export function OfferingDetailSheet({
           {o.offerPrice != null && o.currentPrice != null && <OfferGauge o={o} />}
 
           {s && (
-            <Section title="Из чего скор" icon={AlertTriangle} aside={<span className={toneText(SCORE_LEVEL_TONE[s.level])}>{s.score}/100</span>}>
+            <Section title={t("sheet.scoreParts")} icon={AlertTriangle} aside={<span className={toneText(SCORE_LEVEL_TONE[s.level])}>{s.score}/100</span>}>
               <p className="text-xs text-muted-foreground">{DEAL_TYPE_HINT[type]}</p>
               <ScoreBreakdown s={s} className="rounded-xl bg-[var(--glass-bg)] p-3" />
             </Section>
           )}
 
           {chartDay && (
-            <Section title="График вокруг даты" icon={LineChart} aside={fmtDay(chartDay, { day: "numeric", month: "long" })}>
+            <Section title={t("sheet.chart")} icon={LineChart} aside={fmtDay(chartDay, "dayMonthLong")}>
               <div className="min-h-[340px] min-w-0">
                 <Suspense fallback={<Skeleton className="h-[340px] w-full rounded-xl" />}>
                   <WsChart key={`${o.ticker}-${chartDay}`} trade={{ id: 0, ticker: o.ticker, date: chartDay }} executions={[]} initialTimeframe="5m" contextDays={1} height={340} />
@@ -334,94 +342,94 @@ export function OfferingDetailSheet({
           )}
 
           <Section
-            title="Размещения компании и реакция"
+            title={t("sheet.history")}
             icon={History}
-            aside={h ? `3 года · SEC + дневные свечи` : d ? "12 мес · SEC" : undefined}
+            aside={h ? t("sheet.history3y") : d ? t("sheet.history12m") : undefined}
           >
             {history.isLoading || (isMissingEndpoint(history.error) && detail.isLoading) ? (
               <div className="space-y-2"><Skeleton className="h-8 w-full rounded-xl" /><Skeleton className="h-40 w-full rounded-xl" /></div>
             ) : events.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 {(history.error && !isMissingEndpoint(history.error)) || detail.error
-                  ? "SEC не ответил или тикера ещё нет в базе (до листинга)."
-                  : "Заявок на выпуск акций за период нет."}
+                  ? t("sheet.secDown")
+                  : t("sheet.noFilings")}
               </p>
             ) : (
               <>
                 <div className="flex flex-wrap gap-1.5">
                   {h ? (
                     <>
-                      <Pill tone={h.stats.priced12m >= 3 ? "down" : h.stats.priced12m > 0 ? "warn" : "up"}>{h.stats.priced12m} сделок за 12 мес · {h.stats.priced36m} за 3 года</Pill>
+                      <Pill tone={h.stats.priced12m >= 3 ? "down" : h.stats.priced12m > 0 ? "warn" : "up"}>{t("sheet.pricedCount", { count: h.stats.priced12m, total: h.stats.priced36m })}</Pill>
                       {h.stats.atm12m > 0 && <Pill tone="warn"><TermTooltip term="atm" />: {h.stats.atm12m}</Pill>}
-                      {h.stats.activeShelf && <Pill tone="warn">активный <TermTooltip term="shelf">шелф</TermTooltip> с {fmtDay(h.stats.lastShelfDate, { month: "short", year: "numeric" })}</Pill>}
-                      {h.stats.wksi && <Pill tone="neutral" title="Крупный эмитент с автоматическим шелфом: 424B5 часто — облигации">WKSI</Pill>}
+                      {h.stats.activeShelf && <Pill tone="warn">{rich(t("sheet.activeShelfSince", { shelf: "{shelf}", date: fmtDay(h.stats.lastShelfDate, { month: "short", year: "numeric" }) }), { shelf: <TermTooltip term="shelf">{t("page.shelf")}</TermTooltip> })}</Pill>}
+                      {h.stats.wksi && <Pill tone="neutral" title={t("sheet.wksiTitle")}>WKSI</Pill>}
                     </>
                   ) : d && (
                     <>
-                      <Pill tone={d.stats.offerings12m >= 3 ? "down" : d.stats.offerings12m > 0 ? "warn" : "up"}>{d.stats.offerings12m} размещ. за 12 мес</Pill>
-                      {d.stats.activeShelf && <Pill tone="warn">активный <TermTooltip term="shelf">шелф</TermTooltip></Pill>}
+                      <Pill tone={d.stats.offerings12m >= 3 ? "down" : d.stats.offerings12m > 0 ? "warn" : "up"}>{t("sheet.offerings12m", { count: d.stats.offerings12m })}</Pill>
+                      {d.stats.activeShelf && <Pill tone="warn">{rich(t("sheet.activeShelf", { shelf: "{shelf}" }), { shelf: <TermTooltip term="shelf">{t("page.shelf")}</TermTooltip> })}</Pill>}
                     </>
                   )}
                 </div>
                 {h && h.summary.n > 0 && (
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <Num label={`Средний гэп (${h.summary.n})`} value={<SignedPct value={h.summary.avgGap} />} />
-                    <Num label="Среднее О→З" value={<SignedPct value={h.summary.avgO2c} />} />
-                    <Num label="Закрылись ниже открытия" value={h.summary.redShare != null ? `${Math.round(h.summary.redShare * 100)}%` : "—"} />
-                    <Num label="Следующий день" value={<SignedPct value={h.summary.avgNextDay} />} />
+                    <Num label={t("sheet.avgGap", { count: h.summary.n })} value={<SignedPct value={h.summary.avgGap} />} />
+                    <Num label={t("sheet.avgO2c")} value={<SignedPct value={h.summary.avgO2c} />} />
+                    <Num label={t("sheet.redShare")} value={h.summary.redShare != null ? `${Math.round(h.summary.redShare * 100)}%` : "—"} />
+                    <Num label={t("sheet.nextDay")} value={<SignedPct value={h.summary.avgNextDay} />} />
                   </div>
                 )}
-                {h && !h.barsOk && <p className="text-xs text-muted-foreground">Дневные свечи сейчас недоступны — реакция не посчитана.</p>}
-                {!h && <p className="text-xs text-muted-foreground">Реакция по свечам появится после обновления сервера.</p>}
+                {h && !h.barsOk && <p className="text-xs text-muted-foreground">{t("sheet.noBars")}</p>}
+                {!h && <p className="text-xs text-muted-foreground">{t("sheet.barsLater")}</p>}
                 <ReactionTable events={events} />
               </>
             )}
           </Section>
 
-          <Section title="Мои сделки по тикеру" icon={Wallet} aside={mine.rows.length ? `${mine.rows.length} посл.` : undefined}>
+          <Section title={t("sheet.myTrades")} icon={Wallet} aside={mine.rows.length ? t("sheet.lastN", { count: mine.rows.length }) : undefined}>
             {myTrades.isLoading ? <Skeleton className="h-16 w-full rounded-xl" /> : myTrades.error ? (
-              <p className="text-sm text-muted-foreground">Не удалось загрузить сделки.</p>
+              <p className="text-sm text-muted-foreground">{t("sheet.tradesFailed")}</p>
             ) : mine.rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Сделок по {o.ticker} нет.</p>
+              <p className="text-sm text-muted-foreground">{t("sheet.noTrades", { ticker: o.ticker })}</p>
             ) : (
               <>
                 <div className="grid grid-cols-3 gap-2">
-                  <Num label="Net" value={fmtSignedUsd(mine.net)} tone={mine.net > 0 ? "text-up" : mine.net < 0 ? "text-down" : undefined} />
+                  <Num label="Net" value={fmtUsd(mine.net, { signed: true, compact: true })} tone={mine.net > 0 ? "text-up" : mine.net < 0 ? "text-down" : undefined} />
                   <Num label="Win rate" value={mine.wr != null ? `${mine.wr}%` : "—"} />
-                  <Num label="В дни размещений" value={mine.onDays ? `${mine.onDays} · ${fmtSignedUsd(mine.onNet)}` : "0"} />
+                  <Num label={t("sheet.onDays")} value={mine.onDays ? `${mine.onDays} · ${fmtUsd(mine.onNet, { signed: true, compact: true })}` : "0"} />
                 </div>
                 <ul className="divide-y divide-border/50 rounded-xl bg-[var(--glass-bg)] text-sm">
-                  {mine.rows.slice(0, 8).map((t) => {
-                    const n = netPnl(t);
+                  {mine.rows.slice(0, 8).map((tr) => {
+                    const n = netPnl(tr);
                     return (
-                      <li key={t.id}>
-                        <Link href={links.trade(t.id)} className="flex items-center gap-3 px-3 py-1.5 hover:bg-[var(--glass-hover-bg)]">
-                          <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{fmtDay(t.date, { day: "numeric", month: "short", year: "2-digit" })}</span>
-                          <span className="text-xs text-muted-foreground">{t.side ?? ""}</span>
-                          {offeringDays.has(t.date) && <Pill tone="purple" className="px-1.5 text-2xs">день сделки</Pill>}
-                          <span className={cn("ml-auto tabular-nums", n == null ? "text-muted-foreground" : n >= 0 ? "text-up" : "text-down")}>{fmtSignedUsd(n)}</span>
+                      <li key={tr.id}>
+                        <Link href={links.trade(tr.id)} className="flex items-center gap-3 px-3 py-1.5 hover:bg-[var(--glass-hover-bg)]">
+                          <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{fmtDay(tr.date, { day: "numeric", month: "short", year: "2-digit" })}</span>
+                          <span className="text-xs text-muted-foreground">{tr.side ?? ""}</span>
+                          {offeringDays.has(tr.date) && <Pill tone="purple" className="px-1.5 text-2xs">{t("sheet.dealDay")}</Pill>}
+                          <span className={cn("ml-auto tabular-nums", n == null ? "text-muted-foreground" : n >= 0 ? "text-up" : "text-down")}>{fmtUsd(n, { signed: true, compact: true })}</span>
                         </Link>
                       </li>
                     );
                   })}
                 </ul>
                 {mine.rows.length > 8 && (
-                  <Link href={links.trades({ ticker: o.ticker })} className="text-xs text-primary hover:underline">Все сделки по {o.ticker} →</Link>
+                  <Link href={links.trades({ ticker: o.ticker })} className="text-xs text-primary hover:underline">{t("sheet.allTrades", { ticker: o.ticker })}</Link>
                 )}
               </>
             )}
           </Section>
 
-          <Section title="Инсайдеры, 90 дней" icon={UserCheck} aside={ins && <span className={cn("text-sm font-semibold tabular-nums", ins.netUsd > 0 ? "text-up" : ins.netUsd < 0 ? "text-down" : "text-muted-foreground")}>{fmtSignedUsd(ins.netUsd)}</span>}>
+          <Section title={t("sheet.insiders")} icon={UserCheck} aside={ins && <span className={cn("text-sm font-semibold tabular-nums", ins.netUsd > 0 ? "text-up" : ins.netUsd < 0 ? "text-down" : "text-muted-foreground")}>{fmtUsd(ins.netUsd, { signed: true, compact: true })}</span>}>
             {detail.isLoading ? <Skeleton className="h-16 w-full rounded-xl" /> : !ins ? (
-              <p className="text-sm text-muted-foreground">Нет данных Form 4.</p>
+              <p className="text-sm text-muted-foreground">{t("sheet.noForm4")}</p>
             ) : (
               <>
                 <BuySellBar s={ins} />
                 <div className="flex flex-wrap gap-x-4 text-xs tabular-nums text-muted-foreground">
-                  <span className="text-up">Покупки: {ins.buys.count} · {fmtUsd(ins.buys.usd)} · {ins.buyers} чел.</span>
-                  <span className="text-down">Продажи: {ins.sells.count} · {fmtUsd(ins.sells.usd)}</span>
-                  {ins.planSellPct != null && <span>по плану 10b5-1: {ins.planSellPct}%</span>}
+                  <span className="text-up">{t("sheet.buys", { count: ins.buys.count, usd: fmtUsd(ins.buys.usd, { compact: true }), people: ins.buyers })}</span>
+                  <span className="text-down">{t("sheet.sells", { count: ins.sells.count, usd: fmtUsd(ins.sells.usd, { compact: true }) })}</span>
+                  {ins.planSellPct != null && <span>{t("sheet.plan", { pct: ins.planSellPct })}</span>}
                 </div>
                 {ins.txns.length > 0 && <InsiderTxns txns={ins.txns} />}
               </>

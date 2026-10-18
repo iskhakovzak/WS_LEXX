@@ -6,7 +6,10 @@
  * filters what the server already returned.
  */
 import { useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { discussionsI18n } from "@/i18n/ns/discussions";
+import { comparePersonNames } from "@/i18n";
 
 export type AudienceGroup = { token: string; label: string; kind: "stage" | "staff" | "cohort"; members: string[] };
 export type AudienceViewerInfo = { name: string | null; stage: string | null; staff: boolean; moderator: boolean; cohorts: number[]; tokens: string[] };
@@ -19,23 +22,15 @@ export type AudienceOptions = {
 };
 
 export const STAGE_TOKENS = ["trainee", "junior", "trader", "senior"] as const;
-/** Dative labels, same as the server. */
-export const AUDIENCE_LABELS: Record<string, string> = {
-  trainee: "Стажёрам", junior: "Джунам", trader: "Трейдерам", senior: "Сеньорам", staff: "Кураторам",
-};
 
 export const AUDIENCE_QUERY_KEY = ["discussions-audience"] as const;
 
 export function useAudienceOptions(enabled = true) {
   return useQuery<AudienceOptions | null>({
     queryKey: AUDIENCE_QUERY_KEY,
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/discussions/audience`);
-      if (!r.ok) return null;
-      return (await r.json()) as AudienceOptions;
-    },
+    queryFn: () => http.get<AudienceOptions>("/api/discussions/audience").catch(() => null),
     enabled,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
     retry: false,
   });
 }
@@ -46,12 +41,12 @@ export function isRestricted(audience: readonly string[] | null | undefined): bo
 
 export function tokenLabel(token: string, opts?: AudienceOptions | null): string {
   const m = /^cohort:(\d+)$/.exec(token);
-  if (m) return opts?.cohortLabels?.[m[1]] ?? `Когорта #${m[1]}`;
-  return AUDIENCE_LABELS[token] ?? token;
+  if (m) return opts?.cohortLabels?.[m[1]] ?? discussionsI18n.t("audience.cohort", { id: m[1] });
+  return discussionsI18n.tryT(`audience.token.${token}`) ?? token;
 }
 
 export function audienceText(audience: readonly string[] | null | undefined, opts?: AudienceOptions | null): string {
-  if (!isRestricted(audience)) return "Всем";
+  if (!isRestricted(audience)) return discussionsI18n.t("audience.everyone");
   return audience!.map((t) => tokenLabel(t, opts)).join(", ");
 }
 
@@ -81,7 +76,7 @@ export function audienceReach(audience: readonly string[], opts: AudienceOptions
   for (const g of opts.groups) if (audience.includes(g.token)) g.members.forEach((n) => names.add(n));
   names.delete(me ?? "");
   const moderators = opts.moderators.filter((n) => n !== me && !names.has(n));
-  return { count: names.size + moderators.length, names: [...names].sort((a, b) => a.localeCompare(b, "ru")), moderators };
+  return { count: names.size + moderators.length, names: [...names].sort(comparePersonNames), moderators };
 }
 
 /** Restricted thread addressed to the viewer (their stage / curators / their cohort) — the «Для меня» tab. */
@@ -90,9 +85,3 @@ export function addressedToMe(audience: readonly string[] | null | undefined, op
   return opts.viewer.tokens.some((t) => audience!.includes(t));
 }
 
-export function peopleWord(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "человек";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "человека";
-  return "человек";
-}

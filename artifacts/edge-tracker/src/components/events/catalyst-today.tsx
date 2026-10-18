@@ -11,13 +11,18 @@ import { addDays } from "@/lib/trading-date";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { CallTypePill } from "@/components/research/earnings-history";
-import { fmtMoney, useEarningsHistory } from "@/components/research/earnings-api";
+import { useEarningsHistory } from "@/components/shared/market/earnings-api";
 import {
-  catLabel, categoryOf, daysWord, earningsEdge, fmtUsd, isClosedRow, isShortDayRow, nextTradingDay,
+  catLabel, categoryOf, earningsEdge, isClosedRow, isShortDayRow, nextTradingDay,
   type CatalystEdge, type CategoryEdge, type MacroRow, type Verdict,
 } from "./catalyst-math";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import type { CatalystData, MyEarnings } from "./use-catalysts";
-import { fmtDay, fmtWeekday, macroTime } from "./event-meta";
+import { fmtDay, weekdayLabel, macroTime } from "./event-meta";
+import { MarketReporters } from "./catalyst-market";
+import { eventsI18n } from "@/i18n/ns/events";
+import { rich } from "./rich-text";
 
 /* ───────────── small pieces ───────────── */
 
@@ -26,23 +31,24 @@ export function verdictTone(row: Pick<CategoryEdge, "verdict" | "delta">): Tone 
   return toneOf(row.delta);
 }
 
-const VERDICT_LABEL: Record<Verdict, string> = { robust: "устойчиво", maybe: "похоже", noise: "в пределах шума", low: "мало данных" };
-export const verdictLabel = (v: Verdict) => VERDICT_LABEL[v];
+export const verdictLabel = (v: Verdict) => eventsI18n.t(`verdict.${v}`);
 
 /** «Вы в такие дни: −$55/день · 6 дн.» next to a macro line. */
 export function MyDayChip({ row, base }: { row: CategoryEdge | undefined; base: CatalystEdge["baseline"] }) {
+  const { t } = eventsI18n.useT();
   if (!row) return null;
-  if (row.agg.days === 0) return <span className="text-xs text-muted-foreground">в такие дни вы не торговали</span>;
+  if (row.agg.days === 0) return <span className="text-xs text-muted-foreground">{t("today.noTradesSuchDays")}</span>;
   const tone = verdictTone(row);
+  const verdict = verdictLabel(row.verdict);
   return (
     <span
       className="inline-flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
-      title={`Средний net в такой день vs обычный день (${fmtUsd(base.avgNetDay)}/день). ${daysWord(row.agg.days)} с вашими сделками.`}
+      title={t("today.myDayTitle", { base: fmtUsd(base.avgNetDay, { signed: true }), days: commonI18n.t("units.days", { count: row.agg.days }) })}
     >
-      вы в такие дни:
-      <span className={cn("font-medium tabular-nums", toneText(toneOf(row.agg.avgNetDay)))}>{fmtUsd(row.agg.avgNetDay)}/день</span>
-      <span className="tabular-nums">· {daysWord(row.agg.days)}</span>
-      <Pill tone={tone} className="ml-0.5">{row.delta != null && row.verdict !== "low" ? `${row.delta < 0 ? "хуже" : "лучше"} обычного · ${verdictLabel(row.verdict)}` : verdictLabel(row.verdict)}</Pill>
+      {t("today.youOnSuchDays")}
+      <span className={cn("font-medium tabular-nums", toneText(toneOf(row.agg.avgNetDay)))}>{t("today.perDay", { amount: fmtUsd(row.agg.avgNetDay, { signed: true }) })}</span>
+      <span className="tabular-nums">· {commonI18n.t("units.days", { count: row.agg.days })}</span>
+      <Pill tone={tone} className="ml-0.5">{row.delta != null && row.verdict !== "low" ? (row.delta < 0 ? t("today.worseThanUsual", { verdict }) : t("today.betterThanUsual", { verdict })) : verdict}</Pill>
     </span>
   );
 }
@@ -58,16 +64,17 @@ function sortByTime(rows: MacroRow[]) {
 }
 
 function MacroLine({ r, edge }: { r: MacroRow; edge: CatalystEdge }) {
+  const { t } = eventsI18n.useT();
   const cat = categoryOf(r);
   const row = cat ? edge.rows.find((x) => x.key === cat) : undefined;
   const time = macroTime(r.description);
   return (
     <li className="flex items-start gap-3 py-2.5">
-      <span className="w-16 shrink-0 pt-0.5 text-sm font-medium tabular-nums text-foreground">{time ?? "весь день"}</span>
+      <span className="w-16 shrink-0 pt-0.5 text-sm font-medium tabular-nums text-foreground">{time ?? t("today.allDay")}</span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-foreground">{r.name}</span>
-          {r.importance === "high" && <Pill tone="neutral">важное</Pill>}
+          {r.importance === "high" && <Pill tone="neutral">{t("today.important")}</Pill>}
         </div>
         {r.description && !/^FOMC begins$/i.test(r.description) && <p className="mt-0.5 text-xs text-muted-foreground">{r.description}</p>}
         {row && <div className="mt-1"><MyDayChip row={row} base={edge.baseline} /></div>}
@@ -83,6 +90,7 @@ const avgRange = (qs: { rangePct: number | null }[]) => {
 
 /** One reporting ticker: timing, EPS estimate, its usual reaction and the trader's own record. */
 export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: CatalystData; onOpen: (e: MyEarnings) => void }) {
+  const { t: tr } = eventsI18n.useT();
   const t = e.ticker.toUpperCase();
   const h = useEarningsHistory(t);
   const mine = data.tickerStats.get(t);
@@ -99,28 +107,28 @@ export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: Catalyst
           <span className="text-sm font-semibold text-foreground">{t}</span>
           <CallTypePill type={e.callType} long />
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{e.company}</span>
-          {e.epsEstimate != null && <span className="text-xs tabular-nums text-muted-foreground">EPS прогноз {fmtMoney(e.epsEstimate)}</span>}
+          {e.epsEstimate != null && <span className="text-xs tabular-nums text-muted-foreground">{tr("today.epsEstimate", { value: fmtUsd(e.epsEstimate) })}</span>}
         </span>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {h.isLoading ? (
             <Skeleton className="h-3.5 w-48" />
           ) : h.data && h.data.quarters.length ? (
             <span className="tabular-nums">
-              обычно: гэп ±{h.data.avgAbsGap?.toFixed(1) ?? "—"}%{range != null && <> · диапазон {range.toFixed(1)}%</>}
-              {h.data.streak.kind && h.data.streak.count > 1 && <> · {h.data.streak.count} {h.data.streak.kind === "beat" ? "beat" : "miss"} подряд</>}
+              {tr("today.usually", { gap: h.data.avgAbsGap?.toFixed(1) ?? "—" })}{range != null && tr("today.range", { range: range.toFixed(1) })}
+              {h.data.streak.kind && h.data.streak.count > 1 && tr("today.streak", { count: h.data.streak.count, kind: h.data.streak.kind === "beat" ? "beat" : "miss" })}
             </span>
           ) : (
-            <span>история реакции недоступна</span>
+            <span>{tr("today.noHistory")}</span>
           )}
           <span className="tabular-nums">
             {mine ? (
-              <>вы: {mine.n} сд. · <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net)}</span></>
-            ) : e.mine === "watch" ? "в вотчлисте, сделок не было" : "сделок не было"}
+              rich(tr("today.youTraded", { count: mine.n, net: "{net}" }), { net: <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net, { signed: true })}</span> })
+            ) : e.mine === "watch" ? tr("today.watchNoTrades") : tr("today.noTrades")}
             {reaction && reaction.event.trades > 0 && (
-              <> · в дни отчёта <span className={toneText(toneOf(reaction.event.net))}>{fmtUsd(reaction.event.net)}</span> ({reaction.event.trades} сд.)</>
+              rich(tr("today.onReportDays", { count: reaction.event.trades, net: "{net}" }), { net: <span className={toneText(toneOf(reaction.event.net))}>{fmtUsd(reaction.event.net, { signed: true })}</span> })
             )}
           </span>
-          {e.mine !== "traded" && <Pill tone="neutral">вотчлист</Pill>}
+          {e.mine !== "traded" && <Pill tone="neutral">{tr("today.watchlist")}</Pill>}
         </span>
       </button>
     </li>
@@ -146,6 +154,7 @@ export function DayBrief({
   showTeaser?: boolean;
   onPickDay?: (d: string) => void;
 }) {
+  const { t } = eventsI18n.useT();
   const { edge, rows, closed, book, today, reportersFor } = data;
   const dayRows = rows.filter((r) => r.date.slice(0, 10) === day);
   const closedRow = dayRows.find(isClosedRow);
@@ -161,37 +170,38 @@ export function DayBrief({
   const earningsHorizon = data.upcoming.data?.days.at(-1)?.date ?? null;
   const beyondHorizon = !past && earningsHorizon != null && day > earningsHorizon;
 
-  const title = `${fmtWeekday(day, "long")}, ${fmtDay(day, { day: "numeric", month: "long" })}`;
-  const whenLabel = day === today ? "сегодня" : day === nextTradingDay(today, closed) && day > today ? "следующая сессия" : past ? "прошедший день" : null;
+  const title = `${weekdayLabel(day, "long")}, ${fmtDay(day, "dayMonthLong")}`;
+  const whenLabel = day === today ? t("today.when.today") : day === nextTradingDay(today, closed) && day > today ? t("today.when.next") : past ? t("today.when.past") : null;
 
   return (
     <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-12">
       <Panel
         className="lg:col-span-7"
         icon={CalendarClock}
-        title={<span className="flex items-center gap-2">{title}{whenLabel && <Pill tone={day === today ? "accent" : "neutral"}>{whenLabel}</Pill>}</span>}
-        description={past ? "Что было в календаре и как прошёл ваш день" : "Что важно знать до открытия"}
+        title={title}
+        actions={whenLabel ? <Pill tone={day === today ? "accent" : "neutral"}>{whenLabel}</Pill> : undefined}
+        description={past ? t("today.pastDescription") : t("today.futureDescription")}
       >
         {closedRow ? (
-          <EmptyState compact icon={Landmark} title={`Биржа закрыта — ${closedRow.name}`} description="Торгов нет. Следующая сессия — по календарю ниже." />
+          <EmptyState compact icon={Landmark} title={t("today.closedTitle", { name: closedRow.name })} description={t("today.closedText")} />
         ) : (
           <div className="flex flex-col gap-4">
             {shortRow && (
               <div className="flex items-start gap-2 rounded-xl bg-warn/10 px-3 py-2.5 text-sm text-foreground">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
                 <div>
-                  <p className="font-medium">Короткий день: закрытие в 13:00 ET ({shortRow.name})</p>
+                  <p className="font-medium">{t("today.shortDay", { name: shortRow.name })}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Ликвидность ниже, последний час сдвигается.{" "}
-                    {shortEdge && shortEdge.agg.days > 0 ? `Вы в такие дни: ${fmtUsd(shortEdge.agg.avgNetDay)}/день.` : "Раньше в такие дни вы не торговали."}
+                    {t("today.shortDayText")}{" "}
+                    {shortEdge && shortEdge.agg.days > 0 ? t("today.shortDayMine", { amount: fmtUsd(shortEdge.agg.avgNetDay, { signed: true }) }) : t("today.shortDayNone")}
                   </p>
                 </div>
               </div>
             )}
 
-            <section aria-label="Макро">
+            <section aria-label={t("today.macro")}>
               <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <Landmark className="h-3.5 w-3.5" aria-hidden="true" /> Макро
+                <Landmark className="h-3.5 w-3.5" aria-hidden="true" /> {t("today.macro")}
               </h3>
               {data.holidays.isLoading ? (
                 <Skeleton className="h-12 w-full rounded-xl" />
@@ -200,55 +210,57 @@ export function DayBrief({
                   {macro.map((r) => <MacroLine key={`${r.date}-${r.type}-${r.name}`} r={r} edge={edge} />)}
                 </ul>
               ) : (
-                <p className="py-2 text-sm text-muted-foreground">Макро-событий нет — обычный день по календарю.</p>
+                <p className="py-2 text-sm text-muted-foreground">{t("today.noMacro")}</p>
               )}
             </section>
 
             {!past && (
-              <section aria-label="Отчёты ваших тикеров">
+              <section aria-label={t("today.myReports")}>
                 <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <Megaphone className="h-3.5 w-3.5" aria-hidden="true" /> Отчёты ваших тикеров
+                  <Megaphone className="h-3.5 w-3.5" aria-hidden="true" /> {t("today.myReports")}
                 </h3>
                 {earningsLoading ? (
                   <Skeleton className="h-14 w-full rounded-xl" />
                 ) : beyondHorizon ? (
-                  <p className="py-2 text-sm text-muted-foreground">Календарь отчётов известен на 2 недели вперёд — этот день появится позже.</p>
+                  <p className="py-2 text-sm text-muted-foreground">{t("today.beyondHorizon")}</p>
                 ) : beforeOpen.length || rep.after.length ? (
                   <div className="flex flex-col gap-2">
                     {beforeOpen.length > 0 && (
                       <div>
-                        <p className="px-3 text-xs text-muted-foreground">Влияют на открытие{rep.before.length ? ` (после закрытия ${fmtDay(rep.prev)} и до открытия)` : ""}</p>
+                        <p className="px-3 text-xs text-muted-foreground">{rep.before.length ? t("today.affectOpenPrev", { date: fmtDay(rep.prev) }) : t("today.affectOpen")}</p>
                         <ul className="-mx-3">{beforeOpen.map((e) => <ReporterRow key={`${e.date}-${e.ticker}`} e={e} data={data} onOpen={onOpenTicker} />)}</ul>
                       </div>
                     )}
                     {rep.after.length > 0 && (
                       <div>
-                        <p className="px-3 text-xs text-muted-foreground">После закрытия — гэп на следующий день</p>
+                        <p className="px-3 text-xs text-muted-foreground">{t("today.afterClose")}</p>
                         <ul className="-mx-3">{rep.after.map((e) => <ReporterRow key={`${e.date}-${e.ticker}`} e={e} data={data} onOpen={onOpenTicker} />)}</ul>
                       </div>
                     )}
                   </div>
                 ) : (
                   <p className="py-2 text-sm text-muted-foreground">
-                    Ваши тикеры не отчитываются{data.myTickers.length ? ` (следим за ${data.myTickers.length}: вотчлист и самые торгуемые)` : ""}.
+                    {data.myTickers.length ? t("today.noReportsWatching", { count: data.myTickers.length }) : t("today.noReports")}
                   </p>
                 )}
               </section>
             )}
 
+            {!past && <MarketReporters day={day} prev={rep.prev} data={data} onOpenTicker={onOpenTicker} />}
+
             {past && (
-              <section aria-label="Ваш день" className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
+              <section aria-label={t("today.yourDay")} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
                 {result ? (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <span className="text-muted-foreground">Ваш день:</span>
-                    <span className={cn("font-semibold tabular-nums", toneText(toneOf(result.net)))}>{fmtUsd(result.net)}</span>
-                    <span className="tabular-nums text-muted-foreground">{result.n} сд. · {result.wins}W / {result.losses}L</span>
+                    <span className="text-muted-foreground">{t("today.yourDayLabel")}</span>
+                    <span className={cn("font-semibold tabular-nums", toneText(toneOf(result.net)))}>{fmtUsd(result.net, { signed: true })}</span>
+                    <span className="tabular-nums text-muted-foreground">{t("today.dayStats", { count: result.n, wins: result.wins, losses: result.losses })}</span>
                     <Link href={links.journalDay(day)} className="ml-auto inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                      <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> Журнал дня
+                      <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> {t("today.journalDay")}
                     </Link>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">В этот день сделок не было.</p>
+                  <p className="text-sm text-muted-foreground">{t("today.noTradesThatDay")}</p>
                 )}
               </section>
             )}
@@ -259,8 +271,8 @@ export function DayBrief({
       <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-5">
         <Panel
           icon={StickyNote}
-          title="Заметки дня"
-          description="Свои наблюдения: что ждёте, что увидели"
+          title={t("today.notesTitle")}
+          description={t("today.notesDescription")}
           actions={addNote(day)}
         >
           {notes.length ? (
@@ -282,7 +294,7 @@ export function DayBrief({
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">Пока пусто. Нажмите «+», чтобы записать ожидание или наблюдение.</p>
+            <p className="text-sm text-muted-foreground">{t("today.notesEmpty")}</p>
           )}
         </Panel>
 
@@ -294,6 +306,7 @@ export function DayBrief({
 
 /** Upcoming catalyst days (macro categories + my tickers' reports) after `from`, with my record on such days. */
 function HorizonPanel({ from, data, onPickDay }: { from: string; data: CatalystData; onPickDay?: (d: string) => void }) {
+  const { t } = eventsI18n.useT();
   type Item = { date: string; key: string; label: string; kind: "macro" | "earn"; row?: CategoryEdge; sub?: string };
   const until = addDays(from, 35);
   const items: Item[] = [];
@@ -308,12 +321,12 @@ function HorizonPanel({ from, data, onPickDay }: { from: string; data: CatalystD
   }
   for (const [d, list] of data.earningsByDate) {
     if (d <= from) continue;
-    for (const e of list) items.push({ date: d, key: `${d}-${e.ticker}`, label: e.ticker, kind: "earn", sub: e.callType === "AMC" ? "отчёт после закрытия" : e.callType === "BMO" ? "отчёт до открытия" : "отчёт" });
+    for (const e of list) items.push({ date: d, key: `${d}-${e.ticker}`, label: e.ticker, kind: "earn", sub: e.callType === "AMC" ? t("call.reportAmc") : e.callType === "BMO" ? t("call.reportBmo") : t("call.report") });
   }
   items.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? 0 : a.kind === "macro" ? -1 : 1));
   const shown = items.slice(0, 8);
   return (
-    <Panel title="На горизонте" description="Ближайшие катализаторы и ваш результат в такие дни" icon={ArrowRight}>
+    <Panel title={t("today.horizonTitle")} description={t("today.horizonDescription")} icon={ArrowRight}>
       {shown.length ? (
         <ul className="-mx-2 flex flex-col">
           {shown.map((it) => (
@@ -323,16 +336,18 @@ function HorizonPanel({ from, data, onPickDay }: { from: string; data: CatalystD
                 onClick={() => onPickDay?.(it.date)}
                 className="flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="w-20 shrink-0 pt-0.5 text-sm tabular-nums text-muted-foreground">{fmtWeekday(it.date)}, {fmtDay(it.date)}</span>
+                <span className="w-24 shrink-0 whitespace-nowrap pt-0.5 text-sm tabular-nums text-muted-foreground">{weekdayLabel(it.date)}, {fmtDay(it.date)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="text-sm font-medium text-foreground">{it.label}</span>
                   {it.sub && <span className="ml-2 text-xs text-muted-foreground">{it.sub}</span>}
                   {it.row && (
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       {it.row.agg.days ? (
-                        <>вы: <span className={cn("tabular-nums", toneText(toneOf(it.row.agg.avgNetDay)))}>{fmtUsd(it.row.agg.avgNetDay)}/день</span> · {daysWord(it.row.agg.days)}{" "}
+                        <>{rich(t("today.horizonMine", { net: "{net}", days: commonI18n.t("units.days", { count: it.row.agg.days }) }), {
+                          net: <span className={cn("tabular-nums", toneText(toneOf(it.row.agg.avgNetDay)))}>{t("today.perDay", { amount: fmtUsd(it.row.agg.avgNetDay, { signed: true }) })}</span>,
+                        })}{" "}
                           <Pill tone={verdictTone(it.row)} className="ml-1">{verdictLabel(it.row.verdict)}</Pill></>
-                      ) : "раньше в такие дни не торговали"}
+                      ) : t("today.horizonNever")}
                     </span>
                   )}
                 </span>
@@ -341,7 +356,7 @@ function HorizonPanel({ from, data, onPickDay }: { from: string; data: CatalystD
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">В ближайшие 5 недель катализаторов в календаре нет.</p>
+        <p className="text-sm text-muted-foreground">{t("today.horizonEmpty")}</p>
       )}
     </Panel>
   );
@@ -349,33 +364,35 @@ function HorizonPanel({ from, data, onPickDay }: { from: string; data: CatalystD
 
 /** Inside the ticker history sheet: the trader's own trades in this ticker, on reaction days vs other days. */
 export function MyTickerEarnings({ ticker, data }: { ticker: string; data: CatalystData }) {
+  const { t: tr } = eventsI18n.useT();
   const t = ticker.toUpperCase();
   const h = useEarningsHistory(t);
   const mine = data.tickerStats.get(t);
   const e = React.useMemo(() => (h.data ? earningsEdge(data.tradeRows, { ticker: t, quarters: h.data.quarters }) : null), [h.data, data.tradeRows, t]);
   return (
-    <section className="rounded-xl bg-[var(--glass-bg)] px-3 py-3" aria-label="Ваша торговля в тикере">
-      <h3 className="text-sm font-semibold text-foreground">Ваша торговля в {t}</h3>
+    <section className="rounded-xl bg-[var(--glass-bg)] px-3 py-3" aria-label={tr("today.tickerTrading")}>
+      <h3 className="text-sm font-semibold text-foreground">{tr("today.tickerTradingTitle", { ticker: t })}</h3>
       {data.trades.isLoading ? (
         <Skeleton className="mt-2 h-4 w-2/3" />
       ) : !mine ? (
-        <p className="mt-1 text-sm text-muted-foreground">Сделок в этом тикере не было.</p>
+        <p className="mt-1 text-sm text-muted-foreground">{tr("today.tickerNoTrades")}</p>
       ) : (
         <div className="mt-1.5 flex flex-col gap-1 text-sm">
           <p className="tabular-nums">
-            Всего {mine.n} сд. · <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net)}</span>
-            <span className="text-muted-foreground"> · последняя {fmtDay(mine.last)}</span>
+            {rich(tr("today.tickerTotal", { count: mine.n, net: "{net}" }), { net: <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net, { signed: true })}</span> })}
+            <span className="text-muted-foreground">{tr("today.tickerLast", { date: fmtDay(mine.last) })}</span>
           </p>
           {e && (
             e.event.trades ? (
               <p className="tabular-nums">
-                В дни реакции на отчёт: {e.event.trades} сд. за {daysWord(e.event.days)} ·{" "}
-                <span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net)}</span>
+                {rich(tr("today.tickerReactionDays", { count: e.event.trades, days: commonI18n.t("units.days", { count: e.event.days }), net: "{net}" }), {
+                  net: <span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net, { signed: true })}</span>,
+                })}
                 {e.event.winRate != null && <span className="text-muted-foreground"> · WR {e.event.winRate}%</span>}
-                <span className="text-muted-foreground"> (в обычные дни {fmtUsd(e.other.avgNetTrade)}/сд.)</span>
+                <span className="text-muted-foreground">{tr("today.tickerUsual", { amount: fmtUsd(e.other.avgNetTrade, { signed: true }) })}</span>
               </p>
             ) : (
-              <p className="text-muted-foreground">В дни реакции на отчёт вы этот тикер не торговали.</p>
+              <p className="text-muted-foreground">{tr("today.tickerNoReactionTrades")}</p>
             )
           )}
           {e && e.event.days > 0 && (
@@ -385,7 +402,7 @@ export function MyTickerEarnings({ ticker, data }: { ticker: string; data: Catal
                 return (
                   <Link key={r.date} href={links.journalDay(r.date)} className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--glass-hover-bg)] px-2 py-1 text-xs hover:underline">
                     <span className="tabular-nums text-muted-foreground">{fmtDay(r.date)}</span>
-                    <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net)}</span>
+                    <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net, { signed: true })}</span>
                   </Link>
                 );
               })}

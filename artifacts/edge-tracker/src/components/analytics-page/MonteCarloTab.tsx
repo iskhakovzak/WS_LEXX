@@ -5,7 +5,11 @@ import { Dices, RefreshCw } from "lucide-react";
 import { Panel, StatCard, StatGrid, Segmented, EmptyState, Pill, toneOf } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Unit, type AnalyticsFilters, fmtR, fmtUsd, fmtPct, sdeal, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { type Unit, type AnalyticsFilters, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { fmtCount, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+
+import { commonI18n } from "@/i18n/ns/common";
+import { analyticsI18n } from "@/i18n/ns/analytics";
 import { toSimTrades, useRiskLimits } from "./edge-api";
 import { monteCarlo, hashSeed, type MonteCarloInput, type MonteCarloResult } from "./edge-stats";
 import type { McRequest, McResponse } from "./mc.worker";
@@ -60,6 +64,7 @@ function useMonteCarlo(input: MonteCarloInput | null) {
 }
 
 export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit: Unit | null; filters: AnalyticsFilters }) {
+  const { t } = analyticsI18n.useT();
   const u: Unit = unit ?? "r";
   const [horizon, setHorizon] = useState<(typeof HORIZONS)[number]>(100);
   const [runs, setRuns] = useState<1000 | 5000>(1000);
@@ -94,10 +99,10 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
   }, [values, horizon, runs, tradesPerDay, dailyLimit, weeklyLimit, ruinLevel, filters.trader, filters.period, u, seedBump]);
 
   const { result, busy, mode } = useMonteCarlo(input);
-  const fmt = (v: number | null | undefined, digits = 1) => (u === "r" ? fmtR(v, digits) : fmtUsd(v));
+  const fmt = (v: number | null | undefined, digits = 1) => (u === "r" ? fmtR(v, digits) : fmtUsd(v, { signed: true, decimals: "auto" }));
 
   if (values.length < 2) {
-    return <Panel><EmptyState icon={Dices} title="Мало данных для симуляции" description={`Нужно хотя бы 2 закрытые сделки с ${u === "r" ? "R" : "P&L"}. Сейчас — ${values.length}.`} /></Panel>;
+    return <Panel><EmptyState icon={Dices} title={t("mc.noData")} description={t("mc.noDataHint", { unit: u === "r" ? "R" : "P&L", count: values.length })} /></Panel>;
   }
 
   const chart = result?.bands.map((b) => ({ i: b.i, p5: b.p5, p95: b.p95, p25: b.p25, p75: b.p75, p50: b.p50, outer: [b.p5, b.p95], inner: [b.p25, b.p75] })) ?? [];
@@ -105,32 +110,36 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title="Монте-Карло: следующие N сделок"
-        description={`Перемешиваем ${sdeal(values.length)} закрытых (${u === "r" ? "R" : "$ нетто"}) с возвратом — ${runs.toLocaleString("ru-RU")} прогонов, фиксированное зерно${mode === "main" ? " · без Web Worker" : ""}`}
+        title={t("mc.title")}
+        description={`${t("mc.description", { trades: commonI18n.t("units.trades", { count: values.length }), unit: u === "r" ? "R" : t("unit.usdShort"), runs: fmtCount(runs) })}${mode === "main" ? ` · ${t("mc.noWorker")}` : ""}`}
         icon={Dices}
       >
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">Сделок вперёд</span>
-          <Segmented<string> ariaLabel="Горизонт симуляции" size="sm" options={HORIZONS.map((h) => ({ value: String(h), label: String(h) }))} value={String(horizon)} onChange={(v) => setHorizon(Number(v) as (typeof HORIZONS)[number])} />
-          <span className="text-xs text-muted-foreground">Прогонов</span>
-          <Segmented<string> ariaLabel="Число прогонов" size="sm" options={[{ value: "1000", label: "1 000" }, { value: "5000", label: "5 000" }]} value={String(runs)} onChange={(v) => setRuns(v === "5000" ? 5000 : 1000)} />
-          <span className="text-xs text-muted-foreground">Сделок в день</span>
-          <Segmented<"auto" | "1" | "2" | "3" | "5"> ariaLabel="Сделок в день" size="sm" options={[{ value: "auto", label: `авто (${autoTpd})` }, { value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "5", label: "5" }]} value={tpdMode} onChange={setTpdMode} />
+          <span className="text-xs text-muted-foreground">{t("mc.horizon")}</span>
+          <Segmented<string> ariaLabel={t("mc.horizonAria")} size="sm" options={HORIZONS.map((h) => ({ value: String(h), label: String(h) }))} value={String(horizon)} onChange={(v) => setHorizon(Number(v) as (typeof HORIZONS)[number])} />
+          <span className="text-xs text-muted-foreground">{t("mc.runs")}</span>
+          <Segmented<string> ariaLabel={t("mc.runsAria")} size="sm" options={[{ value: "1000", label: fmtCount(1000) }, { value: "5000", label: fmtCount(5000) }]} value={String(runs)} onChange={(v) => setRuns(v === "5000" ? 5000 : 1000)} />
+          <span className="text-xs text-muted-foreground">{t("mc.tpd")}</span>
+          <Segmented<"auto" | "1" | "2" | "3" | "5"> ariaLabel={t("mc.tpd")} size="sm" options={[{ value: "auto", label: t("mc.auto", { count: autoTpd }) }, { value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "5", label: "5" }]} value={tpdMode} onChange={setTpdMode} />
           {u === "r" ? (
             <>
-              <span className="text-xs text-muted-foreground">Дневной лимит</span>
-              <Segmented<(typeof R_DAILY)[number]> ariaLabel="Дневной лимит убытка в R" size="sm" options={R_DAILY.map((v) => ({ value: v, label: v === "0" ? "нет" : `−${v}R` }))} value={rDaily} onChange={setRDaily} />
-              <span className="text-xs text-muted-foreground">Разорение</span>
-              <Segmented<(typeof R_RUIN)[number]> ariaLabel="Уровень разорения в R" size="sm" options={R_RUIN.map((v) => ({ value: v, label: v === "0" ? "нет" : `−${v}R` }))} value={rRuin} onChange={setRRuin} />
+              <span className="text-xs text-muted-foreground">{t("mc.daily")}</span>
+              <Segmented<(typeof R_DAILY)[number]> ariaLabel={t("mc.dailyAria")} size="sm" options={R_DAILY.map((v) => ({ value: v, label: v === "0" ? t("mc.none") : `−${v}R` }))} value={rDaily} onChange={setRDaily} />
+              <span className="text-xs text-muted-foreground">{t("mc.ruin")}</span>
+              <Segmented<(typeof R_RUIN)[number]> ariaLabel={t("mc.ruinAria")} size="sm" options={R_RUIN.map((v) => ({ value: v, label: v === "0" ? t("mc.none") : `−${v}R` }))} value={rRuin} onChange={setRRuin} />
             </>
           ) : limitsLoading ? (
             <Skeleton className="h-6 w-40 rounded-full" />
           ) : usdLimits && (usdLimits.dailyLossLimit || usdLimits.weeklyLossLimit || usdLimits.maxDrawdown || usdLimits.accountSize) ? (
-            <Pill tone="accent">лимиты из риск-деска: день {usdLimits.dailyLossLimit ? fmtUsd(-usdLimits.dailyLossLimit) : "—"} · неделя {usdLimits.weeklyLossLimit ? fmtUsd(-usdLimits.weeklyLossLimit) : "—"} · просадка {usdLimits.maxDrawdown ? fmtUsd(-usdLimits.maxDrawdown) : usdLimits.accountSize ? fmtUsd(-usdLimits.accountSize) : "—"}</Pill>
+            <Pill tone="accent">{t("mc.riskLimits", {
+              day: usdLimits.dailyLossLimit ? fmtUsd(-usdLimits.dailyLossLimit, { signed: true, decimals: "auto" }) : "—",
+              week: usdLimits.weeklyLossLimit ? fmtUsd(-usdLimits.weeklyLossLimit, { signed: true, decimals: "auto" }) : "—",
+              dd: usdLimits.maxDrawdown ? fmtUsd(-usdLimits.maxDrawdown, { signed: true, decimals: "auto" }) : usdLimits.accountSize ? fmtUsd(-usdLimits.accountSize, { signed: true, decimals: "auto" }) : "—",
+            })}</Pill>
           ) : (
-            <Pill tone="neutral">лимиты не заданы — вероятности лимитов недоступны в $; переключитесь на R</Pill>
+            <Pill tone="neutral">{t("mc.noLimits")}</Pill>
           )}
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSeedBump((s) => s + 1)} aria-label="Пересчитать с другим зерном"><RefreshCw aria-hidden="true" /> Другое зерно</Button>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSeedBump((s) => s + 1)} aria-label={t("mc.reseedAria")}><RefreshCw aria-hidden="true" /> {t("mc.reseed")}</Button>
         </div>
 
         {busy && !result ? (
@@ -142,14 +151,14 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
                 <ComposedChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke={GRID} vertical={false} />
                   <XAxis dataKey="i" {...AXIS} />
-                  <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v))} width={64} />
+                  <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v, { signed: true, decimals: "auto" }))} width={64} />
                   <Tooltip
                     contentStyle={CHART_TOOLTIP_STYLE}
-                    labelFormatter={(i) => `Через ${i} сделок`}
-                    formatter={(v: number | number[], name: string) => [Array.isArray(v) ? `${fmt(v[0])} … ${fmt(v[1])}` : fmt(v), name === "outer" ? "5–95%" : name === "inner" ? "25–75%" : "Медиана"]}
+                    labelFormatter={(i) => t("mc.after", { count: Number(i) })}
+                    formatter={(v: number | number[], name: string) => [Array.isArray(v) ? `${fmt(v[0])} … ${fmt(v[1])}` : fmt(v), name === "outer" ? "5–95%" : name === "inner" ? "25–75%" : t("mc.median")]}
                   />
                   <ReferenceLine y={0} stroke={GRID} />
-                  {ruinLevel != null && <ReferenceLine y={-ruinLevel} stroke="hsl(var(--down))" strokeDasharray="4 4" label={{ value: "разорение", fill: "hsl(var(--down))", fontSize: 10, position: "insideBottomRight" }} />}
+                  {ruinLevel != null && <ReferenceLine y={-ruinLevel} stroke="hsl(var(--down))" strokeDasharray="4 4" label={{ value: t("mc.ruinLine"), fill: "hsl(var(--down))", fontSize: 10, position: "insideBottomRight" }} />}
                   <Area type="monotone" dataKey="outer" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.12} isAnimationActive={false} />
                   <Area type="monotone" dataKey="inner" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.22} isAnimationActive={false} />
                   <Line type="monotone" dataKey="p50" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} isAnimationActive={false} />
@@ -157,16 +166,16 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
               </ResponsiveContainer>
             </div>
             <StatGrid className="mt-4">
-              <StatCard label={`Медиана через ${horizon}`} value={fmt(result.final.p50)} tone={toneOf(result.final.p50)} hint={`5%: ${fmt(result.final.p5)} · 95%: ${fmt(result.final.p95)}`} />
-              <StatCard label="Шанс быть в плюсе" value={fmtPct(result.probProfit)} tone={result.probProfit >= 0.7 ? "up" : result.probProfit >= 0.5 ? "warn" : "down"} hint={`исторически: ожидание ${fmt(result.input.mean, 2)}, WR ${fmtPct(result.input.winRate)}`} />
-              <StatCard label="Дневной лимит" value={result.probDailyLimit == null ? "—" : fmtPct(result.probDailyLimit)} tone={result.probDailyLimit == null ? "neutral" : result.probDailyLimit > 0.5 ? "down" : result.probDailyLimit > 0.2 ? "warn" : "up"} hint={result.probDailyLimit == null ? "лимит не задан" : `хотя бы раз за ${Math.ceil(horizon / result.tradesPerDay)} дн. · в среднем ${result.limitDaysPerRun?.toFixed(1)} дн. на прогон`} />
-              <StatCard label="Недельный лимит" value={result.probWeeklyLimit == null ? "—" : fmtPct(result.probWeeklyLimit)} tone={result.probWeeklyLimit == null ? "neutral" : result.probWeeklyLimit > 0.3 ? "down" : result.probWeeklyLimit > 0.1 ? "warn" : "up"} hint={result.probWeeklyLimit == null ? "лимит не задан" : u === "r" ? `лимит −${(weeklyLimit ?? 0).toFixed(1)}R (2.5 × дневного)` : "по риск-деску"} />
-              <StatCard label="Риск разорения" value={result.probRuin == null ? "—" : fmtPct(result.probRuin, 1)} tone={result.probRuin == null ? "neutral" : result.probRuin > 0.1 ? "down" : result.probRuin > 0.02 ? "warn" : "up"} hint={ruinLevel != null ? `капитал опустится ниже ${fmt(-ruinLevel, 0)}` : "уровень не задан"} />
-              <StatCard label="Макс. просадка" value={fmt(result.maxDrawdown.p50)} tone="down" hint={`медиана · худшие 5%: ${fmt(result.maxDrawdown.p95)} · худший: ${fmt(result.maxDrawdown.worst)}`} />
-              <StatCard label="Серия убытков" value={`${result.maxLossStreak.p50}`} hint={`медиана · 95%: ${result.maxLossStreak.p95} · худшая: ${result.maxLossStreak.worst}`} />
+              <StatCard label={t("mc.medianAfter", { count: horizon })} value={fmt(result.final.p50)} tone={toneOf(result.final.p50)} hint={`5%: ${fmt(result.final.p5)} · 95%: ${fmt(result.final.p95)}`} />
+              <StatCard label={t("mc.probProfit")} value={fmtRate(result.probProfit)} tone={result.probProfit >= 0.7 ? "up" : result.probProfit >= 0.5 ? "warn" : "down"} hint={t("mc.historically", { exp: fmt(result.input.mean, 2), wr: fmtRate(result.input.winRate) })} />
+              <StatCard label={t("mc.dailyLimit")} value={result.probDailyLimit == null ? "—" : fmtRate(result.probDailyLimit)} tone={result.probDailyLimit == null ? "neutral" : result.probDailyLimit > 0.5 ? "down" : result.probDailyLimit > 0.2 ? "warn" : "up"} hint={result.probDailyLimit == null ? t("mc.limitNotSet") : t("mc.dailyHint", { days: Math.ceil(horizon / result.tradesPerDay), avg: fmtNum(result.limitDaysPerRun, { decimals: 1 }) })} />
+              <StatCard label={t("mc.weeklyLimit")} value={result.probWeeklyLimit == null ? "—" : fmtRate(result.probWeeklyLimit)} tone={result.probWeeklyLimit == null ? "neutral" : result.probWeeklyLimit > 0.3 ? "down" : result.probWeeklyLimit > 0.1 ? "warn" : "up"} hint={result.probWeeklyLimit == null ? t("mc.limitNotSet") : u === "r" ? t("mc.weeklyR", { value: fmtR(-(weeklyLimit ?? 0), 1) }) : t("mc.byRiskDesk")} />
+              <StatCard label={t("mc.ruinRisk")} value={result.probRuin == null ? "—" : fmtRate(result.probRuin, 1)} tone={result.probRuin == null ? "neutral" : result.probRuin > 0.1 ? "down" : result.probRuin > 0.02 ? "warn" : "up"} hint={ruinLevel != null ? t("mc.ruinHint", { value: fmt(-ruinLevel, 0) }) : t("mc.levelNotSet")} />
+              <StatCard label={t("mc.maxDd")} value={fmt(result.maxDrawdown.p50)} tone="down" hint={t("mc.ddHint", { p95: fmt(result.maxDrawdown.p95), worst: fmt(result.maxDrawdown.worst) })} />
+              <StatCard label={t("mc.lossStreak")} value={`${result.maxLossStreak.p50}`} hint={t("mc.streakHint", { p95: result.maxLossStreak.p95, worst: result.maxLossStreak.worst })} />
             </StatGrid>
             <p className="mt-3 text-2xs text-muted-foreground">
-              Бутстрэп по прошлым сделкам: считаем их независимыми и одинаково распределёнными, поэтому реальные хвосты обычно тяжелее. Лента — 5–95% и 25–75% по {runs.toLocaleString("ru-RU")} прогонам. День = {result.tradesPerDay} сд. подряд, неделя = 5 дней.
+              {t("mc.footnote", { runs: fmtCount(runs), tpd: result.tradesPerDay })}
             </p>
           </div>
         ) : null}

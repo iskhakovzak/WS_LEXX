@@ -14,6 +14,8 @@ import {
   GOAL_LABEL, STATUS_LABEL, fmtDay, useSaveCurator, useSaveSelf, useSetGoalStatus, weekLabel,
   type Goal, type GoalStatus, type Review, type ReviewStatus, type WeeklyReview,
 } from "./api";
+import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { personName } from "@/i18n";
 
 const STATUS_TONE: Record<ReviewStatus | "none", Tone> = { none: "neutral", draft: "neutral", submitted: "accent", reviewed: "up" };
 const GOAL_TONE: Record<GoalStatus, Tone> = { open: "neutral", done: "up", partial: "warn", missed: "down" };
@@ -23,11 +25,12 @@ export function ReviewStatusPill({ status, className }: { status: ReviewStatus |
 }
 
 function errMsg(e: unknown) {
-  return e instanceof Error ? e.message : "Не удалось сохранить";
+  return e instanceof Error ? e.message : weeklyI18n.t("collab.saveFailed");
 }
 
 // ── Last week's goals ────────────────────────────────────────────────────────
 export function PrevGoalsPanel({ doc }: { doc: WeeklyReview }) {
+  const { t } = weeklyI18n.useT();
   const goals = doc.prevGoals;
   const canMark = doc.viewer.isOwner || doc.viewer.staff;
   const mut = useSetGoalStatus();
@@ -35,26 +38,26 @@ export function PrevGoalsPanel({ doc }: { doc: WeeklyReview }) {
     if (!canMark || g.status === status) return;
     mut.mutate(
       { trader: doc.trader, week: doc.week.prevKey, goals: [{ id: g.id, status }] },
-      { onError: (e) => toast({ title: "Статус цели не сохранён", description: errMsg(e), variant: "destructive" }) },
+      { onError: (e) => toast({ title: t("collab.goalStatusFailed"), description: errMsg(e), variant: "destructive" }) },
     );
   };
   const done = goals.filter((g) => g.status === "done").length;
   return (
     <Panel
-      title="Цели прошлой недели"
-      description={goals.length ? `${done} из ${goals.length} выполнено · ${weekLabel(doc.week.prevKey)}` : `поставлены куратором на ${weekLabel(doc.week.prevKey)}`}
+      title={t("collab.prevGoalsTitle")}
+      description={goals.length ? t("collab.prevGoalsDesc", { done, total: goals.length, week: weekLabel(doc.week.prevKey) }) : t("collab.prevGoalsDescEmpty", { week: weekLabel(doc.week.prevKey) })}
       icon={Flag}
       className="min-w-0"
     >
       {goals.length === 0 ? (
-        <p className="py-3 text-sm text-muted-foreground">На прошлой неделе целей не ставили.</p>
+        <p className="py-3 text-sm text-muted-foreground">{t("collab.noPrevGoals")}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {goals.map((g) => (
             <li key={g.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-sm">
               <span className={cn("min-w-0 flex-1 text-foreground", g.status === "done" && "line-through decoration-up/60")}>{g.text}</span>
               {canMark ? (
-                <div className="flex items-center gap-1" role="group" aria-label={`Статус цели: ${g.text}`}>
+                <div className="flex items-center gap-1" role="group" aria-label={t("collab.goalStatusAria", { text: g.text })}>
                   {(["done", "partial", "missed"] as const).map((s) => (
                     <button
                       key={s}
@@ -82,6 +85,7 @@ export function PrevGoalsPanel({ doc }: { doc: WeeklyReview }) {
 // ── Trader self-assessment ───────────────────────────────────────────────────
 /** `hideFocus`: the weekly goal is edited in its own panel (GoalPanel); saves here keep the stored focus. */
 export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: WeeklyReview; hideFocus?: boolean; className?: string }) {
+  const { t } = weeklyI18n.useT();
   const review = doc.review;
   const s = review?.selfReview ?? {};
   const editable = doc.viewer.isOwner;
@@ -106,9 +110,9 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
       {
         onSuccess: (r: Review) => {
           setDirty(false);
-          toast({ title: submit ? "Самооценка отправлена куратору" : "Черновик сохранён", description: submit ? `Статус: ${STATUS_LABEL[r.status]}` : undefined });
+          toast({ title: submit ? t("collab.selfSent") : t("collab.draftSaved"), description: submit ? t("collab.statusIs", { status: STATUS_LABEL[r.status] }) : undefined });
         },
-        onError: (e) => toast({ title: "Не удалось сохранить", description: errMsg(e), variant: "destructive" }),
+        onError: (e) => toast({ title: t("collab.saveFailed"), description: errMsg(e), variant: "destructive" }),
       },
     );
   };
@@ -118,15 +122,15 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
 
   if (!editable) {
     return (
-      <Panel title="Самооценка трейдера" description={filled && s.updatedAt ? `обновлено ${fmtDay(s.updatedAt.slice(0, 10))}` : undefined} icon={UserRound} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
+      <Panel title={t("collab.selfTitle")} description={filled && s.updatedAt ? t("collab.updatedOn", { date: fmtDay(s.updatedAt.slice(0, 10)) }) : undefined} icon={UserRound} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
         {!filled ? (
-          <p className="py-3 text-sm text-muted-foreground">Трейдер ещё не заполнил самооценку.</p>
+          <p className="py-3 text-sm text-muted-foreground">{t("collab.selfEmpty")}</p>
         ) : (
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
-            {s.well && <div><dt className="micro-label mb-1 text-up">Что получилось</dt><dd className="whitespace-pre-wrap text-foreground">{s.well}</dd></div>}
-            {s.badly && <div><dt className="micro-label mb-1 text-down">Что не получилось</dt><dd className="whitespace-pre-wrap text-foreground">{s.badly}</dd></div>}
-            {s.lessons && <div><dt className="micro-label mb-1">Уроки</dt><dd className="whitespace-pre-wrap text-foreground">{s.lessons}</dd></div>}
-            {s.focus && !hideFocus && <div><dt className="micro-label mb-1 text-primary">Фокус на следующую неделю</dt><dd className="whitespace-pre-wrap text-foreground">{s.focus}</dd></div>}
+            {s.well && <div><dt className="micro-label mb-1 text-up">{t("collab.well")}</dt><dd className="whitespace-pre-wrap text-foreground">{s.well}</dd></div>}
+            {s.badly && <div><dt className="micro-label mb-1 text-down">{t("collab.badly")}</dt><dd className="whitespace-pre-wrap text-foreground">{s.badly}</dd></div>}
+            {s.lessons && <div><dt className="micro-label mb-1">{t("collab.lessons")}</dt><dd className="whitespace-pre-wrap text-foreground">{s.lessons}</dd></div>}
+            {s.focus && !hideFocus && <div><dt className="micro-label mb-1 text-primary">{t("collab.focus")}</dt><dd className="whitespace-pre-wrap text-foreground">{s.focus}</dd></div>}
           </dl>
         )}
       </Panel>
@@ -134,38 +138,38 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
   }
 
   return (
-    <Panel title="Моя самооценка" description="коротко и честно — куратор прочитает перед 1:1" icon={UserRound} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
+    <Panel title={t("collab.mySelf")} description={t("collab.mySelfDesc")} icon={UserRound} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span className="text-up">Что получилось</span>
-          <Textarea value={well} onChange={bind(setWell)} rows={3} maxLength={6000} placeholder="Сетапы, исполнение, дисциплина…" />
+          <span className="text-up">{t("collab.well")}</span>
+          <Textarea value={well} onChange={bind(setWell)} rows={3} maxLength={6000} placeholder={t("collab.wellPlaceholder")} />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span className="text-down">Что не получилось</span>
-          <Textarea value={badly} onChange={bind(setBadly)} rows={3} maxLength={6000} placeholder="Где нарушил план, передержал, пересайзил…" />
+          <span className="text-down">{t("collab.badly")}</span>
+          <Textarea value={badly} onChange={bind(setBadly)} rows={3} maxLength={6000} placeholder={t("collab.badlyPlaceholder")} />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span>Уроки</span>
-          <Textarea value={lessons} onChange={bind(setLessons)} rows={2} maxLength={6000} placeholder="Что беру с собой" />
+          <span>{t("collab.lessons")}</span>
+          <Textarea value={lessons} onChange={bind(setLessons)} rows={2} maxLength={6000} placeholder={t("collab.lessonsPlaceholder")} />
         </label>
         {!hideFocus && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            <span className="text-primary">Фокус на следующую неделю</span>
-            <Textarea value={focus} onChange={bind(setFocus)} rows={2} maxLength={6000} placeholder="Одна-две вещи, на которых сосредоточусь" />
+            <span className="text-primary">{t("collab.focus")}</span>
+            <Textarea value={focus} onChange={bind(setFocus)} rows={2} maxLength={6000} placeholder={t("collab.focusPlaceholder")} />
           </label>
         )}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canSubmit && (
           <Button type="button" onClick={() => save(true)} disabled={saveMut.isPending || !(well || badly || (hideFocus ? s.focus : focus) || lessons)}>
-            <Send className="h-4 w-4" aria-hidden="true" /> {status === "submitted" ? "Обновить и отправить" : "Отправить куратору"}
+            <Send className="h-4 w-4" aria-hidden="true" /> {status === "submitted" ? t("collab.resend") : t("collab.send")}
           </Button>
         )}
         <Button type="button" variant="outline" onClick={() => save(false)} disabled={saveMut.isPending || !dirty}>
-          Сохранить черновик
+          {t("collab.saveDraft")}
         </Button>
-        {status === "reviewed" && <span className="text-xs text-muted-foreground">Неделя уже разобрана куратором — правки сохраняются как заметки.</span>}
-        {dirty && <span className="text-xs text-muted-foreground">Есть несохранённые изменения</span>}
+        {status === "reviewed" && <span className="text-xs text-muted-foreground">{t("collab.reviewedNote")}</span>}
+        {dirty && <span className="text-xs text-muted-foreground">{t("collab.unsaved")}</span>}
       </div>
     </Panel>
   );
@@ -173,6 +177,7 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
 
 // ── Curator review ───────────────────────────────────────────────────────────
 export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: WeeklyReview; className?: string; readOnly?: boolean }) {
+  const { t } = weeklyI18n.useT();
   const review = doc.review;
   const c = review?.curatorReview ?? {};
   const editable = doc.viewer.staff && !readOnly;
@@ -201,9 +206,9 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
       {
         onSuccess: () => {
           setDirty(false);
-          toast({ title: finalize ? `Разбор ${doc.trader} сохранён` : "Черновик разбора сохранён", description: finalize ? `${cleanGoals.length} цел${cleanGoals.length === 1 ? "ь" : "и"} на следующую неделю` : undefined });
+          toast({ title: finalize ? t("collab.reviewSaved", { trader: personName(doc.trader) }) : t("collab.reviewDraftSaved"), description: finalize ? t("collab.goalsForNext", { count: cleanGoals.length }) : undefined });
         },
-        onError: (e) => toast({ title: "Не удалось сохранить разбор", description: errMsg(e), variant: "destructive" }),
+        onError: (e) => toast({ title: t("collab.reviewFailed"), description: errMsg(e), variant: "destructive" }),
       },
     );
   };
@@ -214,15 +219,15 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
   if (!editable) {
     const filled = !!(c.comment || c.score != null || (review?.goals.length ?? 0) > 0);
     return (
-      <Panel title="Разбор куратора" description={c.by ? `${c.by}${review?.reviewedAt ? ` · ${fmtDay(review.reviewedAt.slice(0, 10))}` : ""}` : undefined} icon={MessageSquareText} className={cn("min-w-0", className)} actions={c.score != null ? <ScorePill score={c.score} /> : undefined}>
+      <Panel title={t("collab.curatorTitle")} description={c.by ? `${personName(c.by)}${review?.reviewedAt ? ` · ${fmtDay(review.reviewedAt.slice(0, 10))}` : ""}` : undefined} icon={MessageSquareText} className={cn("min-w-0", className)} actions={c.score != null ? <ScorePill score={c.score} /> : undefined}>
         {!filled ? (
-          <p className="py-3 text-sm text-muted-foreground">Куратор ещё не разобрал неделю.</p>
+          <p className="py-3 text-sm text-muted-foreground">{t("collab.curatorEmpty")}</p>
         ) : (
           <div className="flex flex-col gap-3 text-sm">
             {c.comment && <p className="whitespace-pre-wrap text-foreground">{c.comment}</p>}
             {review && review.goals.length > 0 && (
               <div>
-                <p className="micro-label mb-1 text-primary">Цели на следующую неделю</p>
+                <p className="micro-label mb-1 text-primary">{t("collab.nextGoals")}</p>
                 <ol className="list-decimal space-y-1 pl-5 text-foreground">{review.goals.map((g) => <li key={g.id}>{g.text}</li>)}</ol>
               </div>
             )}
@@ -233,15 +238,15 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
   }
 
   return (
-    <Panel title="Разбор куратора" description="комментарий, оценка недели и 1–3 цели трейдеру" icon={MessageSquareText} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
+    <Panel title={t("collab.curatorTitle")} description={t("collab.curatorDesc")} icon={MessageSquareText} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          <span>Комментарий</span>
-          <Textarea value={comment} onChange={(e) => { setComment(e.target.value); setDirty(true); }} rows={4} maxLength={6000} placeholder="Что отметить, что исправить, как масштабировать…" />
+          <span>{t("collab.comment")}</span>
+          <Textarea value={comment} onChange={(e) => { setComment(e.target.value); setDirty(true); }} rows={4} maxLength={6000} placeholder={t("collab.commentPlaceholder")} />
         </label>
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">Оценка недели</span>
-          <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label="Оценка недели от 1 до 10">
+          <span className="text-xs text-muted-foreground">{t("collab.score")}</span>
+          <div className="flex flex-wrap items-center gap-1" role="radiogroup" aria-label={t("collab.scoreAria")}>
             {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => (
               <button
                 key={v}
@@ -261,26 +266,26 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
           </div>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">Цели на следующую неделю (до трёх)</span>
+          <span className="text-xs text-muted-foreground">{t("collab.goalsUpTo3")}</span>
           <ul className="flex flex-col gap-2">
             {goals.map((g, i) => (
               <li key={g.id ?? `new-${i}`} className="flex items-center gap-2">
                 <Target className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-                <Input value={g.text} onChange={(e) => setGoal(i, e.target.value)} maxLength={300} placeholder={`Цель ${i + 1}`} aria-label={`Цель ${i + 1}`} />
-                <Button type="button" variant="ghost" size="sm" onClick={() => removeGoal(i)} aria-label={`Убрать цель ${i + 1}`}>Убрать</Button>
+                <Input value={g.text} onChange={(e) => setGoal(i, e.target.value)} maxLength={300} placeholder={t("collab.goalN", { n: i + 1 })} aria-label={t("collab.goalN", { n: i + 1 })} />
+                <Button type="button" variant="ghost" size="sm" onClick={() => removeGoal(i)} aria-label={t("collab.removeGoalN", { n: i + 1 })}>{t("collab.remove")}</Button>
               </li>
             ))}
           </ul>
           {goals.length < 3 && (
-            <Button type="button" variant="outline" size="sm" className="self-start" onClick={addGoal}>+ Добавить цель</Button>
+            <Button type="button" variant="outline" size="sm" className="self-start" onClick={addGoal}>{t("collab.addGoal")}</Button>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" onClick={() => save(true)} disabled={saveMut.isPending || !(comment || score != null || cleanGoals.length)}>
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {status === "reviewed" ? "Обновить разбор" : "Завершить разбор"}
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {status === "reviewed" ? t("collab.updateReview") : t("collab.finishReview")}
           </Button>
-          <Button type="button" variant="outline" onClick={() => save(false)} disabled={saveMut.isPending || !dirty}>Сохранить черновик</Button>
-          {status === "reviewed" && review?.reviewedAt && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5" aria-hidden="true" /> разобрано {fmtDay(review.reviewedAt.slice(0, 10))}{c.by ? ` · ${c.by}` : ""}</span>}
+          <Button type="button" variant="outline" onClick={() => save(false)} disabled={saveMut.isPending || !dirty}>{t("collab.saveDraft")}</Button>
+          {status === "reviewed" && review?.reviewedAt && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("collab.reviewedOn", { date: fmtDay(review.reviewedAt.slice(0, 10)) })}{c.by ? ` · ${personName(c.by)}` : ""}</span>}
         </div>
       </div>
     </Panel>

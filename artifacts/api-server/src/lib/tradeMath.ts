@@ -2,13 +2,13 @@
 // buckets for every aggregate. SQL fragments assume the trades table is aliased as `t`
 // (pass another alias to the *Sql() builders when needed).
 
-const WIN = `('win','прибыль','профит')`;
-const LOSS = `('loss','убыток','лосс')`;
-const BE = `('be','breakeven','безубыток','бу')`;
+const WIN = `('win','прибыль','профит')`; // i18n-ignore (legacy stored result values)
+const LOSS = `('loss','убыток','лосс')`; // i18n-ignore (legacy stored result values)
+const BE = `('be','breakeven','безубыток','бу')`; // i18n-ignore (legacy stored result values)
 
 // LOWER() only folds ASCII under the "C" collation (the local DB is created that way), so the Cyrillic
 // aliases are folded explicitly — every upper-case letter that occurs in WIN/LOSS/BE.
-const res = (a: string) => `TRANSLATE(LOWER(TRIM(${a}.result)), 'ПРИБЫЛЬОФТУКСЕЗ', 'прибыльофтуксез')`;
+const res = (a: string) => `TRANSLATE(LOWER(TRIM(${a}.result)), 'ПРИБЫЛЬОФТУКСЕЗ', 'прибыльофтуксез')`; // i18n-ignore (case folding of legacy values)
 
 /** 'win' | 'loss' | 'be' | 'open' | NULL — canonical result. */
 export function resultSql(a = "t"): string {
@@ -72,9 +72,9 @@ export function num(v: unknown): number | null {
 
 export function normResult(r: unknown): "win" | "loss" | "be" | "open" | null {
   const s = String(r ?? "").trim().toLowerCase();
-  if (["win", "прибыль", "профит"].includes(s)) return "win";
-  if (["loss", "убыток", "лосс"].includes(s)) return "loss";
-  if (["be", "breakeven", "безубыток", "бу"].includes(s)) return "be";
+  if (["win", "прибыль", "профит"].includes(s)) return "win"; // i18n-ignore (legacy stored result values)
+  if (["loss", "убыток", "лосс"].includes(s)) return "loss"; // i18n-ignore (legacy stored result values)
+  if (["be", "breakeven", "безубыток", "бу"].includes(s)) return "be"; // i18n-ignore (legacy stored result values)
   if (s === "open") return "open";
   return null;
 }

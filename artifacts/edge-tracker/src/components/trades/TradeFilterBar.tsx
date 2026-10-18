@@ -22,6 +22,9 @@ import {
   type TradeFilters,
 } from "./trade-utils";
 import type { SavedView } from "./use-trade-filters";
+import { PersonSelect } from "@/components/people/person-select";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { commonI18n } from "@/i18n/ns/common";
 
 const ALL = "__all";
 
@@ -39,30 +42,35 @@ type Props = {
   onApplyView: (v: SavedView) => void;
   onRemoveView: (id: string) => void;
   searchRef: React.RefObject<HTMLInputElement | null>;
-  /** Staff only: the manual / broker source filter (traders never need to know where trades come from). */
-  showSource?: boolean;
 };
 
-const PERIODS: { value: Period; label: string }[] = [
-  { value: "all", label: "Всё время" },
-  { value: "today", label: "Сегодня" },
-  { value: "week", label: "Неделя" },
-  { value: "month", label: "Месяц" },
-];
+/** Built in render: labels follow the UI language. */
+function periodOptions(): { value: Period; label: string }[] {
+  const tc = commonI18n.t;
+  return [
+    { value: "all", label: tc("time.allTime") },
+    { value: "today", label: tc("time.today") },
+    { value: "week", label: tc("time.week") },
+    { value: "month", label: tc("time.month") },
+  ];
+}
 
 export function TradeFilterBar(p: Props) {
+  const { t } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const { filters: f, patch } = p;
+  const PERIODS = periodOptions();
   // The trader has its own select in the toolbar; it is not counted as a hidden filter.
   const adv = advancedFilterCount(f) - (f.trader && p.traders.length > 1 ? 1 : 0);
   const quick = (f.outcome !== "all" ? 1 : 0) + (f.side ? 1 : 0) + (f.horizon ? 1 : 0) + (f.setup ? 1 : 0);
   const dirty = !isDefaultFilters(f);
 
   const outcomeOptions = [
-    { value: "all" as Outcome, label: "Все", count: p.outcomeCounts.all },
-    { value: "win" as Outcome, label: "Профит", count: p.outcomeCounts.win },
-    { value: "loss" as Outcome, label: "Убыток", count: p.outcomeCounts.loss },
-    { value: "breakeven" as Outcome, label: "В ноль", count: p.outcomeCounts.breakeven },
-    { value: "open" as Outcome, label: "Открытые позиции", count: p.outcomeCounts.open },
+    { value: "all" as Outcome, label: t("filters.outcome.all"), count: p.outcomeCounts.all },
+    { value: "win" as Outcome, label: t("filters.outcome.win"), count: p.outcomeCounts.win },
+    { value: "loss" as Outcome, label: t("filters.outcome.loss"), count: p.outcomeCounts.loss },
+    { value: "breakeven" as Outcome, label: t("filters.outcome.breakeven"), count: p.outcomeCounts.breakeven },
+    { value: "open" as Outcome, label: t("filters.outcome.open"), count: p.outcomeCounts.open },
   ];
 
   return (
@@ -75,14 +83,14 @@ export function TradeFilterBar(p: Props) {
             value={f.q}
             onChange={(e) => patch({ q: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Escape") { patch({ q: "" }); (e.target as HTMLInputElement).blur(); } }}
-            aria-label="Поиск по сделкам"
-            placeholder="Тикер, сетап, тег, заметки…"
+            aria-label={t("filters.searchAria")}
+            placeholder={t("filters.searchPlaceholder")}
             className="pl-10 pr-16"
           />
           {f.q ? (
             <button
               type="button"
-              aria-label="Очистить поиск"
+              aria-label={tc("actions.clearSearch")}
               onClick={() => patch({ q: "" })}
               className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
             >
@@ -94,28 +102,22 @@ export function TradeFilterBar(p: Props) {
         </div>
 
         <Segmented
-          ariaLabel="Период"
+          ariaLabel={t("filters.period")}
           size="sm"
-          options={f.period === "custom" ? [...PERIODS, { value: "custom" as Period, label: "Диапазон" }] : PERIODS}
+          options={f.period === "custom" ? [...PERIODS, { value: "custom" as Period, label: t("filters.range") }] : PERIODS}
           value={f.period}
           onChange={(v) => patch({ period: v })}
         />
 
         {p.traders.length > 1 && (
-          <Select value={f.trader || ALL} onValueChange={(v) => patch({ trader: v === ALL ? "" : v })}>
-            <SelectTrigger aria-label="Трейдер" className="h-9 w-auto min-w-[140px] gap-2"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Все трейдеры</SelectItem>
-              {p.traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <PersonSelect value={f.trader || ""} onValueChange={(v) => patch({ trader: v })} options={p.traders} allLabel={tc("fields.allTraders")} ariaLabel={tc("fields.trader")} className="h-9 w-auto min-w-[140px]" />
         )}
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className={cn("gap-1.5", (adv + quick) > 0 && "text-primary")} aria-label={`Дополнительные фильтры${adv ? `, активно: ${adv}` : ""}`}>
+            <Button variant="outline" size="sm" className={cn("gap-1.5", (adv + quick) > 0 && "text-primary")} aria-label={adv ? t("filters.advancedAriaActive", { count: adv }) : t("filters.advancedAria")}>
               <SlidersHorizontal className="h-3.5 w-3.5" />
-              Фильтры
+              {tc("actions.filters")}
               {adv + quick > 0 && <span className="rounded-full bg-primary-solid px-1.5 text-xs font-semibold leading-4 text-primary-foreground">{adv + quick}</span>}
             </Button>
           </PopoverTrigger>
@@ -135,19 +137,19 @@ export function TradeFilterBar(p: Props) {
 
         {dirty && (
           <Button variant="ghost" size="sm" onClick={p.reset} className="gap-1.5 text-muted-foreground">
-            <RotateCcw className="h-3.5 w-3.5" /> Сбросить
+            <RotateCcw className="h-3.5 w-3.5" /> {tc("actions.reset")}
           </Button>
         )}
       </Toolbar>
 
       {(f.ticker || f.playbookId || f.setup || f.side || f.horizon || f.outcome !== "all") && (
-        <div className="flex flex-wrap items-center gap-1.5" aria-label="Активные фильтры">
+        <div className="flex flex-wrap items-center gap-1.5" aria-label={t("filters.activeAria")}>
           {f.outcome !== "all" && <ActiveChip onClear={() => patch({ outcome: "all" })}>{outcomeOptions.find((o) => o.value === f.outcome)?.label}</ActiveChip>}
-          {f.side && <ActiveChip onClear={() => patch({ side: "" })}>{f.side}</ActiveChip>}
+          {f.side && <ActiveChip onClear={() => patch({ side: "" })}>{f.side === "Long" ? tc("trading.long") : f.side === "Short" ? tc("trading.short") : f.side}</ActiveChip>}
           {f.horizon && <ActiveChip onClear={() => patch({ horizon: "" })}>{HORIZON_LABEL[f.horizon]}</ActiveChip>}
-          {f.setup && <ActiveChip onClear={() => patch({ setup: "" })}>Сетап: {EVENT_LABEL[f.setup] ?? f.setup}</ActiveChip>}
+          {f.setup && <ActiveChip onClear={() => patch({ setup: "" })}>{t("filters.setupChip", { setup: EVENT_LABEL[f.setup] ?? f.setup })}</ActiveChip>}
           {f.ticker && <ActiveChip onClear={() => patch({ ticker: "" })}>{f.ticker}</ActiveChip>}
-          {f.playbookId && <ActiveChip onClear={() => patch({ playbookId: "" })}>Плейбук #{f.playbookId}</ActiveChip>}
+          {f.playbookId && <ActiveChip onClear={() => patch({ playbookId: "" })}>{t("filters.playbookChip", { id: f.playbookId })}</ActiveChip>}
         </div>
       )}
     </div>
@@ -163,18 +165,20 @@ function ActiveChip({ children, onClear }: { children: React.ReactNode; onClear:
 }
 
 function QuickFilters(p: Props & { outcomeOptions: { value: Outcome; label: string; count: number }[] }) {
+  const { t } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const { filters: f, patch } = p;
   return (
     <div className="mb-4 space-y-3 border-b border-border/70 pb-4">
-        <Segmented ariaLabel="Результат" size="sm" options={p.outcomeOptions} value={f.outcome} onChange={(v) => patch({ outcome: v })} />
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Направление">
+        <Segmented ariaLabel={tc("trading.result")} size="sm" options={p.outcomeOptions} value={f.outcome} onChange={(v) => patch({ outcome: v })} />
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("filters.direction")}>
           {(["Long", "Short"] as const).map((s) => (
             <FilterChip key={s} active={f.side === s} onClick={() => patch({ side: f.side === s ? "" : s })} className="min-h-7 px-2.5 text-xs">
-              {s}
+              {s === "Long" ? tc("trading.long") : tc("trading.short")}
             </FilterChip>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Горизонт">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tc("trading.horizon")}>
           {HORIZONS.map((h) => (
             <FilterChip
               key={h}
@@ -188,8 +192,8 @@ function QuickFilters(p: Props & { outcomeOptions: { value: Outcome; label: stri
           ))}
         </div>
         {p.setups.length > 0 && (
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label="Сетап">
-            <span className="micro-label hidden sm:inline">Сетап</span>
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label={tc("trading.setup")}>
+            <span className="micro-label hidden sm:inline">{tc("trading.setup")}</span>
             {p.setups.slice(0, 6).map((s) => (
               <FilterChip
                 key={s.name}
@@ -219,7 +223,7 @@ function FieldSelect({ id, label, value, onChange, options }: {
       <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? "" : v)}>
         <SelectTrigger id={id} className="h-9"><SelectValue /></SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>Все</SelectItem>
+          <SelectItem value={ALL}>{commonI18n.t("states.all")}</SelectItem>
           {options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>
       </Select>
@@ -228,59 +232,60 @@ function FieldSelect({ id, label, value, onChange, options }: {
 }
 
 function AdvancedFilters(p: Props) {
+  const { t } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const { filters: f, patch, sectors } = p;
   return (
     <div className="space-y-3">
-      <p className="text-sm font-semibold">Ещё фильтры</p>
+      <p className="text-sm font-semibold">{t("filters.more")}</p>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="tf-flt-ticker" className="text-xs text-muted-foreground">Тикер (точно)</Label>
+          <Label htmlFor="tf-flt-ticker" className="text-xs text-muted-foreground">{t("filters.tickerExact")}</Label>
           <Input id="tf-flt-ticker" value={f.ticker} onChange={(e) => patch({ ticker: e.target.value.toUpperCase().replace(/[^A-Z0-9.\-]/g, "") })} placeholder="NVDA" className="uppercase" />
         </div>
-        <FieldSelect id="tf-flt-session" label="Сессия" value={f.session} onChange={(v) => patch({ session: v })} options={SESSIONS.map((s) => ({ value: s, label: SESSION_LABEL[s] ?? s }))} />
-        <FieldSelect id="tf-flt-event" label="Тип события" value={f.eventType} onChange={(v) => patch({ eventType: v })} options={EVENT_TYPES.map((s) => ({ value: s, label: EVENT_LABEL[s] ?? s }))} />
+        <FieldSelect id="tf-flt-session" label={tc("trading.session")} value={f.session} onChange={(v) => patch({ session: v })} options={SESSIONS.map((s) => ({ value: s, label: SESSION_LABEL[s] ?? s }))} />
+        <FieldSelect id="tf-flt-event" label={t("filters.eventType")} value={f.eventType} onChange={(v) => patch({ eventType: v })} options={EVENT_TYPES.map((s) => ({ value: s, label: EVENT_LABEL[s] ?? s }))} />
         {sectors.length > 0 && (
-          <FieldSelect id="tf-flt-sector" label="Сектор" value={f.sector} onChange={(v) => patch({ sector: v })} options={sectors.map((s) => ({ value: s, label: s }))} />
+          <FieldSelect id="tf-flt-sector" label={tc("trading.sector")} value={f.sector} onChange={(v) => patch({ sector: v })} options={sectors.map((s) => ({ value: s, label: s }))} />
         )}
         <div className="col-span-2 space-y-1.5">
-          <Label htmlFor="tf-flt-tag" className="text-xs text-muted-foreground">Тег содержит</Label>
+          <Label htmlFor="tf-flt-tag" className="text-xs text-muted-foreground">{t("filters.tagContains")}</Label>
           <Input id="tf-flt-tag" value={f.tag} onChange={(e) => patch({ tag: e.target.value })} placeholder="Gap, Offering…" />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="tf-flt-from" className="text-xs text-muted-foreground">Дата от</Label>
+          <Label htmlFor="tf-flt-from" className="text-xs text-muted-foreground">{t("filters.dateFrom")}</Label>
           <Input id="tf-flt-from" type="date" value={f.period === "custom" ? f.from : ""} onChange={(e) => patch({ period: "custom", from: e.target.value })} className="px-3" />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="tf-flt-to" className="text-xs text-muted-foreground">Дата до</Label>
+          <Label htmlFor="tf-flt-to" className="text-xs text-muted-foreground">{t("filters.dateTo")}</Label>
           <Input id="tf-flt-to" type="date" value={f.period === "custom" ? f.to : ""} onChange={(e) => patch({ period: "custom", to: e.target.value })} className="px-3" />
         </div>
-        {p.showSource && <FieldSelect id="tf-flt-source" label="Источник" value={f.source} onChange={(v) => patch({ source: v as TradeFilters["source"] })} options={[{ value: "propreports", label: "PropReports" }, { value: "manual", label: "Вручную" }]} />}
         {f.ids && (
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Выбранные id</Label>
+            <Label className="text-xs text-muted-foreground">{t("filters.selectedIds")}</Label>
             <Button variant="outline" size="sm" className="h-9 w-full justify-between" onClick={() => patch({ ids: "" })}>
-              <span className="truncate tabular-nums">{f.ids.split(",").filter(Boolean).length} сделок</span><X className="h-3.5 w-3.5" />
+              <span className="truncate tabular-nums">{tc("units.trades", { count: f.ids.split(",").filter(Boolean).length })}</span><X className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
       </div>
       <div className="space-y-2 border-t border-border/70 pt-3">
-        <p className="text-xs font-semibold">Качество исполнения</p>
+        <p className="text-xs font-semibold">{t("filters.quality")}</p>
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="tf-flt-eff" className="text-xs text-muted-foreground" title="Захвачено / MFE, в процентах">Выход ≤ %</Label>
+            <Label htmlFor="tf-flt-eff" className="text-xs text-muted-foreground" title={t("filters.exitEffTitle")}>{t("filters.exitEffLabel")}</Label>
             <Input id="tf-flt-eff" type="number" inputMode="numeric" min={-100} max={100} step={5} value={f.exitEffMax} onChange={(e) => patch({ exitEffMax: e.target.value })} placeholder="50" className="px-3" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="tf-flt-mfe" className="text-xs text-muted-foreground" title="Сделки, где рынок давал не меньше N R">MFE ≥ R</Label>
+            <Label htmlFor="tf-flt-mfe" className="text-xs text-muted-foreground" title={t("filters.mfeTitle")}>MFE ≥ R</Label>
             <Input id="tf-flt-mfe" type="number" inputMode="decimal" min={0} step={0.5} value={f.mfeRMin} onChange={(e) => patch({ mfeRMin: e.target.value })} placeholder="2" className="px-3" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="tf-flt-left" className="text-xs text-muted-foreground" title="После выхода цена ушла ещё на N R в вашу сторону">На столе ≥ R</Label>
+            <Label htmlFor="tf-flt-left" className="text-xs text-muted-foreground" title={t("filters.leftTitle")}>{t("filters.leftLabel")}</Label>
             <Input id="tf-flt-left" type="number" inputMode="decimal" min={0} step={0.5} value={f.leftMin} onChange={(e) => patch({ leftMin: e.target.value })} placeholder="1" className="px-3" />
           </div>
         </div>
-        <p className="text-2xs text-muted-foreground">Считается по свечам между входом и выходом; сделки без расчёта скрываются при активном фильтре.</p>
+        <p className="text-2xs text-muted-foreground">{t("filters.qualityHint")}</p>
       </div>
       {(f.ticker || f.playbookId || f.trader || f.session || f.eventType || f.sector || f.tag || f.source || f.ids || f.exitEffMax || f.mfeRMin || f.leftMin || f.period === "custom") && (
         <Button
@@ -289,7 +294,7 @@ function AdvancedFilters(p: Props) {
           className="w-full"
           onClick={() => patch({ ticker: "", playbookId: "", trader: "", session: "", eventType: "", sector: "", tag: "", source: "", ids: "", exitEffMax: "", mfeRMin: "", leftMin: "", ...(f.period === "custom" ? { period: "all", from: "", to: "" } : {}) })}
         >
-          Очистить дополнительные
+          {t("filters.clearAdvanced")}
         </Button>
       )}
     </div>
@@ -299,6 +304,7 @@ function AdvancedFilters(p: Props) {
 function SavedViews({ views, onSave, onApply, onRemove, canSave }: {
   views: SavedView[]; onSave: (name: string) => void; onApply: (v: SavedView) => void; onRemove: (id: string) => void; canSave: boolean;
 }) {
+  const { t } = tradesI18n.useT();
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   function save() {
@@ -310,16 +316,16 @@ function SavedViews({ views, onSave, onApply, onRemove, canSave }: {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5" aria-label="Сохранённые виды">
+        <Button variant="outline" size="sm" className="gap-1.5" aria-label={t("filters.views.aria")}>
           <Bookmark className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Виды</span>
+          <span className="hidden sm:inline">{t("filters.views.button")}</span>
           {views.length > 0 && <span className="tabular-nums text-muted-foreground">{views.length}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(92vw,300px)] p-3">
-        <p className="px-1 pb-2 text-sm font-semibold">Сохранённые виды</p>
+        <p className="px-1 pb-2 text-sm font-semibold">{t("filters.views.title")}</p>
         {views.length === 0 ? (
-          <p className="px-1 pb-2 text-xs text-muted-foreground">Настройте фильтры и сохраните их как вид — например «Мои гэпы в премаркете».</p>
+          <p className="px-1 pb-2 text-xs text-muted-foreground">{t("filters.views.empty")}</p>
         ) : (
           <ul className="mb-2 space-y-0.5">
             {views.map((v) => (
@@ -333,7 +339,7 @@ function SavedViews({ views, onSave, onApply, onRemove, canSave }: {
                 </button>
                 <button
                   type="button"
-                  aria-label={`Удалить вид «${v.name}»`}
+                  aria-label={t("filters.views.remove", { name: v.name })}
                   onClick={() => onRemove(v.id)}
                   className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-down"
                 >
@@ -345,14 +351,14 @@ function SavedViews({ views, onSave, onApply, onRemove, canSave }: {
         )}
         <form className="flex items-center gap-1.5 border-t border-border pt-2" onSubmit={(e) => { e.preventDefault(); save(); }}>
           <Input
-            aria-label="Название вида"
+            aria-label={t("filters.views.name")}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={canSave ? "Название вида" : "Сначала задайте фильтры"}
+            placeholder={canSave ? t("filters.views.name") : t("filters.views.setFiltersFirst")}
             disabled={!canSave}
             className="h-8"
           />
-          <Button type="submit" size="sm" variant="outline" disabled={!canSave || !name.trim()} aria-label="Сохранить вид" className="w-8 shrink-0 px-0">
+          <Button type="submit" size="sm" variant="outline" disabled={!canSave || !name.trim()} aria-label={t("filters.views.save")} className="w-8 shrink-0 px-0">
             <BookmarkPlus className="h-3.5 w-3.5" />
           </Button>
         </form>

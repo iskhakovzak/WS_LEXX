@@ -1,7 +1,8 @@
 import type { MarketEvent } from "@workspace/api-client-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { SESSIONS, displayTags, fmtPct, getSession, reactionMeta, typeMeta, type Session } from "./event-meta";
+import { SESSIONS, displayTags, getSession, reactionMeta, typeMeta, type Session } from "./event-meta";
+import { fmtPct } from "@/lib/format";
 
 export function TypePill({ type, className }: { type: string; className?: string }) {
   const m = typeMeta(type);
@@ -31,7 +32,7 @@ export function ReactionPill({ reaction, className }: { reaction: string | null 
 /** Signed % move, coloured + signed (not colour alone). */
 export function MoveValue({ value, className }: { value: number | null | undefined; className?: string }) {
   if (value == null) return <span className={cn("text-muted-foreground tabular-nums", className)}>—</span>;
-  return <span className={cn("font-semibold tabular-nums", toneText(toneOf(value)), className)}>{fmtPct(value)}</span>;
+  return <span className={cn("font-semibold tabular-nums", toneText(toneOf(value)), className)}>{fmtPct(value, 1)}</span>;
 }
 
 /** Thin magnitude bar for |move| (capped at 20%). */

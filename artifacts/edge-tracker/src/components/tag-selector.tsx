@@ -4,6 +4,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { Check, Plus, Tag, X, History } from "lucide-react";
+import { commonI18n } from "@/i18n/ns/common";
+import { rich, slots } from "@/i18n/rich";
 
 interface TagSelectorProps {
   selectedTags: string[];
@@ -57,7 +59,10 @@ function pushRecent(tag: string) {
 const CATEGORIES = Object.entries(TRADE_TAGS) as Array<[TagCategory, (typeof TRADE_TAGS)[string]]>;
 const ALL_TAGS_LOWER = new Set(CATEGORIES.flatMap(([, c]) => c.groups.flatMap((g) => g.tags.map((t) => t.toLowerCase()))));
 
-export function TagSelector({ selectedTags, onChange, allowCreate = true, placeholder = "Добавить тег", label = "Теги" }: TagSelectorProps) {
+export function TagSelector({ selectedTags, onChange, allowCreate = true, placeholder: placeholderProp, label: labelProp }: TagSelectorProps) {
+  const { t: tc } = commonI18n.useT();
+  const placeholder = placeholderProp ?? tc("tagPicker.add");
+  const label = labelProp ?? tc("fields.tags");
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState<TagCategory | "all">("all");
@@ -114,7 +119,7 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
             <button
               type="button"
               onClick={() => toggle(tag)}
-              aria-label={`Убрать тег ${tag}`}
+              aria-label={tc("tagPicker.removeAria", { tag })}
               className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X className="h-3 w-3" aria-hidden="true" />
@@ -131,7 +136,7 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
               className="chip inline-flex min-h-7 items-center gap-1.5 px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-              {selectedTags.length === 0 ? placeholder : "Ещё"}
+              {selectedTags.length === 0 ? placeholder : tc("tagPicker.more")}
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-[min(92vw,380px)] p-0">
@@ -139,11 +144,11 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
               <CommandInput
                 value={search}
                 onValueChange={setSearch}
-                placeholder="Поиск или новый тег…"
-                aria-label="Поиск тегов"
+                placeholder={tc("tagPicker.searchPlaceholder")}
+                aria-label={tc("tagPicker.searchAria")}
               />
-              <div className="flex gap-1 overflow-x-auto border-b border-[var(--glass-border)] px-2 py-2" role="group" aria-label="Категория">
-                {([["all", "Все"], ...CATEGORIES.map(([k, c]) => [k, c.name])] as Array<[TagCategory | "all", string]>).map(([k, name]) => (
+              <div className="flex gap-1 overflow-x-auto border-b border-[var(--glass-border)] px-2 py-2" role="group" aria-label={tc("tagPicker.category")}>
+                {([["all", tc("states.all")], ...CATEGORIES.map(([k, c]) => [k, c.name])] as Array<[TagCategory | "all", string]>).map(([k, name]) => (
                   <button
                     key={k as string}
                     type="button"
@@ -159,18 +164,18 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
               </div>
               <CommandList className="max-h-[320px]">
                 <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
-                  {allowCreate ? "Ничего не найдено — нажмите Enter, чтобы создать" : "Ничего не найдено"}
+                  {allowCreate ? tc("tagPicker.nothingCreate") : tc("states.nothingFound")}
                 </CommandEmpty>
                 {canCreate && (
                   <CommandGroup>
                     <CommandItem value={`__create__ ${term}`} onSelect={create}>
                       <Plus aria-hidden="true" />
-                      Создать тег «<span className="font-semibold">{term}</span>»
+                      {rich(tc("tagPicker.create", slots("term")), { term: <span className="font-semibold">{term}</span> })}
                     </CommandItem>
                   </CommandGroup>
                 )}
                 {!term && cat === "all" && recentSuggestions.length > 0 && (
-                  <CommandGroup heading="Недавние">
+                  <CommandGroup heading={tc("tagPicker.recent")}>
                     {recentSuggestions.map((t) => (
                       <CommandItem key={`recent-${t}`} value={`recent ${t}`} onSelect={() => toggle(t)}>
                         <History className="text-muted-foreground" aria-hidden="true" />
@@ -206,9 +211,9 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
               <div className="flex items-center justify-between gap-2 border-t border-[var(--glass-border)] px-3 py-2 text-2xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <Tag className="h-3 w-3" aria-hidden="true" />
-                  Выбрано: <span className="tabular-nums text-foreground">{selectedTags.length}</span>
+                  {rich(tc("tagPicker.selected", slots("count")), { count: <span className="tabular-nums text-foreground">{selectedTags.length}</span> })}
                 </span>
-                <span className="hidden sm:inline">↑↓ выбор · Enter отметить · Esc закрыть</span>
+                <span className="hidden sm:inline">{tc("tagPicker.keys")}</span>
               </div>
             </Command>
           </PopoverContent>
@@ -217,7 +222,7 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
 
       {selectedTags.length === 0 && recentSuggestions.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-2xs text-muted-foreground">Недавние:</span>
+          <span className="text-2xs text-muted-foreground">{tc("tagPicker.recentLabel")}</span>
           {recentSuggestions.slice(0, 5).map((t) => (
             <button
               key={t}

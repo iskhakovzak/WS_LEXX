@@ -13,7 +13,7 @@ describe("market format helpers", () => {
   });
   it("next weekday skips the weekend; labels are Russian", () => {
     expect(nextWeekday("2026-10-16")).toBe("2026-10-19");
-    expect(dayLabel("2026-10-19", true)).toBe("пн 19 окт");
+    expect(dayLabel("2026-10-19", true)).toBe("пн, 19 окт");
   });
   it("usd keeps cents under $10 and uses a real minus", () => {
     expect(usd(0.41)).toBe("+$0.41");

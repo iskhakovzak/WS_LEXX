@@ -3,7 +3,11 @@ import React from "react";
 import { Archive, ArchiveRestore, ArrowUpRight, Check, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Pill } from "@/components/ds";
-import { SEVERITY_LABEL, SEVERITY_TILE, SEVERITY_TONE, iconFor, timeAgo, timeOfDay, type Notification } from "./model";
+import { SEVERITY_LABEL, SEVERITY_TILE, SEVERITY_TONE, iconFor, notificationTitle, timeAgo, typeLabelOf, type Notification } from "./model";
+import { fmtDate } from "@/lib/format";
+import { notificationsI18n } from "@/i18n/ns/notifications";
+import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export type NotificationItemProps = {
   n: Notification;
@@ -21,6 +25,8 @@ export type NotificationItemProps = {
 export const NotificationItem = React.memo(function NotificationItem({
   n, variant = "compact", selected = false, focused = false, onOpen, onToggleSelect, onRead, onArchive, id,
 }: NotificationItemProps) {
+  const { t } = notificationsI18n.useT();
+  const title = notificationTitle(n);
   const Icon = iconFor(n.type);
   const full = variant === "full";
   const archived = !!n.archivedAt;
@@ -48,7 +54,7 @@ export const NotificationItem = React.memo(function NotificationItem({
             checked={selected}
             onChange={() => undefined}
             onClick={(e) => onToggleSelect(n, (e as React.MouseEvent).shiftKey)}
-            aria-label={`Выбрать: ${n.title}`}
+            aria-label={t("item.selectAria", { title })}
             className="h-4 w-4 cursor-pointer accent-[hsl(var(--primary))]"
           />
         </label>
@@ -57,47 +63,47 @@ export const NotificationItem = React.memo(function NotificationItem({
         type="button"
         onClick={() => onOpen(n)}
         className={cn("flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-visible:outline-none", !n.link && "cursor-default")}
-        aria-label={`${n.isRead ? "" : "Непрочитано. "}${n.title}. ${n.body}`}
+        aria-label={n.isRead ? t("item.readAria", { title, body: n.body }) : t("item.unreadPrefix", { title, body: n.body })}
       >
         <span className={cn("mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg", tile)}>
           <Icon className="h-4 w-4" aria-hidden="true" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className={cn("min-w-0 flex-1 truncate text-sm leading-snug", n.isRead ? "font-normal text-muted-foreground" : "font-semibold text-foreground")}>
-              {n.title}
+            <span title={title} className={cn("min-w-0 flex-1 text-sm leading-snug", full ? "line-clamp-2 break-words" : "truncate", n.isRead ? "font-normal text-muted-foreground" : "font-semibold text-foreground")}>
+              {title}
             </span>
-            <span className="shrink-0 text-2xs tabular-nums text-muted-foreground" title={new Date(n.createdAt).toLocaleString("ru-RU")}>
-              {full ? timeOfDay(n.createdAt) : timeAgo(n.createdAt)}
+            <span className="shrink-0 text-2xs tabular-nums text-muted-foreground" title={fmtDate(n.createdAt, "shortDateTimeSeconds")}>
+              {full ? fmtDate(n.createdAt, "time") : timeAgo(n.createdAt)}
             </span>
           </span>
-          {n.body && n.body !== n.title && (
+          {n.body && n.body !== title && (
             <span className={cn("mt-0.5 block text-[13px] leading-snug text-muted-foreground", full ? "whitespace-pre-wrap" : "line-clamp-2")}>{n.body}</span>
           )}
           {full && (
             <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <Pill tone="neutral" className="text-2xs">{n.typeLabel}</Pill>
+              <Pill tone="neutral" className="text-2xs">{typeLabelOf(n.type)}</Pill>
               {n.severity !== "info" && <Pill tone={SEVERITY_TONE[n.severity]} dot className="text-2xs">{SEVERITY_LABEL[n.severity]}</Pill>}
-              {n.actor && <span className="text-2xs text-muted-foreground">от {n.actor}</span>}
+              {n.actor && <span className="text-2xs text-muted-foreground">{t("item.from", { name: personName(n.actor) })}</span>}
               {n.link && (
                 <span className="inline-flex items-center gap-0.5 text-2xs text-primary">
-                  Открыть <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                  {t("item.open")} <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                 </span>
               )}
             </span>
           )}
         </span>
       </button>
-      {!full && !n.isRead && <span className="mt-2.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="непрочитано" />}
+      {!full && !n.isRead && <span className="mt-2.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label={t("item.unread")} />}
       {full && (
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 data-[focused=true]:opacity-100" data-focused={focused}>
           {onRead && (
-            <button type="button" className={iconBtn} onClick={() => onRead(n, !n.isRead)} title={n.isRead ? "Отметить непрочитанным (U)" : "Прочитано (R)"} aria-label={n.isRead ? "Отметить непрочитанным" : "Отметить прочитанным"}>
+            <button type="button" className={iconBtn} onClick={() => onRead(n, !n.isRead)} title={n.isRead ? t("item.markUnreadTitle") : t("item.markReadTitle")} aria-label={n.isRead ? t("item.markUnread") : t("item.markRead")}>
               {n.isRead ? <Mail className="h-3.5 w-3.5" aria-hidden="true" /> : <Check className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           )}
           {onArchive && (
-            <button type="button" className={iconBtn} onClick={() => onArchive(n, !archived)} title={archived ? "Вернуть из архива" : "В архив (E)"} aria-label={archived ? "Вернуть из архива" : "В архив"}>
+            <button type="button" className={iconBtn} onClick={() => onArchive(n, !archived)} title={archived ? t("item.unarchive") : t("item.archiveTitle")} aria-label={archived ? t("item.unarchive") : commonI18n.t("actions.archive")}>
               {archived ? <ArchiveRestore className="h-3.5 w-3.5" aria-hidden="true" /> : <Archive className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           )}

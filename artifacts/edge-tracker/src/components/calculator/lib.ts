@@ -1,8 +1,10 @@
 /** Shared math, formatting and persistence helpers for the Calculator section. */
 import { useEffect, useState } from "react";
 import type React from "react";
+import { fmtNum } from "@/lib/format";
+import { ApiError, http } from "@/lib/api/http";
+import { calculatorI18n } from "@/i18n/ns/calculator";
 
-export const BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
 const LS_PREFIX = "ws_lexx_calc_";
 
 /** useState persisted in localStorage (try/catch: private mode / quota never break the page). */
@@ -32,14 +34,16 @@ export function num(s: string | number | null | undefined): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-/** Fetch error → readable Russian message (server may return non-JSON). */
-export async function fetchErrorMessage(r: Response, fallback: string): Promise<string> {
-  const j = await r.json().catch(() => ({})) as { error?: string };
-  if (r.status === 400) return "Некорректный тикер";
-  if (r.status === 404) return j.error?.startsWith("Expiration") ? "Эта экспирация больше недоступна — выберите другую" : "Для этого тикера нет опционов";
-  if (r.status === 401 || r.status === 403) return "Нет доступа — войдите заново";
-  if (r.status >= 500) return "Источник данных недоступен, попробуйте позже";
-  return j.error || fallback;
+/** Text for a failed options-chain request in the UI language (ApiError from lib/api/http; network / unknown → `fallback`). */
+export function fetchErrorMessage(err: unknown, fallback: string): string {
+  if (!(err instanceof ApiError) || err.isNetwork) return fallback;
+  const error = err.field<string>("error");
+  const t = calculatorI18n.t;
+  if (err.status === 400) return t("errors.badTicker");
+  if (err.status === 404) return error?.startsWith("Expiration") ? t("errors.expirationGone") : t("errors.noOptions");
+  if (err.status === 401 || err.status === 403) return t("errors.noAccess");
+  if (err.status >= 500) return t("errors.sourceDown");
+  return error || fallback;
 }
 
 export type Quote = { price: number; atr: number | null; prevClose: number | null; name: string | null; change: number | null };
@@ -66,47 +70,44 @@ function posNum(v: unknown): number | null {
   return n > 0 ? n : null;
 }
 
-/** null = limits not available (anonymous, endpoint missing, network error) — callers must not fall back to a guessed account size. */
-export async function fetchDeskLimits(): Promise<DeskLimits | null> {
-  try {
-    const r = await fetch(`${BASE}/api/risk/me`);
-    if (!r.ok) return null;
-    const j = await r.json() as { limits?: Record<string, unknown> | null; today?: { pnl?: unknown; openRisk?: unknown } | null };
-    const l = j?.limits ?? {};
-    // risk.ts returns camelCase; accept snake_case too (raw DB rows).
-    const pick = (camel: string, snake: string) => l[camel] ?? l[snake];
-    const bool = (v: unknown) => (typeof v === "boolean" ? v : null);
-    const pnl = num(j?.today?.pnl as string | number | null | undefined);
-    const openRisk = num(j?.today?.openRisk as string | number | null | undefined);
-    const tier = pick("tier", "tier");
-    return {
-      accountSize: posNum(pick("accountSize", "account_size")),
-      maxRisk: posNum(pick("maxRiskPerTrade", "max_risk_per_trade")),
-      dailyLoss: posNum(pick("dailyLossLimit", "daily_loss_limit")),
-      maxPosition: posNum(pick("maxPositionUsd", "max_position_usd")),
-      maxOvernight: posNum(pick("maxOvernightExposure", "max_overnight_exposure")),
-      allowOvernight: bool(pick("allowOvernight", "allow_overnight")),
-      allowSwing: bool(pick("allowSwing", "allow_swing")),
-      tier: typeof tier === "string" && tier ? tier : null,
-      todayPnl: Number.isFinite(pnl) ? pnl : null,
-      openRisk: Number.isFinite(openRisk) && openRisk > 0 ? openRisk : null,
-    };
-  } catch {
-    return null;
-  }
+export type RiskMeRaw = { limits?: Record<string, unknown> | null; today?: { pnl?: unknown; openRisk?: unknown } | null };
+
+/**
+ * GET /api/risk/me answer → desk limits (use as `select` on `riskMeQuery<RiskMeRaw>()`). When the request fails the
+ * query has no data — callers must not fall back to a guessed account size.
+ */
+export function toDeskLimits(j: RiskMeRaw | null | undefined): DeskLimits | null {
+  const l = j?.limits ?? {};
+  // risk.ts returns camelCase; accept snake_case too (raw DB rows).
+  const pick = (camel: string, snake: string) => l[camel] ?? l[snake];
+  const bool = (v: unknown) => (typeof v === "boolean" ? v : null);
+  const pnl = num(j?.today?.pnl as string | number | null | undefined);
+  const openRisk = num(j?.today?.openRisk as string | number | null | undefined);
+  const tier = pick("tier", "tier");
+  return {
+    accountSize: posNum(pick("accountSize", "account_size")),
+    maxRisk: posNum(pick("maxRiskPerTrade", "max_risk_per_trade")),
+    dailyLoss: posNum(pick("dailyLossLimit", "daily_loss_limit")),
+    maxPosition: posNum(pick("maxPositionUsd", "max_position_usd")),
+    maxOvernight: posNum(pick("maxOvernightExposure", "max_overnight_exposure")),
+    allowOvernight: bool(pick("allowOvernight", "allow_overnight")),
+    allowSwing: bool(pick("allowSwing", "allow_swing")),
+    tier: typeof tier === "string" && tier ? tier : null,
+    todayPnl: Number.isFinite(pnl) ? pnl : null,
+    openRisk: Number.isFinite(openRisk) && openRisk > 0 ? openRisk : null,
+  };
 }
 
-/** Distinct broker accounts seen on the viewer's trades (PropReports / manual). Empty when none → selector hidden. */
+/** The viewer's PropReports accounts (staff: every desk account). Empty when none → selector hidden.
+ *  Uses the lean mapping endpoint — never the full /api/trades payload (tens of MB for staff). */
 export async function fetchBrokerAccounts(): Promise<string[]> {
   try {
-    const r = await fetch(`${BASE}/api/trades`);
-    if (!r.ok) return [];
-    const j = await r.json() as unknown;
-    const rows = Array.isArray(j) ? j : Array.isArray((j as { items?: unknown[] })?.items) ? (j as { items: unknown[] }).items : [];
+    const rows = await http.get<unknown>("/api/propreports/accounts");
+    if (!Array.isArray(rows)) return [];
     const out = new Set<string>();
-    for (const t of rows as { brokerAccount?: unknown; broker_account?: unknown }[]) {
-      const a = t.brokerAccount ?? t.broker_account;
-      if (typeof a === "string" && a.trim()) out.add(a.trim());
+    for (const a of rows as { account?: unknown; active?: unknown }[]) {
+      if (a.active === false) continue;
+      if (typeof a.account === "string" && a.account.trim()) out.add(a.account.trim());
     }
     return [...out].sort();
   } catch {
@@ -117,9 +118,7 @@ export async function fetchBrokerAccounts(): Promise<string[]> {
 /** Last price (+ ATR) for one ticker via the shared stockdata endpoint. */
 export async function fetchQuote(symbol: string): Promise<Quote | null> {
   const sym = symbol.trim().toUpperCase();
-  const r = await fetch(`${BASE}/api/stockdata/quote?symbols=${encodeURIComponent(sym)}`);
-  if (!r.ok) throw new Error(String(r.status));
-  const j = await r.json() as Record<string, { price?: number | null; atr?: number | null; prevClose?: number | null; name?: string | null; change?: number | null } | undefined>;
+  const j = await http.get<Record<string, { price?: number | null; atr?: number | null; prevClose?: number | null; name?: string | null; change?: number | null } | undefined>>("/api/stockdata/quote", { query: { symbols: sym } });
   const q = j[sym];
   if (!q || typeof q.price !== "number" || !(q.price > 0)) return null;
   return {
@@ -133,43 +132,11 @@ export async function fetchQuote(symbol: string): Promise<Quote | null> {
 
 // ─── Formatting ──────────────────────────────────────────────────────────────
 
-const nfCache = new Map<string, Intl.NumberFormat>();
-function nf(min: number, max: number) {
-  const k = `${min}:${max}`;
-  let f = nfCache.get(k);
-  if (!f) { f = new Intl.NumberFormat("en-US", { minimumFractionDigits: min, maximumFractionDigits: max }); nfCache.set(k, f); }
-  return f;
-}
-
-/** 1234.5 → "1,234.50" (en-US, as everywhere in the app) */
-export function fmtNum(n: number, digits = 2, minDigits = digits): string {
-  if (!Number.isFinite(n)) return "—";
-  return nf(Math.min(minDigits, digits), digits).format(n);
-}
-/** $ amount, sign before the currency: "−$1,234.50" */
-export function fmtUsd(n: number, digits = 2): string {
-  if (!Number.isFinite(n)) return "—";
-  return `${n < 0 ? "−" : ""}$${fmtNum(Math.abs(n), digits)}`;
-}
-/** Always-signed $ amount: "+$120", "−$80" */
-export function fmtUsdSigned(n: number, digits = 0): string {
-  if (!Number.isFinite(n)) return "—";
-  const s = n > 0 ? "+" : n < 0 ? "−" : "";
-  return `${s}$${fmtNum(Math.abs(n), digits)}`;
-}
-export function fmtPct(n: number, digits = 1, signed = false): string {
-  if (!Number.isFinite(n)) return "—";
-  const s = signed && n > 0 ? "+" : n < 0 ? "−" : "";
-  return `${s}${fmtNum(Math.abs(n), digits)}%`;
-}
-/** Compact $ for chart axes: $1.2k */
-export function fmtUsdCompact(n: number): string {
-  if (!Number.isFinite(n)) return "";
-  const a = Math.abs(n);
-  const s = n < 0 ? "−" : "";
-  if (a >= 1_000_000) return `${s}$${fmtNum(a / 1_000_000, 1, 0)}M`;
-  if (a >= 1_000) return `${s}$${fmtNum(a / 1_000, 1, 0)}k`;
-  return `${s}$${fmtNum(a, a < 10 ? 2 : 0, 0)}`;
+/** Strike / axis price without trailing zeros, trading format: 150, 152.5, 152.25 (at most `maxDigits`). */
+export function fmtStrike(n: number, maxDigits = 2): string {
+  let d = 0;
+  while (d < maxDigits && Math.abs(Math.round(n * 10 ** d) - n * 10 ** d) > 1e-9) d++;
+  return fmtNum(n, d);
 }
 
 export const TOOLTIP_STYLE: React.CSSProperties = {

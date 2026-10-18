@@ -6,8 +6,11 @@ import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, usePeriodNav } from "@/lib/period-links";
 import type { DayPoint } from "./api";
-import { fmtDay, fmtR, fmtUsd } from "./format";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { benchmarkI18n } from "@/i18n/ns/benchmark";
+import { personName } from "@/i18n";
 
+/** `name` is the stored trader name (keys, day links); labels show it through personName(). */
 export type EquitySeries = { name: string; color: string; unit: "usd" | "r" | null; points: DayPoint[] };
 
 /**
@@ -41,16 +44,16 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
     kind: "day",
     dates: days,
     trader: series.length === 1 ? series[0].name : null,
-    label: `Кривая капитала: ${series.map((s) => s.name).join(", ")}`,
-    describe: (i) => fmtDay(days[i]),
+    label: benchmarkI18n.t("charts.equityAria", { names: series.map((s) => personName(s.name)).join(", ") }),
+    describe: (i) => fmtDate(days[i], "shortYY"),
   });
   if (days.length < 2) {
-    return <div className={cn("grid h-40 place-items-center text-sm text-muted-foreground", className)}>Недостаточно дней для кривой</div>;
+    return <div className={cn("grid h-40 place-items-center text-sm text-muted-foreground", className)}>{benchmarkI18n.t("charts.tooFewDays")}</div>;
   }
   const x = (i: number) => PL + (i / (days.length - 1)) * (W - PL - PR);
   const y = (v: number) => PT + (1 - (v - min) / (max - min)) * (H - PT - PB);
   const unit = series[0]?.unit ?? "usd";
-  const fmt = (v: number) => (unit === "r" ? fmtR(v) : fmtUsd(v));
+  const fmt = (v: number) => (unit === "r" ? fmtR(v) : fmtUsd(v, { signed: true, decimals: "auto" }));
   const ticks = [min, (min + max) / 2, max];
   const xTicks = [0, Math.floor((days.length - 1) / 2), days.length - 1];
   const pointAt = (e: React.MouseEvent<SVGRectElement>) => {
@@ -77,7 +80,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
   const shown = hover ?? (nav.active >= 0 ? nav.active : null);
   return (
     <div {...nav.wrapperProps} className={cn("relative", nav.wrapperProps.className, className)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`Кривая капитала: ${series.map((s) => s.name).join(", ")}`}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={benchmarkI18n.t("charts.equityAria", { names: series.map((s) => personName(s.name)).join(", ") })}>
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={PL} x2={W - PR} y1={y(t)} y2={y(t)} stroke="hsl(var(--border))" strokeDasharray={t === 0 ? undefined : "2 4"} strokeWidth={1} />
@@ -86,7 +89,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
         ))}
         {min < 0 && max > 0 && <line x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeWidth={1} />}
         {xTicks.map((i) => (
-          <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[10px] tabular-nums">{fmtDay(days[i])}</text>
+          <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[10px] tabular-nums">{fmtDate(days[i], "shortYY")}</text>
         ))}
         {lines.map((l) => {
           let d = "";
@@ -106,21 +109,21 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
       </svg>
       {shown != null && (
         <div className="glass-panel pointer-events-none absolute right-2 top-2 rounded-lg px-2.5 py-1.5 text-xs tabular-nums">
-          <div className="font-medium text-foreground">{fmtDay(days[shown])}</div>
+          <div className="font-medium text-foreground">{fmtDate(days[shown], "shortYY")}</div>
           {lines.map((l) => (
             <div key={l.name} className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: l.color }} aria-hidden="true" />
-              <span className="text-muted-foreground">{l.name}</span>
+              <span className="text-muted-foreground">{personName(l.name)}</span>
               <span className="ml-auto pl-2 text-foreground">{l.vals[shown] == null ? "—" : fmt(l.vals[shown] as number)}</span>
             </div>
           ))}
-          <div className="mt-1 text-2xs font-medium text-primary">{hover != null ? "Клик" : "Enter"} — {PERIOD_HINT.day.toLowerCase()} →</div>
+          <div className="mt-1 text-2xs font-medium text-primary">{hover != null ? benchmarkI18n.t("charts.click") : benchmarkI18n.t("charts.enter")} — {PERIOD_HINT.day.toLowerCase()} →</div>
         </div>
       )}
       <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
         {series.map((s) => (
           <span key={s.name} className="inline-flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded" style={{ background: s.color }} aria-hidden="true" />{s.name}
+            <span className="h-0.5 w-4 rounded" style={{ background: s.color }} aria-hidden="true" />{personName(s.name)}
           </span>
         ))}
       </div>
@@ -131,16 +134,19 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
 export type RadarAxis = { key: string; label: string };
 export type RadarSeries = { name: string; color: string; values: Record<string, number | null> };
 
+const RADAR_PAD_X = 64;
+
 /** Radar of desk percentiles (0..1 per axis, 1 = best). Missing values are drawn at the centre and marked «—». */
 export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis[]; series: RadarSeries[]; size?: number; className?: string }) {
   const c = size / 2, R = size / 2 - 52;
   const n = axes.length;
-  if (n < 3) return <div className="text-sm text-muted-foreground">Нужно ≥ 3 метрик</div>;
+  if (n < 3) return <div className="text-sm text-muted-foreground">{benchmarkI18n.t("charts.needAxes")}</div>;
   const ang = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
   const pt = (i: number, v: number) => [c + Math.cos(ang(i)) * R * v, c + Math.sin(ang(i)) * R * v] as const;
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className={cn("h-auto w-full max-w-[360px]", className)} role="img"
-      aria-label={`Радар перцентилей: ${series.map((s) => s.name).join(" vs ")}`}>
+    // Side padding: the axis labels («Лучший день / прибыль») run outward from the circle and must not be clipped.
+    <svg viewBox={`${-RADAR_PAD_X} 0 ${size + RADAR_PAD_X * 2} ${size}`} className={cn("h-auto w-full max-w-[440px] overflow-visible", className)} role="img"
+      aria-label={benchmarkI18n.t("charts.radarAria", { names: series.map((s) => personName(s.name)).join(" vs ") })}>
       {[0.25, 0.5, 0.75, 1].map((g) => (
         <polygon key={g} points={axes.map((_, i) => pt(i, g).join(",")).join(" ")} fill="none" stroke="hsl(var(--border))" strokeDasharray={g === 0.5 ? undefined : "2 3"} />
       ))}
@@ -162,7 +168,8 @@ export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis
         const v = s.values[a.key];
         if (v == null) return null;
         const [px, py] = pt(i, v);
-        return <circle key={`${s.name}-${a.key}`} cx={px} cy={py} r={2.6} fill={s.color}><title>{`${s.name} · ${a.label}: перцентиль ${Math.round(v * 100)}`}</title></circle>;
+        return <circle key={`${s.name}-${a.key}`} cx={px} cy={py} r={2.6} fill={s.color}><title>{benchmarkI18n.t("charts.percentile", { name: personName(s.name), axis: a.label, value: Math.round(v * 100) })}</title>
+</circle>;
       }))}
     </svg>
   );
