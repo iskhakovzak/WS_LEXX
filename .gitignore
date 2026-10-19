@@ -80,3 +80,6 @@ accounts.db
 .claude/launch.json
 local-logins.txt
 artifacts/api-server/dist-*/
+
+# Vercel build output
+.vercel
