@@ -1,7 +1,7 @@
 /**
  * Авто-классификатор сетапов — предложения сетапа/контекста для сделок без сетапа (и не только).
  *
- *   GET  /api/setups-auto?trader=&from=&to=&budget=20&status=&withSetup=1&limit=300
+ *   GET  /api/setups-auto?trader=&from=&to=&budget=0&status=&withSetup=1&limit=300
  *        — сделки периода с предложением (ленивый расчёт недостающих, не больше `budget` за запрос, с очередью
  *          и задержкой между обращениями к рыночным данным); `pending` — сколько ещё не посчитано.
  *   GET  /api/setups-auto/aggregates?trader=&from=&to=  — агрегаты по сетапу (нетто $, win rate + интервал Уилсона,
@@ -27,6 +27,7 @@ import { scopeTrader, canAccessTrade, isGuestUser } from "../lib/auth";
 import { logActivity } from "../lib/activity";
 import { logger } from "../lib/logger";
 import { invalidateDashboardCache } from "../lib/hotCache";
+import { invalidateTradesPageCache } from "../lib/tradesPageCache";
 import { addDays } from "../lib/tradingDate";
 import {
   parseDateStrict, pickIntervalForAge, ageDaysOf, fetchSingleDayWithCache, fetchDailyRange, getPrevDailyCloseCached,
@@ -90,11 +91,13 @@ function normQuery(q: Request["query"]): Record<string, string> {
   return out;
 }
 
-const listSchema = z.object({
+export const listSchema = z.object({
   trader: z.string().trim().max(120).optional(),
   from: z.string().regex(YMD_RE).optional(),
   to: z.string().regex(YMD_RE).optional(),
-  budget: z.coerce.number().int().min(0).max(50).default(20),
+  /** Сколько недостающих предложений посчитать за запрос. По умолчанию 0: простой GET только читает (DEV-10 — без
+   *  этого GET без параметров считал 20 предложений и ходил за свечами, 2–2.5 с у куратора). «Посчитать всё» шлёт budget явно. */
+  budget: z.coerce.number().int().min(0).max(50).default(0),
   status: z.enum(["suggested", "accepted", "rejected", "pending"]).optional(),
   /** 1 — включать сделки, у которых сетап уже заполнен (по умолчанию только без сетапа). */
   withSetup: z.enum(["0", "1"]).default("0"),
@@ -505,6 +508,7 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
     params: { titleKey: "setups.activity.tradesCount", count: apply.length, detailsKey: minConf ? "setups.activity.bulkMin" : "setups.activity.bulk", pct },
   });
   invalidateDashboardCache();
+  invalidateTradesPageCache();
   res.json({ ok: true, accepted: apply.length, tradeIds: apply.map((a) => a.id), skipped });
 }));
 
@@ -547,6 +551,7 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
       : { detailsKey: "setups.activity.accepted", setup },
   });
   invalidateDashboardCache();
+  invalidateTradesPageCache();
   res.json({ ok: true, tradeId: id.data, setup, status: "accepted" });
 }));
 

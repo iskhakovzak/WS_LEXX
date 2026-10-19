@@ -16,6 +16,7 @@ vi.mock("@workspace/db", () => ({
   pool: {
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
       calls.push({ sql, params });
+      if (/^SELECT COUNT\(\*\)::int AS n FROM rule_violations v/.test(sql)) return { rows: [{ n: 1249 }], rowCount: 1 };
       if (/FROM rule_violations v/.test(sql)) {
         const rows = Array.from({ length: rowCount }, (_, i) => vrow(i + 1));
         return { rows, rowCount: rows.length };
@@ -76,5 +77,14 @@ describe("GET /rule-violations params", () => {
     rowCount = 1;
     const last = await (await fetch(`${base}/rule-violations?paged=1&limit=2&offset=6`)).json() as { nextOffset: number | null };
     expect(last.nextOffset).toBeNull();
+  });
+
+  it("count=1 (MAKSIM-02): { total } over the same filters, no LIMIT — the list cap is not the count", async () => {
+    const body = await (await fetch(`${base}/rule-violations?count=1&limit=500&from=2026-09-01`)).json() as { total: number };
+    expect(body).toEqual({ total: 1249 });
+    const q = calls.at(-1)!;
+    expect(q.sql).toMatch(/^SELECT COUNT\(\*\)::int AS n FROM rule_violations v/);
+    expect(q.sql).not.toMatch(/LIMIT/);
+    expect(q.params).toEqual(["Максим Р.", "2026-09-01"]);
   });
 });

@@ -126,7 +126,7 @@ export function DaySummary({
               </dl>
               {stats.r != null && (
                 <p className="text-xs text-muted-foreground tabular-nums">
-                  {stats.expectancyR != null ? t("summary.totalRAvg", { r: fmtR(stats.r), avg: fmtR(stats.expectancyR) }) : t("summary.totalR", { r: fmtR(stats.r) })}
+                  {rAverageText(stats)}
                 </p>
               )}
             </div>
@@ -267,4 +267,18 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
 
 export function untaggedCount(n: number): string {
   return journalI18n.t("summary.untagged", { trades: commonI18n.t("units.trades", { count: n }) });
+}
+
+/**
+ * «Сумма R +1.91R · +0.38R на сделку с R (5 из 9)»: the average is over the trades that have an R; when some trades of
+ * the day have none, say so instead of implying an average over all of them (DENIS-12 / ROMAN-25).
+ */
+export function rAverageText(stats: Pick<DayStats, "r" | "rCount" | "expectancyR" | "wins" | "losses" | "be">): string {
+  const t = journalI18n.t;
+  const r = fmtR(stats.r);
+  if (stats.expectancyR == null) return t("summary.totalR", { r });
+  const closed = stats.wins + stats.losses + stats.be;
+  return stats.rCount < closed
+    ? t("summary.totalRAvgPart", { r, avg: fmtR(stats.expectancyR), n: stats.rCount, total: closed })
+    : t("summary.totalRAvg", { r, avg: fmtR(stats.expectancyR) });
 }

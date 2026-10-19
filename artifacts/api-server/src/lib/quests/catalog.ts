@@ -3,14 +3,17 @@
  * from stored data (QuestData, loaded by lib/quests/load.ts): nobody types anything to make progress, and nothing
  * rewards P&L, trade count or time in the app. Numbers are desk settings (`quests.*`).
  *
- *   onboarding (in order, each unlocks the next; no deadline)   set_pin → link_telegram → first_plan_stop →
- *              first_review → open_desk_day → replay_own_day → set_own_rule          quests.onboardingPoints (10) each
+ *   onboarding (independent steps, all shown at once; no deadline; only for new traders — tier below Трейдер)
+ *              set_pin, first_plan_stop, first_review, open_desk_day, replay_own_day, set_own_rule, and the optional
+ *              link_telegram (never blocks: the chain is complete without it)          quests.onboardingPoints (10) each
  *   daily      plan_before_open (only offered before 09:30 NY), review_yesterday (the last finished traded day, until
  *              the next trading day ends), keep_contract (a contract set today or in the last two weeks) — 3 points;
  *              tag_yesterday (playbook setups on that day's own trades, offered while some are untagged; target = the
  *              day's trades up to quests.tagYesterdayMax) — quests.tagYesterdayPoints
  *   weekly     Monday → Friday, quests.weeklyCount (3) of: contract_days (4 of 5), focus_absent_days (3),
- *              replay_own_days (2), review_traded_days (every traded day on time), read_game_plan (3) — 10 points
+ *              replay_own_days (2), review_traded_days (every traded day on time), read_game_plan (3), and for a
+ *              learner (Стажёр, or no traded day in 30 days) the practice ones that need no trades: trainer_drills
+ *              («Найди вход» answers), academy_lessons (when enrolled), plan_days (plans before the open) — 10 points
  *   monthly    clean_month_progress (the daily stop never reached, ≥ rewards.cleanMonthMinDays traded days),
  *              review_month (≥ quests.monthlyReviewPct % of traded days reviewed on time) — 25 points
  *   curator    assigned from CURATOR_TEMPLATES with the curator's target / deadline / points / note (counted over the
@@ -53,6 +56,14 @@ export type QuestData = {
   replayTradeId: number | null;
   /** Own closed trades per NY close day of the last two weeks and how many carry a live setup (lib/playbookToday/untagged). */
   tagDays?: ReadonlyMap<string, { trades: number; tagged: number }>;
+  /** A learner: Стажёр, or nobody yet trading (no traded day in the last 30 days and no higher tier) — practice quests. */
+  learner?: boolean;
+  /** The trader has academy data (enrolled / lessons / exams): lesson quests make sense. */
+  academy?: boolean;
+  /** NY days of «Найди вход» drill answers of the last weeks, one entry per answer. */
+  drillDays?: readonly string[];
+  /** NY days of completed academy lessons, one entry per lesson. */
+  lessonDays?: readonly string[];
 };
 
 export type StoredQuest = {
@@ -81,6 +92,8 @@ type Ctx = { d: QuestData; q: Pick<StoredQuest, "startsOn" | "endsOn" | "target"
 export type Template = {
   key: string;
   scope: QuestScope;
+  /** Onboarding: shown and rewarded, but the chain is complete without it (Telegram). */
+  optional?: boolean;
   points: () => number;
   /** Is it worth offering in this period (catalog scopes)? */
   relevant?: (d: QuestData, period: Period) => boolean;
@@ -149,7 +162,12 @@ export const count = {
   reviewedOnTime: (d: QuestData, from: string, to: string) => d.reviews.filter((r) => inRange(r.date, from, to) && reviewedOnTime(r)).length,
   plansBeforeOpen: (d: QuestData, from: string, to: string) => [...d.plans].filter(([date, p]) => p.beforeOpen && inRange(date, from, to)).length,
   gamePlanReads: (d: QuestData, from: string, to: string) => d.gamePlans.filter((g) => inRange(g.date, from, to) && g.readOn != null).length,
+  drills: (d: QuestData, from: string, to: string) => (d.drillDays ?? []).filter((x) => inRange(x, from, to)).length,
+  lessons: (d: QuestData, from: string, to: string) => (d.lessonDays ?? []).filter((x) => inRange(x, from, to)).length,
 };
+
+/** Targets of the learner practice quests until the desk settings are registered (lib/settings is another area's). */
+export const PRACTICE_TARGETS = { drills: 10, lessons: 2, plans: 3 } as const;
 
 /** Counting quest: done at the target, else active (the engine expires it after its last day). */
 const reach = (progress: number, target: number): Eval => ({ progress: Math.min(progress, target), target, status: progress >= target ? "done" : "active" });
@@ -176,15 +194,19 @@ const onboardingStep = (key: string, done: (d: QuestData) => boolean, href: Temp
 
 const anyPlan = (d: QuestData, f: (p: { stop: boolean; ownRule: boolean }) => boolean) => [...d.plans.values()].some(f);
 
+/** The first-steps list in display order; every step is evaluated on its own (none waits for another). */
 export const ONBOARDING: readonly Template[] = [
   onboardingStep("set_pin", (d) => !d.user.mustChangeSecret, () => "/settings#profile"),
-  onboardingStep("link_telegram", (d) => d.user.telegram, () => "/settings#integrations"),
   onboardingStep("first_plan_stop", (d) => anyPlan(d, (p) => p.stop), (d) => links.plan(d)),
   onboardingStep("first_review", (d) => d.reviews.some((r) => r.reviewedOn != null), links.home),
   onboardingStep("open_desk_day", (d) => d.deskDayOpens.length > 0, (d) => links.deskDay(d)),
   onboardingStep("replay_own_day", (d) => d.games.length > 0, (d) => links.sim(d)),
   onboardingStep("set_own_rule", (d) => anyPlan(d, (p) => p.ownRule), (d) => links.plan(d)),
+  { ...onboardingStep("link_telegram", (d) => d.user.telegram, () => "/settings#integrations"), optional: true },
 ];
+
+/** Steps the chain needs to be complete (the optional Telegram step excluded). */
+export const requiredOnboardingSteps = () => ONBOARDING.filter((t) => !t.optional).length;
 
 // ─── daily ──────────────────────────────────────────────────────────────────
 
@@ -276,6 +298,10 @@ export const WEEKLY: readonly Template[] = [
   },
   weekCounter("read_game_plan", () => setting("quests.weeklyGamePlanReads"), count.gamePlanReads,
     (d) => d.gamePlans.filter((g) => g.date >= recent(d, 14)).length >= setting("quests.weeklyGamePlanReads"), links.gamePlan),
+  // Practice for learners (no P&L, no trades needed): the trainer, academy lessons, the personal plan.
+  weekCounter("trainer_drills", () => PRACTICE_TARGETS.drills, count.drills, (d) => !!d.learner, () => "/trainer"),
+  weekCounter("academy_lessons", () => PRACTICE_TARGETS.lessons, count.lessons, (d) => !!d.learner && !!d.academy, () => "/academy/my"),
+  weekCounter("plan_days", () => PRACTICE_TARGETS.plans, count.plansBeforeOpen, (d) => !!d.learner, (d) => links.plan(d)),
 ];
 
 // ─── monthly ────────────────────────────────────────────────────────────────

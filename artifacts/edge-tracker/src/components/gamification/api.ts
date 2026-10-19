@@ -5,7 +5,7 @@
  *   GET  /api/gamification/league                  → LeagueState (+ `members` of the curator's own team)
  *   GET  /api/gamification/titles → lib/api/queries gamificationTitlesQuery (the P&L leaderboard reads it too)
  *   PUT  /api/gamification/title {key}             → set / clear the own title
- *   GET  /api/gamification/rewards/items           → { items, pending, options } (admin catalog)
+ *   GET  /api/gamification/rewards/items           → { items, pending, stats, recent, options } (admin catalog)
  *   POST /api/gamification/rewards/items | PUT …/items/:id (admin)
  *   POST /api/gamification/rewards/items/:id/request (trader)
  *   GET  /api/gamification/rewards/queue           → RewardGrant[] requested (staff, managed traders)
@@ -24,11 +24,14 @@ export type LeagueView = LeagueState;
 
 export type RewardItemInput = Omit<RewardItem, "id">;
 export type RewardOptions = {
-  achievements: { id: string; tiers: string[] }[];
+  /** targets[i] = the target of tiers[i] (absent on older servers). */
+  achievements: { id: string; tiers: string[]; targets?: number[] }[];
   levels: number;
   setups: { id: number; code: string | null; name: string }[];
 };
-export type RewardCatalog = { items: RewardItem[]; pending?: number; options?: RewardOptions };
+/** Admin overview numbers (absent on older servers). */
+export type RewardStats = { requested: number; granted: number; grantedMonth: number; declined: number; activeItems: number; items: number };
+export type RewardCatalog = { items: RewardItem[]; pending?: number; stats?: RewardStats; recent?: RewardGrant[]; options?: RewardOptions };
 /** A queue row carries the item title (staff without the admin catalog read it from there). */
 export type QueueGrant = RewardGrant;
 

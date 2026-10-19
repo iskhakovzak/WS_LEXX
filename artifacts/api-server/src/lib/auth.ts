@@ -325,23 +325,48 @@ export async function scopeTrader(req: Request, requested?: string | null, cap: 
 }
 
 /**
- * Personal data addressed by a trader name (`?userId=` on emotional check-ins, the weekly psychology report …).
- * Validates the name and decides via lib/accessRules canReadPersonal: the owner, or a member whose team capability
+ * The personal-scope contract (DEV-19), pure: which trader a personal request is about. No name / blank → the actor
+ * («мои данные», never 400 TRADER_REQUIRED); a name longer than 120 chars is invalid (null). Whether a foreign name is
+ * allowed is decided by the caller (team capability) — see personalTrader / requirePersonalAccess.
+ */
+export function personalOwner(raw: unknown, actorName: string): string | null {
+  const owner = typeof raw === "string" ? raw.trim() : "";
+  if (owner.length > 120) return null;
+  return owner || actorName;
+}
+
+/**
+ * Personal data addressed by a trader name (`?trader=` / `?userId=`): the owner, or a member whose team capability
  * `cap` covers that trader (curators/admins by default; "assigned" scope → only their wards). Guests never.
- * Sends 400/401/403 itself and returns the trader name, or null when the request was answered.
+ * Defaults to the caller when no name is given. Throws 401 / 403 (GUEST_NO_PERSONAL, PERSONAL_DATA_FORBIDDEN) /
+ * 400 INVALID_FIELD (name too long); returns the trader name. Route owners switch their call sites to this one helper.
+ */
+export async function personalTrader(req: Request, raw: unknown, cap: Capability = "journal.read.team"): Promise<string> {
+  if (!req.authUser) throw unauthorized();
+  const actor = await resolveActor(req);
+  if (!actor) throw unauthorized();
+  if (actor.guest) throw new AppError("GUEST_NO_PERSONAL");
+  const owner = personalOwner(raw, actor.name);
+  if (owner === null) throw new AppError("INVALID_FIELD", undefined, { field: "trader" });
+  const teamAllowed = owner !== actor.name && (await can(req, cap, { trader: owner }));
+  if (!canReadPersonal(actor, owner, teamAllowed)) throw new AppError("PERSONAL_DATA_FORBIDDEN");
+  return owner;
+}
+
+/**
+ * Same contract as personalTrader for routes that answer errors themselves: sends 400/401/403 and returns null,
+ * or returns the trader name (the caller when no name was given).
  */
 export async function requirePersonalAccess(
   req: Request, res: Response, raw: unknown, cap: Capability = "journal.read.team",
 ): Promise<string | null> {
-  const owner = typeof raw === "string" ? raw.trim() : "";
-  if (!owner || owner.length > 120) { sendError(res, new AppError("TRADER_REQUIRED")); return null; }
-  if (!req.authUser) { sendError(res, unauthorized()); return null; }
-  const actor = await resolveActor(req);
-  if (!actor) { sendError(res, unauthorized()); return null; }
-  if (actor.guest) { sendError(res, new AppError("GUEST_NO_PERSONAL")); return null; }
-  const teamAllowed = owner !== actor.name && (await can(req, cap, { trader: owner }));
-  if (!canReadPersonal(actor, owner, teamAllowed)) { sendError(res, new AppError("PERSONAL_DATA_FORBIDDEN")); return null; }
-  return owner;
+  try {
+    return await personalTrader(req, raw, cap);
+  } catch (e) {
+    if (!(e instanceof AppError)) throw e;
+    sendError(res, e);
+    return null;
+  }
 }
 
 /**

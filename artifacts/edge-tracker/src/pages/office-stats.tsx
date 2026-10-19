@@ -57,13 +57,14 @@ export default function OfficeStatsPage() {
   const { t } = officeI18n.useT();
   const today = nyToday();
   const ty = Number(today.slice(0, 4));
-  const yearChoices = [ty - 3, ty - 2, ty - 1, ty];
+  // Years with desk trades (from the last answer): no chips for empty years (OWNER-13: 2023 / 2024 before the data starts).
+  const [dataYears, setDataYears] = React.useState<number[] | null>(null);
+  const yearChoices = React.useMemo(() => [ty - 3, ty - 2, ty - 1, ty].filter((y) => y === ty || !dataYears || dataYears.includes(y)), [ty, dataYears]);
   const [years, setYears] = usePersistentState<number[]>("office-stats.years", [ty - 1, ty]);
   const selYears = React.useMemo(() => {
     const ok = years.filter((y) => yearChoices.includes(y)).sort((a, b) => a - b);
     return ok.length ? ok : [ty];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [years, ty]);
+  }, [years, ty, yearChoices]);
   const focusYear = selYears[selYears.length - 1];
 
   const [mode, setMode] = usePersistentState<PeriodMode>("office-stats.period", "ytd");
@@ -99,6 +100,8 @@ export default function OfficeStatsPage() {
 
   const q = useOfficeStats({ years: selYears, from: period.from, to: period.to });
   const data = q.data;
+  const answerYears = data?.dataYears;
+  React.useEffect(() => { if (answerYears) setDataYears((cur) => (cur && cur.join() === answerYears.join() ? cur : answerYears)); }, [answerYears]);
   const isAdmin = data?.role === "admin";
 
   const [unitPref, setUnitPref] = usePersistentState<Unit | null>("office-stats.unit", null);
@@ -138,7 +141,6 @@ export default function OfficeStatsPage() {
   const forbidden = q.error instanceof ApiError && (q.error.status === 403 || q.error.status === 401);
   const memberNoCapital = data?.role === "member" && !capitalSet;
   const adminPctNoCapital = isAdmin && unit === "pct" && !capitalSet;
-
   const ctx: Ctx | null = view && focus ? { unit, view, focus, isAdmin } : null;
   const showAdminHint = isAdmin && !capitalSet;
 

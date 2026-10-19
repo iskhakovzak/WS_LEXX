@@ -45,6 +45,14 @@ export default {
       title: { one: "Oʻzingizdan {count} marta yaxshiroq oʻynang", other: "Oʻzingizdan {count} marta yaxshiroq oʻynang" },
       desc: "Simulyatorda real savdodan yaxshiroq: {target} dan {done}.",
     },
+    trainer_drills: {
+      title: { one: "«Kirishni top» trenajyorida {count} ta javob bering", other: "«Kirishni top» trenajyorida {count} ta javob bering" },
+      desc: "Trenajyordagi javoblar: {target} dan {done}.",
+    },
+    academy_lessons: {
+      title: { one: "Akademiyaning {count} ta darsini oʻting", other: "Akademiyaning {count} ta darsini oʻting" },
+      desc: "Oʻtilgan darslar: {target} dan {done}.",
+    },
     curator_task: { title: "Kurator topshirigʻi", desc: "Topshiriq bajarilganda kurator belgilaydi." },
   },
   ach: {

@@ -38,7 +38,7 @@ describe("dashboard quest strip", () => {
     expect(html).toContain("План до открытия");
     expect(html).toContain("Без ошибки из фокуса");
     expect(html).toContain("до 23 окт. · осталось 4 дня");
-    expect(html).toContain("от Ольга Н.");
+    expect(html).toContain("куратор: Ольга Н.");
     expect(html).toContain("1 из 3");
     expect(html).toContain('href="/ratings?tab=quests"');
     // Grouped by scope: the curator quest is not listed under «На сегодня».
@@ -64,6 +64,11 @@ describe("dashboard quest strip", () => {
 });
 
 describe("progress tab", () => {
+  it("no «Квесты недели: 0 из 0» when the week offered nothing (UMID-19)", () => {
+    const empty = me({ summary: { ...me().summary, weekDone: 0, weekTotal: 0 } });
+    expect(render(createElement(QuestsProgressView, { data: empty, discipline }))).not.toContain("Квесты недели");
+  });
+
   it("header (level, points), scopes, collapsed history, achievements", () => {
     const html = render(createElement(QuestsProgressView, { data: me(), discipline }));
     expect(html).toContain("Стабильный");

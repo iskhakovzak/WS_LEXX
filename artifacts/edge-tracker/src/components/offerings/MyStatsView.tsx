@@ -46,7 +46,7 @@ function ByTickerTable({ rows, onOpenTicker }: { rows: TickerBucket[]; onOpenTic
           <tr>
             <SortableTh {...thProps("ticker")}>{commonI18n.t("trading.ticker")}</SortableTh>
             <SortableTh {...thProps("trades")} align="right">{t("stats.colTrades")}</SortableTh>
-            <SortableTh {...thProps("net")} align="right">Net</SortableTh>
+            <SortableTh {...thProps("net")} align="right">{commonI18n.t("trading.net")}</SortableTh>
             <SortableTh {...thProps("wr")} align="right">WR</SortableTh>
             <SortableTh {...thProps("avg")} align="right">{t("stats.colAvg")}</SortableTh>
           </tr>
@@ -147,7 +147,7 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
                 ) : (
                   <DataTable>
                     <table>
-                      <thead><tr><th>{t("stats.colForm")}</th><th className="text-right">{t("stats.colTrades")}</th><th className="text-right">Net</th><th className="text-right">WR</th><th className="text-right">{t("stats.colAvg")}</th></tr></thead>
+                      <thead><tr><th>{t("stats.colForm")}</th><th className="text-right">{t("stats.colTrades")}</th><th className="text-right">{commonI18n.t("trading.net")}</th><th className="text-right">WR</th><th className="text-right">{t("stats.colAvg")}</th></tr></thead>
                       <tbody>
                         {s.byForm.map((f) => (
                           <BucketRow key={f.form} b={f} label={<span title={f.form === "424B4" ? t("stats.form424b4") : f.form === "424B5" ? t("stats.form424b5") : f.form === "424B7" ? t("stats.form424b7") : undefined}>{f.form}</span>} />

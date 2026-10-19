@@ -7,7 +7,8 @@
  *   screens    top screens by unique users, 7 and 30 days (+ how many of them are traders)
  *   actions    the tracked daily-loop actions, 7 and 30 days
  *   funnel     every active trader × the last 10 trading days (lib/usage/funnel.ts), trainees first
- *   inactive   traders with no sign of presence for 3+ trading days (today never counts)
+ *   inactive   traders with no sign of presence for 3+ trading days since tracking started (today never counts);
+ *              the same rule feeds the Обзор card (routes/admin.ts desk-pulse → inactiveTraders)
  *   pilot      the setting usage.pilotUsers resolved to stored names (unknown entries listed)
  */
 import { pool } from "@workspace/db";
@@ -16,14 +17,15 @@ import { addDays, nyDate } from "../tradingDate";
 import { closeDateSql, closedSql } from "../tradeMath";
 import { setting } from "../settings/registry";
 import {
-  activitySeries, funnelRow, funnelTotals, missedTradingDays, parsePilot, tierRank,
+  INACTIVE_AFTER, activitySeries, funnelRow, funnelTotals, inactiveFrom, parsePilot, tierRank,
   type ActivityPoint, type FunnelCells, type FunnelStep, type TraderFacts,
 } from "./funnel";
 
 export const FUNNEL_DAYS = 10;
 export const ACTIVITY_DAYS = 30;
-export const INACTIVE_AFTER = 3;
+export { INACTIVE_AFTER };
 const INACTIVE_WINDOW = 30;
+export const OPENED_DAYS = 14;
 
 export type UsageCount = { key: string; users: number; traders: number; count: number };
 export type FunnelTrader = { name: string; tier: string | null; pilot: boolean; cells: FunnelCells; totals: Record<FunnelStep, number> };
@@ -39,6 +41,10 @@ export type UsageOverview = {
   actions: { d7: UsageCount[]; d30: UsageCount[] };
   funnel: { days: string[]; traders: FunnelTrader[] };
   inactive: InactiveTrader[];
+  /** Fewer than INACTIVE_AFTER trading days tracked yet: `inactive` is empty on purpose (OWNER-04). */
+  inactiveLowData: boolean;
+  /** Route patterns (no query) traders opened in the last OPENED_DAYS days — the «никто не открыл» list (PILOT §3). */
+  opened14: string[];
   pilot: { names: string[]; unknown: string[] };
 };
 
@@ -131,35 +137,74 @@ async function funnelFacts(from: string, to: string, names: readonly string[]): 
   } satisfies TraderFacts]));
 }
 
-/** Last sign of presence per trader, all time (tracked events + plan saves + reviews + trainer). */
-async function lastSeen(): Promise<Map<string, Date>> {
-  const { rows } = await pool.query<{ trader: string; at: Date }>(
-    `SELECT trader, MAX(at) AS at FROM (
-       SELECT trader, MAX(at) AS at FROM usage_events GROUP BY trader
-       UNION ALL SELECT trader, MAX(updated_at) FROM trader_plans WHERE deleted_at IS NULL GROUP BY trader
-       UNION ALL SELECT trader, MAX(reviewed_at) FROM daily_reviews WHERE reviewed_at IS NOT NULL GROUP BY trader
-       UNION ALL SELECT u.name, MAX(g.created_at) FROM sim_games g JOIN users u ON u.id = g.user_id GROUP BY u.name
-       UNION ALL SELECT trader, MAX(created_at) FROM trainer_drill_attempts GROUP BY trader
-     ) x WHERE trader IS NOT NULL AND at IS NOT NULL GROUP BY trader`,
-  );
-  return new Map(rows.map((r) => [r.trader, new Date(r.at)]));
+export type Presence = Map<string, { day: string; at: Date | null }>;
+
+/**
+ * Last sign of presence per trader, all time: tracked events, plan saves, reviews, trainer, journal, comments, the
+ * activity feed and the trading day of their own trades (a trader who traded on Friday was there). Each source is read
+ * on its own so a missing optional table never hides the others.
+ */
+export async function lastPresence(): Promise<Presence> {
+  const stamps: string[] = [
+    `SELECT trader, MAX(at) AS at FROM usage_events GROUP BY trader`,
+    `SELECT trader, MAX(updated_at) AS at FROM trader_plans WHERE deleted_at IS NULL GROUP BY trader`,
+    `SELECT trader, MAX(reviewed_at) AS at FROM daily_reviews WHERE reviewed_at IS NOT NULL GROUP BY trader`,
+    `SELECT u.name AS trader, MAX(g.created_at) AS at FROM sim_games g JOIN users u ON u.id = g.user_id GROUP BY u.name`,
+    `SELECT trader, MAX(created_at) AS at FROM trainer_drill_attempts GROUP BY trader`,
+    `SELECT trader, MAX(updated_at) AS at FROM journal_days GROUP BY trader`,
+    `SELECT trader, MAX(created_at) AS at FROM comments WHERE trader IS NOT NULL GROUP BY trader`,
+    `SELECT trader, MAX(created_at) AS at FROM activity_log WHERE trader IS NOT NULL GROUP BY trader`,
+  ];
+  const tradeDays = `SELECT trader, MAX(LEFT(${closeDateSql("t")}, 10)) AS d FROM trades t
+    WHERE t.deleted_at IS NULL AND t.trader IS NOT NULL AND ${closedSql("t")} GROUP BY t.trader`;
+  const [stampRows, tradeRows] = await Promise.all([
+    Promise.all(stamps.map((q) => pool.query<{ trader: string | null; at: Date | null }>(q).then((r) => r.rows).catch(() => []))),
+    pool.query<{ trader: string; d: string | null }>(tradeDays).then((r) => r.rows).catch(() => []),
+  ]);
+  const out: Presence = new Map();
+  const put = (name: string | null, day: string, at: Date | null) => {
+    if (!name) return;
+    const cur = out.get(name);
+    if (!cur || day > cur.day || (day === cur.day && at && (!cur.at || at > cur.at))) out.set(name, { day, at: at ?? cur?.at ?? null });
+  };
+  for (const rows of stampRows) for (const r of rows) if (r.at) put(r.trader, nyDate(new Date(r.at)), new Date(r.at));
+  for (const r of tradeRows) if (r.d) put(r.trader, r.d, null);
+  return out;
+}
+
+/** First tracked day (usage_events), null when nothing was tracked yet. */
+export async function trackingStart(): Promise<string | null> {
+  const { rows } = await pool.query<{ d: string | null }>(`SELECT MIN(ny_day) AS d FROM usage_events`).catch(() => ({ rows: [] as { d: string | null }[] }));
+  return rows[0]?.d ?? null;
+}
+
+/**
+ * «Не заходят 3+ торговых дня» for the given traders — the rule both admin screens use (lib/usage/funnel inactiveFrom).
+ */
+export async function inactiveTraders(names: readonly string[], today: string = nyDate()): Promise<ReturnType<typeof inactiveFrom> & { presence: Presence; trackedSince: string | null }> {
+  const [presence, window, trackedSince] = await Promise.all([lastPresence(), lastTradingDays(today, INACTIVE_WINDOW), trackingStart()]);
+  return { ...inactiveFrom(names, (n) => presence.get(n)?.day ?? null, window, today, trackedSince), presence, trackedSince };
 }
 
 export async function usageOverview(now: Date = new Date()): Promise<UsageOverview> {
   const today = nyDate(now);
   const first = addDays(today, -(ACTIVITY_DAYS - 1));
   const calendar = Array.from({ length: ACTIVITY_DAYS }, (_, i) => addDays(first, i));
-  const [people, window, activityRows, since, d7, d30, a7, a30, seen] = await Promise.all([
+  const [people, window, activityRows, d7, d30, a7, a30, seen, trackedSince] = await Promise.all([
     pool.query<Person>(
       `SELECT u.id, u.name, u.name_latin, l.tier FROM users u LEFT JOIN trader_risk_limits l ON l.trader = u.name
         WHERE u.active AND NOT COALESCE(u.banned, false) AND u.role = 'trader'`),
     lastTradingDays(today, INACTIVE_WINDOW),
     pool.query<{ day: string; user_id: number; role: string }>(`SELECT DISTINCT ny_day AS day, user_id, role FROM usage_events WHERE ny_day >= $1`, [addDays(first, -6)]),
-    pool.query<{ d: string | null }>(`SELECT MIN(ny_day) AS d FROM usage_events`),
     topKeys("view", addDays(today, -6), 25), topKeys("view", first, 25),
     topKeys("action", addDays(today, -6), 20), topKeys("action", first, 20),
-    lastSeen(),
+    lastPresence(),
+    trackingStart(),
   ]);
+  const opened = await pool.query<{ key: string }>(
+    `SELECT DISTINCT split_part(key, '?', 1) AS key FROM usage_events WHERE kind = 'view' AND role = 'trader' AND ny_day >= $1`,
+    [addDays(today, -(OPENED_DAYS - 1))],
+  );
   const pilot = parsePilot(String(setting("usage.pilotUsers") ?? ""), people.rows.map((p) => ({ name: p.name, nameLatin: p.name_latin })));
   const inPilot = new Set(pilot.names);
   const traders = [...people.rows].sort((a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name, "ru"));
@@ -169,26 +214,28 @@ export async function usageOverview(now: Date = new Date()): Promise<UsageOvervi
     const cells = funnelRow(days, facts.get(t.name)!);
     return { name: t.name, tier: t.tier, pilot: inPilot.has(t.name), cells, totals: funnelTotals(cells) };
   });
-  const inactive: InactiveTrader[] = [];
-  for (const t of traders) {
-    const at = seen.get(t.name) ?? null;
-    const lastDay = at ? nyDate(at) : null;
-    const missed = missedTradingDays(window, lastDay, today);
-    if (missed < INACTIVE_AFTER) continue;
-    const capped = !lastDay || lastDay < (window[0] ?? today);
-    inactive.push({ name: t.name, tier: t.tier, pilot: inPilot.has(t.name), lastSeen: at ? at.toISOString() : null, missedDays: missed, capped });
-  }
+  const tierOf = new Map(traders.map((t) => [t.name, t.tier]));
+  const idle = inactiveFrom(traders.map((t) => t.name), (n) => seen.get(n)?.day ?? null, window, today, trackedSince);
+  const inactive: InactiveTrader[] = idle.rows.map((r) => {
+    const p = seen.get(r.name);
+    return {
+      name: r.name, tier: tierOf.get(r.name) ?? null, pilot: inPilot.has(r.name),
+      lastSeen: p ? (p.at ? p.at.toISOString() : `${p.day}T12:00:00.000Z`) : null, missedDays: r.missedDays, capped: r.capped,
+    };
+  });
   inactive.sort((a, b) => b.missedDays - a.missedDays || tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name, "ru"));
   return {
     today,
     enabled: setting("usage.enabled"),
     retentionDays: setting("usage.retentionDays"),
-    trackedSince: since.rows[0]?.d ?? null,
+    trackedSince,
     activity: activitySeries(calendar, activityRows.rows.map((r) => ({ day: r.day, userId: Number(r.user_id), role: r.role }))),
     screens: { d7, d30 },
     actions: { d7: a7, d30: a30 },
     funnel: { days, traders: funnel },
     inactive,
+    inactiveLowData: idle.lowData,
+    opened14: opened.rows.map((r) => r.key).sort(),
     pilot,
   };
 }

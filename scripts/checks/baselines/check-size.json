@@ -4,7 +4,7 @@
   "description": "files over 600 lines and functions over 300 lines (values = current line counts; may only shrink)",
   "metrics": {
     "web-files>600": {
-      "total": 22659,
+      "total": 21024,
       "byKey": {
         "artifacts/edge-tracker/src/components/academy/cohorts/dialogs.tsx": 635,
         "artifacts/edge-tracker/src/components/academy/content/editors.tsx": 657,
@@ -16,11 +16,9 @@
         "artifacts/edge-tracker/src/components/dashboard/use-dashboard.ts": 605,
         "artifacts/edge-tracker/src/components/ds.tsx": 1299,
         "artifacts/edge-tracker/src/components/equity-chart/render.ts": 684,
-        "artifacts/edge-tracker/src/components/game-plan/plan-editor.tsx": 805,
         "artifacts/edge-tracker/src/components/game-plan/plan-media.tsx": 602,
         "artifacts/edge-tracker/src/components/global-search.tsx": 741,
         "artifacts/edge-tracker/src/components/indicators/market/engine.ts": 604,
-        "artifacts/edge-tracker/src/components/journal/DayJournalEditor.tsx": 829,
         "artifacts/edge-tracker/src/components/notes/junior-editor.tsx": 674,
         "artifacts/edge-tracker/src/components/risk/overnight-view.tsx": 655,
         "artifacts/edge-tracker/src/components/screenshot-fields.tsx": 855,
@@ -30,7 +28,7 @@
         "artifacts/edge-tracker/src/lib/ask/aggregate.ts": 899,
         "artifacts/edge-tracker/src/pages/analyst-actions.tsx": 642,
         "artifacts/edge-tracker/src/pages/author-notes.tsx": 882,
-        "artifacts/edge-tracker/src/pages/dailyfeed.tsx": 789,
+        "artifacts/edge-tracker/src/pages/dailyfeed.tsx": 788,
         "artifacts/edge-tracker/src/pages/discussions.tsx": 642,
         "artifacts/edge-tracker/src/pages/playbook.tsx": 1271,
         "artifacts/edge-tracker/src/pages/trade-ideas.tsx": 616,
@@ -39,7 +37,7 @@
       }
     },
     "web-functions>300": {
-      "total": 17268,
+      "total": 16539,
       "byKey": {
         "artifacts/edge-tracker/src/components/add-to-playbook.tsx#AddToPlaybookDialog": 324,
         "artifacts/edge-tracker/src/components/admin/PeoplePanel.tsx#PeoplePanel": 452,
@@ -47,12 +45,10 @@
         "artifacts/edge-tracker/src/components/calculator/ChainAdvisor.tsx#ChainAdvisor": 494,
         "artifacts/edge-tracker/src/components/chart-engine/WsChart.tsx#WsChart": 557,
         "artifacts/edge-tracker/src/components/curator/today-view.tsx#TodayView": 309,
-        "artifacts/edge-tracker/src/components/dashboard/attention-panel.tsx#AttentionPanel": 373,
         "artifacts/edge-tracker/src/components/discussions/ThreadView.tsx#ThreadView": 459,
         "artifacts/edge-tracker/src/components/equity-chart/EquityChart.tsx#EquityChart": 313,
-        "artifacts/edge-tracker/src/components/game-plan/plan-editor.tsx#EditorInner": 308,
         "artifacts/edge-tracker/src/components/global-search.tsx#GlobalSearch": 516,
-        "artifacts/edge-tracker/src/components/journal/DayJournalEditor.tsx#DayJournalEditor": 357,
+        "artifacts/edge-tracker/src/components/journal/DayJournalEditor.tsx#DayJournalEditor": 309,
         "artifacts/edge-tracker/src/components/market-open-brief.tsx#MarketOpenBrief": 380,
         "artifacts/edge-tracker/src/components/notes/junior-editor.tsx#JuniorEditor": 551,
         "artifacts/edge-tracker/src/components/notes/junior-note-sheet.tsx#JuniorNoteSheet": 353,
@@ -81,10 +77,10 @@
       }
     },
     "api-files>600": {
-      "total": 37893,
+      "total": 35832,
       "byKey": {
         "artifacts/api-server/src/lib/academyCohorts.ts": 639,
-        "artifacts/api-server/src/lib/behaviorEngine.ts": 1142,
+        "artifacts/api-server/src/lib/behaviorEngine.ts": 1083,
         "artifacts/api-server/src/lib/benchmark.ts": 697,
         "artifacts/api-server/src/lib/challengeEngine.ts": 703,
         "artifacts/api-server/src/lib/dayReport.ts": 719,
@@ -96,43 +92,41 @@
         "artifacts/api-server/src/lib/promotionEngine.ts": 635,
         "artifacts/api-server/src/lib/propreports/sync.ts": 696,
         "artifacts/api-server/src/lib/reconcile.ts": 816,
-        "artifacts/api-server/src/lib/scalingEngine.ts": 656,
+        "artifacts/api-server/src/lib/scalingEngine.ts": 648,
         "artifacts/api-server/src/lib/whatIf.ts": 985,
         "artifacts/api-server/src/routes/academy-cohorts.ts": 1771,
         "artifacts/api-server/src/routes/academy-content.ts": 1562,
-        "artifacts/api-server/src/routes/academy-path.ts": 1141,
-        "artifacts/api-server/src/routes/admin.ts": 808,
+        "artifacts/api-server/src/routes/academy-path.ts": 940,
+        "artifacts/api-server/src/routes/admin.ts": 789,
         "artifacts/api-server/src/routes/analyst-actions.ts": 959,
         "artifacts/api-server/src/routes/author-notes.ts": 654,
-        "artifacts/api-server/src/routes/curator.ts": 603,
-        "artifacts/api-server/src/routes/dashboard.ts": 706,
+        "artifacts/api-server/src/routes/dashboard.ts": 674,
         "artifacts/api-server/src/routes/discussions.ts": 990,
         "artifacts/api-server/src/routes/eod.ts": 765,
-        "artifacts/api-server/src/routes/events.ts": 715,
-        "artifacts/api-server/src/routes/gameplan.ts": 618,
+        "artifacts/api-server/src/routes/events.ts": 699,
         "artifacts/api-server/src/routes/junior-notes.ts": 832,
         "artifacts/api-server/src/routes/marketbrief.ts": 652,
-        "artifacts/api-server/src/routes/offerings.ts": 2032,
-        "artifacts/api-server/src/routes/playbook-spaces.ts": 963,
-        "artifacts/api-server/src/routes/playbook.ts": 1493,
+        "artifacts/api-server/src/routes/offerings.ts": 2005,
+        "artifacts/api-server/src/routes/playbook-spaces.ts": 943,
+        "artifacts/api-server/src/routes/playbook.ts": 1476,
         "artifacts/api-server/src/routes/propreports.ts": 757,
-        "artifacts/api-server/src/routes/risk.ts": 1507,
+        "artifacts/api-server/src/routes/risk.ts": 1256,
         "artifacts/api-server/src/routes/rules.ts": 688,
-        "artifacts/api-server/src/routes/scaling.ts": 925,
+        "artifacts/api-server/src/routes/scaling.ts": 741,
         "artifacts/api-server/src/routes/telegram.ts": 658,
         "artifacts/api-server/src/routes/tradeideas.ts": 888,
-        "artifacts/api-server/src/routes/trades.ts": 837,
+        "artifacts/api-server/src/routes/trades.ts": 831,
         "artifacts/api-server/src/routes/watchlist.ts": 639,
         "artifacts/api-server/src/routes/weekly-review.ts": 880
       }
     },
     "api-functions>300": {
-      "total": 2477,
+      "total": 2464,
       "byKey": {
         "artifacts/api-server/src/lib/feedStream.ts#compute": 535,
         "artifacts/api-server/src/lib/migrate.ts#runMigrations": 1225,
         "artifacts/api-server/src/lib/reconcile.ts#reconcile": 403,
-        "artifacts/api-server/src/routes/psychologyanalytics.ts#get /analytics/psychology": 314
+        "artifacts/api-server/src/routes/psychologyanalytics.ts#get /analytics/psychology": 301
       }
     }
   }

@@ -6,10 +6,11 @@ import {
 import { TrendingUp, TrendingDown, LineChart as LineIcon, BarChart3, ArrowRight, Clock, CandlestickChart } from "lucide-react";
 import { EquityChart, buildDayCandles, soleTrader } from "@/components/equity-chart";
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
-import { type Unit, type DimensionKey, computeStats, equitySeries, maxDrawdown, rHistogram, streaks, realizedR, median, edgeLeaders, breakdown, reliability, horizonLabel, HORIZONS, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { type Unit, type DimensionKey, computeStats, equitySeries, valueIn, rHistogram, streaks, realizedR, median, edgeLeaders, breakdown, reliability, horizonLabel, HORIZONS, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { fmtCount, fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
+import { maxDrawdownByDay } from "@/lib/trade-math";
 
 export function OverviewTab({
   trades,
@@ -27,7 +28,8 @@ export function OverviewTab({
   const p = useMemo(() => (previous && previous.length ? computeStats(previous) : null), [previous]);
   const series = useMemo(() => (unit ? equitySeries(trades, unit) : []), [trades, unit]);
   const equityDays = useMemo(() => (unit ? buildDayCandles(trades, unit === "r" ? "r" : "net") : []), [trades, unit]);
-  const dd = useMemo(() => maxDrawdown(series), [series]);
+  // Canonical max DD (lib/trade-math): end-of-day closes — the same number the equity chart below shows (MAKSIM-08).
+  const dd = useMemo(() => (unit ? maxDrawdownByDay(trades, (tr) => valueIn(tr, unit)) ?? 0 : 0), [trades, unit]);
   const st = useMemo(() => streaks(trades), [trades]);
   const hist = useMemo(() => rHistogram(trades), [trades]);
   const rValues = useMemo(() => trades.map(realizedR).filter((v): v is number => v != null), [trades]);
@@ -76,7 +78,7 @@ export function OverviewTab({
           {...delta(s.n, p?.n, "count")}
         />
         <StatCard
-          label="Win rate"
+          label={commonI18n.t("trading.winRate")}
           value={s.decided ? fmtRate(s.winRate) : "—"}
           tone={s.decided ? (s.winRate >= 0.5 ? "up" : "down") : "neutral"}
           hint={s.decided ? t("overview.winRateHint", { lo: fmtRate(s.wrLow), hi: fmtRate(s.wrHigh) }) : t("overview.noClosed")}
@@ -90,7 +92,7 @@ export function OverviewTab({
           {...delta(expectancy, prevExp, "unit")}
         />
         <StatCard
-          label="Profit factor"
+          label={t("overview.pf")}
           value={unit ? fmtRatio(pf) : "—"}
           tone={pf == null ? "neutral" : pf >= 1 ? "up" : "down"}
           hint={pf != null ? (pf >= 1.5 ? t("overview.pfStrong") : pf >= 1 ? t("overview.pfPositive") : t("overview.pfNegative")) : unit ? t("overview.pfUndefined") : undefined}
@@ -110,7 +112,7 @@ export function OverviewTab({
           label={isR ? t("overview.totalR") : t("overview.totalUsd")}
           value={unit ? fmt(total) : "—"}
           tone={toneOf(total)}
-          hint={unit ? t("overview.overTrades", { count: isR ? s.rN : s.pnlN }) : undefined}
+          hint={unit ? (isR ? t("overview.baseR", { n: s.rN, m: s.n - s.open }) : t("overview.overTrades", { count: s.pnlN })) : undefined}
         />
         <StatCard
           label={t("overview.maxDd")}
@@ -208,7 +210,7 @@ export function OverviewTab({
                     <>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-xs tabular-nums">
                         <div>
-                          <div className="text-muted-foreground">Win rate</div>
+                          <div className="text-muted-foreground">{commonI18n.t("trading.winRate")}</div>
                           <div className={`text-sm font-semibold ${r.winRate >= 0.5 ? "text-up" : "text-down"}`}>{fmtRate(r.winRate)}</div>
                         </div>
                         <div>

@@ -4,6 +4,7 @@
  * «Сегодня торгую». No React, no fetching — the tests cover every rule with fixtures.
  */
 import type { DayWindow, DayWindowKey, MyEdge, PlaybookToday, TodaySetup } from "@/lib/playbook-today/types";
+import { focusText } from "@/components/shared/plan-focus";
 
 export const MAX_PICKS = 3;
 export const WINDOW_ORDER: readonly DayWindowKey[] = ["premarket", "open", "trend", "close"];
@@ -69,6 +70,15 @@ export function nowMarker(windows: DayWindow[], now: number): { key: DayWindowKe
     if (now >= from && now < to) return { key: w.key, frac: to > from ? (now - from) / (to - from) : 0, state: "in" };
   }
   return null;
+}
+
+/**
+ * ROMAN-10: the minute the day map / phases / prefill run on. On a non-trading day «Сегодня» is about the NEXT session
+ * (PlaybookToday.date is ahead of the NY date): the whole session is still ahead, so the clock stands before it (0).
+ */
+export function sessionMinutes(todayDate: string, nyToday: string, now: number): { now: number; ahead: boolean } {
+  const ahead = todayDate > nyToday;
+  return { now: ahead ? 0 : now, ahead };
 }
 
 /** Minutes until the bell (9:30 NY) when it is still ahead, else null. */
@@ -179,10 +189,32 @@ export function suggestPicks(today: Pick<PlaybookToday, "windows" | "setups">, n
   return ranked.slice(0, MAX_PICKS).map((s) => s.id);
 }
 
+/**
+ * Why the plan prompt pre-checked what it did (ILYA-15): "edge" — every suggestion has a positive own edge (best /
+ * good), "mixed" — some do, "starter" — none (new setups of the first window: no stats to lean on yet).
+ */
+export function suggestionSource(setups: TodaySetup[], suggestion: number[]): "edge" | "mixed" | "starter" {
+  const byId = new Map(setups.map((s) => [s.id, s]));
+  const strong = suggestion.filter((id) => { const v = byId.get(id)?.myEdge?.verdict; return v === "best" || v === "good"; }).length;
+  return strong === 0 ? "starter" : strong === suggestion.length ? "edge" : "mixed";
+}
+
 /** Toggle one id in the picks (max 3: a fourth is refused → the same list comes back). */
 export function togglePick(picks: number[], id: number): number[] {
   if (picks.includes(id)) return picks.filter((x) => x !== id);
   return picks.length >= MAX_PICKS ? picks : [...picks, id];
+}
+
+/**
+ * A star in the list / on a card (DENIS-16). Picks already saved → the new list is saved at once. Nothing saved yet →
+ * the star joins the plan prompt's draft (the pre-checked suggestion stays) and «Взять в план» saves them all.
+ * null = a fourth pick (refused).
+ */
+export function starPick(saved: number[], draft: number[], id: number): { mode: "save" | "draft"; next: number[] } | null {
+  const mode = saved.length ? "save" : "draft";
+  const base = mode === "save" ? saved : draft;
+  const next = togglePick(base, id);
+  return next === base ? null : { mode, next };
 }
 
 export const samePicks = (a: number[], b: number[]) => a.length === b.length && a.every((x) => b.includes(x));
@@ -204,24 +236,47 @@ export function matchSetup(s: TodaySetup, q: string): boolean {
 
 /* ── «Мой план на сегодня» ──────────────────────────────────────────────── */
 
-/** The plan strip: today's own contract from the personal plan (GET /api/game-plan/my doc) — daily stop, max trades,
- * the rule of the day (prefilled from the morning focus until the trader picks one, like the dashboard contract line). */
-export type PlanFacts = { maxLossUsd: number | null; maxTrades: number | null; rule: string | null; ruleFromFocus: boolean };
+/** The plan strip: today's own contract from the personal plan (GET /api/game-plan/my doc) — daily stop (else the desk
+ * daily loss limit, like 1R falls back to the risk limits), max trades, «Правило дня» = doc.focus (the plan editor's
+ * field of that name) and «Не повторяю сегодня» = doc.ownRule, a mistake id (prefilled from the morning focus until the
+ * trader picks one, like the dashboard contract line). */
+export type PlanFacts = {
+  maxLossUsd: number | null;
+  /** Where the daily stop comes from: the plan, the desk limit, or nowhere (null). */
+  stopSource: "plan" | "limits" | null;
+  maxTrades: number | null;
+  /** doc.focus (presets + free text, via focusText) — the rule of the day as the trader wrote it; without one, the
+   * trader's own morning focus line (source «own», which carries no mistake). */
+  rule: string | null;
+  /** The rule is the morning «own» focus, not yet written into the plan. */
+  ruleFromFocus: boolean;
+  /** doc.ownRule — the mistake not to repeat today (mistake id). */
+  avoid: string | null;
+  avoidFromFocus: boolean;
+};
 
 export function planFacts(
   res: { plan?: { doc?: Record<string, unknown> | null } | null } | null | undefined,
-  focus: { mistake: string | null; source: string } | null | undefined,
+  focus: { mistake: string | null; source: string; ownText?: string | null } | null | undefined,
+  deskStopUsd?: number | null,
 ): PlanFacts {
   const doc = res?.plan?.doc ?? null;
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
   const own = doc?.ownRule;
   const saved = typeof own === "string" && own ? own : own === null ? null : undefined;
   const fromFocus = saved === undefined && !!focus?.mistake && focus.source !== "none";
+  const planStop = n(doc?.maxLossUsd);
+  const deskStop = n(deskStopUsd);
+  const planRule = focusText({ focus: doc?.focus, focusRules: Array.isArray(doc?.focusRules) ? doc.focusRules : null }).trim();
+  const ownRule = focus?.source === "own" ? (focus.ownText ?? "").trim() : "";
   return {
-    maxLossUsd: n(doc?.maxLossUsd),
+    maxLossUsd: planStop ?? deskStop,
+    stopSource: planStop != null ? "plan" : deskStop != null ? "limits" : null,
     maxTrades: n(doc?.maxTrades),
-    rule: saved ?? (fromFocus ? focus?.mistake ?? null : null),
-    ruleFromFocus: fromFocus,
+    rule: planRule || ownRule || null,
+    ruleFromFocus: !planRule && !!ownRule,
+    avoid: saved ?? (fromFocus ? focus?.mistake ?? null : null),
+    avoidFromFocus: fromFocus,
   };
 }
 

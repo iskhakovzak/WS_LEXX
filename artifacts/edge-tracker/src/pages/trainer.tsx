@@ -3,6 +3,9 @@
  * Home: four mode cards (components/sim/trainer-home) — «Задача дня», «Найди вход», «Мои дни», «Свободная игра» — and
  * the 30-day line; below, the recent games and the week of the desk. A game (daily / own / free) opens the simulator
  * game screen; «Найди вход» opens a run of 10 drills. Everything is stored on the server (lib/trainer/types).
+ * Free play's main entry is «Серия из 10» (components/sim/use-series): the result's big «Следующий (Enter)» deals the
+ * next game, skip (N) / «не торгую» (T) go to the game screen, the summary follows the last game; «Задача дня» and
+ * «Мои дни» end with «Дальше: серия из 10» (closure).
  *
  * Deep links: `?game=<id>` opens one of the viewer's games (review), `?own=<tradeId>` replays that own trade (the trade
  * sheet's «Переиграть этот день»), `?drill=<setupId|all>` starts a «Найди вход» run. /simulator and the old chart-lab
@@ -15,13 +18,17 @@ import { Dumbbell } from "lucide-react";
 import { BentoGrid, EmptyState, Page, PageHeader, usePersistentState } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { trainerI18n } from "@/i18n/ns/trainer";
-import { activeGameQuery, isIntradayTf, type Difficulty, type IntradayTf, type SimMode } from "@/components/sim/api";
+import { activeGameQuery, isIntradayTf, type Difficulty, type IntradayTf, type SimMode, type Snapshot } from "@/components/sim/api";
 import { isSpeed, type Speed } from "@/components/sim/model";
 import { useSimGame } from "@/components/sim/use-sim-game";
 import { GameScreen, type Ticket } from "@/components/sim/game-screen";
 import { RecentGames, WeeklyBoard } from "@/components/sim/start-screen";
 import { TrainerCards, TrainerStatsLine, type HomeActions } from "@/components/sim/trainer-home";
 import { FindEntryRun } from "@/components/sim/find-entry-run";
+import { useSeries } from "@/components/sim/use-series";
+import { SeriesProvider, readSeriesChoice, type SeriesCtx } from "@/components/sim/series-context";
+import { SeriesSummary } from "@/components/sim/series-summary";
+import { gameSeriesOf, inSeries, seriesPos } from "@/components/sim/series-model";
 import { trainerHomeQuery } from "@/components/sim/trainer-api";
 import { trackAction } from "@/lib/usage";
 
@@ -57,13 +64,14 @@ export default function TrainerPage() {
   const [run, setRun] = React.useState<{ setupId: number | null; key: number } | null>(null);
 
   const sim = useSimGame({ qty, autoStop, autoTarget, riskSize, planStop }, speed);
-  const { game, start, startOwn, startDaily, open, load, starting } = sim;
+  const { game, start, startOwn, startDaily, startDailyPractice, open, load, starting } = sim;
+  const series = useSeries(sim, !guest);
   const gameId = game?.meta.id ?? null;
   const defaultQty = game?.meta.defaultQty ?? null;
   React.useEffect(() => { if (defaultQty != null) setQty(defaultQty); setPlanStop(null); }, [gameId, defaultQty]);
 
   // Opening a game / a drill run / coming back home: start at the top (#main-content keeps its scroll otherwise).
-  const view = gameId != null ? `g${gameId}` : run ? `r${run.key}` : "home";
+  const view = gameId != null ? `g${gameId}` : run ? `r${run.key}` : series.summaryOpen ? "summary" : "home";
   React.useEffect(() => { document.getElementById("main-content")?.scrollTo({ top: 0 }); }, [view]);
 
   const active = useQuery({ ...activeGameQuery(), enabled: !guest });
@@ -91,35 +99,72 @@ export default function TrainerPage() {
     }
   }, [search, guest, gameId, open, startOwn]);
   // Keep the URL in sync: a finished game stays linkable for its review; the own / drill params are one-shot.
+  // A `?game=` written here is ours, not a deep link: marked as handled, so moving on to the next game (series,
+  // «again») never reopens the previous one.
   React.useEffect(() => {
-    setUrlParams({ own: null, game: gameId != null && game?.done ? String(gameId) : null, ...(run ? {} : { drill: null }) });
+    const linked = gameId != null && game?.done ? String(gameId) : null;
+    if (linked) opened.current = `g:${linked}`;
+    setUrlParams({ own: null, game: linked, ...(run ? {} : { drill: null }) });
   }, [gameId, game?.done, run]);
 
+  const startSeries = series.startSeries;
+  const nextInSeries = series.next;
+  const seriesAction = series.action;
   const again = React.useCallback(() => {
     if (!game) return;
-    if (game.meta.trainer) { sim.leave(); return; }
+    // A series game: the next one (instant — prepared by the server), or the summary after the last one.
+    if (seriesAction) { void nextInSeries(); return; }
+    // «Задача дня» is played once: its result leads on to a series (closure).
+    if (game.meta.trainer) { trackAction("trainer.start", { mode: "free" }); void startSeries(readSeriesChoice()); return; }
     const own = game.meta.own;
     if (own) { void startOwn(own.pick === "trade" ? "worst" : own.pick, undefined, isIntradayTf(game.meta.tf) ? game.meta.tf : null); return; }
     void start(game.meta.mode, game.meta.difficulty, isIntradayTf(game.meta.tf) ? game.meta.tf : null);
-  }, [game, start, startOwn, sim]);
+  }, [game, start, startOwn, seriesAction, nextInSeries, startSeries]);
 
   const actions: HomeActions = {
     starting,
     active: active.data ?? null,
     onDaily: () => { trackAction("trainer.start", { mode: "daily" }); void startDaily(); },
+    onDailyPractice: () => { trackAction("trainer.start", { mode: "daily" }); void startDailyPractice(); },
     onOpenGame: (id) => { if (active.data?.id === id) load(active.data); else void open(id); },
     onResume: () => { if (active.data) load(active.data); },
     onMyDays: (pick) => { trackAction("trainer.start", { mode: "my_days" }); void startOwn(pick, undefined, "1m"); },
     onFindEntry: (setupId) => { trackAction("trainer.start", { mode: "find_entry" }); setRun({ setupId, key: Date.now() }); setUrlParams({ drill: setupId != null ? String(setupId) : "all" }); },
     onFree: (mode: SimMode, level: Difficulty, tf: IntradayTf | null) => { trackAction("trainer.start", { mode: "free" }); void start(mode, level, tf); },
+    onSeries: (choice) => { trackAction("trainer.start", { mode: "free" }); void startSeries(choice); },
+    series: activeSeries(series.series, active.data ?? null),
   };
+
+  const ctx: SeriesCtx = {
+    series: series.series,
+    verdictOf: series.verdictOf,
+    startSeries: () => { trackAction("trainer.start", { mode: "free" }); void startSeries(readSeriesChoice()); },
+    starting,
+  };
+  const gameSeries = series.current && !series.current.finished ? { index: series.current.index, size: series.current.size } : undefined;
 
   const ticket: Ticket = { qty, setQty, speed, setSpeed, autoStop, setAutoStop, autoTarget, setAutoTarget, riskSize, setRiskSize, planStop, setPlanStop };
 
   if (game) {
     return (
       <Page width="full">
-        <GameScreen game={game} c={{ ...sim, again }} k={ticket} />
+        <SeriesProvider value={ctx}>
+          <GameScreen game={game} c={{ ...sim, again }} k={ticket} onSkip={series.onSkip} onNoTrade={series.onNoTrade} series={gameSeries} />
+        </SeriesProvider>
+      </Page>
+    );
+  }
+
+  if (series.summaryOpen && series.series && !guest) {
+    const done = series.series;
+    return (
+      <Page>
+        <SeriesSummary
+          series={done} starting={starting}
+          onReplay={(id) => { series.closeSummary(); void open(id); }}
+          onAgain={() => { trackAction("trainer.start", { mode: "free" }); void startSeries(series.choice ?? readSeriesChoice()); }}
+          onHome={series.exit}
+        />
       </Page>
     );
   }
@@ -148,4 +193,10 @@ export default function TrainerPage() {
       )}
     </Page>
   );
+}
+
+/** The home card's «Продолжить серию · 3 / 10»: only when the active game is the current game of an unfinished series. */
+function activeSeries(s: ReturnType<typeof useSeries>["series"], active: Snapshot | null): { n: number; size: number } | null {
+  if (!s || s.finished || !active || !inSeries(s, active.id, gameSeriesOf(active)?.id)) return null;
+  return seriesPos(s);
 }

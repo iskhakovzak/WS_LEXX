@@ -14,19 +14,21 @@ import { toast } from "@/hooks/use-toast";
 import { humanizeApiError } from "@/lib/api/errors";
 import { simI18n } from "@/i18n/ns/simulator";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
-import { simApi, simKeys, type Difficulty, type OrderKind, type IntradayTf, type OwnPick, type PublicState, type Reveal, type SimMode, type Snapshot, type StepBody, type StepResult } from "./api";
+import { simApi, simKeys, type Difficulty, type OrderKind, type IntradayTf, type OwnPick, type PublicState, type Reveal, type SimEvent, type SimMode, type Snapshot, type StepBody, type StepResult } from "./api";
 import { breakEvenStop, entryBracket, fromWire, halfQty, maxQtyFor, positionAfter, roundPrice, stepErrorOf, stopFits, type Speed } from "./model";
 import { trainerApi, trainerKeys } from "./trainer-api";
 import { BarFeed, markGameRequested } from "./sim-chart";
 
 export type GameMeta = Omit<Snapshot, "bars" | "state" | "reveal" | "cursor" | "status">;
-export type GameView = { meta: GameMeta; feed: BarFeed; cursor: number; state: PublicState; reveal: Reveal | null; done: boolean };
+/** `event`: the market event the last «jump to event» step stopped at (step `until: "event"`); a plain step clears it. */
+export type GameView = { meta: GameMeta; feed: BarFeed; cursor: number; state: PublicState; reveal: Reveal | null; done: boolean; event?: SimEvent | null };
 
 /** Ticket actions: the server's order kinds plus «½» (H, partial exit) and break-even (E). */
 export type TicketKind = OrderKind | "half";
 
 type Item =
   | { k: "advance"; n: number }
+  | { k: "event" }
   | { k: "order"; kind: TicketKind }
   | { k: "breakeven" }
   | { k: "bracket"; stop: number | null; target: number | null }
@@ -57,6 +59,7 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
   ticketRef.current = ticket;
   const queue = React.useRef<Item[]>([]);
   const inflight = React.useRef(false);
+  const idleWaiters = React.useRef<(() => void)[]>([]);
 
   const invalidate = React.useCallback(() => {
     void qc.invalidateQueries({ queryKey: simKeys.me() });
@@ -88,7 +91,7 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
       setPlaying(false);
       queue.current = queue.current.filter((x) => x.k !== "advance");
     }
-    const next: GameView = { ...g, cursor: r.cursor, state: r.state, reveal: r.reveal ?? g.reveal, done: r.done };
+    const next: GameView = { ...g, cursor: r.cursor, state: r.state, reveal: r.reveal ?? g.reveal, done: r.done, event: r.event ?? null };
     gameRef.current = next;
     setGame(next);
     if (r.done) {
@@ -109,6 +112,8 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
   /** Build the request for the head of the queue from the latest state. Null = nothing to send (skip the item). */
   const bodyFor = React.useCallback((it: Item, g: GameView): StepBody | null => {
     if (it.k === "advance") return { advance: Math.min(60, it.n) };
+    // Jump to the next event: up to 60 base bars, the server stops at the first event (never merged with «next»).
+    if (it.k === "event") return { advance: 60, until: "event" };
     if (it.k === "bracket") return { bracket: { stop: it.stop, target: it.target }, advance: 0 };
     const pos = g.state.pos;
     const price = g.feed.bars[g.cursor]?.c ?? 0;
@@ -175,6 +180,9 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     } finally {
       inflight.current = false;
       setBusy(false);
+      const waiters = idleWaiters.current;
+      idleWaiters.current = [];
+      for (const w of waiters) w();
     }
   }, [apply, bodyFor, showError]);
 
@@ -189,6 +197,7 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
   }, [pump]);
 
   const next = React.useCallback((n = 1) => enqueue({ k: "advance", n }), [enqueue]);
+  const nextEvent = React.useCallback(() => enqueue({ k: "event" }), [enqueue]);
   const order = React.useCallback((kind: TicketKind) => enqueue({ k: "order", kind }), [enqueue]);
   const breakEven = React.useCallback(() => enqueue({ k: "breakeven" }), [enqueue]);
   const setBracket = React.useCallback((stop: number | null, target: number | null) => enqueue({ k: "bracket", stop, target }), [enqueue]);
@@ -255,9 +264,31 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     }
   }, [load, qc, t]);
 
+  /** The closed «Задача дня» as an unranked practice game (weekend / after the close). */
+  const startDailyPractice = React.useCallback(async () => {
+    setStarting(true);
+    markGameRequested();
+    try {
+      load(await trainerApi.dailyPractice());
+      void qc.invalidateQueries({ queryKey: simKeys.active() });
+      void qc.invalidateQueries({ queryKey: trainerKeys.all });
+    } catch (err) {
+      toast({ title: humanizeApiError(err, t("errors.load")), variant: "destructive" });
+    } finally {
+      setStarting(false);
+    }
+  }, [load, qc, t]);
+
   const open = React.useCallback(async (id: number) => {
     try { load(await simApi.game(id)); } catch (err) { toast({ title: humanizeApiError(err, t("errors.load")), variant: "destructive" }); }
   }, [load, t]);
+
+  /** Stop sending: drop queued items and the autoplay, then resolve once the request in flight (if any) is back. */
+  const halt = React.useCallback((): Promise<void> => {
+    queue.current = [];
+    setPlaying(false);
+    return inflight.current ? new Promise<void>((res) => { idleWaiters.current.push(res); }) : Promise.resolve();
+  }, []);
 
   const leave = React.useCallback(() => {
     queue.current = [];
@@ -266,5 +297,8 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     invalidate();
   }, [invalidate]);
 
-  return { game, starting, playing, setPlaying, busy, start, startOwn, startDaily, open, load, leave, next, order, breakEven, setBracket, undo, finish };
+  return {
+    game, starting, setStarting, playing, setPlaying, busy, start, startOwn, startDaily, startDailyPractice, open, load, leave, halt, invalidate,
+    next, nextEvent, order, breakEven, setBracket, undo, finish,
+  };
 }

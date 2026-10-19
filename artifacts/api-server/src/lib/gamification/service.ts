@@ -4,24 +4,28 @@
  * the app. Every number is a desk setting (`gamification.*`).
  *
  *   seasonState(viewer, key?)      season points ranking: top N (points > 0) + the subject's own place; aliases «t<n>»
- *                                  for traders when names are hidden (privacy.hideNamesFromTraders), names for staff
- *   leagueState(viewer, key?)      curator teams by average season points per active member; the curator's own team
- *                                  members (real names — staff only)
+ *                                  for traders when names are hidden (privacy.hideNamesFromTraders), names for staff;
+ *                                  a risk-halted trader is left out of the top (no season lead while halted)
+ *   leagueState(viewer, key?)      curator teams by average season points per active member (no teams while fewer than
+ *                                  LEAGUE_MIN_TEAMS are ranked); the curator's own team members (real names — staff only)
  *   gamificationMe(subject, …)     GamificationMe: season, league, mastery (stored → level-up recognition), freeze,
- *                                  titles, rewards (eligibility synced on read)
+ *                                  titles (titlesPaused while risk-halted: shown nowhere else), rewards (eligibility synced on read: stale
+ *                                  eligibility revoked, inactive items hidden)
  *   runGamificationNightly()       every active trader evaluated (season scores), the finished season finalized once
  *                                  (top-3 recognition), mastery and reward eligibility synced. Idempotent.
  */
 import { logger } from "../logger";
-import { setting } from "../settings/registry";
+import { SETTINGS, setting, type SettingKey } from "../settings/registry";
 import { addDays, nyDate } from "../tradingDate";
 import { deskAliases } from "../deskAliases";
 import { evaluationFor, type Evaluation } from "../quests/service";
 import { achievementsOf } from "../quests/store";
-import { leagueTeams } from "./league";
-import { syncMastery } from "./mastery";
+import { haltedTraders } from "./halted";
+import { LEAGUE_MIN_TEAMS, leagueTeams, visibleTeams } from "./league";
+import { computeMastery, syncMastery } from "./mastery";
 import { chosenTitles, participants, type Participant } from "./people";
 import { recordRecognition } from "./recognition";
+import type { EligibilityInput } from "./rewards";
 import { syncRewards } from "./rewardsService";
 import { grantsOf, listItems } from "./rewardsStore";
 import { endsInDays, previousSeason, rankRows, seasonKeyOf, seasonRange, topFor, type Ranked } from "./season";
@@ -34,6 +38,13 @@ import type { GamificationMe, LeagueState, RewardItem, SeasonState, SetupMastery
 export type GView = { subject: string; staff: boolean };
 
 const hideNames = () => setting("privacy.hideNamesFromTraders");
+
+/** A numeric desk setting that may not be registered yet (lib/settings is another area's file): the fallback until then. */
+export function settingOr(key: string, fallback: number): number {
+  if (!(key in SETTINGS)) return fallback;
+  const v = Number(setting(key as SettingKey));
+  return Number.isFinite(v) ? v : fallback;
+}
 
 const BACKFILL_EVERY_MS = 30 * 60_000;
 let backfill: { at: number; running: boolean } = { at: 0, running: false };
@@ -77,9 +88,11 @@ export async function seasonState(v: GView, key: string | null = null, now = new
   const mine = ranked.find((r) => r.trader === v.subject);
   const n = setting("gamification.seasonTopN");
   const hidden = new Set(people.filter((p) => !p.share).map((p) => p.name));
-  const topNames = ranked.filter((r) => r.points > 0).slice(0, n + hidden.size).map((r) => r.trader);
+  // Candidates for the shown top: room for the hidden and for a few halted traders left out of it.
+  const candidates = ranked.filter((r) => r.points > 0).slice(0, n + hidden.size + 5).map((r) => r.trader);
+  const [titles, halted] = await Promise.all([activeTitles(candidates), haltedTraders(candidates, now)]);
   const top = topFor(ranked, n, { name: v.subject, staff: v.staff, hideNames: hideNames() }, {
-    hidden, alias: deskAliases(ranked.map((r) => r.trader), season), titles: await activeTitles(topNames),
+    hidden, alias: deskAliases(ranked.map((r) => r.trader), season), titles, excluded: halted,
   });
   const { from, to } = seasonRange(season);
   return {
@@ -94,7 +107,7 @@ export async function leagueState(v: GView, key: string | null = null, now = new
   if (!people.some((p) => p.curator)) return null;
   const stored = new Map((await storedScores(season, people, now)).map((r) => [r.trader, r]));
   const members = people.map((p) => ({ trader: p.name, curator: p.curator, points: stored.get(p.name)?.points ?? 0, active: !!stored.get(p.name)?.active }));
-  const teams = leagueTeams(members, setting("gamification.leagueMinMembers"));
+  const teams = visibleTeams(leagueTeams(members, setting("gamification.leagueMinMembers")), settingOr("gamification.leagueMinTeams", LEAGUE_MIN_TEAMS));
   const myTeam = v.staff ? v.subject : (people.find((p) => p.name === v.subject)?.curator ?? null);
   const out: LeagueState = { season, teams: teams.map((t) => ({ ...t, mine: t.curator === myTeam })) };
   if (v.staff) {
@@ -129,7 +142,14 @@ async function masteryWithRecognition(trader: string, now: Date): Promise<SetupM
 
 async function syncTraderRewards(trader: string, e: Evaluation, mastery: readonly SetupMastery[], items: readonly RewardItem[]): Promise<void> {
   const [achievements, seasons] = await Promise.all([achievementsOf(trader), seasonPlaces(trader)]);
-  await syncRewards(trader, { achievements, level: e.discipline.level, seasons, mastery }, items.filter((i) => i.active));
+  // The whole catalog: active items make new eligibility, inactive ones get their open grants revoked.
+  await syncRewards(trader, { achievements, level: e.discipline.level, seasons, mastery }, items);
+}
+
+/** Everything a reward condition reads for one trader now (an admin's item edit re-checks open eligibility with it). */
+export async function eligibilityInputOf(trader: string, now = new Date()): Promise<EligibilityInput> {
+  const [e, achievements, seasons, mastery] = await Promise.all([evaluationFor(trader, now), achievementsOf(trader), seasonPlaces(trader), computeMastery(trader)]);
+  return { achievements, level: e.discipline.level, seasons, mastery };
 }
 
 const EMPTY_FREEZE = (): StreakFreeze => ({ available: 0, perMonth: setting("gamification.freezePerMonth"), usedOn: [] });
@@ -147,16 +167,21 @@ export async function gamificationMe(v: GView, o: { isTrader: boolean; now?: Dat
   const e = await evaluationFor(v.subject, now); // season score stored, achievements awarded
   const mastery = await masteryWithRecognition(v.subject, now);
   await syncTraderRewards(v.subject, e, mastery, all).catch((err) => logger.warn({ err: (err as Error)?.message }, "gamification: rewards sync failed"));
-  const [season, league, earned, chosen, grants] = await Promise.all([
+  const [season, league, earned, chosen, grants, halted] = await Promise.all([
     seasonState(v, null, now), leagueState(v, null, now), earnedTitles([v.subject]), chosenTitles([v.subject]), grantsOf(v.subject),
+    haltedTraders([v.subject], now),
   ]);
   const titles = earned.get(v.subject) ?? [];
-  const referenced = new Set(grants.map((g) => g.itemId));
+  const active = new Set(all.filter((i) => i.active).map((i) => i.id));
+  // History (requested / granted / declined) keeps its item visible after a deactivation; eligibility never does.
+  const referenced = new Set(grants.filter((g) => g.status !== "eligible").map((g) => g.itemId));
   const catalog = all.filter((i) => i.active || referenced.has(i.id));
+  const paused = halted.has(v.subject);
   return {
     season, league, mastery, freeze: freezeOf(e.data.ledger, today), titles, activeTitle: activeTitleOf(chosen.get(v.subject), titles),
+    ...(paused ? { titlesPaused: true } : {}),
     rewards: {
-      eligible: grants.filter((g) => g.status === "eligible"),
+      eligible: grants.filter((g) => g.status === "eligible" && active.has(g.itemId)),
       requested: grants.filter((g) => g.status === "requested"),
       granted: grants.filter((g) => g.status === "granted"),
       declined: grants.filter((g) => g.status === "declined"),
@@ -196,7 +221,7 @@ export async function runGamificationNightly(o: { now?: Date; signal?: AbortSign
   }
   const finalized = o.signal?.aborted ? null : await finalizePreviousSeason(people, now);
   let rewards = 0;
-  const items = await listItems({ activeOnly: true });
+  const items = await listItems(); // inactive items too: their open eligibility is revoked
   for (const [trader, e] of evals) {
     if (o.signal?.aborted) break;
     try {

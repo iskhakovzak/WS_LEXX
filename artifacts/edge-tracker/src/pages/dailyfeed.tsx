@@ -39,13 +39,11 @@ import {
   type FeedCategory, type StreamItem,
 } from "@/components/feed/stream-api";
 import { dayOf, entryIsUnread, entryToText, formatDayLong, hasServerAcks, splitList, useFeedAck, useFeedViewerState, type AckKind, type FeedEntry } from "@/components/feed/feed-utils";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime } from "@/lib/format";
 import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { feedI18n } from "@/i18n/ns/feed";
 import { personName } from "@/i18n";
-
-/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
 /**
  * «Лента» — assembles itself from what happens in the system (day results, streaks and records, academy,
@@ -748,7 +746,7 @@ export default function DailyFeedPage() {
             <AlertDialogTitle>{t("page.eodTitle", { date: eodPending ? fmtDate(eodPending.date, "dayMonth") : "" })}</AlertDialogTitle>
             <AlertDialogDescription>
               {eodPending?.lastSyncedAt
-                ? t("page.eodLast", { time: fmtDate(eodPending.lastSyncedAt, "shortDateTimeSeconds") })
+                ? t("page.eodLast", { time: fmtDeskDateTime(eodPending.lastSyncedAt, { style: "shortDateTime" }) })
                 : t("page.eodNever")}{" "}
               {t("page.eodText")}
             </AlertDialogDescription>

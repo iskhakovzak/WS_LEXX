@@ -20,7 +20,7 @@ import { SameTickerView } from "@/components/benchmark/same-ticker";
 import { CompareView } from "@/components/benchmark/compare";
 import { TrendView } from "@/components/benchmark/trend";
 import { SelfView } from "@/components/benchmark/self-view";
-import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDateRange, fmtRate, fmtUsd } from "@/lib/format";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
 import { personName } from "@/i18n";
 import { metricLabel } from "@/components/benchmark/format";
@@ -138,7 +138,7 @@ export default function BenchmarkPage() {
         description={staff === false ? t("descSelf") : t("descDesk")}
         actions={data && (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {fmtDate(data.period.from, "shortYY")} – {fmtDate(data.period.to, "shortYY")} · NY
+            {fmtDateRange(data.period.from, data.period.to, "short")} · NY
           </span>
         )}
       />

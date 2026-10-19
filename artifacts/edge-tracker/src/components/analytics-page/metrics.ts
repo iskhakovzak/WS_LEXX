@@ -35,8 +35,9 @@ export type AnalyticsFilters = {
   source: SourceFilter;
 };
 
+/** DEV-01: the page opens on 90 days; «Всё время» (the whole book) is loaded on demand only. */
 export const DEFAULT_FILTERS: AnalyticsFilters = {
-  period: "all", trader: "", setup: "", ticker: "", side: "", horizon: "", account: "", source: "",
+  period: "90d", trader: "", setup: "", ticker: "", side: "", horizon: "", account: "", source: "",
 };
 
 export const HORIZONS: Horizon[] = ["intraday", "overnight", "swing"];
@@ -115,8 +116,15 @@ export function applyAnalyticsFilters(trades: Trade[], f: AnalyticsFilters): { c
   };
 }
 
+/** Hotkeys «1»…«9» by visible position (MAKSIM-32: the hint «1–N» always matches the tabs on screen). */
+export function withHotkeys<T extends object>(items: T[]): (T & { key: string })[] {
+  return items.slice(0, 9).map((d, i) => ({ ...d, key: String(i + 1) })).concat(
+    items.slice(9).map((d) => ({ ...d, key: "" })),
+  );
+}
+
 export function activeFilterCount(f: AnalyticsFilters): number {
-  return (f.period !== "all" ? 1 : 0) + (f.trader ? 1 : 0) + (f.setup ? 1 : 0) + (f.ticker ? 1 : 0) + (f.side ? 1 : 0)
+  return (f.period !== DEFAULT_FILTERS.period ? 1 : 0) + (f.trader ? 1 : 0) + (f.setup ? 1 : 0) + (f.ticker ? 1 : 0) + (f.side ? 1 : 0)
     + (f.horizon ? 1 : 0) + (f.account ? 1 : 0) + (f.source ? 1 : 0);
 }
 

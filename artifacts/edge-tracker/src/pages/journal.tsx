@@ -82,8 +82,11 @@ export default function JournalPage() {
   });
   const effectiveAccount = isCurator ? account : traderName ?? "";
 
-  // Saturday / Sunday: open Friday's day (the one to review), not an empty weekend day.
-  const startDate = url.date ?? ([0, 6].includes(new Date(`${today}T12:00:00Z`).getUTCDay()) ? prevWeekday(today) : today);
+  // Saturday / Sunday: open Friday's day (the one to review), not an empty weekend day. The «today» jump (button, key T)
+  // goes there too and says «Последний торговый день» — never «Пятница · Сегодня» on a Sunday (ILYA-22).
+  const weekendToday = [0, 6].includes(new Date(`${today}T12:00:00Z`).getUTCDay());
+  const homeDate = weekendToday ? prevWeekday(today) : today;
+  const startDate = url.date ?? homeDate;
   const [activeDate, setActiveDate] = useState<string>(startDate);
   const [viewMonth, setViewMonth] = useState<string>(monthKey(startDate));
   const [metric, setMetricState] = useState<CalMetric>(() => {
@@ -264,12 +267,12 @@ export default function JournalPage() {
         if (e.shiftKey) { if (nextTradeDay) selectDate(nextTradeDay); }
         else selectDate(stepWeekday(activeDate, 1));
       } else if ((e.key === "t" || e.key === "е" || e.key === "T" || e.key === "Е") && !e.shiftKey) { // i18n-ignore (Russian layout key)
-        selectDate(today);
+        selectDate(homeDate);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeDate, prevTradeDay, nextTradeDay, selectDate, today]);
+  }, [activeDate, prevTradeDay, nextTradeDay, selectDate, homeDate]);
 
   const { t } = journalI18n.useT();
   const { t: tc } = commonI18n.useT();
@@ -356,6 +359,7 @@ export default function JournalPage() {
                     <span className="block text-xs capitalize text-muted-foreground">
                       {fmtWeekday(activeDate, "long")}
                       {isToday && <span className="ml-1.5 normal-case text-primary">{t("page.todaySuffix")}</span>}
+                      {weekendToday && activeDate === homeDate && <span className="ml-1.5 normal-case text-primary">{t("page.lastTradingSuffix")}</span>}
                     </span>
                   </button>
                 </PopoverTrigger>
@@ -384,9 +388,15 @@ export default function JournalPage() {
               </Button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {!isToday && (
-                <Button variant="outline" size="sm" title={t("page.todayKey")} onClick={() => selectDate(today)}>
-                  {tc("time.today")}
+              {activeDate !== homeDate && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title={t("page.todayKey")}
+                  aria-label={weekendToday ? t("page.lastTradingAria") : t("page.todayAria")}
+                  onClick={() => selectDate(homeDate)}
+                >
+                  {weekendToday ? t("page.lastTradingDay") : tc("time.today")}
                 </Button>
               )}
               {dayTrades.length === 0 && !isFuture && jumpLatest}

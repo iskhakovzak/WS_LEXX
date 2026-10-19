@@ -8,6 +8,9 @@ import {
   fmtDate,
   fmtDayMonth,
   fmtDateCustom,
+  fmtDeskDate,
+  fmtDeskDateTime,
+  fmtDeskTime,
   fmtMonth,
   fmtNum,
   fmtPct,
@@ -256,6 +259,45 @@ describe("language-dependent formats", () => {
     await inLang("uz");
     expect(fmtDate(d, "weekdayDayMonth", { timeZone: "America/New_York" })).toBe("Jum, 16-okt");
     expect(fmtDate(d, "shortDateTime", { timeZone: "America/New_York" })).toBe("16.10.2026, 22:00");
+  });
+});
+
+describe("desk (New York) time", () => {
+  // 02:00 UTC on Oct 17 = 22:00 on Oct 16 in New York (EDT) = 07:00 on Oct 17 in Tashkent.
+  const d = new Date(Date.UTC(2026, 9, 17, 2, 0, 5));
+
+  it("fmtDeskTime: NY clock with the NY suffix, whatever the browser zone", async () => {
+    expect(fmtDeskTime(d)).toBe("22:00 NY");
+    expect(fmtDeskTime(d, { seconds: true })).toBe("22:00:05 NY");
+    expect(fmtDeskTime(d, { suffix: false })).toBe("22:00");
+    expect(fmtDeskTime("2026-10-16T21:30:00Z")).toBe("17:30 NY");
+    expect(fmtDeskTime(Date.UTC(2026, 0, 15, 14, 30))).toBe("09:30 NY"); // EST in winter
+    await inLang("uz");
+    expect(fmtDeskTime(d)).toBe("22:00 NY");
+  });
+
+  it("fmtDeskDateTime: NY calendar date and clock in the UI language", async () => {
+    expect(fmtDeskDateTime(d)).toBe("16 окт., 22:00 NY");
+    expect(fmtDeskDateTime(d, { style: "shortDateTime" })).toBe("16.10.2026, 22:00 NY");
+    expect(fmtDeskDateTime(d, { style: "numericDateTime", suffix: false })).toBe("16.10, 22:00");
+    await inLang("en");
+    expect(fmtDeskDateTime(d)).toBe("Oct 16, 22:00 NY");
+    await inLang("uz");
+    expect(fmtDeskDateTime(d)).toBe("16-okt, 22:00 NY");
+  });
+
+  it("fmtDeskDate: NY calendar date; date-only strings are not shifted", async () => {
+    expect(fmtDeskDate(d)).toBe("16 окт.");
+    expect(fmtDeskDate("2026-10-16")).toBe("16 окт.");
+    expect(fmtDeskDate("2026-10-16", "short")).toBe("16.10.2026");
+  });
+
+  it("invalid or empty input → dash", () => {
+    for (const v of [null, undefined, "", "garbage"]) {
+      expect(fmtDeskTime(v)).toBe("—");
+      expect(fmtDeskDateTime(v)).toBe("—");
+      expect(fmtDeskDate(v)).toBe("—");
+    }
   });
 });
 

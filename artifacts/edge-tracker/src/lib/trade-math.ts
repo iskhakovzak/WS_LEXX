@@ -18,6 +18,8 @@ export interface TradeLike {
   horizon?: string | null;
   date?: string | null;
   exitDate?: string | null;
+  /** PropReports snapshot: `openedAt` / `closedAt` are ET wall-clock instants («2026-10-15T09:31:07»). */
+  contextSnapshot?: unknown;
 }
 
 export type Horizon = "intraday" | "overnight" | "swing";
@@ -57,6 +59,21 @@ export function horizonOf(t: TradeLike): Horizon {
 /** The day the result is realised: exit date for multi-day holds, else the trade date. */
 export function closeDate(t: TradeLike): string | null {
   return t.exitDate || t.date || null;
+}
+
+const CLOCK_RE = /^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})/;
+
+/**
+ * Entry time as ET minutes since midnight: the time part of `date` when it carries one, else the PropReports
+ * snapshot `openedAt` (ET wall clock). Null when the trade has no exact entry time.
+ */
+export function entryMinutes(t: TradeLike): number | null {
+  const fromDate = CLOCK_RE.exec(String(t.date ?? ""));
+  if (fromDate) return Number(fromDate[1]) * 60 + Number(fromDate[2]);
+  const snap = t.contextSnapshot && typeof t.contextSnapshot === "object" ? (t.contextSnapshot as Record<string, unknown>) : null;
+  const opened = snap?.openedAt;
+  const m = typeof opened === "string" ? CLOCK_RE.exec(opened) : null;
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
 function isShort(t: TradeLike): boolean {
@@ -145,11 +162,24 @@ export interface Kpis {
   netPnl: number | null;
   fees: number;
   pnlCount: number;
-  /** Peak-to-trough on cumulative R (≤ 0). */
+  /** Peak-to-trough on the end-of-day cumulative R (≤ 0) — see maxDrawdownByDay. */
   maxDrawdownR: number;
-  /** Peak-to-trough on cumulative net $ (≤ 0); null without $ data. */
+  /** Peak-to-trough on the end-of-day cumulative net $ (≤ 0); null without $ data — see maxDrawdownByDay. */
   maxDrawdownNet: number | null;
 }
+
+/*
+ * Canonical metric definitions (the server mirror is api-server/src/lib/tradeMath.ts). Every card says its base
+ * («все сделки» vs «сделки с R») and its window:
+ *   win rate  = wins / (wins + losses) over the closed trades of the window, by `result` (all trades — not only
+ *               the ones with an R); break-even and open trades are never in the denominator;
+ *   payoff    = mean of the positive values / |mean of the negative values|, values in the card's unit
+ *               (net $ or signed R; in R only trades with an R count);
+ *   net       = Σ (gross − |fees|) over closed trades, booked on the close date;
+ *   max DD    = deepest fall of the END-OF-DAY cumulative curve below its running peak (the peak starts at 0),
+ *               days by close date — the same number the equity curve shows. Intraday order is not used: most
+ *               trades have no reliable close time, so a per-trade path depends on an arbitrary same-day order.
+ */
 
 /** Drawdown (≤ 0) of a cumulative series built from per-trade values in chronological order. */
 export function maxDrawdown(values: number[]): number {
@@ -162,6 +192,44 @@ export function maxDrawdown(values: number[]): number {
   return dd;
 }
 
+/** Per-day sums of `value` by close date (YYYY-MM-DD), chronological. Trades without a value are skipped. */
+export function dayTotals<T extends TradeLike>(trades: T[], value: (t: T) => number | null): { day: string; value: number }[] {
+  const m = new Map<string, number>();
+  for (const t of trades) {
+    const v = value(t);
+    const d = (closeDate(t) ?? "").slice(0, 10);
+    if (v == null || !d) continue;
+    m.set(d, (m.get(d) ?? 0) + v);
+  }
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([day, v]) => ({ day, value: v }));
+}
+
+/**
+ * Canonical max drawdown (≤ 0): the end-of-day cumulative curve vs its running peak (from 0). Null when no trade
+ * has a value. Same number as the equity curve (equity-chart `derive` / `windowStats` over day candles).
+ */
+export function maxDrawdownByDay<T extends TradeLike>(trades: T[], value: (t: T) => number | null): number | null {
+  const days = dayTotals(trades, value);
+  if (!days.length) return null;
+  const dd = maxDrawdown(days.map((d) => d.value));
+  return Math.round(dd * 1e6) / 1e6;
+}
+
+/** Canonical win rate: wins / (wins + losses); null when nothing is decided. */
+export function winRateOf(wins: number, losses: number): number | null {
+  return wins + losses > 0 ? wins / (wins + losses) : null;
+}
+
+/** Canonical payoff: mean positive / |mean negative| of the values; null without a win or a loss. */
+export function payoffOf(values: number[]): number | null {
+  let pos = 0, posN = 0, neg = 0, negN = 0;
+  for (const v of values) {
+    if (v > 0) { pos += v; posN++; } else if (v < 0) { neg += v; negN++; }
+  }
+  if (!posN || !negN || neg === 0) return null;
+  return pos / posN / Math.abs(neg / negN);
+}
+
 /** Chronological order by close date (then trade date). */
 export function byCloseDate<T extends TradeLike>(trades: T[]): T[] {
   return [...trades].sort((a, b) => (closeDate(a) ?? "").localeCompare(closeDate(b) ?? ""));
@@ -172,40 +240,39 @@ export function computeKpis(trades: TradeLike[]): Kpis {
   let wins = 0, losses = 0, be = 0, open = 0, closed = 0;
   let totalR = 0, rCount = 0, posR = 0, negR = 0;
   let gross = 0, net = 0, fees = 0, pnlCount = 0;
-  const rSeries: number[] = [];
-  const netSeries: number[] = [];
+  const closedTrades: TradeLike[] = [];
   for (const t of ordered) {
     if (isOpen(t)) { open++; continue; }
     const res = resultOf(t);
     if (res === null) continue;
     closed++;
+    closedTrades.push(t);
     if (res === "win") wins++;
     else if (res === "loss") losses++;
     else be++;
     const r = signedR(t);
     if (r != null) {
-      totalR += r; rCount++; rSeries.push(r);
+      totalR += r; rCount++;
       if (r > 0) posR += r; else if (r < 0) negR += r;
     }
     const g = grossPnl(t);
     if (g != null) {
       const n = netPnl(t)!;
-      gross += g; net += n; fees += feesOf(t); pnlCount++; netSeries.push(n);
+      gross += g; net += n; fees += feesOf(t); pnlCount++;
     }
   }
-  const decided = wins + losses;
   return {
     trades: trades.length,
     closed, wins, losses, be, open,
-    winRate: decided ? wins / decided : null,
+    winRate: winRateOf(wins, losses),
     totalR, rCount,
     expectancyR: rCount ? totalR / rCount : null,
     profitFactorR: negR < 0 ? posR / Math.abs(negR) : null,
     grossPnl: pnlCount ? gross : null,
     netPnl: pnlCount ? net : null,
     fees, pnlCount,
-    maxDrawdownR: maxDrawdown(rSeries),
-    maxDrawdownNet: pnlCount ? maxDrawdown(netSeries) : null,
+    maxDrawdownR: maxDrawdownByDay(closedTrades, signedR) ?? 0,
+    maxDrawdownNet: pnlCount ? maxDrawdownByDay(closedTrades, netPnl) : null,
   };
 }
 

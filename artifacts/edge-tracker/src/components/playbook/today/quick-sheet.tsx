@@ -147,7 +147,7 @@ export default function PlaybookQuickSheet({ request, open, onOpenChange }: { re
           <SheetDescription>{tag ? t("tagSheet.description") : t("sheet.description")}</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1">
-          {request.kind === "tag" ? <PlaybookInbox key={`${request.n}-${request.day ?? ""}`} day={request.day ?? null} /> : <SetupPane request={request} onClose={() => onOpenChange(false)} />}
+          {request.kind === "tag" ? <PlaybookInbox key={`${request.n}-${request.day ?? ""}`} day={request.day ?? null} tag /> : <SetupPane request={request} onClose={() => onOpenChange(false)} />}
         </div>
       </SheetContent>
     </Sheet>

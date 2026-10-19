@@ -58,7 +58,7 @@ export const SetupsMatrix = React.memo(function SetupsMatrix({ data }: { data: S
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Segmented ariaLabel={tb("matrix.axisAria")} value={axis} onChange={setAxis} options={[{ value: "hour", label: tb("matrix.axisHour") }, { value: "hold", label: tb("matrix.axisHold") }]} />
-        <Segmented size="sm" ariaLabel={tb("matrix.metricAria")} value={metric} onChange={setMetric} options={[{ value: "avg", label: tb("matrix.avg") }, { value: "net", label: tb("matrix.net") }, { value: "wr", label: "win rate" }]} />
+        <Segmented size="sm" ariaLabel={tb("matrix.metricAria")} value={metric} onChange={setMetric} options={[{ value: "avg", label: tb("matrix.avg") }, { value: "net", label: tb("matrix.net") }, { value: "wr", label: tb("matrix.wr") }]} />
       </div>
       <div className="overflow-x-auto">
         <table className="w-full border-separate border-spacing-1 text-xs" aria-label={axis === "hour" ? tb("matrix.axisHour") : tb("matrix.axisHoldLong")}>

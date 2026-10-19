@@ -276,6 +276,7 @@ export default {
     whenEntry: "at the entry",
     whenExit: "at the exit",
     whenAfter: "after {dur}",
+    neverInPlus: "The trade was never in profit: there was nothing to capture.",
     stillOpen: "The position is still open: exit efficiency appears once it is closed.",
     exitWorse: "The exit was worse than the entry: the price gave {mfe} in your favor, but the trade closed at a loss.",
     captured: "You captured {pct} of the move: {detail}.",

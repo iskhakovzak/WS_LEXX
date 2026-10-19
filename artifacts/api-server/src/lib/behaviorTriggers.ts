@@ -6,7 +6,7 @@
  * какие сделки «под триггером» (их стоило пропустить) и их Σ нетто. Если Σ нетто отрицательна — соблюдение
  * триггера сэкономило бы эти деньги. Деньги — нетто, торговая дата — NY (как в behaviorEngine).
  */
-import type { BehaviorTrade } from "./behaviorEngine";
+import { lastClosedBefore, type BehaviorTrade } from "./behaviorEngine";
 import { behaviorT } from "./behaviorI18n";
 import { DEFAULT_LANG, isLang, type Lang } from "../i18n";
 import type { ErrorCode } from "./http";
@@ -178,8 +178,9 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
         }
         case "size_up_after_loss": {
           for (let i = 1; i < day.length; i++) {
-            const prev = day[i - 1], t = day[i];
-            if (prev.result !== "loss") continue;
+            // The loss must be closed before the entry (same rule as behaviorEngine martingale).
+            const prev = lastClosedBefore(day, i), t = day[i];
+            if (!prev || prev.result !== "loss") continue;
             const n0 = notional(prev), n1 = notional(t);
             if (n0 && n1 && n1 / n0 >= p.ratio) {
               fires++; fireDays.add(date);

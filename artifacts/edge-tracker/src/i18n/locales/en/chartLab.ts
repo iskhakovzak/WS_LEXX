@@ -3,7 +3,7 @@ import type ru from "../ru/chartLab";
 
 export default {
   title: { page: "Chart & review" },
-  result: { moveTitle: "Price move from entry to exit", win: "win", loss: "loss" },
+  result: { moveTitle: "Price move from entry to exit", win: "win", loss: "loss", grossTitle: "Net. Gross {gross}, fees {fees}" },
   picker: {
     aria: "Pick a trade",
     placeholder: "Ticker, day (2026-10-14) or both",
@@ -15,6 +15,7 @@ export default {
     long: "long",
     short: "short",
     othersInR: "Others' trades are shown in R, without dollars.",
+    searching: "Searching…",
     pick: "Pick a trade",
   },
   openInTrades: "Open in Trades",

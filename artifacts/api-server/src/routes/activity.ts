@@ -201,7 +201,7 @@ router.get("/activity/summary", asyncHandler(async (req, res): Promise<void> => 
   if (!parsed.success) throw parsed.error;
   const { from, to } = parsed.data;
   const date = parsed.data.date ?? nyDate();
-  if (new Date(to).getTime() <= new Date(from).getTime() || new Date(to).getTime() - new Date(from).getTime() > 8 * 86400000) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
+  if (new Date(to).getTime() <= new Date(from).getTime() || new Date(to).getTime() - new Date(from).getTime() > 8 * 86400000) throw new AppError("INVALID_RANGE", undefined, { max: 8 });
   const v = await visibility(req, parsed.data.trader ?? null);
   if (!v) throw unauthorized();
 
@@ -323,8 +323,8 @@ router.get("/trades/:id/reviews", asyncHandler(async (req, res): Promise<void> =
   const params = GetTradeIdParams.safeParse(req.params);
   if (!params.success) throw params.error;
   if (!req.authUser) throw unauthorized();
-  // Curator reviews are personal feedback: the trade's owner and staff only.
-  const ok = await canAccessTrade(req, params.data.id);
+  // Curator reviews are personal feedback: the trade's owner and staff only (a read: trades.read.team, not write.any).
+  const ok = await canAccessTrade(req, params.data.id, "read");
   if (ok === null) throw notFound("TRADE_NOT_FOUND");
   if (!ok) throw new AppError("OWN_TRADES_ONLY");
   const reviews = await db.select().from(tradeReviewsTable)

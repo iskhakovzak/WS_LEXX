@@ -15,7 +15,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { fmtRate } from "@/lib/format";
 import {
-  runSourceScan, useAddToPlan, useAddToWatchlist, useAnalystFeed, useFirmStats, useFirmWeight, useMyDays, useMyPlanTickers,
+  runSourceScan, scanCooldownMinutes, useAddToPlan, useAddToWatchlist, useAnalystFeed, useFirmStats, useFirmWeight, useMyDays, useMyPlanTickers,
   useOpenPositions, useQuotes, useReactionSummaries, useWatchlistTickers,
 } from "@/components/analyst/api";
 import { ActionsTable, scrollRowIntoView } from "@/components/analyst/ActionsTable";
@@ -78,7 +78,9 @@ const HOTKEYS = [
 const tf = analystI18n.t;
 
 export default function AnalystActionsPage() {
-  const { canEdit, isCurator, isAdmin, user } = useAuth();
+  const { canEdit, user, can } = useAuth();
+  // The source scan is staff work (API: dailyfeed.manage, once per 10 min for the desk).
+  const canScan = can("dailyfeed.manage");
   const traderName = user && user.role !== "guest" ? user.traderName : null;
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -305,7 +307,12 @@ export default function AnalystActionsPage() {
       qc.invalidateQueries({ queryKey: ["analyst-actions"] });
       toast({ title: tf("page.scanDone"), description: tf("page.scanResult", { count: r.rowsInserted, seconds: (r.durationMs / 1000).toFixed(0) }) });
     } catch (e) {
-      toast({ title: tf("page.scanFailed"), description: humanizeApiError(e, commonI18n.t("states.tryAgain")), variant: "destructive" });
+      const wait = scanCooldownMinutes(e);
+      toast({
+        title: tf("page.scanFailed"),
+        description: wait != null ? tf("page.scanCooldown", { count: wait }) : humanizeApiError(e, commonI18n.t("states.tryAgain")),
+        variant: "destructive",
+      });
     } finally {
       setScanning(false);
     }
@@ -431,7 +438,7 @@ export default function AnalystActionsPage() {
               </TooltipContent>
             </Tooltip>
             <Button variant="outline" onClick={() => setFirmsOpen(true)}>{tf("page.firms")}</Button>
-            {(isCurator || isAdmin || canEdit) && (
+            {canScan && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" aria-label={commonI18n.t("actions.moreActions")}>

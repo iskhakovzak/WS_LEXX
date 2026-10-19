@@ -10,7 +10,7 @@ import { Check, ChevronRight, ShieldCheck, Target } from "lucide-react";
 import { Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { mistakeRule } from "@/components/shared/mistake-labels";
-import { dailyMeQuery, myPlanQuery } from "@/lib/api/queries";
+import { dailyMeQuery, myPlanQuery, riskMeQuery } from "@/lib/api/queries";
 import type { PlaybookToday, TodaySetup } from "@/lib/playbook-today/types";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { links } from "@/lib/links";
@@ -19,7 +19,7 @@ import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import { CheatCard } from "./cheat-card";
 import { SetupSchema } from "./schema-art";
 import { SetupDetails } from "./setup-details";
-import { MAX_PICKS, pickCandidates, planFacts } from "./today-model";
+import { MAX_PICKS, pickCandidates, planFacts, suggestionSource } from "./today-model";
 import { edgeChip, edgeDetail, timeText } from "./today-text";
 
 type PlanRes = { plan?: { doc?: Record<string, unknown> | null } | null } | null;
@@ -38,22 +38,26 @@ export function PlanStrip({ today }: { today: PlaybookToday }) {
   const { t } = playbookTodayI18n.useT();
   const plan = useQuery(myPlanQuery<PlanRes>(today.date));
   const me = useQuery(dailyMeQuery());
+  const desk = useQuery({ ...riskMeQuery<{ dailyLossLimit?: number | null } | null>(), select: (r) => r?.dailyLossLimit ?? null, retry: false });
   const focus = me.data?.focus && me.data.focus.date === today.date ? me.data.focus : null;
-  const f = planFacts(plan.data, focus);
+  const f = planFacts(plan.data, focus, desk.data);
   const unset = t("myPlan.unset");
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
       <ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-      <Fact label={t("myPlan.stop")} value={f.maxLossUsd != null ? fmtUsd(f.maxLossUsd, { decimals: 0 }) : unset} muted={f.maxLossUsd == null} />
+      <Fact label={t("myPlan.stop")} value={f.maxLossUsd != null ? (f.stopSource === "limits" ? `${fmtUsd(f.maxLossUsd, { decimals: 0 })} · ${t("card.oneRSource.limits")}` : fmtUsd(f.maxLossUsd, { decimals: 0 })) : unset} muted={f.maxLossUsd == null} />
       <Fact label={t("myPlan.maxTrades")} value={f.maxTrades != null ? String(f.maxTrades) : unset} muted={f.maxTrades == null} />
       <Fact label={t("myPlan.oneR")} value={today.oneR ? `${fmtUsd(today.oneR.usd, { decimals: 0 })} · ${t(`card.oneRSource.${today.oneR.source}`)}` : unset} muted={!today.oneR} />
-      {f.rule && <Fact label={t("myPlan.rule")} value={f.ruleFromFocus ? `${mistakeRule(f.rule)} (${t("myPlan.fromFocus")})` : mistakeRule(f.rule)} />}
+      {f.rule && <Fact label={t("myPlan.rule")} value={f.ruleFromFocus ? `${f.rule} (${t("myPlan.fromFocus")})` : f.rule} />}
+      {f.avoid && <Fact label={t("myPlan.avoid")} value={f.avoidFromFocus ? `${mistakeRule(f.avoid)} (${t("myPlan.fromFocus")})` : mistakeRule(f.avoid)} />}
       <Link href={links.myPlan(today.date)} className="ml-auto inline-flex min-h-9 items-center gap-0.5 text-sm font-medium text-primary hover:underline">
         {t("myPlan.edit")} <ChevronRight className="h-4 w-4" aria-hidden="true" />
       </Link>
     </div>
   );
 }
+
+const PROMPT_HINT = { edge: "myPlan.promptHint", mixed: "myPlan.promptHintMixed", starter: "myPlan.promptHintStarter" } as const;
 
 /** Nothing saved yet: the suggestion pre-selected (plus anything starred below), one «Взять в план». */
 function PickPrompt({
@@ -76,7 +80,7 @@ function PickPrompt({
     <div className="flex flex-col gap-3 rounded-2xl border border-primary/35 bg-primary/5 p-3 sm:p-4">
       <div>
         <p className="text-base font-semibold text-foreground">{t("myPlan.promptTitle")}</p>
-        <p className="text-sm text-foreground/80">{t("myPlan.promptHint")}</p>
+        <p className="text-sm text-foreground/80">{t(PROMPT_HINT[suggestionSource(today.setups, suggestion)])}</p>
       </div>
       <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {tiles.map((s) => {

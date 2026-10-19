@@ -1,7 +1,8 @@
 /**
- * Rewards catalog storage (reward_items / reward_grants, migration 0212). Idempotent by construction: eligibility is
- * INSERT … ON CONFLICT (item, trader, ref) DO NOTHING RETURNING (only the inserting call notifies); status changes are
- * UPDATE … WHERE status IN (…) RETURNING; a grant takes one from the stock in the same transaction.
+ * Rewards catalog storage (reward_items / reward_grants, migrations 0212, 0217). Idempotent by construction: eligibility
+ * is INSERT … ON CONFLICT (item, trader, ref) DO UPDATE only of a «revoked» row … RETURNING (only the call that inserted
+ * or revived it notifies); status changes are UPDATE … WHERE status IN (…) RETURNING; a grant takes one from the stock
+ * in the same transaction. «revoked» rows (stale eligibility) are never answered to the API.
  */
 import { pool } from "@workspace/db";
 import type { RewardGrant, RewardItem } from "./types";
@@ -75,7 +76,7 @@ const GRANT_FROM = `FROM reward_grants g JOIN reward_items i ON i.id = g.item_id
 
 export async function grantsOf(trader: string): Promise<RewardGrant[]> {
   const { rows } = await pool
-    .query<GrantRow>(`SELECT ${GRANT_COLS}, i.title ${GRANT_FROM} WHERE g.trader = $1 ORDER BY g.id`, [trader])
+    .query<GrantRow>(`SELECT ${GRANT_COLS}, i.title ${GRANT_FROM} WHERE g.trader = $1 AND g.status <> 'revoked' ORDER BY g.id`, [trader])
     .catch(() => ({ rows: [] as GrantRow[] }));
   return rows.map(rowToGrant);
 }
@@ -102,14 +103,80 @@ export async function pendingCount(): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
-/** Inserts an eligibility once; the row when this call inserted it. */
+/** Inserts an eligibility once (or revives a revoked one); the row when this call inserted / revived it. */
 export async function insertEligible(itemId: number, trader: string, ref: string): Promise<RewardGrant | null> {
   const { rows } = await pool.query<GrantRow>(
-    `WITH ins AS (INSERT INTO reward_grants (item_id, trader, ref) VALUES ($1, $2, $3) ON CONFLICT (item_id, trader, ref) DO NOTHING RETURNING *)
+    `WITH ins AS (INSERT INTO reward_grants (item_id, trader, ref) VALUES ($1, $2, $3)
+                  ON CONFLICT (item_id, trader, ref) DO UPDATE
+                    SET status = 'eligible', eligible_at = now(), decided_at = NULL, note = NULL, updated_at = now()
+                    WHERE reward_grants.status = 'revoked'
+                  RETURNING *)
      SELECT ${GRANT_COLS.replaceAll("g.", "ins.")}, i.title FROM ins JOIN reward_items i ON i.id = ins.item_id`,
     [itemId, trader, ref],
   );
   return rows[0] ? rowToGrant(rows[0]) : null;
+}
+
+/** eligible → revoked (stale eligibility); the revoked rows. */
+export async function revokeGrants(ids: readonly number[]): Promise<{ id: number; trader: string }[]> {
+  if (!ids.length) return [];
+  const { rows } = await pool.query<{ id: number; trader: string }>(
+    `UPDATE reward_grants SET status = 'revoked', decided_at = now(), note = 'stale', updated_at = now()
+      WHERE id = ANY($1::int[]) AND status = 'eligible' RETURNING id, trader`,
+    [ids],
+  );
+  return rows.map((r) => ({ id: Number(r.id), trader: String(r.trader) }));
+}
+
+/** Open eligible grants of one item (re-checked when an admin edits its condition). */
+export async function eligibleGrantsOfItem(itemId: number): Promise<RewardGrant[]> {
+  const { rows } = await pool
+    .query<GrantRow>(`SELECT ${GRANT_COLS}, i.title ${GRANT_FROM} WHERE g.item_id = $1 AND g.status = 'eligible' ORDER BY g.id`, [itemId])
+    .catch(() => ({ rows: [] as GrantRow[] }));
+  return rows.map(rowToGrant);
+}
+
+/** Marks the `type` notifications about these grants read (everyone's): a revoked «Доступна награда», a decided «просит награду». */
+export async function markGrantNoticesRead(type: "reward_eligible" | "reward_requested", grantIds: readonly number[]): Promise<void> {
+  if (!grantIds.length) return;
+  await pool
+    .query(
+      `UPDATE notifications SET is_read = true, read_at = COALESCE(read_at, now())
+        WHERE type = $1 AND entity_type = 'reward_grant' AND entity_id = ANY($2::text[]) AND is_read = false`,
+      [type, grantIds.map(String)],
+    )
+    .catch(() => undefined);
+}
+
+export type RewardStats = { requested: number; granted: number; grantedMonth: number; declined: number; activeItems: number; items: number };
+
+/** Admin overview numbers: open requests, rewards handed out (all time / since `monthStart`), the catalog size. */
+export async function rewardStats(monthStart: string): Promise<RewardStats> {
+  const { rows } = await pool
+    .query<{ requested: number; granted: number; granted_month: number; declined: number; active_items: number; items: number }>(
+      `SELECT (SELECT COUNT(*) FROM reward_grants WHERE status = 'requested')::int AS requested,
+              (SELECT COUNT(*) FROM reward_grants WHERE status = 'granted')::int AS granted,
+              (SELECT COUNT(*) FROM reward_grants WHERE status = 'granted'
+                  AND decided_at >= ($1::date)::timestamp AT TIME ZONE 'America/New_York')::int AS granted_month,
+              (SELECT COUNT(*) FROM reward_grants WHERE status = 'declined')::int AS declined,
+              (SELECT COUNT(*) FROM reward_items WHERE active)::int AS active_items,
+              (SELECT COUNT(*) FROM reward_items)::int AS items`,
+      [monthStart],
+    )
+    .catch(() => ({ rows: [] as { requested: number; granted: number; granted_month: number; declined: number; active_items: number; items: number }[] }));
+  const r = rows[0];
+  return {
+    requested: Number(r?.requested ?? 0), granted: Number(r?.granted ?? 0), grantedMonth: Number(r?.granted_month ?? 0),
+    declined: Number(r?.declined ?? 0), activeItems: Number(r?.active_items ?? 0), items: Number(r?.items ?? 0),
+  };
+}
+
+/** The last `n` granted rewards (admin history), newest first. */
+export async function recentGranted(n: number): Promise<RewardGrant[]> {
+  const { rows } = await pool
+    .query<GrantRow>(`SELECT ${GRANT_COLS}, i.title ${GRANT_FROM} WHERE g.status = 'granted' ORDER BY g.decided_at DESC NULLS LAST, g.id DESC LIMIT $1`, [n])
+    .catch(() => ({ rows: [] as GrantRow[] }));
+  return rows.map(rowToGrant);
 }
 
 /** eligible → requested (the trader's oldest eligible grant of the item); null when there is none. */

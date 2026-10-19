@@ -85,9 +85,9 @@ export default {
     rulesLimit: "Rules of the day · daily limit {limit}",
     rulesLimitTier: "Rules of the day · daily limit {limit} (scaling tier)",
     rulesNoLimit: "Rules of the day · no daily limit set — limit check skipped",
-    totalTitle: "Losing flagged trades, without double counting",
+    totalTitle: "Sum of the leak costs; a trade in several leaks counts once",
     none: "No rule leaks found.",
-    tradesNet: "trades net {amount}",
+    tradesNet: "net of these trades {amount}",
   },
   strengths: {
     title: "What worked",
@@ -97,7 +97,8 @@ export default {
     setups: "Setups",
     side: "Side",
     bestHour: "Best hour (ET)",
-    noSetups: "Trades have no setups — tag them in the journal to see your edge by setup.",
+    noSetups: "Trades have neither a broker strategy name nor a playbook setup — no edge by setup to show.",
+    noSetupEdge: "No strategy had an edge this day (needs a profit and ≥ 50 % wins).",
   },
   plan: {
     title: "Plan for tomorrow",

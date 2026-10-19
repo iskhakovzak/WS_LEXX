@@ -16,7 +16,7 @@ import { GoalDialog } from "./goal-dialog";
 import { NotesPanel } from "./notes-panel";
 import { FocusPanel } from "./focus-panel";
 import { TemplateDialog } from "./template-dialog";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -278,7 +278,7 @@ function RiskTab({ p, onTemplate }: { p: ProfilePayload; onTemplate: () => void 
               <span className="micro-label">{t("profile.lastChanges")}</span>
               {p.limitEvents.map((e) => (
                 <p key={e.id} className="break-words text-xs text-muted-foreground">
-                  <span className="tabular-nums">{fmtDate(e.changedAt, "dateTime")}</span> · {e.changedBy ? personName(e.changedBy) : "—"}{e.reason ? ` · ${e.reason}` : ""}
+                  <span className="tabular-nums">{fmtDeskDateTime(e.changedAt)}</span> · {e.changedBy ? personName(e.changedBy) : "—"}{e.reason ? ` · ${e.reason}` : ""}
                 </p>
               ))}
             </div>
@@ -319,7 +319,7 @@ function JournalTab({ p }: { p: ProfilePayload }) {
                   type="button"
                   onClick={() => review.open(d)}
                   className={cn("chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium tabular-nums", (d.hoursWaiting ?? 0) > 24 && "text-warn")}
-                  title={t("profile.closedWaiting", { date: fmtDate(d.closedAt, "dateTime"), wait: waitLabel(d.hoursWaiting) })}
+                  title={t("profile.closedWaiting", { date: fmtDeskDateTime(d.closedAt), wait: waitLabel(d.hoursWaiting) })}
                 >
                   {fmtDate(d.date, "dayMonth")}{d.date.slice(0, 4) !== thisYear ? ` ${d.date.slice(0, 4)}` : ""}
                 </button>
@@ -425,8 +425,8 @@ function WeeklyTab({ p }: { p: ProfilePayload }) {
                   <tr key={w.id}>
                     <td className="whitespace-nowrap">{t("profile.weekFrom", { date: fmtDate(w.weekStart, "dayMonth") })}</td>
                     <td><Pill tone={st.tone} dot={w.status === "submitted"}>{st.label}</Pill></td>
-                    <td className="text-muted-foreground">{fmtDate(w.submittedAt, "dateTime")}</td>
-                    <td className="text-muted-foreground">{fmtDate(w.reviewedAt, "dateTime")}</td>
+                    <td className="text-muted-foreground">{fmtDeskDateTime(w.submittedAt)}</td>
+                    <td className="text-muted-foreground">{fmtDeskDateTime(w.reviewedAt)}</td>
                     <td className={cn("text-right", w.score != null && toneText(disciplineTone(w.score)))}>{w.score != null ? `${w.score}/10` : "—"}</td>
                     <td className="text-right"><Link href={curatorLinks.weeklyCurator(p.trader, w.week)} className="text-xs text-primary hover:underline">{t("open")}</Link></td>
                   </tr>
@@ -511,7 +511,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
             <ul className="flex flex-col gap-2">
               {p.meetings.map((m) => (
                 <li key={m.id} className="flex flex-col gap-0.5 text-sm">
-                  <span className="flex items-center gap-2"><span className="tabular-nums text-foreground">{fmtDate(m.metAt, "dateTime")}</span><span className="text-xs text-muted-foreground">{meetingFormat(m.format)} · {personName(m.mentor)}</span></span>
+                  <span className="flex items-center gap-2"><span className="tabular-nums text-foreground">{fmtDeskDateTime(m.metAt)}</span><span className="text-xs text-muted-foreground">{meetingFormat(m.format)} · {personName(m.mentor)}</span></span>
                   {m.agenda && <span className="line-clamp-2 text-xs text-muted-foreground">{m.agenda}</span>}
                 </li>
               ))}

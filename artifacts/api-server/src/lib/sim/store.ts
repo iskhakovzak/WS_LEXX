@@ -1,7 +1,8 @@
 /**
  * Simulator persistence and data sources (SQL only; logic lives in engine.ts / scenario.ts / service.ts).
  *
- * Tables: sim_games, sim_prefs — migration src/db/migrations/0200_sim_games.sql.
+ * Tables: sim_games, sim_prefs — migration src/db/migrations/0200_sim_games.sql; sim_series + sim_games.series_id and
+ * the statuses 'skipped' / 'prepared' — 0218_sim_series.sql (series SQL: seriesStore.ts).
  *
  * Own mode («Мои худшие дни», own.ts / ownService.ts) needs no migration: an own game is stored with mode 'intraday'
  * and difficulty 'medium' (the CHECK constraints of 0200) and is marked by params.own (the real trade). Own games are
@@ -139,6 +140,46 @@ export function contiguousRuns(dates: readonly string[]): [number, number][] {
   return dates.length ? out : [];
 }
 
+/* ─────────────────────────── Daily context («Тренажёр 2», context.ts) ─────────────────────────── */
+
+export type DatedBar = { date: string; o: number; h: number; l: number; c: number; v: number };
+
+/**
+ * Up to `n` daily bars strictly before `day`, oldest first — local DB only, never the provider: the analyst daily-bar
+ * cache (analyst_bars_cache, ≈ 2 years per ticker, written by routes/analyst-actions) and, for dates it lacks, the
+ * regular-session stats of archived days (candle_archive). Empty when neither knows the ticker.
+ */
+export async function loadDailyBefore(ticker: string, day: string, n = 60): Promise<DatedBar[]> {
+  const byDate = new Map<string, DatedBar>();
+  const ok = (b: DatedBar) => b.o > 0 && b.h > 0 && b.l > 0 && b.c > 0 && b.h >= b.l && /^\d{4}-\d{2}-\d{2}$/.test(b.date) && b.date < day;
+  try {
+    const { rows: reg } = await pool.query<{ t: string | null }>(`SELECT to_regclass('public.analyst_bars_cache')::text AS t`);
+    if (reg[0]?.t) {
+      const { rows } = await pool.query<{ bars: { d: string; o: number; h: number; l: number; c: number; v: number }[] }>(
+        `SELECT bars FROM analyst_bars_cache WHERE ticker = $1`, [ticker],
+      );
+      for (const b of Array.isArray(rows[0]?.bars) ? rows[0].bars : []) {
+        const bar = { date: String(b.d), o: Number(b.o), h: Number(b.h), l: Number(b.l), c: Number(b.c), v: Number(b.v) || 0 };
+        if (ok(bar)) byDate.set(bar.date, bar);
+      }
+    }
+    const { rows } = await pool.query<{ day: string; o: string; h: string; l: string; c: string; v: string | null }>(
+      `SELECT DISTINCT ON (day) day::text AS day, rth_open AS o, rth_high AS h, rth_low AS l, rth_close AS c, volume AS v
+         FROM candle_archive
+        WHERE symbol = $1 AND day < $2::date AND day >= $2::date - 120 AND rth_open IS NOT NULL AND rth_close IS NOT NULL
+        ORDER BY day DESC, CASE tf WHEN '1m' THEN 1 WHEN '5m' THEN 2 WHEN '15m' THEN 3 WHEN '30m' THEN 4 ELSE 5 END`,
+      [ticker, day],
+    );
+    for (const r of rows) {
+      const bar = { date: r.day, o: Number(r.o), h: Number(r.h), l: Number(r.l), c: Number(r.c), v: Number(r.v) || 0 };
+      if (!byDate.has(bar.date) && ok(bar)) byDate.set(bar.date, bar);
+    }
+  } catch (err) {
+    logger.warn({ err, ticker }, "sim: daily context failed");
+  }
+  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-n);
+}
+
 /* ─────────────────────────── Fees ─────────────────────────── */
 
 let feeCache: { rate: number; at: number } | null = null;
@@ -204,6 +245,14 @@ export type GameParams = {
   oneR?: number;
   /** «Задача дня» game (lib/trainer/daily.ts): the challenge date. */
   daily?: { date: string };
+  /** Unranked practice of a closed «Задача дня» (lib/trainer/daily.ts startDailyPractice): the challenge date. */
+  practice?: { date: string };
+  /** «Тренажёр 2»: bar size of `bars` when finer than the display tf (free games since 2026-10-19); absent = tf. */
+  baseTf?: SimTf;
+  /** Brackets fill along the intrabar path (engine cfg.intrabar); absent on older games. */
+  intrabar?: boolean;
+  /** Series game: the series, the 0-based position in it and the series size. */
+  series?: { id: number; index: number; size: number };
 };
 
 export type GameRow = {
@@ -221,16 +270,21 @@ export type GameRow = {
   cursor: number;
   params: GameParams;
   events: SimEvent[];
-  status: "active" | "finished" | "abandoned";
+  status: GameStatus;
   result: (SimResult & Record<string, unknown>) | null;
   createdAt: string;
   finishedAt: string | null;
+  seriesId?: number | null;
 };
+
+/** 'skipped' and 'prepared' since migration 0218 (series / skip); every progress reader counts 'finished' only. */
+export type GameStatus = "active" | "finished" | "abandoned" | "skipped" | "prepared";
 
 type DbGame = {
   id: string; user_id: number; mode: SimMode; difficulty: Difficulty; ticker: string; day: string; day_to: string | null; tf: SimTf;
   bars: [number, number, number, number, number, number][]; start_idx: number; end_idx: number; cursor_idx: number;
   params: GameParams; events: SimEvent[]; status: GameRow["status"]; result: GameRow["result"]; created_at: Date; finished_at: Date | null;
+  series_id?: number | null;
 };
 
 function fromDb(r: DbGame): GameRow {
@@ -239,16 +293,24 @@ function fromDb(r: DbGame): GameRow {
     bars: (r.bars ?? []).map(([t, o, h, l, c, v]) => ({ t, o, h, l, c, v })),
     startIdx: r.start_idx, endIdx: r.end_idx, cursor: r.cursor_idx, params: r.params, events: r.events ?? [], status: r.status,
     result: r.result, createdAt: new Date(r.created_at).toISOString(), finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
+    seriesId: r.series_id == null ? null : Number(r.series_id),
   };
 }
 
-export async function insertGame(g: Omit<GameRow, "id" | "status" | "result" | "createdAt" | "finishedAt" | "events">): Promise<GameRow> {
+export type NewGame = Omit<GameRow, "id" | "status" | "result" | "createdAt" | "finishedAt" | "events" | "seriesId"> & {
+  /** 'prepared' = the next game of a series, built in advance (never the user's active game). */
+  status?: "active" | "prepared";
+  seriesId?: number | null;
+};
+
+export async function insertGame(g: NewGame): Promise<GameRow> {
   const bars = g.bars.map((b) => [b.t, b.o, b.h, b.l, b.c, b.v]);
   const { rows } = await pool.query<DbGame>(
-    `INSERT INTO sim_games (user_id, mode, difficulty, ticker, day, day_to, tf, bars, start_idx, end_idx, cursor_idx, params)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12::jsonb)
+    `INSERT INTO sim_games (user_id, mode, difficulty, ticker, day, day_to, tf, bars, start_idx, end_idx, cursor_idx, params, status, series_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12::jsonb, $13, $14)
      RETURNING *`,
-    [g.userId, g.mode, g.difficulty, g.ticker, g.day, g.dayTo, g.tf, JSON.stringify(bars), g.startIdx, g.endIdx, g.cursor, JSON.stringify(g.params)],
+    [g.userId, g.mode, g.difficulty, g.ticker, g.day, g.dayTo, g.tf, JSON.stringify(bars), g.startIdx, g.endIdx, g.cursor, JSON.stringify(g.params),
+      g.status ?? "active", g.seriesId ?? null],
   );
   return fromDb(rows[0]);
 }
@@ -283,6 +345,25 @@ export async function reactivate(id: number): Promise<void> {
 
 export async function markAbandoned(id: number): Promise<void> {
   await pool.query(`UPDATE sim_games SET status = 'abandoned', updated_at = NOW() WHERE id = $1 AND status = 'active'`, [id]);
+}
+
+/** Skipped before any order (POST /skip, or «next» over an untouched game): ends it outside every progress count. */
+export async function markSkipped(id: number, cursor: number): Promise<void> {
+  await pool.query(
+    `UPDATE sim_games SET status = 'skipped', cursor_idx = $2, finished_at = NOW(), updated_at = NOW() WHERE id = $1 AND status = 'active'`,
+    [id, cursor],
+  );
+}
+
+/** A prepared series game becomes the user's active game (false when it is not prepared any more). */
+export async function activatePrepared(id: number): Promise<boolean> {
+  const r = await pool.query(`UPDATE sim_games SET status = 'active', updated_at = NOW() WHERE id = $1 AND status = 'prepared'`, [id]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+/** Prepared games of a series that will never be dealt (series abandoned / finished) — kept, marked abandoned. */
+export async function dropPrepared(seriesId: number): Promise<void> {
+  await pool.query(`UPDATE sim_games SET status = 'abandoned', updated_at = NOW() WHERE series_id = $1 AND status = 'prepared'`, [seriesId]);
 }
 
 /** (ticker, day) of the user's recent games of a mode — not offered again. */

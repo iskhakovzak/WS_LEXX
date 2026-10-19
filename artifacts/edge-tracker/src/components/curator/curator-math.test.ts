@@ -28,8 +28,12 @@ describe("curator-math", () => {
   it("wait labels", () => {
     expect(waitLabel(0.4)).toBe("<1 ч");
     expect(waitLabel(5)).toBe("5 ч");
-    expect(waitLabel(28)).toBe("1 д 4 ч");
-    expect(waitLabel(48)).toBe("2 д");
+    expect(waitLabel(28)).toBe("1 дн 4 ч");
+    expect(waitLabel(48)).toBe("2 дн");
+    // OLGA-08: hours never round up to «24 ч» — the total is rounded once.
+    expect(waitLabel(47.6)).toBe("2 дн");
+    expect(waitLabel(71.6)).toBe("3 дн");
+    expect(waitLabel(23.7)).toBe("1 дн");
   });
   it("sorts by attention, then usage", () => {
     const list = [sig("Б", { priority: 20 }), sig("А", { priority: 100 }), sig("В", { priority: 20, daily: 90 })];

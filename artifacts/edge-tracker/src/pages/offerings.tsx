@@ -27,10 +27,10 @@ import {
   fetchOfferingsFresh, useAddToPlan, useAddToWatchlist, useExposure, useOfferings, useOfferingsDays,
 } from "@/components/offerings/use-offerings-data";
 import {
-  addBusinessDays, dayTitle, fmtDay, fmtM, offeringKey, pctOfMcap, todayNY,
+  addBusinessDays, dayTitle, fmtDay, fmtM, marketDay, offeringKey, pctOfMcap, todayNY,
   type Offering,
 } from "@/components/offerings/types";
-import { fmtPct } from "@/lib/format";
+import { fmtDeskTime, fmtPct } from "@/lib/format";
 import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { offeringsI18n } from "@/i18n/ns/offerings";
@@ -39,13 +39,6 @@ import { rich } from "@/components/events/rich-text";
 type Tab = "today" | "week" | "ipo" | "insiders" | "mine";
 type When = "today" | "next" | "prev" | "all";
 const TABS: Tab[] = ["today", "week", "ipo", "insiders", "mine"];
-
-/** Last market day in New York (weekends roll back to Friday). */
-function marketDay(): string {
-  const t = todayNY();
-  const dow = new Date(t + "T12:00:00Z").getUTCDay();
-  return dow === 0 || dow === 6 ? addBusinessDays(t, -1) : t;
-}
 
 /** Which day's plan «В план дня» writes to: today until the close, then the next session. */
 function planDay(): string {
@@ -138,7 +131,7 @@ export default function OfferingsPage() {
   const pendingTicker = useRef<string | null>(initialUrl.ticker);
 
   const isList = tab === "today" || tab === "week";
-  const { data, isLoading, error, refetch, isFetching } = useOfferings(day);
+  const { data, isLoading, error, refetch, isFetching, revalidating } = useOfferings(day);
   const weekDays = useMemo(() => {
     const out = [day];
     for (let i = 0; i < 4; i++) out.unshift(addBusinessDays(out[0], -1));
@@ -373,7 +366,11 @@ export default function OfferingsPage() {
         icon={Layers}
         meta={
           <>
-            {data?.fetchedAt ? <UpdatedAgo at={data.fetchedAt} prefix={t("page.dataPrefix")} /> : <span>{t("page.loadingData")}</span>}
+            {data?.fetchedAt && data.stale ? (
+              <span className="tabular-nums" title={t("page.dataAtTitle")}>
+                {t("page.dataAt", { time: fmtDeskTime(data.fetchedAt) })}{revalidating ? ` ${t("page.revalidating")}` : ""}
+              </span>
+            ) : data?.fetchedAt ? <UpdatedAgo at={data.fetchedAt} prefix={t("page.dataPrefix")} /> : <span>{t("page.loadingData")}</span>}
             {enriching && <span title={t("page.enrichingTitle")}>{t("page.enriching")}</span>}
             {sourcesDown.length > 0 && <Pill tone="warn" className="text-2xs">{t("page.unavailable", { list: sourcesDown.join(", ") })}</Pill>}
           </>

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
 import {
   achievementHint, achievementTitle, activeByScope, daysLeft, defaultDeadline, freshlyDone, isHidden, nextTier, questHistory, questTitle,
-  sortAchievements, stripView, todayQuests,
+  isOptionalStep, sortAchievements, stripView, todayQuests,
 } from "../model";
 import { TODAY, achievements, daily, finished, fromCurator, me, onboarding, quest, weekly } from "./fixtures";
 
@@ -64,6 +64,25 @@ describe("dashboard strip", () => {
     expect([v.done, v.total]).toEqual([3, 7]);
     expect(v.next?.id).toBe(104);
     expect(v.today.map((q) => q.id)).toEqual([201, 202]);
+  });
+
+  it("first steps in display order; the optional Telegram step is listed last and never «next» while others wait (UMID-09)", () => {
+    // Stored out of order (an older chain): Telegram and the PIN still open, the plan step done.
+    const steps = [
+      quest({ id: 301, scope: "onboarding", template: "link_telegram", endsOn: null }),
+      quest({ id: 302, scope: "onboarding", template: "set_own_rule", endsOn: null }),
+      quest({ id: 303, scope: "onboarding", template: "first_plan_stop", status: "done", progress: 1, completedAt: TODAY, endsOn: null }),
+      quest({ id: 304, scope: "onboarding", template: "set_pin", endsOn: null }),
+    ];
+    const v = stripView(me({ quests: steps, summary: { ...me().summary, onboarding: { done: 1, total: 6 } } }))!;
+    expect(v.steps.map((q) => q.template)).toEqual(["set_pin", "first_plan_stop", "set_own_rule", "link_telegram"]);
+    expect(v.next?.template).toBe("set_pin");
+    expect(isOptionalStep(steps[0]!)).toBe(true);
+    expect(isOptionalStep(steps[3]!)).toBe(false);
+    // Only Telegram left open → it is the next step; the board orders the same way.
+    const onlyTg = steps.map((q) => (q.template === "link_telegram" ? q : { ...q, status: "done" as const }));
+    expect(stripView(me({ quests: onlyTg, summary: { ...me().summary, onboarding: { done: 5, total: 6 } } }))!.next?.template).toBe("link_telegram");
+    expect(activeByScope(steps).find((g) => g.scope === "onboarding")!.quests.map((q) => q.template)).toEqual(["set_pin", "set_own_rule", "link_telegram"]);
   });
 
   it("a finished chain falls back to today's quests; nothing at all → no strip", () => {

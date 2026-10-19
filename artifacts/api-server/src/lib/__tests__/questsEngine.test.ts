@@ -1,5 +1,6 @@
 /**
- * Quest catalog + engine (lib/quests/catalog.ts, engine.ts): onboarding order (each step unlocks the next), every
+ * Quest catalog + engine (lib/quests/catalog.ts, engine.ts): onboarding (independent steps, Telegram optional, only for
+ * new traders), the learner practice quests, every
  * template's progress / done / failed rule, relevance, the weekly rotation, expiry after the last day (+ the review
  * grace day), idempotency (a plan applied twice creates nothing new) and the API helpers (visible list, week summary,
  * quest points).
@@ -43,32 +44,58 @@ function apply(store: StoredQuest[], plan: ReturnType<typeof e.planQuests>): Sto
 const run = (d: QuestData, store: StoredQuest[] = [], sw = ALL_ON, onboarding = true) => apply(store, e.planQuests(d, store, { onboarding }, sw));
 const tpl = (store: StoredQuest[], key: string) => store.find((q) => q.template === key);
 
-describe("onboarding chain", () => {
-  it("starts with the first step only", () => {
+const STEPS = ["set_pin", "first_plan_stop", "first_review", "open_desk_day", "replay_own_day", "set_own_rule", "link_telegram"];
+
+describe("onboarding (first steps)", () => {
+  it("every step at once, each on its own; Telegram last and optional", () => {
     const s = run(data(), [], ONLY("onboarding"));
-    expect(s.map((q) => [q.template, q.status])).toEqual([["set_pin", "active"]]);
+    expect(s.map((q) => [q.template, q.status])).toEqual(STEPS.map((k) => [k, "active"]));
     expect(s[0]!.endsOn).toBeNull();
     expect(s[0]!.rewardPoints).toBe(10);
+    expect(c.templateOf("onboarding", "link_telegram")!.optional).toBe(true);
+    expect(c.requiredOnboardingSteps()).toBe(6);
+    expect(e.onboardingState(s)).toEqual({ done: 0, total: 6, doneOn: null });
   });
 
-  it("steps the data already shows are done at once and unlock the next", () => {
-    const s = run(data({ user: { mustChangeSecret: false, telegram: true } }), [], ONLY("onboarding"));
-    expect(s.map((q) => [q.template, q.status])).toEqual([["set_pin", "done"], ["link_telegram", "done"], ["first_plan_stop", "active"]]);
-  });
-
-  it("a later step done out of order waits for the earlier ones", () => {
-    const d = data({ user: { mustChangeSecret: false, telegram: false }, games: [{ finishedOn: "2026-10-01", verdict: "better" }] });
+  it("an unchanged PIN or no Telegram blocks nothing (UMID-09): a plan with a stop is done at once", () => {
+    const d = data({ user: { mustChangeSecret: true, telegram: false }, plans: new Map([["2026-10-14", { beforeOpen: true, stop: true, ownRule: false, contract: true }]]) });
     const s = run(d, [], ONLY("onboarding"));
-    expect(s.map((q) => q.template)).toEqual(["set_pin", "link_telegram"]);
-    // Telegram linked later → the chain continues; replay is done at once when its turn comes.
-    const d2 = { ...d, user: { mustChangeSecret: false, telegram: true }, plans: new Map([["2026-10-10", { beforeOpen: true, stop: true, ownRule: true, contract: true }]]),
+    expect(tpl(s, "set_pin")!.status).toBe("active");
+    expect(tpl(s, "link_telegram")!.status).toBe("active");
+    expect(tpl(s, "first_plan_stop")!).toMatchObject({ status: "done", completedOn: "2026-10-14" });
+    expect(e.onboardingState(s)).toMatchObject({ done: 1, total: 6 });
+  });
+
+  it("the list is complete without Telegram; nothing new afterwards", () => {
+    const d = { ...data({ user: { mustChangeSecret: false, telegram: false }, games: [{ finishedOn: "2026-10-01", verdict: "better" }] }),
+      plans: new Map([["2026-10-10", { beforeOpen: true, stop: true, ownRule: true, contract: true }]]),
       reviews: [{ date: "2026-10-10", reviewedOn: "2026-10-10" }], deskDayOpens: ["2026-10-11"] };
-    run(d2, s, ONLY("onboarding"));
-    expect(s.map((q) => [q.template, q.status])).toEqual([
-      ["set_pin", "done"], ["link_telegram", "done"], ["first_plan_stop", "done"], ["first_review", "done"], ["open_desk_day", "done"], ["replay_own_day", "done"], ["set_own_rule", "done"],
-    ]);
-    expect(e.onboardingState(s)).toEqual({ done: 7, total: 7, doneOn: "2026-10-14" });
-    expect(run(d2, s, ONLY("onboarding")).length).toBe(7); // finished: nothing new
+    const s = run(d, [], ONLY("onboarding"));
+    expect(s.filter((q) => q.status === "done").map((q) => q.template)).toEqual(STEPS.slice(0, 6));
+    expect(tpl(s, "link_telegram")!.status).toBe("active");
+    expect(e.onboardingState(s)).toEqual({ done: 6, total: 6, doneOn: "2026-10-14" });
+    expect(run(d, s, ONLY("onboarding")).length).toBe(7); // complete: nothing new
+    // Shown no more once complete (the open Telegram step included).
+    expect(e.visibleQuests(s, "2026-10-14", "2026-10-12", "2026-10").filter((q) => q.scope === "onboarding")).toEqual([]);
+  });
+
+  it("an older chain (created in order) gets its missing steps at once", () => {
+    const s = run(data(), [], ONLY("onboarding"));
+    const old = s.filter((q) => q.template === "set_pin");
+    run(data(), old, ONLY("onboarding"));
+    expect(old.map((q) => q.template).sort()).toEqual([...STEPS].sort());
+  });
+
+  it("only new traders: Трейдер and above get no list, and an old one is hidden (MAKSIM-29, ROMAN-19)", () => {
+    expect(e.onboardingFor("trader", null)).toBe(true);
+    expect(e.onboardingFor("trader", "trainee")).toBe(true);
+    expect(e.onboardingFor("trader", "junior")).toBe(true);
+    expect(e.onboardingFor("trader", "trader")).toBe(false);
+    expect(e.onboardingFor("trader", "senior")).toBe(false);
+    expect(e.onboardingFor("curator", null)).toBe(false);
+    const s = run(data(), [], ONLY("onboarding"));
+    expect(e.visibleQuests(s, "2026-10-14", "2026-10-12", "2026-10", false).some((q) => q.scope === "onboarding")).toBe(false);
+    expect(e.visibleQuests(s, "2026-10-14", "2026-10-12", "2026-10").map((q) => q.template)).toEqual(STEPS);
   });
 
   it("only traders get it; the switch turns it off", () => {
@@ -166,6 +193,20 @@ describe("weekly quests", () => {
     expect(run(data(), [], ONLY("weekly"))).toEqual([]);
   });
 
+  it("a learner without trades gets practice quests: drills, lessons, plans — progress from the trainer (UMID-19)", () => {
+    const learner = data({ today: "2026-10-19", lastFinished: "2026-10-16", learner: true, academy: true });
+    const s = run(learner, [], ONLY("weekly"));
+    expect(s.map((q) => q.template).sort()).toEqual(["academy_lessons", "plan_days", "trainer_drills"]);
+    expect(e.weekSummary(s, "2026-10-19", "2026-10-23")).toEqual({ weekDone: 0, weekTotal: 3 });
+    const drills = Array(10).fill("2026-10-19");
+    run({ ...learner, drillDays: drills, lessonDays: ["2026-10-19"] }, s, ONLY("weekly"));
+    expect(tpl(s, "trainer_drills")!).toMatchObject({ status: "done", progress: 10, target: c.PRACTICE_TARGETS.drills });
+    expect(tpl(s, "academy_lessons")!).toMatchObject({ status: "active", progress: 1 });
+    // Not enrolled in the academy → no lesson quest; not a learner → none of them.
+    expect(run({ ...learner, academy: false }, [], ONLY("weekly")).map((q) => q.template)).not.toContain("academy_lessons");
+    expect(run({ ...learner, learner: false }, [], ONLY("weekly"))).toEqual([]);
+  });
+
   const q = (template: string, over: Partial<StoredQuest> = {}): StoredQuest => ({
     id: 1, trader: "Кирилл Б.", scope: "weekly", template, period: "2026-10-12", params: {}, progress: 0, target: 1, status: "active",
     rewardPoints: 10, startsOn: "2026-10-12", endsOn: "2026-10-16", completedOn: null, assignedBy: null, note: null, ...over,
@@ -261,7 +302,7 @@ describe("idempotency and the API helpers", () => {
   it("visible list, week summary and points", () => {
     const s = run(data({ user: { mustChangeSecret: false, telegram: false }, plans: new Map([["2026-10-14", { beforeOpen: true, stop: true, ownRule: false, contract: true }]]) }));
     const shown = e.visibleQuests(s, "2026-10-14", "2026-10-12", "2026-10");
-    expect(shown.map((q) => q.scope)).toEqual(["onboarding", "onboarding", "daily", "daily", "weekly"]); // contract_days: the only relevant weekly
+    expect(shown.map((q) => q.scope)).toEqual([...Array(7).fill("onboarding"), "daily", "daily", "weekly"]); // contract_days: the only relevant weekly
     // «Квесты недели»: weekly quests only (the two daily ones of the day do not count).
     expect(e.weekSummary(s, "2026-10-12", "2026-10-16")).toEqual({ weekDone: 0, weekTotal: 1 });
     const curator = { ...s[0]!, id: 900, scope: "curator" as const, template: "review_days", period: "curator", status: "cancelled" as const, startsOn: "2026-10-13", endsOn: "2026-10-20", completedOn: null };
@@ -269,8 +310,9 @@ describe("idempotency and the API helpers", () => {
     // A cancelled curator quest stays in the list (history), flagged; the old clients read it as expired.
     expect(e.visibleQuests([...s, curator], "2026-10-14", "2026-10-12", "2026-10").some((q) => q.id === 900)).toBe(true);
     expect(e.toQuest(curator, data())).toMatchObject({ status: "expired", cancelled: true, href: null });
-    expect(e.questPoints(s, "2026-10-01")).toEqual({ total: 13, recent: 13 });
-    expect(e.questPoints(s, "2026-10-15")).toEqual({ total: 13, recent: 0 });
+    // set_pin + first_plan_stop (10 each, done at once) + plan_before_open (3)
+    expect(e.questPoints(s, "2026-10-01")).toEqual({ total: 23, recent: 23 });
+    expect(e.questPoints(s, "2026-10-15")).toEqual({ total: 23, recent: 0 });
     const api = e.toQuest(tpl(s, "plan_before_open")!, data());
     expect(api).toMatchObject({ title: { key: "quest.plan_before_open.title", params: { target: 1, count: 1 } }, description: { key: "quest.plan_before_open.desc" }, status: "done", href: null });
   });

@@ -37,6 +37,11 @@ export default {
     text: "{lead} {parts}. Выборка: {na} и {nb} сделок.",
     titleR: "{label}: {metric} на сделку",
     titleWr: "{label}: {metric} к винрейту",
+    titleBetterR: "{label}: на {metric} лучше на сделку",
+    titleWorseR: "{label}: на {metric} хуже на сделку",
+    titleBetterWr: "{label}: винрейт выше на {metric}",
+    titleWorseWr: "{label}: винрейт ниже на {metric}",
+    titleMixed: "{label}: эффект смешанный — {metric} на сделку, винрейт {wr}",
     pp: "{value} п.п.",
   },
   coverage: {

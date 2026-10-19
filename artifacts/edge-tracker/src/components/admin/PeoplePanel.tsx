@@ -48,6 +48,7 @@ import { FillLatinButton, LatinSuggestion, NameLatinDialog } from "./latin-names
 
 export type PeopleView = "manage" | "activity";
 type Filter = "all" | "traders" | "staff" | "active" | "frozen" | "archived" | "nocurator" | "noaccount";
+export type PeopleFilter = Filter;
 
 const FILTERS: readonly Filter[] = ["all", "traders", "staff", "active", "frozen", "archived", "nocurator", "noaccount"];
 /** Problem filters: shown only when they match someone (or are selected) — fewer chips at once. */
@@ -97,7 +98,7 @@ function later(a: string | null, b: string | null): string | null {
 }
 
 export function PeoplePanel({
-  actor, pulse, pulseLoading, pulseError, onPulseRetry, riskStatus, view, onViewChange, activityFilter, onActivityFilterChange,
+  actor, pulse, pulseLoading, pulseError, onPulseRetry, riskStatus, view, onViewChange, activityFilter, onActivityFilterChange, initialFilter,
 }: {
   actor: string;
   pulse: DeskPulse | undefined;
@@ -109,6 +110,8 @@ export function PeoplePanel({
   onViewChange: (v: PeopleView) => void;
   activityFilter: TraderFilter;
   onActivityFilterChange: (f: TraderFilter) => void;
+  /** Start the management list on this filter (the Обзор «Без куратора» link). */
+  initialFilter?: Filter;
 }) {
   const { can, isAdmin, refreshUsers } = useAuth();
   const { toast } = useToast();
@@ -126,7 +129,8 @@ export function PeoplePanel({
   const canTier = can("scaling.approve");
   const canMap = can("propreports.configure");
 
-  const [filter, setFilter] = useState<Filter>("active");
+  const [filter, setFilter] = useState<Filter>(initialFilter ?? "active");
+  useEffect(() => { if (initialFilter) setFilter(initialFilter); }, [initialFilter]);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [dialog, setDialog] = useState<ReasonDialogState>(null);

@@ -142,7 +142,11 @@ describe("season finalization and rewards (stores mocked)", () => {
     const grant = { id: 9, itemId: 3, trader: "Кирилл Б.", status: "eligible" as const, at: "x", by: null, title: "Книга" };
     const insertEligible = vi.fn().mockResolvedValueOnce(grant).mockResolvedValue(null);
     const decideGrant = vi.fn().mockResolvedValueOnce({ ok: true, grant: { ...grant, status: "granted" } }).mockResolvedValue({ ok: false, code: "REWARD_GRANT_DECIDED" });
-    vi.doMock("../gamification/rewardsStore", () => ({ insertEligible, decideGrant, listItems: vi.fn(async () => []), requestGrant: vi.fn() }));
+    const markGrantNoticesRead = vi.fn(async () => undefined);
+    vi.doMock("../gamification/rewardsStore", () => ({
+      insertEligible, decideGrant, listItems: vi.fn(async () => []), requestGrant: vi.fn(), grantsOf: vi.fn(async () => []),
+      revokeGrants: vi.fn(async () => []), eligibleGrantsOfItem: vi.fn(async () => []), markGrantNoticesRead,
+    }));
     const recordRecognition = vi.fn(async () => true);
     vi.doMock("../gamification/recognition", () => ({ recordRecognition }));
     const { notifyUser } = await import("../notifyUtils");
@@ -158,9 +162,50 @@ describe("season finalization and rewards (stores mocked)", () => {
     expect((await rs.decideReward(grant, "granted", "Ольга Н.", "молодец")).ok).toBe(true);
     expect(vi.mocked(notifyUser).mock.calls[0]![0]).toMatchObject({ type: "reward_granted", params: expect.objectContaining({ title: "Книга", note: "молодец" }) });
     expect(recordRecognition).toHaveBeenCalledWith(expect.objectContaining({ kind: "reward", ref: "grant:9" }), expect.any(Date));
+    // The staff «просит награду» notification of a decided grant is marked read (OLGA-16).
+    expect(markGrantNoticesRead).toHaveBeenCalledWith("reward_requested", [9]);
     vi.mocked(notifyUser).mockClear();
     expect(await rs.decideReward(grant, "declined", "Ольга Н.", null)).toEqual({ ok: false, code: "REWARD_GRANT_DECIDED" });
     expect(vi.mocked(notifyUser)).not.toHaveBeenCalled();
+    vi.doUnmock("../gamification/rewardsStore");
+    vi.doUnmock("../gamification/recognition");
+  });
+
+  it("stale eligibility is revoked: inactive item or condition no longer met; an item edit re-checks (ILYA-17)", async () => {
+    vi.resetModules();
+    const open = { id: 16, itemId: 3, trader: "Денис Ф.", status: "eligible" as const, at: "x", by: null, ref: "", title: "Разбор 1:1" };
+    const revokeGrants = vi.fn(async (ids: readonly number[]) => ids.map((id) => ({ id, trader: "Денис Ф." })));
+    const markGrantNoticesRead = vi.fn(async () => undefined);
+    const eligibleGrantsOfItem = vi.fn(async () => [open]);
+    vi.doMock("../gamification/rewardsStore", () => ({
+      insertEligible: vi.fn(async () => null), decideGrant: vi.fn(), listItems: vi.fn(async () => []), requestGrant: vi.fn(),
+      grantsOf: vi.fn(async () => [open]), revokeGrants, eligibleGrantsOfItem, markGrantNoticesRead,
+    }));
+    vi.doMock("../gamification/recognition", () => ({ recordRecognition: vi.fn(async () => true) }));
+    const rs = await import("../gamification/rewardsService");
+    const master = { id: 3, title: "Разбор 1:1", description: null, active: true, stock: null, condition: { kind: "mastery" as const, ref: "", tier: "4" } };
+    const expert = { achievements: [], level: 1, seasons: [], mastery: [{ setupId: 205, code: "1.3", level: 3 }] };
+    // Mastery «Мастер» needed, the trader is «Эксперт» → the old eligible row is revoked, its notification read.
+    await rs.syncRewards("Денис Ф.", expert, [master]);
+    expect(revokeGrants).toHaveBeenCalledWith([16]);
+    expect(markGrantNoticesRead).toHaveBeenCalledWith("reward_eligible", [16]);
+    revokeGrants.mockClear();
+    // Still a master → kept.
+    await rs.syncRewards("Денис Ф.", { ...expert, mastery: [{ setupId: 205, code: "1.3", level: 4 }] }, [master]);
+    expect(revokeGrants).not.toHaveBeenCalled();
+    // Deactivated by the admin → revoked at once, nobody re-checked.
+    const inputOf = vi.fn(async () => expert);
+    await rs.recheckItem(master, { ...master, active: false }, inputOf);
+    expect(revokeGrants).toHaveBeenCalledWith([16]);
+    expect(inputOf).not.toHaveBeenCalled();
+    revokeGrants.mockClear();
+    // Same condition, other text → nothing to re-check.
+    await rs.recheckItem(master, { ...master, title: "Разбор 1:1 с сеньором" }, inputOf);
+    expect(inputOf).not.toHaveBeenCalled();
+    // Condition edited (Эксперт → Мастер) → each eligible trader re-checked in the background.
+    await rs.recheckItem({ ...master, condition: { ...master.condition, tier: "3" } }, master, inputOf);
+    await vi.waitFor(() => expect(revokeGrants).toHaveBeenCalledWith([16]));
+    expect(inputOf).toHaveBeenCalledWith("Денис Ф.");
     vi.doUnmock("../gamification/rewardsStore");
     vi.doUnmock("../gamification/recognition");
   });

@@ -108,6 +108,8 @@ export default {
     noTrades: "Savdolar yoʻq",
     toStop: "Kunlik stopgacha {amount}",
     halted: "Kunlik stop: savdo toʻxtatildi",
+    haltedWeekly: "Haftalik stop: savdo toʻxtatildi",
+    haltedDrawdown: "Maks. pasayish: savdo toʻxtatildi",
     usedAria: "Kunlik limitning {pct} qismi ishlatildi",
     open: "Risk-deskni ochish",
   },

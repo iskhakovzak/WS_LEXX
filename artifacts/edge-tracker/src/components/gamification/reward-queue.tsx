@@ -9,6 +9,9 @@ import { gamificationI18n } from "@/i18n/ns/gamification";
 import { personName } from "@/i18n";
 import { useDecideReward, useRewardQueue, type QueueGrant } from "./api";
 
+/** Where staff decide reward requests (the reward_requested notification link; the admin «Награды» block links here). */
+export const STAFF_QUEUE_HREF = "/curator?rewards=1";
+
 /** One requested reward: who / what / when, «Вручить» / «Отклонить» right in the row. */
 function QueueRow({ g, onOpenTrader, focus }: { g: QueueGrant; onOpenTrader: (trader: string) => void; focus: boolean }) {
   const { t } = gamificationI18n.useT();

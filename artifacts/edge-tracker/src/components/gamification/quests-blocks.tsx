@@ -56,6 +56,7 @@ export function QuestsHeaderView({ me }: { me: GamificationMe }) {
       <SeasonBar season={me.season} href="/ratings?tab=season" />
       <FreezeLine freeze={me.freeze} />
       <TitlePicker titles={me.titles} active={me.activeTitle} />
+      {me.titlesPaused && <p className="text-xs text-muted-foreground">{t("titles.paused")}</p>}
     </div>
   );
 }

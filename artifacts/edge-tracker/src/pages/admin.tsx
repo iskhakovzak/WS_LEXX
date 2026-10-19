@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { isTypingTarget, useAdminOverview, useDeskPulse, useRiskDesk } from "@/components/admin/api";
 import { KpiRow, OverviewPanel, type AdminTab } from "@/components/admin/OverviewPanel";
 import { type RiskStatus, type TraderFilter } from "@/components/admin/TradersTable";
-import { PeoplePanel, type PeopleView } from "@/components/admin/PeoplePanel";
+import { PeoplePanel, type PeopleFilter, type PeopleView } from "@/components/admin/PeoplePanel";
 import { ModerationQueue } from "@/components/admin/ModerationQueue";
 import { RolesPanel } from "@/components/admin/RolesPanel";
 import { AuditLog } from "@/components/admin/AuditLog";
@@ -16,13 +16,14 @@ import { DataPanel } from "@/components/admin/DataPanel";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
 import { UsagePanel } from "@/components/admin/UsagePanel";
-import { routeTitle } from "@/components/shell/nav";
+import { ALL_NAV_ITEMS, routeTitle } from "@/components/shell/nav";
 import { usageI18n } from "@/i18n/ns/usage";
 import { RewardsEditorPanel } from "@/components/gamification/reward-editor";
+import { RewardsAdminBlock } from "@/components/gamification/rewards-admin-block";
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { appErrorsI18n } from "@/i18n/ns/appErrors";
 import { adminI18n } from "@/i18n/ns/admin";
-import { useDataQuality, useEodQueueCount, useEodStatus, useHealth, useTiers } from "@/components/admin/console-api";
+import { useDataQuality, useEodQueueCount, useEodStatus, useHealth, useReviewLoad, useTiers } from "@/components/admin/console-api";
 
 const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "settings", "usage", "data", "audit", "errors"];
 // Old tab ids (links/bookmarks) map onto the new ones.
@@ -44,6 +45,9 @@ function initialTab(): AdminTab {
   } catch { /* ignore */ }
   return "overview";
 }
+
+/** The trader menu (no staff-only or hidden pages): «никто не открыл» in Использование is measured against it. */
+const TRADER_MENU = ALL_NAV_ITEMS.filter((i) => !i.staff && !i.hidden).map((i) => ({ href: i.href, also: i.also, get name() { return i.name; } }));
 
 /** Usage view: a route pattern ("/playbook?mode=mine") → the section name the shell shows for it (null = unknown). */
 function screenLabel(key: string): string | null {
@@ -86,15 +90,32 @@ function AdminConsole() {
   const showSettings = isAdmin && can("settings.manage");
   // «Использование» (internal usage tracking for the pilot) is admin-only too (capability usage.read).
   const showUsage = isAdmin && can("usage.read");
+  // OLGA-02: a curator sees only what they can use. «Роли» = the admin's matrix editor, «Аудит» needs admin.audit,
+  // «Данные» (export, backups, jobs, quality) needs the export or the audit right — both admin-only by default.
+  const showRoles = can("permissions.manage");
+  const showAudit = can("admin.audit");
+  const showData = can("admin.backups.read") || can("admin.audit");
   const { t: tSettings } = deskSettingsI18n.useT();
   const { t: tUsage } = usageI18n.useT();
-  const tabs = TABS.filter((x) => (x !== "errors" || showErrors) && (x !== "settings" || showSettings) && (x !== "usage" || showUsage));
+  const hidden = useMemo(() => {
+    const h = new Set<AdminTab>();
+    if (!showErrors) h.add("errors");
+    if (!showSettings) h.add("settings");
+    if (!showUsage) h.add("usage");
+    if (!showRoles) h.add("roles");
+    if (!showAudit) h.add("audit");
+    if (!showData) h.add("data");
+    return h;
+  }, [showErrors, showSettings, showUsage, showRoles, showAudit, showData]);
+  const tabs = useMemo(() => TABS.filter((x) => !hidden.has(x)), [hidden]);
   const actor = user?.traderName ?? "";
   const qc = useQueryClient();
   const [tabState, setTabState] = useState<AdminTab>(initialTab);
-  const tab: AdminTab = (tabState === "errors" && !showErrors) || (tabState === "settings" && !showSettings) || (tabState === "usage" && !showUsage) ? "overview" : tabState;
+  const tab: AdminTab = hidden.has(tabState) ? "overview" : tabState;
   const [traderFilter, setTraderFilterState] = useState<TraderFilter>(initialFilter);
   const [peopleView, setPeopleViewState] = useState<PeopleView>(initialView);
+  // One-shot filter for «Люди → Управление» (the Обзор «Без куратора» link); cleared on the next tab switch.
+  const [peopleFilter, setPeopleFilter] = useState<PeopleFilter | undefined>(undefined);
 
   const pulse = useDeskPulse(actor);
   const overview = useAdminOverview(actor);
@@ -104,6 +125,7 @@ function AdminConsole() {
   const queue = useEodQueueCount();
   const tiers = useTiers();
   const quality = useDataQuality();
+  const reviewLoad = useReviewLoad(can("journal.review"));
 
   const tierNames = useMemo(
     () => Object.fromEntries((tiers.data ?? []).map((t) => [t.key, t.name])) as Record<string, string>,
@@ -112,6 +134,7 @@ function AdminConsole() {
 
   const setTab = useCallback((t: AdminTab) => {
     setTabState(t);
+    setPeopleFilter(undefined);
     try {
       localStorage.setItem(TAB_KEY, t);
       const url = new URL(window.location.href);
@@ -138,6 +161,12 @@ function AdminConsole() {
     }
     setTab(t);
   }, [setTab, setTraderFilter, setPeopleView]);
+
+  const goNoCurator = useCallback(() => {
+    setPeopleView("manage");
+    setTab("people");
+    setPeopleFilter("nocurator");
+  }, [setTab, setPeopleView]);
 
   const refreshAll = useCallback(() => {
     for (const k of ["admin-desk-pulse", "admin-overview", "admin-risk-desk-lite", "admin-reports", "admin-audit", "admin-backups", "admin-console", "propreports"]) {
@@ -181,8 +210,6 @@ function AdminConsole() {
         }
       />
 
-      <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue.data} loading={pulse.isLoading} onGo={go} />
-
       <div className="flex flex-col gap-1">
         <SectionTabs<AdminTab>
           ariaLabel={t("page.sectionsAria")}
@@ -192,11 +219,11 @@ function AdminConsole() {
             { value: "overview", label: t("page.tabs.overview"), icon: Activity },
             { value: "people", label: t("page.tabs.people"), icon: Users, count: unmatchedCount || undefined },
             { value: "moderation", label: t("page.tabs.moderation"), icon: Flag, count: openReports || undefined },
-            { value: "roles", label: t("page.tabs.roles"), icon: KeyRound },
+            ...(showRoles ? [{ value: "roles" as const, label: t("page.tabs.roles"), icon: KeyRound }] : []),
             ...(showSettings ? [{ value: "settings" as const, label: tSettings("tab"), icon: SlidersHorizontal }] : []),
             ...(showUsage ? [{ value: "usage" as const, label: tUsage("tab"), icon: BarChart3 }] : []),
-            { value: "data", label: t("page.tabs.data"), icon: Database },
-            { value: "audit", label: t("page.tabs.audit"), icon: ScrollText },
+            ...(showData ? [{ value: "data" as const, label: t("page.tabs.data"), icon: Database }] : []),
+            ...(showAudit ? [{ value: "audit" as const, label: t("page.tabs.audit"), icon: ScrollText }] : []),
             ...(showErrors ? [{ value: "errors" as const, label: appErrorsI18n.t("tab"), icon: Bug }] : []),
           ]}
         />
@@ -206,22 +233,30 @@ function AdminConsole() {
       </div>
 
       <div role="tabpanel" aria-label={t("page.panelAria")}>
+        {/* OWNER-22: the KPI strip belongs to «Обзор» only (it repeated above every tab). */}
         {tab === "overview" && (
-          <OverviewPanel
-            pulse={pulse.data}
-            overview={overview.data}
-            risk={risk.data}
-            health={health.data}
-            eod={eod.data}
-            queue={queue.data}
-            quality={quality.data?.checks ?? (quality.data === null ? null : undefined)}
-            pulseError={pulse.isError ? pulse.error : null}
-            healthError={health.isError ? health.error : null}
-            overviewError={overview.isError ? overview.error : null}
-            onRetry={refreshAll}
-            onGo={go}
-            tierNames={tierNames}
-          />
+          <div className="flex flex-col gap-[var(--grid-gap)]">
+            <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue.data} loading={pulse.isLoading} onGo={go} />
+            <OverviewPanel
+              pulse={pulse.data}
+              overview={overview.data}
+              risk={risk.data}
+              health={health.data}
+              eod={eod.data}
+              queue={queue.data}
+              quality={quality.data?.checks ?? (quality.data === null ? null : undefined)}
+              pulseError={pulse.isError ? pulse.error : null}
+              healthError={health.isError ? health.error : null}
+              overviewError={overview.isError ? overview.error : null}
+              onRetry={refreshAll}
+              onGo={go}
+              tierNames={tierNames}
+              canAudit={showAudit}
+              reviewLoad={can("journal.review") ? (reviewLoad.isLoading ? undefined : reviewLoad.data ?? null) : null}
+              onGoNoCurator={goNoCurator}
+              rewards={<RewardsAdminBlock enabled={showSettings} onOpenCatalog={() => setTab("settings")} />}
+            />
+          </div>
         )}
         {tab === "people" && (
           <PeoplePanel
@@ -235,6 +270,7 @@ function AdminConsole() {
             onViewChange={setPeopleView}
             activityFilter={traderFilter}
             onActivityFilterChange={setTraderFilter}
+            initialFilter={peopleFilter}
           />
         )}
         {tab === "moderation" && <ModerationQueue actor={actor} openCount={openReports} />}
@@ -246,7 +282,7 @@ function AdminConsole() {
             <DeskSettingsPanel canManage={showSettings} />
           </div>
         )}
-        {tab === "usage" && <UsagePanel enabled={showUsage} screenLabel={screenLabel} onOpenSettings={showSettings ? () => setTab("settings") : undefined} />}
+        {tab === "usage" && <UsagePanel enabled={showUsage} screenLabel={screenLabel} menu={TRADER_MENU} onOpenSettings={showSettings ? () => setTab("settings") : undefined} />}
         {tab === "data" && <DataPanel actor={actor} isAdmin={isAdmin} />}
         {tab === "audit" && <AuditLog actor={actor} tierNames={tierNames} />}
         {tab === "errors" && <AppErrorsPanel />}

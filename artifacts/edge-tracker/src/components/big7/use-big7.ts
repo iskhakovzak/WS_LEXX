@@ -74,6 +74,9 @@ export type MyTicker = MyAgg & {
   ticker: string;
   longNet: number;
   shortNet: number;
+  /** Trades per side (newer API); a side with none prints «—». */
+  longN?: number;
+  shortN?: number;
   lastDate: string | null;
   bestHour: { key: string; label: string; net: number; n: number } | null;
   worstHour: { key: string; label: string; net: number; n: number } | null;

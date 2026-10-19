@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
-import { PERM_GROUP_CODE, groupedCapabilities, type Capability, type CapabilityDef, type Role, type Scope } from "@/lib/permissions";
+import { PERM_GROUP_CODE, groupedCapabilities, sensitiveGrants, type Capability, type CapabilityDef, type Role, type Scope } from "@/lib/permissions";
 import { capabilityText, settingsI18n } from "@/i18n/ns/settings";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
@@ -110,6 +110,7 @@ export function PermissionsSection() {
   const editableRoles = useMemo(() => COLUMNS.filter((r) => !(data?.locked.roles ?? ["admin", "guest"]).includes(r)), [data]);
   const lockedCaps = useMemo(() => new Set<Capability>(data?.locked.capabilities ?? []), [data]);
   const changes = useMemo(() => (data && draft ? diffCells(data.matrix, draft, defs, editableRoles) : []), [data, draft, defs, editableRoles]);
+  const risky = useMemo(() => sensitiveGrants(changes, defs), [changes, defs]);
   const capLabel = (cap: Capability) => {
     const d = defs.find((x) => x.key === cap);
     return d ? capName(d) : cap;
@@ -208,6 +209,7 @@ export function PermissionsSection() {
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-foreground">{capName(d)}</span>
                         {d.adminOnly && <Pill tone="warn" className="text-2xs">{t("permissions.adminOnly")}</Pill>}
+                        {d.sensitive && <Pill tone="down" className="text-2xs" title={t("permissions.sensitiveTitle")}>{t("permissions.sensitive")}</Pill>}
                         {d.team && <Pill tone="neutral" className="text-2xs">{t("permissions.team")}</Pill>}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{capDescription(d)}</div>
@@ -292,6 +294,11 @@ export function PermissionsSection() {
                 ) : (
                   <>
                     <p className="mb-2">{t("permissions.applyDesc")}</p>
+                    {risky.length > 0 && (
+                      <p role="alert" className="mb-2 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">
+                        {t("permissions.sensitiveWarn", { list: risky.map(capLabel).join(", ") })}
+                      </p>
+                    )}
                     <ul className="max-h-[45dvh] overflow-auto rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
                       {changes.map((c) => (
                         <li key={`${c.role}:${c.capability}`}>

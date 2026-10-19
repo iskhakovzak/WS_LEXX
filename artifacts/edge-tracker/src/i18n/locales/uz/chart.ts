@@ -276,6 +276,7 @@ export default {
     whenEntry: "kirish paytida",
     whenExit: "chiqish paytida",
     whenAfter: "{dur} dan keyin",
+    neverInPlus: "Savdo bir marta ham foydaga chiqmadi — olinadigan foyda boʻlmadi.",
     stillOpen: "Pozitsiya hali ochiq — chiqish samaradorligi yopilgandan keyin chiqadi.",
     exitWorse: "Chiqish kirishdan yomonroq: narx {mfe} foyda bergan edi, lekin savdo zararda yopildi.",
     captured: "Siz harakatning {pct} qismini oldingiz: {detail}.",

@@ -1,11 +1,12 @@
 /**
  * In-game side panel. Top to bottom in the order of a decision: where am I (position, open P&L in $ and R) → act
- * (Buy / Sell / Close, ½ / break-even in a position, size or «размер по риску») → protect (stop / target, or a planned
- * stop while flat; both draggable on the chart) → the trade log with the applied slippage → go on (Next, Auto, speed)
- * → keys (DAS-like; the legend only on keyboard devices). Few controls up front (UX §4a.6).
+ * (Buy / Sell / Close, ½ / break-even in a position, size in bases ½ · 1 · 2 · 3 or «размер по риску») → protect
+ * (one auto stop + target switch; stop / target, or a planned stop / target while flat — all draggable on the chart's
+ * position box) → the trade log with the applied slippage → go on (play / pause, bar, event jump, 1× / 5× / 30×) →
+ * keys (DAS-like; the legend only on keyboard devices). Few controls up front (UX §4a.6).
  */
 import * as React from "react";
-import { Equal, FastForward, Pause, Play, Scissors, ShieldCheck, StepForward, Undo2 } from "lucide-react";
+import { Equal, FastForward, Pause, Play, Scissors, ShieldCheck, SkipForward, StepForward, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -15,7 +16,8 @@ import { cn } from "@/lib/utils";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
 import { simI18n } from "@/i18n/ns/simulator";
 import type { PublicState } from "./api";
-import { SPEEDS, maxQtyFor, parsePrice, presetQty, riskQty, roundPrice, type SizePreset, type Speed } from "./model";
+import { PACES, fillLabels, maxQtyFor, parsePrice, riskQty, roundPrice, type Pace } from "./model";
+import { SizeBar } from "./size-bar";
 import type { GameView, TicketKind } from "./use-sim-game";
 
 /** Keep mouse clicks from leaving focus on a button (Space would then also «click» it). */
@@ -57,7 +59,7 @@ export function PositionCard({ game }: { game: GameView }) {
 }
 
 export function OrderPad({
-  game, qty, setQty, onOrder, onUndo, onBreakEven, disabled, riskSize, setRiskSize, planStop,
+  game, qty, setQty, onOrder, onUndo, onBreakEven, disabled, riskSize, setRiskSize, planStop, fine = false,
 }: {
   game: GameView;
   qty: number;
@@ -69,19 +71,14 @@ export function OrderPad({
   riskSize: boolean;
   setRiskSize: (v: boolean) => void;
   planStop: number | null;
+  /** Keyboard device: key hints in tooltips. */
+  fine?: boolean;
 }) {
   const { t } = simI18n.useT();
   const base = game.meta.defaultQty;
   const price = game.feed.bars[game.cursor]?.c ?? 0;
   const pos = game.state.pos;
   const oneR = game.meta.oneR ?? null;
-  const preset: SizePreset | "" = qty === presetQty(base, "half") ? "half" : qty === base ? "base" : qty === presetQty(base, "double") ? "double" : "";
-  const [text, setText] = React.useState(String(qty));
-  React.useEffect(() => { setText(String(qty)); }, [qty]);
-  const commit = () => {
-    const v = Math.floor(Number(text));
-    if (Number.isFinite(v) && v >= 1) setQty(v); else setText(String(qty));
-  };
   const byRisk = riskSize && oneR != null && pos === 0;
   const stopForPreview = planStop ?? roundPrice(price - game.meta.riskUnit);
   const riskShares = byRisk && oneR != null ? riskQty(oneR, price, stopForPreview, maxQtyFor(game.meta.maxNotional, price)) : null;
@@ -109,28 +106,7 @@ export function OrderPad({
           </Button>
         </div>
       )}
-      {byRisk && oneR != null ? (
-        <p className="tile rounded-lg px-2.5 py-1.5 text-xs tabular-nums" aria-live="polite">
-          {riskShares != null
-            ? t(planStop != null ? "hud.riskPreviewPlan" : "hud.riskPreview", { oneR: fmtUsd(oneR, { decimals: 0 }), qty: fmtCount(riskShares), stop: fmtPrice(stopForPreview) })
-            : t("hud.errors.riskNoStop")}
-        </p>
-      ) : (
-        <div className="flex items-center gap-2">
-          <label className="sr-only" htmlFor="sim-qty">{t("hud.size")}</label>
-          <Input
-            id="sim-qty" inputMode="numeric" value={text} onChange={(e) => setText(e.target.value.replace(/[^0-9]/g, ""))}
-            onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") { commit(); (e.target as HTMLInputElement).blur(); } }}
-            className="h-8 w-24 text-right tabular-nums" title={t("hud.size")}
-          />
-          <Segmented
-            size="sm" ariaLabel={t("hud.size")} value={preset}
-            onChange={(p) => { if (p) setQty(presetQty(base, p as SizePreset)); }}
-            options={[{ value: "half", label: t("hud.half") }, { value: "base", label: t("hud.base") }, { value: "double", label: t("hud.double") }]}
-          />
-          <span className="ml-auto truncate text-2xs tabular-nums text-muted-foreground">{t("hud.notional", { value: fmtUsd(qty * price, { decimals: 0 }) })}</span>
-        </div>
-      )}
+      <SizeBar base={base} qty={qty} setQty={setQty} price={price} risk={byRisk && oneR != null ? { oneR, shares: riskShares } : null} keys={fine} />
       {oneR != null && (
         <div className="flex items-center justify-between gap-2">
           <label htmlFor="sim-risksize" className="text-xs" title={t("hud.riskSizeHint", { value: fmtUsd(oneR, { decimals: 0 }) })}>{t("hud.riskSize")}</label>
@@ -147,25 +123,31 @@ export function OrderPad({
 }
 
 export function BracketBox({
-  game, autoStop, setAutoStop, autoTarget, setAutoTarget, onBracket, disabled, planStop, setPlanStop,
+  game, auto, setAuto, onBracket, disabled, planStop, setPlanStop, planTarget, setPlanTarget, fine = false, autoNote,
 }: {
   game: GameView;
-  autoStop: boolean;
-  setAutoStop: (v: boolean) => void;
-  autoTarget: boolean;
-  setAutoTarget: (v: boolean) => void;
+  /** Automatic stop + target on entry (one switch, remembered). */
+  auto: boolean;
+  setAuto: (v: boolean) => void;
   onBracket: (stop: number | null, target: number | null) => void;
   disabled: boolean;
   planStop: number | null;
   setPlanStop: (v: number | null) => void;
+  planTarget: number | null;
+  setPlanTarget: (v: number | null) => void;
+  fine?: boolean;
+  /** «Stop beyond PDL» after an automatic level stop. */
+  autoNote?: string | null;
 }) {
   const { t } = simI18n.useT();
   const s = game.state;
   const [stop, setStop] = React.useState("");
   const [target, setTarget] = React.useState("");
   const [plan, setPlan] = React.useState("");
+  const [planT, setPlanT] = React.useState("");
   React.useEffect(() => { setStop(s.stop != null ? String(s.stop) : ""); setTarget(s.target != null ? String(s.target) : ""); }, [s.stop, s.target, s.pos]);
   React.useEffect(() => { setPlan(planStop != null ? String(planStop) : ""); }, [planStop]);
+  React.useEffect(() => { setPlanT(planTarget != null ? String(planTarget) : ""); }, [planTarget]);
   const price = game.feed.bars[game.cursor]?.c ?? 0;
   const ru = game.meta.riskUnit;
   const dir = Math.sign(s.pos);
@@ -179,15 +161,14 @@ export function BracketBox({
       ))}
     </div>
   );
+  // A plan's target side follows its stop (below the price = a long plan), else up.
+  const planDir = planStop != null ? (planStop < price ? 1 : -1) : 1;
+  const planDist = planStop != null ? Math.abs(price - planStop) : ru;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <label htmlFor="sim-autostop" className="flex items-center gap-2 text-xs"><ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />{t("hud.autoStop")}</label>
-        <Switch id="sim-autostop" checked={autoStop} onCheckedChange={setAutoStop} />
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor="sim-autotarget" className="pl-5.5 text-xs">{t("hud.autoTarget")}</label>
-        <Switch id="sim-autotarget" checked={autoTarget} onCheckedChange={setAutoTarget} />
+        <label htmlFor="sim-autobracket" className="flex items-center gap-2 text-xs" title={t("box.autoBracketHint")}><ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />{t("box.autoBracket")}</label>
+        <Switch id="sim-autobracket" checked={auto} onCheckedChange={setAuto} />
       </div>
       {s.pos === 0 ? (
         <div className="flex flex-col gap-1.5 border-t border-[var(--glass-border)] pt-2">
@@ -195,8 +176,11 @@ export function BracketBox({
             { text: "↓1R", price: roundPrice(price - ru), pick: () => setPlanStop(roundPrice(price - ru)) },
             { text: "↑1R", price: roundPrice(price + ru), pick: () => setPlanStop(roundPrice(price + ru)) },
           ], () => setPlanStop(parsePrice(plan)), true)}
+          {field("sim-plan-target", t("box.planTarget"), planT, setPlanT, [
+            { text: "2R", price: roundPrice(price + planDir * 2 * planDist), pick: () => setPlanTarget(roundPrice(price + planDir * 2 * planDist)) },
+          ], () => setPlanTarget(parsePrice(planT)), true)}
           <p className="text-2xs text-muted-foreground">{planStop != null ? t("hud.planHint") : t("hud.planEmpty")}</p>
-          {planStop != null && <Button size="sm" variant="ghost" className="self-start" onClick={() => setPlanStop(null)}>{t("hud.planClear")}</Button>}
+          {(planStop != null || planTarget != null) && <Button size="sm" variant="ghost" className="self-start" onClick={() => { setPlanStop(null); setPlanTarget(null); }}>{t("box.planClear")}</Button>}
         </div>
       ) : (
         <div className="flex flex-col gap-2 border-t border-[var(--glass-border)] pt-2">
@@ -208,9 +192,10 @@ export function BracketBox({
               <Button size="sm" variant="ghost" disabled={disabled} onClick={() => onBracket(null, null)} title={t("hud.keyTitle", { action: t("hud.clearBracket"), key: "Esc" })}>{t("hud.clearBracket")}</Button>
             )}
           </div>
-          <p className="text-2xs text-muted-foreground">{t("hud.dragHint")}</p>
+          {autoNote && <p className="text-2xs text-muted-foreground" data-testid="sim-auto-note">{autoNote}</p>}
         </div>
       )}
+      <p className="text-2xs text-muted-foreground">{fine ? t("box.placeHint") : t("box.placeHintTouch")}</p>
       <p className="text-2xs text-muted-foreground">{game.meta.own && game.meta.own.riskSource !== "atr" ? simOwnI18n.t("hudRiskUnit", { value: fmtUsd(ru, { decimals: ru < 1 ? 4 : 2 }) }) : t("hud.riskUnit", { value: fmtUsd(ru, { decimals: ru < 1 ? 4 : 2 }) })}</p>
     </div>
   );
@@ -221,7 +206,8 @@ export function FillsLog({ game, limit = 6 }: { game: GameView; limit?: number }
   const { t } = simI18n.useT();
   const fills = game.state.fills;
   if (!fills.length) return null;
-  const rows = fills.slice(-limit).reverse();
+  const labels = fillLabels(fills);
+  const rows = fills.map((f, i) => ({ ...f, label: labels[i] })).slice(-limit).reverse();
   const anySlip = fills.some((f) => f.slip != null);
   const slipTotal = fills.reduce((sum, f) => sum + Math.abs(f.qty) * (f.slip ?? 0), 0);
   return (
@@ -233,7 +219,7 @@ export function FillsLog({ game, limit = 6 }: { game: GameView; limit?: number }
       <ul className="flex flex-col gap-0.5 text-2xs tabular-nums">
         {rows.map((f, i) => (
           <li key={`${f.idx}-${i}`} className="flex items-center gap-2">
-            <span className={cn("w-12 shrink-0 font-semibold", f.qty > 0 ? "text-up" : "text-down")}>{t(`hud.log.reason.${f.reason}`)}</span>
+            <span className={cn("w-12 shrink-0 font-semibold", f.qty > 0 ? "text-up" : "text-down")}>{t(`hud.log.reason.${f.label}`)}</span>
             <span className="min-w-0 flex-1 truncate">{t("hud.log.fill", { qty: fmtCount(Math.abs(f.qty)), price: fmtPrice(f.price) })}</span>
             {f.slip != null && <span className="shrink-0 text-muted-foreground" title={t("hud.log.slipHint")}>{t("hud.log.slip", { value: fmtUsd(f.slip, { decimals: Math.abs(f.slip) < 0.01 ? 4 : 2 }) })}</span>}
           </li>
@@ -244,33 +230,40 @@ export function FillsLog({ game, limit = 6 }: { game: GameView; limit?: number }
 }
 
 export function PlayBar({
-  game, playing, setPlaying, speed, setSpeed, onNext, disabled,
+  game, playing, onToggle, pace, setPace, onStep, onEvent, disabled,
 }: {
   game: GameView;
   playing: boolean;
-  setPlaying: (v: boolean) => void;
-  speed: Speed;
-  setSpeed: (s: Speed) => void;
-  onNext: () => void;
+  onToggle: () => void;
+  pace: Pace;
+  setPace: (p: Pace) => void;
+  onStep: () => void;
+  /** Jump to the next event; absent = not available (button hidden). */
+  onEvent?: (() => void) | null;
   disabled: boolean;
 }) {
   const { t } = simI18n.useT();
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">
-        <Button onPointerDown={noFocus} size="lg" className="min-h-11 flex-1" disabled={disabled} onClick={onNext} aria-keyshortcuts="Space ArrowRight">
-          <StepForward aria-hidden="true" /> {t("hud.next")} <Kbd className="border-white/30 bg-white/10 text-white/90">␣</Kbd>
+        <Button onPointerDown={noFocus} size="lg" variant={playing ? "default" : "secondary"} className="min-h-11 flex-1" disabled={disabled} onClick={onToggle} aria-pressed={playing} aria-keyshortcuts="Space" data-testid="sim-play">
+          {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />} {playing ? t("play.pause") : t("play.play")} <Kbd className="[@media(pointer:coarse)]:hidden">{"␣"}</Kbd>
         </Button>
-        <Button onPointerDown={noFocus} size="lg" variant={playing ? "default" : "secondary"} className="min-h-11" disabled={disabled} onClick={() => setPlaying(!playing)} aria-pressed={playing} aria-keyshortcuts="A">
-          {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />} {playing ? t("hud.pause") : t("hud.auto")}
+        <Button onPointerDown={noFocus} size="lg" variant="outline" className="min-h-11 px-3" disabled={disabled} onClick={onStep} aria-keyshortcuts="ArrowRight" title={t("play.stepHint", { key: "→" })} aria-label={t("play.step")} data-testid="sim-step">
+          <StepForward aria-hidden="true" />
         </Button>
+        {onEvent && (
+          <Button onPointerDown={noFocus} size="lg" variant="outline" className="min-h-11 px-3" disabled={disabled} onClick={onEvent} aria-keyshortcuts="Shift+ArrowRight" title={t("play.eventHint", { key: "Shift+→" })} aria-label={t("play.event")} data-testid="sim-event">
+            <SkipForward aria-hidden="true" />
+          </Button>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <FastForward className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <Segmented
-          size="sm" ariaLabel={t("hud.speed")} value={String(speed)}
-          onChange={(v) => setSpeed(Number(v) as Speed)}
-          options={SPEEDS.map((s) => ({ value: String(s), label: `${s}×`, title: t("hud.speedValue", { value: s }) }))}
+          size="sm" ariaLabel={t("play.speed")} value={String(pace)}
+          onChange={(v) => setPace(Number(v) as Pace)}
+          options={PACES.map((p) => ({ value: String(p), label: `${p}×`, title: t("play.speedHint", { count: p }) }))}
         />
       </div>
       <span className="sr-only" aria-live="polite">{t("hud.bar", { played: game.cursor - game.meta.startIdx, total: game.meta.endIdx - game.meta.startIdx })}</span>
@@ -278,7 +271,7 @@ export function PlayBar({
   );
 }
 
-export function KeysHint() {
+export function KeysHint({ tfCount, canEvent, flow }: { tfCount: number; canEvent: boolean; flow: { skip: boolean; noTrade: boolean } }) {
   const { t } = simI18n.useT();
   const item = (k: React.ReactNode, text: string) => <span className="inline-flex items-center gap-1 whitespace-nowrap">{k}{text}</span>;
   return (
@@ -290,9 +283,15 @@ export function KeysHint() {
       {item(<Kbd>E</Kbd>, t("hud.keys.breakEven"))}
       {item(<Kbd>Esc</Kbd>, t("hud.keys.cancel"))}
       {item(<Kbd>Z</Kbd>, t("hud.keys.undo"))}
-      {item(<Kbd keys={["␣", "→"]} />, t("hud.keys.next"))}
-      {item(<Kbd>A</Kbd>, t("hud.keys.auto"))}
-      {item(<Kbd keys={["[", "]"]} />, t("hud.keys.speed"))}
+      {item(<Kbd>{"␣"}</Kbd>, t("hud.keys.play"))}
+      {item(<Kbd>{"→"}</Kbd>, t("hud.keys.step"))}
+      {canEvent && item(<Kbd keys={["⇧", "→"]} />, t("hud.keys.event"))}
+      {item(<Kbd keys={["+", "−"]} />, t("hud.keys.speed"))}
+      {tfCount > 1 && item(<Kbd>{`1–${Math.min(4, tfCount)}`}</Kbd>, t("hud.keys.tf"))}
+      {item(<Kbd keys={["⇧", "1–4"]} />, t("hud.keys.size"))}
+      {flow.skip && item(<Kbd>N</Kbd>, t("hud.keys.skip"))}
+      {flow.noTrade && item(<Kbd>T</Kbd>, t("hud.keys.noTrade"))}
+      {item(<Kbd keys={["⇧ / Alt", "click"]} />, t("hud.keys.place"))}
     </p>
   );
 }

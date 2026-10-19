@@ -25,14 +25,6 @@ import {
   PAGE_OFFSET_MAX,
   TRADES_PAGE_INDEX_SQL,
   buildPageQuery,
-  buildSummaryQuery,
-  buildCountQuery,
-  buildCurveQuery,
-  buildStreakQuery,
-  buildOutcomeFacetQuery,
-  buildHorizonFacetQuery,
-  buildOptionsQuery,
-  buildPresetFacetQuery,
   buildDaysQuery,
   decodeCursor,
   encodeCursor,
@@ -46,6 +38,8 @@ import { captureAndAttach } from "../lib/marketContext";
 import { maybeAutoGenerateReview } from "../lib/aiReview";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { invalidateDashboardCache } from "../lib/hotCache";
+import { invalidateTradesPageCache } from "../lib/tradesPageCache";
+import { pageAggregates } from "../lib/tradesPageAggregates";
 import { scanRulesForTrader } from "../lib/rulesEngine";
 import { isReadableExampleTrade, loadMoneyViewer } from "../lib/playbookAccess";
 import { canSeeBookMoney, redactBookDay, redactBookSummary, redactTradeRow, redactTradeRows, type Redacted } from "../lib/playbookPrivacy";
@@ -124,7 +118,14 @@ export function toTradeResponseShape(t: TradeRow) {
     brokerAccount: t.brokerAccount ?? null,
     syncedAt: t.syncedAt ? new Date(t.syncedAt).toISOString() : null,
     createdAt: t.createdAt.toISOString(),
+    // Playbook setup the trade is linked to (ILYA-16). Not in the generated zod shape: withPlaybookId() re-adds it after parse.
+    playbookId: t.playbookId ?? null,
   };
+}
+
+/** The generated api-zod shapes strip unknown keys; keep the playbook link next to the parsed row. */
+function withPlaybookId<T extends object>(parsed: T, src: { playbookId: number | null }): T & { playbookId: number | null } {
+  return { ...parsed, playbookId: src.playbookId };
 }
 
 // Access to someone else's trade goes through the permission matrix (lib/permissions):
@@ -194,7 +195,7 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
   const lite = win.data.lite === "1" || win.data.lite === "true";
   const shaped = rows.map(toTradeResponseShape);
   if (lite) for (const t of shaped) t.contextSnapshot = null;
-  res.json(redactTradeRows(ListTradesResponse.parse(shaped), await loadMoneyViewer(req)));
+  res.json(redactTradeRows(ListTradesResponse.parse(shaped).map((t, i) => withPlaybookId(t, shaped[i])), await loadMoneyViewer(req)));
 }));
 
 // ── Paginated book: GET /trades/page ─────────────────────────────────────────
@@ -351,29 +352,16 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   // lite=1 (counters, global search, pickers): rows + total / date span + option facets only — the summary aggregates,
   // curve, streak, outcome and preset counts are the costly part on a 45k-trade desk and are skipped.
   const lite = q.lite === "1" || q.lite === "true";
-  const none = <T,>() => Promise.resolve({ rows: [] as T[] });
   const pageQ = buildPageQuery({ filters, sort, limit: q.limit, offset: q.offset, cursor, quality });
-  const summaryQ = lite ? buildCountQuery(filters, quality) : buildSummaryQuery(filters, quality);
-  const curveQ = buildCurveQuery(filters, quality);
-  const streakQ = buildStreakQuery(filters, quality);
-  const outcomeQ = buildOutcomeFacetQuery(filters, quality);
-  const horizonQ = buildHorizonFacetQuery(filters, quality);
-  const optionsQ = buildOptionsQuery(scope);
-  const presetQ = buildPresetFacetQuery(filters, quality);
+  // The summary half is sort/page independent and costly on the whole desk: cached 60 s per filter set (DEV-02).
+  const aggregatesP = pageAggregates({
+    filters, quality, scope, lite,
+    onPresetError: (err) => req.log.warn({ err: err instanceof Error ? err.message : String(err) }, "trades/page: preset facets failed"),
+  });
 
-  const [pageRes, summaryRes, curveRes, streakRes, outcomeRes, horizonRes, optionsRes, presetRes] = await Promise.all([
+  const [pageRes, { summaryRes, curveRes, streakRes, outcomeRes, horizonRes, optionsRes, presetRes }] = await Promise.all([
     pool.query<{ id: number; sv: unknown }>(pageQ.sql, pageQ.params),
-    pool.query<Record<string, unknown>>(summaryQ.sql, summaryQ.params),
-    lite ? none<{ i: string | number; cum: string | number; label: string }>() : pool.query<{ i: string | number; cum: string | number; label: string }>(curveQ.sql, curveQ.params),
-    lite ? none<{ res: string | null }>() : pool.query<{ res: string | null }>(streakQ.sql, streakQ.params),
-    lite ? none<{ k: string; n: number }>() : pool.query<{ k: string; n: number }>(outcomeQ.sql, outcomeQ.params),
-    pool.query<{ k: string; n: number }>(horizonQ.sql, horizonQ.params),
-    pool.query<{ kind: string; name: string; n: number }>(optionsQ.sql, optionsQ.params),
-    // Preset badges are a nicety: a failure there must not break the book.
-    lite ? none<Record<string, number>>() : pool.query<Record<string, number>>(presetQ.sql, presetQ.params).catch((err) => {
-      req.log.warn({ err: err instanceof Error ? err.message : String(err) }, "trades/page: preset facets failed");
-      return { rows: [] as Record<string, number>[] };
-    }),
+    aggregatesP,
   ]);
 
   const hasMore = pageRes.rows.length > q.limit;
@@ -396,9 +384,9 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   const sumR = num(s.sum_r) ?? 0, posR = num(s.pos_r) ?? 0, negR = num(s.neg_r) ?? 0;
   const avgWinR = winRN ? (num(s.win_r_sum) ?? 0) / winRN : null;
   const avgLossR = lossRN ? (num(s.loss_r_sum) ?? 0) / lossRN : null;
-  const closed = wins + losses + be;
   const decided = wins + losses;
-  const expectancyR = closed && (avgWinR != null || avgLossR != null) ? (wins / closed) * (avgWinR ?? 0) + (losses / closed) * (avgLossR ?? 0) : null;
+  // Expectancy in R = the mean R of the trades that have one (avg win / loss above are by the sign of R, MAKSIM-08).
+  const expectancyR = rCount ? sumR / rCount : null;
 
   const outcomes = { all: 0, win: 0, loss: 0, breakeven: 0, open: 0 };
   for (const r of outcomeRes.rows) {
@@ -611,6 +599,7 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
     scanRulesForTrader(trade.trader).catch((e) => req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "rules engine scan failed"));
   }
   invalidateDashboardCache();
+  invalidateTradesPageCache();
   res.status(201).json(GetTradeResponse.parse(toTradeResponseShape(trade)));
 }));
 
@@ -626,7 +615,8 @@ router.get("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   // Another trader's trade: via the matrix (trades.read.team), or because it is an example of a setup the viewer
   // reads (the playbook's «Открыть сделку»). Either way a non-staff viewer gets its $ redacted.
   if (await forbiddenFor(req, "trades.read.team", trade.trader ?? null) && !(await isReadableExampleTrade(req, trade.id))) throw new AppError("OWN_TRADES_ONLY");
-  res.json(redactTradeRow(GetTradeResponse.parse(toTradeResponseShape(trade)), await loadMoneyViewer(req)));
+  const shape = toTradeResponseShape(trade);
+  res.json(redactTradeRow(withPlaybookId(GetTradeResponse.parse(shape), shape), await loadMoneyViewer(req)));
 }));
 
 router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
@@ -708,6 +698,7 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   logActivity({ action: "updated", section: "trades", entityId: String(trade.id), entityTitle: trade.ticker, trader: trade.trader ?? undefined });
   invalidateDashboardCache();
+  invalidateTradesPageCache();
   res.json(UpdateTradeResponse.parse(toTradeResponseShape(trade)));
 }));
 
@@ -728,6 +719,7 @@ router.delete("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   logActivity({ action: "deleted", section: "trades", entityId: String(trade.id), entityTitle: trade.ticker, trader: trade.trader ?? undefined });
   invalidateDashboardCache();
+  invalidateTradesPageCache();
   res.sendStatus(204);
 }));
 
@@ -744,6 +736,7 @@ router.post("/trades/:id/restore", asyncHandler(async (req, res): Promise<void> 
   if (!trade) throw notFound("TRADE_NOT_FOUND");
   logActivity({ action: "created", section: "trades", entityId: String(trade.id), entityTitle: activityTitle("trade_restored", { ticker: trade.ticker }), trader: trade.trader ?? undefined, params: { titleKey: "trade_restored", ticker: trade.ticker } });
   invalidateDashboardCache();
+  invalidateTradesPageCache();
   res.json({ success: true });
 }));
 
@@ -829,6 +822,7 @@ router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
       details: action === "setResult" ? `result=${result}` : action === "setSetup" ? `setup=${setup ?? "—"}` : tags.length ? `${action}: ${tags.join(", ")}` : action,
     });
     invalidateDashboardCache();
+    invalidateTradesPageCache();
   }
   res.json({ action, updated: targetIds, skipped: ids.length - targetIds.length - forbidden, forbidden });
 }));

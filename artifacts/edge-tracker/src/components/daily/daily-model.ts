@@ -2,7 +2,7 @@
 // today's contract from the personal plan, verdict tones, tier-progress titles and metric formatting. No React here —
 // the components render what these functions decide, and daily-model.test.ts pins the decisions with fixtures.
 import type { Tone } from "@/components/ds";
-import type { ContractVerdict, DailyFocus, DailyMe, EveningCard, MistakeId, TierProgress, VerdictStatus } from "@/lib/daily/types";
+import type { ContractVerdict, DailyFocus, DailyMe, EveningCard, MistakeId, TierProgress, TierProgressItem, VerdictStatus } from "@/lib/daily/types";
 import type { PlaybookToday } from "@/lib/playbook-today/types";
 import { fmtCount, fmtNum, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -70,6 +70,12 @@ export function contractLine(plan: PlanContract | null | undefined, focus: Daily
   const fromFocus = saved === undefined && !!focus?.mistake && focus.source !== "none";
   const rule = saved ?? (fromFocus ? (focus?.mistake ?? null) : null);
   return { maxLossUsd, maxTrades, rule, ruleFromFocus: fromFocus, empty: maxLossUsd == null && maxTrades == null && !rule };
+}
+
+/** The session the contract is for: the next session date (the focus date) — on a weekend that is Monday, not the empty
+ * Sunday plan (UMID-06); on a trading day it is today. */
+export function contractDate(me: Pick<DailyMe, "today" | "focus">): string {
+  return me.focus?.date && me.focus.date >= me.today ? me.focus.date : me.today;
 }
 
 /** Reads the contract fields out of GET /api/game-plan/my (any doc shape; unknown types are ignored). */
@@ -151,10 +157,14 @@ export function tierName(t: string | null | undefined): string {
   return d ? commonI18n.t(`tiers.${COMMON_WORD[d]}`) : (t ?? commonI18n.t("tiers.noTier"));
 }
 
-/** «До Джуна: 3 из 5» / «Уровень «Сеньор» — высший». Null when there is no ladder for the trader. */
+/**
+ * «До Джуна: 6 из 13» / «Уровень «Сеньор» — высший». Null when there is no ladder for the trader. The trader ladder ends
+ * at Сеньор (academy scope): a risk-size tier above it (e.g. «lead» from an older server) reads as the top, never as a
+ * raw key (ROMAN-07).
+ */
 export function tierTitle(p: TierProgress | null | undefined): string | null {
   if (!p || (!p.tier && !p.nextTier)) return null;
-  if (!p.nextTier) return dailyI18n.t("tier.top", { tier: tierName(p.tier) });
+  if (!p.nextTier || (defaultTier(p.tier) === "senior" && !defaultTier(p.nextTier))) return dailyI18n.t("tier.top", { tier: tierName(p.tier) });
   const d = defaultTier(p.nextTier);
   const args = { met: p.met, total: p.total };
   return d ? dailyI18n.t(`tier.to.${d}`, args) : dailyI18n.t("tier.to.custom", { ...args, tier: p.nextTier });
@@ -205,10 +215,20 @@ export function fmtTarget(metric: string, target: number | null | undefined): st
   return `${LOWER_IS_BETTER.has(metric) ? "≤" : "≥"} ${fmtMetric(metric, target)}`;
 }
 
-/** Criterion label: own dictionary by metric key, then the server's text key, then the raw key. */
-export function metricLabel(item: { metric: string; label: { key: string; params?: Record<string, string | number | null> } }): string {
+/** Criterion label: the academy path's text (already in the reader's language), own dictionary by metric key, then the
+ * server's text key, then the raw key. */
+export function metricLabel(item: { metric: string; label: { key: string; params?: Record<string, string | number | null> }; text?: string }): string {
+  if (item.text) return item.text;
   const own = dailyI18n.tryT(`tier.metric.${item.metric}`);
   if (own) return own;
   const params = Object.fromEntries(Object.entries(item.label.params ?? {}).map(([k, v]) => [k, v ?? ""]));
   return dailyI18n.tryT(item.label.key, params) ?? item.metric;
+}
+
+/** «16 · цель ≥ 15» — a criterion's value against its target: the path's rendered strings when present, «нет данных»
+ * when the criterion has nothing to judge yet. */
+export function criterionValue(i: TierProgressItem): string {
+  if (i.noData) return dailyI18n.t("tier.noData");
+  if (i.display != null && i.targetDisplay != null) return dailyI18n.t("tier.of", { actual: i.display, target: i.targetDisplay });
+  return i.target != null ? dailyI18n.t("tier.of", { actual: fmtMetric(i.metric, i.actual), target: fmtTarget(i.metric, i.target) }) : fmtMetric(i.metric, i.actual);
 }

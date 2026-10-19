@@ -26,7 +26,7 @@ import {
   achievementStates, awardKey, badgeAward, badgesOf, dateFixes, evaluateAchievements, newAwards, TIERS, type NewAward,
 } from "./achievements";
 import { curatorTemplate, fridayOf, MANUAL_TEMPLATE, monthOf, questWeekOf, type QuestData, type StoredQuest } from "./catalog";
-import { onboardingState, planQuests, questPoints, switches, toQuest, visibleQuests, weekSummary } from "./engine";
+import { onboardingFor, onboardingState, planQuests, questPoints, switches, toQuest, visibleQuests, weekSummary } from "./engine";
 import { loadTraderInputs } from "./load";
 import { afterEvaluation } from "../gamification/hooks";
 import { evaluationCache, forgetQuests, generationOf } from "./cache";
@@ -47,6 +47,8 @@ export type Evaluation = {
   achievements: Achievement[];
   quests: StoredQuest[];
   data: QuestData;
+  /** First steps are offered / shown (a new trader: tier below Трейдер). */
+  onboarding: boolean;
 };
 
 const questLink = (id: number) => `/ratings?tab=quests&quest=${id}`;
@@ -109,9 +111,9 @@ async function awardedMap(trader: string): Promise<Map<string, { date: string; t
 // ─── evaluation ─────────────────────────────────────────────────────────────
 
 /** Syncs the trader's quests with the data: creates the current periods' ones, moves finished ones, notifies. */
-async function syncQuests(trader: string, data: QuestData, role: string | null): Promise<StoredQuest[]> {
+async function syncQuests(trader: string, data: QuestData, onboarding: boolean): Promise<StoredQuest[]> {
   const existing = await questsOf(trader);
-  const plan = planQuests(data, existing, { onboarding: role === "trader" });
+  const plan = planQuests(data, existing, { onboarding });
   if (!plan.create.length && !plan.update.length) return existing;
   await createQuests(trader, plan.create);
   for (const q of await updateQuests(plan.update)) {
@@ -125,7 +127,8 @@ export async function evaluateTrader(trader: string, now = new Date()): Promise<
   const awarded = await awardedMap(trader);
   const fullStops = !awarded.has(awardKey("clean_month", "gold"));
   const inputs = await loadTraderInputs(trader, now, { fullStops });
-  const quests = await syncQuests(trader, inputs.quests, inputs.role);
+  const onboarding = onboardingFor(inputs.role, inputs.tier);
+  const quests = await syncQuests(trader, inputs.quests, onboarding);
   let achievements: Achievement[] = [];
   let news: NewAward[] = [];
   if (setting("achievements.enabled")) {
@@ -149,7 +152,7 @@ export async function evaluateTrader(trader: string, now = new Date()): Promise<
   await afterEvaluation(trader, {
     today: inputs.quests.today, asOf: inputs.asOf, ledger: inputs.ledger, quests, tradedDays: inputs.quests.reviews.map((r) => r.date), awarded: news,
   });
-  return { today: inputs.quests.today, asOf: inputs.asOf, discipline, badges: badgesOf(achievements), achievements, quests, data: inputs.quests };
+  return { today: inputs.quests.today, asOf: inputs.asOf, discipline, badges: badgesOf(achievements), achievements, quests, data: inputs.quests, onboarding };
 }
 
 const inflight = new Map<string, { gen: number; p: Promise<Evaluation> }>();
@@ -184,9 +187,9 @@ export async function evaluationFor(trader: string, now = new Date()): Promise<E
 export async function questsMe(trader: string, now = new Date()): Promise<QuestsMe> {
   const e = await evaluationFor(trader, now);
   const monday = questWeekOf(e.today);
-  const shown = visibleQuests(e.quests, e.today, monday, monthOf(e.today));
+  const shown = visibleQuests(e.quests, e.today, monday, monthOf(e.today), e.onboarding);
   const ob = onboardingState(e.quests);
-  const started = e.quests.some((q) => q.scope === "onboarding");
+  const started = e.onboarding && e.quests.some((q) => q.scope === "onboarding");
   const tiers = e.achievements.flatMap((a) => a.tiers);
   return {
     today: e.today,

@@ -117,6 +117,14 @@ export function LeaguePanel({ league }: { league: LeagueView }) {
 }
 
 /**
+ * The league is shown only as a competition (≥ 2 ranked teams — the server sends none below that, OLGA-15) or to a
+ * curator who has members to look at.
+ */
+export function showLeague(league: LeagueView): boolean {
+  return league.teams.length >= 2 || (league.members?.length ?? 0) > 0;
+}
+
+/**
  * Presentational: season ranking + league side by side on wide screens, stacked on phones. `participant` = the viewer
  * is a trader in the season (staff see the ranking without an own line).
  */
@@ -126,7 +134,7 @@ export function SeasonTabView({ season, league, participant = true }: { season: 
   return (
     <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2 xl:items-start">
       {season && <SeasonRanking season={season} participant={participant} />}
-      {league && <LeaguePanel league={league} />}
+      {league && showLeague(league) && <LeaguePanel league={league} />}
     </div>
   );
 }

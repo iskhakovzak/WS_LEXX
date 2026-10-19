@@ -10,7 +10,6 @@ import { STALE } from "@/lib/api/keys";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
-import Dashboard from "@/pages/dashboard";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { BASE } from "@/lib/api";
@@ -21,7 +20,11 @@ import { LocaleSync } from "@/i18n/locale-sync";
 import { shellI18n } from "@/i18n/ns/shell";
 import { UsageRouteTracker } from "@/components/shared/usage-tracker";
 
-// Every section except the dashboard (the landing page) is its own chunk; see shell/route-loaders.ts.
+// Every section is its own chunk; see shell/route-loaders.ts. The dashboard too (DEV-11: it pulled the equity chart,
+// the daily cards and the quest strip into the entry chunk, which the login screen and every other page also paid for);
+// a signed-in session starts its download at once (see AppContent), so the landing page doesn't wait for a click.
+const loadDashboard = () => import("@/pages/dashboard").then(async (m) => { await i18nReady(); return m; });
+const Dashboard = lazy(loadDashboard);
 const L = ROUTE_LOADERS;
 const Trades = lazy(L["/trades"]);
 const Events = lazy(L["/events"]);
@@ -222,6 +225,10 @@ function AppContent() {
   useEffect(() => {
     if (wasAuthed.current && !isAuthenticated) queryClient.clear();
     wasAuthed.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) void loadDashboard().catch(() => undefined);
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {

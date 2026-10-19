@@ -99,7 +99,8 @@ export type WizardStep = { ok: boolean; detail: string };
 export type Wizard = { env: WizardStep; connection: WizardStep; accounts: WizardStep; fees: WizardStep; firstSync: WizardStep };
 
 export type Status = {
-  viewer: { name: string; staff: boolean };
+  /** canSync / canConfigure: absent on older API builds (treated as false). */
+  viewer: { name: string; staff: boolean; canSync?: boolean; canConfigure?: boolean };
   connection: ConnectionState;
   settings: { groupId: string | null; effectiveGroupId: string; groupSource: "env" | "settings" | "default"; feesConfirmedAt: string | null; feeColumns: FeeColumnView[]; unmatched: string[] };
   wizard: Wizard;

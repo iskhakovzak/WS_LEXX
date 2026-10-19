@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import type { FirmStat, FirmStatsResponse, FirmWeightResponse, FirmWeightRow } from "./api";
+import { candlesWarming, type FirmStat, type FirmStatsResponse, type FirmWeightResponse, type FirmWeightRow } from "./api";
 import { isTopFirm, WEIGHT_MIN_N, type FirmWeightLite } from "./lib";
 import { fmtPct, fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -155,7 +155,7 @@ export function FirmWeightPanel({
       actions={<Button variant="ghost" size="sm" onClick={onOpenAll}>{tf("firms.all")}</Button>}
       footer={
         <span className="tabular-nums">
-          {tf("firms.coverage", { tickers: cov.tickers, total: cov.ratedTickers })}{cov.warming ? tf("firms.warming") : ""}
+          {tf("firms.coverage", { tickers: cov.tickers, total: cov.ratedTickers })}{candlesWarming(cov) ? tf("firms.warming") : ""}
         </span>
       }
       bodyClassName="min-h-[220px]"

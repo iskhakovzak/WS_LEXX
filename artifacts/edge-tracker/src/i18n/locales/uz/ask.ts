@@ -258,6 +258,7 @@ export default {
     tkPayoff: "Koʻproq yutasiz, lekin oʻrtacha zarar ({loss}) oʻrtacha foydadan ({win}) katta.",
     tkLowWr: "Win rate 50% dan past, lekin oʻrtacha foyda zarardan {x} barobar katta.",
     statLine: "{trades}, sof {net}, win rate {wr}",
+    statLineNoNet: "{trades}, win rate {wr}",
     empty: "{subject}: savdolar yoʻq",
     tradesTitle: "Savdolar",
     open: "«Savdolar»da ochish",

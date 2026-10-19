@@ -3,13 +3,13 @@
  * the viewer's own place when they are outside both lists. A row opens that trader-day (TraderDaySheet).
  */
 import * as React from "react";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { TrendingDown, TrendingUp, UserRound } from "lucide-react";
 import { EmptyState, Panel, toneOf, toneText } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtUsd } from "@/lib/format";
-import { personName } from "@/i18n";
+import { personInitials, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { topDayI18n } from "@/i18n/ns/topDay";
 import type { TopDay, TopRow } from "./api";
@@ -22,7 +22,11 @@ export function whoLabel(row: { me: boolean; name: string | null; alias: number 
   return topDayI18n.t("trader", { n: row.alias });
 }
 
-export function AliasBadge({ row, className }: { row: { me: boolean; alias: number }; className?: string }) {
+/**
+ * The avatar circle: «Я» for the viewer, initials when the name is known (staff), else a person icon — never the alias
+ * number, which read as a second rank next to the place (OWNER-24); the «Трейдер N» label carries the alias.
+ */
+export function AliasBadge({ row, className }: { row: { me: boolean; alias: number; name?: string | null }; className?: string }) {
   return (
     <span
       aria-hidden="true"
@@ -32,7 +36,7 @@ export function AliasBadge({ row, className }: { row: { me: boolean; alias: numb
         className,
       )}
     >
-      {row.me ? topDayI18n.t("me").slice(0, 1) : row.alias}
+      {row.me ? topDayI18n.t("me").slice(0, 1) : row.name ? personInitials(row.name) : <UserRound className="h-3.5 w-3.5 text-muted-foreground" />}
     </span>
   );
 }

@@ -12,7 +12,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
-import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Search } from "lucide-react";
+import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Loader2, Search } from "lucide-react";
 import { EmptyState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
@@ -27,6 +27,7 @@ import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { useAuth } from "@/contexts/auth-context";
 import { chartLabI18n } from "@/i18n/ns/chartLab";
 import { personName } from "@/i18n";
+import { entryTimeOf, netOf, searchParams } from "@/components/chart-engine/lib/picker";
 
 /** `movePct`: side-aware entry → exit move, % (desk payload) — the result when neither $ nor R is available. */
 type TradeRow = TradeLike & { rMultiple?: number | string | null; movePct?: number | null };
@@ -45,17 +46,6 @@ function adHocId(ticker: string, date: string): number {
   return -Math.max(1, Math.abs(h));
 }
 
-/** «AAPL», «2026-10-14» or «AAPL 2026-10-14» → /api/trades/page filters. */
-function searchParams(text: string, limit = 40): URLSearchParams {
-  const p = new URLSearchParams({ limit: String(limit), sort: "date", dir: "desc" });
-  const parts = text.trim().split(/\s+/).filter(Boolean);
-  const date = parts.find((x) => YMD.test(x));
-  const rest = parts.filter((x) => x !== date).join(" ");
-  if (date) p.set("date", date);
-  if (rest) p.set("q", rest);
-  return p;
-}
-
 const rOf = (t: TradeRow) => {
   const n = Number(t.rMultiple);
   return t.rMultiple != null && Number.isFinite(n) ? n : null;
@@ -68,7 +58,11 @@ const rOf = (t: TradeRow) => {
 function ResultText({ t }: { t: TradeRow }) {
   const { t: tl } = chartLabI18n.useT();
   const r = rOf(t);
-  if (!t.redacted && t.pnl != null) return <span className={t.pnl >= 0 ? "text-up" : "text-down"}>{fmtUsd(t.pnl, { signed: true, decimals: "auto" })}</span>;
+  const net = t.redacted ? null : netOf(t);
+  if (net != null) {
+    const gross = t.fees ? tl("result.grossTitle", { gross: fmtUsd(t.pnl ?? null, { signed: true, decimals: "auto" }), fees: fmtUsd(Math.abs(t.fees), { decimals: "auto" }) }) : undefined;
+    return <span className={net >= 0 ? "text-up" : "text-down"} title={gross}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>;
+  }
   if (r != null) return <span className={r >= 0 ? "text-up" : "text-down"}>{fmtR(r)}</span>;
   const pct = t.movePct != null && Number.isFinite(t.movePct) ? t.movePct : null;
   if (pct != null) return <span className={pct >= 0 ? "text-up" : "text-down"} title={tl("result.moveTitle")}>{pct > 0 ? "+" : pct < 0 ? "−" : ""}{Math.abs(pct).toFixed(2)}%</span>;
@@ -89,7 +83,7 @@ function TradeRowButton({ t, onPick }: { t: TradeRow; onPick: (t: TradeRow) => v
   return (
     <button type="button" className="grid w-full grid-cols-[4.5rem_1fr_auto] items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm tabular-nums hover:bg-[var(--glass-hover-bg)]" onClick={() => onPick(t)}>
       <span className="font-semibold">{t.ticker}</span>
-      <span className="truncate text-xs text-muted-foreground">{t.date.slice(0, 10)} · {String(t.side ?? "").toLowerCase() === "short" ? tl("picker.short") : tl("picker.long")}{t.trader && t.redacted ? ` · ${personName(t.trader)}` : ""}</span>
+      <span className="truncate text-xs text-muted-foreground">{t.date.slice(0, 10)}{entryTimeOf(t) ? ` ${entryTimeOf(t)}` : ""} · {String(t.side ?? "").toLowerCase() === "short" ? tl("picker.short") : tl("picker.long")}{t.trader && t.redacted ? ` · ${personName(t.trader)}` : ""}</span>
       <ResultText t={t} />
     </button>
   );
@@ -106,6 +100,8 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
     enabled: open,
     staleTime: 30_000,
   });
+  // The typed text is not searched yet (debounce) or the new answer is on its way: the list shown is the old one (MAKSIM-22).
+  const searching = open && (text !== q || list.isFetching);
   const parts = text.trim().toUpperCase().split(/\s+/);
   const tdTicker = parts.find((x) => /^[A-Z][A-Z.\-]{0,9}$/.test(x)) ?? null;
   const tdDate = parts.find((x) => YMD.test(x)) ?? null;
@@ -119,7 +115,9 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[min(26rem,calc(100vw-1.5rem))] p-0">
         <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          {searching && !list.isLoading
+            ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-label={tl("picker.searching")} />
+            : <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
           <Input
             autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder={tl("picker.placeholder")}
             className="h-8 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0" aria-label={tl("picker.searchAria")}
@@ -139,7 +137,7 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
           ) : !list.data?.length ? (
             <p className="px-3 py-4 text-sm text-muted-foreground">{text.trim() ? tl("picker.nothing") : tl("picker.noTrades")}</p>
           ) : (
-            <ul>{list.data.map((t) => <li key={t.id}><TradeRowButton t={t} onPick={(x) => { onPick(x); setOpen(false); }} /></li>)}</ul>
+            <ul className={searching ? "opacity-60 transition-opacity" : "transition-opacity"} aria-busy={searching || undefined}>{list.data.map((t) => <li key={t.id}><TradeRowButton t={t} onPick={(x) => { onPick(x); setOpen(false); }} /></li>)}</ul>
           )}
         </div>
         <p className="border-t border-[var(--glass-border)] px-3 py-1.5 text-2xs text-muted-foreground">{tl("picker.othersInR")}</p>

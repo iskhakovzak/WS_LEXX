@@ -78,6 +78,7 @@ export default {
       wrPfHint: "WR = W/(W+L); zarar boʻlmasa, PF aniqlanmaydi",
       maxDd: "Maks. pasayish",
       bestDayHint: "Eng yaxshi kun foydaning {value}",
+      bestDayNone: "Eng yaxshi kun: oynada foyda yoʻq",
       feesDiscipline: "Komissiyalar / intizom",
       feesDisciplineHint: "Yalpida komissiyalar ulushi · intizom indeksi 0–100",
     },
@@ -243,7 +244,8 @@ export default {
     },
     maxDrawdownMode: "{label} ({mode})",
     ddMode: { static: "statik", trailing: "treyling", trailing_eod: "kun yopilishi boʻyicha treyling" },
-    ruleState: { ok: "meʼyorida", met: "bajarildi", warn: "diqqat", breached: "buzildi", pending: "jarayonda", na: "maʼlumot yoʻq" },
+    ruleState: { ok: "meʼyorida", met: "bajarildi", warn: "diqqat", breached: "buzildi", pending: "jarayonda", missed: "bajarilmadi", na: "maʼlumot yoʻq" },
+    commentBy: "Izoh · {name}: «{comment}»",
     summary: {
       account: "hisob {usd}",
       target: "maqsad +{usd}",

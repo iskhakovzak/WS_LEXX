@@ -47,6 +47,7 @@ export default {
     dailyQuote: "Цитата дня",
     latin: "Латинское имя",
     jobs: "Задачи",
+    playbook: "Плейбук",
     login: "Вход",
   },
 
@@ -58,6 +59,12 @@ export default {
     archive: "отправил в архив {who}{bulk}",
     restore: "вернул из архива {who}{bulk}",
     sessionsReset: "сбросил сессии {who}{bulk}",
+    playbookOpen: "открыл сетап {setup} с уровня {tier}",
+    playbookClose: "закрыл сетап {setup} до уровня {tier}",
+    playbookTier: "сменил уровень сетапа {setup}: {tier}",
+    relink: "перепривязал сделки к сетапам: {count}",
+    startingSecret: { one: "задал стартовый PIN {count} человеку", few: "задал стартовый PIN {count} людям", many: "задал стартовый PIN {count} людям", other: "задал стартовый PIN {count} людям" },
+    proposalAutoList: "автопредложения тира: {names}",
     create: "создал учётку {who} ({role})",
     roleChange: "сменил роль {who}: {from} → {to}",
     roleSet: "сменил роль {who}: {to}",
@@ -300,6 +307,8 @@ export default {
     challenge: "Челлендж #{id}",
     challenges: "Челленджи",
     generic: "{type} #{id}",
+    setup: "Сетап {name}",
+    setupId: "Сетап #{id}",
   },
   /** Object type filter / pill (keys are the stored target_type codes). */
   objectType: {
@@ -324,9 +333,14 @@ export default {
     curator_queue_acks: "Очередь разборов",
     office_capital: "Капитал офиса",
     job: "Фоновые задачи",
+    playbook: "Плейбук",
+    trades: "Сделки",
     login_name: "Имена для входа",
     backup: "Бэкапы",
   },
+
+  /** Secondary lines for the playbook entries. */
+  playbookDetail: { relinkBackup: "резервная копия: {file}", wasTier: "было: {tier}" },
 
   log: {
     title: "Журнал аудита",

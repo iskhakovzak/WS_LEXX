@@ -21,7 +21,7 @@ export default {
     progress: "Progress",
   },
   time: {
-    yourTime: "Sizning vaqtingiz / {ny}",
+    yourTime: "Nyu-York vaqti. Sizda: {local}",
     sameTz: "Nyu-York vaqti sizniki bilan bir xil",
     noActivity: "faollik yoʻq",
     today: "bugun",

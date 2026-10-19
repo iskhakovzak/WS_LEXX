@@ -57,8 +57,8 @@ describe("cheat sheet", () => {
     expect(html).toContain("1R = $50");
     expect(html).toContain("из личного плана");
     expect(html).toContain("На сегодня");
-    // Nothing ticked yet → grade C with «Пропусти».
-    expect(html).toContain("Пропусти · Грейд C");
+    // Nothing ticked yet → no grade at all (ILYA-27: grade C only after ticks).
+    expect(html).not.toContain("Грейд C");
     expect(html).not.toMatch(/truncate|line-clamp/);
   });
   it("no 1R → a hint pointing to the plan's risk per trade, with the plan link of the day", () => {
@@ -72,6 +72,8 @@ describe("cheat sheet", () => {
     expect(html).toContain("Закрыт");
     expect(html).toContain("откроется после 10 сделок по 1.3 с грейдом A (сейчас 4) или на уровне «Джун»");
     expect(html).not.toContain("На сегодня");
+    // ILYA-27 / DEV-06: no rules, no live checklist, no size calculator for a setup one may not trade yet.
+    for (const label of ["Вход", "Чек-лист — отмечай по ходу", "Размер позиции", 'role="checkbox"']) expect(html).not.toContain(label);
   });
   it("UZ (Latin)", async () => {
     await setLang("uz", { source: "init" });
@@ -79,7 +81,7 @@ describe("cheat sheet", () => {
     const html = render(createElement(CheatCard, { setup: orb, oneR: t.oneR, date: t.date }));
     expect(html).toContain("Kirish");
     expect(html).toContain("A baho, agar");
-    expect(html).toContain("Oʻtkazib yuboring · Baho C");
+    expect(html).not.toContain("Baho C");
     expect(html).not.toContain("Чек-лист — отмечай");
     expect(html).not.toContain("Размер позиции");
   });
@@ -110,6 +112,7 @@ describe("landing", () => {
     expect(html).toContain("/game-plan?view=my&date=2026-10-19");
     expect(html).toContain("Выбери сетапы на сегодня");
     expect(html).toContain("Взять в план · 2 сетапа");
+    expect(html).toContain("Отмечены сетапы, где у тебя плюс по статистике, и стартовые"); // 13 best + 12 new (ILYA-15)
     expect(html.match(/aria-checked="true"/g)?.length).toBe(2);
     expect(html).not.toContain('data-setup-id="13"'); // no full card before the plan is taken
   });
@@ -141,5 +144,9 @@ describe("landing", () => {
     const map = render(createElement(DayMap, { windows: t.windows, now: 525 }));
     expect(map).toContain("До открытия 45 минут");
     expect(render(createElement(DayMap, { windows: t.windows, now: 17 * 60 }))).toContain("Рынок закрыт · 17:00 NY");
+    // ROMAN-10: a weekend shows the next session, every window ahead.
+    const weekend = render(createElement(DayMap, { windows: t.windows, now: 0, nextSession: "2026-10-19" }));
+    expect(weekend).toContain("Следующая сессия");
+    expect(weekend).not.toContain("прошло");
   });
 });

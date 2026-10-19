@@ -42,6 +42,7 @@ import { academyContentT } from "../lib/academyI18n";
 import { AppError, sendError as sendAppError, type ErrorCode } from "../lib/http";
 import { langOf, type Params } from "../i18n";
 import { logger } from "../lib/logger";
+import { forgetQuests } from "../lib/quests/cache";
 import { netPnlSql, signedRSql, num } from "../lib/tradeMath";
 import {
   DEMO_PROGRAM, applyIdOrder, applyOrder, attemptState, checkSubmission, clampPct, cohortSummary, computeProgress, feedbackFor,
@@ -616,6 +617,7 @@ router.post(`${P}/lessons/:id/progress`, asyncHandler(async (req, res): Promise<
      RETURNING started_at, completed_at`,
     [user, id, completed ?? null],
   );
+  if (completed !== undefined) forgetQuests(user); // lessons feed quests / achievements at once (UMID-08)
   res.json({ lessonId: id, startedAt: iso(rows[0].started_at), completedAt: iso(rows[0].completed_at), completed: !!rows[0].completed_at });
 }));
 
@@ -697,6 +699,7 @@ router.post(`${P}/quizzes/:id/attempts`, asyncHandler(async (req, res): Promise<
       [id, user, JSON.stringify(answers), JSON.stringify(grade.results), grade.score, grade.maxScore, grade.pct, grade.passed],
     );
     await client.query("COMMIT");
+    forgetQuests(user); // a finished test: quests / achievements re-read now (UMID-08)
     const state = attemptState([...prev, ins.rows[0]].map(attemptLite), cfg);
     res.status(201).json({
       attempt: { id: Number(ins.rows[0].id), submittedAt: iso(ins.rows[0].submitted_at) },
@@ -822,6 +825,7 @@ router.post(`${P}/assignments/:id/submissions`, asyncHandler(async (req, res): P
     link: learnLink.assignment(id, `&submission=${sub.id}`),
     entityType: "academy_submission", entityId: sub.id, actor: user, source: "academy",
   }, user);
+  forgetQuests(user); // an assignment handed in: quests re-read now (UMID-08)
   res.status(201).json({ submission: (await submissionsJson([sub]))[0], notified: mentors.length });
 }));
 
@@ -968,6 +972,7 @@ router.post(`${P}/submissions/:id/grade`, asyncHandler(async (req, res): Promise
       grade ? grade.passed : null, comment || null, mentor],
   );
   const sub = rows[0];
+  forgetQuests(cur.user_name); // a graded assignment: the student's quests re-read now (UMID-08)
   const params = parsed.data.decision === "returned"
     ? { variant: "returned", title: a.title, mentor, comment: comment.slice(0, 300) }
     : { variant: grade!.passed ? "passed" : "failed", title: a.title, mentor, comment: comment ? comment.slice(0, 300) : null, total: grade!.total, max: grade!.maxTotal, pct: Math.round(grade!.pct) };

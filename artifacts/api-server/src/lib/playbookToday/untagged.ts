@@ -1,4 +1,5 @@
 /**
+ * «Без сетапа» — THE definition (TRIAGE cross-area note 3; «без разбора» = no grade/review is a different word).
  * «Разметь сделки»: own closed trades without a live setup. One rule for the playbook «Сегодня» counter, the evening card
  * (EveningCard.untagged) and the daily quest «разметить вчерашние сделки» (lib/quests/catalog tag_yesterday).
  *
@@ -49,4 +50,30 @@ export function untaggedOf(days: ReadonlyMap<string, TagDay>): number {
   let n = 0;
   for (const v of days.values()) n += Math.max(0, v.trades - v.tagged);
   return n;
+}
+
+/** Own closed trades of [from, to] (NY close days, inclusive) and how many have no playbook setup («без сетапа»). */
+export type UntaggedTrades = {
+  from: string;
+  to: string;
+  /** Own closed trades in the period. */
+  trades: number;
+  /** Linked to a live setup, or marked «Не для плейбука». */
+  tagged: number;
+  /** trades − tagged: the «без сетапа» number every surface shows for this period. */
+  untagged: number;
+  /** Per close day (only days with trades). */
+  byDay: Map<string, TagDay>;
+};
+
+/**
+ * The shared entry point for «без сетапа» counts (playbook header, evening card, tag_yesterday quest, trades summary).
+ * Keep this signature stable — other areas import it.
+ */
+export async function untaggedTrades(trader: string, from: string, to: string): Promise<UntaggedTrades> {
+  const byDay = await tagDays(trader, from, to);
+  let trades = 0;
+  let tagged = 0;
+  for (const v of byDay.values()) { trades += v.trades; tagged += Math.min(v.tagged, v.trades); }
+  return { from, to, trades, tagged, untagged: trades - tagged, byDay };
 }

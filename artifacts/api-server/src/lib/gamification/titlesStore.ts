@@ -1,9 +1,11 @@
 /**
  * Earned / active titles for many traders at once (rankings, GET /api/gamification/titles): stored achievement tiers +
- * stored mastery level 4 (lib/gamification/titles.ts maps them), checked against the chosen title.
+ * stored mastery level 4 (lib/gamification/titles.ts maps them), checked against the chosen title. A trader halted by the
+ * risk desk shows no title while halted (./halted.ts; the title stays earned and chosen).
  */
 import { pool } from "@workspace/db";
 import { codeFromName } from "../playbookToday/build";
+import { haltedTraders } from "./halted";
 import { chosenTitles } from "./people";
 import { activeTitleOf, MASTER_LEVEL, TITLE_BY_TIER, titlesOf, type TitleAchievement, type TitleMastery } from "./titles";
 
@@ -37,13 +39,14 @@ export async function earnedTitles(traders: readonly string[]): Promise<Map<stri
   return out;
 }
 
-/** trader → active title (chosen and still earned). `traders` omitted = everyone who chose one. */
+/** trader → active title (chosen, still earned, not risk-halted). `traders` omitted = everyone who chose one. */
 export async function activeTitles(traders?: readonly string[]): Promise<Map<string, string>> {
   const chosen = await chosenTitles(traders);
   if (!chosen.size) return new Map();
-  const earned = await earnedTitles([...chosen.keys()]);
+  const [earned, halted] = await Promise.all([earnedTitles([...chosen.keys()]), haltedTraders([...chosen.keys()])]);
   const out = new Map<string, string>();
   for (const [t, key] of chosen) {
+    if (halted.has(t)) continue;
     const active = activeTitleOf(key, earned.get(t) ?? []);
     if (active) out.set(t, active);
   }

@@ -87,7 +87,8 @@ export function LiveChecklist({ setup, date, onGrade }: { setup: TodaySetup; dat
   const [ticked, setTicked] = useSessionState<number[]>(`pb-today:check:${date}:${setup.id}`, []);
   const items = setup.checklist;
   const done = ticked.filter((i) => i < items.length).length;
-  const grade = gradeOf(done, items.length);
+  // No grade before the first tick: an untouched list is «not checked yet», not grade C (ILYA-27).
+  const grade = done > 0 ? gradeOf(done, items.length) : null;
   useEffect(() => { onGrade(grade); }, [grade, onGrade]);
   if (!items.length) return <p className="text-sm text-muted-foreground">{t("card.noChecklist")}</p>;
   const toggle = (i: number) => setTicked((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));

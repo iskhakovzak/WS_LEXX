@@ -4,7 +4,7 @@
  */
 export default {
   title: { page: "График и разбор" },
-  result: { moveTitle: "Ход цены от входа до выхода", win: "плюс", loss: "минус" },
+  result: { moveTitle: "Ход цены от входа до выхода", win: "плюс", loss: "минус", grossTitle: "Нетто. Брутто {gross}, комиссии {fees}" },
   picker: {
     aria: "Выбрать сделку",
     placeholder: "Тикер, день (2026-10-14) или оба",
@@ -16,6 +16,7 @@ export default {
     long: "лонг",
     short: "шорт",
     othersInR: "Чужие сделки — в R, без долларов.",
+    searching: "Ищу…",
     pick: "Выбрать сделку",
   },
   openInTrades: "Открыть в «Сделках»",

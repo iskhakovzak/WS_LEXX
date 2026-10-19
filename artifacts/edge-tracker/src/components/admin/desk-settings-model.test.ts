@@ -49,3 +49,37 @@ describe("desk settings model", () => {
     expect(nyToTashkent("bad", winter)).toBeNull();
   });
 });
+
+describe("desk settings: 24-hour times, the streak rules together, pilot shortcuts (OWNER-12, OWNER-30)", async () => {
+  const m = await import("./desk-settings-model");
+  const time = { group: "telegram", type: "time", default: "08:45" } as const;
+  it("types times as 24-hour «ЧЧ:ММ»", () => {
+    expect(m.normalizeHhMm("845")).toBe("08:45");
+    expect(m.normalizeHhMm("8:45")).toBe("08:45");
+    expect(m.normalizeHhMm("1630")).toBe("16:30");
+    expect(m.normalizeHhMm("24:00")).toBeNull();
+    expect(m.normalizeHhMm("16:3")).toBeNull();
+    expect(m.isHhMm("16:30")).toBe(true);
+    expect(m.isHhMm("4:30 PM")).toBe(false);
+    expect(m.parseInput("telegram.eveningTime", time, "16:30")).toEqual({ ok: true, value: "16:30" });
+    expect(m.parseInput("telegram.eveningTime", time, "16:3")).toMatchObject({ ok: false, problem: { kind: "time" } });
+    expect(m.parseInput("telegram.eveningTime", time, "")).toMatchObject({ ok: false, problem: { kind: "empty" } });
+  });
+  it("shows «Пропуск ломает серию» right after «Серия после нарушения»", () => {
+    const b = (key: string, group: string) => row(key, { group, type: "boolean", default: true });
+    const g = m.groupRows([
+      b("discipline.contractKeptPoints", "discipline"), b("discipline.streakOnBreak", "discipline"), b("discipline.pointsWindowDays", "discipline"),
+      b("gamification.enabled", "gamification"), b("gamification.missedDayBreaksStreak", "gamification"),
+    ]);
+    expect(g.find((x) => x.group === "discipline")!.rows.map((r) => r.key)).toEqual([
+      "discipline.contractKeptPoints", "discipline.streakOnBreak", "gamification.missedDayBreaksStreak", "discipline.pointsWindowDays",
+    ]);
+    expect(g.find((x) => x.group === "gamification")!.rows.map((r) => r.key)).toEqual(["gamification.enabled"]);
+    // without its anchor the row stays in its own group
+    expect(m.groupRows([b("gamification.missedDayBreaksStreak", "gamification")])[0]!.group).toBe("gamification");
+  });
+  it("lists the five pilot settings", () => {
+    expect(m.PILOT_KEYS).toHaveLength(5);
+    expect(m.PILOT_KEYS).toContain("usage.pilotUsers");
+  });
+});

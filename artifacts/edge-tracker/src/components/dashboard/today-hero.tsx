@@ -9,19 +9,28 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { PHASE_LABEL, formatCountdown, getSessionState, type SessionPhase } from "./market-session";
 import { shortDate } from "./fmt";
-import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { DESK_TZ, fmtDate, fmtR, fmtRate, fmtTimeNY, fmtUsd } from "@/lib/format";
 import type { DashboardToday, RiskDesk, RiskMe, Scope } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { personName } from "@/i18n";
 
-function greeting(d: Date) {
-  const h = d.getHours();
+/** Greeting by the desk clock (New York) — the same «16:02 NY» the hero shows, not the browser's zone. */
+export function greeting(d: Date) {
+  const h = Number(fmtTimeNY(d).slice(0, 2)) || 0;
   const t = dashboardI18n.t;
   if (h < 5) return t("hero.greeting.night");
   if (h < 12) return t("hero.greeting.morning");
   if (h < 18) return t("hero.greeting.day");
   return t("hero.greeting.evening");
+}
+
+/**
+ * Traders on a stop or in breach today, each counted once (a halted trader is also in breach). The server sends the
+ * distinct count as `stopped`; an older server only has the two overlapping counts — the larger one is the best guess.
+ */
+export function stoppedTraders(s: { halted: number; breach: number; stopped?: unknown }): number {
+  return typeof s.stopped === "number" ? s.stopped : Math.max(s.halted, s.breach);
 }
 
 const PHASE_TONE: Record<SessionPhase, Tone> = { pre: "warn", regular: "up", after: "purple", closed: "neutral" };
@@ -114,7 +123,7 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
     if (desk === undefined && loading) return <Cell label={t("hero.deskLimits")} value="" loading />;
     if (!desk) return <Cell label={t("hero.deskLimits")} value="—" hint={t("hero.riskUnavailable")} href={links.risk()} />;
     const s = desk.summary;
-    const bad = s.halted + s.breach;
+    const bad = stoppedTraders(s);
     const value = bad > 0 ? t("hero.stops", { count: bad }) : s.warn > 0 ? t("hero.nearLimit", { count: s.warn }) : t("hero.allWithin");
     const tone: Tone = bad > 0 ? "down" : s.warn > 0 ? "warn" : "up";
     return (
@@ -187,7 +196,7 @@ export function DashboardHeader({
 }) {
   const { t: tr } = dashboardI18n.useT();
   const now = new Date();
-  const rawDate = fmtDate(now, "weekdayDayMonthLong");
+  const rawDate = fmtDate(now, "weekdayDayMonthLong", { timeZone: DESK_TZ });
   // «Суббота, 17 октября»: only the first letter is capital (CSS `capitalize` would also give «Октября»).
   const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
   const t = data?.today;

@@ -49,6 +49,12 @@ export const RELINK_RULES: readonly { code: string; phrases: readonly string[] }
 
 const norm = (s: string | null | undefined) => ` ${(s ?? "").toLowerCase().replace(/\s+/g, " ").trim()} `;
 
+/** Does the label name a family the office playbook has no setup for (OPG / IMBX auctions, MOC fade, options …)? */
+export function isExcludedLabel(label: string | null | undefined): boolean {
+  const l = norm(label);
+  return l.trim().length >= 3 && EXCLUDE.some((x) => l.includes(x));
+}
+
 /** New setup code for one label, or null (excluded family / no rule). */
 export function codeForLabel(label: string | null | undefined): string | null {
   const l = norm(label);

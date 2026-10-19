@@ -2,13 +2,15 @@
  * Playbook modes: «Сегодня» (default, morning-first) · «Мой плейбук» (traders: own + shared-with-me setups) ·
  * «Редактировать» (curators / admins: the full library with folders, editor, variants, compare, review). The mode
  * lives in ?mode= (today = no param); staff come back to the mode they used last. Next to the tabs: the small
- * «Разметить N сделок» link for those who look for the tagging inbox here (the evening card is its main home).
+ * «Разметить N сделок · 13.10–19.10» link (the period it counts) for those who look for the tagging inbox here (the
+ * evening card is its main home).
  */
 import { useCallback } from "react";
 import { useLocation, useSearch } from "wouter";
 import { Inbox } from "lucide-react";
 import { Segmented } from "@/components/ds";
 import { openTaggingSheet } from "@/components/shared/playbook-sheet";
+import { fmtDate } from "@/lib/format";
 import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 
 export type PlaybookMode = "today" | "mine" | "edit";
@@ -50,19 +52,28 @@ export function usePlaybookMode(isStaff: boolean) {
   return { mode, setMode };
 }
 
-export function PlaybookModeTabs({ mode, onMode, isStaff, untagged }: { mode: PlaybookMode; onMode: (m: PlaybookMode) => void; isStaff: boolean; untagged?: number | null }) {
+export function PlaybookModeTabs({ mode, onMode, isStaff, untagged, untaggedPeriod }: {
+  mode: PlaybookMode;
+  onMode: (m: PlaybookMode) => void;
+  isStaff: boolean;
+  /** «Без сетапа» over `untaggedPeriod` (PlaybookToday.untagged — the evening card and the quest count the same way). */
+  untagged?: number | null;
+  untaggedPeriod?: { from: string; to: string } | null;
+}) {
   const { t } = playbookTodayI18n.useT();
   const second: PlaybookMode = isStaff ? "edit" : "mine";
+  const period = untaggedPeriod ? `${fmtDate(untaggedPeriod.from, "dayMonthNumeric")}–${fmtDate(untaggedPeriod.to, "dayMonthNumeric")}` : null;
   return (
     <>
       {!!untagged && untagged > 0 && !isStaff && (
         <button
           type="button"
           onClick={() => openTaggingSheet()}
-          title={t("tagLinkTitle")}
+          title={period ? t("tagLinkTitlePeriod", { period }) : t("tagLinkTitle")}
           className="inline-flex min-h-9 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Inbox className="h-3.5 w-3.5" aria-hidden="true" /> {t("tagLink", { count: untagged })}
+          {period && <span className="tabular-nums text-muted-foreground/80">· {period}</span>}
         </button>
       )}
       <Segmented<PlaybookMode>

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Crosshair, Flame, RefreshCw } from "lucide-react";
 import { Panel, Pill, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import type { MistakeId, VerdictStatus } from "@/lib/daily/types";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { gamificationMeQuery } from "@/lib/api/queries";
 import { NotAvailableError, curatorApi, useCuratorMutation, type CuratorFocus } from "./api";
 
 const STATUS_TONE: Record<VerdictStatus, Tone> = { kept: "up", broken: "down", no_trades: "neutral", unknown: "neutral" };
@@ -58,7 +60,7 @@ export function FocusPanel({ trader, focus }: { trader: string; focus: CuratorFo
             <p className="text-sm text-muted-foreground">{cur?.source === "none" ? t("focus.none") : t("focus.notReady")}</p>
           )}
         </div>
-        {focus.rewards && <DisciplineLine rewards={focus.rewards} />}
+        {focus.rewards && <DisciplineLine trader={trader} rewards={focus.rewards} />}
         <FocusHistory focus={focus} />
       </div>
       <ReplaceFocusDialog open={open} onOpenChange={setOpen} trader={trader} focus={focus} />
@@ -66,21 +68,29 @@ export function FocusPanel({ trader, focus }: { trader: string; focus: CuratorFo
   );
 }
 
-/** The trader's contract streak, discipline level and points — one line (api lib/daily/rewards). Badges are achievement
- * tiers now: they live in the quests & achievements block of the profile, not here. */
-function DisciplineLine({ rewards }: { rewards: NonNullable<CuratorFocus["rewards"]> }) {
+/**
+ * The trader's contract streak, discipline level and points — one line (api lib/daily/rewards). Named «Очки дисциплины»
+ * so it never reads as a second «Дисциплина» next to the 0–10 score (OLGA-14); the points are the SEASON points
+ * (/api/gamification/me, the same source as /ratings «Сезон»), the 30-day window only when the season is unavailable.
+ * Badges are achievement tiers now: they live in the quests & achievements block of the profile, not here.
+ */
+function DisciplineLine({ trader, rewards }: { trader: string; rewards: NonNullable<CuratorFocus["rewards"]> }) {
   const { t } = dailyI18n.useT();
+  const tc = curatorI18n.useT().t;
+  const season = useQuery(gamificationMeQuery(trader)).data?.season ?? null;
   const d = rewards.discipline;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-      <span className="micro-label">{t("rewards.curatorLine")}</span>
+      <span className="micro-label">{tc("focus.pointsLine")}</span>
       <span className="inline-flex items-center gap-1 tabular-nums" title={d.streak > 0 ? t("rewards.streak", { days: t("rewards.streakDays", { count: d.streak }) }) : t("rewards.streakNone")}>
         <Flame className={cn("h-4 w-4", d.streak > 0 ? "text-warn" : "text-muted-foreground")} aria-hidden="true" />
         {d.streak}
       </span>
       <span className="font-medium text-foreground">{levelName(d.level)}</span>
       <span className="tabular-nums text-muted-foreground">
-        {t("rewards.points", { points: d.pointsTotal })} · {t("rewards.window", { days: d.windowDays, points: fmtNum(d.points30, { signed: true, decimals: 0 }) })}
+        {season
+          ? tc("focus.seasonPoints", { points: season.myPoints, month: fmtDate(season.from, "monthYear") })
+          : `${t("rewards.points", { points: d.pointsTotal })} · ${t("rewards.window", { days: d.windowDays, points: fmtNum(d.points30, { signed: true, decimals: 0 }) })}`}
       </span>
     </div>
   );

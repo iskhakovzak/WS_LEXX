@@ -7,9 +7,11 @@
  *   GET  /api/gamification/league[?key=]         LeagueState (+ members of the curator's own team)
  *   PUT  /api/gamification/title {key|null}      the trader's active title (must be earned)
  *   GET  /api/gamification/titles                { titles: { name: titleKey } } — active titles of everyone who shares
- *   GET  /api/gamification/rewards/items         admin (settings.manage): { items, pending, options }
+ *   GET  /api/gamification/rewards/items         admin (settings.manage): { items, pending, stats, recent, options }
+ *                                                (options.achievements[].targets = each tier's target, for the editor)
  *   POST /api/gamification/rewards/items         admin: a catalog item (RewardItem minus id)
- *   PUT  /api/gamification/rewards/items/:id     admin: replace an item
+ *   PUT  /api/gamification/rewards/items/:id     admin: replace an item (deactivated → open eligibility revoked;
+ *                                                condition changed → eligible traders re-checked)
  *   POST /api/gamification/rewards/items/:id/request   the trader requests an eligible reward
  *   GET  /api/gamification/rewards/queue         staff (journal.review): { grants } requested by the traders they manage
  *                                                (admin: everyone; curator: own traders)
@@ -20,18 +22,22 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { AppError, assertCap, idParam, notFound, route } from "../lib/http";
 import { setting } from "../lib/settings/registry";
+import { nyDate } from "../lib/tradingDate";
 import { isStaffRoleName } from "../lib/accessRules";
 import { levelThresholds } from "../lib/daily/discipline";
 import { LINES, TIERS, type AchievementInput } from "../lib/quests/achievements";
+import { requiredOnboardingSteps } from "../lib/quests/catalog";
 import { spaceSql } from "../lib/playbookAccess";
 import { codeFromName } from "../lib/playbookToday/build";
 import { isSeasonKey } from "../lib/gamification/season";
-import { gamificationMe, leagueState, seasonState } from "../lib/gamification/service";
+import { eligibilityInputOf, gamificationMe, leagueState, seasonState } from "../lib/gamification/service";
 import { hiddenUsers, participants, setChosenTitle, userInfo } from "../lib/gamification/people";
 import { activeTitles, earnedTitles } from "../lib/gamification/titlesStore";
 import { itemProblem } from "../lib/gamification/rewards";
-import { decideReward, requestReward } from "../lib/gamification/rewardsService";
-import { grantById, insertItem, itemById, listItems, pendingCount, requestedGrants, updateItem } from "../lib/gamification/rewardsStore";
+import { decideReward, recheckItem, requestReward } from "../lib/gamification/rewardsService";
+import {
+  grantById, insertItem, itemById, listItems, pendingCount, recentGranted, requestedGrants, rewardStats, updateItem,
+} from "../lib/gamification/rewardsStore";
 import type { RewardItem } from "../lib/gamification/types";
 
 const router: IRouter = Router();
@@ -95,9 +101,15 @@ const ItemBody = z.object({
   stock: z.number().int().nullable().optional(),
 });
 
+/** The line's tier targets in order (settings now; function lines with today's onboarding size). */
+function lineTargets(def: (typeof LINES)[number]): number[] {
+  return typeof def.targets === "function"
+    ? def.targets({ onboarding: { done: 0, total: requiredOnboardingSteps(), doneOn: null } } as AchievementInput)
+    : def.targets.map((k) => Number(setting(k)));
+}
+
 function lineTierNames(def: (typeof LINES)[number]): string[] {
-  const n = typeof def.targets === "function" ? def.targets({ onboarding: { done: 0, total: 1, doneOn: null } } as AchievementInput).length : def.targets.length;
-  return [...(def.tiers ?? TIERS)].slice(0, n);
+  return [...(def.tiers ?? TIERS)].slice(0, lineTargets(def).length);
 }
 
 function checkedItem(body: z.infer<typeof ItemBody>): Omit<RewardItem, "id"> {
@@ -118,10 +130,12 @@ async function officeSetups(): Promise<{ id: number; code: string | null; name: 
 }
 
 router.get("/gamification/rewards/items", route({ cap: "settings.manage" }, async () => {
-  const [items, pending, setups] = await Promise.all([listItems(), pendingCount(), officeSetups()]);
+  const [items, pending, setups, stats, recent] = await Promise.all([
+    listItems(), pendingCount(), officeSetups(), rewardStats(`${nyDate().slice(0, 7)}-01`), recentGranted(5),
+  ]);
   return {
-    items, pending,
-    options: { achievements: LINES.map((l) => ({ id: l.id, tiers: lineTierNames(l) })), levels: levelThresholds().length - 1, setups },
+    items, pending, stats, recent,
+    options: { achievements: LINES.map((l) => ({ id: l.id, tiers: lineTierNames(l), targets: lineTargets(l) })), levels: levelThresholds().length - 1, setups },
   };
 }));
 
@@ -130,8 +144,11 @@ router.post("/gamification/rewards/items", route({ cap: "settings.manage", body:
 }));
 
 router.put("/gamification/rewards/items/:id", route({ cap: "settings.manage", params: z.object({ id: idParam }), body: ItemBody }, async ({ actor, params, body }) => {
-  const out = await updateItem(params.id, checkedItem(body), actor!.name);
+  const item = checkedItem(body);
+  const before = await itemById(params.id);
+  const out = await updateItem(params.id, item, actor!.name);
   if (!out) throw notFound("REWARD_ITEM_NOT_FOUND");
+  await recheckItem(before, out, (trader) => eligibilityInputOf(trader));
   return out;
 }));
 

@@ -8,7 +8,7 @@ export default {
   groups: {
     daily: { title: "Focus of the day", description: "How we find a trader's costliest repeating mistake." },
     discipline: { title: "Contract and discipline", description: "Points to the day's discipline for the own contract and streaks." },
-    rewards: { title: "Rewards", description: "Levels by discipline points." },
+    rewards: { title: "Levels", description: "Levels by discipline points (the rewards catalog is above)." },
     quests: { title: "Quests", description: "First steps, daily, weekly, monthly and curator quests: switches, targets and rewards in discipline points." },
     achievements: { title: "Achievements", description: "Tier thresholds: 1 — bronze, 2 — silver, 3 — gold, 4 — platinum." },
     telegram: { title: "Telegram", description: "Bot sends on weekdays. Times are New York time, Tashkent time next to them." },
@@ -20,7 +20,12 @@ export default {
     usage: { title: "Usage", description: "Internal tracking: which screens people open and whether they go through the daily loop. Admins only; never for rewards or rankings." },
     other: { title: "Other", description: "Settings without a group." },
   },
-  units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times" },
+  units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times", places: "places", people: "people", shares: "shares", bars: "bars", times: "×", bp: "bp", atr: "ATR", quests: "quests", trades: "trades", months: "mo.", lessons: "lessons", exams: "exams", tasks: "tasks", teams: "teams" },
+  jump: {
+    aria: "Settings groups",
+    pilot: "Pilot · {count} items",
+    pilotAria: "What to check before the pilot",
+  },
   field: {
     range: "{min} to {max}",
     defaultValue: "Default: {value}",
@@ -63,6 +68,14 @@ export default {
   },
   denied: "Desk settings are changed by an admin.",
   loadFailed: "Couldn't load the settings",
+  people: {
+    add: "Add a trader",
+    empty: "Nobody yet — add traders from the list",
+    remove: "Remove {name}",
+    clear: "Clear",
+    count: { one: "{count} participant", other: "{count} participants" },
+    unknown: "No such trader — remove or fix the name",
+  },
   settings: {
     daily: {
       focusWindowDays: { label: "Focus window", help: "How many recent trading days we look at to find the costliest repeating mistake." },
@@ -174,7 +187,7 @@ export default {
     usage: {
       enabled: { label: "Usage tracking on", help: "The site records opened screens and daily-loop steps (no amounts, tickers or text). Off — nothing is recorded." },
       retentionDays: { label: "Keep events for", help: "Older events are deleted at night. Plans, reviews and trades are never touched." },
-      pilotUsers: { label: "Pilot participants", help: "Names separated by commas, as in the team list (e.g. Kirill B., Egor M.). The funnel in «Usage» filters by them." },
+      pilotUsers: { label: "Pilot participants", help: "Pick traders from the list — search by name in Latin or Cyrillic. The funnel in «Usage» filters by them; while the list is empty, it shows the Interns." },
     },
     privacy: {
       hideNamesFromTraders: { label: "Hide names from traders", help: "On shared charts and the top of the day a trader sees “Trader N” and the amounts; off — names show, other traders’ amounts don’t." },
@@ -183,6 +196,7 @@ export default {
       enabled: { label: "Gamification on", help: "Seasons, league, recognition, mastery and rewards. Turn off to hide all of it from traders." },
       seasonTopN: { label: "Season ranking size", help: "How many top places the season ranking shows; traders always see their own place." },
       leagueMinMembers: { label: "League: minimum members", help: "A curator's team joins the league when it has at least this many active traders." },
+      leagueMinTeams: { label: "League: minimum teams", help: "The league shows once it has at least this many curator teams." },
       missedDayBreaksStreak: { label: "A missed day breaks the streak", help: "A day with trades but no contract ends the streak (unless a freeze covers it). Off: such a day leaves the streak alone." },
       freezePerMonth: { label: "Freezes per month", help: "How many missed days a month don't break the streak. A broken contract is never covered." },
       streakMilestoneStep: { label: "Streak milestone step", help: "Every this many streak days, a post in the desk feed." },

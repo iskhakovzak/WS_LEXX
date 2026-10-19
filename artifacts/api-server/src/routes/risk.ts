@@ -51,13 +51,19 @@ import { applyTierTemplate, loadTierTemplates } from "./scaling";
 import { badRequest, errorMessage, forbidden, notFound, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
+import {
+  WARN_PCT, computeMetrics, computeStop, drawdownSince, nextPeak, num, pctOf, round2,
+  type DayRow, type Horizon, type Limits, type Metrics, type Position,
+} from "../lib/riskMetrics";
+
+export { WARN_PCT, computeMetrics, computeStop, pctOf, round2, weekStart } from "../lib/riskMetrics";
+export type { Alert, DayRow, Horizon, Limits, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
 
 const router: IRouter = Router();
 
 // ─── constants / helpers ────────────────────────────────────────────────────
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-export const WARN_PCT = 70;
 /** Overnight-book key time: 15:45 ET (minutes since NY midnight). */
 export const OVERNIGHT_KEY_MINUTES = 15 * 60 + 45;
 const CLOSE_MINUTES = 16 * 60;
@@ -72,19 +78,6 @@ function daysBetween(a: string, b: string): number {
   return Math.max(0, Math.round(ms / 86_400_000));
 }
 
-/** Monday of the week containing ymd. */
-export function weekStart(ymd: string): string {
-  const d = new Date(`${ymd}T12:00:00Z`);
-  const dow = d.getUTCDay(); // 0 = Sun
-  return addDays(ymd, dow === 0 ? -6 : 1 - dow);
-}
-
-const num = (v: unknown): number | null => {
-  if (v == null || v === "") return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
-};
-export const round2 = (x: number) => Math.round(x * 100) / 100;
 
 /** Whether "now" (NY) is past the overnight key time for the given trading date (false for other dates). */
 function afterKeyTime(date: string, now = new Date()): boolean {
@@ -149,23 +142,6 @@ async function brokerSql(): Promise<string> {
 
 // ─── data access ────────────────────────────────────────────────────────────
 
-export type Limits = {
-  trader: string;
-  accountSize: number | null;
-  dailyLossLimit: number | null;
-  weeklyLossLimit: number | null;
-  maxDrawdown: number | null;
-  maxRiskPerTrade: number | null;
-  maxPositionUsd: number | null;
-  maxOvernightExposure: number | null;
-  maxOpenPositions: number | null;
-  allowOvernight: boolean;
-  allowSwing: boolean;
-  tier: string | null;
-  notes: string | null;
-  updatedBy: string | null;
-  updatedAt: string | null;
-};
 
 function toLimits(r: any): Limits {
   return {
@@ -194,18 +170,6 @@ async function loadLimits(trader: string | null): Promise<Map<string, Limits>> {
   return new Map(rows.map((r: any) => [String(r.trader), toLimits(r)]));
 }
 
-export type PnlSource = "propreports" | "journal" | null;
-export type DayRow = {
-  trader: string;
-  date: string;
-  /** Net P&L for the day from the resolved source (null when no $ data). */
-  pnl: number | null;
-  source: PnlSource;
-  trades: number;
-  brokerTrades: number;
-  r: number;
-  fees: number;
-};
 
 /**
  * Daily aggregates per trader, realised on close date. Broker rows win over journal rows for a day
@@ -237,6 +201,22 @@ async function loadDaily(trader: string | null, upTo: string, only?: readonly st
   return rows.map((r: any) => resolveDay(r));
 }
 
+/**
+ * Drawdown baselines: NY days of curator reviews of drawdown breaches (not archived) per trader. computeMetrics resets
+ * the peak at the latest one not after the trading date (lib/riskMetrics drawdownSince) — that lifts a reviewed halt.
+ */
+async function loadDdResets(trader: string | null, only?: readonly string[]): Promise<Map<string, string[]>> {
+  const { rows } = await pool.query<{ trader: string; d: string }>(
+    `SELECT DISTINCT trader, to_char(created_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') AS d
+       FROM risk_breach_reviews WHERE kind = 'drawdown' AND archived_at IS NULL
+        AND ($1::text IS NULL OR trader = $1)${only ? " AND trader = ANY($2::text[])" : ""}`,
+    only ? [trader, [...only]] : [trader],
+  ).catch(() => ({ rows: [] as { trader: string; d: string }[] }));
+  const out = new Map<string, string[]>();
+  for (const r of rows) out.set(String(r.trader), [...(out.get(String(r.trader)) ?? []), String(r.d)]);
+  return out;
+}
+
 /** Pure: pick the day's P&L source (exported for the offline check). */
 export function resolveDay(r: {
   trader: string; d: string; journal_net: unknown; journal_pnl_rows: unknown; broker_net: unknown; broker_pnl_rows: unknown;
@@ -259,37 +239,6 @@ export function resolveDay(r: {
   };
 }
 
-export type Horizon = "intraday" | "overnight" | "swing";
-export type Position = {
-  id: number;
-  ticker: string;
-  date: string;
-  side: string | null;
-  setup: string | null;
-  trader: string;
-  horizon: Horizon;
-  qty: number | null;
-  entry: number | null;
-  stop: number | null;
-  daysHeld: number;
-  riskUsd: number | null;
-  riskSource: "planned" | "stop" | null;
-  /** Planned risk_usd disagrees with |entry−stop|×qty by >25% — the trader's stop moved or the plan is stale. */
-  riskMismatch: boolean;
-  plannedRiskUsd: number | null;
-  stopRiskUsd: number | null;
-  exposureUsd: number | null;
-  /** Carried past its entry day (or explicitly overnight/swing) ⇒ gap risk. */
-  carried: boolean;
-  /** Will be in the overnight book tonight: carried, or still open after 15:45 ET today. */
-  carriedTonight: boolean;
-  /** result IS NULL and no exit — shown in the book with a "без статуса" flag. */
-  noStatus: boolean;
-  source: "propreports" | "manual";
-  sector: string | null;
-  /** 14-day ATR from ticker_data_cache (may be stale; the client refreshes it from quotes). */
-  atr: number | null;
-};
 
 /** Pure: build a Position from a trades row (exported for the offline check). */
 export function toPosition(p: any, today: string, afterKey: boolean): Position {
@@ -355,238 +304,6 @@ async function loadPositions(trader: string | null, today: string): Promise<Posi
   return rows.map((p: any) => toPosition(p, today, afterKey));
 }
 
-// ─── metrics ────────────────────────────────────────────────────────────────
-
-export type Alert = {
-  kind: "daily" | "weekly" | "drawdown" | "overnight" | "positions" | "trade_risk" | "position_size" | "overnight_not_allowed" | "swing_not_allowed";
-  label: string;
-  level: "warn" | "breach";
-  used: number;
-  limit: number | null;
-  pct: number | null;
-  detail?: string;
-  tradeId?: number;
-};
-
-export function pctOf(used: number, limit: number | null): number | null {
-  if (limit == null || limit < 0) return null;
-  if (limit === 0) return used > 0 ? 100 : 0; // explicit zero limit: anything is a breach
-  return Math.round((used / limit) * 1000) / 10;
-}
-
-export type StopState = "ok" | "warn" | "stop" | "weekly" | "drawdown" | "no_limits";
-export type Stop = {
-  state: StopState;
-  label: string;
-  /** Russian one-liner with exact numbers, e.g. «осталось $120 до дневного стопа». */
-  message: string;
-  halted: boolean;
-  dailyRemainingUsd: number | null;
-  weeklyRemainingUsd: number | null;
-  drawdownRemainingUsd: number | null;
-  dailyPct: number | null;
-  weeklyPct: number | null;
-  drawdownPct: number | null;
-};
-
-const usd0 = (v: number) => `$${Math.round(Math.abs(v)).toLocaleString("en-US")}`;
-
-/**
- * Pure red-day stop state machine (exported for the offline check).
- * Priority: max drawdown ≥100% → weekly ≥100% → daily ≥100% (stop) → any ≥70% (warn) → ok.
- */
-export function computeStop(args: { todayLoss: number; weekLoss: number; currentDd: number; limits: Limits | null }, lang: Lang = "ru"): Stop {
-  const { todayLoss, weekLoss, currentDd, limits: L } = args;
-  const t = riskT.tFor(lang);
-  const dailyPct = pctOf(todayLoss, L?.dailyLossLimit ?? null);
-  const weeklyPct = pctOf(weekLoss, L?.weeklyLossLimit ?? null);
-  const drawdownPct = pctOf(currentDd, L?.maxDrawdown ?? null);
-  const rem = (limit: number | null | undefined, used: number) => (limit == null ? null : round2(Math.max(0, limit - used)));
-  const base = {
-    dailyRemainingUsd: rem(L?.dailyLossLimit, todayLoss),
-    weeklyRemainingUsd: rem(L?.weeklyLossLimit, weekLoss),
-    drawdownRemainingUsd: rem(L?.maxDrawdown, currentDd),
-    dailyPct,
-    weeklyPct,
-    drawdownPct,
-  };
-  if (!L || (L.dailyLossLimit == null && L.weeklyLossLimit == null && L.maxDrawdown == null)) {
-    return { ...base, state: "no_limits", label: t("stop.no_limits.label"), message: t("stop.no_limits.message"), halted: false };
-  }
-  if (drawdownPct != null && drawdownPct >= 100) {
-    return { ...base, state: "drawdown", label: t("stop.drawdown.label"), halted: true,
-      message: t("stop.drawdown.message", { used: usd0(currentDd), limit: usd0(L.maxDrawdown!) }) };
-  }
-  if (weeklyPct != null && weeklyPct >= 100) {
-    return { ...base, state: "weekly", label: t("stop.weekly.label"), halted: true,
-      message: t("stop.weekly.message", { used: usd0(weekLoss), limit: usd0(L.weeklyLossLimit!) }) };
-  }
-  if (dailyPct != null && dailyPct >= 100) {
-    return { ...base, state: "stop", label: t("stop.stop.label"), halted: true,
-      message: t("stop.stop.message", { used: usd0(todayLoss), limit: usd0(L.dailyLossLimit!) }) };
-  }
-  const worst = Math.max(dailyPct ?? -1, weeklyPct ?? -1, drawdownPct ?? -1);
-  if (worst >= WARN_PCT) {
-    const parts: string[] = [];
-    if (dailyPct != null && dailyPct >= WARN_PCT) parts.push(t("stop.warn.daily", { left: usd0(base.dailyRemainingUsd ?? 0), pct: Math.round(dailyPct) }));
-    if (weeklyPct != null && weeklyPct >= WARN_PCT) parts.push(t("stop.warn.weekly", { left: usd0(base.weeklyRemainingUsd ?? 0), pct: Math.round(weeklyPct) }));
-    if (drawdownPct != null && drawdownPct >= WARN_PCT) parts.push(t("stop.warn.drawdown", { left: usd0(base.drawdownRemainingUsd ?? 0), pct: Math.round(drawdownPct) }));
-    const msg = parts.join("; ");
-    return { ...base, state: "warn", label: t("stop.warn.label"), halted: false, message: msg.charAt(0).toUpperCase() + msg.slice(1) + "." };
-  }
-  const msg = base.dailyRemainingUsd != null
-    ? dailyPct != null
-      ? t("stop.ok.dailyPct", { left: usd0(base.dailyRemainingUsd), pct: Math.round(dailyPct) })
-      : t("stop.ok.daily", { left: usd0(base.dailyRemainingUsd) })
-    : base.weeklyRemainingUsd != null
-      ? t("stop.ok.weekly", { left: usd0(base.weeklyRemainingUsd) })
-      : t("stop.ok.drawdown", { left: usd0(base.drawdownRemainingUsd ?? 0) });
-  return { ...base, state: "ok", label: t("stop.ok.label"), halted: false, message: msg };
-}
-
-/** Pure (exported for the offline check). `extra` = hypothetical position for /risk/check. */
-export function computeMetrics(trader: string, days: DayRow[], positions: Position[], limits: Limits | null, today: string, lang: Lang = "ru") {
-  const ws = weekStart(today);
-  const todayRow = days.find((d) => d.date === today);
-  const weekRows = days.filter((d) => d.date >= ws && d.date <= today);
-  const weekPnlRows = weekRows.filter((d) => d.pnl != null);
-
-  // equity / drawdown on days that have $ data
-  let cum = 0;
-  let peak = 0;
-  let maxDd = 0;
-  let cumR = 0;
-  let peakR = 0;
-  for (const d of days) {
-    cumR += d.r;
-    if (cumR > peakR) peakR = cumR;
-    if (d.pnl == null) continue;
-    cum += d.pnl;
-    if (cum > peak) peak = cum;
-    if (peak - cum > maxDd) maxDd = peak - cum;
-  }
-  const hasPnl = days.some((d) => d.pnl != null);
-  const currentDd = hasPnl ? round2(peak - cum) : 0;
-
-  // red-day streak (most recent days with $ data; falls back to R when no $)
-  let redStreak = 0;
-  for (let i = days.length - 1; i >= 0; i--) {
-    const v = hasPnl ? days[i].pnl : days[i].r;
-    if (v == null) continue;
-    if (v < 0) redStreak++;
-    else break;
-  }
-
-  const openRisk = positions.reduce((s, p) => s + (p.riskUsd ?? 0), 0);
-  const carried = positions.filter((p) => p.carried);
-  const tonight = positions.filter((p) => p.carriedTonight);
-  const overnightExposure = tonight.reduce((s, p) => s + (p.exposureUsd ?? 0), 0);
-  const grossExposure = positions.reduce((s, p) => s + (p.exposureUsd ?? 0), 0);
-
-  const todayPnl = todayRow?.pnl ?? null;
-  const weekPnl = weekPnlRows.length ? round2(weekPnlRows.reduce((s, d) => s + (d.pnl ?? 0), 0)) : null;
-  const todayLoss = Math.max(0, -(todayPnl ?? 0));
-  const weekLoss = Math.max(0, -(weekPnl ?? 0));
-
-  const L = limits;
-  const stop = computeStop({ todayLoss, weekLoss, currentDd, limits: L }, lang);
-  const AL = riskT.tFor(lang);
-  const dailyRemaining = stop.dailyRemainingUsd;
-
-  const alerts: Alert[] = [];
-  const check = (kind: Alert["kind"], label: string, used: number, limit: number | null, detail?: string, tradeId?: number) => {
-    const pct = pctOf(used, limit);
-    if (pct == null) return;
-    if (pct >= 100) alerts.push({ kind, label, level: "breach", used: round2(used), limit, pct, detail, tradeId });
-    else if (pct >= WARN_PCT) alerts.push({ kind, label, level: "warn", used: round2(used), limit, pct, detail, tradeId });
-  };
-  if (L) {
-    check("daily", AL("alerts.daily"), todayLoss, L.dailyLossLimit);
-    check("weekly", AL("alerts.weekly"), weekLoss, L.weeklyLossLimit);
-    check("drawdown", AL("alerts.drawdown"), currentDd, L.maxDrawdown);
-    check("overnight", AL("alerts.overnight"), overnightExposure, L.maxOvernightExposure);
-    check("positions", AL("alerts.positions"), positions.length, L.maxOpenPositions);
-    const worstRisk = positions.reduce<Position | null>((w, p) => ((p.riskUsd ?? 0) > (w?.riskUsd ?? 0) ? p : w), null);
-    if (worstRisk?.riskUsd != null) check("trade_risk", AL("alerts.trade_risk"), worstRisk.riskUsd, L.maxRiskPerTrade, worstRisk.ticker, worstRisk.id);
-    const worstSize = positions.reduce<Position | null>((w, p) => ((p.exposureUsd ?? 0) > (w?.exposureUsd ?? 0) ? p : w), null);
-    if (worstSize?.exposureUsd != null) check("position_size", AL("alerts.position_size"), worstSize.exposureUsd, L.maxPositionUsd, worstSize.ticker, worstSize.id);
-    const on = positions.filter((p) => p.horizon === "overnight" || (p.horizon === "intraday" && p.carriedTonight));
-    if (!L.allowOvernight && on.length) {
-      alerts.push({ kind: "overnight_not_allowed", label: AL("alerts.overnight_not_allowed"), level: "breach", used: on.length, limit: 0, pct: null, detail: on.map((p) => p.ticker).join(", "), tradeId: on[0].id });
-    }
-    const sw = positions.filter((p) => p.horizon === "swing");
-    if (!L.allowSwing && sw.length) {
-      alerts.push({ kind: "swing_not_allowed", label: AL("alerts.swing_not_allowed"), level: "breach", used: sw.length, limit: 0, pct: null, detail: sw.map((p) => p.ticker).join(", "), tradeId: sw[0].id });
-    }
-  }
-  alerts.sort((a, b) => (a.level === b.level ? (b.pct ?? 999) - (a.pct ?? 999) : a.level === "breach" ? -1 : 1));
-  const status: "ok" | "warn" | "breach" | "no_limits" = !L
-    ? "no_limits"
-    : alerts.some((a) => a.level === "breach")
-      ? "breach"
-      : alerts.length
-        ? "warn"
-        : "ok";
-
-  const weekSources = new Set(weekPnlRows.map((d) => d.source).filter(Boolean));
-  const histBroker = days.filter((d) => d.source === "propreports").length;
-  const histJournal = days.filter((d) => d.source === "journal").length;
-
-  return {
-    trader,
-    status,
-    stop,
-    halted: stop.halted,
-    alerts,
-    breaches: alerts.filter((a) => a.level === "breach"),
-    sources: {
-      today: (todayRow?.source ?? null) as PnlSource,
-      week: (weekSources.size === 0 ? null : weekSources.size === 1 ? [...weekSources][0] : "mixed") as PnlSource | "mixed",
-      history: { propreports: histBroker, journal: histJournal },
-    },
-    today: {
-      date: today,
-      pnlNet: todayPnl == null ? null : round2(todayPnl),
-      source: (todayRow?.source ?? null) as PnlSource,
-      fees: round2(todayRow?.fees ?? 0),
-      r: round2(todayRow?.r ?? 0),
-      trades: todayRow?.trades ?? 0,
-      brokerTrades: todayRow?.brokerTrades ?? 0,
-      openPositions: positions.length,
-      carriedPositions: carried.length,
-      carriedTonight: tonight.length,
-      openRiskUsd: round2(openRisk),
-      overnightExposureUsd: round2(overnightExposure),
-      grossExposureUsd: round2(grossExposure),
-      dailyLimitUsedPct: pctOf(todayLoss, L?.dailyLossLimit ?? null),
-      dailyRemainingUsd: dailyRemaining,
-      /** Remaining daily room if every open stop is hit. */
-      dailyRemainingAfterOpenRiskUsd: dailyRemaining == null ? null : round2(dailyRemaining - openRisk),
-    },
-    week: {
-      from: ws,
-      pnlNet: weekPnl,
-      r: round2(weekRows.reduce((s, d) => s + d.r, 0)),
-      trades: weekRows.reduce((s, d) => s + d.trades, 0),
-      limitUsedPct: pctOf(weekLoss, L?.weeklyLossLimit ?? null),
-      remainingUsd: stop.weeklyRemainingUsd,
-    },
-    drawdown: {
-      hasPnl,
-      equityNet: hasPnl ? round2(cum) : null,
-      peakNet: hasPnl ? round2(peak) : null,
-      currentUsd: currentDd,
-      maxUsd: round2(maxDd),
-      currentPct: L?.accountSize ? Math.round((currentDd / (L.accountSize + peak)) * 1000) / 10 : null,
-      limitUsedPct: pctOf(currentDd, L?.maxDrawdown ?? null),
-      remainingUsd: stop.drawdownRemainingUsd,
-      cumR: round2(cumR),
-      currentR: round2(peakR - cumR),
-      redDayStreak: redStreak,
-    },
-  };
-}
-export type Metrics = ReturnType<typeof computeMetrics>;
 
 /** Last N trading days cumulative net (or R when no $ data) for sparklines. */
 function sparkline(days: DayRow[], n = 20): number[] {
@@ -605,6 +322,20 @@ function groupBy<T extends { trader: string }>(rows: T[]): Map<string, T[]> {
     else m.set(r.trader, [r]);
   }
   return m;
+}
+
+/** Staff accounts (admins, curators) may trade, but the desk counts traders only. */
+const isStaffRole = (role: string | null | undefined): boolean => role === "admin" || role === "curator";
+
+/** Desk roster: active traders + anyone with limits, open positions or recent trades — staff accounts excluded. */
+function deskRoster(users: Map<string, { role: string }>, limitsMap: Map<string, unknown>, posBy: Map<string, unknown>, daysBy: Map<string, DayRow[]>, recentFrom: string): Set<string> {
+  const names = new Set<string>();
+  for (const [name, u] of users) if (u.role === "trader") names.add(name);
+  for (const name of limitsMap.keys()) names.add(name);
+  for (const name of posBy.keys()) names.add(name);
+  for (const [name, rows] of daysBy) if (rows.some((d) => d.date >= recentFrom)) names.add(name);
+  for (const name of [...names]) if (isStaffRole(users.get(name)?.role)) names.delete(name);
+  return names;
 }
 
 // ─── red-day notifications (deduped per trader/date/state) ──────────────────
@@ -690,9 +421,9 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) throw unauthorized();
   const today = clientDate(req.query.date);
-  const [limitsMap, days, positions] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today)]);
+  const [limitsMap, days, positions, resets] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me)]);
   const limits = limitsMap.get(me) ?? null;
-  const m = computeMetrics(me, days, positions, limits, today, langOf(req));
+  const m = computeMetrics(me, days, positions, limits, today, langOf(req), drawdownSince(resets.get(me), today));
   void recordStopAlerts(m, limits, today);
   res.json({
     ...m,
@@ -708,36 +439,35 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
 router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "risk.read.team"))) return;
   const today = clientDate(req.query.date);
-  const [limitsMap, days, positions, usersRes] = await Promise.all([
+  const [limitsMap, days, positions, usersRes, resets] = await Promise.all([
     loadLimits(null),
     loadDaily(null, today),
     loadPositions(null, today),
-    pool.query(`SELECT name, role, COALESCE(banned, false) AS banned FROM users WHERE active = true`),
+    // ward = the viewer is the trader's curator / mentor / risk manager («Мои подопечные» on the desk).
+    pool.query(`SELECT name, role, COALESCE(banned, false) AS banned, (assigned_curator = $1 OR assigned_mentor = $1 OR assigned_risk_manager = $1) AS ward
+                  FROM users WHERE active = true`, [req.authUser!.name]),
+    loadDdResets(null),
   ]);
-  const users = new Map<string, { role: string; banned: boolean }>(
-    usersRes.rows.map((u: any) => [String(u.name), { role: String(u.role), banned: !!u.banned }]),
+  const users = new Map<string, { role: string; banned: boolean; ward: boolean }>(
+    usersRes.rows.map((u: any) => [String(u.name), { role: String(u.role), banned: !!u.banned, ward: u.ward === true }]),
   );
   const recentFrom = addDays(today, -60);
   const daysBy = groupBy(days);
   const posBy = groupBy(positions);
 
-  // Desk roster: active traders + anyone with limits, open positions or recent trades.
-  const names = new Set<string>();
-  for (const [name, u] of users) if (u.role === "trader") names.add(name);
-  for (const name of limitsMap.keys()) names.add(name);
-  for (const name of posBy.keys()) names.add(name);
-  for (const [name, rows] of daysBy) if (rows.some((d) => d.date >= recentFrom)) names.add(name);
+  const names = deskRoster(users, limitsMap, posBy, daysBy, recentFrom);
 
   const STATUS_ORDER = { breach: 0, warn: 1, ok: 2, no_limits: 3 } as const;
   const rows = [...names].map((name) => {
     const d = daysBy.get(name) ?? [];
-    const m = computeMetrics(name, d, posBy.get(name) ?? [], limitsMap.get(name) ?? null, today, langOf(req));
+    const m = computeMetrics(name, d, posBy.get(name) ?? [], limitsMap.get(name) ?? null, today, langOf(req), drawdownSince(resets.get(name), today));
     void recordStopAlerts(m, limitsMap.get(name) ?? null, today);
     const last = d.length ? d[d.length - 1].date : null;
     return {
       ...m,
       role: users.get(name)?.role ?? null,
       banned: users.get(name)?.banned ?? false,
+      ward: users.get(name)?.ward ?? false,
       limits: limitsMap.get(name) ?? null,
       spark: sparkline(d),
       sparkUnit: d.some((x) => x.pnl != null) ? "usd" : "r",
@@ -759,6 +489,7 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
     afterClose: afterKeyTime(today),
     summary: {
       traders: rows.length,
+      wards: rows.filter((r) => r.ward).length,
       pnlNetToday: sumNullable(rows.map((r) => r.today.pnlNet)),
       pnlSource: sourceCounts.propreports && sourceCounts.journal ? "mixed" : sourceCounts.propreports ? "propreports" : sourceCounts.journal ? "journal" : null,
       rToday: round2(rows.reduce((s, r) => s + r.today.r, 0)),
@@ -767,6 +498,8 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
       warn: rows.filter((r) => r.status === "warn").length,
       noLimits: rows.filter((r) => r.status === "no_limits").length,
       halted: halted.length,
+      /** Distinct traders on a stop or with a breach today (a halted trader is usually also in breach — count once). */
+      stopped: rows.filter((r) => r.stop.halted || r.status === "breach").length,
       nearStop: warned.length,
       openPositions: positions.length,
       carriedPositions: positions.filter((p) => p.carried).length,
@@ -933,17 +666,19 @@ router.get("/risk/history", asyncHandler(async (req, res): Promise<void> => {
   const span = Number.isFinite(daysParam) ? Math.min(730, Math.max(5, Math.round(daysParam))) : 60;
   const from = addDays(today, -(span - 1));
 
-  const [days, limitsMap] = await Promise.all([loadDaily(trader, today), loadLimits(trader)]);
+  const [days, limitsMap, resets] = await Promise.all([loadDaily(trader, today), loadLimits(trader), loadDdResets(trader)]);
   const limits = limitsMap.get(trader) ?? null;
   const hasPnl = days.some((d) => d.pnl != null);
+  // Same baseline as the stop: after a curator review of a drawdown breach the drawdown line restarts from that day.
+  const ddSince = drawdownSince(resets.get(trader), today);
 
   let cum = 0, peak = 0, cumR = 0, peakR = 0;
   const all = days.map((d) => {
     cumR += d.r;
-    if (cumR > peakR) peakR = cumR;
+    peakR = nextPeak(peakR, cumR, d.date, ddSince);
     if (d.pnl != null) {
       cum += d.pnl;
-      if (cum > peak) peak = cum;
+      peak = nextPeak(peak, cum, d.date, ddSince);
     }
     return {
       date: d.date,
@@ -982,6 +717,7 @@ router.get("/risk/history", asyncHandler(async (req, res): Promise<void> => {
     to: today,
     unit: hasPnl ? "usd" : "r",
     limits,
+    ddSince,
     points,
     sources: { propreports: points.filter((p) => p.source === "propreports").length, journal: points.filter((p) => p.source === "journal").length },
     stats: {
@@ -1031,10 +767,11 @@ router.get("/risk/overnight", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderScope(req, true);
   const today = clientDate(req.query.date);
   const preview = req.query.all === "1" || req.query.all === "true";
-  const [positions, limitsMap, days] = await Promise.all([
+  const [positions, limitsMap, days, resets] = await Promise.all([
     loadPositions(scope.trader, today),
     loadLimits(scope.trader),
     loadDaily(scope.trader, today),
+    loadDdResets(scope.trader),
   ]);
   const afterKey = afterKeyTime(today);
   const book = positions.filter((p) => p.carriedTonight || preview);
@@ -1058,7 +795,7 @@ router.get("/risk/overnight", asyncHandler(async (req, res): Promise<void> => {
   const posBy = groupBy(positions);
   const traders = [...new Set([...book.map((p) => p.trader)])].sort((a, b) => a.localeCompare(b)).map((name) => {
     const L = limitsMap.get(name) ?? null;
-    const m = computeMetrics(name, daysBy.get(name) ?? [], posBy.get(name) ?? [], L, today, langOf(req));
+    const m = computeMetrics(name, daysBy.get(name) ?? [], posBy.get(name) ?? [], L, today, langOf(req), drawdownSince(resets.get(name), today));
     const mine = book.filter((p) => p.trader === name);
     const exposure = round2(mine.reduce((s, p) => s + (p.exposureUsd ?? 0), 0));
     return {
@@ -1130,9 +867,10 @@ router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
   }).safeParse(req.query);
   if (!q.success) throw q.error;
   const today = clientDate(q.data.date);
-  const [limitsMap, days, positions] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today)]);
+  const [limitsMap, days, positions, resets] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me)]);
   const limits = limitsMap.get(me) ?? null;
-  const before = computeMetrics(me, days, positions, limits, today, langOf(req));
+  const ddSince = drawdownSince(resets.get(me), today);
+  const before = computeMetrics(me, days, positions, limits, today, langOf(req), ddSince);
   const horizon = q.data.horizon ?? "intraday";
   const hypothetical: Position = {
     id: -1, ticker: (q.data.ticker ?? "NEW").toUpperCase(), date: today, side: null, setup: null, trader: me, horizon,
@@ -1142,7 +880,7 @@ router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
     exposureUsd: q.data.exposureUsd ?? null, carried: horizon !== "intraday", carriedTonight: horizon !== "intraday" || afterKeyTime(today),
     noStatus: false, source: "manual", sector: null, atr: null,
   };
-  const after = computeMetrics(me, days, [...positions, hypothetical], limits, today, langOf(req));
+  const after = computeMetrics(me, days, [...positions, hypothetical], limits, today, langOf(req), ddSince);
   const newAlerts = after.alerts.filter((a) => !before.alerts.some((b) => b.kind === a.kind && b.level === a.level));
   const horizonBlocked = !!limits && ((horizon === "overnight" && !limits.allowOvernight) || (horizon === "swing" && !limits.allowSwing));
   const remainingAfter = after.today.dailyRemainingAfterOpenRiskUsd;
@@ -1176,29 +914,26 @@ export type DeskSnapshotRow = {
  */
 /** `only` = rows for just these traders (the curator's roster) — the same rows the full snapshot has for them. */
 export async function deskSnapshot(today: string, trader: string | null = null, lang: Lang = "ru", only?: readonly string[]): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
-  const [limitsMap, days, positions, usersRes] = await Promise.all([
+  const [limitsMap, days, positions, usersRes, resets] = await Promise.all([
     loadLimits(trader),
     loadDaily(trader, today, only),
     loadPositions(trader, today),
     pool.query(`SELECT name, role, COALESCE(banned, false) AS banned FROM users WHERE active = true AND ($1::text IS NULL OR name = $1)`, [trader]),
+    loadDdResets(trader, only),
   ]);
-  const users = new Map<string, { role: string; banned: boolean }>(
-    usersRes.rows.map((u: any) => [String(u.name), { role: String(u.role), banned: !!u.banned }]),
+  const users = new Map<string, { role: string; banned: boolean; ward: boolean }>(
+    usersRes.rows.map((u: any) => [String(u.name), { role: String(u.role), banned: !!u.banned, ward: u.ward === true }]),
   );
   const recentFrom = addDays(today, -60);
   const daysBy = groupBy(days);
   const posBy = groupBy(positions);
-  const names = new Set<string>();
-  for (const [name, u] of users) if (u.role === "trader") names.add(name);
-  for (const name of limitsMap.keys()) names.add(name);
-  for (const name of posBy.keys()) names.add(name);
-  for (const [name, rows] of daysBy) if (rows.some((d) => d.date >= recentFrom)) names.add(name);
+  const names = deskRoster(users, limitsMap, posBy, daysBy, recentFrom);
   if (trader) names.add(trader);
   const keep = only ? new Set(only) : null;
   const rows = [...names].filter((name) => !keep || keep.has(name)).map((name) => {
     const d = daysBy.get(name) ?? [];
     const limits = limitsMap.get(name) ?? null;
-    const m = computeMetrics(name, d, posBy.get(name) ?? [], limits, today, lang);
+    const m = computeMetrics(name, d, posBy.get(name) ?? [], limits, today, lang, drawdownSince(resets.get(name), today));
     void recordStopAlerts(m, limits, today);
     return { trader: name, role: users.get(name)?.role ?? null, banned: users.get(name)?.banned ?? false, metrics: m, limits, days: d, lastTradeDate: d.length ? d[d.length - 1].date : null };
   }).sort((a, b) => a.trader.localeCompare(b.trader, "ru"));
@@ -1235,11 +970,13 @@ export async function templateStatus(traders: string[], lang: Lang = "ru"): Prom
 router.get("/risk/templates", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "risk.read.team"))) return;
   const tiers = await loadTierTemplates();
-  const { rows: users } = await pool.query<{ name: string }>(
-    `SELECT name FROM users WHERE active = true AND role = 'trader' AND COALESCE(banned, false) = false ORDER BY name`,
+  const { rows: users } = await pool.query<{ name: string; role: string }>(
+    `SELECT name, role FROM users WHERE active = true AND COALESCE(banned, false) = false ORDER BY name`,
   );
   const limitsMap = await loadLimits(null);
-  const names = [...new Set([...users.map((u) => u.name), ...limitsMap.keys()])].sort((a, b) => a.localeCompare(b, "ru"));
+  const staff = new Set(users.filter((u) => isStaffRole(u.role)).map((u) => u.name));
+  const names = [...new Set([...users.filter((u) => u.role === "trader").map((u) => u.name), ...limitsMap.keys()])]
+    .filter((n) => !staff.has(n)).sort((a, b) => a.localeCompare(b, "ru"));
   const status = await templateStatus(names);
   res.json({
     tiers: tiers.map((t) => ({ ...t, stage: (STAGE_TIER_KEYS as readonly string[]).includes(t.key) ? t.key : null, stageLabel: stageLabel(t.key, langOf(req)) ?? null })),
@@ -1300,7 +1037,7 @@ router.post("/risk/templates/apply", asyncHandler(async (req, res): Promise<void
       const diffParams = limitsDiffParams(before, after);
       inBackground("risk.limits.template", () => notifyUser({
         userName: trader, type: "limit_change", actor, source: "risk",
-        params: { variant: "template", actor, tier: tierLabel, resync: resync ? 1 : 0, ...(reason ? { reason: reason.slice(0, 200) } : {}), ...diffParams },
+        params: { variant: "template", actor, tier: tierLabel, tierKey: applied.tier.key, resync: resync ? 1 : 0, ...(reason ? { reason: reason.slice(0, 200) } : {}), ...diffParams },
         link: notifLinks.risk(trader), entityType: "risk_limits", entityId: trader,
       }));
     }
@@ -1319,12 +1056,15 @@ export function breachKindLabel(kind: string, lang: Lang = "ru"): string {
 /** RU labels (kept for older imports). */
 export const BREACH_KIND_LABELS: Record<string, string> = { stop: breachKindLabel("stop"), weekly: breachKindLabel("weekly"), drawdown: breachKindLabel("drawdown") };
 
-/** Alert / breach log message in `lang`: halted kinds are re-rendered from their numbers, others keep the stored RU text. */
-/** A stored alert's text in the reader's language (the log keeps the RU text; others are rebuilt from kind / used / limit). */
+/**
+ * A stored alert's text in the reader's language: halted kinds (stop / weekly / drawdown) are rebuilt from kind / used /
+ * limit in every language — RU too, so older rows («318.76$») read in today's money format ($318.76); other kinds keep
+ * the stored RU text.
+ */
 export function alertMessage(r: { kind: unknown; used: unknown; limit: unknown; message: unknown }, lang: Lang): string {
   const used = num(r.used);
   const limit = num(r.limit);
-  const text = lang !== "ru" && used != null && limit != null ? haltedStopText(String(r.kind), used, limit, lang) : null;
+  const text = used != null && limit != null ? haltedStopText(String(r.kind), used, limit, lang) : null;
   return text ? text.message : String(r.message ?? "");
 }
 
@@ -1413,8 +1153,9 @@ router.post("/risk/breaches/:alertId/review", asyncHandler(async (req, res): Pro
     const agreed = actions.length ? actions.map((a) => a.title).join("; ").slice(0, 300) : null;
     inBackground("risk.breach.review", () => notifyUser({
       userName: trader, type: "risk_breach_review", actor, source: "risk",
-      params: { actor, date, reasonCode: b.reason, consequenceCode: b.consequence, actions: agreed },
-      link: notifLinks.risk(trader), entityType: "risk_breach", entityId: String(alertId),
+      // A drawdown review restarts the drawdown count from today (lib/riskMetrics) — the trader is told so.
+      params: { actor, date, reasonCode: b.reason, consequenceCode: b.consequence, actions: agreed, ...(String(alert.kind) === "drawdown" ? { ddReset: 1 } : {}) },
+      link: `/risk?tab=breaches&alert=${alertId}`, entityType: "risk_breach", entityId: String(alertId),
     }));
   }
   res.status(created ? 201 : 200).json(review);

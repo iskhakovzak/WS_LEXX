@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { gpApi, gpKeys, type GamePlan, type GamePlanResponse } from "./types";
-import { fmtDate } from "@/lib/format";
+import { fmtDeskTime } from "@/lib/format";
 import { applyTemplate, docToDraft, draftToDoc, isDraftEmpty, sameDoc, validateDraft, type DraftErrors, type PlanDraft } from "./plan-draft";
 import { PlanEditor, type SetDraft } from "./plan-editor";
 import { TemplateMenu } from "./plan-templates";
@@ -199,7 +199,7 @@ export function PlanEditorSheet({
             <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/8 px-[var(--panel-p)] py-2 text-sm">
               <History className="h-4 w-4 text-primary" aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                {t(restore.baseUpdatedAt && plan && restore.baseUpdatedAt !== plan.updatedAt ? "sheet.unsavedDraftChanged" : "sheet.unsavedDraft", { time: fmtDate(restore.savedAt, "time") })}
+                {t(restore.baseUpdatedAt && plan && restore.baseUpdatedAt !== plan.updatedAt ? "sheet.unsavedDraftChanged" : "sheet.unsavedDraft", { time: fmtDeskTime(restore.savedAt) })}
               </span>
               <Button
                 type="button"
@@ -256,7 +256,7 @@ export function PlanEditorSheet({
               </Button>
             )}
             <span className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
-              {localSavedAt ? t("sheet.draftAt", { time: fmtDate(localSavedAt, "time") }) : dirty ? "" : plan ? t("sheet.noChanges") : ""}
+              {localSavedAt ? t("sheet.draftAt", { time: fmtDeskTime(localSavedAt) }) : dirty ? "" : plan ? t("sheet.noChanges") : ""}
             </span>
             <Button type="button" variant="ghost" onClick={() => close(false)}>
               {commonI18n.t("actions.close")}

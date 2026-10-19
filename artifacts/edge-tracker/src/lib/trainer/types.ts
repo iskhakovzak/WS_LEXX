@@ -55,7 +55,17 @@ export interface FindEntryAnswer {
 export interface TrainerHome {
   daily: DailyChallengeState;
   myDays: { candidates: number; active: { gameId: number; ticker: string } | null };
-  findEntry: { setups: { setupId: number; code: string | null; name: string; drills: number; masteryLevel: number }[]; streak: number };
+  findEntry: {
+    setups: {
+      setupId: number; code: string | null; name: string; drills: number; masteryLevel: number;
+      /** Mastery points now / needed for the next level (null at the top) and the passed drills behind them (UMID-18). */
+      masteryPoints?: number; masteryNext?: number | null; drillsPassed?: number;
+    }[];
+    streak: number;
+    /** Passed drills per mastery point (gamification.masteryDrillsPerPoint) and the pass score (trainer.drillPassScore). */
+    drillsPerPoint?: number;
+    passScore?: number;
+  };
   stats: { attempts30d: number; avgR30d: number | null; beatReal: number; findEntryAccuracy: number | null };
 }
 

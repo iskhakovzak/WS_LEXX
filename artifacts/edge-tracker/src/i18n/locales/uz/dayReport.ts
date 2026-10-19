@@ -85,9 +85,9 @@ export default {
     rulesLimit: "Kun qoidalari · kunlik limit {limit}",
     rulesLimitTier: "Kun qoidalari · kunlik limit {limit} (masshtablash darajasi)",
     rulesNoLimit: "Kun qoidalari · kunlik limit belgilanmagan — limit tekshiruvi oʻtkazib yuborildi",
-    totalTitle: "Belgilangan zararli savdolar, ikki marta hisoblamasdan",
+    totalTitle: "Yoʻqotishlar narxlari yigʻindisi; bir nechta yoʻqotishga tushgan savdo bir marta hisoblanadi",
     none: "Qoidalar boʻyicha yoʻqotishlar topilmadi.",
-    tradesNet: "savdolar sofi {amount}",
+    tradesNet: "bu savdolar sofi {amount}",
   },
   strengths: {
     title: "Nima chiqdi",
@@ -97,7 +97,8 @@ export default {
     setups: "Setaplar",
     side: "Yoʻnalish",
     bestHour: "Eng yaxshi soat (ET)",
-    noSetups: "Savdolarda setap koʻrsatilmagan — setaplar boʻyicha ustunlikni koʻrish uchun ularni jurnalda belgilang.",
+    noSetups: "Savdolarda na broker strategiyasi nomi, na pleybuk setapi bor — setaplar boʻyicha ustunlikni hisoblab boʻlmaydi.",
+    noSetupEdge: "Bu kuni hech bir strategiya ustunlik bermadi (foyda va ≥ 50 % gʻalaba kerak).",
   },
   plan: {
     title: "Ertangi reja",

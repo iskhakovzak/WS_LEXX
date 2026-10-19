@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  byCloseDate, closeDate, computeKpis, feesOf, grossPnl, horizonOf, isClosed, isDecided, isOpen,
-  maxDrawdown, netPnl, num, priceR, resultConflictsWithPrice, signedR, type TradeLike,
+  byCloseDate, closeDate, computeKpis, dayTotals, entryMinutes, feesOf, grossPnl, horizonOf, isClosed, isDecided, isOpen,
+  maxDrawdown, maxDrawdownByDay, netPnl, num, payoffOf, priceR, resultConflictsWithPrice, signedR, winRateOf, type TradeLike,
 } from "@/lib/trade-math";
 import { TRADE_ROWS } from "../../../../api-server/src/lib/__tests__/fixtures/trade-rows";
 
@@ -176,5 +176,47 @@ describe("trade-math.computeKpis", () => {
       { date: "2026-03-05", result: "loss" },
     ]);
     expect(sorted.map((t) => t.date)).toEqual(["2026-03-05", "2026-03-02"]);
+  });
+});
+
+describe("trade-math canonical metrics (MAKSIM-08)", () => {
+  // Day 1: +100 then −80 (intraday dip −80 below the +100 peak); day 2: −50; day 3: +200.
+  const book: TradeLike[] = [
+    { result: "win", pnl: 100, date: "2026-03-02" },
+    { result: "loss", pnl: -80, date: "2026-03-02" },
+    { result: "loss", pnl: -50, date: "2026-03-03" },
+    { result: "win", pnl: 200, date: "2026-03-04" },
+  ];
+
+  it("max DD is measured on end-of-day closes, not trade by trade", () => {
+    // Per trade: 100, 20, −30, 170 → −130. End of day: 20, −30, 170 → peak 20 → −50.
+    expect(maxDrawdown(book.map((t) => netPnl(t)!))).toBe(-130);
+    expect(maxDrawdownByDay(book, netPnl)).toBe(-50);
+    expect(computeKpis(book).maxDrawdownNet).toBe(-50);
+  });
+
+  it("the peak starts at 0 and days follow the close date", () => {
+    expect(maxDrawdownByDay([{ result: "loss", pnl: -10, date: "2026-03-02" }], netPnl)).toBe(-10);
+    expect(maxDrawdownByDay([], netPnl)).toBeNull();
+    const days = dayTotals([
+      { result: "win", pnl: 5, date: "2026-03-01", exitDate: "2026-03-05" },
+      { result: "win", pnl: 1, date: "2026-03-03" },
+    ], netPnl);
+    expect(days).toEqual([{ day: "2026-03-03", value: 1 }, { day: "2026-03-05", value: 5 }]);
+  });
+
+  it("win rate and payoff", () => {
+    expect(winRateOf(3, 1)).toBe(0.75);
+    expect(winRateOf(0, 0)).toBeNull();
+    expect(payoffOf([2, 4, -1, -3])).toBeCloseTo(3 / 2, 9);
+    expect(payoffOf([1, 2])).toBeNull();
+    expect(payoffOf([0, -1])).toBeNull();
+  });
+
+  it("entry minutes: date time first, then the PropReports snapshot", () => {
+    expect(entryMinutes({ date: "2026-03-02T09:47:00" })).toBe(9 * 60 + 47);
+    expect(entryMinutes({ date: "2026-03-02", contextSnapshot: { openedAt: "2026-03-02T15:55:35" } })).toBe(15 * 60 + 55);
+    expect(entryMinutes({ date: "2026-03-02", contextSnapshot: { openedAt: null } })).toBeNull();
+    expect(entryMinutes({ date: "2026-03-02" })).toBeNull();
   });
 });

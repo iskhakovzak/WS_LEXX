@@ -124,7 +124,7 @@ export function DeskTab({ filters, unit }: { filters: AnalyticsFilters; unit: Un
               <tr className="text-muted-foreground">
                 <SortableTh {...thProps("trader")} className={cn(TH, "text-left")}>{t("filters.trader")}</SortableTh>
                 <SortableTh {...thProps("closed")} align="right" className={TH}>{t("desk.colTrades")}</SortableTh>
-                <SortableTh {...thProps("winRate")} align="right" className={TH}>Win rate</SortableTh>
+                <SortableTh {...thProps("winRate")} align="right" className={TH}>{commonI18n.t("trading.winRate")}</SortableTh>
                 <SortableTh {...thProps("expectancy")} align="right" className={TH}>{t("desk.colExpectancy")}</SortableTh>
                 <SortableTh {...thProps("pf")} align="right" className={TH}>PF</SortableTh>
                 <SortableTh {...thProps("total")} align="right" className={TH}>{t("desk.colTotal")}</SortableTh>

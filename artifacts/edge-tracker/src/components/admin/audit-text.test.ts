@@ -144,3 +144,47 @@ describe("describeAudit in EN / UZ", () => {
     }
   });
 });
+
+describe("describeAudit: playbook, bulk ids, gender (OWNER-16, audit ids 73–78)", () => {
+  const e = (action: string, actor: string, targetType: string, targetId: string, details: Record<string, unknown>): AuditLike => ({
+    actor, action, targetType, targetId, details: JSON.stringify(details),
+  });
+  it("id 77/78: a setup opened to / closed from a tier, in words, with the RU tier name and the actor's gender", () => {
+    const open = describeAudit(e("playbook.min_tier", "Ольга Н.", "playbook", "205", { name: "1.3 ORB 5 минут", from: "junior", to: "trainee" }));
+    expect(open.text).toBe("открыла сетап 1.3 ORB 5 минут с уровня Стажёр");
+    expect(open.detail).toBe("было: Джун");
+    const close = describeAudit(e("playbook.min_tier", "Ольга Н.", "playbook", "205", { name: "1.3 ORB 5 минут", from: "trainee", to: "junior" }));
+    expect(close.text).toBe("закрыла сетап 1.3 ORB 5 минут до уровня Джун");
+    expect(objectLabel("playbook", "205", { name: "1.3 ORB 5 минут" })).toBe("Сетап 1.3 ORB 5 минут");
+  });
+  it("id 73: relink of many trades — no «#many», a count and the backup file", () => {
+    const x = describeAudit(e("playbook.relink", "system", "trades", "many", { written: 18301, backup: "relink-before.json" }));
+    expect(x.text).toContain("перепривязала сделки к сетапам"); // «Система» is feminine
+    expect(x.text).not.toContain("many");
+    expect(x.detail).toBe("резервная копия: relink-before.json");
+    expect(objectLabel("trades", "many")).toBe("Сделки");
+  });
+  it("starting PIN for many people and auto tier proposals with names", () => {
+    const pin = describeAudit(e("user.starting_secret", "system", "user", "many", { count: 30, ids: [1, 2] }));
+    expect(pin.text).toBe("задала стартовый PIN 30 людям"); // actor «Система»
+    expect(objectLabel("user", "many")).toBe("Пользователи");
+    const auto = describeAudit(e("scaling.proposal.auto", "Дмитрий К.", "scaling_proposal", "", { count: 2, traders: ["Игорь П.", "Денис Ф."] }));
+    expect(auto.text).toBe("автопредложения тира: Игорь П., Денис Ф.");
+    expect(objectLabel("scaling_proposal", null)).toBe("Предложения по тирам");
+  });
+  it("id 76: a job run shows the job's Russian name", () => {
+    expect(describeAudit(e("jobs.run", "Дмитрий К.", "job", "gamification.nightly", {})).text).toBe("запустил задачу «Геймификация: ночной пересчёт»");
+  });
+  it("feminine past tense only for female first names, only in Russian", async () => {
+    const { genderVerb, isFemaleRu } = await import("./audit-text");
+    expect(isFemaleRu("Ольга Н.")).toBe(true);
+    expect(isFemaleRu("Илья Ш.")).toBe(false);
+    expect(isFemaleRu("Никита")).toBe(false);
+    expect(isFemaleRu("Умид")).toBe(false);
+    expect(genderVerb("разобрал нарушение лимита", "Ольга Н.", "ru")).toBe("разобрала нарушение лимита");
+    expect(genderVerb("удалил: тема", "Ольга Н.", "ru")).toBe("удалила: тема");
+    expect(genderVerb("автопредложение тира", "Ольга Н.", "ru")).toBe("автопредложение тира");
+    expect(genderVerb("разобрал", "Илья Ш.", "ru")).toBe("разобрал");
+    expect(genderVerb("reviewed", "Ольга Н.", "en")).toBe("reviewed");
+  });
+});

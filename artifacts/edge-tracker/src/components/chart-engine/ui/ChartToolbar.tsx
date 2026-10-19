@@ -143,7 +143,9 @@ export const ChartToolbar = React.memo(function ChartToolbar({
   const [drawOpen, setDrawOpen] = React.useState(false);
   const pickTool = (t: DrawingType | null) => { onTool(t); setDrawOpen(false); };
   return (
-    <div className={cn("flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none]", className)} role="toolbar" aria-label={tc("toolbar.label")}>
+    // Phones scroll the toolbar sideways (one row); from sm it wraps, so a narrow host (the trade sheet) never clips
+    // the right-hand group (MAKSIM-40).
+    <div className={cn("flex min-w-0 items-center gap-1.5 gap-y-1 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible", className)} role="toolbar" aria-label={tc("toolbar.label")}>
       <Segmented
         size="sm" ariaLabel={tc("toolbar.timeframe")} value={timeframe} onChange={onTimeframe} className="shrink-0"
         options={(allTimeframes ?? timeframes).map((tf) => {
@@ -186,7 +188,9 @@ export const ChartToolbar = React.memo(function ChartToolbar({
               <ToolIcon />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-56 p-1.5">
+          {/* No exit animation: the menu is gone the moment a tool is picked, so it never hangs half-faded over the
+              panels while the next click places the drawing (MAKSIM-21). */}
+          <PopoverContent align="end" className="w-56 p-1.5 data-[state=closed]:animate-none">
             <button type="button" className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--glass-bg)]", tool == null && "text-primary")} onClick={() => pickTool(null)}>
               <MousePointer2 className="h-4 w-4" aria-hidden="true" /> {tc("toolbar.cursor")} <Kbd className="ml-auto">Esc</Kbd>
             </button>

@@ -63,7 +63,11 @@ describe("group model", () => {
   });
 
   it("days since the last trade", () => {
-    expect(daysSinceTrade(DESK[2]!, TODAY)).toBe(15);
+    expect(daysSinceTrade(DESK[2]!, TODAY)).toBe(11); // trading days 2 → 16 Oct (OLGA-13)
+    // Friday → Monday = 1 trading day, not 3 calendar days; the server count (with holidays) wins when present.
+    expect(daysSinceTrade(sig("F", { lastTradeDate: "2026-10-16" }), "2026-10-19")).toBe(1);
+    expect(daysSinceTrade(sig("F", { lastTradeDate: "2026-10-16" }), "2026-10-18")).toBe(0);
+    expect(daysSinceTrade(sig("H", { lastTradeDate: "2026-11-25", idleTradingDays: 2 }), "2026-11-30")).toBe(2);
     expect(daysSinceTrade(DESK[3]!, TODAY)).toBeNull();
     expect(pendingReviews(DESK[2]!)).toBe(2);
   });

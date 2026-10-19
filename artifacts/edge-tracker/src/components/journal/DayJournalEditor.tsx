@@ -1,18 +1,17 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle, ArrowUpRight, Check, CheckCircle2, CloudOff, ListChecks, Loader2, Lock, LockOpen, MessageSquareText,
-  NotebookPen, Plus, ShieldAlert, Sunrise, X,
+  AlertTriangle, ArrowUpRight, Check, CheckCircle2, ListChecks, Lock, LockOpen, MessageSquareText, NotebookPen, Plus,
 } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { http } from "@/lib/api/http";
+import { KEYS } from "@/lib/api/keys";
+import { nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
-import { cn } from "@/lib/utils";
 import { useDayReport } from "@/components/day-report/api";
 import {
   emptySummary, eodApi, splitMissing, useEodDay, useEodMutation, type EodDayPayload, type MissingItem,
@@ -22,29 +21,19 @@ import {
 } from "./use-journal-days";
 import type { RuleViolation } from "./DayTrades";
 import { stepWeekday } from "./utils";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
 import { personName } from "@/i18n";
-import { tagLabel } from "@/components/shared/trade-labels";
-import { MOOD_LABELS, DISCIPLINE_LABELS } from "./vocab";
+import { MOOD_LABELS, DISCIPLINE_LABELS, MISTAKE_TAGS, GOOD_TAGS, EMOTION_TAGS, CALM_EMOTIONS, sameTag } from "./vocab";
+import {
+  ChipGroup, LessonStep, MorningCheckin, PlanBlock, ReviewField, SaveIndicator, ScaleField, Step, followedAnswer, type SaveState,
+} from "./day-journal-parts";
 
-export { MOOD_LABELS, DISCIPLINE_LABELS };
-
-// Stored tag codes: the day's tags keep the Russian word; `tagLabel` shows it in the UI language.
-/** Rule-violation tags (stored in the day's tags; same taxonomy as the per-trade review). */
-export const MISTAKE_TAGS = ["FOMO", "Ранний вход", "Поздний выход", "Двигал стоп", "Овертрейдинг", "Реванш", "Без плана", "Большой размер"]; // i18n-ignore (stored codes)
-/** Legacy positive tags — still shown when present, no longer offered as chips. */
-export const GOOD_TAGS = ["По плану", "Терпение", "Чистый выход", "Резал убыток"]; // i18n-ignore (stored codes)
-/** Emotions of the day (stored in the day's tags). */
-export const EMOTION_TAGS = ["Спокойствие", "Уверенность", "Азарт", "Нетерпение", "Страх", "Жадность", "Скука", "Раздражение"]; // i18n-ignore (stored codes)
-const CALM_EMOTIONS = new Set(["Спокойствие", "Уверенность"]); // i18n-ignore (stored codes)
+export { MOOD_LABELS, DISCIPLINE_LABELS, MISTAKE_TAGS, GOOD_TAGS, EMOTION_TAGS, followedAnswer };
 
 const TEXT_LIMIT = 4000; // eod summary fields (repeat / stop) are capped server-side
 
-type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: Date } | { kind: "error"; message: string };
-
-const sameTag = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /**
  * «Дневник дня»: a short guided reflection on top of the automatically imported trades —
@@ -208,9 +197,13 @@ export function DayJournalEditor({
   };
 
   // ── Close / reopen the day (EOD) ─────────────────────────────────────────
+  const qc = useQueryClient();
   const close = useEodMutation(
     (b: { discipline: number | null; summary: ReturnType<typeof emptySummary> }) => eodApi.close(date, b),
     (out) => {
+      // One closure: a closed journal day is the reviewed evening card on the dashboard and the «review» quest (ILYA-06).
+      void qc.invalidateQueries({ queryKey: KEYS.dailyMe(nyDate()) });
+      void qc.invalidateQueries({ queryKey: KEYS.questsMe() });
       const s = out.streaks;
       toast({
         title: journalI18n.t("editor.dayClosed", { date: fmtDate(date, "dayMonth") }),
@@ -257,7 +250,6 @@ export function DayJournalEditor({
 
   const reviewFilled = hasReview(draft);
   const progress = [draft.mood != null, !!draft.well.trim(), !!draft.mistakes.trim(), !!draft.lessons.trim(), !!focusText.trim()];
-  const otherTags = draft.tags.filter((tag) => ![...MISTAKE_TAGS, ...EMOTION_TAGS].some((x) => sameTag(x, tag)));
 
   return (
     <Panel
@@ -285,7 +277,9 @@ export function DayJournalEditor({
           {isFuture ? (
             <p className="text-sm text-muted-foreground">{t("editor.reviewLater")}</p>
           ) : !editable && isEntryEmpty(entry) ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">{t("editor.notFilledBy", { trader: personName(trader) })}</p>
+            eod?.day?.closedAt ? <EodSelfReview day={eod.day} /> : (
+              <p className="py-4 text-center text-sm text-muted-foreground">{t("editor.notFilledBy", { trader: personName(trader) })}</p>
+            )
           ) : (
             <>
               {fromLegacy && (
@@ -319,60 +313,7 @@ export function DayJournalEditor({
               </Step>
 
               <Step n={3} title={t("editor.step3")}>
-                <ReviewField id="journal-lessons" label={t("editor.lesson")} tone="accent" value={draft.lessons} editable={editable} rows="min-h-[72px]"
-                  placeholder={t("editor.lessonPlaceholder")} onChange={(v) => update({ lessons: v })} />
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span className="text-xs text-muted-foreground" id="journal-followed">{t("editor.followedRules")}</span>
-                  <div role="group" aria-labelledby="journal-followed" className="flex gap-1.5">
-                    {([[true, commonI18n.t("yes")], [false, commonI18n.t("no")]] as const).map(([v, l]) => (
-                      <button
-                        key={l}
-                        type="button"
-                        disabled={!editable}
-                        aria-pressed={draft.followedPlan === v}
-                        onClick={() => update({ followedPlan: draft.followedPlan === v ? null : v })}
-                        className={cn(
-                          "chip min-h-8 px-3.5 text-sm font-medium disabled:cursor-default",
-                          draft.followedPlan === v && (v ? "!bg-up/15 !text-up" : "!bg-down/15 !text-down"),
-                        )}
-                      >
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {(draft.followedPlan === false || MISTAKE_TAGS.some((m) => draft.tags.some((tag) => sameTag(tag, m))) || !editable) && (
-                  <ChipGroup label={t("editor.broke")} options={MISTAKE_TAGS} selected={draft.tags} editable={editable} toneOf={() => "down"} onToggle={toggleTag} />
-                )}
-                {otherTags.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {otherTags.map((tag) =>
-                      editable ? (
-                        <button key={tag} type="button" onClick={() => toggleTag(tag)} aria-label={t("editor.removeTag", { tag: tagLabel(tag) })}
-                          className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs font-medium !text-foreground">
-                          {tagLabel(tag)}<X className="h-3 w-3" aria-hidden="true" />
-                        </button>
-                      ) : (
-                        <Pill key={tag} tone={GOOD_TAGS.includes(tag) ? "up" : "neutral"}>{tagLabel(tag)}</Pill>
-                      ),
-                    )}
-                  </div>
-                )}
-                {violations.length > 0 && (
-                  <ul className="space-y-1 rounded-xl bg-warn/10 px-3 py-2" aria-label={t("editor.autoViolations")}>
-                    {violations.slice(0, 5).map((v) => (
-                      <li key={v.id} className="flex items-start gap-2 text-xs">
-                        <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" aria-hidden="true" />
-                        <span>
-                          <span className="font-medium">{v.ruleName ?? t("editor.rule")}</span>
-                          {v.ticker && <span className="text-muted-foreground"> · {v.ticker}</span>}
-                          {v.message && <span className="text-muted-foreground"> — {v.message}</span>}
-                        </span>
-                      </li>
-                    ))}
-                    {violations.length > 5 && <li className="text-2xs text-muted-foreground">{t("editor.andMore", { count: violations.length - 5 })}</li>}
-                  </ul>
-                )}
+                <LessonStep draft={draft} editable={editable} violations={violations} update={update} toggleTag={toggleTag} />
               </Step>
 
               <Step n={4} title={t("editor.step4", { date: fmtDate(nextDate, "dayMonth") })}>
@@ -410,53 +351,27 @@ export function DayJournalEditor({
 }
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
-
-function Step({ n, title, aside, children }: { n: number; title: ReactNode; aside?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <span className="grid h-5 w-5 place-items-center rounded-full bg-primary/15 text-2xs tabular-nums text-primary" aria-hidden="true">{n}</span>
-          {title}
-        </h3>
-        {aside}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function PlanBlock({ value, editable, prominent, onChange }: { value: string; editable: boolean; prominent: boolean; onChange: (v: string) => void }) {
+/** Curator view of a day the trader closed with the day-close form but left the journal empty (OLGA-25). */
+function EodSelfReview({ day }: { day: NonNullable<EodDayPayload["day"]> }) {
   const { t } = journalI18n.useT();
-  const [open, setOpen] = useState(prominent || !!value.trim());
-  useEffect(() => { if (prominent || value.trim()) setOpen(true); }, [prominent, value]);
-  if (!editable && !value.trim()) return null;
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium">
-        <Plus className="h-3.5 w-3.5" aria-hidden="true" />{t("editor.planChip")}
-      </button>
-    );
-  }
+  const s = day.summary ?? {};
+  const rows = [
+    [t("editor.eodRepeat"), s.repeat],
+    [t("editor.eodStop"), s.stop],
+    [t("editor.eodTomorrow"), s.tomorrow],
+  ].filter((r): r is [string, string] => typeof r[1] === "string" && !!r[1].trim());
   return (
-    <div className="space-y-1.5 rounded-xl bg-[var(--glass-bg)] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor="journal-plan" className="micro-label">{t("editor.planLabel")}</label>
-        {editable && !value.trim() && (
-          <Button variant="ghost" size="sm" onClick={() => onChange(t("planTemplate"))}>
-            <Plus aria-hidden="true" />{t("editor.template")}
-          </Button>
-        )}
-      </div>
-      <Textarea
-        id="journal-plan"
-        readOnly={!editable}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={t("editor.planPlaceholder")}
-        className={cn("leading-relaxed", prominent ? "min-h-[140px]" : "min-h-[64px]")}
-      />
-    </div>
+    <section className="space-y-2 rounded-xl bg-[var(--glass-bg)] p-3 text-sm" aria-label={t("editor.closedByEod")}>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" />{t("editor.closedByEod")}
+      </p>
+      {rows.map(([label, text]) => (
+        <div key={label}>
+          <div className="micro-label">{label}</div>
+          <p className="whitespace-pre-wrap leading-relaxed">{text}</p>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -472,6 +387,7 @@ function TomorrowFocus({
   const range = useJournalRange(trader, nextDate, nextDate, !!trader);
   const loaded = range.entries.find((e) => e.trader === trader && e.date === nextDate) ?? null;
   const save = useSaveJournalDay();
+  const qc = useQueryClient();
   const report = useDayReport(trader, date, editable && !!trader);
   const suggestions = (report.data?.date === date ? report.data.plan : []).slice(0, 3);
 
@@ -498,7 +414,11 @@ function TomorrowFocus({
     inFlight.current = true;
     const base = baseRef.current ?? emptyEntry(trader, nextDate);
     save.mutate({ ...base, trader, date: nextDate, plan: textRef.current }, {
-      onSuccess: (out) => { baseRef.current = out.entry; },
+      onSuccess: (out) => {
+        baseRef.current = out.entry;
+        // The pick is tomorrow's focus on the dashboard / plan / playbook (curator > own > auto, DENIS-03).
+        void qc.invalidateQueries({ queryKey: KEYS.dailyMe(nyDate()) });
+      },
       onError: (err) => {
         if (err instanceof JournalConflict) {
           baseRef.current = err.current;
@@ -511,7 +431,7 @@ function TomorrowFocus({
       },
       onSettled: () => { inFlight.current = false; },
     });
-  }, [save, toast, trader, nextDate]);
+  }, [save, toast, trader, nextDate, qc]);
   const flushRef = useRef(flush);
   flushRef.current = flush;
   useEffect(() => () => { if (dirty.current) flushRef.current(); }, []);
@@ -576,7 +496,7 @@ function CuratorFeedback({ day }: { day: NonNullable<EodDayPayload["day"]> }) {
         <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
         <span className="font-semibold">{t("editor.curatorFeedbackBy", { name: personName(day.reviewedBy) || "—" })}</span>
         <Pill tone="accent">{t("editor.curatorScore", { score: day.curatorScore ?? "—" })}</Pill>
-        {day.reviewedAt && <span className="text-muted-foreground">{fmtDate(day.reviewedAt, "dateTime")}</span>}
+        {day.reviewedAt && <span className="text-muted-foreground">{fmtDeskDateTime(day.reviewedAt)}</span>}
       </div>
       {day.curatorComment && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{day.curatorComment}</p>}
     </section>
@@ -652,178 +572,5 @@ function CloseBar({
       </div>
       {!reviewFilled && <p className="text-2xs text-muted-foreground">{t("editor.closeHint")}</p>}
     </div>
-  );
-}
-
-function ChipGroup({
-  label, options, selected, editable, toneOf, onToggle,
-}: {
-  label: string; options: string[]; selected: string[]; editable: boolean;
-  toneOf: (t: string) => "up" | "down" | "warn"; onToggle: (t: string) => void;
-}) {
-  const active = (tag: string) => selected.some((x) => sameTag(x, tag));
-  const shown = editable ? options : options.filter(active);
-  const id = useId();
-  return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-labelledby={id}>
-      <span id={id} className="mr-1 text-xs text-muted-foreground">{label}</span>
-      {shown.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
-      {shown.map((tag) => {
-        const on = active(tag);
-        const tone = toneOf(tag);
-        return (
-          <button
-            key={tag}
-            type="button"
-            disabled={!editable}
-            aria-pressed={on}
-            onClick={() => onToggle(tag)}
-            className={cn(
-              "chip min-h-7 px-2.5 text-xs font-medium disabled:cursor-default",
-              on && (tone === "up" ? "!border-transparent !bg-up/15 !text-up" : tone === "down" ? "!border-transparent !bg-down/15 !text-down" : "!border-transparent !bg-warn/15 !text-warn"),
-            )}
-          >
-            {tagLabel(tag)}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ScaleField({
-  label, labels, value, editable, onChange,
-}: {
-  label: string;
-  labels: readonly string[];
-  value: number | null;
-  editable: boolean;
-  onChange: (v: number | null) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <span id={id} className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-xs font-medium">{value != null ? labels[value - 1] : "—"}</span>
-      </div>
-      <div role="group" aria-labelledby={id} className="glass-field flex items-center gap-0.5 p-1">
-        {labels.map((l, i) => {
-          const v = i + 1;
-          const active = value === v;
-          return (
-            <button
-              key={l}
-              type="button"
-              disabled={!editable}
-              aria-pressed={active}
-              aria-label={`${v} — ${l}`}
-              title={l}
-              onClick={() => onChange(active ? null : v)}
-              className={cn(
-                "min-h-7 flex-1 rounded-full text-xs font-semibold tabular-nums transition-colors disabled:cursor-default",
-                active
-                  ? v <= 2 ? "bg-down/20 text-down" : v === 3 ? "bg-primary/20 text-primary" : "bg-up/20 text-up"
-                  : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
-              )}
-            >
-              {v}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ReviewField({
-  id, label, tone, value, editable, placeholder, onChange, rows = "min-h-[104px]",
-}: {
-  id: string;
-  label: string;
-  tone: "up" | "down" | "accent";
-  value: string;
-  editable: boolean;
-  placeholder: string;
-  onChange: (v: string) => void;
-  rows?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className={cn("h-1.5 w-1.5 rounded-full", tone === "up" ? "bg-up" : tone === "down" ? "bg-down" : "bg-primary")} aria-hidden="true" />
-        {label}
-      </label>
-      <Textarea
-        id={id}
-        readOnly={!editable}
-        value={value}
-        placeholder={editable ? placeholder : "—"}
-        onChange={(e) => onChange(e.target.value)}
-        className={cn(rows, "leading-relaxed")}
-      />
-    </div>
-  );
-}
-
-function SaveIndicator({ status, mode, editable, onRetry }: { status: SaveState; mode: StorageMode; editable: boolean; onRetry: () => void }) {
-  const { t } = journalI18n.useT();
-  if (!editable) return <Pill>{commonI18n.t("states.readOnly")}</Pill>;
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-      {mode === "local" && (
-        <span className="inline-flex items-center gap-1" title={t("editor.localTitle")}>
-          <CloudOff className="h-3.5 w-3.5" aria-hidden="true" />{t("editor.local")}
-        </span>
-      )}
-      {status.kind === "saving" && (
-        <span className="inline-flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("editor.saving")}</span>
-      )}
-      {status.kind === "saved" && (
-        <span className="inline-flex items-center gap-1 text-up">
-          <Check className="h-3.5 w-3.5" aria-hidden="true" />
-          {t("editor.savedAt", { time: fmtDate(status.at, "time") })}
-        </span>
-      )}
-      {status.kind === "error" && (
-        <Button variant="ghost" size="sm" className="text-down" onClick={onRetry}>{t("editor.errorRetry")}</Button>
-      )}
-      {status.kind === "idle" && <span>{t("editor.autosave")}</span>}
-    </div>
-  );
-}
-
-type CheckinRow = {
-  sleepWell: boolean; stressed: boolean; tilted: boolean; focused: boolean; anxious: boolean; revenge: boolean;
-  freeText: string | null;
-} | null;
-
-type CheckinFlag = "sleepWell" | "focused" | "stressed" | "anxious" | "tilted" | "revenge";
-const CHECKIN_FLAGS: Array<{ key: CheckinFlag; good: boolean }> = [
-  { key: "sleepWell", good: true },
-  { key: "focused", good: true },
-  { key: "stressed", good: false },
-  { key: "anxious", good: false },
-  { key: "tilted", good: false },
-  { key: "revenge", good: false },
-];
-
-/** Morning check-in (from the dashboard) for this trader/day — one line of context next to the mood. */
-function MorningCheckin({ trader, date }: { trader: string; date: string }) {
-  const { t } = journalI18n.useT();
-  const { data } = useQuery({
-    queryKey: ["journal-checkin", trader, date],
-    enabled: !!trader,
-    staleTime: 60_000,
-    queryFn: ({ signal }): Promise<CheckinRow> =>
-      http.get<CheckinRow>("/api/emotional-state/by-date", { query: { userId: trader, date }, signal }).catch(() => null),
-  });
-  if (!data) return null;
-  const flags = CHECKIN_FLAGS.filter((f) => data[f.key] === true);
-  return (
-    <span className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground" title={data.freeText ?? undefined}>
-      <Sunrise className="h-3.5 w-3.5 text-warn" aria-hidden="true" />{t("editor.morning")}
-      {flags.length === 0 ? <span>{t("editor.noMarks")}</span> : flags.map((f) => <Pill key={f.key} tone={f.good ? "up" : "down"}>{t(`editor.checkin.${f.key}`)}</Pill>)}
-    </span>
   );
 }

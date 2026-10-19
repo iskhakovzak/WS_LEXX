@@ -39,18 +39,26 @@ export function openingWindow(timeline: HintSource["timeline"], minutes = 15): {
   return { count, net: Math.round(net * 100) / 100, ids };
 }
 
+/** Share of entries in the first 15 minutes from which the open is the trader's style, not a habit to question. */
+export const OPENING_SPECIALIST_SHARE = 0.7;
+
 const SEVERITY_TONE: Record<string, HintTone> = { high: "down", medium: "warn", low: "warn" };
 
 export function dayHints(
   src: HintSource | null | undefined,
-  extra: { untagged?: number; violations?: number } = {},
+  extra: { untagged?: number; violations?: number; openingShare?: number | null } = {},
   max = 5,
 ): DayHint[] {
   const t = journalI18n.t;
   const out: DayHint[] = [];
   if (src && src.summary.closed > 0) {
     const open = openingWindow(src.timeline);
-    if (open.count >= 3 || (open.count >= 2 && open.net < 0)) {
+    // An opening-auction specialist (ROMAN-24): when the open IS the day — most timed entries in the first 15 minutes
+    // (or a 90-day opening share passed in) — and it did not lose, «много входов на открытии» is noise, not a hint.
+    const timed = src.timeline.filter((x) => minutesOf(x.entryTime) != null).length;
+    const share = extra.openingShare ?? (timed ? open.count / timed : 0);
+    const specialist = share >= OPENING_SPECIALIST_SHARE && open.net >= 0;
+    if (!specialist && (open.count >= 3 || (open.count >= 2 && open.net < 0))) {
       out.push({
         id: "opening",
         tone: open.net < 0 ? "down" : "warn",

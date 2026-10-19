@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { isNavActive, type NavItem } from "./nav";
 import type { NavBadge } from "./use-shell-badges";
-import type { SimpleNav, VisibleGroup } from "./nav-model";
+import { sheetPrimaryItems, withoutPinned, type SimpleNav, type VisibleGroup } from "./nav-model";
+import { shellExtrasI18n } from "@/i18n/ns/shellExtras";
 import { preloadRoute } from "./route-loaders";
 import { openCommandPalette } from "./palette-launcher";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -47,20 +48,23 @@ type Props = {
 const grid = "grid grid-cols-3 gap-2";
 
 /** Simple menu in the sheet: «Главное» (the primary sections the tab bar has no room for) + the folded «Ещё» group. */
-function SimpleSections({ simple, location, badges, open, setOpen }: {
-  simple: SimpleNav; location: string; badges: Props["badges"]; open: boolean; setOpen: (v: boolean) => void;
+function SimpleSections({ simple, location, badges, open, setOpen, pins }: {
+  simple: SimpleNav; location: string; badges: Props["badges"]; open: boolean; setOpen: (v: boolean) => void; pins: string[];
 }) {
   const { t } = shellI18n.useT();
+  const { t: tx } = shellExtrasI18n.useT();
+  const primary = withoutPinned(sheetPrimaryItems(simple), pins);
+  const moreItems = withoutPinned(simple.moreItems, pins);
   const within = simple.moreItems.some((i) => isNavActive(i, location));
   const shown = open || within;
   const alert = !shown && simple.moreItems.some((i) => badges[i.href]);
   return (
     <>
-      {simple.primary.length > 0 && (
+      {primary.length > 0 && (
         <section className="mb-4">
           <h3 className="micro-label mb-2">{t("simple.main")}</h3>
           <div className={grid}>
-            {simple.primary.map((i) => <Tile key={i.href} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
+            {primary.map((i) => <Tile key={i.href} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
           </div>
         </section>
       )}
@@ -80,9 +84,9 @@ function SimpleSections({ simple, location, badges, open, setOpen }: {
         </button>
         {shown && (
           <div id="sheet-more">
-            <p className="mb-2 text-xs text-muted-foreground">{t(simple.opensAt === "trader" ? "simple.opensAt.trader" : "simple.opensAt.junior")}</p>
+            <p className="mb-2 text-xs text-muted-foreground">{tx(simple.opensAt === "trader" ? "mobile.moreHint.trader" : "mobile.moreHint.junior")}</p>
             <div className={grid}>
-              {simple.moreItems.map((i) => <Tile key={i.href} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
+              {moreItems.map((i) => <Tile key={i.href} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
             </div>
           </div>
         )}
@@ -116,12 +120,12 @@ export default function MobileMoreSheet({ open: moreOpen, onOpenChange: setMoreO
             </section>
           )}
           {simple ? (
-            <SimpleSections simple={simple} location={location} badges={badges} open={moreGroupOpen} setOpen={(v) => setMoreGroupOpen?.(v)} />
+            <SimpleSections simple={simple} location={location} badges={badges} open={moreGroupOpen} setOpen={(v) => setMoreGroupOpen?.(v)} pins={pinnedItems.map((i) => i.href)} />
           ) : groups.map((g) => (
             <section key={g.id} className="mb-4 last:mb-0">
               <h3 className="micro-label mb-2">{g.label}</h3>
               <div className="grid grid-cols-3 gap-2">
-                {g.items.map((i) => <Tile key={i.href} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
+                {withoutPinned(g.items, pinnedItems.map((p) => p.href)).map((i) => <Tile key={i.href} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
               </div>
             </section>
           ))}

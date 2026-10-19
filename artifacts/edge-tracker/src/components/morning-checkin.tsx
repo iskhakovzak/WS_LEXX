@@ -470,7 +470,8 @@ export function MorningCheckin() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-2xs text-muted-foreground">{t("checkin.ctrlEnter")}</span>
+          {/* Keyboard hint only where there is a keyboard (ILYA-20: «Ctrl+Enter» on a phone). */}
+          <span className="text-2xs text-muted-foreground [@media(pointer:coarse)]:invisible">{t("checkin.ctrlEnter")}</span>
           <Button type="submit" size="sm" disabled={!ready || submitting}>
             <Check aria-hidden="true" /> {submitting ? commonI18n.t("states.saving") : t("checkin.save")}
           </Button>

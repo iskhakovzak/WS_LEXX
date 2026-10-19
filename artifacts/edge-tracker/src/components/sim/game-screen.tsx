@@ -1,204 +1,157 @@
 /**
  * The game: chart (left, takes the space) + one side column (HUD while playing, the verdict after). Focus mode —
  * nothing else on the page competes with the chart (UX §4a.2). Keys (DAS-like, can be switched off) work page-wide
- * except while typing in a field. After the reveal the details (trades, mistakes, the desk) open under the chart.
- * Own mode («Мои дни») swaps the «hidden» badge for «your trade · ticker · date», adds the decision tile on top of
- * the HUD and the real-entry marker on the chart, and shows the then-vs-now verdict (own-result.tsx). «Задача дня»
- * shows its badge and, after the finish, the reveal with the desk ranking (daily-reveal.tsx).
- * Mobile: a shorter chart with the main buttons right under it (everything playable by touch).
+ * except while typing in a field (use-game-keys). After the reveal the details (trades, mistakes, the desk) open under
+ * the chart. Own mode («Мои дни») swaps the «hidden» badge for «your trade · ticker · date», adds the decision tile on
+ * top of the HUD and the real-entry marker on the chart, and shows the then-vs-now verdict (own-result.tsx). «Задача
+ * дня» shows its badge and, after the finish, the reveal with the desk ranking (daily-reveal.tsx).
+ *
+ * «Как торговый экран» (Тренажёр 2): a timeframe switcher over the chart (keys 1–4; base bars aggregated on the client,
+ * the last candle forming bar by bar — tf-model.ts), a daily mini panel (Д) and a brief card at the start (gap, PDH /
+ * PDL / PMH / PML, ATR — GET /sim/games/:id/context), size in bases ½ · 1 · 2 · 3 (Shift+1..4), a TradingView-like
+ * position box (use-game-overlay; lines draggable by mouse and finger, Shift / Alt+click or the long-press menu to
+ * place them), auto stop + target on entry (use-entry-bracket), playback 1× / 5× / 30× with → = to the close of the
+ * current candle, Shift+→ = jump to the next event, and an automatic pause when a stop / target fills. Series games
+ * (FLOW supplies the handlers) show «3 / 10», «Пропустить (N)» and, while flat with no trade yet, «Не торгую (T)».
+ * Mobile: a shorter chart with the main buttons right under it (everything playable by touch, mobile-bar.tsx).
  */
 import * as React from "react";
-import { CalendarCheck, EyeOff, Flag, Keyboard, LogOut, Pause, Play, RotateCcw, StepForward } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CalendarCheck, EyeOff, Flag, Keyboard, LogOut, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FilterChip, Pill, usePersistentState } from "@/components/ds";
-import { fmtCount, fmtDate, fmtPrice, fmtUsd } from "@/lib/format";
+import { Pill, usePersistentState } from "@/components/ds";
+import { fmtDate, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
 import { trainerI18n } from "@/i18n/ns/trainer";
-import { keyAction, nextSpeed, type Speed } from "./model";
-import { SimChart, type ChartToggles } from "./sim-chart";
-import { EMPTY_OVERLAY, type DragLine, type OverlayData, type OverlayDeskFill } from "./sim-overlay";
+import { gameContextQuery, type SimEvent } from "./api";
+import { BASE_MULTS, PACES, baseQty, fromWire } from "./model";
+import type { ChartToggles } from "./sim-chart";
 import { BracketBox, FillsLog, KeysHint, OrderPad, PlayBar, PositionCard } from "./hud";
 import { LevelPill, ResultDetails, ResultSummary } from "./result";
 import { OwnRealTrade, OwnResultSummary } from "./own-result";
 import { DailyReveal } from "./daily-reveal";
 import { useFinePointer } from "./use-fine-pointer";
-import type { GameView, TicketKind } from "./use-sim-game";
+import { usePlayback } from "./use-playback";
+import { TF_MINUTES, baseTfOf, displayTfsOf, formingInfo, pickDisplayTf, stepToClose, tfMinutes, todayCandle, type DisplayTf } from "./tf-model";
+import { SizeBar } from "./size-bar";
+import { ChartStage, type PlaceMenu } from "./chart-stage";
+import { ChartToolbar } from "./chart-toolbar";
+import { MobileBar } from "./mobile-bar";
+import { useGameKeys } from "./use-game-keys";
+import { useEntryBracket } from "./use-entry-bracket";
+import { useGameOverlay } from "./use-game-overlay";
+import type { GameControls, Ticket } from "./game-types";
+import type { GameView } from "./use-sim-game";
 
-const isTyping = (el: EventTarget | null) => {
-  const t = el as HTMLElement | null;
-  return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
-};
+export type { GameControls, Ticket } from "./game-types";
 
-/** Keep mouse clicks from leaving focus on a button (Space would then also «click» it). */
-const noFocus = (e: React.PointerEvent) => e.preventDefault();
+const EVENT_KINDS = ["pdh", "pdl", "pmh", "pml", "hod", "lod", "vwap", "volume"] as const;
 
-export type GameControls = {
-  playing: boolean;
-  setPlaying: (v: boolean) => void;
-  busy: boolean;
-  starting: boolean;
-  next: (n?: number) => void;
-  order: (k: TicketKind) => void;
-  breakEven: () => void;
-  setBracket: (stop: number | null, target: number | null) => void;
-  undo: () => void;
-  finish: () => void;
-  again: () => void;
-  leave: () => void;
-};
-
-/** Ticket settings owned by the page (they feed the order requests). */
-export type Ticket = {
-  qty: number; setQty: (q: number) => void;
-  speed: Speed; setSpeed: (s: Speed) => void;
-  autoStop: boolean; setAutoStop: (v: boolean) => void;
-  autoTarget: boolean; setAutoTarget: (v: boolean) => void;
-  riskSize: boolean; setRiskSize: (v: boolean) => void;
-  planStop: number | null; setPlanStop: (v: number | null) => void;
-};
-
-export function GameScreen({ game, c, k }: { game: GameView; c: GameControls; k: Ticket }) {
+export function GameScreen({
+  game, c, k, onSkip, onNoTrade, series,
+}: {
+  game: GameView;
+  c: GameControls;
+  k: Ticket;
+  /** Series: skip this chart (N). */
+  onSkip?: () => void;
+  /** Series: «no trade» decision (T), only while flat with no trade yet. */
+  onNoTrade?: () => void;
+  /** Series position, `index` 0-based (shown «index + 1 / size»). */
+  series?: { index: number; size: number };
+}) {
   const { t } = simI18n.useT();
   const [toggles, setToggles] = usePersistentState<ChartToggles>("sim.chart", { vwap: true, levels: true, ma: true });
   const [hotkeys, setHotkeys] = usePersistentState("sim.hotkeys", true);
   const fine = useFinePointer();
+  const [tfPref, setTfPref] = usePersistentState<string | null>("sim.tf", null);
   const [hiddenDesk, setHiddenDesk] = React.useState<Set<string>>(new Set());
   const [confirmFinish, setConfirmFinish] = React.useState(false);
+  const [planTarget, setPlanTarget] = React.useState<number | null>(null);
+  const [menu, setMenu] = React.useState<PlaceMenu | null>(null);
   const done = game.done;
-  const daily = game.meta.trainer?.mode === "daily";
+  const meta = game.meta;
+  const daily = meta.trainer?.mode === "daily";
+  const intraday = meta.mode === "intraday";
   const { pos } = game.state;
+  const price = game.feed.bars[game.cursor]?.c ?? 0;
+  React.useEffect(() => { setPlanTarget(null); setMenu(null); }, [meta.id]);
+
+  // ── Timeframes ──────────────────────────────────────────────────────────
+  const tfs = React.useMemo(() => displayTfsOf(meta), [meta]);
+  const dispTf = pickDisplayTf(tfs, tfPref, meta);
+  const baseMin = tfMinutes(baseTfOf(meta)) ?? 1;
+  const dispMin = dispTf ? TF_MINUTES[dispTf] : baseMin;
+  const forming = intraday ? formingInfo(game.feed.bars, baseMin, dispMin) : null;
+  const setTf = React.useCallback((tf: DisplayTf) => setTfPref(tf), [setTfPref]);
+
+  // ── Daily context, levels, brief ────────────────────────────────────────
+  const dc = useDailyContext(game, fine);
 
   // A planned stop belongs to the next entry: it becomes the position's stop and is cleared.
   const { planStop, setPlanStop } = k;
   React.useEffect(() => { if (pos !== 0 && planStop != null) setPlanStop(null); }, [pos, planStop, setPlanStop]);
 
-  // ── Keyboard (DAS-like) ─────────────────────────────────────────────────
-  const live = React.useRef({ c, k, done, confirmFinish, hotkeys, game });
-  live.current = { c, k, done, confirmFinish, hotkeys, game };
-  const lastNext = React.useRef(0);
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const st = live.current;
-      if (!st.hotkeys || isTyping(e.target) || st.confirmFinish) return;
-      if (document.querySelector("[role='dialog'][data-state='open']")) return;
-      const a = keyAction(e);
-      if (!a) return;
-      const { c: ctl, done: isDone } = st;
-      if (isDone) {
-        if (a === "again" && !e.repeat) { e.preventDefault(); ctl.again(); }
-        return;
-      }
-      e.preventDefault();
-      if (e.repeat && a !== "next" && a !== "faster" && a !== "slower") return;
-      switch (a) {
-        case "next": {
-          // Held key: auto-repeat fires ~30/s; keep it to ≤ 20 bars/s.
-          const now = performance.now();
-          if (e.repeat && now - lastNext.current < 50) return;
-          lastNext.current = now;
-          ctl.next(1);
-          break;
-        }
-        case "buy": case "sell": case "flat": case "half": ctl.order(a); break;
-        case "breakeven": ctl.breakEven(); break;
-        case "cancel": {
-          // Esc = cancel the working orders: the planned stop, else the stop / target; autoplay pauses.
-          ctl.setPlaying(false);
-          const s = st.game.state;
-          if (st.k.planStop != null) st.k.setPlanStop(null);
-          else if (s.pos !== 0 && (s.stop != null || s.target != null)) ctl.setBracket(null, null);
-          break;
-        }
-        case "auto": ctl.setPlaying(!ctl.playing); break;
-        case "faster": st.k.setSpeed(nextSpeed(st.k.speed, 1)); break;
-        case "slower": st.k.setSpeed(nextSpeed(st.k.speed, -1)); break;
-        case "undo": ctl.undo(); break;
-        default: break;
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // One «auto stop + target» switch drives both ticket flags.
+  const auto = k.autoStop;
+  const { autoTarget, setAutoTarget, setAutoStop } = k;
+  React.useEffect(() => { if (autoTarget !== auto) setAutoTarget(auto); }, [auto, autoTarget, setAutoTarget]);
+  const setAuto = React.useCallback((v: boolean) => { setAutoStop(v); setAutoTarget(v); }, [setAutoStop, setAutoTarget]);
 
-  // ── Overlay for the chart ───────────────────────────────────────────────
-  const overlay: OverlayData = React.useMemo(() => {
-    const s = game.state;
-    const open = s.trades.find((x) => x.closeIdx == null) ?? null;
-    const sideWord = s.pos > 0 ? t("chart.long") : t("chart.short");
-    const desk: OverlayDeskFill[] = [];
-    const spans: OverlayData["spans"][number][] = [];
-    if (game.reveal) {
-      for (const d of game.reveal.desk.traders) {
-        if (hiddenDesk.has(d.key)) continue;
-        for (const tr of d.trades) for (const f of tr.fills) desk.push({ ...f, long: tr.side === "long", own: d.own, tag: d.own ? "" : d.label });
-      }
-      const marked = new Set<number>();
-      for (const m of game.reveal.result.mistakes) {
-        if (m.trade == null || marked.has(m.trade)) continue;
-        const tr = s.trades.find((x) => x.n === m.trade);
-        if (!tr) continue;
-        marked.add(m.trade);
-        spans.push({ from: tr.openIdx, to: tr.closeIdx ?? game.cursor, text: `${t("chart.mistake", { n: tr.n })} · ${t(`result.mistakeShort.${m.kind}`)}` });
-      }
-    }
-    const own = game.meta.own;
-    const marker = own && game.cursor >= own.decisionIdx ? { idx: own.decisionIdx, text: simOwnI18n.t("chartEntry") } : null;
-    const plan = !game.done && s.pos === 0 && planStop != null ? { price: planStop, text: t("chart.plan", { price: fmtPrice(planStop) }) } : null;
-    if (!s.fills.length && !desk.length && s.pos === 0 && !spans.length) return { ...EMPTY_OVERLAY, cursor: game.cursor, marker, plan };
-    return {
-      marker, plan,
-      fills: s.fills, pos: s.pos, avg: s.avg, stop: s.stop, target: s.target, openIdx: open?.openIdx ?? null, cursor: game.cursor, spans, desk,
-      text: {
-        position: s.pos !== 0 && s.avg != null ? t("chart.you", { side: sideWord, qty: fmtCount(Math.abs(s.pos)), price: fmtPrice(s.avg) }) : null,
-        stop: s.stop != null ? t("chart.stop", { price: fmtPrice(s.stop) }) : null,
-        target: s.target != null ? t("chart.target", { price: fmtPrice(s.target) }) : null,
-      },
-    };
-  }, [game.state, game.cursor, game.reveal, game.meta.own, game.done, hiddenDesk, planStop, t]);
+  // ── Playback, automatic bracket, overlay ────────────────────────────────
+  const pb = usePlayback({ next: (n) => c.next(n), active: !done, external: { playing: c.playing, setPlaying: c.setPlaying } });
+  const { setPlaying: setPb } = pb;
+  const { setPlaying: setCtl } = c;
+  const pauseAll = React.useCallback(() => { setPb(false); setCtl(false); }, [setPb, setCtl]);
+  const eb = useEntryBracket({ game, c, levels: dc.levels, auto, riskSize: k.riskSize, planStop, planTarget, setPlanTarget, pauseAll });
+  const ov = useGameOverlay({ game, c, k, planTarget, setPlanTarget, hiddenDesk });
 
-  // Dragging a line on the chart = moving that order.
-  const onDragLine = React.useCallback((kind: DragLine, price: number) => {
-    const s = live.current.game.state;
-    if (kind === "plan") live.current.k.setPlanStop(price);
-    else if (kind === "stop") live.current.c.setBracket(price, s.target);
-    else live.current.c.setBracket(s.stop, price);
-  }, []);
-  const dragLabel = React.useCallback((kind: DragLine, price: number) => t(kind === "target" ? "chart.target" : kind === "plan" ? "chart.plan" : "chart.stop", { price: fmtPrice(price) }), [t]);
+  // ── Actions shared by keys and buttons ──────────────────────────────────
+  const canNoTrade = !done && pos === 0 && game.state.trades.length === 0 && game.state.fills.length === 0;
+  const step = () => c.next(stepToClose(forming));
+  const jump = c.nextEvent ? () => { eb.setNotice(null); c.nextEvent?.(); } : null;
+  const setBase = (i: number) => { const m = BASE_MULTS[i]; if (m != null && !k.riskSize) k.setQty(baseQty(meta.defaultQty, m)); };
+  const clearPlan = () => {
+    if (planStop == null && planTarget == null) return false;
+    setPlanStop(null); setPlanTarget(null);
+    return true;
+  };
+  useGameKeys({
+    c, k, game, enabled: hotkeys, blocked: confirmFinish, brief: dc.brief, closeBrief: dc.closeBrief, menuOpen: !!menu, closeMenu: () => setMenu(null),
+    tfs, setTf, togglePlay: pb.toggle, faster: pb.faster, slower: pb.slower, pauseAll, step, jump, setBase, clearPlan, onSkip, onNoTrade, canNoTrade,
+  });
 
-  const total = game.meta.endIdx - game.meta.startIdx;
-  const played = game.cursor - game.meta.startIdx;
-  const intraday = game.meta.mode === "intraday";
-  const slip = game.meta.slippage;
-  const feeText = game.meta.own ? simOwnI18n.t("hudFee", { value: fmtUsd(game.meta.feePerShare, { decimals: 4 }) }) : t("hud.fee", { value: fmtUsd(game.meta.feePerShare, { decimals: 4 }) });
+  const total = meta.endIdx - meta.startIdx;
+  const played = game.cursor - meta.startIdx;
+  const slip = meta.slippage;
+  const feeText = meta.own ? simOwnI18n.t("hudFee", { value: fmtUsd(meta.feePerShare, { decimals: 4 }) }) : t("hud.fee", { value: fmtUsd(meta.feePerShare, { decimals: 4 }) });
+  const ser = series ?? (meta.series ? { index: meta.series.index, size: meta.series.size } : null);
+  const event = game.event ?? null;
+  const oneR = meta.oneR ?? null;
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <div className="flex flex-wrap items-center gap-2">
-        {game.meta.own ? (
-          <Pill tone="accent"><RotateCcw aria-hidden="true" />{simOwnI18n.t("banner.pill", { ticker: game.meta.own.ticker, date: fmtDate(game.meta.own.date, "medium") })}</Pill>
+        {ser && <Pill tone="accent" title={t("flow.seriesLabel", { index: ser.index + 1, size: ser.size })}><span data-testid="sim-series">{t("flow.series", { index: ser.index + 1, size: ser.size })}</span></Pill>}
+        {meta.own ? (
+          <Pill tone="accent"><RotateCcw aria-hidden="true" />{simOwnI18n.t("banner.pill", { ticker: meta.own.ticker, date: fmtDate(meta.own.date, "medium") })}</Pill>
         ) : (
           <>
-            {daily ? <Pill tone="accent"><CalendarCheck aria-hidden="true" />{trainerI18n.t("daily.pill")}</Pill> : <LevelPill mode={game.meta.mode} difficulty={game.meta.difficulty} />}
+            {daily ? <Pill tone="accent"><CalendarCheck aria-hidden="true" />{trainerI18n.t("daily.pill")}</Pill> : <LevelPill mode={meta.mode} difficulty={meta.difficulty} />}
             {!done && <Pill tone="neutral"><EyeOff aria-hidden="true" />{t("hiddenBadge")}</Pill>}
           </>
         )}
-        <div className="flex min-w-[10rem] flex-1 items-center gap-2" aria-hidden="true">
+        <div className="flex min-w-[8rem] flex-1 items-center gap-2" aria-hidden="true">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--glass-bg)]">
             <div className="h-full rounded-full bg-primary transition-[width] duration-[var(--dur-1)] motion-reduce:transition-none" style={{ width: `${total > 0 ? (played / total) * 100 : 0}%` }} />
           </div>
           <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{t("hud.bar", { played, total })}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <FilterChip size="sm" active={toggles.levels} onClick={() => setToggles({ ...toggles, levels: !toggles.levels })}>{t("chart.levels")}</FilterChip>
-          {intraday
-            ? <FilterChip size="sm" active={toggles.vwap} onClick={() => setToggles({ ...toggles, vwap: !toggles.vwap })}>{t("chart.vwap")}</FilterChip>
-            : <FilterChip size="sm" active={toggles.ma} onClick={() => setToggles({ ...toggles, ma: !toggles.ma })}>{t("chart.ma")}</FilterChip>}
         </div>
         {!done && (
           <>
@@ -210,13 +163,26 @@ export function GameScreen({ game, c, k }: { game: GameView; c: GameControls; k:
 
       <div className="grid min-h-0 grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-2">
-          <div className="glass-panel relative h-[52dvh] min-h-[300px] overflow-hidden rounded-2xl p-1.5 sm:p-2 lg:h-[calc(100dvh-13rem)] lg:min-h-[480px]">
-            <SimChart
-              feed={game.feed} mode={game.meta.mode} startIdx={game.meta.startIdx} levels={game.meta.levels} overlay={overlay} toggles={toggles}
-              className="min-h-[280px]" onDragLine={done ? undefined : onDragLine} dragLabel={dragLabel}
+          <ChartToolbar
+            tfs={tfs} tf={dispTf} setTf={setTf} fine={fine} intraday={intraday}
+            canDaily={intraday && dc.dailyBars.length > 0} showDaily={dc.showDaily} toggleDaily={dc.toggleDaily}
+            forming={done ? null : forming} toggles={toggles} setToggles={setToggles}
+            onNoTrade={onNoTrade && canNoTrade ? onNoTrade : null} onSkip={onSkip && !done ? onSkip : null}
+          />
+          <ChartStage
+            game={game} overlay={ov.overlay} toggles={toggles} levels={dc.levels} baseMin={baseMin} dispMin={dispMin}
+            onDragLine={ov.onDragLine} dragLabel={ov.dragLabel} onPlace={ov.place} menu={menu} setMenu={setMenu}
+            daily={dc.dailyBars} today={dc.today} showDaily={dc.showDaily}
+            chip={eb.notice ?? (event ? eventLabel(event, t) : null)} chipWarn={!!eb.notice}
+            brief={dc.brief && dc.ctx ? dc.ctx.levels : null} onCloseBrief={dc.closeBrief}
+          />
+          {!done && (
+            <MobileBar
+              pos={pos} c={c} playing={pb.playing} onToggle={pb.toggle} onStep={step} onEvent={jump}
+              pace={pb.pace} onPace={() => pb.setPace(PACES[(PACES.indexOf(pb.pace) + 1) % PACES.length])}
+              size={<SizeBar compact base={meta.defaultQty} qty={k.qty} setQty={k.setQty} price={price} risk={k.riskSize && oneR != null && pos === 0 ? { oneR, shares: ov.planQty } : null} />}
             />
-          </div>
-          {!done && <MobileBar game={game} c={c} />}
+          )}
         </div>
         <aside className="glass-panel flex min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl p-[var(--panel-p)] lg:h-[calc(100dvh-13rem)] lg:min-h-[480px]">
           {done ? (
@@ -225,20 +191,20 @@ export function GameScreen({ game, c, k }: { game: GameView; c: GameControls; k:
               : <ResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} noAgain={daily} />
           ) : (
             <>
-              {game.meta.own && <OwnMoment cursor={game.cursor} decisionIdx={game.meta.own.decisionIdx} />}
+              {meta.own && <OwnMoment cursor={game.cursor} decisionIdx={meta.own.decisionIdx} />}
               <PositionCard game={game} />
               <OrderPad
                 game={game} qty={k.qty} setQty={k.setQty} onOrder={c.order} onUndo={c.undo} onBreakEven={c.breakEven} disabled={false}
-                riskSize={k.riskSize} setRiskSize={k.setRiskSize} planStop={planStop}
+                riskSize={k.riskSize} setRiskSize={k.setRiskSize} planStop={planStop} fine={fine}
               />
               <BracketBox
-                game={game} autoStop={k.autoStop} setAutoStop={k.setAutoStop} autoTarget={k.autoTarget} setAutoTarget={k.setAutoTarget}
-                onBracket={c.setBracket} disabled={false} planStop={planStop} setPlanStop={setPlanStop}
+                game={game} auto={auto} setAuto={setAuto} onBracket={c.setBracket} disabled={false}
+                planStop={planStop} setPlanStop={setPlanStop} planTarget={planTarget} setPlanTarget={setPlanTarget} fine={fine} autoNote={eb.autoNote}
               />
               <FillsLog game={game} />
               <div className="mt-auto flex flex-col gap-3">
                 <div className="hidden lg:block">
-                  <PlayBar game={game} playing={c.playing} setPlaying={c.setPlaying} speed={k.speed} setSpeed={k.setSpeed} onNext={() => c.next(1)} disabled={false} />
+                  <PlayBar game={game} playing={pb.playing} onToggle={pb.toggle} pace={pb.pace} setPace={pb.setPace} onStep={step} onEvent={jump} disabled={false} />
                 </div>
                 <p className="text-2xs text-muted-foreground">
                   {feeText}
@@ -250,7 +216,7 @@ export function GameScreen({ game, c, k }: { game: GameView; c: GameControls; k:
                       <span className="flex items-center gap-1.5"><Keyboard className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />{t("hud.hotkeys")}</span>
                       <Switch checked={hotkeys} onCheckedChange={setHotkeys} aria-label={t("hud.hotkeys")} />
                     </label>
-                    {hotkeys && <KeysHint />}
+                    {hotkeys && <KeysHint tfCount={tfs.length} canEvent={!!jump} flow={{ skip: !!onSkip, noTrade: !!onNoTrade }} />}
                   </div>
                 )}
               </div>
@@ -263,40 +229,69 @@ export function GameScreen({ game, c, k }: { game: GameView; c: GameControls; k:
       {done && game.reveal?.own && <OwnRealTrade own={game.reveal.own} />}
       {done && <ResultDetails game={game} hiddenDesk={hiddenDesk} toggleDesk={(key) => setHiddenDesk((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; })} />}
 
-      <AlertDialog open={confirmFinish} onOpenChange={setConfirmFinish}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("hud.finishTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("hud.finishText")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{simI18n.t("start.resume")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setConfirmFinish(false); c.finish(); }}>{t("hud.finish")}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Mounted only while asked: closing unmounts it at once, so the modal lock on <body> (pointer-events) and the
+          overlay never wait for an exit animation that may not run (hidden tab, busy main thread) — MAKSIM-03. */}
+      {confirmFinish && (
+        <AlertDialog open onOpenChange={setConfirmFinish}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("hud.finishTitle")}</AlertDialogTitle>
+              <AlertDialogDescription>{t("hud.finishText")}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{simI18n.t("start.resume")}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setConfirmFinish(false); c.finish(); }}>{t("hud.finish")}</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
 
-/** Phones / tablets: the moves within thumb reach right under the chart (the full HUD follows below). */
-function MobileBar({ game, c }: { game: GameView; c: GameControls }) {
-  const { t } = simI18n.useT();
-  const pos = game.state.pos;
-  return (
-    <div className="grid grid-cols-[1fr_1fr_2.75rem_1fr_2.75rem] gap-1.5 text-sm lg:hidden" role="toolbar" aria-label={t("hud.keys.title")}>
-      <Button onPointerDown={noFocus} className="min-h-12 bg-up px-1 text-white hover:brightness-110" onClick={() => c.order("buy")}>{t("hud.buy")}</Button>
-      <Button onPointerDown={noFocus} className="min-h-12 bg-down px-1 text-white hover:brightness-110" onClick={() => c.order("sell")}>{t("hud.sell")}</Button>
-      <Button onPointerDown={noFocus} variant="secondary" className="min-h-12 px-0" disabled={pos === 0} onClick={() => c.order("half")} aria-label={t("hud.halfOut")} title={t("hud.halfOut")}>½</Button>
-      <Button onPointerDown={noFocus} variant="secondary" className="min-h-12 px-1" disabled={pos === 0} onClick={() => c.order("flat")}>{t("hud.close")}</Button>
-      <div className="grid grid-rows-2 gap-1">
-        <Button onPointerDown={noFocus} size="sm" className="h-auto min-h-0 px-0" onClick={() => c.next(1)} aria-label={t("hud.next")}><StepForward aria-hidden="true" /></Button>
-        <Button onPointerDown={noFocus} size="sm" variant={c.playing ? "default" : "outline"} className="h-auto min-h-0 px-0" onClick={() => c.setPlaying(!c.playing)} aria-pressed={c.playing} aria-label={c.playing ? t("hud.pause") : t("hud.auto")}>
-          {c.playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-        </Button>
-      </div>
-    </div>
-  );
+/**
+ * Daily context of an intraday game: the daily bars and levels (GET /sim/games/:id/context; null for old games /
+ * servers — the screen then shows no panel and no brief), today's candle from the bars seen, the snapshot's levels
+ * filled in from the context, the mini panel switch (remembered; on by default with a mouse) and the brief card shown
+ * once per game at its very start.
+ */
+function useDailyContext(game: GameView, fine: boolean) {
+  const meta = game.meta;
+  const intraday = meta.mode === "intraday";
+  const ctxQ = useQuery({ ...gameContextQuery(meta.id, !!game.reveal), enabled: intraday });
+  const ctx = ctxQ.data ?? null;
+  const dailyBars = React.useMemo(() => (ctx?.daily ?? []).map(fromWire), [ctx]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the feed is mutable; the cursor marks a new bar
+  const today = React.useMemo(() => (intraday ? todayCandle(game.feed.bars) : null), [game.feed, game.cursor, intraday]);
+  const [dailyOn, setDailyOn] = usePersistentState<boolean | null>("sim.dailyPanel", null);
+  const showDaily = (dailyOn ?? fine) && intraday && dailyBars.length > 0;
+  const levels = React.useMemo(() => {
+    const a = meta.levels, b = ctx?.levels;
+    if (!b) return a;
+    return { pdh: a.pdh ?? b.pdh, pdl: a.pdl ?? b.pdl, pdc: a.pdc ?? b.pdc, pmh: a.pmh ?? b.pmh, pml: a.pml ?? b.pml };
+  }, [meta.levels, ctx]);
+
+  const [brief, setBrief] = React.useState(false);
+  const briefed = React.useRef<number | null>(null);
+  const hasBrief = !!ctx && (ctx.daily.length > 0 || ctx.levels.gapPct != null || ctx.levels.pdh != null);
+  const fresh = game.cursor <= meta.startIdx;
+  React.useEffect(() => { setBrief(false); }, [meta.id]);
+  React.useEffect(() => {
+    if (briefed.current === meta.id || !intraday || game.done || !hasBrief) return;
+    briefed.current = meta.id;
+    if (fresh) setBrief(true);
+  }, [meta.id, intraday, game.done, hasBrief, fresh]);
+  const closeBrief = React.useCallback(() => setBrief(false), []);
+  return { ctx, dailyBars, today, levels, showDaily, toggleDaily: () => setDailyOn(!showDaily), brief, closeBrief };
+}
+
+type T = ReturnType<typeof simI18n.useT>["t"];
+
+/** Chip text of the event a jump stopped at («PDH break», «Stop filled» …). */
+function eventLabel(e: SimEvent, t: T): string {
+  if (e.kind === "fill") return t(e.dir === "up" ? "play.pausedTarget" : "play.pausedStop");
+  const k = (EVENT_KINDS as readonly string[]).includes(e.kind) ? (e.kind as (typeof EVENT_KINDS)[number]) : null;
+  return k ? t(`event.kind.${k}`) : t("event.generic");
 }
 
 /** Own mode: where the player is relative to their real entry (lead-in → the decision → the rest of the day). */

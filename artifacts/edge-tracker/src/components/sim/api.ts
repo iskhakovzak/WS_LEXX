@@ -21,7 +21,7 @@ export type WireBar = [number, number, number, number, number, number];
 
 export type FillReason = "buy" | "sell" | "flat" | "stop" | "target" | "end";
 /** `slip`: $ per share the server applied against the player (slippage + half the spread; absent on old games). */
-export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number; slip?: number };
+export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number; slip?: number; intrabar?: true };
 export type SimTrade = {
   n: number; side: "long" | "short"; openIdx: number; closeIdx: number | null; entryAvg: number; exitAvg: number | null; maxQty: number;
   gross: number; fees: number; net: number; riskPerShare: number; r: number; mfe: number; mae: number; mfeR: number; maeR: number;
@@ -69,7 +69,7 @@ export type Reveal = {
 };
 
 export type Snapshot = {
-  id: number; mode: SimMode; difficulty: Difficulty; tf: SimTf; status: "active" | "finished" | "abandoned";
+  id: number; mode: SimMode; difficulty: Difficulty; tf: SimTf; status: "active" | "finished" | "abandoned" | "skipped";
   startIdx: number; endIdx: number; cursor: number;
   feePerShare: number; riskUnit: number; defaultQty: number; maxNotional: number; levels: Levels;
   bars: WireBar[]; state: PublicState; createdAt: string; reveal: Reveal | null;
@@ -80,6 +80,38 @@ export type Snapshot = {
   oneR?: number;
   /** Set on «Задача дня» games (the trainer). */
   trainer?: { mode: "daily"; date: string } | null;
+  /** Timeframe of `bars` on the wire ("1m" when the day has minute bars, else the game tf). Absent on old games = tf. */
+  baseTf?: string | null;
+  /** Timeframes the player may switch to (aggregated on the client from the base bars). Absent on old servers. */
+  displayTfs?: string[] | null;
+  /** Set when the game belongs to a series (index 0-based). */
+  series?: { id: number; index: number; size: number } | null;
+  /** Set on a game finished through «Не торгую». */
+  noTrade?: NoTradeVerdict | null;
+};
+
+export type NoTradeVerdict = {
+  correct: boolean;
+  bestR: number;
+  reasonKey: "noTrade.correct" | "noTrade.missedLong" | "noTrade.missedShort";
+  decisionIdx: number;
+  windowEnd: number;
+  missed: { side: "long" | "short"; fromIdx: number; toIdx: number; entry: number; extreme: number; r: number } | null;
+};
+
+/**
+ * The event that stopped an event jump (server lib/sim/events). `fill`: a stop (dir down) / target (dir up) filled
+ * during the jump. `level`: the level broken (null for volume; the fill price for fill).
+ */
+export type SimEventKind = "pdh" | "pdl" | "pmh" | "pml" | "hod" | "lod" | "vwap" | "volume" | "fill";
+export type SimEvent = { kind: SimEventKind | (string & {}); dir?: "up" | "down"; idx: number; level?: number | null };
+/** Max base bars of one step (server). */
+export const MAX_ADVANCE = 400;
+
+/** Context of an intraday game: daily bars before the play day (fake times until the reveal) and the key levels. */
+export type GameContext = {
+  daily: WireBar[];
+  levels: { pdh: number | null; pdl: number | null; pdc: number | null; pmh: number | null; pml: number | null; gapPct: number | null; atr14: number | null };
 };
 
 export type StepBody = {
@@ -87,8 +119,10 @@ export type StepBody = {
   order?: { kind: OrderKind; qty?: number; sizeMode?: "risk" } | null;
   bracket?: { stop: number | null; target: number | null } | null;
   advance: number;
+  /** "event": advance until the next market event (at most `advance` bars). */
+  until?: "event";
 };
-export type StepResult = { cursor: number; bars: WireBar[]; state: PublicState; done: boolean; reveal: Reveal | null };
+export type StepResult = { cursor: number; bars: WireBar[]; state: PublicState; done: boolean; reveal: Reveal | null; event?: SimEvent | null };
 
 export type FinishedGame = {
   id: number; mode: SimMode; difficulty: Difficulty; ticker: string; day: string; dayTo: string | null; tf: SimTf;
@@ -115,6 +149,7 @@ export const simKeys = {
   me: () => ["sim", "me"] as const,
   board: () => ["sim", "board"] as const,
   own: () => OWN_CANDIDATES_KEY,
+  context: (id: number) => ["sim", "context", id] as const,
 };
 
 /** Language-independent data: no refetch on a language switch. */
@@ -124,6 +159,21 @@ export const activeGameQuery = () => queryOptions({
   queryKey: simKeys.active(),
   queryFn: () => http.get<{ game: Snapshot | null }>("/api/sim/games/active").then((r) => r.game),
   staleTime: 0,
+  meta,
+});
+/**
+ * Daily context of a game. Null when the server has none (old games, swing, a server without the endpoint): the
+ * screen then simply shows no daily panel / brief. Refetched after the reveal (real dates).
+ */
+export const gameContextQuery = (id: number, revealed: boolean) => queryOptions({
+  queryKey: [...simKeys.context(id), revealed ? "real" : "fake"] as const,
+  queryFn: () => http.get<GameContext>(`/api/sim/games/${id}/context`).catch((err: unknown) => {
+    const status = (err as { status?: number } | null)?.status;
+    if (status === 404 || status === 400 || status === 405) return null;
+    throw err;
+  }),
+  staleTime: Infinity,
+  retry: false,
   meta,
 });
 export const myStatsQuery = () => queryOptions({ queryKey: simKeys.me(), queryFn: () => http.get<MyStats>("/api/sim/me"), staleTime: STALE.short, meta });

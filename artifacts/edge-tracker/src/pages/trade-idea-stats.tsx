@@ -44,7 +44,7 @@ function sortColumns(): { key: SortKey; label: string; title?: string; titlePric
   return [
     { key: "ideas", label: t("stats.cols.ideas") },
     { key: "conversion", label: t("stats.cols.conversion"), title: t("stats.cols.conversionTitle") },
-    { key: "hitRate", label: "Hit rate", title: t("stats.cols.hitRateTitle"), titlePrice: t("stats.cols.hitRateTitlePrice") },
+    { key: "hitRate", label: t("stats.cols.hitRate"), title: t("stats.cols.hitRateTitle"), titlePrice: t("stats.cols.hitRateTitlePrice") },
     { key: "avgR", label: t("stats.cols.avgR") },
     { key: "sumR", label: "Σ R" },
     { key: "avgScore", label: t("stats.cols.avgScore") },
@@ -232,7 +232,7 @@ export default function TradeIdeaStats() {
               />
             ) : (
               <StatCard
-                label="Hit rate"
+                label={t("stats.cols.hitRate")}
                 value={fmtRate(overall.hitRate)}
                 tone={overall.hitRate == null ? "neutral" : overall.hitRate >= 0.5 ? "up" : "down"}
                 hint={`${overall.wins} / ${overall.losses} / ${overall.be}${overall.open ? ` · ${t("stats.openShort", { count: overall.open })}` : ""}`}
@@ -435,7 +435,7 @@ export default function TradeIdeaStats() {
                         <div className="font-semibold tabular-nums text-foreground">{c.converted}</div>
                       </div>
                       <div>
-                        <div className="text-2xs text-muted-foreground">Hit rate</div>
+                        <div className="text-2xs text-muted-foreground">{t("stats.cols.hitRate")}</div>
                         <div className={cn("font-semibold tabular-nums", c.hitRate == null ? "text-muted-foreground" : c.hitRate >= 0.5 ? "text-up" : "text-down")}>{fmtRate(c.hitRate)}</div>
                       </div>
                       <div>

@@ -5,9 +5,10 @@
 import type { Trade } from "@workspace/api-client-react";
 import {
   signedR, grossPnl, netPnl, feesOf as feesOfTrade, isOpen, isClosed as isClosedTrade, resultOf, closeDate,
-  horizonOf as horizonOfTrade,
+  horizonOf as horizonOfTrade, maxDrawdownByDay, payoffOf, winRateOf, entryMinutes,
 } from "@/lib/trade-math";
-import { fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
+import { personName } from "@/i18n";
+import { fmtDateCustom, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
 import { statsI18n } from "@/i18n/ns/stats";
 
 /*
@@ -98,6 +99,21 @@ export function periodRanges(period: PeriodKey, now = new Date()): { cur: Range;
     cur: { from: toKey(from), to: null },
     prev: { from: toKey(shift(from, -n)), to: toKey(shift(from, -1)) },
   };
+}
+
+/**
+ * «16 окт.» / «Oct 16» for a YYYY-MM-DD key, with the year when it is not the current year or `withYear` is set
+ * (MAKSIM-34: a multi-year range always shows years).
+ */
+export function fmtDayKey(k: string, withYear = false, now = new Date()): string {
+  const d = parseKey(k);
+  const year = withYear || d.getFullYear() !== now.getFullYear();
+  return fmtDateCustom(d, { day: "numeric", month: "short", ...(year ? { year: "numeric" } : {}) }).replace(".", "");
+}
+
+/** True when the two keys fall into different years (a range label then carries the year on both ends). */
+export function spansYears(from: string | null | undefined, to: string | null | undefined): boolean {
+  return !!from && !!to && from.slice(0, 4) !== to.slice(0, 4);
 }
 
 export function inRange(trades: Trade[], r: Range): Trade[] {
@@ -207,15 +223,8 @@ export function computeKpis(trades: Trade[], metric: Metric): Kpis {
   const avgWin = pos.length ? gp / pos.length : null;
   const avgLoss = neg.length ? -gl / neg.length : null;
 
-  // Drawdown on the cumulative curve (starts at 0).
-  let cum = 0;
-  let peak = 0;
-  let dd = 0;
-  for (const v of vals) {
-    cum += v;
-    peak = Math.max(peak, cum);
-    dd = Math.min(dd, cum - peak);
-  }
+  // Canonical max DD (lib/trade-math): end-of-day closes of the cumulative curve — the number the equity curve shows.
+  const dd = maxDrawdownByDay(closed, (t) => valueOf(t, metric));
 
   // Streaks over closed trades (breakeven breaks a streak).
   let longestWin = 0;
@@ -243,15 +252,15 @@ export function computeKpis(trades: Trade[], metric: Metric): Kpis {
     breakeven,
     valued: vals.length,
     missing: closed.length - vals.length,
-    // W / (W + L): break-even trades are reported separately, never in the denominator.
-    winRate: wins + losses ? wins / (wins + losses) : null,
+    // W / (W + L) over ALL closed trades (not only the valued ones): break-even trades never in the denominator.
+    winRate: winRateOf(wins, losses),
     net,
     avgWin,
     avgLoss,
-    payoff: avgWin != null && avgLoss != null && avgLoss !== 0 ? avgWin / Math.abs(avgLoss) : null,
+    payoff: payoffOf(vals),
     expectancy: vals.length ? sum(vals) / vals.length : null,
     profitFactor: gl > 0 ? gp / gl : null,
-    maxDrawdown: vals.length ? dd : null,
+    maxDrawdown: vals.length ? (dd ?? 0) : null,
     bestTrade: vals.length ? Math.max(...vals) : null,
     worstTrade: vals.length ? Math.min(...vals) : null,
     longestWin,
@@ -295,7 +304,7 @@ export function equitySeries(trades: Trade[], metric: Metric): EquityPoint[] {
     if (v == null) continue;
     cum += v;
     peak = Math.max(peak, cum);
-    out.push({ idx: out.length + 1, equity: cum, drawdown: cum - peak, label: `${t.ticker} · ${dayKey(t)}`, id: t.id });
+    out.push({ idx: out.length + 1, equity: cum, drawdown: cum - peak, label: `${t.ticker} · ${fmtDayKey(dayKey(t))}`, id: t.id });
   }
   return out;
 }
@@ -403,4 +412,57 @@ export function heatBg(v: number | null | undefined, max: number): string | unde
   if (v == null || !Number.isFinite(v) || v === 0 || max <= 0) return undefined;
   const a = 0.12 + 0.48 * Math.min(1, Math.abs(v) / max);
   return v > 0 ? `hsl(var(--up) / ${a.toFixed(2)})` : `hsl(var(--down) / ${a.toFixed(2)})`;
+}
+
+/* ───────────── entry hour · bases · names ───────────── */
+
+/** Entry-hour columns (ET): premarket, each regular-session hour (9:30–10 is the «9:30» column), after-hours. */
+export const REGULAR_COLS = ["h9", "h10", "h11", "h12", "h13", "h14", "h15"] as const;
+export const HOUR_ORDER = ["pre", ...REGULAR_COLS, "post", "none"];
+
+/** Column of a trade by its exact entry time (ET minutes); "none" when the trade has no entry time. */
+export function hourKey(t: Trade): string {
+  const m = entryMinutes(t);
+  if (m == null) return "none";
+  if (m < 9 * 60 + 30) return "pre";
+  if (m >= 16 * 60) return "post";
+  return `h${Math.floor(m / 60)}`;
+}
+
+/** Column head: «9:30», «10:00» … (digits are the same in every language), «до 9:30», «после 16:00», «без времени». */
+export function hourLabel(k: string): string {
+  if (k === "pre") return statsI18n.t("heatmap.pre");
+  if (k === "post") return statsI18n.t("heatmap.post");
+  if (k === "none") return statsI18n.t("heatmap.noTime");
+  const h = Number(k.slice(1));
+  return h === 9 ? "9:30" : `${h}:00`;
+}
+
+/** R coverage of a set of days: closed trades with an R vs all closed (MAKSIM-24 — R colours only those). */
+export function rCoverage(days: DayStat[]): { n: number; m: number } {
+  let n = 0, m = 0;
+  for (const d of days) for (const tr of d.trades) {
+    if (!isClosed(tr)) continue;
+    m++;
+    if (valueOf(tr, "r") != null) n++;
+  }
+  return { n, m };
+}
+
+/** The trader's name on a row — never the viewer's own name, never when the whole list is one person's (MAKSIM-37). */
+export function rowTraderLabel(trader: string | null | undefined, viewer: string | null | undefined, hideTrader?: boolean): string | null {
+  const name = (trader ?? "").trim();
+  if (!name || hideTrader) return null;
+  if (viewer && name === viewer.trim()) return null;
+  return personName(name);
+}
+
+/**
+ * Base of the value cards (MAKSIM-08 / MAKSIM-24): in R only trades with an R count («R по сделкам со стопом (N из M)»),
+ * in $ the trades with a P&L. The win-rate card and the trade count always use all closed trades.
+ */
+export function kpiBase(k: Kpis, metric: Metric): string {
+  const t = statsI18n.t;
+  if (metric === "r") return t("kpi.baseR", { n: k.valued, m: k.closed });
+  return k.missing > 0 ? t("kpi.baseUsd", { n: k.valued, m: k.closed }) : t("kpi.baseAll", { m: k.closed });
 }

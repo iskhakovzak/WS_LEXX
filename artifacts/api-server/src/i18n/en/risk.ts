@@ -161,6 +161,7 @@ export default {
       title: "Breach review {date}",
       body: "{actor}: {reason}. {agreed}Decision: {consequence}.",
       agreed: "Agreed: {actions}. ",
+      ddReset: "Max drawdown is counted afresh from this day — the drawdown stop is lifted.",
     },
   },
   queue: {

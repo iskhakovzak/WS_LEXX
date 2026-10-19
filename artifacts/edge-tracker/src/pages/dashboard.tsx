@@ -12,6 +12,7 @@ import { nyDate } from "@/lib/trading-date";
 import { useTodayHolidays } from "@/lib/market-intel";
 import { normalizeResult } from "@/lib/trade-result";
 import { useUnreadCount } from "@/components/notifications/use-notifications";
+import { useHasRiskAccount } from "@/components/shell/use-shell-badges";
 import { DashboardHeader } from "@/components/dashboard/today-hero";
 import { AttentionPanel } from "@/components/dashboard/attention-panel";
 import { EquityPanel } from "@/components/dashboard/equity-panel";
@@ -58,6 +59,7 @@ const lazyExtra = (node: ReactNode) => <Suspense fallback={<ExtraFallback />}>{n
 
 const RITUAL_ANCHOR = "dash-ritual";
 const CLOSE_MIN = 16 * 60;
+const OPEN_MIN = 9 * 60 + 30;
 
 const SPAN: Record<number, string> = {
   5: "lg:col-span-5",
@@ -95,14 +97,21 @@ export default function Dashboard() {
   const authed = !isGuest;
 
   const { prefs, update, reset } = useDashboardPrefs(staff ? "team" : "me", user ? `${user.role}:${userName ?? ""}` : null);
+  // Staff without own trades (an admin with no trading account) get no trader blocks: the team view only, no «Мои»
+  // toggle (OWNER-08). Decided by one light read of their own recent trades.
+  const ownRecentQ = useRecentTrades("me", authed && staff);
+  const staffTrades = !staff || ownRecentQ.isLoading || (ownRecentQ.data?.length ?? 0) > 0;
+  const canChooseScope = staff && staffTrades;
   // Team scope is for staff only; a trader always sees their own desk.
-  const scope = staff ? prefs.scope : "me";
+  const scope = staff ? (staffTrades ? prefs.scope : "team") : "me";
   const on = (id: SectionId) => authed && !prefs.hidden.includes(id);
 
   const todayQ = useDashboardToday(scope, authed);
   const equityQ = useDashboardEquity(scope, prefs.period, on("equity"));
   const recentQ = useRecentTrades(scope, authed);
-  const riskQ = useRiskMe(authed && !!userName);
+  // Staff without their own limits row have no risk account: no /api/risk/me polling for them.
+  const riskAccount = useHasRiskAccount();
+  const riskQ = useRiskMe(authed && !!userName && riskAccount.has);
   const deskQ = useRiskDesk(authed && staff);
   const eodQ = useEodStatus(authed && scope === "team");
   const eventsQ = useEventsToday(on("attention"));
@@ -218,8 +227,12 @@ export default function Dashboard() {
     }
   };
 
-  const blocks: Block[] = prefs.order
-    .filter((id) => on(id) && (id !== "desk" || staff))
+  // The morning check-in leads before the open on a trading day and is gone on weekends / market holidays (ILYA-20).
+  const tradingDay = today ? !today.market.weekend && !today.market.holidayToday : true;
+  const morning = !!today && tradingDay && today.market.nyMinutes < OPEN_MIN;
+  const order = morning ? ["checkin" as SectionId, ...prefs.order.filter((id) => id !== "checkin")] : prefs.order;
+  const blocks: Block[] = order
+    .filter((id) => on(id) && (id !== "desk" || staff) && (id !== "checkin" || tradingDay))
     .map((id) => ({ id, node: render(id) }))
     .filter((b) => b.node != null);
   const rows = toRows(blocks);
@@ -236,7 +249,7 @@ export default function Dashboard() {
         guest={isGuest}
         scope={scope}
         onScopeChange={(s) => update({ scope: s })}
-        canChooseScope={staff}
+        canChooseScope={canChooseScope}
         userName={userName}
         dayLine={<DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} quests={<QuestStrip enabled={dailyOn} />} />}
         customize={

@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { MigrationError, checksumOf, loadMigrationFiles, runMigrationFiles, resolveMigrationsDir } from "../runner";
+import { MigrationError, checksumOf, concurrentIndexNames, loadMigrationFiles, runMigrationFiles, resolveMigrationsDir } from "../runner";
 import { splitSqlStatements } from "../sqlSplit";
 import { createScratchDb, pgAvailable } from "./scratchDb";
 
@@ -45,6 +45,16 @@ describe("loadMigrationFiles", () => {
     const files = loadMigrationFiles(resolveMigrationsDir());
     expect(files[0].version).toBe("0001");
     expect(files.length).toBeGreaterThan(5);
+  });
+});
+
+describe("concurrentIndexNames (DEV-08)", () => {
+  it("finds the indexes a file builds CONCURRENTLY (IF NOT EXISTS, UNIQUE, quoted)", () => {
+    const sql = `-- no-transaction
+CREATE INDEX CONCURRENTLY IF NOT EXISTS trades_live_close_day_idx ON trades (x);
+create unique index concurrently "Odd_Name" ON t (y);
+CREATE INDEX plain_idx ON t (z);`;
+    expect(concurrentIndexNames(sql)).toEqual(["trades_live_close_day_idx", "Odd_Name"]);
   });
 });
 
@@ -102,6 +112,19 @@ describe.skipIf(!available)("runMigrationFiles (scratch database)", () => {
     expect((await db.pool.query(`SELECT to_regclass('never_t') AS t`)).rows[0].t).toBeNull();
     // the advisory lock was released: another run can proceed (and fails the same way)
     await expect(runMigrationFiles({ pool: db.pool, logger: silent, dir })).rejects.toBeInstanceOf(MigrationError);
+  });
+
+  it("fails a no-transaction file whose CONCURRENTLY index is INVALID (IF NOT EXISTS skipped a half-built one)", async () => {
+    await db.pool.query(`DROP TABLE IF EXISTS schema_migrations, dup_t`);
+    await db.pool.query(`CREATE TABLE dup_t (x int); INSERT INTO dup_t VALUES (1), (1)`);
+    // A failed concurrent build leaves the index behind, INVALID.
+    await expect(db.pool.query(`CREATE UNIQUE INDEX CONCURRENTLY dup_t_x_u ON dup_t (x)`)).rejects.toThrow();
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const dir = dirWith({ "0001_dup.sql": "-- no-transaction\nCREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS dup_t_x_u ON dup_t (x);" });
+    await expect(runMigrationFiles({ pool: db.pool, logger: log, dir })).rejects.toThrow(/INVALID index\(es\) dup_t_x_u/);
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ indexes: ["dup_t_x_u"] }), expect.stringContaining("INVALID"));
+    expect((await db.pool.query(`SELECT count(*)::int AS n FROM schema_migrations`)).rows[0].n).toBe(0);
+    await db.pool.query(`DROP TABLE dup_t`);
   });
 
   it("refuses out-of-order files in production, warns in development; logs an edited applied file", async () => {

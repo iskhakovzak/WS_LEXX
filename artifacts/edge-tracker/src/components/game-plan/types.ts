@@ -4,6 +4,7 @@ import { gpI18n } from "@/i18n/ns/gamePlan";
 import { nyDate } from "@/lib/trading-date";
 import { trackAction } from "@/lib/usage";
 import type { Tone } from "@/components/ds";
+import type { FocusRuleKey } from "@/components/shared/plan-focus";
 
 export type MarketBias = "bull" | "bear" | "neutral" | "mixed";
 export type TickerBias = "bull" | "bear" | "neutral";
@@ -79,7 +80,11 @@ export type PlanDoc = {
   setups?: number[];
   /** Personal plan only: 1R in $ — the playbook size calculator reads it (PlaybookToday.oneR, source «plan»). */
   riskPerTradeUsd?: number | null;
+  /** Personal plan only: quick rules of the focus block as preset keys (a…e), shown in each reader's language. */
+  focusRules?: FocusRuleKey[];
 };
+
+export { FOCUS_RULE_KEYS, type FocusRuleKey } from "@/components/shared/plan-focus";
 
 export type PlanStatus = "draft" | "ready";
 export type TraderPlan = {

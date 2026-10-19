@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   edgeSummary, firstTradingWindow, gradeOf, hm, hmText, matchSetup, minutesToOpen, nowMarker, nyNow, nyOverride, parseStop,
-  sharesFor, suggestPicks, togglePick, windowPhases, windowSetups,
+  sessionMinutes, sharesFor, starPick, suggestionSource, suggestPicks, togglePick, windowPhases, windowSetups,
 } from "../today-model";
 import { modeFromUrl } from "../mode-tabs";
 import { today } from "./fixtures";
@@ -121,5 +121,27 @@ describe("mode from the URL", () => {
     expect(modeFromUrl("", true, null)).toBe("today");
     expect(modeFromUrl("?mode=today", true, "edit")).toBe("today");
     expect(modeFromUrl("?mode=mine", true, null)).toBe("edit");
+  });
+});
+
+describe("persona fixes", () => {
+  it("a star before anything is saved joins the draft — 2 suggested + star = 3, «Взять в план» saves all (DENIS-16)", () => {
+    expect(starPick([], [13, 12], 21)).toEqual({ mode: "draft", next: [13, 12, 21] });
+    expect(starPick([], [13, 12, 21], 15)).toBeNull(); // a fourth is refused
+    expect(starPick([13], [13, 12], 21)).toEqual({ mode: "save", next: [13, 21] }); // saved picks save at once
+    expect(starPick([13, 21], [], 13)).toEqual({ mode: "save", next: [21] });
+  });
+  it("weekend / holiday: the plan's next session is all ahead (ROMAN-10)", () => {
+    expect(sessionMinutes("2026-10-19", "2026-10-18", 16 * 60 + 6)).toEqual({ now: 0, ahead: true });
+    expect(sessionMinutes("2026-10-19", "2026-10-19", 600)).toEqual({ now: 600, ahead: false });
+    const t = today();
+    expect(Object.values(windowPhases(t.windows, sessionMinutes("2026-10-19", "2026-10-18", 966).now))).not.toContain("past");
+  });
+  it("the prompt copy follows why the setups were ticked (ILYA-15)", () => {
+    const t = today();
+    expect(suggestionSource(t.setups, [13, 21])).toBe("edge"); // best + good
+    expect(suggestionSource(t.setups, [13, 12])).toBe("mixed");
+    expect(suggestionSource(t.setups, [12])).toBe("starter"); // «new» only
+    expect(suggestionSource(t.setups, [])).toBe("starter");
   });
 });

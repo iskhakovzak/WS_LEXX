@@ -18,7 +18,7 @@ export default {
     addFailed: "Couldn’t add",
     noAccess: "No access to the trade",
     updatedIn: "Updated in “{name}” · {tier}",
-    addedOne: "Trade → “{name}” · {tier}",
+    addedOne: "Added to “{name}” · {tier}",
     addedMany: "{trades} → “{name}” · {tier}",
     setupFallback: "setup",
     skipped: "· {count} skipped",
@@ -48,7 +48,7 @@ export default {
     update: "Update",
     add: "Add",
     addN: "Add {count}",
-    dialogDesc: "Pick a setup and a tier for {trades}",
+    dialogDesc: { one: "Choose a setup and tier for {count} trade", other: "Choose a setup and tier for {count} trades" },
   },
   add: {
     button: "To playbook",

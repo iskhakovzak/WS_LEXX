@@ -67,6 +67,15 @@ export default {
     column: "Limit",
     nextTier: "Keyingi daraja",
   },
+  tierName: { lead: "Lid" },
+  tierDesc: {
+    trainee: "Simulyator / minimal hajm",
+    junior: "Intraday, kichik lot",
+    trader: "Intraday + overnayt",
+    senior: "Toʻliq BP, sving",
+    lead: "Maksimal BP, mentorlik",
+  },
+  pctOfLimit: "limitning {value}",
   ladder: {
     aria: "Darajalar zinapoyasi",
     empty: "Darajalar zinapoyasi boʻsh — uni sozlamalarda belgilang.",
@@ -89,6 +98,9 @@ export default {
     emptyPromote: "Bu daraja uchun koʻtarilish qoidalari yoʻq",
     emptyDemote: "Bu daraja uchun tushirilish qoidalari yoʻq",
     windowDays: { one: "{count} savdo kuni", other: "{count} savdo kuni" },
+    need: "kerak {op} {threshold}",
+    demoteAt: "{op} {threshold} boʻlsa pasaytirish",
+    now: "hozir",
     byR: "R boʻyicha",
   },
   metrics: {
@@ -107,6 +119,7 @@ export default {
   },
   proposal: {
     byRules: "qoidalar boʻyicha",
+    system: "Tizim",
     manual: "qoʻlda",
     decidedBy: "qaror: {name}",
     quoted: "«{text}»",

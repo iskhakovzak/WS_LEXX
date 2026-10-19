@@ -3,7 +3,9 @@
  * curator queue (lib/daily/costQueue.ts, curatorFocus.ts) and the Telegram bot (lib/daily/telegram*).
  *
  *   focusFor(trader, date)    the focus FOR a day: stored on the first request (table daily_focus); a curator override
- *                             (source "curator") wins; mistakes the trader disputed in the window are skipped
+ *                             (source "curator") wins, then the trader's own journal pick (source "own"); mistakes the
+ *                             trader disputed in the window are skipped
+ *   isDayClosed(trader, date) evening card reviewed OR the journal day closed (eod_days.closed_at)
  *   eveningFor(trader, date)  the evening card; once the day is finished its verdict snapshot is stored in
  *                             daily_reviews.verdict (the contract's disciplineDelta feeds next-day discipline)
  *   dailyMe(trader)           phase (lib/curatorLogic tradingPhase), focus, last finished day, tier progress, intraday
@@ -13,11 +15,12 @@
  */
 import { pool } from "@workspace/db";
 import { addDays, isWeekend, nyDate, nyMinutes } from "../tradingDate";
+import { closeDateSql } from "../tradeMath";
 import { tradingPhase } from "../curatorLogic";
 import { syncCron } from "../propreports/scheduler";
 import { loadBehaviorRows, rowToBehaviorTrade } from "../../routes/behavior";
 import {
-  NORM_HISTORY_DAYS, analyzeWindow, contractOf, dayTotals, focusOf, focusWindow, pickFocus, tierProgressOf, tradeMistakes, tradeToReview, verdictOf,
+  NORM_HISTORY_DAYS, analyzeWindow, contractOf, dayTotals, focusOf, focusWindow, pathProgressOf, pickFocus, tierProgressOf, tradeMistakes, tradeToReview, verdictOf,
   type WindowAnalysis,
 } from "./engine";
 import { dayPath, windowDays } from "./detectors";
@@ -26,7 +29,8 @@ import { cardRewards, forgetRewards, rewardsFor } from "./rewards";
 import { behaviorTradesOf, deskTradersOn, inputFor, loadDailyContext, type DailyContext } from "./load";
 import { buildCostQueue } from "./costQueue";
 import { settingsChangedAt } from "../settings/store";
-import { tagDays, untaggedOf } from "../playbookToday/untagged";
+import { untaggedTrades } from "../playbookToday/untagged";
+import type { Lang } from "../../i18n";
 import type { CostQueueItem, DailyFocus, DailyMe, EveningCard, MistakeCost, MistakeId, TierProgress } from "./types";
 
 type FocusRow = {
@@ -83,6 +87,22 @@ async function reviewOf(trader: string, date: string): Promise<ReviewRow | null>
   return rows[0] ?? null;
 }
 
+/**
+ * The trader closed `date`: the dashboard evening card was marked reviewed (daily_reviews.reviewed_at) OR the journal
+ * «Закрыть день» form closed it (eod_days.closed_at, read-only here — routes/eod.ts owns the table). Used for
+ * `evening.reviewed` and by lib/quests (the «review yesterday» quest). Never throws: a failed read is «not closed».
+ */
+export async function isDayClosed(trader: string, date: string): Promise<boolean> {
+  const { rows } = await pool
+    .query<{ closed: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM daily_reviews WHERE trader = $1 AND date = $2 AND reviewed_at IS NOT NULL)
+           OR EXISTS (SELECT 1 FROM eod_days WHERE trader = $1 AND date = $2 AND closed_at IS NOT NULL) AS closed`,
+      [trader, date],
+    )
+    .catch(() => ({ rows: [] as { closed: boolean }[] }));
+  return !!rows[0]?.closed;
+}
+
 /** Computes the auto focus for `date` from an already loaded context (does not store). */
 async function computeFocus(trader: string, date: string, ctx: DailyContext): Promise<{ focus: DailyFocus; days: number; analysis: WindowAnalysis }> {
   const w = focusWindow(date);
@@ -128,9 +148,56 @@ export async function mistakesByTrade(trader: string, from: string, to: string):
   return tradeMistakes(analyzeWindow(inputFor(ctx, from, to)));
 }
 
-/** The focus for `date` (computed and stored on first request; a curator override wins). */
+/**
+ * The trader's own pick for `date`: the journal «Фокус на завтра» (written into that day's journal_days.plan) — its
+ * first meaningful line, bullets stripped, ≤ 200 chars. Null when empty or the journal table is absent.
+ */
+export async function ownFocusText(trader: string, date: string): Promise<string | null> {
+  const { rows } = await pool
+    .query<{ plan: string | null }>(`SELECT plan FROM journal_days WHERE trader = $1 AND day = $2::date`, [trader, date])
+    .catch(() => ({ rows: [] as { plan: string | null }[] }));
+  return ownFocusLine(rows[0]?.plan ?? null);
+}
+
+/** First meaningful line of a journal focus text, without list bullets and template headers (pure; exported for tests). */
+export function ownFocusLine(plan: string | null | undefined): string | null {
+  for (const raw of String(plan ?? "").split(/\r?\n/)) {
+    const line = raw.replace(/^\s*(?:[•\-*–—]|\d+[.)])\s*/, "").trim();
+    // Template headers («Фокус-лист:», «Ключевые уровни:») carry no pick of their own.
+    if (line && !line.endsWith(":")) return line.length > 200 ? `${line.slice(0, 199)}…` : line;
+  }
+  return null;
+}
+
+/** The focus as shown to the trader when they picked their own: precedence curator > own journal pick > auto. */
+export function withOwnFocus(f: DailyFocus, own: string | null): DailyFocus {
+  if (!own || f.source === "curator") return f;
+  return { ...f, mistake: null, costNet: null, count: 0, source: "own", ownText: own, text: { key: "focus.own", params: { text: own } } };
+}
+
+/** Any closed trade in [from, to]? (the «nothing repeats» line must not praise a trader who did not trade). */
+async function tradedIn(trader: string, from: string, to: string): Promise<boolean> {
+  const { rows } = await pool
+    .query(
+      `SELECT 1 FROM trades t WHERE t.deleted_at IS NULL AND t.trader = $1 AND ${closeDateSql("t")} >= $2 AND ${closeDateSql("t")} <= $3 LIMIT 1`,
+      [trader, from, to],
+    )
+    .catch(() => ({ rows: [{}] }));
+  return rows.length > 0;
+}
+
+/**
+ * The focus for `date` as the trader sees it (dashboard, plan, playbook, Telegram): computed and stored on first
+ * request; a curator override wins, then the trader's own journal pick (source «own»), then the engine. With no trades
+ * in the window the «nothing repeats» line becomes «the focus appears after the first trades» (`focus.noTrades`).
+ * The evening verdict keeps judging the engine / curator mistake (focusWith).
+ */
 export async function focusFor(trader: string, date: string): Promise<DailyFocus | null> {
-  return focusWith(trader, date);
+  const [f, own] = await Promise.all([focusWith(trader, date), ownFocusText(trader, date)]);
+  if (f.source === "none" && !own && !(await tradedIn(trader, f.window.from, f.window.to))) {
+    return { ...f, text: { key: "focus.noTrades", params: f.text.params } };
+  }
+  return withOwnFocus(f, own);
 }
 
 /** Curator override (`mistake`) or back to the engine's pick (`null`). Returns the focus now in force. */
@@ -151,7 +218,9 @@ export async function setFocusOverride(trader: string, date: string, mistake: Mi
 export async function eveningFor(trader: string, date: string): Promise<EveningCard | null> {
   const w = focusWindow(date);
   const ctx = await loadDailyContext(trader, w.from, date);
-  const [focus, review, tags] = await Promise.all([focusWith(trader, date, ctx), reviewOf(trader, date), tagDays(trader, date, date).catch(() => null)]);
+  const [focus, review, tags, closed] = await Promise.all([
+    focusWith(trader, date, ctx), reviewOf(trader, date), untaggedTrades(trader, date, date).catch(() => null), isDayClosed(trader, date),
+  ]);
   const a = analyzeWindow(inputFor(ctx, date, date));
   const disputed = !!review?.disputed && (!review.disputed_mistake || review.disputed_mistake === focus.mistake);
   const verdict = focus.mistake ? verdictOf(a, date, focus.mistake, disputed) : null;
@@ -169,7 +238,7 @@ export async function eveningFor(trader: string, date: string): Promise<EveningC
   const card: EveningCard = {
     trader, date, trades: totals.trades, netPnl: totals.netPnl, focus: verdict, tradeToReview: review1,
     deskSameTicker: ticker && others > 0 ? { ticker, traders: others } : null,
-    contract, reviewed: !!review?.reviewed_at, reviewNote: review?.note ?? null, ...(tags ? { untagged: untaggedOf(tags) } : {}),
+    contract, reviewed: !!review?.reviewed_at || closed, reviewNote: review?.note ?? null, ...(tags ? { untagged: tags.untagged } : {}),
   };
   if (dayFinished(date)) {
     if (await saveVerdict(card).catch(() => false)) forgetRewards(trader);
@@ -225,12 +294,21 @@ function openDay(date: string, step: 1 | -1, closed: ReadonlySet<string>): strin
   return d;
 }
 
-async function tierProgress(trader: string, today: string): Promise<TierProgress | null> {
+/**
+ * The ladder line («До Джуна: 6 из 13»): the academy path readiness — the one ladder scorecard (owner decision 2,
+ * TRIAGE cross-area note 4). /scaling stays the risk-size tiers and is only the fallback when the path cannot be read.
+ */
+async function tierProgress(trader: string, today: string, lang: Lang): Promise<TierProgress | null> {
   try {
-    const { evaluateTraderNow } = await import("../../routes/scaling");
-    return tierProgressOf(await evaluateTraderNow(trader, today));
+    const { readinessFor } = await import("../../routes/academy-path");
+    return pathProgressOf(await readinessFor(trader, today, lang));
   } catch {
-    return null;
+    try {
+      const { evaluateTraderNow } = await import("../../routes/scaling");
+      return tierProgressOf(await evaluateTraderNow(trader, today));
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -249,7 +327,7 @@ export function dailyDates(today: string, minutes: number, closed: ReadonlySet<s
 }
 
 /** Everything the dashboard / bot shows for a trader right now. */
-export async function dailyMe(trader: string): Promise<DailyMe | null> {
+export async function dailyMe(trader: string, lang: Lang = "ru"): Promise<DailyMe | null> {
   const now = new Date();
   const today = nyDate(now);
   const { phase, focusDate, eveningDate } = dailyDates(today, nyMinutes(now), await closedDaysAround(today));
@@ -260,7 +338,7 @@ export async function dailyMe(trader: string): Promise<DailyMe | null> {
   const [focus, evening, progress] = await Promise.all([
     focusFor(trader, focusDate),
     eveningFor(trader, eveningDate),
-    tierProgress(trader, today),
+    tierProgress(trader, today, lang),
     warm,
   ]);
   const rewards = await rewardsFor(trader, now);
@@ -270,7 +348,7 @@ export async function dailyMe(trader: string): Promise<DailyMe | null> {
 /** Marks the day reviewed (optional one-line note); `dispute` = «the focus hit was not a mistake». */
 export async function markReviewed(trader: string, date: string, opts: { note?: string | null; dispute?: boolean } = {}): Promise<void> {
   let disputedMistake: string | null = null;
-  if (opts.dispute) disputedMistake = (await storedFocus(trader, date))?.mistake ?? (await focusFor(trader, date))?.mistake ?? null;
+  if (opts.dispute) disputedMistake = (await storedFocus(trader, date))?.mistake ?? (await focusWith(trader, date))?.mistake ?? null;
   const hasNote = opts.note !== undefined;
   const note = typeof opts.note === "string" ? opts.note.trim().slice(0, 500) || null : null;
   await pool.query(

@@ -3,7 +3,7 @@ import type ru from "../ru/chartLab";
 
 export default {
   title: { page: "Grafik va tahlil" },
-  result: { moveTitle: "Kirishdan chiqishgacha narx harakati", win: "foyda", loss: "zarar" },
+  result: { moveTitle: "Kirishdan chiqishgacha narx harakati", win: "foyda", loss: "zarar", grossTitle: "Sof. Yalpi {gross}, komissiyalar {fees}" },
   picker: {
     aria: "Savdoni tanlash",
     placeholder: "Tiker, kun (2026-10-14) yoki ikkalasi",
@@ -15,6 +15,7 @@ export default {
     long: "long",
     short: "short",
     othersInR: "Boshqalarning savdolari R da, dollarsiz.",
+    searching: "Qidirilmoqda…",
     pick: "Savdoni tanlash",
   },
   openInTrades: "«Savdolar»da ochish",

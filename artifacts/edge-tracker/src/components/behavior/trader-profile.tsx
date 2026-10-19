@@ -9,7 +9,7 @@ import { Delta, Pill, ProgressRing, Tile, toneOf, toneText, type Tone } from "@/
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  PATTERN_SHORT, PATTERN_TONE, fmtMinutes, monthLabel, type BehaviorReport, type Bucket, type ProfileBucket, type TraderProfile,
+  PATTERN_SHORT, PATTERN_TONE, fmtMinutes, monthLabel, monthShort, type BehaviorReport, type Bucket, type ProfileBucket, type TraderProfile,
 } from "./api";
 import { fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -137,25 +137,35 @@ function HabitsTile({ hb, net }: { hb: TraderProfile["habits"]; net: number | nu
   const maxAbs = React.useMemo(() => Math.max(1, ...hb.byPattern.map((p) => Math.abs(p.cost))), [hb.byPattern]);
   const monthMax = React.useMemo(() => Math.max(1, ...hb.monthly.map((m) => Math.abs(m.cost ?? 0))), [hb.monthly]);
   const without = hb.total != null && net != null ? net - hb.total : null;
+  // A cost is never shown as a green «+$»: when the habit trades together are no worse than clean ones, the headline is
+  // $0 (neutral) and the line below explains why the separate patterns still show a minus.
+  const costly = hb.total != null && hb.total < 0;
   return (
     <Tile className="flex flex-col gap-3 lg:col-span-12">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
         <div className="min-w-0">
           <TileHead icon={Wallet}>{tb("prof.habits")}</TileHead>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className={cn("text-[32px] font-semibold leading-none tabular-nums tracking-tight", toneText(toneOf(hb.total)))}>{fmtUsd(hb.total, { signed: true, decimals: 0 })}</span>
+            <span className={cn("text-[32px] font-semibold leading-none tabular-nums tracking-tight", costly ? toneText("down") : "text-muted-foreground")}>
+              {hb.total == null ? "—" : costly ? fmtUsd(hb.total, { signed: true, decimals: 0 }) : fmtUsd(0, { decimals: 0 })}
+            </span>
             <span className="text-xs text-muted-foreground">
               {tb("prof.habitsHint", { trades: commonI18n.t("units.trades", { count: hb.trades }), days: commonI18n.t("units.days", { count: hb.days }), avg: fmtUsd(hb.baselineAvg, { signed: true, decimals: "auto" }) })}
             </span>
           </div>
-          {without != null && hb.total != null && hb.total < 0 && (
+          {without != null && costly && (
             <p className="mt-1 text-xs text-muted-foreground">
               {tb("prof.without", { net: fmtUsd(net, { signed: true, decimals: 0 }) })} <span className="font-medium tabular-nums text-foreground">{fmtUsd(without, { signed: true, decimals: 0 })}</span>.
             </p>
           )}
+          {!costly && hb.total != null && hb.byPattern.length > 0 && (
+            <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+              {tb("prof.habitsNoNet", { total: fmtUsd(hb.total, { signed: true, decimals: 0 }), sum: fmtUsd(hb.sumOfCosts, { signed: true, decimals: 0 }) })}
+            </p>
+          )}
         </div>
         {hb.monthly.length > 1 && (
-          <div className="flex shrink-0 flex-col gap-1" role="img" aria-label={tb("prof.monthlyAria", { list: hb.monthly.map((m) => `${monthLabel(m.month)} ${fmtUsd(m.cost, { signed: true, compact: true })}`).join(", ") })}>
+          <div className="flex min-w-0 max-w-full shrink-0 flex-col gap-1 overflow-x-auto" role="img" aria-label={tb("prof.monthlyAria", { list: hb.monthly.map((m) => `${monthLabel(m.month)} ${fmtUsd(m.cost, { signed: true, compact: true })}`).join(", ") })}>
             <div className="flex h-12 items-end gap-1">
               {hb.monthly.map((m) => {
                 const v = m.cost ?? 0;
@@ -163,14 +173,14 @@ function HabitsTile({ hb, net }: { hb: TraderProfile["habits"]; net: number | nu
                   <span
                     key={m.month}
                     title={`${monthLabel(m.month)}: ${fmtUsd(m.cost, { signed: true, decimals: "auto" })} · ${commonI18n.t("units.trades", { count: m.n })}`}
-                    className={cn("w-5 rounded-t-sm", v < 0 ? "bg-down/70" : "bg-up/60")}
+                    className={cn("w-8 shrink-0 rounded-t-sm", v < 0 ? "bg-down/70" : "bg-muted-foreground/30")}
                     style={{ height: `${Math.max(6, (Math.abs(v) / monthMax) * 100)}%` }}
                   />
                 );
               })}
             </div>
             <div className="flex gap-1 text-xs text-muted-foreground" aria-hidden="true">
-              {hb.monthly.map((m) => <span key={m.month} className="w-5 text-center">{monthLabel(m.month).slice(0, 1)}</span>)}
+              {hb.monthly.map((m) => <span key={m.month} className="w-8 shrink-0 truncate text-center">{monthShort(m.month)}</span>)}
             </div>
           </div>
         )}
@@ -192,7 +202,7 @@ function HabitsTile({ hb, net }: { hb: TraderProfile["habits"]; net: number | nu
         </ul>
       )}
       <p className="text-xs text-muted-foreground">
-        {tb("prof.footnote", { sum: fmtUsd(hb.sumOfCosts, { signed: true, decimals: 0 }) })}
+        {tb("prof.habitsSign")} {tb("prof.footnote", { sum: fmtUsd(hb.sumOfCosts, { signed: true, decimals: 0 }) })}
 
       </p>
     </Tile>

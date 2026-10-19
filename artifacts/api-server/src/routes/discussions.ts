@@ -425,7 +425,7 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
   const audience = aud.audience;
   // Linked trade: must be readable by the author; its ticker fills the thread ticker when absent.
   if (ctx.tradeId) {
-    const access = await canAccessTrade(req, ctx.tradeId);
+    const access = await canAccessTrade(req, ctx.tradeId, "read");
     if (access === null) throw notFound("TRADE_NOT_FOUND");
     if (!access) throw new AppError("TRADE_NOT_YOURS");
     if (!ticker) {
@@ -684,7 +684,7 @@ router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<voi
   if (!d) throw notFound("DISCUSSION_NOT_FOUND");
   const out: Record<string, unknown> = { id, tradeId: d.trade_id, eventId: d.event_id, ideaId: d.idea_id, playbookId: d.playbook_id, journalDate: d.journal_date, ticker: d.ticker };
   if (d.trade_id) {
-    const access = await canAccessTrade(req, d.trade_id);
+    const access = await canAccessTrade(req, d.trade_id, "read");
     if (access) {
       const { rows } = await pool.query<Record<string, unknown>>(
         `SELECT t.id, t.ticker, t.date, t.exit_date, ${closeDateSql("t")} AS close_date, t.side, t.setup, t.result, ${resultSql("t")} AS res,
@@ -795,7 +795,7 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
   }
   if (b.tradeId !== undefined) {
     if (b.tradeId) {
-      const access = await canAccessTrade(req, b.tradeId);
+      const access = await canAccessTrade(req, b.tradeId, "read");
       if (access === null) throw notFound("TRADE_NOT_FOUND");
       if (!access) throw new AppError("TRADE_NOT_YOURS");
     }

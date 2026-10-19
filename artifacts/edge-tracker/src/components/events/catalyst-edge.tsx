@@ -89,7 +89,11 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
       <Panel
         icon={Scale}
         title={t("edge.tableTitle")}
-        description={t("edge.tableDescription", { from: edge.from ? fmtDay(edge.from, "medium") : "", to: edge.to ? fmtDay(edge.to, "medium") : "" })}
+        description={[
+          t("edge.tableDescription", { from: edge.from ? fmtDay(edge.from, "medium") : "", to: edge.to ? fmtDay(edge.to, "medium") : "" }),
+          // ROMAN-03: before the calendar starts a CPI / FOMC day is unknown, not «обычный» — say what is left out.
+          data.coverage && data.firstTraded && data.firstTraded < data.coverage.from ? t("edge.calendarClip", { date: fmtDay(data.coverage.from, "medium") }) : null,
+        ].filter(Boolean).join(" · ")}
         padded={false}
       >
         <div className="overflow-x-auto">
@@ -200,7 +204,7 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
   const { t } = eventsI18n.useT();
   const tickers = React.useMemo(() => data.frequent.slice(0, EARNINGS_TICKERS).map((f) => f.ticker), [data.frequent]);
   const hist = useHistories(tickers);
-  const edges = React.useMemo(() => edgesFrom(data.tradeRows, tickers, hist.map), [data.tradeRows, tickers, hist.map]);
+  const edges = React.useMemo(() => edgesFrom(data.cells, tickers, hist.map), [data.cells, tickers, hist.map]);
   const pooled = React.useMemo(() => pooledEarnings(edges), [edges]);
   const nextReport = React.useMemo(() => {
     const m = new Map<string, MyEarnings>();

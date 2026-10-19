@@ -8,7 +8,7 @@ export default {
   groups: {
     daily: { title: "Kun fokusi", description: "Treyderning eng qimmat takrorlanuvchi xatosini qanday topamiz." },
     discipline: { title: "Kontrakt va intizom", description: "Oʻz kontrakti va seriyalar uchun kun intizomiga ochkolar." },
-    rewards: { title: "Mukofotlar", description: "Intizom ochkolari boʻyicha darajalar." },
+    rewards: { title: "Darajalar", description: "Intizom ochkolari boʻyicha darajalar (mukofotlar katalogi — yuqorida)." },
     quests: { title: "Kvestlar", description: "Ilk qadamlar, kunlik, haftalik, oylik va kurator kvestlari: yoqish, maqsadlar va intizom ochkolaridagi mukofotlar." },
     achievements: { title: "Yutuqlar", description: "Bosqich chegaralari: 1 — bronza, 2 — kumush, 3 — oltin, 4 — platina." },
     telegram: { title: "Telegram", description: "Bot ish kunlari yuboradi. Vaqt — Nyu-York vaqti, yonida — Toshkent vaqti." },
@@ -20,7 +20,12 @@ export default {
     usage: { title: "Foydalanish", description: "Ichki hisob: qaysi ekranlar ochiladi va kunlik sikl bajariladimi. Faqat adminlar koʻradi; mukofot va reyting uchun emas." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
-  units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta" },
+  units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta", places: "oʻrin", people: "kishi", shares: "aksiya", bars: "sham", times: "×", bp: "b.p.", atr: "ATR", quests: "kvest", trades: "savdo", months: "oy", lessons: "dars", exams: "imtihon", tasks: "topshiriq", teams: "jamoa" },
+  jump: {
+    aria: "Sozlamalar guruhlari",
+    pilot: "Pilot · {count} band",
+    pilotAria: "Pilotdan oldin nimani tekshirish kerak",
+  },
   field: {
     range: "{min} dan {max} gacha",
     defaultValue: "Standart: {value}",
@@ -63,6 +68,14 @@ export default {
   },
   denied: "Desk sozlamalarini administrator oʻzgartiradi.",
   loadFailed: "Sozlamalarni yuklab boʻlmadi",
+  people: {
+    add: "Treyder qoʻshish",
+    empty: "Hozircha hech kim yoʻq — roʻyxatdan treyderlarni qoʻshing",
+    remove: "{name} ni olib tashlash",
+    clear: "Tozalash",
+    count: { one: "{count} ishtirokchi", other: "{count} ishtirokchi" },
+    unknown: "Bunday treyder yoʻq — olib tashlang yoki ismni tuzating",
+  },
   settings: {
     daily: {
       focusWindowDays: { label: "Fokus oynasi", help: "Eng qimmat takrorlanuvchi xatoni topish uchun oxirgi nechta savdo kuniga qaraymiz." },
@@ -174,7 +187,7 @@ export default {
     usage: {
       enabled: { label: "Foydalanish hisobi yoqilgan", help: "Sayt ochilgan ekranlar va kunlik sikl qadamlarini qayd etadi (summalar, tikerlar va matnsiz). Oʻchirilgan — hech narsa yozilmaydi." },
       retentionDays: { label: "Hodisalarni saqlash", help: "Eskilari tunda oʻchiriladi. Rejalar, tahlillar va bitimlarga tegilmaydi." },
-      pilotUsers: { label: "Pilot ishtirokchilari", help: "Ismlar vergul bilan, jamoa roʻyxatidagidek (masalan: Kirill B., Egor M.). «Foydalanish»dagi voronka shular boʻyicha saralanadi." },
+      pilotUsers: { label: "Pilot ishtirokchilari", help: "Treyderlarni roʻyxatdan tanlang — ism boʻyicha lotin yoki kirill harflarida qidiring. «Foydalanish»dagi voronka shular boʻyicha saralanadi; roʻyxat boʻsh boʻlsa, Stajyorlar koʻrsatiladi." },
     },
     privacy: {
       hideNamesFromTraders: { label: "Ismlarni treyderlardan yashirish", help: "Umumiy grafiklar va kun topida treyder «Treyder N» va summalarni koʻradi; oʻchirilsa — ismlar koʻrinadi, boshqalarning summalari emas." },
@@ -183,6 +196,7 @@ export default {
       enabled: { label: "Geymifikatsiya yoqilgan", help: "Mavsumlar, liga, eʼtirof, mahorat va mukofotlar. Treyderlardan yashirish uchun oʻchiring." },
       seasonTopN: { label: "Mavsum reytingidagi oʻrinlar", help: "Mavsum reytingida nechta eng yaxshisi koʻrsatiladi; treyder oʻz oʻrnini doim koʻradi." },
       leagueMinMembers: { label: "Liga: eng kam aʼzolar", help: "Kurator jamoasi kamida shuncha faol treyderi boʻlsa ligaga kiradi." },
+      leagueMinTeams: { label: "Liga: eng kam jamoalar", help: "Ligada kamida shuncha kurator jamoasi boʻlsa, u koʻrinadi." },
       missedDayBreaksStreak: { label: "Oʻtkazib yuborilgan kun seriyani buzadi", help: "Savdo boʻlgan, lekin kontraktsiz kun seriyani tugatadi (muzlatish boʻlmasa). Oʻchiq — bunday kun seriyaga taʼsir qilmaydi." },
       freezePerMonth: { label: "Oyiga muzlatishlar", help: "Oyiga necha marta oʻtkazib yuborilgan kun seriyani buzmaydi. Buzilgan kontraktni muzlatish qoplamaydi." },
       streakMilestoneStep: { label: "Seriya bosqichi qadami", help: "Seriyaning har shuncha kunida — desk lentasida yozuv." },

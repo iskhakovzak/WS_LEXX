@@ -6,7 +6,7 @@ import { QueryError } from "@/components/query-error";
 import type { DailyMe } from "@/lib/daily/types";
 import { playbookTodayQuery } from "@/lib/api/queries";
 import { dailyI18n } from "@/i18n/ns/daily";
-import { contractLine, dayPlaybook, dayView, type DayPlaybook, type PlanContract } from "./daily-model";
+import { contractDate, contractLine, dayPlaybook, dayView, type DayPlaybook, type PlanContract } from "./daily-model";
 import { PicksLine } from "./picks-line";
 import { ContractLine } from "./contract-line";
 import { EveningCard } from "./evening-card";
@@ -104,7 +104,7 @@ export function DayLineView({
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start lg:gap-6">
         <div className="flex min-w-0 flex-col gap-2.5">
           {view.focus && <FocusLine focus={view.focus} />}
-          <ContractLine line={line} date={me.today} intraday={me.intraday} yesterday={view.pendingEvening ? null : card?.contract} />
+          <ContractLine line={line} date={contractDate(me)} intraday={me.intraday} yesterday={view.pendingEvening ? null : card?.contract} />
           {playbook && <PicksLine playbook={playbook} />}
         </div>
         {tier}
@@ -117,7 +117,7 @@ export function DayLineView({
 export function DayLine({ enabled, journalOpenDate, quests }: { enabled: boolean; journalOpenDate?: string | null; quests?: ReactNode }) {
   const meQ = useDailyMe(enabled);
   const me = meQ.data ?? null;
-  const planQ = useTodayContract(me?.today ?? null, enabled && !!me);
+  const planQ = useTodayContract(me ? contractDate(me) : null, enabled && !!me);
   const playbook = dayPlaybook(useQuery({ ...playbookTodayQuery(), enabled: enabled && !!me, retry: false }).data);
   if (!enabled) return null;
   if (meQ.isLoading) {

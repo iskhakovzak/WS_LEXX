@@ -218,10 +218,10 @@ export function EdgeMatrixTab({
       {sel && (
         <Panel title={`${edgeKeyLabel(rows, sel.cell.row, tod)} × ${edgeKeyLabel(cols, sel.cell.col, tod)}`} description={t("matrix.selDescription", { trades: commonI18n.t("units.trades", { count: sel.cell.n }), closed: sel.cell.closed, wins: sel.cell.wins, losses: sel.cell.losses, be: sel.cell.be })}>
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <Stat label="Win rate" value={fmtRate(sel.winRate)} hint={sel.winRate != null ? t("matrix.wrCi", { lo: fmtRate(sel.wrLo), hi: fmtRate(sel.wrHi) }) : t("matrix.noDecided")} tone={sel.winRate == null ? "neutral" : sel.winRate >= 0.5 ? "up" : "down"} />
+            <Stat label={commonI18n.t("trading.winRate")} value={fmtRate(sel.winRate)} hint={sel.winRate != null ? t("matrix.wrCi", { lo: fmtRate(sel.wrLo), hi: fmtRate(sel.wrHi) }) : t("matrix.noDecided")} tone={sel.winRate == null ? "neutral" : sel.winRate >= 0.5 ? "up" : "down"} />
             <Stat label={t("matrix.expectancy", { unit: u === "r" ? "R" : t("unit.usdShort") })} value={fmtMetric(sel.expectancy, "expectancy", u)} hint={sel.ci ? `${t("matrix.bootCi", { lo: fmtNum(sel.ci.lo, { signed: true }), hi: fmtNum(sel.ci.hi, { signed: true }) })}${sel.ci.significant ? ` · ${t("matrix.significant")}` : ""}` : t("matrix.ciFrom5")} tone={toneOf(sel.expectancy)} />
             <Stat label={t("matrix.total")} value={fmtMetric(sel.n ? sel.total : null, "total", u)} hint={u === "usd" ? t("matrix.grossFees", { gross: fmtUsd(sel.cell.gross, { signed: true, decimals: "auto" }), fees: fmtUsd(-Math.abs(sel.cell.fees), { decimals: 0 }) }) : t("matrix.withR", { count: sel.n })} tone={toneOf(sel.total)} />
-            <Stat label="Profit factor" value={fmtRatio(sel.pf)} hint={sel.pf == null ? t("matrix.pfUndefined") : "Σ⁺ / |Σ⁻|"} tone={sel.pf == null ? "neutral" : sel.pf >= 1 ? "up" : "down"} />
+            <Stat label={t("overview.pf")} value={fmtRatio(sel.pf)} hint={sel.pf == null ? t("matrix.pfUndefined") : "Σ⁺ / |Σ⁻|"} tone={sel.pf == null ? "neutral" : sel.pf >= 1 ? "up" : "down"} />
           </div>
           {sel.cell.n < minN && <Pill tone="warn" className="mt-3">{t("matrix.fewTrades", { count: minN })}</Pill>}
 

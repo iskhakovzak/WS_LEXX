@@ -49,7 +49,7 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
         <div className="flex flex-col gap-[var(--grid-gap)]">
           <StatGrid cols={4}>
             <StatCard label={t("stats.trades")} value={summary.tradeCount} hint={`${summary.wins}W · ${summary.losses}L`} />
-            <StatCard label="Win rate" value={fmtRate(summary.winrate)} hint="W / (W + L)" />
+            <StatCard label={commonI18n.t("trading.winRate")} value={fmtRate(summary.winrate)} hint="W / (W + L)" />
             <StatCard label={t("stats.netPnl")} value={fmtUsd(summary.netPnl, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} />
             <StatCard label={t("stats.expectancyUsd")} value={fmtUsd(summary.netPnl != null && summary.tradeCount ? summary.netPnl / summary.tradeCount : null, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} hint={t("stats.perTrade")} />
           </StatGrid>
@@ -106,14 +106,14 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
       {redacted ? (
         <StatGrid cols={4}>
           <StatCard label={t("stats.avgR")} value={fmtR(s.edge?.avgR)} tone={curveTone} hint={s.count < 10 ? t("stats.fewTrades", { count: s.count }) : t("stats.tradesN", { count: s.count })} spark={curve.length > 1 ? curve : undefined} term="avgR" />
-          <StatCard label="Win rate" value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
+          <StatCard label={commonI18n.t("trading.winRate")} value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
           <StatCard label={t("stats.expectancy")} value={fmtR(expR)} tone={moneyTone(expR)} hint={hasR ? t("stats.rPerTrade", { count: s.edge.rCount }) : t("stats.noR")} term="expectancy" />
           <StatCard label="PF (R)" value={s.edge?.profitFactor == null ? "—" : s.edge.profitFactor.toFixed(2)} hint="ΣR⁺ / |ΣR⁻|" term="pf" />
         </StatGrid>
       ) : (
       <StatGrid cols={4}>
         <StatCard label={t("stats.netPnl")} value={fmtUsd(u.net, { signed: true, decimals: 0 })} tone={moneyTone(u.net)} hint={small ? t("stats.fewTrades", { count: u.n }) : t("stats.tradesN", { count: u.n })} spark={curve.length > 1 ? curve : undefined} />
-        <StatCard label="Win rate" value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
+        <StatCard label={commonI18n.t("trading.winRate")} value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
         <StatCard label={t("stats.expectancy")} value={fmtUsd(u.expectancy, { signed: true, decimals: 2 })} tone={moneyTone(u.expectancy)} hint={t("stats.usdPerTrade")} term="expectancy" />
         <StatCard
           label="Payoff"

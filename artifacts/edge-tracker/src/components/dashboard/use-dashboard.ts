@@ -75,6 +75,8 @@ export type Violation = {
   tradeId: number | null;
   ruleName: string | null;
   occurredAt?: string;
+  /** The violating trade's ticker (absent on older servers). */
+  ticker?: string | null;
 };
 
 export type DashboardToday = {
@@ -102,7 +104,8 @@ export type DashboardToday = {
     checkin: { done: boolean };
     draftIdeas: { count: number };
     ideasToReview: { count: number; items: { id: number; ticker: string; trader: string | null; side: string | null }[] };
-    violations: { count: number; items: Violation[] };
+    /** `window` = the trading days counted; `tickers` = distinct tickers of the window's violations (optional on older servers). */
+    violations: { count: number; items: Violation[]; window?: { from: string; to: string }; tickers?: string[] };
     /** Staff only. */
     curatorQueue: { count: number; items: MiniTrade[] } | null;
   };
@@ -201,6 +204,8 @@ export type RecentTrade = {
   fees: number;
   rMultiple: number | null;
   unreviewed: boolean;
+  /** The linked office playbook setup (null = «без сетапа»; absent on older servers → the broker strategy is shown). */
+  playbookSetup?: string | null;
   createdAt: string;
 };
 
@@ -304,7 +309,7 @@ export type RiskMe = {
   todayPnl: number | null;
 };
 
-/** Shares one cache entry with the risk page and the shell badge (lib/api/queries → riskMeQuery). */
+/** One cache entry with the risk page and the shell badge (riskMeQuery). The page passes `enabled` = has a risk account. */
 export function useRiskMe(enabled = true) {
   return useQuery({
     ...riskMeQuery<RiskMe>(),
@@ -348,6 +353,8 @@ export type RiskDesk = {
     carriedTonight: number;
     openRiskUsd: number;
     overnightExposureUsd: number;
+    /** Distinct traders on a stop or in breach today / rows that are the viewer's wards (absent on older servers). */
+    stopped?: number; wards?: number;
   };
   banner: { trader: string; state: string; label: string; message: string; halted: boolean }[];
   traders: RiskDeskRow[];

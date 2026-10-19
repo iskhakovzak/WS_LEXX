@@ -25,6 +25,16 @@ export function fmtSignedUsd(v: number | null | undefined): string {
   return `${r < 0 ? "−" : r > 0 ? "+" : ""}${fmtUsd(r)}`;
 }
 
+/**
+ * Money in the risk breach texts, like the app shows it: "$1,234.56" (absolute, cents kept) and "$300" for a whole
+ * amount (limits). `signed` → "−$318.76" / "+$40" / "$0".
+ */
+export function fmtMoney(v: number, signed = false): string {
+  const a = Math.round(Math.abs(v) * 100) / 100;
+  const body = `$${a.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(a) ? 0 : 2, maximumFractionDigits: 2 })}`;
+  return signed && a > 0 ? `${v < 0 ? "−" : "+"}${body}` : body;
+}
+
 /** Loss limit written as a negative amount: 150 → "−$150". */
 export function fmtLossLimit(v: number): string {
   return `−${fmtUsd(v)}`;
@@ -151,19 +161,19 @@ export function riskNotice(s: RiskSnapshot, lang: Lang = "ru"): RiskNotice | nul
   let core: string;
   let bodyKey: "drawdown" | "weekly" | "stop" | "warn";
   if (s.state === "drawdown" && s.maxDrawdown != null) {
-    core = t("notify.core.drawdown", { limit: fmtUsd(s.maxDrawdown), used: fmtUsd(s.currentDd) });
+    core = t("notify.core.drawdown", { limit: fmtMoney(s.maxDrawdown), used: fmtMoney(s.currentDd) });
     bodyKey = "drawdown";
   } else if (s.state === "weekly" && s.weeklyLimit != null) {
-    core = t("notify.core.weekly", { limit: fmtLossLimit(s.weeklyLimit), used: fmtSignedUsd(-s.weekLoss) });
+    core = t("notify.core.weekly", { limit: `−${fmtMoney(s.weeklyLimit)}`, used: fmtMoney(-s.weekLoss, true) });
     bodyKey = "weekly";
   } else if (s.state === "stop" && s.dailyLimit != null) {
-    core = t("notify.core.stop", { limit: fmtLossLimit(s.dailyLimit), used: fmtSignedUsd(-s.todayLoss) });
+    core = t("notify.core.stop", { limit: `−${fmtMoney(s.dailyLimit)}`, used: fmtMoney(-s.todayLoss, true) });
     bodyKey = "stop";
   } else if (s.state === "warn") {
     const parts: string[] = [];
-    if (s.dailyLimit != null && s.dailyPct != null && s.dailyPct >= s.warnPct) parts.push(t("notify.warnPart.daily", { used: fmtSignedUsd(-s.todayLoss), limit: fmtLossLimit(s.dailyLimit), pct: Math.round(s.dailyPct) }));
-    if (s.weeklyLimit != null && s.weeklyPct != null && s.weeklyPct >= s.warnPct) parts.push(t("notify.warnPart.weekly", { used: fmtSignedUsd(-s.weekLoss), limit: fmtLossLimit(s.weeklyLimit), pct: Math.round(s.weeklyPct) }));
-    if (s.maxDrawdown != null && s.drawdownPct != null && s.drawdownPct >= s.warnPct) parts.push(t("notify.warnPart.drawdown", { used: fmtUsd(s.currentDd), limit: fmtUsd(s.maxDrawdown), pct: Math.round(s.drawdownPct) }));
+    if (s.dailyLimit != null && s.dailyPct != null && s.dailyPct >= s.warnPct) parts.push(t("notify.warnPart.daily", { used: fmtMoney(-s.todayLoss, true), limit: `−${fmtMoney(s.dailyLimit)}`, pct: Math.round(s.dailyPct) }));
+    if (s.weeklyLimit != null && s.weeklyPct != null && s.weeklyPct >= s.warnPct) parts.push(t("notify.warnPart.weekly", { used: fmtMoney(-s.weekLoss, true), limit: `−${fmtMoney(s.weeklyLimit)}`, pct: Math.round(s.weeklyPct) }));
+    if (s.maxDrawdown != null && s.drawdownPct != null && s.drawdownPct >= s.warnPct) parts.push(t("notify.warnPart.drawdown", { used: fmtMoney(s.currentDd), limit: fmtMoney(s.maxDrawdown), pct: Math.round(s.drawdownPct) }));
     if (!parts.length) return null;
     core = parts.join("; ");
     bodyKey = "warn";
@@ -187,7 +197,7 @@ export function riskNotice(s: RiskSnapshot, lang: Lang = "ru"): RiskNotice | nul
 export function haltedStopText(state: string, used: number, limit: number, lang: Lang = "ru"): { label: string; message: string } | null {
   if (state !== "drawdown" && state !== "weekly" && state !== "stop") return null;
   const t = riskT.tFor(lang);
-  return { label: t(`stop.${state}.label`), message: t(`stop.${state}.message`, { used: fmtUsd(used), limit: fmtUsd(limit) }) };
+  return { label: t(`stop.${state}.label`), message: t(`stop.${state}.message`, { used: fmtMoney(used), limit: fmtMoney(limit) }) };
 }
 
 // ─── limits ─────────────────────────────────────────────────────────────────

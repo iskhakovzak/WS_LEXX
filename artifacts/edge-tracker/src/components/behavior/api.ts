@@ -534,6 +534,12 @@ export function monthLabel(ym: string): string {
   return `${i >= 0 && i < 12 ? fmtMonth(i, "short") : m} ${y.slice(2)}`;
 }
 
+/** Short month name without the year («окт.», «Oct») — axis label under a monthly mini bar. */
+export function monthShort(ym: string): string {
+  const i = Number(ym.split("-")[1]) - 1;
+  return i >= 0 && i < 12 ? fmtMonth(i, "short") : ym;
+}
+
 /** Record whose values are read at access time (labels follow the UI language). */
 function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
   const o = {} as Record<K, string>;
@@ -542,6 +548,10 @@ function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => strin
 }
 
 export const SEVERITY_LABEL: Record<Severity, string> = liveLabels(["none", "low", "medium", "high"] as const, (k) => behaviorI18n.t(`severity.${k}`));
+/** Pill text of a pattern: a negative cost on too few trades (server severity «none») reads «мало случаев», not «не стоит денег». */
+export function severityLabel(p: { severity: Severity; cost: number | null }): string {
+  return p.severity === "none" && (p.cost ?? 0) < 0 ? behaviorI18n.t("severity.few") : SEVERITY_LABEL[p.severity];
+}
 export const SEVERITY_TONE: Record<Severity, "neutral" | "warn" | "down" | "accent"> = { none: "neutral", low: "neutral", medium: "warn", high: "down" };
 
 export const PATTERN_SHORT: Record<PatternKey, string> = liveLabels(

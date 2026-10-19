@@ -8,7 +8,9 @@ import { pool } from "@workspace/db";
 import { logger } from "../logger";
 import { addDays, nyDate } from "../tradingDate";
 import { horizonSql, netPnlSql } from "../tradeMath";
-import { masteryLevels } from "../gamification/mastery";
+import { computeMastery } from "../gamification/mastery";
+import type { SetupMastery } from "../gamification/types";
+import { setting } from "../settings/registry";
 import { lastPlayableDay, type Viewer } from "../sim/service";
 import { HOME_TTL_MS, homeCache } from "./cache";
 import { dailyState } from "./daily";
@@ -53,9 +55,10 @@ export function dayStreak(days: readonly string[], today: string): number {
   return n;
 }
 
-async function levels(trader: string): Promise<Map<number, number>> {
+/** setupId → mastery (level, points, next threshold, passed drills); empty when unavailable. */
+async function levels(trader: string): Promise<Map<number, SetupMastery>> {
   try {
-    return await masteryLevels(trader);
+    return new Map((await computeMastery(trader)).map((m) => [m.setupId, m]));
   } catch (err) {
     logger.warn({ err }, "trainer: mastery levels unavailable");
     return new Map();
@@ -81,9 +84,15 @@ export async function trainerHome(viewer: Viewer, now = new Date()): Promise<Tra
     findEntry: {
       setups: setups.map((x) => {
         const { code, name } = splitSetupName(x.name);
-        return { setupId: x.setupId, code, name, drills: x.drills, masteryLevel: mastery.get(x.setupId) ?? 0 };
+        const m = mastery.get(x.setupId);
+        return {
+          setupId: x.setupId, code, name, drills: x.drills, masteryLevel: m?.level ?? 0,
+          masteryPoints: m?.progress.current ?? 0, masteryNext: m ? m.progress.next : null, drillsPassed: m?.sources.drills ?? 0,
+        };
       }),
       streak: dayStreak(days, today),
+      drillsPerPoint: Math.max(1, Math.round(setting("gamification.masteryDrillsPerPoint"))),
+      passScore: setting("trainer.drillPassScore"),
     },
     stats: {
       attempts30d: (Number(s.games30) || 0) + (Number(s.drills30) || 0),

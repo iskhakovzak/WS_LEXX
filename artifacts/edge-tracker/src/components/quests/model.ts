@@ -9,6 +9,15 @@ import type { Achievement, AchievementCategory, AchievementTier, AchievementTier
 import { addDays } from "@/lib/trading-date";
 
 export const SCOPE_ORDER: readonly QuestScope[] = ["onboarding", "curator", "daily", "weekly", "monthly"];
+/** First steps in display order (api lib/quests/catalog ONBOARDING); every step is independent. */
+export const ONBOARDING_ORDER: readonly string[] = ["set_pin", "first_plan_stop", "first_review", "open_desk_day", "replay_own_day", "set_own_rule", "link_telegram"];
+/** Optional first steps: shown, rewarded, never needed to finish the list (Telegram). */
+export const OPTIONAL_STEPS: ReadonlySet<string> = new Set(["link_telegram"]);
+export const isOptionalStep = (q: Pick<Quest, "scope" | "template">) => q.scope === "onboarding" && OPTIONAL_STEPS.has(q.template);
+const stepOrder = (template: string) => {
+  const i = ONBOARDING_ORDER.indexOf(template);
+  return i < 0 ? ONBOARDING_ORDER.length : i;
+};
 export const TIER_ORDER: readonly AchievementTier[] = ["bronze", "silver", "gold", "platinum"];
 export const CATEGORY_ORDER: readonly AchievementCategory[] = ["discipline", "review", "focus", "risk", "planning", "learning", "growth"];
 
@@ -82,11 +91,11 @@ export function todayQuests(me: QuestsMe): Quest[] {
 }
 
 export type StripView = {
-  /** «Первые шаги 3/7» while the onboarding chain is unfinished, else «Квесты 1/3». */
+  /** «Первые шаги 3/6» while the required first steps are unfinished, else «Квесты 1/3». */
   kind: "onboarding" | "today";
   done: number;
   total: number;
-  /** The next onboarding step (active, lowest id). */
+  /** The next first step: the first active required one in display order (the optional Telegram step last). */
   next: Quest | null;
   steps: Quest[];
   today: Quest[];
@@ -95,10 +104,12 @@ export type StripView = {
 export function stripView(me: QuestsMe | null | undefined): StripView | null {
   if (!me) return null;
   const today = todayQuests(me);
-  const steps = me.quests.filter((q) => q.scope === "onboarding").sort((a, b) => a.id - b.id);
-  const ob = me.summary.onboarding ?? (steps.length ? { done: steps.filter((q) => q.status === "done").length, total: steps.length } : null);
+  const steps = me.quests.filter((q) => q.scope === "onboarding").sort((a, b) => stepOrder(a.template) - stepOrder(b.template) || a.id - b.id);
+  const required = steps.filter((q) => !isOptionalStep(q));
+  const ob = me.summary.onboarding ?? (required.length ? { done: required.filter((q) => q.status === "done").length, total: required.length } : null);
   if (ob && ob.total > 0 && ob.done < ob.total) {
-    return { kind: "onboarding", done: ob.done, total: ob.total, next: steps.find((q) => q.status === "active") ?? null, steps, today };
+    const next = required.find((q) => q.status === "active") ?? steps.find((q) => q.status === "active") ?? null;
+    return { kind: "onboarding", done: ob.done, total: ob.total, next, steps, today };
   }
   if (today.length === 0) return null;
   return { kind: "today", done: today.filter((q) => q.status === "done").length, total: today.length, next: null, steps: [], today };
@@ -110,7 +121,8 @@ export function activeByScope(quests: readonly Quest[]): { scope: QuestScope; qu
     scope,
     quests: quests
       .filter((q) => q.scope === scope && q.status === "active")
-      .sort((a, b) => (a.endsOn ?? "9999").localeCompare(b.endsOn ?? "9999") || a.id - b.id),
+      .sort((a, b) => (scope === "onboarding" ? stepOrder(a.template) - stepOrder(b.template) : 0)
+        || (a.endsOn ?? "9999").localeCompare(b.endsOn ?? "9999") || a.id - b.id),
   })).filter((g) => g.quests.length > 0);
 }
 

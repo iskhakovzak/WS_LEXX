@@ -6,7 +6,7 @@ import { fmtDate, fmtDayMonth } from "@/lib/format";
 import { personName } from "@/i18n";
 import { questsI18n } from "@/i18n/ns/quests";
 import type { Quest } from "@/lib/quests/types";
-import { daysLeft, questDescription, questPct, questTitle } from "./model";
+import { daysLeft, isOptionalStep, questDescription, questPct, questTitle } from "./model";
 
 /**
  * «Перейти» to the page the viewer is already on is a dead link (e.g. the focus quest → the dashboard). A link with its
@@ -63,6 +63,7 @@ export function QuestRow({ q, today, compact = false, action, showStatus = false
   const desc = compact ? "" : questDescription(q);
   const active = q.status === "active";
   const meta = [
+    isOptionalStep(q) ? t("strip.optional") : null,
     q.assignedBy ? t("row.from", { name: personName(q.assignedBy) }) : null,
     showStatus && !active ? (q.cancelled ? t("status.cancelled") : t(`status.${q.status}`)) : null,
     q.status === "done" && q.completedAt ? t("row.doneOn", { date: fmtDayMonth(q.completedAt.slice(0, 10)) }) : null,

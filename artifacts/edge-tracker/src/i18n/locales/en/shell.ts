@@ -108,6 +108,8 @@ export default {
     noTrades: "No trades",
     toStop: "{amount} to the daily stop",
     halted: "Daily stop: trading halted",
+    haltedWeekly: "Weekly stop: trading halted",
+    haltedDrawdown: "Max drawdown: trading halted",
     usedAria: "{pct} of the daily limit used",
     open: "Open the risk desk",
   },

@@ -77,7 +77,8 @@ function Reliability({ b }: { b: BootstrapSummary | null }) {
   );
 }
 
-type KeyDef = { id: string; label: string; term?: TermKey; a: number | null; b: number | null; fmt: (v: number | null) => string; delta: (d: number) => string; invert?: boolean };
+/** `note` = the base of the number, said on the card (MAKSIM-08: «все сделки» vs «сделки с R», trade by trade). */
+type KeyDef = { id: string; label: string; note?: string; term?: TermKey; a: number | null; b: number | null; fmt: (v: number | null) => string; delta: (d: number) => string; invert?: boolean };
 
 /** Strip of key metrics «факт → сценарий» (6 numbers, always the same height). */
 export function KeyMetrics({ baseline, scenario, hasScenario }: { baseline: Metrics; scenario: Metrics; hasScenario: boolean }) {
@@ -87,9 +88,9 @@ export function KeyMetrics({ baseline, scenario, hasScenario }: { baseline: Metr
     { id: "net", label: t("compare.metric.net"), term: "net", a: baseline.net, b: scenario.net, fmt: usd, delta: (d) => fmtUsd(d, { signed: true, decimals: "auto" }) },
     { id: "fees", label: t("compare.metric.fees"), term: "fees", a: baseline.fees, b: scenario.fees, fmt: (v) => (v == null ? "—" : fmtUsd(v, { decimals: 0 })), delta: (d) => fmtUsd(d, { signed: true, decimals: "auto" }), invert: true },
     { id: "trades", label: t("compare.metric.trades"), a: baseline.trades, b: scenario.trades, fmt: (v) => (v == null ? "—" : String(v)), delta: (d) => fmtNum(d, { decimals: 0, signed: true }) },
-    { id: "winRate", label: t("compare.metric.winRate"), term: "winrate", a: baseline.winRate, b: scenario.winRate, fmt: (v) => fmtRate(v, 1), delta: pp },
+    { id: "winRate", label: t("compare.metric.winRate"), note: t("compare.note.allTrades"), term: "winrate", a: baseline.winRate, b: scenario.winRate, fmt: (v) => fmtRate(v, 1), delta: pp },
     { id: "pf", label: t("compare.metric.pf"), term: "pf", a: baseline.profitFactor, b: scenario.profitFactor, fmt: fmtRatio, delta: (d) => fmtNum(d, { decimals: 2, signed: true }) },
-    { id: "maxDd", label: t("compare.metric.maxDd"), term: "drawdown", a: baseline.maxDrawdown, b: scenario.maxDrawdown, fmt: usd, delta: (d) => fmtUsd(d, { signed: true, decimals: "auto" }) },
+    { id: "maxDd", label: t("compare.metric.maxDd"), note: t("compare.note.endOfDay"), term: "drawdown", a: baseline.maxDrawdown, b: scenario.maxDrawdown, fmt: usd, delta: (d) => fmtUsd(d, { signed: true, decimals: "auto" }) },
   ];
   return (
     <dl className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2">
@@ -100,6 +101,7 @@ export function KeyMetrics({ baseline, scenario, hasScenario }: { baseline: Metr
           <div key={it.id} className="flex min-w-0 flex-col gap-0.5 rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
             <dt className="flex items-center gap-1 text-xs text-muted-foreground">
               {it.term ? <TermTooltip term={it.term}>{it.label}</TermTooltip> : it.label}
+              {it.note && <span className="truncate text-2xs">· {it.note}</span>}
             </dt>
             <dd className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 tabular-nums">
               <span className={cn("text-sm", hasScenario ? "text-muted-foreground" : "font-semibold text-foreground")}>{it.fmt(it.a)}</span>

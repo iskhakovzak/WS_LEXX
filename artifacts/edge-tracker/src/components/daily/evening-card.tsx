@@ -184,9 +184,10 @@ function ClosedDay({ card, nextFocus, journalOpen, onReopen, untagged }: { card:
       </span>
       {card.reviewNote && <span className="min-w-0 truncate italic text-muted-foreground" title={card.reviewNote}>{card.reviewNote}</span>}
       {card.focus?.disputed && <Pill tone="purple">{t("evening.doneDisputed")}</Pill>}
-      {nextFocus?.mistake && nextFocus.source !== "none" && nextFocus.date > card.date && (
+      {nextFocus && nextFocus.source !== "none" && (nextFocus.mistake || nextFocus.ownText) && nextFocus.date > card.date && (
         <span className="text-muted-foreground">
-          {t("focus.forDate", { date: dayShort(nextFocus.date) })}: <span className="font-medium text-foreground">{mistakeLabel(nextFocus.mistake)}</span>
+          {t("focus.forDate", { date: dayShort(nextFocus.date) })}:{" "}
+          <span className="font-medium text-foreground [overflow-wrap:anywhere]">{nextFocus.mistake ? mistakeLabel(nextFocus.mistake) : nextFocus.ownText}</span>
         </span>
       )}
       {journalOpen && (

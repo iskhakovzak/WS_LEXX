@@ -42,7 +42,7 @@ export interface TodaySetup {
    * "failed_breakout", "parabolic", "day2", "gap_fill", "power_hour", "moc", "opening_drive", "red_to_green",
    * "first_pullback", "routine"; null = no picture. */
   schema: string | null;
-  /** Locked for this viewer (tier gate). */
+  /** Locked for this viewer (tier gate): `cheat` is empty and `checklist` is [] (the API redacts them). */
   locked: boolean;
   /** Minimum tier key ("trainee" | "junior" | "trader" | "senior") or null = everyone. */
   minTier: string | null;
@@ -66,6 +66,8 @@ export interface PlaybookToday {
   oneR: { usd: number; source: "plan" | "limits" } | null;
   /** Untagged own trades waiting for a setup (the evening «разметь сделки» quest uses the same count). */
   untagged: number;
+  /** NY close days `untagged` covers (the last 5 trading days) — the header names this period. */
+  untaggedPeriod: { from: string; to: string } | null;
 }
 
 /** PUT /api/playbook/today/picks { setupIds } → PlaybookToday["picks"] (max 3, unlocked only). */

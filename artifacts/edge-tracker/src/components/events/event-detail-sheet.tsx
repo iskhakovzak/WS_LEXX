@@ -288,7 +288,7 @@ function TradesBlock({ event }: { event: MarketEvent }) {
                 <div className="mt-0.5 text-base font-semibold tabular-nums">{stats.n}{stats.open ? <span className="text-xs text-muted-foreground">{tr("detail.openCount", { count: stats.open })}</span> : null}</div>
               </div>
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5">
-                <div className="micro-label">Win rate</div>
+                <div className="micro-label">{commonI18n.t("trading.winRate")}</div>
                 <div className="mt-0.5 text-base font-semibold tabular-nums">{stats.winRate != null ? `${Math.round(stats.winRate)}%` : "—"}<span className="text-xs text-muted-foreground"> {stats.wins}/{stats.losses}{stats.be ? ` · BE ${stats.be}` : ""}</span></div>
               </div>
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5">

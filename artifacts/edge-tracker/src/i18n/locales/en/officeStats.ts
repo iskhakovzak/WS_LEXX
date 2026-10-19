@@ -71,7 +71,7 @@ export default {
   },
   kpi: {
     netYear: "Net {year}",
-    vsYear: "{value} vs {year}",
+    vsYear: "{value} vs {year} to date",
     tradesDays: "{trades} · {days}",
     goalAria: "Progress to the annual target",
     goalOf: "{year} target: +{pct}%",
@@ -153,6 +153,9 @@ export default {
   strategies: {
     totalTitle: "Net by strategy",
     totalDesc: "each strategy’s contribution to the year · losses in parentheses",
+    fullYear: "full year",
+    toDate: "to {date}",
+    avgRBase: "Average R over {n} of {total} trades — R exists only where the stop is known; the $ total counts every trade",
     noTradesYears: "No trades in the selected years",
     multiplesTitle: "Strategy performance",
     multiplesDesc: "cumulative by day of year · {years} · bar: share of volume",
@@ -323,7 +326,8 @@ export default {
     deltaPrevUnit: "Δ MoM {unit}",
     sameMonth: "Same month of {year}",
     deltaYear: "Δ vs {year}",
-    deltaYearTip: "This month’s result minus the same month of {year}",
+    deltaYearTip: "This month’s result minus the same month of {year}; the running month — up to the same date",
+    totalVsTip: "{year} to the same day ({date}) — the same basis as «vs {year} to date» above",
     deltaYearUnit: "Δ vs {year} {unit}",
     yearUnit: "{year} {unit}",
     ytd: "YTD",

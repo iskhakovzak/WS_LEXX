@@ -17,7 +17,7 @@ import {
   type LevelSet,
   type MacroItem,
 } from "./types";
-import { fmtDate, fmtPrice } from "@/lib/format";
+import { fmtDate, fmtPrice, fmtDeskTime } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { personName } from "@/i18n";
 
@@ -74,7 +74,7 @@ export function PlanHero({ plan, readSlot }: { plan: GamePlan; readSlot?: React.
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {personName(plan.author)}
-              {edited ? t("briefing.editedBy", { name: personName(plan.updatedBy), time: fmtDate(plan.updatedAt, "time") }) : t("briefing.publishedAt", { time: fmtDate(plan.createdAt, "time") })}
+              {edited ? t("briefing.editedBy", { name: personName(plan.updatedBy), time: fmtDeskTime(plan.updatedAt) }) : t("briefing.publishedAt", { time: fmtDeskTime(plan.createdAt) })}
             </p>
           </div>
           {readSlot}

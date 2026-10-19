@@ -3,11 +3,30 @@
  * today's mark-to-model curve (B-S). Rendered by recharts in CSS pixels so labels stay
  * readable on phones (the old SVG scaled 10px text down to ~4px at 375px).
  */
-import { useId, useMemo } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmtStrike, pnlAtExpiry, pnlNow, TOOLTIP_STYLE, type Leg } from "./lib";
 import { fmtNum, fmtUsd } from "@/lib/format";
 import { calculatorI18n } from "@/i18n/ns/calculator";
+
+/**
+ * True while the element has a size. The calculator keeps its hidden views mounted (OptionsSection `hidden` blocks), and a
+ * ResponsiveContainer inside one measures 0×0 and logs the recharts width(0)/height(0) warning (DEV-21): the chart
+ * mounts only once its box is laid out. Without ResizeObserver (tests) it renders right away.
+ */
+export function useHasSize<T extends HTMLElement>(): [(el: T | null) => void, boolean] {
+  const [shown, setShown] = useState(() => typeof ResizeObserver === "undefined");
+  const ro = useRef<ResizeObserver | null>(null);
+  useEffect(() => () => ro.current?.disconnect(), []);
+  const ref = useCallback((el: T | null) => {
+    ro.current?.disconnect();
+    ro.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    ro.current = new ResizeObserver(([e]) => setShown(e.contentRect.width > 0 && e.contentRect.height > 0));
+    ro.current.observe(el);
+  }, []);
+  return [ref, shown];
+}
 
 export function PayoffChart({
   legs,
@@ -28,6 +47,7 @@ export function PayoffChart({
 }) {
   const { t } = calculatorI18n.useT();
   const gid = useId().replace(/:/g, "");
+  const [boxRef, hasSize] = useHasSize<HTMLDivElement>();
   const T = Math.max(0, days) / 365;
   const r = ratePct / 100;
   const sigma = Math.max(0, ivPct) / 100;
@@ -69,8 +89,8 @@ export function PayoffChart({
 
   return (
     <div className="flex flex-col gap-3">
-      <div style={{ height }} className="w-full">
-        <ResponsiveContainer width="100%" height="100%">
+      <div ref={boxRef} style={{ height, minHeight: height }} className="w-full min-w-0">
+        {hasSize && <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={`fill-${gid}`} x1="0" y1="0" x2="0" y2="1">
@@ -120,7 +140,7 @@ export function PayoffChart({
             <Area type="linear" dataKey="exp" stroke={`url(#line-${gid})`} strokeWidth={2} fill={`url(#fill-${gid})`} isAnimationActive={false} />
             {showNow && <Line type="monotone" dataKey="now" stroke="hsl(var(--chart-1))" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />}
           </ComposedChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer>}
       </div>
       <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground" aria-label={t("payoff.legend")}>
         <li className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-up" aria-hidden="true" />{t("shared.atExpiry")}</li>

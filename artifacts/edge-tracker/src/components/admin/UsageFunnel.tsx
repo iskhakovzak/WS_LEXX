@@ -133,7 +133,7 @@ function InactiveRow({ r }: { r: InactiveTrader }) {
         {r.pilot && <Pill tone="accent">{t("funnel.pilotBadge")}</Pill>}
       </span>
       <span className="text-xs text-muted-foreground">
-        <span className="font-medium text-warn">{r.capped ? t("inactive.missedCapped") : t("inactive.missed", { count: r.missedDays })}</span>
+        <span className="font-medium text-warn">{r.capped ? t("inactive.missedCapped", { count: r.missedDays }) : t("inactive.missed", { count: r.missedDays })}</span>
         {" · "}
         {r.lastSeen ? t("inactive.lastSeen", { when: fmtRelative(r.lastSeen) }) : t("inactive.never")}
       </span>
@@ -143,7 +143,8 @@ function InactiveRow({ r }: { r: InactiveTrader }) {
 
 const INACTIVE_SHOWN = 8;
 
-export function InactivePanel({ rows }: { rows: InactiveTrader[] }) {
+/** `lowData`: fewer than 3 trading days tracked — the list is empty on purpose, say so (OWNER-04). */
+export function InactivePanel({ rows, lowData = false, trackedSince = null }: { rows: InactiveTrader[]; lowData?: boolean; trackedSince?: string | null }) {
   const { t } = usageI18n.useT();
   const [all, setAll] = useState(false);
   const sorted = pilotFirst(rows);
@@ -159,7 +160,9 @@ export function InactivePanel({ rows }: { rows: InactiveTrader[] }) {
         </button>
       ) : undefined}
     >
-      {rows.length === 0 ? (
+      {lowData ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">{trackedSince ? t("inactive.lowData", { date: fmtDate(trackedSince, "dayMonth") }) : t("inactive.lowDataNone")}</p>
+      ) : rows.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">{t("inactive.empty")}</p>
       ) : (
         <ul className="divide-y divide-[var(--glass-border)]">{shown.map((r) => <InactiveRow key={r.name} r={r} />)}</ul>

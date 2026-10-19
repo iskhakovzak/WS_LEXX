@@ -20,7 +20,7 @@ export default {
     revengeTitle: "Entry < {min} min after a loss",
     revengeDetail: "{n} trades opened within {min} min after a losing exit: net {net}",
     sizeTitle: "Size up after a loss",
-    sizeDetail: "{n} trades larger than the previous losing one (×{factor}+): net {net}",
+    sizeDetail: "{n} trades with a $ position larger than the previous losing one (×{factor}+): net {net}",
     limitTitle: "Trading after the daily limit",
     limitDetail: "Limit −{limit} hit at {time}; after that {n} trades, net {net}, losses {losses}",
   },

@@ -119,6 +119,33 @@ export function simpleNav(groups: VisibleGroup[], prefs?: Partial<NavPrefs> | nu
   };
 }
 
+/**
+ * ILYA-18: the phone sheet lists the same pages as the desktop sidebar — a primary row AND its children (Журнал →
+ * Разбор дня, Отчёт недели; Академия → Путь трейдера, Экзамены), flat, in sidebar order.
+ */
+export function sheetPrimaryItems(simple: Pick<SimpleNav, "primary">): NavItem[] {
+  const seen = new Set<string>();
+  const out: NavItem[] = [];
+  for (const r of simple.primary) for (const i of [r, ...(r.children ?? [])]) if (!seen.has(i.href)) { seen.add(i.href); out.push(i); }
+  return out;
+}
+
+/** OWNER-28: a pinned page is listed once — in «Избранное», not again in its group. */
+export function withoutPinned<T extends { href: string }>(items: readonly T[], pins: readonly string[]): T[] {
+  if (!pins.length) return [...items];
+  const p = new Set(pins);
+  return items.filter((i) => !p.has(i.href));
+}
+
+/**
+ * OWNER-28 (desktop): a set's children. Open → all of them in the list. Closed → the pinned ones stay visible under the
+ * row and the folded list keeps only the others, so a pinned page is never in the DOM twice (two «Открепить»).
+ */
+export function rowKidLists<T extends { href: string }>(kids: readonly T[], open: boolean, isPinned: (href: string) => boolean): { list: T[]; pinned: T[] } {
+  if (open) return { list: [...kids], pinned: [] };
+  return { list: kids.filter((k) => !isPinned(k.href)), pinned: kids.filter((k) => isPinned(k.href)) };
+}
+
 /** The phone tab bar: four sections (the 5th slot is «Ещё»). */
 export function mobileTabs(groups: VisibleGroup[], simple: SimpleNav | null): NavItem[] {
   if (simple) return SIMPLE_MOBILE_TABS.flatMap((h) => simple.primary.find((i) => i.href === h) ?? []);

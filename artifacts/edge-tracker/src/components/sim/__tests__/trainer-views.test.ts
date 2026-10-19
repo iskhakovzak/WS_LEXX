@@ -126,7 +126,7 @@ describe("find entry answer + summary", () => {
     expect(html).toContain("Поздно: лучшая цена уже ушла — на 2 бар. позже эталона");
     expect(html).toContain("Это был NVDA");
     expect(html).toContain("пример из плейбука");
-    expect(html).toContain("Мастерство сетапа +1");
+    expect(html).toContain("Засчитано в мастерство сетапа +1");
     expect(html).toContain("Следующая");
   });
 
@@ -182,5 +182,36 @@ describe("daily reveal after the game", () => {
     expect(html).toContain("Трейдер 9");
     expect(html).toContain('href="/desk-day?ticker=AMD&date=2026-09-24"');
     expect(html).toContain('href="/discussions?new=1&ticker=AMD"');
+  });
+});
+
+describe("persona fixes (TRAINER area)", () => {
+  it("closed daily, not played: an unranked practice button (UMID-07) — only when the action is wired", () => {
+    const h = home({ daily: daily({ revealed: { ticker: "GOOGL", barsDate: "2026-10-14" } }) });
+    expect(cards(h, actions({ onDailyPractice: noop }))).toContain("Потренироваться на этой задаче");
+    expect(cards(h)).not.toContain("Потренироваться на этой задаче");
+    expect(cards(home(), actions({ onDailyPractice: noop }))).not.toContain("Потренироваться на этой задаче");
+  });
+
+  it("«Найди вход» cards show the progress to the next level and the points rule (UMID-18)", () => {
+    const base = home();
+    const h = home({
+      findEntry: {
+        ...base.findEntry,
+        drillsPerPoint: 2, passScore: 70,
+        setups: base.findEntry.setups.map((s, i) => ({ ...s, masteryPoints: i === 0 ? 2 : 50, masteryNext: i === 0 ? 3 : null, drillsPassed: 4 })),
+      },
+    });
+    const html = cards(h);
+    expect(html).toContain("2/3");
+    expect(html).toContain("макс.");
+    expect(html).toContain("2 верные задачи (от 70 очков) = 1 очко мастерства");
+  });
+
+  it("run summary names the ticker and the day of each drill and the points rule (UMID-18)", () => {
+    const results = [{ drillId: 1, setupName: "ORB", score: 90, masteryDelta: 1, ticker: "NVDA", date: "2026-08-12" }];
+    const html = render(createElement(RunSummary, { results, onAgain: noop, onExit: noop, drillsPerPoint: 2 }));
+    expect(html).toContain("NVDA · 12 авг. 2026 г.");
+    expect(html).toContain("задач засчитано; 2 = 1 очко");
   });
 });

@@ -13,7 +13,7 @@ import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { comparePersonNames, personName } from "@/i18n";
 import { DEFAULT_FILTERS, type AnalyticsFilters } from "@/components/analytics-page/metrics";
 import {
-  type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useWhatIfBase, useWhatIfFees, useWhatIfRun, useWhatIfSuggestions,
+  type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfFees, useWhatIfRun, useWhatIfSuggestions,
 } from "@/components/what-if/api";
 import { LEGACY_RULE_TYPES, type Rule, type RuleType, decodeRules, encodeRules, mergeRule, removeRule, subtractRule } from "@/components/what-if/rules";
 import { SuggestionCards } from "@/components/what-if/suggestions-panel";
@@ -25,7 +25,7 @@ import { FeesBlock } from "@/components/what-if/fees-tab";
 import { CostsByGroup } from "@/components/analytics-page/CostsTab";
 import { ExcludedTable } from "@/components/what-if/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/what-if/questions-bar";
-import { type Question, buildQuestions, changedDays } from "@/components/what-if/presets";
+import { type Question, buildQuestions, changedDays, presetsWithLimits } from "@/components/what-if/presets";
 import { useLocation } from "wouter";
 import { PersonSelect } from "@/components/people/person-select";
 
@@ -119,6 +119,10 @@ export default function WhatIf() {
   );
 
   const base = useWhatIfBase(scope);
+  // Presets and the day-stop question follow the trader's own limits (DENIS-36); the whole team has none.
+  const limitsOf = isCurator ? scopeTrader : me;
+  const limits = useTraderLimits(limitsOf).data ?? null;
+  const presets = useMemo(() => presetsWithLimits(base.data?.presets ?? [], limits ?? {}), [base.data?.presets, limits]);
   const hasTrades = (base.data?.trades.length ?? 0) > 0;
   // Older API builds do not list ruleTypes: then only the legacy rules are offered and sent.
   const supported = useMemo(() => new Set<RuleType>(base.data?.ruleTypes ?? LEGACY_RULE_TYPES), [base.data?.ruleTypes]);
@@ -145,8 +149,8 @@ export default function WhatIf() {
   const toggleSuggestion = (s: Suggestion, applied: boolean) => setRules((rs) => (applied ? subtractRule(rs, s.rule) : mergeRule(rs, s.rule)));
   const toggleQuestion = (q: Question, applied: boolean) => { if (q.rule) { const rule = q.rule; setRules((rs) => (applied ? subtractRule(rs, rule) : mergeRule(rs, rule))); } };
   const questions = useMemo(
-    () => buildQuestions(base.data?.trades ?? [], base.data?.presets ?? []).map((q) => (q.rule && !supported.has(q.rule.type) ? { ...q, rule: null, disabled: t("unsupportedQuestion") } : q)),
-    [base.data?.trades, base.data?.presets, supported, t],
+    () => buildQuestions(base.data?.trades ?? [], presets, limits ?? {}).map((q) => (q.rule && !supported.has(q.rule.type) ? { ...q, rule: null, disabled: t("unsupportedQuestion") } : q)),
+    [base.data?.trades, presets, limits, supported, t],
   );
   const dayTrader = isCurator ? (trader === ALL ? "" : trader) : "";
   const openDay = (day: string) => navigate(`/day-report?date=${day}${dayTrader ? `&trader=${encodeURIComponent(dayTrader)}` : ""}`);
@@ -310,11 +314,11 @@ export default function WhatIf() {
       </section>
 
       <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
-        <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={b.presets} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
+        <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={presets} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
       </Panel>
 
       <Panel title={t("feesTitle")} icon={Receipt} id="fees" className="scroll-mt-[calc(var(--sticky-top,0px)+1rem)]">
-        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} presets={b.presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} costsByGroup={<CostsByGroup filters={costFilters} isCurator={isCurator} />} />
+        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} presets={presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} costsByGroup={<CostsByGroup filters={costFilters} isCurator={isCurator} />} />
       </Panel>
 
       {showScenario && (

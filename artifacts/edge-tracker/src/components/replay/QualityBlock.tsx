@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { fmtDuration, fmtEtTimeSec } from "@/components/trade-chart-parts/chart-utils";
 import { useTradeQuality } from "./hooks";
-import { AFTER_EXIT_OPTIONS, DEFAULT_AFTER_EXIT, reasonLabel, type Excursion, type TradeQuality } from "./types";
+import { AFTER_EXIT_OPTIONS, DEFAULT_AFTER_EXIT, reasonLabel, shownExitEfficiency, type Excursion, type TradeQuality } from "./types";
 import { chartI18n } from "@/i18n/ns/chart";
 import { fmtNum, fmtPrice, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
@@ -104,7 +104,7 @@ export function QualitySummaryLine({ q }: { q: TradeQuality }) {
   const t = chartI18n.t;
   const usdA = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
   const text = eff == null
-    ? t("quality.stillOpen")
+    ? (q.captured != null ? t("quality.neverInPlus") : t("quality.stillOpen"))
     : eff < 0
       ? t("quality.exitWorse", { mfe: mfeR != null ? fmtR(mfeR) : q.mfe.usd != null ? usdA(q.mfe.usd) : perShareAbs(q.mfe.perShare) })
       : t("quality.captured", {
@@ -166,6 +166,7 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
     if (q.exitAt != null && e.at === q.exitAt) return "exit";
     return null;
   };
+  const shownEff = shownExitEfficiency(q);
   const capturedTone: Tone = q.captured ? toneOf(q.captured.perShare) : q.unrealised ? toneOf(q.unrealised.perShare) : "neutral";
   const warnReasons = q.reasons.filter((r) => r !== "atr_from_day_range");
   const heatWorkedAt = q.heat ? (q.heat.workedAtSeconds != null ? q.heat.workedAtSeconds : q.heat.workedAtMinutes != null ? q.heat.workedAtMinutes * 60 : null) : null;
@@ -203,9 +204,9 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
         />
         <Big
           label={t("quality.exitEff")}
-          value={fmtRate(q.exitEfficiency)}
+          value={fmtRate(shownEff)}
           sub={q.captured ? t("quality.capturedSub", { value: rAndUsd(q.captured.r, q.captured.usd, q.captured.perShare) }) : q.unrealised ? t("quality.openSub", { value: rAndUsd(q.unrealised.r, q.unrealised.usd, q.unrealised.perShare) }) : undefined}
-          tone={q.exitEfficiency == null ? capturedTone : exitEffTone(q.exitEfficiency)}
+          tone={shownEff == null ? capturedTone : exitEffTone(shownEff)}
           explain={t("quality.exitEffExplain")}
         />
         <Big

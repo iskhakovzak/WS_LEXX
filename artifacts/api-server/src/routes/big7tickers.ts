@@ -420,7 +420,8 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
     total: outAgg(total),
     tickers: board.filter((s) => per.has(s)).map((s) => {
       const p = per.get(s)!;
-      return { ticker: s, ...outAgg(p.all), longNet: outAgg(p.long).net, shortNet: outAgg(p.short).net, lastDate: p.last, bestHour: pickHour(p.hours, 1), worstHour: pickHour(p.hours, -1) };
+      // longN / shortN let the page print «—» for a side with no trades instead of «$0» (ROMAN-31).
+      return { ticker: s, ...outAgg(p.all), longNet: outAgg(p.long).net, shortNet: outAgg(p.short).net, longN: p.long.n, shortN: p.short.n, lastDate: p.last, bestHour: pickHour(p.hours, 1), worstHour: pickHour(p.hours, -1) };
     }),
     hours: HOUR_BUCKETS.map((b) => ({ key: b.key, label: hourLabel(b, lang), ...outAgg(hours.get(b.key) ?? emptyAgg()) })),
   });

@@ -8,7 +8,7 @@
 import type { Tone } from "@/components/ds";
 import { fmtCount, fmtNum, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
-import { personName } from "@/i18n";
+import { getLang, personName } from "@/i18n";
 import { adminAuditI18n } from "@/i18n/ns/adminAudit";
 import { adminJobsI18n } from "@/i18n/ns/adminJobs";
 import { auditValueText, settingLabel } from "./desk-settings-text";
@@ -94,8 +94,11 @@ function syncCounters(d: Record<string, any>): string {
 /** Object the entry is about, for the «Объект» column / filter. */
 export function objectLabel(targetType: string | null, targetId: string | null, d?: Record<string, any>): string {
   if (!targetType) return "";
-  const id = targetId ?? "";
+  // «many» = a bulk action over several rows: show the object type, never «#many» (OWNER-16).
+  const id = targetId === "many" ? "" : targetId ?? "";
+  if (!id && targetType !== "db" && targetType !== "permissions" && targetType !== "curator_queue_acks") return objectTypeLabel(targetType);
   switch (targetType) {
+    case "playbook": return d?.name ? t("object.setup", { name: s(d.name) }) : t("object.setupId", { id });
     case "user": return d?.name ? t("object.user", { name: pn(d.name) }) : t("object.userId", { id });
     case "trader_risk_limits": return t("object.trader", { id: personName(id) });
     case "propreports_sync_runs": return id ? t("object.syncRun", { id }) : t("object.syncRuns");
@@ -158,10 +161,34 @@ function limitChanges(raw: unknown, tier: (k: unknown) => string): string[] {
   });
 }
 
+/** Tier order for «открыл / закрыл» (a lower minimum tier opens the setup to more people). */
+const TIER_RANK: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3, lead: 4 };
+
+// i18n-ignore — Russian-only grammar: female first names (ending in а / я) except these male ones.
+const RU_MALE_A = new Set(["Илья", "Никита", "Кузьма", "Фома", "Лука", "Савва", "Данила", "Гаврила", "Муса", "Иса", "Миша", "Саша", "Женя", "Ваня", "Петя", "Дима", "Коля", "Вова", "Толя", "Паша", "Гоша", "Лёша", "Алёша", "Серёжа", "Яша"]);
+
+/** A person whose Russian past-tense verbs take the feminine ending (heuristic on the first name). */
+export function isFemaleRu(name: string): boolean {
+  const first = name.trim().split(/\s+/)[0] ?? "";
+  return /[ая]$/.test(first) && !RU_MALE_A.has(first); // i18n-ignore — Russian name endings
+}
+
+/** RU only: «разобрал» → «разобрала» for a female actor (the templates are written in the masculine past). */
+export function genderVerb(text: string, actor: string, lang: string = getLang()): string {
+  if (lang !== "ru" || !isFemaleRu(actor)) return text;
+  return text.replace(/^(\S+л)(?=[\s:]|$)/u, "$1а"); // i18n-ignore — Russian feminine ending
+}
+
 export function describeAudit(e: AuditLike, tierNames?: Record<string, string>): AuditText {
+  const x = describeAuditRaw(e, tierNames);
+  // Service actors agree by their display name («Система перепривязала»), people by their first name.
+  return { ...x, text: genderVerb(x.text, has(RU.actor, e.actor) ? actorName(e.actor) : e.actor) };
+}
+
+function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): AuditText {
   const d = parse(e.details);
   const reason = reasonOf(d);
-  const who = pn(d.name) || (e.targetType === "user" ? `#${s(e.targetId)}` : pn(e.targetId));
+  const who = pn(d.name) || (e.targetType === "user" ? (e.targetId && e.targetId !== "many" ? `#${s(e.targetId)}` : "") : pn(e.targetId));
   const tier = (k: unknown): string => {
     if (!k) return t("tier.none");
     const key = s(k);
@@ -259,7 +286,26 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
 
     case "scaling.assign": return { label: L("tier"), tone: "purple", text: t("text.tierAssign", { tier: tier(d.toTier), trader: pn(e.targetId) }), detail: joinDetail([d.fromTier ? t("detail.wasTier", { tier: tier(d.fromTier) }) : "", reason]) };
     case "scaling.proposal.create": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalCreateFor", { trader: pn(d.trader) }) : t("text.proposalCreate"), detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
-    case "scaling.proposal.auto": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalAutoFor", { trader: pn(d.trader) }) : t("text.proposalAuto"), detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
+    case "scaling.proposal.auto": {
+      const list: string[] = Array.isArray(d.traders) ? d.traders.map((x: unknown) => pn(x)) : [];
+      const text = d.trader ? t("text.proposalAutoFor", { trader: pn(d.trader) }) : list.length ? t("text.proposalAutoList", { names: list.join(", ") }) : t("text.proposalAuto");
+      return { label: L("tier"), tone: "neutral", text, detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
+    }
+
+    case "playbook.min_tier": {
+      const setup = s(d.name) || `#${s(e.targetId)}`;
+      const from = TIER_RANK[s(d.from)], to = TIER_RANK[s(d.to)];
+      const key = from != null && to != null ? (to < from ? "text.playbookOpen" : "text.playbookClose") : "text.playbookTier";
+      return { label: L("playbook"), tone: "purple", text: t(key, { setup, tier: tier(d.to) }), detail: d.from ? t("playbookDetail.wasTier", { tier: tier(d.from) }) : undefined };
+    }
+    case "playbook.relink": return {
+      label: L("playbook"), tone: "neutral", text: t("text.relink", { count: fmtCount(n(d.written)) }),
+      detail: d.backup ? t("playbookDetail.relinkBackup", { file: s(d.backup) }) : undefined,
+    };
+    case "user.starting_secret": {
+      const count = n(d.count) || (Array.isArray(d.ids) ? d.ids.length : 1);
+      return { label: L("login"), tone: "warn", text: t("text.startingSecret", { count }), detail: reason };
+    }
     case "scaling.proposal.approve": return { label: L("tier"), tone: "up", text: d.trader ? t("text.proposalApproveFor", { trader: pn(d.trader) }) : t("text.proposalApprove"), detail: d.toTier ? `→ ${tier(d.toTier)}` : reason };
     case "scaling.proposal.reject": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalRejectFor", { trader: pn(d.trader) }) : t("text.proposalReject"), detail: reason };
     case "scaling.tiers.update": return { label: L("tiers"), tone: "neutral", text: t("text.tiersUpdate") };

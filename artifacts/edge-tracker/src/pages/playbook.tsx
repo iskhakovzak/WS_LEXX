@@ -18,7 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { playbookTodayQuery } from "@/lib/api/queries";
 import {
   Activity, BookOpen, Building2, ChevronsDownUp, ChevronsUpDown, Columns2, Download, FileArchive, LayoutGrid,
-  Library, MoreHorizontal, Plus, Search, Send, Share2, Tag, Trophy, User, Users, X, ZoomIn, ZoomOut, type LucideIcon,
+  Library, Lock, MoreHorizontal, Plus, Search, Send, Share2, Tag, Trophy, User, Users, X, ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,7 @@ import { SetupView, SETUP_TABS, type SetupTab } from "@/components/playbook/setu
 import { Overview, SetupCard } from "@/components/playbook/overview";
 import { Gallery, type GalleryScope } from "@/components/playbook/gallery";
 import { PlaybookInbox, Tier1Strip } from "@/components/playbook/home";
+import { LocksOverviewDialog } from "@/components/playbook/locks-overview";
 import { patchSearch } from "@/components/playbook/url-state";
 import { SetupFormDialog, type FormMode } from "@/components/playbook/setup-form-dialog";
 import { CompareDialog } from "@/components/playbook/compare-dialog";
@@ -175,6 +176,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
   const [findOpen, setFindOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [locksOpen, setLocksOpen] = useState(false);
   const [notionBusy, setNotionBusy] = useState(false);
   const [pickerFor, setPickerFor] = useState<PlaybookEntry | null>(null);
   const [shareFor, setShareFor] = useState<PlaybookEntry | null>(null);
@@ -777,6 +779,9 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
                 <Columns2 className="h-4 w-4" aria-hidden="true" /> {t("page.compare")}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setActivityOpen(true)}><Activity className="h-4 w-4" aria-hidden="true" /> {t("page.activity")}</DropdownMenuItem>
+              {viewer.isCurator && live && (
+                <DropdownMenuItem onSelect={() => window.setTimeout(() => setLocksOpen(true), 0)}><Lock className="h-4 w-4" aria-hidden="true" /> {playbookTodayI18n.t("locks.menu")}</DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("page.exportLabel", { space: SPACES.find((s) => s.value === activeSpace)?.label ?? "" })}</DropdownMenuLabel>
               <DropdownMenuItem onSelect={exportMd} disabled={!spaceEntries.length}><Download className="h-4 w-4" aria-hidden="true" /> {t("page.exportMd")}</DropdownMenuItem>
@@ -790,7 +795,8 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
               {zoom !== 1 && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); changeZoom(0); }}>{t("page.zoomReset")}</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
-          {canCreate && (
+          {/* ILYA-29: an empty «Мой плейбук» has one call to action — the empty state's own button. */}
+          {canCreate && !(traderView && activeSpace === "mine" && spaceEntries.length === 0) && (
             <Button className="bg-primary-solid" onClick={() => newSetup(selected?.folder ?? null)} aria-keyshortcuts="n" title={newSpace === "office" ? t("page.newOfficeTitle") : t("page.newPersonalTitle")}>
               <Plus className="h-4 w-4" aria-hidden="true" /> {newLabel}
             </Button>
@@ -983,7 +989,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
         <EmptyState
           icon={User}
           title={t("page.empty.mineTitle")}
-          description={t("page.empty.mineDesc")}
+          description={traderView ? t("page.empty.mineDescTrader") : t("page.empty.mineDesc")}
           action={canCreate ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.mineAction")}</Button> : undefined}
         />
       ) : activeSpace === "shared" ? (
@@ -1239,6 +1245,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
         ]}
       />
       <ActivitySheet open={activityOpen} onOpenChange={setActivityOpen} />
+      <LocksOverviewDialog open={locksOpen} onOpenChange={setLocksOpen} entries={entries} />
       {pickerFor && <TradePickerDialog open={!!pickerFor} onOpenChange={(v) => { if (!v) setPickerFor(null); }} entry={pickerFor} />}
       {shareFor && <ShareDialog open={!!shareFor} onOpenChange={(v) => { if (!v) setShareFor(null); }} entry={shareFor} />}
     </Page>
@@ -1252,8 +1259,8 @@ export default function PlaybookPage() {
   const { mode, setMode } = usePlaybookMode(isCurator);
   const [, navigate] = useLocation();
   const params = new URLSearchParams(useSearch());
-  const untagged = useQuery({ ...playbookTodayQuery(), enabled: !isCurator }).data?.untagged ?? null;
-  const tabs = <PlaybookModeTabs mode={mode} onMode={(m) => setMode(m)} isStaff={isCurator} untagged={untagged} />;
+  const todayData = useQuery({ ...playbookTodayQuery(), enabled: !isCurator }).data;
+  const tabs = <PlaybookModeTabs mode={mode} onMode={(m) => setMode(m)} isStaff={isCurator} untagged={todayData?.untagged ?? null} untaggedPeriod={todayData?.untaggedPeriod ?? null} />;
   if (mode !== "today") return <Playbook mode={mode} modeTabs={tabs} />;
   const keep = isCurator ? "mode=today" : "";
   const selectedId = Number(params.get("id") ?? params.get("highlight")) || null;

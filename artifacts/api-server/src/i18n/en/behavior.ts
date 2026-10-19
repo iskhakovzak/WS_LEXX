@@ -45,7 +45,7 @@ export default {
     fatigue: {
       title: "End-of-day fatigue",
       description: "Late trades of the day (after the median count) vs the first ones.",
-      rule: "Trades numbered > {cut} (median trades/day, rounded up) are compared with the first {cut} trades of the day.",
+      rule: "Trades numbered > {cut} (median trades/day, rounded up) are compared with the first {cut} trades of the day. Trades entered in the same second count as one decision.",
       baseline: "first {cut} trades of the day",
       note: "trade #{no} of {total} that day",
     },

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowDownUp, CheckCheck, ClipboardCheck, Clock, Inbox } from "lucide-react";
-import { EmptyState, Panel, Pill, Segmented, toneOf, toneText } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented, toneOf, toneText, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { fmtDate, fmtUsd } from "@/lib/format";
 import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { eodI18n } from "@/i18n/ns/eod";
-import { DISCIPLINE_LABELS, MOOD_LABELS, hoursText, slaText, useEodQueue, useEodReviewed, type QueueItem } from "./eod-api";
+import { DISCIPLINE_LABELS, MOOD_LABELS, hoursText, slaText, useEodQueue, useEodReviewed, type QueueItem, type QueueScope } from "./eod-api";
 import { EodReviewSheet } from "./EodReviewSheet";
 import { PersonSelect } from "@/components/people/person-select";
 
@@ -16,15 +16,19 @@ type Tab = "pending" | "reviewed";
 type Sort = "oldest" | "newest";
 
 /**
- * Curator queue: closed days awaiting review (SLA 24 h, oldest first) and the last 7 days of reviews.
+ * Curator queue: closed days awaiting review (SLA 24 trading hours, oldest first) and the last 7 days of reviews.
+ * Scope: my wards by default (server picks when «auto»), the whole desk, or traders without a curator (OLGA-05).
  * Filters: trader, «только просроченные», sort. A row opens the review sheet (read-only day + comment + score).
  */
 export function EodQueuePanel({ enabled }: { enabled: boolean }) {
   const { t } = eodI18n.useT();
   const { t: tc } = commonI18n.useT();
-  const pendingQ = useEodQueue(enabled);
+  const [scopePref, setScope] = usePersistentState<QueueScope | "auto">("eod.queueScope", "auto");
+  const pendingQ = useEodQueue(enabled, scopePref);
   const [tab, setTab] = useState<Tab>("pending");
-  const reviewedQ = useEodReviewed(enabled && tab === "reviewed");
+  const reviewedQ = useEodReviewed(enabled && tab === "reviewed", scopePref);
+  const scope: QueueScope = scopePref === "auto" ? pendingQ.data?.scope ?? "desk" : scopePref;
+  const wards = pendingQ.data?.wards ?? 0;
   const [trader, setTrader] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("oldest");
@@ -81,6 +85,17 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
         }
       >
         <div className="space-y-4">
+          <Segmented<QueueScope>
+            size="sm"
+            ariaLabel={t("queue.scopeAria")}
+            value={scope}
+            onChange={setScope}
+            options={[
+              ...(wards > 0 ? [{ value: "mine" as const, label: t("queue.scope.mine", { count: wards }) }] : []),
+              { value: "desk", label: t("queue.scope.desk") },
+              { value: "unassigned", label: t("queue.scope.unassigned") },
+            ]}
+          />
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
             <Kpi label={t("queue.inQueue")} value={pending.length} />
             <Kpi label={t("queue.overdueKpi", { sla })} value={kpi.overdue} tone={kpi.overdue ? "text-warn" : undefined} />

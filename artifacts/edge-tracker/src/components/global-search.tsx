@@ -236,13 +236,13 @@ export default function GlobalSearch({ open, onOpenChange: setOpen, request, tri
   const lang = useLang();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Trades are searched server-side (P1-5): GET /api/trades/page?q=&limit=20 per (deferred) query instead of
-  // loading the whole book into the palette. Other corpora load after the first open (then stay cached).
+  // Trades are searched server-side (P1-5): GET /api/trades/page?q=&limit=20&lite=1 (rows, no summary aggregates) per
+  // (deferred) query instead of loading the whole book into the palette. Other corpora load after the first open.
   // Debounced (200 ms): typing «NVDA» used to fire 4 server searches; now one after the pause.
   const tradeQ = useDebounced(query, 200).trim().replace(/^\$/, "").slice(0, 120);
   const { data: tradesRaw, isLoading: l1 } = useQuery<any[]>({
     queryKey: [TRADES_PAGE_KEY, "search", tradeQ.toLowerCase()],
-    queryFn: async ({ signal }) => (await fetchTradesPage(new URLSearchParams({ q: tradeQ, limit: "20" }), signal)).items ?? [],
+    queryFn: async ({ signal }) => (await fetchTradesPage(new URLSearchParams({ q: tradeQ, limit: "20", lite: "1" }), signal)).items ?? [],
     enabled: open && tradeQ.length > 0,
     staleTime: 30_000,
     placeholderData: keepPreviousData,

@@ -35,11 +35,15 @@ describe("tags", () => {
 });
 
 describe("presets (client fallback)", () => {
-  it("isUnreviewed ignores open trades and tagged trades", () => {
+  it("isUnreviewed = closed, no grade and no review text (setup and tags don't count, like the server)", () => {
     expect(isUnreviewed(trade({}))).toBe(true);
     expect(isUnreviewed(trade({ result: "open" }))).toBe(false);
-    expect(isUnreviewed(trade({ tags: "Страх" }))).toBe(false);
-    expect(isUnreviewed(trade({ setup: "ORB" }))).toBe(false);
+    expect(isUnreviewed(trade({ tags: "Страх" }))).toBe(true);
+    expect(isUnreviewed(trade({ setup: "ORB" }))).toBe(true);
+    expect(isUnreviewed(trade({ confidenceGrade: "B" }))).toBe(false);
+    expect(isUnreviewed(trade({ confidenceGrade: "X" }))).toBe(true);
+    expect(isUnreviewed(trade({ conclusion: "late entry" }))).toBe(false);
+    expect(isUnreviewed(trade({ notes: "  " }))).toBe(true);
   });
 
   it("scalp / fees / best / worst", () => {

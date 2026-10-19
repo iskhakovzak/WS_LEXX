@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { fmtDate } from "@/lib/format";
 import {
-  buildCandles, buildDayCandles, dayReportHref, filterPeriod, periodStart, soleTrader, summarize, toWeekCandles, weekStart,
+  buildCandles, buildDayCandles, dayReportHref, filterPeriod, periodStart, rangeRu, soleTrader, summarize, toWeekCandles, weekStart,
   type EquityTradeInput,
 } from "../lib";
 
@@ -62,5 +63,14 @@ describe("equity candles", () => {
     expect(soleTrader([t(1, "2026-10-12", 1), t(2, "2026-10-12", 1)])).toBe("Ориф");
     expect(soleTrader([t(1, "2026-10-12", 1), t(2, "2026-10-12", 1, 0, undefined, { trader: "Б" })])).toBeNull();
     expect(dayReportHref("2026-10-15", "Ориф")).toBe("/day-report?date=2026-10-15&trader=%D0%9E%D1%80%D0%B8%D1%84");
+  });
+});
+
+describe("rangeRu", () => {
+  it("adds the years only when the range crosses a year (MAKSIM-34)", () => {
+    expect(rangeRu("2026-10-13", "2026-10-17")).toBe(`13–${fmtDate("2026-10-17", "dayMonth")}`);
+    expect(rangeRu("2026-09-29", "2026-10-03")).toBe(`${fmtDate("2026-09-29", "dayMonth")} – ${fmtDate("2026-10-03", "dayMonth")}`);
+    expect(rangeRu("2025-01-02", "2026-10-16")).toBe(`${fmtDate("2025-01-02", "medium")} – ${fmtDate("2026-10-16", "medium")}`);
+    expect(rangeRu("2025-01-02", "2026-10-16")).toContain("2025");
   });
 });

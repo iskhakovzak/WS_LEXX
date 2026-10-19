@@ -2,12 +2,13 @@ import { useMemo } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AXIS, CHART_TOOLTIP_STYLE, GRID } from "@/components/analytics-page/metrics";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtDateCustom, fmtDeskDate, fmtUsd } from "@/lib/format";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import type { DayResult, EquityPoint } from "./api";
 
-function shortDay(d: string): string {
-  return fmtDate(d, "dayMonth");
+/** Axis label: «16 окт.»; with the year («16 окт. 25») when the curve spans more than one calendar year (DENIS-36). */
+export function shortDay(d: string, withYear = false): string {
+  return withYear ? fmtDateCustom(d, { day: "numeric", month: "short", year: "2-digit" }) : fmtDate(d, "dayMonth");
 }
 
 /** Series data keys (codes); the legend / tooltip names come from the whatIf namespace. */
@@ -17,10 +18,11 @@ export const SERIES_SCENARIO = "scenario";
 /** Base and scenario equity on one day axis (the scenario is carried forward on days it has no trades). */
 export function mergeEquity(base: EquityPoint[], scenario: EquityPoint[], hasScenario: boolean) {
   const sc = new Map(scenario.map((p) => [p.day, p.cum]));
+  const withYear = base.length > 1 && base[0].day.slice(0, 4) !== base[base.length - 1].day.slice(0, 4);
   let last = 0;
   return base.map((p) => {
     if (sc.has(p.day)) last = sc.get(p.day)!;
-    return { day: p.day, label: shortDay(p.day), [SERIES_BASE]: p.cum, [SERIES_SCENARIO]: hasScenario ? last : null } as Record<string, string | number | null>;
+    return { day: p.day, label: shortDay(p.day, withYear), [SERIES_BASE]: p.cum, [SERIES_SCENARIO]: hasScenario ? last : null } as Record<string, string | number | null>;
   });
 }
 
@@ -46,7 +48,7 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
             <CartesianGrid stroke={GRID} vertical={false} />
             <XAxis dataKey="label" {...AXIS} minTickGap={36} />
             <YAxis {...AXIS} tickFormatter={(v: number) => fmtUsd(v, { signed: true, decimals: "auto" })} width={76} />
-            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => fmtUsd(v, { signed: true, decimals: "auto" })} labelFormatter={(_, p) => (p?.[0]?.payload?.day as string) ?? ""} />
+            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => fmtUsd(v, { signed: true, decimals: "auto" })} labelFormatter={(_, p) => { const d = p?.[0]?.payload?.day; return typeof d === "string" ? fmtDeskDate(d, "medium") : ""; }} />
             <Legend verticalAlign="top" align="right" height={28} iconType="plainline" />
             <ReferenceLine y={0} stroke={GRID} />
             <Line type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke="hsl(var(--muted-foreground))" dot={false} strokeWidth={1.5} strokeDasharray={hasScenario ? "4 3" : undefined} isAnimationActive={false} />

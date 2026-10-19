@@ -6,7 +6,7 @@
  * fetched while the player reads the reveal, so one drill takes well under 30 s.
  */
 import * as React from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Check, Crosshair, LogOut, RotateCcw, Timer, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Kbd, ListSkeleton, Pill, StatCard, StatGrid, toneText } from "@/components/ds";
@@ -19,7 +19,7 @@ import { fakeClock, fromWire, hhmm } from "./model";
 import { BarFeed, SimChart, type ChartToggles } from "./sim-chart";
 import { EMPTY_OVERLAY, type OverlayData } from "./sim-overlay";
 import { DRILL_SECONDS, RUN_LENGTH, clampPick, pickDiff, runSummary, scoreTone, type DrillResult } from "./drill-model";
-import { trainerApi, trainerKeys } from "./trainer-api";
+import { trainerApi, trainerHomeQuery, trainerKeys } from "./trainer-api";
 import { useFinePointer } from "./use-fine-pointer";
 
 /** Server text params → i18n params (nulls dropped). */
@@ -49,6 +49,8 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
   const prefetched = React.useRef<Promise<FindEntryDrill | null> | null>(null);
 
   const fetchNext = React.useCallback(() => trainerApi.drillNext(setupId), [setupId]);
+  // The points rule for the summary hint comes with the trainer home (already cached when the run starts from it).
+  const drillsPerPoint = useQuery({ ...trainerHomeQuery(), enabled: false }).data?.findEntry.drillsPerPoint ?? null;
 
   const load = React.useCallback(async () => {
     setPhase({ k: "loading" });
@@ -87,7 +89,7 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
     try {
       const answer = await trainerApi.drillAnswer(drill.id, pick);
       feed?.push(answer.barsAfter.map((b) => fromWire([b.t, b.o, b.h, b.l, b.c, b.v])));
-      setResults((r) => [...r, { drillId: drill.id, setupName: drill.setupName, score: answer.score, masteryDelta: answer.masteryDelta }]);
+      setResults((r) => [...r, { drillId: drill.id, setupName: drill.setupName, score: answer.score, masteryDelta: answer.masteryDelta, ticker: answer.revealed.ticker, date: answer.revealed.date }]);
       setPhase({ k: "answered", answer });
       if (results.length + 1 < RUN_LENGTH) prefetched.current = fetchNext().catch(() => null);
     } catch (err) {
@@ -97,15 +99,22 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
     }
   }, [drill, pick, sending, phase.k, feed, results.length, fetchNext, t]);
 
+  // Answers change the home (attempts, accuracy, mastery, streak): refresh it on the summary and on any exit.
+  const refreshHome = React.useCallback(() => {
+    void qc.invalidateQueries({ queryKey: trainerKeys.all });
+    void qc.invalidateQueries({ queryKey: ["gamification"], refetchType: "none" });
+  }, [qc]);
+  const answered = results.length > 0;
+  const exit = React.useCallback(() => { if (answered) refreshHome(); onExit(); }, [answered, refreshHome, onExit]);
+
   const next = React.useCallback(() => {
     if (results.length >= RUN_LENGTH) {
       setPhase({ k: "summary" });
-      void qc.invalidateQueries({ queryKey: trainerKeys.all });
-      void qc.invalidateQueries({ queryKey: ["gamification"], refetchType: "none" });
+      refreshHome();
       return;
     }
     void load();
-  }, [results.length, load, qc]);
+  }, [results.length, load, refreshHome]);
 
   const again = React.useCallback(() => { setResults([]); void load(); }, [load]);
 
@@ -132,7 +141,7 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
     return { ...EMPTY_OVERLAY, cursor: drill.window.to, zone: { ...drill.window, text: t("drill.zone") }, picks };
   }, [drill, pick, phase, t]);
 
-  if (phase.k === "summary") return <RunSummary results={results} onAgain={again} onExit={onExit} />;
+  if (phase.k === "summary") return <RunSummary results={results} onAgain={again} onExit={exit} drillsPerPoint={drillsPerPoint} />;
 
   const n = Math.min(results.length + (phase.k === "answered" ? 0 : 1), RUN_LENGTH);
   return (
@@ -147,18 +156,18 @@ export function FindEntryRun({ setupId, onExit }: { setupId: number | null; onEx
             <Timer className="h-3.5 w-3.5" aria-hidden="true" />{left === 0 ? t("drill.timeUp") : t("drill.seconds", { count: left })}
           </span>
         )}
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={onExit}><LogOut aria-hidden="true" /> {t("drill.exit")}</Button>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={exit}><LogOut aria-hidden="true" /> {t("drill.exit")}</Button>
       </div>
 
       {phase.k === "empty" ? (
-        <EmptyState icon={Crosshair} title={t("drill.empty")} action={<Button onClick={onExit}>{t("drill.toHome")}</Button>} />
+        <EmptyState icon={Crosshair} title={t("drill.empty")} action={<Button onClick={exit}>{t("drill.toHome")}</Button>} />
       ) : phase.k === "error" ? (
-        <EmptyState icon={Crosshair} title={phase.message} action={<Button onClick={() => void load()}>{t("drill.retry")}</Button>} secondaryAction={<Button variant="ghost" onClick={onExit}>{t("drill.toHome")}</Button>} />
+        <EmptyState icon={Crosshair} title={phase.message} action={<Button onClick={() => void load()}>{t("drill.retry")}</Button>} secondaryAction={<Button variant="ghost" onClick={exit}>{t("drill.toHome")}</Button>} />
       ) : (
         <div className="grid min-h-0 grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="glass-panel relative h-[42dvh] min-h-[260px] overflow-hidden rounded-2xl p-1.5 sm:h-[55dvh] sm:p-2 lg:h-[calc(100dvh-13rem)] lg:min-h-[460px]">
             {feed && drill ? (
-              <SimChart key={drill.id} feed={feed} mode="intraday" startIdx={drill.window.from} levels={NO_LEVELS} overlay={overlay} toggles={TOGGLES} className="min-h-[280px] cursor-crosshair" onPick={onPick} />
+              <SimChart key={drill.id} feed={feed} mode="intraday" startIdx={drill.window.from} levels={NO_LEVELS} overlay={overlay} toggles={TOGGLES} className="min-h-[280px] cursor-crosshair" onPick={onPick} focus={drill.window} />
             ) : <ListSkeleton rows={6} />}
           </div>
           <aside className="glass-panel flex flex-col gap-2.5 rounded-2xl p-3 sm:gap-3 sm:p-[var(--panel-p)]">
@@ -212,7 +221,7 @@ export function AnswerPanel({ answer, last, onNext, fine }: { answer: FindEntryA
   );
 }
 
-export function RunSummary({ results, onAgain, onExit }: { results: DrillResult[]; onAgain: () => void; onExit: () => void }) {
+export function RunSummary({ results, onAgain, onExit, drillsPerPoint }: { results: DrillResult[]; onAgain: () => void; onExit: () => void; drillsPerPoint?: number | null }) {
   const { t } = trainerI18n.useT();
   const s = runSummary(results);
   return (
@@ -222,13 +231,16 @@ export function RunSummary({ results, onAgain, onExit }: { results: DrillResult[
         <StatGrid cols={3} className="mt-3">
           <StatCard label={t("summary.accuracy")} value={s.accuracy != null ? `${s.accuracy}` : "—"} tone={s.accuracy != null ? scoreTone(s.accuracy) : undefined} hint={t("summary.accuracyHint")} />
           <StatCard label={t("summary.hits")} value={`${s.hits}/${s.count}`} />
-          <StatCard label={t("summary.mastery")} value={s.mastery > 0 ? `+${s.mastery}` : String(s.mastery)} tone={s.mastery > 0 ? "up" : "neutral"} />
+          <StatCard label={t("summary.mastery")} value={s.mastery > 0 ? `+${s.mastery}` : String(s.mastery)} tone={s.mastery > 0 ? "up" : "neutral"} hint={drillsPerPoint != null ? t("summary.masteryHint", { per: drillsPerPoint }) : undefined} />
         </StatGrid>
         <ol className="mt-3 flex flex-col gap-1">
           {results.map((r, i) => (
             <li key={`${r.drillId}-${i}`} className="flex items-center gap-2 text-sm">
               <span className="w-6 text-right text-xs tabular-nums text-muted-foreground">{i + 1}</span>
-              <span className="min-w-0 flex-1 truncate">{r.setupName}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {r.setupName}
+                {r.ticker && <span className="text-muted-foreground"> · {r.ticker}{r.date ? ` · ${fmtDate(r.date, "medium")}` : ""}</span>}
+              </span>
               <span className={cn("w-10 text-right font-semibold tabular-nums", toneText(scoreTone(r.score)))}>{r.score}</span>
             </li>
           ))}

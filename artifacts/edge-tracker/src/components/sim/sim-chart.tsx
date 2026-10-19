@@ -4,10 +4,15 @@
  * re-renders React or rebuilds the chart. The overlay (fills, position, stop / target, reveal) is pushed into a
  * primitive. Fake time before the reveal: intraday axis shows the New York clock and «Yesterday / Today», swing shows
  * day numbers; after the reveal the axis switches to the real times.
- * Interaction (trainer): `onDragLine` lets the player drag the stop / target (and the planned stop while flat) with a
- * mouse or a finger — panning is paused while a line is held; `onPick` reports a click / tap (pointer events, so a
- * finger works like a mouse) as (bar index, price) («Найди вход»). Both use the lightweight-charts public API only
- * (coordinate ↔ logical index / price).
+ * Interaction (trainer): `onDragLine` lets the player drag the stop / target (and the planned stop / target while
+ * flat) with a mouse or a finger — panning is paused while a line is held; `onPick` reports a click / tap (pointer
+ * events, so a finger works like a mouse) as (bar index, price) («Найди вход»). Both use the lightweight-charts public
+ * API only (coordinate ↔ logical index / price).
+ * Timeframes: the feed holds base bars; with `dispMin` above `baseMin` the chart shows them aggregated (tf-model.ts) —
+ * the last display bar forms from the base bars revealed so far. Overlay indices are base indices and are mapped to the
+ * display bar that contains them. VWAP is computed on the base bars and sampled at each display bar's close.
+ * Placing lines (trainer): Shift+click → `onPlace("stop")`, Alt+click → `onPlace("target")`; a touch long-press or a
+ * right-click → `onMenu` (the screen shows «stop here / target here»).
  */
 import * as React from "react";
 import {
@@ -23,15 +28,11 @@ import { fmtDate, fmtPrice, localeTag } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
 import type { Levels, SimMode } from "./api";
-import { fakeClock, hhmm, roundPrice, swingIndex } from "./model";
-import { SimOverlayPrimitive, type DragLine, type OverlayData } from "./sim-overlay";
+import { fakeClock, focusRange, hhmm, swingIndex } from "./model";
+import { SimOverlayPrimitive, mapOverlay, type DragLine, type OverlayData } from "./sim-overlay";
+import { aggregate, displayTime, lastBaseOf, toDisplayIdx, type Aggregated } from "./tf-model";
+import { SCALE_ON, SCROLL_ON, useChartPointer } from "./sim-chart-pointer";
 
-/** Pan / zoom options while no line is held (restored after a drag). */
-const SCROLL_ON = { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false } as const;
-const SCALE_ON = { axisPressedMouseMove: true, axisDoubleClickReset: true, mouseWheel: true, pinch: true } as const;
-/** How close (px) a pointer must be to grab a line: a finger needs more room than a mouse. */
-const GRAB_MOUSE = 8;
-const GRAB_TOUCH = 16;
 
 /** Mutable bar store of one game, shared by the game controller and the chart (no React state per bar). */
 export class BarFeed {
@@ -60,7 +61,14 @@ type Refs = {
   overlay: SimOverlayPrimitive;
   theme: ChartTheme;
   volCap: number;
+  /** Display bars drawn so far. */
   len: number;
+  /** Current aggregation of the feed (identity when the display tf is the base). */
+  agg: Aggregated;
+  /** Redraw everything from the feed (timeframe switch, reveal). */
+  full: () => void;
+  /** Push the current overlay again (a cancelled drag). */
+  resetOverlay: () => void;
 };
 
 const MA = [20, 50] as const;
@@ -79,7 +87,7 @@ const perf: Perf | null = import.meta.env.DEV ? ((globalThis as { __simPerf?: Pe
 export function markGameRequested(): void { if (perf) { perf.t0 = performance.now(); perf.firstBarMs = null; } }
 
 export function SimChart({
-  feed, mode, startIdx, levels, overlay, toggles, className, onDragLine, dragLabel, onPick,
+  feed, mode, startIdx, levels, overlay, toggles, className, onDragLine, dragLabel, onPick, focus, baseMin = 1, dispMin = 1, onPlace, onMenu,
 }: {
   feed: BarFeed;
   mode: SimMode;
@@ -88,20 +96,29 @@ export function SimChart({
   overlay: OverlayData;
   toggles: ChartToggles;
   className?: string;
-  /** A stop / target / planned-stop line was dragged to `price`. */
+  /** A stop / target / planned line was dragged to `price`. */
   onDragLine?: (kind: DragLine, price: number) => void;
   /** Label of a line while it is dragged. */
   dragLabel?: (kind: DragLine, price: number) => string;
-  /** Click / tap on the chart: the bar under the pointer and the price at its height. */
+  /** Click / tap on the chart: the (display) bar under the pointer and the price at its height. */
   onPick?: (idx: number, price: number) => void;
+  /** «Найди вход»: the decision window to zoom to on a narrow chart (see focusRange). */
+  focus?: { from: number; to: number } | null;
+  /** Minutes of a feed bar and of a display bar (display > base = aggregated, the last bar forming). */
+  baseMin?: number;
+  dispMin?: number;
+  /** Shift+click (stop) / Alt+click (target) at `price`. */
+  onPlace?: (kind: "stop" | "target", price: number) => void;
+  /** Touch long-press / right-click at `price`; x, y = the point inside the chart box (CSS px) for a menu. */
+  onMenu?: (price: number, x: number, y: number) => void;
 }) {
   const boxRef = React.useRef<HTMLDivElement | null>(null);
   const refs = React.useRef<Refs | null>(null);
   const themeVersion = useThemeVersion();
   const { t } = simI18n.useT();
   const intraday = mode === "intraday";
-  const live = React.useRef({ startIdx, intraday, t, toggles, levels, overlay, onDragLine, dragLabel, onPick });
-  live.current = { startIdx, intraday, t, toggles, levels, overlay, onDragLine, dragLabel, onPick };
+  const live = React.useRef({ startIdx, intraday, t, toggles, levels, overlay, onDragLine, dragLabel, onPick, focus, baseMin, dispMin, onPlace, onMenu });
+  live.current = { startIdx, intraday, t, toggles, levels, overlay, onDragLine, dragLabel, onPick, focus, baseMin, dispMin, onPlace, onMenu };
 
   // Axis / crosshair labels: fake clock until the reveal, real time after.
   const tickLabel = React.useCallback((time: Time, type: number): string => {
@@ -164,14 +181,14 @@ export function SimChart({
     const overlayPrim = new SimOverlayPrimitive(theme);
     chart.panes()[0]?.attachPrimitive(session);
     for (const p of [lv, vwap, overlayPrim]) candles.attachPrimitive(p);
-    refs.current = { chart, candles, volume, ma20, ma50, session, levels: lv, vwap, overlay: overlayPrim, theme, volCap: 0, len: 0 };
 
+    const aggOf = () => aggregate(feed.bars, live.current.baseMin, live.current.dispMin);
     const full = () => {
       const r = refs.current;
       if (!r) return;
-      const bars = feed.bars;
-      const times = feed.realTimes;
-      const tm = (i: number) => ((times?.[i] ?? bars[i].t) as UTCTimestamp);
+      r.agg = aggOf();
+      const bars = r.agg.bars;
+      const tm = (i: number) => displayTime(r.agg, i, feed.bars, feed.realTimes) as UTCTimestamp;
       const vols = bars.map((b) => b.v).filter((v) => v > 0).sort((a, b) => a - b);
       r.volCap = vols.length ? vols[Math.min(vols.length - 1, Math.floor(0.98 * (vols.length - 1)))] : 0;
       r.candles.setData(bars.map((b, i) => ({ time: tm(i), open: b.o, high: b.h, low: b.l, close: b.c })));
@@ -181,8 +198,15 @@ export function SimChart({
         r.ma50.setData(bars.map((_, i) => maPoint(bars, i, 50, tm(i))));
       }
       r.len = bars.length;
-      refreshDerived(r, bars, live.current.intraday);
-      r.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - (live.current.intraday ? 150 : 110)), to: bars.length + 14 });
+      refreshDerived(r, feed.bars, live.current.intraday);
+      r.overlay.set(displayOverlay(r, live.current.overlay, live.current.baseMin, live.current.dispMin));
+      const focused = live.current.focus ? focusRange(live.current.focus, el.clientWidth) : null;
+      r.chart.timeScale().setVisibleLogicalRange(focused ?? { from: Math.max(0, bars.length - (live.current.intraday ? 150 : 110)), to: bars.length + 14 });
+    };
+    refs.current = {
+      chart, candles, volume, ma20, ma50, session, levels: lv, vwap, overlay: overlayPrim, theme, volCap: 0, len: 0,
+      agg: { bars: [], map: [], first: [] }, full,
+      resetOverlay: () => { const r = refs.current; if (r) r.overlay.set(displayOverlay(r, live.current.overlay, live.current.baseMin, live.current.dispMin)); },
     };
     full();
     if (perf) {
@@ -196,16 +220,18 @@ export function SimChart({
       if (!r) return;
       if (kind === "relabel") { full(); return; }
       const t0 = perf ? performance.now() : 0;
-      const bars = feed.bars;
-      for (let i = r.len; i < bars.length; i++) {
+      r.agg = aggOf();
+      const bars = r.agg.bars;
+      // The last drawn display bar may still be forming: redraw it, then append the new ones.
+      for (let i = Math.max(0, r.len - 1); i < bars.length; i++) {
         const b = bars[i];
-        const time = b.t as UTCTimestamp;
+        const time = displayTime(r.agg, i, feed.bars, feed.realTimes) as UTCTimestamp;
         r.candles.update({ time, open: b.o, high: b.h, low: b.l, close: b.c });
         r.volume.update(volPoint(r, b, time));
         if (r.ma20 && r.ma50) { r.ma20.update(maPoint(bars, i, 20, time)); r.ma50.update(maPoint(bars, i, 50, time)); }
       }
       r.len = bars.length;
-      refreshDerived(r, bars, live.current.intraday);
+      refreshDerived(r, feed.bars, live.current.intraday);
       if (perf) {
         perf.appendMs.push(Math.round((performance.now() - t0) * 100) / 100);
         const s = performance.now();
@@ -231,6 +257,15 @@ export function SimChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feed, intraday, themeVersion]);
 
+  // Timeframe switch: redraw from the same feed (no rebuild; the first run is the build above).
+  const shownTf = React.useRef(`${baseMin}/${dispMin}`);
+  React.useEffect(() => {
+    const key = `${baseMin}/${dispMin}`;
+    if (shownTf.current === key) return;
+    shownTf.current = key;
+    refs.current?.full();
+  }, [baseMin, dispMin]);
+
   // ── Levels / toggles / overlay ──────────────────────────────────────────
   React.useEffect(() => {
     const r = refs.current;
@@ -250,91 +285,14 @@ export function SimChart({
     r.ma50?.applyOptions({ visible: toggles.ma });
   }, [levels, toggles, intraday, themeVersion, feed]);
 
-  React.useEffect(() => { refs.current?.overlay.set(overlay); }, [overlay, themeVersion, feed]);
-
-  // ── Drag stop / target / planned stop ───────────────────────────────────
   React.useEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    let held: { kind: DragLine; id: number; price: number } | null = null;
-    // A tap / click (no drag) for `onPick`: pointer events work the same for a mouse and a finger.
-    let press: { id: number; x: number; y: number; at: number } | null = null;
-    const yOf = (clientY: number) => clientY - el.getBoundingClientRect().top;
-    const xOf = (clientX: number) => clientX - el.getBoundingClientRect().left;
-    const grab = (y: number, touch: boolean): { kind: DragLine; price: number } | null => {
-      const r = refs.current;
-      if (!r || !live.current.onDragLine) return null;
-      let best: { kind: DragLine; price: number; d: number } | null = null;
-      for (const l of r.overlay.dragLines()) {
-        const ly = r.candles.priceToCoordinate(l.price);
-        if (ly == null) continue;
-        const d = Math.abs(ly - y);
-        if (d <= (touch ? GRAB_TOUCH : GRAB_MOUSE) && (!best || d < best.d)) best = { ...l, d };
-      }
-      return best;
-    };
-    const pause = (on: boolean) => refs.current?.chart.applyOptions(on ? { handleScroll: false, handleScale: false } : { handleScroll: SCROLL_ON, handleScale: SCALE_ON });
-    const onDown = (e: PointerEvent) => {
-      press = e.isPrimary ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
-      const g = grab(yOf(e.clientY), e.pointerType !== "mouse");
-      if (!g) return;
-      held = { kind: g.kind, id: e.pointerId, price: g.price };
-      pause(true);
-      el.setPointerCapture(e.pointerId);
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    const onMove = (e: PointerEvent) => {
-      const r = refs.current;
-      if (!r) return;
-      if (!held) {
-        if (e.pointerType === "mouse") el.style.cursor = grab(yOf(e.clientY), false) ? "ns-resize" : "";
-        return;
-      }
-      if (e.pointerId !== held.id) return;
-      const p = r.candles.coordinateToPrice(yOf(e.clientY));
-      if (p == null || !(p > 0)) return;
-      held.price = roundPrice(p);
-      r.overlay.preview(held.kind, held.price, live.current.dragLabel?.(held.kind, held.price) ?? fmtPrice(held.price));
-    };
-    const onUp = (e: PointerEvent) => {
-      const p = press;
-      press = null;
-      if (!held && p && e.type === "pointerup" && e.pointerId === p.id && live.current.onPick) {
-        const r = refs.current;
-        const tap = Math.hypot(e.clientX - p.x, e.clientY - p.y) < 8 && performance.now() - p.at < 600;
-        if (r && tap) {
-          const logical = r.chart.timeScale().coordinateToLogical(xOf(e.clientX));
-          const price = r.candles.coordinateToPrice(yOf(e.clientY));
-          if (logical != null && price != null) live.current.onPick(Math.round(logical), price);
-        }
-      }
-      if (!held || e.pointerId !== held.id) return;
-      const h = held;
-      held = null;
-      pause(false);
-      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-      if (e.type === "pointerup") live.current.onDragLine?.(h.kind, h.price);
-      else refs.current?.overlay.set(live.current.overlay);
-    };
-    // A finger on a line must not scroll the page (touch-action can't be decided per touch, so cancel here).
-    const onTouch = (e: TouchEvent) => {
-      const t0 = e.touches[0];
-      if (t0 && grab(yOf(t0.clientY), true)) e.preventDefault();
-    };
-    el.addEventListener("pointerdown", onDown, true);
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerup", onUp);
-    el.addEventListener("pointercancel", onUp);
-    el.addEventListener("touchstart", onTouch, { capture: true, passive: false });
-    return () => {
-      el.removeEventListener("pointerdown", onDown, true);
-      el.removeEventListener("pointermove", onMove);
-      el.removeEventListener("pointerup", onUp);
-      el.removeEventListener("pointercancel", onUp);
-      el.removeEventListener("touchstart", onTouch, true);
-    };
-  }, [feed, intraday, themeVersion]);
+    const r = refs.current;
+    if (!r) return;
+    r.overlay.set(displayOverlay(r, overlay, live.current.baseMin, live.current.dispMin));
+  }, [overlay, themeVersion, feed, baseMin, dispMin]);
+
+  // ── Drag stop / target / planned lines, modified clicks, long-press menu ─
+  useChartPointer(boxRef, refs, live, [feed, intraday, themeVersion]);
 
   return <div ref={boxRef} className={cn("relative h-full min-h-[420px] w-full", className)} />;
 }
@@ -358,14 +316,31 @@ function maPoint(bars: readonly Candle[], i: number, n: (typeof MA)[number], tim
   return v == null ? { time } : { time, value: v };
 }
 
-/** Session shading + VWAP over all bars (O(n), n ≤ ~1,100: well under a millisecond). */
-function refreshDerived(r: Refs, bars: readonly Candle[], intraday: boolean): void {
-  r.session.setBars(bars, intraday);
-  if (intraday) {
-    // The play day only: the previous session's VWAP would be joined to today's by a line across the night.
-    let from = bars.length;
-    while (from > 0 && fakeClock(bars[from - 1].t).day >= 0) from--;
-    const idx = new Map(bars.map((b, i) => [b.t, i]));
-    r.vwap.set(sessionVwap(bars.slice(from)).map((p) => ({ idx: idx.get(p.t) ?? 0, vwap: p.vwap, sd: p.sd })));
+/** Overlay in display indices (identity on the base timeframe). */
+function displayOverlay(r: Refs, overlay: OverlayData, baseMin: number, dispMin: number): OverlayData {
+  if (!(dispMin > baseMin)) return overlay;
+  return mapOverlay(overlay, (i) => toDisplayIdx(r.agg, i));
+}
+
+/**
+ * Session shading + VWAP (O(n), n ≤ ~1,100 base bars: well under a millisecond). VWAP runs on the base bars of the
+ * play day and is sampled at each display bar's last base bar, so it is the same line on every timeframe.
+ */
+function refreshDerived(r: Refs, base: readonly Candle[], intraday: boolean): void {
+  const disp = r.agg.bars;
+  r.session.setBars(disp, intraday);
+  if (!intraday) return;
+  // The play day only: the previous session's VWAP would be joined to today's by a line across the night.
+  let from = base.length;
+  while (from > 0 && fakeClock(base[from - 1].t).day >= 0) from--;
+  const byT = new Map(sessionVwap(base.slice(from)).map((p) => [p.t, p] as const));
+  const at: ({ vwap: number; sd: number } | null)[] = new Array(base.length).fill(null);
+  let last: { vwap: number; sd: number } | null = null;
+  for (let i = from; i < base.length; i++) { last = byT.get(base[i].t) ?? last; at[i] = last; }
+  const pts: { idx: number; vwap: number; sd: number }[] = [];
+  for (let j = 0; j < disp.length; j++) {
+    const p = at[lastBaseOf(r.agg, j)];
+    if (p) pts.push({ idx: j, vwap: p.vwap, sd: p.sd });
   }
+  r.vwap.set(pts);
 }

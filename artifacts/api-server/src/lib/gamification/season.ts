@@ -70,15 +70,16 @@ export type TopViewer = { name: string | null; staff: boolean; hideNames: boolea
 
 /**
  * Top N for a viewer: rows with points > 0; a trader who hides achievements (shareAchievements off) is left out for
- * everyone but himself and staff; label = stored name (staff, or names shown) or the season alias key "t<n>".
+ * everyone but himself and staff; a trader in `excluded` (halted by the risk desk — no season lead while halted) is left
+ * out for everyone but himself; label = stored name (staff, or names shown) or the season alias key "t<n>".
  */
 export function topFor(
   ranked: readonly Ranked[], n: number, viewer: TopViewer,
-  o: { hidden: ReadonlySet<string>; alias: ReadonlyMap<string, number>; titles: ReadonlyMap<string, string> },
+  o: { hidden: ReadonlySet<string>; alias: ReadonlyMap<string, number>; titles: ReadonlyMap<string, string>; excluded?: ReadonlySet<string> },
 ): { label: string; me: boolean; points: number; title: string | null }[] {
   const names = viewer.staff || !viewer.hideNames;
   return ranked
-    .filter((r) => r.points > 0 && (viewer.staff || r.trader === viewer.name || !o.hidden.has(r.trader)))
+    .filter((r) => r.points > 0 && (r.trader === viewer.name || ((viewer.staff || !o.hidden.has(r.trader)) && !o.excluded?.has(r.trader))))
     .slice(0, n)
     .map((r) => ({
       label: names ? r.trader : `t${o.alias.get(r.trader) ?? 0}`,

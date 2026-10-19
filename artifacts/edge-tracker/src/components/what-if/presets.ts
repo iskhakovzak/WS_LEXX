@@ -83,15 +83,21 @@ export function typicalDayLoss(trades: PreviewTrade[]): number | null {
   return nice > 0 ? nice : null;
 }
 
-/** The question chips for these trades (always the same five, some disabled with a reason). */
-export function buildQuestions(trades: PreviewTrade[], presets: PresetLike[]): Question[] {
+/**
+ * The question chips for these trades (always the same five, some disabled with a reason). `dailyLossLimit` = the
+ * trader's own daily stop from the risk settings: the day-stop question uses it instead of a typical losing day
+ * (DENIS-36: «Стоп дня на −$50» against a $300 limit).
+ */
+export function buildQuestions(trades: PreviewTrade[], presets: PresetLike[], limits: { dailyLossLimit?: number | null } = {}): Question[] {
   const t = whatIfI18n.t;
   const qs: Question[] = [];
   qs.push({ id: "after3", label: t("questions.after3.label"), hint: t("questions.after3.hint"), rule: { type: "stopAfterLosses", n: 3 }, disabled: null });
 
-  const dl = typicalDayLoss(trades);
+  const own = limits.dailyLossLimit != null && limits.dailyLossLimit > 0 ? Math.round(limits.dailyLossLimit) : null;
+  const dl = own ?? typicalDayLoss(trades);
   qs.push({
-    id: "dayLimit", label: dl ? t("questions.dayLimit.label", { amount: fmtUsd(dl, { decimals: 0 }) }) : t("questions.dayLimit.labelBare"), hint: dl ? t("questions.dayLimit.hint") : "",
+    id: "dayLimit", label: dl ? t("questions.dayLimit.label", { amount: fmtUsd(dl, { decimals: 0 }) }) : t("questions.dayLimit.labelBare"),
+    hint: own ? t("questions.dayLimit.hintLimit") : dl ? t("questions.dayLimit.hint") : "",
     rule: dl ? { type: "dailyLossLimit", usd: dl } : null, disabled: dl ? null : t("questions.dayLimit.disabled"),
   });
 
@@ -117,6 +123,13 @@ export function buildQuestions(trades: PreviewTrade[], presets: PresetLike[]): Q
   });
   return qs;
 
+}
+
+/** Server presets with the day stop replaced by the trader's own limit (when known) — presets follow the limits. */
+export function presetsWithLimits<P extends PresetLike>(presets: P[], limits: { dailyLossLimit?: number | null }): P[] {
+  const usd = limits.dailyLossLimit != null && limits.dailyLossLimit > 0 ? Math.round(limits.dailyLossLimit) : null;
+  if (usd == null) return presets;
+  return presets.map((p) => ({ ...p, rules: p.rules.map((r) => (r.type === "dailyLossLimit" ? { ...r, usd } : r)) }));
 }
 
 export type DayChange = { day: string; before: number; after: number; delta: number; removed: boolean };

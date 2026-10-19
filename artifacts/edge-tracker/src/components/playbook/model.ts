@@ -39,6 +39,9 @@ export type PlaybookEntry = {
   idealConditions?: string | null; timeOfDay?: string | null; horizon?: string | null;
   /** «Сегодня»: minimum tier for the lock (trainee | junior | trader | senior | lead) and the cheat-sheet picture key. */
   minTier?: string | null; schema?: string | null;
+  /** Above the viewer's tier (DEV-06): the API sent no card (rules, checklist, notes, media) — show the lock instead. */
+  locked?: boolean;
+  unlock?: { key: string; params?: Record<string, string | number | null> } | null;
   media?: SetupMedia[] | null;
   updatedAt?: string | null;
   /** Server-computed permissions for the viewer (new API); read through `accessOf()`. */

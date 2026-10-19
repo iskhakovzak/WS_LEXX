@@ -1,8 +1,8 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "wouter";
 import {
-  AlertTriangle, ArrowRight, BookX, CheckCircle2, ClipboardCheck, Clock, Database, Flag, Gauge, Link2, ListChecks,
-  Plug, ScrollText, ServerCrash, ShieldAlert, Users,
+  AlertTriangle, ArrowRight, BookX, CheckCircle2, ClipboardCheck, Clock, Database, DatabaseBackup, Flag, Gauge, Link2, ListChecks,
+  Plug, ScrollText, ServerCrash, ShieldAlert, UserCheck, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,9 +12,10 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { timeAgo, type DeskPulse, type Overview, type RiskDeskLite } from "./api";
 import { actorName, describeAudit } from "./audit-text";
-import type { DataCheck, EodStatus, HealthData } from "./console-api";
+import type { DataCheck, EodStatus, HealthData, ReviewLoad } from "./console-api";
+import { backupProblem, isWeekendYmd, overdueByCurator } from "./overview-model";
 import type { TraderFilter } from "./TradersTable";
-import { fmtCount, fmtDate } from "@/lib/format";
+import { fmtCount, fmtDate, fmtDeskDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { adminI18n } from "@/i18n/ns/admin";
 import { personName } from "@/i18n";
@@ -29,6 +30,8 @@ function names(raw: string[], max = 4) {
 }
 
 type Go = (tab: AdminTab, filter?: TraderFilter) => void;
+/** Open «Люди» on the «Без куратора» filter (OWNER-05). */
+type GoNoCurator = () => void;
 type QueueCount = { count: number; overdue: number; slaHours: number } | null | undefined;
 
 /**
@@ -55,6 +58,9 @@ export function KpiRow({
   const { t } = adminI18n.useT();
   const s = pulse?.summary;
   const notClosed = eodNotClosed(eod, pulse);
+  // OWNER-27: the EOD date as «пт, 16 окт», and a Saturday/Sunday reads «выходной» instead of «0 / 23 в работе».
+  const eodDate = eod ? fmtDeskDate(eod.date, "weekdayDayMonth") : "";
+  const weekend = !!pulse?.date && isWeekendYmd(pulse.date);
   return (
     <StatGrid cols={4}>
       <StatCard
@@ -62,8 +68,8 @@ export function KpiRow({
         label={t("kpi.activeToday")}
         icon={Users}
         value={s ? <span>{s.activeToday}<span className="text-base font-medium text-muted-foreground"> / {s.deskTraders}</span></span> : "—"}
-        tone={s && s.deskTraders && s.activeToday === s.deskTraders ? "up" : "neutral"}
-        hint={s ? t("kpi.tradesToday", { trades: commonI18n.t("units.trades", { count: s.tradesToday }) }) : undefined}
+        tone={s && !weekend && s.deskTraders && s.activeToday === s.deskTraders ? "up" : "neutral"}
+        hint={s ? (weekend && s.activeToday === 0 ? t("kpi.weekend") : t("kpi.tradesToday", { trades: commonI18n.t("units.trades", { count: s.tradesToday }) })) : undefined}
         onClick={() => onGo("people", "traders")}
       />
       <StatCard
@@ -72,7 +78,7 @@ export function KpiRow({
         icon={BookX}
         value={eod ? notClosed.length : "—"}
         tone={!eod ? "neutral" : notClosed.length ? "warn" : "up"}
-        hint={!eod ? t("kpi.eodUnavailable") : notClosed.length ? t("kpi.eodNames", { date: eod.date, names: names(notClosed, 2) }) : t("kpi.eodAllClosed", { date: eod.date })}
+        hint={!eod ? t("kpi.eodUnavailable") : notClosed.length ? t("kpi.eodNames", { date: eodDate, names: names(notClosed, 2) }) : t("kpi.eodAllClosed", { date: eodDate })}
       />
       <StatCard
         loading={queue === undefined}
@@ -108,13 +114,13 @@ type AttentionItem = {
 };
 
 function buildItems({
-  pulse, overview, risk, health, eod, queue, quality, onGo,
+  pulse, overview, risk, health, eod, queue, quality, reviewLoad, onGo,
 }: {
   pulse: DeskPulse | undefined; overview: Overview | undefined; risk: RiskDeskLite | null | undefined; health: HealthData | undefined;
-  eod: EodStatus | null | undefined; queue: QueueCount; quality: DataCheck[] | null | undefined; onGo: Go;
+  eod: EodStatus | null | undefined; queue: QueueCount; quality: DataCheck[] | null | undefined; reviewLoad?: ReviewLoad | null; onGo: Go;
 }): AttentionItem[] {
   const t = adminI18n.t;
-  type ActionKey = "review" | "riskDesk" | "queue" | "journal" | "details" | "integrations" | "map" | "reconcile" | "check" | "show" | "list";
+  type ActionKey = "review" | "riskDesk" | "queue" | "journal" | "details" | "integrations" | "map" | "reconcile" | "check" | "show" | "list" | "backups";
   const A = (k: ActionKey) => t(`attention.action.${k}`);
   const items: AttentionItem[] = [];
   const s = pulse?.summary;
@@ -124,11 +130,14 @@ function buildItems({
   const breach = risk?.traders.filter((t) => t.status === "breach").map((t) => t.trader) ?? [];
   if (breach.length) items.push({ key: "risk", tone: "down", icon: Gauge, title: t("attention.riskBreach", { count: breach.length }), detail: names(breach), action: { label: A("riskDesk"), href: links.risk() } });
 
-  if (queue?.overdue) items.push({ key: "sla", tone: "down", icon: ClipboardCheck, title: t("attention.slaOverdue", { count: queue.overdue }), detail: t("attention.slaDetail", { hours: queue.slaHours, count: queue.count }), action: { label: A("queue"), href: "/journal?view=queue" } });
+  if (queue?.overdue) items.push({ key: "sla", tone: "down", icon: ClipboardCheck, title: t("attention.slaOverdue", { count: queue.overdue }), detail: overdueByCurator(reviewLoad) ?? t("attention.slaDetail", { hours: queue.slaHours, count: queue.count }), action: { label: A("queue"), href: "/journal?view=queue" } });
   else if (queue?.count) items.push({ key: "queue", tone: "warn", icon: ClipboardCheck, title: t("attention.queueWaiting", { count: queue.count }), detail: t("kpi.sla", { hours: queue.slaHours }), action: { label: A("queue"), href: "/journal?view=queue" } });
 
   const notClosed = eodNotClosed(eod, pulse);
-  if (notClosed.length) items.push({ key: "eod", tone: "warn", icon: BookX, title: t("attention.eodOpen", { date: eod!.date, count: notClosed.length }), detail: names(notClosed), action: { label: A("journal"), href: "/journal" } });
+  if (notClosed.length) items.push({ key: "eod", tone: "warn", icon: BookX, title: t("attention.eodOpen", { date: fmtDeskDate(eod!.date, "weekdayDayMonth"), count: notClosed.length }), detail: names(notClosed), action: { label: A("journal"), href: "/journal" } });
+
+  const backup = backupProblem(health);
+  if (backup) items.push({ key: "backup", tone: "down", icon: DatabaseBackup, title: t("attention.noBackup"), detail: backup.lastAt ? t("attention.noBackupLast", { date: fmtDate(backup.lastAt, "shortDateTime") }) : t("attention.noBackupNever"), action: { label: A("backups"), go: () => onGo("data") } });
 
   if (health) {
     const sy = health.sync;
@@ -246,8 +255,57 @@ function SyncPanel({ health, error, onGo }: { health: HealthData | undefined; er
   );
 }
 
+/** OWNER-05: the review queue per curator + «Без куратора (N)» → People filtered on it. */
+function ReviewLoadPanel({ load, onGoNoCurator }: { load: ReviewLoad | null | undefined; onGoNoCurator?: GoNoCurator }) {
+  const { t } = adminI18n.useT();
+  return (
+    <Panel
+      title={t("reviewLoad.title")}
+      icon={UserCheck}
+      description={load ? t("reviewLoad.description", { days: load.windowDays, hours: load.slaHours }) : undefined}
+      actions={<Button asChild variant="ghost" size="sm"><Link href="/journal?view=queue">{t("attention.action.queue")} <ArrowRight /></Link></Button>}
+    >
+      {load === undefined ? (
+        <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-6 w-full rounded-lg" />)}</div>
+      ) : load === null ? (
+        <p className="py-2 text-sm text-muted-foreground">{t("reviewLoad.unavailable")}</p>
+      ) : (
+        <div className="flex flex-col">
+          {load.curators.length === 0 && <p className="py-2 text-sm text-muted-foreground">{t("reviewLoad.none")}</p>}
+          {load.curators.map((c) => (
+            <StatRow
+              key={c.name}
+              label={<span>{personName(c.name)} <span className="text-xs text-muted-foreground">· {c.wards ? t("reviewLoad.wards", { count: c.wards }) : t("reviewLoad.noWards")}</span></span>}
+              value={c.count ? (
+                <span className="inline-flex flex-wrap items-center justify-end gap-1.5 tabular-nums">
+                  {t("reviewLoad.waiting", { count: c.count })}
+                  {c.overdue > 0 && <Pill tone="down">{t("reviewLoad.overdue", { count: c.overdue })}</Pill>}
+                </span>
+              ) : t("reviewLoad.clear")}
+              tone={c.overdue ? "down" : "neutral"}
+            />
+          ))}
+          {(load.unassigned.traders > 0 || load.unassigned.count > 0) && (
+            <StatRow
+              label={onGoNoCurator ? (
+                <button type="button" className="text-left underline-offset-2 hover:underline" onClick={onGoNoCurator}>{t("reviewLoad.unassigned", { count: load.unassigned.traders })}</button>
+              ) : t("reviewLoad.unassigned", { count: load.unassigned.traders })}
+              value={<span className="inline-flex flex-wrap items-center justify-end gap-1.5 tabular-nums">
+                {load.unassigned.count ? t("reviewLoad.unassignedDays", { count: load.unassigned.count }) : null}
+                {onGoNoCurator && <Button variant="ghost" size="sm" className="h-7" onClick={onGoNoCurator}>{t("attention.action.assign")} <ArrowRight /></Button>}
+              </span>}
+              tone="warn"
+            />
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 export function OverviewPanel({
   pulse, overview, risk, health, eod, queue, quality, pulseError, healthError, overviewError, onRetry, onGo, tierNames,
+  canAudit = true, reviewLoad, onGoNoCurator, rewards,
 }: {
   pulse: DeskPulse | undefined;
   overview: Overview | undefined;
@@ -262,10 +320,17 @@ export function OverviewPanel({
   onRetry: () => void;
   onGo: Go;
   tierNames?: Record<string, string>;
+  /** «Последние действия» reads the audit log — hidden without admin.audit (OLGA-02). */
+  canAudit?: boolean;
+  /** Review queue per curator (OWNER-05); undefined = loading, null = unavailable, absent panel when not passed. */
+  reviewLoad?: ReviewLoad | null;
+  onGoNoCurator?: GoNoCurator;
+  /** GAMIFY's «Награды» block (OWNER-20), handed in by the page (features never import each other). */
+  rewards?: React.ReactNode;
 }) {
   const { t } = adminI18n.useT();
   const reduce = useReducedMotion();
-  const items = buildItems({ pulse, overview, risk, health, eod, queue, quality, onGo });
+  const items = buildItems({ pulse, overview, risk, health, eod, queue, quality, reviewLoad, onGo });
   const loading = !pulse && !pulseError && !health && !healthError;
 
   return (
@@ -286,9 +351,13 @@ export function OverviewPanel({
       </Panel>
 
       <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-2">
+        <ReviewLoadPanel load={reviewLoad} onGoNoCurator={onGoNoCurator} />
+
+        {rewards}
+
         <SyncPanel health={health} error={healthError} onGo={onGo} />
 
-        <Panel
+        {canAudit && <Panel
           title={t("recent.title")}
           icon={ScrollText}
           actions={<Button variant="ghost" size="sm" onClick={() => onGo("audit")}>{t("recent.all")} <ArrowRight /></Button>}
@@ -317,7 +386,7 @@ export function OverviewPanel({
               })}
             </ul>
           )}
-        </Panel>
+        </Panel>}
       </div>
     </div>
   );

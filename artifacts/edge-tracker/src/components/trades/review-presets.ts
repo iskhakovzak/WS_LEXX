@@ -88,11 +88,18 @@ export function hasTag(tags: string | null | undefined, tag: string): boolean {
 
 // ── Client-side predicates (fallback while the API has no ?preset=) ─────────
 
-/** Closed trade without setup, tags, notes or review text. */
+/** Grades that count as a review (= server REVIEW_GRADES, lib/tradesPageQuery.ts). */
+const REVIEW_GRADES: readonly string[] = ["A+", "A", "B", "C"];
+
+/**
+ * «Без разбора» — closed trade with no grade and no review text (notes / what worked / what failed / conclusion), the
+ * server's untaggedSql. Setup and tags don't count: PropReports fills the setup on every auto trade.
+ */
 export function isUnreviewed(t: Trade): boolean {
   if (resultKey(t.result) === "open") return false;
   const blank = (v: string | null | undefined) => !v || !v.trim();
-  return blank(t.setup) && blank(t.tags) && blank(t.notes) && blank(t.whatWorked) && blank(t.whatFailed) && blank(t.conclusion);
+  const graded = REVIEW_GRADES.includes((t.confidenceGrade ?? "").trim());
+  return !graded && blank(t.notes) && blank(t.whatWorked) && blank(t.whatFailed) && blank(t.conclusion);
 }
 
 function feesHeavy(t: Trade): boolean {

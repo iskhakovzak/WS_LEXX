@@ -302,7 +302,10 @@ export interface Totals {
   losses: number;
   winRate: number | null;
   profitFactor: number | null;
+  /** Mean signed R over the trades that have one (stop / risk known) — see rTrades. */
   avgR: number | null;
+  /** Trades behind avgR: R exists only where a stop / risk is known, so avgR and net can differ in sign. */
+  rTrades: number;
   /** Shares traded (stripped for members). */
   volume?: number;
   tradingDays: number;
@@ -322,6 +325,8 @@ export interface StrategyRow {
   net: number;
   profitFactor: number | null;
   avgR: number | null;
+  /** Trades behind avgR (OWNER-13: a losing strategy showed +0.02R from the few trades that have an R). */
+  rTrades: number;
   /** net ÷ |office net| (signed; null when the office is flat). */
   netShare: number | null;
   /** Share of office volume, 0…1. */
@@ -455,6 +460,7 @@ function totalsOf(trades: Valued[], days: DayValue[], withVolume = true): Totals
     winRate: wins + losses ? round(wins / (wins + losses), 4) : null,
     profitFactor: profitFactor(gw, gl),
     avgR: rN ? round(rSum / rN, 3) : null,
+    rTrades: rN,
     tradingDays: days.length,
     greenDays: green,
     redDays: red,
@@ -486,6 +492,7 @@ function strategyRows(trades: Valued[], officeNet: number): StrategyRow[] {
       net: tot.net,
       profitFactor: tot.profitFactor,
       avgR: tot.avgR,
+      rTrades: tot.rTrades,
       netShare: Math.abs(officeNet) > 1e-9 ? round(tot.net / Math.abs(officeNet), 4) : null,
       volumeShare: totalVol > 0 ? round((tot.volume ?? 0) / totalVol, 4) : null,
       volume: tot.volume,
@@ -693,9 +700,10 @@ export function buildPrev(valued: Valued[], from: string, to: string): PrevPerio
 
 // ─── Insights (deterministic, in the reader's language — never an AI call) ──────────────────────────────────
 
-/** Stand-alone month name (1–12) in `lang`, lower-case like inside a sentence. */
-function monthName(month: number, lang: Lang): string {
-  return new Intl.DateTimeFormat(localeTagFor(lang), { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, month - 1, 15))).toLowerCase();
+/** Stand-alone month name (1–12) in `lang` as written inside a sentence: «апрель» / «aprel», but «April» in English. */
+export function monthName(month: number, lang: Lang): string {
+  const s = new Intl.DateTimeFormat(localeTagFor(lang), { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, month - 1, 15)));
+  return lang === "en" ? s.charAt(0).toUpperCase() + s.slice(1) : s.toLowerCase();
 }
 
 export function fmtUnit(v: number, unit: Unit, signed = true): string {

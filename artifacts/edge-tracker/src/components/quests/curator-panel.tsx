@@ -26,7 +26,7 @@ function Summary({ data }: { data: QuestsMe }) {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
         {s.onboarding && s.onboarding.done < s.onboarding.total && <Pill tone="purple">{t("header.onboarding", { done: s.onboarding.done, total: s.onboarding.total })}</Pill>}
-        <Pill tone="accent">{t("header.weekDone", { done: s.weekDone, total: s.weekTotal })}</Pill>
+        {s.weekTotal > 0 && <Pill tone="accent">{t("header.weekDone", { done: s.weekDone, total: s.weekTotal })}</Pill>}
         <Pill tone="neutral">{t("header.achievements", { earned: s.achievementsEarned, total: s.achievementsTotal })}</Pill>
       </div>
       {earned.length > 0 && (

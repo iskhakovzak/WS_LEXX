@@ -20,7 +20,7 @@ export default {
     revengeTitle: "Zarardan keyin < {min} daqiqada kirish",
     revengeDetail: "Zararli chiqishdan keyin {min} daqiqa ichida {n} ta savdo ochildi: sof {net}",
     sizeTitle: "Zarardan keyin oʻlchamni oshirish",
-    sizeDetail: "Oldingi zararli savdodan katta hajmli {n} ta savdo (×{factor}+): sof {net}",
+    sizeDetail: "Oldingi zararli savdodan $ dagi pozitsiyasi katta {n} ta savdo (×{factor}+): sof {net}",
     limitTitle: "Kunlik limitdan keyin savdo",
     limitDetail: "−{limit} limitiga {time} da yetildi; shundan keyin {n} ta savdo, sof {net}, zararlar {losses}",
   },

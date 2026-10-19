@@ -11,6 +11,8 @@
  *                       tagged    "all" | "part" | "none" of that day's trades linked to a setup; null = no trades
  *                       trainer   a trainer game started or a «Найди вход» answer that day
  *   missedTradingDays trading days strictly between the last visit and today (today itself never counts)
+ *   inactiveFrom      «Не заходят 3+ торговых дня» — the ONE rule for Использование and the Обзор card (OWNER-04):
+ *                     only trading days since tracking started count; under INACTIVE_AFTER of them → lowData
  *   parsePilot        the comma / newline separated pilot list → stored names (matched case-insensitively against
  *                     stored or Latin names), unknown entries kept apart for the admin
  */
@@ -119,6 +121,34 @@ export function funnelTotals(c: FunnelCells): Record<FunnelStep, number> {
  */
 export function missedTradingDays(tradingDays: readonly string[], lastDay: string | null, today: string): number {
   return tradingDays.filter((d) => d < today && (lastDay == null || d > lastDay)).length;
+}
+
+/** Traders silent for this many trading days are «не заходят» (both admin screens). */
+export const INACTIVE_AFTER = 3;
+
+export type InactiveRow = { name: string; lastDay: string | null; missedDays: number; capped: boolean };
+
+/**
+ * Who has not come for INACTIVE_AFTER+ trading days. `window` = ascending trading days ending at or before `today`;
+ * `trackedSince` = the first tracked day (usage_events). Only trading days on or after it count — a trader who traded
+ * on Friday is never «30+ days without a trace» because tracking started on Sunday. Fewer than INACTIVE_AFTER counted
+ * days before today → lowData (nobody is listed; the UI says «учёт с … — мало данных»). `capped` = never seen since
+ * tracking started (missedDays = every counted day).
+ */
+export function inactiveFrom(
+  names: readonly string[], lastDayOf: (name: string) => string | null, window: readonly string[], today: string,
+  trackedSince: string | null,
+): { lowData: boolean; trackedDays: number; rows: InactiveRow[] } {
+  const counted = trackedSince ? window.filter((d) => d >= trackedSince && d < today) : [];
+  if (counted.length < INACTIVE_AFTER) return { lowData: true, trackedDays: counted.length, rows: [] };
+  const rows: InactiveRow[] = [];
+  for (const name of names) {
+    const lastDay = lastDayOf(name);
+    const missed = missedTradingDays(counted, lastDay, today);
+    if (missed < INACTIVE_AFTER) continue;
+    rows.push({ name, lastDay, missedDays: missed, capped: !lastDay || lastDay < counted[0]! });
+  }
+  return { lowData: false, trackedDays: counted.length, rows };
 }
 
 export type PilotPerson = { name: string; nameLatin?: string | null };

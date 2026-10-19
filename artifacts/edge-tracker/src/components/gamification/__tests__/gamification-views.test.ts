@@ -15,6 +15,7 @@ import { SeasonTabView } from "../season-tab";
 import { QuestsExtrasView, QuestsHeaderView } from "../quests-blocks";
 import { RewardItemsList } from "../reward-editor";
 import { RewardQueueItems } from "../reward-queue";
+import { RewardsAdminView } from "../rewards-admin-block";
 import { gamificationKeys } from "../api";
 import { gami, items, league, season } from "./fixtures";
 
@@ -34,8 +35,8 @@ describe("season tab", () => {
     const html = render(createElement(SeasonTabView, { season: season(), league: null }));
     expect(html).toContain("Сезон октября");
     expect(html).toContain("Сезон октября: 84 очка · 7-е место · 12 дней до конца");
-    expect(html).toContain("Трейдер 3");
-    expect(html).toContain("Трейдер 11");
+    expect(html).toContain("Участник 3");
+    expect(html).toContain("Участник 11");
     expect(html).toContain("Железный");
     expect(html).toContain("Снайпер 1.3");
     expect(html).toContain("160 очков");
@@ -51,7 +52,7 @@ describe("season tab", () => {
     const html = render(createElement(SeasonTabView, { season: s, league: null }));
     expect(html).toContain('aria-current="true"');
     expect(html).not.toContain("…");
-    expect(html).not.toContain("Трейдер 9");
+    expect(html).not.toContain("Участник 9");
   });
 
   it("league: teams by rank, own team highlighted, curator sees members", () => {
@@ -88,7 +89,7 @@ describe("season tab", () => {
     await setLang("en", { source: "init" });
     const html = render(createElement(SeasonTabView, { season: season(), league: league() }));
     expect(html).toContain("October season: 84 points · place #7 · 12 days left");
-    expect(html).toContain("Trader 3");
+    expect(html).toContain("Participant 3");
     expect(html).toContain("Curator league");
   });
 
@@ -96,7 +97,7 @@ describe("season tab", () => {
     await setLang("uz", { source: "init" });
     const html = render(createElement(SeasonTabView, { season: season(), league: league() }));
     expect(html).toContain("Oktabr mavsumi");
-    expect(html).toContain("Treyder 3");
+    expect(html).toContain("Ishtirokchi 3");
     expect(html).toContain("Temir");
     expect(html.replace(/(Ольга|Артур)[^<]*/g, "")).not.toMatch(/[Ѐ-ӿ]/);
   });
@@ -129,7 +130,7 @@ describe("quests tab blocks", () => {
     expect(html).toContain("Достижение «Серия контракта» — Золото");
     expect(html).toContain("запрошено 16 окт");
     expect(html).toContain("вручено 30 сент");
-    expect(html).toContain("Место в сезоне не ниже 3-го");
+    expect(html).toContain("Топ-3 сезона");
     expect(html).toContain("Условие ещё не выполнено");
     expect(html).toContain("закончились");
     expect(html).toContain("Мастерство «Практик» по любому сетапу");
@@ -154,6 +155,28 @@ describe("admin catalog + curator queue", () => {
     expect(html).toContain("Уровень «Железный»");
     expect(html).toContain("Мастерство «Мастер» по сетапу 1.3");
     expect(html).toContain("Изменить");
+    // The inline on/off switch only with onToggle (OWNER-19).
+    expect(html).not.toContain("role=\"switch\"");
+    const withSwitch = render(createElement(RewardItemsList, { items, onEdit: () => {}, onToggle: () => {} }));
+    expect(withSwitch).toContain("role=\"switch\"");
+    expect(withSwitch).toContain("Выключить награду «Обед с руководителем»");
+  });
+
+  it("admin «Награды» block: numbers, empty state, links (OWNER-20)", () => {
+    const empty = render(createElement(RewardsAdminView, { stats: { requested: 0, granted: 0, grantedMonth: 0, declined: 0, activeItems: 0, items: 5 }, recent: [], onOpenCatalog: () => {} }));
+    expect(empty).toContain("Награды");
+    expect(empty).toContain("Запросов нет");
+    expect(empty).toContain("Ни одна награда не включена");
+    expect(empty).toContain("Каталог наград");
+    expect(empty).not.toContain("/curator?rewards=1");
+    const busy = render(createElement(RewardsAdminView, {
+      stats: { requested: 2, granted: 3, grantedMonth: 1, declined: 0, activeItems: 2, items: 5 },
+      recent: [{ id: 1, itemId: 3, trader: "Кирилл Б.", status: "granted", at: "2026-10-18T17:47:53Z", by: "Ольга Н.", title: "Книга" }],
+    }));
+    expect(busy).toContain("2 запроса ждут");
+    expect(busy).toContain("/curator?rewards=1");
+    expect(busy).toContain("«Книга»");
+    expect(busy).toContain("2 / 5");
   });
 
   it("queue: who asks for what, grant / decline", () => {
@@ -212,7 +235,7 @@ describe("recognition in the desk feed", () => {
   it("several the same day collapse into «N признания деска»; hidden names stay out", () => {
     const html = render(createElement(StreamGroup, {
       group: "recognition:2026-10-16",
-      items: [item(), item({ id: "rec:2", trader: null, title: "Трейдер 4: серия 10 дней" }), item({ id: "rec:3", trader: "Тимур А." })],
+      items: [item(), item({ id: "rec:2", trader: null, title: "Участник 4: серия 10 дней" }), item({ id: "rec:3", trader: "Тимур А." })],
       baseline: null,
     }));
     expect(html).toContain("3 признания деска");

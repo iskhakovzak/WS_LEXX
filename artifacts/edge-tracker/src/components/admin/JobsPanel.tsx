@@ -12,7 +12,13 @@ import { http } from "@/lib/api/http";
 import { nullIfMissing } from "@/lib/api/errors";
 import { POLL, STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
-import { fmtDate, fmtRelative } from "@/i18n/format";
+import { fmtDate, fmtRelative, fmtWeekday } from "@/i18n/format";
+import { useState } from "react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { jobState, parseCron, sendsMessages, type JobState } from "./jobs-model";
 import { adminJobsI18n } from "@/i18n/ns/adminJobs";
 
 type JobStatus = "running" | "ok" | "error" | "timeout" | "skipped";
@@ -32,8 +38,8 @@ export interface JobRow {
 
 const JOBS_KEY = ["admin-console", "jobs"] as const;
 
-const TONE: Record<JobStatus | "never" | "disabled", Tone> = {
-  running: "accent", ok: "up", error: "down", timeout: "down", skipped: "neutral", never: "neutral", disabled: "neutral",
+const TONE: Record<JobState, Tone> = {
+  running: "accent", ok: "up", flaky: "warn", error: "down", timeout: "down", skipped: "neutral", never: "neutral", disabled: "neutral",
 };
 
 function useJobs() {
@@ -59,10 +65,24 @@ export function JobsPanel({ isAdmin }: { isAdmin: boolean }) {
     onError: (e) => toast({ title: t("startFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
   });
 
+  const [confirm, setConfirm] = useState<string | null>(null);
   const label = (name: string) => adminJobsI18n.tryT(`names.${name}`) ?? name;
+  // OWNER-15: the cron line in words («по будням каждые 15 мин, 09:00–17:00»); the raw cron stays in the tooltip.
+  const cronText = (cron: string) => {
+    const c = parseCron(cron);
+    switch (c.kind) {
+      case "daily": return t("schedule.daily", { time: c.time });
+      case "weekdays": return t("schedule.weekdays", { time: c.time });
+      case "weekly": return t("schedule.weekly", { day: fmtWeekday(c.day, "long"), time: c.time });
+      case "every":
+        if (c.from && c.to) return t(c.weekdays ? "schedule.everyWeekdaysHours" : "schedule.everyHours", { minutes: c.minutes, from: c.from, to: c.to });
+        return t(c.weekdays ? "schedule.everyWeekdays" : "schedule.every", { minutes: c.minutes });
+      default: return c.cron;
+    }
+  };
   const schedule = (j: JobRow) => {
     const parts: string[] = [];
-    if (j.cron) parts.push(j.cron);
+    if (j.cron) parts.push(cronText(j.cron));
     if (j.on.includes("propreports.synced")) parts.push(t("schedule.onEvent"));
     if (!parts.length) parts.push(t("schedule.onStart"));
     return parts.join(" · ");
@@ -103,14 +123,14 @@ export function JobsPanel({ isAdmin }: { isAdmin: boolean }) {
             </thead>
             <tbody>
               {list.map((j) => {
-                const state: JobStatus | "never" | "disabled" = j.running ? "running" : !j.enabled ? "disabled" : j.last?.status ?? "never";
+                const state = jobState(j);
                 return (
                   <tr key={j.name} className="border-t border-[var(--glass-border)] align-top">
                     <td className="px-2 py-2">
                       <div className="font-medium">{label(j.name)}</div>
                       <div className="text-2xs text-muted-foreground">{j.name}</div>
                     </td>
-                    <td className="px-2 py-2 text-xs tabular-nums text-muted-foreground">{schedule(j)}</td>
+                    <td className="px-2 py-2 text-xs tabular-nums text-muted-foreground" title={j.cron ? t("schedule.rawTitle", { cron: j.cron }) : undefined}>{schedule(j)}</td>
                     <td className="px-2 py-2">
                       <Pill tone={TONE[state]}>{t(`status.${state}`)}</Pill>
                       {j.failures24h > 0 && <div className="mt-1 text-2xs text-down">{t("failures24h", { count: j.failures24h })}</div>}
@@ -135,7 +155,7 @@ export function JobsPanel({ isAdmin }: { isAdmin: boolean }) {
                           className="h-7"
                           aria-label={t("runAria", { job: label(j.name) })}
                           disabled={j.running || (run.isPending && run.variables === j.name)}
-                          onClick={() => run.mutate(j.name)}
+                          onClick={() => (sendsMessages(j.name) ? setConfirm(j.name) : run.mutate(j.name))}
                         >
                           <Play aria-hidden="true" /> {t("run")}
                         </Button>
@@ -148,6 +168,18 @@ export function JobsPanel({ isAdmin }: { isAdmin: boolean }) {
           </table>
         </div>
       )}
+      <AlertDialog open={!!confirm} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirm ? t("confirmTitle", { job: label(confirm) }) : ""}</AlertDialogTitle>
+            <AlertDialogDescription>{t("confirmText")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (confirm) run.mutate(confirm); setConfirm(null); }}>{t("confirmRun")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Panel>
   );
 }

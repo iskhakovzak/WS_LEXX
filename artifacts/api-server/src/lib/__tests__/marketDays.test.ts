@@ -60,13 +60,18 @@ describe("top of the day by the close day", () => {
 });
 
 describe("stored alert texts per reader", () => {
-  it("EN / UZ rebuilt from kind, used and limit; RU keeps the stored text", async () => {
+  it("halted kinds are rebuilt from kind, used and limit in every language (app money format); others keep the stored text", async () => {
     const { alertMessage } = await import("../../routes/risk");
     const row = { kind: "drawdown", used: 3631.2, limit: 2000, message: "Макс. просадка достигнута" };
     const en = alertMessage(row, "en");
     expect(en).not.toMatch(/[А-Яа-яЁё]/);
-    expect(en).toContain("2,000");
+    expect(en).toContain("$2,000");
+    expect(en).toContain("$3,631.20");
     expect(alertMessage(row, "uz")).not.toMatch(/[А-Яа-яЁё]/);
-    expect(alertMessage(row, "ru")).toBe("Макс. просадка достигнута");
+    const ru = alertMessage({ kind: "stop", used: 318.76, limit: 300, message: "Дневной убыток 318.76$ достиг лимита 300$" }, "ru");
+    expect(ru).toContain("$318.76");
+    expect(ru).toContain("$300");
+    expect(ru).not.toContain("318.76$");
+    expect(alertMessage({ kind: "positions", used: 6, limit: 5, message: "Открытые позиции" }, "en")).toBe("Открытые позиции");
   });
 });

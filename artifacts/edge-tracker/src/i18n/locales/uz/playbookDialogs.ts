@@ -18,7 +18,7 @@ export default {
     addFailed: "Qoʻshib boʻlmadi",
     noAccess: "Savdoga ruxsat yoʻq",
     updatedIn: "«{name}»da yangilandi · {tier}",
-    addedOne: "Savdo → «{name}» · {tier}",
+    addedOne: "«{name}» ga qoʻshildi · {tier}",
     addedMany: "{trades} → «{name}» · {tier}",
     setupFallback: "setap",
     skipped: "· {count} tasi oʻtkazib yuborildi",
@@ -48,7 +48,7 @@ export default {
     update: "Yangilash",
     add: "Qoʻshish",
     addN: "{count} tasini qoʻshish",
-    dialogDesc: "{trades} uchun setap va tierni tanlang",
+    dialogDesc: { one: "{count} ta savdo uchun setap va tierni tanlang", other: "{count} ta savdo uchun setap va tierni tanlang" },
   },
   add: {
     button: "Pleybukka",

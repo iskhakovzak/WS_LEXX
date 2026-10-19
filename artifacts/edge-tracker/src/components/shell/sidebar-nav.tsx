@@ -14,7 +14,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/auth-context";
 import { fmtUsd, fmtRate } from "@/lib/format";
 import { GO_MODE_EVENT, isNavActive, isWithin, rowChildren, rowLabel, type NavItem } from "./nav";
-import type { SimpleNav } from "./nav-model";
+import { rowKidLists, type SimpleNav } from "./nav-model";
 import { useNavModel } from "./use-nav-model";
 import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
 import { useRiskToday, useShellBadges, type NavBadge, type RiskToday } from "./use-shell-badges";
@@ -140,7 +140,7 @@ function Row({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
   const self = !row.hubLabel && isNavActive(row, ctx.location);
   const within = isWithin(row, ctx.location);
   const open = kids.length > 0 && (within || ctx.opened.has(row.href));
-  const pinnedKids = open ? [] : kids.filter((k) => ctx.pins.isPinned(k.href));
+  const { list: listKids, pinned: pinnedKids } = rowKidLists(kids, open, ctx.pins.isPinned);
   // A closed row still tells you something inside needs you.
   const badge = ctx.badges[row.href] ?? (open ? undefined : kids.map((k) => ctx.badges[k.href]).find(Boolean));
   const listId = `nav-sub-${row.key}`;
@@ -183,7 +183,7 @@ function Row({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
         <>
           <Reveal open={open} id={listId}>
             <ul className="relative space-y-0.5 py-0.5 before:absolute before:inset-y-1 before:left-[19px] before:w-px before:bg-[var(--glass-border)]">
-              {kids.map((k) => <ChildLink key={k.href} item={k} ctx={ctx} />)}
+              {listKids.map((k) => <ChildLink key={k.href} item={k} ctx={ctx} />)}
             </ul>
           </Reveal>
           {pinnedKids.length > 0 && (
@@ -313,7 +313,7 @@ function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
   const pnlCls = (risk.pnlNet ?? 0) > 0 ? "text-up" : (risk.pnlNet ?? 0) < 0 ? "text-down" : "text-foreground";
   const barCls = tone === "down" ? "bg-down" : tone === "warn" ? "bg-warn" : "bg-primary";
   const limitLine = risk.halted
-    ? t("today.halted")
+    ? t(risk.haltedBy === "drawdown" ? "today.haltedDrawdown" : risk.haltedBy === "weekly" ? "today.haltedWeekly" : "today.halted")
     : risk.dailyRemainingUsd != null ? t("today.toStop", { amount: fmtUsd(risk.dailyRemainingUsd, { decimals: "trim" }) }) : null;
   const tradesLine = risk.trades > 0 ? tc("units.trades", { count: risk.trades }) : t("today.noTrades");
 

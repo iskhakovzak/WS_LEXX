@@ -5,7 +5,9 @@
  *   level        ref = String(level) — the all-time discipline level (lib/daily/discipline)
  *   season_rank  ref = "season", rank = N — top N of a FINISHED season; every season is its own grant (grant ref = season)
  *   mastery      ref = setup code ("1.3") or "" (any setup), tier = String(level 1..4)
- * Flow: eligible → requested (trader) → granted | declined (staff). One grant per (item, trader, ref).
+ * Flow: eligible → requested (trader) → granted | declined (staff). One grant per (item, trader, ref). An open
+ * «eligible» grant whose item was deactivated or whose condition the trader no longer meets is «revoked» (migration
+ * 0217); it turns «eligible» again only when the trader qualifies later.
  */
 import { TIERS } from "../quests/achievements";
 import type { RewardItem } from "./types";
@@ -43,6 +45,27 @@ export function eligibleRefs(item: Pick<RewardItem, "condition">, i: Eligibility
     default:
       return [];
   }
+}
+
+/**
+ * Open «eligible» grants that no longer stand (revoked by the caller): the item is gone or inactive, or the trader no
+ * longer meets its — possibly edited — condition for that ref. Requested / decided grants are history and never stale.
+ */
+export function staleGrants<G extends { itemId: number; status: string; ref?: string }>(
+  grants: readonly G[], items: readonly RewardItem[], input: EligibilityInput,
+): G[] {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return grants.filter((g) => {
+    if (g.status !== "eligible") return false;
+    const item = byId.get(g.itemId);
+    return !item || !item.active || !eligibleRefs(item, input).includes(g.ref ?? "");
+  });
+}
+
+/** The condition changed (kind / ref / tier / rank): open eligibility of the item has to be re-checked. */
+export function conditionChanged(a: Pick<RewardItem, "condition">, b: Pick<RewardItem, "condition">): boolean {
+  const x = a.condition, y = b.condition;
+  return x.kind !== y.kind || (x.ref ?? "") !== (y.ref ?? "") || (x.tier ?? null) !== (y.tier ?? null) || (x.rank ?? null) !== (y.rank ?? null);
 }
 
 export type ItemProblem = "kind" | "ref" | "tier" | "rank" | "title" | "stock";

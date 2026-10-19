@@ -14,6 +14,10 @@ export default {
     none: "No repeating mistakes in the last 2 weeks — keep it up.",
     noneHint: "A focus appears when a mistake starts repeating.",
     forDate: "Focus for {date}",
+    own: "your pick",
+    ownHint: "From the journal: “Focus for tomorrow”.",
+    noTrades: "Your focus appears after your first trades.",
+    noTradesHint: "Today: plan → trainer → lesson.",
   },
   contract: {
     title: "Contract",
@@ -97,6 +101,8 @@ export default {
     top: "“{tier}” is the top level",
     criteriaAria: "Promotion criteria",
     ladder: "Whole ladder",
+    path: "Trader path",
+    noData: "no data",
     of: "{actual} · target {target}",
     metric: {
       trades: "Closed trades",

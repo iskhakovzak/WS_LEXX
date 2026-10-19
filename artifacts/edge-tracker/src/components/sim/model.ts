@@ -4,7 +4,7 @@
  * requests and reads answers.
  */
 import type { Candle } from "@/components/chart-engine";
-import type { WireBar } from "./api";
+import type { FillReason, SimFill, WireBar } from "./api";
 
 export const fromWire = (w: WireBar): Candle => ({ t: w[0], o: w[1], h: w[2], l: w[3], c: w[4], v: w[5] });
 
@@ -97,26 +97,72 @@ export function stopFits(kind: "buy" | "sell", price: number, stop: number | nul
   return stop != null && stop > 0 && (kind === "buy" ? stop < price : stop > price);
 }
 
-export type KeyAction = "buy" | "sell" | "flat" | "half" | "breakeven" | "cancel" | "next" | "auto" | "faster" | "slower" | "undo" | "again";
+export type KeyAction =
+  | "buy" | "sell" | "flat" | "half" | "breakeven" | "cancel" | "undo" | "again"
+  | "play" | "step" | "event" | "faster" | "slower" | "tf" | "size" | "skip" | "noTrade";
+/** A game key: the action and, for "tf" / "size", the 0-based slot (TF keys 1–4, base size Shift+1..4). */
+export type GameKey = { a: KeyAction; n?: number };
 
-/** Game keys, DAS-like (layout-independent: KeyboardEvent.code, so B/S/F/H/E work on a Russian layout too). */
-export function keyAction(e: { code: string; key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): KeyAction | null {
+/**
+ * Game keys, DAS-like (layout-independent: KeyboardEvent.code, so B/S/F/H/E work on a Russian layout too).
+ * Space / A = play-pause, → = one base bar, Shift+→ = jump to the next event, + / − (or ] / [) = speed, 1–4 = display
+ * timeframe, Shift+1..4 = size ½ / 1 / 2 / 3 bases, N = skip, T = no trade. Ctrl / Cmd / Alt combos are left alone.
+ */
+export function keyAction(e: { code: string; key?: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean }): GameKey | null {
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
+  const digit = /^(?:Digit|Numpad)([1-4])$/.exec(e.code);
+  if (digit) return { a: e.shiftKey ? "size" : "tf", n: Number(digit[1]) - 1 };
   switch (e.code) {
-    case "KeyB": return "buy";
-    case "KeyS": return "sell";
-    case "KeyF": case "KeyX": return "flat";
-    case "KeyH": return "half";
-    case "KeyE": return "breakeven";
-    case "Escape": return "cancel";
-    case "Space": case "ArrowRight": return "next";
-    case "KeyA": return "auto";
-    case "BracketRight": case "Equal": case "NumpadAdd": return "faster";
-    case "BracketLeft": case "Minus": case "NumpadSubtract": return "slower";
-    case "KeyZ": return "undo";
-    case "Enter": case "NumpadEnter": return "again";
+    case "KeyB": return { a: "buy" };
+    case "KeyS": return { a: "sell" };
+    case "KeyF": case "KeyX": return { a: "flat" };
+    case "KeyH": return { a: "half" };
+    case "KeyE": return { a: "breakeven" };
+    case "Escape": return { a: "cancel" };
+    case "Space": case "KeyA": return { a: "play" };
+    case "ArrowRight": return { a: e.shiftKey ? "event" : "step" };
+    case "BracketRight": case "Equal": case "NumpadAdd": return { a: "faster" };
+    case "BracketLeft": case "Minus": case "NumpadSubtract": return { a: "slower" };
+    case "KeyZ": return { a: "undo" };
+    case "KeyN": return { a: "skip" };
+    case "KeyT": return { a: "noTrade" };
+    case "Enter": case "NumpadEnter": return { a: "again" };
     default: return null;
   }
+}
+
+/* ─────────────────────────── Playback pace ─────────────────────────── */
+
+/** Playback speeds of the game screen: base bars per second (1× ≈ a calm read, 30× ≈ a whole 1m session in 13 s). */
+export const PACES = [1, 5, 30] as const;
+export type Pace = (typeof PACES)[number];
+export const isPace = (v: unknown): v is Pace => PACES.includes(v as Pace);
+export function nextPace(p: Pace, dir: 1 | -1): Pace {
+  const i = PACES.indexOf(p);
+  return PACES[Math.max(0, Math.min(PACES.length - 1, i + dir))];
+}
+
+/**
+ * Playback tick: how many whole bars are due after `dtMs` at `pace` bars/s, carrying the fraction to the next tick
+ * (so 30×, ticking every 50 ms, asks 1, 2, 1, 2 … bars). At most `cap` per tick (a background tab wakes up late).
+ */
+export function paceTick(pace: number, dtMs: number, carry: number, cap = 30): { bars: number; carry: number } {
+  const due = carry + (pace * Math.max(0, dtMs)) / 1000;
+  const bars = Math.min(cap, Math.floor(due));
+  return { bars, carry: bars === cap ? 0 : due - bars };
+}
+
+/* ─────────────────────────── Size in bases ─────────────────────────── */
+
+/** Size buttons: ½ · 1 · 2 · 3 bases (base = the game's defaultQty ≈ a $10k position). */
+export const BASE_MULTS = [0.5, 1, 2, 3] as const;
+export type BaseMult = (typeof BASE_MULTS)[number];
+export function baseQty(base: number, m: number): number {
+  return Math.max(1, Math.round(base * m));
+}
+/** Which base button a size matches (null = a custom size). */
+export function multOf(qty: number, base: number): BaseMult | null {
+  return BASE_MULTS.find((m) => baseQty(base, m) === qty) ?? null;
 }
 
 /* ─────────────────────────── Fake clock ─────────────────────────── */
@@ -154,4 +200,47 @@ export function stepErrorOf(err: unknown): StepError {
   if (reason === "buyingPower") return { reason, maxQty: typeof d?.maxQty === "number" ? d.maxQty : undefined };
   if (reason === "stop" || reason === "target" || reason === "qty") return { reason };
   return { reason: "generic" };
+}
+
+/* ─────────────────────────── Fills log ─────────────────────────── */
+
+/**
+ * Label key of each fill in the log (same order as `fills`): a buy that reduces or closes a short — a half close or
+ * «Закрыть» — reads «Покрыл» (MAKSIM-41); stop / target / end keep their reason; a flip keeps «Купил».
+ */
+export function fillLabels(fills: readonly Pick<SimFill, "qty" | "reason">[]): (FillReason | "cover")[] {
+  let pos = 0;
+  return fills.map((f) => {
+    const before = pos;
+    pos += f.qty;
+    const covers = before < 0 && f.qty > 0 && pos <= 0;
+    return covers && (f.reason === "buy" || f.reason === "flat") ? "cover" : f.reason;
+  });
+}
+
+/* ─────────────────────────── «Найди вход» view ─────────────────────────── */
+
+/** Narrow charts (phones) zoom to the «Найди вход» window instead of the default 150 bars (ILYA-07). */
+export const FOCUS_MAX_WIDTH = 768;
+const FOCUS_LEAD = 40;
+const FOCUS_PAD = 3;
+const FOCUS_MIN_BAR_PX = 7;
+/** The decision window should be at least this wide on screen. */
+const FOCUS_MIN_WINDOW_PX = 64;
+/** Price scale + margins (px) taken from the chart width. */
+const PRICE_AXIS_PX = 64;
+
+/**
+ * Visible logical range that keeps the decision window readable on a narrow chart: up to ~40 bars of lead-in plus the
+ * window plus a small right pad, bars at least FOCUS_MIN_BAR_PX wide (and wider for a short window). Null on wide
+ * charts, where the default view (150 bars) already leaves the window wide enough.
+ */
+export function focusRange(win: { from: number; to: number }, widthPx: number): { from: number; to: number } | null {
+  if (!(widthPx > 0) || widthPx >= FOCUS_MAX_WIDTH) return null;
+  const plot = Math.max(120, widthPx - PRICE_AXIS_PX);
+  const winBars = Math.max(1, win.to - win.from + 1);
+  const barPx = Math.max(FOCUS_MIN_BAR_PX, FOCUS_MIN_WINDOW_PX / winBars);
+  const visible = Math.floor(plot / barPx);
+  const lead = Math.max(0, Math.min(FOCUS_LEAD, visible - winBars - FOCUS_PAD));
+  return { from: win.from - lead, to: win.to + FOCUS_PAD };
 }

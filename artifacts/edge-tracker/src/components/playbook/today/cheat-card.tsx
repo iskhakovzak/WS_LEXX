@@ -3,7 +3,7 @@
  * row (the schematic | a REAL example chart with the entry / exit marked — example-chart.tsx; no example → the
  * schematic, larger); Вход / Стоп / Цель / Отмена as large rows; «Грейд A, если»; the live checklist with its grade;
  * the size calculator (cheat-parts.tsx). Details (description, examples, stats, history) come in as `children`,
- * collapsed under «Подробнее». The card is a size container: narrow (a column of the plan, the quick sheet, a phone)
+ * collapsed under «Подробнее». A locked setup shows only its name, window, picture and the unlock condition. The card is a size container: narrow (a column of the plan, the quick sheet, a phone)
  * it is one column; wide it splits the rules | the checklist. No text is clipped anywhere.
  */
 import { useState, type ReactNode } from "react";
@@ -127,9 +127,10 @@ export function CheatCard({
         </p>
       )}
 
-      <PictureRow setup={setup} withExample={withExample} onLeave={onLeave} />
+      <PictureRow setup={setup} withExample={withExample && !setup.locked} onLeave={onLeave} />
 
-      <div className={cn("grid min-w-0 gap-4", !narrow && "@3xl:grid-cols-2 @3xl:gap-6")}>
+      {/* Locked (DEV-06 / ILYA-27): the API sends no rules or checklist — no live checklist, no size calculator. */}
+      {!setup.locked && <div className={cn("grid min-w-0 gap-4", !narrow && "@3xl:grid-cols-2 @3xl:gap-6")}>
         <section className="flex min-w-0 flex-col gap-3">
           <CheatLines setup={setup} />
           <GradeABullets items={setup.cheat.gradeA} />
@@ -141,9 +142,9 @@ export function CheatCard({
             <SizeCalc setupId={setup.id} oneR={oneR} grade={grade} date={date} />
           </div>
         </section>
-      </div>
+      </div>}
 
-      {children && (
+      {children && !setup.locked && (
         <div className="border-t border-[var(--glass-border)] pt-3">
           <button
             type="button"

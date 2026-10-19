@@ -21,6 +21,7 @@ import {
   type Bar, type EventKind, type Reaction, type ReactionAgg,
 } from "../lib/analystReaction";
 import { AppError, badRequest, unauthorized } from "../lib/http";
+import { guardAnalystRefresh } from "../lib/analystRefreshCooldown";
 
 const router: IRouter = Router();
 
@@ -268,12 +269,11 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 // POST /api/analyst-actions/refresh — trigger combined refresh:
-//  1) Yahoo per-ticker scan over a DYNAMIC ticker list (static watchlist +
-//     user trades + watchlist table + tickers seen in recent news)
-//  2) News-based parser that extracts firm/action from news_cache headlines
-//     for tickers Yahoo doesn't cover.
-// Body can override the ticker list (still capped at 500).
+//  1) Yahoo per-ticker scan over a DYNAMIC ticker list (static watchlist + user trades + watchlist table + news tickers)
+//  2) News-based parser that extracts firm/action from news_cache headlines for tickers Yahoo doesn't cover.
+// Body can override the ticker list (≤ 500). Staff only, once per 10 min for the desk (DEV-03, lib/analystRefreshCooldown).
 router.post("/analyst-actions/refresh", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await guardAnalystRefresh(req, res))) return;
   const body = (req.body || {}) as { tickers?: string[]; concurrency?: number; newsDays?: number };
   const explicitTickers = Array.isArray(body.tickers) && body.tickers.length
     ? body.tickers.slice(0, 500).map((t) => String(t).toUpperCase().trim()).filter(Boolean)
@@ -807,7 +807,8 @@ router.get("/analyst-actions/firm-weight", asyncHandler(async (req, res): Promis
   // Warm the most-rated tickers we don't have yet (background, capped).
   warmBars(rated.filter((r) => !have.has(r.ticker) || stale.has(r.ticker)).map((r) => r.ticker), 25);
 
-  const coverage = { tickers: rated.filter((r) => have.has(r.ticker)).length, ratedTickers: rated.length, warming: warming || warmQueue.size > 0 };
+  const covered = rated.filter((r) => have.has(r.ticker)).length; // every rated ticker has bars → not «warming» (DATA-PERF)
+  const coverage = { tickers: covered, ratedTickers: rated.length, warming: covered < rated.length && (warming || warmQueue.size > 0) };
   const key = `${days}:${have.size}`;
   const hit = firmWeightCache.get(key);
   if (hit && Date.now() - hit.ts < FIRM_WEIGHT_TTL) { res.json({ ...(hit.body as object), coverage }); return; }

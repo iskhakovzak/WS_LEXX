@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Candle } from "@/components/chart-engine";
 import type { SetupExample } from "../../model";
 import { buildExampleView, chartWindow, clockText, nyMinuteOf, pickExample } from "../example-model";
+import { focusText } from "@/components/shared/plan-focus";
 import { pickCandidates, planFacts } from "../today-model";
 
 const ex = (over: Partial<SetupExample>): SetupExample => ({
@@ -65,11 +66,28 @@ describe("example of a setup", () => {
 });
 
 describe("my plan strip", () => {
-  it("reads the contract from the plan doc; the rule falls back to the morning focus until one is chosen", () => {
-    expect(planFacts({ plan: { doc: { maxLossUsd: 300, maxTrades: null, ownRule: "day:fees" } } }, null)).toEqual({ maxLossUsd: 300, maxTrades: null, rule: "day:fees", ruleFromFocus: false });
-    expect(planFacts({ plan: { doc: { maxTrades: 5 } } }, { mistake: "behavior:martingale", source: "auto" })).toEqual({ maxLossUsd: null, maxTrades: 5, rule: "behavior:martingale", ruleFromFocus: true });
-    expect(planFacts({ plan: { doc: { ownRule: null } } }, { mistake: "behavior:martingale", source: "auto" }).rule).toBeNull(); // «no rule» chosen
-    expect(planFacts(null, { mistake: "day:fees", source: "none" })).toEqual({ maxLossUsd: null, maxTrades: null, rule: null, ruleFromFocus: false });
+  it("reads the contract from the plan doc; «не повторяю» falls back to the morning focus until one is chosen", () => {
+    expect(planFacts({ plan: { doc: { maxLossUsd: 300, maxTrades: null, ownRule: "day:fees" } } }, null)).toEqual({ maxLossUsd: 300, stopSource: "plan", maxTrades: null, rule: null, ruleFromFocus: false, avoid: "day:fees", avoidFromFocus: false });
+    expect(planFacts({ plan: { doc: { maxTrades: 5 } } }, { mistake: "behavior:martingale", source: "auto" })).toEqual({ maxLossUsd: null, stopSource: null, maxTrades: 5, rule: null, ruleFromFocus: false, avoid: "behavior:martingale", avoidFromFocus: true });
+    expect(planFacts({ plan: { doc: { ownRule: null } } }, { mistake: "behavior:martingale", source: "auto" }).avoid).toBeNull(); // «no rule» chosen
+    expect(planFacts(null, { mistake: "day:fees", source: "none" })).toEqual({ maxLossUsd: null, stopSource: null, maxTrades: null, rule: null, ruleFromFocus: false, avoid: null, avoidFromFocus: false });
+  });
+  it("«Правило дня» is the plan's focus, not the mistake to avoid (ILYA-11)", () => {
+    const f = planFacts({ plan: { doc: { focus: "  Только A+ сетапы ", ownRule: "day:fees" } } }, null); // i18n-ignore (user text)
+    expect(f.rule).toBe("Только A+ сетапы"); // i18n-ignore (user text)
+    expect(f.avoid).toBe("day:fees");
+  });
+  it("«Правило дня» renders preset rules in the reader's language and falls back to the trader's own morning focus", () => {
+    expect(planFacts({ plan: { doc: { focus: "", focusRules: ["a"] } } }, null).rule).toBe(focusText({ focus: "", focusRules: ["a"] }));
+    const own = planFacts({ plan: { doc: {} } }, { mistake: null, source: "own", ownText: " no revenge " });
+    expect(own).toMatchObject({ rule: "no revenge", ruleFromFocus: true, avoid: null, avoidFromFocus: false });
+    expect(planFacts({ plan: { doc: { focus: "plan rule" } } }, { mistake: null, source: "own", ownText: "own" })).toMatchObject({ rule: "plan rule", ruleFromFocus: false });
+    expect(planFacts(null, { mistake: "day:fees", source: "auto", ownText: "ignored" }).rule).toBeNull();
+  });
+  it("the daily stop falls back to the desk limit, labelled as such (ILYA-12)", () => {
+    expect(planFacts({ plan: { doc: {} } }, null, 150)).toMatchObject({ maxLossUsd: 150, stopSource: "limits" });
+    expect(planFacts({ plan: { doc: { maxLossUsd: 120 } } }, null, 150)).toMatchObject({ maxLossUsd: 120, stopSource: "plan" });
+    expect(planFacts(null, null, 0)).toMatchObject({ maxLossUsd: null, stopSource: null });
   });
   it("prompt tiles: the suggestion first, then anything starred, no duplicates", () => {
     expect(pickCandidates([3, 1], [1, 7])).toEqual([3, 1, 7]);

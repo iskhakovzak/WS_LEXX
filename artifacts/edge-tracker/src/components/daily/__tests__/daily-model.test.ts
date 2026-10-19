@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
 import { PICKABLE_MISTAKES, mistakeLabel, mistakeRule, parseMistake } from "@/components/shared/mistake-labels";
-import { contractLine, contractOverall, dayView, eveningRewards, fmtDelta, fmtMetric, fmtTarget, planContract, tierTitle } from "../daily-model";
+import {
+  contractDate, contractLine, contractOverall, criterionValue, dayView, eveningRewards, fmtDelta, fmtMetric, fmtTarget, metricLabel, planContract, tierTitle,
+} from "../daily-model";
 import { contractBroken, eveningBroken, focusAuto, focusNone, me, progress } from "./fixtures";
 
 afterEach(async () => {
@@ -98,7 +100,7 @@ describe("tier title in three languages", () => {
     await setLang("en", { source: "init" });
     expect(tierTitle(progress)).toBe("To Junior: 3 of 5");
     await setLang("uz", { source: "init" });
-    expect(tierTitle(progress)).toBe("Junior darajasigacha: 5 tadan 3");
+    expect(tierTitle(progress)).toBe("Junior darajasigacha: 3/5 bajarildi");
   });
 
   it("top tier and custom tiers", async () => {
@@ -106,6 +108,32 @@ describe("tier title in three languages", () => {
     expect(tierTitle({ ...progress, tier: "senior", nextTier: null })).toBe("“Senior” is the top level");
     expect(tierTitle({ ...progress, nextTier: "Pro" })).toBe("To “Pro”: 3 of 5");
     expect(tierTitle({ ...progress, tier: null, nextTier: null })).toBeNull();
+  });
+
+  it("the ladder ends at Сеньор: a risk tier above it is the top, never a raw key (ROMAN-07)", () => {
+    expect(tierTitle({ ...progress, tier: "senior", nextTier: "lead" })).toBe("Уровень «Сеньор» — высший");
+  });
+});
+
+describe("academy-path criteria on the ladder chip (ILYA-04)", () => {
+  const item = { metric: "trading_days", label: { key: "path.metric.trading_days" }, actual: 16, target: 15, ok: true, text: "15 из 20 торговых дней", display: "16", targetDisplay: "≥ 15" };
+  it("the path's own label and «value · цель target» strings", () => {
+    expect(metricLabel(item)).toBe("15 из 20 торговых дней");
+    expect(criterionValue(item)).toBe("16 · цель ≥ 15");
+  });
+  it("no trades in the window → «нет данных», not a pass", () => {
+    expect(criterionValue({ ...item, ok: false, actual: null, noData: true })).toBe("нет данных");
+  });
+  it("older servers (numbers only) keep the metric formatting", () => {
+    expect(criterionValue({ metric: "net_pnl", label: { key: "x" }, actual: 120, target: 750, ok: false })).toBe(`${fmtMetric("net_pnl", 120)} · цель ${fmtTarget("net_pnl", 750)}`);
+  });
+});
+
+describe("contractDate — the contract is for the next session (UMID-06)", () => {
+  it("weekend → the focus date (Monday); a trading day → today", () => {
+    expect(contractDate({ today: "2026-10-18", focus: { ...focusAuto, date: "2026-10-19" } })).toBe("2026-10-19");
+    expect(contractDate({ today: "2026-10-16", focus: { ...focusAuto, date: "2026-10-16" } })).toBe("2026-10-16");
+    expect(contractDate({ today: "2026-10-16", focus: null })).toBe("2026-10-16");
   });
 });
 

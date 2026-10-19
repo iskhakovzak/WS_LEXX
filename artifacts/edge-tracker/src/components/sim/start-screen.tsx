@@ -82,7 +82,8 @@ export function WeeklyBoard() {
       }
     >
       {q.isLoading ? <ListSkeleton rows={4} /> : q.isError ? <ErrorState error={q.error} onRetry={q.refetch} inset /> : !b || b.rows.length === 0 ? (
-        <EmptyState compact icon={Users} title={t("board.empty")} />
+        // Nobody visible is not «nobody played»: players who hid their results still count (MAKSIM-42).
+        <EmptyState compact icon={Users} title={b && b.hidden > 0 ? t("board.hidden", { count: b.hidden }) : t("board.empty")} />
       ) : (
         <>
           <DataTable ariaLabel={t("board.title")} maxHeight={360}>

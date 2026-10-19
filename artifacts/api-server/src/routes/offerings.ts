@@ -15,6 +15,8 @@ import {
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { offeringsT } from "../i18n/ns";
 import { langOf, type Lang } from "../i18n";
+import { WATCH_DAY_KEEP_MS, WATCH_DAY_KIND, dbCacheRead, dbCacheWrite, watchCachePlan } from "../lib/offeringsCache";
+export { watchCachePlan, type WatchCachePlan } from "../lib/offeringsCache";
 
 const router: IRouter = Router();
 
@@ -1262,6 +1264,22 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
 
+  // Cache-first (ROMAN-04): the payload stored by the last upstream fetch of this day, whatever the API restarts.
+  const stored = force ? null : (await dbCacheRead<{ fetchedAt?: number; enrichment?: { complete?: boolean } }>(WATCH_DAY_KIND, [day], WATCH_DAY_KEEP_MS)).get(day) ?? null;
+  const storedAt = stored ? Number(stored.data?.fetchedAt) || stored.ts : null;
+  // An incomplete payload is fresh for ~90 s only (same rule as the in-memory cache below).
+  const ttlMs = stored?.data?.enrichment?.complete === false ? 90_000 : CACHE_TTL;
+  const plan = watchCachePlan({ storedAt, day, today: todayNy(), now: Date.now(), ttlMs, force, revalidate: req.query.revalidate === "1" });
+  if (stored && plan === "fresh") {
+    cache.set(cacheKey, { data: stored.data, ts: (storedAt ?? Date.now()) - (CACHE_TTL - ttlMs) });
+    res.json(localizeOfferings(stored.data, langOf(req)));
+    return;
+  }
+  if (stored && plan === "stale") {
+    res.json(localizeOfferings({ ...stored.data, stale: true }, langOf(req)));
+    return;
+  }
+
   try {
     // NASDAQ (month feed, filtered to the day) and EDGAR (D-1..D) in parallel
     const [nasdaqResult, edgarResult] = await Promise.all([
@@ -1309,6 +1327,8 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
     };
     // An incomplete payload lives ~90 s so the next poll picks up the warmed caches.
     cache.set(cacheKey, { data: payload, ts: complete ? Date.now() : Date.now() - CACHE_TTL + 90_000 });
+    // Stored for the next cold call (not while every source is down — an empty outage page must not stick).
+    if (nasdaqResult.ok || edgarResult.ok) void dbCacheWrite(WATCH_DAY_KIND, day, payload);
     res.json(localizeOfferings(payload, langOf(req)));
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1463,53 +1483,6 @@ async function viaYahoo<T>(fn: () => Promise<T | null>): Promise<T | null> {
 /** Resolve `p`, or `fallback` once `ms` passes (p keeps running and fills caches). */
 function withBudget<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([p, sleep(ms).then(() => fallback)]);
-}
-
-// ── DB cache (survives API restarts): offering_ticker_cache(ticker, kind) ──
-let ensureCachePromise: Promise<void> | null = null;
-function ensureOfferingCache(): Promise<void> {
-  if (!ensureCachePromise) {
-    ensureCachePromise = pool.query(
-      `CREATE TABLE IF NOT EXISTS offering_ticker_cache (
-         ticker TEXT NOT NULL,
-         kind TEXT NOT NULL,
-         payload JSONB NOT NULL,
-         fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-         PRIMARY KEY (ticker, kind)
-       )`,
-    ).then(() => undefined).catch((e) => { ensureCachePromise = null; throw e; });
-  }
-  return ensureCachePromise;
-}
-async function dbCacheRead<T>(kind: string, tickers: string[], ttlMs: number): Promise<Map<string, { data: T; ts: number }>> {
-  const out = new Map<string, { data: T; ts: number }>();
-  if (!tickers.length) return out;
-  try {
-    await ensureOfferingCache();
-    const { rows } = await pool.query<{ ticker: string; payload: T; fetched_at: Date }>(
-      `SELECT ticker, payload, fetched_at FROM offering_ticker_cache WHERE kind = $1 AND ticker = ANY($2::text[])`,
-      [kind, tickers],
-    );
-    for (const r of rows) {
-      const ts = new Date(r.fetched_at).getTime();
-      if (Date.now() - ts < ttlMs) out.set(r.ticker, { data: r.payload, ts });
-    }
-  } catch (e: any) {
-    logger.warn({ kind, error: e?.message }, "offering cache read failed");
-  }
-  return out;
-}
-async function dbCacheWrite(kind: string, ticker: string, data: unknown): Promise<void> {
-  try {
-    await ensureOfferingCache();
-    await pool.query(
-      `INSERT INTO offering_ticker_cache (ticker, kind, payload, fetched_at) VALUES ($1, $2, $3::jsonb, NOW())
-       ON CONFLICT (ticker, kind) DO UPDATE SET payload = EXCLUDED.payload, fetched_at = NOW()`,
-      [ticker, kind, JSON.stringify(data)],
-    );
-  } catch (e: any) {
-    logger.warn({ kind, ticker, error: e?.message }, "offering cache write failed");
-  }
 }
 
 // ── Fundamentals: float, cash, burn (Yahoo quoteSummary), 12 h ──

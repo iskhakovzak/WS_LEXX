@@ -13,7 +13,8 @@ import { exitEffTone } from "@/components/replay/QualityBlock";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { TradeDay, TradesPageFacets, TradesPageSummary } from "@/hooks/use-trades-page";
-import { fmtHold, holdSeconds, netPnl, tradeWall, wallHm, type QualityMap, type SortConfig, type TradeQualityLite } from "./trade-utils";
+import { effectiveR, fmtHold, holdSeconds, netPnl, tradeWall, wallHm, type QualityMap, type SortConfig, type TradeQualityLite } from "./trade-utils";
+import { feeShareText } from "./sheet-model";
 import { PRESETS, PRESET_META, type Preset, type TagKind } from "./review-presets";
 import { ReviewChips, type PickerTarget } from "./review-tagging";
 import { SidePill } from "./trade-bits";
@@ -71,7 +72,7 @@ export function ReviewKpis({
   const useR = !!s && closed > 0 && s.rCount / closed >= 0.5;
   const gross = s?.gross ?? null;
   const fees = s?.fees ?? null;
-  const feeShare = gross != null && gross > 0 && fees != null ? fees / gross : null;
+  const feeShare = feeShareText(fees, gross);
   const payoff = useR
     ? s?.avgWinR != null && s.avgLossR != null && s.avgLossR !== 0 ? s.avgWinR / Math.abs(s.avgLossR) : null
     : s?.avgWinNet != null && s.avgLossNet != null && s.avgLossNet !== 0 ? s.avgWinNet / Math.abs(s.avgLossNet) : null;
@@ -124,8 +125,8 @@ export function ReviewKpis({
         term="fees"
         loading={loading}
         value={fees != null ? fmtUsd(-Math.abs(fees), { signed: true, decimals: "auto" }).replace("−", "") : "—"}
-        delta={feeShare != null ? t("review.kpi.feesShareOfGross", { share: fmtRate(feeShare) }) : undefined}
-        deltaTone={feeShare != null && feeShare > 0.5 ? "warn" : "neutral"}
+        delta={feeShare != null ? t("review.kpi.feesShareOfGross", { share: feeShare.text }) : undefined}
+        deltaTone={feeShare != null && feeShare.share > 0.5 ? "warn" : "neutral"}
         hint={gross != null ? t("review.kpi.grossHint", { amount: fmtUsd(gross, { signed: true, decimals: "auto" }) }) : undefined}
         onClick={() => onPreset("fees")}
       />
@@ -229,7 +230,18 @@ export function PresetBar({
 
 // ── Trade row ─────────────────────────────────────────────────────────────────
 
-export const ROW_GRID = "grid grid-cols-[20px_116px_minmax(96px,0.6fr)_104px_140px_92px_minmax(200px,1.7fr)_20px] items-center gap-x-3";
+/**
+ * Row grid. md+: the review table (fixed tracks, ~900px; the page scrolls it sideways when needed). Below md a
+ * two-line card (ILYA-09): checkbox | ticker + side / time + hold | net + R; the other cells are hidden there.
+ */
+export const ROW_GRID = "grid grid-cols-[20px_minmax(0,1fr)_auto] md:grid-cols-[20px_116px_minmax(96px,0.6fr)_104px_140px_92px_minmax(200px,1.7fr)_20px] items-center gap-x-3";
+/** Cell placement of the phone card (reset to the table flow from md). */
+const CELL_PHONE = {
+  check: "row-span-2 md:row-span-1",
+  when: "col-start-2 row-start-2 md:col-start-auto md:row-start-auto",
+  ticker: "col-start-2 row-start-1 md:col-start-auto md:row-start-auto",
+  net: "col-start-3 row-start-1 row-span-2 md:col-start-auto md:row-start-auto md:row-span-1",
+} as const;
 
 function CaptureCell({ q, pending }: { q: TradeQualityLite | undefined; pending: boolean }) {
   const { t } = tradesI18n.useT();
@@ -287,6 +299,7 @@ export function ReviewTradeRow({
   const hold = holdSeconds(t);
   const net = t.pnl != null ? netPnl(t) : null;
   const open = wallHm(w.open);
+  const r = effectiveR(t).value;
   return (
     <div
       role="row"
@@ -302,7 +315,7 @@ export function ReviewTradeRow({
         highlight && "animate-pulse",
       )}
     >
-      <span onClick={(e) => e.stopPropagation()} className="flex items-center">
+      <span onClick={(e) => e.stopPropagation()} className={cn("flex items-center", CELL_PHONE.check)}>
         <Checkbox
           checked={selected}
           aria-label={tr("review.select", { ticker: t.ticker })}
@@ -310,15 +323,15 @@ export function ReviewTradeRow({
           onCheckedChange={() => { /* handled in onClick (shift-range) */ }}
         />
       </span>
-      <span className="flex flex-col leading-tight">
-        <span className="text-sm tabular-nums text-foreground">
+      <span className={cn("flex flex-col leading-tight max-md:flex-row max-md:gap-1.5", CELL_PHONE.when)}>
+        <span className="text-sm tabular-nums text-foreground max-md:text-xs max-md:text-muted-foreground">
           {showDate ? fmtDayLong(t.date.slice(0, 10), false) : open ?? "—"}
         </span>
         <span className="text-xs tabular-nums text-muted-foreground">
           {showDate ? (open ? `${open} · ${fmtHold(hold)}` : fmtHold(hold)) : fmtHold(hold)}
         </span>
       </span>
-      <span className="flex min-w-0 flex-col leading-tight">
+      <span className={cn("flex min-w-0 flex-col leading-tight", CELL_PHONE.ticker)}>
         <span className="flex min-w-0 items-center gap-1.5">
           <button type="button" onClick={(e) => { e.stopPropagation(); onFocusRow(t.id); onOpen(t); }} className="truncate text-sm font-semibold text-foreground hover:underline" title={t.ticker}>
             {t.ticker}
@@ -326,19 +339,20 @@ export function ReviewTradeRow({
           <SidePill side={t.side} compact />
         </span>
         {showTrader && t.trader && <span className="truncate text-xs text-muted-foreground" title={personName(t.trader)}>{personName(t.trader)}</span>}
-        {!showTrader && t.qty != null && <span className="truncate text-xs tabular-nums text-muted-foreground">{commonI18n.t("units.shares", { count: fmtCount(t.qty) })}</span>}
+        {!showTrader && t.qty != null && <span className="hidden truncate text-xs tabular-nums text-muted-foreground md:inline">{commonI18n.t("units.shares", { count: fmtCount(t.qty) })}</span>}
       </span>
-      <span className="flex items-center" aria-hidden="true">
+      <span className="hidden items-center md:flex" aria-hidden="true">
         <TradeSparkline trade={t} width={100} height={30} />
       </span>
-      <span className="flex flex-col items-end leading-tight">
+      <span className={cn("flex flex-col items-end leading-tight", CELL_PHONE.net)}>
         <span className={cn("text-sm font-semibold tabular-nums", net == null ? "text-muted-foreground" : toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
-        {t.fees ? <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground" title={tr("review.grossFeesTitle")}>{tr("review.grossFees", { gross: fmtUsd(t.pnl, { signed: true, decimals: "auto" }), fees: fmtUsd(Math.abs(t.fees), { signed: true, decimals: "auto" }).replace("+", "") })}</span> : null}
+        {r != null && <span className="text-xs tabular-nums text-muted-foreground md:hidden" title={tr("review.rGrossTitle")}>{fmtR(r, 2)}</span>}
+        {t.fees ? <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground md:inline" title={tr("review.grossFeesTitle")}>{tr("review.grossFees", { gross: fmtUsd(t.pnl, { signed: true, decimals: "auto" }), fees: fmtUsd(Math.abs(t.fees), { signed: true, decimals: "auto" }).replace("+", "") })}</span> : null}
       </span>
-      <span className="flex justify-end">
+      <span className="hidden justify-end md:flex">
         <CaptureCell q={quality[t.id]} pending={qualityPending} />
       </span>
-      <ReviewChips trade={t} canTag={canTag} picker={picker} setPicker={setPicker} onPick={onPick} setupOptions={setupOptions} />
+      <ReviewChips trade={t} canTag={canTag} picker={picker} setPicker={setPicker} onPick={onPick} setupOptions={setupOptions} className="hidden md:flex" />
       {onAddToPlaybook ? (
         <button
           type="button"
@@ -346,14 +360,14 @@ export function ReviewTradeRow({
           title={tr("review.addToPlaybookTitle")}
           onClick={(e) => { e.stopPropagation(); onFocusRow(t.id); onAddToPlaybook(t); }}
           className={cn(
-            "-mx-1.5 grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover:opacity-100",
+            "-mx-1.5 hidden h-8 w-8 place-items-center md:grid rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover:opacity-100",
             active && "md:opacity-100",
           )}
         >
           <BookOpen className="h-4 w-4" aria-hidden="true" />
         </button>
       ) : (
-        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+        <ChevronRight className="hidden h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 md:block" aria-hidden="true" />
       )}
     </div>
   );
@@ -373,7 +387,7 @@ export function RowsHeader({ showDate, sort, onSort }: { showDate: boolean; sort
       <span role="columnheader" className={cn(opts.align === "right" && "text-right")} title={opts.title}>{label}</span>
     );
   return (
-    <div role="row" className={cn(ROW_GRID, "border-b border-[var(--glass-border)] px-3 py-1.5 text-xs text-muted-foreground")}>
+    <div role="row" className={cn(ROW_GRID, "hidden border-b border-[var(--glass-border)] px-3 py-1.5 text-xs text-muted-foreground md:grid")}>
       <span />
       {sort && onSort && showDate ? (
         <span className="flex min-w-0 items-center gap-1">
@@ -420,37 +434,37 @@ export function DayCard({
     let c = 0;
     return [0, ...day.seq.map((v) => (c += v))];
   }, [day.seq]);
-  const feeShare = day.gross != null && day.gross > 0 && day.fees != null ? day.fees / day.gross : null;
+  const feeShare = feeShareText(day.fees, day.gross);
   const closed = day.wins + day.losses + day.be;
   const { t } = tradesI18n.useT();
   return (
     <section className="glass-panel overflow-hidden rounded-2xl" aria-label={t("review.day.aria", { date: fmtDayLong(day.date) })}>
-      <div className="flex items-center gap-4 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-4 text-left"
+          className="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-x-4 gap-y-1 text-left sm:basis-0"
         >
           <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !expanded && "-rotate-90")} aria-hidden="true" />
           <span className="w-[112px] shrink-0">
             <span className="block text-sm font-semibold text-foreground">{fmtDayLong(day.date)}</span>
             <span className="block text-xs tabular-nums text-muted-foreground">{day.firstAt && day.lastAt ? `${day.firstAt}–${day.lastAt}` : t("review.day.timeUnknown")}</span>
           </span>
-          <span className={cn("w-[96px] shrink-0 text-right text-lg font-semibold tabular-nums", day.net == null ? "text-muted-foreground" : toneText(toneOf(day.net)))}>
+          <span className={cn("ml-auto shrink-0 text-right text-lg font-semibold tabular-nums sm:ml-0 sm:w-[96px]", day.net == null ? "text-muted-foreground" : toneText(toneOf(day.net)))}>
             {fmtUsd(day.net, { signed: true, decimals: "auto" })}
           </span>
-          <Sparkline data={curve} baseline={0} tone={toneOf(day.net)} width={120} height={30} className="shrink-0" ariaLabel={t("review.day.curveAria")} />
-          <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          <Sparkline data={curve} baseline={0} tone={toneOf(day.net)} width={120} height={30} className="hidden shrink-0 sm:block" ariaLabel={t("review.day.curveAria")} />
+          <span className="flex min-w-0 basis-full flex-wrap items-center gap-x-4 gap-y-1 pl-8 text-sm text-muted-foreground sm:basis-auto sm:pl-0">
             <span className="tabular-nums"><span className="text-foreground">{num(day.count)}</span> {commonI18n.t("units.tradesWord", { count: day.count })}</span>
             <span className="tabular-nums">WR <span className="text-foreground">{fmtRate(day.winRate)}</span>{closed ? ` · ${day.wins}/${day.losses}` : ""}</span>
             {day.fees != null && day.fees > 0 && (
               <span className="tabular-nums" title={t("review.day.feesTitle")}>
                 {t("review.day.feesShort")} <span className="text-foreground">{fmtUsd(day.fees, { signed: true, decimals: "auto" }).replace("+", "")}</span>
-                {feeShare != null && <span className={cn(feeShare > 0.5 && "text-warn")}> · {fmtRate(feeShare)}</span>}
+                {feeShare != null && <span className={cn(feeShare.share > 0.5 && "text-warn")}> · {feeShare.text}</span>}
               </span>
             )}
-            {day.rCount > 0 && <span className="tabular-nums">{fmtR(day.totalR, 1)}</span>}
+            {day.rCount > 0 && <span className="tabular-nums" title={t("review.rGrossTitle")}>{t("review.day.rGross", { r: fmtR(day.totalR, 1) })}</span>}
           </span>
         </button>
         {day.untagged > 0 && <Pill tone="warn" title={t("review.day.untaggedTitle")} className="shrink-0 whitespace-nowrap">{t("review.day.untagged", { count: day.untagged })}</Pill>}

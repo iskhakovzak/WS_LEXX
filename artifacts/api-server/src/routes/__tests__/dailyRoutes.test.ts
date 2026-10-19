@@ -69,7 +69,7 @@ describe("GET /daily/me and /daily/trader/:name", () => {
   it("a trader gets their own card", async () => {
     const r = await call("GET", "/api/daily/me");
     expect(r.status).toBe(200);
-    expect(service.dailyMe).toHaveBeenCalledWith("Кирилл Б.");
+    expect(service.dailyMe).toHaveBeenCalledWith("Кирилл Б.", "ru");
   });
   it("a trader can't read another trader", async () => {
     const r = await call("GET", `/api/daily/trader/${encodeURIComponent("Максим Р.")}`);
@@ -80,7 +80,7 @@ describe("GET /daily/me and /daily/trader/:name", () => {
   it("a curator reads a trader; an unknown trader is 404", async () => {
     who = CURATOR;
     expect((await call("GET", `/api/daily/trader/${encodeURIComponent("Кирилл Б.")}`)).status).toBe(200);
-    expect(service.dailyMe).toHaveBeenCalledWith("Кирилл Б.");
+    expect(service.dailyMe).toHaveBeenCalledWith("Кирилл Б.", "ru");
     const r = await call("GET", `/api/daily/trader/${encodeURIComponent("Никто")}`);
     expect(r.status).toBe(404);
     expect(r.json.code).toBe("TRADER_NOT_FOUND");

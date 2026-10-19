@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { fmtR, fmtUsd } from "@/lib/format";
 import { comparePersonNames, personName } from "@/i18n";
 import type { RiskDesk, RiskDeskRow } from "./use-dashboard";
+import { stoppedTraders } from "./today-hero";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 
@@ -107,9 +108,9 @@ function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
       fill={fill}
       description={t("desk.desc", { traders: commonI18n.t("units.traders", { count: s.traders }), trades: commonI18n.t("units.trades", { count: s.tradesToday }) })}
       actions={
-        s.halted + s.breach > 0 ? (
+        stoppedTraders(s) > 0 ? (
           <Pill tone="down" dot>
-            {t("desk.stops", { count: s.halted + s.breach })}
+            {t("desk.stops", { count: stoppedTraders(s) })}
           </Pill>
         ) : s.warn > 0 ? (
           <Pill tone="warn" dot>

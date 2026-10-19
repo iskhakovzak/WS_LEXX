@@ -421,7 +421,8 @@ export function StrengthsPanel({ doc }: { doc: DayReport }) {
             {s.setups.length > 0 && <EdgeRow label={td("strengths.setups")} items={s.setups.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })} (${x.wins}/${x.trades})`)} />}
             {s.sides.length > 0 && <EdgeRow label={td("strengths.side")} items={s.sides.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })}`)} />}
             {s.bestHour && <EdgeRow label={td("strengths.bestHour")} items={[`${s.bestHour.label} ${fmtUsd(s.bestHour.net, { signed: true })}`]} />}
-            {s.setups.length === 0 && <p className="text-xs text-muted-foreground">{td("strengths.noSetups")}</p>}
+            {/* «Not given» only when no trade carries a broker strategy name or a playbook setup. */}
+            {s.setups.length === 0 && <p className="text-xs text-muted-foreground">{td((s.setupTrades ?? 0) > 0 ? "strengths.noSetupEdge" : "strengths.noSetups")}</p>}
           </div>
         </div>
       )}

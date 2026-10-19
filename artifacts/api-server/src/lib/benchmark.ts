@@ -14,6 +14,13 @@
  */
 import { benchmarkT } from "../i18n/ns";
 import type { Lang } from "../i18n";
+import { fmtDateFor } from "../i18n/format";
+
+/** «$880.24» / «−$12.50» (ROMAN-30: badges said «880.24 $»). Money keeps the trading format in every language. */
+export function fmtMoney(v: number, signed = false): string {
+  const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}$${abs}`;
+}
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -479,7 +486,7 @@ export function badgesFor(m: TraderMetrics, pct: PercentileMap | undefined, desk
   const t = benchmarkT.tFor(lang);
   const out: Badge[] = [];
   const pctTxt = (x: number) => `${Math.round(x * 100)}%`;
-  if (m.consistencyFlag === "breach" && m.bestDay) out.push({ kind: "weakness", key: "consistency", label: t("badge.consistencyBreach"), detail: t("badge.consistencyBreachDetail", { day: m.bestDay.day, share: pctTxt(m.bestDayShare ?? 0) }) });
+  if (m.consistencyFlag === "breach" && m.bestDay) out.push({ kind: "weakness", key: "consistency", label: t("badge.consistencyBreach"), detail: t("badge.consistencyBreachDetail", { day: fmtDateFor(lang, m.bestDay.day, "dayMonth"), share: pctTxt(m.bestDayShare ?? 0) }) });
   else if (m.consistencyFlag === "warn" && m.bestDay) out.push({ kind: "weakness", key: "consistency", label: t("badge.consistencyWarn"), detail: t("badge.consistencyWarnDetail", { share: pctTxt(m.bestDayShare ?? 0) }) });
   else if (m.consistencyFlag === "ok" && m.days >= 10) out.push({ kind: "strength", key: "consistency", label: t("badge.consistencyOk"), detail: t("badge.consistencyOkDetail", { share: pctTxt(m.bestDayShare ?? 0) }) });
   if (m.feeShare != null && m.feeShare > 0.3) out.push({ kind: "weakness", key: "fees", label: t("badge.fees"), detail: t("badge.feesDetail", { share: pctTxt(m.feeShare) }) });
@@ -487,8 +494,8 @@ export function badgesFor(m: TraderMetrics, pct: PercentileMap | undefined, desk
   if (m.profitFactor != null && m.pnlTrades >= 20 && m.profitFactor < 1) out.push({ kind: "weakness", key: "pf", label: t("badge.pfLow"), detail: t("badge.pfLowDetail", { pf: m.profitFactor.toFixed(2) }) });
   if (m.payoff != null && m.payoff < 0.7 && (m.winRate ?? 0) < 0.6) out.push({ kind: "weakness", key: "payoff", label: t("badge.payoff"), detail: t("badge.payoffDetail", { value: m.payoff.toFixed(2) }) });
   if (m.maxLossStreak >= 6) out.push({ kind: "weakness", key: "streak", label: t("badge.streak"), detail: t("badge.streakDetail", { n: m.maxLossStreak }) });
-  if (m.first15Trades >= 10 && m.first15Net != null && m.first15Net < 0) out.push({ kind: "weakness", key: "open", label: t("badge.open"), detail: t("badge.openDetail", { n: m.first15Trades, net: r2(m.first15Net) }) });
-  if (m.ddRecovered === false && (m.maxDd ?? 0) > 0) out.push({ kind: "weakness", key: "dd", label: t("badge.dd"), detail: t("badge.ddDetail", { value: String(m.maxDd) }) });
+  if (m.first15Trades >= 10 && m.first15Net != null && m.first15Net < 0) out.push({ kind: "weakness", key: "open", label: t("badge.open"), detail: t("badge.openDetail", { n: m.first15Trades, net: fmtMoney(r2(m.first15Net), true) }) });
+  if (m.ddRecovered === false && (m.maxDd ?? 0) > 0) out.push({ kind: "weakness", key: "dd", label: t("badge.dd"), detail: t("badge.ddDetail", { value: fmtMoney(m.maxDd ?? 0) }) });
   if (m.avgHoldWinMin != null && m.avgHoldLossMin != null && m.wins >= 10 && m.losses >= 10 && m.avgHoldLossMin > m.avgHoldWinMin * 1.5)
     out.push({ kind: "weakness", key: "hold", label: t("badge.hold"), detail: t("badge.holdDetail", { loss: Math.round(m.avgHoldLossMin), win: Math.round(m.avgHoldWinMin) }) });
   if (pct && deskSize >= minPeers && m.trades >= minTrades) {

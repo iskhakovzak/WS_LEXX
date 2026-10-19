@@ -1,5 +1,6 @@
-import type { Grade, Horizon, Impact, MarketBias, MediaRef, PlanDoc, RiskMode, TickerBias } from "./types";
+import { type FocusRuleKey, type Grade, type Horizon, type Impact, type MarketBias, type MediaRef, type PlanDoc, type RiskMode, type TickerBias } from "./types";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { splitFocus } from "@/components/shared/plan-focus";
 
 /**
  * Editor model for a plan (desk or personal). Levels and numbers stay strings while typing; `draftToDoc` parses
@@ -44,6 +45,8 @@ export type PlanDraft = {
   /** Rule of the day (MistakeId); undefined = never chosen, null = «no rule». Personal plans only. */
   ownRule?: string | null;
   focus: string;
+  /** Quick rules picked from the presets (keys, rendered per reader); personal plans only. */
+  focusRules: FocusRuleKey[];
   media: MediaRef[];
   tvLinks: string[];
 };
@@ -87,8 +90,14 @@ export function emptyTicker(partial: Partial<TickerDraft> = {}): TickerDraft {
   };
 }
 
-export function docToDraft(doc: Partial<PlanDoc> | null | undefined): PlanDraft {
+export { focusRuleLabel, focusText, splitFocus } from "@/components/shared/plan-focus";
+
+/** `personal` = the trader's own plan editor: an old preset text in `focus` turns into its key. Otherwise the focus text
+ * stays as written (the desk plan). */
+export function docToDraft(doc: Partial<PlanDoc> | null | undefined, personal = false): PlanDraft {
   const d = doc ?? {};
+  // Stored keys always round-trip (other writers of the personal plan, e.g. «В план» from offerings, keep them).
+  const focus = personal ? splitFocus(s(d.focus), d.focusRules) : { text: s(d.focus), rules: splitFocus("", d.focusRules).rules };
   return {
     marketView: s(d.marketView),
     bias: d.bias ?? "neutral",
@@ -124,7 +133,8 @@ export function docToDraft(doc: Partial<PlanDoc> | null | undefined): PlanDraft 
     maxTrades: d.maxTrades != null ? String(d.maxTrades) : "",
     riskPerTrade: typeof d.riskPerTradeUsd === "number" ? String(d.riskPerTradeUsd) : "",
     ownRule: typeof d.ownRule === "string" && d.ownRule ? d.ownRule : d.ownRule === null ? null : undefined,
-    focus: s(d.focus),
+    focus: focus.text,
+    focusRules: focus.rules,
     media: refs(d.media),
     tvLinks: Array.isArray(d.tvLinks) ? d.tvLinks.filter((u): u is string => typeof u === "string") : [],
   };
@@ -230,6 +240,7 @@ export function draftToDoc(d: PlanDraft): PlanDoc {
     media: d.media,
     tvLinks: d.tvLinks,
     ...(d.ownRule !== undefined ? { ownRule: d.ownRule } : {}),
+    ...(d.focusRules?.length ? { focusRules: d.focusRules } : {}),
     riskPerTradeUsd: rpOf(d),
   };
 }
@@ -245,6 +256,7 @@ export function isDraftEmpty(d: PlanDraft): boolean {
   return (
     !doc.marketView &&
     !doc.focus &&
+    !d.focusRules?.length &&
     !doc.riskNotes &&
     doc.inPlay.length === 0 &&
     doc.macro.length === 0 &&
@@ -261,8 +273,9 @@ export function blockDone(d: PlanDraft) {
   return {
     market: !!(d.marketView.trim() || d.macro.length || d.media.length || d.tvLinks.length || d.spyS || d.spyR || d.qqqS || d.qqqR),
     tickers: d.inPlay.some((t) => t.ticker.trim() && (t.scenarioA.trim() || t.trigger.trim() || t.plan.trim() || t.support || t.resistance)),
-    risk: !!(d.riskNotes.trim() || d.maxLoss.trim() || d.maxTrades.trim() || d.ownRule),
-    focus: !!d.focus.trim(),
+    // «Риск — заполнено» only for a real limit or a note — the prefilled rule of the day alone is not a risk plan (ILYA-12).
+    risk: !!(d.riskNotes.trim() || d.maxLoss.trim() || d.maxTrades.trim() || d.riskPerTrade.trim()),
+    focus: !!(d.focus.trim() || d.focusRules?.length),
   };
 }
 
@@ -281,6 +294,7 @@ export function applyTemplate(cur: PlanDraft, tpl: Partial<PlanDoc>): PlanDraft 
     riskMode: tpl.riskMode ?? cur.riskMode,
     riskNotes: pick(cur.riskNotes, t.riskNotes),
     focus: pick(cur.focus, t.focus),
+    focusRules: cur.focusRules?.length ? cur.focusRules : t.focusRules,
     maxLoss: pick(cur.maxLoss, t.maxLoss),
     maxTrades: pick(cur.maxTrades, t.maxTrades),
     macro: cur.macro.length ? cur.macro : t.macro,
@@ -315,3 +329,22 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
   builtin("macro", { riskMode: "reduced" }),
   builtin("chop", { riskMode: "reduced", bias: "neutral" }),
 ];
+
+/** Desk risk limits (GET /api/risk/me `limits`) the personal plan starts from: daily stop, max trades, 1R. */
+export type DeskLimits = { dailyLossLimit: number | null; maxOpenPositions: number | null; maxRiskPerTrade: number | null } | null | undefined;
+
+/**
+ * Prefill law (ILYA-12 / ROMAN-06): a plan with none of its three limits written starts from the desk limits as real,
+ * editable values (never fake placeholders). Any limit already written → the plan is the trader's, nothing changes.
+ */
+export function prefillLimits(d: PlanDraft, limits: DeskLimits): PlanDraft {
+  if (!limits || d.maxLoss.trim() || d.maxTrades.trim() || d.riskPerTrade.trim()) return d;
+  const v = (n: number | null) => (n != null && Number.isFinite(n) && n > 0 ? String(Math.round(n * 100) / 100) : "");
+  const next = { ...d, maxLoss: v(limits.dailyLossLimit), maxTrades: v(limits.maxOpenPositions), riskPerTrade: v(limits.maxRiskPerTrade) };
+  return next.maxLoss || next.maxTrades || next.riskPerTrade ? next : d;
+}
+
+/** Prefill law (DENIS-03): the trader's own journal pick for the day fills an empty «Фокус дня». */
+export function prefillFocus(d: PlanDraft, own: string | null | undefined): PlanDraft {
+  return own && !d.focus.trim() && !d.focusRules?.length ? { ...d, focus: own } : d;
+}

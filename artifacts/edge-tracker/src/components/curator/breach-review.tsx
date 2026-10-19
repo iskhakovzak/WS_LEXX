@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { nyDate } from "@/lib/trading-date";
 import { curatorApi, useCuratorMutation, type Breach, type BreachAction } from "./api";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime, fmtUsd, localeTag } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -124,7 +124,7 @@ function ReviewSummary({ breach, canReview, onEdit }: { breach: Breach; canRevie
         </ul>
       )}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>{personName(r.createdBy)}, {fmtDate(r.createdAt, "dateTime")}{r.updatedBy && r.updatedAt !== r.createdAt ? t("breach.editedBy", { name: personName(r.updatedBy) }) : ""}</span>
+        <span>{personName(r.createdBy)}, {fmtDeskDateTime(r.createdAt)}{r.updatedBy && r.updatedAt !== r.createdAt ? t("breach.editedBy", { name: personName(r.updatedBy) }) : ""}</span>
         {canReview && <Button type="button" variant="ghost" size="sm" className="ml-auto h-7" onClick={onEdit}>{commonI18n.t("actions.edit")}</Button>}
       </div>
     </div>
@@ -194,6 +194,7 @@ function ReviewForm({ breach, onDone, onCancel }: { breach: Breach; onDone: () =
             />
             <Input
               type="date"
+              lang={localeTag()}
               value={a.dueOn}
               onChange={(e) => setAction(i, { dueOn: e.target.value })}
               aria-label={t("breach.agreementDueAria", { n: i + 1 })}

@@ -56,6 +56,22 @@ export const DEFAULT_TRADING_DEFAULTS: TradingDefaults = {
   updatedAt: null,
 };
 
+/**
+ * MAKSIM-26: a trader who never saved their own defaults starts from the desk limits (allocated capital, max risk per
+ * trade = 1R in $), not from the generic $25k / 0.5 %. Returns the patch to apply, or null (already customised, or the
+ * desk has no limits).
+ */
+export function deskPrefill(
+  saved: Pick<TradingDefaults, "updatedAt">,
+  desk: { accountSize: number | null; maxRiskPerTrade: number | null } | null | undefined,
+): { accountSize?: number; riskUsd?: number; riskMode?: RiskMode } | null {
+  if (saved.updatedAt || !desk) return null;
+  const patch: { accountSize?: number; riskUsd?: number; riskMode?: RiskMode } = {};
+  if (desk.accountSize != null && desk.accountSize > 0) patch.accountSize = desk.accountSize;
+  if (desk.maxRiskPerTrade != null && desk.maxRiskPerTrade > 0) { patch.riskUsd = desk.maxRiskPerTrade; patch.riskMode = "usd"; }
+  return Object.keys(patch).length ? patch : null;
+}
+
 /** Validation bounds, shared with the settings form. */
 export const TRADING_DEFAULT_LIMITS = {
   accountSize: { min: 0, max: 100_000_000 },

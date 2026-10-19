@@ -8,6 +8,8 @@ import { logActivity } from "../lib/activity";
 import { activityTitle } from "../lib/activityText";
 import { canAccessTrade, isStaffRole, requireMember, requireStaff, scopeTrader, viewerRole, GUEST_SCOPE } from "../lib/auth";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
+import { DAY_BOOK_SQL, eventStatsSql, packDayBook } from "../lib/eventsStats";
+export { packDayBook, type DayBook, type DayBookCell } from "../lib/eventsStats";
 import { addDays, isWeekend, nyDate } from "../lib/tradingDate";
 import { getEarnings } from "./earnings";
 import {
@@ -32,6 +34,7 @@ import { langOf } from "../i18n";
  *   GET    /events/today                 "В игре сегодня": today's events + open positions + earnings BMO/AMC
  *   GET    /events/holding               catalysts inside the holding window of open overnight/swing positions
  *   GET    /events/stats?ticker&type&from&to   post-event edge table (move stats + linked trade stats, net)
+ *   GET    /events/day-book?trader       closed trades per entry day × ticker (n, W, L, net) for «Как я торгую»
  *   POST   /events                       member; author = authUser; 409 on duplicate (ticker+date+type) unless force
  *   POST   /events/import-earnings?days=5      staff; upsert earnings from the calendar (session BMO/AMC)
  *   GET    /events/:id
@@ -461,38 +464,7 @@ router.get("/events/stats", asyncHandler(async (req, res): Promise<void> => {
   if (from) where.push(`substring(e.date, 1, 10) >= ${p(from)}`);
   if (to) where.push(`substring(e.date, 1, 10) <= ${p(to)}`);
   const scopeParam = p(scope);
-  const { rows } = await pool.query<Record<string, unknown>>( // i18n-ignore (SQL matches stored RU / EN reaction text)
-    `WITH ev AS (
-       SELECT e.id, LOWER(TRIM(e.event_type)) AS event_type, UPPER(COALESCE(e.session, '')) AS session, substring(e.date, 1, 10) AS d,
-              e.percent_move, LOWER(COALESCE(e.reaction, '')) AS reaction, e.ticker
-         FROM market_events e WHERE ${where.join(" AND ")}
-     ),
-     tr AS (
-       SELECT ev.event_type, ev.session, t.id AS trade_id, ${resultSql("t")} AS res, ${signedRSql("t")} AS signed_r, t.pnl, t.fees
-         FROM ev JOIN trades t ON t.deleted_at IS NULL
-          AND (t.event_id = ev.id OR (substring(t.date, 1, 10) = ev.d AND (',' || regexp_replace(UPPER(ev.ticker), '[[:space:],;/]+', ',', 'g') || ',') LIKE ('%,' || UPPER(t.ticker) || ',%')))
-          AND (${scopeParam}::text IS NULL OR t.trader = ${scopeParam})
-     )
-     SELECT ev.event_type, ev.session,
-            COUNT(DISTINCT ev.id)::int AS n,
-            COUNT(ev.percent_move)::int AS with_move,
-            AVG(ev.percent_move)::float AS avg_move,
-            AVG(ABS(ev.percent_move))::float AS avg_abs_move,
-            COUNT(*) FILTER (WHERE ev.percent_move > 0)::int AS up,
-            COUNT(*) FILTER (WHERE ev.percent_move < 0)::int AS down,
-            COUNT(*) FILTER (WHERE ev.reaction LIKE '%up%' OR ev.reaction LIKE '%рост%' OR ev.reaction LIKE '%гэп вверх%')::int AS reaction_up,
-            (SELECT COUNT(DISTINCT trade_id) FROM tr WHERE tr.event_type = ev.event_type AND tr.session = ev.session)::int AS trades,
-            (SELECT COUNT(DISTINCT trade_id) FILTER (WHERE res = 'win') FROM tr WHERE tr.event_type = ev.event_type AND tr.session = ev.session)::int AS wins,
-            (SELECT COUNT(DISTINCT trade_id) FILTER (WHERE res = 'loss') FROM tr WHERE tr.event_type = ev.event_type AND tr.session = ev.session)::int AS losses,
-            (SELECT COUNT(DISTINCT trade_id) FILTER (WHERE res = 'be') FROM tr WHERE tr.event_type = ev.event_type AND tr.session = ev.session)::int AS be,
-            (SELECT SUM(signed_r) FROM (SELECT DISTINCT trade_id, signed_r FROM tr WHERE tr.event_type = ev.event_type AND tr.session = ev.session) x)::float AS sum_r,
-            (SELECT SUM(pnl) FROM (SELECT DISTINCT trade_id, pnl FROM tr WHERE tr.event_type = ev.event_type AND tr.session = ev.session) x)::float AS gross,
-            (SELECT SUM(ABS(COALESCE(fees, 0))) FILTER (WHERE pnl IS NOT NULL) FROM (SELECT DISTINCT trade_id, pnl, fees FROM tr WHERE tr.event_type = ev.event_type AND tr.session = ev.session) x)::float AS fees
-       FROM ev
-      GROUP BY ev.event_type, ev.session
-      ORDER BY n DESC, ev.event_type`,
-    params,
-  );
+  const { rows } = await pool.query<Record<string, unknown>>(eventStatsSql(where.join(" AND "), scopeParam), params);
   const r2 = (v: unknown) => { const n = strToNum(v); return n == null ? null : Math.round(n * 100) / 100; };
   res.json({
     scope, ticker: ticker || null, type: type || null, from, to,
@@ -510,6 +482,18 @@ router.get("/events/stats", asyncHandler(async (req, res): Promise<void> => {
       };
     }),
   });
+}));
+
+/**
+ * «Катализаторы → Как я торгую» day book: closed trades aggregated per entry day × ticker (count, W, L, net $), so the
+ * page no longer downloads the full trade list (ROMAN-18: 2 765 trades / 3.9 MB → ~50 kB). Same scope as GET /trades
+ * (a trader: own book; staff: ?trader= or the whole desk). Open positions are skipped, money is net (lib/tradeMath).
+ */
+router.get("/events/day-book", asyncHandler(async (req, res): Promise<void> => {
+  const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
+  if (scope === undefined) throw unauthorized();
+  const { rows } = await pool.query<{ d: string; tk: string; n: number; w: number; l: number; net: string | null }>(DAY_BOOK_SQL, [scope]);
+  res.json(packDayBook(scope, rows));
 }));
 
 /** Staff: upsert earnings events from the calendar for the next N weekdays (session BMO/AMC, EPS estimate in summary). */

@@ -16,7 +16,7 @@ import {
 } from "@/components/academy/cohorts/api";
 import {
   AttendancePill, AttendanceSummaryView, DualTime, GoalCard, LOCAL_TZ, SAME_TZ, StagePill, StatusPill, UserSelect, WhereLine,
-  dateTimeLocal, dayIn, durationShort, fmtYmd, relMinutes, useNow, withNodes,
+  dateTimeDesk, dayIn, durationShort, fmtYmd, relMinutes, useNow, withNodes,
 } from "@/components/academy/cohorts/shared";
 import { fmtRate } from "@/lib/format";
 import { usePrograms } from "@/components/academy/content/api";
@@ -327,7 +327,7 @@ function Actions({ items, readOnly }: { items: ActionItem[]; readOnly: boolean }
               <span className="mt-0.5 flex flex-wrap gap-2 text-xs text-muted-foreground">
                 {a.owner === "mentor" && <span>{t("myPage.actions.byMentor")}</span>}
                 {a.dueOn && <span className={cn(a.overdue && "font-medium text-down")}>{t("shared.due", { date: fmtYmd(a.dueOn) })}{a.overdue ? ` · ${t("myPage.actions.overdue")}` : ""}</span>}
-                {a.doneAt && <span>{t("myPage.actions.doneAt", { date: dateTimeLocal(a.doneAt) })}</span>}
+                {a.doneAt && <span>{t("myPage.actions.doneAt", { date: dateTimeDesk(a.doneAt) })}</span>}
               </span>
             </label>
           </li>
@@ -375,7 +375,7 @@ function Meetings({ d }: { d: MyDashboard }) {
         {d.meetings.slice(0, 5).map((m) => (
           <li key={m.id} className="glass-field rounded-xl px-3 py-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium tabular-nums text-foreground">{dateTimeLocal(m.metAt)}</span>
+              <span className="font-medium tabular-nums text-foreground">{dateTimeDesk(m.metAt)}</span>
               <span className="text-muted-foreground">
                 {t("myPage.meetings.with", { mentor: personName(m.mentor) })}{m.durationMin ? ` · ${ct("time.minutesShort", { count: m.durationMin })}` : ""} · {meetingFormatLabel(m.format, true)}
               </span>
@@ -399,7 +399,7 @@ function History({ d }: { d: MyDashboard }) {
       <ol className="flex flex-col gap-1.5">
         {h.map((r) => (
           <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="tabular-nums text-muted-foreground">{dateTimeLocal(r.changedAt)}</span>
+            <span className="tabular-nums text-muted-foreground">{dateTimeDesk(r.changedAt)}</span>
             {r.fromStage !== r.toStage && r.toStage && <span>{r.fromStage ? stageLabel(r.fromStage) : "—"} → <b>{stageLabel(r.toStage)}</b></span>}
             {r.fromStatus !== r.toStatus && r.toStatus && <span>{r.fromStatus ? statusLabel(r.fromStatus) : "—"} → <b>{statusLabel(r.toStatus)}</b></span>}
             {r.changedBy && <span className="text-xs text-muted-foreground">({personName(r.changedBy)})</span>}

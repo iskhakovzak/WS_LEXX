@@ -1,5 +1,5 @@
 import type { Trade } from "@workspace/api-client-react";
-import { signedR, priceR, netPnl, isOpen, closeDate, resultOf } from "@/lib/trade-math";
+import { signedR, priceR, netPnl, isOpen, closeDate, resultOf, entryMinutes, type TradeLike } from "@/lib/trade-math";
 import { fmtDate, fmtMonth, fmtWeekday } from "@/lib/format";
 import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
 
@@ -50,14 +50,14 @@ function parseDate(d: string): Date | null {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
+/**
+ * Entry-time bucket (ET wall clock). Reads the time of a timed `date` or, for PropReports trades whose `date` is a bare
+ * day, the broker's `openedAt` (lib/trade-math entryMinutes) — reading `date` alone put every auto trade in «unknown»
+ * (MAKSIM-14).
+ */
 export function timeBucketFor(t: Trade): TimeBucket {
-  const raw = t.date ?? "";
-  if (raw.length <= 10) return "unknown";
-  const dt = parseDate(raw);
-  if (!dt) return "unknown";
-  const hour = dt.getHours();
-  const min = dt.getMinutes();
-  const m = hour * 60 + min;
+  const m = entryMinutes(t as TradeLike);
+  if (m == null) return "unknown";
   if (m < 8 * 60 + 30) return "before-8:30";
   if (m < 9 * 60 + 30) return "8:30-9:30";
   if (m < 9 * 60 + 50) return "9:30-9:50";

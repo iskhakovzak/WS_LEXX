@@ -19,6 +19,7 @@ export type TradeSummary = {
   mfePerShare: number | null;
   maePerShare: number | null;
   mfeR: number | null;
+  /** Size of the adverse move in R (≥ 0; the panel shows it with a minus). */
   maeR: number | null;
   /** Best exit while in the trade: price and time of the MFE. */
   bestExitPrice: number | null;
@@ -55,7 +56,8 @@ export function buildTradeSummary(input: {
     mfePerShare: mfe,
     maePerShare: x ? x.mae : null,
     mfeR: x?.mfeR ?? (mfe != null && risk ? mfe / risk : null),
-    maeR: x?.maeR ?? (x && risk ? x.mae / risk : null),
+    // The excursion's maeR is signed (≤ 0); the summary keeps magnitudes like maePerShare.
+    maeR: x?.maeR != null ? Math.abs(x.maeR) : x && risk ? x.mae / risk : null,
     bestExitPrice: x?.mfePrice ?? null,
     bestExitTime: x?.mfeAt ?? null,
     capture,

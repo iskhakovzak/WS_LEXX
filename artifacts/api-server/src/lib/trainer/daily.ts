@@ -186,3 +186,40 @@ export async function startDaily(viewer: Viewer, now = new Date()): Promise<Snap
     return gameSnapshot(viewer, again.id);
   }
 }
+
+/**
+ * POST /api/trainer/daily/practice — once the challenge is closed (weekend, holiday, after 16:00) and the viewer did not
+ * play it: the same ticker-day as an ordinary, unranked game (no `params.daily`, so it is in no ranking, streak or
+ * quest of the challenge). UMID-07: «Задача дня» on a weekend used to be a dead end. Resumes an active game first.
+ */
+export async function startDailyPractice(viewer: Viewer, now = new Date()): Promise<Snapshot> {
+  if (!setting("trainer.dailyEnabled")) throw notFound("NOT_FOUND", { reason: "dailyDisabled" });
+  const date = await currentChallengeDate(now);
+  if (isOpen(date, now)) throw conflict("CONFLICT", { reason: "dailyOpen" });
+  const pick = await ensurePick(date);
+  if (!pick) throw notFound("NOT_FOUND", { reason: "noChallenge" });
+  const mine = await ds.myDailyGame(viewer.id, date);
+  if (mine?.status === "active") return gameSnapshot(viewer, mine.id);
+  const day = await buildDay(pick.ticker, pick.barsDay);
+  if (!day) throw notFound("NOT_FOUND", { reason: "noBars" });
+  await settleActive(viewer);
+  forgetTrainerHome(viewer.id);
+  const { built, dayBars } = day;
+  const price = built.bars[built.startIdx].c;
+  const extras = await newGameExtras(viewer, price, dayBars, pick.barsDay);
+  const g = await simStore.insertGame({
+    userId: viewer.id, mode: "intraday", difficulty: "medium", ticker: pick.ticker, day: pick.barsDay, dayTo: null, tf: "1m",
+    bars: built.bars, startIdx: built.startIdx, endIdx: built.endIdx, cursor: built.startIdx,
+    params: {
+      feePerShare: await simStore.deskFeePerShare(nyDate(now)),
+      riskUnit: built.riskUnit,
+      defaultQty: defaultQty(price),
+      maxNotional: maxNotionalOf("intraday"),
+      levels: built.levels,
+      times: fakeTimes(built.bars, "intraday"),
+      practice: { date },
+      ...extras,
+    },
+  });
+  return snapshotOf(remember(g), viewer);
+}

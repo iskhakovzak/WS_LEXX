@@ -45,6 +45,14 @@ export default {
       title: { one: "Beat yourself {count} time", other: "Beat yourself {count} times" },
       desc: "Better than the real trade in the simulator: {done} of {target}.",
     },
+    trainer_drills: {
+      title: { one: "Answer {count} «Find the entry» drill", other: "Answer {count} «Find the entry» drills" },
+      desc: "Trainer answers: {done} of {target}.",
+    },
+    academy_lessons: {
+      title: { one: "Complete {count} Academy lesson", other: "Complete {count} Academy lessons" },
+      desc: "Lessons completed: {done} of {target}.",
+    },
     curator_task: { title: "Curator’s task", desc: "The curator marks it when the task is done." },
   },
   ach: {

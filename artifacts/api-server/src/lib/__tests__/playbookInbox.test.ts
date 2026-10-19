@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inboxDays, labelMatchesSetup, labelScore, rankInbox, suggestSetup, suggestTier, type InboxSetup } from "../playbookInbox";
+import { inboxDays, inboxFrom, labelMatchesSetup, labelScore, rankInbox, suggestSetup, suggestTier, type InboxSetup } from "../playbookInbox";
 
 const setups: InboxSetup[] = [
   { id: 1, name: "Пробой HOD", setupType: "breakout", tags: "momentum", canAddExamples: true, mine: false, space: "office" },
@@ -74,5 +74,11 @@ describe("playbook inbox: tier hint and ranking", () => {
     expect(inboxDays("7")).toBe(7);
     expect(inboxDays(500)).toBe(90);
     expect(inboxDays(-3)).toBe(14);
+  });
+
+  it("?from= takes a NY close day only (the header's untagged period)", () => {
+    expect(inboxFrom("2026-10-13")).toBe("2026-10-13");
+    expect(inboxFrom("2026-10-13'; --")).toBeNull();
+    expect(inboxFrom(undefined)).toBeNull();
   });
 });

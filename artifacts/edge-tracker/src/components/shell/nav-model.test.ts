@@ -88,3 +88,27 @@ describe("mobileTabs", () => {
     expect(mobileTabs(visibleNav(true), null).map((i) => i.href)).toEqual(["/", "/game-plan", "/trades", "/journal"]);
   });
 });
+
+describe("phone sheet (ILYA-18, OWNER-28)", async () => {
+  const { sheetPrimaryItems, withoutPinned } = await import("./nav-model");
+  const groups = visibleNav(false);
+  const s = simpleNav(groups);
+  it("lists every primary row with its children, like the desktop sidebar", () => {
+    const hrefs = sheetPrimaryItems(s).map((i) => i.href);
+    expect(hrefs).toEqual(flat(s.primary));
+    for (const r of s.primary) for (const c of r.children ?? []) expect(hrefs).toContain(c.href);
+    expect(new Set(hrefs).size).toBe(hrefs.length);
+  });
+  it("desktop row: a pinned child is rendered once, open or closed", async () => {
+    const { rowKidLists } = await import("./nav-model");
+    const kids = [{ href: "/ratings" }, { href: "/office" }];
+    const pinned = (h: string) => h === "/office";
+    expect(rowKidLists(kids, true, pinned)).toEqual({ list: kids, pinned: [] });
+    expect(rowKidLists(kids, false, pinned)).toEqual({ list: [{ href: "/ratings" }], pinned: [{ href: "/office" }] });
+  });
+  it("a pinned page shows once (in favourites)", () => {
+    const items = [{ href: "/a" }, { href: "/office" }, { href: "/b" }];
+    expect(withoutPinned(items, ["/office"]).map((i) => i.href)).toEqual(["/a", "/b"]);
+    expect(withoutPinned(items, [])).toEqual(items);
+  });
+});

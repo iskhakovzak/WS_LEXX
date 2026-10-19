@@ -402,7 +402,7 @@ export function IdeaDetailSheet({
             >
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div><div className="text-xs text-muted-foreground">{t("sheet.price")}</div><div className="text-lg font-semibold tabular-nums">{fmtPrice(tracking.price)}</div></div>
-                <div><div className="text-xs text-muted-foreground">{t("sheet.now")}</div><div className={cn("text-lg font-semibold tabular-nums", toneOf(tracking.rNow) === "up" ? "text-up" : toneOf(tracking.rNow) === "down" ? "text-down" : "")}>{fmtR(tracking.rNow)}</div></div>
+                <div><div className="text-xs text-muted-foreground">{t(tracking.hit ? "sheet.atOutcome" : "sheet.now")}</div><div className={cn("text-lg font-semibold tabular-nums", toneOf(tracking.rNow) === "up" ? "text-up" : toneOf(tracking.rNow) === "down" ? "text-down" : "")}>{fmtR(tracking.rNow)}</div></div>
                 {/* Excursions from the planned entry: a price that never went past entry shows 0R, not a wrong-signed number. */}
                 <div><div className="text-xs text-muted-foreground">{t("sheet.maxUp")}</div><div className="text-lg font-semibold tabular-nums text-up">{fmtR(tracking.mfeR != null ? Math.max(0, tracking.mfeR) : null)}</div></div>
                 <div><div className="text-xs text-muted-foreground">{t("sheet.maxDown")}</div><div className="text-lg font-semibold tabular-nums text-down">{fmtR(tracking.maeR != null ? Math.min(0, tracking.maeR) : null)}</div></div>

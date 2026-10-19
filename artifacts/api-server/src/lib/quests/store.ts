@@ -184,22 +184,30 @@ export async function recordQuestEvent(trader: string, kind: "desk_day_open", re
   return (r.rowCount ?? 0) > 0;
 }
 
-export type QuestEvent = { trader: string; questId: number; template: string; status: "done" | "failed" | "expired"; at: string };
+/** `note` — the curator's note on the quest (shown next to the result in the cabinet). */
+export type QuestEvent = { trader: string; questId: number; template: string; status: "done" | "failed" | "expired"; at: string; note: string | null };
+
+type QuestEventRow = { trader: string; id: number; template: string; status: string; at: string; note: string | null };
+
+/** Row → event. */
+function toQuestEvent(r: QuestEventRow): QuestEvent {
+  return { trader: r.trader, questId: Number(r.id), template: r.template, status: r.status as QuestEvent["status"], at: String(r.at), note: r.note ?? null };
+}
 
 /** Curator quests of `traders` that finished since `from` (NY day), newest first. */
 export async function curatorQuestEvents(traders: readonly string[], from: string): Promise<QuestEvent[]> {
   if (!traders.length) return [];
   const { rows } = await pool
-    .query<{ trader: string; id: number; template: string; status: string; at: string }>(
-      `SELECT trader, id, template, status, COALESCE(completed_on, to_char(updated_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')) AS at
+    .query<QuestEventRow>(
+      `SELECT trader, id, template, status, COALESCE(completed_on, to_char(updated_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')) AS at, note
          FROM quest_instances
         WHERE scope = 'curator' AND trader = ANY($1::text[]) AND status IN ('done', 'failed', 'expired')
           AND to_char(updated_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') >= $2
         ORDER BY updated_at DESC LIMIT 200`,
       [traders, from],
     )
-    .catch(() => ({ rows: [] as { trader: string; id: number; template: string; status: string; at: string }[] }));
-  return rows.map((r) => ({ trader: r.trader, questId: Number(r.id), template: r.template, status: r.status as QuestEvent["status"], at: String(r.at) }));
+    .catch(() => ({ rows: [] as QuestEventRow[] }));
+  return rows.map(toQuestEvent);
 }
 
 /** Traders that have active quests or played a part today (the nightly rollover's list). */

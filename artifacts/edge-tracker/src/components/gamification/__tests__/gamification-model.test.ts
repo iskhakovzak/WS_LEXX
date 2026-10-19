@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
 import { masteryLevelName, masteryPct, rankingName, seasonBarText, seasonMonth, titleLabel } from "@/components/shared/gamification-labels";
 import { normalizeNotification } from "@/components/notifications/model";
-import { bodyOf, conditionText, draftOf, rewardRows, seasonRows } from "../model";
+import { bodyOf, conditionText, draftOf, rewardRows, seasonRows, stockOf, tierHint, tierOption, withActive } from "../model";
+import { showLeague } from "../season-tab";
 import { gami, items, season } from "./fixtures";
 
 afterEach(async () => {
@@ -21,7 +22,7 @@ describe("labels", () => {
 
   it("ranking names: me, alias, stored name", () => {
     expect(rankingName("t4", true)).toBe("я");
-    expect(rankingName("t4", false)).toBe("Трейдер 4");
+    expect(rankingName("t4", false)).toBe("Участник 4");
     expect(rankingName("Ольга Н.", false)).toContain("Ольга");
   });
 
@@ -52,11 +53,23 @@ describe("rewards", () => {
     expect(rows.map((r) => [r.item.id, r.state])).toEqual([[1, "eligible"], [5, "requested"], [3, "locked"], [2, "locked"], [4, "granted"]]);
   });
 
+  it("an inactive item never offers «Запросить»: a stale eligibility is hidden, history stays (ILYA-17)", () => {
+    const r = gami().rewards;
+    const off = { ...items[0], id: 77, active: false };
+    const rows = rewardRows({
+      ...r, catalog: [...r.catalog, off, { ...off, id: 78 }],
+      eligible: [...r.eligible, { id: 501, itemId: 77, trader: "Илья Ш.", status: "eligible", at: "2026-10-18T17:50:00Z", by: null }],
+      granted: [...r.granted, { id: 502, itemId: 78, trader: "Илья Ш.", status: "granted", at: "2026-10-01T10:00:00Z", by: "Ольга Н." }],
+    });
+    expect(rows.some((x) => x.item.id === 77)).toBe(false);
+    expect(rows.find((x) => x.item.id === 78)?.state).toBe("granted");
+  });
+
   it("condition texts", () => {
     expect(conditionText(items[0].condition)).toBe("Достижение «Серия контракта» — Золото");
     expect(conditionText({ kind: "achievement", ref: "reviews_total", tier: null })).toBe("Достижение «Разобранные дни»");
     expect(conditionText(items[2].condition)).toBe("Уровень «Железный»");
-    expect(conditionText(items[1].condition)).toBe("Место в сезоне не ниже 3-го");
+    expect(conditionText(items[1].condition)).toBe("Топ-3 сезона");
   });
 
   it("season rows: own row only when outside the top", () => {
@@ -71,6 +84,30 @@ describe("rewards", () => {
     expect(bodyOf({ ...draftOf(null), title: "  " })).toEqual({ ok: false, problem: "titleRequired" });
     expect(bodyOf({ ...draftOf(null), title: "X", ref: "" })).toEqual({ ok: false, problem: "refRequired" });
     expect(bodyOf({ ...draftOf(null), title: "X", kind: "level", ref: "0" })).toMatchObject({ ok: true, body: { condition: { kind: "level", ref: "0" } } });
+  });
+
+  it("editor (OWNER-19): a new reward starts off; stock is empty or ≥ 1 — never silently 0; tier with its target", () => {
+    expect(draftOf(null).active).toBe(false);
+    expect(stockOf("")).toEqual({ ok: true, stock: null });
+    expect(stockOf("5")).toEqual({ ok: true, stock: 5 });
+    expect(stockOf("-3")).toEqual({ ok: false });
+    expect(stockOf("0")).toEqual({ ok: false });
+    expect(stockOf("1.5")).toEqual({ ok: false });
+    expect(stockOf("0", 0)).toEqual({ ok: true, stock: 0 }); // an item that ran out may be saved unchanged
+    expect(bodyOf({ ...draftOf(items[0]), stock: "-3" })).toEqual({ ok: false, problem: "stockInvalid" });
+    expect(tierOption("silver", 10)).toBe("Серебро — 10");
+    expect(tierOption("silver", undefined)).toBe("Серебро");
+    expect(tierHint("contract_streak", 10)).toBe("Соблюдайте контракт 10 дней подряд");
+    expect(withActive(items[0], false)).toMatchObject({ title: "Обед с руководителем", active: false });
+    expect("id" in withActive(items[0], false)).toBe(false);
+  });
+
+  it("the league shows only as a competition (OLGA-15) or to a curator with members", () => {
+    const team = { curator: "Ольга Н.", members: 10, score: 4, rank: 1, mine: true };
+    expect(showLeague({ season: "2026-10", teams: [team] })).toBe(false);
+    expect(showLeague({ season: "2026-10", teams: [] })).toBe(false);
+    expect(showLeague({ season: "2026-10", teams: [team, { ...team, curator: "Сергей", mine: false }] })).toBe(true);
+    expect(showLeague({ season: "2026-10", teams: [], members: [{ trader: "Кирилл Б.", points: 3, title: null }] })).toBe(true);
   });
 });
 

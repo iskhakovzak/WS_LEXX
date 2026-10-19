@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@workspace/db", () => ({ db: {}, pool: { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } }));
 
 const season = await import("../gamification/season");
-const { leagueTeams } = await import("../gamification/league");
+const { leagueTeams, visibleTeams, LEAGUE_MIN_TEAMS } = await import("../gamification/league");
 const titles = await import("../gamification/titles");
 const mastery = await import("../gamification/mastery");
 const rewards = await import("../gamification/rewards");
@@ -57,6 +57,14 @@ describe("season score", () => {
     const shown = season.topFor(ranked, 1, { name: "Me", staff: false, hideNames: false }, o);
     expect(shown).toEqual([{ label: "A", me: false, points: 30, title: "iron" }]);
     expect(season.topFor(ranked, 10, { name: "B", staff: false, hideNames: true }, o).map((x) => x.me)).toEqual([false, true, false]);
+  });
+
+  it("a risk-halted trader takes no place in the top — for traders and staff — but still sees himself (OWNER-09)", () => {
+    const ranked = season.rankRows([{ trader: "Kirill", points: 96 }, { trader: "B", points: 20 }, { trader: "Me", points: 10 }]);
+    const o = { hidden: new Set<string>(), alias: new Map([["Kirill", 1], ["B", 2], ["Me", 3]]), titles: new Map<string, string>(), excluded: new Set(["Kirill"]) };
+    expect(season.topFor(ranked, 10, { name: "Me", staff: false, hideNames: false }, o).map((x) => x.label)).toEqual(["B", "Me"]);
+    expect(season.topFor(ranked, 10, { name: "Boss", staff: true, hideNames: true }, o).map((x) => x.label)).toEqual(["B", "Me"]);
+    expect(season.topFor(ranked, 10, { name: "Kirill", staff: false, hideNames: false }, o).map((x) => [x.label, x.me])).toEqual([["Kirill", true], ["B", false], ["Me", false]]);
   });
 
   it("seasons to re-score: this month, the judged day's month, the month before in the first days", () => {
@@ -128,6 +136,13 @@ describe("curator league", () => {
     ]);
     expect(leagueTeams([m("c1", "Анна", 7), m("c2", "Анна", 8)], 1)).toEqual([{ curator: "Анна", members: 2, score: 7.5, rank: 1 }]);
   });
+
+  it("a league of one team is not shown (OLGA-15): fewer than LEAGUE_MIN_TEAMS ranked teams → none", () => {
+    expect(LEAGUE_MIN_TEAMS).toBe(2);
+    expect(visibleTeams([{ curator: "Ольга" }], LEAGUE_MIN_TEAMS)).toEqual([]);
+    expect(visibleTeams([{ curator: "Ольга" }, { curator: "Сергей" }], LEAGUE_MIN_TEAMS)).toHaveLength(2);
+    expect(visibleTeams([{ curator: "Ольга" }], 1)).toHaveLength(1);
+  });
 });
 
 describe("titles", () => {
@@ -187,6 +202,25 @@ describe("rewards eligibility", () => {
     expect(rewards.eligibleRefs(item("mastery", "2.1", "3"), input)).toEqual([]);
     expect(rewards.eligibleRefs(item("mastery", "13", "2"), input)).toEqual([""]);
   });
+  it("stale eligibility: inactive / missing item or condition no longer met; history never stale (ILYA-17)", () => {
+    const items: import("../gamification/types").RewardItem[] = [
+      { id: 1, title: "Master", description: null, active: true, stock: null, condition: { kind: "mastery" as const, ref: "", tier: "4" } },
+      { id: 2, title: "Off", description: null, active: false, stock: null, condition: { kind: "level" as const, ref: "1" } },
+      { id: 3, title: "Top-3", description: null, active: true, stock: null, condition: { kind: "season_rank" as const, ref: "season", rank: 3 } },
+      { id: 4, title: "Expert", description: null, active: true, stock: null, condition: { kind: "mastery" as const, ref: "", tier: "3" } },
+    ];
+    const expert = { ...input, mastery: [{ setupId: 13, code: "2.1", level: 3 }] };
+    const g = (id: number, itemId: number, status: string, ref = "") => ({ id, itemId, status, ref });
+    const stale = rewards.staleGrants([
+      g(1, 1, "eligible"), g(2, 2, "eligible"), g(3, 3, "eligible", "2026-08"), g(4, 3, "eligible", "2026-09"), g(5, 4, "eligible"),
+      g(6, 1, "requested"), g(7, 2, "granted"), g(8, 99, "eligible"),
+    ], items, expert);
+    expect(stale.map((x) => x.id)).toEqual([1, 2, 4, 8]);
+    expect(rewards.conditionChanged(items[0]!, { ...items[0]! })).toBe(false);
+    expect(rewards.conditionChanged(items[0]!, { ...items[0]!, condition: { ...items[0]!.condition, tier: "3" } })).toBe(true);
+    expect(rewards.conditionChanged(items[2]!, { ...items[2]!, condition: { ...items[2]!.condition, rank: 1 } })).toBe(true);
+  });
+
   it("item checks", () => {
     const o = { lines: ["contract_streak"], levels: 4 };
     const base = { title: "Book", description: null, active: false, stock: null };

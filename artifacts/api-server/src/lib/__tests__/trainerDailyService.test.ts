@@ -122,3 +122,23 @@ describe("daily state and start", () => {
     await expect(startDaily(viewer, at("2026-10-19", 7))).rejects.toMatchObject({ status: 409 }); // Friday's, closed
   });
 });
+
+describe("practice on the closed challenge (UMID-07)", () => {
+  it("weekend / after the close: the same ticker-day as an unranked game (no params.daily); refused while open", async () => {
+    const { startDailyPractice } = await import("../trainer/daily");
+    const store = await import("../sim/store");
+    vi.mocked(store.insertGame).mockClear();
+    await expect(startDailyPractice(viewer, at("2026-10-16", 10))).rejects.toMatchObject({ status: 409 });
+    expect(await startDailyPractice(viewer, at("2026-10-18", 12))).toMatchObject({ id: 77, created: true }); // Sunday
+    const g = vi.mocked(store.insertGame).mock.calls[0][0];
+    expect(g.params.daily).toBeUndefined();
+    expect(g.params.practice).toEqual({ date: "2026-10-16" });
+    expect(g.ticker).toMatch(/^(AAA|BBB)$/);
+  });
+
+  it("an active challenge game is resumed instead", async () => {
+    const { startDailyPractice } = await import("../trainer/daily");
+    games = [{ userId: 1, id: 15, status: "active", name: "Анна", r: 0, trades: 0 }];
+    expect(await startDailyPractice(viewer, at("2026-10-16", 17))).toMatchObject({ id: 15, resumed: true });
+  });
+});

@@ -108,12 +108,14 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
           icon={ShieldAlert}
           hint={c.noLimits ? t("today.noLimitsCount", { count: c.noLimits }) : t("today.allHaveLimits")}
         />
+        {/* «Ждут разбора» (OLGA-06): closed, not reviewed days of the roster in the 14-day window — the same number as
+            the nav badge and the journal queue (/api/eod/queue/count). Older API: the whole queue. */}
         <StatCard
           label={t("today.reviews")}
-          value={c.queue}
-          tone={c.queueOverdue ? "down" : c.queue ? "accent" : "neutral"}
+          value={c.reviews ?? c.queue}
+          tone={(c.reviewsOverdue ?? c.queueOverdue) ? "down" : (c.reviews ?? c.queue) ? "accent" : "neutral"}
           icon={Inbox}
-          hint={c.queueOverdue ? t("today.overdueSla", { count: c.queueOverdue }) : t("today.withinSla")}
+          hint={(c.reviewsOverdue ?? c.queueOverdue) ? t("today.overdueSla", { count: c.reviewsOverdue ?? c.queueOverdue }) : t("today.reviewsWindow", { days: win?.days ?? 14 })}
         />
         <StatCard
           label={t("today.dayNotClosed")}
@@ -134,12 +136,12 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
           value={c.overdueActions}
           tone={c.overdueActions ? "warn" : "neutral"}
           icon={AlarmClock}
-          hint={c.overdueActions ? t("today.agreements") : t("today.noOverdue")}
+          hint={[c.overdueActions ? t("today.agreements") : t("today.noOverdue"), c.oneOnOneDue ? t("today.oneOnOneDue", { count: c.oneOnOneDue }) : null].filter(Boolean).join(" · ")}
         />
       </StatGrid>
 
       <BentoGrid>
-        <AttentionPanel data={data} onOpenTrader={onOpenTrader} onTemplate={setTemplateFor} extra={attentionExtra} />
+        <AttentionPanel data={data} onOpenTrader={onOpenTrader} onTemplate={setTemplateFor} onReviewDay={review.open} extra={attentionExtra} />
 
         <Panel
           className="lg:col-span-5"

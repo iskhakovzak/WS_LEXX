@@ -8,7 +8,7 @@ import { Panel, Pill } from "@/components/ds";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { gpApi, gpKeys, type GamePlan, type GamePlanResponse } from "./types";
-import { fmtDate } from "@/lib/format";
+import { fmtDeskTime } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { personInitials, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -57,7 +57,7 @@ export function MarkReadButton({
     return (
       <Pill tone="up" className="px-3 py-1.5 text-sm">
         <CheckCheck className="h-4 w-4" aria-hidden="true" />
-        {t("reads.readAt", { time: fmtDate(myReadAt, "time") })}
+        {t("reads.readAt", { time: fmtDeskTime(myReadAt) })}
       </Pill>
     );
   }
@@ -121,7 +121,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
               <ul className="flex flex-wrap gap-1.5">
                 {d.read.map((r) => (
                   <li key={r.trader}>
-                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${personName(r.trader)} · ${fmtDate(r.readAt, "time")}${r.stale ? t("reads.beforeUpdate") : ""}`} />
+                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${personName(r.trader)} · ${fmtDeskTime(r.readAt)}${r.stale ? t("reads.beforeUpdate") : ""}`} />
                   </li>
                 ))}
               </ul>

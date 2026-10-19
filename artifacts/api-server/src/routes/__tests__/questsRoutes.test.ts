@@ -106,6 +106,8 @@ describe("POST /quests/assign", () => {
     const r = await call("POST", "/api/quests/assign", assignBody);
     expect(r.status).toBe(403);
     expect(service.assignQuest).not.toHaveBeenCalled();
+    // Rights before the form (DEV-18): an invalid body from a trader is 403, not a 400 about the fields.
+    expect((await call("POST", "/api/quests/assign", { trader: "" })).status).toBe(403);
   });
   it("a curator assigns to a ward; not outside the scope; only to an active trader", async () => {
     who = CURATOR;

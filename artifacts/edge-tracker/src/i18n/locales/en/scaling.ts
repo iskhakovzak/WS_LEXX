@@ -67,6 +67,15 @@ export default {
     column: "Limit",
     nextTier: "Next tier",
   },
+  tierName: { lead: "Lead" },
+  tierDesc: {
+    trainee: "Simulator / minimum size",
+    junior: "Intraday, small size",
+    trader: "Intraday + overnight",
+    senior: "Full BP, swing",
+    lead: "Maximum BP, mentoring",
+  },
+  pctOfLimit: "{value} of limit",
   ladder: {
     aria: "Tier ladder",
     empty: "The tier ladder is empty — set it up in the settings.",
@@ -89,6 +98,9 @@ export default {
     emptyPromote: "No promotion rules for this tier",
     emptyDemote: "No demotion rules for this tier",
     windowDays: { one: "{count} trading day", other: "{count} trading days" },
+    need: "needs {op} {threshold}",
+    demoteAt: "demotion at {op} {threshold}",
+    now: "now",
     byR: "by R",
   },
   metrics: {
@@ -107,6 +119,7 @@ export default {
   },
   proposal: {
     byRules: "by rules",
+    system: "System",
     manual: "manual",
     decidedBy: "decision: {name}",
     quoted: "“{text}”",

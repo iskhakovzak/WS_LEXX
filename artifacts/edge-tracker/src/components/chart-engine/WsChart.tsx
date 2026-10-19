@@ -30,7 +30,7 @@ import { aggregate, availableTimeframes, barSeconds, baseBarLabel } from "./lib/
 import { etDayKey, fmtEtDateTime, fmtEtDay, fmtEtTime } from "./lib/time";
 import { fmtR, fmtUsd } from "@/lib/format";
 import { buildGeometry, type Geometry } from "./lib/geometry";
-import { isOpening, positionAt } from "./lib/position";
+import { isOpening, positionAt, replayMark } from "./lib/position";
 import { replayKeyAction, stepSpeed } from "./lib/replay-clock";
 import { buildTradeSummary, fmtPerShare } from "./lib/trade-summary";
 import { capVolumes, daySpanOf, defaultViewRange, followCursor, isViewMode, type ViewMode } from "./lib/view";
@@ -59,6 +59,7 @@ import { ChartToolbar, DEFAULT_OVERLAYS, DEFAULT_PANES, type HotkeyRow, type Ove
 import { FillLog, PositionCard, SummaryCard } from "./ui/TradePanels";
 import { FillsKey } from "./ui/FillsKey";
 import { DrawingBar } from "./ui/DrawingBar";
+import { robustPriceRange } from "./lib/autoscale";
 
 export type WsChartProps = {
   trade: TradeLike;
@@ -277,16 +278,19 @@ export function WsChart({
 
     const candles = chart.addSeries(CandlestickSeries, {
       ...candleColors(theme), priceLineVisible: false, lastValueVisible: true, priceFormat: priceFormatFor(refPrice(bars.map((b) => b.c))),
-      // Replay: fit the price scale to ALL bars in view so revealing bars does not jump the scale.
+      // The price scale fits the bars in view without bad prints (lib/autoscale). In replay it covers ALL bars in view
+      // (revealed or not), so revealing bars does not jump the scale.
       autoscaleInfoProvider: (original: () => AutoscaleInfo | null): AutoscaleInfo | null => {
-        const s = live.current;
-        if (!s.replayActive) return original();
         const r = chart.timeScale().getVisibleLogicalRange();
         if (!r) return original();
-        const from = Math.max(0, Math.floor(r.from)), to = Math.min(bars.length - 1, Math.ceil(r.to));
-        let lo = Infinity, hi = -Infinity;
-        for (let i = from; i <= to; i++) { if (bars[i].l < lo) lo = bars[i].l; if (bars[i].h > hi) hi = bars[i].h; }
-        return Number.isFinite(lo) ? { priceRange: { minValue: lo, maxValue: hi } } : original();
+        const range = robustPriceRange(bars, r.from, r.to);
+        if (!range) return original();
+        if (!live.current.replayActive) {
+          // Analysis: keep the library's own range when it is already tight (nothing was cut).
+          const o = original();
+          if (o?.priceRange && o.priceRange.minValue >= range.min && o.priceRange.maxValue <= range.max) return o;
+        }
+        return { priceRange: { minValue: range.min, maxValue: range.max } };
       },
     }, 0);
     chart.panes()[0]?.setStretchFactor(STRETCH.price);
@@ -434,18 +438,19 @@ export function WsChart({
   }, [geo, ov, chartGen]);
 
   // ── Reveal (replay cursor) + the live P&L of the open position ──────────
+  const liveMark = cursorIdx != null ? replayMark(bars, geo.fills, cursorIdx) : null;
   const livePosition = React.useMemo(() => {
-    if (cursorIdx == null || !bars[cursorIdx]) return null;
-    return positionAt(geo.fills, cursorIdx, geo.side, bars[cursorIdx].c, trade.qty ?? null);
-  }, [cursorIdx, bars, geo.fills, geo.side, trade.qty]);
+    if (cursorIdx == null || liveMark == null) return null;
+    return positionAt(geo.fills, cursorIdx, geo.side, liveMark, trade.qty ?? null);
+  }, [cursorIdx, liveMark, geo.fills, geo.side, trade.qty]);
   const liveText = React.useMemo(() => {
-    if (!replayActive || cursorIdx == null || !livePosition || livePosition.avg == null || !bars[cursorIdx]) return null;
-    const perShare = (geo.side === "short" ? -1 : 1) * (bars[cursorIdx].c - livePosition.avg);
+    if (!replayActive || cursorIdx == null || !livePosition || livePosition.avg == null || liveMark == null) return null;
+    const perShare = (geo.side === "short" ? -1 : 1) * (liveMark - livePosition.avg);
     const r = geo.risk ? perShare / geo.risk : null;
     const parts = [r != null ? fmtR(r) : fmtPerShare(perShare)];
     if (!redacted && livePosition.total != null) parts.push(fmtUsd(livePosition.total, { signed: true, decimals: "auto" }));
     return parts.join(" · ");
-  }, [replayActive, cursorIdx, livePosition, bars, geo.side, geo.risk, redacted]);
+  }, [replayActive, cursorIdx, livePosition, liveMark, geo.side, geo.risk, redacted]);
   React.useEffect(() => {
     const r = refs.current;
     if (!r) return;
@@ -636,7 +641,7 @@ export function WsChart({
     if (isWorkspace && summary) aside.push(<SummaryCard key="sum" s={summary} redacted={redacted} />, <FillLog key="log" fills={geo.fills} cursor={null} redacted={redacted} onJump={jumpView} />);
   } else if (cursorIdx != null) {
     if (replayDone && summary) aside.push(<SummaryCard key="sum" s={summary} redacted={redacted} onJumpBest={geo.mfeIdx != null ? () => replay.seek(geo.mfeIdx as number) : undefined} />);
-    else if (hasTrade) aside.push(<PositionCard key="pos" position={livePosition} side={geo.side} mark={bars[cursorIdx]?.c ?? null} risk={geo.risk} redacted={redacted} sinceEntry={sinceEntryAt(cursorIdx)} entered={geo.entryIdx != null && cursorIdx >= geo.entryIdx} />);
+    else if (hasTrade) aside.push(<PositionCard key="pos" position={livePosition} side={geo.side} mark={liveMark} risk={geo.risk} redacted={redacted} sinceEntry={sinceEntryAt(cursorIdx)} entered={geo.entryIdx != null && cursorIdx >= geo.entryIdx} />);
     if (hasTrade) aside.push(<FillLog key="log" fills={geo.fills} cursor={cursorIdx} redacted={redacted} onJump={(i) => replay.seek(i)} />);
   }
   if (asideExtra) aside.push(<React.Fragment key="extra">{asideExtra}</React.Fragment>);

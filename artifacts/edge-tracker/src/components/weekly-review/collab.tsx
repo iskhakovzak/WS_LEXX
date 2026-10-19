@@ -3,7 +3,7 @@
  * the trader's self-assessment and the curator's comment + score + 1–3 goals for next week.
  */
 import * as React from "react";
-import { Check, CheckCircle2, Flag, MessageSquareText, Send, Target, UserRound } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, Flag, MessageSquareText, Send, Target, UserRound } from "lucide-react";
 import { Panel, Pill, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,7 +176,11 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
 }
 
 // ── Curator review ───────────────────────────────────────────────────────────
-export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: WeeklyReview; className?: string; readOnly?: boolean }) {
+/**
+ * `next` — the next ward still waiting for a weekly review (the page computes it): «Сохранить и следующий» finalizes
+ * this one and opens that trader (OLGA-11).
+ */
+export function CuratorReviewPanel({ doc, className, readOnly = false, next }: { doc: WeeklyReview; className?: string; readOnly?: boolean; next?: { name: string; open: () => void } | null }) {
   const { t } = weeklyI18n.useT();
   const review = doc.review;
   const c = review?.curatorReview ?? {};
@@ -200,13 +204,14 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
 
   const status = review?.status ?? "none";
   const cleanGoals = goals.map((g) => ({ ...g, text: g.text.trim() })).filter((g) => g.text);
-  const save = (finalize: boolean) => {
+  const save = (finalize: boolean, goNext = false) => {
     saveMut.mutate(
       { trader: doc.trader, week: doc.week.key, comment, score, goals: cleanGoals, finalize },
       {
         onSuccess: () => {
           setDirty(false);
           toast({ title: finalize ? t("collab.reviewSaved", { trader: personName(doc.trader) }) : t("collab.reviewDraftSaved"), description: finalize ? t("collab.goalsForNext", { count: cleanGoals.length }) : undefined });
+          if (goNext && next) next.open();
         },
         onError: (e) => toast({ title: t("collab.reviewFailed"), description: errMsg(e), variant: "destructive" }),
       },
@@ -238,7 +243,14 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
   }
 
   return (
-    <Panel title={t("collab.curatorTitle")} description={t("collab.curatorDesc")} icon={MessageSquareText} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
+    <Panel
+      title={t("collab.curatorTitle")}
+      description={t("collab.curatorDesc")}
+      icon={MessageSquareText}
+      className={cn("min-w-0", className)}
+      // The curator's own side: «Отправлен» is the trader's report, not this review (OLGA-22).
+      actions={<Pill tone={status === "reviewed" ? "up" : c.comment || c.score != null ? "neutral" : "warn"} dot>{t(status === "reviewed" ? "collab.curatorDone" : c.comment || c.score != null ? "collab.curatorDraft" : "collab.curatorTodo")}</Pill>}
+    >
       <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           <span>{t("collab.comment")}</span>
@@ -284,6 +296,11 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
           <Button type="button" onClick={() => save(true)} disabled={saveMut.isPending || !(comment || score != null || cleanGoals.length)}>
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {status === "reviewed" ? t("collab.updateReview") : t("collab.finishReview")}
           </Button>
+          {next && status !== "reviewed" && (
+            <Button type="button" variant="outline" onClick={() => save(true, true)} disabled={saveMut.isPending || !(comment || score != null || cleanGoals.length)} title={t("collab.saveNextTitle", { name: personName(next.name) })}>
+              {t("collab.saveNext")} <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={() => save(false)} disabled={saveMut.isPending || !dirty}>{t("collab.saveDraft")}</Button>
           {status === "reviewed" && review?.reviewedAt && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("collab.reviewedOn", { date: fmtDay(review.reviewedAt.slice(0, 10)) })}{c.by ? ` · ${personName(c.by)}` : ""}</span>}
         </div>

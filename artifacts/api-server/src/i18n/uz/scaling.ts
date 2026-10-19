@@ -129,4 +129,5 @@ export default {
   },
   templateResync: "Limitlar daraja shabloniga moslashtirildi",
   templateDecision: "Daraja shablon boʻyicha tayinlandi",
+  pctOfLimit: "limitning {value}%",
 } satisfies Messages<typeof ru>;

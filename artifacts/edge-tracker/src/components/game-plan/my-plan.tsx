@@ -11,8 +11,10 @@ import { QueryError } from "@/components/query-error";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { MARKET_BIAS, TICKER_BIAS, gpApi, gpKeys, type GamePlan, type InPlayItem, type MyPlanResponse, type PlanStatus, type TraderPlan } from "./types";
-import { fmtDate } from "@/lib/format";
-import { applyTemplate, docToDraft, draftToDoc, isDraftEmpty, sameDoc, validateDraft, type DraftErrors, type PlanDraft } from "./plan-draft";
+import { fmtDeskTime } from "@/lib/format";
+import {
+  applyTemplate, docToDraft, draftToDoc, isDraftEmpty, prefillFocus, prefillLimits, sameDoc, validateDraft, type DeskLimits, type DraftErrors, type PlanDraft,
+} from "./plan-draft";
 import { PlanEditor, type SetDraft, type TickerSuggestion } from "./plan-editor";
 import { PlanDocView } from "./plan-doc-view";
 import { PlanPicks } from "./plan-picks";
@@ -21,11 +23,20 @@ import { FocusBanner, shortDay } from "./plan-briefing";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { personName } from "@/i18n";
 import { ApiError } from "@/lib/api/http";
-import { dailyMeQuery } from "@/lib/api/queries";
+import { dailyMeQuery, riskMeQuery } from "@/lib/api/queries";
 
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: string } | { kind: "error"; message: string } | { kind: "invalid" };
 
 const AUTOSAVE_MS = 1200;
+
+/** Touch screen: no keyboard hints (Ctrl+V) on a phone (ILYA-13). */
+function coarsePointer(): boolean {
+  try {
+    return window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  } catch {
+    return false;
+  }
+}
 
 function fromDesk(i: InPlayItem): TickerSuggestion {
   const join = (a?: number[]) => (a ?? []).join(" ");
@@ -85,7 +96,7 @@ function MyPlanEditor({
   onSaved: (p: TraderPlan) => void;
 }) {
   const { t } = gpI18n.useT();
-  const start = useMemo(() => docToDraft(initial.plan?.doc), [initial.plan]);
+  const start = useMemo(() => docToDraft(initial.plan?.doc, true), [initial.plan]);
   const [draft, setDraftState] = useState<PlanDraft>(start);
   const [status, setStatus] = useState<PlanStatus>(initial.plan?.status ?? "draft");
   const [editing, setEditing] = useState(() => !initial.plan || initial.plan.status !== "ready");
@@ -179,6 +190,18 @@ function MyPlanEditor({
     setDraftState(fill);
   }, [focusMistake, initial.plan]);
 
+  // Prefill law: empty limits start from the desk limits (GET /api/risk/me) as real values (ILYA-12); the trader's own
+  // journal pick for this day fills an empty «Фокус дня» (DENIS-03). Same baseline rule as the rule of the day above.
+  const riskQ = useQuery({ ...riskMeQuery<{ limits: DeskLimits } | null>(), retry: false });
+  const limits = riskQ.data?.limits ?? null;
+  const ownFocus = focus && focus.date === date && focus.source === "own" ? focus.ownText ?? null : null;
+  useEffect(() => {
+    if (!limits && !ownFocus) return;
+    const fill = (d: PlanDraft): PlanDraft => prefillFocus(prefillLimits(d, limits), ownFocus);
+    if (!initial.plan) saved.current = { ...saved.current, draft: fill(saved.current.draft) };
+    setDraftState(fill);
+  }, [limits, ownFocus, initial.plan]);
+
   // Clear errors as fields get fixed.
   useEffect(() => {
     if (Object.keys(errors).length) setErrors(validateDraft(draft));
@@ -213,7 +236,7 @@ function MyPlanEditor({
     try {
       const r = await gpApi.my(initial.prevDate);
       if (!r.plan) throw new Error(t("my.notFound"));
-      const prev = docToDraft(r.plan.doc);
+      const prev = docToDraft(r.plan.doc, true);
       setDraft(() => prev);
       toast({ title: t("my.copied"), description: t("my.copiedDesc", { date: shortDay(initial.prevDate) }) });
     } catch (e) {
@@ -263,7 +286,7 @@ function MyPlanEditor({
           </span>
         }
         icon={NotebookPen}
-        description={editing ? t("my.autosaveHint") : undefined}
+        description={editing ? (coarsePointer() ? t("my.autosaveHintTouch") : t("my.autosaveHint")) : undefined}
         actions={header}
       >
         <PlanPicks date={date} />
@@ -361,7 +384,7 @@ function SaveIndicator({ state, pending, onRetry }: { state: SaveState; pending:
   else if (state.kind === "saved")
     content = (
       <>
-        <Cloud className="h-3.5 w-3.5" aria-hidden="true" /> {t("my.savedAt", { time: fmtDate(state.at, "time") })}
+        <Cloud className="h-3.5 w-3.5" aria-hidden="true" /> {t("my.savedAt", { time: fmtDeskTime(state.at) })}
       </>
     );
   return (

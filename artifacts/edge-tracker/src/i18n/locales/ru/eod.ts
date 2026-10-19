@@ -1,7 +1,7 @@
 /** Day close (components/eod/**) and the morning check-in (components/morning-checkin.tsx). */
 export default {
   status: { open: "День открыт", closed: "День закрыт", reviewed: "Проверен куратором" },
-  hours: { lessThanHour: "меньше часа", h: "{h} ч", dh: "{d} дн {h} ч" },
+  hours: { lessThanHour: "<1 ч", h: "{h} ч", d: "{d} дн", dh: "{d} дн {h} ч" },
   sla: { left: "осталось {time}", overdue: "просрочено на {time}" },
   flow: {
     positionsSaveFailed: "Не удалось сохранить позиции",
@@ -89,7 +89,9 @@ export default {
   },
   queue: {
     title: "Очередь на проверку",
-    desc: "Закрытые трейдерами дни. Срок проверки — {sla} ч с момента закрытия.",
+    desc: "Закрытые трейдерами дни. Срок проверки — {sla} ч с момента закрытия, выходные и праздники не считаются.",
+    scopeAria: "Чьи дни показывать",
+    scope: { mine: "Мои · {count}", desk: "Весь деск", unassigned: "Без куратора" },
     sectionAria: "Раздел очереди",
     pending: "Ждут проверки",
     reviewed7: "Проверено за 7 дней",
@@ -113,7 +115,7 @@ export default {
   },
   sheet: {
     score: { none: "Нет разбора", formal: "Формально", ok: "Нормально", good: "Хорошо", exemplary: "Образцово" },
-    reviewedToast: "Разбор {trader} за {date} проверен",
+    reviewedToast: "День {date} проверен · {trader}",
     writeComment: "Напишите комментарий трейдеру",
     saveFailed: "Не удалось сохранить проверку",
     waiting: "ждёт {time} · {sla}",

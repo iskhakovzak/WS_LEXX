@@ -27,12 +27,27 @@ export const pendingReviews = (s: TraderSignal) => s.eod.pending + (s.weekly.sub
 export const isRiskNow = (s: TraderSignal) => s.risk.halted || s.risk.nearStop;
 export const breachesWeek = (s: TraderSignal) => s.breaches.week ?? 0;
 
-/** Whole days between the last trade day and `today` (YYYY-MM-DD); null — never traded. */
+/**
+ * TRADING days since the last trade day up to `today` (Fri → Mon = 1, OLGA-13); null — never traded. The server counts
+ * them with holidays (`idleTradingDays`); without it (older API) weekends are skipped here.
+ */
 export function daysSinceTrade(s: TraderSignal, today: string): number | null {
   if (!s.lastTradeDate) return null;
-  const a = Date.parse(`${s.lastTradeDate.slice(0, 10)}T12:00:00Z`);
-  const b = Date.parse(`${today}T12:00:00Z`);
-  return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, Math.round((b - a) / 86_400_000)) : null;
+  if (typeof s.idleTradingDays === "number") return s.idleTradingDays;
+  return weekdaysAfter(s.lastTradeDate.slice(0, 10), today);
+}
+
+/** Weekdays d with from < d ≤ to (YYYY-MM-DD). */
+export function weekdaysAfter(from: string, to: string): number | null {
+  const a = Date.parse(`${from}T12:00:00Z`);
+  const b = Date.parse(`${to}T12:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  let n = 0;
+  for (let t = a + 86_400_000, i = 0; t <= b && i < 4000; t += 86_400_000, i++) {
+    const wd = new Date(t).getUTCDay();
+    if (wd !== 0 && wd !== 6) n++;
+  }
+  return n;
 }
 
 export function isIdle(s: TraderSignal, today: string, days: number): boolean {

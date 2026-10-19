@@ -10,8 +10,9 @@
  *     With an execution model (cfg.exec, exec.ts; games created since 2026-10-18) market orders pay half the spread +
  *     slippage and stops slip; `SimFill.slip` is that cost per share (always ≥ 0, against the player).
  *   - A bracket set on bar i is checked from bar i+1 on, against each bar's high / low: a stop fills at the stop or,
- *     when the bar opens beyond it (gap), at the open; same for the target. Both inside one bar → the stop first
- *     (conservative: we cannot know the path inside a bar).
+ *     when the bar opens beyond it (gap), at the open; same for the target. Games with `cfg.intrabar` (created since
+ *     «Тренажёр 2», 2026-10-19) walk the bar's path — bull bar O→L→H→C, bear bar O→H→L→C — and the first level touched
+ *     fills (`SimFill.intrabar`); older games: both inside one bar → the stop first (conservative).
  *   - A trade is one round trip flat → flat (adds and partial exits included). A flip closes one trade and opens the
  *     next one with the remainder.
  *   - R: risk per share is the stop distance set on the entry bar (floored at ¼ of the risk unit so a 1-cent stop
@@ -33,7 +34,7 @@ export type SimEvent =
 export type FillReason = "buy" | "sell" | "flat" | "stop" | "target" | "end";
 
 /** `slip`: spread + slippage paid on this fill, $ per share (only with an execution model). */
-export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number; slip?: number };
+export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number; slip?: number; intrabar?: true };
 
 export type SimTrade = {
   n: number;
@@ -70,7 +71,36 @@ export type SimConfig = {
   riskUnit: number;
   /** Spread / slippage model (exec.ts); absent on games created before it — fills at the close / the stop exactly. */
   exec?: ExecModel | null;
+  /** Brackets follow the intrabar path (pathOf) instead of «stop first»; absent on older games. */
+  intrabar?: boolean;
 };
+
+/** The price path assumed inside a bar: bull (or flat) bar O→L→H→C, bear bar O→H→L→C. */
+export function pathOf(b: SimBar): [number, number, number, number] {
+  return b.c >= b.o ? [b.o, b.l, b.h, b.c] : [b.o, b.h, b.l, b.c];
+}
+
+/**
+ * First bracket level the bar touches for a position (`long`), walking pathOf(b). An open beyond a level fills at the
+ * open (gap, `intrabar` false). `best` / `worst`: the most favourable / adverse price reached before the fill.
+ */
+export function bracketHit(
+  b: SimBar, long: boolean, stop: number | null, target: number | null,
+): { px: number; reason: "stop" | "target"; intrabar: boolean; best: number; worst: number } | null {
+  const dir = long ? 1 : -1;
+  if (stop != null && (b.o - stop) * dir <= 0) return { px: b.o, reason: "stop", intrabar: false, best: b.o, worst: b.o };
+  if (target != null && (b.o - target) * dir >= 0) return { px: b.o, reason: "target", intrabar: false, best: b.o, worst: b.o };
+  const path = pathOf(b);
+  let best = b.o, worst = b.o;
+  for (let k = 1; k < path.length; k++) {
+    const p = path[k];
+    if (stop != null && (p - stop) * dir <= 0) return { px: stop, reason: "stop", intrabar: true, best, worst: stop };
+    if (target != null && (p - target) * dir >= 0) return { px: target, reason: "target", intrabar: true, best: target, worst };
+    if ((p - best) * dir > 0) best = p;
+    if ((p - worst) * dir < 0) worst = p;
+  }
+  return null;
+}
 
 export type SimState = {
   cursor: number;
@@ -150,13 +180,15 @@ export function simulate(bars: readonly SimBar[], cfg: SimConfig, events: readon
     t.maeR = t.riskPerShare > 0 ? r2(t.mae / t.riskPerShare) : 0;
   };
 
-  const fill = (idx: number, price: number, delta: number, reason: FillReason, nominal: number = price) => {
+  const fill = (idx: number, price: number, delta: number, reason: FillReason, nominal: number = price, intrabar = false) => {
     if (delta === 0) return;
     const absD = Math.abs(delta);
     const fee = r4(absD * cfg.feePerShare);
     fees += fee;
     const slip = r4(Math.abs(price - nominal));
-    fills.push(slip > 0 ? { idx, price: r4(price), qty: delta, reason, fee, slip } : { idx, price: r4(price), qty: delta, reason, fee });
+    const f: SimFill = slip > 0 ? { idx, price: r4(price), qty: delta, reason, fee, slip } : { idx, price: r4(price), qty: delta, reason, fee };
+    if (intrabar) f.intrabar = true;
+    fills.push(f);
     if (pos === 0) {
       pos = delta;
       avg = price;
@@ -204,7 +236,15 @@ export function simulate(bars: readonly SimBar[], cfg: SimConfig, events: readon
       const long = pos > 0;
       let exitPx: number | null = null;
       let reason: FillReason | null = null;
-      if (i >= bracketFrom) {
+      let inside = false;
+      if (i >= bracketFrom && cfg.intrabar) {
+        const hit = bracketHit(b, long, stop, target);
+        if (hit) {
+          exitPx = hit.px; reason = hit.reason; inside = hit.intrabar;
+          t.mfe = Math.max(t.mfe, (hit.best - avg) * (long ? 1 : -1));
+          t.mae = Math.max(t.mae, (avg - hit.worst) * (long ? 1 : -1));
+        }
+      } else if (i >= bracketFrom) {
         const stopHit = stop != null && (long ? b.l <= stop : b.h >= stop);
         const tgtHit = target != null && (long ? b.h >= target : b.l <= target);
         const openBeyondStop = stop != null && (long ? b.o <= stop : b.o >= stop);
@@ -217,7 +257,7 @@ export function simulate(bars: readonly SimBar[], cfg: SimConfig, events: readon
       if (exitPx != null && reason) {
         const move = (exitPx - avg) * (long ? 1 : -1);
         if (move < 0) t.mae = Math.max(t.mae, -move); else t.mfe = Math.max(t.mfe, move);
-        fill(i, reason === "stop" ? stopPx(exitPx, pos, cfg.exec) : exitPx, -pos, reason, exitPx);
+        fill(i, reason === "stop" ? stopPx(exitPx, pos, cfg.exec) : exitPx, -pos, reason, exitPx, inside);
       } else {
         t.mfe = Math.max(t.mfe, long ? b.h - avg : avg - b.l);
         t.mae = Math.max(t.mae, long ? avg - b.l : b.h - avg);

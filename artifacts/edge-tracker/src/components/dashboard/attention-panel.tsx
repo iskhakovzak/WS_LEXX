@@ -1,24 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import {
-  AlertTriangle,
   ArrowRight,
-  Bell,
   BookOpenCheck,
-  CalendarClock,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
-  ClipboardPen,
   Compass,
-  FileEdit,
   HeartPulse,
-  Lightbulb,
   Moon,
   ShieldAlert,
-  UserCheck,
-  type LucideIcon,
 } from "lucide-react";
 import { Panel, Pill, UpdatedAgo, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -28,25 +20,13 @@ import { prevWeekday } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { shortDate } from "./fmt";
 import { fmtUsd } from "@/lib/format";
-import type { DashboardToday, EodStatus, EventsToday, MiniTrade, RecentTrade, RiskDesk, RiskMe } from "./use-dashboard";
+import type { DashboardToday, EodStatus, EventsToday, RecentTrade, RiskDesk, RiskMe } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { personName } from "@/i18n";
+import { dayReportHref, eventsItem, queueItems, staleDay, type Item } from "./attention-model";
 
-/** One actionable line. Lower `rank` = more urgent; the first item becomes «Следующий шаг». */
-type Item = {
-  key: string;
-  rank: number;
-  icon: LucideIcon;
-  tone: Tone;
-  title: string;
-  detail?: string;
-  href?: string;
-  onClick?: () => void;
-  cta: string;
-  secondary?: { label: string; href: string };
-  chips?: { key: string | number; label: string; href: string; title?: string }[];
-};
+export { STALE_DAYS, staleDay, uniqueTickers, violationsTitle } from "./attention-model";
 
 const TONE_ICON: Record<Tone, string> = {
   up: "bg-up/15 text-up",
@@ -60,23 +40,6 @@ const TONE_ICON: Record<Tone, string> = {
 const CLOSE_MIN = 16 * 60;
 const VISIBLE_ROWS = 5;
 const INPUT_WAIT_MS = 2500;
-
-function dayReportHref(date: string, trader?: string | null) {
-  const q = new URLSearchParams({ date });
-  if (trader) q.set("trader", trader);
-  return `/day-report?${q.toString()}`;
-}
-
-function tradeChips(items: MiniTrade[], max = 3) {
-  return items.slice(0, max).map((t) => ({ key: t.id, label: t.ticker, href: links.trade(t.id), title: `${t.ticker} · ${t.date}` }));
-}
-
-function splitTickers(raw: string | null | undefined): string[] {
-  return (raw ?? "")
-    .split(/[\s,;/]+/)
-    .map((x) => x.trim().toUpperCase())
-    .filter(Boolean);
-}
 
 function ItemLink({ item, className, children }: { item: Item; className?: string; children: React.ReactNode }) {
   if (item.href) {
@@ -243,17 +206,18 @@ export function AttentionPanel({
   const items: Item[] = [];
 
   // ── Risk ────────────────────────────────────────────────────────────────
-  if (!team && risk) {
-    const breach = risk.halted || risk.alerts.some((x) => x.level === "breach");
-    if (risk.halted || risk.alerts.length > 0) {
+  // A halt is already the hero's red «Дневной лимит» block — not repeated here (law 3, DENIS-38).
+  if (!team && risk && !risk.halted) {
+    const breach = risk.alerts.some((x) => x.level === "breach");
+    if (risk.alerts.length > 0) {
       const first = risk.alerts[0];
       items.push({
         key: "risk",
         rank: breach ? 0 : 3,
         icon: ShieldAlert,
         tone: breach ? "down" : "warn",
-        title: risk.halted ? risk.stop.label : t("attention.nearLimit", { label: first?.label ?? t("attention.nearLimitFallback") }),
-        detail: risk.halted ? risk.stop.message : first ? [first.pct != null ? t("attention.limitPct", { pct: Math.round(first.pct) }) : null, first.detail || null].filter(Boolean).join(" · ") : undefined,
+        title: t("attention.nearLimit", { label: first?.label ?? t("attention.nearLimitFallback") }),
+        detail: first ? [first.pct != null ? t("attention.limitPct", { pct: Math.round(first.pct) }) : null, first.detail || null].filter(Boolean).join(" · ") : undefined,
         href: links.risk(risk.trader),
         cta: t("attention.riskDesk"),
       });
@@ -274,7 +238,8 @@ export function AttentionPanel({
   }
 
   // ── Day review (own: the last trading day that isn't closed; team: who hasn't closed today) ──
-  if (!team && lastDay && lastDayEod && lastDay !== dayCardDate) {
+  // A day older than STALE_DAYS is history, not «the next step» (UMID-05: «разобрать 9 апреля» for a new trainee).
+  if (!team && lastDay && lastDayEod && lastDay !== dayCardDate && !staleDay(lastDay, today)) {
     const row = lastDayEod.traders.find((x) => x.trader === me);
     if (row && row.status === "open" && row.trades > 0) {
       const isToday = lastDay === today;
@@ -343,41 +308,8 @@ export function AttentionPanel({
   }
 
   // ── Events today for my tickers + macro ──────────────────────────────────
-  const mine = new Set<string>([
-    ...(data.myTickers ?? []),
-    ...(recent ?? []).map((t) => t.ticker.toUpperCase()),
-    ...(data.positions ?? []).map((p) => p.ticker.toUpperCase()),
-  ]);
-  const tickerEvents = (events?.events ?? []).filter((e) => e.holding || e.tradesToday > 0 || splitTickers(e.ticker).some((t) => mine.has(t)));
-  const macroEvents = (events?.events ?? []).filter((e) => !e.ticker);
-  const myEarnings = (events?.earnings ?? []).filter((e) => mine.has(e.ticker.toUpperCase()));
-  const eventLabels = [
-    ...marketEvents.map((e) => e.name),
-    ...macroEvents.map((e) => e.headline ?? e.eventType ?? t("attention.eventFallback")),
-  ];
-  const tickerChips = [
-    ...tickerEvents.flatMap((e) => splitTickers(e.ticker).filter((tk) => mine.has(tk)).map((tk) => ({ t: tk, title: `${tk}: ${e.headline ?? e.eventType ?? t("attention.eventFallback")}` }))),
-    ...myEarnings.map((e) => ({ t: e.ticker.toUpperCase(), title: t("attention.earnings", { ticker: e.ticker, session: e.session ?? "" }).trim() })),
-  ].filter((c, i, arr) => arr.findIndex((x) => x.t === c.t) === i);
-  // After the close today's catalysts are history — the block is about what's ahead.
-  if (!afterClose && (tickerChips.length > 0 || eventLabels.length > 0)) {
-    const high = marketEvents.some((e) => e.importance === "high") || tickerEvents.some((e) => e.holding);
-    items.push({
-      key: "events",
-      rank: high ? 2 : 5,
-      icon: CalendarClock,
-      tone: high ? "warn" : "purple",
-      title:
-        tickerChips.length > 0
-          ? t("attention.myEvents", { tickers: `${tickerChips.slice(0, 4).map((c) => c.t).join(", ")}${tickerChips.length > 4 ? ` +${tickerChips.length - 4}` : ""}` })
-          : t("attention.todayEvents", { events: eventLabels.slice(0, 2).join(" · ") }),
-      detail: tickerChips.length > 0
-        ? (eventLabels.length > 0 ? t("attention.market", { events: eventLabels.slice(0, 2).join(" · ") }) : tickerChips[0].title)
-        : eventLabels.length > 2 ? t("attention.andMore", { count: eventLabels.length - 2 }) : t("attention.marketCalendar"),
-      href: tickerChips.length === 1 ? links.events(tickerChips[0].t) : links.events(),
-      cta: t("attention.events"),
-    });
-  }
+  const ev = eventsItem({ data, recent, events, marketEvents, afterClose }, t);
+  if (ev) items.push(ev);
 
   // ── Positions ───────────────────────────────────────────────────────────
   const carried = (data.positions ?? []).filter((p) => p.horizon !== "intraday");
@@ -395,86 +327,31 @@ export function AttentionPanel({
   }
 
   // ── Notifications, rules, review queues ─────────────────────────────────
-  if (unread && unread.unread > 0) {
-    items.push({
-      key: "notifications",
-      rank: unread.critical > 0 ? 1 : 7,
-      icon: Bell,
-      tone: unread.critical > 0 ? "down" : unread.warn > 0 ? "warn" : "neutral",
-      title: t("attention.unread", { count: unread.unread }),
-      detail: unread.critical > 0 ? t("attention.critical", { count: unread.critical }) : unread.warn > 0 ? t("attention.warn", { count: unread.warn }) : undefined,
-      href: "/notifications",
-      cta: t("attention.open"),
-    });
-  }
-  if (a.violations.count > 0) {
-    items.push({
-      key: "violations",
-      rank: 3,
-      icon: AlertTriangle,
-      tone: "down",
-      title: t("attention.violations", { count: a.violations.count }),
-      detail: a.violations.items[0]?.message,
-      href: "/error-tracker",
-      cta: t("attention.details"),
-    });
-  }
-  if (a.curatorQueue && a.curatorQueue.count > 0) {
-    const q = a.curatorQueue;
-    items.push({
-      key: "curator",
-      rank: 5,
-      icon: UserCheck,
-      tone: "purple",
-      title: t("attention.curatorQueue", { count: q.count }),
-      detail: q.items.map((x) => `${x.ticker}${x.trader ? ` (${personName(x.trader)})` : ""}`).slice(0, 3).join(", "),
-      href: links.trades({ ids: q.items.map((x) => x.id) }),
-      cta: t("attention.reviewIt"),
-    });
-  }
-  if (a.unreviewed.count > 0) {
-    items.push({
-      key: "unreviewed",
-      rank: 8,
-      icon: ClipboardPen,
-      tone: "neutral",
-      title: t("attention.unreviewed", { trades: tc("units.trades", { count: a.unreviewed.count }) }),
-      detail: a.unreviewed.items.map((x) => x.ticker).slice(0, 5).join(", "),
-      href: a.unreviewed.items[0] ? links.trade(a.unreviewed.items[0].id) : links.trades(),
-      cta: t("attention.reviewTrades"),
-      chips: tradeChips(a.unreviewed.items),
-    });
-  }
-  if (a.ideasToReview.count > 0) {
-    items.push({
-      key: "ideas",
-      rank: 9,
-      icon: Lightbulb,
-      tone: "accent",
-      title: t("attention.ideas", { count: a.ideasToReview.count }),
-      detail: a.ideasToReview.items.map((i) => i.ticker).slice(0, 5).join(", "),
-      href: a.ideasToReview.items[0] ? links.idea(a.ideasToReview.items[0].id) : "/trade-ideas",
-      cta: t("attention.rate"),
-    });
-  }
-  if (a.draftIdeas.count > 0) {
-    items.push({
-      key: "drafts",
-      rank: 10,
-      icon: FileEdit,
-      tone: "neutral",
-      title: t("attention.drafts", { count: a.draftIdeas.count }),
-      detail: t("attention.draftsHint"),
-      href: "/trade-ideas?status=draft&mine=1",
-      cta: t("attention.toIdeas"),
-    });
-  }
+  items.push(...queueItems(a, unread, tradingDay, t, tc));
 
   items.sort((x, y) => x.rank - y.rank);
   // Nothing urgent → the next step is still useful: look at the last day's breakdown.
   const lastTradeDate = !team ? (recent?.[0]?.closeDate?.slice(0, 10) ?? null) : null;
+  const freshTrades = !!lastTradeDate && !staleDay(lastTradeDate, today);
+  // No recent trades (a new trainee): the day starts with plan → trainer → lesson, never an old day (UMID-05).
+  const startItem: Item | null =
+    !team && recent !== undefined && !freshTrades && tradingDay
+      ? {
+          key: "start",
+          rank: 98,
+          icon: BookOpenCheck,
+          tone: "accent",
+          title: t("attention.startTitle"),
+          detail: t("attention.startHint"),
+          href: links.myPlan(today),
+          cta: t("attention.startCta"),
+          secondary: { label: t("attention.startTrainer"), href: "/trainer" },
+          chips: [{ key: "lesson", label: t("attention.startLesson"), href: "/academy/learn" }],
+        }
+      : null;
+  if (startItem) items.push(startItem);
   const fallback: Item | null =
-    items.length === 0 && lastTradeDate && !dayCardDate
+    items.length === 0 && lastTradeDate && freshTrades && !dayCardDate
       ? {
           key: "report",
           rank: 99,

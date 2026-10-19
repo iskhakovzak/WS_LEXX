@@ -16,6 +16,7 @@ import { personInitials, personName } from "@/i18n";
 
 export { LanguageMenu } from "@/i18n/language-switcher";
 import { LanguageMenuItems } from "@/i18n/language-switcher";
+import { tierDisplay } from "@/components/shared/tier-labels";
 
 export const THEME_ICONS: Record<Theme, React.ElementType> = { dark: Moon, dim: CloudMoon, light: Sun };
 
@@ -58,14 +59,15 @@ export function NotificationBell(_props: { traderName?: string; className?: stri
 }
 
 export function UserMenu() {
-  const { user, logout } = useAuth();
+  const { user, logout, permissions } = useAuth();
   const { theme, setTheme, themes, themeLabels } = useTheme();
   const [, navigate] = useLocation();
   const { t } = commonI18n.useT();
   const { t: ts } = shellI18n.useT();
   const member = user && user.role !== "guest" ? user.traderName ?? null : null;
   const name = member ? personName(member) : user && user.role !== "guest" ? t("roles.user") : t("roles.guest");
-  const role = roleLabel(user?.role ?? "guest");
+  // UMID-34: a trader is shown by their ladder level («Стажёр»), not the technical role «Трейдер».
+  const role = user?.role === "trader" && permissions.tier ? tierDisplay(permissions.tier) : roleLabel(user?.role ?? "guest");
   const initial = member ? personInitials(member) : name.trim().charAt(0).toUpperCase() || "?";
   return (
     <DropdownMenu>

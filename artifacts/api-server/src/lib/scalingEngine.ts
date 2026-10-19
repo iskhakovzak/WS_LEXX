@@ -17,6 +17,9 @@
  */
 import { scalingT } from "../i18n/ns";
 import { formatCountFor, type Lang, } from "../i18n";
+import { DEFAULT_RULES } from "./scalingSeed";
+
+export { DEFAULT_RULES, DEFAULT_TIERS } from "./scalingSeed";
 
 export type RuleKind = "promote" | "demote";
 export type Op = ">=" | ">" | "<=" | "<" | "=";
@@ -487,16 +490,21 @@ export function formatMetric(key: MetricKey, value: number | null, lang: Lang = 
   switch (u) {
     case "usd": return `${value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
     case "r": return `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}R`;
-    case "pct": return `${value.toFixed(0)}%`;
+    case "pct": return key === "max_dd_pct" ? scalingT.tFor(lang)("pctOfLimit", { value: value.toFixed(0) }) : `${value.toFixed(0)}%`;
     case "x": return `${value.toFixed(2)}×`;
     case "score": return `${value.toFixed(1)}/10`;
     default: return formatCountFor(lang, Math.round(value));
   }
 }
 
-/** Custom rule label, else the metric label in `lang`. */
+/** Seeded RU rule labels (lib/scalingSeed): data, not a curator's words — readers in EN / UZ get the metric label. */
+const SEED_RULE_LABELS = new Set(DEFAULT_RULES.map((r) => r.label));
+
+/** Custom rule label, else the metric label in `lang` (also for a seeded RU label read in another language). */
 export function ruleLabel(rule: Pick<Rule, "label" | "metric">, lang: Lang = "ru"): string {
-  return rule.label?.trim() || scalingT.tryFor(lang, `metric.${rule.metric}.label`) || rule.metric;
+  const custom = rule.label?.trim();
+  if (custom && !(lang !== "ru" && SEED_RULE_LABELS.has(custom))) return custom;
+  return scalingT.tryFor(lang, `metric.${rule.metric}.label`) || rule.metric;
 }
 
 /** Text of a rule result in `lang` (also used to re-render stored reasons). */
@@ -637,29 +645,3 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
   };
 }
 
-// ─── defaults (seeded on first run, curator-editable afterwards) ────────────
-
-// Seed data (written to the DB once, curator-editable afterwards): tier names, descriptions and rule labels are
-// stored user content, not UI text.
-export const DEFAULT_TIERS: Tier[] = [
-  { key: "trainee", name: "Стажёр", order: 1, accountSize: 10_000, dailyLossLimit: 150, weeklyLossLimit: 400, maxDrawdown: 800, maxRiskPerTrade: 50, maxPositionUsd: 10_000, maxOvernightExposure: 0, maxOpenPositions: 2, allowOvernight: false, allowSwing: false, description: "Симулятор / минимальный размер" }, // i18n-ignore (seed data)
-  { key: "junior", name: "Джун", order: 2, accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2_000, maxRiskPerTrade: 100, maxPositionUsd: 25_000, maxOvernightExposure: 5_000, maxOpenPositions: 3, allowOvernight: false, allowSwing: false, description: "Интрадей, малый лот" }, // i18n-ignore (seed data)
-  { key: "trader", name: "Трейдер", order: 3, accountSize: 50_000, dailyLossLimit: 600, weeklyLossLimit: 1_800, maxDrawdown: 4_000, maxRiskPerTrade: 200, maxPositionUsd: 50_000, maxOvernightExposure: 20_000, maxOpenPositions: 5, allowOvernight: true, allowSwing: false, description: "Интрадей + овернайт" }, // i18n-ignore (seed data)
-  { key: "senior", name: "Сеньор", order: 4, accountSize: 100_000, dailyLossLimit: 1_200, weeklyLossLimit: 3_500, maxDrawdown: 8_000, maxRiskPerTrade: 400, maxPositionUsd: 100_000, maxOvernightExposure: 50_000, maxOpenPositions: 8, allowOvernight: true, allowSwing: true, description: "Полный BP, свинг" }, // i18n-ignore (seed data)
-  { key: "lead", name: "Лид", order: 5, accountSize: 250_000, dailyLossLimit: 2_500, weeklyLossLimit: 7_000, maxDrawdown: 15_000, maxRiskPerTrade: 800, maxPositionUsd: 250_000, maxOvernightExposure: 120_000, maxOpenPositions: 12, allowOvernight: true, allowSwing: true, description: "Максимальный BP, менторство" }, // i18n-ignore (seed data)
-];
-
-export const DEFAULT_RULES: Omit<Rule, "id">[] = [
-  { kind: "promote", metric: "trades", op: ">=", value: 40, unit: "abs", windowDays: 20, tierKey: null, label: "Минимум сделок за 20 дней", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "green_weeks", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Зелёных недель подряд", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "net_pnl", op: ">=", value: 5, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "P&L нетто ≥ 5 дневных лимитов", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "profit_factor", op: ">=", value: 1.3, unit: "abs", windowDays: 20, tierKey: null, label: "Profit factor", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "max_dd_pct", op: "<", value: 50, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка меньше половины лимита", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "limit_breaches", op: "=", value: 0, unit: "abs", windowDays: 20, tierKey: null, label: "Без нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "discipline", op: ">=", value: 7, unit: "abs", windowDays: 20, tierKey: null, label: "Оценка дисциплины", enabled: true }, // i18n-ignore (seed data)
-  { kind: "demote", metric: "limit_breaches", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Три и более нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
-  { kind: "demote", metric: "max_dd_pct", op: ">=", value: 100, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка достигла лимита", enabled: true }, // i18n-ignore (seed data)
-  { kind: "demote", metric: "net_pnl", op: "<=", value: -3, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "Убыток ≥ 3 дневных лимитов", enabled: true }, // i18n-ignore (seed data)
-  { kind: "demote", metric: "discipline", op: "<", value: 4, unit: "abs", windowDays: 20, tierKey: null, label: "Дисциплина ниже 4", enabled: true }, // i18n-ignore (seed data)
-  { kind: "demote", metric: "red_streak", op: ">=", value: 5, unit: "abs", windowDays: 20, tierKey: null, label: "Пять красных дней подряд", enabled: true }, // i18n-ignore (seed data)
-];

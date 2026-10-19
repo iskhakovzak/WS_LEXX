@@ -3,6 +3,7 @@ import type { NextActionKind, Phase, QueueKind, TraderSignal } from "./api";
 import { matchesAny } from "@workspace/text-search";
 import { comparePersonNames } from "@/i18n";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { splitHours } from "@/lib/format";
 
 /** `{ key: label }` whose labels are read in the current language on every access (safe at module scope). */
 export function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
@@ -16,9 +17,8 @@ export function waitLabel(hours: number | null | undefined): string {
   if (hours == null) return "—";
   const t = curatorI18n.t;
   if (hours < 1) return t("wait.lessHour");
-  if (hours < 24) return t("wait.hours", { h: Math.round(hours) });
-  const d = Math.floor(hours / 24);
-  const h = Math.round(hours - d * 24);
+  const { d, h } = splitHours(hours);
+  if (!d) return t("wait.hours", { h });
   return h ? t("wait.daysHours", { d, h }) : t("wait.days", { d });
 }
 

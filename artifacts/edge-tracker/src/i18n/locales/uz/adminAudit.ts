@@ -43,6 +43,7 @@ export default {
     dailyQuote: "Kun iqtibosi",
     latin: "Lotincha ism",
     jobs: "Vazifalar",
+    playbook: "Pleybuk",
     login: "Kirish",
   },
 
@@ -54,6 +55,12 @@ export default {
     archive: "{who}ni arxivga yubordi{bulk}",
     restore: "{who}ni arxivdan qaytardi{bulk}",
     sessionsReset: "{who} sessiyalarini yakunladi{bulk}",
+    playbookOpen: "{setup} setapini {tier} darajasidan ochdi",
+    playbookClose: "{setup} setapini {tier} darajasigacha yopdi",
+    playbookTier: "{setup} setapi darajasini oʻzgartirdi: {tier}",
+    relink: "savdolarni setaplarga qayta bogʻladi: {count}",
+    startingSecret: { one: "{count} kishiga boshlangʻich PIN berdi", other: "{count} kishiga boshlangʻich PIN berdi" },
+    proposalAutoList: "daraja avtotakliflari: {names}",
     create: "{who} akkauntini yaratdi ({role})",
     roleChange: "{who} rolini oʻzgartirdi: {from} → {to}",
     roleSet: "{who} rolini oʻzgartirdi: {to}",
@@ -271,6 +278,8 @@ export default {
     challenge: "Sinov #{id}",
     challenges: "Sinovlar",
     generic: "{type} #{id}",
+    setup: "Setap {name}",
+    setupId: "Setap #{id}",
   },
   objectType: {
     user: "Foydalanuvchilar",
@@ -294,9 +303,13 @@ export default {
     curator_queue_acks: "Tahlillar navbati",
     office_capital: "Ofis kapitali",
     job: "Fon vazifalari",
+    playbook: "Pleybuk",
+    trades: "Savdolar",
     login_name: "Kirish nomlari",
     backup: "Zaxira nusxalar",
   },
+
+  playbookDetail: { relinkBackup: "zaxira nusxa: {file}", wasTier: "oldin: {tier}" },
 
   log: {
     title: "Audit jurnali",

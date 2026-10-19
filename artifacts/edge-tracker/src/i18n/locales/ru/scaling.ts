@@ -69,6 +69,15 @@ export default {
     column: "Лимит",
     nextTier: "Следующий тир",
   },
+  tierName: { lead: "Лид" },
+  tierDesc: {
+    trainee: "Симулятор / минимальный размер",
+    junior: "Интрадей, малый лот",
+    trader: "Интрадей + овернайт",
+    senior: "Полный BP, свинг",
+    lead: "Максимальный BP, менторство",
+  },
+  pctOfLimit: "{value} лимита",
   ladder: {
     aria: "Лестница тиров",
     empty: "Лестница тиров пуста — задайте её в настройках.",
@@ -91,6 +100,9 @@ export default {
     emptyPromote: "Нет правил повышения для этого тира",
     emptyDemote: "Нет правил понижения для этого тира",
     windowDays: { one: "{count} торг. дн.", few: "{count} торг. дн.", many: "{count} торг. дн.", other: "{count} торг. дн." },
+    need: "нужно {op} {threshold}",
+    demoteAt: "понижение при {op} {threshold}",
+    now: "сейчас",
     byR: "по R",
   },
   metrics: {
@@ -109,6 +121,7 @@ export default {
   },
   proposal: {
     byRules: "по правилам",
+    system: "Система",
     manual: "вручную",
     decidedBy: "решение: {name}",
     quoted: "«{text}»",

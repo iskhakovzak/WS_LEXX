@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, LATE_GRACE_MIN, NY_TZ, STAGES,
+  CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, LATE_GRACE_MIN, NY_TZ, STAGES, canManageCohort,
   dateInTz, describeGoal, describeRule, evaluateCheckin, evaluateGoal, goalTransition, isHhmm, isOccurrence, isValidTimeZone, isYmd,
   lagReasons, lagScore, lastTradingDays, maxLossStreak, mergeSummaries, nextOccurrence, occurrenceDates, occurrences, outcomeOf,
   summarizeAttendance, timeInTz, tzOffsetMinutes, weekdayOf, weekdaysBetween, zonedWallToUtcMs,
@@ -324,5 +324,16 @@ describe("lagging students", () => {
   it("weekdaysBetween is exclusive", () => {
     expect(weekdaysBetween("2026-10-16", "2026-10-19")).toBe(0); // Fri → Mon
     expect(weekdaysBetween("2026-10-12", "2026-10-16")).toBe(3);
+  });
+});
+
+describe("canManageCohort (OLGA-19)", () => {
+  it("admin, the cohort's mentor, or any staff while there is no mentor", () => {
+    const olga = { me: "Ольга Н.", staff: true };
+    expect(canManageCohort(olga, { mentor: "Ольга Н." })).toBe(true);
+    expect(canManageCohort(olga, { mentor: "Ориф" })).toBe(false);
+    expect(canManageCohort(olga, { mentor: null })).toBe(true);
+    expect(canManageCohort({ me: "Дмитрий К.", staff: true, admin: true }, { mentor: "Ориф" })).toBe(true);
+    expect(canManageCohort({ me: "Максим Р.", staff: false }, { mentor: null })).toBe(false);
   });
 });

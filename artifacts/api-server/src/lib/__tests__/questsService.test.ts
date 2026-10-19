@@ -68,7 +68,7 @@ vi.mock("../quests/load", () => ({ loadTraderInputs: vi.fn(async () => input.cur
 const service = await import("../quests/service");
 const { runQuestsNightly } = await import("../quests/job");
 
-function inputs(over: { contract?: boolean; telegram?: boolean } = {}) {
+function inputs(over: { contract?: boolean; telegram?: boolean; tier?: string | null } = {}) {
   const ledger = days.map((date, i) => ({ date, outcome: "kept" as const, points: 5, bonus: 0, streak: i + 1 }));
   const plans = new Map(over.contract ? [["2026-10-19", { beforeOpen: true, stop: true, ownRule: true, contract: true }]] : []);
   const quests = {
@@ -77,7 +77,7 @@ function inputs(over: { contract?: boolean; telegram?: boolean } = {}) {
     gamePlans: [], deskDayOpens: [], monthStops: [], stopKnown: false, lastTickerDay: null, replayTradeId: null,
   };
   return {
-    asOf: "2026-10-16", role: "trader",
+    asOf: "2026-10-16", role: "trader", tier: over.tier === undefined ? "trainee" : over.tier,
     summary: { streak: 15, bestStreak: 15, nextBonus: 10, points30: 40, pointsTotal: 40, windowDays: 30, level: 0, levelFrom: 0, nextLevelAt: 50 },
     ledger,
     achievements: {
@@ -127,7 +127,8 @@ describe("evaluation", () => {
     input.current = inputs({ telegram: true });
     const e = await service.evaluateTrader("Кирилл Б.", NOW);
     expect(sent("quest_done").map((n) => (n.params as { template: string }).template)).toEqual(["link_telegram"]);
-    expect(e.discipline).toMatchObject({ questPoints: 20, pointsTotal: 60, points30: 60, level: 1 });
+    // set_pin and replay_own_day were created done, link_telegram done now: 3 × 10
+    expect(e.discipline).toMatchObject({ questPoints: 30, pointsTotal: 70, points30: 70, level: 1 });
     await service.evaluateTrader("Кирилл Б.", NOW);
     expect(sent("quest_done")).toHaveLength(1);
   });
@@ -137,9 +138,21 @@ describe("evaluation", () => {
     const me = await service.questsMe("Кирилл Б.", NOW);
     expect(me.today).toBe("2026-10-19");
     expect(me.quests.filter((q) => q.scope === "daily").map((q) => q.template).sort()).toEqual(["keep_contract", "plan_before_open"]);
-    expect(me.summary.onboarding).toEqual({ done: 1, total: 7 });
+    // set_pin, first_plan_stop, replay_own_day, set_own_rule of the 6 required steps (Telegram is optional)
+    expect(me.summary.onboarding).toEqual({ done: 4, total: 6 });
+    expect(me.quests.filter((q) => q.scope === "onboarding").map((q) => q.template)).toEqual([
+      "set_pin", "first_plan_stop", "first_review", "open_desk_day", "replay_own_day", "set_own_rule", "link_telegram",
+    ]);
     expect(me.summary.achievementsEarned).toBe(3);
     expect(me.quests.find((q) => q.template === "plan_before_open")!.status).toBe("done");
+  });
+
+  it("a Трейдер or Сеньор gets no first steps: none created, none shown", async () => {
+    input.current = inputs({ tier: "trader" });
+    const me = await service.questsMe("Кирилл Б.", NOW);
+    expect(me.summary.onboarding).toBeNull();
+    expect(me.quests.some((q) => q.scope === "onboarding")).toBe(false);
+    expect(mem.quests.some((q) => q.scope === "onboarding")).toBe(false);
   });
 
   it("the nightly rollover is idempotent", async () => {

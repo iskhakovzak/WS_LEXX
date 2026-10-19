@@ -94,7 +94,7 @@ export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: Catalyst
   const t = e.ticker.toUpperCase();
   const h = useEarningsHistory(t);
   const mine = data.tickerStats.get(t);
-  const reaction = React.useMemo(() => (h.data ? earningsEdge(data.tradeRows, { ticker: t, quarters: h.data.quarters }) : null), [h.data, data.tradeRows, t]);
+  const reaction = React.useMemo(() => (h.data ? earningsEdge(data.cells, { ticker: t, quarters: h.data.quarters }) : null), [h.data, data.cells, t]);
   const range = h.data ? avgRange(h.data.quarters) : null;
   return (
     <li>
@@ -368,7 +368,7 @@ export function MyTickerEarnings({ ticker, data }: { ticker: string; data: Catal
   const t = ticker.toUpperCase();
   const h = useEarningsHistory(t);
   const mine = data.tickerStats.get(t);
-  const e = React.useMemo(() => (h.data ? earningsEdge(data.tradeRows, { ticker: t, quarters: h.data.quarters }) : null), [h.data, data.tradeRows, t]);
+  const e = React.useMemo(() => (h.data ? earningsEdge(data.cells, { ticker: t, quarters: h.data.quarters }) : null), [h.data, data.cells, t]);
   return (
     <section className="rounded-xl bg-[var(--glass-bg)] px-3 py-3" aria-label={tr("today.tickerTrading")}>
       <h3 className="text-sm font-semibold text-foreground">{tr("today.tickerTradingTitle", { ticker: t })}</h3>

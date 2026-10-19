@@ -1,21 +1,30 @@
 /**
  * The NY day map: premarket / open 9:30–10:30 / trend 10:30–15:00 / close 15:00–16:00 as one bar with «now» marked.
  * Segments grow with their length (a floor keeps the short ones readable); a segment jumps to its window's setups.
+ * On a weekend / holiday it shows the next session, every window still ahead.
  */
 import type { DayWindow } from "@/lib/playbook-today/types";
+import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import { hm, hmText, minutesToOpen, nowMarker, windowPhases } from "./today-model";
 import { windowLabel } from "./today-text";
 
-export function DayMap({ windows, now, onPick }: { windows: DayWindow[]; now: number; onPick?: (key: DayWindow["key"]) => void }) {
+export function DayMap({ windows, now, onPick, nextSession }: {
+  windows: DayWindow[];
+  now: number;
+  onPick?: (key: DayWindow["key"]) => void;
+  /** Non-trading day: the date of the next session the map shows (all of it ahead). */
+  nextSession?: string | null;
+}) {
   const { t } = playbookTodayI18n.useT();
   const phases = windowPhases(windows, now);
   const marker = nowMarker(windows, now);
   const toOpen = minutesToOpen(windows, now);
   const status =
-    marker?.state === "after" ? t("dayMap.closed", { time: hmText(now) })
+    nextSession ? t("dayMap.nextSession", { date: fmtDate(nextSession, "weekdayDayMonth") })
+    : marker?.state === "after" ? t("dayMap.closed", { time: hmText(now) })
     : toOpen != null ? t("dayMap.toOpen", { time: toOpen >= 60 ? `${Math.floor(toOpen / 60)}:${String(toOpen % 60).padStart(2, "0")}` : commonI18n.t("units.minutes", { count: toOpen }) })
     : t("dayMap.now", { time: hmText(now) });
   return (

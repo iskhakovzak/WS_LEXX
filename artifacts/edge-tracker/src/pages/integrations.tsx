@@ -79,6 +79,10 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
   const wizardTodo = status.data ? Object.values(status.data.wizard).filter((w) => !w.ok).length : 0;
   const [runOpen, setRunOpen] = React.useState(false);
   const staff = status.data?.viewer.staff ?? false;
+  // OLGA-02: sync / reconcile decisions and account linking need their own (sensitive) rights — curators read only.
+  const canSync = staff && (status.data?.viewer.canSync ?? false);
+  const canConfigure = staff && (status.data?.viewer.canConfigure ?? false);
+  const apiConfigured = status.data?.config.configured ?? false;
 
   if (!signedIn) {
     return (
@@ -102,10 +106,14 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
             <Button variant="outline" size="icon" onClick={() => qc.invalidateQueries({ queryKey: prKeys.all })} aria-label={commonI18n.t("actions.refresh")} disabled={fetching}>
               <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
-            {staff && (
-              <Button onClick={() => setRunOpen(true)} disabled={!status.data}>
-                <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("page.syncNow")}
-              </Button>
+            {canSync && (
+              // OWNER-18: without the broker API there is nothing to sync — disabled, the reason is the tooltip.
+              <span title={apiConfigured ? undefined : t("page.syncDisabled")} className="inline-flex">
+                <Button onClick={() => setRunOpen(true)} disabled={!status.data || !apiConfigured} aria-describedby={apiConfigured ? undefined : "pr-sync-disabled"}>
+                  <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("page.syncNow")}
+                </Button>
+                {!apiConfigured && <span id="pr-sync-disabled" className="sr-only">{t("page.syncDisabled")}</span>}
+              </span>
             )}
           </>
         }
@@ -124,7 +132,7 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
         value={tab}
         onChange={setTab}
         tabs={[
-          ...(staff ? [{ value: "setup" as const, label: t("page.tabs.setup"), count: wizardTodo || undefined }] : []),
+          ...(canConfigure ? [{ value: "setup" as const, label: t("page.tabs.setup"), count: wizardTodo || undefined }] : []),
           { value: "import", label: t("page.tabs.import") },
           { value: "performance", label: t("page.tabs.performance") },
           { value: "accounts", label: t("page.tabs.accounts"), count: status.data?.accounts.unmapped.length || undefined },
@@ -133,19 +141,19 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
         ]}
       />
 
-      {tab === "setup" && staff && status.data && <SetupPanel status={status.data} accounts={accounts.data ?? []} onGoTab={setTab} />}
+      {tab === "setup" && canConfigure && status.data && <SetupPanel status={status.data} accounts={accounts.data ?? []} onGoTab={setTab} />}
       {tab === "import" && <ImportZone accounts={accounts.data ?? []} staff={staff} viewerName={status.data?.viewer.name} onGoTab={setTab} />}
       {tab === "performance" && (
         <div className="space-y-4">
-          <PerformanceReportPanel staff={staff} trader={staff ? undefined : status.data?.viewer.name} />
+          <PerformanceReportPanel staff={canSync} trader={staff ? undefined : status.data?.viewer.name} />
           <ReconcilePanel trader={staff ? undefined : status.data?.viewer.name} />
         </div>
       )}
-      {tab === "accounts" && <AccountsEditor accounts={accounts.data ?? []} staff={staff} apiConfigured={status.data?.config.configured ?? false} />}
-      {tab === "reconcile" && <ReconcileInbox pending={pending.data ?? []} staff={staff} loading={pending.isLoading} />}
+      {tab === "accounts" && <AccountsEditor accounts={accounts.data ?? []} staff={canConfigure} apiConfigured={apiConfigured} />}
+      {tab === "reconcile" && <ReconcileInbox pending={pending.data ?? []} staff={canSync} loading={pending.isLoading} />}
       {tab === "history" && <SyncHistory runs={runs.data ?? []} loading={runs.isLoading} />}
 
-      {staff && <RunSyncDialog open={runOpen} onOpenChange={setRunOpen} configured={status.data?.config.configured ?? false} onGoTab={(x) => { setRunOpen(false); setTab(x); }} />}
+      {canSync && <RunSyncDialog open={runOpen} onOpenChange={setRunOpen} configured={apiConfigured} onGoTab={(x) => { setRunOpen(false); setTab(x); }} />}
     </Page>
   );
 }

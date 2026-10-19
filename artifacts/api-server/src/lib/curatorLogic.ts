@@ -248,7 +248,9 @@ export const QUEUE_DEFAULT_DAYS = 14;
 /** Важность типа: нарушения риска — первыми, затем дни/недели, затем задания Академии. */
 const QUEUE_KIND_RANK: Record<QueueKind, number> = { breach: 0, eod: 1, weekly: 1, academy: 2 };
 
-export type QueueItemBase = { kind: QueueKind; id: string; since: string | null; hoursWaiting: number | null };
+/** `hoursWaiting` — the SLA clock (trading hours); `ageHours` — calendar hours since `since`, for the 14-day window
+ *  (falls back to hoursWaiting), so the window matches /eod/queue/count (closed_at within 14 days). */
+export type QueueItemBase = { kind: QueueKind; id: string; since: string | null; hoursWaiting: number | null; ageHours?: number | null };
 export type QueueItem<T extends QueueItemBase> = T & { overdue: boolean; slaHours: number; old: boolean };
 
 /**
@@ -265,7 +267,7 @@ export function arrangeQueue<T extends QueueItemBase>(
     .filter((q) => !opts.acked?.has(q.id))
     .map((q) => {
       const h = q.hoursWaiting ?? 0;
-      return { ...q, overdue: h > QUEUE_SLA_HOURS[q.kind], slaHours: QUEUE_SLA_HOURS[q.kind], old: h > cutoffHours };
+      return { ...q, overdue: h > QUEUE_SLA_HOURS[q.kind], slaHours: QUEUE_SLA_HOURS[q.kind], old: (q.ageHours ?? h) > cutoffHours };
     });
   const oldItems = all.filter((q) => q.old);
   const visible = opts.includeOld ? all : all.filter((q) => !q.old);
@@ -279,5 +281,5 @@ export function arrangeQueue<T extends QueueItemBase>(
 /** Id элементов, которые «архивировать старые» уберёт из очереди (старше cutoffDays, не архивированы). */
 export function staleQueueIds(items: readonly QueueItemBase[], cutoffDays = QUEUE_DEFAULT_DAYS, acked?: ReadonlySet<string>): string[] {
   const cutoffHours = cutoffDays * 24;
-  return items.filter((q) => !acked?.has(q.id) && (q.hoursWaiting ?? 0) > cutoffHours).map((q) => q.id);
+  return items.filter((q) => !acked?.has(q.id) && (q.ageHours ?? q.hoursWaiting ?? 0) > cutoffHours).map((q) => q.id);
 }

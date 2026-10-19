@@ -16,7 +16,7 @@ import {
   fmtDayLong, fmtDayShort, isTradingDay, isYmd, lastTradingDay, shiftTradingDay, useDayReport, useMarketHolidays,
   type DayReport,
 } from "@/components/day-report/api";
-import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDeskDateTime, fmtRate, fmtUsd } from "@/lib/format";
 import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { dayReportI18n } from "@/i18n/ns/dayReport";
@@ -241,7 +241,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
       </div>
       <LinksPanel doc={doc} />
       <p className="text-2xs text-muted-foreground">
-        {t("page.footnote", { days: doc.comparison.days || 20, date: fmtDate(doc.generatedAt, "shortDateTime") })}
+        {t("page.footnote", { days: doc.comparison.days || 20, date: fmtDeskDateTime(doc.generatedAt, { style: "shortDateTime" }) })}
       </p>
     </div>
   );

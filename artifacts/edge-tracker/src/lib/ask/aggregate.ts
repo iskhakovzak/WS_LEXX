@@ -530,7 +530,9 @@ function takeaway(a: Agg): string | null {
   return null;
 }
 
-function statLine(a: Agg): string {
+/** «N сделок, нетто $X, винрейт Y». `noNet` when the headline already names the net (MAKSIM-36: «нетто +$601.79 … нетто +$601.79»). */
+function statLine(a: Agg, noNet = false): string {
+  if (noNet) return t("ans.statLineNoNet", { trades: nTrades(a.n), wr: fmtRate(a.winRate) });
   return t("ans.statLine", { trades: nTrades(a.n), net: fmtUsd(a.net, { signed: true }), wr: fmtRate(a.winRate) });
 }
 
@@ -603,7 +605,7 @@ function topAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Base, listed: 
   const titlePl = targetTitle(intent, target, true), title1 = targetTitle(intent, target);
   const head = N > 1
     ? `${titlePl}: ${topRows.slice(0, 3).map((r) => `${r.label} ${fmtMetric(metricValue(r, metric), metric)}`).join(", ")}${N > 3 ? "…" : ""}`
-    : t("ans.top1", { title: title1, label: top.label, metric: metricName(metric), value: fmtMetric(v, metric), stats: statLine(top) });
+    : t("ans.top1", { title: title1, label: top.label, metric: metricName(metric), value: fmtMetric(v, metric), stats: statLine(top, metric === "net") });
   const narrowed: AskLinkParams = { ...link };
   delete narrowed.ids;
   if (N === 1 && target === "ticker") narrowed.ticker = top.key;
@@ -616,7 +618,7 @@ function topAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Base, listed: 
   const showRows = CHRONO.has(target) && rows.length <= 12 ? [...rows].sort((a, b) => a.key.localeCompare(b.key)) : rows.slice(0, 15);
   return {
     ...base, kind: "top", headline: head,
-    big: { label: N > 1 ? t("ans.bigTopN", { title: titlePl, label: top.label }) : `${title1}: ${top.label}`, value: fmtMetric(v, metric), tone: metric === "net" || metric === "avg" ? v : null, sub: statLine(top) },
+    big: { label: N > 1 ? t("ans.bigTopN", { title: titlePl, label: top.label }) : `${title1}: ${top.label}`, value: fmtMetric(v, metric), tone: metric === "net" || metric === "avg" ? v : null, sub: statLine(top, metric === "net") },
     chart: barsFrom(showRows, metric, byMetric(dimTitle(target), metric), hl),
     groups: { dim: target, title: t(best ? "ans.groupsBest" : "ans.groupsWorst", { dim: dimTitle(target), metric: metricBy(metric) }), rows: rows.slice(0, 24), highlight: hl, metric },
     trades: listed.filter((tr) => topIds.has(tr.id)), tradesTitle: N > 1 ? t("ans.topNTrades", { n: N }) : t("ans.tradesOf", { label: top.label }),

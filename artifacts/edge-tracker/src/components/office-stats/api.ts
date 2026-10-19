@@ -18,13 +18,13 @@ export type DayValue = { date: string; v: number };
 
 export type Totals = {
   net: number; trades: number; wins: number; losses: number; winRate: number | null; profitFactor: number | null;
-  avgR: number | null; volume?: number; tradingDays: number; greenDays: number; redDays: number; avgDay: number | null;
+  avgR: number | null; /** Trades behind avgR (absent on an older API build). */ rTrades?: number; volume?: number; tradingDays: number; greenDays: number; redDays: number; avgDay: number | null;
   bestDay: DayValue | null; worstDay: DayValue | null;
 };
 
 export type StrategyRow = {
   key: Strategy; trades: number; wins: number; losses: number; winRate: number | null; net: number;
-  profitFactor: number | null; avgR: number | null; netShare: number | null; volumeShare: number | null; volume?: number;
+  profitFactor: number | null; avgR: number | null; rTrades?: number; netShare: number | null; volumeShare: number | null; volume?: number;
 };
 export type YearStrategyRow = StrategyRow & { cum: number[]; monthly: (number | null)[] };
 
@@ -71,7 +71,8 @@ export type Rules = {
   notes: string[];
 };
 
-type Base = { years: number[]; period: { from: string; to: string }; today: string; rules: Rules };
+/** dataYears: close years with any desk trade — the page offers only those (absent on an older API build). */
+type Base = { years: number[]; period: { from: string; to: string }; today: string; dataYears?: number[]; rules: Rules };
 export type AdminSetting = { year: number; capital: number | null; goalPct: number; updatedBy: string | null; updatedAt: string | null };
 export type AdminResponse = Base & { role: "admin"; settings: AdminSetting[]; usd: OfficeView; pct: OfficeView };
 export type MemberResponse = Base & { role: "member"; settings: { year: number; goalPct: number; hasCapital: boolean }[]; pct: OfficeView };

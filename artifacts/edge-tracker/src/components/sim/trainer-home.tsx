@@ -2,36 +2,42 @@
  * «Тренажёр» home: four mode cards and the 30-day line. «Задача дня» is the focal card (one ticker-day for the whole
  * desk, played once; after the finish: the R, the place, the streak and the ranking). «Мои дни» replays an own losing
  * trade, «Найди вход» runs 10 short drills on a playbook setup (mastery per setup), «Свободная игра» is the fair random
- * game (level + bar size). Each card continues its own unfinished game, so nothing is started twice (closure).
+ * game (level + bar size, prefilled from the last choice) whose main entry is «Серия из 10» (fast reps, a summary at the
+ * end); «Одна игра» stays as the quiet second button. Each card continues its own unfinished game, so nothing is
+ * started twice (closure).
  */
 import { useQuery } from "@tanstack/react-query";
-import { CalendarCheck, CalendarClock, Crosshair, Dices, Flame, Gauge, Play, RotateCcw, Shuffle, TrendingDown } from "lucide-react";
+import { CalendarCheck, CalendarClock, Crosshair, Dices, Flame, Gauge, Layers, Play, RotateCcw, Shuffle, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ErrorState, ListSkeleton, Segmented, toneOf, toneText, usePersistentState } from "@/components/ds";
+import { ErrorState, ListSkeleton, Segmented, toneOf, toneText } from "@/components/ds";
 import { MasteryChip } from "@/components/shared/mastery-chip";
 import { fmtDayMonth, fmtR, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
 import { trainerI18n } from "@/i18n/ns/trainer";
 import type { TrainerHome } from "@/lib/trainer/types";
-import { INTRADAY_TFS, isIntradayTf, ownCandidatesQuery, type Difficulty, type IntradayTf, type SimMode, type Snapshot } from "./api";
+import { ownCandidatesQuery, type Difficulty, type IntradayTf, type SimMode, type Snapshot } from "./api";
 import { DailyRanking } from "./daily-reveal";
+import { useSeriesChoice } from "./series-context";
+import { FREE_TFS, type SeriesChoice } from "./series-model";
 
 const LEVELS: Difficulty[] = ["easy", "medium", "hard"];
-/** Free game bar sizes: the intraday ones plus daily bars (= the swing game). */
-type FreeTf = IntradayTf | "1d";
-const FREE_TFS: readonly FreeTf[] = [...INTRADAY_TFS, "1d"];
-const isFreeTf = (v: unknown): v is FreeTf => isIntradayTf(v) || v === "1d";
 
 export type HomeActions = {
   starting: boolean;
   active: Snapshot | null;
   onDaily: () => void;
+  /** The closed challenge as an unranked game (weekend / after the close). Absent ⇒ no button. */
+  onDailyPractice?: () => void;
   onOpenGame: (id: number) => void;
   onResume: () => void;
   onMyDays: (pick: "worst" | "random") => void;
   onFindEntry: (setupId: number | null) => void;
   onFree: (mode: SimMode, level: Difficulty, tf: IntradayTf | null) => void;
+  /** «Серия из 10» with the chosen level / bar size. Absent ⇒ the card offers the single game only. */
+  onSeries?: (choice: SeriesChoice) => void;
+  /** An unfinished series whose game is the active one: «Продолжить серию · 3 / 10». */
+  series?: { n: number; size: number } | null;
 };
 
 function Card({ title, icon: Icon, children, className, accent }: { title: string; icon: typeof Play; children: React.ReactNode; className?: string; accent?: boolean }) {
@@ -91,6 +97,15 @@ function DailyCard({ home, loading, a }: { home: TrainerHome | undefined; loadin
               </div>
               <DailyRanking d={d} max={3} />
               {reviewId != null && <Button variant="outline" className="self-start" onClick={() => a.onOpenGame(reviewId)}>{t("daily.review")}</Button>}
+              {closed && reviewId == null && a.onDailyPractice && (
+                // Weekend / after the close and not played: the same day, unranked (UMID-07) — never a dead end.
+                <div className="flex flex-col gap-1.5">
+                  <Button size="lg" variant="secondary" className="min-h-12 self-stretch sm:self-start sm:px-8" disabled={a.starting} onClick={a.onDailyPractice}>
+                    <Play aria-hidden="true" /> {a.starting ? simI18n.t("start.starting") : t("daily.practice")}
+                  </Button>
+                  <p className="text-2xs text-muted-foreground">{t("daily.practiceHint")}</p>
+                </div>
+              )}
             </>
           ) : (
             <Button size="lg" className="min-h-12 self-stretch sm:self-start sm:px-8" disabled={a.starting} onClick={d.activeGameId != null ? () => a.onOpenGame(d.activeGameId!) : a.onDaily}>
@@ -153,11 +168,23 @@ function FindEntryCard({ home, loading, a }: { home: TrainerHome | undefined; lo
                 >
                   <span className="min-w-0 flex-1 truncate text-sm">{s.code ? <span className="mr-1.5 tabular-nums text-muted-foreground">{s.code}</span> : null}{s.name}</span>
                   <MasteryChip level={s.masteryLevel} size="xs" />
+                  {s.masteryPoints != null && (
+                    // Progress to the next level, so a run of drills visibly moves the card (UMID-18).
+                    <span
+                      className="shrink-0 text-2xs tabular-nums text-muted-foreground"
+                      title={s.masteryNext != null ? t("findEntry.progressTitle", { points: s.masteryPoints, next: s.masteryNext, passed: s.drillsPassed ?? 0 }) : undefined}
+                    >
+                      {s.masteryNext != null ? t("findEntry.progress", { points: s.masteryPoints, next: s.masteryNext }) : t("findEntry.progressMax")}
+                    </span>
+                  )}
                   <span className="hidden shrink-0 text-2xs tabular-nums text-muted-foreground sm:inline">{t("findEntry.drills", { count: s.drills })}</span>
                 </button>
               </li>
             ))}
           </ul>
+          {f.drillsPerPoint != null && f.passScore != null && (
+            <p className="text-2xs text-muted-foreground">{t("findEntry.pointsRule", { count: f.drillsPerPoint, score: f.passScore })}</p>
+          )}
           <Button className="self-start" onClick={() => a.onFindEntry(null)}><Shuffle aria-hidden="true" /> {t("findEntry.mixed")}</Button>
         </>
       )}
@@ -168,19 +195,17 @@ function FindEntryCard({ home, loading, a }: { home: TrainerHome | undefined; lo
 function FreeCard({ a }: { a: HomeActions }) {
   const { t } = trainerI18n.useT();
   const { t: ts } = simI18n.useT();
-  const [levelRaw, setLevel] = usePersistentState<Difficulty>("sim.level", "easy");
-  const level: Difficulty = LEVELS.includes(levelRaw) ? levelRaw : "easy";
-  const [tfRaw, setTf] = usePersistentState<FreeTf>("trainer.freeTf", "5m");
-  const tf: FreeTf = isFreeTf(tfRaw) ? tfRaw : "5m";
+  const { choice, level, tf, setLevel, setTf } = useSeriesChoice();
   const act = a.active;
   const freeActive = act && !act.own && !act.trainer ? act : null;
+  const single = () => a.onFree(choice.mode, choice.difficulty, choice.tf);
   return (
     <Card title={t("free.title")} icon={Gauge}>
-      <p className="text-xs text-muted-foreground">{t("free.hint")}</p>
+      <p className="text-xs text-muted-foreground">{a.onSeries ? t("series.hint") : t("free.hint")}</p>
       {freeActive && (
         <div className="tile flex flex-wrap items-center gap-2 rounded-xl p-2.5">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">{ts("start.resumeHint", { played: freeActive.cursor - freeActive.startIdx, total: freeActive.endIdx - freeActive.startIdx })}</p>
-          <Button size="sm" onClick={a.onResume}>{ts("start.resume")}</Button>
+          <Button size="sm" onClick={a.onResume}>{a.series ? t("series.continue", { n: a.series.n, size: a.series.size }) : ts("start.resume")}</Button>
         </div>
       )}
       <div className="flex flex-col gap-2">
@@ -191,9 +216,18 @@ function FreeCard({ a }: { a: HomeActions }) {
         />
         <p className="text-2xs text-muted-foreground">{tf === "1d" ? ts(`levelHint.swing.${level}`) : ts(`levelHint.intraday.${level}`)}</p>
       </div>
-      <Button size="lg" className="self-stretch sm:self-start sm:px-8" disabled={a.starting} onClick={() => a.onFree(tf === "1d" ? "swing" : "intraday", level, tf === "1d" ? null : tf)}>
-        <Play aria-hidden="true" /> {a.starting ? ts("start.starting") : ts("start.play")}
-      </Button>
+      {a.onSeries ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="lg" className="min-h-12 flex-1 sm:flex-none sm:px-8" disabled={a.starting} onClick={() => a.onSeries?.(choice)}>
+            <Layers aria-hidden="true" /> {a.starting ? ts("start.starting") : t("series.start")}
+          </Button>
+          <Button variant="ghost" disabled={a.starting} onClick={single}><Play aria-hidden="true" /> {t("series.single")}</Button>
+        </div>
+      ) : (
+        <Button size="lg" className="self-stretch sm:self-start sm:px-8" disabled={a.starting} onClick={single}>
+          <Play aria-hidden="true" /> {a.starting ? ts("start.starting") : ts("start.play")}
+        </Button>
+      )}
     </Card>
   );
 }

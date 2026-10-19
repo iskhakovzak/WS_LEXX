@@ -92,6 +92,8 @@ export type RiskMetrics = {
     cumR: number;
     currentR: number;
     redDayStreak: number;
+    /** Drawdown counted from this day's close (a curator's review of a drawdown breach); null/absent = lifetime peak. */
+    since?: string | null;
   };
 };
 
@@ -100,6 +102,8 @@ export type RiskMe = RiskMetrics & { limits: RiskLimits | null; afterClose: bool
 export type DeskRow = RiskMetrics & {
   role: string | null;
   banned: boolean;
+  /** The viewer is this trader's curator / mentor / risk manager (absent on older servers). */
+  ward?: boolean;
   limits: RiskLimits | null;
   spark: number[];
   sparkUnit: "usd" | "r";
@@ -114,6 +118,10 @@ export type RiskDesk = {
   afterClose: boolean;
   summary: {
     traders: number;
+    /** Rows that are the viewer's wards (absent on older servers). */
+    wards?: number;
+    /** Distinct traders on a stop or with a breach today (absent on older servers). */
+    stopped?: number;
     pnlNetToday: number | null;
     pnlSource: PnlSource | "mixed";
     rToday: number;
@@ -213,6 +221,17 @@ export type RiskAlertRecord = {
   createdAt: string;
 };
 
+/** «Разбор нарушения» as the trader sees it on their own breach row (GET /api/risk/breaches). */
+export type RiskBreachReview = {
+  id: number; alertId: number; reason: string; comment: string | null; consequence: string; createdBy: string; createdAt: string;
+  actions: { id: string; title: string; dueOn: string | null; status: "open" | "done" | "dropped" }[];
+};
+export type RiskBreachesPayload = {
+  breaches: { id: number; date: string; kind: string; review: RiskBreachReview | null }[];
+  reasons: { key: string; label: string }[];
+  consequences: { key: string; label: string }[];
+};
+
 export type LimitEvent = {
   id: number;
   trader: string;
@@ -284,6 +303,7 @@ export const riskKeys = {
   limitsHistory: (trader: string) => ["risk", "limits-history", trader] as const,
   overnight: (trader: string | null, preview: boolean) => ["risk", "overnight", trader ?? "*", preview] as const,
   alerts: (trader: string | null, days: number) => ["risk", "alerts", trader ?? "*", days] as const,
+  breaches: (trader: string, days: number) => ["risk", "breaches", trader, days] as const,
   quotes: (tickers: string[]) => ["risk", "quotes", tickers] as const,
   earnings: () => ["risk", "earnings-upcoming"] as const,
   offerings: () => ["risk", "offerings"] as const,
@@ -340,6 +360,16 @@ export function useRiskAlerts(trader: string | null, days = 14, enabled = true) 
     queryFn: () => http.get<{ from: string; trader: string | null; alerts: RiskAlertRecord[] }>(`/api/risk/alerts?${q}days=${days}`),
     enabled,
     refetchInterval: REFRESH_MS,
+  });
+}
+
+/** Logged breaches with the curator's review (reason, agreements, consequence) for one trader. */
+export function useBreachReviews(trader: string | null, days = 180, enabled = true) {
+  return useQuery({
+    queryKey: riskKeys.breaches(trader ?? "", days),
+    queryFn: () => http.get<RiskBreachesPayload>(`/api/risk/breaches?trader=${encodeURIComponent(trader ?? "")}&days=${days}`),
+    enabled: enabled && !!trader,
+    staleTime: STALE.default,
   });
 }
 

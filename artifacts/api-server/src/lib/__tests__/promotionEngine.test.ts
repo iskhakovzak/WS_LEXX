@@ -136,6 +136,18 @@ describe("evaluatePromotion", () => {
     expect(rep.criteria[0].status).toBe("fail");
     expect(rep.criteria[0].advice).toContain("PF не определён");
   });
+  it("no trades in the window: «≤ N» criteria are «нет данных», never a pass; counters stay zero (UMID-20)", () => {
+    const criteria = [crit("violations", "<=", 2, 20, 1), crit("max_dd_usd", "<=", 500, 20, 2), crit("trading_days", ">=", 15, 20, 3), crit("lessons_pct", ">=", 80, null, 4)];
+    const rep = evaluatePromotion(input([], { stageSince: "2026-09-01", learning: { lessonsTotal: 6, lessonsDone: 0, quizAvg: null, quizzesTaken: 0 } }), criteria, DEFAULT_STAGES, DEFAULT_TIERS);
+    expect(rep.passed).toBe(0);
+    const v = rep.criteria.find((c) => c.metric === "violations")!;
+    expect(v).toMatchObject({ status: "fail", value: null, note: "нет данных — нет сделок в окне" });
+    expect(rep.criteria.find((c) => c.metric === "max_dd_usd")!.value).toBeNull();
+    expect(rep.criteria.find((c) => c.metric === "trading_days")!.value).toBe(0);
+    expect(rep.criteria.find((c) => c.metric === "lessons_pct")!.note).toBe("уроков 0 из 6");
+    // The summary window follows the explicit 20-day criteria, not «since stage start» (34 trading days here).
+    expect(rep.summary.windowDays).toBe(20);
+  });
   it("trend compares with the previous equal window", () => {
     const prev = weekdays(20, addDays(weekdays(20)[0], -1)).map((d) => tr(d, -10));
     const cur = weekdays(20).map((d) => tr(d, 10));

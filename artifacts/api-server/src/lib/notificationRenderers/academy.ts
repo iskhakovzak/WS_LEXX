@@ -40,11 +40,12 @@ const promotionDecision: NotificationRenderer = ({ params, lang, variant }) => {
   }
 };
 
-const challengeAssigned: NotificationRenderer = ({ params, lang }) => {
+const challengeAssigned: NotificationRenderer = ({ params, lang, date }) => {
   if (typeof params.name !== "string" || typeof params.date !== "string") return null;
   const t = academyPathT.tFor(lang);
   const name = challengeNameFor(typeof params.templateKey === "string" ? params.templateKey : null, params.name, lang);
-  return { title: t("notify.examTitle"), body: t("notify.examBody", { actor: str(params.actor), name, date: params.date }) };
+  // One date format in notifications (OLGA-16): the reader's «15 окт.», never the raw 2026-10-15.
+  return { title: t("notify.examTitle"), body: t("notify.examBody", { actor: str(params.actor), name, date: date(params.date) }) };
 };
 
 function parseReason(v: unknown): ReasonData | null {

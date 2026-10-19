@@ -12,10 +12,10 @@ import { setting } from "../settings/registry";
 import { addDays, isWeekend, nyDate, nyMinutes } from "../tradingDate";
 import { closedSql, closeDateSql, decidedSql, resultSql, signedRSql } from "../tradeMath";
 import { spaceSql } from "../playbookAccess";
-import { buildToday, type EdgeRow, type SetupRow } from "./build";
+import { buildToday, lockOf, type EdgeRow, type LockViewer, type SetupRow } from "./build";
 import { forgetTier, loadStaffTier } from "./tier";
-import { tagDays, untaggedOf, weekdaysBack } from "./untagged";
-import type { PlaybookToday } from "./types";
+import { untaggedTrades, weekdaysBack } from "./untagged";
+import type { PlaybookToday, TextItem } from "./types";
 
 const CACHE_MS = 20_000;
 const cache = new Map<string, { at: number; value: PlaybookToday }>();
@@ -110,12 +110,12 @@ export async function playbookToday(trader: string, o: { fresh?: boolean; now?: 
   const hit = cache.get(key);
   if (!o.fresh && hit && Date.now() - hit.at < CACHE_MS) return { ...hit.value, nyMinutes: nyMinutes(now) };
   const today = nyDate(now);
-  const [setups, edges, person, doc, days] = await Promise.all([
+  const [setups, edges, person, doc, tags] = await Promise.all([
     loadSetups(trader),
     loadEdges(trader),
     loadPerson(trader),
     loadPlanDoc(trader, date),
-    tagDays(trader, weekdaysBack(today, UNTAGGED_DAYS), today),
+    untaggedTrades(trader, weekdaysBack(today, UNTAGGED_DAYS), today),
   ]);
   const planRisk = Number(doc?.riskPerTradeUsd);
   const value = buildToday({
@@ -124,11 +124,37 @@ export async function playbookToday(trader: string, o: { fresh?: boolean; now?: 
     gateCount: setting("quests.setupUnlockGradeA"),
     planSetups: doc?.setups,
     oneR: Number.isFinite(planRisk) && planRisk > 0 ? { usd: planRisk, source: "plan" } : person.maxRisk != null ? { usd: person.maxRisk, source: "limits" } : null,
-    untagged: untaggedOf(days),
+    untagged: tags.untagged,
+    untaggedPeriod: { from: tags.from, to: tags.to },
   });
   cache.set(key, { at: Date.now(), value });
   if (cache.size > 500) for (const [k, v] of cache) if (Date.now() - v.at > CACHE_MS) cache.delete(k);
   return value;
+}
+
+export type ViewerLocks = {
+  /** Lock state of every setup in the viewer's «Сегодня» (office + own), gateway unlocks included. */
+  known: Map<number, { locked: boolean; unlock: TextItem | null }>;
+  /** Lock a setup that is not in «Сегодня» (someone else's shared setup) by its min_tier alone. */
+  lockOther: (row: { minTier?: string | null; name: string }) => { locked: boolean; unlock: TextItem | null };
+};
+
+const NO_LOCKS: ViewerLocks = { known: new Map(), lockOther: () => ({ locked: false, unlock: null }) };
+
+/**
+ * DEV-06: the setups locked for a viewer (the same rule and gateway unlocks as «Сегодня», read from its cached answer).
+ * Staff and anonymous callers: nothing is locked.
+ */
+export async function viewerLocks(name: string | null | undefined): Promise<ViewerLocks> {
+  if (!name) return NO_LOCKS;
+  const who = await loadStaffTier(name);
+  if (who.staff) return NO_LOCKS;
+  const today = await playbookToday(name);
+  const viewer: LockViewer = { staff: false, tier: who.tier };
+  return {
+    known: new Map(today.setups.map((x) => [x.id, { locked: x.locked, unlock: x.unlock }])),
+    lockOther: (row) => lockOf({ minTier: row.minTier ?? null, name: row.name }, viewer, new Map(), 0),
+  };
 }
 
 /** After a picks save: the cached answer carries the new picks (no reload). */

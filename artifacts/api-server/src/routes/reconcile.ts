@@ -22,6 +22,7 @@ import {
 } from "../lib/reconcile";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf } from "../i18n";
+import { BoundedPromiseCache } from "../lib/tradesPageCache";
 
 const router: IRouter = Router();
 
@@ -40,6 +41,16 @@ async function tableExists(name: string): Promise<boolean> {
 }
 
 const PR_SOURCE = `(t.source = 'propreports' OR t.context_snapshot ->> 'source' = 'propreports')`;
+/** Only the snapshot keys lib/reconcile snapshotFrom() reads — the full broker snapshot is ~2× the bytes (DEV-10). */
+const SNAPSHOT_KEYS = ["source", "gross", "net", "totalFees", "feesByType", "qty", "avgEntry", "avgExit", "openedAt", "closedAt", "openQty", "fromReport"];
+const SNAP_FIELDS = `jsonb_build_object(${SNAPSHOT_KEYS.map((k) => `'${k}', t.context_snapshot -> '${k}'`).join(", ")})`;
+
+/**
+ * The whole-desk reconcile reads every trade and fill (~1 s, DEV-10). The result is cached 60 s per scope / range /
+ * report / language (lib/tradesPageCache BoundedPromiseCache); a PropReports import shows up within that minute.
+ */
+const RECONCILE_TTL_MS = 60_000;
+const reconcileCache = new BoundedPromiseCache<ReturnType<typeof reconcile>>(RECONCILE_TTL_MS, 50);
 
 async function loadTrades(scope: string | null): Promise<RecTrade[]> {
   const { rows } = await pool.query(
@@ -48,7 +59,7 @@ async function loadTrades(scope: string | null): Promise<RecTrade[]> {
             CASE WHEN ${PR_SOURCE} THEN 'propreports' ELSE 'manual' END AS source,
             COALESCE(t.external_id, t.context_snapshot ->> 'externalId') AS external_id,
             COALESCE(t.broker_account, t.context_snapshot ->> 'account') AS account,
-            CASE WHEN ${PR_SOURCE} THEN t.context_snapshot END AS snap
+            CASE WHEN ${PR_SOURCE} THEN ${SNAP_FIELDS} END AS snap
        FROM trades t
       WHERE t.deleted_at IS NULL AND ($1::text IS NULL OR t.trader = $1)
       ORDER BY t.date, t.id`,
@@ -96,8 +107,12 @@ router.get("/reconcile", asyncHandler(async (req, res): Promise<void> => {
   if (scope === undefined) throw unauthorized();
   if (q.data.from && q.data.to && q.data.from > q.data.to) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
 
-  const [trades, executions, reports] = await Promise.all([loadTrades(scope), loadExecutions(scope), loadReports(scope, q.data.reportId)]);
-  const result = reconcile(trades, executions, reports, { from: q.data.from ?? null, to: q.data.to ?? null, lang: langOf(req) });
+  const lang = langOf(req);
+  const key = JSON.stringify([scope, q.data.from ?? null, q.data.to ?? null, q.data.reportId ?? null, lang]);
+  const result = await reconcileCache.getOrLoad(key, async () => {
+    const [trades, executions, reports] = await Promise.all([loadTrades(scope), loadExecutions(scope), loadReports(scope, q.data.reportId)]);
+    return reconcile(trades, executions, reports, { from: q.data.from ?? null, to: q.data.to ?? null, lang });
+  });
 
   if (q.data.format === "csv") {
     const name = `reconcile-${scope ?? "desk"}-${q.data.from ?? "all"}-${q.data.to ?? "all"}.csv`.replace(/[^\w.\-]+/g, "_");

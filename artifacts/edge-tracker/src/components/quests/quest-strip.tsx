@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { questsI18n } from "@/i18n/ns/quests";
 import type { Quest, QuestsMe } from "@/lib/quests/types";
 import { useQuestsMe } from "./api";
-import { SCOPE_ORDER, freshlyDone, questTitle, stripView, type StripView } from "./model";
+import { SCOPE_ORDER, freshlyDone, isOptionalStep, questTitle, stripView, type StripView } from "./model";
 import { QuestRow, QuestStatusIcon, useIsHere } from "./quest-row";
 
 export const PROGRESS_HREF = "/ratings?tab=quests";
@@ -90,6 +90,7 @@ function StripPanel({ id, view, today }: { id: string; view: StripView; today: s
               <QuestStatusIcon q={q} />
               <span className={cn("min-w-0 flex-1 truncate", q.status === "done" ? "text-muted-foreground line-through decoration-muted-foreground/50" : "text-foreground", q.id === view.next?.id && "font-medium")}>
                 {questTitle(q)}
+                {isOptionalStep(q) && <span className="ml-1.5 text-2xs font-normal text-muted-foreground">{t("strip.optional")}</span>}
               </span>
               {q.id === view.next?.id && q.href && !isHere(q.href) && (
                 <Link href={q.href} className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

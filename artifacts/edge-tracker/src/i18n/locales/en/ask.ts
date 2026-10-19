@@ -258,6 +258,7 @@ export default {
     tkPayoff: "You win more often, but the average loss ({loss}) is bigger than the average win ({win}).",
     tkLowWr: "Win rate is below 50%, but the average win is {x}× the average loss.",
     statLine: "{trades}, net {net}, win rate {wr}",
+    statLineNoNet: "{trades}, win rate {wr}",
     empty: "{subject}: no trades",
     tradesTitle: "Trades",
     open: "Open in Trades",

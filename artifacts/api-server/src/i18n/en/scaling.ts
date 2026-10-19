@@ -129,4 +129,5 @@ export default {
   },
   templateResync: "Limits aligned with the tier template",
   templateDecision: "Tier assigned from the template",
+  pctOfLimit: "{value}% of limit",
 } satisfies Messages<typeof ru>;

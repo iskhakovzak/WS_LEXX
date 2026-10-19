@@ -6,14 +6,14 @@
  */
 import { useState } from "react";
 import { Activity } from "lucide-react";
-import { EmptyState, Panel, Segmented, StatusDot } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented, StatRow, StatusDot } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { fmtCount, fmtDate, fmtWeekday } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { usageI18n } from "@/i18n/ns/usage";
 import { useUsageOverview, type ActivityPoint, type UsageCount, type UsageOverview, type UsageRole } from "./usage-api";
-import { actionDictKey, barScale } from "./usage-model";
+import { actionDictKey, barScale, defaultFilter, filterTraders, neverOpened, pilotSummary, type PilotRow } from "./usage-model";
 import { FunnelPanel, InactivePanel } from "./UsageFunnel";
 
 type Period = "d7" | "d30";
@@ -35,6 +35,57 @@ function StatusLine({ data, onOpenSettings }: { data: UsageOverview; onOpenSetti
         </button>
       )}
     </div>
+  );
+}
+
+/** A menu page as the page hands it in (href + extra prefixes + its name in the UI language). */
+export type MenuPage = { href: string; also?: readonly string[]; readonly name: string };
+
+function verdict(r: PilotRow, t: ReturnType<typeof usageI18n.useT>["t"]) {
+  if (r.key === "focus") return <span className="text-xs text-muted-foreground">{t("pilotWeek.focusHint")}</span>;
+  if (r.value === null) return <Pill tone="neutral">{r.key === "inactive" ? t("pilotWeek.lowData") : t("pilotWeek.noData")}</Pill>;
+  const text = r.key === "inactive" ? t("pilotWeek.people", { count: r.value }) : t("pilotWeek.value", { value: r.value, total: r.total });
+  return (
+    <span className="inline-flex flex-wrap items-center justify-end gap-1.5 tabular-nums">
+      {text}
+      {r.good !== null && <Pill tone={r.good ? "up" : "down"}>{r.good ? t("pilotWeek.good") : t("pilotWeek.bad")}</Pill>}
+    </span>
+  );
+}
+
+/** OWNER-07: PILOT §3 in one weekly card — 6 lines with the plan's thresholds + menu screens nobody opened. */
+function PilotWeekPanel({ data, menu }: { data: UsageOverview; menu?: readonly MenuPage[] }) {
+  const { t } = usageI18n.useT();
+  const filter = defaultFilter(data);
+  const cohort = filterTraders(data.funnel.traders, filter);
+  const rows = pilotSummary(cohort, data.inactive.map((r) => r.name), data.inactiveLowData ?? false);
+  const never = data.opened14 && menu ? neverOpened(menu, data.opened14) : null;
+  return (
+    <Panel title={t("pilotWeek.title")} description={t("pilotWeek.description", { cohort: t(`funnel.filter.${filter}`) })}>
+      <div className="grid gap-x-8 lg:grid-cols-2">
+        <div className="flex flex-col">
+          {rows.map((r) => (
+            <StatRow
+              key={r.key}
+              label={<span>{t(`pilotWeek.rows.${r.key}`)}<span className="block text-2xs text-muted-foreground">{t(`pilotWeek.goal.${r.key}`)}</span></span>}
+              value={verdict(r, t)}
+              tone={r.good === false ? "down" : "neutral"}
+            />
+          ))}
+        </div>
+        {never && (
+          <div className="mt-3 lg:mt-0">
+            <p className="text-sm font-medium">{t("pilotWeek.neverTitle")}</p>
+            <p className="mb-2 text-xs text-muted-foreground">{t("pilotWeek.neverHint")}</p>
+            {never.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("pilotWeek.neverNone")}</p>
+            ) : (
+              <ul className="flex flex-wrap gap-1.5">{never.map((i) => <li key={i.href}><Pill tone="neutral">{i.name}</Pill></li>)}</ul>
+            )}
+          </div>
+        )}
+      </div>
+    </Panel>
   );
 }
 
@@ -145,8 +196,10 @@ function TopPanels({ data, screenLabel }: { data: UsageOverview; screenLabel?: (
   );
 }
 
-export function UsagePanel({ enabled, screenLabel, onOpenSettings }: {
+export function UsagePanel({ enabled, screenLabel, onOpenSettings, menu }: {
   enabled: boolean;
+  /** The trader menu for «никто не открыл» (the page passes it; features don't import the shell). */
+  menu?: readonly MenuPage[];
   /** Route pattern → section name (the page passes the shell's route titles); null = show the pattern. */
   screenLabel?: (key: string) => string | null;
   onOpenSettings?: () => void;
@@ -171,9 +224,10 @@ export function UsagePanel({ enabled, screenLabel, onOpenSettings }: {
         <p className="text-sm text-muted-foreground">{t("description")}</p>
         <StatusLine data={data} onOpenSettings={onOpenSettings} />
       </div>
+      <PilotWeekPanel data={data} menu={menu} />
       <FunnelPanel data={data} onOpenSettings={onOpenSettings} />
       <div className="grid min-w-0 items-stretch gap-[var(--grid-gap)] lg:grid-cols-2">
-        <InactivePanel rows={data.inactive} />
+        <InactivePanel rows={data.inactive} lowData={data.inactiveLowData ?? false} trackedSince={data.trackedSince} />
         <ActivityPanel points={data.activity} />
       </div>
       <TopPanels data={data} screenLabel={screenLabel} />

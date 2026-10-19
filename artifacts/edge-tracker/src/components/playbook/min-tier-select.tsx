@@ -1,5 +1,5 @@
 /**
- * «Открыт с уровня» — the minimum tier of an office setup for the «Сегодня» tier locks (guidance, never a trading
+ * «Открыт с уровня» — the minimum tier of an office setup for the tier locks (the card is redacted below it, never a trading
  * block). Curators / admins change it right on the setup card (PATCH /api/playbook/:id { minTier }, audited).
  */
 import { useQueryClient } from "@tanstack/react-query";

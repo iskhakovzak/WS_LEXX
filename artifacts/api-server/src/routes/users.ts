@@ -69,8 +69,19 @@ function stripModeration(rows: any[]): any[] {
   return rows.map(({ bannedAt: _ba, bannedReason: _br, ...rest }) => rest);
 }
 
+/**
+ * The member view of the roster (DEV-14): other people get directory fields only — id, name, Latin alias, role,
+ * active — and frozen (banned) people are left out; the caller's own row stays full (theme, createdAt for the
+ * profile). Staff (users.read.team) get every column.
+ */
+export function memberDirectory(rows: any[], me: string | null | undefined): any[] {
+  return stripModeration(rows)
+    .filter((r) => r.name === me || !r.banned)
+    .map((r) => (r.name === me ? r : { id: r.id, name: r.name, nameLatin: r.nameLatin ?? null, role: r.role, active: r.active }));
+}
+
 // Signed-in only (owner decision 2026-10-17: no roster before sign-in — the login screen asks for a typed name).
-// Moderation fields stay staff-only.
+// Moderation fields stay staff-only; members get the directory only (memberDirectory).
 router.get("/users", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
   const { rows } = await pool.query<any>(`
@@ -79,7 +90,7 @@ router.get("/users", asyncHandler(async (req, res): Promise<void> => {
     WHERE active = true
     ORDER BY created_at ASC
   `);
-  res.json((await can(req, "users.read.team")) ? rows : stripModeration(rows));
+  res.json((await can(req, "users.read.team")) ? rows : memberDirectory(rows, req.authUser.name));
 }));
 
 router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
@@ -89,7 +100,7 @@ router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
     FROM users
     ORDER BY created_at ASC
   `);
-  res.json((await can(req, "users.read.team")) ? rows : stripModeration(rows));
+  res.json((await can(req, "users.read.team")) ? rows : memberDirectory(rows, req.authUser.name));
 }));
 
 router.patch("/users/theme", asyncHandler(async (req, res): Promise<void> => {

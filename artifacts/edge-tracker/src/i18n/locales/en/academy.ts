@@ -21,7 +21,7 @@ export default {
     progress: "Progress",
   },
   time: {
-    yourTime: "Your time / {ny}",
+    yourTime: "New York time. Yours: {local}",
     sameTz: "New York time matches yours",
     noActivity: "no activity",
     today: "today",

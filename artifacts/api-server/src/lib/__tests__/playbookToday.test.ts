@@ -7,12 +7,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-vi.mock("@workspace/db", () => ({ db: {}, pool: { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } }));
+const dbQuery = vi.fn(async (..._a: unknown[]) => ({ rows: [] as unknown[], rowCount: 0 }));
+vi.mock("@workspace/db", () => ({ db: {}, pool: { query: (...a: unknown[]) => dbQuery(...a) } }));
 
 const rm = await import("../playbookToday/relinkMap");
 const b = await import("../playbookToday/build");
 const plan = await import("../playbookToday/plan");
 const un = await import("../playbookToday/untagged");
+const sg = await import("../playbookToday/suggest");
 const e = await import("../quests/engine");
 type SetupRow = import("../playbookToday/build").SetupRow;
 type EdgeRow = import("../playbookToday/build").EdgeRow;
@@ -173,6 +175,25 @@ describe("today builder", () => {
     expect(s(300).locked).toBe(false); // own setup, no tier
   });
 
+  it("a locked setup comes without its rules and checklist (DEV-06); open ones keep them", () => {
+    const t = b.buildToday(input());
+    const locked = t.setups.find((x) => x.id === 213)!;
+    expect(locked).toMatchObject({ locked: true, name: "3.3 Parabolic Backside", minTier: "trader", unlock: { key: "unlock.tier" } });
+    expect(locked.cheat).toEqual({ entry: null, stop: null, target: null, invalidation: null, gradeA: [] });
+    expect(locked.checklist).toEqual([]);
+    expect(t.setups.find((x) => x.id === 205)!.checklist).toEqual(["Range marked", "Volume"]);
+    const staff = b.buildToday(input({ viewer: { staff: true, tier: null } }));
+    expect(staff.setups.find((x) => x.id === 213)!.cheat.entry).toBe("Timeframe 1m. Buy the break.");
+  });
+
+  it("redactLockedSetup keeps the title / tier / time and drops the card fields of a library row", () => {
+    const row = { id: 213, name: "3.3", minTier: "trader", timeOfDay: "10:00–15:30 NY", entryText: "x", notes: "y", checklistItems: [{ id: "a", text: "b" }], media: [{ id: 1 }], tags: "t" };
+    expect(b.redactLockedSetup(row, { key: "unlock.tier", params: { tier: "trader" } })).toEqual({
+      id: 213, name: "3.3", minTier: "trader", timeOfDay: "10:00–15:30 NY", entryText: null, notes: null, checklistItems: [], media: [], tags: "t",
+      locked: true, unlock: { key: "unlock.tier", params: { tier: "trader" } },
+    });
+  });
+
   it("graded-A trades on the gateway open the setup early; the tier opens everything up to it; staff see all", () => {
     const early = b.buildToday(input({ edges: [edge(205, 12, 3, 12, 10)] }));
     expect(early.setups.find((x) => x.id === 203)?.locked).toBe(false);
@@ -226,6 +247,40 @@ describe("untagged window", () => {
     expect(un.weekdaysBack("2026-10-18", 5)).toBe("2026-10-12"); // Sun → Mon
     expect(un.weekdaysBack("2026-10-20", 5)).toBe("2026-10-14"); // Tue → Wed before
     expect(un.untaggedOf(new Map([["a", { trades: 3, tagged: 1 }], ["b", { trades: 2, tagged: 2 }]]))).toBe(2);
+  });
+
+  it("untaggedTrades — the one «без сетапа» number for a period, with its days", async () => {
+    dbQuery.mockResolvedValueOnce({ rows: [{ d: "2026-10-14", trades: 4, tagged: 1 }, { d: "2026-10-15", trades: 2, tagged: 2 }], rowCount: 2 });
+    const r = await un.untaggedTrades("Илья Ш.", "2026-10-13", "2026-10-19");
+    expect(r).toMatchObject({ from: "2026-10-13", to: "2026-10-19", trades: 6, tagged: 3, untagged: 3 });
+    expect(r.byDay.get("2026-10-14")).toEqual({ trades: 4, tagged: 1 });
+    const [sql, params] = dbQuery.mock.calls.at(-1)! as [string, unknown[]];
+    expect(params).toEqual(["Илья Ш.", "2026-10-13", "2026-10-19"]);
+    expect(sql).toMatch(/p\.deleted_at IS NULL/); // a link to a deleted (old) setup is no setup
+    expect(sql).toMatch(/playbook_inbox_dismissed/); // «Не для плейбука» counts as handled
+  });
+});
+
+describe("«В плейбук» preselect (ROMAN-09)", () => {
+  const office = [
+    { id: 202, name: "0.1 Утренняя подготовка", timeOfDay: "9:00–9:30 NY", space: "office", canAddExamples: true }, // i18n-ignore
+    { id: 204, name: "1.2 Opening Drive", timeOfDay: "9:30–9:45 NY", space: "office", canAddExamples: true },
+    { id: 205, name: "1.3 ORB 5 минут", timeOfDay: "9:35–10:30 NY", space: "office", canAddExamples: true }, // i18n-ignore
+    { id: 208, name: "2.1 VWAP Hold / Reclaim", timeOfDay: "10:00–15:00 NY", space: "office", canAddExamples: true },
+    { id: 213, name: "3.3 Parabolic Backside", timeOfDay: "10:00–15:30 NY", space: "office", canAddExamples: true },
+  ];
+  it("the broker strategy maps to a setup inside its window", () => {
+    expect(sg.suggestByTrade({ setup: "Parabolic Short — Extended Stock", openedAt: "2026-10-16T11:05:00" }, office)[0]).toMatchObject({ id: 213, via: "strategy", time: "11:05" });
+    // outside the window: no strategy match, only time-based suggestions
+    expect(sg.suggestByTrade({ setup: "Opening Range Breakout (ORB)", openedAt: "2026-10-16T14:00:00" }, office).every((x) => x.via === "time")).toBe(true);
+  });
+  it("by entry time the narrowest window first, never the morning routine", () => {
+    const r = sg.suggestByTrade({ setup: null, openedAt: "2026-10-16T09:40:00" }, office);
+    expect(r.map((x) => x.id)).toEqual([204, 205]);
+    expect(r.some((x) => x.id === 202)).toBe(false);
+    expect(sg.suggestByTrade({ setup: null, openedAt: null }, office)).toEqual([]);
+    // an OPG / IMBX auction trade has no office setup: nothing is guessed by time
+    expect(sg.suggestByTrade({ setup: "IMBX — Opening Imbalance Short", openedAt: "2026-10-16T09:31:00" }, office)).toEqual([]);
   });
 });
 

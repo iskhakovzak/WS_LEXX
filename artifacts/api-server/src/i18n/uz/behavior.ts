@@ -45,7 +45,7 @@ export default {
     fatigue: {
       title: "Kun oxiridagi charchoq",
       description: "Kunning kech savdolari (median sondan keyin) birinchilariga nisbatan.",
-      rule: "Raqami > {cut} boʻlgan savdolar (kuniga savdolar medianasi, yuqoriga yaxlitlangan) kunning birinchi {cut} ta savdosi bilan solishtiriladi.",
+      rule: "Raqami > {cut} boʻlgan savdolar (kuniga savdolar medianasi, yuqoriga yaxlitlangan) kunning birinchi {cut} ta savdosi bilan solishtiriladi. Bir soniyada kirilgan savdolar bitta qaror hisoblanadi.",
       baseline: "kunning birinchi {cut} ta savdosi",
       note: "kundagi {total} tadan {no}-savdo",
     },

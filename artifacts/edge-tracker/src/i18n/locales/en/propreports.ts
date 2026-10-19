@@ -11,6 +11,7 @@ export default {
     signInTitle: "Sign-in required",
     signInText: "Sign in to see your accounts and import trades.",
     syncNow: "Sync now",
+    syncDisabled: "The broker API isn’t connected — trades are loaded from files. A developer sets up the connection.",
     sessionExpired: "Session expired",
     statusFailed: "Couldn’t load the status",
     tabsAria: "Integration sections",
@@ -52,7 +53,8 @@ export default {
     authLogin: "login auth (API v1, token refreshes every ~2 h)",
     group: "group {id}",
     accountsList: "accounts {list}",
-    notConfiguredText: "File import always works. For API sync, add the variables below to .env.local and restart the server.",
+    notConfiguredText: "Trades are loaded from PropReports report files. A developer connects automatic API sync.",
+    devTitle: "For the developer",
     envTitle: "Environment variables (names only — values go in .env.local, never into the UI):",
     env: {
       domain: "— firm subdomain (<firm>.propreports.com)",
@@ -75,6 +77,7 @@ export default {
     legacy: "{count} from an old import without a key — will be linked on the next import",
     pending: "{count} awaiting reconciliation",
     synced: "everything is in sync",
+    syncedFiles: "everything is loaded from files",
   },
 
   runDialog: {

@@ -8,7 +8,7 @@ import { QueryError } from "@/components/query-error";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { gpApi, gpKeys, type PlanDoc, type TraderPlan } from "./types";
-import { fmtDate } from "@/lib/format";
+import { fmtDeskTime } from "@/lib/format";
 import { PlanDocView } from "./plan-doc-view";
 import { shortDay } from "./plan-briefing";
 import { gpI18n } from "@/i18n/ns/gamePlan";
@@ -105,7 +105,7 @@ export function TraderPlans({ date }: { date: string }) {
             </span>
           }
           icon={NotebookPen}
-          description={t("traders.updatedAt", { time: fmtDate(current.updatedAt, "time") })}
+          description={t("traders.updatedAt", { time: fmtDeskTime(current.updatedAt) })}
           actions={
             <Link
               href={links.journalDay(date, current.trader)}
@@ -154,7 +154,7 @@ function TraderRow({ plan, active, onSelect }: { plan: TraderPlan; active: boole
         </span>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs tabular-nums text-muted-foreground">
-        {fmtDate(plan.updatedAt, "time")}
+        {fmtDeskTime(plan.updatedAt)}
         {shots > 0 && (
           <span className="inline-flex items-center gap-0.5">
             <Camera className="h-3 w-3" aria-hidden="true" />

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { TraderAvatar } from "./trader-avatar";
-import { fmtCount, fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtCount, fmtDeskDateTime, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
 import {
@@ -90,7 +90,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
           {item.rating && <Pill tone="purple" className="text-2xs">{t("ratingPill", { rating: ratingLabel(item.rating) })}</Pill>}
           <time
             dateTime={item.createdAt}
-            title={fmtDate(item.createdAt, "shortDateTime")}
+            title={fmtDeskDateTime(item.createdAt, { style: "shortDateTime" })}
             className="text-xs tabular-nums text-muted-foreground sm:hidden"
           >
             {timeLabel(item.createdAt)}
@@ -99,7 +99,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
       </div>
       <time
         dateTime={item.createdAt}
-        title={`${fmtDate(item.createdAt, "shortDateTime")} · ${relTime(item.createdAt)}`}
+        title={`${fmtDeskDateTime(item.createdAt, { style: "shortDateTime" })} · ${relTime(item.createdAt)}`}
         className="hidden shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground sm:block"
       >
         {timeLabel(item.createdAt)}

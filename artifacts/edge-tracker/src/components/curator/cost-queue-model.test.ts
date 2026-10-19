@@ -38,13 +38,37 @@ describe("attentionRows", () => {
 });
 
 describe("primaryAction", () => {
-  const row = (item: CostQueueRow, opts: { breachPending?: boolean; next?: ReturnType<typeof next> | null } = {}) =>
-    ({ type: "cost" as const, key: "k", trader: item.trader, item, next: opts.next ?? null, breachPending: !!opts.breachPending });
+  const eod = { eodId: 7, closedAt: "2026-10-16T22:00:00Z", hoursWaiting: 30 };
+  const row = (item: CostQueueRow, opts: { breachPending?: boolean; next?: ReturnType<typeof next> | null; eod?: typeof eod | null } = {}) =>
+    ({ type: "cost" as const, key: "k", trader: item.trader, item, next: opts.next ?? null, breachPending: !!opts.breachPending, eod: opts.eod ?? null });
 
-  it("breached stop with a pending review → review it; focus → focus; else next step; else the day", () => {
+  it("breached stop with a pending review → review it; closed day → its EOD sheet; focus → the journal day; else next step; else the day", () => {
     expect(primaryAction(row(cost("A", -1, ["stop_breach", "fees"]), { breachPending: true }))).toEqual({ kind: "breach" });
-    expect(primaryAction(row(cost("A", -1, ["stop_breach", "disputed"])))).toEqual({ kind: "focus" });
+    // OLGA-03: the row opens the day it came from, not the profile.
+    expect(primaryAction(row(cost("A", -1, ["focus_broken"]), { eod }))).toEqual({ kind: "review", eod });
+    expect(primaryAction(row(cost("A", -1, ["stop_breach", "disputed"])))).toEqual({ kind: "day" });
+    expect(primaryAction(row(cost("A", -1, ["focus_broken"]), { next: next("A", "eod_review", 50, "/journal?x") }))).toEqual({ kind: "day" });
     expect(primaryAction(row(cost("A", -1, ["fees"]), { next: next("A", "eod_review", 50, "/journal?x") }))).toEqual({ kind: "next", href: "/journal?x" });
     expect(primaryAction(row(cost("A", -1, ["fees"]), { next: next("A", "breach_review", 90, "/curator?trader=A&tab=risk") }))).toEqual({ kind: "day" });
+  });
+});
+
+describe("attentionRows: the day behind a row and long-overdue 1:1 (OLGA-03, OLGA-18)", () => {
+  const eodItem = (trader: string, date: string, eodId: number): QueueItem =>
+    ({ kind: "eod", id: `eod:${eodId}`, trader, title: "", since: "2026-10-16T22:00:00Z", hoursWaiting: 30, href: "", overdue: true, slaHours: 24, date, eodId });
+
+  it("a cost row knows the closed day to review", () => {
+    const rows = attentionRows({ byCost: [cost("A", -375, ["loss_streak"])], nextActions: [], queue: [eodItem("A", "2026-10-16", 7), eodItem("A", "2026-10-15", 6)] });
+    expect(rows[0].type === "cost" && rows[0].eod).toEqual({ eodId: 7, closedAt: "2026-10-16T22:00:00Z", hoursWaiting: 30 });
+  });
+
+  it("wards without a 1:1 for > 30 days get their own row unless their shown step already is the 1:1", () => {
+    const rows = attentionRows({
+      byCost: [cost("A", -100, ["fees"])],
+      nextActions: [next("B", "one_on_one", 20), next("C", "eod_review", 70)],
+      queue: [],
+      oneOnOneDue: [{ trader: "A", days: 62, last: "2026-08-17" }, { trader: "B", days: null, last: null }, { trader: "C", days: 40, last: null }],
+    });
+    expect(rows.map((r) => r.key)).toEqual(["cost:A:2026-10-16", "next:B", "next:C", "1on1:A", "1on1:C"]);
   });
 });

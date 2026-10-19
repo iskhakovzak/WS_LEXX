@@ -78,6 +78,8 @@ export interface GamificationMe {
   freeze: StreakFreeze;
   titles: { key: string; earnedAt: string }[];
   activeTitle: string | null;
+  /** New titles are paused while the trader is risk-halted (absent on older servers / when not paused). */
+  titlesPaused?: boolean;
   /** catalog = active items + any item the trader's grants refer to (history survives a deactivated item);
    *  declined = staff declined these requests (absent on older servers). */
   rewards: { eligible: RewardGrant[]; requested: RewardGrant[]; granted: RewardGrant[]; declined?: RewardGrant[]; catalog: RewardItem[] };

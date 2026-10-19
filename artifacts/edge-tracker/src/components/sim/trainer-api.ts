@@ -3,6 +3,7 @@
  *   GET  /api/trainer/home                → TrainerHome (the four mode cards + 30-day stats)
  *   GET  /api/trainer/daily               → DailyChallengeState (status, reveal, desk ranking)
  *   POST /api/trainer/daily/start         → a simulator Snapshot (played through /api/sim/games/:id/step)
+ *   POST /api/trainer/daily/practice      → the closed challenge as an unranked game (a Snapshot)
  *   GET  /api/trainer/drill/next?setupId= → FindEntryDrill («Найди вход»)
  *   POST /api/trainer/drill/:id/answer    → FindEntryAnswer
  */
@@ -37,6 +38,8 @@ export const dailyQuery = () => queryOptions({
 
 export const trainerApi = {
   dailyStart: () => http.post<Snapshot>("/api/trainer/daily/start", {}),
+  /** The closed challenge (weekend / after the close) as an unranked game. */
+  dailyPractice: () => http.post<Snapshot>("/api/trainer/daily/practice", {}),
   drillNext: (setupId: number | null, opts?: { signal?: AbortSignal }) =>
     http.get<FindEntryDrill>(`/api/trainer/drill/next${setupId != null ? `?setupId=${setupId}` : ""}`, opts),
   drillAnswer: (id: number, body: { barIndex: number; price: number }) => http.post<FindEntryAnswer>(`/api/trainer/drill/${id}/answer`, body),

@@ -4,13 +4,18 @@
  *   GET  /curator/today                 ?scope=mine|desk&date=&old=1 — фаза дня, кто торгует, риск, нет плана / не закрыт день,
  *                                       общая очередь разборов (EOD + недельные + задания Академии + нарушения;
  *                                       по умолчанию за последние 14 дн., old=1 — со старыми; важное и свежее сверху),
- *                                       просроченные договорённости 1:1, приоритетные «следующие шаги», byCost (lib/daily/costQueue)
+ *                                       просроченные договорённости 1:1, приоритетные «следующие шаги», byCost (lib/daily/costQueue),
+ *                                       oneOnOneDue (1:1 > 30 дн. или ни одной), counts.reviews/reviewsOverdue — «ждёт разбора»:
+ *                                       закрытые и не разобранные дни ростера за 14 дн. (то же число, что /eod/queue/count)
+ *                                       Часы ожидания очереди — торговые (выходные и праздники не идут в SLA, OLGA-07).
  *   GET  /curator/traders               ?scope=mine|desk — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
  *                                       последний разбор, 1:1, нарушения, последняя заметка, следующий шаг
  *   GET  /curator/trader/:name          профиль: карточка + лимиты/метрики, нарушения с разбором, дни EOD, недели,
  *                                       Академия (договорённости, 1:1 без приватных заметок, цели ИПР), заметки, focus (lib/daily/curatorFocus)
+ *   GET  /curator/wards                 { wards } — мои подопечные (куратор / наставник / риск-менеджер): «мои люди» для
+ *                                       оценок недели и «Сохранить и следующий» (лёгкий запрос, без расчётов)
  *   GET  /curator/notes?trader=         заметки о трейдере (персонал; трейдер не видит)
- *   POST /curator/notes                 {trader, body, kind?, pinned?}
+ *   POST /curator/notes                 {trader, body, kind?, pinned?, day?}
  *   PATCH /curator/notes/:id            {body?, kind?, pinned?}
  *   POST /curator/notes/:id/archive     мягкое удаление
  *   POST /curator/notes/:id/restore     отмена архивации (в течение суток)
@@ -27,10 +32,12 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { nyDate, nyMinutes, addDays } from "../lib/tradingDate";
 import { can, readScope, requireCap } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
-import { ensureCuratorTables, rowToBreachReview, rowToNote } from "../lib/curatorStore";
+import { ensureCuratorTables, marketClosedDays, rowToBreachReview, rowToNote } from "../lib/curatorStore";
+import { loadRoster, safe, type TraderSignal } from "../lib/curatorRoster";
+import { REVIEW_SLA_HOURS, tradingDaysAfter, tradingHoursBetween } from "../lib/eodLogic";
 import {
   QUEUE_DEFAULT_DAYS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, stageLabel, staleQueueIds, tradingPhase,
-  trendDirection, weeklyTrend, type NextAction, type QueueKind, type WeekPoint,
+  trendDirection, weeklyTrend, type QueueKind,
 } from "../lib/curatorLogic";
 import { alertMessage, breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
 import { ensureNameLatin } from "../lib/peopleDirectory";
@@ -51,80 +58,15 @@ function clientDate(raw: unknown): string {
   return typeof raw === "string" && YMD_RE.test(raw) ? raw : nyDate();
 }
 
-/** Read from an optional module's table: any SQL error (table not created yet) → no rows. */
-async function safe<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
-  try {
-    const { rows } = await pool.query(sql, params);
-    return rows as T[];
-  } catch {
-    return [];
-  }
-}
-
 const iso = (v: unknown): string | null => (v ? new Date(v as string).toISOString() : null);
-const hoursSince = (v: unknown, now: number): number | null => (v ? Math.max(0, Math.round(((now - new Date(v as string).getTime()) / 3_600_000) * 10) / 10) : null);
+/** Calendar hours since a moment (the 14-day queue window). */
+const ageOf = (v: unknown, now: number): number | null => (v ? Math.max(0, (now - new Date(v as string).getTime()) / 3_600_000) : null);
+/** Waiting time on the review SLA clock: trading hours (weekends and full-day holidays pause it, lib/eodLogic). */
+const hoursSince = (v: unknown, now: number, closed: ReadonlySet<string> = new Set()): number | null => (v ? tradingHoursBetween(v as string, now, closed) : null);
+/** A ward without a 1:1 for longer than this goes to «Следующие шаги» (OLGA-18). */
+const ONE_ON_ONE_DUE_DAYS = 30;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
 const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((s, v) => s + v, 0) / xs.length) * 10) / 10 : null);
-
-// ─── roster ─────────────────────────────────────────────────────────────────
-
-type Roster = { traders: string[]; scope: "mine" | "desk"; wards: string[] };
-
-async function loadRoster(req: Request, wanted: unknown): Promise<Roster> {
-  const me = req.authUser!.name;
-  const [users, readable] = await Promise.all([
-    safe<{ name: string; role: string; ac: string | null; am: string | null; ar: string | null }>(
-      `SELECT name, role, assigned_curator AS ac, assigned_mentor AS am, assigned_risk_manager AS ar
-         FROM users WHERE active = true AND COALESCE(banned, false) = false`,
-    ),
-    readScope(req, "journal.review"),
-  ]);
-  let traders = users.filter((u) => u.role === "trader").map((u) => u.name);
-  if (readable !== null) traders = traders.filter((t) => readable.includes(t));
-  const wards = traders.filter((t) => {
-    const u = users.find((x) => x.name === t);
-    return !!u && (u.ac === me || u.am === me || u.ar === me);
-  });
-  const scope: "mine" | "desk" = wanted === "desk" ? "desk" : wanted === "mine" ? "mine" : wards.length ? "mine" : "desk";
-  const list = scope === "mine" && wards.length ? wards : scope === "mine" ? [] : traders;
-  return { traders: list.sort((a, b) => a.localeCompare(b, "ru")), scope, wards };
-}
-
-// ─── per-trader signals ─────────────────────────────────────────────────────
-
-export type TraderSignal = {
-  trader: string;
-  stage: { key: string | null; label: string | null; since: string | null };
-  tier: string | null;
-  tierName: string | null;
-  risk: {
-    status: string; state: string; label: string; message: string; halted: boolean; nearStop: boolean;
-    dailyPct: number | null; weeklyPct: number | null; drawdownPct: number | null;
-    todayPnl: number | null; todayTrades: number; weekPnl: number | null; openPositions: number;
-    hasLimits: boolean; templateDrift: string[];
-  };
-  trend: WeekPoint[];
-  trendDir: "up" | "down" | "flat" | "none";
-  discipline: { value: number | null; eodAvg: number | null; ratingAvg: number | null; n: number };
-  /** today: null = no plan; available=false — the game-plan module is not set up on this server (do not flag). */
-  plan: { today: "ready" | "draft" | null; available: boolean };
-  eod: { prevDay: string; prevTraded: boolean; prevClosed: boolean; todayTraded: boolean; todayClosed: boolean; pending: number; lastClosed: string | null; lastReviewedAt: string | null; lastScore: number | null };
-  weekly: { currentStatus: string | null; submittedPending: boolean; lastReviewedWeek: string | null; lastReviewedAt: string | null };
-  academy: { openActions: number; overdueActions: number; lastOneOnOne: string | null; daysSinceOneOnOne: number | null; pendingSubmissions: number; activeGoals: number };
-  /** week — breach alerts since Monday (NY). */
-  breaches: { unreviewed: number; last30: number; week: number; lastDate: string | null };
-  lastNote: { body: string; author: string; createdAt: string } | null;
-  lastTradeDate: string | null;
-  nextAction: NextAction;
-  /** users.assigned_curator — the trader's group («Группа» = traders of one curator); null = «Без куратора». */
-  curator: string | null;
-  /** users.name_latin — optional Latin alias for cross-script search. */
-  nameLatin: string | null;
-  /** Calendar month to date (NY trading days): net P&L (null = no $ data) and trades. */
-  month: { pnl: number | null; trades: number };
-  /** Latest sign of life: activity log, closed day, weekly report or trade day (ISO / YYYY-MM-DD). */
-  lastActivityAt: string | null;
-};
 
 type Bulk = Awaited<ReturnType<typeof loadBulk>>;
 
@@ -136,7 +78,7 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
   const from42 = addDays(today, -42);
   const from30 = addDays(today, -29);
   await ensureNameLatin().catch(() => undefined);
-  const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity] = await Promise.all([
+  const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity, closed] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
     deskSnapshot(today, null, lang, traders),
     templateStatus(traders, lang),
@@ -161,6 +103,7 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
     safe<{ item_id: string }>(`SELECT item_id FROM curator_queue_acks WHERE revoked_at IS NULL AND trader = ANY($1)`, [traders]),
     safe<{ name: string; ac: string | null; latin: string | null }>(`SELECT name, assigned_curator AS ac, name_latin AS latin FROM users WHERE name = ANY($1)`, [traders]),
     safe<{ trader: string; at: Date }>(`SELECT trader, MAX(created_at) AS at FROM activity_log WHERE trader = ANY($1) GROUP BY trader`, [traders]),
+    marketClosedDays(today),
   ]);
   // Элементы, мягко убранные из очереди («архивировать старые»), не считаются ожидающими разбора.
   const acked = new Set(ackRows.map((r) => String(r.item_id)));
@@ -168,7 +111,7 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
   const subs = subsAll.filter((x: any) => !acked.has(`academy:${x.id}`));
   const peopleBy = new Map(people.map((p) => [p.name, p]));
   const activityBy = new Map(activity.map((a) => [a.trader, iso(a.at)]));
-  return { lang, today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked, peopleBy, activityBy };
+  return { lang, today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked, peopleBy, activityBy, closed };
 }
 
 function buildSignal(name: string, b: Bulk): TraderSignal {
@@ -218,7 +161,9 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
 
   const planRow = b.plans.find((p: any) => p.trader === name);
   const weekday = tradingPhase(today, 0) !== "weekend";
-  const pendingEod = b.eodPending.filter((e: any) => e.trader === name).length;
+  // «Ждёт разбора» counts only the queue window (14 days), like the queue, the badge and /eod/queue/count (OLGA-06).
+  const windowFrom = Date.now() - QUEUE_DEFAULT_DAYS * 86_400_000;
+  const pendingEod = b.eodPending.filter((e: any) => e.trader === name && e.closed_at && new Date(e.closed_at).getTime() > windowFrom).length;
   const hasLimits = tpl?.hasLimits ?? false;
 
   const signalBase = {
@@ -255,6 +200,7 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
     breaches: { unreviewed, last30: new Set(br.map((x: any) => x.date)).size, week: br.filter((x: any) => String(x.date) >= weekStart).length, lastDate: br[0]?.date ?? null },
     lastNote: note ? { body: String(note.body).slice(0, 280), author: String(note.author), createdAt: iso(note.created_at)! } : null,
     lastTradeDate: row?.lastTradeDate ?? null,
+    idleTradingDays: row?.lastTradeDate ? tradingDaysAfter(row.lastTradeDate.slice(0, 10), today, b.closed) : null,
     curator: b.peopleBy.get(name)?.ac ?? null,
     nameLatin: b.peopleBy.get(name)?.latin ?? null,
     month: { pnl: monthPriced.length ? Math.round(monthPriced.reduce((a, d) => a + (d.pnl ?? 0), 0) * 100) / 100 : null, trades: monthDays.reduce((a, d) => a + d.trades, 0) },
@@ -285,7 +231,7 @@ function maxIso(values: unknown[]): string | null {
 // ─── очередь разборов ───────────────────────────────────────────────────────
 
 /** `date` — торговый день / неделя элемента; `eodId` — id дня (eod_days) для разбора прямо в кабинете. */
-type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string; date?: string | null; eodId?: number };
+type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; ageHours?: number | null; href: string; date?: string | null; eodId?: number };
 
 function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
   const t = riskT.tFor(b.lang);
@@ -293,23 +239,24 @@ function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
   return [
     ...b.eodPending.map((e: any) => ({
       kind: "eod" as const, id: `eod:${e.id}`, trader: String(e.trader), title: t("queue.eod", { date: day(e.date) }),
-      since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now),
+      since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now, b.closed), ageHours: ageOf(e.closed_at, now),
       href: `/journal?date=${encodeURIComponent(String(e.date))}&trader=${encodeURIComponent(String(e.trader))}`,
       date: String(e.date), eodId: Number(e.id),
     })),
     ...b.weekly.filter((w: any) => w.status === "submitted").map((w: any) => ({
-      kind: "weekly" as const, id: `weekly:${w.id}`, trader: String(w.trader), title: t("queue.weekly", { week: String(w.week) }),
-      since: iso(w.submitted_at), hoursWaiting: hoursSince(w.submitted_at, now), date: w.week_start ? String(w.week_start) : null,
+      // A human week «12 окт. – 16 окт.», never the raw ISO key (OLGA-22).
+      kind: "weekly" as const, id: `weekly:${w.id}`, trader: String(w.trader), title: t("queue.weekly", { week: w.week_start ? `${day(w.week_start)} – ${day(addDays(String(w.week_start), 4))}` : String(w.week) }),
+      since: iso(w.submitted_at), hoursWaiting: hoursSince(w.submitted_at, now, b.closed), ageHours: ageOf(w.submitted_at, now), date: w.week_start ? String(w.week_start) : null,
       href: `/weekly-review?view=curator&trader=${encodeURIComponent(String(w.trader))}&week=${encodeURIComponent(String(w.week))}`,
     })),
     ...b.subs.map((s: any) => ({
       kind: "academy" as const, id: `academy:${s.id}`, trader: String(s.user_name), title: t("queue.academy", { title: String(s.title).slice(0, 80) }),
-      since: iso(s.created_at), hoursWaiting: hoursSince(s.created_at, now), href: "/academy/mentor",
+      since: iso(s.created_at), hoursWaiting: hoursSince(s.created_at, now, b.closed), ageHours: ageOf(s.created_at, now), href: "/academy/mentor",
     })),
     ...b.breaches.filter((x: any) => x.review_id == null).map((x: any) => ({
       // Тип «Нарушение» уже на плашке строки — в заголовке только что и когда.
       kind: "breach" as const, id: `breach:${x.id}`, trader: String(x.trader), title: t("queue.breach", { kind: breachKindLabel(String(x.kind), b.lang), date: day(x.date) }), date: String(x.date),
-      since: iso(breachSince(x)), hoursWaiting: hoursSince(breachSince(x), now), href: `/curator?trader=${encodeURIComponent(String(x.trader))}&tab=risk`,
+      since: iso(breachSince(x)), hoursWaiting: hoursSince(breachSince(x), now, b.closed), ageHours: ageOf(breachSince(x), now), href: `/curator?trader=${encodeURIComponent(String(x.trader))}&tab=risk`,
     })),
   ];
 }
@@ -357,6 +304,14 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
     .filter((s) => s.nextAction.kind !== "none")
     .map((s) => ({ trader: s.trader, ...s.nextAction }))
     .sort((x, y) => y.priority - x.priority || x.trader.localeCompare(y.trader, "ru"));
+  // OLGA-18: a ward without a 1:1 for > 30 days (or never) is a step of its own, even when another step tops the trader.
+  const oneOnOneDue = signals
+    .filter((s) => s.academy.daysSinceOneOnOne == null || s.academy.daysSinceOneOnOne > ONE_ON_ONE_DUE_DAYS)
+    .map((s) => ({ trader: s.trader, days: s.academy.daysSinceOneOnOne, last: s.academy.lastOneOnOne }))
+    .sort((x, y) => (y.days ?? Infinity) - (x.days ?? Infinity) || x.trader.localeCompare(y.trader, "ru"));
+  // OLGA-06: «ждёт разбора» = closed, not reviewed days of the roster within the queue window (= /eod/queue/count).
+  const windowFrom = now - QUEUE_DEFAULT_DAYS * 86_400_000;
+  const reviewDays = b.eodPending.filter((e: any) => e.closed_at && new Date(e.closed_at).getTime() > windowFrom);
 
   res.json({
     date: today,
@@ -380,6 +335,9 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
       queueOld: arranged.old.count,
       queueOldOverdue: arranged.old.overdue,
       overdueActions: overdueActions.length,
+      reviews: reviewDays.length,
+      reviewsOverdue: reviewDays.filter((e: any) => (hoursSince(e.closed_at, now, b.closed) ?? 0) > REVIEW_SLA_HOURS).length,
+      oneOnOneDue: oneOnOneDue.length,
     },
     trading,
     risk: {
@@ -394,6 +352,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
     queueWindow: { days: QUEUE_DEFAULT_DAYS, includeOld, old: arranged.old.count, oldOverdue: arranged.old.overdue },
     overdueActions,
     nextActions,
+    oneOnOneDue,
     byCost, questEvents, // curator quests of the roster that finished in the last 3 NY days (lib/quests)
   });
 }));
@@ -448,6 +407,13 @@ router.post("/curator/queue/restore", asyncHandler(async (req, res): Promise<voi
 
 // ─── traders ────────────────────────────────────────────────────────────────
 
+/** «Мои люди»: the same wards as the /curator roster (OLGA-11 / OLGA-18), names only. */
+router.get("/curator/wards", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "journal.review"))) return;
+  const roster = await loadRoster(req, "mine");
+  res.json({ wards: roster.wards.sort((a, b) => a.localeCompare(b, "ru")) });
+}));
+
 router.get("/curator/traders", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const today = clientDate(req.query.date);
@@ -500,7 +466,7 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
     // Все закрытые и не разобранные дни (без архивированных) — для разбора прямо из профиля, свежие сверху (как в очереди).
     eodPending: b.eodPending
       .filter((e: any) => e.trader === name)
-      .map((e: any) => ({ id: Number(e.id), date: String(e.date), closedAt: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, Date.now()) ?? 0 }))
+      .map((e: any) => ({ id: Number(e.id), date: String(e.date), closedAt: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, Date.now(), b.closed) ?? 0 }))
       .sort((x, y) => y.date.localeCompare(x.date)),
     eodDays: eodDays.map((e: any) => ({
       id: Number(e.id), date: String(e.date), closedAt: iso(e.closed_at), reviewedAt: iso(e.reviewed_at), reviewedBy: e.reviewed_by ?? null,
@@ -535,19 +501,23 @@ const NoteBody = z.object({
   body: z.string().trim().min(1).max(4000),
   kind: z.enum(NOTE_KINDS).default("note"),
   pinned: z.boolean().default(false),
+  /** The NY trading day the note is about (a queue row's day): it resolves only that day (lib/daily/costQueue). */
+  day: z.string().regex(YMD_RE).nullish(),
 }).strict();
 
 router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
+  // Rights first (DEV-18): a reader without journal.review gets 403, not a form error.
+  const rawTrader = typeof req.body?.trader === "string" ? req.body.trader.trim() : "";
+  if (!(await requireCap(req, res, "journal.review", rawTrader ? { trader: rawTrader } : undefined))) return;
   const parsed = NoteBody.safeParse(req.body ?? {});
   if (!parsed.success) throw parsed.error.issues[0]?.path[0] === "body" ? new AppError("NOTE_EMPTY", 400, undefined, parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }))) : parsed.error;
   const b = parsed.data;
-  if (!(await requireCap(req, res, "journal.review", { trader: b.trader }))) return;
   const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!exists.length) throw notFound("TRADER_NOT_FOUND");
   await ensureCuratorTables();
   const { rows } = await pool.query(
-    `INSERT INTO curator_notes (trader, author, body, kind, pinned) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [b.trader, req.authUser!.name, b.body, b.kind, b.pinned],
+    `INSERT INTO curator_notes (trader, author, body, kind, pinned, day) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [b.trader, req.authUser!.name, b.body, b.kind, b.pinned, b.day ?? null],
   );
   res.status(201).json(rowToNote(rows[0]));
 }));

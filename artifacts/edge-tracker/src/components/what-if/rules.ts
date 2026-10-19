@@ -41,6 +41,8 @@ export type PreviewTrade = {
   seq: number;
   fills?: number | null;
   feeBreakdown?: Record<string, number> | null;
+  /** Σ regulatory fees (SEC/TAF/CAT/ORF/NFA) — the compact /whatif/base sends this instead of the breakdown. */
+  regFees?: number | null;
   setup?: string | null;
   grade?: string | null;
 };
@@ -364,7 +366,10 @@ export function recomputeFees(t: PreviewTrade, plan: Omit<CommissionPlan, "type"
   const commission = orders * Math.max(plan.minPerOrder, plan.perShare * sharesPerOrder);
   const ecn = plan.ecnPerShare * 2 * t.qty;
   let regulatory = 0;
-  if (plan.keepRegulatory !== false && t.feeBreakdown) for (const k of REGULATORY_KEYS) regulatory += Math.abs(t.feeBreakdown[k] ?? 0);
+  if (plan.keepRegulatory !== false) {
+    if (t.regFees != null) regulatory = Math.abs(t.regFees);
+    else if (t.feeBreakdown) for (const k of REGULATORY_KEYS) regulatory += Math.abs(t.feeBreakdown[k] ?? 0);
+  }
   return round2(commission + ecn + regulatory);
 }
 

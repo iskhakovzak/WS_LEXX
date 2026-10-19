@@ -10,6 +10,7 @@ export const rulesKeys = {
   rules: (t: string) => ["rules", "list", t] as const,
   violations: (t: string) => ["rules", "violations", t] as const,
   archivedViolations: (t: string) => ["rules", "violations-archive", t] as const,
+  violationTotal: (t: string) => ["rules", "violations-total", t] as const,
   mistakes: (t: string) => ["rules", "mistakes", t] as const,
   discipline: (t: string, days: number) => ["rules", "discipline", t, days] as const,
   report: (t: string, days: number) => ["rules", "report", t, days] as const,
@@ -39,6 +40,15 @@ export function useViolations(trader: string) {
   return useQuery({
     queryKey: rulesKeys.violations(trader),
     queryFn: () => http.get<Violation[]>(`/api/rule-violations?${q(trader)}&limit=500`),
+    enabled: !!trader,
+  });
+}
+
+/** How many active violations the trader has in all — the list itself is capped at 500 rows. */
+export function useViolationTotal(trader: string) {
+  return useQuery({
+    queryKey: rulesKeys.violationTotal(trader),
+    queryFn: () => http.get<{ total?: number }>(`/api/rule-violations?${q(trader)}&count=1`).then((d) => (typeof d?.total === "number" ? d.total : null)),
     enabled: !!trader,
   });
 }

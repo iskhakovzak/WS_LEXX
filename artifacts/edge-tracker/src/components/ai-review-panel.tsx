@@ -274,8 +274,8 @@ export function AiReviewPanel({
     setLoading(true);
     setLoadErr(null);
     try {
-      // 404 = no review yet.
-      setReview(await http.get<Review>(`/api/trades/${tradeId}/ai-review`).catch(nullIfMissing));
+      // null = no review yet (older API builds answered 404).
+      setReview((await http.get<Review | null>(`/api/trades/${tradeId}/ai-review`).catch(nullIfMissing)) ?? null);
     } catch (e: unknown) {
       setLoadErr(humanizeApiError(e, tradesI18n.t("ai.loadFailed")));
     } finally {

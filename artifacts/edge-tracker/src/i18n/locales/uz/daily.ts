@@ -14,6 +14,10 @@ export default {
     none: "Soʻnggi 2 haftada takrorlanuvchi xato yoʻq — shunday davom eting.",
     noneHint: "Xato takrorlana boshlasa, fokus paydo boʻladi.",
     forDate: "{date} uchun fokus",
+    own: "oʻz tanlovingiz",
+    ownHint: "Kundalikdan: «Ertangi fokus».",
+    noTrades: "Fokus birinchi savdolardan keyin paydo boʻladi.",
+    noTradesHint: "Bugun: reja → trenajyor → dars.",
   },
   contract: {
     title: "Shartnoma",
@@ -88,15 +92,17 @@ export default {
   },
   tier: {
     to: {
-      trainee: "Stajyorgacha: {total} tadan {met}",
-      junior: "Junior darajasigacha: {total} tadan {met}",
-      trader: "Treydergacha: {total} tadan {met}",
-      senior: "Seniorgacha: {total} tadan {met}",
-      custom: "«{tier}» darajasigacha: {total} tadan {met}",
+      trainee: "Stajyorgacha: {met}/{total} bajarildi",
+      junior: "Junior darajasigacha: {met}/{total} bajarildi",
+      trader: "Treydergacha: {met}/{total} bajarildi",
+      senior: "Seniorgacha: {met}/{total} bajarildi",
+      custom: "«{tier}» darajasigacha: {met}/{total} bajarildi",
     },
     top: "«{tier}» — eng yuqori daraja",
     criteriaAria: "Oʻtish mezonlari",
     ladder: "Butun zinapoya",
+    path: "Treyder yoʻli",
+    noData: "maʼlumot yoʻq",
     of: "{actual} · maqsad {target}",
     metric: {
       trades: "Yopilgan savdolar",
@@ -118,7 +124,7 @@ export default {
   },
   ownRule: {
     label: "Bugun takrorlamayman",
-    hint: "Fokus kabi savdolar boʻyicha tekshiriladi.",
+    hint: "Fokus singari savdolaringiz bilan solishtiriladi.",
     fromFocus: "Kun fokusidan qoʻyildi",
     none: "Qoidasiz",
     groupFocus: "Kun fokusi",

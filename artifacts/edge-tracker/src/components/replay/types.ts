@@ -79,3 +79,12 @@ export function reasonLabel(r: QualityReason): string {
 
 export const DEFAULT_AFTER_EXIT = 30;
 export const AFTER_EXIT_OPTIONS = [15, 30, 60, 120] as const;
+
+/**
+ * Exit efficiency for the tiles: a closed trade that was never in profit (MFE = 0, so the server sends null) kept
+ * 0 % of the move; null stays only for an open position.
+ */
+export function shownExitEfficiency(q: Pick<TradeQuality, "exitEfficiency" | "captured">): number | null {
+  if (q.exitEfficiency != null) return q.exitEfficiency;
+  return q.captured != null ? 0 : null;
+}

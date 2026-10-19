@@ -24,7 +24,8 @@ export function clampPick(drill: Pick<FindEntryDrill, "bars" | "window">, idx: n
   return { barIndex: i, price: roundPrice(Math.max(b.l, Math.min(b.h, price))) };
 }
 
-export type DrillResult = { drillId: number; setupName: string; score: number; masteryDelta: number };
+/** One answered drill of a run; `ticker` / `date` are revealed with the answer (shown in the run summary). */
+export type DrillResult = { drillId: number; setupName: string; score: number; masteryDelta: number; ticker?: string; date?: string };
 
 export function runSummary(results: readonly DrillResult[]): { count: number; accuracy: number | null; hits: number; mastery: number; best: number | null } {
   if (!results.length) return { count: 0, accuracy: null, hits: 0, mastery: 0, best: null };

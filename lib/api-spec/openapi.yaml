@@ -959,13 +959,15 @@ paths:
           schema: { type: integer }
       responses:
         "200":
-          description: Latest review
+          description: Latest review, or null when the trade has no review yet (not an error)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AiTradeReview"
+                oneOf:
+                  - $ref: "#/components/schemas/AiTradeReview"
+                  - type: "null"
         "404":
-          description: No review yet
+          description: Trade not found
 
   /market-conditions/dna:
     get:

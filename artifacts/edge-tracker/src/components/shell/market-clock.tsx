@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatCountdown, getSessionState, type NextKey, type SessionPhase } from "@/components/dashboard/market-session";
 import { shellI18n } from "@/i18n/ns/shell";
+import { shellExtrasI18n } from "@/i18n/ns/shellExtras";
 import { fmtDate } from "@/i18n/format";
 
 const PREMARKET_TO_OPEN_MS = 5.5 * 3600 * 1000;
@@ -83,6 +84,7 @@ export function MarketClock({ className, fit = "viewport" }: { className?: strin
   const c = fit === "container";
   const s = useMarketClock();
   const { t } = shellI18n.useT();
+  const { t: tx } = shellExtrasI18n.useT();
   const ph = { ...PHASE[s.phase], label: t(`clock.phase.${s.phase}`), short: t(`clock.phaseShort.${s.phase}`) };
   const next = t(`clock.next.${s.nextKey}`);
   const reason = s.phase === "closed" ? (s.holiday ? s.holiday : s.weekend ? t("clock.weekend") : null) : null;
@@ -122,6 +124,8 @@ export function MarketClock({ className, fit = "viewport" }: { className?: strin
           <span className={cn("hidden h-3.5 w-px bg-[var(--field-border)]", c ? "@[600px]:block" : "sm:block")} aria-hidden="true" />
           <span className={cn("hidden whitespace-nowrap", c ? "@[600px]:inline" : "sm:inline")}>
             <span className={cn("hidden", c ? "@[1180px]:inline" : "2xl:inline")}>{next} </span>
+            {/* DENIS-34: below that width a short label («премаркет») keeps the countdown readable. */}
+            <span className={cn("inline", c ? "@[1180px]:hidden" : "2xl:hidden")}>{tx(`clock.nextShort.${s.nextKey}`)} </span>
             <span className="text-foreground">{countdown}</span>
           </span>
         </div>

@@ -66,6 +66,7 @@ export default {
   },
 
   kpi: {
+    profitFactor: "Profit factor",
     streak: "seriya: {count} ta foyda",
     streakLoss: "seriya: {count} ta zarar",
     ofDays: "{total} tadan {value}",

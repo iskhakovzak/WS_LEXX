@@ -280,7 +280,8 @@ export interface TimelineDay {
   events: TimelineEvent[];
 }
 
-export type RuleState = "ok" | "warn" | "breached" | "met" | "pending" | "na";
+/** «missed» = a target / requirement not reached by the end (final, after expiry or a failure). */
+export type RuleState = "ok" | "warn" | "breached" | "met" | "pending" | "missed" | "na";
 
 export interface RuleProgress {
   key: RuleKey;
@@ -392,13 +393,14 @@ export function hhmm(min: number | null): string | null {
   return `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-/** Weekdays in [from, to]. */
-export function weekdaysBetween(from: string, to: string): number {
+/** Weekdays in [from, to], full-day market holidays (`closed`) left out. */
+export function weekdaysBetween(from: string, to: string, closed: ReadonlySet<string> = NO_DAYS): number {
   if (!YMD.test(from) || !YMD.test(to) || from > to) return 0;
   let n = 0;
-  for (let d = from; d <= to; d = addDays(d, 1)) if (!isWeekend(d)) n++;
+  for (let d = from; d <= to; d = addDays(d, 1)) if (!isWeekend(d) && !closed.has(d)) n++;
   return n;
 }
+const NO_DAYS: ReadonlySet<string> = new Set();
 
 /** Last date of a challenge lasting `tradingDays` weekdays starting at `start` (a weekend start rolls forward). */
 export function endDateFor(start: string, tradingDays: number): string {
@@ -426,7 +428,8 @@ export function ddFloor(rules: ChallengeRules, peak: number): number | null {
 
 // ─── evaluation ─────────────────────────────────────────────────────────────
 
-export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules: ChallengeRules }, tradesIn: ChallengeTrade[], today: string, lang: Lang = DEFAULT_LANG): ChallengeResult {
+/** `closed` = full-day market holidays, never trading days (DENIS-22); a finished challenge shows final rule states. */
+export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules: ChallengeRules }, tradesIn: ChallengeTrade[], today: string, lang: Lang = DEFAULT_LANG, closed: ReadonlySet<string> = NO_DAYS): ChallengeResult {
   const { startsOn, endsOn, rules } = def;
   const tt = academyPathT.tFor(lang);
   const usd = usdFor(lang);
@@ -441,7 +444,7 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
 
   // Calendar of the evaluated period: every weekday + any day that has trades.
   const days: string[] = [];
-  if (startsOn <= evalEnd) for (let d = startsOn; d <= evalEnd; d = addDays(d, 1)) if (!isWeekend(d) || byDay.has(d)) days.push(d);
+  if (startsOn <= evalEnd) for (let d = startsOn; d <= evalEnd; d = addDays(d, 1)) if ((!isWeekend(d) && !closed.has(d)) || byDay.has(d)) days.push(d);
 
   let balance = rules.accountSize;
   let peak = rules.accountSize;
@@ -557,9 +560,9 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
 
   // ── status ──
   const cons = consistencyNow();
-  const tradingDaysTotal = weekdaysBetween(startsOn, endsOn);
-  const tradingDaysElapsed = startsOn <= evalEnd ? weekdaysBetween(startsOn, evalEnd) : 0;
-  const tradingDaysLeft = Math.max(0, today < startsOn ? tradingDaysTotal : weekdaysBetween(addDays(evalEnd, 1), endsOn));
+  const tradingDaysTotal = weekdaysBetween(startsOn, endsOn, closed);
+  const tradingDaysElapsed = startsOn <= evalEnd ? weekdaysBetween(startsOn, evalEnd, closed) : 0;
+  const tradingDaysLeft = Math.max(0, today < startsOn ? tradingDaysTotal : weekdaysBetween(addDays(evalEnd, 1), endsOn, closed));
   let status: ChallengeStatus;
   let reasonData: ReasonData;
   const f = failure as ChallengeFailure | null;
@@ -630,6 +633,13 @@ export function evaluateChallenge(def: { startsOn: string; endsOn: string; rules
       ? tt(rules.tradingWindowStrict ? "challenge.progress.windowOut" : "challenge.progress.windowOutSoft", { count: outOfWindow })
       : txt("progress.windowAll");
     progress.push({ key: "trading_window", label: ruleLabel("trading_window", lang), kind: "limit", value: outOfWindow, target: 0, pct: null, state: st, display: txt(rules.tradingWindowStrict ? "progress.windowDisplay" : "progress.windowDisplaySoft", { window: win }), detail: `${outText}${withoutTime ? txt("progress.withoutTime", { n: withoutTime }) : ""}` });
+  }
+
+  // Final statuses: an unreached target / requirement, or consistency still over its cap, is missed (DENIS-22).
+  if (status === "passed" || status === "failed" || status === "expired") {
+    for (const p of progress) {
+      if (p.state === "pending" || (p.key === "consistency" && p.state === "warn" && status !== "passed")) p.state = "missed";
+    }
   }
 
   return {

@@ -21,6 +21,7 @@ import { appErrorsI18n } from "@/i18n/ns/appErrors";
 import { personName } from "@/i18n";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { isDevNoise, severityOf, type ErrorSeverity } from "./app-errors-model";
 
 type Source = "server" | "client" | "csp";
 type Status = "open" | "resolved" | "all";
@@ -77,6 +78,9 @@ export function AppErrorsPanel() {
   const q = useDebounced(qInput.trim());
   const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState<number | null>(readErrorParam);
+  // OWNER-23: hot-reload leftovers hidden by default; severity filter (client-side over the loaded page).
+  const [severity, setSeverity] = useState<ErrorSeverity | "all">("all");
+  const [showNoise, setShowNoise] = useState(false);
 
   useEffect(() => { setLimit(PAGE); }, [status, source, q]);
 
@@ -88,8 +92,10 @@ export function AppErrorsPanel() {
   });
 
   const open = (id: number | null) => { setOpenId(id); writeErrorParam(id); };
-  const filtered = status !== "open" || source !== "all" || !!q;
+  const filtered = status !== "open" || source !== "all" || !!q || severity !== "all";
   const counts = list.data?.counts;
+  const noise = useMemo(() => (list.data?.items ?? []).filter(isDevNoise).length, [list.data]);
+  const visible = (items: AppErrorRow[]) => items.filter((r) => (showNoise || !isDevNoise(r)) && (severity === "all" || severityOf(r) === severity));
 
   return (
     <Panel
@@ -123,12 +129,29 @@ export function AppErrorsPanel() {
               <SelectItem value="csp">{t("source.csp")}</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={severity} onValueChange={(v) => setSeverity(v as ErrorSeverity | "all")}>
+            <SelectTrigger className="h-9 w-auto min-w-[9rem]" aria-label={t("severity.aria")}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("severity.all")}</SelectItem>
+              <SelectItem value="high">{t("severity.high")}</SelectItem>
+              <SelectItem value="medium">{t("severity.medium")}</SelectItem>
+              <SelectItem value="low">{t("severity.low")}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+        {noise > 0 && (
+          <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {showNoise ? null : t("noise.hidden", { count: noise })}
+            <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => setShowNoise((v) => !v)}>
+              {showNoise ? t("noise.hide") : t("noise.show")}
+            </button>
+          </p>
+        )}
 
         <QueryState
           query={list}
           skeleton={<ListSkeleton rows={6} />}
-          isEmpty={(d) => d.items.length === 0}
+          isEmpty={(d) => visible(d.items).length === 0}
           empty={
             <EmptyState
               icon={filtered ? Search : CheckCircle2}
@@ -141,7 +164,7 @@ export function AppErrorsPanel() {
           {(d) => (
             <>
               <ul className={cn("divide-y divide-border/60", list.isFetching && "opacity-70 transition-opacity")}>
-                {d.items.map((row) => <ErrorRow key={row.id} row={row} onOpen={() => open(row.id)} />)}
+                {visible(d.items).map((row) => <ErrorRow key={row.id} row={row} onOpen={() => open(row.id)} />)}
               </ul>
               {d.total > d.items.length && (
                 <div className="flex items-center justify-between gap-2 pt-2 text-xs text-muted-foreground">
@@ -172,6 +195,12 @@ function SourcePill({ source }: { source: Source }) {
   );
 }
 
+function SeverityPill({ row }: { row: AppErrorRow }) {
+  const { t } = appErrorsI18n.useT();
+  const s = severityOf(row);
+  return <Pill tone={s === "high" ? "down" : s === "medium" ? "warn" : "neutral"} title={t(`severityTitle.${s}`)}>{t(`severity.${s}`)}</Pill>;
+}
+
 function ErrorRow({ row, onOpen }: { row: AppErrorRow; onOpen: () => void }) {
   const { t } = appErrorsI18n.useT();
   return (
@@ -184,6 +213,8 @@ function ErrorRow({ row, onOpen }: { row: AppErrorRow; onOpen: () => void }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <SourcePill source={row.source} />
+            <SeverityPill row={row} />
+            {isDevNoise(row) && <Pill tone="neutral" title={t("noise.badgeTitle")}>{t("noise.badge")}</Pill>}
             <span className="truncate font-mono text-xs text-muted-foreground" title={row.kind}>{row.kind}</span>
             {row.resolvedAt && <Pill tone="up">{t("status.resolved")}</Pill>}
           </div>

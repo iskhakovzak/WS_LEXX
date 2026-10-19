@@ -12,9 +12,11 @@
  * The R count matters for «best» (a 3.0R average over two stopped trades is noise); 5 / 10 keep a fresh Стажёр at «new»
  * for the first week or two of a setup and let the desk's typical 2 trades a day reach «best» within a month.
  *
- * Tier locks (guidance, never a trading block): a setup is locked when the viewer's stage ranks below its min_tier.
+ * Tier locks (never a trading block): a setup is locked when the viewer's stage ranks below its min_tier.
  * A setup one step above the trainee (min_tier junior) with a gateway setup (UNLOCK_GATE) opens early once the trader has
  * N trades graded A / A+ on the gateway (quests.setupUnlockGradeA, 0 = off); otherwise the lock names the tier.
+ * The lock is real (DEV-06, owner decision 6): a locked setup comes with its title, tier and unlock condition only — the
+ * cheat lines and the checklist are redacted (LOCKED_CHEAT, []). Staff are never locked.
  */
 import type { DayWindow, DayWindowKey, MyEdge, PlaybookToday, TextItem, TodaySetup } from "./types";
 
@@ -192,7 +194,12 @@ export type TodayInput = {
   planSetups: unknown;
   oneR: PlaybookToday["oneR"];
   untagged: number;
+  /** The NY close days the untagged count covers (lib/playbookToday/untagged untaggedTrades). */
+  untaggedPeriod?: PlaybookToday["untaggedPeriod"];
 };
+
+/** What a locked setup shows of its card: nothing (the lock card names the tier and the unlock condition). */
+export const LOCKED_CHEAT: TodaySetup["cheat"] = Object.freeze({ entry: null, stop: null, target: null, invalidation: null, gradeA: [] }) as TodaySetup["cheat"];
 
 /** Picks stored in the plan, kept only while they are still in today's list (max 3, order kept). */
 export function picksOf(planSetups: unknown, ids: ReadonlySet<number>): number[] {
@@ -236,11 +243,11 @@ export function buildToday(i: TodayInput): PlaybookToday {
       schema: isSchemaKey(s.schemaKey) ? s.schemaKey : null,
       locked: lock.locked, minTier: isTierKey(s.minTier) ? s.minTier : null, unlock: lock.unlock,
       myEdge: edges.get(s.id) ?? null,
-      cheat: {
+      cheat: lock.locked ? { ...LOCKED_CHEAT, gradeA: [] } : {
         entry: firstLine(s.entryText), stop: firstLine(s.stopText), target: firstLine(s.targetsText),
         invalidation: firstLine(s.invalidationText), gradeA: gradeABullets(s.notes),
       },
-      checklist: checklistTexts(s.checklistItems, s.checklist),
+      checklist: lock.locked ? [] : checklistTexts(s.checklistItems, s.checklist),
     };
   });
   const winIdx = (w: DayWindowKey | null) => (w ? DAY_WINDOWS.findIndex((x) => x.key === w) : DAY_WINDOWS.length);
@@ -249,7 +256,7 @@ export function buildToday(i: TodayInput): PlaybookToday {
   const open = new Set(setups.filter((s) => !s.locked).map((s) => s.id));
   return {
     date: i.date, nyMinutes: i.nyMinutes, windows, setups,
-    picks: picksOf(i.planSetups, open), oneR: i.oneR, untagged: i.untagged,
+    picks: picksOf(i.planSetups, open), oneR: i.oneR, untagged: i.untagged, untaggedPeriod: i.untaggedPeriod ?? null,
   };
 }
 
@@ -269,4 +276,19 @@ export function checkPicks(raw: readonly number[], today: Pick<PlaybookToday, "s
     if (s.locked) return { ok: false, code: "PLAYBOOK_SETUP_LOCKED", id, name: s.name };
   }
   return { ok: true, ids };
+}
+
+/** Card fields of a library setup row (GET /playbook) that a locked viewer must not get (DEV-06). */
+export const LOCKED_SETUP_FIELDS = [
+  "conditions", "checklist", "notes", "screenshotUrl", "screenshotNotes", "contextText", "triggerText", "entryText",
+  "stopText", "targetsText", "managementText", "invalidationText", "idealConditions",
+] as const;
+const LOCKED_SETUP_LISTS = ["checklistItems", "screenshots", "media"] as const;
+
+/** A library row for a viewer below its min_tier: title, folder, time, tier and the unlock condition stay; the card goes. */
+export function redactLockedSetup<T extends Record<string, unknown>>(row: T, unlock: TextItem | null): T & { locked: true; unlock: TextItem | null } {
+  const out: Record<string, unknown> = { ...row };
+  for (const k of LOCKED_SETUP_FIELDS) if (k in out) out[k] = null;
+  for (const k of LOCKED_SETUP_LISTS) if (k in out) out[k] = [];
+  return { ...(out as T), locked: true, unlock };
 }

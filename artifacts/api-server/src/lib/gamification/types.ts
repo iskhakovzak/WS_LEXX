@@ -78,6 +78,9 @@ export interface GamificationMe {
   freeze: StreakFreeze;
   titles: { key: string; earnedAt: string }[];
   activeTitle: string | null;
+  /** The trader is halted by the risk desk: the chosen title is shown nowhere (rankings, feed) until the halt lifts; the
+   *  own page says so (absent = not halted). */
+  titlesPaused?: boolean;
   /** catalog = active items + any item the trader's grants refer to (history survives a deactivated item);
    *  declined = staff declined these requests (absent on older servers). */
   rewards: { eligible: RewardGrant[]; requested: RewardGrant[]; granted: RewardGrant[]; declined?: RewardGrant[]; catalog: RewardItem[] };

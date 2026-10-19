@@ -335,12 +335,13 @@ router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => 
 router.post("/ratings", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   const curator = req.authUser?.name ?? "";
-  const b = req.body as Record<string, unknown>;
+  const b = (req.body ?? {}) as Record<string, unknown>;
   const { trader, week } = b;
+  const traderName = trader == null ? "" : String(trader).trim();
+  // Rights first (DEV-18): a reader without ratings.write gets 403, not a form error.
+  if (!(await requireCap(req, res, "ratings.write", traderName ? { trader: traderName } : undefined))) return;
   if (!trader || !week) throw new AppError("VALIDATION");
-  const traderName = String(trader).trim();
   if (!traderName || traderName.length > 100) throw new AppError("INVALID_TRADER");
-  if (!(await requireCap(req, res, "ratings.write", { trader: traderName }))) return;
   const monday = mondayOf(String(week));
   if (!monday) throw new AppError("INVALID_WEEK");
   if (monday > nyDate()) throw new AppError("FUTURE_WEEK");

@@ -636,3 +636,8 @@ export function lagReasons(i: LagInput, lang: Lang = DEFAULT_LANG): LagReason[] 
 export function lagScore(reasons: ReadonlyArray<LagReason>): number {
   return reasons.reduce((s, r) => s + (r.severity === "critical" ? 3 : 1), 0);
 }
+
+/** Who may edit / archive a cohort (OLGA-19): an admin, its mentor, or any staff member while it has no mentor. */
+export function canManageCohort(v: { me: string | null; staff: boolean; admin?: boolean }, c: { mentor: string | null }): boolean {
+  return v.staff && (!!v.admin || !c.mentor || c.mentor === v.me);
+}

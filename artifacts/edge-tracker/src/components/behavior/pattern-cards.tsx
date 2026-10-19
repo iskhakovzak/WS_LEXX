@@ -11,7 +11,7 @@ import { Pill, Sparkline, toneOf, toneText, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  SEVERITY_LABEL, SEVERITY_TONE, dayReportHref, fmtClock, fmtMinutes, type PatternReport, type PatternTrend,
+  SEVERITY_TONE, severityLabel, dayReportHref, fmtClock, fmtMinutes, type PatternReport, type PatternTrend,
 } from "./api";
 import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -89,7 +89,7 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{p.description}</p>
         </div>
         <Pill tone={SEVERITY_TONE[p.severity]} dot title={tb("card.severityTitle")}>
-          {SEVERITY_LABEL[p.severity]}
+          {severityLabel(p)}
         </Pill>
       </header>
 

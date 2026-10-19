@@ -16,8 +16,16 @@ describe("desk-day office layer — sampling per bar", () => {
     expect(v[29]).toBe(-10);
   });
 
-  it("5m: a bar takes the value at its end", () => {
+  it("5m: a bar takes the extreme inside it, an empty bar the value the last one ended on", () => {
     expect(samplePath(office, bars5m, 300)).toEqual([100, 100, 40, 40, -10, -10]);
+  });
+
+  it("a position opened and closed inside one bar shows in that bar, flat after it (ROMAN-14)", () => {
+    const auction = { startPct: 0, path: [{ t: T0, pct: -100 }, { t: T0 + 59, pct: 0 }, { t: T0 + 10 * 60, pct: 40 }].map((p) => ({ ...p, shares: null })) };
+    const v1 = samplePath(auction, bars1m, 60);
+    expect(v1.slice(0, 3)).toEqual([-100, 0, 0]);
+    expect(v1[10]).toBe(40);
+    expect(samplePath(auction, bars5m, 300).slice(0, 3)).toEqual([-100, 0, 40]);
   });
 });
 

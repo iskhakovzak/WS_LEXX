@@ -20,6 +20,17 @@ export function tfSec(tf: SimTf): number {
   return tf === "1m" ? 60 : tf === "2m" ? 120 : tf === "5m" ? 300 : 86400;
 }
 
+/** Timeframes the client may display (aggregated from the base bars on the client; «Тренажёр 2»). */
+export type DisplayTf = "1m" | "2m" | "5m" | "10m" | "15m" | "30m" | "1d";
+
+/** What the player may switch to, in key order (keys 1–4), for a game whose bars are at `baseTf`. */
+export function displayTfsOf(baseTf: SimTf): DisplayTf[] {
+  if (baseTf === "1m") return ["1m", "2m", "5m", "15m"];
+  if (baseTf === "2m") return ["2m", "10m", "30m"];
+  if (baseTf === "5m") return ["5m", "15m", "30m"];
+  return ["1d"];
+}
+
 export type IntradaySpec = {
   mode: "intraday";
   tf: IntradayTf;
@@ -185,6 +196,9 @@ export type BuiltScenario = {
  * Intraday series: previous regular session (context, optional) + the play day's premarket + its regular session up
  * to `playMinutes` after the open. The game starts on the last premarket bar (or the last context bar when the day
  * has no premarket prints), so the first «next» shows the 9:30 bar.
+ *
+ * `baseTf` (default: the spec's tf): the bar size the series is stored at — «Тренажёр 2» keeps free games on 1m bars
+ * and the client aggregates them into the display tf (spec.tf). Counts and the risk unit are judged on spec.tf.
  */
 export function buildIntraday(input: {
   day: string;
@@ -192,8 +206,11 @@ export function buildIntraday(input: {
   prevBars: readonly SimBar[];
   prevLevels: { h: number; l: number; c: number } | null;
   spec: IntradaySpec;
+  baseTf?: IntradayTf;
 }): BuiltScenario | null {
-  const sec = tfSec(input.spec.tf);
+  const dispSec = tfSec(input.spec.tf);
+  const sec = tfSec(input.baseTf ?? input.spec.tf);
+  if (sec > dispSec || dispSec % sec !== 0) return null;
   const norm = (bs: readonly SimBar[]) => (sec === 60 ? [...bs] : aggregate(bs, sec));
   const day = norm(input.dayBars).filter((b) => etOf(b.t).date === input.day);
   const pre = day.filter((b) => { const m = etOf(b.t).min; return m >= PRE_OPEN && m < RTH_OPEN; });
@@ -209,17 +226,19 @@ export function buildIntraday(input: {
     return null;
   }
   const startIdx = prev.length + pre.length - 1;
-  // Too little to read before the open (thin premarket and no previous session archived): not a fair start.
-  if (startIdx + 1 < (sec === 60 ? 30 : sec === 120 ? 15 : 12)) return null;
+  // Too little to read before the open (thin premarket and no previous session archived): not a fair start (judged
+  // in display bars below).
+  const visible = bars.slice(0, startIdx + 1);
+  const visibleDisp = dispSec === sec ? visible : aggregate(visible, dispSec);
+  if (visibleDisp.length < (dispSec === 60 ? 30 : dispSec === 120 ? 15 : 12)) return null;
   const endIdx = bars.length - 1;
   let pmh: number | null = null, pml: number | null = null;
   for (const b of pre) { pmh = pmh == null ? b.h : Math.max(pmh, b.h); pml = pml == null ? b.l : Math.min(pml, b.l); }
   const pl = input.prevLevels ?? (prev.length ? { h: Math.max(...prev.map((b) => b.h)), l: Math.min(...prev.map((b) => b.l)), c: prev[prev.length - 1].c } : null);
-  const visible = bars.slice(0, startIdx + 1);
   return {
     bars, startIdx, endIdx,
     levels: { pdh: pl?.h ?? null, pdl: pl?.l ?? null, pdc: pl?.c ?? null, pmh, pml },
-    riskUnit: riskUnitOf(visible, input.spec.tf, pl?.c ?? visible[visible.length - 1]?.c ?? 0),
+    riskUnit: riskUnitOf(visibleDisp, input.spec.tf, pl?.c ?? visible[visible.length - 1]?.c ?? 0),
   };
 }
 

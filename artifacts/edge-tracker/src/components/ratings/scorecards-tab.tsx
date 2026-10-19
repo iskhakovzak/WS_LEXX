@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, ClipboardCheck, Crosshair, History, MessageSquareQuote, Pencil, Plus, Star, Trash2, TriangleAlert, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -8,10 +9,22 @@ import { EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
 import { Avatar, ScoreBar, Sparkline } from "./shared";
 import { CRITERIA, buildScorecards, criterionLabel, shiftWeek, tierLabel, weekLabel, weekOf, type Rating, type Scorecard } from "./scorecard-model";
 import { PersonSelect } from "@/components/people/person-select";
-import { fmtDate, fmtNum } from "@/lib/format";
+import { fmtDeskDateTime, fmtNum } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ratingsI18n } from "@/i18n/ns/ratings";
 import { comparePersonNames, personName } from "@/i18n";
+import { http } from "@/lib/api/http";
+
+/** The curator's own wards (GET /api/curator/wards): the weekly «кому нужна оценка» list is about them (OLGA-11). */
+function useMyWards(enabled: boolean) {
+  return useQuery({
+    queryKey: ["curator", "wards"],
+    queryFn: ({ signal }) => http.get<{ wards: string[] }>("/api/curator/wards", { signal }).then((r) => r.wards).catch(() => null),
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
 
 function Delta({ cur, prev, className }: { cur: number; prev: number | null | undefined; className?: string }) {
   if (prev == null) return null;
@@ -163,8 +176,15 @@ export function ScorecardsTab({
 
   const ratedThisWeek = new Set(ratings.filter((r) => r.week === thisWeek).map((r) => r.trader));
   const mineThisWeek = new Set(ratings.filter((r) => r.week === thisWeek && r.curator === me).map((r) => r.trader));
-  const pending = traders.filter((x) => !ratedThisWeek.has(x));
-  const doneCount = traders.length - pending.length;
+  // My wards when I have any (a curator rates their own people); an admin without wards sees the whole desk.
+  const wards = useMyWards(isCurator).data;
+  const duty = useMemo(() => {
+    if (!wards?.length) return traders;
+    const set = new Set(wards);
+    return traders.filter((x) => set.has(x));
+  }, [traders, wards]);
+  const pending = duty.filter((x) => !ratedThisWeek.has(x));
+  const doneCount = duty.length - pending.length;
 
   const byWeek = useMemo(() => {
     const list = filter === "all" ? ratings : ratings.filter((r) => r.trader === filter);
@@ -195,16 +215,16 @@ export function ScorecardsTab({
 
   return (
     <div className="flex flex-col gap-4">
-      {isCurator && traders.length > 0 && (
+      {isCurator && duty.length > 0 && (
         <Panel
           icon={ClipboardCheck}
           title={t("scorecards.weekTitle", { week: weekLabel(thisWeek) })}
           description={pending.length === 0 ? t("scorecards.allRated") : t("scorecards.whoPending")}
-          actions={<span className="text-sm font-semibold tabular-nums text-foreground">{doneCount}/{traders.length}</span>}
+          actions={<span className="text-sm font-semibold tabular-nums text-foreground">{doneCount}/{duty.length}</span>}
         >
           <div className="flex flex-col gap-3">
-            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--glass-hover-bg)]" role="progressbar" aria-valuemin={0} aria-valuemax={traders.length} aria-valuenow={doneCount} aria-label={t("scorecards.progressAria")}>
-              <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${traders.length ? (doneCount / traders.length) * 100 : 0}%` }} />
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--glass-hover-bg)]" role="progressbar" aria-valuemin={0} aria-valuemax={duty.length} aria-valuenow={doneCount} aria-label={t("scorecards.progressAria")}>
+              <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${duty.length ? (doneCount / duty.length) * 100 : 0}%` }} />
             </div>
             <div className="flex flex-wrap gap-1.5">
               {pending.map((name) => (
@@ -212,7 +232,7 @@ export function ScorecardsTab({
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" /> {personName(name)}
                 </button>
               ))}
-              {traders.filter((name) => ratedThisWeek.has(name)).map((name) => (
+              {duty.filter((name) => ratedThisWeek.has(name)).map((name) => (
                 <span key={name} className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-up/15 px-3 text-sm text-up">
                   ✓ {personName(name)}{mineThisWeek.has(name) ? "" : t("scorecards.byOtherCurator")}
                 </span>
@@ -285,7 +305,7 @@ export function ScorecardsTab({
                                 ))}
                               </div>
                               {r.comment && <p className="whitespace-pre-wrap text-sm text-foreground/90 [overflow-wrap:anywhere]">{r.comment}</p>}
-                              <time className="text-2xs text-muted-foreground" dateTime={r.createdAt}>{fmtDate(r.createdAt, "shortDateTime")}</time>
+                              <time className="text-2xs text-muted-foreground" dateTime={r.createdAt}>{fmtDeskDateTime(r.createdAt, { style: "shortDateTime" })}</time>
                             </div>
                             {canManage && (
                               <div className="flex shrink-0 gap-1 self-end sm:self-start">

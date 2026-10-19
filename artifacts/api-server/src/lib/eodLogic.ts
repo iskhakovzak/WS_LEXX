@@ -1,5 +1,5 @@
 // Pure «Закрытие дня» rules (no DB) — used by routes/eod.ts and checked offline with synthetic data.
-import { addDays, isWeekend } from "./tradingDate";
+import { addDays, isWeekend, nyDate, nyMinutes } from "./tradingDate";
 import { errorMessage } from "./http/errors";
 
 export type MissingField = "setup" | "grade";
@@ -77,4 +77,38 @@ export function computeStreaks(args: {
   }
   const sorted = Array.from(closedDates).sort();
   return { closedStreak, reviewedStreak, closedTotal: closedDates.size, lastClosed: sorted.length ? sorted[sorted.length - 1] : null };
+}
+
+// ─── review SLA clock ───────────────────────────────────────────────────────
+
+/** Curator review SLA: 24 trading hours (owner default 2026-10-19, OLGA-07 — weekends and full-day holidays pause it). */
+export const REVIEW_SLA_HOURS = 24;
+
+/**
+ * Hours between `from` and `to` without the hours that fall on non-trading New York days (Saturday, Sunday and the
+ * full-day market holidays in `closed`, YYYY-MM-DD). A day closed on Friday evening is not overdue on Sunday.
+ * Walks one NY day at a time (≤ 2000 days); a DST day counts its real length ± the hour shift.
+ */
+export function tradingHoursBetween(from: Date | string | number, to: Date | number, closed: ReadonlySet<string> = new Set()): number {
+  let t = new Date(from).getTime();
+  const end = typeof to === "number" ? to : to.getTime();
+  if (!Number.isFinite(t) || !Number.isFinite(end) || end <= t) return 0;
+  let ms = 0;
+  for (let i = 0; t < end && i < 2000; i++) {
+    const at = new Date(t);
+    const day = nyDate(at);
+    const dayEnd = t + (1440 - nyMinutes(at)) * 60_000 - (at.getUTCSeconds() * 1000 + at.getUTCMilliseconds());
+    const next = Math.min(Math.max(dayEnd, t + 1), end);
+    if (!isWeekend(day) && !closed.has(day)) ms += next - t;
+    t = next;
+  }
+  return Math.round((ms / 3_600_000) * 10) / 10;
+}
+
+/** Trading days d with from < d ≤ to (weekends and full-day holidays in `closed` skipped): Friday → Monday = 1. */
+export function tradingDaysAfter(from: string, to: string, closed: ReadonlySet<string> = new Set()): number {
+  if (!from || !to || to <= from) return 0;
+  let n = 0;
+  for (let d = addDays(from, 1), i = 0; d <= to && i < 4000; d = addDays(d, 1), i++) if (!isWeekend(d) && !closed.has(d)) n++;
+  return n;
 }

@@ -27,7 +27,7 @@ export function tierName(tier: string): string {
   return questsI18n.tryT(`achievements.tier.${tier}`) ?? tier;
 }
 
-/** «Достижение «Серия контракта» — Золото», «Место в сезоне не ниже 3-го» … */
+/** «Достижение «Серия контракта» — Золото», «Топ-3 сезона» … */
 export function conditionText(c: RewardItem["condition"]): string {
   const t = gamificationI18n.t;
   switch (c.kind) {
@@ -55,7 +55,8 @@ const STATE_ORDER: Record<RewardRow["state"], number> = { eligible: 0, requested
 
 /**
  * One row per active catalog item: eligible ones first («Запросить»), then requested, locked, granted, declined. An item
- * granted / requested earlier stays visible even when it was deactivated later (history).
+ * granted / requested / declined earlier stays visible when it was deactivated later (history); an inactive item never
+ * offers «Запросить» (a stale eligibility of an older server is hidden).
  */
 export function rewardRows(r: GamificationMe["rewards"]): RewardRow[] {
   const all = [...r.eligible, ...r.requested, ...r.granted];
@@ -67,7 +68,7 @@ export function rewardRows(r: GamificationMe["rewards"]): RewardRow[] {
   const rows: RewardRow[] = [];
   for (const item of r.catalog) {
     const grant = latest.get(item.id) ?? null;
-    if (!item.active && !grant) continue;
+    if (!item.active && (!grant || grant.status === "eligible")) continue;
     rows.push({ item, grant, state: grant ? grant.status : "locked" });
   }
   return rows.sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.item.title.localeCompare(b.item.title));
@@ -107,8 +108,9 @@ export type RewardDraft = {
   active: boolean;
 };
 
+/** A new item starts switched off (the seeds are off too): the admin switches it on when the text is final. */
 export function draftOf(item: RewardItem | null): RewardDraft {
-  if (!item) return { title: "", description: "", kind: "achievement", ref: "", tier: "", rank: "3", stock: "", active: true };
+  if (!item) return { title: "", description: "", kind: "achievement", ref: "", tier: "", rank: "3", stock: "", active: false };
   const c = item.condition;
   return {
     title: item.title,
@@ -122,16 +124,33 @@ export function draftOf(item: RewardItem | null): RewardDraft {
   };
 }
 
-export type DraftProblem = "titleRequired" | "refRequired";
+export type DraftProblem = "titleRequired" | "refRequired" | "stockInvalid";
+/** The form field a problem is shown under (inline, next to the field). */
+export const PROBLEM_FIELD: Readonly<Record<DraftProblem, "title" | "condition" | "stock">> = {
+  titleRequired: "title", refRequired: "condition", stockInvalid: "stock",
+};
+
+/**
+ * Stock from the form: empty = unlimited (null); otherwise a whole number ≥ 1. `kept` = the item's stored stock — an
+ * item that ran out (0) may be saved unchanged (e.g. switched off). Anything else is invalid (never silently 0).
+ */
+export function stockOf(text: string, kept: number | null = null): { ok: true; stock: number | null } | { ok: false } {
+  const v = text.trim();
+  if (v === "") return { ok: true, stock: null };
+  const n = Number(v);
+  if (!Number.isInteger(n)) return { ok: false };
+  if (n >= 1 || (kept != null && n === kept && n >= 0)) return { ok: true, stock: n };
+  return { ok: false };
+}
 
 /** Draft → request body, or the first problem. Refs: achievement = line (+tier | null = any); level = "n";
- * season_rank = "season" + rank; mastery = setup code ("" = any) + tier "1".."4". */
-export function bodyOf(d: RewardDraft): { ok: true; body: RewardItemInput } | { ok: false; problem: DraftProblem } {
+ * season_rank = "season" + rank; mastery = setup code ("" = any) + tier "1".."4". `keptStock` — see stockOf. */
+export function bodyOf(d: RewardDraft, keptStock: number | null = null): { ok: true; body: RewardItemInput } | { ok: false; problem: DraftProblem } {
   const title = d.title.trim();
   if (!title) return { ok: false, problem: "titleRequired" };
-  const stockN = d.stock.trim() === "" ? null : Math.max(0, Math.floor(Number(d.stock)));
-  const stock = stockN == null || !Number.isFinite(stockN) ? null : stockN;
-  const base = { title, description: d.description.trim() || null, active: d.active, stock };
+  const st = stockOf(d.stock, keptStock);
+  if (!st.ok) return { ok: false, problem: "stockInvalid" };
+  const base = { title, description: d.description.trim() || null, active: d.active, stock: st.stock };
   switch (d.kind) {
     case "achievement":
       if (!d.ref) return { ok: false, problem: "refRequired" };
@@ -146,4 +165,20 @@ export function bodyOf(d: RewardDraft): { ok: true; body: RewardItemInput } | { 
     case "mastery":
       return { ok: true, body: { ...base, condition: { kind: "mastery", ref: d.ref.trim(), tier: d.tier || "4", rank: null } } };
   }
+}
+
+/** The item as a request body with another active state (the list's inline switch). */
+export function withActive(item: RewardItem, active: boolean): RewardItemInput {
+  const { id: _id, ...rest } = item;
+  return { ...rest, active };
+}
+
+/** «Серебро — 10» for the tier picker: the tier with its target (null target → the tier name only). */
+export function tierOption(tier: string, target: number | null | undefined): string {
+  return target != null && Number.isFinite(target) ? `${tierName(tier)} — ${target}` : tierName(tier);
+}
+
+/** «Соблюдайте контракт 10 дней подряд» — what a tier of the line asks (the achievement hint with its target). */
+export function tierHint(line: string, target: number): string {
+  return questsI18n.tryT(`ach.${line}.hint`, { count: target, target }) ?? "";
 }

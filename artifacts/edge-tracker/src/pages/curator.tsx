@@ -127,7 +127,7 @@ function CuratorCabinet() {
           value={view}
           onChange={(v) => setView(v)}
           tabs={[
-            { value: "today", label: t("page.tabToday"), icon: Sun, count: d ? d.counts.queue + d.counts.halted || undefined : undefined },
+            { value: "today", label: t("page.tabToday"), icon: Sun, count: d ? (d.counts.reviews ?? d.counts.queue) + d.counts.halted || undefined : undefined },
             { value: "traders", label: t("page.tabGroup"), icon: Users, count: d?.counts.traders },
             { value: "risk", label: t("page.tabRisk"), icon: ShieldAlert, count: d ? d.counts.noLimits + d.counts.halted || undefined : undefined },
           ]}

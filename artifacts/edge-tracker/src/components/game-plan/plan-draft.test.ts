@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { applyTemplate, blockDone, docToDraft, draftToDoc, emptyTicker, isDraftEmpty, validateDraft } from "./plan-draft";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLang } from "@/i18n";
+import {
+  applyTemplate, blockDone, docToDraft, draftToDoc, emptyTicker, focusText, isDraftEmpty, prefillFocus, prefillLimits, splitFocus, validateDraft,
+} from "./plan-draft";
+
+afterEach(async () => {
+  await setLang("ru", { source: "init" });
+});
 
 describe("plan draft", () => {
   it("round-trips a document", () => {
@@ -66,6 +73,46 @@ describe("rule of the day (ownRule)", () => {
 
   it("a prefilled rule alone does not make a plan worth a row", () => {
     expect(isDraftEmpty({ ...docToDraft({}), ownRule: "behavior:revenge" })).toBe(true);
-    expect(blockDone({ ...docToDraft({}), ownRule: "behavior:revenge" }).risk).toBe(true);
+    // «Риск — заполнено» needs a real limit (ILYA-12), not the prefilled rule.
+    expect(blockDone({ ...docToDraft({}), ownRule: "behavior:revenge" }).risk).toBe(false);
+    expect(blockDone({ ...docToDraft({}), maxLoss: "150" }).risk).toBe(true);
+  });
+});
+
+describe("desk limits prefill (ILYA-12 / ROMAN-06)", () => {
+  const roman = { dailyLossLimit: 1200, maxOpenPositions: 8, maxRiskPerTrade: 400 };
+  it("an untouched plan starts from the desk limits as real values", () => {
+    expect(prefillLimits(docToDraft({}), roman)).toMatchObject({ maxLoss: "1200", maxTrades: "8", riskPerTrade: "400" });
+    expect(prefillLimits(docToDraft({}), { dailyLossLimit: 150, maxOpenPositions: null, maxRiskPerTrade: 50 })).toMatchObject({ maxLoss: "150", maxTrades: "", riskPerTrade: "50" });
+  });
+  it("any limit the trader wrote wins; no limits → nothing changes", () => {
+    const own = { ...docToDraft({}), maxLoss: "300" };
+    expect(prefillLimits(own, roman)).toBe(own);
+    const empty = docToDraft({});
+    expect(prefillLimits(empty, null)).toBe(empty);
+    expect(prefillLimits(empty, { dailyLossLimit: null, maxOpenPositions: null, maxRiskPerTrade: null })).toBe(empty);
+  });
+});
+
+describe("own focus prefill (DENIS-03)", () => {
+  it("the journal pick fills an empty focus only", () => {
+    expect(prefillFocus(docToDraft({}), "Максимум 2 попытки на тикер").focus).toBe("Максимум 2 попытки на тикер");
+    expect(prefillFocus(docToDraft({ focus: "Моё" }), "Другое").focus).toBe("Моё");
+  });
+});
+
+describe("quick rules as preset keys (UMID-13)", () => {
+  it("keys round-trip and render in the reader's language", async () => {
+    const doc = draftToDoc({ ...docToDraft({}, true), focusRules: ["a"], focus: "Своё" });
+    expect(doc).toMatchObject({ focusRules: ["a"], focus: "Своё" });
+    expect(focusText(doc)).toBe("Только A+ сетапы; Своё");
+    await setLang("en", { source: "init" });
+    expect(focusText(doc)).not.toContain("Только");
+  });
+  it("an old plan with the preset's text in focus gets the key back (same language)", () => {
+    expect(splitFocus("Только A+ сетапы; Своё", undefined)).toEqual({ rules: ["a"], text: "Своё" });
+    expect(docToDraft({ focus: "Только A+ сетапы" }, true)).toMatchObject({ focus: "", focusRules: ["a"] });
+    // The desk plan keeps its text as written.
+    expect(docToDraft({ focus: "Только A+ сетапы" })).toMatchObject({ focus: "Только A+ сетапы", focusRules: [] });
   });
 });

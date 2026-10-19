@@ -17,6 +17,7 @@ import { personName } from "@/i18n";
 import { rich } from "./rich";
 import { fmtDate, fmtDateCustom, fmtR, fmtUsd } from "@/lib/format";
 import { countedViolations, violationDay, withArchive } from "./discipline";
+import { useViolationTotal } from "./api";
 import type { MistakePrefill, Severity, Violation, ViolationStatus } from "./types";
 
 type StatusFilter = "all" | ViolationStatus;
@@ -66,6 +67,9 @@ export function ViolationsList({
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const isOwner = !!viewerName && viewerName === trader;
+  // The list is capped (500 rows): say how many there are in all instead of passing the cap off as the count.
+  const total = useViolationTotal(trader).data ?? null;
+  const capped = total != null && total > activeViolations.length;
   // Archived rows are listed after the active ones but never counted as «новые».
   const violations = useMemo(() => withArchive(activeViolations, archived, showArchive), [activeViolations, archived, showArchive]);
   const openCount = countedViolations(activeViolations).filter((v) => v.status === "open").length;
@@ -153,6 +157,7 @@ export function ViolationsList({
             );
           })}
         </div>
+        {capped && <span className="text-xs tabular-nums text-muted-foreground">{t("violations.shownOf", { shown: activeViolations.length, total })}</span>}
         {isOwner && openCount > 0 && (
           <span className="inline-flex items-center gap-1.5 text-xs text-warn">
             <ShieldAlert className="size-3.5 shrink-0" aria-hidden="true" />

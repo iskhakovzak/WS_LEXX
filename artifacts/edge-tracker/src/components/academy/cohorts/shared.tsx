@@ -8,7 +8,7 @@ import { Pill, ProgressRing, StatRow, type Tone } from "@/components/ds";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { fmtDate, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
 import { comparePersonNames, personName } from "@/i18n";
@@ -24,7 +24,8 @@ export const SAME_TZ = LOCAL_TZ === NY_TZ;
 
 export const timeIn = (iso: string | Date, tz: string) => fmtDate(iso, "time", { timeZone: tz });
 export const dayIn = (iso: string | Date, tz: string) => fmtDate(iso, "weekdayDayMonth", { timeZone: tz });
-export const dateTimeLocal = (iso: string | Date | null | undefined) => (iso ? fmtDate(iso, "dateTime", { timeZone: LOCAL_TZ }) : "—");
+/** A moment (1:1, done-at, history) in desk time: «18 окт., 16:10 NY» — the app and the trading day are New York (OLGA-17). */
+export const dateTimeDesk = (iso: string | Date | null | undefined) => (iso ? fmtDeskDateTime(iso) : "—");
 export function fmtYmd(ymd: string | null | undefined, withYear = false): string {
   if (!ymd) return "—";
   const [y, m, d] = ymd.split("-").map(Number);
@@ -82,8 +83,8 @@ export function withNodes(text: string, nodes: Record<string, ReactNode>): React
 }
 
 const STAGE_TONE: Record<Stage, Tone> = { trainee: "neutral", junior: "accent", trader: "purple", senior: "up" };
-export function StagePill({ stage }: { stage: Stage }) {
-  return <Pill tone={STAGE_TONE[stage] ?? "neutral"}>{stageLabel(stage)}</Pill>;
+export function StagePill({ stage, title }: { stage: Stage; title?: string }) {
+  return <Pill tone={STAGE_TONE[stage] ?? "neutral"} title={title}>{stageLabel(stage)}</Pill>;
 }
 const STATUS_TONE: Record<EnrollmentStatus, Tone> = { active: "up", paused: "warn", graduated: "accent", dropped: "down" };
 export function StatusPill({ status }: { status: EnrollmentStatus }) {
@@ -118,10 +119,15 @@ export function WhereLine({ mode, room, meetingUrl }: { mode: SessionMode | stri
   );
 }
 
-export function fmtGoalValue(v: number | null, unit: string): string {
+/** Goal metrics counted in days / trades: their value takes the plural form of the unit («21 день», «3 сделки», ILYA-26). */
+const COUNT_UNIT: Partial<Record<string, "units.days" | "units.trades">> = { journal_days: "units.days", trading_days: "units.days", loss_streak: "units.trades" };
+
+export function fmtGoalValue(v: number | null, unit: string, metric?: string): string {
   if (v == null || !Number.isFinite(v)) return "—";
   if (unit === "%") return fmtPct(v, { decimals: 1, signed: false });
   if (unit === "$") return fmtUsd(v, { decimals: 0 });
+  const counted = metric ? COUNT_UNIT[metric] : undefined;
+  if (counted && Number.isInteger(v)) return commonI18n.t(counted, { count: v });
   return `${Math.round(v * 10) / 10}${unit ? ` ${unit}` : ""}`;
 }
 
@@ -141,7 +147,7 @@ export function GoalCard({ goal, actions, compact }: { goal: Goal; actions?: Rea
         <p className="mt-0.5 text-xs text-muted-foreground">{goal.formula}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums">
           {goal.metric !== "manual" && (
-            <span>{t("shared.goalNow")} <b className={cn("font-semibold", goal.eval.met ? "text-up" : "text-foreground")}>{fmtGoalValue(goal.eval.value, goal.unit)}</b></span>
+            <span>{t("shared.goalNow")} <b className={cn("font-semibold", goal.eval.met ? "text-up" : "text-foreground")}>{fmtGoalValue(goal.eval.value, goal.unit, goal.metric)}</b></span>
           )}
           {goal.eval.required != null && goal.metric !== "manual" && (
             <span className="text-muted-foreground">{t("shared.goalSample", { sample: goal.eval.sample, required: goal.eval.required })}</span>

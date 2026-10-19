@@ -129,7 +129,8 @@ export function ProposalCard({
         </ul>
       )}
       <div className="flex flex-wrap gap-x-3 text-2xs text-muted-foreground">
-        <span>{proposal.source === "auto" ? t("proposal.byRules") : t("proposal.manual")} · {personName(proposal.createdBy)} · {fmtDate(proposal.createdAt, "dateTime")}</span>
+        {/* A rule-made proposal is the system's, not the curator who pressed «по правилам». */}
+        <span>{proposal.source === "auto" ? t("proposal.byRules") : t("proposal.manual")} · {proposal.source === "auto" ? t("proposal.system") : personName(proposal.createdBy)} · {fmtDate(proposal.createdAt, "dateTime")}</span>
         {proposal.decidedBy && <span>{t("proposal.decidedBy", { name: personName(proposal.decidedBy) })} · {fmtDate(proposal.decidedAt, "dateTime")}</span>}
         {proposal.decisionComment && <span className="basis-full break-words text-foreground/80">{t("proposal.quoted", { text: proposal.decisionComment })}</span>}
       </div>

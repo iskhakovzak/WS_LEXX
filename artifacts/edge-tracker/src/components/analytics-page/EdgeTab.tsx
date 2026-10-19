@@ -354,7 +354,7 @@ function Th({
   );
 }
 
-/** Win rate with a 95% Wilson interval bar — wide bar = uncertain. */
+/** Win-rate share with a 95% Wilson interval bar — wide bar = uncertain. */
 function WinRateCell({ r }: { r: GroupRow }) {
   const { t } = analyticsI18n.useT();
   return (

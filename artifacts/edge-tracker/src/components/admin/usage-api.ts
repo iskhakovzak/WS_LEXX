@@ -28,6 +28,10 @@ export interface UsageOverview {
   actions: { d7: UsageCount[]; d30: UsageCount[] };
   funnel: { days: string[]; traders: FunnelTrader[] };
   inactive: InactiveTrader[];
+  /** Fewer than 3 trading days tracked: `inactive` is empty on purpose (absent on older API builds). */
+  inactiveLowData?: boolean;
+  /** Route patterns traders opened in the last 14 days (absent on older API builds). */
+  opened14?: string[];
   pilot: { names: string[]; unknown: string[] };
 }
 

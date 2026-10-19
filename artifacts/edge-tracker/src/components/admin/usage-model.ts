@@ -47,6 +47,56 @@ export function pilotFirst<T extends { pilot: boolean }>(rows: readonly T[]): T[
   return [...rows.filter((r) => r.pilot), ...rows.filter((r) => !r.pilot)];
 }
 
+/** PILOT §3 weekly summary rows (docs/PILOT.md): metric → how many of the cohort hit the «хорошо» threshold. */
+export type PilotRowKey = "plan" | "today" | "reviewed" | "focus" | "trainer" | "inactive";
+export type PilotRow = {
+  key: PilotRowKey;
+  /** People who hit the threshold (inactive: how many are inactive); null = not measured by the usage log. */
+  value: number | null;
+  /** Denominator (cohort, or traders who traded for «разбор»). */
+  total: number;
+  /** true = «хорошо», false = «плохо», null = no verdict (no data / low data). */
+  good: boolean | null;
+};
+export const PILOT_WEEK_DAYS = 5;
+const lastN = (xs: readonly boolean[], n = PILOT_WEEK_DAYS) => xs.slice(-n).filter(Boolean).length;
+
+/**
+ * The six PILOT §3 lines over the last 5 trading days for `cohort` (pilot list → trainees → everyone, as the funnel
+ * filter): plan before 09:30 ≥ 4/5, playbook «Сегодня» before the open ≥ 3/5, evening review on ≥ 4 of 5 (or every
+ * traded day when fewer), trainer ≥ 2 days — «хорошо» when most of the cohort does it; the focus mistake is not in
+ * the usage log (value null); inactive 3+ trading days: 0–1 person is «хорошо».
+ */
+export function pilotSummary(cohort: readonly FunnelTrader[], inactiveNames: readonly string[], lowData: boolean): PilotRow[] {
+  const n = cohort.length;
+  const majority = (hit: number, of: number): boolean | null => (of ? hit * 2 > of : null);
+  const count = (pred: (t: FunnelTrader) => boolean) => cohort.filter(pred).length;
+  const plan = count((t) => lastN(t.cells.plan) >= 4);
+  const today = count((t) => lastN(t.cells.today) >= 3);
+  const traded = cohort.filter((t) => lastN(t.cells.traded) > 0);
+  const reviewed = traded.filter((t) => lastN(t.cells.reviewed) >= Math.min(4, lastN(t.cells.traded))).length;
+  const trainer = count((t) => lastN(t.cells.trainer) >= 2);
+  const names = new Set(cohort.map((t) => t.name));
+  const idle = inactiveNames.filter((x) => names.has(x)).length;
+  return [
+    { key: "plan", value: plan, total: n, good: majority(plan, n) },
+    { key: "today", value: today, total: n, good: majority(today, n) },
+    { key: "reviewed", value: reviewed, total: traded.length, good: majority(reviewed, traded.length) },
+    { key: "focus", value: null, total: n, good: null },
+    { key: "trainer", value: trainer, total: n, good: majority(trainer, n) },
+    { key: "inactive", value: lowData ? null : idle, total: n, good: lowData || !n ? null : idle <= 1 },
+  ];
+}
+
+/**
+ * Menu screens nobody opened (PILOT §3 «кандидаты на скрытие»): `items` = the trader menu (href + also prefixes),
+ * `opened` = route patterns from the usage log. A screen counts as opened when any pattern is it or a sub-route.
+ */
+export function neverOpened<T extends { href: string; also?: readonly string[] }>(items: readonly T[], opened: readonly string[]): T[] {
+  const hit = (prefix: string) => opened.some((k) => (prefix === "/" ? k === "/" : k === prefix || k.startsWith(prefix + "/")));
+  return items.filter((i) => !hit(i.href) && !(i.also ?? []).some(hit));
+}
+
 /** "playbook.today" → "playbook_today" (the dictionary key under actions.keys). */
 export function actionDictKey(key: string): string {
   return key.replace(/\./g, "_");

@@ -5,6 +5,7 @@
  *   GET  /api/trainer/daily                        DailyChallengeState of the current challenge (ranking / reveal)
  *   POST /api/trainer/daily/start                  the viewer's game of the current challenge: a sim Snapshot (new,
  *                                                  resumed or finished); played via /api/sim/games/:id/step
+ *   POST /api/trainer/daily/practice               the closed challenge (weekend / after the close) as an unranked game
  *   GET  /api/trainer/drill/next?setupId=          FindEntryDrill (no ticker / date / reference entry before the answer)
  *   POST /api/trainer/drill/:id/answer {barIndex, price}  FindEntryAnswer (stored; feeds setup mastery)
  *
@@ -19,7 +20,7 @@ import { forgetQuests } from "../lib/quests/cache";
 import { setDrillSource } from "../lib/gamification/mastery";
 import type { Viewer } from "../lib/sim/service";
 import { trainerHome } from "../lib/trainer/home";
-import { dailyState, startDaily } from "../lib/trainer/daily";
+import { dailyState, startDaily, startDailyPractice } from "../lib/trainer/daily";
 import { answerDrill, nextDrill } from "../lib/trainer/drillService";
 import { drillMasteryCounts } from "../lib/trainer/drillStore";
 
@@ -40,6 +41,8 @@ router.get("/trainer/home", route({}, async ({ req }) => trainerHome(await viewe
 router.get("/trainer/daily", route({}, async ({ req }) => dailyState(await viewerOf(req))));
 
 router.post("/trainer/daily/start", route({}, async ({ req }) => startDaily(await viewerOf(req))));
+
+router.post("/trainer/daily/practice", route({}, async ({ req }) => startDailyPractice(await viewerOf(req))));
 
 router.get("/trainer/drill/next", route({ query: z.object({ setupId: idParam.optional() }) }, async ({ req, query }) => {
   return nextDrill(await viewerOf(req), query.setupId ?? null);

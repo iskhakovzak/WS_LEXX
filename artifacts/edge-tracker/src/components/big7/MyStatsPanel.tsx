@@ -10,6 +10,7 @@ import { fmtUsd } from "@/lib/format";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { MyHour, MyStats, MyTicker } from "./use-big7";
+import { sideNet } from "./lib";
 import { big7I18n } from "@/i18n/ns/big7";
 import { commonI18n } from "@/i18n/ns/common";
 
@@ -57,13 +58,20 @@ function HoursStrip({ hours }: { hours: MyHour[] }) {
                 )}
               </div>
               <span className="w-full truncate text-center text-xs text-muted-foreground">{h.label}</span>
-              <span className={cn("text-xs tabular-nums", h.n ? toneText(toneOf(h.net)) : "text-muted-foreground")}>{h.n ? h.n : "·"}</span>
+              {/* The strip is «net by entry time»: the row under it is $ (the count stays in the tooltip). ROMAN-31 */}
+              <span className={cn("w-full truncate text-center text-xs tabular-nums", h.n ? toneText(toneOf(h.net)) : "text-muted-foreground")}>{h.n ? fmtUsd(h.net, { signed: true, compact: true, decimals: 0 }) : "·"}</span>
             </div>
           );
         })}
       </div>
     </div>
   );
+}
+
+function SideCell({ net }: { net: number | null }) {
+  return net == null
+    ? <span className="text-muted-foreground">—</span>
+    : <span className={toneText(toneOf(net))}>{fmtUsd(net, { signed: true, decimals: 0 })}</span>;
 }
 
 export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
@@ -117,9 +125,9 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
                     <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true, decimals: "auto" })}</td>
                     <td className={cn("text-right", wrTone(r.wr))}>{wrText(r.wr)}</td>
                     <td className="text-right text-xs">
-                      <span className={toneText(toneOf(r.longNet))}>{fmtUsd(r.longNet, { signed: true, decimals: 0 })}</span>
+                      <SideCell net={sideNet(r.longNet, r.longN)} />
                       <span className="text-muted-foreground"> / </span>
-                      <span className={toneText(toneOf(r.shortNet))}>{fmtUsd(r.shortNet, { signed: true, decimals: 0 })}</span>
+                      <SideCell net={sideNet(r.shortNet, r.shortN)} />
                     </td>
                     <td className="text-xs">
                       {r.bestHour ? (

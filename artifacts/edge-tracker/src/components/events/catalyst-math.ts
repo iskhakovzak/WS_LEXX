@@ -15,6 +15,44 @@ export type MacroRow = { id?: number; date: string; type: string; name: string; 
 
 export type BookTrade = TradeLike & { id?: number; ticker?: string | null; date?: string | null };
 
+/**
+ * Closed trades of one entry day in one ticker (net money). The page gets these from GET /api/events/day-book (the
+ * server aggregate, ROMAN-18) instead of the full trade list; `cellsFromTrades` folds raw trades the same way.
+ */
+export type DayCell = { date: string; ticker: string; n: number; wins: number; losses: number; net: number };
+
+/** GET /api/events/day-book payload: tickers once, cells [ticker index, n, wins, losses, net] grouped by day. */
+export type DayBookPayload = { scope?: string | null; tickers: string[]; days: [string, [number, number, number, number, number][]][] };
+
+export function cellsFromDayBook(p: DayBookPayload | null | undefined): DayCell[] {
+  const out: DayCell[] = [];
+  if (!p || !Array.isArray(p.days) || !Array.isArray(p.tickers)) return out;
+  for (const [date, cells] of p.days) {
+    for (const [i, n, wins, losses, net] of cells) out.push({ date, ticker: p.tickers[i] ?? "", n, wins, losses, net });
+  }
+  return out;
+}
+
+/** Raw trades → day cells (open positions skipped; the same rule as the server day book). */
+export function cellsFromTrades(trades: BookTrade[]): DayCell[] {
+  const m = new Map<string, DayCell>();
+  for (const t of trades) {
+    if (isOpen(t)) continue;
+    const date = String(t.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const ticker = String(t.ticker ?? "").trim().toUpperCase();
+    const k = `${date}|${ticker}`;
+    const c = m.get(k) ?? { date, ticker, n: 0, wins: 0, losses: 0, net: 0 };
+    c.n++;
+    const r = resultOf(t);
+    if (r === "win") c.wins++;
+    else if (r === "loss") c.losses++;
+    c.net += netPnl(t) ?? 0;
+    m.set(k, c);
+  }
+  return [...m.values()];
+}
+
 /** One reported quarter from GET /api/earnings/history/:ticker (only the fields we use). */
 export type ReactionQuarter = {
   date: string;
@@ -49,9 +87,12 @@ const isWeekendYmd = (d: string) => {
   return wd === 0 || wd === 6;
 };
 
-/** Holiday rows that close the market for the whole day. */
+/**
+ * Holiday rows that close the market for the whole day. /api/holidays localises the text (RU «Биржа закрыта», UZ
+ * «Birja yopiq»), so the rule is language-neutral: every holiday row that is not an early close.
+ */
 export function isClosedRow(r: Pick<MacroRow, "type" | "description" | "name">): boolean {
-  return r.type?.toLowerCase() === "holiday" && /closed/i.test(`${r.description ?? ""}`) && !/early|1\s?pm|13:00/i.test(`${r.description ?? ""}`);
+  return r.type?.toLowerCase() === "holiday" && !isShortDayRow(r);
 }
 
 /** Holiday rows with an early close. */
@@ -64,7 +105,12 @@ export function categoryOf(r: MacroRow): CatKey | null {
   const t = (r.type ?? "").toLowerCase();
   if (t === "cpi" || t === "ppi" || t === "nfp" || t === "month_end") return t;
   if (t === "opex" || t === "quad_witching") return "opex";
-  if (t === "fomc") return /decision/i.test(r.name ?? "") || /statement|2\s?pm/i.test(r.description ?? "") ? "fomc" : null;
+  // Decision day: «(Decision Day)» / «(день решения)» / «(qaror kuni)», the 2 pm ET (14:00) statement, or the seed's
+  // importance (first day = medium, decision = high). ROMAN-02: the localised RU / UZ rows never matched /decision/.
+  if (t === "fomc") {
+    const decision = /decision|решени|qaror/i.test(r.name ?? "") || /statement|2\s?pm|14:00/i.test(r.description ?? "") || r.importance === "high"; // i18n-ignore (matches the server-localised calendar text)
+    return decision ? "fomc" : null;
+  }
   if (t === "holiday" && isShortDayRow(r)) return "short_day";
   return null;
 }
@@ -125,25 +171,22 @@ export function nyMinutesOf(d: Date = new Date()): number {
 
 export type DayStat = { date: string; n: number; wins: number; losses: number; net: number; tickers: Map<string, { n: number; net: number }> };
 
-/** Closed trades grouped by trading (entry) date, net money. Open positions are skipped. */
-export function buildDayBook(trades: BookTrade[]): Map<string, DayStat> {
+/** Closed trades grouped by trading (entry) date, net money. Takes day cells (open positions are already out). */
+export function buildDayBook(cells: DayCell[]): Map<string, DayStat> {
   const m = new Map<string, DayStat>();
-  for (const t of trades) {
-    if (isOpen(t)) continue;
-    const d = String(t.date ?? "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
-    const net = netPnl(t);
-    const r = resultOf(t);
+  for (const c of cells) {
+    const d = String(c.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || c.n <= 0) continue;
     const s = m.get(d) ?? { date: d, n: 0, wins: 0, losses: 0, net: 0, tickers: new Map() };
-    s.n++;
-    if (r === "win") s.wins++;
-    else if (r === "loss") s.losses++;
-    if (net != null) s.net += net;
-    const tk = String(t.ticker ?? "").toUpperCase();
+    s.n += c.n;
+    s.wins += c.wins;
+    s.losses += c.losses;
+    s.net += c.net;
+    const tk = String(c.ticker ?? "").toUpperCase();
     if (tk) {
       const ts = s.tickers.get(tk) ?? { n: 0, net: 0 };
-      ts.n++;
-      if (net != null) ts.net += net;
+      ts.n += c.n;
+      ts.net += c.net;
       s.tickers.set(tk, ts);
     }
     m.set(d, s);
@@ -239,6 +282,24 @@ export type CatalystEdge = {
 };
 
 /**
+ * The span the macro calendar covers: seeded per whole year (migrations 0016 / 0017 / 0215), so from Jan 1 of the
+ * first year with rows (not before `fetchedFrom`, the start of the request) to Dec 31 of the last one. null = no rows.
+ * Days outside it are not «обычные дни» — they are unknown, so the analysis is clipped to this span (ROMAN-03).
+ */
+export function calendarCoverage(rows: Pick<MacroRow, "date">[], fetchedFrom?: string | null): { from: string; to: string } | null {
+  let min = "", max = "";
+  for (const r of rows) {
+    const d = String(r.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    if (!min || d < min) min = d;
+    if (!max || d > max) max = d;
+  }
+  if (!min) return null;
+  const yearFrom = `${min.slice(0, 4)}-01-01`;
+  return { from: fetchedFrom && fetchedFrom > yearFrom ? fetchedFrom : yearFrom, to: `${max.slice(0, 4)}-12-31` };
+}
+
+/**
  * «Как я торгую в такие дни»: per macro category the trader's day results vs ordinary days
  * (traded days with no category at all). Span = first..last traded day (optionally clipped).
  */
@@ -274,16 +335,15 @@ export function edgeByCategory(
 export type TickerFreq = { ticker: string; n: number; net: number; days: number; lastDate: string };
 
 /** The trader's most traded tickers (closed trades), most trades first. */
-export function frequentTickers(trades: BookTrade[], limit = 12, minTrades = 3): TickerFreq[] {
+export function frequentTickers(cells: DayCell[], limit = 12, minTrades = 3): TickerFreq[] {
   const m = new Map<string, { n: number; net: number; days: Set<string>; last: string }>();
-  for (const t of trades) {
-    if (isOpen(t)) continue;
-    const tk = String(t.ticker ?? "").trim().toUpperCase();
-    if (!tk) continue;
-    const d = String(t.date ?? "").slice(0, 10);
+  for (const c of cells) {
+    const tk = String(c.ticker ?? "").trim().toUpperCase();
+    if (!tk || c.n <= 0) continue;
+    const d = String(c.date ?? "").slice(0, 10);
     const s = m.get(tk) ?? { n: 0, net: 0, days: new Set<string>(), last: "" };
-    s.n++;
-    s.net += netPnl(t) ?? 0;
+    s.n += c.n;
+    s.net += c.net;
     s.days.add(d);
     if (d > s.last) s.last = d;
     m.set(tk, s);
@@ -312,7 +372,7 @@ export type EarningsEdge = {
 
 const avg = (xs: number[]) => (xs.length ? r2(xs.reduce((s, v) => s + v, 0) / xs.length) : null);
 
-export function earningsEdge(trades: BookTrade[], h: TickerHistory): EarningsEdge {
+export function earningsEdge(cells: DayCell[], h: TickerHistory): EarningsEdge {
   const ticker = h.ticker.toUpperCase();
   const reactions = h.quarters
     .filter((q) => !!q.reactionDate)
@@ -321,18 +381,13 @@ export function earningsEdge(trades: BookTrade[], h: TickerHistory): EarningsEdg
   const rset = new Set(reactions.map((r) => r.date));
   let eN = 0, eNet = 0, eW = 0, eL = 0, oN = 0, oNet = 0, oW = 0, oL = 0;
   const eDays = new Set<string>();
-  for (const t of trades) {
-    if (isOpen(t)) continue;
-    if (String(t.ticker ?? "").toUpperCase() !== ticker) continue;
-    const d = String(t.date ?? "").slice(0, 10);
-    const net = netPnl(t) ?? 0;
-    const r = resultOf(t);
+  for (const c of cells) {
+    if (String(c.ticker ?? "").toUpperCase() !== ticker || c.n <= 0) continue;
+    const d = String(c.date ?? "").slice(0, 10);
     if (rset.has(d)) {
-      eN++; eNet += net; eDays.add(d);
-      if (r === "win") eW++; else if (r === "loss") eL++;
+      eN += c.n; eNet += c.net; eW += c.wins; eL += c.losses; eDays.add(d);
     } else {
-      oN++; oNet += net;
-      if (r === "win") oW++; else if (r === "loss") oL++;
+      oN += c.n; oNet += c.net; oW += c.wins; oL += c.losses;
     }
   }
   const closes = reactions.map((r) => r.closePct).filter((v): v is number => v != null);

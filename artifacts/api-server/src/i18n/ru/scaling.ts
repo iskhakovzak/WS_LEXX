@@ -127,4 +127,5 @@ export default {
   },
   templateResync: "Лимиты приведены к шаблону тира",
   templateDecision: "Тир назначен по шаблону",
+  pctOfLimit: "{value}% лимита",
 } as const;

@@ -29,6 +29,7 @@ const service = vi.hoisted(() => ({
   gamificationMe: vi.fn(async (v: unknown, o: unknown) => ({ v, o })),
   seasonState: vi.fn(async () => ({ key: "2026-10" })),
   leagueState: vi.fn(async () => null),
+  eligibilityInputOf: vi.fn(async () => ({ achievements: [], level: 0, seasons: [], mastery: [] })),
 }));
 vi.mock("../../lib/gamification/service", () => service);
 const people = vi.hoisted(() => ({
@@ -53,9 +54,11 @@ const store = vi.hoisted(() => ({
   updateItem: vi.fn(async (id: number, i: object): Promise<object | null> => ({ id, ...i })),
   grantById: vi.fn(),
   requestedGrants: vi.fn(async () => []),
+  rewardStats: vi.fn(async () => ({ requested: 2, granted: 1, grantedMonth: 1, declined: 0, activeItems: 1, items: 5 })),
+  recentGranted: vi.fn(async () => []),
 }));
 vi.mock("../../lib/gamification/rewardsStore", () => store);
-const rs = vi.hoisted(() => ({ requestReward: vi.fn(), decideReward: vi.fn() }));
+const rs = vi.hoisted(() => ({ requestReward: vi.fn(), decideReward: vi.fn(), recheckItem: vi.fn(async () => undefined) }));
 vi.mock("../../lib/gamification/rewardsService", () => rs);
 
 process.env.JWT_SECRET ??= "vitest-only-secret";
@@ -136,6 +139,11 @@ describe("catalog editor", () => {
     expect(r.json.options.achievements.find((a: { id: string }) => a.id === "contract_streak").tiers).toEqual(["bronze", "silver", "gold", "platinum"]);
     expect(r.json.options.achievements.find((a: { id: string }) => a.id === "tier_up").tiers).toEqual(["bronze", "silver", "gold"]);
     expect(r.json.options.achievements.find((a: { id: string }) => a.id === "comeback").tiers).toEqual(["gold"]);
+    // The editor shows each tier's target («Серебро — 10») and the admin overview numbers (OWNER-19 / OWNER-20).
+    expect(r.json.options.achievements.find((a: { id: string }) => a.id === "contract_streak").targets).toEqual([5, 10, 20, 50]);
+    expect(r.json.options.achievements.find((a: { id: string }) => a.id === "onboarding").targets).toEqual([6]);
+    expect(r.json.stats).toMatchObject({ requested: 2, granted: 1, items: 5 });
+    expect(r.json.recent).toEqual([]);
   });
   it("checks the condition; creates and replaces", async () => {
     who = ADMIN;
@@ -145,6 +153,10 @@ describe("catalog editor", () => {
     expect(store.insertItem).toHaveBeenCalledWith(expect.objectContaining({ title: "Худи", stock: 20, condition: { kind: "achievement", ref: "contract_streak", tier: "gold", rank: null } }), "Дмитрий К.");
     store.updateItem.mockResolvedValueOnce(null);
     expect((await call("PUT", "/api/gamification/rewards/items/77", body)).json.code).toBe("REWARD_ITEM_NOT_FOUND");
+    // A saved item re-checks open eligibility with the stored version as «before» (ILYA-17).
+    store.itemById.mockResolvedValueOnce(item());
+    expect((await call("PUT", "/api/gamification/rewards/items/3", { ...body, active: false })).status).toBe(200);
+    expect(rs.recheckItem).toHaveBeenLastCalledWith(expect.objectContaining({ id: 3 }), expect.objectContaining({ id: 3, active: false }), expect.any(Function));
   });
 });
 

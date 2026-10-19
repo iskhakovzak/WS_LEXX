@@ -41,7 +41,7 @@ export default function AcademyContentAdmin() {
   const programParam = params.get("program");
   const creatingProgram = programParam === NEW;
   const programId = Number(programParam) || null;
-  const tree = useAdminTree(creatingProgram ? null : programId, showArchived);
+  const tree = useAdminTree(creatingProgram ? null : programId, showArchived, isCurator || meta.data?.staff === true);
   const [selection, setSelection] = useState<Selection>({ type: "program" });
   const [seeding, setSeeding] = useState(false);
 

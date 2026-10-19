@@ -5,11 +5,10 @@ import { Pill, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { normalizeResult } from "@/lib/trade-result";
 import { EVENT_LABEL, RESULT_LABEL, resultKey } from "@/components/trades/trade-utils";
-import { entryKey, fmtValue, valueOf, type Metric } from "./metrics";
+import { entryKey, fmtDayKey, fmtValue, rowTraderLabel, valueOf, type Metric } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
-import { fmtDate } from "@/lib/format";
-import { personName } from "@/i18n";
+import { useAuth } from "@/contexts/auth-context";
 
 export function resultTone(r: string) {
   const n = normalizeResult(r);
@@ -24,12 +23,17 @@ function sideLabel(side: string | null | undefined): string | null {
 
 /** One compact trade row linking to the trade in the journal (/trades?highlight=id). */
 export function TradeLinkRow({
-  trade, metric, rank, showDate = true, className,
+  trade, metric, rank, showDate = true, hideTrader, className,
 }: {
-  trade: Trade; metric: Metric; rank?: number; showDate?: boolean; className?: string;
+  trade: Trade; metric: Metric; rank?: number; showDate?: boolean;
+  /** The list belongs to one person — don't repeat the name on every row. */
+  hideTrader?: boolean;
+  className?: string;
 }) {
+  const { user } = useAuth();
   const v = valueOf(trade, metric);
-  const date = entryKey(trade) ? fmtDate(entryKey(trade), "short") : "";
+  // One date format across the stats cards: «16 окт» / «Oct 16», with the year outside the current one (MAKSIM-34).
+  const date = entryKey(trade) ? fmtDayKey(entryKey(trade)) : "";
   const side = sideLabel(trade.side);
   return (
     <li>
@@ -52,7 +56,7 @@ export function TradeLinkRow({
             </Pill>
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {[showDate ? date : null, trade.setup || (trade.eventType ? EVENT_LABEL[trade.eventType] ?? trade.eventType : null), personName(trade.trader)].filter(Boolean).join(" · ") || "—"}
+            {[showDate ? date : null, trade.setup || (trade.eventType ? EVENT_LABEL[trade.eventType] ?? trade.eventType : null), rowTraderLabel(trade.trader, user?.traderName, hideTrader)].filter(Boolean).join(" · ") || "—"}
           </div>
         </div>
         <span className={cn("shrink-0 text-sm font-semibold tabular-nums", v == null ? "text-muted-foreground" : toneOf(v) === "up" ? "text-up" : toneOf(v) === "down" ? "text-down" : "text-foreground")}>

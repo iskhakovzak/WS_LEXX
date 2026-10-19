@@ -72,7 +72,8 @@ const AssignBody = z.object({
   note: z.string().max(500).optional(),
 });
 
-router.post("/quests/assign", route({ body: AssignBody }, async ({ req, body }) => {
+// cap first (DEV-18): a trader gets 403, not a 400 about the form; the trader-scoped check follows.
+router.post("/quests/assign", route({ cap: "journal.review", body: AssignBody }, async ({ req, body }) => {
   const actor = await assertCap(req, "journal.review", { trader: body.trader });
   const user = await userRow(body.trader);
   if (!user) throw notFound("TRADER_NOT_FOUND");

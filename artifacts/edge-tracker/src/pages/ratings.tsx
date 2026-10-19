@@ -142,7 +142,7 @@ export default function RatingsPage() {
         </div>
       </PageHeader>
 
-      {activeTab === "leaderboard" && <LeaderboardTab me={me} />}
+      {activeTab === "leaderboard" && <LeaderboardTab me={me} staff={isCurator} />}
       {activeTab === "curator" && (
         <ScorecardsTab
           ratings={ratings}
