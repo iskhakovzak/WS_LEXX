@@ -10,13 +10,15 @@ globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
-async function buildAll() {
-  // API_DIST_DIR: a separate output (e.g. dist-agent3) so a second local API can be built without touching dist/.
-  const distDir = path.resolve(artifactDir, process.env.API_DIST_DIR || "dist");
+/**
+ * Bundles `entry` (relative to this folder) into `distDir` with the shared options, then copies the versioned SQL
+ * migrations next to it. `bundleAlso` drops packages from the external list (the Vercel function has no node_modules).
+ */
+export async function bundleServer({ entry, distDir, bundleAlso = [] }) {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [path.resolve(artifactDir, entry)],
     platform: "node",
     bundle: true,
     format: "esm",
@@ -99,7 +101,7 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
-    ],
+    ].filter((p) => !bundleAlso.includes(p)),
     sourcemap: "linked",
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
@@ -122,9 +124,14 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   await cp(path.resolve(artifactDir, "src/db/migrations"), path.resolve(distDir, "migrations"), { recursive: true });
 }
 
-buildAll()
-  .then(async () => {})
-  .catch((err) => {
+async function buildAll() {
+  // API_DIST_DIR: a separate output (e.g. dist-agent3) so a second local API can be built without touching dist/.
+  await bundleServer({ entry: "src/index.ts", distDir: path.resolve(artifactDir, process.env.API_DIST_DIR || "dist") });
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  buildAll().catch((err) => {
     console.error(err);
     process.exit(1);
   });
+}
