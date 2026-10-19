@@ -5,7 +5,7 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist/public",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://zakit.website/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://ws-lexx-35fk.vercel.app/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
