@@ -277,6 +277,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `NO_TASKS` | 404 | Training: no task matches the filters. | — |
 | `NON_TRADING_DAY` | 400 | A date that is a weekend / holiday. | — |
 | `ACCOUNT_NOT_YOURS` | 403 | PropReports import of an account mapped to someone else. | — |
+| `ACCOUNT_TAKEN` | 409 | Create a user with a PropReports account already linked to someone else. | `{ account, trader }` |
 | `OWN_ENTRY` | 400 | Reacting to / acknowledging your own entry. | — |
 | `SETUP_EDITOR_ONLY` | 403 | Playbook: examples, screenshots, AI tools of a setup you can't edit. | — |
 | `OFFICE_SETUP_NO_AUTHOR` | 400 | Playbook: author actions on an office setup. | — |

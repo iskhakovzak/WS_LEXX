@@ -157,6 +157,12 @@ export function resolveAccount(raw: string, mappings: AccountMapping[]): Account
   return null;
 }
 
+/** Stored trade came from a Trades report (entry + exit only), not from the fills. */
+function isReportOnly(row: any): boolean {
+  const ctx = (row?.context_snapshot ?? {}) as Record<string, unknown>;
+  return ctx.fromReport === true || (typeof ctx.fillCount === "number" && ctx.fillCount <= 2 && ctx.fromReport !== false);
+}
+
 const num = (v: unknown): number | null => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 // money is stored at 4 decimals (NUMERIC(14,4), audit P0-1): a $0.0012 fee correction must count as a change
 const near = (a: number | null, b: number | null, eps = 0.00005) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) < eps);
@@ -234,8 +240,12 @@ export interface PlanOptions {
 export async function planSync(tripsIn: RoundTrip[], opts: PlanOptions = {}): Promise<SyncPlan> {
   const [mappings, settings] = await Promise.all([loadAccountMappings(), getSettings()]);
   for (const v of opts.virtualMappings ?? []) {
-    if (!mappings.some((m) => m.account === v.account)) {
+    const same = mappings.find((m) => m.account === v.account);
+    if (!same) {
       mappings.push({ id: 0, account: v.account, accountId: null, accountName: null, trader: v.trader, active: true, notes: null, aliases: [], lastSyncedAt: null, lastFillAt: null });
+    } else if (!same.trader) {
+      same.trader = v.trader;
+      same.active = true;
     }
   }
   // owner's fee include/exclude settings decide how totalFees / net / result are computed
@@ -312,6 +322,16 @@ export async function planSync(tripsIn: RoundTrip[], opts: PlanOptions = {}): Pr
       ),
       pool.query(`SELECT id, external_id FROM propreports_pending_trades WHERE external_id = ANY($1::text[])`, [ids]),
     ]);
+    // The same position imported before under another external id — the other report format (Trades XLS vs Fills)
+    // or another spelling of the account. Matched by trader + ticker + side + open time to the second.
+    const twinRes = await pool.query(
+      `SELECT id, external_id, deleted_at, trader, ticker, date, side, entry, exit, qty, fees, pnl, result, session, horizon, exit_date, hold_time, broker_account, context_snapshot
+         FROM trades
+        WHERE source = 'propreports' AND NOT (external_id = ANY($1::text[]))
+          AND trader = ANY($2::text[]) AND LEFT(date, 10) >= $3 AND LEFT(date, 10) <= $4
+        ORDER BY deleted_at NULLS FIRST, id`,
+      [ids, traders, dateFrom, dateTo],
+    );
 
     const existing = new Map<string, any>(existingRes.rows.map((r: any) => [String(r.external_id), r]));
     const legacy = new Map<string, any>();
@@ -334,17 +354,33 @@ export async function planSync(tripsIn: RoundTrip[], opts: PlanOptions = {}): Pr
       if (arr) arr.push(c); else manual.set(key, [c]);
     }
     const pending = new Map<string, number>(pendingRes.rows.map((r: any) => [String(r.external_id), Number(r.id)]));
+    const twins = new Map<string, any>();
+    for (const r of twinRes.rows) {
+      const ctx = (r.context_snapshot ?? {}) as Record<string, unknown>;
+      const openedAt = typeof ctx.openedAt === "string" ? ctx.openedAt.slice(0, 19).replace(" ", "T") : null;
+      const key = openedAt ? `${r.trader}|${r.ticker}|${r.side}|${openedAt}` : null;
+      if (key && !twins.has(key)) twins.set(key, r); // live row first (ORDER BY deleted_at NULLS FIRST)
+    }
+    const claimed = new Set<number>();
 
     for (const { trip, trader, canonical } of mapped) {
       const base = { externalId: trip.externalId, trader, account: canonical, candidates: [] as ManualCandidate[], trip };
-      const ex = existing.get(trip.externalId);
+      const twinKey = `${trader}|${trip.symbol}|${trip.side}|${trip.openedAt}`;
+      const twin = !existing.has(trip.externalId) && !claimed.has(Number(twins.get(twinKey)?.id)) ? twins.get(twinKey) : undefined;
+      const ex = existing.get(trip.externalId) ?? twin;
       if (ex) {
+        claimed.add(Number(ex.id));
         if (ex.deleted_at) {
           items.push({ ...base, action: "skip", reason: "deleted", tradeId: Number(ex.id), pendingId: null, changes: [] });
           continue;
         }
+        // A Trades-report row (entry + exit only) never overwrites a trade already built from the fills.
+        if (trip.fromReport && !isReportOnly(ex)) {
+          items.push({ ...base, action: "unchanged", reason: "has_fills", tradeId: Number(ex.id), pendingId: null, changes: [] });
+          continue;
+        }
         const changes = diffBroker(ex, trip);
-        items.push({ ...base, action: changes.length ? "update" : "unchanged", tradeId: Number(ex.id), pendingId: null, changes });
+        items.push({ ...base, action: changes.length || ex !== existing.get(trip.externalId) ? "update" : "unchanged", tradeId: Number(ex.id), pendingId: null, changes });
         continue;
       }
       const legacyRow =
@@ -391,6 +427,8 @@ export interface SyncRunResult {
   conflicts: number;
   errors: number;
   errorText: string | null;
+  /** Older copies of the same position (other report format / repeated import) moved to the trash. */
+  duplicatesRemoved: number;
 }
 
 const TRADE_UPDATE_SQL = `
@@ -452,10 +490,28 @@ async function writeExecutions(client: PoolClient, tradeId: number, t: RoundTrip
   }
 }
 
+/**
+ * Soft-delete (trash, restorable) other live broker copies of the positions just written: same trader, ticker, side and
+ * open time to the second. Left over by earlier imports under another external id; journal notes on them stay intact.
+ */
+async function removeDuplicateCopies(client: PoolClient, written: number[]): Promise<number> {
+  if (!written.length) return 0;
+  const { rowCount } = await client.query(
+    `UPDATE trades d SET deleted_at = NOW()
+       FROM trades k
+      WHERE k.id = ANY($1::int[]) AND d.id <> ALL($1::int[])
+        AND d.source = 'propreports' AND d.deleted_at IS NULL
+        AND d.trader = k.trader AND d.ticker = k.ticker AND d.side = k.side
+        AND LEFT(REPLACE(d.context_snapshot ->> 'openedAt', ' ', 'T'), 19) = LEFT(REPLACE(k.context_snapshot ->> 'openedAt', ' ', 'T'), 19)`,
+    [written],
+  );
+  return rowCount ?? 0;
+}
+
 export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<SyncRunResult> {
   const client = await pool.connect();
   let runId = 0;
-  const res: SyncRunResult = { runId: 0, inserted: 0, updated: 0, unchanged: plan.counts.unchanged, skipped: plan.counts.skip, conflicts: 0, errors: 0, errorText: null };
+  const res: SyncRunResult = { runId: 0, inserted: 0, updated: 0, unchanged: plan.counts.unchanged, skipped: plan.counts.skip, conflicts: 0, errors: 0, errorText: null, duplicatesRemoved: 0 };
   const errors: string[] = [];
   try {
     const run = await client.query(
@@ -518,12 +574,17 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
         [account, last],
       );
     }
+    // unchanged rows count too: re-importing the same file is how a stray copy from an old import gets cleaned up
+    res.duplicatesRemoved = await removeDuplicateCopies(client, [
+      ...writtenTrades,
+      ...plan.items.filter((it) => it.action === "unchanged" && it.tradeId).map((it) => it.tradeId!),
+    ]);
     await client.query("COMMIT");
     refreshStructures(writtenTrades);
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     res.errors++;
-    res.inserted = 0; res.updated = 0; res.conflicts = 0;
+    res.inserted = 0; res.updated = 0; res.conflicts = 0; res.duplicatesRemoved = 0;
     errors.push(e instanceof Error ? e.message : String(e));
     logger.error({ err: e instanceof Error ? e.message : String(e) }, "propreports sync failed");
   } finally {

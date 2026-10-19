@@ -66,11 +66,20 @@ export type Preview = {
   fills?: number; skippedRows?: number; issues?: Array<{ line: number; message: string }>; issueCount?: number; columns?: string[];
   orphanFills?: Array<{ account: string; symbol: string; side: string; qty: number; price: number; dateTime: string; line: number }>; orphanCount?: number;
   reportRows?: number;
+  /** Unlinked accounts this import will link to the chosen trader. */
+  linkedAccounts?: string[];
+  /** Repeated fills dropped (same fill twice in the file, or already in the journal). */
+  duplicateFills?: number;
+  /** Positions open in the journal that this file continues (adds, partial exits, exit). */
+  continuedPositions?: number;
 };
 
 export type ApplyResult = {
   runId: number; inserted: number; updated: number; unchanged: number; skipped: number; conflicts: number; errors: number; errorText: string | null;
   counts: Record<PlanAction, number>; unmappedAccounts: string[];
+  /** Older copies of the same positions moved to the trash. */
+  duplicatesRemoved: number;
+  linkedAccounts?: string[];
 };
 
 export type AccountMapping = {

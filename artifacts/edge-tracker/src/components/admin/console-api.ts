@@ -445,7 +445,7 @@ export function useSetNamesLatinBulk() {
 
 export function useCreatePerson() {
   const qc = useQueryClient();
-  return useMutation<{ id: number; name: string }, Error, { name: string; password: string; role: string; curator: string | null; reason: string }>({
+  return useMutation<{ id: number; name: string }, Error, { name: string; password: string; role: string; curator: string | null; reason?: string; startingSecret?: boolean; account?: string }>({
     mutationFn: async (body) => {
       const r = await send<{ id: number; name: string }>("POST", "/admin/console/people", body);
       if (isNotFound(r)) throw new NotDeployedError(adminI18n.t("fallback.action.create"));
@@ -454,6 +454,7 @@ export function useCreatePerson() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: consoleKeys.people });
       qc.invalidateQueries({ queryKey: ["admin-desk-pulse"] });
+      qc.invalidateQueries({ queryKey: ["propreports"] });
     },
   });
 }

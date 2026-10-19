@@ -6,10 +6,12 @@ import * as React from "react";
 import { FileUp, Loader2, Upload, X } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api/http";
 import { isPerformanceResponse, useImportFile, useUsers, type AccountMapping, type ApplyResult, type ImportKind, type IntegrationsTab, type PerformancePreview, type Preview } from "./api";
 import { NextSteps, PreviewSummary, PreviewTable } from "./preview-table";
 import { PerformanceReportBody } from "./PerformanceReportPanel";
@@ -30,6 +32,8 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
   const [file, setFile] = React.useState<File | null>(null);
   const [kind, setKind] = React.useState<Kind>("auto");
   const [account, setAccount] = React.useState<string>("");
+  // Who an unlinked account belongs to (sent as `trader`; the server links the account with the import).
+  const [linkTrader, setLinkTrader] = React.useState<string>("");
   const [drag, setDrag] = React.useState(false);
   const [preview, setPreview] = React.useState<Preview | null>(null);
   const [applied, setApplied] = React.useState<ApplyResult | null>(null);
@@ -39,24 +43,30 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
   // XLS/XLSX: the server tells Trade Performance (aggregate) from Trades by content; the account is only
   // required for the Trades report.
   const isReport = kind === "trades";
-  const needAccount = isReport && !account;
+  const needAccount = isReport && !account.trim();
   // Prefill the only possible account (a trader usually has one): one click less before the preview.
   React.useEffect(() => {
     if (isReport && !account && accounts.length === 1) setAccount(accounts[0]!.account);
   }, [isReport, account, accounts]);
 
   const pick = (f: File | null) => {
-    setFile(f); setPreview(null); setApplied(null); setPerf(null);
+    setFile(f); setPreview(null); setApplied(null); setPerf(null); setLinkTrader("");
     if (f && /\.xlsx?$/i.test(f.name) && kind === "auto") setKind(/performance/i.test(f.name) ? "performance" : "trades");
   };
 
-  const runPreview = async () => {
+  const runPreview = async (link = linkTrader) => {
     if (!file) return;
     try {
-      const r = await importFile.mutateAsync({ file, dryRun: true, kind, account: isReport ? account : undefined, trader: perfTrader || undefined });
+      const r = await importFile.mutateAsync({ file, dryRun: true, kind, account: isReport ? account.trim() : undefined, trader: link || perfTrader || undefined });
       if (isPerformanceResponse(r)) { setPerf(r); setPreview(null); setPerfTrader(r.trader ?? (staff ? "" : viewerName ?? "")); setApplied(null); return; }
       setPreview(r as Preview); setPerf(null); setApplied(null);
     } catch (e) {
+      // No account in the file name: show the account field instead of a dead end.
+      if (e instanceof ApiError && e.code === "REPORT_ACCOUNT_UNKNOWN") {
+        setKind("trades");
+        toast({ title: t("import.enterAccount") });
+        return;
+      }
       toast({ title: t("import.parseFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
@@ -79,11 +89,14 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
   const runApply = async () => {
     if (!file || !preview) return;
     try {
-      const r = (await importFile.mutateAsync({ file, dryRun: false, kind, account: isReport ? account : undefined })) as ApplyResult;
+      const r = (await importFile.mutateAsync({ file, dryRun: false, kind, account: isReport ? account.trim() : undefined, trader: preview.linkedAccounts?.length ? linkTrader : undefined })) as ApplyResult;
       setApplied(r);
       toast({
         title: t("runToast.import", { inserted: r.inserted, updated: r.updated }),
-        description: r.errors ? t("runToast.detailErrors", { conflicts: r.conflicts, skipped: r.skipped, errors: r.errors }) : t("runToast.detail", { conflicts: r.conflicts, skipped: r.skipped }),
+        description: [
+          r.errors ? t("runToast.detailErrors", { conflicts: r.conflicts, skipped: r.skipped, errors: r.errors }) : t("runToast.detail", { conflicts: r.conflicts, skipped: r.skipped }),
+          r.duplicatesRemoved ? t("import.dupesRemoved", { count: r.duplicatesRemoved }) : "",
+        ].filter(Boolean).join(" · "),
         variant: r.errors ? "destructive" : undefined,
       });
     } catch (e) {
@@ -98,6 +111,8 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
   };
 
   const writable = preview && (preview.counts.insert + preview.counts.update + preview.counts.adopt + preview.counts.conflict) > 0;
+  const linkPeople = staff ? (users.data ?? []).filter((u) => u.active).map((u) => u.name) : [];
+  const pickLink = (name: string) => { setLinkTrader(name); void runPreview(name); };
 
   return (
     <Panel title={t("import.title")} description={t("import.description")} icon={FileUp}>
@@ -148,16 +163,21 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
           {isReport && (
             <div className="grid gap-1">
               <Label className="text-xs text-muted-foreground">{t("import.account")}</Label>
-              <Select value={account} onValueChange={(v) => { setAccount(v); setPreview(null); }}>
-                <SelectTrigger className="w-60"><SelectValue placeholder={t("import.pickAccount")} /></SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => <SelectItem key={a.id} value={a.account}>{a.trader ? `${a.account} — ${personName(a.trader)}` : t("import.accountUnmapped", { account: a.account })}</SelectItem>)}
-                  {!accounts.length && <SelectItem value="__none" disabled>{t("import.addAccountFirst")}</SelectItem>}
-                </SelectContent>
-              </Select>
+              <Input
+                className="w-60"
+                list="pr-import-accounts"
+                value={account}
+                onChange={(e) => { setAccount(e.target.value); setPreview(null); }}
+                placeholder={t("import.typeAccount")}
+                maxLength={120}
+                aria-label={t("import.account")}
+              />
+              <datalist id="pr-import-accounts">
+                {accounts.map((a) => <option key={a.id} value={a.account}>{a.trader ? personName(a.trader) : t("import.accountUnmapped", { account: a.account })}</option>)}
+              </datalist>
             </div>
           )}
-          <Button variant="outline" onClick={runPreview} disabled={!file || needAccount || importFile.isPending}>
+          <Button variant="outline" onClick={() => void runPreview()} disabled={!file || needAccount || importFile.isPending}>
             {importFile.isPending && importFile.variables?.dryRun ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {t("import.preview")}
           </Button>
@@ -179,6 +199,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
               {applied.conflicts > 0 && <Pill tone="warn">{t("counts.conflicts", { count: applied.conflicts })}</Pill>}
               {applied.skipped > 0 && <Pill tone="neutral">{t("counts.skipped", { count: applied.skipped })}</Pill>}
               {applied.errors > 0 && <Pill tone="down">{t("counts.errors", { count: applied.errors })}</Pill>}
+              {applied.duplicatesRemoved > 0 && <Pill tone="neutral">{t("import.dupesRemoved", { count: applied.duplicatesRemoved })}</Pill>}
             </div>
             {applied.errorText && <pre className="mt-2 whitespace-pre-wrap text-xs text-down">{applied.errorText}</pre>}
             <div className="mt-2"><NextSteps result={applied} onGoTab={onGoTab} /></div>
@@ -211,6 +232,30 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
               </Button>
             </div>
             <PerformanceReportBody data={{ format: "trade-performance", perTradeAverages: perf.perTradeAverages, totals: null, bySide: perf.bySide, byTime: perf.byTime, byWeekday: perf.byWeekday, bySymbol: [], other: [], summary: perf.summary, issues: perf.issues }} compact />
+          </div>
+        )}
+
+        {preview && !applied && !perf && (preview.unmappedAccounts.length > 0 || !!preview.linkedAccounts?.length) && (
+          <div className="grid gap-2 rounded-xl border border-[var(--glass-border)] p-3 text-sm">
+            <div>
+              {preview.linkedAccounts?.length
+                ? t("import.linkWill", { list: preview.linkedAccounts.join(", "), trader: personName(linkTrader) })
+                : t("import.linkAsk", { list: preview.unmappedAccounts.join(", ") })}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {staff ? (
+                <PersonSelect value={linkTrader} onValueChange={pickLink} options={linkPeople} placeholder={t("import.pickTrader")} ariaLabel={t("import.trader")} className="w-56" />
+              ) : (
+                !preview.linkedAccounts?.length && viewerName && <Button size="sm" variant="outline" onClick={() => pickLink(viewerName)}>{t("import.linkMine")}</Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {preview && !applied && !perf && (!!preview.duplicateFills || !!preview.continuedPositions) && (
+          <div className="flex flex-wrap gap-2">
+            {!!preview.continuedPositions && <Pill tone="accent">{t("import.continued", { count: preview.continuedPositions })}</Pill>}
+            {!!preview.duplicateFills && <Pill tone="neutral">{t("import.dupeFills", { count: preview.duplicateFills })}</Pill>}
           </div>
         )}
 

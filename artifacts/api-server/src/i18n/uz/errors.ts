@@ -266,6 +266,7 @@ export default {
   NO_TASKS: "Mos vazifalar yoʻq",
   NON_TRADING_DAY: "Bu savdo kuni emas",
   ACCOUNT_NOT_YOURS: "Bu hisob sizga bogʻlanmagan — kuratorga murojaat qiling",
+  ACCOUNT_TAKEN: "Bu PropReports hisobi allaqachon {trader} ga bogʻlangan",
   OWN_ENTRY: "Bu sizning yozuvingiz",
   SETUP_EDITOR_ONLY: "Buni setap muallifi yoki muharriri qila oladi",
   OFFICE_SETUP_NO_AUTHOR: "Ofis setapining muallifi yoʻq — uni «Meniki»ga nusxalang",

@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import {
   Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, Search, Snowflake, Sun,
-  UserCog, UserPlus, Users, UsersRound, X,
+  Copy, RefreshCw, UserCog, UserPlus, Users, UsersRound, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -549,8 +549,8 @@ export function PeoplePanel({
         curators={curators}
         canAdmins={canAdmins}
         busy={create.isPending}
-        onSubmit={(body) => create.mutate(body, {
-          onSuccess: (u) => { setAddOpen(false); refreshUsers(); toast({ title: t("people.addDialog.done", { name: personName(u.name) }), description: t("people.addDialog.doneHint") }); },
+        onSubmit={(body, onDone) => create.mutate(body, {
+          onSuccess: (u) => { refreshUsers(); onDone(u.name); },
           onError: (e) => toast({ title: e instanceof NotDeployedError ? t("needRestart") : tc("states.error"), description: e instanceof NotDeployedError ? t("people.addDialog.fallbackHint", { message: e.message }) : e.message, variant: "destructive" }),
         })}
       />
@@ -625,6 +625,22 @@ function BulkBar({
   );
 }
 
+/** Starting secret: 6 digits for traders, 10 letters/digits for staff (no look-alikes). Replaced by the person on first sign-in. */
+function generateSecret(role: string): string {
+  const staff = role === "curator" || role === "admin";
+  const abc = staff ? "abcdefghjkmnpqrstuvwxyz23456789" : "0123456789";
+  const len = Math.max(secretMinFor(role), staff ? 10 : 6);
+  const buf = new Uint32Array(len);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => abc[n % abc.length]).join("");
+}
+
+type NewPerson = { name: string; password: string; role: string; curator: string | null; startingSecret: boolean; account?: string };
+
+/**
+ * One-step account creation: name + role; the starting secret is generated and shown in plain text. After «Создать»
+ * the dialog shows the sign-in card to copy and hand over. The person sets their own secret on the first sign-in.
+ */
 function AddPersonDialog({
   open, onOpenChange, curators, canAdmins, busy, onSubmit,
 }: {
@@ -633,40 +649,70 @@ function AddPersonDialog({
   curators: string[];
   canAdmins: boolean;
   busy: boolean;
-  onSubmit: (body: { name: string; password: string; role: string; curator: string | null; reason: string }) => void;
+  onSubmit: (body: NewPerson, onDone: (name: string) => void) => void;
 }) {
   const { t } = adminI18n.useT();
+  const { toast } = useToast();
   const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
   const [role, setRole] = useState("trader");
+  const [password, setPassword] = useState(() => generateSecret("trader"));
   const [curator, setCurator] = useState("");
-  const [reason, setReason] = useState(() => t("people.addDialog.reasonDefault"));
+  const [account, setAccount] = useState("");
+  const [created, setCreated] = useState<{ name: string; password: string; account: string } | null>(null);
+  const reset = (r: string) => { setName(""); setRole(r); setPassword(generateSecret(r)); setCurator(""); setAccount(""); setCreated(null); };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only when the dialog opens
-  useEffect(() => { if (open) { setName(""); setPassword(""); setRole("trader"); setCurator(""); setReason(t("people.addDialog.reasonDefault")); } }, [open]);
-  const minSecret = secretMinFor(role);
-  const valid = name.trim().length > 0 && password.length >= minSecret && reason.trim().length >= 3;
-  const submit = () => { if (valid && !busy) onSubmit({ name: name.trim(), password, role, curator: role === "trader" && curator ? curator : null, reason: reason.trim() }); };
+  useEffect(() => { if (open) reset("trader"); }, [open]);
+  const pickRole = (r: string) => { setRole(r); setPassword(generateSecret(r)); };
+  const valid = name.trim().length > 0 && password.length >= 4;
+  const submit = () => {
+    if (!valid || busy) return;
+    const acc = role === "trader" ? account.trim() : "";
+    onSubmit(
+      { name: name.trim(), password, role, curator: role === "trader" && curator ? curator : null, startingSecret: true, account: acc || undefined },
+      (n) => setCreated({ name: n, password, account: acc }),
+    );
+  };
+  const copy = () => {
+    if (!created) return;
+    const text = `${t("people.addDialog.cardName")}: ${created.name}\n${t("people.addDialog.cardSecret")}: ${created.password}`;
+    void navigator.clipboard?.writeText(text).then(
+      () => toast({ title: t("people.addDialog.copied") }),
+      () => toast({ title: commonI18n.t("states.error"), variant: "destructive" }),
+    );
+  };
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!busy) onOpenChange(v); }}>
       <DialogContent className="sm:max-w-md">
-        <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="flex flex-col gap-4" autoComplete="off">
-          <DialogHeader>
-            <DialogTitle>{t("people.addDialog.title")}</DialogTitle>
-            <DialogDescription>{t("people.addDialog.description")}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="np-name" className="text-xs text-muted-foreground">{t("people.addDialog.name")} <span className="text-down">*</span></Label>
-              <Input id="np-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus />
+        {created ? (
+          <div className="flex flex-col gap-4">
+            <DialogHeader>
+              <DialogTitle>{t("people.addDialog.done", { name: personName(created.name) })}</DialogTitle>
+              <DialogDescription>{t("people.addDialog.doneHint")}</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-1 rounded-xl border border-[var(--glass-border)] p-3 font-mono text-sm">
+              <div>{t("people.addDialog.cardName")}: <b>{created.name}</b></div>
+              <div>{t("people.addDialog.cardSecret")}: <b>{created.password}</b></div>
+              {created.account && <div className="text-muted-foreground">{t("people.addDialog.account")}: {created.account}</div>}
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="np-pass" className="text-xs text-muted-foreground">{t("people.addDialog.password")} <span className="text-down">*</span></Label>
-              <Input id="np-pass" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={authI18n.t("forced.tooShort", { min: minSecret })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => reset(role)}><UserPlus /> {t("people.addDialog.another")}</Button>
+              <Button type="button" onClick={copy}><Copy /> {t("people.addDialog.copy")}</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="flex flex-col gap-4" autoComplete="off">
+            <DialogHeader>
+              <DialogTitle>{t("people.addDialog.title")}</DialogTitle>
+              <DialogDescription>{t("people.addDialog.description")}</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="np-name" className="text-xs text-muted-foreground">{t("people.addDialog.name")} <span className="text-down">*</span></Label>
+                <Input id="np-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} autoFocus />
+              </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs text-muted-foreground">{t("people.addDialog.role")}</Label>
-                <Select value={role} onValueChange={setRole}>
+                <Select value={role} onValueChange={pickRole}>
                   <SelectTrigger aria-label={t("people.addDialog.role")}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="trader">{roleLabel("trader")}</SelectItem>
@@ -676,26 +722,38 @@ function AddPersonDialog({
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs text-muted-foreground">{t("people.addDialog.curator")}</Label>
-                <Select value={curator || "__none"} onValueChange={(v) => setCurator(v === "__none" ? "" : v)} disabled={role !== "trader"}>
-                  <SelectTrigger aria-label={t("people.addDialog.curator")}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none">{t("people.addDialog.noCurator")}</SelectItem>
-                    {curators.map((c) => <SelectItem key={c} value={c}>{personName(c)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="np-pass" className="text-xs text-muted-foreground">{t("people.addDialog.password")}</Label>
+                <div className="flex gap-2">
+                  <Input id="np-pass" className="font-mono" autoComplete="off" spellCheck={false} value={password} onChange={(e) => setPassword(e.target.value.trim())} maxLength={200} />
+                  <Button type="button" variant="outline" size="icon" onClick={() => setPassword(generateSecret(role))} aria-label={t("people.addDialog.regenerate")} title={t("people.addDialog.regenerate")}><RefreshCw /></Button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t("people.addDialog.passwordHint")}</p>
               </div>
+              {role === "trader" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs text-muted-foreground">{t("people.addDialog.curator")}</Label>
+                    <Select value={curator || "__none"} onValueChange={(v) => setCurator(v === "__none" ? "" : v)}>
+                      <SelectTrigger aria-label={t("people.addDialog.curator")}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">{t("people.addDialog.noCurator")}</SelectItem>
+                        {curators.map((c) => <SelectItem key={c} value={c}>{personName(c)}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="np-account" className="text-xs text-muted-foreground">{t("people.addDialog.account")}</Label>
+                    <Input id="np-account" value={account} onChange={(e) => setAccount(e.target.value)} maxLength={120} placeholder={t("people.addDialog.accountPlaceholder")} />
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="np-reason" className="text-xs text-muted-foreground">{t("people.addDialog.reason")} <span className="text-down">*</span></Label>
-              <Input id="np-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>{commonI18n.t("actions.cancel")}</Button>
-            <Button type="submit" disabled={!valid || busy}>{busy ? t("people.addDialog.creating") : commonI18n.t("actions.create")}</Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>{commonI18n.t("actions.cancel")}</Button>
+              <Button type="submit" disabled={!valid || busy}>{busy ? t("people.addDialog.creating") : commonI18n.t("actions.create")}</Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

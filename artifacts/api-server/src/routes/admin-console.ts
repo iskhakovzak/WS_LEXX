@@ -380,6 +380,11 @@ router.post("/admin/console/people/bulk", asyncHandler(async (req, res): Promise
   res.json({ ok: true, done, skipped });
 }));
 
+/**
+ * Create an account in one step. The UI generates the starting secret (it is never echoed back here); with
+ * `startingSecret` (default) the person must set their own on the first sign-in, so the staff minimum does not apply
+ * to it (same rule as db/tools/starting-secret.ts). `account` optionally links a PropReports account right away.
+ */
 router.post("/admin/console/people", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage"))) return;
   const parsed = z.object({
@@ -387,14 +392,21 @@ router.post("/admin/console/people", asyncHandler(async (req, res): Promise<void
     password: z.string().min(4).max(200),
     role: roleSchema.default("trader"),
     curator: z.string().trim().max(120).nullable().optional(),
-    reason: reasonSchema,
+    reason: reasonSchema.optional(),
+    startingSecret: z.boolean().default(true),
+    account: z.string().trim().max(120).optional(),
   }).safeParse(req.body ?? {});
   if (!parsed.success) throw invalidBody(parsed.error);
   const actor = await actorOf(req);
   if (!actor) throw unauthorized();
-  const { name, password, role, curator, reason } = parsed.data;
-  // Secret policy by role (lib/security/passwordPolicy): PIN ≥ 6 for traders, password ≥ 10 for curators/admins.
-  const weak = checkSecret(role, password, name);
+  const { name, password, role, curator, startingSecret } = parsed.data;
+  const reason = parsed.data.reason || "new user";
+  const account = parsed.data.account?.trim() || null;
+  // Secret policy by role (lib/security/passwordPolicy): PIN ≥ 6 for traders, password ≥ 10 for curators/admins —
+  // for a secret the person keeps. A starting secret only opens the «set your own» step.
+  const weak = startingSecret
+    ? (password.trim().toLowerCase() === name.trim().toLowerCase() ? { code: "SAME_AS_NAME" as const } : null)
+    : checkSecret(role, password, name);
   if (weak) {
     const t = securityT.tFor(langOf(req));
     const msg = weak.code === "TOO_SHORT" ? t("password.tooShort", { min: weak.min }) : weak.code === "TOO_LONG" ? t("password.tooLong", { max: weak.max }) : t("password.sameAsName");
@@ -406,18 +418,40 @@ router.post("/admin/console/people", asyncHandler(async (req, res): Promise<void
     const rows = await soft(`SELECT 1 FROM users WHERE name = $1 AND active = true AND role IN ('curator', 'admin')`, [curator]);
     if (!rows[0]) throw new AppError("CURATOR_NOT_ACTIVE", 400, { curator });
   }
+  if (account) {
+    const taken = await soft<{ trader: string | null }>(`SELECT trader FROM propreports_accounts WHERE account = $1`, [account]);
+    if (taken[0]?.trader) throw new AppError("ACCOUNT_TAKEN", 409, { account, trader: taken[0].trader });
+  }
+  const client = await pool.connect();
   try {
+    await client.query("BEGIN");
     const hash = await hashPassword(password);
-    const { rows } = await pool.query<{ id: number; name: string }>(
-      `INSERT INTO users (name, password_hash, role, assigned_curator) VALUES ($1, $2, $3, $4) RETURNING id, name`,
-      [name, hash, role, curator || null],
+    const { rows } = await client.query<{ id: number; name: string }>(
+      `INSERT INTO users (name, password_hash, role, assigned_curator, must_change_secret) VALUES ($1, $2, $3, $4, $5) RETURNING id, name`,
+      [name, hash, role, curator || null, startingSecret],
     );
     const u = rows[0]!;
-    await logAudit({ actor: actor.name, action: "user.create", targetType: "user", targetId: String(u.id), details: { name: u.name, role, curator: curator || null, reason } });
-    res.status(201).json({ ok: true, id: u.id, name: u.name });
+    if (account) {
+      await client.query(
+        `INSERT INTO propreports_accounts (account, trader) VALUES ($1, $2)
+         ON CONFLICT (account) DO UPDATE SET trader = $2, updated_at = NOW()`,
+        [account, u.name],
+      );
+    }
+    await client.query("COMMIT");
+    if (account) {
+      const settings = await getSettings().catch(() => null);
+      const rest = settings?.unmatched.filter((x) => x.toLowerCase() !== account.toLowerCase());
+      if (settings && rest && rest.length !== settings.unmatched.length) await setSetting("unmatched", rest);
+    }
+    await logAudit({ actor: actor.name, action: "user.create", targetType: "user", targetId: String(u.id), details: { name: u.name, role, curator: curator || null, account, startingSecret, reason } });
+    res.status(201).json({ ok: true, id: u.id, name: u.name, account });
   } catch (e: any) {
+    await client.query("ROLLBACK").catch(() => {});
     if (e?.code === "23505") throw new AppError("USER_NAME_TAKEN");
     throw e;
+  } finally {
+    client.release();
   }
 }));
 
