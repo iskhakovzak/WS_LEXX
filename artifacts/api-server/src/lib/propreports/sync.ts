@@ -220,16 +220,16 @@ function contextPatch(t: RoundTrip) {
 export interface PlanOptions {
   /** Restrict to one trader's accounts (everything else → skip/forbidden). */
   onlyTrader?: string | null;
-  /** Mappings that do not exist in the DB yet (admin XLS import dry run) — never persisted here. */
+  /** Mappings (or traders of trader-less mappings) not in the DB yet (XLS import dry run) — never persisted here. */
   virtualMappings?: Array<{ account: string; trader: string }>;
 }
 
 export async function planSync(tripsIn: RoundTrip[], opts: PlanOptions = {}): Promise<SyncPlan> {
   const [mappings, settings] = await Promise.all([loadAccountMappings(), getSettings()]);
   for (const v of opts.virtualMappings ?? []) {
-    if (!mappings.some((m) => m.account === v.account)) {
-      mappings.push({ id: 0, account: v.account, accountId: null, accountName: null, trader: v.trader, active: true, notes: null, aliases: [], lastSyncedAt: null, lastFillAt: null });
-    }
+    const have = mappings.find((m) => m.account === v.account);
+    if (!have) mappings.push({ id: 0, account: v.account, accountId: null, accountName: null, trader: v.trader, active: true, notes: null, aliases: [], lastSyncedAt: null, lastFillAt: null });
+    else if (!have.trader) have.trader = v.trader;
   }
   // owner's fee include/exclude settings decide how totalFees / net / result are computed
   const trips = applyFeeSettings(tripsIn, settings.fees);

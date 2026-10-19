@@ -213,6 +213,8 @@ export default {
     pickAccount: "Hisobni tanlang",
     accountUnmapped: "{account} (biriktirilmagan)",
     addAccountFirst: "Avval quyidagi biriktiruvga hisob qoʻshing",
+    fileAccount: "Fayldagi hisob: {account}",
+    fileAccountLink: "Fayldagi hisob: {account} — tanlangan treyderga biriktiriladi",
     preview: "Oldindan koʻrish (yozmasdan)",
     run: "Import qilish",
     onlyYours: "Faqat sizning hisoblaringiz import qilinadi",

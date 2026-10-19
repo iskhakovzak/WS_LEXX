@@ -5,8 +5,9 @@
  *   GET  /accounts                     broker account → trader mapping (traders: own only)
  *   PUT  /accounts                     [curator] upsert mappings  body: { accounts: [{ account, trader, active, notes }] }
  *   POST /accounts/refresh             [curator] pull the account list from the API (503 when not configured)
- *   POST /import?dryRun=1              multipart "file" (Fills CSV or Trades report XLS/CSV), fields: kind=auto|fills|trades, account
- *                                      dryRun → preview only (no writes); traders may import only their own accounts
+ *   POST /import?dryRun=1              multipart "file" (Fills CSV or Trades report XLS/CSV), fields: kind=auto|fills|trades, account, trader
+ *                                      dryRun → preview only (no writes); traders may import only their own accounts;
+ *                                      Trades report + trader (staff): account from the file name, linked to the trader
  *   POST /sync                         [curator] { from, to, dryRun }  pull fills over the API and apply (503 when not configured)
  *   GET  /runs?limit=                  sync history
  *   GET  /reconcile                    inbox: broker trips that collide with a manual trade (traders: own only)
@@ -49,6 +50,7 @@ import {
 import type { SyncCounts } from "../lib/notifyEventsCore";
 import { enqueueOutbox, kickOutbox } from "../lib/propreports/tick/outbox";
 import { canonicalizeFillIds } from "../lib/propreports/replacement";
+import { prepareTradesImport } from "../lib/propreports/import-target";
 import { getCursor } from "../lib/propreports/tick/cursor";
 import { AppError, errorMessage, notFound, sendErrorWith } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
@@ -433,6 +435,7 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
   let kind: "fills" | "trades";
   const diagnostics: Record<string, unknown> = {};
   let feeColumns: DetectedFeeColumn[] = [];
+  const virtualMappings: Array<{ account: string; trader: string }> = [];
   const text = ext === ".xls" || ext === ".xlsx" ? null : file.buffer.toString("utf8");
   if (parsed.data.kind === "performance" || (parsed.data.kind === "auto" && (text == null || !isFillsCsv(text)))) {
     let rows: unknown[][] = [];
@@ -458,9 +461,11 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     });
   } else {
     kind = "trades";
-    // The Trades export has no account column; PropReports names the file "<account>-<from>-to-<to>-trades.xls".
-    const account = parsed.data.account?.trim() || performanceFileMeta(file.originalname).account || "";
-    if (!account) throw new AppError("REPORT_ACCOUNT_UNKNOWN");
+    // The Trades export has no account column: staff pick the trader, the account comes from the file name
+    // ("<account>-<from>-to-<to>-trades.xls"). Traders import only accounts already mapped to them.
+    const target = await prepareTradesImport({ field: parsed.data.account, fileName: file.originalname, trader: v.staff ? parsed.data.trader : null, actor: v.name, dryRun });
+    const account = target.account;
+    virtualMappings.push(...target.virtualMappings);
     let report;
     const diag: TradesReportDiagnostics = {};
     try { report = parseTradesReportBuffer(file.buffer, diag); } catch (e) { throw new AppError("REPORT_PARSE_FAILED", 400, undefined, e instanceof Error ? e.message : String(e)); }
@@ -470,7 +475,7 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     Object.assign(diagnostics, { reportRows: report.length, feesByType: report.some((r) => r.fees) });
   }
 
-  const plan = await planSync(trips, { onlyTrader: v.staff ? null : v.name });
+  const plan = await planSync(trips, { onlyTrader: v.staff ? null : v.name, virtualMappings });
   if (dryRun) {
     res.json(serializePlan(plan, { dryRun: true, kind, fileName: file.originalname, ...diagnostics }));
     return;

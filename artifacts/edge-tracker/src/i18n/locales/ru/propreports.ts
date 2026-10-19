@@ -218,6 +218,8 @@ export default {
     pickAccount: "Выберите счёт",
     accountUnmapped: "{account} (не привязан)",
     addAccountFirst: "Сначала добавьте счёт в привязке ниже",
+    fileAccount: "Счёт из файла: {account}",
+    fileAccountLink: "Счёт из файла: {account} — привяжем к выбранному трейдеру",
     preview: "Предпросмотр (без записи)",
     run: "Импортировать",
     onlyYours: "Импортируются только ваши счета",

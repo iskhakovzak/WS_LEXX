@@ -213,6 +213,8 @@ export default {
     pickAccount: "Choose an account",
     accountUnmapped: "{account} (not mapped)",
     addAccountFirst: "Add an account in the mapping below first",
+    fileAccount: "Account from the file: {account}",
+    fileAccountLink: "Account from the file: {account} — will be linked to the chosen trader",
     preview: "Preview (no write)",
     run: "Import",
     onlyYours: "Only your accounts are imported",
