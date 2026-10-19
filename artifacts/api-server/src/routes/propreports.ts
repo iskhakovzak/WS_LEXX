@@ -5,7 +5,8 @@
  *   GET  /accounts                     broker account → trader mapping (traders: own only)
  *   PUT  /accounts                     [curator] upsert mappings  body: { accounts: [{ account, trader, active, notes }] }
  *   POST /accounts/refresh             [curator] pull the account list from the API (503 when not configured)
- *   POST /import?dryRun=1              multipart "file" (Fills CSV or Trades report XLS/CSV), fields: kind=auto|fills|trades, account
+ *   POST /import?dryRun=1              multipart "file" (Fills CSV or Trades report XLS/CSV), fields: kind=auto|fills|trades, account,
+ *                                      trader (links still-unlinked accounts of the file to this person on apply)
  *                                      dryRun → preview only (no writes); traders may import only their own accounts
  *   POST /sync                         [curator] { from, to, dryRun }  pull fills over the API and apply (503 when not configured)
  *   GET  /runs?limit=                  sync history
@@ -39,7 +40,8 @@ import {
   buildRoundTrips, summarizeTrips, planSync, applySync, listPending, mergePending, keepPendingSeparate, dismissPending,
   loadAccountMappings, getConfiguredClient, effectiveGroupId, isConfigured, statusConfig, schedulerStatus, PropReportsError,
   getSettings, setSetting, feeLabel, orderedFeeKeys, type DetectedFeeColumn, type IntegrationSettings, type TradesReportDiagnostics, type ConnectionState,
-  performanceSheetRows, isPerformanceReport, parsePerformanceRows, performanceFileMeta,
+  performanceSheetRows, isPerformanceReport, parsePerformanceRows, performanceFileMeta, resolveAccount,
+  dedupeFileFills, loadOpenPositionFills,
   savePerformanceReport, listPerformanceReports, getPerformanceReport, deletePerformanceReport, traderForAccount,
   type RoundTrip, type SyncPlan,
 } from "../lib/propreports";
@@ -452,13 +454,18 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     kind = "fills";
     const p = parseFillsCsv(text, langOf(req));
     if (!p.fills.length) { sendErrorWith(res, new AppError("XLS_NO_TRADES"), { issues: p.issues.slice(0, 20), columns: p.columns }); return; }
-    const built = buildRoundTrips(p.fills);
+    // Repeated rows count once; positions still open in the journal continue (adds / partial exits / exit in this file).
+    const unique = dedupeFileFills(p.fills);
+    const continued = await loadOpenPositionFills(unique.fills, await loadAccountMappings());
+    const built = buildRoundTrips(continued.fills);
     trips = built.trips;
     feeColumns = p.feeColumns;
     Object.assign(diagnostics, {
       fills: p.fills.length, skippedRows: p.skipped, issues: p.issues.slice(0, 50), issueCount: p.issues.length, columns: p.columns,
       orphanFills: built.orphanFills.slice(0, 50).map((f) => ({ account: f.account, symbol: f.symbol, side: f.side, qty: f.qty, price: f.price, dateTime: f.dateTime, line: f.line })),
       orphanCount: built.orphanFills.length,
+      duplicateFills: unique.duplicates + continued.duplicates,
+      continuedPositions: continued.positions,
     });
   } else {
     kind = "trades";
@@ -474,14 +481,35 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     Object.assign(diagnostics, { reportRows: report.length, feesByType: report.some((r) => r.fees) });
   }
 
-  const plan = await planSync(trips, { onlyTrader: v.staff ? null : v.name });
+  // Accounts the desk has not linked yet: the person importing names the trader (a trader — only themself) and the
+  // link is saved with the import, so the next file of this account goes through on its own.
+  const linkTo = parsed.data.trader?.trim() || null;
+  if (linkTo && !v.staff && linkTo !== v.name) throw new AppError("ACCOUNT_NOT_YOURS");
+  if (linkTo) {
+    const { rows: u } = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [linkTo]);
+    if (!u.length) throw new AppError("TRADER_NOT_FOUND", 400);
+  }
+  const mappings = await loadAccountMappings();
+  const linkAccounts = linkTo
+    ? [...new Set(trips.map((t) => t.account))].filter((a) => !resolveAccount(a, mappings)?.mapping.trader)
+    : [];
+  const virtualMappings = linkAccounts.map((account) => ({ account, trader: linkTo! }));
+  const plan = await planSync(trips, { onlyTrader: v.staff ? null : v.name, virtualMappings });
   if (dryRun) {
-    res.json(serializePlan(plan, { dryRun: true, kind, fileName: file.originalname, ...diagnostics }));
+    res.json(serializePlan(plan, { dryRun: true, kind, fileName: file.originalname, linkedAccounts: linkAccounts, ...diagnostics }));
     return;
+  }
+  for (const account of linkAccounts) {
+    await pool.query(
+      `INSERT INTO propreports_accounts (account, trader) VALUES ($1, $2)
+       ON CONFLICT (account) DO UPDATE SET trader = COALESCE(propreports_accounts.trader, EXCLUDED.trader), updated_at = NOW()`,
+      [account, linkTo],
+    );
+    await logAudit({ actor: v.name, action: "propreports.account.map", targetType: "propreports_accounts", targetId: account, details: { account, trader: linkTo, via: "import" } });
   }
   const result = await applySync(plan, { actor: v.name, source: "file", fileName: file.originalname, feeColumns, details: { kind, ...diagnostics, issues: undefined, orphanFills: undefined, columns: undefined } });
   notifySyncOutcome({ actor: v.name, actorIsStaff: v.staff, kind: "import", context: file.originalname, result, unmapped: plan.unmappedAccounts });
-  res.status(result.errors && !result.inserted && !result.updated ? 500 : 200).json({ ...result, kind, counts: plan.counts, unmappedAccounts: plan.unmappedAccounts, ...diagnostics });
+  res.status(result.errors && !result.inserted && !result.updated ? 500 : 200).json({ ...result, kind, counts: plan.counts, unmappedAccounts: plan.unmappedAccounts, linkedAccounts: linkAccounts, ...diagnostics });
 }));
 
 // ─── API sync ───────────────────────────────────────────────────────────────

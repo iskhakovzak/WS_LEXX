@@ -276,6 +276,7 @@ export default {
   NO_TASKS: "Подходящих задач нет",
   NON_TRADING_DAY: "Это не торговый день",
   ACCOUNT_NOT_YOURS: "Этот счёт не сопоставлен с вами — обратитесь к куратору",
+  ACCOUNT_TAKEN: "Этот счёт PropReports уже привязан к {trader}",
   OWN_ENTRY: "Это ваша запись",
   SETUP_EDITOR_ONLY: "Это может сделать автор или редактор сетапа",
   OFFICE_SETUP_NO_AUTHOR: "У офисного сетапа нет автора — используйте копирование в «Мой»",

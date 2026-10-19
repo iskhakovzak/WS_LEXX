@@ -266,6 +266,7 @@ export default {
   NO_TASKS: "No matching tasks",
   NON_TRADING_DAY: "This isn't a trading day",
   ACCOUNT_NOT_YOURS: "This account isn't linked to you — contact your curator",
+  ACCOUNT_TAKEN: "This PropReports account is already linked to {trader}",
   OWN_ENTRY: "This is your own entry",
   SETUP_EDITOR_ONLY: "Only the setup's author or editor can do this",
   OFFICE_SETUP_NO_AUTHOR: "An office setup has no author — copy it to “Mine” instead",
