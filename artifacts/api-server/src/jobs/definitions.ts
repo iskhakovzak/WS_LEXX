@@ -21,6 +21,7 @@ import { registerJob, listJobs } from "./registry";
 import { syncCron } from "../lib/propreports/scheduler";
 import { dailyTelegramEnabled, intradayAlertsEnabled } from "../lib/daily/telegramGuard";
 import { contractAlertsEnabled, eveningCron, eveningEnabled, morningCron, morningEnabled } from "../lib/daily/telegramSchedule";
+import { dailyPickCron } from "../lib/trainer/schedule";
 
 const MIN = 60_000;
 let registered = false;
@@ -131,6 +132,31 @@ export function registerAllJobs(): void {
     },
   });
 
+  // Quests rollover (lib/quests/job.ts): closes finished periods, creates the new day's / week's / month's quests and
+  // awards achievements for every active trader, so nothing waits for a visit. Idempotent; reads only the local DB.
+  registerJob({
+    name: "quests.nightly",
+    cron: "50 18 * * *",
+    timeoutMs: 20 * MIN,
+    async run({ signal }) {
+      const { runQuestsNightly } = await import("../lib/quests/job");
+      return runQuestsNightly({ signal });
+    },
+  });
+
+  // Gamification (lib/gamification/service.ts): season scores of every active trader, the finished season finalized
+  // once (top-3 recognition), setup mastery (level-up recognition) and reward eligibility (notified once). Idempotent;
+  // local DB only (a Telegram group post needs gamification.telegramGroup + production).
+  registerJob({
+    name: "gamification.nightly",
+    cron: "10 19 * * *",
+    timeoutMs: 20 * MIN,
+    async run({ signal }) {
+      const { runGamificationNightly } = await import("../lib/gamification/service");
+      return runGamificationNightly({ signal });
+    },
+  });
+
   registerJob({
     name: "psychology.weekly-report",
     cron: "0 17 * * 5",
@@ -235,6 +261,19 @@ export function registerAllJobs(): void {
     },
   });
 
+  // Internal usage tracking (lib/usage): events older than usage.retentionDays (default 120) are deleted every night —
+  // configuration-driven data hygiene; plans, reviews and trades are never touched.
+  registerJob({
+    name: "usage.prune",
+    cron: "55 3 * * *",
+    timeoutMs: 5 * MIN,
+    async run() {
+      const { setting } = await import("../lib/settings/registry");
+      const { pruneUsageEvents } = await import("../lib/usage/store");
+      return pruneUsageEvents(setting("usage.retentionDays"));
+    },
+  });
+
   registerJob({
     name: "candles.prune",
     cron: "50 3 * * *",
@@ -242,6 +281,22 @@ export function registerAllJobs(): void {
     async run({ signal }) {
       const { pruneCandleCaches } = await import("../lib/candleArchive/prune");
       return pruneCandleCaches({ signal });
+    },
+  });
+
+  // «Тренажёр» (lib/trainer): the «Задача дня» pick for the whole desk at trainer.dailyPickTime (08:30 NY, weekdays;
+  // idempotent — the pick is a row per date, a re-run or a lazy read picks nothing new) + the «Найди вход» drill
+  // refresh (new playbook examples / setup-linked desk trades with archived bars). Local DB only.
+  registerJob({
+    name: "trainer.daily-pick",
+    cron: dailyPickCron,
+    timeoutMs: 5 * MIN,
+    async run() {
+      const { runDailyPick } = await import("../lib/trainer/daily");
+      const { ensureDrillsThrottled } = await import("../lib/trainer/drillService");
+      const pick = await runDailyPick();
+      await ensureDrillsThrottled(true);
+      return pick;
     },
   });
 

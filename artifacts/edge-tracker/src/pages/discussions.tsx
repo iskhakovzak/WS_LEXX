@@ -24,6 +24,7 @@ import { ThreadView } from "@/components/discussions/ThreadView";
 import { ThreadFormDialog } from "@/components/discussions/ThreadFormDialog";
 import { ReportDialog, type ReportTarget } from "@/components/discussions/ReportDialog";
 import { addressedToMe, audienceText, isRestricted, sortTokens, tokenLabel, useAudienceOptions } from "@/components/discussions/audience";
+import { useMentionSync } from "@/components/discussions/use-mention-sync";
 import {
   type Thread, type VoteMap, type VoteAgg, type TickerStat, type SortKey, type ViewKey,
   type ThreadContext,
@@ -128,7 +129,8 @@ export default function Discussions() {
     },
     onMutate: (id) => {
       const now = new Date().toISOString();
-      qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => d.id === id && d.unread !== undefined ? { ...d, unread: false, mentionsMe: false, readAt: now } : d));
+      // `mentionsMe` stays: reading a thread does not remove the mention (the «Упоминания» card counts them; OLGA-28).
+      qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => d.id === id && d.unread !== undefined ? { ...d, unread: false, readAt: now } : d));
     },
     onSettled: () => qc.invalidateQueries({ queryKey: UNREAD_BADGE_KEY }),
   });
@@ -215,6 +217,7 @@ export default function Discussions() {
     [threads],
   );
   const unreadMentions = useMemo(() => Array.from(mentionIds).filter((id) => unreadIds.has(id)).length, [mentionIds, unreadIds]);
+  useMentionSync(user && user.role !== "guest" ? user.traderName ?? null : null, serverUnread ? unreadMentions : null, refetch);
   const freshIds = useMemo(() => new Set(threads.filter((t) => unreadIds.has(t.id) && isFreshThread(t, me)).map((t) => t.id)), [threads, unreadIds, me]);
 
   // Audience tabs: only groups that actually occur in the threads this viewer can read.
@@ -326,7 +329,7 @@ export default function Discussions() {
     if (serverUnread) {
       try {
         await http.post("/api/discussions/read-all");
-        qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => ({ ...d, unread: false, mentionsMe: false, readAt: new Date().toISOString() })));
+        qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => ({ ...d, unread: false, readAt: new Date().toISOString() })));
         qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
         qc.invalidateQueries({ queryKey: UNREAD_BADGE_KEY });
       } catch (e) {

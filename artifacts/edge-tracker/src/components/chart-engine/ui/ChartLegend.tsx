@@ -1,7 +1,7 @@
 
 import { cn } from "@/lib/utils";
 import type { Bar, PositionState, Side } from "../types";
-import { fmtEtDateTime, formatDuration } from "../lib/time";
+import { fmtEtDateTime, fmtEtTime, formatDuration } from "../lib/time";
 import { fmtCompact, fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { fmtPerShare } from "../lib/trade-summary";
 import { chartI18n } from "@/i18n/ns/chart";
@@ -18,6 +18,10 @@ export type LegendInfo = {
   vwap: { vwap: number; sd: number } | null;
   avwap: number | null;
   rvol: number | null;
+  /** Close of the bar before (the change is shown against it; null on the first bar ⇒ against the open). */
+  prevBarClose: number | null;
+  /** Volume of the bar ÷ the average of the 20 bars before it. */
+  volRatio: number | null;
   risk: number | null;
   side: Side;
   prevClose: number | null;
@@ -25,17 +29,22 @@ export type LegendInfo = {
   redacted: boolean;
 };
 
+/** «+0.12» / «−0.12» in the precision of the price itself (4 decimals only for a sub-dollar stock). */
+const fmtSigned = (n: number, price: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmtPrice(Math.abs(n), { decimals: Math.abs(price) < 1 ? 4 : 2 })}`;
+
 const tone = (n: number | null | undefined) => (n == null || !Number.isFinite(n) || Math.abs(n) < 1e-12 ? "text-foreground" : n > 0 ? "text-up" : "text-down");
 
 /**
- * TradingView-style legend: plain text in the top-left corner (no box over the candles), OHLC + change + volume on the
- * first line, VWAP and the open position (per share · R · $ for own trades) on the second.
+ * TradingView-style legend: plain text in the top-left corner (no box over the candles). Line 1: ticker, time, OHLC and
+ * the change against the previous bar. Line 2: volume with its ratio to the 20-bar average, change vs yesterday's close,
+ * VWAP and the open position (per share · R · $ for own trades). Narrow charts (container < lg) drop O/H/L and AVWAP.
  */
 export function ChartLegend({ info, ticker, tfLabel, className }: { info: LegendInfo | null; ticker: string; tfLabel: string; className?: string }) {
   if (!info) return null;
   const { bar, position: pos } = info;
-  const chg = bar.c - bar.o;
-  const chgPct = bar.o ? (chg / bar.o) * 100 : null;
+  const base = info.prevBarClose ?? bar.o;
+  const chg = bar.c - base;
+  const chgPct = base ? (chg / base) * 100 : null;
   const vsPrev = info.prevClose ? ((bar.c - info.prevClose) / info.prevClose) * 100 : null;
   const dir = info.side === "short" ? -1 : 1;
   const open = !!pos && pos.avg != null;
@@ -51,19 +60,19 @@ export function ChartLegend({ info, ticker, tfLabel, className }: { info: Legend
       )}
       aria-live="off"
     >
-      <div className="flex flex-wrap items-center gap-x-2.5 whitespace-nowrap sm:flex-nowrap sm:overflow-hidden [&>*]:shrink-0">
+      <div className="flex items-center gap-x-2.5 overflow-hidden whitespace-nowrap [&>*]:shrink-0">
         <span className="font-semibold text-foreground">{ticker} <span className="font-normal text-muted-foreground">· {tfLabel}</span></span>
-        <span className={cn(info.hovered ? "text-foreground" : "")}>{fmtEtDateTime(bar.t)}</span>
-        <span>O <b className="font-medium text-foreground">{fmtPrice(bar.o)}</b></span>
-        <span>H <b className="font-medium text-foreground">{fmtPrice(bar.h)}</b></span>
-        <span>L <b className="font-medium text-foreground">{fmtPrice(bar.l)}</b></span>
-        <span>C <b className={cn("font-medium", tone(chg))}>{fmtPrice(bar.c)}</b> <span className={tone(chg)}>{fmtPct(chgPct)}</span></span>
-        <span className="hidden sm:inline">V <b className="font-medium text-foreground">{fmtCompact(bar.v)}</b>{info.rvol != null && info.rvol >= 1.5 && <span className="ml-1 text-[hsl(var(--chart-3))]" title={chartI18n.t("legend.rvolTitle")}>×{info.rvol.toFixed(1)}</span>}</span>
+        <span className={cn(info.hovered ? "text-foreground" : "")}><span className="hidden @lg:inline">{fmtEtDateTime(bar.t)}</span><span className="@lg:hidden">{fmtEtTime(bar.t)}</span></span>
+        <span className="hidden @lg:inline">O <b className="font-medium text-foreground">{fmtPrice(bar.o)}</b></span>
+        <span className="hidden @lg:inline">H <b className="font-medium text-foreground">{fmtPrice(bar.h)}</b></span>
+        <span className="hidden @lg:inline">L <b className="font-medium text-foreground">{fmtPrice(bar.l)}</b></span>
+        <span>C <b className={cn("font-medium", tone(chg))}>{fmtPrice(bar.c)}</b> <span className={tone(chg)} title={chartI18n.t("legend.chgTitle")}>{fmtSigned(chg, bar.c)} ({fmtPct(chgPct)})</span></span>
       </div>
       <div className="flex items-center gap-x-2.5 overflow-hidden whitespace-nowrap [&>*]:shrink-0">
-        {vsPrev != null && <span className="hidden sm:inline" title={chartI18n.t("legend.vsPrevTitle")}>{chartI18n.t("legend.vsPrev")} <b className={cn("font-medium", tone(vsPrev))}>{fmtPct(vsPrev)}</b></span>}
+        <span>V <b className="font-medium text-foreground">{fmtCompact(bar.v)}</b>{info.volRatio != null && <span className={cn("ml-1", info.volRatio >= 1.5 ? "text-[hsl(var(--chart-3))]" : "")} title={chartI18n.t("legend.volTitle")}>×{info.volRatio.toFixed(1)}</span>}</span>
+        {vsPrev != null && <span className="hidden @md:inline" title={chartI18n.t("legend.vsPrevTitle")}>{chartI18n.t("legend.vsPrev")} <b className={cn("font-medium", tone(vsPrev))}>{fmtPct(vsPrev)}</b></span>}
         {info.vwap && <span>VWAP <b className="font-medium text-[hsl(var(--chart-5))]">{fmtPrice(info.vwap.vwap)}</b></span>}
-        {info.avwap != null && <span className="hidden sm:inline">AVWAP <b className="font-medium text-primary">{fmtPrice(info.avwap)}</b></span>}
+        {info.avwap != null && <span className="hidden @lg:inline">AVWAP <b className="font-medium text-primary">{fmtPrice(info.avwap)}</b></span>}
         {pos && pos.fillsSoFar > 0 && (open ? (
           <span className="text-foreground">
             {chartI18n.t("legend.position", { side: info.side === "short" ? commonI18n.t("trading.short") : commonI18n.t("trading.long"), price: fmtPrice(pos.avg) })}{" "}

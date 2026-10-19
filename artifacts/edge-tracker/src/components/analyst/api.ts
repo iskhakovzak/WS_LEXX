@@ -3,7 +3,7 @@
  */
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { http } from "@/lib/api/http";
+import { http, isApiError } from "@/lib/api/http";
 import { nullIfMissing } from "@/lib/api/errors";
 import { KEYS, POLL, STALE } from "@/lib/api/keys";
 import { openTradesQuery, type OpenTradeRow } from "@/lib/api/queries";
@@ -166,8 +166,17 @@ export function useAddToWatchlist() {
   });
 }
 
+/** Staff only (dailyfeed.manage); the desk may scan once per 10 minutes — inside the window the API answers 429. */
 export function runSourceScan(): Promise<{ rowsInserted: number; tickersWithData: number; durationMs: number }> {
   return http.post("/api/analyst-actions/refresh", { concurrency: 5 });
+}
+
+/** Whole minutes left in the scan cooldown when `err` is its 429 (details.retryAfterMs; 10 without it), else null. */
+export function scanCooldownMinutes(err: unknown): number | null {
+  if (!isApiError(err) || err.status !== 429) return null;
+  const details = err.field<{ retryAfterMs?: unknown }>("details");
+  const ms = Number(details?.retryAfterMs ?? err.field("retryAfterMs") ?? 10 * 60_000);
+  return Math.max(1, Math.ceil((Number.isFinite(ms) ? ms : 10 * 60_000) / 60_000));
 }
 
 /* ── Market reaction to ratings (2026-10 API; older builds → 404 → null, the UI hides the block) ── */
@@ -219,6 +228,13 @@ export type FirmWeightResponse = {
   generatedAt: string;
   coverage: { tickers: number; ratedTickers: number; warming: boolean };
 };
+/**
+ * Candles are still loading only while some rated tickers have none yet (ROMAN-28: the server kept `warming` on at
+ * «350 из 350», so the footer said «догружаются» next to a complete count and the query kept polling).
+ */
+export function candlesWarming(cov: { tickers: number; ratedTickers: number; warming: boolean } | null | undefined): boolean {
+  return !!cov?.warming && cov.tickers < cov.ratedTickers;
+}
 export type DayBucket = { trades: number; days: number; net: number; wins: number; losses: number; winRate: number | null; avgNet: number | null };
 export type MyDaysResponse = {
   trader: string | null;
@@ -265,7 +281,7 @@ export function useFirmWeight(days = 730) {
     queryKey: ["analyst-actions", "firm-weight", days],
     queryFn: () => getOptional<FirmWeightResponse>("/api/analyst-actions/firm-weight", { days }),
     staleTime: 15 * 60_000,
-    refetchInterval: (q) => (q.state.data?.coverage?.warming ? 3 * 60_000 : false),
+    refetchInterval: (q) => (candlesWarming(q.state.data?.coverage) ? 3 * 60_000 : false),
     refetchIntervalInBackground: false,
     retry: 0,
   });

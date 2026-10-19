@@ -20,6 +20,8 @@ export type CapabilityDef = {
   team?: boolean;
   own?: boolean;
   adminOnly?: boolean;
+  /** Off for curators by default (whole-desk data, people, broker, mass messages); the roles matrix warns on a grant. */
+  sensitive?: boolean;
 };
 
 /**
@@ -67,12 +69,12 @@ export const CAPABILITIES = [
   { key: "scaling.configure", group: G.risk },
   { key: "scaling.approve", group: G.risk, team: true },
   { key: "rules.manage.team", group: G.risk, team: true },
-  { key: "rules.violations.delete", group: G.risk },
+  { key: "rules.violations.delete", group: G.risk, sensitive: true },
 
   { key: "propreports.import", group: G.propreports, own: true },
   { key: "propreports.read.team", group: G.propreports, team: true },
-  { key: "propreports.configure", group: G.propreports },
-  { key: "propreports.sync", group: G.propreports },
+  { key: "propreports.configure", group: G.propreports, sensitive: true },
+  { key: "propreports.sync", group: G.propreports, sensitive: true },
 
   { key: "ratings.read.team", group: G.ratings, team: true },
   { key: "ratings.write", group: G.ratings, team: true },
@@ -88,17 +90,18 @@ export const CAPABILITIES = [
   { key: "checklist.template.edit", group: G.content },
   { key: "watchlist.manage", group: G.content },
 
-  { key: "users.manage", group: G.admin },
+  { key: "users.manage", group: G.admin, sensitive: true },
   { key: "users.manage.admins", group: G.admin, adminOnly: true },
   { key: "admin.reports", group: G.admin },
-  { key: "admin.audit", group: G.admin },
-  { key: "admin.backups.read", group: G.admin },
+  { key: "admin.audit", group: G.admin, sensitive: true },
+  { key: "admin.backups.read", group: G.admin, sensitive: true },
   { key: "admin.backups.run", group: G.admin, adminOnly: true },
-  { key: "telegram.broadcast", group: G.admin },
+  { key: "telegram.broadcast", group: G.admin, sensitive: true },
   { key: "digest.manage.any", group: G.admin, team: true },
   { key: "permissions.manage", group: G.admin, adminOnly: true },
   { key: "admin.errors", group: G.admin, adminOnly: true },
   { key: "settings.manage", group: G.admin, adminOnly: true },
+  { key: "usage.read", group: G.admin, adminOnly: true },
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number]["key"];
@@ -116,17 +119,18 @@ const MEMBER_CAPS: readonly Capability[] = [
   "playbook.edit", "ideas.publish", "watchlist.manage",
 ];
 
+/** Curator defaults: everything except adminOnly and `sensitive` caps (same as the API). */
 const CURATOR_CAPS: readonly Capability[] = [
   ...MEMBER_CAPS,
   "team.read", "users.read.team",
   "trades.read.team", "trades.write.any", "trades.review",
   "journal.read.team", "journal.review", "gameplan.publish", "dailyfeed.manage", "errors.manage.team",
   "risk.read.team", "risk.limits.edit", "scaling.read.team", "scaling.configure", "scaling.approve",
-  "rules.manage.team", "rules.violations.delete",
-  "propreports.read.team", "propreports.configure", "propreports.sync",
+  "rules.manage.team",
+  "propreports.read.team",
   "ratings.read.team", "ratings.write",
   "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate", "checklist.template.edit",
-  "users.manage", "admin.reports", "admin.audit", "admin.backups.read", "telegram.broadcast", "digest.manage.any",
+  "admin.reports", "digest.manage.any",
 ];
 
 export const DEFAULT_MATRIX: Readonly<Record<Role, readonly Capability[]>> = {
@@ -156,6 +160,10 @@ export type PermissionsMe = {
   /** True when the desk has overrides on top of the defaults. */
   customized: boolean;
   updatedAt: string | null;
+  /** Ladder tier as the playbook locks resolve it (trainee … lead); null for staff / guests. Absent on older API builds. */
+  tier?: "trainee" | "junior" | "trader" | "senior" | "lead" | null;
+  /** Desk settings for the simple menu (components/shell/nav-model.ts). Absent on older API builds. */
+  nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior" };
 };
 
 export type Target = { trader?: string | null };
@@ -191,6 +199,17 @@ export function canWith(me: PermissionsMe | null | undefined, cap: Capability, t
   if (def.own) return t === null || t === me.name;
   if (def.team && t !== null && t !== me.name && (me.scopes[cap] ?? DEFAULT_SCOPE) === "assigned") return me.wards.includes(t);
   return true;
+}
+
+/**
+ * Sensitive capabilities a pending matrix change GRANTS (OLGA-02 / OWNER-02: the owner sees a warning before saving).
+ * `defs` = the catalogue as served (flags included); a cell that removes a right never warns.
+ */
+export function sensitiveGrants(
+  changes: readonly { capability: Capability; allowed: boolean }[], defs: readonly CapabilityDef[] = CAPABILITY_DEFS,
+): Capability[] {
+  const sensitive = new Set(defs.filter((d) => d.sensitive).map((d) => d.key));
+  return [...new Set(changes.filter((c) => c.allowed && sensitive.has(c.capability)).map((c) => c.capability))];
 }
 
 /** Group capabilities for the Settings matrix, preserving the declaration order. */

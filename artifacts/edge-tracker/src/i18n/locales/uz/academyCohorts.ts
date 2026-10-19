@@ -222,6 +222,7 @@ export default {
     tabAttendance: "Davomat",
     tabHistory: "Tarix",
     members: {
+      cohortStage: "Risk-deskdagi tir. Kogortada «{stage}» bosqichi yozilgan",
       title: "Tarkib",
       description: "Bosqichlar: {ladder}. Bosqich va holat oʻzgarishlari tarixga yoziladi.",
       enroll: "Roʻyxatga olish",

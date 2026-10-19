@@ -264,41 +264,21 @@ export type MarketEventLite = {
   session?: string | null;
 };
 
-export type DrawingType = "hline" | "trend" | "rect" | "fib";
+export type DrawingType = "hline" | "trend" | "rect";
+/** Colour role of a drawing (theme tokens, never a hex): accent · up · down · warn. */
+export type DrawingRole = "accent" | "up" | "down" | "warn";
 export type DrawingPoint = { time: number; price: number };
 export type Drawing = {
   id: string;
   type: DrawingType;
   points: DrawingPoint[];
-  color?: string;
+  role?: DrawingRole;
+  label?: string | null;
   createdAt: number;
 };
 
-export type ChartMode = "analysis" | "replay" | "training";
-
-/**
- * One finished training attempt (paper trading over a past session with the future hidden). Money is the trainee's
- * own paper size — never another trader's $. Stored per browser (see lib/training-sim TRAINING_HISTORY_KEY).
- */
-export type TrainingResult = {
-  at: number;
-  tradeId: number;
-  ticker: string;
-  day: string;
-  /** 0–100: share of the best possible move in the watched bars that the trainee captured. */
-  score: number | null;
-  pnlUsd: number;
-  r: number | null;
-  perShare: number | null;
-  /** Trainee per share − the real trade per share (null when either is unknown). */
-  vsRealPerShare: number | null;
-  trades: number;
-  /** Task source («mine» / «desk» / «day»); tradeId is 0 for a ticker-day task. Absent in older records. */
-  source?: "mine" | "desk" | "day";
-  /** The real trade per share and in R (null / absent when there was no trade or no stop). */
-  realPerShare?: number | null;
-  realR?: number | null;
-};
+/** «Анализ» (the whole day, the trade in context) or «Реплей» (bar by bar up to a cursor). */
+export type ChartMode = "analysis" | "replay";
 
 export type SparkPoint = { x: number; y: number };
 export type SparkData = {

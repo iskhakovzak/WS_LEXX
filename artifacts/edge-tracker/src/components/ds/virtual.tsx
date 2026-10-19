@@ -19,8 +19,9 @@ import * as React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 
-/** Scroll element of the nearest DataTable (null outside of one). */
-export const ScrollContainerContext = React.createContext<React.RefObject<HTMLElement | null> | null>(null);
+// The context lives in its own tiny module so ds.tsx (entry bundle) does not pull @tanstack/react-virtual in.
+import { ScrollContainerContext } from "@/components/ds/scroll-context";
+export { ScrollContainerContext };
 
 export function VirtualRows<Row>({
   rows,

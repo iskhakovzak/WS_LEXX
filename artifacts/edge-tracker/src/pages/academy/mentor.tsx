@@ -17,7 +17,7 @@ import {
 } from "@/components/academy/cohorts/api";
 import { ActionDialog, EnrollmentEditDialog, GoalDialog, MeetingDialog, RosterDialog } from "@/components/academy/cohorts/dialogs";
 import {
-  ATT_TONE, DualTime, GoalCard, StagePill, WhereLine, dateTimeLocal, fmtYmd, withNodes,
+  ATT_TONE, DualTime, GoalCard, StagePill, WhereLine, dateTimeDesk, fmtYmd, withNodes,
 } from "@/components/academy/cohorts/shared";
 import { fmtRate } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
@@ -34,7 +34,7 @@ export default function AcademyMentorPage() {
   const { isCurator, user } = useAuth();
   const search = useSearch();
   const [all, setAll] = useState(false);
-  const q = useMentorDashboard(all);
+  const q = useMentorDashboard(all, isCurator);
   const d = q.data;
   const [selected, setSelected] = useState<string | null>(() => new URLSearchParams(search).get("student"));
   useEffect(() => { const s = new URLSearchParams(search).get("student"); if (s) setSelected(s); }, [search]);
@@ -195,7 +195,7 @@ function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; se
                         </div>
                       )}
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {t("mentorPage.students.lastMeeting", { when: s.lastMeetingAt ? dateTimeLocal(s.lastMeetingAt) : t("mentorPage.students.never") })}{" "}
+                        {t("mentorPage.students.lastMeeting", { when: s.lastMeetingAt ? dateTimeDesk(s.lastMeetingAt) : t("mentorPage.students.never") })}{" "}
                         <button type="button" className="text-primary hover:underline" onClick={(e) => { e.stopPropagation(); onMeeting(u); }}>{t("mentorPage.students.record")}</button>
                       </div>
                     </td>
@@ -319,7 +319,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
           <ul className="flex flex-col gap-2">
             {meetings.data?.meetings.slice(0, allMeetings ? undefined : 6).map((m) => (
               <li key={m.id} className="glass-field rounded-xl px-3 py-2 text-sm">
-                <div className="flex flex-wrap gap-2"><b className="tabular-nums">{dateTimeLocal(m.metAt)}</b><span className="text-muted-foreground">{personName(m.mentor)}{m.durationMin ? ` · ${ct("time.minutesShort", { count: m.durationMin })}` : ""}</span></div>
+                <div className="flex flex-wrap gap-2"><b className="tabular-nums">{dateTimeDesk(m.metAt)}</b><span className="text-muted-foreground">{personName(m.mentor)}{m.durationMin ? ` · ${ct("time.minutesShort", { count: m.durationMin })}` : ""}</span></div>
                 {m.agenda && <p className="mt-1">{m.agenda}</p>}
                 {m.notes && <p className="mt-1 whitespace-pre-line text-muted-foreground">{m.notes}</p>}
                 {m.privateNotes && <p className="mt-1 whitespace-pre-line text-xs text-warn">{t("mentorPage.detail.privately", { text: m.privateNotes })}</p>}
@@ -391,7 +391,7 @@ function MeetingLog({ d }: { d: MentorDashboard }) {
         {d.meetings.slice(0, all ? undefined : 12).map((m) => (
           <li key={m.id} className="glass-field rounded-xl px-3 py-2 text-sm">
             <div className="flex flex-wrap items-center gap-2">
-              <b className="tabular-nums">{dateTimeLocal(m.metAt)}</b>
+              <b className="tabular-nums">{dateTimeDesk(m.metAt)}</b>
               <span className="font-medium">{personName(m.student)}</span>
               <span className="text-xs text-muted-foreground">{t("mentorPage.log.with", { mentor: personName(m.mentor), format: meetingFormatLabel(m.format, true) })}</span>
             </div>

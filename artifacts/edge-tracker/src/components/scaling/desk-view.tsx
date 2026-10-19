@@ -193,7 +193,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
                       </td>
                       <td className="text-right">{fmtMetric("x", pf)}</td>
                       <td className={cn("text-right", dd != null && dd >= 100 ? "text-down" : dd != null && dd >= 50 ? "text-[hsl(var(--chart-3))]" : "")} title={metricsMeta.get("max_dd_pct")?.hint}>
-                        {dd != null ? fmtMetric("pct", dd) : fmtMetric("usd", metric(r, "max_dd_usd"))}
+                        {dd != null ? t("pctOfLimit", { value: fmtMetric("pct", dd) }) : fmtMetric("usd", metric(r, "max_dd_usd"))}
                       </td>
                       <td className="text-right">{fmtMetric("score", disc)}</td>
                       <td className={cn("text-right", br ? "text-down" : "")}>{fmtMetric("count", br)}</td>

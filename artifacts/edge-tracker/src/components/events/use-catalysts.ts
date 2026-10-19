@@ -1,7 +1,8 @@
 // Data layer of «Катализаторы»: everything is pulled automatically — the macro calendar (holiday_calendar),
-// earnings of the trader's tickers (watchlist ∪ most traded), the trader's own trades — and folded through the
-// pure math in catalyst-math.ts. Only GET endpoints that already exist; `tickers=` on /earnings/upcoming is an
-// additive hint (newer API keeps those tickers beyond the market-cap limit), the client filters either way.
+// earnings of the trader's tickers (watchlist ∪ most traded), the trader's own closed trades as a server day book
+// (GET /api/events/day-book: day × ticker aggregates, ~50 kB instead of the 3.9 MB trade list) — and folded through
+// the pure math in catalyst-math.ts. `tickers=` on /earnings/upcoming is an additive hint (newer API keeps those
+// tickers beyond the market-cap limit), the client filters either way.
 import { useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useListEvents, type MarketEvent } from "@workspace/api-client-react";
@@ -9,11 +10,10 @@ import { http } from "@/lib/api/http";
 import { KEYS, STALE } from "@/lib/api/keys";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { useHolidaysRange } from "@/lib/market-intel";
-import { useTradesWindow } from "@/hooks/use-trades-window";
 import { useEarningsWatch, type CallType, type EarningsHistory, type UpcomingData, type UpcomingItem } from "@/components/shared/market/earnings-api";
 import {
-  buildDayBook, categoriesByDate, closedDates, edgeByCategory, earningsEdge, focusDay, frequentTickers, nyMinutesOf,
-  prevTradingDay, type BookTrade, type MacroRow, type TickerHistory,
+  buildDayBook, calendarCoverage, categoriesByDate, cellsFromDayBook, closedDates, edgeByCategory, earningsEdge, focusDay,
+  frequentTickers, nyMinutesOf, prevTradingDay, type DayBookPayload, type DayCell, type MacroRow, type TickerHistory,
 } from "./catalyst-math";
 import { dayOf } from "./event-meta";
 import { eventsI18n } from "@/i18n/ns/events";
@@ -74,13 +74,28 @@ export function useHistories(tickers: string[]) {
   }, [results.map((r) => r.dataUpdatedAt + ":" + r.status).join("|"), tickers.join(",")]);
 }
 
+/** The trader's (or the desk's) closed trades as day × ticker cells — GET /api/events/day-book. */
+export function useDayBook(trader: string | null) {
+  return useQuery({
+    queryKey: ["catalysts", "day-book", trader ?? ""],
+    queryFn: ({ signal }) => http.get<DayBookPayload>(`/api/events/day-book${trader ? `?trader=${encodeURIComponent(trader)}` : ""}`, { signal }),
+    staleTime: 60_000,
+    select: cellsFromDayBook,
+  });
+}
+
+/** How far back the macro calendar is requested: 3 years covers the whole trade history the desk keeps. */
+export const CALENDAR_BACK_DAYS = 3 * 365;
+
 export type CatalystData = ReturnType<typeof useCatalysts>;
 
 /** Everything the page needs for one trader. */
 export function useCatalysts(trader: string | null) {
   const today = nyDate();
-  const trades = useTradesWindow({ trader: trader || null }, { staleTime: 60_000 });
-  const holidays = useHolidaysRange(addDays(today, -400), addDays(today, 120));
+  // Kept as `trades` for the views (loading / error / retry); the data are day cells, not trade rows.
+  const trades = useDayBook(trader || null);
+  const calendarFrom = addDays(today, -CALENDAR_BACK_DAYS);
+  const holidays = useHolidaysRange(calendarFrom, addDays(today, 120));
   const watchlist = useWatchlistTickers();
   const notesQ = useListEvents();
   const watch = useEarningsWatch();
@@ -88,16 +103,23 @@ export function useCatalysts(trader: string | null) {
   const rows = useMemo<MacroRow[]>(() => (holidays.data?.events ?? []) as MacroRow[], [holidays.data]);
   const cats = useMemo(() => categoriesByDate(rows), [rows]);
   const closed = useMemo(() => closedDates(rows), [rows]);
-  const tradeRows = useMemo<BookTrade[]>(() => (trades.data ?? []) as unknown as BookTrade[], [trades.data]);
-  const book = useMemo(() => buildDayBook(tradeRows), [tradeRows]);
-  const edge = useMemo(() => edgeByCategory(book, cats, closed), [book, cats, closed]);
-  const frequent = useMemo(() => frequentTickers(tradeRows, 15, 3), [tradeRows]);
+  /** The calendar's span: the edge analysis is clipped to it (days before it are unknown, not «обычные»). */
+  const coverage = useMemo(() => calendarCoverage(rows, calendarFrom), [rows, calendarFrom]);
+  const cells = useMemo<DayCell[]>(() => trades.data ?? [], [trades.data]);
+  const book = useMemo(() => buildDayBook(cells), [cells]);
+  const edge = useMemo(
+    () => edgeByCategory(book, cats, closed, coverage ? { from: coverage.from, to: coverage.to } : {}),
+    [book, cats, closed, coverage],
+  );
+  /** First traded day of the whole book — when it is before `coverage.from`, the view says what was left out. */
+  const firstTraded = useMemo(() => [...book.keys()].sort()[0] ?? null, [book]);
+  const frequent = useMemo(() => frequentTickers(cells, 15, 3), [cells]);
   /** All closed trades per ticker (any count) — «ваша история в тикере» next to a reporter. */
   const tickerStats = useMemo(() => {
     const m = new Map<string, { n: number; net: number; last: string }>();
-    for (const t of frequentTickers(tradeRows, 10_000, 1)) m.set(t.ticker, { n: t.n, net: t.net, last: t.lastDate });
+    for (const t of frequentTickers(cells, 10_000, 1)) m.set(t.ticker, { n: t.n, net: t.net, last: t.lastDate });
     return m;
-  }, [tradeRows]);
+  }, [cells]);
 
   const watchSet = useMemo(() => new Set(watchlist.data ?? []), [watchlist.data]);
   const tradedSet = useMemo(() => new Set(frequent.map((f) => f.ticker)), [frequent]);
@@ -146,7 +168,7 @@ export function useCatalysts(trader: string | null) {
 
   return {
     today, focus,
-    trades, tradeRows, holidays, rows, cats, closed, book, edge, frequent, tickerStats,
+    trades, cells, holidays, rows, cats, closed, coverage, firstTraded, book, edge, frequent, tickerStats,
     watchlist, watchSet, tradedSet, myTickers,
     upcoming, watch, earningsByDate, reportersFor,
     notesQ, notes,
@@ -154,11 +176,11 @@ export function useCatalysts(trader: string | null) {
 }
 
 /** Earnings edge per ticker from loaded histories (pure fold, memoised by the caller). */
-export function edgesFrom(trades: BookTrade[], tickers: string[], histories: Map<string, EarningsHistory>) {
+export function edgesFrom(cells: DayCell[], tickers: string[], histories: Map<string, EarningsHistory>) {
   return tickers
     .map((t) => histories.get(t))
     .filter((h): h is EarningsHistory => !!h && h.quarters.length > 0)
-    .map((h) => earningsEdge(trades, { ticker: h.ticker, quarters: h.quarters } as TickerHistory));
+    .map((h) => earningsEdge(cells, { ticker: h.ticker, quarters: h.quarters } as TickerHistory));
 }
 
 export const callLabel = (c: CallType | string | null | undefined) =>

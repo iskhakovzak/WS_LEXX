@@ -36,3 +36,5 @@ export const transcribeLimiter = perUser(10 * 60 * 1000, 30);
 export const voiceNoteLimiter = perUser(10 * 60 * 1000, 30);
 /** AI text endpoints (author-notes improve / weekly-summary / team-summary, junior-notes improve) — one shared bucket. */
 export const aiTextLimiter = perUser(10 * 60 * 1000, 20);
+/** POST /usage/batch — the web tracker flushes every ~15 s and on page hide; 30 a minute leaves room for tab hops. */
+export const usageLimiter = perUser(60 * 1000, 30);

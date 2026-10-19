@@ -66,6 +66,7 @@ export default {
   },
 
   kpi: {
+    profitFactor: "Profit factor",
     streak: "streak: {count} up",
     streakLoss: "streak: {count} down",
     ofDays: "{value} of {total}",

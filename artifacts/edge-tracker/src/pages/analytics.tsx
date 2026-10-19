@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import { useGetTopPatterns } from "@workspace/api-client-react";
-import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
+import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
 import { comparePersonNames, personName } from "@/i18n";
 import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -22,23 +22,29 @@ import { PsychologyTab } from "@/components/analytics-page/PsychologyTab";
 import {
   type AnalyticsFilters, type DimensionKey, type Unit,
   DEFAULT_FILTERS, DIMENSIONS, applyAnalyticsFilters, applyNonPeriodFilters, activeFilterCount, horizonLabel,
-  realizedR, pnlValue, accountOf, sourceOf, periodRange,
+  realizedR, pnlValue, accountOf, sourceOf, periodRange, withHotkeys,
 } from "@/components/analytics-page/metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 
 type TabKey = "overview" | "edge" | "matrix" | "whatif" | "montecarlo" | "desk" | "psychology" | "pro";
 
-const TAB_DEFS: { value: TabKey; icon: typeof LayoutDashboard; key: string; curatorOnly?: boolean }[] = [
-  { value: "overview", key: "1", icon: LayoutDashboard },
-  { value: "edge", key: "2", icon: Layers },
-  { value: "matrix", key: "3", icon: Grid3x3 },
-  { value: "whatif", key: "4", icon: FlaskConical },
-  { value: "montecarlo", key: "5", icon: Dices },
-  { value: "desk", key: "6", icon: Users, curatorOnly: true },
-  { value: "psychology", key: "7", icon: Brain },
-  { value: "pro", key: "8", icon: LineChart },
+// Hotkeys follow the VISIBLE order (1…N): a trader without the staff-only tab gets 1–7, not 1–8 with a gap (MAKSIM-32).
+const TAB_DEFS: { value: TabKey; icon: typeof LayoutDashboard; curatorOnly?: boolean }[] = [
+  { value: "overview", icon: LayoutDashboard },
+  { value: "edge", icon: Layers },
+  { value: "matrix", icon: Grid3x3 },
+  { value: "whatif", icon: FlaskConical },
+  { value: "montecarlo", icon: Dices },
+  { value: "desk", icon: Users, curatorOnly: true },
+  { value: "psychology", icon: Brain },
+  { value: "pro", icon: LineChart },
 ];
+
+/** Tabs a viewer sees, each with its hotkey «1»…«9» by position. */
+function visibleTabDefs(isCurator: boolean) {
+  return withHotkeys(TAB_DEFS.filter((d) => !d.curatorOnly || isCurator));
+}
 
 const STORAGE_KEY = "analytics.page.v2";
 
@@ -61,9 +67,12 @@ function loadSaved(): Saved {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return fromUrl ? { ...fallback, tab: fromUrl } : fallback;
     const s = JSON.parse(raw) as Partial<Saved>;
+    const filters = { ...DEFAULT_FILTERS, ...(s.filters ?? {}) };
+    // «Всё время» is never restored (DEV-01): every visit starts on the cheap default window.
+    if (filters.period === "all") filters.period = DEFAULT_FILTERS.period;
     return {
       tab: fromUrl ?? asTab(s.tab) ?? fallback.tab,
-      filters: { ...DEFAULT_FILTERS, ...(s.filters ?? {}) },
+      filters,
       unit: s.unit === "usd" ? "usd" : "r",
       dimension: DIMENSIONS.some((d) => d.key === s.dimension) ? (s.dimension as DimensionKey) : fallback.dimension,
     };
@@ -82,10 +91,15 @@ export default function Analytics() {
   const [tab, setTab] = useState<TabKey>(saved.tab);
   const [filters, setFilters] = useState<AnalyticsFilters>(saved.filters);
 
-  // Server-side window (P1-5): the period + the equally long previous one (comparison), one trader when picked.
-  // "Всё время" still loads the whole scoped book.
+  // Server-side window (DEV-01): the period first, the equally long previous one after it (comparison only), one
+  // trader when picked. "Всё время" (on demand) still loads the whole scoped book.
   const periodWin = useMemo(() => periodRange(filters.period), [filters.period]);
-  const { data: trades = [], isLoading, isError, refetch } = useTradesWindow({ from: periodWin?.prevFrom ?? null, trader: filters.trader || null });
+  const { data: trades = [], isLoading, isError, refetch, prevLoading } = usePeriodTrades({
+    from: periodWin?.from ?? null,
+    prevFrom: periodWin?.prevFrom ?? null,
+    prevTo: periodWin?.prevTo ?? null,
+    trader: filters.trader || null,
+  });
   const facets = useTradesBookFacets();
   // The book itself is empty (not just the chosen window) — only then show the "no trades yet" state.
   const bookEmpty = facets.data ? facets.data.total === 0 : trades.length === 0 && filters.period === "all" && !filters.trader;
@@ -115,7 +129,7 @@ export default function Analytics() {
     if (user && !isCurator && dimension === "source") setDimension("horizon");
   }, [user, isCurator, dimension]);
   const visibleTabs = useMemo(
-    () => TAB_DEFS.filter((d) => !d.curatorOnly || isCurator).map((d) => {
+    () => visibleTabDefs(isCurator).map((d) => {
       const Icon = d.icon;
       return { value: d.value, key: d.key, label: <><Icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`tabs.${d.value}`)}</> };
     }),
@@ -153,7 +167,10 @@ export default function Analytics() {
     return { traders, setups, hasNoSetup: scope.some((tr) => !tr.setup), tickers, accounts, hasMixedSources: sources.size > 1 };
   }, [trades, filters.trader, facets.data]);
 
-  const { current, previous } = useMemo(() => applyAnalyticsFilters(trades, filters), [trades, filters]);
+  const filtered = useMemo(() => applyAnalyticsFilters(trades, filters), [trades, filters]);
+  const current = filtered.current;
+  // The comparison window loads after the current one: no deltas until it is there (never a half-loaded «previous»).
+  const previous = prevLoading ? null : filtered.previous;
   const hasR = useMemo(() => current.some((tr) => realizedR(tr) != null), [current]);
   const hasPnl = useMemo(() => current.some((tr) => pnlValue(tr) != null), [current]);
   const unit: Unit | null = unitPref === "usd" && hasPnl ? "usd" : hasR ? "r" : hasPnl ? "usd" : null;

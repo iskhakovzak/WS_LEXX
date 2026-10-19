@@ -14,7 +14,7 @@ import {
 } from "@/components/academy/cohorts/api";
 import { CohortDialog, EnrollDialog, EnrollmentEditDialog, RosterDialog, SessionDialog } from "@/components/academy/cohorts/dialogs";
 import {
-  AttendanceSummaryView, DualTime, StagePill, StatusPill, WhereLine, dateTimeLocal, fmtYmd,
+  AttendanceSummaryView, DualTime, StagePill, StatusPill, WhereLine, dateTimeDesk, fmtYmd,
 } from "@/components/academy/cohorts/shared";
 import { fmtRate } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
@@ -37,7 +37,8 @@ export default function AcademyCohortsPage() {
   const [selectedId, setSelectedId] = useState<number | null>(() => Number(new URLSearchParams(search).get("id")) || null);
   useEffect(() => {
     if (!cohorts.length) return;
-    if (!selectedId || !cohorts.some((c) => c.id === selectedId)) setSelectedId(cohorts[0].id);
+    // Default: my own cohort (I am its mentor), else the first one (OLGA-19).
+    if (!selectedId || !cohorts.some((c) => c.id === selectedId)) setSelectedId((cohorts.find((c) => c.mine) ?? cohorts[0]).id);
   }, [cohorts, selectedId]);
   const [createOpen, setCreateOpen] = useState(false);
   const seed = useSeedDemo();
@@ -136,6 +137,7 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
   const d = q.data;
   const c = d.cohort;
   const isArchived = !!c.archivedAt;
+  const canEdit = d.canEdit ?? staff;
   const toggleArchive = () => {
     if (!isArchived && !window.confirm(t("cohortsPage.archiveConfirm", { name: c.name }))) return;
     archive.mutate({ id: c.id, restore: isArchived }, {
@@ -151,7 +153,7 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
           {formatLabel(c.format)} · {c.mentor ? t("cohortsPage.mentorBy", { name: personName(c.mentor) }) : t("cohortsPage.noMentor")} · {fmtYmd(c.startsOn, true)}{c.endsOn ? ` – ${fmtYmd(c.endsOn, true)}` : ""} · {c.timezone}
           {isArchived && <> · <b>{t("cohortsPage.inArchive")}</b></>}
         </>}
-        actions={staff ? <>
+        actions={canEdit ? <>
           {!isArchived && <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}><Pencil className="mr-1 h-4 w-4" aria-hidden="true" />{ct("actions.edit")}</Button>}
           <Button size="sm" variant="ghost" onClick={toggleArchive} disabled={archive.isPending}>
             {isArchived ? <><RotateCcw className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.restore")}</> : <><Archive className="mr-1 h-4 w-4" aria-hidden="true" />{ct("actions.archive")}</>}
@@ -181,7 +183,7 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
       {tab === "schedule" && <Schedule d={d} staff={staff && !isArchived} />}
       {tab === "attendance" && <AttendanceTab d={d} />}
       {tab === "history" && staff && <HistoryTab d={d} />}
-      {staff && <CohortDialog open={editOpen} onOpenChange={setEditOpen} cohort={c} />}
+      {canEdit && <CohortDialog open={editOpen} onOpenChange={setEditOpen} cohort={c} />}
     </div>
   );
 }
@@ -246,7 +248,7 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
                       : <span className="font-medium">{personName(e.userName)}</span>}
                     {e.note && <div className="text-xs text-muted-foreground">{e.note}</div>}
                   </td>
-                  <td><StagePill stage={e.stage} /></td>
+                  <td><StagePill stage={e.deskTier ?? e.stage} title={e.deskTier && e.deskTier !== e.stage ? t("cohortsPage.members.cohortStage", { stage: e.stageLabel }) : undefined} /></td>
                   <td><StatusPill status={e.status} /></td>
                   <td className="whitespace-nowrap">{fmtYmd(e.joinedOn)}</td>
                   <td className="text-right">{e.attendance ? fmtRate(e.attendance.rate) : "—"}</td>
@@ -420,7 +422,7 @@ function HistoryTab({ d }: { d: CohortDetail }) {
       <ol className="flex flex-col divide-y divide-border/50">
         {d.history.map((h) => (
           <li key={h.id} className="flex flex-wrap items-baseline gap-x-3 py-1.5 text-sm">
-            <span className="tabular-nums text-muted-foreground">{dateTimeLocal(h.changedAt)}</span>
+            <span className="tabular-nums text-muted-foreground">{dateTimeDesk(h.changedAt)}</span>
             <span className="font-medium">{personName(h.userName)}</span>
             {h.fromStage !== h.toStage && h.toStage && <span>{h.fromStage ? stageLabel(h.fromStage) : "—"} → <b>{stageLabel(h.toStage)}</b></span>}
             {h.fromStatus !== h.toStatus && h.toStatus && <span>{h.fromStatus ? statusLabel(h.fromStatus) : "—"} → <b>{statusLabel(h.toStatus)}</b></span>}

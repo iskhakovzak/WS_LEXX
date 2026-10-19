@@ -20,7 +20,7 @@ export default {
     addFailed: "Не удалось добавить",
     noAccess: "Нет доступа к сделке",
     updatedIn: "Обновлено в «{name}» · {tier}",
-    addedOne: "Сделка → «{name}» · {tier}",
+    addedOne: "Добавлено в «{name}» · {tier}",
     addedMany: "{trades} → «{name}» · {tier}",
     setupFallback: "сетап",
     skipped: "· пропущено {count}",
@@ -50,7 +50,12 @@ export default {
     update: "Обновить",
     add: "Добавить",
     addN: "Добавить {count}",
-    dialogDesc: "Выберите сетап и тир для {trades}",
+    dialogDesc: {
+      one: "Выберите сетап и тир для {count} сделки",
+      few: "Выберите сетап и тир для {count} сделок",
+      many: "Выберите сетап и тир для {count} сделок",
+      other: "Выберите сетап и тир для {count} сделки",
+    },
   },
   /** add-to-playbook.tsx — the full «Новый сетап» dialog for any source. */
   add: {

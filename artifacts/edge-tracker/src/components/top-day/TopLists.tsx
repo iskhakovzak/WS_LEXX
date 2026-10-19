@@ -3,16 +3,17 @@
  * the viewer's own place when they are outside both lists. A row opens that trader-day (TraderDaySheet).
  */
 import * as React from "react";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { TrendingDown, TrendingUp, UserRound } from "lucide-react";
 import { EmptyState, Panel, toneOf, toneText } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtUsd } from "@/lib/format";
-import { personName } from "@/i18n";
+import { personInitials, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { topDayI18n } from "@/i18n/ns/topDay";
 import type { TopDay, TopRow } from "./api";
+import { displayTicker } from "@/lib/option-symbol";
 
 /** «Трейдер 3» / «Я» / the real name (staff, named mode). */
 export function whoLabel(row: { me: boolean; name: string | null; alias: number }): string {
@@ -21,7 +22,11 @@ export function whoLabel(row: { me: boolean; name: string | null; alias: number 
   return topDayI18n.t("trader", { n: row.alias });
 }
 
-export function AliasBadge({ row, className }: { row: { me: boolean; alias: number }; className?: string }) {
+/**
+ * The avatar circle: «Я» for the viewer, initials when the name is known (staff), else a person icon — never the alias
+ * number, which read as a second rank next to the place (OWNER-24); the «Трейдер N» label carries the alias.
+ */
+export function AliasBadge({ row, className }: { row: { me: boolean; alias: number; name?: string | null }; className?: string }) {
   return (
     <span
       aria-hidden="true"
@@ -31,7 +36,7 @@ export function AliasBadge({ row, className }: { row: { me: boolean; alias: numb
         className,
       )}
     >
-      {row.me ? topDayI18n.t("me").slice(0, 1) : row.alias}
+      {row.me ? topDayI18n.t("me").slice(0, 1) : row.name ? personInitials(row.name) : <UserRound className="h-3.5 w-3.5 text-muted-foreground" />}
     </span>
   );
 }
@@ -67,8 +72,8 @@ function Row({ row, onOpen }: { row: TopRow; onOpen: (alias: number) => void }) 
           <span className="mt-1 flex flex-wrap items-center gap-1 text-2xs text-muted-foreground">
             <span className="tabular-nums">{commonI18n.t("units.tradesShort", { count: row.trades })}</span>
             {chips.map((c) => (
-              <span key={c.ticker} className={cn("chip px-1.5 py-0.5 font-medium tabular-nums", c.net != null && toneText(toneOf(c.net)))}>
-                {c.ticker}
+              <span key={c.ticker} title={c.ticker} className={cn("chip px-1.5 py-0.5 font-medium tabular-nums", c.net != null && toneText(toneOf(c.net)))}>
+                {displayTicker(c.ticker)}
               </span>
             ))}
             {more > 0 && <span className="tabular-nums">{t("day.more", { count: more })}</span>}
@@ -120,7 +125,7 @@ export function TopLists({ date, q, onOpen }: {
 }) {
   const { t } = topDayI18n.useT();
   const day = q.data;
-  const title = date ? <span className="inline-block first-letter:uppercase">{fmtDate(date, "weekdayDayMonthLong")}</span> : t("title");
+  const title = date ? <span className="inline-block first-letter:uppercase">{fmtDate(date, date.slice(0, 4) === String(new Date().getFullYear()) ? "weekdayDayMonthLong" : "full")}</span> : t("title");
   const description = day && day.desk.traders > 0
     ? [
         day.desk.net != null ? t("day.desk", { net: fmtUsd(day.desk.net, { signed: true, decimals: "auto" }) }) : null,

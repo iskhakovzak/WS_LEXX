@@ -9,7 +9,7 @@
  *               (сделки «которых не должно быть» — их нетто целиком; размер сверх лимита — доля нетто от лишнего размера;
  *               убыток сверх лимита на сделку — только перебор). Отрицательное = нарушение стоило денег.
  */
-import { hhmmToMinutes } from "./rulesCatalog";
+import { hhmmToMinutes, thresholdRaw } from "./rulesCatalog";
 import { renderViolation, type ViolationMsg } from "./rulesI18n";
 
 export type RuleKind =
@@ -344,7 +344,7 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
       break;
     }
     case "min_pause_after_loss": {
-      const min = th(t.min) ?? 10;
+      const min = th(thresholdRaw(rule.kind, t, "min")) ?? 10;
       for (const [day, list] of groupBy(trades, (x) => x.date)) {
         let lastLossExit: number | null = null;
         for (const tr of list) {

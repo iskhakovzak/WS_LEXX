@@ -113,7 +113,7 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
           hint={t("person.stats.netHint", { days: t("units.tradingDaysShort", { count: s.tradingDays }), trades: commonI18n.t("units.trades", { count: s.trades ?? 0 }) })}
         />
         <StatCard label={t("person.stats.wrPf")} value={`${pctOrDash(s.winRate)} · ${s.profitFactor == null ? "—" : `${s.profitFactor.toFixed(2)}×`}`} hint={t("person.stats.wrPfHint")} />
-        <StatCard label={t("person.stats.maxDd")} value={fmtUsd(s.maxDd, { decimals: 0 })} tone={s.maxDd ? "down" : "neutral"} hint={t("person.stats.bestDayHint", { value: pctOrDash(s.consistency) })} />
+        <StatCard label={t("person.stats.maxDd")} value={fmtUsd(s.maxDd, { decimals: 0 })} tone={s.maxDd ? "down" : "neutral"} hint={s.consistency != null ? t("person.stats.bestDayHint", { value: pctOrDash(s.consistency) }) : t("person.stats.bestDayNone")} />
         <StatCard label={t("person.stats.feesDiscipline")} value={`${pctOrDash(s.feeShare)} · ${s.disciplineIndex == null ? "—" : Math.round(s.disciplineIndex)}`} hint={t("person.stats.feesDisciplineHint")} />
       </StatGrid>
 

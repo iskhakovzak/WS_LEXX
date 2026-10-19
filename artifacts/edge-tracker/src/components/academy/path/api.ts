@@ -89,7 +89,7 @@ export function suggestedTemplate(templates: ChallengeTemplate[], stage: StageKe
 }
 export type ChallengeStatus = "scheduled" | "active" | "passed" | "failed" | "expired";
 export type RuleKey = "profit_target" | "daily_loss" | "max_drawdown" | "consistency" | "min_days" | "max_position" | "trading_window";
-export type RuleState = "ok" | "warn" | "breached" | "met" | "pending" | "na";
+export type RuleState = "ok" | "warn" | "breached" | "met" | "pending" | "missed" | "na";
 export type RuleProgress = { key: RuleKey; label: string; kind: "target" | "limit" | "requirement"; value: number | null; target: number | null; pct: number | null; state: RuleState; display: string; detail: string };
 export type EventKind = "daily_loss" | "max_dd" | "size" | "window" | "target" | "passed" | "warn_daily" | "warn_dd" | "warn_window";
 export type TimelineEvent = { kind: EventKind; label: string; time: string | null; tradeId: number | null };

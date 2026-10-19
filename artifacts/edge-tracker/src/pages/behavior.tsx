@@ -273,7 +273,8 @@ function BehaviorTab({
 const AUTO_COMPUTE_MAX = 120;
 
 function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: Range; canEdit: boolean }) {
-  const [withSetup, setWithSetup] = React.useState(false);
+  // «Все сделки» by default: auto trades almost always carry the broker strategy, so «without one» opened empty.
+  const [withSetup, setWithSetup] = React.useState(true);
   // budget 0: страница открывается мгновенно из кэша предложений; недостающие досчитываются в фоне
   // (небольшой хвост — сразу, большой — по кнопке «Посчитать всё», чтобы не жечь лимиты рыночных данных).
   const list = useSetupsAuto(trader, range, { withSetup, budget: 0 });
@@ -331,7 +332,7 @@ function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: R
         {list.data === undefined ? (
           list.isError ? <ErrorState error={list.error} onRetry={list.refetch} /> : <TableSkeleton rows={8} cols={8} />
         ) : (
-          <SetupsTable items={list.data.items} canEdit={canEdit} />
+          <SetupsTable items={list.data.items} canEdit={canEdit} onlyUntagged={!withSetup} onShowAll={() => setWithSetup(true)} />
         )}
       </Panel>
     </div>

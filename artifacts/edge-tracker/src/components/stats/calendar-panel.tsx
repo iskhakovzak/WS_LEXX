@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Panel, Pill, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, weekHref } from "@/lib/period-links";
-import { fmtMetricCompact, fmtValue, heatBg, parseKey, toKey, weekdayLabel, type DayStat, type Metric } from "./metrics";
+import { fmtMetricCompact, fmtValue, heatBg, parseKey, rCoverage, toKey, weekdayLabel, type DayStat, type Metric } from "./metrics";
 import { TradeLinkRow } from "./trade-link-row";
 import { fmtDate, fmtMonth } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -32,7 +32,11 @@ const cmp = (a: Month, b: Month) => a.y * 12 + a.m - (b.y * 12 + b.m);
  * Weekend trades are folded into the week total. Click a day to list its trades (and open its «Разбор дня»);
  * the week total opens the weekly review.
  */
-export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metric: Metric; trader?: string | null }) {
+export function CalendarPanel({ days, metric, trader, hideTrader }: {
+  days: DayStat[]; metric: Metric; trader?: string | null;
+  /** One person's report — the day list doesn't repeat the name (MAKSIM-37). */
+  hideTrader?: boolean;
+}) {
   const { t } = statsI18n.useT();
   const byKey = useMemo(() => new Map(days.map((d) => [d.key, d])), [days]);
   const latest = days.at(-1)?.key;
@@ -65,6 +69,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
   const monthCount = monthDays.reduce((s, d) => s + d.count, 0);
   const max = Math.max(0, ...monthDays.map((d) => Math.abs(d.value ?? 0)));
   const sel = selected ? byKey.get(selected) : undefined;
+  const rCov = rCoverage(monthDays);
 
   const minMonth = first ? monthOf(first) : month;
   const maxMonth = latest && cmp(monthOf(latest), monthOf(toKey(new Date()))) > 0 ? monthOf(latest) : monthOf(toKey(new Date()));
@@ -73,7 +78,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
     <Panel
       title={t("calendar.title")}
       icon={CalendarDays}
-      description={monthCount ? t("calendar.monthHint", { trades: commonI18n.t("units.trades", { count: monthCount }), days: monthDays.length }) : t("calendar.noMonth")}
+      description={monthCount ? t("calendar.monthHint", { trades: commonI18n.t("units.trades", { count: monthCount }), days: t("kpi.tradingDays", { count: monthDays.length }) }) : t("calendar.noMonth")}
       actions={
         <div className="flex items-center gap-1">
           <Button
@@ -170,6 +175,12 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
         })}
       </div>
 
+      {metric === "r" && rCov.m > 0 && rCov.n < rCov.m && (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="calendar-r-base">
+          {t("calendar.rBase", { n: rCov.n, m: rCov.m })}
+        </p>
+      )}
+
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
           {t("calendar.monthTotal")}{" "}
@@ -202,7 +213,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
             </span>
           </div>
           <ul className="flex flex-col">
-            {sel.trades.map((t) => <TradeLinkRow key={t.id} trade={t} metric={metric} showDate={false} />)}
+            {sel.trades.map((t) => <TradeLinkRow key={t.id} trade={t} metric={metric} showDate={false} hideTrader={hideTrader} />)}
           </ul>
         </div>
       )}

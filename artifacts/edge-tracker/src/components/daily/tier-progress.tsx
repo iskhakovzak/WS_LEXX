@@ -5,12 +5,13 @@ import type { TierProgress } from "@/lib/daily/types";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { dailyI18n } from "@/i18n/ns/daily";
-import { fmtMetric, fmtTarget, metricLabel, tierTitle } from "./daily-model";
+import { criterionValue, metricLabel, tierTitle } from "./daily-model";
 import { StatusIcon } from "./contract-line";
 
 /**
- * «До Джуна: 3 из 5» — compact, where the trader looks every day; the criteria (actual / target) open in place.
- * The full ladder stays on /scaling.
+ * «До Джуна: 6 из 13» — compact, where the trader looks every day; the criteria (actual / target) open in place.
+ * The numbers are the academy path's (the one ladder scorecard), so the link leads to /academy/path; an older server's
+ * scaling numbers still link to /scaling.
  */
 export function TierProgressChip({ progress }: { progress: TierProgress | null | undefined }) {
   const { t } = dailyI18n.useT();
@@ -44,16 +45,17 @@ export function TierProgressChip({ progress }: { progress: TierProgress | null |
           <ul className="flex flex-col gap-1" aria-label={t("tier.criteriaAria")}>
             {progress.items.map((i) => (
               <li key={i.metric} className="flex min-w-0 items-center gap-2 text-xs">
-                <StatusIcon status={i.ok ? "kept" : i.actual == null ? "unknown" : "broken"} />
-                <span className="min-w-0 flex-1 truncate">{metricLabel(i)}</span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {i.target != null ? t("tier.of", { actual: fmtMetric(i.metric, i.actual), target: fmtTarget(i.metric, i.target) }) : fmtMetric(i.metric, i.actual)}
+                <StatusIcon status={i.ok ? "kept" : i.actual == null || i.noData ? "unknown" : "broken"} />
+                <span className={cn("min-w-0 flex-1 truncate", !i.ok && i.actual != null && "text-down")} title={metricLabel(i)}>{metricLabel(i)}</span>
+                {/* A failed criterion (e.g. a drawdown breach recorded on the risk desk) reads red, not just a small icon. */}
+                <span className={cn("shrink-0 tabular-nums", !i.ok && i.actual != null ? "font-medium text-down" : "text-muted-foreground")}>
+                  {criterionValue(i)}
                 </span>
               </li>
             ))}
           </ul>
-          <Link href={links.scaling()} className="inline-flex items-center gap-0.5 self-start px-0.5 text-xs font-medium text-muted-foreground hover:text-foreground">
-            {t("tier.ladder")}
+          <Link href={progress.source === "path" ? "/academy/path" : links.scaling()} className="inline-flex items-center gap-0.5 self-start px-0.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+            {progress.source === "path" ? t("tier.path") : t("tier.ladder")}
             <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         </div>

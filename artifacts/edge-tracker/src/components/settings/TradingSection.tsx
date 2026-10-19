@@ -11,7 +11,7 @@ import { STALE } from "@/lib/api/keys";
 import { riskMeQuery } from "@/lib/api/queries";
 import { cn } from "@/lib/utils";
 import {
-  DEFAULT_TRADING_DEFAULTS, TRADING_DEFAULT_LIMITS, buyingPower, getTradingDefaults, normalizeTradingDefaults,
+  DEFAULT_TRADING_DEFAULTS, TRADING_DEFAULT_LIMITS, buyingPower, deskPrefill, getTradingDefaults, normalizeTradingDefaults,
   resetTradingDefaults, riskPerTradePct, riskPerTradeUsd, roundTripCommission, setTradingDefaults, sharesForRisk, syncTradingDefaults,
   type Horizon, type RiskMode, type TradingDefaults,
 } from "./trading-defaults";
@@ -19,6 +19,7 @@ import { Callout, HORIZON_LABEL } from "./shared";
 import { fmtCount, fmtDate, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { commonI18n } from "@/i18n/ns/common";
+import { tierDisplay } from "@/components/shared/tier-labels";
 
 type DeskLimits = {
   accountSize: number | null;
@@ -174,6 +175,21 @@ export function TradingSection() {
   const savedAgo = useSecondsAgo(saved.updatedAt);
   const { data: desk } = useDeskLimits(isMember);
 
+  // MAKSIM-26: never-saved defaults start from the desk limits (once per trader).
+  const prefilledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!trader || prefilledFor.current === trader) return;
+    const patch = deskPrefill(saved, desk);
+    if (!patch) return;
+    prefilledFor.current = trader;
+    setDraft((d) => ({
+      ...d,
+      ...(patch.accountSize != null ? { accountSize: String(patch.accountSize) } : {}),
+      ...(patch.riskUsd != null ? { riskUsd: String(patch.riskUsd) } : {}),
+    }));
+    if (patch.riskMode) setRiskMode(patch.riskMode);
+  }, [desk, saved, trader]);
+
   // Sample position (local, not saved)
   const [entry, setEntry] = useState("50");
   const [stop, setStop] = useState("49.5");
@@ -324,7 +340,7 @@ export function TradingSection() {
 
           {desk && (
             <Panel title={t("trading.deskLimits")} description={t("trading.deskLimitsDesc")} icon={Landmark}
-              actions={desk.tier ? <Pill tone="purple">{desk.tier}</Pill> : undefined}>
+              actions={desk.tier ? <Pill tone="purple">{tierDisplay(desk.tier)}</Pill> : undefined}>
               <div className="divide-y divide-border">
                 <StatRow label={t("trading.allocated")} value={fmtUsd(desk.accountSize, { decimals: 0 })} />
                 <StatRow label={t("trading.maxRisk")} value={fmtUsd(desk.maxRiskPerTrade, { decimals: 0 })} />

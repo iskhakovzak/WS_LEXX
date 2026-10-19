@@ -261,7 +261,9 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
     connection: conn,
     settings: { groupId: settings.groupId, effectiveGroupId: group.groupId, groupSource: group.source, feesConfirmedAt: settings.fees.confirmedAt, feeColumns: feeView, unmatched: settings.unmatched },
     wizard,
-    viewer: { name: v.name, staff: v.staff },
+    // canSync / canConfigure: the UI hides sync, reconcile decisions and account linking without them (curators by
+    // default since OLGA-02 — both caps are sensitive, admin-only unless the owner grants them).
+    viewer: { name: v.name, staff: v.staff, canSync: await can(req, "propreports.sync"), canConfigure: await can(req, "propreports.configure") },
     config: cfg, // names only — statusConfig never returns secret values
     scheduler: schedulerStatus(),
     accounts: {

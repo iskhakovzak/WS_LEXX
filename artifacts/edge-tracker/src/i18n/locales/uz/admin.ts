@@ -39,6 +39,7 @@ export default {
     riskUnavailable: "risk-desk mavjud emas",
     breaches: { one: "{count} ta oshib ketish", other: "{count} ta oshib ketish" },
     noBreaches: "oshib ketish yoʻq",
+    weekend: "dam olish kuni",
   },
 
   attention: {
@@ -52,7 +53,7 @@ export default {
     slaDetail: "SLA {hours} soat · navbatda jami {count}",
     queueWaiting: "Kurator tahlilini kutmoqda: {count}",
     eodOpen: "{date} kunini yopmaganlar: {count}",
-    errors24h: "24 soatdagi xatolar: {count}",
+    errors24h: "24 soatdagi sinxronlash xatolari: {count}",
     syncFailed: "Oxirgi PropReports sinxronlash xato bilan tugadi",
     syncPartial: "Oxirgi PropReports sinxronlash qisman bajarildi",
     unmappedAccounts: "Treydersiz hisoblar: {count}",
@@ -66,6 +67,11 @@ export default {
     qualityItem: "{label} — {count}",
     violationsToday: "Bugun qoidani buzganlar: {count}",
     stale: "3+ kundan beri kirmaganlar: {count}",
+    noBackup: "Bazaning yangi zaxirasi yoʻq (24 soatdan eski)",
+    noBackupLast: "Oxirgi zaxira: {date}",
+    noBackupNever: "Hali zaxira yoʻq — «Baza zaxirasi» vazifasini yoqing",
+    slaCurator: "{name} — {count}",
+    slaNoCurator: "kuratorsiz — {count}",
     action: {
       review: "Koʻrib chiqish",
       riskDesk: "Risk-desk",
@@ -78,6 +84,8 @@ export default {
       check: "Tekshirish",
       show: "Koʻrsatish",
       list: "Roʻyxat",
+      backups: "Maʼlumotlar",
+      assign: "Biriktirish",
     },
   },
 
@@ -100,8 +108,22 @@ export default {
     autoNext: " · keyingisi {at}",
     autoOff: "oʻchiq",
     autoNotSet: "sozlanmagan",
-    errors24h: "24 soatdagi xatolar",
+    errors24h: "Sinxronlash xatolari",
     errorsNone: "yoʻq",
+  },
+
+  reviewLoad: {
+    title: "Kuratorlar boʻyicha tahlil",
+    description: "{days} kundagi navbatdagi kunlar · SLA {hours} soat",
+    waiting: "navbatda {count}",
+    overdue: "{count} kechikkan",
+    clear: "navbat boʻsh",
+    wards: { one: "{count} ta treyder", other: "{count} ta treyder" },
+    noWards: "treyderlar yoʻq",
+    unassigned: "Kuratorsiz: {count}",
+    unassignedDays: "ularning navbatdagi kunlari: {count}",
+    none: "Hali kuratorlar yoʻq",
+    unavailable: "Kuratorlar yuklamasi mavjud emas.",
   },
 
   recent: {

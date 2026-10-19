@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildQuickRows, defaultTier, matchesSearch, undoSteps, type QuickSetup } from "./quick-add-logic";
+import { buildQuickRows, defaultTier, matchesSearch, preselectOf, undoSteps, type QuickSetup } from "./quick-add-logic";
 
 const S = (id: number, name: string, extra: Partial<QuickSetup> = {}): QuickSetup => ({
   id, name, folder: null, space: "office", mine: false, shared: false, owner: null, canAddExamples: true, setupType: null, tags: null, ...extra,
@@ -30,6 +30,15 @@ describe("quick add: setup rows", () => {
     expect(buildQuickRows({ setups, suggested: [], recent: [], search: "orb" }).map((r) => r.s.id)).toEqual([2]);
     expect(buildQuickRows({ setups, suggested: [], recent: [], search: "ориф" }).map((r) => r.s.id)).toEqual([3]);
     expect(buildQuickRows({ setups, suggested: [], recent: [], search: "чтение" })).toEqual([]);
+  });
+});
+
+describe("quick add: preselect (ROMAN-09)", () => {
+  it("a suggestion / recent setup / search hit is preselected; a plain alphabetical list is not", () => {
+    expect(preselectOf(buildQuickRows({ setups, suggested: [{ id: 5 }], recent: [], search: "" }))).toBe(5);
+    expect(preselectOf(buildQuickRows({ setups, suggested: [], recent: [1], search: "" }))).toBe(1);
+    expect(preselectOf(buildQuickRows({ setups, suggested: [], recent: [], search: "orb" }))).toBe(2);
+    expect(preselectOf(buildQuickRows({ setups, suggested: [], recent: [], search: "" }))).toBeNull();
   });
 });
 

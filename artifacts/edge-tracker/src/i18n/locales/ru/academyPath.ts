@@ -97,6 +97,7 @@ export default {
       wrPfHint: "WR = W/(W+L); PF без убытков не определён",
       maxDd: "Макс. просадка",
       bestDayHint: "Лучший день {value} прибыли",
+      bestDayNone: "Лучший день: нет прибыли за окно",
       feesDiscipline: "Комиссии / дисциплина",
       feesDisciplineHint: "Доля комиссий в брутто · индекс дисциплины 0–100",
     },
@@ -272,7 +273,8 @@ export default {
     },
     maxDrawdownMode: "{label} ({mode})",
     ddMode: { static: "статическая", trailing: "трейлинг", trailing_eod: "трейлинг по закрытию дня" },
-    ruleState: { ok: "в норме", met: "выполнено", warn: "внимание", breached: "нарушено", pending: "в процессе", na: "нет данных" },
+    ruleState: { ok: "в норме", met: "выполнено", warn: "внимание", breached: "нарушено", pending: "в процессе", missed: "не выполнено", na: "нет данных" },
+    commentBy: "Комментарий · {name}: «{comment}»",
     summary: {
       account: "счёт {usd}",
       target: "цель +{usd}",

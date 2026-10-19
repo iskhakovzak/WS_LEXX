@@ -15,7 +15,10 @@ import { type AnalyticsFilters, periodRange, CHART_TOOLTIP_STYLE, CHART_CURSOR, 
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { personName } from "@/i18n";
-import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtDateCustom, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+
+/** "2026-10" → «окт. 2026» / «Oct 2026»: months always carry the year (MAKSIM-34). */
+const monthTick = (m: string) => (/^\d{4}-\d{2}$/.test(m) ? fmtDateCustom(`${m}-01`, { month: "short", year: "numeric" }) : m);
 
 /* ───────────── API types ───────────── */
 
@@ -267,7 +270,7 @@ export function PsychologyTab({
                         cursor={CHART_CURSOR}
                         formatter={(v: number, _n, item) => {
                           const d = item.payload as { count: number; wr: number | null; avgR?: number | null };
-                          return [d.count ? `${d.wr == null ? "—" : `${v}%`} · ${commonI18n.t("units.trades", { count: d.count })}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : t("psych.noTrades"), "Win rate"];
+                          return [d.count ? `${d.wr == null ? "—" : `${v}%`} · ${commonI18n.t("units.trades", { count: d.count })}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : t("psych.noTrades"), commonI18n.t("trading.winRate")];
                         }}
                       />
                       <Bar dataKey="wr" radius={[6, 6, 0, 0]} isAnimationActive={false}>
@@ -298,9 +301,9 @@ export function PsychologyTab({
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={psych.emotionalByMonth} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                    <XAxis dataKey="month" {...AXIS} />
+                    <XAxis dataKey="month" {...AXIS} tickFormatter={monthTick} />
                     <YAxis {...AXIS} allowDecimals={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} labelFormatter={(l: string) => monthTick(l)} />
                     <Legend wrapperStyle={{ fontSize: 12 }} iconSize={10} iconType="circle" />
                     <Bar dataKey="sleepWell" name={t("psych.state.sleepWell")} stackId="a" fill="hsl(var(--chart-1))" isAnimationActive={false} />
                     <Bar dataKey="focused" name={t("psych.state.focused")} stackId="a" fill="hsl(var(--up))" isAnimationActive={false} />

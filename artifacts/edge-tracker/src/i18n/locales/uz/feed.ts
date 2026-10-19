@@ -113,7 +113,7 @@ export default {
     myDayNet: "Kunlik natijam, sof",
   },
   card: {
-    you: "siz",
+    you: "Siz",
     readMore: "Toʻliq oʻqish",
     entryAria: "Lenta yozuvi: {theme}",
     noThemeLower: "mavzusiz",

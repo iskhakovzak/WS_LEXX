@@ -3,6 +3,7 @@
  * run actions (new trade, new idea, theme, language…); jump anywhere ("Go to…", or G then a letter); recent items.
  * Texts: shell namespace `palette.*` (i18n/locales/<lang>/shell.ts).
  * Built on cmdk with our own filtering (corpora can be large), loaded lazily on first open.
+ * This module is a lazy chunk: the header button and the global keys live in shell/palette-launcher.tsx.
  */
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -26,27 +27,20 @@ import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
-import { ALL_NAV_ITEMS, GO_KEYS, GO_KEYS_RU_LAYOUT, GO_MODE_EVENT, groupOf, parentOf, rowChildren, rowLabel, type NavItem } from "@/components/shell/nav";
-import { useVisibleNav } from "@/components/shell/sidebar-nav";
+import { ALL_NAV_ITEMS, groupOf, parentOf, rowChildren, rowLabel, type NavItem } from "@/components/shell/nav";
+import { useVisibleNav } from "@/components/shell/use-nav-model";
 import { rankPeople, usePeopleDirectory, type DirectoryPerson } from "@/components/people/search";
 import { Highlight } from "@/components/people/highlight";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtUsd } from "@/lib/format";
 import { LANGS, LANG_META, personName, setLang, useLang } from "@/i18n";
+import { openSetupSheet } from "@/components/shared/playbook-sheet";
+import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 
-const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const MOD = IS_MAC ? "⌘" : "Ctrl";
-const HOTKEY_LABEL = IS_MAC ? "⌘K" : "Ctrl+K";
-const OPEN_EVENT = "ws-open-palette";
 const RECENT_KEY = "ws_lexx_palette_recent";
 /** Extra match terms for the «Language: …» actions (hidden, not translated). i18n-ignore */
 const LANG_SEARCH = { ru: "russian русский ruscha", en: "english английский inglizcha", uz: "uzbek узбекский ozbek" } as const;
-
-/** Open the command palette from anywhere (e.g. a mobile button or an empty state). */
-export function openCommandPalette(query?: string) {
-  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { query } }));
-}
 
 type Section = "trades" | "ideas" | "playbook" | "feed" | "research" | "events";
 /** Kinds stored in recents: a result section, a page, a ticker or a person (older entries stored Russian labels). */
@@ -92,6 +86,8 @@ type ResultItem = {
   path: string;
   /** Fires the in-page `ws-search-navigate` event for pages already mounted. */
   highlight?: number;
+  /** An office setup: opens its cheat sheet over the current page instead of navigating. */
+  sheetId?: number;
 };
 
 /** `person`: the stored name of a person result (shown through personName, so it follows the UI language). */
@@ -123,6 +119,8 @@ const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const has = (v: unknown, q: string) => typeof v === "string" && v.toLowerCase().includes(q);
 const clip = (v: unknown, n = 80) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : undefined);
 
+/** «Сетап…»: the typed text without the action's own words («сетап orb» → «orb»). i18n-ignore */
+const setupQuery = (raw: string) => raw.replace(/(^|\s)(setup|setap|playbook|pleybuk|сетап|плейбук|шпаргалка)(?=\s|$)/giu, " ").trim(); // i18n-ignore
 function loadRecent(): RecentItem[] {
   try {
     const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
@@ -142,13 +140,6 @@ function saveRecent(item: RecentItem) {
 function recentTitle(r: RecentItem): string {
   if (r.person) return personName(r.person);
   return r.id.startsWith("page-") ? (ALL_NAV_ITEMS.find((i) => `page-${i.href}` === r.id)?.name ?? r.title) : r.title;
-}
-
-function isTypingTarget(el: EventTarget | null) {
-  const t = el as HTMLElement | null;
-  if (!t) return false;
-  const tag = t.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable;
 }
 
 function tradeResult(t: any): Pick<ResultItem, "badge" | "badgeTone"> {
@@ -222,8 +213,16 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
-export function GlobalSearch() {
-  const [open, setOpen] = useState(false);
+type Props = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Open requests from `openCommandPalette(query)`: a string prefills the input. */
+  request: { query?: string; n: number };
+  /** The header button: focus returns there on close (it is not a Radix Trigger, the palette is a lazy chunk). */
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+};
+
+export default function GlobalSearch({ open, onOpenChange: setOpen, request, triggerRef }: Props) {
   const [query, setQuery] = useState("");
   const [notesOnly, setNotesOnly] = useState(false);
   const [recent, setRecent] = useState<RecentItem[]>(() => loadRecent());
@@ -237,13 +236,13 @@ export function GlobalSearch() {
   const lang = useLang();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Trades are searched server-side (P1-5): GET /api/trades/page?q=&limit=20 per (deferred) query instead of
-  // loading the whole book into the palette. Other corpora load after the first open (then stay cached).
+  // Trades are searched server-side (P1-5): GET /api/trades/page?q=&limit=20&lite=1 (rows, no summary aggregates) per
+  // (deferred) query instead of loading the whole book into the palette. Other corpora load after the first open.
   // Debounced (200 ms): typing «NVDA» used to fire 4 server searches; now one after the pause.
   const tradeQ = useDebounced(query, 200).trim().replace(/^\$/, "").slice(0, 120);
   const { data: tradesRaw, isLoading: l1 } = useQuery<any[]>({
     queryKey: [TRADES_PAGE_KEY, "search", tradeQ.toLowerCase()],
-    queryFn: async ({ signal }) => (await fetchTradesPage(new URLSearchParams({ q: tradeQ, limit: "20" }), signal)).items ?? [],
+    queryFn: async ({ signal }) => (await fetchTradesPage(new URLSearchParams({ q: tradeQ, limit: "20", lite: "1" }), signal)).items ?? [],
     enabled: open && tradeQ.length > 0,
     staleTime: 30_000,
     placeholderData: keepPreviousData,
@@ -268,44 +267,10 @@ export function GlobalSearch() {
   const tradePending = query.trim().replace(/^\$/, "").slice(0, 120) !== tradeQ;
   const loading = open && ((tradeQ.length > 0 && (l1 || tradePending)) || l2 || l3 || l4 || l5 || l6);
 
-  // ── Global keys: Ctrl/⌘K toggles; "G then letter" jumps to a section (outside text fields). ──
+  // `openCommandPalette(query)` (the launcher owns Ctrl/⌘K and the G-keys).
   useEffect(() => {
-    let gAt = 0;
-    function onKey(e: KeyboardEvent) {
-      // «л» = K on the Russian keyboard layout (key codes, not text). i18n-ignore
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "k" || e.key === "K" || e.key === "л" || e.key === "Л")) {
-        e.preventDefault();
-        setOpen((v) => !v);
-        return;
-      }
-      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || isTypingTarget(e.target)) return;
-      if (document.querySelector("[role='dialog'][data-state='open'], [role='alertdialog']")) return;
-      const k = e.key.toLowerCase();
-      if (k === "g" || k === "п") { // i18n-ignore (RU layout key)
-        gAt = Date.now();
-        // The sidebar shows every letter while it waits for the second key.
-        window.dispatchEvent(new CustomEvent(GO_MODE_EVENT, { detail: true }));
-        return;
-      }
-      if (gAt && Date.now() - gAt < 1200) {
-        gAt = 0;
-        window.dispatchEvent(new CustomEvent(GO_MODE_EVENT, { detail: false }));
-        const href = GO_KEYS[k] ?? GO_KEYS[GO_KEYS_RU_LAYOUT[k] ?? ""];
-        if (href) { e.preventDefault(); navigate(href); }
-      }
-    }
-    function onOpen(e: Event) {
-      const q = (e as CustomEvent<{ query?: string }>).detail?.query;
-      if (typeof q === "string") setQuery(q);
-      setOpen(true);
-    }
-    window.addEventListener("keydown", onKey);
-    window.addEventListener(OPEN_EVENT, onOpen);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener(OPEN_EVENT, onOpen);
-    };
-  }, [navigate]);
+    if (typeof request.query === "string") setQuery(request.query);
+  }, [request]);
 
   useEffect(() => {
     if (open) setRecent(loadRecent());
@@ -355,6 +320,7 @@ export function GlobalSearch() {
       // Deep link (the page opens ?id= in the library view on its own); an event fired right after navigate()
       // arrived before the lazy page mounted, so the setup never opened from another page.
       path: `/playbook?id=${e.id}`,
+      sheetId: e.space === "office" || (!e.space && !e.trader) ? e.id : undefined,
     });
     const feedItem = (f: any): ResultItem => ({
       id: `feed-${f.id}`,
@@ -519,10 +485,11 @@ export function GlobalSearch() {
         }, 0);
       }
     },
-    [navigate],
+    [navigate, setOpen],
   );
 
   const goResult = (item: ResultItem) => {
+    if (item.sheetId != null) { setOpen(false); saveRecent({ id: item.id, title: item.title, subtitle: item.subtitle, kind: item.section, path: item.path }); openSetupSheet({ setupId: item.sheetId }); return; }
     const path = item.highlight != null && !item.path.includes("?") ? `${item.path}?highlight=${item.highlight}` : item.path;
     go(path, { id: item.id, title: item.title, subtitle: item.subtitle, kind: item.section }, item.highlight);
   };
@@ -532,6 +499,7 @@ export function GlobalSearch() {
   const actions: Action[] = [
     { id: "new-idea", label: ts("palette.action.newIdea"), icon: Lightbulb, run: () => go("/trade-ideas?new=1"), keywords: "new idea добавить идею yangi goya", when: canEdit },
     { id: "new-event", label: ts("palette.action.newEvent"), icon: CalendarClock, run: () => go("/events?new=1"), keywords: "new event катализатор отчёт yangi voqea", when: canEdit },
+    { id: "setup", label: playbookTodayI18n.t("palette.action"), hint: playbookTodayI18n.t("palette.hint"), icon: BookMarked, run: () => { setOpen(false); openSetupSheet({ query: setupQuery(raw) }); }, keywords: "setup сетап setap playbook плейбук pleybuk шпаргалка orb vwap flag gap" },
     { id: "theme", label: ts("palette.action.theme"), hint: tc("theme.currentHint", { name: themeLabel }), icon: SunMoon, run: () => cycleTheme(), keywords: "theme тема dark light тёмная светлая mavzu" },
     // «Язык: English» / «Language: Oʻzbekcha»… for each other language; «язык», «language», «til» match in any UI language.
     ...LANGS.filter((l) => l !== lang).map((l): Action => ({
@@ -557,31 +525,14 @@ export function GlobalSearch() {
   const nothing =
     !!q && !loading && !isStale && results.length === 0 && pages.length === 0 && visibleActions.length === 0 && !ticker && otherTickers.length === 0 && peopleHits.length === 0;
 
-  const trigger = (
-    <DialogPrimitive.Trigger asChild>
-      <button
-        type="button"
-        // Fixed width + short label: never clipped to «Поиск или к…» next to the logo and the market clock.
-        // Sized by the header (`@container` in layout.tsx): icon-only until the header has room for the label.
-        className="glass-field flex h-10 min-w-10 shrink-0 items-center justify-center gap-2 px-3 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring @[720px]:w-44 @[720px]:min-w-0 @[720px]:shrink @[720px]:justify-start @[720px]:pl-3.5 @[720px]:pr-1.5 @[1180px]:w-56"
-        title={ts("palette.triggerTitle", { hotkey: HOTKEY_LABEL })}
-        aria-label={ts("palette.triggerTitle", { hotkey: HOTKEY_LABEL })}
-      >
-        <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="hidden min-w-0 flex-1 truncate text-left @[720px]:inline">{ts("palette.triggerLabel")}</span>
-        <Kbd keys={[MOD, "K"]} className="hidden @[1180px]:inline-flex" />
-      </button>
-    </DialogPrimitive.Trigger>
-  );
-
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      {trigger}
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-modal bg-[var(--overlay)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           onOpenAutoFocus={(e) => { e.preventDefault(); inputRef.current?.focus(); }}
+          onCloseAutoFocus={(e) => { e.preventDefault(); triggerRef.current?.focus({ preventScroll: true }); }}
           className="glass-thick glass-solid fixed left-1/2 top-[max(10vh,calc(env(safe-area-inset-top)+0.75rem))] z-modal flex max-h-[min(640px,80dvh)] w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98]"
         >
           <DialogPrimitive.Title className="sr-only">{ts("palette.title")}</DialogPrimitive.Title>

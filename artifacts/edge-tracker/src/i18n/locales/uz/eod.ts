@@ -3,7 +3,7 @@ import type ru from "../ru/eod";
 
 export default {
   status: { open: "Kun ochiq", closed: "Kun yopilgan", reviewed: "Kurator tekshirgan" },
-  hours: { lessThanHour: "bir soatdan kam", h: "{h} soat", dh: "{d} kun {h} soat" },
+  hours: { lessThanHour: "<1 soat", h: "{h} soat", d: "{d} kun", dh: "{d} kun {h} soat" },
   sla: { left: "{time} qoldi", overdue: "{time} kechikdi" },
   flow: {
     positionsSaveFailed: "Pozitsiyalarni saqlab boʻlmadi",
@@ -89,7 +89,9 @@ export default {
   },
   queue: {
     title: "Tekshiruv navbati",
-    desc: "Treyderlar yopgan kunlar. Tekshiruv muddati — yopilgandan keyin {sla} soat.",
+    desc: "Treyderlar yopgan kunlar. Tekshiruv muddati — yopilgandan keyin {sla} soat, dam olish va bayram kunlari hisoblanmaydi.",
+    scopeAria: "Kimning kunlarini koʻrsatish",
+    scope: { mine: "Meniki · {count}", desk: "Butun desk", unassigned: "Kuratorsiz" },
     sectionAria: "Navbat boʻlimi",
     pending: "Tekshiruvni kutmoqda",
     reviewed7: "7 kunda tekshirilgan",

@@ -22,15 +22,15 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import { logger } from "../lib/logger";
 import { logAudit } from "../lib/audit";
 import { nyDate } from "../lib/tradingDate";
 import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
+import { loadRiskBasis } from "../lib/scalingRiskBasis";
+import { violationDaySql } from "../lib/violationWindow";
 import { can, requireCap, type Capability } from "../lib/permissions";
 import {
-  DEFAULT_RULES, DEFAULT_TIERS, OPS, evaluateTrader, metricsMeta, renderStoredReasons, sortTiers, unitsMeta, windowStart,
-  type ReasonItem,
-  type Evaluation, type MetricKey, type Op, type Rule, type RuleKind, type Tier, type TraderInput, type Unit,
+  OPS, evaluateTrader, metricsMeta, renderStoredReasons, unitsMeta, windowStart,
+  type ReasonItem, type Evaluation, type MetricKey, type Rule, type Tier, type TraderInput,
 } from "../lib/scalingEngine";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
@@ -39,130 +39,9 @@ import { uniqueRecipients } from "../lib/notifyEventsCore";
 import { AppError, errorMessage, badRequest, conflict, notFound, sendError, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { scalingT } from "../i18n/ns";
+import { ensureTables, insertRule, loadLimits, loadRules, loadTiers, upsertTier, type LimitsRow, type Queryable } from "../lib/scalingStore";
 
 const router: IRouter = Router();
-
-// ─── tables ─────────────────────────────────────────────────────────────────
-
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = (async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS scaling_tiers (
-          key TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          account_size NUMERIC(14,2),
-          daily_loss_limit NUMERIC(12,2),
-          weekly_loss_limit NUMERIC(12,2),
-          max_drawdown NUMERIC(12,2),
-          max_risk_per_trade NUMERIC(12,2),
-          max_position_usd NUMERIC(14,2),
-          max_overnight_exposure NUMERIC(14,2),
-          max_open_positions INTEGER,
-          allow_overnight BOOLEAN NOT NULL DEFAULT FALSE,
-          allow_swing BOOLEAN NOT NULL DEFAULT FALSE,
-          description TEXT,
-          active BOOLEAN NOT NULL DEFAULT TRUE,
-          updated_by TEXT,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS scaling_rules (
-          id SERIAL PRIMARY KEY,
-          kind TEXT NOT NULL,
-          metric TEXT NOT NULL,
-          op TEXT NOT NULL,
-          value NUMERIC(14,4) NOT NULL,
-          unit TEXT NOT NULL DEFAULT 'abs',
-          window_days INTEGER NOT NULL DEFAULT 20,
-          tier_key TEXT,
-          label TEXT,
-          enabled BOOLEAN NOT NULL DEFAULT TRUE,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          updated_by TEXT,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS scaling_proposals (
-          id SERIAL PRIMARY KEY,
-          trader TEXT NOT NULL,
-          action TEXT NOT NULL,
-          from_tier TEXT,
-          to_tier TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          source TEXT NOT NULL DEFAULT 'auto',
-          reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
-          snapshot JSONB,
-          comment TEXT,
-          created_by TEXT NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          decided_by TEXT,
-          decided_at TIMESTAMPTZ,
-          decision_comment TEXT
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS scaling_proposals_pending_uniq ON scaling_proposals(trader) WHERE status = 'pending';
-        CREATE INDEX IF NOT EXISTS scaling_proposals_trader_idx ON scaling_proposals(trader, created_at DESC);
-        CREATE TABLE IF NOT EXISTS scaling_history (
-          id SERIAL PRIMARY KEY,
-          trader TEXT NOT NULL,
-          action TEXT NOT NULL,
-          from_tier TEXT,
-          to_tier TEXT NOT NULL,
-          proposal_id INTEGER,
-          actor TEXT NOT NULL,
-          comment TEXT,
-          limits JSONB,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS scaling_history_trader_idx ON scaling_history(trader, created_at DESC);
-      `);
-      const { rows: tc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM scaling_tiers`);
-      if (Number(tc[0]?.n ?? 0) === 0) {
-        for (const t of DEFAULT_TIERS) await upsertTier(pool, t, "system");
-        logger.info("scaling: seeded default tiers");
-      }
-      const { rows: rc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM scaling_rules`);
-      if (Number(rc[0]?.n ?? 0) === 0) {
-        let i = 0;
-        for (const r of DEFAULT_RULES) await insertRule(pool, r, i++, "system");
-        logger.info("scaling: seeded default rules");
-      }
-    })().catch((err) => {
-      ensured = null;
-      throw err;
-    });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "scaling: ensure tables failed at init"));
-
-type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> };
-
-async function upsertTier(q: Queryable, t: Tier, actor: string): Promise<void> {
-  await q.query(
-    `INSERT INTO scaling_tiers (key, name, sort_order, account_size, daily_loss_limit, weekly_loss_limit, max_drawdown, max_risk_per_trade,
-        max_position_usd, max_overnight_exposure, max_open_positions, allow_overnight, allow_swing, description, active, updated_by, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,TRUE,$15,NOW())
-     ON CONFLICT (key) DO UPDATE SET
-        name = EXCLUDED.name, sort_order = EXCLUDED.sort_order, account_size = EXCLUDED.account_size,
-        daily_loss_limit = EXCLUDED.daily_loss_limit, weekly_loss_limit = EXCLUDED.weekly_loss_limit, max_drawdown = EXCLUDED.max_drawdown,
-        max_risk_per_trade = EXCLUDED.max_risk_per_trade, max_position_usd = EXCLUDED.max_position_usd,
-        max_overnight_exposure = EXCLUDED.max_overnight_exposure, max_open_positions = EXCLUDED.max_open_positions,
-        allow_overnight = EXCLUDED.allow_overnight, allow_swing = EXCLUDED.allow_swing, description = EXCLUDED.description,
-        active = TRUE, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-    [t.key, t.name, t.order, t.accountSize, t.dailyLossLimit, t.weeklyLossLimit, t.maxDrawdown, t.maxRiskPerTrade, t.maxPositionUsd,
-      t.maxOvernightExposure, t.maxOpenPositions, t.allowOvernight, t.allowSwing, t.description ?? null, actor],
-  );
-}
-
-async function insertRule(q: Queryable, r: Omit<Rule, "id">, order: number, actor: string): Promise<number> {
-  const { rows } = await q.query(
-    `INSERT INTO scaling_rules (kind, metric, op, value, unit, window_days, tier_key, label, enabled, sort_order, updated_by, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()) RETURNING id`,
-    [r.kind, r.metric, r.op, r.value, r.unit, r.windowDays, r.tierKey, r.label, r.enabled, order, actor],
-  );
-  return Number(rows[0].id);
-}
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -191,78 +70,6 @@ function clientDate(raw: unknown): string {
   return YMD_RE.test(s) ? s : nyDate();
 }
 
-function rowToTier(r: any): Tier {
-  return {
-    key: String(r.key),
-    name: String(r.name),
-    order: Number(r.sort_order) || 0,
-    accountSize: num(r.account_size),
-    dailyLossLimit: num(r.daily_loss_limit),
-    weeklyLossLimit: num(r.weekly_loss_limit),
-    maxDrawdown: num(r.max_drawdown),
-    maxRiskPerTrade: num(r.max_risk_per_trade),
-    maxPositionUsd: num(r.max_position_usd),
-    maxOvernightExposure: num(r.max_overnight_exposure),
-    maxOpenPositions: r.max_open_positions == null ? null : Number(r.max_open_positions),
-    allowOvernight: r.allow_overnight === true,
-    allowSwing: r.allow_swing === true,
-    description: r.description ?? null,
-  };
-}
-
-function rowToRule(r: any): Rule {
-  return {
-    id: Number(r.id),
-    kind: r.kind as RuleKind,
-    metric: r.metric as MetricKey,
-    op: r.op as Op,
-    value: Number(r.value),
-    unit: (r.unit ?? "abs") as Unit,
-    windowDays: Number(r.window_days) || 20,
-    tierKey: r.tier_key ?? null,
-    label: r.label ?? null,
-    enabled: r.enabled !== false,
-  };
-}
-
-async function loadTiers(): Promise<Tier[]> {
-  const { rows } = await pool.query(`SELECT * FROM scaling_tiers WHERE active = TRUE ORDER BY sort_order ASC, key ASC`);
-  return sortTiers(rows.map(rowToTier));
-}
-async function loadRules(): Promise<Rule[]> {
-  const { rows } = await pool.query(`SELECT * FROM scaling_rules ORDER BY sort_order ASC, id ASC`);
-  return rows.map(rowToRule);
-}
-
-type LimitsRow = {
-  trader: string; tier: string | null; accountSize: number | null; dailyLossLimit: number | null; weeklyLossLimit: number | null;
-  maxDrawdown: number | null; maxRiskPerTrade: number | null; maxPositionUsd: number | null; maxOvernightExposure: number | null;
-  maxOpenPositions: number | null; allowOvernight: boolean; allowSwing: boolean; updatedBy: string | null; updatedAt: string | null;
-};
-function rowToLimits(r: any): LimitsRow {
-  return {
-    trader: String(r.trader),
-    tier: r.tier ?? null,
-    accountSize: num(r.account_size),
-    dailyLossLimit: num(r.daily_loss_limit),
-    weeklyLossLimit: num(r.weekly_loss_limit),
-    maxDrawdown: num(r.max_drawdown),
-    maxRiskPerTrade: num(r.max_risk_per_trade),
-    maxPositionUsd: num(r.max_position_usd),
-    maxOvernightExposure: num(r.max_overnight_exposure),
-    maxOpenPositions: r.max_open_positions == null ? null : Number(r.max_open_positions),
-    allowOvernight: r.allow_overnight !== false,
-    allowSwing: r.allow_swing !== false,
-    updatedBy: r.updated_by ?? null,
-    updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
-  };
-}
-async function loadLimits(trader: string | null): Promise<Map<string, LimitsRow>> {
-  const { rows } = await pool
-    .query(`SELECT * FROM trader_risk_limits WHERE ($1::text IS NULL OR trader = $1)`, [trader])
-    .catch(() => ({ rows: [] as any[] }));
-  return new Map(rows.map((r: any) => [String(r.trader), rowToLimits(r)]));
-}
 
 type Proposal = {
   id: number; trader: string; action: string; fromTier: string | null; toTier: string; status: string; source: string;
@@ -298,6 +105,7 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
   const maxWindow = Math.max(20, ...rules.map((r) => r.windowDays || 20));
   // one extra week so the week-based metrics can see the full first week of the window
   const from = windowStart(today, maxWindow + 5);
+  const basisP = loadRiskBasis(trader, from, today);
   const [tradesRes, ratingsRes, violRes, errRes, usersRes, limits] = await Promise.all([
     pool.query(
       `SELECT t.trader, ${closeDateSql("t")} AS d, ${netPnlSql("t")}::float AS net, ${signedRSql("t")}::float AS r, ${resultSql("t")} AS result,
@@ -314,10 +122,10 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
         WHERE ($1::text IS NULL OR trader = $1) AND week::text >= $2`,
       [trader, from],
     ).catch(() => ({ rows: [] as any[] })),
-    pool.query(
-      `SELECT trader, LEFT(occurred_at::text, 10) AS d FROM rule_violations
-        WHERE ($1::text IS NULL OR trader = $1) AND archived_at IS NULL AND occurred_at >= $2::date`,
-      [trader, from],
+    pool.query( // by the trading day of the violation (a rescan re-inserts old ones «now»; occurred_at = insert time)
+      `SELECT trader, ${violationDaySql("")} AS d FROM rule_violations
+        WHERE ($1::text IS NULL OR trader = $1) AND archived_at IS NULL AND ${violationDaySql("")} BETWEEN $2 AND $3`,
+      [trader, from, today],
     ).catch(() => ({ rows: [] as any[] })),
     pool.query(
       `SELECT trader, LEFT(created_at::text, 10) AS d FROM trading_errors
@@ -327,7 +135,6 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
     pool.query(`SELECT name, role FROM users WHERE active = true AND COALESCE(banned, false) = false AND ($1::text IS NULL OR name = $1)`, [trader]),
     loadLimits(trader),
   ]);
-
   const inputs = new Map<string, TraderInput>();
   const get = (name: string): TraderInput => {
     let x = inputs.get(name);
@@ -361,6 +168,9 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
   for (const r of ratingsRes.rows) get(String(r.trader)).ratings.push({ week: String(r.week).slice(0, 10), discipline: num(r.discipline), overall: num(r.overall) });
   for (const r of violRes.rows) get(String(r.trader)).violationDates.push(String(r.d));
   for (const r of errRes.rows) get(String(r.trader)).violationDates.push(String(r.d));
+  // Staff accounts (admins, curators) may trade, but the ladder is for traders: no rows, no proposals for them.
+  if (!trader) for (const u of usersRes.rows) if (u.role === "admin" || u.role === "curator") inputs.delete(String(u.name));
+  for (const [name, x] of await basisP) if (inputs.has(name)) Object.assign(get(name), x); // the risk desk's drawdown basis
   return { inputs, limits };
 }
 
@@ -374,7 +184,7 @@ async function loadPending(trader: string | null): Promise<Map<string, Proposal>
 
 type EvaluatedTrader = Evaluation & { limits: LimitsRow | null; pendingProposal: Proposal | null; role: string | null };
 
-async function evaluateScope(trader: string | null, today: string): Promise<{ tiers: Tier[]; rules: Rule[]; traders: EvaluatedTrader[] }> {
+async function evaluateScope(trader: string | null, today: string, lang: Lang = "ru"): Promise<{ tiers: Tier[]; rules: Rule[]; traders: EvaluatedTrader[] }> {
   const [tiers, rules] = await Promise.all([loadTiers(), loadRules()]);
   const [{ inputs, limits }, pending, usersRes] = await Promise.all([
     loadInputs(trader, today, rules),
@@ -385,7 +195,7 @@ async function evaluateScope(trader: string | null, today: string): Promise<{ ti
   const ACTION_ORDER: Record<string, number> = { demote: 0, promote: 1, assign: 2, hold: 3 };
   const traders = [...inputs.values()]
     .map((input) => ({
-      ...evaluateTrader(input, tiers, rules),
+      ...evaluateTrader(input, tiers, rules, lang),
       limits: limits.get(input.trader) ?? null,
       pendingProposal: pending.get(input.trader) ?? null,
       role: roles.get(input.trader) ?? null,
@@ -399,9 +209,9 @@ async function evaluateScope(trader: string | null, today: string): Promise<{ ti
 }
 
 /** One trader's evaluation now (lib/daily tier progress «to Junior: 3 of 5»); null when the trader is unknown. */
-export async function evaluateTraderNow(trader: string, today: string): Promise<Evaluation | null> {
+export async function evaluateTraderNow(trader: string, today: string, lang: Lang = "ru"): Promise<Evaluation | null> {
   await ensureTables();
-  return (await evaluateScope(trader, today)).traders.find((t) => t.trader === trader) ?? null;
+  return (await evaluateScope(trader, today, lang)).traders.find((t) => t.trader === trader) ?? null;
 }
 
 // ─── config ─────────────────────────────────────────────────────────────────
@@ -534,7 +344,7 @@ router.get("/scaling/evaluate", asyncHandler(async (req, res): Promise<void> => 
   if (!v.staff && raw && raw !== v.name) throw new AppError("SCALING_OWN_ONLY");
   const trader = v.staff ? (raw || null) : v.name;
   const today = clientDate(req.query.date);
-  const { tiers, rules, traders } = await evaluateScope(trader, today);
+  const { tiers, rules, traders } = await evaluateScope(trader, today, langOf(req));
   const summary = {
     traders: traders.length,
     promote: traders.filter((t) => t.recommendation.action === "promote").length,
@@ -652,7 +462,7 @@ router.post("/scaling/proposals", asyncHandler(async (req, res): Promise<void> =
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!known.length) throw notFound("TRADER_NOT_FOUND");
   const today = nyDate();
-  const { tiers, traders } = await evaluateScope(b.trader, today);
+  const { tiers, traders } = await evaluateScope(b.trader, today, langOf(req));
   const e = traders[0];
   if (!e) throw notFound("TRADER_NO_DATA");
   if (e.pendingProposal) throw conflict("PROPOSAL_PENDING", { proposal: e.pendingProposal });
@@ -686,7 +496,7 @@ router.post("/scaling/proposals/auto", asyncHandler(async (req, res): Promise<vo
   if (!v) return;
   await ensureTables();
   const today = clientDate(req.body?.date);
-  const { tiers, traders } = await evaluateScope(null, today);
+  const { tiers, traders } = await evaluateScope(null, today, langOf(req));
   const created: (Proposal & { reasonItems: ReasonItem[] })[] = [];
   for (const e of traders) {
     const a = e.recommendation.action;

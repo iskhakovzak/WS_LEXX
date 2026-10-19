@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { QueryState } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
+import { localeTag } from "@/lib/format";
 import { curatorApi, useCuratorMutation, useIdpMetrics } from "./api";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
@@ -92,7 +93,7 @@ export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: 
                 ) : <div />}
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="goal-due" className="text-xs text-muted-foreground">{t("goal.due")}</Label>
-                  <Input id="goal-due" type="date" value={dueOn} min={nyDate()} onChange={(e) => setDueOn(e.target.value)} className="tabular-nums" />
+                  <Input id="goal-due" type="date" lang={localeTag()} value={dueOn} min={nyDate()} onChange={(e) => setDueOn(e.target.value)} className="tabular-nums" />
                 </div>
               </div>
             )}

@@ -110,6 +110,16 @@ export function fmtDate(d: DateInput | null | undefined, style: DateStyle = "med
 }
 
 /**
+ * «17 окт.» this year, «1 дек. 2025 г.» another year (dayMonth / medium). For dates that may lie in a past year
+ * (earned achievements, quest history, top-day / desk-day picks): a bare day and month would be ambiguous.
+ */
+export function fmtDayMonth(d: DateInput | null | undefined, now: Date = new Date()): string {
+  const date = toDate(d);
+  if (!date) return "—";
+  return fmtDate(date, date.getFullYear() === now.getFullYear() ? "dayMonth" : "medium");
+}
+
+/**
  * Rare date shapes that no style covers (prefer a style: add one above when a shape repeats). Same caching,
  * language and "—" for invalid input as fmtDate.
  */

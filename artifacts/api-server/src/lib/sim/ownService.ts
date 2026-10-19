@@ -12,7 +12,7 @@
 import { notFound } from "../http";
 import { logger } from "../logger";
 import { addDays, nyDate } from "../tradingDate";
-import { mistakeCosts } from "../daily/service";
+import { mistakesByTrade } from "../daily/service";
 import { aggregate, fakeTimes, maxNotionalOf, tfSec, type IntradayTf } from "./scenario";
 import {
   OWN_WINDOW_DAYS, buildOwn, feePerShareOf, netOf, ownParamsOf, pickOrder, realMistakes, realStructure, riskOf,
@@ -20,19 +20,17 @@ import {
 } from "./own";
 import * as store from "./store";
 import * as ownStore from "./ownStore";
-import { lastPlayableDay, remember, settleActive, snapshotOf, type Snapshot, type Viewer } from "./service";
+import { lastPlayableDay, newGameExtras, remember, settleActive, snapshotOf, type Snapshot, type Viewer } from "./service";
 
-/** Mistake ids lib/daily attributes to each trade (empty while the daily engine has nothing; never fails the game). */
+/** Mistake ids lib/daily attributes to each trade (every hit of the window, not only the top examples of each mistake;
+ *  empty while the daily engine has nothing; never fails the game). */
 async function dailyMistakesByTrade(trader: string, from: string, to: string): Promise<Map<number, string[]>> {
-  const out = new Map<number, string[]>();
   try {
-    for (const m of await mistakeCosts(trader, from, to)) {
-      for (const ex of m.examples) out.set(ex.tradeId, [...(out.get(ex.tradeId) ?? []), m.id]);
-    }
+    return await mistakesByTrade(trader, from, to);
   } catch (err) {
     logger.warn({ err }, "sim own: daily mistakes unavailable");
+    return new Map();
   }
-  return out;
 }
 
 const firstLast = (t: OwnTradeRow): { first: number; last: number } | null => {
@@ -62,7 +60,14 @@ async function build(t: OwnTradeRow, want: IntradayTf | null): Promise<OwnBuilt 
 export type OwnCandidateView = {
   tradeId: number; ticker: string; date: string; side: "long" | "short"; net: number; r: number | null; mistakes: string[]; played: boolean;
 };
-export type OwnCandidatesView = { trades: OwnCandidateView[]; worst: number | null; windowDays: number };
+export type OwnCandidatesView = {
+  trades: OwnCandidateView[];
+  /** What POST /sim/own {pick: "worst"} creates now (the same order and the same «played» set). */
+  worst: number | null;
+  windowDays: number;
+  /** The viewer's unfinished own game (POST /sim/own settles it first): the card offers to continue it. */
+  active: { gameId: number; tradeId: number | null; ticker: string; date: string } | null;
+};
 
 function viewOf(t: OwnTradeRow, mistakes: string[], played: boolean): OwnCandidateView {
   const { side, stats, maxQty } = realStructure(t);
@@ -86,18 +91,22 @@ const asCandidate = (t: OwnTradeRow, mistakes: string[]): OwnCandidate => {
 
 /** The viewer's replayable losses, newest first, and which one «my worst of the last 30 days» would open. */
 export async function ownCandidates(viewer: Viewer): Promise<OwnCandidatesView> {
-  const { lastDay, rows, mistakes } = await loadCandidates(viewer);
-  const played = await ownStore.playedOwnTrades(viewer.id);
+  const [{ lastDay, rows, mistakes }, played, active] = await Promise.all([
+    loadCandidates(viewer), ownStore.playedOwnTrades(viewer.id), ownStore.activeOwnGame(viewer.id),
+  ]);
   const order = pickOrder(rows.map((r) => asCandidate(r, mistakes.get(r.id) ?? [])), "worst", played, lastDay, addDays(lastDay, -OWN_WINDOW_DAYS));
   const trades = rows
     .map((r) => viewOf(r, mistakes.get(r.id) ?? [], played.has(r.id)))
     .sort((a, b) => b.date.localeCompare(a.date) || a.net - b.net);
-  return { trades, worst: order[0]?.id ?? null, windowDays: OWN_WINDOW_DAYS };
+  return { trades, worst: order[0]?.id ?? null, windowDays: OWN_WINDOW_DAYS, active };
 }
 
 export async function createOwnGame(
   viewer: Viewer, pick: OwnPick, tradeId: number | null, rnd: () => number = Math.random, tf: IntradayTf | null = null,
 ): Promise<Snapshot> {
+  // «Played» is read BEFORE the unfinished game is settled: settling an untouched game abandons it, and an abandoned
+  // game does not count as played — the new game would then open that same trade instead of the card's «next».
+  const playedBefore = await ownStore.playedOwnTrades(viewer.id);
   await settleActive(viewer);
   let chosen: { t: OwnTradeRow; built: OwnBuilt; mistakes: string[] } | null = null;
   if (pick === "trade") {
@@ -111,8 +120,7 @@ export async function createOwnGame(
   } else {
     const { lastDay, rows, mistakes } = await loadCandidates(viewer);
     if (!rows.length) throw notFound("NOT_FOUND", { reason: "noOwnTrades" });
-    const played = await ownStore.playedOwnTrades(viewer.id);
-    const order = pickOrder(rows.map((r) => asCandidate(r, mistakes.get(r.id) ?? [])), pick, played, lastDay, addDays(lastDay, -OWN_WINDOW_DAYS), rnd);
+    const order = pickOrder(rows.map((r) => asCandidate(r, mistakes.get(r.id) ?? [])), pick, playedBefore, lastDay, addDays(lastDay, -OWN_WINDOW_DAYS), rnd);
     const byId = new Map(rows.map((r) => [r.id, r]));
     for (const c of order.slice(0, 6)) {
       const t = byId.get(c.id)!;
@@ -125,6 +133,8 @@ export async function createOwnGame(
   const own = ownParamsOf(t, built, pick, chosen.mistakes);
   const price = built.bars[built.decisionIdx].c;
   const realUnit = own.riskSource === "atr" ? null : own.riskUsd / own.maxQty;
+  // 1R of an own replay = the real trade's risk (so a risk-sized order matches the real size at the real stop).
+  const extras = await newGameExtras(viewer, price, built.bars, t.day, own.riskSource === "atr" ? null : own.riskUsd);
   const g = await store.insertGame({
     userId: viewer.id, mode: "intraday", difficulty: "medium", ticker: t.ticker, day: t.day, dayTo: null, tf: built.tf,
     bars: built.bars, startIdx: built.startIdx, endIdx: built.endIdx, cursor: built.startIdx,
@@ -136,6 +146,7 @@ export async function createOwnGame(
       levels: built.levels,
       times: fakeTimes(built.bars, "intraday"),
       own,
+      ...extras,
     },
   });
   return snapshotOf(remember(g), viewer);

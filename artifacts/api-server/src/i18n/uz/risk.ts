@@ -161,6 +161,7 @@ export default {
       title: "Qoidabuzarlik tahlili {date}",
       body: "{actor}: {reason}. {agreed}Qaror: {consequence}.",
       agreed: "Kelishildi: {actions}. ",
+      ddReset: "Maks. pasayish shu kundan qaytadan hisoblanadi — pasayish stopi olib tashlandi.",
     },
   },
   queue: {

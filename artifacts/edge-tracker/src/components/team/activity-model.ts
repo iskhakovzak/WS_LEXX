@@ -19,8 +19,8 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
-import { isToday, isYesterday } from "date-fns";
-import { fmtDate, fmtRelative, fmtWeekday } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime, fmtDeskTime, fmtRelative, fmtWeekday } from "@/lib/format";
+import { addDays, nyDate } from "@/lib/trading-date";
 import { activityI18n } from "@/i18n/ns/activity";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
@@ -340,32 +340,37 @@ export function itemHref(item: FeedItem): string | null {
   }
 }
 
+/** The desk (New York) day of an event: "2026-10-16" — feed groups and the digest use the desk day, not the browser's. */
 export function dayKey(iso: string): string {
   const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  return Number.isNaN(d.getTime()) ? "" : nyDate(d);
+}
+
+/** «Сегодня» / «Вчера» / «16 октября, пятница» for a desk date (YYYY-MM-DD), relative to today's desk date. */
+export function deskDayLabel(ymd: string, today: string = nyDate()): string {
+  if (ymd === today) return commonI18n.t("time.today");
+  if (ymd === addDays(today, -1)) return commonI18n.t("time.yesterday");
+  const sameYear = ymd.slice(0, 4) === today.slice(0, 4);
+  return `${fmtDate(ymd, sameYear ? "dayMonthLong" : "long")}, ${fmtWeekday(ymd, "long")}`;
 }
 
 export function dayLabel(iso: string): string {
-  const d = new Date(iso);
-  if (isToday(d)) return commonI18n.t("time.today");
-  if (isYesterday(d)) return commonI18n.t("time.yesterday");
-  const sameYear = d.getFullYear() === new Date().getFullYear();
-  return `${fmtDate(d, sameYear ? "dayMonthLong" : "long")}, ${fmtWeekday(d, "long")}`;
+  return deskDayLabel(dayKey(iso));
 }
 
 export function capFirst(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
+/** Desk (New York) wall-clock time of an event, no suffix (the full NY date-time is in the row's title). */
 export function timeLabel(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : fmtDate(d, "time");
+  return fmtDeskTime(iso, { suffix: false });
 }
 
 export function relTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return Date.now() - d.getTime() < 86_400_000 ? fmtRelative(d) : fmtDate(d, "dateTime");
+  return Date.now() - d.getTime() < 86_400_000 ? fmtRelative(d) : fmtDeskDateTime(d);
 }
 
 export type Burst = { key: string; items: FeedItem[] };
@@ -373,7 +378,7 @@ export type DayGroup = { key: string; label: string; bursts: Burst[] };
 
 const BURST_WINDOW_MS = 15 * 60 * 1000;
 
-/** Group items by local day; inside a day collapse runs of the same actor+action+section within 15 minutes. */
+/** Group items by desk (NY) day; inside a day collapse runs of the same actor+action+section within 15 minutes. */
 export function groupFeed(items: FeedItem[]): DayGroup[] {
   const days: DayGroup[] = [];
   for (const it of items) {

@@ -5,7 +5,7 @@ import { logActivity } from "../lib/activity";
 import { accessCustomParams, activityDetails, localizeActivity } from "../lib/activityText";
 import { canAccessTrade, isGuest, scopeTrader } from "../lib/auth";
 import { requireCap } from "../lib/permissions";
-import { closeDateSql, horizonSql, netPnlSql, resultSql, signedR, signedRSql } from "../lib/tradeMath";
+import { closedSql, closeDateSql, horizonSql, netPnlSql, resultSql, signedR, signedRSql } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
 import { nyMinutes } from "../lib/tradingDate";
 import { sniffImageMime } from "../lib/planMedia";
@@ -14,7 +14,7 @@ import {
   accessHints, canEditSetupRow, canReadPure, canSharePure, ensurePlaybookSpaces, loadSetupAccess, loadViewer,
   loadMoneyViewer, mayShareAny, normSharedWith, spaceOf, spaceSql, visibleSql, type PlaybookViewer,
 } from "../lib/playbookAccess";
-import { inboxDays, labelScore, rankInbox, suggestSetup, suggestTier, type InboxSetup } from "../lib/playbookInbox";
+import { inboxDays, inboxFrom, labelScore, rankInbox, suggestSetup, suggestTier, type InboxSetup } from "../lib/playbookInbox";
 import {
   canSeeAggregateMoney, canSeeTradeMoney, equityByR, redactEdgeStats, redactSlot, redactTradeRow, redactUsdStats,
   type MoneyViewer,
@@ -22,6 +22,9 @@ import {
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 import { langOf } from "../i18n";
 import { playbookT } from "../i18n/ns";
+import { tradeTagged } from "../lib/playbookToday/service";
+import inboxRouter, { ensureInboxExtras } from "./playbook-inbox";
+import { suggestByTrade } from "../lib/playbookToday/suggest";
 
 /**
  * Playbook spaces, tiered examples, gallery, trade picker, sharing, copy / promote, $-stats and media (Wave J3).
@@ -242,6 +245,8 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
       if (rowCount) linkedTradeIds.push(tradeId);
     }
   }
+  // A new link tags the trade: the «без сетапа» counter and the tag quest re-read at once.
+  if (linkedTradeIds.length) await tradeTagged(linkedTradeIds[0]);
   if (added.length) {
     await logActivity({
       action: "created", section: "playbook", entityId: String(row.id), entityTitle: row.name,
@@ -473,7 +478,7 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
   const sg = await suggestionJoin("t");
   const { rows: tr } = await pool.query<any>(
     `SELECT t.id, t.ticker, t.date, t.side, t.trader, t.setup, t.playbook_id AS "playbookId", ${netPnlSql("t")} AS "netPnl",
-            ${resultSql("t")} AS result, ${signedRSql("t")} AS "signedR", ${sg.cols}
+            ${resultSql("t")} AS result, ${signedRSql("t")} AS "signedR", t.context_snapshot ->> 'openedAt' AS "openedAt", ${sg.cols}
        FROM trades t ${sg.join} WHERE t.id = $1`,
     [tradeId],
   );
@@ -482,7 +487,8 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
   const vis = visibleSql(v, params, "p");
   const { rows: setups } = await pool.query<any>(
     `SELECT p.id, p.name, p.folder, p.trader, p.setup_type AS "setupType", p.tags, ${spaceSql("p")} AS space,
-            COALESCE(p.visibility, 'private') AS visibility, p.shared_with AS "sharedWith", p.checklist_items AS "checklistItems", p.checklist
+            COALESCE(p.visibility, 'private') AS visibility, p.shared_with AS "sharedWith", p.checklist_items AS "checklistItems", p.checklist,
+            p.time_of_day AS "timeOfDay"
        FROM playbook p WHERE p.deleted_at IS NULL AND ${vis}
       ORDER BY p.name`,
     params,
@@ -514,6 +520,13 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
   const addSug = (id: number, reason: string) => { if (byId.has(id) && !suggested.some((s) => s.id === id)) suggested.push({ id, reason }); };
   const pt = playbookT.tFor(langOf(req));
   if (trade?.playbookId) addSug(trade.playbookId, pt("suggest.linkedHere"));
+  // ROMAN-09: the broker strategy mapped to an office setup inside its time window, then the setups whose window holds
+  // the entry time — so the dialog never opens on the first name of the list (0.1 morning routine).
+  const byTrade = trade ? suggestByTrade(
+    { setup: trade.setup ?? null, autoSetup: trade.autoSetup ?? null, openedAt: trade.openedAt ?? null },
+    light.map((s) => ({ id: s.id, name: s.name, timeOfDay: setups.find((x) => x.id === s.id)?.timeOfDay ?? null, space: s.space, canAddExamples: s.canAddExamples })),
+  ) : [];
+  for (const x of byTrade.filter((b) => b.via === "strategy")) addSug(x.id, pt("suggest.strategy", { label: x.label ?? "", time: x.time ?? "—" }));
   // Closest name first (exact > partial name > type/tag), writable setups before read-only ones.
   const byLabel = (label: string) => light
     .map((s) => ({ s, sc: labelScore(label, s) }))
@@ -521,11 +534,13 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
     .sort((a, b) => b.sc - a.sc || Number(b.s.canAddExamples) - Number(a.s.canAddExamples) || Number(b.s.mine) - Number(a.s.mine));
   if (trade?.autoSetup) for (const { s } of byLabel(trade.autoSetup)) addSug(s.id, pt("suggest.auto", { label: trade.autoSetup }));
   if (trade?.setup) for (const { s } of byLabel(trade.setup)) addSug(s.id, pt("suggest.text", { label: trade.setup }));
+  for (const x of byTrade.filter((b) => b.via === "time")) addSug(x.id, pt("suggest.time", { time: x.time ?? "—" }));
   const { rows: ex } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", tier, note FROM playbook_examples WHERE trade_id = $1 AND deleted_at IS NULL`,
     [tradeId],
   );
   const mv = await loadMoneyViewer(req);
+  delete trade?.openedAt;
   res.json({
     trade: trade ? redactTradeRow({ ...trade, netPnl: numOrNull(trade.netPnl), signedR: numOrNull(trade.signedR), autoConfidence: numOrNull(trade.autoConfidence) }, mv) : null,
     setups: light,
@@ -539,7 +554,7 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
 // ─── Inbox: own recent trades without an example ────────────────────────────
 
 /**
- * GET /playbook-tools/inbox?days=14&limit=40[&trader=] — the viewer's recent trades (staff: ?trader=) that are not an
+ * GET /playbook-tools/inbox?days=14&limit=40[&from=YYYY-MM-DD][&untagged=1][&trader=] — the viewer's recent trades (staff: ?trader=) that are not an
  * example of any live setup yet, newest first, each with a best-guess setup and tier (lib/playbookInbox.ts).
  * Feeds «Разобрать сделки» on the playbook home. Trade $ go through redactTradeRow like everywhere else.
  */
@@ -552,17 +567,29 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
   const who = scope ?? v.name;
   if (!who || v.guest) { res.json({ trader: null, days: 0, total: 0, trades: [] }); return; }
   const days = inboxDays(req.query.days);
+  const from = inboxFrom(req.query.from);
   const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
   const sg = await suggestionJoin("t");
+  // ?untagged=1 — «без сетапа» (the evening «Разметь N сделок» step, the playbook header link): closed trades without a
+  // live setup and not marked «Не для плейбука» — exactly lib/playbookToday/untagged untaggedTrades, so the sheet lists
+  // the trades the counter counts. Without it: the trades that are no setup's example yet («без эталона»).
+  const untagged = req.query.untagged === "1";
+  const filter = untagged
+    ? ` AND pb.id IS NULL AND ${closedSql("t")}`
+    : ` AND NOT EXISTS (
+          SELECT 1 FROM playbook_examples e JOIN playbook p ON p.id = e.playbook_id AND p.deleted_at IS NULL
+           WHERE e.trade_id = t.id AND e.deleted_at IS NULL)`;
+  // ?from= (a NY close day) wins over ?days= — the header's «last 5 trading days» period.
+  const since = from
+    ? `LEFT(${closeDateSql("t")}, 10) >= $2::text`
+    : `${closeDateSql("t")} >= to_char((NOW() AT TIME ZONE 'America/New_York')::date - $2::int, 'YYYY-MM-DD')`;
   const base = `FROM trades t
        LEFT JOIN playbook pb ON pb.id = t.playbook_id AND pb.deleted_at IS NULL
        ${sg.join}
       WHERE t.deleted_at IS NULL AND t.trader = $1
-        AND ${closeDateSql("t")} >= to_char((NOW() AT TIME ZONE 'America/New_York')::date - $2::int, 'YYYY-MM-DD')
-        AND NOT EXISTS (
-          SELECT 1 FROM playbook_examples e JOIN playbook p ON p.id = e.playbook_id AND p.deleted_at IS NULL
-           WHERE e.trade_id = t.id AND e.deleted_at IS NULL)
-        AND NOT EXISTS (SELECT 1 FROM playbook_inbox_dismissed d WHERE d.trade_id = t.id)`;
+        AND ${since}
+        AND NOT EXISTS (SELECT 1 FROM playbook_inbox_dismissed d WHERE d.trade_id = t.id)${filter}`;
+  const p2 = from ?? days;
   const [{ rows }, { rows: cnt }] = await Promise.all([
     pool.query<any>(
       `SELECT t.id, t.ticker, t.date, ${closeDateSql("t")} AS "closeDate", t.side, ${resultSql("t")} AS result,
@@ -571,9 +598,9 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
          ${base}
         ORDER BY ${closeDateSql("t")} DESC, t.id DESC
         LIMIT $3`,
-      [who, days, limit],
+      [who, p2, limit],
     ),
-    pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n ${base}`, [who, days]),
+    pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n ${base}`, [who, p2]),
   ]);
   const params: unknown[] = [];
   const vis = visibleSql(v, params, "p");
@@ -592,58 +619,11 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
     const t = { ...r, netPnl: numOrNull(r.netPnl), signedR: numOrNull(r.signedR), autoConfidence: numOrNull(r.autoConfidence), closeDate: iso(r.closeDate)?.slice(0, 10) ?? null };
     return redactTradeRow({ ...t, suggestion: suggestSetup(t, setups, langOf(req)), suggestedTier: suggestTier(t) }, mv);
   });
-  res.json({ trader: who, days, total: Number(cnt[0]?.n ?? shaped.length), trades: rankInbox(shaped) });
+  res.json({ trader: who, days, from, total: Number(cnt[0]?.n ?? shaped.length), trades: rankInbox(shaped) });
 }));
 
-let inboxExtras: Promise<void> | null = null;
-/**
- * Additive, idempotent: «Не для плейбука» marks for the inbox, and an index for the per-setup journal
- * (GET /playbook/:id/activity filters activity_log by section + entity_id).
- */
-function ensureInboxExtras(): Promise<void> {
-  if (!inboxExtras) {
-    inboxExtras = (async () => {
-      await pool.query(`CREATE TABLE IF NOT EXISTS playbook_inbox_dismissed (
-        trade_id INTEGER PRIMARY KEY,
-        dismissed_by TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_section_entity_idx ON activity_log (section, entity_id, created_at DESC)`);
-    })().catch((e) => { inboxExtras = null; throw e; });
-  }
-  return inboxExtras;
-}
-
-/**
- * POST   /playbook-tools/inbox/dismiss { tradeIds } — «Не для плейбука»: hide own trades from «Разобрать сделки».
- * DELETE /playbook-tools/inbox/dismiss { tradeIds } — undo. Staff may do it for any trader's trades.
- */
-async function inboxDismiss(req: Request, res: Response, on: boolean): Promise<void> {
-  if (isGuest(req)) { sendError(res, new AppError("GUEST_READ_ONLY")); return; }
-  await ensureInboxExtras();
-  const v = await loadViewer(req);
-  if (!v.name) { sendError(res, unauthorized()); return; }
-  const body = req.body as { tradeIds?: unknown };
-  const ids = [...new Set((Array.isArray(body.tradeIds) ? body.tradeIds : []).map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 200);
-  if (!ids.length) throw new AppError("TRADE_IDS_REQUIRED");
-  // Own trades only (staff: any) — the same people who see them in the inbox.
-  const { rows } = await pool.query<{ id: number }>(
-    `SELECT id FROM trades WHERE id = ANY($1::int[]) AND deleted_at IS NULL AND (trader = $2 OR $3::boolean)`,
-    [ids, v.name, v.editAny],
-  );
-  const allowed = rows.map((r) => r.id);
-  if (!allowed.length) throw new AppError("NOT_FOUND");
-  if (on) {
-    await pool.query(
-      `INSERT INTO playbook_inbox_dismissed (trade_id, dismissed_by) SELECT x, $2 FROM UNNEST($1::int[]) AS x ON CONFLICT (trade_id) DO NOTHING`,
-      [allowed, v.name],
-    );
-  } else {
-    await pool.query(`DELETE FROM playbook_inbox_dismissed WHERE trade_id = ANY($1::int[])`, [allowed]);
-  }
-  res.json({ success: true, tradeIds: allowed });
-}
-router.post("/playbook-tools/inbox/dismiss", asyncHandler((req, res) => inboxDismiss(req, res, true)));
-router.delete("/playbook-tools/inbox/dismiss", asyncHandler((req, res) => inboxDismiss(req, res, false)));
+// «Не для плейбука» (POST / DELETE /playbook-tools/inbox/dismiss) and the inbox table: routes/playbook-inbox.ts.
+router.use(inboxRouter);
 
 /**
  * GET /playbook/:id/activity — the setup's own journal (created / edited / examples …) for its «История» tab.

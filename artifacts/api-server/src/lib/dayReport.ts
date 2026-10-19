@@ -11,9 +11,9 @@
  *      после убытка, рост размера после убытка, торговля после дневного лимита;
  *   6. «что получилось»: топ-3 сделки, тикеры/сетапы с преимуществом в этот день;
  *   7. «план на завтра»: 3–5 рекомендаций по шаблонам из флагов.
- *
  * Деньги — нетто = брутто − |комиссии| (lib/tradeMath.netPnl). Время — America/New_York.
  */
+import { isOpeningDay } from "./dayReportRules";
 import { netPnl, num, normResult } from "./tradeMath";
 import { dayReportT } from "../i18n/ns";
 import { localeTagFor, type Lang } from "../i18n";
@@ -71,7 +71,7 @@ export interface DayReportInput {
 export interface DayReportOptions {
   /** Вход быстрее этого числа минут после убыточного выхода = «реванш». По умолчанию 2. */
   revengeMin?: number;
-  /** Рост размера после убытка: qty > предыдущий убыточный qty × factor. По умолчанию 1.2. */
+  /** Рост размера после убытка: $ нотионал (|qty| × вход) > нотионал предыдущей убыточной × factor (как behaviorEngine). По умолчанию 1.3. */
   sizeUpFactor?: number;
   /** Окно сравнения, торговых дней. По умолчанию 20. */
   lookbackDays?: number;
@@ -155,7 +155,8 @@ export interface Leak {
 
 export interface EdgeItem { key: string; label: string; trades: number; wins: number; losses: number; net: number; winRate: number | null }
 
-export interface Strengths { topTrades: TradeRef[]; tickers: EdgeItem[]; setups: EdgeItem[]; sides: EdgeItem[]; bestHour: Bucket | null }
+/** `setupTrades`: closed trades with a setup name (the broker strategy) or a playbook setup; 0 = «setups not given». */
+export interface Strengths { topTrades: TradeRef[]; tickers: EdgeItem[]; setups: EdgeItem[]; sides: EdgeItem[]; bestHour: Bucket | null; setupTrades: number }
 
 export interface PlanItem { id: string; text: string; reason: string; costUsd: number | null; source: LeakKind | "stat" }
 
@@ -322,6 +323,9 @@ function byExit(a: DayTrade, b: DayTrade): number {
   const kb = b.exitAt ?? b.entryAt ?? Number.MAX_SAFE_INTEGER;
   return ka - kb || a.id - b.id;
 }
+
+/** $ notional of the position (|qty| × entry price); |qty| when the price is unknown (same as behaviorEngine). */
+const notional = (t: DayTrade) => (t.qty == null ? null : t.entry != null && t.entry > 0 ? Math.abs(t.qty) * t.entry : Math.abs(t.qty));
 
 const isWin = (t: DayTrade) => t.result === "win" || (t.result == null && (t.net ?? 0) > 0);
 const isLoss = (t: DayTrade) => t.result === "loss" || (t.result == null && (t.net ?? 0) < 0);
@@ -514,19 +518,23 @@ export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit:
       .sort((a, b) => b.exitAt! - a.exitAt!)[0];
     if (!prev || !isLoss(prev)) continue;
     if ((t.entryAt! - prev.exitAt!) / 60000 < opts.revengeMin) revenge.push(t);
-    if (t.qty != null && prev.qty != null && prev.qty > 0 && Math.abs(t.qty) > Math.abs(prev.qty) * opts.sizeUpFactor) sizeUp.push(t);
+    // $ notional, not raw shares: 2 500 PLUG @ $2 after 1 050 RGTI @ $15 is a smaller position, not a size-up.
+    const n0 = notional(prev), n1 = notional(t);
+    if (n0 != null && n1 != null && n0 > 0 && n1 > n0 * opts.sizeUpFactor) sizeUp.push(t);
   }
+  // Cost = losses of the flagged trades (a winner doesn't cancel a rule break, as after_limit) = the header's base.
+  const lossesOf = (ts: DayTrade[]) => -sum(ts.map((t) => Math.min(0, t.net!)));
   if (revenge.length) {
     const net = sum(revenge.map((t) => t.net!));
     out.push(leak("revenge", L("leak.revengeTitle", { min: opts.revengeMin }),
       L("leak.revengeDetail", { n: revenge.length, min: opts.revengeMin, net: usd(net, true) }),
-      revenge, -net));
+      revenge, lossesOf(revenge)));
   }
   if (sizeUp.length) {
     const net = sum(sizeUp.map((t) => t.net!));
     out.push(leak("size_up", L("leak.sizeTitle"),
       L("leak.sizeDetail", { n: sizeUp.length, factor: opts.sizeUpFactor, net: usd(net, true) }),
-      sizeUp, -net));
+      sizeUp, lossesOf(sizeUp)));
   }
 
   // 5. Торговля после достижения дневного лимита убытка.
@@ -570,6 +578,7 @@ export function computeStrengths(trades: DayTrade[], breakdown: DayReport["break
     setups,
     sides: breakdown.bySide.filter(hasEdge).map(edgeOf),
     bestHour,
+    setupTrades: closed.filter((t) => t.setup != null || t.playbookId != null).length,
   };
 }
 
@@ -642,7 +651,7 @@ export function buildPlan(r: Pick<DayReport, "summary" | "leaks" | "breakdown" |
     add({ id: `repeat_${bestTicker.key}`, source: "stat", costUsd: null, reason: P("plan.repeatReason", { ticker: bestTicker.label, wins: bestTicker.wins, n: bestTicker.trades, net: usd(bestTicker.net, true) }),
       text: P("plan.repeat", { ticker: bestTicker.label, net: usd(bestTicker.net, true) }) });
   }
-  if (r.strengths.bestHour && plan.length < 3) {
+  if (r.strengths.bestHour && plan.length < 3 && !(r.strengths.bestHour.key === "09" && isOpeningDay(r.timeline))) {
     const h = r.strengths.bestHour;
     add({ id: `besthour_${h.key}`, source: "stat", costUsd: null, reason: P("plan.bestHourReason", { hour: h.label, net: usd(h.net, true) }),
       text: P("plan.bestHour", { hour: h.label, net: usd(h.net, true) }) });
@@ -665,7 +674,7 @@ export function buildPlan(r: Pick<DayReport, "summary" | "leaks" | "breakdown" |
 export function buildDayReport(input: DayReportInput): DayReport {
   const opts: Required<DayReportOptions> = {
     revengeMin: input.options?.revengeMin ?? 2,
-    sizeUpFactor: input.options?.sizeUpFactor ?? 1.2,
+    sizeUpFactor: input.options?.sizeUpFactor ?? 1.3,
     lookbackDays: input.options?.lookbackDays ?? 20,
     lang: input.options?.lang ?? "ru",
   };
@@ -676,6 +685,7 @@ export function buildDayReport(input: DayReportInput): DayReport {
   const timeline = computeTimeline(trades);
   const breakdown = computeBreakdown(trades, opts.lang);
   const leaks = computeLeaks(trades, equity, input.dailyLossLimit, opts);
+  const flagged = leaks.flatMap((l) => l.tradeIds);
   const strengths = computeStrengths(trades, breakdown);
   const plan = buildPlan({ summary, leaks, breakdown, strengths, equity, dailyLossLimit: input.dailyLossLimit, timeline }, opts);
   const entries = trades.map((t) => t.entryAt).filter((x): x is number => x != null);
@@ -692,8 +702,8 @@ export function buildDayReport(input: DayReportInput): DayReport {
     timeline,
     breakdown,
     leaks,
-    // Утечки пересекаются (одна сделка может быть и «реваншем», и «после пика») — сумма уникальных потерь по сделкам.
-    leaksTotalUsd: r2(uniqueLeakCost(leaks, trades)),
+    // No shared trades → the sum of the row costs; leaks sharing a trade → unique losses per trade (no double count).
+    leaksTotalUsd: r2(new Set(flagged).size === flagged.length ? sum(leaks.map((l) => l.costUsd)) : uniqueLeakCost(leaks, trades)),
     strengths,
     plan,
     dailyLossLimit: input.dailyLossLimit,

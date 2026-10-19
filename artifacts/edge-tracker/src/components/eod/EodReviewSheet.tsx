@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { eodI18n } from "@/i18n/ns/eod";
 import { personName } from "@/i18n";
@@ -20,15 +20,19 @@ import { EodDayReadOnly } from "./EodDayReadOnly";
 const SCORE_KEYS = ["none", "formal", "ok", "good", "exemplary"] as const;
 
 /** Curator review of one closed day: read-only day + comment + score 1–5, «Сохранить и следующий». */
-export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | null; onClose: () => void; onNext: (n: QueueItem | null) => void }) {
+export function EodReviewSheet({ item: incoming, onClose, onNext }: { item: QueueItem | null; onClose: () => void; onNext: (n: QueueItem | null) => void }) {
   const { toast } = useToast();
+  // OLGA-24: while the sheet slides out (item → null) it keeps showing the last day instead of flashing «День не найден».
+  const [last, setLast] = useState<QueueItem | null>(incoming);
+  useEffect(() => { if (incoming) setLast(incoming); }, [incoming]);
+  const item = incoming ?? last;
   const { t } = eodI18n.useT();
   const { t: tc } = commonI18n.useT();
   const SCORE_HINT = SCORE_KEYS.map((k) => t(`sheet.score.${k}`));
-  const open = !!item;
-  const dayQ = useEodDay(item?.trader ?? "", item?.date ?? "", open);
-  const brokerQ = useBrokerDaily(item?.trader ?? "", item?.date ?? "", open);
-  const journalQ = useJournalRange(item?.trader ?? "", item?.date ?? "", item?.date ?? "", open && !!item?.trader);
+  const open = !!incoming;
+  const dayQ = useEodDay(item?.trader ?? "", item?.date ?? "", !!item);
+  const brokerQ = useBrokerDaily(item?.trader ?? "", item?.date ?? "", !!item);
+  const journalQ = useJournalRange(item?.trader ?? "", item?.date ?? "", item?.date ?? "", !!item?.trader);
   const journal = journalQ.entries.find((e) => e.trader === item?.trader && e.date === item?.date) ?? null;
   const reviewed = !!item?.reviewedAt || dayQ.data?.status === "reviewed";
   // The loaded day is the source of truth (callers outside the queue, e.g. the curator cabinet, don't know the count).
@@ -66,7 +70,7 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
             {reviewed && <Pill tone="up">{item?.reviewedBy ? t("sheet.reviewedBy", { name: personName(item.reviewedBy) }) : t("sheet.reviewed")}</Pill>}
           </SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-x-3">
-            <span>{t("sheet.closedAt", { trades: tc("units.trades", { count: tradesN }), date: item?.closedAt ? fmtDate(item.closedAt, "shortDateTimeSeconds") : "—" })}</span>
+            <span>{t("sheet.closedAt", { trades: tc("units.trades", { count: tradesN }), date: item?.closedAt ? fmtDeskDateTime(item.closedAt, { style: "shortDateTime" }) : "—" })}</span>
             {item && (
               <Link href={links.journalDay(item.date, item.trader)} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={onClose}>
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />{t("sheet.openInJournal")}

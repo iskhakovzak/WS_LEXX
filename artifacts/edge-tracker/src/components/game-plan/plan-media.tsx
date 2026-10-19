@@ -265,7 +265,9 @@ export function MediaStrip({
           <span className="min-w-0 flex-1">
             {over ? t("media.dropHere") : (
               <>
-                <span className="text-foreground">Ctrl+V</span> {t("media.dropHint")}
+                {/* No keyboard / drag hints on a touch screen (ILYA-13). */}
+                <span className="[@media(pointer:coarse)]:hidden"><span className="text-foreground">Ctrl+V</span> {t("media.dropHint")}</span>
+                <span className="hidden [@media(pointer:coarse)]:inline">{t("media.touchHint")}</span>
               </>
             )}
           </span>

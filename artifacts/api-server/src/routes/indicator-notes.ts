@@ -167,6 +167,8 @@ router.put("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
  * Columnar, strings dictionary-coded:
  *   → { n, dict: string[], id[], ticker[], date[], result[], r[], pnl[], fees[], tags[], setup[], horizon[] }
  *     ticker / result / tags / setup / horizon hold indexes into `dict` (-1 = null); date is YYYY-MM-DD.
+ *   ?enc=2 (DEV-10: 2.3 MB for the whole desk) also codes `date` as indexes into `dates` and sends `id` as deltas
+ *     from the previous id (rows are in id order) → about a quarter less JSON; plain stays the default for old bundles.
  */
 router.get("/indicators/tagged-trades", asyncHandler(async (req, res): Promise<void> => {
   const requested = typeof req.query.trader === "string" ? req.query.trader : null;
@@ -212,7 +214,24 @@ router.get("/indicators/tagged-trades", asyncHandler(async (req, res): Promise<v
     out.setup.push(code(t.setup));
     out.horizon.push(code(t.horizon));
   }
-  res.json(out);
+  res.json(req.query.enc === "2" ? encodeTaggedCompact(out) : out);
 }));
+
+/** enc=2 of the tagged book: dates as dictionary indexes, ids as deltas (exported for tests). */
+export function encodeTaggedCompact<T extends { id: number[]; date: string[] }>(c: T): Omit<T, "id" | "date"> & { enc: 2; idDelta: number[]; dates: string[]; date: number[] } {
+  const dates: string[] = [];
+  const at = new Map<string, number>();
+  const date = c.date.map((d) => {
+    let k = at.get(d);
+    if (k === undefined) { k = dates.length; dates.push(d); at.set(d, k); }
+    return k;
+  });
+  let prev = 0;
+  const idDelta = c.id.map((id) => { const d = id - prev; prev = id; return d; });
+  const rest = { ...c } as Partial<T>;
+  delete rest.id;
+  delete rest.date;
+  return { ...(rest as Omit<T, "id" | "date">), enc: 2, idDelta, dates, date };
+}
 
 export default router;

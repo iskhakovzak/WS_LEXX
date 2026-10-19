@@ -21,6 +21,8 @@
  */
 
 import { insightFor, type PatternInsight } from "./behaviorInsights";
+import { entryRanks, entrySec, groupByDay, lastClosedBefore, mad, median, notional, quantile, shiftDate, weekKey } from "./behaviorDays";
+export { entryRanks, groupByDay, lastClosedBefore, mad, median, parseHoldText, shiftDate, weekKey } from "./behaviorDays";
 import { behaviorT, fmtDurFor } from "./behaviorI18n";
 import { DEFAULT_LANG, type Lang } from "../i18n";
 
@@ -224,28 +226,6 @@ export const DISCIPLINE_FORMULA = disciplineFormulaFor(DEFAULT_LANG);
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-export function median(values: number[]): number {
-  if (!values.length) return 0;
-  const s = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-}
-
-/** Масштабированное MAD (×1.4826 ≈ σ для нормального распределения). */
-export function mad(values: number[]): number {
-  if (!values.length) return 0;
-  const m = median(values);
-  return 1.4826 * median(values.map((v) => Math.abs(v - m)));
-}
-
-function quantile(values: number[], q: number): number | null {
-  if (!values.length) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const pos = (s.length - 1) * q;
-  const lo = Math.floor(pos), hi = Math.ceil(pos);
-  return s[lo] + (s[hi] - s[lo]) * (pos - lo);
-}
-
 function sumNet(trades: BehaviorTrade[]): { sum: number | null; n: number } {
   let sum = 0, n = 0;
   for (const t of trades) if (t.net != null) { sum += t.net; n++; }
@@ -261,67 +241,6 @@ function winRateOf(trades: BehaviorTrade[]): number | null {
   let w = 0, l = 0;
   for (const t of trades) { if (t.result === "win") w++; else if (t.result === "loss") l++; }
   return w + l ? w / (w + l) : null;
-}
-
-/** Понедельник ISO-недели для даты YYYY-MM-DD (календарная арифметика без таймзон). */
-export function weekKey(date: string): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  const dow = (dt.getUTCDay() + 6) % 7; // Пн = 0
-  dt.setUTCDate(dt.getUTCDate() - dow);
-  return dt.toISOString().slice(0, 10);
-}
-
-/**
- * Текст удержания из журнала → минуты: "5m", "17s", "2h 29m", "1:30", "45 мин", "3 д", "2h".
- * Null, если не распознано.
- */
-export function parseHoldText(text: string | null | undefined): number | null {
-  if (!text) return null;
-  const s = text.trim().toLowerCase().replace(",", ".");
-  if (!s) return null;
-  const clock = /^(\d{1,3}):(\d{2})(?::(\d{2}))?$/.exec(s);
-  if (clock) return Number(clock[1]) * 60 + Number(clock[2]) + (clock[3] ? Number(clock[3]) / 60 : 0);
-  let total = 0, matched = false;
-  // Input parsing (journal hold text in RU / EN / UZ), not UI text.
-  const re = /(\d+(?:\.\d+)?)\s*(d|day|days|kun|д|дн|h|hr|soat|ч|m|min|daq|daqiqa|мин|м|s|sec|son|soniya|сек|с)\b/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s)) !== null) {
-    matched = true;
-    const v = Number(m[1]);
-    const u = m[2];
-    if (u === "d" || u === "day" || u === "days" || u === "kun" || u === "д" || u === "дн") total += v * 1440; // i18n-ignore (input units)
-    else if (u === "h" || u === "hr" || u === "soat" || u === "ч") total += v * 60; // i18n-ignore (input units)
-    else if (u === "s" || u === "sec" || u === "son" || u === "soniya" || u === "сек" || u === "с") total += v / 60; // i18n-ignore (input units)
-    else total += v;
-  }
-  if (matched) return total;
-  const bare = /^(\d+(?:\.\d+)?)$/.exec(s);
-  return bare ? Number(bare[1]) : null;
-}
-
-function notional(t: BehaviorTrade): number | null {
-  if (t.qty == null) return null;
-  if (t.entry != null && t.entry > 0) return Math.abs(t.qty) * t.entry;
-  return Math.abs(t.qty);
-}
-
-/** Сделки по дням в порядке входа (время → id). */
-export function groupByDay(trades: BehaviorTrade[]): Map<string, BehaviorTrade[]> {
-  const byDay = new Map<string, BehaviorTrade[]>();
-  for (const t of trades) {
-    if (!byDay.has(t.date)) byDay.set(t.date, []);
-    byDay.get(t.date)!.push(t);
-  }
-  for (const list of byDay.values()) {
-    list.sort((a, b) => {
-      if (a.entryAt != null && b.entryAt != null && a.entryAt !== b.entryAt) return a.entryAt - b.entryAt;
-      if (a.entryAt != null && b.entryAt == null) return -1;
-      if (a.entryAt == null && b.entryAt != null) return 1;
-      return a.id - b.id;
-    });
-  }
-  return new Map([...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])));
 }
 
 /* ─── Severity и сборка отчёта по паттерну ────────────────────────────────── */
@@ -395,13 +314,18 @@ function trendOf(trades: BehaviorTrade[], base: number | null, noCost: boolean, 
   return { recent, prior, direction };
 }
 
+/** Fewest trades with P&L in the comparison group (and at least 5 % of the period) for a pattern cost to be shown. */
+const MIN_BASELINE_N = 10;
+
 function buildPattern(d: PatternDraft, total: number, grossProfit: number, tc: TrendCtx, opts: Required<BehaviorOptions>, lang: Lang): PatternReport {
   const trades = d.flagged.map((f) => f.trade);
   const { sum: net } = sumNet(trades);
   const a = avgNet(trades);
   const base = avgNet(d.baseline);
   const withPnl = trades.filter((t) => t.net != null).length;
-  const cost = !d.noCost && net != null && base != null ? round2(net - withPnl * base) : null;
+  // A norm from a handful of trades is noise (e.g. «first decision» of an auction trader whose day is one batch).
+  const noCost = !!d.noCost || d.baseline.filter((t) => t.net != null).length < Math.max(MIN_BASELINE_N, Math.ceil(total * 0.05));
+  const cost = !noCost && net != null && base != null ? round2(net - withPnl * base) : null;
   const byWeek = new Map<string, { n: number; net: number; withPnl: number }>();
   for (const t of trades) {
     const k = weekKey(t.date);
@@ -433,7 +357,7 @@ function buildPattern(d: PatternDraft, total: number, grossProfit: number, tc: T
     tradeIds: trades.map((t) => t.id).slice(0, 300),
     weekly,
     extra: d.extra ?? {},
-    trend: trendOf(trades, base, !!d.noCost, tc),
+    trend: trendOf(trades, base, noCost, tc),
     insight: insightFor({ key: d.key, extra: d.extra ?? {}, opts }, lang),
   };
 }
@@ -491,22 +415,26 @@ function detectMartingale(c: Ctx): PatternDraft {
   const flaggedIds = new Set<number>();
   let chains = 0, longestChain = 0;
   for (const day of c.byDay.values()) {
-    let prev: BehaviorTrade | null = null;
-    let chain = 0;
-    for (const t of day) {
-      if (prev && prev.result === "loss") {
-        const n0 = notional(prev), n1 = notional(t);
-        if (n0 != null && n1 != null && n0 > 0 && n1 / n0 >= c.opts.martingaleRatio) {
-          chain++;
-          if (chain === 1) chains++;
-          longestChain = Math.max(longestChain, chain);
-          const np = { ratio: (n1 / n0).toFixed(1), ticker: prev.ticker, net: fmtUsd(prev.net) };
-          flagged.push({ trade: t, note: chain > 1 ? c.t("patterns.martingale.step", { ...np, n: chain }) : c.t("patterns.martingale.note", np) });
-          flaggedIds.add(t.id);
-        } else chain = 0;
-      } else chain = 0;
-      prev = t;
-    }
+    // The loss must be closed when the bigger trade goes in (prev.exitAt <= t.entryAt); a chain counts decisions
+    // (entry seconds), so a batch sized up after one loss is one step, not several.
+    const ranks = entryRanks(day);
+    let chain = 0, lastFlaggedRank = -1, curRank = -1, rankBefore = -1;
+    day.forEach((t, i) => {
+      if (ranks[i] !== curRank) { rankBefore = curRank; curRank = ranks[i]!; }
+      const prev = lastClosedBefore(day, i);
+      if (!prev || prev.result !== "loss") return;
+      const n0 = notional(prev), n1 = notional(t);
+      if (n0 == null || n1 == null || n0 <= 0 || n1 / n0 < c.opts.martingaleRatio) return;
+      if (curRank !== lastFlaggedRank) {
+        chain = lastFlaggedRank >= 0 && lastFlaggedRank === rankBefore ? chain + 1 : 1;
+        if (chain === 1) chains++;
+        lastFlaggedRank = curRank;
+      }
+      longestChain = Math.max(longestChain, chain);
+      const np = { ratio: (n1 / n0).toFixed(1), ticker: prev.ticker, net: fmtUsd(prev.net) };
+      flagged.push({ trade: t, note: chain > 1 ? c.t("patterns.martingale.step", { ...np, n: chain }) : c.t("patterns.martingale.note", np) });
+      flaggedIds.add(t.id);
+    });
   }
   return {
     key: "martingale", title: c.t("patterns.martingale.title"),
@@ -523,13 +451,17 @@ function detectOvertrading(c: Ctx): PatternDraft {
   let busyDays = 0;
   for (const [, day] of c.byDay) {
     if (day.length <= c.tradesPerDayNorm) continue;
-    busyDays++;
+    // Numbered by decisions: a batch that starts within the norm is never split by the order of ids.
+    const ranks = entryRanks(day);
+    let any = false;
     day.forEach((t, i) => {
-      if (i + 1 > c.tradesPerDayNorm) {
-        flagged.push({ trade: t, note: c.t("patterns.overtrading.note", { no: i + 1, norm: c.tradesPerDayNorm, total: day.length }) });
+      if (ranks[i]! > c.tradesPerDayNorm) {
+        any = true;
+        flagged.push({ trade: t, note: c.t("patterns.overtrading.note", { no: ranks[i], norm: c.tradesPerDayNorm, total: day.length }) });
         flaggedIds.add(t.id);
       }
     });
+    if (any) busyDays++;
   }
   return {
     key: "overtrading", title: c.t("patterns.overtrading.title"),
@@ -545,8 +477,10 @@ function detectFatigue(c: Ctx): PatternDraft {
   const early: BehaviorTrade[] = [];
   const flagged: PatternDraft["flagged"] = [];
   for (const day of c.byDay.values()) {
+    // In-batch order is ignored: trades entered in one second share the number of the first of them.
+    const ranks = entryRanks(day);
     day.forEach((t, i) => {
-      if (i + 1 > cut) flagged.push({ trade: t, note: c.t("patterns.fatigue.note", { no: i + 1, total: day.length }) });
+      if (ranks[i]! > cut) flagged.push({ trade: t, note: c.t("patterns.fatigue.note", { no: ranks[i], total: day.length }) });
       else early.push(t);
     });
   }
@@ -599,8 +533,10 @@ function detectTilt(c: Ctx): PatternDraft {
       if (t.result === "loss") streak++;
       else if (t.result === "win" || t.result === "be") streak = 0;
       if (streak < 3) continue;
-      // После 3-го убытка подряд: ускорилась ли частота следующих сделок?
-      const after = day.slice(i + 1, i + 4);
+      // После 3-го убытка подряд: ускорилась ли частота следующих сделок? Only trades entered after that loss was
+      // closed react to it (the rest of its batch went in before the result was known).
+      const later = day.slice(i + 1).filter((a) => t.exitAt == null || a.entryAt == null || a.entryAt >= t.exitAt);
+      const after = later.slice(0, 3);
       const gaps: number[] = [];
       let prevExit = t.exitAt;
       for (const a of after) {
@@ -612,20 +548,17 @@ function detectTilt(c: Ctx): PatternDraft {
       const fast = gapRef != null ? g < gapRef * 0.5 : g < 3;
       if (!fast) continue;
       clusters++;
-      let k = i + 1;
-      let taken = 0;
-      while (k < day.length && taken < 5) {
-        const a = day[k];
+      let last = i;
+      for (const a of later.slice(0, 5)) {
         if (!flaggedIds.has(a.id)) {
           flagged.push({ trade: a, note: c.t("patterns.tilt.note", { streak, gap: g < 1 ? "<1" : Math.round(g), norm: gapRef == null ? "—" : Math.round(gapRef) }) });
           flaggedIds.add(a.id);
         }
-        taken++;
+        last = day.indexOf(a);
         if (a.result === "win") break;
-        k++;
       }
       streak = 0;
-      i = k;
+      i = last;
     }
   }
   return {
@@ -673,8 +606,9 @@ function detectFirstTrade(c: Ctx): PatternDraft {
   const flagged: PatternDraft["flagged"] = [];
   const rest: BehaviorTrade[] = [];
   for (const day of c.byDay.values()) {
+    const ranks = entryRanks(day);
     day.forEach((t, i) => {
-      if (i === 0) flagged.push({ trade: t, note: t.entryMin != null ? c.t("patterns.firstTrade.noteAt", { time: fmtMin(t.entryMin) }) : c.t("patterns.firstTrade.note") });
+      if (ranks[i] === 1) flagged.push({ trade: t, note: t.entryMin != null ? c.t("patterns.firstTrade.noteAt", { time: fmtMin(t.entryMin) }) : c.t("patterns.firstTrade.note") });
       else rest.push(t);
     });
   }
@@ -848,6 +782,8 @@ function detect(input: BehaviorTrade[], options: BehaviorOptions, lang: Lang = D
   for (const day of byDay.values()) {
     for (let i = 1; i < day.length; i++) {
       const p = day[i - 1], t = day[i];
+      const ps = entrySec(p);
+      if (ps != null && ps === entrySec(t)) continue; // one batch = one decision: no pause inside it
       if (p.exitAt != null && t.entryAt != null) gaps.push(Math.max(0, minutesBetween(p.exitAt, t.entryAt)));
     }
   }
@@ -880,8 +816,9 @@ export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions
   const byHour = new Map<string, BehaviorTrade[]>();
   for (const day of byDay.values()) {
     let lastLossExit: number | null = null;
+    const ranks = entryRanks(day);
     day.forEach((t, i) => {
-      const k = tradeNoBucket(i + 1);
+      const k = tradeNoBucket(ranks[i]!);
       (byNo.get(k) ?? byNo.set(k, []).get(k)!).push(t);
       const gap = lastLossExit != null && t.entryAt != null ? Math.max(0, minutesBetween(lastLossExit, t.entryAt)) : null;
       const b = afterLossBucket(gap);
@@ -1037,7 +974,12 @@ function buildProfile(a: {
       scalpShare: scalpShare == null ? null : round2(scalpShare),
       carryShare: round2(carryShare),
     },
-    hours: { best: bestHour && (bestHour.net ?? 0) > 0 ? bestHour : null, worst: worstHour && (worstHour.net ?? 0) < 0 ? worstHour : null, minN: minHourN },
+    // With ≥ 2 eligible hours both ends are shown even when every hour is green (the weakest hour is still «worst»).
+    hours: {
+      best: bestHour && ((bestHour.net ?? 0) > 0 || hours.length >= 2) ? bestHour : null,
+      worst: worstHour && ((worstHour.net ?? 0) < 0 || (hours.length >= 2 && worstHour !== bestHour)) ? worstHour : null,
+      minN: minHourN,
+    },
     setups: {
       best: bestSetup, worst: worstSetup,
       coverage: trades.length ? round2(withSetup / trades.length) : 0,
@@ -1112,14 +1054,6 @@ export function dayTimeline(input: BehaviorTrade[], date: string, options: Behav
     },
     norms: { tradesPerDayNorm: ctx.tradesPerDayNorm, medianGapMin: ctx.medianGapMin == null ? null : round2(ctx.medianGapMin), revengeMin: opts.revengeMin, euphoriaMin: opts.euphoriaMin },
   };
-}
-
-/** Календарный сдвиг даты YYYY-MM-DD на n дней (без таймзон). */
-export function shiftDate(date: string, n: number): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + n);
-  return dt.toISOString().slice(0, 10);
 }
 
 export { HOUR_BUCKETS, hourBucket };

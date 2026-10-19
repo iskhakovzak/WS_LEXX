@@ -17,7 +17,7 @@ import {
   SECTION_META,
   actionGroupLabel,
   capFirst,
-  dayLabel as fmtDayLabel,
+  deskDayLabel,
   groupFeed,
   sectionMeta,
   type ActionGroup,
@@ -310,7 +310,7 @@ export default function ActivityPage() {
         summary={summary.data}
         loading={!digestDay || summary.isLoading}
         unavailable={summary.isError}
-        dayLabel={digestDay ? t("digestDay", { day: capFirst(fmtDayLabel(nyDayStart(digestDay).toISOString())), date: digestDay }) : "…"}
+        dayLabel={digestDay ? t("digestDay", { day: capFirst(deskDayLabel(digestDay)), date: digestDay }) : "…"}
         canNext={!digestIsToday}
         onPrev={() => shiftDigest(-1)}
         onNext={() => shiftDigest(1)}

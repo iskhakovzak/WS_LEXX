@@ -394,8 +394,8 @@ export function OfferingDetailSheet({
             ) : (
               <>
                 <div className="grid grid-cols-3 gap-2">
-                  <Num label="Net" value={fmtUsd(mine.net, { signed: true, compact: true })} tone={mine.net > 0 ? "text-up" : mine.net < 0 ? "text-down" : undefined} />
-                  <Num label="Win rate" value={mine.wr != null ? `${mine.wr}%` : "—"} />
+                  <Num label={commonI18n.t("trading.net")} value={fmtUsd(mine.net, { signed: true, compact: true })} tone={mine.net > 0 ? "text-up" : mine.net < 0 ? "text-down" : undefined} />
+                  <Num label={commonI18n.t("trading.winRate")} value={mine.wr != null ? `${mine.wr}%` : "—"} />
                   <Num label={t("sheet.onDays")} value={mine.onDays ? `${mine.onDays} · ${fmtUsd(mine.onNet, { signed: true, compact: true })}` : "0"} />
                 </div>
                 <ul className="divide-y divide-border/50 rounded-xl bg-[var(--glass-bg)] text-sm">

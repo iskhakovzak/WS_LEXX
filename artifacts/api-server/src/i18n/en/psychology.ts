@@ -34,6 +34,11 @@ export default {
     text: "{lead} {parts}. Sample: {na} and {nb} trades.",
     titleR: "{label}: {metric} per trade",
     titleWr: "{label}: {metric} win rate",
+    titleBetterR: "{label}: {metric} better per trade",
+    titleWorseR: "{label}: {metric} worse per trade",
+    titleBetterWr: "{label}: win rate higher by {metric}",
+    titleWorseWr: "{label}: win rate lower by {metric}",
+    titleMixed: "{label}: mixed effect — {metric} per trade, win rate {wr}",
     pp: "{value} pp",
   },
   coverage: {

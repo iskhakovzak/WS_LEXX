@@ -67,7 +67,8 @@ export type DayReport = {
   summary: Summary; comparison: Comparison; equity: Equity; timeline: TimelineRow[];
   breakdown: { byTicker: Bucket[]; byHour: Bucket[]; bySide: Bucket[] };
   leaks: Leak[]; leaksTotalUsd: number;
-  strengths: { topTrades: TradeRef[]; tickers: EdgeItem[]; setups: EdgeItem[]; sides: EdgeItem[]; bestHour: Bucket | null };
+  /** `setupTrades`: closed trades with a broker strategy name or a playbook setup (0 = «setups not given»). */
+  strengths: { topTrades: TradeRef[]; tickers: EdgeItem[]; setups: EdgeItem[]; sides: EdgeItem[]; bestHour: Bucket | null; setupTrades?: number };
   plan: PlanItem[];
   dailyLossLimit: number | null;
   dailyLossLimitSource: "personal" | "tier" | null;

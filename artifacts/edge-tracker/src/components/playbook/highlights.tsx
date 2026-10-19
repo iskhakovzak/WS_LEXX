@@ -80,14 +80,14 @@ export function SetupHighlights({
                   <button
                     type="button"
                     onClick={onExamples}
-                    className="flex w-full min-w-0 items-start gap-3 rounded-lg px-1 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex w-full min-w-0 items-start gap-3 rounded-lg px-1 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:flex-wrap max-sm:gap-y-1"
                   >
                     <span className="w-28 shrink-0 text-sm tabular-nums">
                       <span className="font-medium text-foreground">{ex.ticker}</span>
                       <span className="block text-xs text-muted-foreground">{fmtDate(ex.closeDate ?? ex.date, "dayMonthNumeric")}{ex.trader ? ` · ${personName(ex.trader)}` : ""}</span>
                     </span>
                     <span className={cn("w-16 shrink-0 text-sm tabular-nums", toneText(fig.tone))}>{fig.text}</span>
-                    <span className={cn("min-w-0 flex-1 text-sm [overflow-wrap:anywhere]", ex.note ? "text-foreground" : "italic text-muted-foreground")}>
+                    <span className={cn("min-w-0 flex-1 text-sm [overflow-wrap:anywhere] max-sm:basis-full", ex.note ? "text-foreground" : "italic text-muted-foreground")}>
                       {ex.note || pt("highlights.noNote")}
                     </span>
                   </button>

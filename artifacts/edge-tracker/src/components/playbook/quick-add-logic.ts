@@ -50,6 +50,13 @@ export function buildQuickRows(input: {
   return out;
 }
 
+/** The row preselected when nothing is preset: a search hit, a suggestion or a recent setup — else none (the trader
+ * picks; «Добавить» waits). The plain lists (mine / office / shared) are alphabetical, not a guess. */
+export function preselectOf(rows: QuickRow[]): number | null {
+  const r = rows[0];
+  return r && (r.group === "found" || r.group === "suggested" || r.group === "recent") ? r.s.id : null;
+}
+
 /** Default tier: the tier of an existing example in the picked setup, else a hint from the outcome. */
 export function defaultTier(t: { result?: string | null; signedR?: number | null; netPnl?: number | null } | null | undefined, existing?: Tier | null): Tier {
   if (existing) return existing;

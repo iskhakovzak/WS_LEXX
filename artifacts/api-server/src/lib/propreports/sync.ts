@@ -24,6 +24,8 @@ type PoolClient = { query: (typeof pool)["query"]; release: (err?: Error | boole
 import { logger } from "../logger";
 import { logAudit } from "../audit";
 import { invalidateDashboardCache } from "../hotCache";
+import { invalidateTradesPageCache } from "../tradesPageCache";
+import { invalidateOfficeStatsCache } from "../../routes/officeStats";
 import { refreshTradeStructures } from "../tradeStructureStore";
 import { round2 } from "./csv";
 import { applyFeeSettings, type DetectedFeeColumn } from "./fees";
@@ -31,6 +33,13 @@ import { getSettings, setSetting } from "./settings";
 import type { RoundTrip } from "./types";
 import { normResult } from "../tradeMath";
 import { emitJobEvent } from "../../jobs/registry";
+
+/** The broker book changed: drop every trade-derived cache (dashboard, /trades/page summaries, office stats). */
+function invalidateTradeCaches(): void {
+  invalidateDashboardCache();
+  invalidateTradesPageCache();
+  invalidateOfficeStatsCache();
+}
 
 export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict" | "skip";
 
@@ -548,7 +557,7 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
   }
   await logAudit({ actor: opts.actor, action: "propreports.sync", targetType: "propreports_sync_runs", targetId: String(runId), details: { ...res, source: opts.source, fileName: opts.fileName ?? null } });
   if (res.inserted || res.updated) {
-    invalidateDashboardCache();
+    invalidateTradeCaches();
     // Re-check trading rules for every trader whose book changed, so violations exist right after the sync.
     const traders = new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string));
     if (traders.size) {
@@ -651,7 +660,7 @@ export async function mergePending(pendingId: number, tradeId: number, actor: st
     await client.query("COMMIT");
     refreshStructures([tradeId]);
     await logAudit({ actor, action: "propreports.merge", targetType: "trades", targetId: String(tradeId), details: { externalId: trip.externalId } });
-    invalidateDashboardCache();
+    invalidateTradeCaches();
     return { ok: true, tradeId };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
@@ -678,7 +687,7 @@ export async function keepPendingSeparate(pendingId: number, actor: string): Pro
     await client.query("COMMIT");
     refreshStructures([id]);
     await logAudit({ actor, action: "propreports.keep_separate", targetType: "trades", targetId: String(id), details: { externalId: trip.externalId } });
-    invalidateDashboardCache();
+    invalidateTradeCaches();
     return { ok: true, tradeId: id };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});

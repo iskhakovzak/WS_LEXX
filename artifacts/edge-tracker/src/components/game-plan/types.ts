@@ -2,7 +2,9 @@ import { http, ApiError } from "@/lib/api/http";
 import { KEYS } from "@/lib/api/keys";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { nyDate } from "@/lib/trading-date";
+import { trackAction } from "@/lib/usage";
 import type { Tone } from "@/components/ds";
+import type { FocusRuleKey } from "@/components/shared/plan-focus";
 
 export type MarketBias = "bull" | "bear" | "neutral" | "mixed";
 export type TickerBias = "bull" | "bear" | "neutral";
@@ -74,7 +76,15 @@ export type PlanDoc = {
   tvLinks: string[];
   /** Personal plan only: rule of the day = a daily-loop MistakeId; absent = never chosen (prefilled with the focus), null = none. */
   ownRule?: string | null;
+  /** Personal plan only: «Сегодня торгую» — playbook setup ids picked for the day (written by the playbook, read-only here). */
+  setups?: number[];
+  /** Personal plan only: 1R in $ — the playbook size calculator reads it (PlaybookToday.oneR, source «plan»). */
+  riskPerTradeUsd?: number | null;
+  /** Personal plan only: quick rules of the focus block as preset keys (a…e), shown in each reader's language. */
+  focusRules?: FocusRuleKey[];
 };
+
+export { FOCUS_RULE_KEYS, type FocusRuleKey } from "@/components/shared/plan-focus";
 
 export type PlanStatus = "draft" | "ready";
 export type TraderPlan = {
@@ -160,7 +170,9 @@ export const gpApi = {
   markRead: (id: number) => http.post<{ readAt: string }>(`/api/game-plan/${id}/read`).catch(notDeployed),
   my: (date: string) => http.get<MyPlanResponse>("/api/game-plan/my", { query: { date } }).catch(notDeployed),
   saveMy: (date: string, body: PlanDoc & { status: PlanStatus }, signal?: AbortSignal) =>
-    http.put<TraderPlan>(`/api/game-plan/my/${encodeURIComponent(date)}`, body, { signal }).catch(notDeployed),
+    http.put<TraderPlan>(`/api/game-plan/my/${encodeURIComponent(date)}`, body, { signal })
+      .then((plan) => { trackAction("plan.save"); return plan; })
+      .catch(notDeployed),
   traders: (date: string) => http.get<TraderPlansResponse>("/api/game-plan/traders", { query: { date } }).catch(notDeployed),
   templates: (kind: "desk" | "personal") => http.get<PlanTemplate[]>("/api/game-plan/templates", { query: { kind } }).catch(notDeployed),
   saveTemplate: (body: { name: string; kind: "desk" | "personal"; shared?: boolean; doc: PlanDoc }) =>

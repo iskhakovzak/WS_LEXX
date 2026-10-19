@@ -165,3 +165,17 @@ describe("curatorLogic review queue", () => {
     expect(staleQueueIds(items, 1).sort()).toEqual(["breach:1", "breach:2", "eod:1", "eod:2", "weekly:1"]);
   });
 });
+
+describe("arrangeQueue: SLA in trading hours, window in calendar days (OLGA-07)", () => {
+  it("an item over the SLA by trading hours but younger than 14 calendar days stays visible; ageHours drives the window", () => {
+    const items = [
+      { kind: "eod" as const, id: "eod:1", since: null, hoursWaiting: 30, ageHours: 80 },
+      { kind: "eod" as const, id: "eod:2", since: null, hoursWaiting: 250, ageHours: 400 }, // 16+ calendar days
+    ];
+    const out = arrangeQueue(items);
+    expect(out.items.map((q) => q.id)).toEqual(["eod:1"]);
+    expect(out.items[0]).toMatchObject({ overdue: true, old: false });
+    expect(out.old).toEqual({ count: 1, overdue: 1 });
+    expect(staleQueueIds(items)).toEqual(["eod:2"]);
+  });
+});

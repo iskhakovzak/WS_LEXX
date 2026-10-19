@@ -94,7 +94,7 @@ describe("office position — walk", () => {
     expect(o.contributors).toEqual([{ trader: "A", share: 0.75 }, { trader: "B", share: 0.25 }]);
   });
 
-  it("a scalp opened and closed inside one minute is not the main position (peak read on minute closes)", () => {
+  it("main side follows the day's $ in opening legs, not the last trades — a position inside one minute counts (ROMAN-14)", () => {
     const t5 = [trade(31, "A", "Short"), trade(32, "B", "Long")];
     const e5: ExecRowLite[] = [
       { ...ex(31, "entry", 20, 500, "09:30"), executed_at: `${DATE}T13:30:05.000Z` },
@@ -102,9 +102,42 @@ describe("office position — walk", () => {
       ex(32, "entry", 20.1, 200, "09:40"), ex(32, "exit", 20.5, 200, "10:10"),
     ];
     const o = officePosition(t5, computeStructures(t5, e5), [50, 80], true)!;
-    expect(o.side).toBe("long");
-    expect(o.peakShares).toBe(200);
-    expect(o.path.map((x) => x.pct)).toEqual([0, 100, 0]);
-    expect(o.build?.vwap).toBe(20.1);
+    // $10,000 short at the open vs $4,020 long later: the office was short.
+    expect(o.side).toBe("short");
+    expect(o.peakShares).toBe(-500);
+    expect(o.peakAt).toBe(`${DATE}T13:30:05.000Z`);
+    // 09:30: the extreme (−500) at the minute start, the close (flat) at second 59; then the long.
+    expect(o.path.map((x) => x.pct)).toEqual([-100, 0, 40, 0]);
+    expect(o.path[1].t - o.path[0].t).toBe(59);
+    expect(o.build?.vwap).toBe(20);
+    expect(o.contributors).toEqual([{ trader: "A", share: 1 }]);
+  });
+
+  it("NFLX 16 Oct shape: auction shorts at 09:30 against two longs into the close → short at 09:30", () => {
+    const t6 = [trade(41, "Al", "Short"), trade(42, "Ni", "Short"), trade(43, "Ro", "Short"), trade(44, "Eg", "Long"), trade(45, "Pa", "Long"), trade(46, "Gl", "Long")];
+    const s = (iso: string) => `${DATE}T${iso}.000Z`;
+    const e6: ExecRowLite[] = [
+      { ...ex(41, "entry", 69.87, 450, "09:30"), executed_at: s("13:30:00") },
+      { ...ex(42, "entry", 69.87, 150, "09:30"), executed_at: s("13:30:00") },
+      { ...ex(43, "entry", 69.87, 450, "09:30"), executed_at: s("13:30:00") },
+      { ...ex(44, "entry", 69.87, 250, "09:30"), executed_at: s("13:30:00") },
+      { ...ex(44, "exit", 70.04, 250, "09:30"), executed_at: s("13:30:25") },
+      { ...ex(43, "exit", 70.37, 450, "09:30"), executed_at: s("13:30:28") },
+      { ...ex(41, "exit", 70.54, 450, "09:30"), executed_at: s("13:30:30") },
+      { ...ex(42, "exit", 70.58, 150, "09:30"), executed_at: s("13:30:30") },
+      { ...ex(45, "entry", 70.47, 275, "15:57"), executed_at: s("19:57:49") },
+      { ...ex(46, "entry", 70.59, 275, "15:59"), executed_at: s("19:59:05") },
+      { ...ex(45, "exit", 70.53, 275, "16:00"), executed_at: s("20:00:00") },
+      { ...ex(46, "exit", 70.53, 275, "16:00"), executed_at: s("20:00:00") },
+    ];
+    const o = officePosition(t6, computeStructures(t6, e6), [-301.5, -106.5, -225, 42.5, 16.5, -16.5], false)!;
+    expect(o.side).toBe("short");
+    // −800 after the open print, −1,050 once the one long scalp is out (09:30:25).
+    expect(o.peakAt).toBe(s("13:30:25"));
+    expect(o.build?.from).toBe(s("13:30:00"));
+    expect(o.build?.to).toBe(s("13:30:25"));
+    expect(o.contributors.map((c) => c.trader)).toEqual(["Al", "Ro", "Ni"]);
+    expect(o.against).toBe(0);
+    expect(o.net).toBe(-590.5);
   });
 });

@@ -11,6 +11,7 @@ export default {
     signInTitle: "Kirish kerak",
     signInText: "Hisoblaringizni koʻrish va savdolarni import qilish uchun tizimga kiring.",
     syncNow: "Hozir sinxronlash",
+    syncDisabled: "Broker API ulanmagan — savdolar fayllardan yuklanadi. Ulanishni dasturchi sozlaydi.",
     sessionExpired: "Sessiya tugadi",
     statusFailed: "Holatni yuklab boʻlmadi",
     tabsAria: "Integratsiya boʻlimlari",
@@ -52,7 +53,8 @@ export default {
     authLogin: "login orqali avtorizatsiya (API v1, token har ~2 soatda yangilanadi)",
     group: "guruh {id}",
     accountsList: "hisoblar {list}",
-    notConfiguredText: "Fayl importi har doim ishlaydi. API orqali sinxronlash uchun quyidagi oʻzgaruvchilarni .env.local ga qoʻshing va serverni qayta ishga tushiring.",
+    notConfiguredText: "Savdolar PropReports hisobot fayllaridan yuklanadi. API orqali avtomatik sinxronlashni dasturchi ulaydi.",
+    devTitle: "Dasturchi uchun",
     envTitle: "Muhit oʻzgaruvchilari (faqat nomlar — qiymatlar .env.local da, ularni interfeysga kiritish shart emas):",
     env: {
       domain: "— firma subdomeni (<firm>.propreports.com)",
@@ -75,6 +77,7 @@ export default {
     legacy: "eski importdan kalitsiz {count} ta — keyingi importda biriktiriladi",
     pending: "{count} ta solishtirishni kutmoqda",
     synced: "hammasi sinxronlangan",
+    syncedFiles: "hammasi fayllardan yuklangan",
   },
 
   runDialog: {

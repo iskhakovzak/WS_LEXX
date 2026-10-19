@@ -3,7 +3,7 @@ import type ru from "../ru/topDay";
 
 export default {
   title: "Top of the day",
-  desc: "The desk's best and worst trader-days: open a day, see the tickers and the entries on the chart",
+  desc: "The desk's best and worst trader-days (by the trades' close date): open a day, see the tickers and the entries on the chart",
   link: "Top of the day",
   tabs: { aria: "Top view", day: "Day", period: "Period" },
   privacy: {
@@ -22,7 +22,7 @@ export default {
     dayAria: "{date}: desk {net}, {traders}",
     dayAriaNoNet: "{date}: {traders}",
     mine: "Your day: {net}",
-    legendMine: "dot — you traded",
+    legendMine: "dot — your day: up / down",
   },
   day: {
     desk: "Desk {net}",

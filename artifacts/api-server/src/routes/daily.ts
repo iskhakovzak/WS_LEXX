@@ -18,6 +18,7 @@ import { pool } from "@workspace/db";
 import { assertCap, route } from "../lib/http/route";
 import { AppError, badRequest, notFound } from "../lib/http";
 import { nyDate } from "../lib/tradingDate";
+import { langOf } from "../i18n";
 import { isMistakeId } from "../lib/daily/engine";
 import { dailyMe, eveningFor, markReviewed, setFocusOverride } from "../lib/daily/service";
 
@@ -39,13 +40,13 @@ async function traderExists(name: string): Promise<boolean> {
 router.get("/daily/me", route({}, async ({ req }) => {
   const me = req.authUser?.name;
   const actor = await assertCap(req, "trades.read.own", { trader: me ?? "" });
-  return dailyMe(actor.name);
+  return dailyMe(actor.name, langOf(req));
 }));
 
 router.get("/daily/trader/:name", route({ params: z.object({ name: traderName }) }, async ({ req, params }) => {
   await assertCap(req, "journal.review", { trader: params.name });
   if (!(await traderExists(params.name))) throw notFound("TRADER_NOT_FOUND");
-  return dailyMe(params.name);
+  return dailyMe(params.name, langOf(req));
 }));
 
 const ReviewBody = z.object({

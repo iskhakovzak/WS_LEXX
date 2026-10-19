@@ -34,11 +34,14 @@ export function valueText(key: string, def: SettingDef, v: SettingValue): string
     case "time": return `${String(v)} ${t("field.ny")}`;
     case "boolean": return v ? t("field.on") : t("field.off");
     case "select": return optionLabel(key, String(v));
+    case "text": return String(v).trim() || "—";
   }
 }
 
 export function problemText(p: Problem): string {
   if (p.kind === "range") return t("problems.range", { min: String(p.min ?? ""), max: String(p.max ?? "") });
+  if (p.kind === "length") return t("problems.length", { max: String(p.max ?? "") });
+  if (p.kind === "order") return t("problems.order", { after: p.after ? settingLabel(p.after) : "—", min: String(p.min ?? "") });
   return t(`problems.${p.kind}`);
 }
 

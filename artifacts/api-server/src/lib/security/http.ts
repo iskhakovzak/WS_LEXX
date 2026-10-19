@@ -143,6 +143,7 @@ export const JSON_BODY_OVERRIDES: readonly BodyOverride[] = [
   { methods: ["POST", "PATCH"], path: /^\/playbook(\/\d+)?$/, limit: "1mb", note: "playbook setup (conditions, checklist, notes)" },
   { methods: ["PUT", "PATCH"], path: /^\/author-notes(\/\d+)?$/, limit: "1mb", note: "author notes" },
   { methods: ["POST"], path: /^\/client-errors$/, limit: "32kb", note: "browser error reports" },
+  { methods: ["POST"], path: /^\/usage\/batch$/, limit: "32kb", note: "usage tracker batches (≤ 50 events)" },
 ];
 
 function bodyLimitFor(method: string, path: string): string {

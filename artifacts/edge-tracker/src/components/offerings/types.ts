@@ -104,6 +104,8 @@ export interface OfferingsResponse {
   sources?: { nasdaq: boolean; edgar: boolean; market: boolean };
   /** false while the server is still filling timing / reaction / fundamentals (refetch a bit later). */
   enrichment?: { complete: boolean };
+  /** Served from the stored payload of an earlier fetch (cache-first, ROMAN-04): the page revalidates it in the background. */
+  stale?: boolean;
 }
 
 // ── GET /offerings/history/:ticker ──
@@ -391,6 +393,14 @@ export function addBusinessDays(d: string, dir: 1 | -1): string {
     x = addDays(x, dir);
   }
   return x;
+}
+/**
+ * The session /offerings opens on: today on a weekday; on a weekend the NEXT session (Monday), whose payload holds the
+ * Friday-evening and weekend filings that trade at Monday's open (ROMAN-04 — it used to roll back to Friday).
+ */
+export function marketDay(today: string = todayNY()): string {
+  const dow = new Date(today + "T12:00:00Z").getUTCDay();
+  return dow === 0 || dow === 6 ? addBusinessDays(today, 1) : today;
 }
 /** Market day (API date, possibly with a time part) in the UI language; non-dates pass through. */
 export function fmtDay(d: string | null | undefined, style: DateStyle | Intl.DateTimeFormatOptions = "dayMonth"): string {

@@ -6,15 +6,21 @@
  *   time     "HH:MM", 00:00–23:59 (New York time)
  *   boolean  true / false
  *   select   one of the declared options
+ *   text     a string, trimmed, control characters removed, ≤ maxLength
  *
  * A rejected value comes back as a problem the admin page can show next to the field (SETTINGS_INVALID details).
+ * Ladders (level thresholds rewards.level1..4Points, each achievement line's tier targets achievements.<line>1..n) must
+ * grow strictly: kind "order" on the step that is not above the one before it (`after` = that key, `min` = the
+ * smallest value that fits), checked on the values in force after the batch.
  */
-import { SETTINGS, type SettingDef, type SettingKey } from "./registry";
+import { SETTINGS, setting, type SettingDef, type SettingKey } from "./registry";
 
-export type SettingProblemKind = "unknown" | "duplicate" | "type" | "range" | "integer" | "time" | "option";
+export type SettingProblemKind = "unknown" | "duplicate" | "type" | "range" | "integer" | "time" | "option" | "order" | "length";
 export type SettingProblem = {
   key: string;
   kind: SettingProblemKind;
+  /** order: the step this one must be above. */
+  after?: string;
   min?: number;
   max?: number;
   options?: readonly string[];
@@ -57,6 +63,11 @@ export function validateSetting(key: string, value: unknown): { ok: true; value:
     case "select":
       if (typeof value !== "string") return { ok: false, problem: { key, kind: "type" } };
       return def.options.includes(value) ? { ok: true, value } : { ok: false, problem: { key, kind: "option", options: def.options } };
+    case "text": {
+      if (typeof value !== "string") return { ok: false, problem: { key, kind: "type" } };
+      const v = [...value].map((ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? " " : ch)).join("").trim();
+      return v.length <= def.maxLength ? { ok: true, value: v } : { ok: false, problem: { key, kind: "length", max: def.maxLength } };
+    }
   }
 }
 
@@ -65,6 +76,36 @@ export function storedOrNull(key: string, value: unknown): StoredValue | null {
   if (value === null || value === undefined) return null;
   const r = validateSetting(key, value);
   return r.ok ? r.value : null;
+}
+
+/** Ladders that must grow strictly, in step order: the level thresholds and every achievement line's tier targets. */
+export function settingLadders(): SettingKey[][] {
+  const groups = new Map<string, { n: number; key: SettingKey }[]>();
+  for (const key of Object.keys(SETTINGS) as SettingKey[]) {
+    const m = /^(rewards\.level)(\d)Points$/.exec(key) ?? /^(achievements\.[A-Za-z]+?)(\d)$/.exec(key);
+    if (!m) continue;
+    const list = groups.get(m[1]!) ?? [];
+    list.push({ n: Number(m[2]), key });
+    groups.set(m[1]!, list);
+  }
+  return [...groups.values()].filter((l) => l.length > 1).map((l) => l.sort((a, b) => a.n - b.n).map((x) => x.key));
+}
+
+/** Ladder steps that do not grow over the values in force after `changes` (null = the default). */
+export function ladderProblems(changes: ReadonlyMap<string, StoredValue | null>): SettingProblem[] {
+  const value = (k: SettingKey): number => {
+    if (changes.has(k)) return Number(changes.get(k) ?? SETTINGS[k].default);
+    return Number(setting(k));
+  };
+  const out: SettingProblem[] = [];
+  for (const ladder of settingLadders()) {
+    if (!ladder.some((k) => changes.has(k))) continue; // only a batch that touches the ladder is judged by it
+    for (let i = 1; i < ladder.length; i++) {
+      const prev = ladder[i - 1]!, key = ladder[i]!;
+      if (value(key) <= value(prev)) out.push({ key, kind: "order", after: prev, min: value(prev) + 1 });
+    }
+  }
+  return out;
 }
 
 /** Validates a batch: every key once, all valid — else every problem (nothing is written on any problem). */
@@ -79,5 +120,6 @@ export function validateBatch(changes: readonly { key: string; value?: unknown }
     if (!r.ok) problems.push(r.problem);
     else values.push({ key: c.key as SettingKey, value: r.value });
   }
+  if (!problems.length) problems.push(...ladderProblems(new Map(values.map((v) => [v.key, v.value]))));
   return problems.length ? { ok: false, problems } : { ok: true, values };
 }

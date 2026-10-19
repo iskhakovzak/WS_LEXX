@@ -1,0 +1,91 @@
+import type { Messages } from "../core";
+import type ru from "../ru/quests";
+
+export default {
+  quest: {
+    set_pin: { title: "Set your own PIN", desc: "Replace the issued password with your own — the account is yours alone." },
+    link_telegram: { title: "Connect Telegram", desc: "The morning focus and the evening day summary will come to the bot." },
+    first_plan_stop: { title: "First personal plan with a daily stop", desc: "Open your plan for the day and set a daily stop — that is your contract." },
+    first_review: { title: "Review your first day summary", desc: "Open the day summary on the home page and mark it “Reviewed”." },
+    open_desk_day: { title: "Open “Desk on a ticker”", desc: "See how the desk traded your ticker on the same day." },
+    replay_own_day: { title: "Replay your own day in the simulator", desc: "Relive your trade and compare the decisions." },
+    set_own_rule: { title: "Set a rule of the day", desc: "Pick one own rule in the plan — for example, the focus mistake." },
+    plan_before_open: { title: "Plan before the open", desc: "Make your personal plan before 09:30 NY." },
+    review_yesterday: { title: "Review the last day", desc: "Mark the day summary “Reviewed” by the end of the next trading day." },
+    keep_contract: { title: "Keep today’s contract", desc: "Daily stop, trade limit and your own rule — no breaks." },
+    tag_yesterday: { title: "Tag the last day’s trades", desc: "Set a playbook setup on the day’s trades: {done} of {target}." },
+    contract_days: {
+      title: { one: "Keep the contract {count} day", other: "Keep the contract {count} days" },
+      desc: "Days with the contract kept: {done} of {target}.",
+    },
+    focus_absent_days: {
+      title: { one: "{count} day without the focus mistake", other: "{count} days without the focus mistake" },
+      desc: "Days without the focus mistake: {done} of {target}.",
+    },
+    replay_own_days: {
+      title: { one: "Replay {count} of your days", other: "Replay {count} of your days" },
+      desc: "Own days replayed in the simulator: {done} of {target}.",
+    },
+    review_traded_days: { title: "Review every trading day this week", desc: "Reviewed on time: {done} of {target}." },
+    read_game_plan: {
+      title: { one: "Read the desk plan {count} time", other: "Read the desk plan {count} times" },
+      desc: "Desk plans read: {done} of {target}.",
+    },
+    clean_month_progress: { title: "Clean month", desc: "The daily stop never reached. Clean trading days: {done} of {target}." },
+    review_month: { title: "Reviews of the month", desc: "Trading days reviewed on time: {done} of {target} needed." },
+    review_days: {
+      title: { one: "Review {count} trading day on time", other: "Review {count} trading days on time" },
+      desc: "Reviewed on time: {done} of {target}.",
+    },
+    plan_days: {
+      title: { one: "Plan before the open {count} day", other: "Plan before the open {count} days" },
+      desc: "Days with a personal plan before 09:30 NY: {done} of {target}.",
+    },
+    beat_yourself: {
+      title: { one: "Beat yourself {count} time", other: "Beat yourself {count} times" },
+      desc: "Better than the real trade in the simulator: {done} of {target}.",
+    },
+    trainer_drills: {
+      title: { one: "Answer {count} «Find the entry» drill", other: "Answer {count} «Find the entry» drills" },
+      desc: "Trainer answers: {done} of {target}.",
+    },
+    academy_lessons: {
+      title: { one: "Complete {count} Academy lesson", other: "Complete {count} Academy lessons" },
+      desc: "Lessons completed: {done} of {target}.",
+    },
+    curator_task: { title: "Curator’s task", desc: "The curator marks it when the task is done." },
+  },
+  ach: {
+    contract_streak: { title: "Contract streak", hint: { one: "Keep your contract {count} day in a row", other: "Keep your contract {count} days in a row" } },
+    clean_month: { title: "Clean month", hint: { one: "{count} month without reaching the daily stop", other: "{count} months without reaching the daily stop" } },
+    comeback: { title: "Comeback", hint: { one: "Keep the contract the day after a break — {count} time", other: "Keep the contract the day after a break — {count} times" } },
+    reviews_total: { title: "Day review", hint: { one: "Review {count} trading day", other: "Review {count} trading days" } },
+    review_streak: { title: "No missed reviews", hint: { one: "Review every trading day on time — {count} day in a row", other: "Review every trading day on time — {count} days in a row" } },
+    focus_beaten: { title: "Mistake beaten", hint: { one: "No focus mistake {count} day in a row", other: "No focus mistake {count} days in a row" } },
+    plan_before_open: { title: "Plan before the open", hint: { one: "Personal plan before 09:30 NY — {count} day", other: "Personal plan before 09:30 NY — {count} days" } },
+    full_loop: { title: "Full loop", hint: { one: "Plan before the open, contract kept and the day reviewed — {count} day", other: "Plan before the open, contract kept and the day reviewed — {count} days" } },
+    own_replays: { title: "Replay your day", hint: { one: "Replay your own day in the simulator — {count} time", other: "Replay your own day in the simulator — {count} times" } },
+    beat_yourself: { title: "Better than yourself", hint: { one: "Beat your real trade in the simulator — {count} time", other: "Beat your real trade in the simulator — {count} times" } },
+    lessons: { title: "Student", hint: { one: "Complete {count} Academy lesson", other: "Complete {count} Academy lessons" } },
+    exams: { title: "Exam passed", hint: { one: "Pass {count} Academy exam", other: "Pass {count} Academy exams" } },
+    tier_up: { title: "Climbing the ladder", hint: "Promotion on the ladder: Junior → Trader → Senior" },
+    onboarding: { title: "First steps", hint: "Finish every first-steps task" },
+    secret: { title: "Secret achievement", hint: "Unlocks when you earn it" },
+  },
+  notify: {
+    doneTitle: "Quest done: {quest}",
+    doneBody: "+{points} to discipline. All quests are on the “Quests and achievements” tab.",
+    doneBodyNoPoints: "All quests are on the “Quests and achievements” tab.",
+    staffDoneTitle: "{trader}: quest done — {quest}",
+    staffFailedTitle: "{trader}: quest not done — {quest}",
+    staffBody: { failed: "A condition was broken — worth discussing in the review.", expired: "The deadline passed, the goal was not reached.", done: "The task is done." },
+    assignedTitle: "Task from your curator: {quest}",
+    assignedBody: "{curator} · until {ends} · +{points} to discipline",
+    assignedBodyNote: "{curator} · until {ends} · +{points} to discipline\n“{note}”",
+    cancelledTitle: "Quest cancelled: {quest}",
+    cancelledBody: "{curator} cancelled the task — there is nothing more to do for it.",
+    achievementTitle: "Achievement: {achievement} — {tier}",
+    achievementBody: "A new achievement tier. All achievements are on the “Quests and achievements” tab.",
+  },
+  tier: { bronze: "bronze", silver: "silver", gold: "gold", platinum: "platinum" },
+} satisfies Messages<typeof ru>;

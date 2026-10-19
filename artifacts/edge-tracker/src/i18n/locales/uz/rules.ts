@@ -223,6 +223,7 @@ export default {
     ruleAria: "Qoida boʻyicha filtr",
     allRules: "Barcha qoidalar",
     newCount: "Yangi qoidabuzarliklar: {count} — «Qabul qilish»ni bosing va nima boʻlganini tushuntiring",
+    shownOf: "{total} tadan oxirgi {shown} tasi koʻrsatilgan",
     filteredEmpty: "Tanlangan filtrlarga mos qoidabuzarlik yoʻq.",
     openDay: "Kun tahlilini ochish",
     net: "{amount} sof",

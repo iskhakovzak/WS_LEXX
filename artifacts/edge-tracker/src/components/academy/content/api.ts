@@ -197,8 +197,9 @@ export const useReviewQueue = (status: string, cohortId?: number | null, enabled
 export const useProgressMatrix = (programId: number | null, cohortId: number | null, enabled = true) =>
   useQuery({ queryKey: academyKeys.progress(programId, cohortId), queryFn: () => http.get<ProgressResponse>(`${BASE}/progress${qs({ programId, cohortId })}`), enabled });
 
-export const useAdminTree = (programId: number | null, archived = false) =>
-  useQuery({ queryKey: academyKeys.admin(programId, archived), queryFn: () => http.get<AdminTree>(`${BASE}/admin/tree${qs({ programId, archived: archived ? 1 : null })}`) });
+/** Staff only: `enabled` waits for the role check, so a trader never fires a 403 (DEV-12). */
+export const useAdminTree = (programId: number | null, archived = false, enabled = true) =>
+  useQuery({ queryKey: academyKeys.admin(programId, archived), queryFn: () => http.get<AdminTree>(`${BASE}/admin/tree${qs({ programId, archived: archived ? 1 : null })}`), enabled });
 
 export const useSetups = (enabled = true) =>
   useQuery({ queryKey: academyKeys.setups(), queryFn: () => http.get<{ setups: SetupRef[] }>(`${BASE}/setups`), enabled, staleTime: 5 * 60_000 });

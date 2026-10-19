@@ -47,7 +47,7 @@ export function KpiGrid({
         hint={noVal ? undefined : `${edge.wins} / ${edge.losses}`}
       />
       <StatCard
-        label="Profit factor"
+        label={tp("kpi.profitFactor")}
         value={fmtRatio(pf)}
         tone={pf == null ? "neutral" : pf >= 1 ? "up" : "down"}
         hint={edge.avgWin != null || edge.avgLoss != null

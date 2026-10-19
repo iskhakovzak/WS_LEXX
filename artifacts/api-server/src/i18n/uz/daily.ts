@@ -41,6 +41,8 @@ export default {
   },
   focus: {
     none: "Soʻnggi {days} savdo kunida takrorlanadigan xato yoʻq. Bugun: oʻz rejangiz boʻyicha savdo qiling.",
+    noTrades: "Soʻnggi {days} savdo kunida hali savdo yoʻq — fokus birinchi savdolardan keyin paydo boʻladi.",
+    own: "Oʻz fokusingiz: {text}",
     "behavior:revenge": "Qasos: zarardan keyin darhol kirish — {days} kunda {count} marta, ${cost} ketdi. Bugun: zarardan keyin 10 daqiqa tanaffus.",
     "behavior:martingale": "Zarardan keyin hajmni oshirish — {days} kunda {count} marta, ${cost} ketdi. Bugun: zarardan keyin hajm avvalgidan katta emas.",
     "behavior:overtrading": "Meʼyoringizdan ortiq savdolar — {days} kunda {count} ta, ${cost} ketdi. Bugun: faqat rejadagi savdolar.",
@@ -139,6 +141,9 @@ export default {
       streakDays: { one: "ketma-ket {count} kun", other: "ketma-ket {count} kun" },
       streak: "🔥 Kontrakt bajarildi: {days} · intizomga {points}",
       badge: "🏅 Yangi mukofot: {badges}",
+      achievement: "🏅 Yangi yutuq: {names}",
+      questsDone: { one: "✅ {count} ta kvest bajarildi", other: "✅ {count} ta kvest bajarildi" },
+      questsSuffix: { one: " · {count} ta kvest bajarildi", other: " · {count} ta kvest bajarildi" },
       title: "🌙 <b>Kun yakuni · {date}</b>",
       pnl: "P&L <b>{net}</b> · {trades}",
       trades: { one: "{count} ta savdo", other: "{count} ta savdo" },

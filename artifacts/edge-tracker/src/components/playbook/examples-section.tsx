@@ -50,7 +50,8 @@ const blank = (): Form => ({
   marketCap: "", float: "", adv: "", atr: "", relativeVolume: "", beta: "", shortInterest: "", sector: "", longName: "",
 });
 
-export function ExamplesSection({ entryId }: { entryId: number }) {
+/** `canEdit` = the viewer may edit this setup: the per-case edit / delete pencils show only then (curators on office setups). */
+export function ExamplesSection({ entryId, canEdit = true }: { entryId: number; canEdit?: boolean }) {
   const { t } = playbookExamplesI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -259,12 +260,12 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
                     {i.short_interest && <span>SI {i.short_interest}%</span>}
                   </div>
                 )}
-                <WriteOnly>
+                {canEdit && <WriteOnly>
                   <div className="mt-1 flex justify-end gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
                     <IconAction aria-label={t("cases.edit", { ticker: i.ticker })} title={t("cases.edit", { ticker: i.ticker })} onClick={() => startEdit(i)}><Pencil /></IconAction>
                     <IconAction aria-label={t("cases.delete", { ticker: i.ticker })} title={t("cases.delete", { ticker: i.ticker })} onClick={() => setDeleting(i)} className="hover:text-down"><Trash2 /></IconAction>
                   </div>
-                </WriteOnly>
+                </WriteOnly>}
               </li>
             );
           })}

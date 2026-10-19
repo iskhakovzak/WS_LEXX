@@ -78,6 +78,7 @@ export default {
       wrPfHint: "WR = W/(W+L); PF is undefined without losses",
       maxDd: "Max drawdown",
       bestDayHint: "Best day {value} of profit",
+      bestDayNone: "Best day: no profit in the window",
       feesDiscipline: "Fees / discipline",
       feesDisciplineHint: "Fee share of gross · discipline index 0–100",
     },
@@ -243,7 +244,8 @@ export default {
     },
     maxDrawdownMode: "{label} ({mode})",
     ddMode: { static: "static", trailing: "trailing", trailing_eod: "trailing at day close" },
-    ruleState: { ok: "on track", met: "met", warn: "warning", breached: "breached", pending: "in progress", na: "no data" },
+    ruleState: { ok: "on track", met: "met", warn: "warning", breached: "breached", pending: "in progress", missed: "not met", na: "no data" },
+    commentBy: "Comment · {name}: “{comment}”",
     summary: {
       account: "account {usd}",
       target: "target +{usd}",

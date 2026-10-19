@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildCountQuery, buildCurveQuery, buildDaysQuery, buildPresetFacetQuery, buildSummaryQuery, PAGE_PRESETS,
+  buildCountQuery, buildCurveQuery, buildDaysQuery, buildPresetFacetQuery, buildSummaryQuery, PAGE_PRESETS, untaggedSql,
   type TradesPageFilters,
 } from "../tradesPageQuery";
 
@@ -53,5 +53,20 @@ describe("tradesPageQuery builders", () => {
     const q = buildDaysQuery({ ...base, preset: "revenge" }, true, { limit: 30 });
     expect(q.sql).toMatch(/WITH filtered AS MATERIALIZED/);
     expect(q.sql.match(/rv0\.deleted_at IS NULL/g)).toHaveLength(1);
+  });
+  it("counts «без разбора» by grade / review text, not by the broker-filled setup (Cross-area note 3)", () => {
+    const sql = untaggedSql("t");
+    expect(sql).toContain("t.confidence_grade");
+    expect(sql).toMatch(/NOT IN \('A\+', 'A', 'B', 'C'\)/);
+    for (const c of ["notes", "what_worked", "what_failed", "conclusion"]) expect(sql).toContain(`t.${c}`);
+    expect(sql).not.toContain("t.setup");
+    expect(sql).not.toContain("t.tags");
+  });
+  it("averages wins / losses by the sign of net and R (canonical payoff, MAKSIM-08)", () => {
+    const { sql } = buildSummaryQuery(base, true);
+    expect(sql).toContain("SUM(net) FILTER (WHERE net > 0) AS win_net_sum");
+    expect(sql).toContain("SUM(net) FILTER (WHERE net < 0) AS loss_net_sum");
+    expect(sql).toContain("SUM(r) FILTER (WHERE r > 0) AS win_r_sum");
+    expect(sql).not.toMatch(/FILTER \(WHERE res = 'win'\) AS win_net_sum/);
   });
 });

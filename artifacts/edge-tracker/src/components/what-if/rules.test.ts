@@ -102,6 +102,12 @@ describe("fee plans", () => {
     expect(recomputeFees({ ...t, qty: null }, { perShare: 0.003, minPerOrder: 0.5, ecnPerShare: 0 })).toBeNull();
   });
 
+  it("the compact base's regulatory sum gives the same tariff as the breakdown", () => {
+    const t = mk(1, "2026-01-02", 600, 5, { qty: 100, fills: 2, fees: 1, regFees: 0.03 });
+    expect(recomputeFees(t, { perShare: 0.003, minPerOrder: 0.5, ecnPerShare: 0.002, keepRegulatory: true })).toBe(1.43);
+    expect(recomputeFees(t, { perShare: 0.003, minPerOrder: 0.5, ecnPerShare: 0.002, keepRegulatory: false })).toBe(1.4);
+  });
+
   it("summarises the actual fees and the break-even move per share", () => {
     const ts = [mk(1, "d", 1, 10, { fees: 2, qty: 100 }), mk(2, "d", 2, -4, { fees: 1, qty: 200 })];
     const s = planSummary(ts, null);

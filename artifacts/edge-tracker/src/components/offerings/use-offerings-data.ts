@@ -1,4 +1,4 @@
-import { createElement, useMemo } from "react";
+import { createElement, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, http } from "@/lib/api/http";
@@ -32,14 +32,30 @@ const watchQuery = (day: string) => ({
 /**
  * One market day of filings. When the server answered before timing / reactions / fundamentals were ready
  * (`enrichment.complete === false`) it is re-asked a few times, 45 s apart — the server keeps warming its caches.
+ * Cache-first (ROMAN-04): a cold server answers at once with the stored payload (`stale: true`, stamped «данные на
+ * HH:MM» by the page); one `revalidate=1` call then fetches the fresh day and replaces it. `revalidating` = that call.
  */
 export function useOfferings(day: string, enabled = true) {
-  return useQuery<OfferingsResponse>({
+  const qc = useQueryClient();
+  const q = useQuery<OfferingsResponse>({
     ...watchQuery(day),
     enabled,
     refetchInterval: (q) =>
-      q.state.data?.enrichment?.complete === false && q.state.dataUpdateCount < 4 ? 45_000 : false,
+      !q.state.data?.stale && q.state.data?.enrichment?.complete === false && q.state.dataUpdateCount < 4 ? 45_000 : false,
   });
+  const stale = enabled && q.data?.stale === true;
+  const fresh = useQuery<OfferingsResponse>({
+    queryKey: ["offerings", day, "revalidate"] as const,
+    queryFn: () => http.get<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}&revalidate=1`),
+    enabled: stale,
+    staleTime: 0,
+    gcTime: 0,
+    retry: 1,
+  });
+  useEffect(() => {
+    if (fresh.data) qc.setQueryData(["offerings", day], fresh.data);
+  }, [fresh.data, day, qc]);
+  return { data: q.data, isLoading: q.isLoading, error: q.error, refetch: q.refetch, isFetching: q.isFetching || fresh.isFetching, revalidating: stale && fresh.isFetching };
 }
 
 /** Several days at once (week view); shares the per-day cache with useOfferings. */
@@ -91,7 +107,7 @@ export function useMyTickerTrades(ticker: string | null, trader: string | null |
   return useQuery<TradeRow[]>({
     queryKey: ["offerings", "ticker-trades", ticker, trader ?? ""],
     queryFn: async () => {
-      const qs = new URLSearchParams({ ticker: ticker ?? "", limit: "50", sort: "date", dir: "desc" });
+      const qs = new URLSearchParams({ ticker: ticker ?? "", limit: "50", sort: "date", dir: "desc", lite: "1" }); // rows only: no summary / curve (DEV-02)
       if (trader) qs.set("trader", trader);
       const r = await http.get<{ items: TradeRow[] }>(`/api/trades/page?${qs}`);
       return r.items ?? [];

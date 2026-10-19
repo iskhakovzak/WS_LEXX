@@ -79,6 +79,13 @@ describe("runAsk", () => {
     expect(r.answer.groups?.highlight).toEqual(["AAPL", "NVDA"]);
   });
 
+  it("top-1 by net names the net once (MAKSIM-36)", () => {
+    const h = ask("лучший тикер").answer.headline;
+    expect(h.match(/нетто/g)?.length ?? 0).toBeLessThanOrEqual(1);
+    expect(h).toContain("AAPL");
+    expect(ask("лучший тикер").answer.big.sub ?? "").not.toContain("нетто");
+  });
+
   it("fees headline says how much of gross the fees ate", () => {
     expect(ask("сколько съели комиссии").answer.headline).toMatch(/^Комиссии съели \$11\.00/);
   });

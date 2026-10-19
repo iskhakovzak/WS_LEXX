@@ -5,11 +5,13 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { nyDate } from "../lib/tradingDate";
 import {
-  canCloseDay, computeStreaks, missingFields, missingList, nextTradingDay, type Streaks,
+  REVIEW_SLA_HOURS, canCloseDay, computeStreaks, missingFields, missingList, nextTradingDay, tradingHoursBetween, type Streaks,
 } from "../lib/eodLogic";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, resultSql } from "../lib/tradeMath";
 import { ensureJournalTable } from "./journal";
-import { ensureCuratorTables } from "../lib/curatorStore";
+import { ensureCuratorTables, marketClosedDays } from "../lib/curatorStore";
+import { queueRoster, sweepOverdue } from "../lib/eodQueue";
+import { forgetQuests } from "../lib/quests/cache";
 import { QUEUE_DEFAULT_DAYS } from "../lib/curatorLogic";
 import { can, requireCap } from "../lib/permissions";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
@@ -17,7 +19,7 @@ import { logActivity } from "../lib/activity";
 import { activityTitle } from "../lib/activityText";
 import { notifLinks } from "../lib/notificationCore";
 import { claimOnce, inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { eodOverdueKey, fmtSignedUsd, preview as textPreview, selectOverdue } from "../lib/notifyEventsCore";
+import { fmtSignedUsd, preview as textPreview } from "../lib/notifyEventsCore";
 import { AppError, badRequest, errorMessage, notFound, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { reviewT } from "../i18n/ns";
@@ -53,9 +55,15 @@ import { reviewT } from "../i18n/ns";
  *     day), or one trader with trader=. "status: 'open'" with trades > 0 after the session ⇒ «не закрыл день».
  *
  * Curator queue (curator/admin):
- *   GET  /api/eod/queue?limit=50          closed & unreviewed days, oldest closed_at first, with hoursWaiting / overdue (>24h)
+ *   GET  /api/eod/queue?limit=50          closed & unreviewed days, newest closed_at first, with hoursWaiting / overdue
+ *                                         (hoursWaiting = TRADING hours since the close: weekends and full-day holidays
+ *                                         pause the 24 h SLA, lib/eodLogic tradingHoursBetween)
+ *        &scope=mine|desk|unassigned      mine (default when the reader has wards) = traders assigned to the reader
+ *                                         (curator / mentor / risk manager, the /curator roster); unassigned = traders
+ *                                         without a curator («Без куратора», admin-owned); desk = everyone readable
  *        &reviewed=1                      instead: days reviewed in the last 7 days, newest first (mode: 'reviewed')
- *   GET  /api/eod/queue/count             { count, overdue } — for the nav badge
+ *   GET  /api/eod/queue/count             { count, overdue, scope } — «ждёт разбора»: the same scope and 14-day window
+ *                                         (the nav badge, the /curator KPI and the queue show one number)
  *   POST /api/eod/days/:id/review         { comment, score 1..5 } → sets reviewed_by/at; returns { day, next } where
  *                                         next = the next queue item (for the «Следующий» flow)
  *
@@ -524,6 +532,7 @@ router.post("/eod/day/:date/close", asyncHandler(async (req, res): Promise<void>
     [saved.id],
   );
   const day = rows[0];
+  forgetQuests(me.name); // the review quest credits the closed day now, not after the quest cache expires
   try {
     await prefillJournal(me.name, date, day, trades);
   } catch (err) {
@@ -565,6 +574,7 @@ router.post("/eod/day/:date/reopen", asyncHandler(async (req, res): Promise<void
     [me.name, date],
   );
   if (!rows[0]) throw new AppError("EOD_DAY_NOT_FOUND");
+  forgetQuests(me.name);
   inBackground("eod.reopen", () => logActivity({ action: "reopened", section: "eod", entityId: date, entityTitle: date, trader: me.name }));
   res.json(serializeDay(rows[0]));
 }));
@@ -635,7 +645,11 @@ function pendingWindowSql(includeOld: boolean): string {
 }
 
 type QueueRow = DayRow & { hoursWaiting: number; trades: number; net: number | null };
-const SLA_HOURS = 24;
+const SLA_HOURS = REVIEW_SLA_HOURS;
+/** Pending rows: hoursWaiting = trading hours since the close (the SLA clock). Reviewed rows keep their real hours. */
+function withSlaClock(rows: QueueRow[], closed: ReadonlySet<string>, now = Date.now()): QueueRow[] {
+  return rows.map((r) => (r.closedAt ? { ...r, hoursWaiting: tradingHoursBetween(r.closedAt, now, closed) } : r));
+}
 function serializeQueue(r: QueueRow) {
   const hours = Math.round(Number(r.hoursWaiting) * 10) / 10;
   return {
@@ -658,37 +672,6 @@ const REVIEWED_SQL = `
     FROM eod_days d
    WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NOT NULL AND d.reviewed_at > NOW() - INTERVAL '7 days'`;
 
-/**
- * eod_overdue: closed days waiting > SLA → the trader's assigned staff (fallback: every curator/admin), once per
- * closed day (dedup key = day id + closed_at, atomic across processes). There is no scheduler for this yet, so the
- * sweep piggybacks on the curator queue reads (badge polling), throttled to once per 5 minutes per process and
- * always run in the background.
- */
-const OVERDUE_SWEEP_MS = 5 * 60 * 1000;
-let lastOverdueSweep = 0;
-function sweepOverdue(): void {
-  const now = Date.now();
-  if (now - lastOverdueSweep < OVERDUE_SWEEP_MS) return;
-  lastOverdueSweep = now;
-  inBackground("eod.overdue", async () => {
-    const { rows } = await pool.query<{ id: number; trader: string; date: string; closedAt: Date; reviewedAt: Date | null }>(
-      `SELECT d.id, d.trader, d.date, d.closed_at AS "closedAt", d.reviewed_at AS "reviewedAt"
-         FROM eod_days d
-        WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL AND d.closed_at < NOW() - INTERVAL '${SLA_HOURS} hours'
-          AND d.closed_at > NOW() - INTERVAL '14 days' -- an old backlog must not flood inboxes on first run
-        ORDER BY d.closed_at ASC LIMIT 200`,
-    );
-    for (const d of selectOverdue(rows, new Date(), SLA_HOURS)) {
-      if (!(await claimOnce(eodOverdueKey(d.id, d.closedAt)))) continue;
-      await notifyUsers(await staffOrFallback(d.trader), {
-        type: "eod_overdue", source: "eod",
-        params: { trader: d.trader, date: d.date, hours: d.hoursWaiting, sla: SLA_HOURS },
-        link: notifLinks.journalDay(d.date, d.trader), entityType: "eod_day", entityId: d.id,
-      }, d.trader);
-    }
-  });
-}
-
 router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
   if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
@@ -696,14 +679,20 @@ router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 50;
   await ensureTables();
   sweepOverdue();
+  const roster = await queueRoster(req, req.query.scope);
+  const who = `AND ($2::text[] IS NULL OR d.trader = ANY($2::text[]))`;
+  const meta = { scope: roster.scope, wards: roster.wards };
   if (req.query.reviewed === "1") {
-    const { rows } = await pool.query<QueueRow>(`${REVIEWED_SQL} ORDER BY d.reviewed_at DESC LIMIT $1`, [limit]);
-    res.json({ slaHours: SLA_HOURS, mode: "reviewed", items: rows.map(serializeQueue) });
+    const { rows } = await pool.query<QueueRow>(`${REVIEWED_SQL} ${who} ORDER BY d.reviewed_at DESC LIMIT $1`, [limit, roster.traders]);
+    res.json({ slaHours: SLA_HOURS, mode: "reviewed", ...meta, items: rows.map(serializeQueue) });
     return;
   }
   await ensureCuratorTables();
-  const { rows } = await pool.query<QueueRow>(`${QUEUE_SQL} ${pendingWindowSql(req.query.old === "1")} ORDER BY d.closed_at DESC LIMIT $1`, [limit]);
-  res.json({ slaHours: SLA_HOURS, mode: "pending", windowDays: QUEUE_DEFAULT_DAYS, items: rows.map(serializeQueue) });
+  const [{ rows }, closed] = await Promise.all([
+    pool.query<QueueRow>(`${QUEUE_SQL} ${pendingWindowSql(req.query.old === "1")} ${who} ORDER BY d.closed_at DESC LIMIT $1`, [limit, roster.traders]),
+    marketClosedDays(nyDate()),
+  ]);
+  res.json({ slaHours: SLA_HOURS, mode: "pending", windowDays: QUEUE_DEFAULT_DAYS, ...meta, items: withSlaClock(rows, closed).map(serializeQueue) });
 }));
 
 router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
@@ -712,12 +701,19 @@ router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   await ensureCuratorTables();
   sweepOverdue();
-  const { rows } = await pool.query<{ count: number; overdue: number }>(
-    `SELECT COUNT(*)::int AS count,
-            COUNT(*) FILTER (WHERE d.closed_at < NOW() - INTERVAL '${SLA_HOURS} hours')::int AS overdue
-       FROM eod_days d WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL ${pendingWindowSql(req.query.old === "1")}`,
-  );
-  res.json({ count: rows[0]?.count ?? 0, overdue: rows[0]?.overdue ?? 0, slaHours: SLA_HOURS });
+  const roster = await queueRoster(req, req.query.scope);
+  const [{ rows }, closed] = await Promise.all([
+    pool.query<{ closedAt: Date }>(
+      `SELECT d.closed_at AS "closedAt" FROM eod_days d
+        WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL ${pendingWindowSql(req.query.old === "1")}
+          AND ($1::text[] IS NULL OR d.trader = ANY($1::text[]))`,
+      [roster.traders],
+    ),
+    marketClosedDays(nyDate()),
+  ]);
+  const now = Date.now();
+  const overdue = rows.filter((r) => tradingHoursBetween(r.closedAt, now, closed) > SLA_HOURS).length;
+  res.json({ count: rows.length, overdue, slaHours: SLA_HOURS, scope: roster.scope });
 }));
 
 router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void> => {
@@ -737,7 +733,16 @@ router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void>
       WHERE d.id = $1 RETURNING ${DAY_COLS}`,
     [id, me.name, parsed.data.comment, parsed.data.score],
   );
-  const { rows: next } = await pool.query<QueueRow>(`${QUEUE_SQL} ${pendingWindowSql(false)} ORDER BY d.closed_at DESC LIMIT 1`);
+  // «Следующий» = the next day of the same queue the reader works (their wards by default, ?scope= as in GET /eod/queue).
+  const roster = await queueRoster(req, req.query.scope);
+  const [{ rows: nextRaw }, closed] = await Promise.all([
+    pool.query<QueueRow>(
+      `${QUEUE_SQL} ${pendingWindowSql(false)} AND ($1::text[] IS NULL OR d.trader = ANY($1::text[])) ORDER BY d.closed_at DESC LIMIT 1`,
+      [roster.traders],
+    ),
+    marketClosedDays(nyDate()),
+  ]);
+  const next = withSlaClock(nextRaw, closed);
   // Review done → tell the trader (never the reviewer about their own review).
   const reviewed = rows[0];
   if (reviewed && reviewed.trader !== me.name) {

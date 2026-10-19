@@ -76,6 +76,8 @@ export interface PulseUser {
   violationsTotal: number;
   tradeStrip: number[];
   journalStrip: boolean[];
+  /** «Не заходили 3+ торговых дня» by the Использование rule (OWNER-04); absent on older API builds. */
+  stale?: boolean;
 }
 
 export interface DeskPulse {
@@ -95,6 +97,9 @@ export interface DeskPulse {
     violationsWeek: number;
     openReports: number;
     stale: string[];
+    /** Fewer than 3 tracked trading days: `stale` is empty on purpose (absent on older API builds). */
+    staleLowData?: boolean;
+    trackedSince?: string | null;
     banned: number;
     deskTradeStrip: number[];
   };

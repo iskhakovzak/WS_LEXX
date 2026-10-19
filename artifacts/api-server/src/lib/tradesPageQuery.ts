@@ -19,7 +19,7 @@ export const PAGE_HORIZONS = ["intraday", "overnight", "swing"] as const;
 export const PAGE_SOURCES = ["manual", "propreports"] as const;
 /**
  * Review presets ("smart views") of the trades page:
- *   review  — closed trades nobody has looked at yet (no setup, no tags, no notes/review text);
+ *   review  — closed trades nobody has reviewed yet (no grade, no notes/review text — untaggedSql);
  *   best    — net > 0 (client sorts by pnl desc);  worst — net < 0 (client sorts by pnl asc);
  *   scalp   — hold < SCALP_MAX_SEC (from the broker open/close wall-clock times in context_snapshot);
  *   fees    — |fees| >= FEES_SHARE * |gross| (commissions ate at least half of the move);
@@ -150,10 +150,17 @@ export function closeTsSql(a = T): string { return snapTsSql(a, "closedAt"); }
 export function holdSecSql(a = T): string {
   return `(CASE WHEN ${closeTsSql(a)} >= ${openTsSql(a)} THEN EXTRACT(EPOCH FROM (${closeTsSql(a)} - ${openTsSql(a)})) END)`;
 }
-/** Nobody has reviewed the trade: no setup, no tags, no notes / review text. */
+/** Grades that count as a review (same list as the day close, lib/eodLogic GRADES). */
+export const REVIEW_GRADES = ["A+", "A", "B", "C"] as const;
+/**
+ * «Без разбора» (Cross-area note 3): nobody has reviewed the trade — no grade and no review text (notes / what worked /
+ * what failed / conclusion). The setup and tags don't count: PropReports fills the setup with the broker strategy on every
+ * auto trade, so the old «no setup, no tags» rule answered 0 on the whole desk.
+ */
 export function untaggedSql(a = T): string {
   const blank = (c: string) => `NULLIF(TRIM(COALESCE(${a}.${c}, '')), '') IS NULL`;
-  return `(${["setup", "tags", "notes", "what_worked", "what_failed", "conclusion"].map(blank).join(" AND ")})`;
+  const noGrade = `COALESCE(TRIM(${a}.confidence_grade), '') NOT IN (${REVIEW_GRADES.map((g) => `'${g}'`).join(", ")})`;
+  return `(${[noGrade, ...["notes", "what_worked", "what_failed", "conclusion"].map(blank)].join(" AND ")})`;
 }
 
 /** Sort expression per column; `type` drives cursor casting ("text" vs "num"). Nulls always sort last. */
@@ -331,6 +338,11 @@ export function sortValueOf(raw: unknown, col: PageSortCol): string | number | n
 
 // ── Summary over the WHOLE filtered set ───────────────────────────────────────
 
+/**
+ * Summary of the filtered set. Average win / loss (and so payoff = avg win / |avg loss|) follow the canonical definition
+ * (lib/tradeMath, web lib/trade-math payoffOf): the mean of the POSITIVE and of the NEGATIVE values — net $ by the sign
+ * of net, R by the sign of R — not by the `result` label (a gross «win» can be negative after fees). MAKSIM-08.
+ */
 export function buildSummaryQuery(f: TradesPageFilters, quality: boolean): { sql: string; params: unknown[] } {
   const p = new Params();
   const join = quality && hasQualityFilters(f);
@@ -351,17 +363,17 @@ export function buildSummaryQuery(f: TradesPageFilters, quality: boolean): { sql
       SUM(r) AS sum_r,
       SUM(r) FILTER (WHERE r > 0) AS pos_r,
       SUM(-r) FILTER (WHERE r < 0) AS neg_r,
-      SUM(r) FILTER (WHERE res = 'win') AS win_r_sum,
-      COUNT(r) FILTER (WHERE res = 'win')::int AS win_r_n,
-      SUM(r) FILTER (WHERE res = 'loss') AS loss_r_sum,
-      COUNT(r) FILTER (WHERE res = 'loss')::int AS loss_r_n,
+      SUM(r) FILTER (WHERE r > 0) AS win_r_sum,
+      COUNT(r) FILTER (WHERE r > 0)::int AS win_r_n,
+      SUM(r) FILTER (WHERE r < 0) AS loss_r_sum,
+      COUNT(r) FILTER (WHERE r < 0)::int AS loss_r_n,
       MIN(date) AS first_date,
       MAX(date) AS last_date,
       COUNT(*) FILTER (WHERE source = 'propreports' OR (fees IS NOT NULL AND fees <> 0))::int AS fee_rows,
-      SUM(net) FILTER (WHERE res = 'win') AS win_net_sum,
-      COUNT(net) FILTER (WHERE res = 'win')::int AS win_net_n,
-      SUM(net) FILTER (WHERE res = 'loss') AS loss_net_sum,
-      COUNT(net) FILTER (WHERE res = 'loss')::int AS loss_net_n,
+      SUM(net) FILTER (WHERE net > 0) AS win_net_sum,
+      COUNT(net) FILTER (WHERE net > 0)::int AS win_net_n,
+      SUM(net) FILTER (WHERE net < 0) AS loss_net_sum,
+      COUNT(net) FILTER (WHERE net < 0)::int AS loss_net_n,
       SUM(net) FILTER (WHERE net > 0) AS pos_net,
       SUM(-net) FILTER (WHERE net < 0) AS neg_net,
       MAX(net) AS max_net,

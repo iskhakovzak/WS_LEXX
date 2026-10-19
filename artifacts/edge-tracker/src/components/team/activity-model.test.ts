@@ -2,7 +2,9 @@ import { afterAll, describe as suite, expect, it } from "vitest";
 import { setLang, type Lang } from "@/i18n";
 import { activityI18n } from "@/i18n/ns/activity";
 import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
-import { describe, describeBurst, itemHref, itemTitle, sectionMeta, type FeedItem } from "./activity-model";
+import { dayKey, describe, describeBurst, deskDayLabel, groupFeed, itemHref, itemTitle, sectionMeta, timeLabel, type FeedItem } from "./activity-model";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtDate, fmtWeekday } from "@/lib/format";
 
 const item = (p: Partial<FeedItem>): FeedItem => ({
   uid: "log:1", action: "created", section: "trades", entityId: null, entityTitle: null, trader: "Ольга Н.", details: null, rating: null,
@@ -111,5 +113,24 @@ suite("itemTitle", () => {
     expect(itemTitle(item({ entityTitle: "  " }))).toBeUndefined();
     clearLatinNames();
     await setLang("ru", { source: "init" });
+  });
+});
+
+suite("desk day and time", () => {
+  it("groups by the New York day and prints NY wall-clock times", async () => {
+    await setLang("ru", { source: "init" });
+    // 02:30 UTC on Oct 17 is 22:30 on Oct 16 in New York (EDT).
+    expect(dayKey("2026-10-17T02:30:00Z")).toBe("2026-10-16");
+    expect(timeLabel("2026-10-17T02:30:00Z")).toBe("22:30");
+    expect(timeLabel("garbage")).toBe("—");
+    const g = groupFeed([item({ createdAt: "2026-10-17T13:00:00Z" }), item({ createdAt: "2026-10-17T02:30:00Z", action: "updated" })]);
+    expect(g.map((d) => d.key)).toEqual(["2026-10-17", "2026-10-16"]);
+  });
+  it("labels a desk date against today's desk date", async () => {
+    await setLang("ru", { source: "init" });
+    expect(deskDayLabel("2026-10-16", "2026-10-16")).toBe(commonI18n.t("time.today"));
+    expect(deskDayLabel("2026-10-15", "2026-10-16")).toBe(commonI18n.t("time.yesterday"));
+    expect(deskDayLabel("2026-10-12", "2026-10-16")).toBe(`${fmtDate("2026-10-12", "dayMonthLong")}, ${fmtWeekday("2026-10-12", "long")}`);
+    expect(deskDayLabel("2025-10-12", "2026-10-16")).toContain("2025");
   });
 });

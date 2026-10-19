@@ -1,10 +1,10 @@
 /**
  * Risk / limits / PropReports sync notifications, rendered per reader (texts: `risk` and `propreports` namespaces).
  *   risk_warn / risk_breach   RiskNoticeParams (snapshot numbers) + variant "trader" | "staff"
- *   limit_change              variant "manual" { actor, reason?, b_* / a_* limits } | "template" { actor, tier, resync, reason?, b_* / a_* }
+ *   limit_change              variant "manual" { actor, reason?, b_* / a_* limits } | "template" { actor, tier, tierKey?, resync, reason?, b_* / a_* }
  *                             | "assign" (scaling page) { actor, from?, to, daily?, weekly?, dd?, comment? }
  *   risk_repeat_breach        { trader, days, prior (dates, comma-separated), state, used, limit }
- *   risk_breach_review        { actor, date (YYYY-MM-DD), reasonCode, consequenceCode, actions? (user text) }
+ *   risk_breach_review        { actor, date (YYYY-MM-DD), reasonCode, consequenceCode, actions? (user text), ddReset? (1 = drawdown count restarted) }
  *   sync                      SyncNoticeParams;   sync_unmatched  { count, accounts, more? }
  * Names, tier names typed by staff, reasons and agreed actions are user content (never translated).
  */
@@ -14,10 +14,23 @@ import {
   type SyncNoticeParams,
 } from "../notifyEventsCore";
 import { riskT, scalingT } from "../../i18n/ns";
+import type { Lang } from "../../i18n";
 import { tierLimitsText, tierOrNone } from "./scaling";
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/**
+ * Tier name for a template notice: a default tier (stored name = its RU seed name) in the reader's language, a tier the
+ * admin renamed as written (user content).
+ */
+export function templateTierName(params: Record<string, unknown>, lang: Lang): string | undefined {
+  const stored = str(params.tier);
+  const key = str(params.tierKey);
+  if (!key) return stored;
+  const seeded = riskT.tryFor("ru", `tier.${key}`);
+  return !stored || stored === seeded ? riskT.tryFor(lang, `tier.${key}`) ?? stored ?? key : stored;
+}
 
 const riskStop: NotificationRenderer = ({ params, lang, variant }) => {
   const snap = riskSnapshotFromParams(params);
@@ -47,7 +60,7 @@ const limitChange: NotificationRenderer = ({ params, lang, variant }) => {
     };
   }
   if (variant === "template") {
-    const tier = str(params.tier);
+    const tier = templateTierName(params, lang);
     if (!tier) return null;
     title = params.resync === 1 ? t("notify.limits.templateResync", { actor, tier }) : t("notify.limits.templateApplied", { tier });
     text = diff.length ? diff.join("; ") : t("notify.limits.templateNone");
@@ -84,7 +97,7 @@ const breachReview: NotificationRenderer = ({ params, lang, date }) => {
   const actions = str(params.actions);
   return {
     title: t("notify.review.title", { date: str(params.date) ? date(str(params.date), "dayMonth") : "" }).trim(),
-    body: t("notify.review.body", { actor, reason, consequence, agreed: actions ? t("notify.review.agreed", { actions }) : "" }),
+    body: t("notify.review.body", { actor, reason, consequence, agreed: actions ? t("notify.review.agreed", { actions }) : "" }) + (params.ddReset === 1 ? ` ${t("notify.review.ddReset")}` : ""),
   };
 };
 

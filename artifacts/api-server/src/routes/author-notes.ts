@@ -380,7 +380,7 @@ router.put("/author-notes", asyncHandler(async (req, res): Promise<void> => {
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   if (raw_text != null && typeof raw_text !== "string") throw new AppError("INVALID_FIELD", undefined, { field: "raw_text" });
   const text = (raw_text ?? "").trim();
-  if (text.length > 50_000) throw new AppError("TEXT_TOO_LONG", undefined, { field: "text", max: 20000 });
+  if (text.length > 50_000) throw new AppError("TEXT_TOO_LONG", undefined, { field: "text", max: 50000 });
   if (mood != null && (typeof mood !== "string" || mood.length > 32)) throw new AppError("INVALID_FIELD", undefined, { field: "mood" });
   const { rows } = await pool.query(
     `INSERT INTO author_notes (trader, note_date, raw_text, mood, updated_at)

@@ -7,7 +7,7 @@
  *   Evening  — EveningCard: was the focus kept (decided from the trades, never typed), one trade worth a look, how the
  *              desk traded the same ticker, the own-contract verdict (daily stop / max trades / own rule from the
  *              personal plan), reviewed yes/no.
- *   Weekly   — TierProgress: «to Junior: 3 of 5» from the scaling ladder.
+ *   Weekly   — TierProgress: «to Junior: 3 of 13» from the academy path (the one ladder scorecard, routes/academy-path).
  *
  * Money is NET ($, pnl − |fees|, ≤ 0 = cost). Dates are New York trading days (YYYY-MM-DD). Texts travel as data
  * (TextItem: key + params) and are rendered per reader (web dictionaries, server `daily` namespace for Telegram).
@@ -41,8 +41,11 @@ export interface DailyFocus {
   window: { from: string; to: string };
   costNet: number | null;
   count: number;
-  /** «auto» = engine, «curator» = a curator replaced it, «none» = nothing repeating (good!). */
-  source: "auto" | "curator" | "none";
+  /** «auto» = engine, «curator» = a curator replaced it, «own» = the trader's journal «Фокус на завтра» (curator >
+   * own > auto; mistake is then null), «none» = nothing repeating (good!). */
+  source: "auto" | "curator" | "own" | "none";
+  /** The trader's own focus line (source «own»). */
+  ownText?: string;
   /** One line for the trader, e.g. key "focus.behavior:martingale" with {cost, count}. */
   text: TextItem;
 }
@@ -82,11 +85,33 @@ export interface EveningCard {
   contract: ContractVerdict | null;
   reviewed: boolean;
   reviewNote: string | null;
-  /** Kept-contract streak after this day and the badges earned on it (lib/daily/discipline, lib/daily/rewards). */
-  rewards?: { streak: number; badges: { id: BadgeId; target: number }[] } | null;
+  /** Own closed trades of the day without a playbook setup — the evening «Разметь N сделок» step (lib/playbookToday/untagged;
+   * optional, absent on older servers). */
+  untagged?: number;
+  /** Kept-contract streak after this day and the badges earned on it (lib/daily/discipline, lib/daily/rewards);
+   * achievement tiers earned and quests done that day (lib/quests — optional, absent on older servers). */
+  rewards?: {
+    streak: number;
+    badges: { id: BadgeId; target: number }[];
+    achievements?: { line: string; tier: string; target: number }[];
+    questsDone?: number;
+  } | null;
 }
 
-export interface TierProgressItem { metric: string; label: TextItem; actual: number | null; target: number | null; ok: boolean }
+export interface TierProgressItem {
+  metric: string;
+  label: TextItem;
+  actual: number | null;
+  target: number | null;
+  ok: boolean;
+  /** Academy-path criteria come rendered in the reader's language: label, value and «≥ target» (optional — older servers
+   * and the scaling fallback send only the numbers). */
+  text?: string;
+  display?: string;
+  targetDisplay?: string;
+  /** No data for this criterion yet (e.g. no trades in its window) — neither passed nor failed. */
+  noData?: boolean;
+}
 
 export interface TierProgress {
   tier: string | null;
@@ -94,6 +119,8 @@ export interface TierProgress {
   met: number;
   total: number;
   items: TierProgressItem[];
+  /** «path» = academy path readiness (link /academy/path); «scaling» = the risk-size ladder (older servers). */
+  source?: "path" | "scaling";
 }
 
 /** GET /api/daily/me and GET /api/daily/trader/:name (staff). */
@@ -114,8 +141,9 @@ export interface DailyMe {
 
 /**
  * Discipline rewards — follow the rules and review, never trade more (a streak for trading every day would push
- * overtrading). Points come only from the own contract (lib/daily/discipline.ts progressive scale); badges from stored
- * data (lib/daily/badges.ts rules, awarded once in trader_badges). All numbers are desk settings (discipline.*, rewards.*).
+ * overtrading). Points come from the own contract (lib/daily/discipline.ts progressive scale) and done quests (lib/quests);
+ * badges are tiers of the achievement lines (lib/quests/achievements.ts, awarded once in trader_achievements). All
+ * numbers are desk settings (discipline.*, rewards.*, quests.*, achievements.*).
  */
 export type BadgeId = "streak_1" | "streak_2" | "streak_3" | "reviews" | "focus" | "clean_month" | "sim_first" | "sim_beat";
 
@@ -125,9 +153,11 @@ export interface DisciplineSummary {
   bestStreak: number;
   /** Bonus points the next kept day adds on top of the item points (progressive scale). */
   nextBonus: number;
-  /** Σ contract points over the last `windowDays` trading days, and all time. */
+  /** Σ discipline points over the last `windowDays` trading days, and all time (contract points + done quests' bonus). */
   points30: number;
   pointsTotal: number;
+  /** The all-time part of pointsTotal that came from quests (lib/quests); absent on older servers. */
+  questPoints?: number;
   windowDays: number;
   /** Level index 0.. (texts `rewards.level.<n>`), from pointsTotal and the settings thresholds. */
   level: number;

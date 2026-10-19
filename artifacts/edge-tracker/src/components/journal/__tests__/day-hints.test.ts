@@ -34,6 +34,21 @@ describe("dayHints", () => {
     expect(h[0].tone).toBe("down");
   });
 
+  it("an opening specialist's green open is not questioned (ROMAN-24); a losing open still is", () => {
+    const tl = [
+      { id: 1, entryTime: "09:30:10", net: 120 },
+      { id: 2, entryTime: "09:31:00", net: 80 },
+      { id: 3, entryTime: "09:33:00", net: -20 },
+      { id: 4, entryTime: "09:40:00", net: 40 },
+    ];
+    const green = base({ summary: { closed: 4, net: 220, winRate: 0.75, feeShareOfGross: null, best: { ticker: "AAL", net: 120 } }, timeline: tl });
+    expect(dayHints(green).some((h) => h.id === "opening")).toBe(false);
+    // A 90-day share below the threshold keeps the hint even on such a day.
+    expect(dayHints(green, { openingShare: 0.2 }).some((h) => h.id === "opening")).toBe(true);
+    const red = base({ timeline: tl.map((x) => ({ ...x, net: -30 })) });
+    expect(dayHints(red)[0].id).toBe("opening");
+  });
+
   it("orders leaks by cost and caps the list", () => {
     const leak = (kind: string, cost: number) => ({ kind, title: kind, detail: "", tradeIds: [], netUsd: -cost, costUsd: cost, severity: "high" as const });
     const h = dayHints(base({ leaks: [leak("a", 10), leak("b", 300), leak("c", 50), leak("d", 5)] }), { untagged: 4, violations: 2 }, 5);

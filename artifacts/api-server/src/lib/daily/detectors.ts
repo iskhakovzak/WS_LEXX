@@ -38,8 +38,8 @@ export function dayThresholds() {
     feesShare: setting("daily.feesShare"),
     /** …and at least this many $. */
     feesMinUsd: setting("daily.feesMinUsd"),
-    /** Cost = the fees above this healthy share of the gross. */
-    feesHealthyShare: setting("daily.feesHealthyShare"),
+    /** Cost = the fees above this healthy share of the gross (never above the mistake share: a fee day never «earns»). */
+    feesHealthyShare: Math.min(setting("daily.feesHealthyShare"), setting("daily.feesShare")),
   };
 }
 
@@ -217,7 +217,8 @@ export function detectDay(input: DetectInput, book: HitBook, days: Map<string, B
   const thr = givebackThreshold(input.trades, k.givebackMinUsd);
   for (const [date, day] of days) {
     const p = dayPath(day);
-    if (p.peak >= thr && p.close <= k.givebackKeepShare * p.peak) {
+    // A giveback needs a green peak to give back (with a 0 threshold a plain losing day is not one).
+    if (p.peak > 0 && p.peak >= thr && p.close <= k.givebackKeepShare * p.peak) {
       const after = day.slice(p.peakIdx + 1).filter((t) => (t.net ?? 0) < 0).sort((a, b) => (a.net ?? 0) - (b.net ?? 0));
       book.add("day:giveback", date, round2(p.close - p.peak), null);
       const h = book.days.get(date)?.get("day:giveback");

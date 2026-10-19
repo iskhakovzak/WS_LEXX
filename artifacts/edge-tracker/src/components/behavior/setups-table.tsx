@@ -122,7 +122,7 @@ function ConfidenceBar({ v }: { v: number }) {
   );
 }
 
-export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: boolean }) {
+export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }: { items: SetupItem[]; canEdit: boolean; onlyUntagged?: boolean; onShowAll?: () => void }) {
   const [filter, setFilter] = React.useState<"all" | "suggested" | "accepted" | "rejected" | "pending">("all");
   const [open, setOpen] = React.useState<Set<number>>(() => new Set());
   const accept = useAcceptSetup();
@@ -160,6 +160,17 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
   };
 
   if (!items.length) {
+    // «Without a broker strategy» and nothing found = every trade of the period already has one (not «no trades»).
+    if (onlyUntagged) {
+      return (
+        <EmptyState
+          icon={Sparkles}
+          title={tb("table.allTagged")}
+          description={tb("table.allTaggedHint")}
+          action={onShowAll ? <Button size="sm" variant="outline" onClick={onShowAll}>{tb("classifyAll")}</Button> : undefined}
+        />
+      );
+    }
     return <EmptyState icon={Sparkles} title={tb("table.empty")} description={tb("table.emptyHint")} />;
   }
 
@@ -226,12 +237,12 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
                           {!s.candlesAvailable && <Pill tone="warn" title={tb("table.noCandlesTitle")}>{tb("table.noCandles")}</Pill>}
                         </button>
                       ) : (
-                        <span className="text-muted-foreground">{tb("table.notComputed")}</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                       {r.currentSetup && <div className="text-xs text-muted-foreground">{tb("table.inTrade", { setup: r.currentSetup })}</div>}
                     </td>
                     <td>{s ? <ConfidenceBar v={s.confidence} /> : "—"}</td>
-                    <td>{s ? <Pill tone={STATUS_TONE[s.status]} dot>{STATUS_LABEL[s.status]}</Pill> : <Pill tone="neutral">{tb("table.queue")}</Pill>}</td>
+                    <td>{s ? <Pill tone={STATUS_TONE[s.status]} dot>{STATUS_LABEL[s.status]}</Pill> : <Pill tone="neutral">{tb("table.notComputed")}</Pill>}</td>
                     <td className="whitespace-nowrap text-right">
                       {canEdit && s && s.status !== "accepted" && s.status !== "stale" && (
                         <div className="inline-flex gap-1">

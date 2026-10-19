@@ -12,8 +12,8 @@
  *   GET    /academy/cohorts                       ?archived=1          список когорт (студент — свои)
  *   POST   /academy/cohorts                                            создать (staff)
  *   GET    /academy/cohorts/:id                                        карточка: студенты + посещаемость, занятия
- *   PATCH  /academy/cohorts/:id                                        изменить (staff)
- *   POST   /academy/cohorts/:id/archive | /restore                     мягкое удаление (staff)
+ *   PATCH  /academy/cohorts/:id                                        изменить (админ / наставник когорты; без наставника — staff)
+ *   POST   /academy/cohorts/:id/archive | /restore                     мягкое удаление (те же права)
  *   POST   /academy/cohorts/seed-demo                                  демо-данные, идемпотентно (staff)
  *   POST   /academy/enrollments                                        зачислить существующего пользователя (staff)
  *   PATCH  /academy/enrollments/:id                                    ступень / статус / дата / заметка (staff) → история
@@ -48,12 +48,13 @@ import { logger } from "../lib/logger";
 import {
   ACTION_STATUSES, ATTENDANCE_STATUSES, CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, COHORT_FORMATS, COMPARATORS, ENROLLMENT_STATUSES,
   GOAL_STATUSES, LATE_GRACE_MIN, METRICS, METRIC_KEYS, NY_TZ, RECURRENCES, SESSION_KINDS, SESSION_MODES,
-  STAGES, enrollmentStatusLabelFor, metricsFor, stageLabelFor,
+  STAGES, canManageCohort, enrollmentStatusLabelFor, metricsFor, stageLabelFor,
   dateInTz, describeGoal, describeRule, evaluateCheckin, evaluateGoal, goalTransition, isOccurrence, isValidTimeZone, lagReasons,
   lagScore, mergeSummaries, nextOccurrence, occurrenceAt, occurrences, summarizeAttendance,
   type AttendanceStatus, type AttendanceSummary, type Comparator, type EnrollmentStatus, type GoalEval, type GoalStatus, type IdpTrade,
   type MetricKey, type SessionRule, type Stage,
 } from "../lib/academyCohorts";
+import { cohortMentor, deskTierOf, deskTiers, mentorPeople } from "../lib/academyPeople";
 import { AppError, conflict, forbidden, notFound, sendError, unauthorized, type ErrorCode } from "../lib/http";
 import { ruCohorts } from "../lib/academyI18n";
 import { DEMO, DEMO_URL } from "../lib/academyCohortsDemo";
@@ -222,14 +223,21 @@ export function ensureAcademyCohortTables(): Promise<void> {
 
 /* ─── Общие помощники ─────────────────────────────────────────────────────── */
 
-type Viewer = { me: string | null; staff: boolean; guest: boolean };
+type Viewer = { me: string | null; staff: boolean; guest: boolean; admin?: boolean };
 
 async function viewer(req: Request): Promise<Viewer> {
   if (!req.authUser) return { me: null, staff: false, guest: false };
   if (isGuest(req)) return { me: null, staff: false, guest: true };
   const role = await viewerRole(req);
   if (!role) return { me: null, staff: false, guest: false };
-  return { me: req.authUser.name, staff: isStaffRole(role), guest: false };
+  return { me: req.authUser.name, staff: isStaffRole(role), guest: false, admin: role === "admin" };
+}
+
+async function needCohortOwner(v: Viewer, id: number, res: Response): Promise<boolean> { // 403 unless allowed (OLGA-19), 404 if missing
+  const mentor = await cohortMentor(id);
+  const err = mentor === undefined ? notFound("COHORT_NOT_FOUND") : canManageCohort(v, { mentor }) ? null : forbidden();
+  if (err) sendError(res, err);
+  return !err;
 }
 
 /** Общий вход для всех маршрутов: схема + личность. Отвечает 401 сам. */
@@ -732,7 +740,8 @@ router.get("/academy/cohorts", asyncHandler(async (req, res) => {
     staff: v.staff,
     cohorts: cohorts.map((c) => {
       const m = counts.get(c.id) ?? {};
-      return { ...mapCohort(c), counts: { active: m.active ?? 0, paused: m.paused ?? 0, graduated: m.graduated ?? 0, dropped: m.dropped ?? 0 }, sessions: sessCounts.get(c.id) ?? 0 };
+      const byStatus = { active: m.active ?? 0, paused: m.paused ?? 0, graduated: m.graduated ?? 0, dropped: m.dropped ?? 0 };
+      return { ...mapCohort(c), counts: byStatus, sessions: sessCounts.get(c.id) ?? 0, mine: !!v.me && c.mentor === v.me, canEdit: canManageCohort(v, c) };
     }),
   });
 }));
@@ -775,7 +784,8 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   }
   const enr = await pool.query<EnrollmentRow>(
     `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.cohort_id = $1 AND e.archived_at IS NULL ORDER BY e.status = 'active' DESC, e.user_name`, [id]);
-  const enrollments = enr.rows.map((r) => mapEnrollment(r, langOf(req)));
+  const tiers = await deskTiers(enr.rows.map((r) => r.user_name)); // one tier everywhere (OLGA-19, lib/academyPeople)
+  const enrollments = enr.rows.map((r) => ({ ...mapEnrollment(r, langOf(req)), ...deskTierOf(tiers.get(r.user_name), langOf(req)) }));
   // Студент видит состав когорты, но посещаемость — только свою.
   const statsFor = v.staff ? enrollments : enrollments.filter((e) => e.userName === v.me);
   const att = await cohortAttendance(id, statsFor.map((e) => ({ name: e.userName, joinedOn: e.joinedOn })));
@@ -789,6 +799,7 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   const summaries = [...att.values()].map((x) => x.all);
   res.json({
     cohort: mapCohort(c),
+    canEdit: canManageCohort(v, c),
     enrollments: enrollments.map((e) => ({ ...e, attendance: att.get(e.userName)?.all ?? null, attendance30: att.get(e.userName)?.last30 ?? null })),
     attendance: mergeSummaries(summaries),
     sessions,
@@ -799,6 +810,7 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
 router.patch("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needCohortOwner(v, id, res))) return;
   const p = cohortBody.partial().safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
@@ -833,6 +845,7 @@ for (const [path, archive] of [["archive", true], ["restore", false]] as const) 
   router.post(`/academy/cohorts/:id/${path}`, asyncHandler(async (req, res) => {
     const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
     const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+    if (!(await needCohortOwner(v, id, res))) return;
     try {
       const { rows } = await pool.query<CohortRow>(
         `UPDATE academy_cohorts c SET archived_at = ${archive ? "NOW()" : "NULL"}, updated_at = NOW() WHERE c.id = $1 RETURNING ${COHORT_COLS}`, [id]);
@@ -1541,15 +1554,12 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
   const today = nyDate(new Date(nowMs));
   const all = qs(req, "all") === "1";
   const { rows: allCohorts } = await pool.query<CohortRow>(`SELECT ${COHORT_COLS} FROM academy_cohorts c WHERE c.archived_at IS NULL ORDER BY c.name`);
-  const mine = allCohorts.filter((c) => c.mentor === v.me);
-  const cohorts = all || !mine.length ? allCohorts : mine;
+  const { enr, cohortIds: shownIds, scoped, ownCohorts } = await mentorPeople(v.me, allCohorts, all, async (ids, names) => (await pool.query<EnrollmentRow>(
+    `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.archived_at IS NULL AND e.status IN ('active','paused')
+        AND (e.cohort_id = ANY($1::int[]) OR e.user_name = ANY($2::text[])) ORDER BY e.user_name`, [ids, names])).rows);
+  const cohorts = allCohorts.filter((c) => shownIds.has(c.id));
   const cohortIds = cohorts.map((c) => c.id);
   const names = new Map(cohorts.map((c) => [c.id, c.name]));
-  const { rows: enr } = cohortIds.length
-    ? await pool.query<EnrollmentRow>(
-        `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.cohort_id = ANY($1::int[]) AND e.archived_at IS NULL AND e.status IN ('active','paused') ORDER BY e.user_name`,
-        [cohortIds])
-    : { rows: [] as EnrollmentRow[] };
 
   // Посещаемость по когортам
   const att = new Map<string, { all: AttendanceSummary; last30: AttendanceSummary }>();
@@ -1625,8 +1635,8 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
 
   res.json({
     serverNow: new Date(nowMs).toISOString(),
-    scope: all || !mine.length ? "all" : "mine",
-    hasOwnCohorts: mine.length > 0,
+    scope: scoped ? "mine" : "all",
+    hasOwnCohorts: ownCohorts > 0,
     cohorts: cohorts.map(mapCohort),
     students: rows.map((r) => ({ ...r, lastMeetingAt: lastMeeting.get(r.enrollment.userName) ?? null })),
     lagging: rows.filter((r) => r.score > 0).length,

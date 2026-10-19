@@ -19,6 +19,10 @@ import {
 import { canSeeAggregateMoney, canSeeTradeMoney, redactEdgeStats, redactSummaryRow, redactTradeRow } from "../lib/playbookPrivacy";
 import { AppError, badRequest, notFound, sendError, sendErrorWith, unauthorized } from "../lib/http";
 import { aiLanguageEn } from "../i18n/ai";
+import { setupTierFields } from "../lib/playbookToday/setupFields";
+import { tradeTagged, viewerLocks, type ViewerLocks } from "../lib/playbookToday/service";
+import { redactLockedSetup } from "../lib/playbookToday/build";
+import marksRouter from "./playbook-marks";
 import { langOf } from "../i18n";
 
 /**
@@ -143,6 +147,8 @@ const PLAYBOOK_SELECT_FIELDS = `
   invalidation_text AS "invalidationText",
   ideal_conditions  AS "idealConditions",
   time_of_day       AS "timeOfDay",
+  min_tier          AS "minTier",
+  schema_key        AS "schema",
   horizon,
   media,
   updated_at        AS "updatedAt"
@@ -301,19 +307,26 @@ router.get("/playbook", asyncHandler(async (req, res): Promise<void> => {
     params,
   );
   const want = typeof req.query.space === "string" ? req.query.space : null;
+  const locks = await viewerLocks(v.name);
   const out = [];
   for (const r of rows) {
     const access = accessHints(v, r);
     if (want === "office" && access.space !== "office") continue;
     if (want === "personal" && !access.mine) continue;
     if (want === "shared" && !(access.shared && !access.mine)) continue;
-    out.push({ ...r, access });
+    out.push(lockRow({ ...r, access }, locks));
   }
   res.setHeader("X-Playbook-Viewer", encodeURIComponent(JSON.stringify({
     name: v.name, mayShare: mayShareAny(v), editAny: v.editAny, review: v.review, editOwn: v.editOwn, stage: v.stage,
   })));
   res.json(out);
 }));
+
+/** DEV-06: a setup above the viewer's tier comes without its card (title, tier and the unlock condition only). */
+function lockRow<T extends { id: number; name: string; minTier?: string | null }>(row: T, locks: ViewerLocks): T & { locked: boolean } {
+  const lock = locks.known.get(row.id) ?? locks.lockOther(row);
+  return lock.locked ? redactLockedSetup(row, lock.unlock) : { ...row, locked: false };
+}
 
 /** The caller's own playbook capabilities (sharing needs the academy stage «Сеньор» or staff). */
 router.get("/playbook/me", asyncHandler(async (req, res): Promise<void> => {
@@ -984,6 +997,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (shortInterest !== undefined) { fields.push(`short_interest = $${i++}`); vals.push(shortInterest ? Number(shortInterest) : null); }
   if (sector !== undefined) { fields.push(`sector = $${i++}`); vals.push(sector ? String(sector) : null); }
   if (longName !== undefined) { fields.push(`long_name = $${i++}`); vals.push(longName ? String(longName) : null); }
+  const tier = setupTierFields(body, prevRows[0], v); for (const [col, val] of tier.cols) { fields.push(`${col} = $${i++}`); vals.push(val); }
   if (!fields.length) throw badRequest("NO_FIELDS");
   fields.push(`updated_at = NOW()`);
   vals.push(id);
@@ -993,6 +1007,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
     vals
   );
   if (!rows[0]) throw notFound();
+  await tier.audit(auth.name, rows[0].name);
   await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: auth.name, details: activityDetails("setupUpdated"), params: { detailsKey: "setupUpdated" } });
   res.json({ ...rows[0], access: accessHints(v, rows[0]) });
 }));
@@ -1010,7 +1025,8 @@ router.get("/playbook/:id/children", asyncHandler(async (req, res): Promise<void
     WHERE p.parent_id = $1 AND p.deleted_at IS NULL AND ${vis}
     ORDER BY p.created_at DESC
   `, params);
-  res.json(rows.map((r) => ({ ...r, access: accessHints(v, r) })));
+  const locks = await viewerLocks(v.name);
+  res.json(rows.map((r) => lockRow({ ...r, access: accessHints(v, r) }, locks)));
 }));
 
 const EDGE_TRADE_SELECT = `
@@ -1106,50 +1122,15 @@ router.get("/playbook/:id/checklist-runs", asyncHandler(async (req, res): Promis
   res.json(rows.map((r) => ({ ...r, score: r.score != null ? Number(r.score) : 0 })));
 }));
 
-router.get("/playbook/:id/marks", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) throw badRequest("INVALID_ID");
-  const trader = req.authUser?.name ?? "";
-  const { rows } = await pool.query<{ item_id: string; scope: string; trader: string; done: boolean }>(
-    `SELECT item_id, scope, trader, done
-     FROM playbook_checklist_marks
-     WHERE playbook_id = $1 AND (scope = 'shared' OR (scope = 'personal' AND trader = $2))`,
-    [id, trader]
-  );
-  const shared: Record<string, boolean> = {};
-  const personal: Record<string, boolean> = {};
-  for (const r of rows) {
-    if (r.scope === "shared") shared[r.item_id] = r.done;
-    else if (r.scope === "personal" && r.trader === trader) personal[r.item_id] = r.done;
-  }
-  res.json({ shared, personal });
-}));
-
-router.put("/playbook/:id/marks/:itemId", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  const itemId = String(req.params.itemId);
-  if (isNaN(id) || !itemId) throw badRequest("INVALID_ID");
-  const { scope, done } = req.body as { scope?: string; done?: boolean };
-  if (scope !== "shared" && scope !== "personal") throw new AppError("INVALID_FIELD", undefined, { field: "scope" });
-  if (typeof done !== "boolean") throw new AppError("FIELD_REQUIRED", undefined, { field: "done" });
-  const sessionTrader = req.authUser?.name ?? "";
-  if (scope === "personal" && !sessionTrader) throw new AppError("TRADER_REQUIRED");
-  const traderKey = scope === "personal" ? sessionTrader : "";
-  await pool.query(
-    `INSERT INTO playbook_checklist_marks (playbook_id, item_id, scope, trader, done, updated_at)
-     VALUES ($1,$2,$3,$4,$5,NOW())
-     ON CONFLICT (playbook_id, item_id, scope, trader)
-     DO UPDATE SET done = EXCLUDED.done, updated_at = NOW()`,
-    [id, itemId, scope, traderKey, done]
-  );
-  res.json({ ok: true });
-}));
+// Checklist marks (GET /playbook/:id/marks, PUT /playbook/:id/marks/:itemId): routes/playbook-marks.ts.
+router.use(marksRouter);
 
 router.get("/playbook/:id/revisions", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
   if (isNaN(id)) throw badRequest("INVALID_ID");
+  // DEV-06: old snapshots carry the whole card — none for a viewer below the setup's tier.
+  if ((await viewerLocks(req.authUser?.name)).known.get(id)?.locked) { res.json([]); return; }
   const { rows } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", trader, snapshot, created_at AS "createdAt"
      FROM playbook_revisions WHERE playbook_id = $1 ORDER BY created_at DESC LIMIT 50`,
@@ -1378,6 +1359,7 @@ router.post("/playbook/:id/link-trade", asyncHandler(async (req, res): Promise<v
   if (!pb || !canReadPure(await loadViewer(req), pb)) throw new AppError("SETUP_NOT_FOUND");
   const own = await canTouchTrade(req, Number(tradeId));
   await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2`, [id, Number(tradeId)]);
+  await tradeTagged(Number(tradeId));
   res.json({ success: true });
 }));
 
@@ -1387,6 +1369,7 @@ router.delete("/playbook/:id/link-trade/:tradeId", asyncHandler(async (req, res)
   if (isNaN(tradeId)) throw badRequest("INVALID_ID");
   const own = await canTouchTrade(req, tradeId);
   await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`, [tradeId, Number.isInteger(id) ? id : null]);
+  await tradeTagged(tradeId);
   res.json({ success: true });
 }));
 

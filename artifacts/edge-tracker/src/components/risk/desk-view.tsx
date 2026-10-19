@@ -21,6 +21,9 @@ import { alertLabel, positionsCount, stopMessage } from "./labels";
 
 type StatusFilter = "all" | "attention" | "no_limits";
 const STATUS_FILTERS: readonly StatusFilter[] = ["all", "attention", "no_limits"];
+/** «Мои подопечные» (the viewer's wards: curator / mentor / risk manager) or the whole desk. */
+type Scope = "mine" | "desk";
+const SCOPES: readonly Scope[] = ["mine", "desk"];
 
 /** Who needs action right now: stopped / near a limit, with the exact reason. Renders nothing when the desk is clean. */
 function ActionStrip({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (t: string) => void }) {
@@ -79,6 +82,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   const [query, setQuery] = React.useState("");
   const [showIdle, setShowIdle] = React.useState(false);
   const [statusFilter, setStatusFilter] = useStoredState<StatusFilter>("risk.desk.status", "all", STATUS_FILTERS);
+  const [storedScope, setScope] = useStoredState<Scope>("risk.desk.scope", "mine", SCOPES);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -98,7 +102,11 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const rows = React.useMemo(() => desk.data?.traders ?? [], [desk.data]);
+  const allRows = React.useMemo(() => desk.data?.traders ?? [], [desk.data]);
+  // A curator opens on their wards; without wards (or on an older server) the scope switch is hidden.
+  const wards = allRows.filter((r) => r.ward).length;
+  const scope: Scope = wards > 0 ? storedScope : "desk";
+  const rows = React.useMemo(() => (scope === "mine" ? allRows.filter((r) => r.ward) : allRows), [allRows, scope]);
   const s = desk.data?.summary;
   const positions = React.useMemo(() => pos.data?.positions ?? [], [pos.data]);
   const exposure = React.useMemo(() => exposureByTrader(positions), [positions]);
@@ -107,11 +115,11 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   // /risk?trader=X opens that trader's card once the desk has loaded.
   React.useEffect(() => {
     if (!focusTrader || focusedOnce.current === focusTrader) return;
-    if (!rows.some((r) => r.trader === focusTrader)) return;
+    if (!allRows.some((r) => r.trader === focusTrader)) return;
     focusedOnce.current = focusTrader;
     setSheetTab(focusTab);
     setSelected(focusTrader);
-  }, [focusTrader, focusTab, rows]);
+  }, [focusTrader, focusTab, allRows]);
 
   const open = (trader: string, tab: "overview" | "limits" = "overview") => {
     setSheetTab(tab);
@@ -134,8 +142,8 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   const foldIdle = statusFilter === "all" && !query.trim() && !showIdle;
   const idleRows = statusFilter === "all" && !query.trim() ? filtered.filter(isIdle) : [];
   const shown = foldIdle ? filtered.filter((t) => !isIdle(t)) : filtered;
-  const selectedRow = rows.find((r) => r.trader === selected) ?? null;
-  const limitsByTrader = React.useMemo(() => new Map(rows.map((r) => [r.trader, r.limits])), [rows]);
+  const selectedRow = allRows.find((r) => r.trader === selected) ?? null;
+  const limitsByTrader = React.useMemo(() => new Map(allRows.map((r) => [r.trader, r.limits])), [allRows]);
   const { t } = riskI18n.useT();
   const c = commonI18n.t;
   const short = (v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 });
@@ -212,6 +220,18 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
         description={t("desk.tradersDesc")}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {wards > 0 && (
+              <Segmented
+                ariaLabel={t("desk.scopeAria")}
+                size="sm"
+                value={scope}
+                onChange={setScope}
+                options={[
+                  { value: "mine", label: t("desk.scopeMine"), count: wards },
+                  { value: "desk", label: t("desk.scopeDesk"), count: allRows.length },
+                ]}
+              />
+            )}
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <Input

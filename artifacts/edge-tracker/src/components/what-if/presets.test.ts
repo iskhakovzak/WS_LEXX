@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PreviewTrade } from "./rules";
-import { buildQuestions, changedDays, cheapestTariff, tariffOptions, typicalDayLoss, worstSetups, TARIFF_EXAMPLES } from "./presets";
+import { buildQuestions, changedDays, cheapestTariff, presetsWithLimits, tariffOptions, typicalDayLoss, worstSetups, TARIFF_EXAMPLES } from "./presets";
 
 let id = 0;
 const mk = (day: string, gross: number, extra: Partial<PreviewTrade> = {}): PreviewTrade => {
@@ -69,5 +69,20 @@ describe("changedDays", () => {
       { day: "d1", before: -100, after: 0, delta: 100, removed: true },
       { day: "d3", before: 10, after: 30, delta: 20, removed: false },
     ]);
+  });
+});
+
+describe("questions and presets follow the trader's limits (DENIS-36)", () => {
+  const ts = [mk("2026-01-01", -43), mk("2026-01-02", -61), mk("2026-01-03", -120), mk("2026-01-04", 500)];
+  it("the day stop uses the own daily loss limit when known, the typical losing day otherwise", () => {
+    expect(buildQuestions(ts, []).find((q) => q.id === "dayLimit")!.rule).toEqual({ type: "dailyLossLimit", usd: 60 });
+    expect(buildQuestions(ts, [], { dailyLossLimit: 300 }).find((q) => q.id === "dayLimit")!.rule).toEqual({ type: "dailyLossLimit", usd: 300 });
+    expect(buildQuestions([], [], { dailyLossLimit: 300 }).find((q) => q.id === "dayLimit")!.disabled).toBeNull();
+  });
+
+  it("server presets get the own day stop; other rules stay", () => {
+    const p = [{ id: "discipline", label: "D", rules: [{ type: "dailyLossLimit" as const, usd: 100 }, { type: "stopAfterLosses" as const, n: 3 }] }];
+    expect(presetsWithLimits(p, { dailyLossLimit: 300 })[0].rules).toEqual([{ type: "dailyLossLimit", usd: 300 }, { type: "stopAfterLosses", n: 3 }]);
+    expect(presetsWithLimits(p, {})).toBe(p);
   });
 });

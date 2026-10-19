@@ -1,7 +1,9 @@
 /**
  * Кабинет куратора — таблицы (идемпотентно, лениво из роутов curator.ts / risk.ts).
  *
- *   curator_notes        приватные заметки персонала о трейдере (трейдер их не видит); мягкое удаление archived_at
+ *   curator_notes        приватные заметки персонала о трейдере (трейдер их не видит); мягкое удаление archived_at;
+ *                        day — торговый день (NY), к которому заметка относится (заметка из строки очереди закрывает
+ *                        только этот день, lib/daily/costQueue); NULL — общая заметка из профиля
  *   risk_breach_reviews  «Разбор нарушения»: причина, договорённости, последствие по записи risk_alert_log (1:1)
  *   curator_queue_acks   мягкий архив элементов очереди разборов («архивировать старые»): исходные записи не трогаются,
  *                        элемент просто скрывается из очереди; отметка с revoked_at ≠ NULL не действует (элемент вернётся)
@@ -26,6 +28,7 @@ export function ensureCuratorTables(): Promise<void> {
         archived_by TEXT
       )`);
       await pool.query(`CREATE INDEX IF NOT EXISTS curator_notes_trader_idx ON curator_notes (trader, created_at DESC) WHERE archived_at IS NULL`);
+      await pool.query(`ALTER TABLE curator_notes ADD COLUMN IF NOT EXISTS day TEXT`);
       await pool.query(`CREATE TABLE IF NOT EXISTS risk_breach_reviews (
         id SERIAL PRIMARY KEY,
         alert_id INTEGER NOT NULL UNIQUE,
@@ -67,6 +70,8 @@ export type CuratorNote = {
   body: string;
   kind: string;
   pinned: boolean;
+  /** NY trading day the note is about (YYYY-MM-DD), null = a general note. */
+  day: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -79,6 +84,7 @@ export function rowToNote(r: any): CuratorNote {
     body: String(r.body),
     kind: String(r.kind ?? "note"),
     pinned: r.pinned === true,
+    day: typeof r.day === "string" && r.day ? r.day : null,
     createdAt: new Date(r.created_at).toISOString(),
     updatedAt: new Date(r.updated_at).toISOString(),
   };
@@ -116,4 +122,25 @@ export function rowToBreachReview(r: any): BreachReviewRow {
     updatedBy: r.updated_by ?? null,
     updatedAt: new Date(r.updated_at).toISOString(),
   };
+}
+
+/**
+ * Full-day market holidays («Market closed…» in holiday_calendar, the rule of lib/daily/service) in the last `days`
+ * days up to `today` (NY) — for the review SLA clock (lib/eodLogic tradingHoursBetween). One read per NY day.
+ */
+let closedCache: { key: string; days: Set<string> } | null = null;
+export async function marketClosedDays(today: string, days = 400): Promise<Set<string>> {
+  const key = `${today}|${days}`;
+  if (closedCache?.key === key) return closedCache.days;
+  const from = new Date(Date.parse(`${today}T12:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+  const { rows } = await pool
+    .query<{ d: string }>(
+      `SELECT date::text AS d FROM holiday_calendar
+        WHERE type = 'holiday' AND description ILIKE 'market closed%' AND date::text >= $1 AND date::text <= $2`,
+      [from, today],
+    )
+    .catch(() => ({ rows: [] as { d: string }[] }));
+  const out = new Set(rows.map((r) => String(r.d).slice(0, 10)));
+  closedCache = { key, days: out };
+  return out;
 }

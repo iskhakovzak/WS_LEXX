@@ -7,5 +7,7 @@ export default {
     linkedHere: "Savdo shu setapga bogʻlangan",
     auto: "Avtoklassifikatsiya: {label}",
     text: "Nomi savdo belgisi «{label}» ga oʻxshaydi",
+    strategy: "«{label}» strategiyasi, kirish {time} NY — shu setap oynasi",
+    time: "Kirish {time} NY — shu setap oynasi",
   },
 } satisfies Messages<typeof ru>;

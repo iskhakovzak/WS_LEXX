@@ -70,6 +70,7 @@ export default {
     ai_not_configured: "AI is not configured",
     NETWORK: "Server unreachable — check your connection",
     BAD_RESPONSE: "The server sent an invalid response",
+    NOT_CONNECTED: "This section is not connected on the server yet",
   },
   status: {
     400: "Invalid request — check the data",

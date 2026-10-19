@@ -104,9 +104,8 @@ router.get("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void>
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   if (!(await requireReviewAccess(req, res, id))) return;
-  const review = await getLatestReview(id);
-  if (!review) throw new AppError("NO_DATA");
-  res.json(review);
+  // No review yet is a normal state, not an error: 200 with null (DEV-15; the panel offers «generate»).
+  res.json((await getLatestReview(id)) ?? null);
 }));
 
 export default router;

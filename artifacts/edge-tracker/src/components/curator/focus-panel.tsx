@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Award, Crosshair, Flame, RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Crosshair, Flame, RefreshCw } from "lucide-react";
 import { Panel, Pill, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,12 +9,13 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtNum, fmtUsd } from "@/lib/format";
 import { PICKABLE_MISTAKES, mistakeLabel } from "@/components/shared/mistake-labels";
-import { BADGE_ICON, badgeName, levelName, sortBadges } from "@/components/shared/badges";
+import { levelName } from "@/components/shared/badges";
 import { dailyI18n } from "@/i18n/ns/daily";
 import type { MistakeId, VerdictStatus } from "@/lib/daily/types";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { gamificationMeQuery } from "@/lib/api/queries";
 import { NotAvailableError, curatorApi, useCuratorMutation, type CuratorFocus } from "./api";
 
 const STATUS_TONE: Record<VerdictStatus, Tone> = { kept: "up", broken: "down", no_trades: "neutral", unknown: "neutral" };
@@ -24,6 +26,15 @@ export function FocusPanel({ trader, focus }: { trader: string; focus: CuratorFo
   const { t } = curatorI18n.useT();
   const [open, setOpen] = React.useState(false);
   const cur = focus.current;
+  const { toast } = useToast();
+  const reset = useCuratorMutation(() => curatorApi.setFocus(trader, focus.date, null));
+  const resetAuto = () => {
+    if (reset.isPending) return;
+    reset.mutate(undefined, {
+      onSuccess: () => toast({ title: t("focus.resetDone") }),
+      onError: (e) => toast({ title: t("focus.saveFailed"), description: e instanceof NotAvailableError ? t("focus.notConnected") : (e as Error).message, variant: "destructive" }),
+    });
+  };
   return (
     <Panel
       title={t("focus.title")}
@@ -39,12 +50,17 @@ export function FocusPanel({ trader, focus }: { trader: string; focus: CuratorFo
               <span className="text-base font-semibold text-foreground">{mistakeLabel(cur.mistake)}</span>
               <Pill tone={cur.source === "curator" ? "purple" : "neutral"}>{cur.source === "curator" ? t("focus.fromCurator") : t("focus.auto")}</Pill>
               {cur.costNet != null && cur.costNet < 0 && <span className="text-sm tabular-nums text-down">{t("focus.cost", { cost: fmtUsd(cur.costNet, { decimals: 0 }) })}</span>}
+              {cur.source === "curator" && (
+                <Button type="button" size="sm" variant="ghost" className="h-7" onClick={resetAuto} disabled={reset.isPending} title={t("focus.resetAutoTitle")}>
+                  {t("focus.resetAuto")}
+                </Button>
+              )}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">{cur?.source === "none" ? t("focus.none") : t("focus.notReady")}</p>
           )}
         </div>
-        {focus.rewards && <DisciplineLine rewards={focus.rewards} />}
+        {focus.rewards && <DisciplineLine trader={trader} rewards={focus.rewards} />}
         <FocusHistory focus={focus} />
       </div>
       <ReplaceFocusDialog open={open} onOpenChange={setOpen} trader={trader} focus={focus} />
@@ -52,35 +68,30 @@ export function FocusPanel({ trader, focus }: { trader: string; focus: CuratorFo
   );
 }
 
-/** The trader's contract streak, discipline level / points and earned badges — one line (api lib/daily/rewards). */
-function DisciplineLine({ rewards }: { rewards: NonNullable<CuratorFocus["rewards"]> }) {
+/**
+ * The trader's contract streak, discipline level and points — one line (api lib/daily/rewards). Named «Очки дисциплины»
+ * so it never reads as a second «Дисциплина» next to the 0–10 score (OLGA-14); the points are the SEASON points
+ * (/api/gamification/me, the same source as /ratings «Сезон»), the 30-day window only when the season is unavailable.
+ * Badges are achievement tiers now: they live in the quests & achievements block of the profile, not here.
+ */
+function DisciplineLine({ trader, rewards }: { trader: string; rewards: NonNullable<CuratorFocus["rewards"]> }) {
   const { t } = dailyI18n.useT();
+  const tc = curatorI18n.useT().t;
+  const season = useQuery(gamificationMeQuery(trader)).data?.season ?? null;
   const d = rewards.discipline;
-  const earned = sortBadges(rewards.badges).filter((b) => b.earnedOn);
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-      <span className="micro-label">{t("rewards.curatorLine")}</span>
+      <span className="micro-label">{tc("focus.pointsLine")}</span>
       <span className="inline-flex items-center gap-1 tabular-nums" title={d.streak > 0 ? t("rewards.streak", { days: t("rewards.streakDays", { count: d.streak }) }) : t("rewards.streakNone")}>
         <Flame className={cn("h-4 w-4", d.streak > 0 ? "text-warn" : "text-muted-foreground")} aria-hidden="true" />
         {d.streak}
       </span>
       <span className="font-medium text-foreground">{levelName(d.level)}</span>
       <span className="tabular-nums text-muted-foreground">
-        {t("rewards.points", { points: d.pointsTotal })} · {t("rewards.window", { days: d.windowDays, points: fmtNum(d.points30, { signed: true, decimals: 0 }) })}
+        {season
+          ? tc("focus.seasonPoints", { points: season.myPoints, month: fmtDate(season.from, "monthYear") })
+          : `${t("rewards.points", { points: d.pointsTotal })} · ${t("rewards.window", { days: d.windowDays, points: fmtNum(d.points30, { signed: true, decimals: 0 }) })}`}
       </span>
-      {earned.length > 0 && (
-        <span className="inline-flex flex-wrap items-center gap-1" aria-label={t("rewards.badgesAria")}>
-          {earned.map((b) => {
-            const Icon = BADGE_ICON[b.id] ?? Award;
-            const label = `${badgeName(b)} — ${t("rewards.earnedOn", { date: fmtDate(b.earnedOn!, "dayMonth") })}`;
-            return (
-              <span key={b.id} role="img" aria-label={label} title={label} className="grid h-6 w-6 place-items-center rounded-md bg-primary/15 text-primary">
-                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-            );
-          })}
-        </span>
-      )}
     </div>
   );
 }
@@ -120,10 +131,12 @@ function ReplaceFocusDialog({ open, onOpenChange, trader, focus }: { open: boole
   const { t } = curatorI18n.useT();
   const tc = commonI18n.useT().t;
   const { toast } = useToast();
-  const costly = focus.options.filter((o) => o.id !== focus.current?.mistake);
+  // The server lists the focus in force among the options too: it stays visible, marked «сейчас», and can't be picked.
+  const currentId = focus.options.find((o) => o.current)?.id ?? focus.current?.mistake ?? null;
+  const costly = focus.options;
   const others = PICKABLE_MISTAKES.filter((m) => !costly.some((o) => o.id === m.id) && m.id !== focus.current?.mistake);
   const [pick, setPick] = React.useState<MistakeId | null>(null);
-  React.useEffect(() => { if (open) setPick(costly[0]?.id ?? null); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (open) setPick(costly.find((o) => o.id !== currentId)?.id ?? null); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const save = useCuratorMutation((mistake: MistakeId) => curatorApi.setFocus(trader, focus.date, mistake));
   const submit = () => {
     if (!pick || save.isPending) return;
@@ -152,10 +165,12 @@ function ReplaceFocusDialog({ open, onOpenChange, trader, focus }: { open: boole
                 type="button"
                 role="radio"
                 aria-checked={pick === o.id}
+                disabled={o.id === currentId}
                 onClick={() => setPick(o.id)}
-                className={cn("tile flex items-center gap-2 px-3 py-2 text-left text-sm", pick === o.id && "ring-2 ring-primary")}
+                className={cn("tile flex items-center gap-2 px-3 py-2 text-left text-sm disabled:cursor-default disabled:opacity-70", pick === o.id && "ring-2 ring-primary")}
               >
                 <span className="min-w-0 flex-1 truncate text-foreground">{mistakeLabel(o.id)}</span>
+                {o.id === currentId && <Pill tone="accent">{t("focus.currentMark")}</Pill>}
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{`×${o.count}`}</span>
                 <span className="w-16 shrink-0 text-right tabular-nums text-down">{o.costNet != null ? fmtUsd(o.costNet, { decimals: 0 }) : "—"}</span>
               </button>

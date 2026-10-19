@@ -5,6 +5,7 @@ import {
 } from "./metrics";
 import { fmtDate, fmtRate, fmtRatio, localeTag } from "@/lib/format";
 import { statsI18n } from "@/i18n/ns/stats";
+import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
 
 export type ReportMeta = { title: string; periodLabel: string; scopeLabel: string; metric: Metric; generatedAt: Date; fees?: FeeStats };
@@ -19,11 +20,11 @@ function kpiRows(k: Kpis, prev: Kpis | null, metric: Metric): [string, string, s
     [t("csv.trades"), String(k.total), p ? String(p.total) : ""],
     [t("csv.closedOpen"), `${k.closed} / ${k.open}`, p ? `${p.closed} / ${p.open}` : ""],
     ["Win / Loss / BE", `${k.wins} / ${k.losses} / ${k.breakeven}`, p ? `${p.wins} / ${p.losses} / ${p.breakeven}` : ""],
-    ["Win rate", fmtRate(k.winRate), p ? fmtRate(p.winRate) : ""],
+    [commonI18n.t("trading.winRate"), fmtRate(k.winRate), p ? fmtRate(p.winRate) : ""],
     [t("csv.result"), v(k.net), p ? v(p.net) : ""],
     [t("csv.expectancy"), v(k.expectancy), p ? v(p.expectancy) : ""],
-    ["Profit factor", fmtRatio(k.profitFactor), p ? fmtRatio(p.profitFactor) : ""],
-    ["Payoff", fmtRatio(k.payoff), p ? fmtRatio(p.payoff) : ""],
+    [t("kpi.pf"), fmtRatio(k.profitFactor), p ? fmtRatio(p.profitFactor) : ""],
+    [t("csv.payoff"), fmtRatio(k.payoff), p ? fmtRatio(p.payoff) : ""],
     [t("csv.avgWin"), v(k.avgWin), p ? v(p.avgWin) : ""],
     [t("csv.avgLoss"), v(k.avgLoss), p ? v(p.avgLoss) : ""],
     [t("csv.best"), v(k.bestTrade), p ? v(p.bestTrade) : ""],

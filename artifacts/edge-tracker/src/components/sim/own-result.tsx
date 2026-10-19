@@ -5,19 +5,21 @@
  * in the shared result views.
  */
 import { Link } from "wouter";
-import { AlertTriangle, CandlestickChart, CheckCircle2, RotateCcw, Users } from "lucide-react";
+import { AlertTriangle, CandlestickChart, CheckCircle2, Layers, RotateCcw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable, Kbd, toneOf, toneText, type Tone } from "@/components/ds";
-import { fmtCount, fmtDate, fmtPrice, fmtR, fmtTimeNY, fmtUsd } from "@/lib/format";
+import { fmtCount, fmtPrice, fmtR, fmtTimeNY, fmtUsd, fmtDayMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { simI18n } from "@/i18n/ns/simulator";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
 import { chartI18n } from "@/i18n/ns/chart";
 import type { OwnReveal } from "./api";
-import { ownMistakeLabel } from "./own-start";
+import { mistakeLabel } from "@/components/shared/mistake-labels";
 import { useDeskDayCount } from "@/components/shared/desk-day-link";
 import type { GameView } from "./use-sim-game";
+import { trainerI18n } from "@/i18n/ns/trainer";
+import { useSeriesCtx } from "./series-context";
 
 function verdictTone(o: OwnReveal): Tone {
   const v = o.compare.verdict;
@@ -39,6 +41,8 @@ function Side({ label, net, r, line }: { label: string; net: number; r: number; 
 export function OwnResultSummary({ game, onAgain, onStart, starting }: { game: GameView; onAgain: () => void; onStart: () => void; starting: boolean }) {
   const { t } = simOwnI18n.useT();
   const { t: ts } = simI18n.useT();
+  const { t: tt } = trainerI18n.useT();
+  const sc = useSeriesCtx();
   const r = game.reveal;
   const o = r?.own;
   // The desk's day only when somebody else traded it (no empty promise).
@@ -53,7 +57,7 @@ export function OwnResultSummary({ game, onAgain, onStart, starting }: { game: G
     <div className="flex flex-col gap-3">
       <div className="tile rounded-xl p-3">
         <p className="text-2xs uppercase tracking-wide text-muted-foreground">{t("result.title")}</p>
-        <p className="mt-0.5 text-xl font-semibold tracking-tight">{o.ticker} · {fmtDate(o.date, "dayMonth")}</p>
+        <p className="mt-0.5 text-xl font-semibold tracking-tight">{o.ticker} · {fmtDayMonth(o.date)}</p>
         {r.longName && <p className="truncate text-xs text-muted-foreground" title={r.longName}>{r.longName}</p>}
         <p className={cn("mt-2 text-2xl font-semibold leading-tight tabular-nums", toneText(verdictTone(o)))}>
           {c.verdict === "same" ? t("result.diff.same", { value: fmtUsd(c.diff, { signed: true }) }) : t(`result.diff.${c.verdict === "skipped" ? "skipped" : c.diff >= 0 ? "better" : "worse"}`, { value: diffAbs })}
@@ -71,7 +75,7 @@ export function OwnResultSummary({ game, onAgain, onStart, starting }: { game: G
         {o.mistakes.length ? (
           <ul className="flex flex-col gap-1">
             {o.mistakes.map((m) => (
-              <li key={m} className="flex items-start gap-1.5 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />{ownMistakeLabel(m)}</li>
+              <li key={m} className="flex items-start gap-1.5 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />{mistakeLabel(m)}</li>
             ))}
           </ul>
         ) : (
@@ -79,8 +83,14 @@ export function OwnResultSummary({ game, onAgain, onStart, starting }: { game: G
         )}
       </div>
       <Button size="lg" className="min-h-11" onClick={onAgain} disabled={starting}>
-        <RotateCcw aria-hidden="true" /> {t("result.again")} <Kbd className="border-white/30 bg-white/10 text-white/90">Enter</Kbd>
+        <RotateCcw aria-hidden="true" /> {t("result.again")} <Kbd className="border-white/30 bg-white/10 text-white/90 [@media(pointer:coarse)]:hidden">Enter</Kbd>
       </Button>
+      {/* Closure: after the own day, the next step of the daily loop — fast reps on random charts. */}
+      {sc && (
+        <Button variant="outline" className="min-h-11" onClick={sc.startSeries} disabled={starting || sc.starting}>
+          <Layers aria-hidden="true" /> {tt("series.after")}
+        </Button>
+      )}
       <div className="flex flex-wrap gap-2">
         {(desk.data?.others ?? 0) > 0 && (
           <Button asChild variant="outline" size="sm">

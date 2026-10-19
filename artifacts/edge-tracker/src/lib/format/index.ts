@@ -17,6 +17,8 @@
  * Follow the UI language (read at call time):
  *   fmtCount(1234)                          → "1 234" / "1,234"
  *   fmtDate(d, "dayMonth"), fmtMonth, fmtWeekday, fmtRelative, fmtTimeNY, fmtDateCustom
+ * Desk clock (New York, «NY» suffix) for every timestamp a person reads (notes, 1:1, reviews, cohorts):
+ *   fmtDeskTime(d) → "17:30 NY" · fmtDeskDateTime(d) → "16 окт., 17:30 NY" · fmtDeskDate(d) → "16 окт."
  * Plurals: commonI18n.t("units.trades", { count }) for common units; pluralRu(n, one, few, many) for feature
  * nouns until the translation wave (see plural.ts).
  * Every formatter returns "—" (or `fallback`) for null / "" / NaN / ±Infinity, and never "−0".

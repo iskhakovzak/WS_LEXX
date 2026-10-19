@@ -41,6 +41,8 @@ export default {
   },
   focus: {
     none: "No repeating mistakes in the last {days} trading days. Today: trade your plan.",
+    noTrades: "No trades in the last {days} trading days yet — the focus appears after your first trades.",
+    own: "Your focus: {text}",
     "behavior:revenge": "Revenge: an entry right after a loss — {count} times in {days} days, cost ${cost}. Today: after a loss, pause 10 minutes.",
     "behavior:martingale": "Sizing up after a loss — {count} times in {days} days, cost ${cost}. Today: after a loss, size no bigger than before.",
     "behavior:overtrading": "Trades above your norm — {count} in {days} days, cost ${cost}. Today: only trades from the plan.",
@@ -139,6 +141,9 @@ export default {
       streakDays: { one: "{count} day in a row", other: "{count} days in a row" },
       streak: "🔥 Contract kept {days} · {points} to discipline",
       badge: "🏅 New badge: {badges}",
+      achievement: "🏅 New achievement: {names}",
+      questsDone: { one: "✅ {count} quest done", other: "✅ {count} quests done" },
+      questsSuffix: { one: " · {count} quest done", other: " · {count} quests done" },
       title: "🌙 <b>Day result · {date}</b>",
       pnl: "P&L <b>{net}</b> · {trades}",
       trades: { one: "{count} trade", other: "{count} trades" },

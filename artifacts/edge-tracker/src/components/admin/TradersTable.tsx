@@ -32,7 +32,9 @@ const FILTERS: readonly TraderFilter[] = ["all", "traders", "staff", "nojournal"
 const SIGNAL_FILTERS = new Set<TraderFilter>(["nojournal", "violations", "stale", "banned"]);
 
 const STALE_MS = 3 * 86_400_000;
-const isStale = (u: PulseUser) => !u.lastSeen || Date.now() - Date.parse(u.lastSeen) > STALE_MS;
+// The server decides by the Использование rule (trading days since tracking started); the 3-calendar-day guess is
+// only the fallback for older API builds.
+const isStale = (u: PulseUser) => u.stale ?? (!u.lastSeen || Date.now() - Date.parse(u.lastSeen) > STALE_MS);
 
 function matches(u: PulseUser, f: TraderFilter) {
   switch (f) {

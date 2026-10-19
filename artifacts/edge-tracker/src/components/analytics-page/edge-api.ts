@@ -7,7 +7,7 @@ import type { Trade } from "@workspace/api-client-react";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { riskMeQuery } from "@/lib/api/queries";
-import { signedR, netPnl, isOpen, horizonOf } from "@/lib/trade-math";
+import { signedR, netPnl, isOpen, horizonOf, entryMinutes } from "@/lib/trade-math";
 import { fmtDateCustom, fmtWeekday, localeTag } from "@/lib/format";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { comparePersonNames, personName } from "@/i18n";
@@ -209,11 +209,12 @@ export function sortEdgeKeys(dim: EdgeDimension, keys: string[]): string[] {
 
 /* ─── Trade → SimTrade ───────────────────────────────────────────────────── */
 
-/** Minutes since midnight of the entry when `date` carries a time (YYYY-MM-DDTHH:MM…), else null. */
+/**
+ * ET minutes since midnight of the entry: a timed `date`, else the PropReports `openedAt` (shared rule
+ * lib/trade-math entryMinutes — MAKSIM-14: the «no entries before 9:45» rule now gets a number). Null when unknown.
+ */
 export function entryMinutesOf(t: Trade): number | null {
-  const raw = t.date ?? "";
-  const m = raw.match(/^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})/);
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  return entryMinutes(t);
 }
 
 /** Closed trades in chronological order as simulation inputs (open trades are skipped). */

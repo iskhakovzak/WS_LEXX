@@ -26,12 +26,13 @@ import { fmtDateFor } from "../i18n/format";
 import type { Lang } from "../i18n";
 import { violationMessage } from "./rulesI18n";
 import { personNameFor } from "./people/latinNames";
+import { recognitionFeed } from "./gamification/recognition";
 
 export type FeedTone = "up" | "down" | "warn" | "accent" | "purple" | "neutral";
 export type FeedCategory = "mine" | "desk" | "achievement" | "market" | "announcement";
 export type FeedKind =
   | "day_result" | "streak" | "best_day" | "best_week" | "exam" | "promotion" | "clean_streak"
-  | "violations" | "risk_breach" | "review" | "idea" | "playbook" | "thread" | "game_plan" | "event" | "weekly_summary";
+  | "violations" | "risk_breach" | "review" | "idea" | "playbook" | "thread" | "game_plan" | "event" | "weekly_summary" | "recognition";
 export type FeedVisibility = "own" | "staff" | "public";
 export type ValueFmt = "usd" | "pct" | "int";
 
@@ -196,7 +197,8 @@ const href = {
 
 // ─── per-day series (one query, whole history ≤ to) ─────────────────────────
 
-type DayRow = { trader: string; d: string; n: number; wins: number; losses: number; priced: number; net: number | null; at: string | null };
+/** `net` is rounded to cents for display; `raw` is the unrounded sum, so week / desk totals add raw values and round once (ROMAN-23). */
+type DayRow = { trader: string; d: string; n: number; wins: number; losses: number; priced: number; net: number | null; raw: number | null; at: string | null };
 
 async function loadDays(traders: string[] | null, to: string): Promise<DayRow[]> {
   if (traders && traders.length === 0) return [];
@@ -216,7 +218,7 @@ async function loadDays(traders: string[] | null, to: string): Promise<DayRow[]>
   );
   return rows.map((r) => ({
     trader: String(r.trader), d: String(r.d), n: Number(r.n), wins: Number(r.wins), losses: Number(r.losses),
-    priced: Number(r.priced), net: num(r.net) == null ? null : r2(num(r.net)!), at: iso(r.at),
+    priced: Number(r.priced), net: num(r.net) == null ? null : r2(num(r.net)!), raw: num(r.net), at: iso(r.at),
   }));
 }
 
@@ -430,8 +432,8 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     return friday < today || (friday === today && afterClose);
   };
 
-  type WeekAgg = { week: string; monday: string; net: number | null; n: number; days: number; green: number; red: number; best: DayRow | null; last: string; at: string | null };
-  const deskWeeks = new Map<string, { monday: string; week: string; net: number | null; n: number; traders: { trader: string; net: number | null }[]; at: string | null }>();
+  type WeekAgg = { week: string; monday: string; net: number | null; raw: number | null; n: number; days: number; green: number; red: number; best: DayRow | null; last: string; at: string | null };
+  const deskWeeks = new Map<string, { monday: string; week: string; net: number | null; raw: number | null; n: number; traders: { trader: string; net: number | null }[]; at: string | null }>();
 
   for (const [trader, series] of byTrader) {
     const hasRules = globalRules || ruleTraders.has(trader);
@@ -446,10 +448,11 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
       const vioN = v ? Number(v.n) : 0;
       // week aggregate
       const monday = mondayOf(r.d);
-      const w = weeks.get(monday) ?? { week: isoWeek(r.d), monday, net: null, n: 0, days: 0, green: 0, red: 0, best: null, last: r.d, at: null };
+      const w = weeks.get(monday) ?? { week: isoWeek(r.d), monday, net: null, raw: null, n: 0, days: 0, green: 0, red: 0, best: null, last: r.d, at: null };
       w.n += r.n; w.days += 1; w.last = r.d > w.last ? r.d : w.last;
       if (r.net != null) {
-        w.net = r2((w.net ?? 0) + r.net);
+        w.raw = (w.raw ?? 0) + (r.raw ?? r.net);
+        w.net = r2(w.raw);
         if (r.net > 0) w.green += 1; else if (r.net < 0) w.red += 1;
         if (!w.best || (w.best.net ?? -Infinity) < r.net) w.best = r;
       }
@@ -568,8 +571,9 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
           meta: { week: w.week, n: w.n, days: w.days, green: w.green, red: w.red },
         });
         if (viewer.staff) {
-          const dw = deskWeeks.get(w.week) ?? { monday: w.monday, week: w.week, net: null, n: 0, traders: [], at };
-          dw.n += w.n; if (w.net != null) dw.net = r2((dw.net ?? 0) + w.net);
+          const dw = deskWeeks.get(w.week) ?? { monday: w.monday, week: w.week, net: null, raw: null, n: 0, traders: [], at };
+          dw.n += w.n;
+          if (w.raw != null) { dw.raw = (dw.raw ?? 0) + w.raw; dw.net = r2(dw.raw); }
           dw.traders.push({ trader, net: w.net });
           deskWeeks.set(w.week, dw);
         }
@@ -765,6 +769,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     });
   }
 
+  items.push(...(await recognitionFeed(viewer, from, to, lang))); // lib/gamification/recognition (per-user hide respected)
   items.sort((a, b) => b.date.localeCompare(a.date) || b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
 
   const earliestTrade = days.length ? days.reduce((m, r) => (r.d < m ? r.d : m), days[0].d) : null;

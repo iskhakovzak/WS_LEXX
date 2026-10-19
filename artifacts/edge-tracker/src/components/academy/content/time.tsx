@@ -1,34 +1,37 @@
 /**
- * Timestamps for remote + office students: the viewer's local time, plus New York time when it differs
- * (market-related deadlines and reviews are discussed in NY time).
+ * Timestamps for remote + office students: desk (New York) time with the «NY» mark, one shared format
+ * (lib/format fmtDeskDateTime: «18 окт., 16:10 NY»); the viewer's own clock is in the tooltip when it differs.
  */
-import { fmtDate, fmtDateCustom } from "@/lib/format";
+import { fmtDateCustom, fmtDeskDateTime, fmtTimeNY } from "@/lib/format";
 import { academyI18n } from "@/i18n/ns/academy";
 
-const NY_OFFSET = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false });
-const LOCAL_OFFSET = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-
+/** The viewer's local date + time («19.10.26, 01:10»), for the tooltip. */
 export function formatLocal(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isFinite(d.getTime()) ? fmtDateCustom(d, { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "—";
 }
 
+/** Desk time «18 окт., 16:10 NY»; null when there is no valid date. */
 export function formatNy(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return null;
-  if (NY_OFFSET.format(d) === LOCAL_OFFSET.format(d)) return null; // viewer is already on NY time
-  return `${fmtDate(d, "numericDateTime", { timeZone: "America/New_York" })} NY`;
+  return Number.isFinite(d.getTime()) ? fmtDeskDateTime(d) : null;
+}
+
+/** True when the viewer's wall clock differs from New York at that moment. */
+function differsFromNy(d: Date): boolean {
+  return fmtTimeNY(d) !== fmtDateCustom(d, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 }
 
 export function DualTime({ iso, className }: { iso: string | null | undefined; className?: string }) {
   const { t } = academyI18n.useT();
   const ny = formatNy(iso);
+  const d = iso ? new Date(iso) : null;
+  const local = d && ny && differsFromNy(d) ? formatLocal(iso) : null;
   return (
-    <time dateTime={iso ?? undefined} className={className ?? "tabular-nums"} title={ny ? t("time.yourTime", { ny }) : t("time.sameTz")}>
-      {formatLocal(iso)}
-      {ny && <span className="ml-1 text-muted-foreground">({ny})</span>}
+    <time dateTime={iso ?? undefined} className={className ?? "tabular-nums"} title={local ? t("time.yourTime", { local }) : t("time.sameTz")}>
+      {ny ?? "—"}
     </time>
   );
 }

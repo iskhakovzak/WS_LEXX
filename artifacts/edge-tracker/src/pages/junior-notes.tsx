@@ -9,6 +9,7 @@ import {
   isUnread, lastTradingDays, localToday, qk, type JuniorNote, type Reminder, type ReviewerInfo,
 } from "@/components/notes/junior-lib";
 import { http } from "@/lib/api/http";
+import { nyDate } from "@/lib/trading-date";
 import { JuniorEditor } from "@/components/notes/junior-editor";
 import { JuniorHistory } from "@/components/notes/junior-history";
 import { JuniorTeam } from "@/components/notes/junior-team";
@@ -34,8 +35,9 @@ function initialDate(): string {
     const d = new URLSearchParams(window.location.search).get("date");
     if (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= localToday()) return d;
   } catch { /* ignore */ }
-  // On weekends the summary is about the last trading day.
-  return lastTradingDays(localToday(), 1)[0]!;
+  // On weekends the summary is about the last trading day — of the desk (New York), not the browser's date: Sunday
+  // evening NY is already Monday in Tashkent (ROMAN-13).
+  return lastTradingDays(nyDate(), 1)[0]!;
 }
 
 export default function JuniorNotesPage() {

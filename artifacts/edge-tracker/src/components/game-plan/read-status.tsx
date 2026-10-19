@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/lib/api/keys";
 import { Check, CheckCheck, RefreshCw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,7 +8,7 @@ import { Panel, Pill } from "@/components/ds";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { gpApi, gpKeys, type GamePlan, type GamePlanResponse } from "./types";
-import { fmtDate } from "@/lib/format";
+import { fmtDeskTime } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { personInitials, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -46,8 +47,9 @@ export function MarkReadButton({
       toast({ title: t("reads.markFailed"), description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: gpKeys.day(date) });
-      qc.invalidateQueries({ queryKey: gpKeys.reads(plan.id) });
+      void qc.invalidateQueries({ queryKey: gpKeys.day(date) });
+      void qc.invalidateQueries({ queryKey: gpKeys.reads(plan.id) });
+      void qc.invalidateQueries({ queryKey: KEYS.questsMe(), refetchType: "none" }); // read_game_plan quest
     },
   });
 
@@ -55,7 +57,7 @@ export function MarkReadButton({
     return (
       <Pill tone="up" className="px-3 py-1.5 text-sm">
         <CheckCheck className="h-4 w-4" aria-hidden="true" />
-        {t("reads.readAt", { time: fmtDate(myReadAt, "time") })}
+        {t("reads.readAt", { time: fmtDeskTime(myReadAt) })}
       </Pill>
     );
   }
@@ -119,7 +121,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
               <ul className="flex flex-wrap gap-1.5">
                 {d.read.map((r) => (
                   <li key={r.trader}>
-                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${personName(r.trader)} · ${fmtDate(r.readAt, "time")}${r.stale ? t("reads.beforeUpdate") : ""}`} />
+                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${personName(r.trader)} · ${fmtDeskTime(r.readAt)}${r.stale ? t("reads.beforeUpdate") : ""}`} />
                   </li>
                 ))}
               </ul>

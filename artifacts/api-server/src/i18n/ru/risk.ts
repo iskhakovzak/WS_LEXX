@@ -159,6 +159,7 @@ export default {
       title: "Разбор нарушения {date}",
       body: "{actor}: {reason}. {agreed}Решение: {consequence}.",
       agreed: "Договорились: {actions}. ",
+      ddReset: "Отсчёт макс. просадки начат заново с этого дня — стоп по просадке снят.",
     },
   },
   queue: {

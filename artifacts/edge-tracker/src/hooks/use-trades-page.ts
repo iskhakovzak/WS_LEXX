@@ -169,11 +169,9 @@ export function moneyStats(list: Trade[]): Pick<TradesPageSummary, "avgWinNet" |
   for (const t of list) {
     days.add(dayOf(t));
     const n = t.pnl != null ? netPnl(t) : null;
-    const res = resultKey(t.result);
     if (n != null) {
-      if (res === "win") { winSum += n; winN++; }
-      if (res === "loss") { lossSum += n; lossN++; }
-      if (n > 0) posNet += n; else if (n < 0) negNet += -n;
+      // Average win / loss by the sign of net (canonical payoff, lib/trade-math payoffOf), not by the result label.
+      if (n > 0) { winSum += n; winN++; posNet += n; } else if (n < 0) { lossSum += n; lossN++; negNet += -n; }
       maxNet = maxNet == null ? n : Math.max(maxNet, n);
       minNet = minNet == null ? n : Math.min(minNet, n);
     }

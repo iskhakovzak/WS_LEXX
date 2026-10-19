@@ -10,6 +10,7 @@
  *                                   audits each change (audit_log settings.update {from, to, unit?, reset?}), re-warms
  *   settingsChangedAt(prefix)       last save of any key under a prefix ("daily.") — lib/daily/service re-computes
  *                                   today's stored focus when the focus thresholds changed after it was computed
+ * A save that changed anything drops the cached rewards / quests evaluations (lib/quests/cache forgetAllQuests).
  *
  * `null` = «по умолчанию»: the row keeps value NULL (and who / when reset it); setting() then reads the default.
  * A stored value that no longer fits its definition (bounds narrowed in code) reads as the default too.
@@ -19,6 +20,7 @@ import { pool } from "@workspace/db";
 import { AppError } from "../http/errors";
 import { logAudit } from "../audit";
 import { logger } from "../logger";
+import { forgetAllQuests } from "../quests/cache";
 import { SETTINGS, __loadSettingsCache, type SettingDef, type SettingKey } from "./registry";
 import { storedOrNull, validateBatch, type StoredValue } from "./validate";
 
@@ -124,7 +126,10 @@ export async function saveSettings(changes: readonly SettingChange[], actor: str
     await logAudit({ actor, action: "settings.update", targetType: "setting", targetId: a.key, details: { from: a.from, to: a.to, ...(unit ? { unit } : {}), ...(a.reset ? { reset: true } : {}) } });
   }
   if (audits.length) logger.info({ actor, keys: audits.map((a) => a.key) }, "settings: saved");
-  return { changed: audits.map((a) => a.key), settings: await settingsState() };
+  const settings = await settingsState();
+  // Points, targets and switches feed the cached rewards / quests evaluations: the next read recomputes with the new values.
+  if (audits.length) forgetAllQuests();
+  return { changed: audits.map((a) => a.key), settings };
 }
 
 /** Tests only. */

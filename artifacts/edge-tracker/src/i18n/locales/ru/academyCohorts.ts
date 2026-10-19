@@ -197,7 +197,7 @@ export default {
     demoCreatedDesc: "Когорт: {cohorts}, зачислений: {enrollments}, занятий: {sessions}, целей: {goals}",
     demoExistsDesc: "Повторный запуск ничего не дублирует.",
     demoFailed: "Не удалось создать демо",
-    mentorBy: "наставник {name}",
+    mentorBy: "наставник: {name}",
     noMentor: "без наставника",
     activeCount: "учатся {n}",
     pausedCount: "пауза {n}",
@@ -224,6 +224,7 @@ export default {
     tabAttendance: "Посещаемость",
     tabHistory: "История",
     members: {
+      cohortStage: "Тир на риск-деске. В когорте записан этап «{stage}»",
       title: "Состав",
       description: "Ступени: {ladder}. Изменения ступени и статуса пишутся в историю.",
       enroll: "Зачислить",
@@ -381,7 +382,7 @@ export default {
       title: "Журнал 1:1",
       description: "Последние 30 встреч со студентами",
       empty: "Встреч пока нет.",
-      with: "с {mentor} · {format}",
+      with: "наставник: {mentor} · {format}",
     },
   },
 
@@ -395,7 +396,7 @@ export default {
     notEnrolledOther: "{name} не зачислен ни в одну когорту",
     notEnrolled: "Вы пока не зачислены в когорту",
     notEnrolledDesc: "Зачисление делает наставник на странице «Когорты». После этого здесь появятся расписание, цели и договорённости.",
-    cohortDesc: "{format} · наставник {mentor} · с {date}",
+    cohortDesc: "{format} · наставник: {mentor} · с {date}",
     cohortDescNoMentor: "{format} · с {date}",
     promotion: "Что нужно для перевода",
     openCohort: "Расписание когорты",
@@ -466,7 +467,7 @@ export default {
     meetings: {
       title: "Встречи 1:1",
       empty: "Встреч пока не было.",
-      with: "с {mentor}",
+      with: "наставник: {mentor}",
       agenda: "Повестка:",
       privately: "Приватно: {text}",
     },

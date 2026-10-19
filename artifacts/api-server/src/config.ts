@@ -57,6 +57,8 @@ const schema = z.object({
   TELEGRAM_BOT_TOKEN: str,
   TELEGRAM_BOT_USERNAME: str,
   TELEGRAM_WEBHOOK_URL: str,
+  /** Desk Telegram group for recognition posts (lib/gamification/recognition; also gated by gamification.telegramGroup). */
+  TELEGRAM_GROUP_CHAT_ID: str,
   RESEND_API_KEY: str,
   // object storage & backups
   DEFAULT_OBJECT_STORAGE_BUCKET_ID: str,
@@ -136,6 +138,7 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
       botToken: e.TELEGRAM_BOT_TOKEN ?? "",
       botUsername: e.TELEGRAM_BOT_USERNAME ?? "DailyDigest_WS_bot",
       webhookUrl: e.TELEGRAM_WEBHOOK_URL ?? null,
+      groupChatId: e.TELEGRAM_GROUP_CHAT_ID?.trim() || null,
     },
     resendApiKey: e.RESEND_API_KEY ?? null,
     storage: {

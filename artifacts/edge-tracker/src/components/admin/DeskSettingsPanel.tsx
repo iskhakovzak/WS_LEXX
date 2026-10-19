@@ -17,8 +17,20 @@ import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { useDeskSettings, useSaveDeskSettings } from "./desk-settings-api";
 import { DeskSettingField } from "./DeskSettingField";
 import {
-  changesOf, checkValue, groupRows, normalize, parseInput, shownProblem, type Problem, type SettingRow, type SettingValue,
+  PILOT_KEYS, changesOf, checkValue, groupRows, normalize, parseInput, shownProblem, type Problem, type SettingRow, type SettingValue,
 } from "./desk-settings-model";
+import { settingLabel } from "./desk-settings-text";
+
+const fieldId = (key: string) => `desk-setting-${key.replace(/[^a-z0-9]/gi, "-")}`;
+const groupId = (group: string) => `desk-settings-group-${group}`;
+
+/** Scroll a group / field into view and focus the field (sticky menu + pilot shortcuts, OWNER-12). */
+function jumpTo(id: string, focus = false) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: focus ? "center" : "start" });
+  if (focus) (el as HTMLElement).focus?.({ preventScroll: true });
+}
 
 export function DeskSettingsPanel({ canManage }: { canManage: boolean }) {
   const { t } = deskSettingsI18n.useT();
@@ -74,7 +86,8 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
       onSuccess: (data) => {
         discard();
         const n = data.changed?.length ?? 0;
-        toast(n ? { title: t("save.done"), description: t("save.doneText", { count: n }) } : { title: t("save.nothing") });
+        // Short toast (OWNER-31): it sits bottom-right; the save buttons are on the left of the bar now.
+        toast(n ? { title: t("save.done"), description: t("save.doneText", { count: n }), duration: 2500 } : { title: t("save.nothing"), duration: 2500 });
       },
       onError: (err) => {
         const list = isApiError(err) && err.code === "SETTINGS_INVALID" ? ((err.body as { details?: { problems?: Problem[] } } | null)?.details?.problems ?? []) : [];
@@ -85,12 +98,35 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
   };
 
   const pending = dirtyKeys.size;
+  const pilotRows = PILOT_KEYS.map((k) => byKey.get(k)).filter((r): r is SettingRow => !!r);
   return (
     <div className="flex flex-col gap-[var(--grid-gap)] pb-2">
       <p className="text-sm text-muted-foreground">{t("description")}</p>
+      {/* OWNER-12: a sticky menu of the groups + the pilot checklist shortcuts (PILOT.md §2.5). */}
+      <nav aria-label={t("jump.aria")} className="sticky top-0 z-sticky -mx-1 flex flex-col gap-1.5 rounded-2xl border border-[var(--glass-border)] bg-background/95 px-3 py-2 backdrop-blur">
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          {groups.map((g) => (
+            <button key={g.group} type="button" className="chip min-h-7 shrink-0 rounded-full px-2.5 text-xs" onClick={() => jumpTo(groupId(g.group))}>
+              {deskSettingsI18n.tryT(`groups.${g.group}.title`) ?? g.group}
+            </button>
+          ))}
+        </div>
+        {pilotRows.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs" aria-label={t("jump.pilotAria")}>
+            <span className="font-medium text-foreground">{t("jump.pilot", { count: pilotRows.length })}</span>
+            {pilotRows.map((r) => (
+              <button key={r.key} type="button" className="rounded px-1.5 py-0.5 text-muted-foreground underline-offset-2 hover:bg-[var(--glass-bg)] hover:text-foreground hover:underline" onClick={() => jumpTo(fieldId(r.key), true)}>
+                {settingLabel(r.key)}
+              </button>
+            ))}
+          </div>
+        )}
+      </nav>
       {groups.map((g) => (
         <Panel
           key={g.group}
+          id={groupId(g.group)}
+          className="scroll-mt-28"
           title={deskSettingsI18n.tryT(`groups.${g.group}.title`) ?? g.group}
           description={deskSettingsI18n.tryT(`groups.${g.group}.description`)}
           bodyClassName="py-0"
@@ -119,19 +155,20 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
         role="region"
         aria-label={t("title")}
       >
-        <span className="text-xs text-muted-foreground" aria-live="polite">
-          {pending ? t("save.pending", { count: pending }) : t("save.idle")}
-        </span>
+        {/* Buttons on the left: toasts appear bottom-right and must never cover «Сохранить» (OWNER-31). */}
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={discard} disabled={!pending || save.isPending}>
-            <Undo2 aria-hidden="true" />
-            {t("save.discard")}
-          </Button>
           <Button size="sm" onClick={submit} disabled={!pending || save.isPending}>
             <Save aria-hidden="true" />
             {save.isPending ? t("save.saving") : t("save.button")}
           </Button>
+          <Button variant="ghost" size="sm" onClick={discard} disabled={!pending || save.isPending}>
+            <Undo2 aria-hidden="true" />
+            {t("save.discard")}
+          </Button>
         </div>
+        <span className="text-xs text-muted-foreground" aria-live="polite">
+          {pending ? t("save.pending", { count: pending }) : t("save.idle")}
+        </span>
       </div>
     </div>
   );

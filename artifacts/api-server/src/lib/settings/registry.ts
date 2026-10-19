@@ -8,15 +8,17 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "telegram" | "curator" | "privacy";
-export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage";
+export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 type Base = { group: SettingGroup; unit?: SettingUnit };
 export type NumberDef = Base & { type: "number"; default: number; min: number; max: number; step?: number };
 export type TimeDef = Base & { type: "time"; default: string /* "HH:MM", New York time */ };
 export type BoolDef = Base & { type: "boolean"; default: boolean };
 export type SelectDef = Base & { type: "select"; default: string; options: readonly string[] };
-export type SettingDef = NumberDef | TimeDef | BoolDef | SelectDef;
+/** Free text (one line, trimmed, ≤ maxLength): e.g. a comma-separated list of stored names. */
+export type TextDef = Base & { type: "text"; default: string; maxLength: number };
+export type SettingDef = NumberDef | TimeDef | BoolDef | SelectDef | TextDef;
 
 export const SETTINGS = {
   // Daily focus (lib/daily/detectors + engine)
@@ -39,18 +41,80 @@ export const SETTINGS = {
   "discipline.streakOnBreak": { group: "discipline", type: "select", default: "reset", options: ["reset", "halve"] },
   "discipline.pointsWindowDays": { group: "discipline", type: "number", default: 30, min: 5, max: 120, step: 1, unit: "days" },
 
-  // Rewards: levels by all-time discipline points, badge thresholds (lib/daily/badges, lib/daily/rewards)
+  // Rewards: levels by all-time discipline points (contract + quest points); traded days a clean month needs
   "rewards.level1Points": { group: "rewards", type: "number", default: 50, min: 1, max: 100000, step: 10, unit: "points" },
   "rewards.level2Points": { group: "rewards", type: "number", default: 150, min: 1, max: 100000, step: 10, unit: "points" },
   "rewards.level3Points": { group: "rewards", type: "number", default: 400, min: 1, max: 100000, step: 10, unit: "points" },
   "rewards.level4Points": { group: "rewards", type: "number", default: 800, min: 1, max: 100000, step: 10, unit: "points" },
-  "rewards.streakBadge1Days": { group: "rewards", type: "number", default: 5, min: 2, max: 250, step: 1, unit: "days" },
-  "rewards.streakBadge2Days": { group: "rewards", type: "number", default: 10, min: 2, max: 250, step: 1, unit: "days" },
-  "rewards.streakBadge3Days": { group: "rewards", type: "number", default: 20, min: 2, max: 250, step: 1, unit: "days" },
-  "rewards.reviewStreakDays": { group: "rewards", type: "number", default: 10, min: 2, max: 100, step: 1, unit: "days" },
-  "rewards.focusCleanDays": { group: "rewards", type: "number", default: 5, min: 2, max: 60, step: 1, unit: "days" },
-  "rewards.cleanMonthMinDays": { group: "rewards", type: "number", default: 10, min: 1, max: 23, step: 1, unit: "days" },
-  "rewards.simBeatCount": { group: "rewards", type: "number", default: 3, min: 1, max: 50, step: 1, unit: "count" },
+  "rewards.cleanMonthMinDays": { group: "rewards", type: "number", default: 15, min: 1, max: 23, step: 1, unit: "days" },
+
+  // Quests (lib/quests/catalog.ts, engine.ts): switches per scope, targets, reward points (bonus discipline points -> level)
+  "quests.enabled": { group: "quests", type: "boolean", default: true },
+  "quests.onboardingEnabled": { group: "quests", type: "boolean", default: true },
+  "quests.dailyEnabled": { group: "quests", type: "boolean", default: true },
+  "quests.weeklyEnabled": { group: "quests", type: "boolean", default: true },
+  "quests.monthlyEnabled": { group: "quests", type: "boolean", default: true },
+  "quests.curatorEnabled": { group: "quests", type: "boolean", default: true },
+  "quests.onboardingPoints": { group: "quests", type: "number", default: 10, min: 0, max: 200, step: 1, unit: "points" },
+  "quests.dailyPoints": { group: "quests", type: "number", default: 3, min: 0, max: 100, step: 1, unit: "points" },
+  "quests.weeklyPoints": { group: "quests", type: "number", default: 10, min: 0, max: 200, step: 1, unit: "points" },
+  "quests.monthlyPoints": { group: "quests", type: "number", default: 25, min: 0, max: 500, step: 1, unit: "points" },
+  "quests.weeklyCount": { group: "quests", type: "number", default: 3, min: 1, max: 5, step: 1, unit: "quests" },
+  "quests.monthlyCount": { group: "quests", type: "number", default: 2, min: 1, max: 2, step: 1, unit: "quests" },
+  "quests.weeklyContractDays": { group: "quests", type: "number", default: 4, min: 1, max: 5, step: 1, unit: "days" },
+  "quests.weeklyFocusDays": { group: "quests", type: "number", default: 3, min: 1, max: 5, step: 1, unit: "days" },
+  "quests.weeklyReplays": { group: "quests", type: "number", default: 2, min: 1, max: 10, step: 1, unit: "count" },
+  "quests.weeklyGamePlanReads": { group: "quests", type: "number", default: 3, min: 1, max: 5, step: 1, unit: "days" },
+  "quests.monthlyReviewPct": { group: "quests", type: "number", default: 90, min: 50, max: 100, step: 5, unit: "pct" },
+  "quests.curatorDefaultPoints": { group: "quests", type: "number", default: 10, min: 0, max: 200, step: 1, unit: "points" },
+  "quests.curatorMaxPoints": { group: "quests", type: "number", default: 50, min: 0, max: 500, step: 5, unit: "points" },
+  "quests.curatorMaxActive": { group: "quests", type: "number", default: 5, min: 1, max: 20, step: 1, unit: "quests" },
+  // Daily «tag yesterday's trades» (playbook setups on the last finished day's own trades; lib/playbookToday/untagged)
+  "quests.tagYesterdayEnabled": { group: "quests", type: "boolean", default: true },
+  "quests.tagYesterdayPoints": { group: "quests", type: "number", default: 2, min: 0, max: 100, step: 1, unit: "points" },
+  "quests.tagYesterdayMax": { group: "quests", type: "number", default: 10, min: 1, max: 50, step: 1, unit: "trades" },
+  // Playbook tier locks: graded-A trades on the gateway setup that open a Джун setup early for a Стажёр (0 = tier only)
+  "quests.setupUnlockGradeA": { group: "quests", type: "number", default: 10, min: 0, max: 100, step: 1, unit: "trades" },
+
+  // Achievements (lib/quests/achievements.ts): tier targets of each line (1 bronze, 2 silver, 3 gold, 4 platinum)
+  "achievements.enabled": { group: "achievements", type: "boolean", default: true },
+  "achievements.contractStreak1": { group: "achievements", type: "number", default: 5, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.contractStreak2": { group: "achievements", type: "number", default: 10, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.contractStreak3": { group: "achievements", type: "number", default: 20, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.contractStreak4": { group: "achievements", type: "number", default: 50, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.reviewsTotal1": { group: "achievements", type: "number", default: 10, min: 1, max: 2000, step: 1, unit: "days" },
+  "achievements.reviewsTotal2": { group: "achievements", type: "number", default: 50, min: 1, max: 2000, step: 1, unit: "days" },
+  "achievements.reviewsTotal3": { group: "achievements", type: "number", default: 100, min: 1, max: 2000, step: 1, unit: "days" },
+  "achievements.reviewsTotal4": { group: "achievements", type: "number", default: 250, min: 1, max: 2000, step: 1, unit: "days" },
+  "achievements.reviewStreak1": { group: "achievements", type: "number", default: 5, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.reviewStreak2": { group: "achievements", type: "number", default: 10, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.reviewStreak3": { group: "achievements", type: "number", default: 20, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.reviewStreak4": { group: "achievements", type: "number", default: 40, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.focusBeaten1": { group: "achievements", type: "number", default: 5, min: 1, max: 200, step: 1, unit: "days" },
+  "achievements.focusBeaten2": { group: "achievements", type: "number", default: 10, min: 1, max: 200, step: 1, unit: "days" },
+  "achievements.focusBeaten3": { group: "achievements", type: "number", default: 20, min: 1, max: 200, step: 1, unit: "days" },
+  "achievements.cleanMonth1": { group: "achievements", type: "number", default: 1, min: 1, max: 60, step: 1, unit: "months" },
+  "achievements.cleanMonth2": { group: "achievements", type: "number", default: 3, min: 1, max: 60, step: 1, unit: "months" },
+  "achievements.cleanMonth3": { group: "achievements", type: "number", default: 6, min: 1, max: 60, step: 1, unit: "months" },
+  "achievements.planBeforeOpen1": { group: "achievements", type: "number", default: 10, min: 1, max: 1000, step: 1, unit: "days" },
+  "achievements.planBeforeOpen2": { group: "achievements", type: "number", default: 30, min: 1, max: 1000, step: 1, unit: "days" },
+  "achievements.planBeforeOpen3": { group: "achievements", type: "number", default: 100, min: 1, max: 1000, step: 1, unit: "days" },
+  "achievements.ownReplays1": { group: "achievements", type: "number", default: 1, min: 1, max: 1000, step: 1, unit: "days" },
+  "achievements.ownReplays2": { group: "achievements", type: "number", default: 10, min: 1, max: 1000, step: 1, unit: "days" },
+  "achievements.ownReplays3": { group: "achievements", type: "number", default: 50, min: 1, max: 1000, step: 1, unit: "days" },
+  "achievements.beatYourself1": { group: "achievements", type: "number", default: 3, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.beatYourself2": { group: "achievements", type: "number", default: 10, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.beatYourself3": { group: "achievements", type: "number", default: 25, min: 1, max: 500, step: 1, unit: "days" },
+  "achievements.lessons1": { group: "achievements", type: "number", default: 5, min: 1, max: 500, step: 1, unit: "lessons" },
+  "achievements.lessons2": { group: "achievements", type: "number", default: 20, min: 1, max: 500, step: 1, unit: "lessons" },
+  "achievements.lessons3": { group: "achievements", type: "number", default: 50, min: 1, max: 500, step: 1, unit: "lessons" },
+  "achievements.exams1": { group: "achievements", type: "number", default: 1, min: 1, max: 20, step: 1, unit: "exams" },
+  "achievements.exams2": { group: "achievements", type: "number", default: 2, min: 1, max: 20, step: 1, unit: "exams" },
+  "achievements.exams3": { group: "achievements", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "exams" },
+  // Secret lines: comebacks (kept contract on the contract day right after a broken one) and full-loop days (plan before
+  // the open + kept contract + reviewed on time)
+  "achievements.comebackCount": { group: "achievements", type: "number", default: 5, min: 1, max: 100, step: 1, unit: "count" },
+  "achievements.fullLoopDays": { group: "achievements", type: "number", default: 20, min: 1, max: 500, step: 1, unit: "days" },
 
   // Telegram daily loop (lib/daily/telegramJobs; New York time, weekdays)
   "telegram.morningEnabled": { group: "telegram", type: "boolean", default: true },
@@ -62,8 +126,70 @@ export const SETTINGS = {
   // Curator queue (lib/daily/costQueue)
   "curator.queueCarryDays": { group: "curator", type: "number", default: 2, min: 0, max: 10, step: 1, unit: "days" },
 
+  // Gamification (lib/gamification/*): monthly seasons, curator league, recognition, setup mastery, streak freeze
+  "gamification.enabled": { group: "gamification", type: "boolean", default: true },
+  "gamification.seasonTopN": { group: "gamification", type: "number", default: 10, min: 3, max: 50, step: 1, unit: "places" },
+  // League: a curator team is ranked only with at least this many active members in the season
+  "gamification.leagueMinMembers": { group: "gamification", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "people" },
+  // Ranked teams a league needs to be shown (lib/gamification/league.ts visibleTeams).
+  "gamification.leagueMinTeams": { group: "gamification", type: "number", default: 2, min: 1, max: 10, step: 1, unit: "teams" },
+  // A traded day without a contract breaks the contract streak (off = it neither grows nor breaks it, as before);
+  // a freeze (N per NY month) covers the first such day of a running streak automatically. A broken contract is never covered.
+  "gamification.missedDayBreaksStreak": { group: "gamification", type: "boolean", default: true },
+  "gamification.freezePerMonth": { group: "gamification", type: "number", default: 1, min: 0, max: 5, step: 1, unit: "count" },
+  // Recognition of long contract streaks: every N kept days in a row (on top of the achievement tiers)
+  "gamification.streakMilestoneStep": { group: "gamification", type: "number", default: 25, min: 5, max: 100, step: 5, unit: "days" },
+  // Post recognition to the desk Telegram group (TELEGRAM_GROUP_CHAT_ID; production only, never from a dev API)
+  "gamification.telegramGroup": { group: "gamification", type: "boolean", default: false },
+  // Setup mastery points = graded-A trades on the setup + passed «Найди вход» drills / masteryDrillsPerPoint; levels 1..4
+  "gamification.mastery1": { group: "gamification", type: "number", default: 3, min: 1, max: 1000, step: 1, unit: "points" },
+  "gamification.mastery2": { group: "gamification", type: "number", default: 10, min: 1, max: 1000, step: 1, unit: "points" },
+  "gamification.mastery3": { group: "gamification", type: "number", default: 25, min: 1, max: 1000, step: 1, unit: "points" },
+  "gamification.mastery4": { group: "gamification", type: "number", default: 50, min: 1, max: 1000, step: 1, unit: "points" },
+  "gamification.masteryDrillsPerPoint": { group: "gamification", type: "number", default: 2, min: 1, max: 20, step: 1, unit: "tasks" },
+
+  // Simple menu for new traders (web shell, GET /api/permissions/me → nav): a short primary menu + one «Ещё» group for
+  // traders up to `simpleUntilTier` (tier as for the playbook locks, lib/playbookToday/tier); staff always get the full menu
+  "nav.simpleForTrainees": { group: "nav", type: "boolean", default: true },
+  "nav.simpleUntilTier": { group: "nav", type: "select", default: "trainee", options: ["trainee", "junior"] },
+
   // Privacy of cross-trader views (desk-day, top of the day)
   "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true },
+
+  // «Тренажёр» (lib/trainer, lib/sim/exec): fills (spread + slippage, frozen into each new game), 1R fallback for sizing,
+  // «Задача дня» (pick time NY, play length, liquidity / range filters, no-repeat window, ranking size) and «Найди вход»
+  // drills (answer window, score tolerances, mastery pass score, sources per setup)
+  "trainer.execEnabled": { group: "trainer", type: "boolean", default: true },
+  "trainer.spreadUsd": { group: "trainer", type: "number", default: 0.02, min: 0, max: 0.5, step: 0.005, unit: "usd" },
+  "trainer.spreadBps": { group: "trainer", type: "number", default: 3, min: 0, max: 100, step: 0.5, unit: "bp" },
+  "trainer.lowPriceUsd": { group: "trainer", type: "number", default: 10, min: 0, max: 100, step: 1, unit: "usd" },
+  "trainer.lowPriceSpreadMult": { group: "trainer", type: "number", default: 2, min: 1, max: 10, step: 0.5, unit: "times" },
+  "trainer.lowAdvShares": { group: "trainer", type: "number", default: 1_000_000, min: 0, max: 100_000_000, step: 100_000, unit: "shares" },
+  "trainer.lowAdvSpreadMult": { group: "trainer", type: "number", default: 2, min: 1, max: 10, step: 0.5, unit: "times" },
+  "trainer.slipUsd": { group: "trainer", type: "number", default: 0.01, min: 0, max: 0.5, step: 0.005, unit: "usd" },
+  "trainer.stopSlipUsd": { group: "trainer", type: "number", default: 0.02, min: 0, max: 1, step: 0.005, unit: "usd" },
+  "trainer.oneRUsd": { group: "trainer", type: "number", default: 50, min: 1, max: 10_000, step: 5, unit: "usd" },
+  "trainer.dailyEnabled": { group: "trainer", type: "boolean", default: true },
+  "trainer.dailyPickTime": { group: "trainer", type: "time", default: "08:30" },
+  "trainer.dailyPlayMinutes": { group: "trainer", type: "number", default: 120, min: 30, max: 390, step: 15, unit: "minutes" },
+  "trainer.dailyNoRepeatDays": { group: "trainer", type: "number", default: 90, min: 7, max: 365, step: 1, unit: "days" },
+  "trainer.dailyMinVolume": { group: "trainer", type: "number", default: 2_000_000, min: 0, max: 500_000_000, step: 100_000, unit: "shares" },
+  "trainer.dailyMinPriceUsd": { group: "trainer", type: "number", default: 5, min: 0, max: 1000, step: 1, unit: "usd" },
+  "trainer.dailyMinRangePct": { group: "trainer", type: "number", default: 1.5, min: 0, max: 50, step: 0.5, unit: "pct" },
+  "trainer.dailyMaxRangePct": { group: "trainer", type: "number", default: 15, min: 1, max: 100, step: 0.5, unit: "pct" },
+  "trainer.dailyRankingTop": { group: "trainer", type: "number", default: 10, min: 3, max: 50, step: 1, unit: "places" },
+  "trainer.drillWindowBars": { group: "trainer", type: "number", default: 12, min: 4, max: 40, step: 1, unit: "bars" },
+  "trainer.drillBarTolerance": { group: "trainer", type: "number", default: 6, min: 1, max: 30, step: 1, unit: "bars" },
+  "trainer.drillAtrTolerance": { group: "trainer", type: "number", default: 1.5, min: 0.25, max: 10, step: 0.25, unit: "atr" },
+  "trainer.drillPassScore": { group: "trainer", type: "number", default: 70, min: 1, max: 100, step: 1, unit: "points" },
+  "trainer.drillMinExamples": { group: "trainer", type: "number", default: 8, min: 0, max: 100, step: 1, unit: "tasks" },
+  "trainer.drillMaxPerSetup": { group: "trainer", type: "number", default: 40, min: 1, max: 500, step: 1, unit: "tasks" },
+
+  // Internal usage tracking (lib/usage, admin console → «Использование»; staff-only, never for rewards or rankings):
+  // the switch, how long events are kept (nightly job usage.prune) and the pilot participants the funnel filters by
+  "usage.enabled": { group: "usage", type: "boolean", default: true },
+  "usage.retentionDays": { group: "usage", type: "number", default: 120, min: 14, max: 730, step: 1, unit: "days" },
+  "usage.pilotUsers": { group: "usage", type: "text", default: "", maxLength: 2000 },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

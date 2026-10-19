@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { ReplayOwnDayButton } from "@/components/shared/replay-own-day";
 import { RedactedHint, redactedHint } from "@/components/playbook/setup-bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
@@ -20,6 +21,7 @@ import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { eventLabel, sessionLabel, dayOf, tradePlaybookPayload, daysHeld, effectiveR, horizonOf, isBrokerTrade, isRedactedTrade, netPnl, parseHoldText, resultKey } from "./trade-utils";
+import { stopIsEstimate } from "./sheet-model";
 import { ConvictionDots, HorizonPill, ResultMenu, SidePill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
 import { ReviewChips, type PickerTarget } from "./review-tagging";
@@ -33,6 +35,7 @@ import { tradesI18n } from "@/i18n/ns/trades";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
 import { DeskDayLink } from "@/components/shared/desk-day-link";
+import { useAuth } from "@/contexts/auth-context";
 
 
 type TradeTiming = {
@@ -64,7 +67,6 @@ function tradeTiming(t: Trade): TradeTiming {
   };
 }
 
-const LazyTradeChart = React.lazy(() => import("@/components/trade-chart").then((m) => ({ default: m.TradeChart })));
 const LazyReplayChart = React.lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
 const LazyAiReviewPanel = React.lazy(() => import("@/components/ai-review-panel").then((m) => ({ default: m.AiReviewPanel })));
@@ -241,15 +243,20 @@ export function TradeDetailSheet(p: Props) {
   const redacted = t ? isRedactedTrade(t) : false;
   // The viewer's own losing intraday trade: «Переиграть этот день» in the simulator (the button checks the bars).
   const ownLoss = !!t && !redacted && !!p.traderName && t.trader === p.traderName && (netPnl(t) ?? 0) < 0 && horizonOf(t) === "intraday";
-  React.useEffect(() => { if (redacted && tab === "ai") setTab("overview"); }, [redacted, tab]);
+  // «AI-разбор» is not part of a trainee's loop (ILYA-24): no tab for Стажёр.
+  const trainee = useAuth().permissions.tier === "trainee";
+  const showAi = !redacted && !trainee;
+  React.useEffect(() => { if (!showAi && tab === "ai") setTab("overview"); }, [showAi, tab]);
 
   return (
     <Sheet open={!!t} onOpenChange={(v) => { if (!v) p.onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl">
+      {/* Phones: the whole sheet scrolls (header included), so the chart and the review are reachable (ILYA-01). From md
+          the header stays and only the tab body scrolls. */}
+      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl md:overflow-hidden lg:max-w-3xl">
         {t ? (
           <>
-            <SheetHeader className="space-y-3 border-b border-border/70 px-5 pb-4 pt-5 text-left">
-              <div className="flex items-start gap-3 pr-10">
+            <SheetHeader className="shrink-0 space-y-3 border-b border-border/70 px-5 pb-4 pt-5 text-left">
+              <div className="flex flex-col gap-2 pr-10 sm:flex-row sm:items-start sm:gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <SheetTitle className="text-2xl font-semibold tracking-tight">{t.ticker}</SheetTitle>
@@ -280,7 +287,7 @@ export function TradeDetailSheet(p: Props) {
                     <DeskDayLink ticker={t.ticker} date={t.date} trader={t.trader} lead />
                   </SheetDescription>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex shrink-0 flex-wrap items-center gap-1">
                   {(p.onPrev || p.onNext) && (
                     <>
                       {p.position && <span className="mr-1 hidden text-xs tabular-nums text-muted-foreground sm:inline">{p.position.index + 1} / {p.position.total}</span>}
@@ -288,6 +295,7 @@ export function TradeDetailSheet(p: Props) {
                       <Button variant="outline" size="icon" className="h-8 w-8" aria-label={tt("sheet.next")} title={tt("sheet.next")} disabled={!p.onNext} onClick={p.onNext}><ChevronDown /></Button>
                     </>
                   )}
+                  <PlaybookSheetButton className="h-8" />
                   <CopyTradeLink id={t.id} ticker={t.ticker} />
                 </div>
               </div>
@@ -307,18 +315,18 @@ export function TradeDetailSheet(p: Props) {
               )}
             </SheetHeader>
 
-            <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-              <div className="px-5 pt-3">
+            <Tabs value={tab} onValueChange={setTab} className="flex flex-col md:min-h-0 md:flex-1">
+              <div className="sticky top-0 z-raised bg-popover px-5 pb-1 pt-3 md:static md:bg-transparent md:pb-0">
                 <TabsList className="w-full justify-start overflow-x-auto">
                   <TabsTrigger value="overview">{tt("sheet.tabs.overview")}</TabsTrigger>
                   <TabsTrigger value="chart">{tt("sheet.tabs.chart")}</TabsTrigger>
                   <TabsTrigger value="replay">{tt("sheet.tabs.replay")}</TabsTrigger>
                   <TabsTrigger value="executions">{tt("sheet.tabs.executions")}</TabsTrigger>
-                  {!redacted && <TabsTrigger value="ai">{tt("sheet.tabs.ai")}</TabsTrigger>}
+                  {showAi && <TabsTrigger value="ai">{tt("sheet.tabs.ai")}</TabsTrigger>}
                   <TabsTrigger value="social">{tt("sheet.tabs.social")}{reviewCount ? ` · ${reviewCount}` : ""}</TabsTrigger>
                 </TabsList>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-2">
+              <div className="px-5 pb-8 pt-2 md:min-h-0 md:flex-1 md:overflow-y-auto">
                 <TabsContent value="overview" className="space-y-5">
                   <section className="space-y-2">
                     <p className="micro-label">{tt("sheet.markup")}</p>
@@ -366,10 +374,12 @@ export function TradeDetailSheet(p: Props) {
                   </section>
                 </TabsContent>
                 <TabsContent value="chart" className="space-y-4">
-                  <React.Suspense fallback={<Skeleton className="h-[360px] rounded-2xl" />}>
-                    {/* Multi-day trades: TradeChart loads every day from entry to exit (same window as the replay). */}
-                    <LazyTradeChart tradeId={t.id} ticker={t.ticker} date={t.date} side={t.side} entry={t.entry} exit={t.exit} stop={t.stop} rMultiple={t.rMultiple} target={ideaTarget} exitDate={t.exitDate} horizon={horizonOf(t)} result={t.result} />
-                  </React.Suspense>
+                  {tab === "chart" && (
+                    // One chart engine for the sheet: «График» = the whole day with the trade, «Реплей» = bar by bar.
+                    <React.Suspense fallback={<Skeleton className="h-[468px] rounded-2xl" />}>
+                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={420} mode="analysis" showModes={false} />
+                    </React.Suspense>
+                  )}
                   <React.Suspense fallback={<Skeleton className="h-32 rounded-2xl" />}>
                     <LazyNewsFeed ticker={t.ticker} limit={10} compact cutoffDate={t.createdAt ?? `${dayOf(t)}T23:59:59Z`} />
                   </React.Suspense>
@@ -377,7 +387,7 @@ export function TradeDetailSheet(p: Props) {
                 <TabsContent value="replay" className="space-y-4">
                   {tab === "replay" && (
                     <React.Suspense fallback={<Skeleton className="h-[504px] rounded-2xl" />}>
-                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} />
+                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} mode="replay" showModes={false} />
                     </React.Suspense>
                   )}
                   {!redacted && (
@@ -390,7 +400,7 @@ export function TradeDetailSheet(p: Props) {
                   <TabsContent value="executions">
                     <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} onOpenTradeId={(id) => { const x = p.allTrades.find((a) => a.id === id); if (x) p.onOpenTrade(x); }} />
                   </TabsContent>
-                  {!redacted && (
+                  {showAi && (
                   <TabsContent value="ai">
                     <React.Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
                       <LazyAiReviewPanel
@@ -444,7 +454,7 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
         ? <Kpi label={tc("trading.inPosition")} value={held != null ? tt("sheet.kpi.daysShort", { count: held }) : "—"} className="text-primary" />
         : <Kpi label={tc("trading.holdTime")} value={hold != null ? fmtDuration(hold) : t.holdTime || "—"} className={hold == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
       {useR
-        ? <Kpi label={r.derived ? tt("sheet.kpi.rDerived") : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} />
+        ? <Kpi label={stopIsEstimate(t) && r.derived ? tt("sheet.kpi.rEstimate") : r.derived ? tt("sheet.kpi.rDerived") : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} hint={stopIsEstimate(t) && r.derived ? tt("sheet.kpi.rEstimateHint") : undefined} />
         : <Kpi label={tt("sheet.kpi.perShare")} value={fmtUsd(perShare, { signed: true })} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? redactedHint() : tt("sheet.kpi.perShareHint")} />}
       <Kpi label={tt("sheet.kpi.volume")} value={t.qty != null ? tc("units.shares", { count: fmtCount(t.qty) }) : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} hint={redacted ? redactedHint() : undefined} />
     </div>
@@ -456,7 +466,7 @@ function ContextRow({ trade: t, timing }: { trade: Trade; timing: TradeTiming | 
   const { t: tc } = commonI18n.useT();
   const items: [string, React.ReactNode][] = [];
   // Size, gross/fees and hold are in the KPI row; the data source is not the trader's concern.
-  if (t.stop != null && Number(t.stop) > 0) items.push([tc("trading.stop"), fmtPrice(t.stop)]);
+  if (t.stop != null && Number(t.stop) > 0) items.push([stopIsEstimate(t) ? tt("sheet.context.stopEstimate") : tc("trading.stop"), fmtPrice(t.stop)]);
   if (t.riskUsd != null) items.push([tc("trading.risk"), fmtUsd(t.riskUsd, { decimals: "trim" })]);
   if (timing?.entrySession && timing.exitSession && timing.entrySession !== timing.exitSession) items.push([tt("sheet.context.sessions"), `${ET_SESSION_LABEL[timing.entrySession]} → ${ET_SESSION_LABEL[timing.exitSession]}`]);
   const held = daysHeld(t);

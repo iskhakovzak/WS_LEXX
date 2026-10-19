@@ -74,3 +74,14 @@ describe("worstSetups", () => {
     expect(worstSetups([t({ gross: -1 })])).toEqual([]);
   });
 });
+
+describe("canonical max drawdown (MAKSIM-08)", () => {
+  it("is read on the end-of-day curve by close date, not trade by trade", () => {
+    // Day 1: +100 then −80 inside the day (trade-by-trade DD −80), ends +20; day 2: −50 → end-of-day DD −50.
+    const trades = [t({ gross: 100, day: "2026-10-01" }), t({ gross: -80, day: "2026-10-01" }), t({ gross: -50, day: "2026-10-02" })];
+    expect(computeMetrics(trades).maxDrawdown).toBe(-50);
+    // A swing closed on day 3 counts there.
+    const swing = [t({ gross: 100, day: "2026-10-01" }), t({ gross: -120, day: "2026-10-01", closeDay: "2026-10-03" }), t({ gross: 30, day: "2026-10-02" })];
+    expect(computeMetrics(swing).maxDrawdown).toBe(-120);
+  });
+});

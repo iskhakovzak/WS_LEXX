@@ -9,17 +9,23 @@
  * One request per game at a time (in-process lock), so a burst of key presses cannot interleave two steps.
  */
 import { badRequest, conflict, notFound } from "../http";
-import { nyDate, nyMinutes, addDays } from "../tradingDate";
+import { nyDate, addDays } from "../tradingDate";
 import { netPnl, signedR } from "../tradeMath";
 import { canSeeTradeMoney } from "../playbookPrivacy";
 import { orderDelta, resultOf, simulate, type OrderKind, type SimConfig, type SimEvent, type SimFill, type SimResult, type SimState, type SimTrade } from "./engine";
 import {
-  SWING_SPECS, buildIntraday, buildSwing, dayFeatures, defaultQty, fakeTimes, intradaySpecOf, judgeOpts, maxNotionalOf, seriesFeatures,
-  tfSec, toWire, weightedSample, type BuiltScenario, type Difficulty, type IntradayTf, type Levels, type SimMode, type SimTf, type WireBar,
+  defaultQty, displayTfsOf, fakeTimes, judgeOpts, maxNotionalOf, tfSec, toWire,
+  type Difficulty, type DisplayTf, type IntradayTf, type Levels, type SimMode, type SimTf, type WireBar,
 } from "./scenario";
 import * as store from "./store";
 import type { GameRow } from "./store";
+import { pickScenario } from "./pick";
+import { findEvent, type MarketEvent } from "./events";
+import type { NoTradeVerdict } from "./noTrade";
+import { seriesStateOf, type SeriesState } from "./seriesStore";
 import { compareOwn, publicOf, type OwnPublic, type OwnReveal } from "./own";
+import { dayVolume, marketPx, newGameExec, publicExec, riskQty, type ExecModel } from "./exec";
+import { setting } from "../settings/registry";
 
 export type Viewer = { id: number; name: string; staff: boolean };
 
@@ -36,7 +42,7 @@ export function remember(g: GameRow): GameRow {
   return g;
 }
 
-function withLock<T>(id: number, fn: () => Promise<T>): Promise<T> {
+export function withLock<T>(id: number, fn: () => Promise<T>): Promise<T> {
   const prev = locks.get(id) ?? Promise.resolve();
   const run = prev.then(fn, fn);
   const tail = run.catch(() => undefined);
@@ -45,89 +51,41 @@ function withLock<T>(id: number, fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function ownGame(viewer: Viewer, id: number): Promise<GameRow> {
+/** The viewer's game (a prepared series game is not theirs to see until «next» deals it). */
+export async function ownGame(viewer: Viewer, id: number): Promise<GameRow> {
   const g = cache.get(id) ?? (await store.loadGame(id));
-  if (!g || g.userId !== viewer.id) throw notFound("NOT_FOUND");
+  if (!g || g.userId !== viewer.id || g.status === "prepared") throw notFound("NOT_FOUND");
   return remember(g);
 }
 
 /** For tests: forget cached games. */
 export function _resetSimCache(): void { cache.clear(); locks.clear(); }
 
-/* ─────────────────────────── Scenario picking ─────────────────────────── */
+/* ─────────────────────────── Scenario picking: pick.ts ─────────────────────────── */
 
-/** Last day a game may be on: today only after the close (a live day has no end yet). */
-export function lastPlayableDay(now = new Date()): string {
-  const today = nyDate(now);
-  return nyMinutes(now) >= 16 * 60 + 15 ? today : addDays(today, -1);
-}
-
-type Picked = BuiltScenario & { ticker: string; day: string; dayTo: string | null; tf: SimTf };
-
-async function pickIntraday(viewer: Viewer, d: Difficulty, rnd: () => number, tf: IntradayTf | null): Promise<Picked | null> {
-  const spec = intradaySpecOf(d, tf);
-  // 1m and 2m need archived 1-minute bars (2m is aggregated from them); 5m takes 1m or 5m days.
-  const need1m = spec.tf !== "5m";
-  const cands = await store.intradayCandidates(lastPlayableDay(), need1m);
-  if (!cands.length) return null;
-  const recent = await store.recentScenarioKeys(viewer.id, "intraday");
-  const fresh = cands.filter((c) => !recent.has(`${c.ticker}:${c.day}`));
-  const base = fresh.length ? fresh : cands;
-  // The archive already knows each day's gap and range: filter before reading any bars.
-  const fits = base.filter((c) => c.rangePct != null && spec.filter({ gapPct: c.gapPct ?? 0, rangePct: c.rangePct }));
-  const tried = weightedSample(fits.length ? fits : base, 8, (c) => (c.desk > 0 ? 4 + Math.log2(1 + c.desk) : 1), rnd);
-  let best: { p: Picked; rank: number } | null = null;
-  for (const c of tried) {
-    const data = await store.loadDayBars(c.ticker, c.day);
-    if (!data || (need1m && data.tf !== "1m") || (data.tf !== "1m" && data.tf !== "5m")) continue;
-    const prev = await store.loadPrevDay(c.ticker, c.day, tfSec(spec.tf));
-    const built = buildIntraday({ day: c.day, dayBars: data.bars, prevBars: prev?.bars ?? [], prevLevels: prev?.levels ?? null, spec });
-    if (!built) continue;
-    if (built.levels.pdc == null && data.prevClose != null) built.levels.pdc = data.prevClose;
-    const f = dayFeatures(built.levels.pdc ?? data.prevClose, built.bars.slice(built.startIdx + 1));
-    if (!f) continue;
-    const p: Picked = { ...built, ticker: c.ticker, day: c.day, dayTo: null, tf: spec.tf };
-    if (spec.filter(f)) return p;
-    const rank = spec.rank(f);
-    if (!best || rank > best.rank) best = { p, rank };
-  }
-  return best?.p ?? null;
-}
-
-async function pickSwing(viewer: Viewer, d: Difficulty, rnd: () => number): Promise<Picked | null> {
-  const spec = SWING_SPECS[d];
-  const need = spec.history + spec.play;
-  const cands = await store.swingCandidates();
-  if (!cands.length) return null;
-  const recent = await store.recentScenarioKeys(viewer.id, "swing");
-  const lastDay = lastPlayableDay();
-  const tried = weightedSample(cands, 6, (c) => 1 + 2 * Math.log2(1 + c.desk), rnd);
-  let best: { p: Picked; rank: number } | null = null;
-  for (const c of tried) {
-    const { bars, dates } = await store.loadDailySeries(c.ticker, lastDay);
-    const runs = store.contiguousRuns(dates).filter(([a, b]) => b - a + 1 >= need);
-    if (!runs.length) continue;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const [a, b] = runs[Math.floor(rnd() * runs.length)];
-      const from = a + Math.floor(rnd() * (b - a + 2 - need));
-      const day = dates[from + spec.history];
-      if (recent.has(`${c.ticker}:${day}`)) continue;
-      const built = buildSwing(bars, from, spec);
-      if (!built) continue;
-      const f = seriesFeatures(built.bars.slice(built.startIdx));
-      const p: Picked = { ...built, ticker: c.ticker, day, dayTo: dates[from + need - 1], tf: "1d" };
-      if (spec.filter(f)) return p;
-      const rank = spec.rank(f);
-      if (!best || rank > best.rank) best = { p, rank };
-    }
-  }
-  return best?.p ?? null;
-}
+export { lastPlayableDay } from "./pick";
 
 /* ─────────────────────────── Views ─────────────────────────── */
 
 export function cfgOf(g: GameRow): SimConfig {
-  return { startIdx: g.startIdx, endIdx: g.endIdx, feePerShare: g.params.feePerShare, riskUnit: g.params.riskUnit };
+  return {
+    startIdx: g.startIdx, endIdx: g.endIdx, feePerShare: g.params.feePerShare, riskUnit: g.params.riskUnit, exec: g.params.exec ?? null,
+    ...(g.params.intrabar ? { intrabar: true } : {}),
+  };
+}
+
+/** Bar size of the stored series (finer than the display tf on «Тренажёр 2» free games). */
+export const baseTfOf = (g: GameRow): SimTf => g.params.baseTf ?? g.tf;
+
+/** 1R ($) of a game for risk-sized orders: frozen at creation; older games use the desk fallback. */
+export const oneROf = (g: GameRow): number => (g.params.oneR != null && g.params.oneR > 0 ? g.params.oneR : setting("trainer.oneRUsd"));
+
+/** Execution model and 1R a new game freezes (the play day's volume drives the low-ADV spread). */
+export async function newGameExtras(viewer: Viewer, price: number, dayBars: readonly { t: number; v: number }[], day: string, oneR?: number | null) {
+  const vol = dayVolume(dayBars.filter((b) => nyDate(new Date(b.t * 1000)) === day));
+  const exec: ExecModel | null = newGameExec(price, vol > 0 ? vol : null);
+  const r = oneR != null && oneR > 0 ? oneR : (await store.oneRUsdOf(viewer.name, nyDate())) ?? setting("trainer.oneRUsd");
+  return { exec, oneR: Math.round(r * 100) / 100 };
 }
 
 export type PublicState = {
@@ -192,6 +150,20 @@ export type Snapshot = {
   reveal: Reveal | null;
   /** Own mode: the player's own trade (ticker and date are not secret there) and the bar where they really entered. */
   own: OwnPublic | null;
+  /** Spread / slippage model of this game ($ per share paid by a market order; full spread); null on older games. */
+  slippage: { perShare: number; spread: number } | null;
+  /** 1R in $ used by risk-sized orders (step order.sizeMode "risk"). */
+  oneR: number;
+  /** «Тренажёр» mode of the game when it is not a plain free game. */
+  trainer: { mode: "daily"; date: string } | null;
+  /** Bar size of `bars` / cursor / indexes / step advance; `tf` is the default display timeframe. */
+  baseTf: SimTf;
+  /** Timeframes the client may aggregate the base bars into (key order). */
+  displayTfs: DisplayTf[];
+  /** Series game: the series and the 0-based position in it. */
+  series: { id: number; index: number; size: number } | null;
+  /** Finished through «Не торгую»: the verdict. */
+  noTrade: NoTradeVerdict | null;
 };
 
 export async function snapshotOf(g: GameRow, viewer: Viewer): Promise<Snapshot> {
@@ -206,11 +178,18 @@ export async function snapshotOf(g: GameRow, viewer: Viewer): Promise<Snapshot> 
     createdAt: g.createdAt,
     reveal: g.status === "finished" ? await revealOf(g, viewer) : null,
     own: g.params.own ? publicOf(g.params.own) : null,
+    slippage: publicExec(g.params.exec),
+    oneR: oneROf(g),
+    trainer: g.params.daily ? { mode: "daily", date: g.params.daily.date } : null,
+    baseTf: baseTfOf(g),
+    displayTfs: displayTfsOf(baseTfOf(g)),
+    series: g.params.series ? { id: g.params.series.id, index: g.params.series.index, size: g.params.series.size } : null,
+    noTrade: ((g.result as { noTrade?: NoTradeVerdict } | null)?.noTrade) ?? null,
   };
 }
 
 function idxForTime(g: GameRow, epoch: number): number | null {
-  const sec = tfSec(g.tf);
+  const sec = tfSec(baseTfOf(g));
   let lo = 0, hi = g.endIdx, ans = -1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
@@ -285,7 +264,7 @@ export async function deskViewOf(g: GameRow, viewer: Viewer): Promise<DeskView> 
 
 async function revealOf(g: GameRow, viewer: Viewer): Promise<Reveal> {
   const s = simulate(g.bars, cfgOf(g), g.events, g.endIdx);
-  const result = (g.result as (SimResult & { equity: number[] }) | null) ?? { ...resultOf(g.bars, cfgOf(g), s, { baseQty: g.params.defaultQty, ...judgeOpts(g.mode, g.tf) }), equity: s.equity };
+  const result = (g.result as (SimResult & { equity: number[] }) | null) ?? { ...resultOf(g.bars, cfgOf(g), s, { baseQty: g.params.defaultQty, ...judgeOpts(g.mode, baseTfOf(g)) }), equity: s.equity };
   return {
     ticker: g.ticker,
     longName: g.params.longName ?? (await store.longNameOf(g.ticker)),
@@ -311,9 +290,20 @@ export async function createGame(
   viewer: Viewer, mode: SimMode, difficulty: Difficulty, rnd: () => number = Math.random, tf: IntradayTf | null = null,
 ): Promise<Snapshot> {
   await settleActive(viewer);
-  const picked = mode === "intraday" ? await pickIntraday(viewer, difficulty, rnd, tf) : await pickSwing(viewer, difficulty, rnd);
-  if (!picked) throw notFound("NOT_FOUND");
+  const g = await insertNewGame(viewer, mode, difficulty, rnd, tf);
+  if (!g) throw notFound("NOT_FOUND");
+  return snapshotOf(g, viewer);
+}
+
+/** Pick and store a new free game (status 'active', or 'prepared' for the next game of a series); null = no scenario. */
+export async function insertNewGame(
+  viewer: Viewer, mode: SimMode, difficulty: Difficulty, rnd: () => number, tf: IntradayTf | null,
+  series?: { id: number; index: number; size: number; status: "active" | "prepared" },
+): Promise<GameRow | null> {
+  const picked = await pickScenario(viewer, mode, difficulty, rnd, mode === "intraday" ? tf : null);
+  if (!picked) return null;
   const price = picked.bars[picked.startIdx].c;
+  const extras = mode === "intraday" ? await newGameExtras(viewer, price, picked.bars, picked.day) : { exec: newGameExec(price, null), oneR: (await store.oneRUsdOf(viewer.name, nyDate())) ?? setting("trainer.oneRUsd") };
   const g = await store.insertGame({
     userId: viewer.id, mode, difficulty, ticker: picked.ticker, day: picked.day, dayTo: picked.dayTo, tf: picked.tf,
     bars: picked.bars, startIdx: picked.startIdx, endIdx: picked.endIdx, cursor: picked.startIdx,
@@ -324,9 +314,15 @@ export async function createGame(
       maxNotional: maxNotionalOf(mode),
       levels: picked.levels,
       times: fakeTimes(picked.bars, mode),
+      ...extras,
+      ...(picked.baseTf !== picked.tf ? { baseTf: picked.baseTf } : {}),
+      intrabar: true,
+      ...(series ? { series: { id: series.id, index: series.index, size: series.size } } : {}),
     },
+    status: series?.status ?? "active",
+    seriesId: series?.id ?? null,
   });
-  return snapshotOf(remember(g), viewer);
+  return series?.status === "prepared" ? g : remember(g);
 }
 
 /** A game left behind: with orders it is played out (flat now, then to the end) and counts; without — abandoned. */
@@ -334,8 +330,9 @@ async function settle(viewer: Viewer, id: number): Promise<void> {
   const g = await ownGame(viewer, id);
   if (g.status !== "active") return;
   if (!g.events.some((e) => e.type === "order")) {
-    await store.markAbandoned(id);
-    g.status = "abandoned";
+    // A series game left untouched counts as skipped in its series; a lone free game is simply abandoned.
+    if (g.seriesId != null) { await store.markSkipped(id, g.cursor); g.status = "skipped"; }
+    else { await store.markAbandoned(id); g.status = "abandoned"; }
     return;
   }
   await finishNow(g);
@@ -352,15 +349,59 @@ export async function gameSnapshot(viewer: Viewer, id: number): Promise<Snapshot
 }
 
 export type StepInput = {
-  order?: { kind: OrderKind; qty?: number } | null;
+  /** sizeMode "risk": qty = 1R / |expected fill − stop| (the stop of this request's bracket, else the current one). */
+  order?: { kind: OrderKind; qty?: number; sizeMode?: "risk" | null } | null;
   /** undefined = leave the bracket as is; null values clear it. */
   bracket?: { stop: number | null; target: number | null } | null;
+  /** Base bars to show (the maximum with `until`). */
   advance: number;
+  /** "event": stop at the next market event (events.ts) or bracket fill within `advance` bars. */
+  until?: "event" | null;
 };
 
-export type StepOutput = { cursor: number; bars: WireBar[]; state: PublicState; done: boolean; reveal: Reveal | null };
+export type StepOutput = {
+  cursor: number; bars: WireBar[]; state: PublicState; done: boolean; reveal: Reveal | null;
+  /** The event the jump stopped at (step `until: "event"`), else null. */
+  event: MarketEvent | null;
+  /** The game's series once the game ended (series games only). */
+  series?: SeriesState;
+};
+
+/** Series state for a response when the game is a series game and has ended. */
+export async function seriesOfEnded(g: GameRow): Promise<{ series?: SeriesState }> {
+  if (g.seriesId == null || g.status === "active") return {};
+  const s = await seriesStateOf(g.seriesId);
+  return s ? { series: s } : {};
+}
+
+/** First bracket fill (stop / target) with idx in [from, to], as a «fill» event. */
+function fillEvent(g: GameRow, from: number, to: number): MarketEvent | null {
+  const f = simulate(g.bars, cfgOf(g), g.events, to).fills.find((x) => x.idx >= from && x.idx <= to && (x.reason === "stop" || x.reason === "target"));
+  return f ? { kind: "fill", dir: f.reason === "target" ? "up" : "down", idx: f.idx, level: f.price } : null;
+}
+
+/** Where an event jump stops: the first market event or bracket fill in [from, to]. */
+export function jumpTarget(g: GameRow, from: number, to: number): MarketEvent | null {
+  if (from > to) return null;
+  const market = g.mode === "intraday" ? findEvent(g.bars, g.params.levels, tfSec(baseTfOf(g)), from, to, g.endIdx) : null;
+  const fill = fillEvent(g, from, market ? market.idx : to);
+  return fill ?? market;
+}
 
 const MAX_EVENTS = 800;
+
+/** Shares of a risk-sized order (capped by buying power over the current position). */
+function riskSized(g: GameRow, input: StepInput, currentStop: number | null, pos: number): number {
+  const side: 1 | -1 = input.order?.kind === "sell" ? -1 : 1;
+  const stop = input.bracket?.stop ?? currentStop;
+  if (stop == null) throw badRequest("VALIDATION", { reason: "stop" });
+  const close = g.bars[g.cursor].c;
+  const qty = riskQty(oneROf(g), marketPx(close, side, g.params.exec), stop, side);
+  if (qty < 1) throw badRequest("VALIDATION", { reason: "stop" });
+  const maxQty = Math.floor(g.params.maxNotional / close);
+  const room = Math.sign(pos) === side ? maxQty - Math.abs(pos) : maxQty + Math.abs(pos);
+  return Math.max(1, Math.min(qty, room));
+}
 
 export function step(viewer: Viewer, id: number, input: StepInput): Promise<StepOutput> {
   return withLock(id, async () => {
@@ -374,7 +415,7 @@ export function step(viewer: Viewer, id: number, input: StepInput): Promise<Step
     const added: SimEvent[] = [];
     let pos = before.pos;
     if (input.order && !(input.order.kind === "flat" && pos === 0)) {
-      const qty = input.order.kind === "flat" ? 0 : Math.floor(input.order.qty ?? 0);
+      const qty = input.order.kind === "flat" ? 0 : input.order.sizeMode === "risk" ? riskSized(g, input, before.stop, pos) : Math.floor(input.order.qty ?? 0);
       if (input.order.kind !== "flat" && qty < 1) throw badRequest("VALIDATION", { reason: "qty" });
       const next = pos + orderDelta(input.order.kind, qty, pos);
       const maxQty = Math.floor(g.params.maxNotional / price);
@@ -396,14 +437,19 @@ export function step(viewer: Viewer, id: number, input: StepInput): Promise<Step
     // Own mode: the autoplay stops on the bar where the player really entered — the decision moment.
     const decision = g.params.own?.decisionIdx;
     if (decision != null && g.cursor < decision) to = Math.min(to, decision);
+    const event = input.until === "event" ? jumpTarget(g, from, to) : null;
+    if (event) to = event.idx;
     g.cursor = to;
     if (g.cursor >= g.endIdx) {
       await finishNow(g);
-      return { cursor: g.cursor, bars: toWire(g.bars, g.params.times, from, g.cursor), state: publicState(g, simulate(g.bars, cfg, g.events, g.cursor)), done: true, reveal: await revealOf(g, viewer) };
+      return {
+        cursor: g.cursor, bars: toWire(g.bars, g.params.times, from, g.cursor), state: publicState(g, simulate(g.bars, cfg, g.events, g.cursor)), done: true,
+        reveal: await revealOf(g, viewer), event, ...(await seriesOfEnded(g)),
+      };
     }
     await store.saveProgress(g.id, g.cursor, g.events);
     const after = simulate(g.bars, cfg, g.events, g.cursor);
-    return { cursor: g.cursor, bars: toWire(g.bars, g.params.times, from, g.cursor), state: publicState(g, after), done: false, reveal: null };
+    return { cursor: g.cursor, bars: toWire(g.bars, g.params.times, from, g.cursor), state: publicState(g, after), done: false, reveal: null, event };
   });
 }
 
@@ -416,7 +462,7 @@ export function undo(viewer: Viewer, id: number): Promise<StepOutput> {
     if (req == null) throw conflict("CONFLICT", { reason: "nothingToUndo" });
     while (g.events.length && g.events[g.events.length - 1].req === req && g.events[g.events.length - 1].idx === g.cursor) g.events.pop();
     await store.saveProgress(g.id, g.cursor, g.events);
-    return { cursor: g.cursor, bars: [], state: publicState(g, simulate(g.bars, cfgOf(g), g.events, g.cursor)), done: false, reveal: null };
+    return { cursor: g.cursor, bars: [], state: publicState(g, simulate(g.bars, cfgOf(g), g.events, g.cursor)), done: false, reveal: null, event: null };
   });
 }
 
@@ -427,11 +473,15 @@ export function finish(viewer: Viewer, id: number): Promise<StepOutput> {
     if (g.status !== "active") throw conflict("CONFLICT", { reason: "finished" });
     const from = g.cursor + 1;
     await finishNow(g);
-    return { cursor: g.cursor, bars: toWire(g.bars, g.params.times, from, g.cursor), state: publicState(g, simulate(g.bars, cfgOf(g), g.events, g.cursor)), done: true, reveal: await revealOf(g, viewer) };
+    return {
+      cursor: g.cursor, bars: toWire(g.bars, g.params.times, from, g.cursor), state: publicState(g, simulate(g.bars, cfgOf(g), g.events, g.cursor)), done: true,
+      reveal: await revealOf(g, viewer), event: null, ...(await seriesOfEnded(g)),
+    };
   });
 }
 
-async function finishNow(g: GameRow): Promise<void> {
+/** Close any position now, play the rest flat, judge and store the result (`extra` is merged into it). */
+export async function finishNow(g: GameRow, extra: Record<string, unknown> = {}): Promise<void> {
   const cfg = cfgOf(g);
   const seq = () => (g.events.length ? g.events[g.events.length - 1].seq + 1 : 1);
   const now = simulate(g.bars, cfg, g.events, g.cursor);
@@ -440,8 +490,8 @@ async function finishNow(g: GameRow): Promise<void> {
   const atEnd = simulate(g.bars, cfg, g.events, g.endIdx);
   if (atEnd.pos !== 0) g.events.push({ seq: seq(), idx: g.endIdx, type: "order", kind: "flat", qty: 0, auto: true });
   const final = simulate(g.bars, cfg, g.events, g.endIdx);
-  const base = resultOf(g.bars, cfg, final, { baseQty: g.params.defaultQty, ...judgeOpts(g.mode, g.tf) });
-  const result = { ...base, equity: downsample(final.equity, 400), ...(g.params.own ? { own: compareOwn(g.params.own, base) } : {}) };
+  const base = resultOf(g.bars, cfg, final, { baseQty: g.params.defaultQty, ...judgeOpts(g.mode, baseTfOf(g)) });
+  const result = { ...base, equity: downsample(final.equity, 400), ...(g.params.own ? { own: compareOwn(g.params.own, base) } : {}), ...extra };
   await store.saveFinished(g.id, g.cursor, g.events, result);
   g.status = "finished";
   g.result = result;

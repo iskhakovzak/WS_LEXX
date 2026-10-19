@@ -58,7 +58,7 @@ export async function loadDailyContext(trader: string, from: string, to: string)
   ]);
   const [fills, ruleTrades] = await Promise.all([
     soft(fillsOf(structRows.map((r) => Number(r.id))), [] as ExecRowLite[], "fills"),
-    rules.some((r) => r.kind !== "self_check") ? soft(fetchTrades(trader), [], "rule trades") : Promise.resolve([]),
+    rules.some((r) => r.kind !== "self_check") ? soft(fetchTrades(trader, { from: histFrom, to }), [], "rule trades") : Promise.resolve([]),
   ]);
   return {
     trader,
@@ -74,16 +74,22 @@ export async function loadDailyContext(trader: string, from: string, to: string)
   };
 }
 
+/** Behaviour rows of one trader for [from, to] (the discipline ledger judges plan days without a snapshot from them). */
+export const behaviorTradesOf = (trader: string) => async (from: string, to: string) => (await loadBehaviorRows(trader, from, to)).map(rowToBehaviorTrade);
+
 /** Engine input for the window [from, to] out of a loaded context (trades after `to` are left out of the norms). */
 export function inputFor(ctx: DailyContext, from: string, to: string): DetectInput {
   return { ...ctx, trades: ctx.trades.filter((t) => t.date <= to), from, to };
 }
 
-/** Other desk traders with a trade in `ticker` on `date` (count only — never their money). */
+/**
+ * Other desk traders with a trade in `ticker` on `date` (count only — never their money). The same match as the
+ * «Деск на тикере» page the card links to (lib/deskDayStore: exact ticker and date, index trades_live_ticker_date_idx).
+ */
 export async function deskTradersOn(ticker: string, date: string, except: string): Promise<number> {
   const { rows } = await pool.query<{ n: number }>(
     `SELECT COUNT(DISTINCT trader)::int AS n FROM trades
-      WHERE deleted_at IS NULL AND UPPER(ticker) = $1 AND substring(date, 1, 10) = $2 AND trader IS NOT NULL AND trader <> $3`,
+      WHERE ticker = $1 AND date = $2 AND deleted_at IS NULL AND trader IS NOT NULL AND trader <> '' AND trader <> $3`,
     [ticker.toUpperCase(), date, except],
   );
   return Number(rows[0]?.n ?? 0);

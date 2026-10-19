@@ -66,7 +66,7 @@ export default {
     },
     avgWinLossTitle: "Oʻrtacha foydali / oʻrtacha zararli savdo",
     select: "{name}ni solishtirish uchun tanlash",
-    you: "siz",
+    you: "(siz)",
     fewTrades: "savdolar kam",
     fewTradesTitle: "Minimal savdolardan kam — persentillarda qatnashmaydi",
     curveAria: "{name} egri chizigʻi: {value}",

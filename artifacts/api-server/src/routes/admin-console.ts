@@ -26,6 +26,8 @@ import { checkSecret, secretPolicyFor } from "../lib/security/passwordPolicy";
 import { securityT } from "../lib/security/i18n";
 import { langOf } from "../i18n";
 import { sendSecurityError } from "../lib/security/respond";
+import { config } from "../config";
+import { lastBackupCached, reviewLoad } from "../lib/admin/consoleLoad";
 
 const router: IRouter = Router();
 
@@ -83,8 +85,10 @@ async function loadUser(id: number): Promise<UserRow | null> {
 
 // ─── Health ─────────────────────────────────────────────────────────────────
 
+// Sync/health card: staff with propreports.read.team (curators too); audit-derived errors only with admin.audit.
 router.get("/admin/console/health", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "admin.audit"))) return;
+  if (!(await requireCap(req, res, "propreports.read.team"))) return;
+  const audit = await can(req, "admin.audit");
   const today = nyDate();
   const since24 = new Date(Date.now() - 86_400_000);
 
@@ -95,8 +99,10 @@ router.get("/admin/console/health", asyncHandler(async (req, res): Promise<void>
     soft<{ n: number; last: Date | null }>(`SELECT COUNT(*)::int AS n, MAX(synced_at) AS last FROM trades WHERE deleted_at IS NULL AND source = 'propreports'`),
     soft(`SELECT id, started_at, source, status, errors, error_text, file_name FROM propreports_sync_runs
           WHERE started_at >= $1 AND (status NOT IN ('ok', 'running') OR errors > 0) ORDER BY started_at DESC LIMIT 20`, [since24]),
-    soft(`SELECT id, actor, action, details, created_at FROM audit_log
-          WHERE created_at >= $1 AND (action ILIKE '%error%' OR action ILIKE '%fail%') ORDER BY created_at DESC LIMIT 20`, [since24]),
+    audit
+      ? soft(`SELECT id, actor, action, details, created_at FROM audit_log
+          WHERE created_at >= $1 AND (action ILIKE '%error%' OR action ILIKE '%fail%') ORDER BY created_at DESC LIMIT 20`, [since24])
+      : Promise.resolve([] as any[]),
     getSettings().catch(() => null),
   ]);
 
@@ -138,7 +144,17 @@ router.get("/admin/console/health", asyncHandler(async (req, res): Promise<void>
       lastSyncedAt: iso(imported[0]?.last),
     },
     errors24h: { count: errors.length, items: errors.slice(0, 20) },
+    // Production only and for those who may see backups: when the newest backup is older than 24 h the Обзор shows a
+    // red «Требует действий» item (OWNER-14). null = not checked (dev / no right).
+    backup: config.isProduction && (await can(req, "admin.backups.read")) ? { lastAt: iso(await lastBackupCached()) } : null,
   });
+}));
+
+// ─── Review load per curator (OWNER-05): lib/admin/consoleLoad.ts ──────────
+
+router.get("/admin/console/review-load", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "journal.review"))) return;
+  res.json(await reviewLoad());
 }));
 
 // ─── People ─────────────────────────────────────────────────────────────────

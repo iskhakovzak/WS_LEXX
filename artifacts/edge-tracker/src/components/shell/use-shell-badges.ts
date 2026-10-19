@@ -22,6 +22,8 @@ export type RiskToday = {
   status: RiskStatus;
   alerts: number;
   halted: boolean;
+  /** Which stop halted the day (stop = daily, weekly, drawdown); null when not halted. */
+  haltedBy: "stop" | "weekly" | "drawdown" | null;
   pnlNet: number | null;
   trades: number;
   /** 0…100+, null without a daily limit. */
@@ -43,6 +45,7 @@ function toRiskToday(raw: unknown): RiskToday | null {
     status,
     alerts: Array.isArray(d?.alerts) ? d.alerts.length : 0,
     halted: !!d?.halted,
+    haltedBy: d?.halted && (d?.stop?.state === "weekly" || d?.stop?.state === "drawdown") ? d.stop.state : d?.halted ? "stop" : null,
     pnlNet: num(d?.today?.pnlNet),
     trades: num(d?.today?.trades) ?? 0,
     dailyUsedPct: limit ? num(d?.today?.dailyLimitUsedPct) : null,
@@ -59,15 +62,45 @@ function toRiskToday(raw: unknown): RiskToday | null {
 export function useRiskToday() {
   const { user } = useAuth();
   const name = user && user.role !== "guest" ? user.traderName : null;
+  const account = useHasRiskAccount();
   return useQuery({
     ...riskMeQuery(),
     select: toRiskToday,
-    enabled: !!name,
+    enabled: !!name && account.has,
     staleTime: STALE.short,
     refetchInterval: POLL.twoMinutes,
     refetchIntervalInBackground: false,
     retry: false,
   });
+}
+
+/**
+ * Does the signed-in person have a trading account the risk desk tracks? Traders: yes. Staff (curator / admin): only
+ * with their own limits row (GET /api/risk/limits/:me, one light row, cached) — so the shell never polls /api/risk/me
+ * for a curator who does not trade, and /risk hides «Мой риск» for them. `known` = the answer has arrived.
+ */
+export function useHasRiskAccount(): { has: boolean; known: boolean } {
+  const { user, isCurator } = useAuth();
+  const name = user && user.role !== "guest" ? user.traderName : null;
+  const q = useQuery({
+    queryKey: ["shell", "risk-account", name],
+    queryFn: ({ signal }) => http.get<unknown>(`/api/risk/limits/${encodeURIComponent(name!)}`, { signal }).catch(() => null),
+    enabled: !!name && isCurator,
+    staleTime: STALE.long,
+    retry: false,
+  });
+  if (!name) return { has: false, known: true };
+  if (!isCurator) return { has: true, known: true };
+  return { has: !!q.data, known: !q.isPending };
+}
+
+/**
+ * The curator badge = the cabinet's «Ждёт разбора» KPI: counts.reviews / reviewsOverdue (closed, not reviewed days in
+ * the 14-day window); an older server without them → the review queue counts.
+ */
+export function shellQueueCounts(d: Pick<TodayPayload, "counts"> | null | undefined): { queue: number; overdue: number } | null {
+  if (!d?.counts) return null;
+  return { queue: (d.counts.reviews ?? d.counts.queue) || 0, overdue: (d.counts.reviewsOverdue ?? d.counts.queueOverdue) || 0 };
 }
 
 export function useShellBadges(): Record<string, NavBadge | undefined> {
@@ -92,7 +125,7 @@ export function useShellBadges(): Record<string, NavBadge | undefined> {
   const { data: queue } = useQuery<TodayPayload | null, Error, { queue: number; overdue: number } | null>({
     queryKey: curatorKeys.today("auto"),
     queryFn: () => curatorApi.today("auto"),
-    select: (d: TodayPayload | null) => (d?.counts ? { queue: d.counts.queue || 0, overdue: d.counts.queueOverdue || 0 } : null),
+    select: shellQueueCounts,
     enabled: isCurator && !!name,
     staleTime: 60_000,
     refetchInterval: 180_000,

@@ -16,7 +16,7 @@
  *
  * Mistakes of the real trade use the daily-loop ids (lib/daily/types MistakeId): «structure:averaging» (an add below
  * the average of a long / above it for a short) and «structure:held_past_stop» (the exit went through the stop by
- * more than a tenth of the risk). The service adds whatever lib/daily mistakeCosts attributes to the trade.
+ * more than a tenth of the risk). The service adds whatever lib/daily mistakesByTrade attributes to the trade.
  */
 import { classifyTrade, type ExecIn, type LegRole } from "../tradeStructure";
 import { sideOfRow } from "../tradeStructureStore";

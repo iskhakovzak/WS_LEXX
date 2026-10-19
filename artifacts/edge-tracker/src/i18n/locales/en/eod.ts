@@ -3,7 +3,7 @@ import type ru from "../ru/eod";
 
 export default {
   status: { open: "Day open", closed: "Day closed", reviewed: "Reviewed by curator" },
-  hours: { lessThanHour: "under an hour", h: "{h} h", dh: "{d} d {h} h" },
+  hours: { lessThanHour: "<1 h", h: "{h} h", d: "{d} d", dh: "{d} d {h} h" },
   sla: { left: "{time} left", overdue: "overdue by {time}" },
   flow: {
     positionsSaveFailed: "Couldn’t save positions",
@@ -89,7 +89,9 @@ export default {
   },
   queue: {
     title: "Review queue",
-    desc: "Days closed by traders. Review within {sla} h of closing.",
+    desc: "Days closed by traders. Review within {sla} h of closing; weekends and holidays don't count.",
+    scopeAria: "Whose days to show",
+    scope: { mine: "Mine · {count}", desk: "Whole desk", unassigned: "No curator" },
     sectionAria: "Queue section",
     pending: "Awaiting review",
     reviewed7: "Reviewed in 7 days",

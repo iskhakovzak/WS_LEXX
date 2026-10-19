@@ -45,6 +45,8 @@ export default {
   },
   focus: {
     none: "За последние {days} торговых дней повторяющихся ошибок нет. Сегодня — торгуй свой план.",
+    noTrades: "Сделок за последние {days} торговых дней пока нет — фокус появится после первых сделок.",
+    own: "Свой фокус: {text}",
     "behavior:revenge": "Реванш: вход сразу после убытка — {count} раз за {days} дн., стоило ${cost}. Сегодня: после убытка — пауза 10 минут.",
     "behavior:martingale": "Рост размера после убытка — {count} раз за {days} дн., стоило ${cost}. Сегодня: после убытка размер не больше прежнего.",
     "behavior:overtrading": "Сделки сверх твоей нормы — {count} за {days} дн., стоили ${cost}. Сегодня: только сделки из плана.",
@@ -144,6 +146,9 @@ export default {
       streakDays: { one: "{count} день подряд", few: "{count} дня подряд", many: "{count} дней подряд", other: "{count} дня подряд" },
       streak: "🔥 Контракт соблюдён {days} · {points} к дисциплине",
       badge: "🏅 Новая награда: {badges}",
+      achievement: "🏅 Новое достижение: {names}",
+      questsDone: { one: "✅ Выполнен {count} квест", few: "✅ Выполнено {count} квеста", many: "✅ Выполнено {count} квестов", other: "✅ Выполнено {count} квеста" },
+      questsSuffix: { one: " · {count} квест выполнен", few: " · {count} квеста выполнено", many: " · {count} квестов выполнено", other: " · {count} квеста выполнено" },
       title: "🌙 <b>Итог дня · {date}</b>",
       pnl: "P&L <b>{net}</b> · {trades}",
       trades: { one: "{count} сделка", few: "{count} сделки", many: "{count} сделок", other: "{count} сделки" },

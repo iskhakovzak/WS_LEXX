@@ -57,6 +57,8 @@ vi.mock("../sim/store", async (orig) => {
     deskTradesForRange: vi.fn(async () => []),
     deskIntradayCount: vi.fn(async () => 0),
     longNameOf: vi.fn(async () => "ZZ Top Holdings"),
+    oneRUsdOf: vi.fn(async () => 100),
+    recentDailyKeys: vi.fn(async () => new Set<string>()),
   };
 });
 
@@ -178,5 +180,44 @@ describe("simulator — no leak", () => {
     await sim.createGame(me, "intraday", "medium", () => 0.3);
     expect(games.get(b.id)!.status).toBe("finished");
     expect(games.get(b.id)!.result!.trades).toBe(1);
+  });
+});
+
+describe("simulator — execution realism and risk sizing", () => {
+  it("new games freeze a spread / slippage model and 1R; market fills report the slip", async () => {
+    const g = await sim.createGame(me, "intraday", "medium", () => 0.3);
+    expect(g.slippage).not.toBeNull();
+    expect(g.slippage!.perShare).toBeGreaterThan(0);
+    expect(g.oneR).toBe(100);
+    expect(g.trainer).toBeNull();
+    const s = await sim.step(me, g.id, { order: { kind: "buy", qty: 10 }, advance: 0 });
+    const close = g.bars[g.cursor][4];
+    expect(s.state.fills[0].price).toBeCloseTo(close + g.slippage!.perShare, 4);
+    expect(s.state.fills[0].slip).toBeCloseTo(g.slippage!.perShare, 4);
+  });
+
+  it("sizeMode risk: qty = 1R / (expected fill − stop), needs a stop", async () => {
+    const g = await sim.createGame(me, "intraday", "medium", () => 0.3);
+    const close = g.bars[g.cursor][4];
+    const stop = Math.round((close - 0.5) * 100) / 100;
+    await expect(sim.step(me, g.id, { order: { kind: "buy", sizeMode: "risk" }, advance: 0 })).rejects.toMatchObject({ status: 400 });
+    const s = await sim.step(me, g.id, { order: { kind: "buy", sizeMode: "risk" }, bracket: { stop, target: null }, advance: 0 });
+    const fill = close + g.slippage!.perShare;
+    expect(s.state.pos).toBe(Math.floor(100 / (Math.round((fill - stop) * 1e6) / 1e6) + 1e-9));
+    expect(s.state.stop).toBe(stop);
+  });
+
+  it("games stored before the model (no params.exec / oneR) still fill at the close", async () => {
+    const g = await sim.createGame(me, "intraday", "medium", () => 0.3);
+    const row = games.get(g.id)!;
+    delete row.params.exec;
+    delete row.params.oneR;
+    sim._resetSimCache();
+    const snap = await sim.gameSnapshot(me, g.id);
+    expect(snap.slippage).toBeNull();
+    expect(snap.oneR).toBe(50); // trainer.oneRUsd default
+    const s = await sim.step(me, g.id, { order: { kind: "buy", qty: 10 }, advance: 0 });
+    expect(s.state.fills[0].price).toBe(g.bars[g.cursor][4]);
+    expect(s.state.fills[0].slip).toBeUndefined();
   });
 });

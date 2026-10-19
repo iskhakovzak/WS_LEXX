@@ -14,4 +14,14 @@ describe("decodeTagged", () => {
       { id: 9, ticker: "AAPL", date: "2026-10-02", result: "loss", rMultiple: null, pnl: null, fees: null, tags: null, setup: "ORB", horizon: null },
     ]);
   });
+
+  it("enc=2 (dates as indexes, ids as deltas) decodes to the same rows (DEV-10)", () => {
+    const plain = {
+      n: 3, dict: ["AAPL", "win"], id: [7, 9, 15], ticker: [0, 0, 0], date: ["2026-10-01", "2026-10-02", "2026-10-01"], result: [1, 1, 1],
+      r: [1, 2, 3], pnl: [1, 2, 3], fees: [0, 0, 0], tags: [-1, -1, -1], setup: [-1, -1, -1], horizon: [-1, -1, -1],
+    };
+    const { id: _i, date: _d, ...rest } = plain;
+    const compact = { ...rest, enc: 2 as const, idDelta: [7, 2, 6], dates: ["2026-10-01", "2026-10-02"], date: [0, 1, 0] };
+    expect(decodeTagged(compact)).toEqual(decodeTagged(plain));
+  });
 });

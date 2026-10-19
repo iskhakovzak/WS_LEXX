@@ -25,8 +25,10 @@ import { nyDate, nyMinutes, nySession, addDays, isWeekend } from "../lib/trading
 import { recentViolationWindow, violationDaySql } from "../lib/violationWindow";
 import { scopeTrader, viewerRole, isStaffRole } from "../lib/auth";
 import { unauthorized } from "../lib/http";
-import { violationMessage } from "../lib/rulesI18n";
 import { langOf } from "../i18n";
+import { YMD_RE, aggOut, freshFeedFrom, mondayOf, n, nullable, r2, streaksOf, tradingDate, violationLine } from "../lib/dashboardModel";
+
+export { freshFeedFrom, mondayOf, violationLine };
 import { calendarName } from "../lib/calendarText";
 
 const router: IRouter = Router();
@@ -40,7 +42,9 @@ const DECIDED = decidedSql();
 const CLOSED = closedSql();
 const RESULT = resultSql();
 const IS_OPEN = `LOWER(TRIM(COALESCE(t.result, ''))) = 'open'`;
-const NOT_REVIEWED = `COALESCE(TRIM(t.conclusion), '') = '' AND COALESCE(TRIM(t.what_worked), '') = '' AND COALESCE(TRIM(t.what_failed), '') = ''`;
+/** «Без разбора» = no takeaway text, no grade and no day-close trade review (DENIS-30: a graded trade is reviewed). */
+const NOT_REVIEWED = `COALESCE(TRIM(t.conclusion), '') = '' AND COALESCE(TRIM(t.what_worked), '') = '' AND COALESCE(TRIM(t.what_failed), '') = ''
+  AND NULLIF(TRIM(t.confidence_grade), '') IS NULL AND NOT EXISTS (SELECT 1 FROM eod_trade_reviews er WHERE er.trade_id = t.id)`;
 /** `$1` = trader filter (NULL ⇒ whole team). */
 const SCOPE = `($1::text IS NULL OR t.trader = $1)`;
 
@@ -58,65 +62,6 @@ const AGG = `
   COUNT(${R})::int AS r_count,
   COALESCE(SUM(${R}) FILTER (WHERE ${R} > 0), 0)::float AS r_pos,
   COALESCE(SUM(${R}) FILTER (WHERE ${R} < 0), 0)::float AS r_neg`;
-
-const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-const n = (v: unknown): number => {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
-};
-const r2 = (v: number): number => Math.round(v * 100) / 100;
-const nullable = (v: unknown): number | null => (v == null ? null : n(v));
-
-/** Monday of the NY trading week that contains `ymd` (Sat/Sun belong to the week just ended). */
-export function mondayOf(ymd: string): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sun
-  return addDays(ymd, -((wd + 6) % 7));
-}
-
-/**
- * Oldest date of the "fresh" market-context window: the last 3 trading days up to `today`
- * (weekends skipped; holidays aren't excluded here, so the window can only be slightly wider).
- */
-export function freshFeedFrom(today: string, tradingDays = 3): string {
-  let d = today;
-  let seen = isWeekend(d) ? 0 : 1;
-  while (seen < tradingDays) {
-    d = addDays(d, -1);
-    if (!isWeekend(d)) seen++;
-  }
-  return d;
-}
-
-/** Trading date requested by the client (only a valid YYYY-MM-DD is honoured), else today in New York. */
-function tradingDate(raw: unknown): string {
-  const s = typeof raw === "string" ? raw.trim() : "";
-  return YMD_RE.test(s) ? s : nyDate();
-}
-
-type Agg = Record<string, unknown>;
-function aggOut(a: Agg | undefined) {
-  const wins = n(a?.wins), losses = n(a?.losses), be = n(a?.be);
-  const decided = wins + losses;
-  const rCount = n(a?.r_count), rNeg = n(a?.r_neg), rPos = n(a?.r_pos);
-  const hasPnl = n(a?.pnl_count) > 0;
-  return {
-    trades: n(a?.trades),
-    closed: wins + losses + be,
-    wins, losses, be,
-    /** Net $ (gross − |fees|); null until broker/manual P&L exists. */
-    pnl: hasPnl ? r2(n(a?.pnl_net)) : null,
-    pnlNet: hasPnl ? r2(n(a?.pnl_net)) : null,
-    pnlGross: hasPnl ? r2(n(a?.pnl_gross)) : null,
-    fees: hasPnl ? r2(n(a?.fees)) : null,
-    pnlCount: n(a?.pnl_count),
-    r: r2(n(a?.r)),
-    rCount,
-    winRate: decided > 0 ? wins / decided : null,
-    expectancyR: rCount > 0 ? r2(n(a?.r) / rCount) : null,
-    profitFactorR: rNeg < 0 ? r2(rPos / Math.abs(rNeg)) : null,
-  };
-}
 
 /**
  * Resolve who the caller may look at.
@@ -137,23 +82,6 @@ async function resolveScope(req: Parameters<typeof scopeTrader>[0]): Promise<
   if (traderParam === undefined) return { ok: false };
   const scope = traderParam === null ? "team" : traderParam === me ? "me" : "trader";
   return { ok: true, traderParam, scope, me, staff };
-}
-
-// ─── Streak helpers (results most-recent-first) ───────────────────────────────
-function streaksOf(results: ("win" | "loss" | "be")[]) {
-  let current = { count: 0, type: "none" as "win" | "loss" | "none" };
-  for (const r of results) {
-    if (r !== "win" && r !== "loss") continue;
-    if (current.type === "none") current = { count: 1, type: r };
-    else if (r === current.type) current.count++;
-    else break;
-  }
-  let bestWin = 0, bestLoss = 0, runW = 0, runL = 0;
-  for (const r of [...results].reverse()) {
-    if (r === "win") { runW++; runL = 0; } else if (r === "loss") { runL++; runW = 0; } else continue;
-    bestWin = Math.max(bestWin, runW); bestLoss = Math.max(bestLoss, runL);
-  }
-  return { current, bestWin, bestLoss };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -301,7 +229,15 @@ router.get("/dashboard/toppatterns", asyncHandler(async (req, res): Promise<void
   if (cached) { res.json(cached); return; }
 
   const [patterns, agg] = await Promise.all([
-    pool.query(`SELECT id, pattern_name, repeat_count, confidence_level FROM research ORDER BY repeat_count DESC NULLS LAST`),
+    // MAKSIM-43: a trader (own scope) sees only the patterns linked to his trades, not the whole desk's research.
+    traderParam
+      ? pool.query(
+          `SELECT id, pattern_name, repeat_count, confidence_level FROM research
+            WHERE id IN (SELECT t.pattern_id FROM trades t WHERE t.deleted_at IS NULL AND t.trader = $1 AND t.pattern_id IS NOT NULL)
+            ORDER BY repeat_count DESC NULLS LAST`,
+          [traderParam],
+        )
+      : pool.query(`SELECT id, pattern_name, repeat_count, confidence_level FROM research ORDER BY repeat_count DESC NULLS LAST`),
     pool.query(
       `SELECT t.pattern_id, AVG(${NET})::float AS avg_net FROM trades t
        WHERE t.deleted_at IS NULL AND ${SCOPE} AND t.pattern_id IS NOT NULL AND ${CLOSED} GROUP BY t.pattern_id`,
@@ -339,8 +275,9 @@ router.get("/dashboard/recenttrades", asyncHandler(async (req, res): Promise<voi
             (CASE WHEN t.pnl IS NULL THEN NULL ELSE ${NET} END)::float AS "pnlNet",
             ${R}::float AS "rMultiple",
             (${NOT_REVIEWED}) AS "unreviewed",
+            pb.name AS "playbookSetup",
             t.created_at AS "createdAt"
-     FROM trades t
+     FROM trades t LEFT JOIN playbook pb ON pb.id = t.playbook_id AND pb.deleted_at IS NULL
      WHERE t.deleted_at IS NULL AND ${SCOPE}
      ORDER BY ${CLOSE} DESC, t.created_at DESC, t.id DESC
      LIMIT $2`,
@@ -367,6 +304,8 @@ router.get("/dashboard/recenttrades", asyncHandler(async (req, res): Promise<voi
       /** Signed R (shared rule), null for open trades. */
       rMultiple: nullable(r.rMultiple),
       unreviewed: !!r.unreviewed,
+      /** The office playbook setup the trade is linked to (null = «без сетапа»); `setup` stays the broker's strategy. */
+      playbookSetup: r.playbookSetup ?? null,
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
     })),
   );
@@ -416,9 +355,9 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
       [traderParam, reviewFrom],
     ),
     pool.query(
-      `SELECT v.id, v.trader, v.severity, v.message, v.details, v.trade_id AS "tradeId", r.name AS "ruleName", v.occurred_at AS "occurredAt",
-              COUNT(*) OVER()::int AS total
-       FROM rule_violations v LEFT JOIN trading_rules r ON r.id = v.rule_id
+      `SELECT v.id, v.trader, v.severity, v.message, v.details, v.trade_id AS "tradeId", r.name AS "ruleName", r.kind AS "ruleKind",
+              v.occurred_at AS "occurredAt", UPPER(NULLIF(TRIM(tv.ticker), '')) AS ticker, COUNT(*) OVER()::int AS total
+       FROM rule_violations v LEFT JOIN trading_rules r ON r.id = v.rule_id LEFT JOIN trades tv ON tv.id = v.trade_id
        WHERE ($1::text IS NULL OR v.trader = $1) AND v.archived_at IS NULL
          AND ${violationDaySql("v")} BETWEEN $2 AND $3
        ORDER BY ${violationDaySql("v")} DESC, v.occurred_at DESC LIMIT 5`,
@@ -433,8 +372,14 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
        WHERE i.deleted_at IS NULL AND i.status = 'published' AND COALESCE(i.trader, '') <> $1
          AND i.created_at >= NOW() - INTERVAL '7 days'
          AND NOT EXISTS (SELECT 1 FROM trade_idea_reactions r WHERE r.trade_idea_id = i.id AND r.trader = $1)
+         -- ROMAN-33: only ideas still in play (or sent for review) — not an intraday idea from last week whose stop hit.
+         AND (COALESCE(i.review_status, '') IN ('pending', 'on_review')
+              OR (NULLIF(i.valid_until, '') IS NOT NULL AND LEFT(i.valid_until, 10) >= $2)
+              OR (NULLIF(i.valid_until, '') IS NULL
+                  AND LEFT(COALESCE(NULLIF(i.idea_date, ''), TO_CHAR(i.created_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')), 10)
+                      >= CASE WHEN i.horizon = 'swing' THEN $4 ELSE $3 END))
        ORDER BY i.created_at DESC LIMIT 5`,
-      [me],
+      [me, today, recentViolationWindow(today).from, addDays(today, -7)],
     ).catch(quiet),
     pool.query(
       `SELECT ${RESULT} AS result FROM trades t WHERE t.deleted_at IS NULL AND ${SCOPE} AND ${CLOSED}
@@ -494,6 +439,18 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
     ).catch(() => null),
     pool.query(`SELECT DISTINCT UPPER(TRIM(w.ticker)) AS ticker FROM watchlist w WHERE w.deleted_at IS NULL AND w.in_play = TRUE LIMIT 40`).catch(() => null),
   ]);
+
+  const vw = recentViolationWindow(today);
+  const violationTickers = n(violations.rows[0]?.total) > 0
+    ? await pool.query(
+        `SELECT UPPER(TRIM(tv.ticker)) AS ticker, MAX(${violationDaySql("v")}) AS last
+           FROM rule_violations v JOIN trades tv ON tv.id = v.trade_id
+          WHERE ($1::text IS NULL OR v.trader = $1) AND v.archived_at IS NULL AND COALESCE(TRIM(tv.ticker), '') <> ''
+            AND ${violationDaySql("v")} BETWEEN $2 AND $3
+          GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 6`,
+        [traderParam, vw.from, vw.to],
+      ).catch(() => null)
+    : null;
 
   const todayOut = aggOut(todayAgg.rows[0]);
   const weekOut = aggOut(weekAgg.rows[0]);
@@ -573,7 +530,14 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
       checkin: { done: checkinDone },
       draftIdeas: { count: n(draftIdeas.rows[0]?.c) },
       ideasToReview: { count: first(ideasToReview, (x) => n(x.total)) ?? 0, items: ideasToReview.rows.map(({ total: _t, ...x }: any) => x) },
-      violations: { count: first(violations, (x) => n(x.total)) ?? 0, items: violations.rows.map(({ total: _t, details, ...x }: any) => ({ ...x, message: violationMessage(x.message, details, langOf(req)) })) },
+      // `window` = the trading days counted (OWNER-21: on a weekend «за пт, 16 окт», not «за сутки»); `tickers` = distinct
+      // tickers of the window's violations (a preview without repeats).
+      violations: {
+        count: first(violations, (x) => n(x.total)) ?? 0,
+        items: violations.rows.map(({ total: _t, details, ruleKind, ...x }: any) => ({ ...x, message: violationLine(x.message, details, ruleKind, langOf(req)) })),
+        window: recentViolationWindow(today),
+        tickers: violationTickers ? violationTickers.rows.map((x: any) => String(x.ticker)) : [],
+      },
       /** Staff only: closed trades with a trader conclusion and no curator review (14 days). */
       curatorQueue: staff ? { count: first(curatorQueue, (x) => n(x.total)) ?? 0, items: curatorQueue.rows.map(({ total: _t, ...x }: any) => x) } : null,
     },
@@ -647,17 +611,21 @@ router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => 
   let trades = 0, wins = 0, losses = 0, be = 0, rPos = 0, rNeg = 0, rCount = 0, net = 0, gross = 0, fees = 0, pnlCount = 0, greenDays = 0;
   let bestR: { date: string; r: number } | null = null, worstR: { date: string; r: number } | null = null;
   let bestNet: { date: string; pnl: number } | null = null, worstNet: { date: string; pnl: number } | null = null;
+  // ROMAN-23: sums run on the raw day values and are rounded once (rounding each day first drifted by cents from the
+  // week card and the feed).
   const days = rows.map((d: any) => {
     const a = aggOut(d);
+    const hasPnl = a.pnlNet != null;
     const dayNet = a.pnlNet;
-    cumNet += dayNet ?? 0;
-    cumGross += a.pnlGross ?? 0;
+    const rawNet = hasPnl ? n(d.pnl_net) : 0;
+    cumNet += rawNet;
+    cumGross += hasPnl ? n(d.pnl_gross) : 0;
     cumR += a.r;
     peakR = Math.max(peakR, cumR); maxDdR = Math.min(maxDdR, cumR - peakR);
     peakNet = Math.max(peakNet, cumNet); maxDdNet = Math.min(maxDdNet, cumNet - peakNet);
     trades += a.closed; wins += a.wins; losses += a.losses; be += a.be;
     rPos += n(d.r_pos); rNeg += n(d.r_neg); rCount += a.rCount;
-    if (dayNet != null) { net += dayNet; gross += a.pnlGross ?? 0; fees += a.fees ?? 0; pnlCount += a.pnlCount; }
+    if (hasPnl) { net += rawNet; gross += n(d.pnl_gross); fees += n(d.fees); pnlCount += a.pnlCount; }
     if ((dayNet ?? a.r) > 0) greenDays++;
     const date = String(d.day);
     if (!bestR || a.r > bestR.r) bestR = { date, r: a.r };

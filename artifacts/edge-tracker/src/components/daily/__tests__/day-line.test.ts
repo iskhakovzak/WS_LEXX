@@ -52,6 +52,24 @@ describe("premarket", () => {
     expect(html).not.toContain("день не разобран");
   });
 
+  it("no trades in the window: no praise — the focus comes after the first trades (UMID-11)", () => {
+    const html = render(me({ focus: { ...focusNone, text: { key: "focus.noTrades" } }, evening: null }));
+    expect(html).toContain("Фокус появится после первых сделок.");
+    expect(html).not.toContain("так держать");
+  });
+
+  it("the trader's own journal pick is the focus shown (DENIS-03)", () => {
+    const html = render(me({ focus: { ...focusNone, source: "own", ownText: "Максимум 2 попытки на тикер", text: { key: "focus.own" } }, evening: null }));
+    expect(html).toContain("Максимум 2 попытки на тикер");
+    expect(html).toContain("свой выбор");
+  });
+
+  it("weekend without a Friday card: the contract links to Monday's plan (UMID-06)", () => {
+    const html = render(me({ today: "2026-10-18", phase: "weekend", evening: null, focus: { ...focusNone, date: "2026-10-19" } }));
+    expect(html).toContain("/game-plan?view=my&date=2026-10-19");
+    expect(html).not.toContain("date=2026-10-18");
+  });
+
   it("source none is a short good-news line", () => {
     const html = render(me({ focus: focusNone, evening: null }));
     expect(html).toContain("Повторяющихся ошибок за 2 недели нет");
@@ -69,7 +87,7 @@ describe("after the close", () => {
     expect(html).toContain("AMD в тот день торговали ещё 6 трейдеров");
     expect(html).toContain("/desk-day?ticker=AMD&date=2026-10-16");
     expect(html).toContain("Сделки");
-    expect(html).toContain("12 из 10");
+    expect(html).toContain("12 / лимит 10");
     expect(html).toContain("Разобрал");
     expect(html).toContain("Это не ошибка");
     expect(html).toContain("/journal?date=2026-10-16");
@@ -99,7 +117,7 @@ describe("Uzbek (Latin)", () => {
     const morning = render(me());
     expect(morning).toContain("Kun fokusi");
     expect(morning).toContain("Pozitsiyaga qarshi oʻrtachalash");
-    expect(morning).toContain("Junior darajasigacha: 5 tadan 3");
+    expect(morning).toContain("Junior darajasigacha: 3/5 bajarildi");
     const evening = render(me({ phase: "afterclose" }));
     expect(evening).toContain("Tahlil qildim");
     expect(evening).toContain("Bu xato emas");

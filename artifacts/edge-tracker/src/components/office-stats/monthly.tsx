@@ -8,9 +8,9 @@ import { CalendarRange, Download } from "lucide-react";
 import { DataTable, EmptyState, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { fmtShare, fmtV, monthLong } from "./api";
+import { fmtDay, fmtShare, fmtV, monthLong, type YearView } from "./api";
 import { downloadCsv } from "./csv";
-import type { Ctx } from "./overview";
+import { sameDayValue, type Ctx } from "./overview";
 import { fmtCount, fmtMonth } from "@/lib/format";
 import { officeI18n } from "@/i18n/ns/officeStats";
 
@@ -35,11 +35,27 @@ export const TFOOT = "[&_tfoot_td]:sticky [&_tfoot_td]:bottom-0 [&_tfoot_td]:z-s
 
 const tone = (v: number | null | undefined) => (v == null || Math.abs(v) < 1e-12 ? "" : v > 0 ? "text-up" : "text-down");
 
+/**
+ * An earlier year's result in `month` up to day `dayCap` of that month (null when it had no trading day there) — the
+ * running month is compared with the same days a year ago, like the KPI «к этому дню» (OWNER-13).
+ */
+export function monthToDay(y: YearView | undefined, month: number, dayCap: number): number | null {
+  if (!y) return null;
+  let v = 0, any = false;
+  for (const d of y.days) {
+    if (Number(d.date.slice(5, 7)) !== month || Number(d.date.slice(8, 10)) > dayCap) continue;
+    v += d.v; any = true;
+  }
+  return any ? v : null;
+}
+
 export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: string; onPickMonth: (m: number) => void }) {
   const { focus, view, unit } = ctx;
   const { t } = officeI18n.useT();
   const prevY = view.years.find((y) => y.year === focus.year - 1 && y.hasData);
   const curMonth = Number(today.slice(0, 4)) === focus.year ? Number(today.slice(5, 7)) : 13;
+  // One basis for every comparison with last year: «к этому дню» = up to the focus year's last trading day.
+  const lastDay = focus.days[focus.days.length - 1];
 
   const rows = React.useMemo<Row[]>(() => {
     const last = focus.months.reduce((a, m) => (m.days ? m.month : a), 0);
@@ -51,7 +67,7 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
       cum += m.v ?? 0;
       const running = m.month === curMonth;
       const py = prevY?.months.find((x) => x.month === m.month);
-      const pyV = py && py.days ? py.v ?? 0 : null;
+      const pyV = running && lastDay ? monthToDay(prevY, m.month, Number(lastDay.date.slice(8, 10))) : py && py.days ? py.v ?? 0 : null;
       // Plan = straight line to the yearly goal; the running month is compared with the plan for today.
       const plan = focus.goal == null ? null : running && focus.pace ? focus.pace.expected : (focus.goal * m.month) / 12;
       out.push({
@@ -63,7 +79,7 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
       if (m.days) prevV = m.v ?? 0;
     }
     return out;
-  }, [focus, prevY, curMonth]);
+  }, [focus, prevY, curMonth, lastDay]);
 
   const max = Math.max(1e-9, ...rows.map((r) => Math.abs(r.v ?? 0)));
   const hasPlan = focus.goal != null;
@@ -71,7 +87,8 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
   const totalGreen = rows.reduce((a, r) => a + r.green, 0);
   const totalTrades = rows.reduce((a, r) => a + r.trades, 0);
   const lastRow = rows[rows.length - 1];
-  const prevTotal = prevY ? rows.reduce((a, r) => a + (r.prevYear ?? 0), 0) : null;
+  const prevTotal = prevY && lastDay ? sameDayValue(prevY, lastDay.doy) : null;
+  const sameDayTip = prevY && lastDay ? t("monthly.totalVsTip", { year: prevY.year, date: fmtDay(lastDay.date) }) : undefined;
 
   const exportCsv = () => {
     const u = unit === "usd" ? "$" : "%";
@@ -156,8 +173,8 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
                 <td>{t("monthly.total", { year: focus.year })}</td>
                 <td className={cn("text-right", tone(focus.totals.net))}>{fmtV(focus.totals.net, unit)}</td>
                 <td className="text-right text-muted-foreground">—</td>
-                {prevY && <td className="text-right text-muted-foreground">{fmtV(prevTotal, unit)}</td>}
-                {prevY && <td className={cn("text-right", tone(prevTotal == null ? null : focus.totals.net - prevTotal))}>{prevTotal == null ? "—" : fmtV(focus.totals.net - prevTotal, unit)}</td>}
+                {prevY && <td className="text-right text-muted-foreground" title={sameDayTip}>{fmtV(prevTotal, unit)}</td>}
+                {prevY && <td title={sameDayTip} className={cn("text-right", tone(prevTotal == null ? null : focus.totals.net - prevTotal))}>{prevTotal == null ? "—" : fmtV(focus.totals.net - prevTotal, unit)}</td>}
                 <td className={cn("text-right", tone(lastRow?.cum))}>{fmtV(lastRow?.cum, unit)}</td>
                 {hasPlan && <td className="whitespace-nowrap text-right text-muted-foreground" title={t("monthly.goalTip")}>{t("monthly.goal", { value: fmtV(focus.goal, unit) })}</td>}
                 {hasPlan && <td className={cn("text-right", (lastRow?.vsPlan ?? 0) >= 0 ? "text-up" : "text-warn")}>{fmtV(lastRow?.vsPlan, unit)}</td>}

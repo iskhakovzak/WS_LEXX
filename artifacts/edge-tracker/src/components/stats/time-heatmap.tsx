@@ -4,7 +4,8 @@ import { Clock } from "lucide-react";
 import { EmptyState, Panel } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import {
-  dayKey, fmtMetricCompact, fmtValue, heatBg, isClosed, isLoss, isWin, sessionKey, sessionLabel, valueOf, weekdayIdx, weekdayLabel, type Metric,
+  HOUR_ORDER, REGULAR_COLS, dayKey, fmtMetricCompact, fmtValue, heatBg, hourKey, hourLabel, isClosed, isLoss, isWin, valueOf,
+  weekdayIdx, weekdayLabel, type Metric,
 } from "./metrics";
 import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -25,23 +26,16 @@ const add = (c: Cell, t: Trade, metric: Metric) => {
   }
 };
 
-const SESSION_ORDER = ["premarket", "regular", "afterhours"];
-
 /**
- * Weekday × session heatmap. Trades carry a date and a session (premarket / regular / after-hours) but no
- * exact time, so session is the honest intraday axis. Colour = sum of the metric; text also shows WR and count.
+ * Weekday × entry hour heatmap (MAKSIM-14): the exact entry time (ET, PropReports `openedAt` or a timed `date`)
+ * places each trade; trades without a time go to the «без времени» column. Colour = sum of the metric; text also
+ * shows WR and count.
  */
 export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metric }) {
   const { t } = statsI18n.useT();
-  const { cols, rows, colTotals, max } = useMemo(() => {
-    const keys = new Set<string>(SESSION_ORDER);
-    trades.forEach((t) => keys.add(sessionKey(t)));
-    const used = [...keys].filter((k) => SESSION_ORDER.includes(k) || trades.some((t) => sessionKey(t) === k));
-    used.sort((a, b) => {
-      const ia = SESSION_ORDER.indexOf(a);
-      const ib = SESSION_ORDER.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
-    });
+  const { cols, rows, colTotals, max, noTime } = useMemo(() => {
+    const present = new Set(trades.map(hourKey));
+    const used = HOUR_ORDER.filter((k) => (REGULAR_COLS as readonly string[]).includes(k) || present.has(k));
     const hasWeekend = trades.some((t) => weekdayIdx(dayKey(t)) >= 5);
     const dayIdx = hasWeekend ? [0, 1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4];
     const grid = new Map<string, Cell>();
@@ -51,7 +45,7 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
       const k = dayKey(t);
       if (!k) continue;
       const d = weekdayIdx(k);
-      const s = sessionKey(t);
+      const s = hourKey(t);
       const id = `${d}|${s}`;
       if (!grid.has(id)) grid.set(id, empty());
       if (!rowT.has(d)) rowT.set(d, empty());
@@ -66,6 +60,7 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
       rows: dayIdx.map((d) => ({ d, cells: used.map((s) => grid.get(`${d}|${s}`) ?? empty()), total: rowT.get(d) ?? empty() })),
       colTotals: used.map((s) => colT.get(s) ?? empty()),
       max: m,
+      noTime: colT.get("none")?.n ?? 0,
     };
   }, [trades, metric]);
 
@@ -82,11 +77,11 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
         <EmptyState title={t("heatmap.empty")} />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[300px] border-separate border-spacing-1 text-xs">
+          <table className="w-full min-w-[440px] border-separate border-spacing-1 text-xs">
             <thead>
               <tr>
                 <th className="w-8 text-left font-normal text-muted-foreground"><span className="sr-only">{t("heatmap.day")}</span></th>
-                {cols.map((s) => <th key={s} scope="col" className="px-1 pb-1 text-center font-medium text-muted-foreground">{sessionLabel(s)}</th>)}
+                {cols.map((s) => <th key={s} scope="col" className="whitespace-nowrap px-1 pb-1 text-center font-medium text-muted-foreground">{hourLabel(s)}</th>)}
                 <th scope="col" className="px-1 pb-1 text-center font-medium text-muted-foreground">{t("heatmap.total")}</th>
               </tr>
             </thead>
@@ -95,7 +90,7 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
                 <tr key={r.d}>
                   <th scope="row" className="pr-1 text-left font-medium text-muted-foreground">{weekdayLabel(r.d)}</th>
                   {r.cells.map((c, i) => {
-                    const label = `${weekdayLabel(r.d)}, ${sessionLabel(cols[i])}: ${sd(c.n)}${c.wins + c.losses ? `, WR ${fmtRate(c.wins / (c.wins + c.losses))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
+                    const label = `${weekdayLabel(r.d)}, ${hourLabel(cols[i])}: ${sd(c.n)}${c.wins + c.losses ? `, WR ${fmtRate(c.wins / (c.wins + c.losses))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
                     return (
                       <td
                         key={cols[i]}
@@ -144,6 +139,7 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
           </table>
           <p className="mt-2 text-xs text-muted-foreground">
             {t("heatmap.footnote", { unit: metric === "r" ? "R" : "P&L" })}
+            {noTime > 0 && ` ${t("heatmap.noTimeNote", { trades: commonI18n.t("units.trades", { count: noTime }) })}`}
 
           </p>
         </div>

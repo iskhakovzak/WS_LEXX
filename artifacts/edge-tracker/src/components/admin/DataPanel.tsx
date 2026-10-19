@@ -22,6 +22,7 @@ import { adminI18n } from "@/i18n/ns/admin";
 import { actorName } from "./audit-text";
 import { personName } from "@/i18n";
 import { JobsPanel } from "./JobsPanel";
+import { useAuth } from "@/contexts/auth-context";
 
 /** Export table keys (sent to the server as is; labels: adminI18n `data.exportTables.*`). */
 const EXPORT_TABLES = [
@@ -36,6 +37,10 @@ const EXPORT_TABLES = [
  */
 export function DataPanel({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
   const { t } = adminI18n.useT();
+  const { can } = useAuth();
+  // OLGA-02: the full export / backups need admin.backups.read, the jobs list needs admin.audit (both sensitive).
+  const canExport = can("admin.backups.read");
+  const canAudit = can("admin.audit");
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
@@ -43,11 +48,13 @@ export function DataPanel({ actor, isAdmin }: { actor: string; isAdmin: boolean 
         <ImportHistoryCard />
       </div>
       <DataQualityCard />
-      <JobsPanel isAdmin={isAdmin} />
-      <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
-        <ExportCard actor={actor} />
-        <BackupsCard actor={actor} isAdmin={isAdmin} />
-      </div>
+      {canAudit && <JobsPanel isAdmin={isAdmin} />}
+      {canExport && (
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
+          <ExportCard actor={actor} />
+          <BackupsCard actor={actor} isAdmin={isAdmin} />
+        </div>
+      )}
       <Panel title={t("data.tools.title")} icon={Settings2}>
         <ul className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
           {[

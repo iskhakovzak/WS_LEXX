@@ -64,12 +64,15 @@ export function MarkChecklist({
   items: itemsInput,
   text,
   showHints = true,
+  canMarkShared = false,
 }: {
   playbookId: number;
   items?: ChecklistItem[] | null;
   text?: string | null;
   /** Show keyboard hint line under the list (desktop only). */
   showHints?: boolean;
+  /** May tick the shared (everyone's) marks: setup editors and curators (the API refuses others, DEV-04). */
+  canMarkShared?: boolean;
 }) {
   const { t } = playbookToolsI18n.useT();
   const qc = useQueryClient();
@@ -118,6 +121,8 @@ export function MarkChecklist({
   const nextIdx = items.findIndex((it) => !marks?.shared?.[it.id]);
 
   function toggle(it: ChecklistItem, scope: "shared" | "personal") {
+    if (scope === "shared" && !canMarkShared) return;
+    if (scope === "personal" && !trader) return;
     const on = !!marks?.[scope]?.[it.id];
     mutate.mutate({ itemId: it.id, scope, done: !on });
   }
@@ -202,21 +207,29 @@ export function MarkChecklist({
                 isNext && "bg-primary/5",
               )}
             >
-              <button
-                ref={(el) => { rowRefs.current[idx] = el; }}
-                type="button"
-                role="checkbox"
-                aria-checked={sharedOn}
-                aria-label={t("marks.sharedAria", { text: it.text })}
-                title={t("marks.sharedTitle")}
-                onClick={() => toggle(it, "shared")}
-                onKeyDown={(e) => onRowKey(e, idx)}
-                className="group/cb grid h-8 w-8 shrink-0 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Box on={sharedOn} tone="up" />
-              </button>
+              {canMarkShared ? (
+                <button
+                  ref={(el) => { rowRefs.current[idx] = el; }}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={sharedOn}
+                  aria-label={t("marks.sharedAria", { text: it.text })}
+                  title={t("marks.sharedTitle")}
+                  onClick={() => toggle(it, "shared")}
+                  onKeyDown={(e) => onRowKey(e, idx)}
+                  className="group/cb grid h-8 w-8 shrink-0 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Box on={sharedOn} tone="up" />
+                </button>
+              ) : (
+                <span role="img" aria-label={t("marks.sharedAria", { text: it.text })} title={t("marks.sharedTitle")} className="grid h-8 w-8 shrink-0 place-items-center opacity-70">
+                  <Box on={sharedOn} tone="up" />
+                </span>
+              )}
               {trader && (
                 <button
+                  ref={canMarkShared ? undefined : (el) => { rowRefs.current[idx] = el; }}
+                  onKeyDown={canMarkShared ? undefined : (e) => onRowKey(e, idx)}
                   type="button"
                   role="checkbox"
                   aria-checked={personalOn}
@@ -229,9 +242,10 @@ export function MarkChecklist({
                 </button>
               )}
               <span
-                onClick={() => toggle(it, "shared")}
+                onClick={() => toggle(it, canMarkShared ? "shared" : "personal")}
                 className={cn(
-                  "flex-1 cursor-pointer select-none py-1.5 text-sm leading-snug transition-colors",
+                  "flex-1 select-none py-1.5 text-sm leading-snug transition-colors",
+                  (canMarkShared || trader) && "cursor-pointer",
                   sharedOn ? "text-muted-foreground line-through decoration-up/50" : "text-foreground",
                 )}
               >

@@ -1,6 +1,6 @@
 
 import { Link } from "wouter";
-import { AlertTriangle, CandlestickChart, CheckCircle2, Eye, EyeOff, RotateCcw, Trophy, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, CandlestickChart, CheckCircle2, Eye, EyeOff, Layers, RotateCcw, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable, EmptyState, Kbd, Pill, Sparkline, toneOf, toneText } from "@/components/ds";
 import { fmtCount, fmtDate, fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
@@ -9,6 +9,10 @@ import { simI18n } from "@/i18n/ns/simulator";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
 import type { DeskTrader, Mistake, Reveal, SimTrade } from "./api";
 import type { GameView } from "./use-sim-game";
+import { trainerI18n } from "@/i18n/ns/trainer";
+import { useSeriesCtx } from "./series-context";
+import { gameSeriesOf, nextAction } from "./series-model";
+import { NoTradeVerdictCard, SeriesProgress } from "./series-summary";
 
 import { personName } from "@/i18n";
 function dayText(r: Reveal): string {
@@ -28,21 +32,35 @@ export function mistakeText(m: Mistake): string {
   }
 }
 
-export function ResultSummary({ game, onAgain, onStart, starting }: { game: GameView; onAgain: () => void; onStart: () => void; starting: boolean }) {
+const enterKbd = <Kbd className="border-white/30 bg-white/10 text-white/90 [@media(pointer:coarse)]:hidden">Enter</Kbd>;
+
+/**
+ * `noAgain`: one attempt only («Задача дня») — the main button goes back to the trainer instead, or (inside the
+ * trainer) on to «Дальше: серия из 10». A series game: the progress, a «не торгую» verdict instead of the money, and
+ * «Следующий» / «Итоги серии» as the main button (Enter; the page's `onAgain` knows the series).
+ */
+export function ResultSummary({ game, onAgain, onStart, starting, noAgain = false }: { game: GameView; onAgain: () => void; onStart: () => void; starting: boolean; noAgain?: boolean }) {
   const { t } = simI18n.useT();
+  const { t: tt } = trainerI18n.useT();
+  const sc = useSeriesCtx();
   const r = game.reveal;
   if (!r) return null;
   const res = r.result;
   const beat = res.beatBh;
+  const verdict = sc?.verdictOf(game.meta.id) ?? null;
+  const act = nextAction(sc?.series, game.meta.id, gameSeriesOf(game.meta)?.id);
+  const series = act ? sc?.series ?? null : null;
   return (
     <div className="flex flex-col gap-3">
+      {series && <SeriesProgress series={series} gameId={game.meta.id} />}
       <div className="tile rounded-xl p-3">
         <p className="text-2xs uppercase tracking-wide text-muted-foreground">{t("result.title")}</p>
         <p className="mt-0.5 text-xl font-semibold tracking-tight">{t("result.revealed", { ticker: r.ticker })}</p>
         {r.longName && <p className="truncate text-xs text-muted-foreground" title={r.longName}>{r.longName}</p>}
         <p className="mt-1 text-xs text-muted-foreground">{dayText(r)}</p>
       </div>
-      <div className="tile rounded-xl p-3">
+      {verdict && <NoTradeVerdictCard verdict={verdict} />}
+      {!verdict && <div className="tile rounded-xl p-3">
         <p className="text-2xs text-muted-foreground">{t("result.net")}</p>
         <p className={cn("text-3xl font-semibold tabular-nums leading-tight", toneText(toneOf(res.net)))}>{fmtUsd(res.net, { signed: true })}</p>
         <p className="text-xs text-muted-foreground">{t("result.pctOfBase", { value: fmtPct(res.pct) })}</p>
@@ -62,17 +80,30 @@ export function ResultSummary({ game, onAgain, onStart, starting }: { game: Game
             <Sparkline data={res.equity} width={280} height={36} tone="auto" baseline={0} className="w-full" ariaLabel={t("result.equity")} />
           </div>
         )}
-      </div>
-      <Button size="lg" className="min-h-11" onClick={onAgain} disabled={starting}>
-        <RotateCcw aria-hidden="true" /> {t("result.again")} <Kbd className="border-white/30 bg-white/10 text-white/90">Enter</Kbd>
-      </Button>
+      </div>}
+      {act ? (
+        <Button size="lg" className="min-h-12" onClick={onAgain} disabled={starting}>
+          {act === "next" ? <ArrowRight aria-hidden="true" /> : <Trophy aria-hidden="true" />}
+          {act === "next" ? tt("series.next") : series?.finished ? tt("series.backToSummary") : tt("series.toSummary")} {enterKbd}
+        </Button>
+      ) : noAgain && sc ? (
+        <Button size="lg" className="min-h-12" onClick={sc.startSeries} disabled={starting || sc.starting}>
+          <Layers aria-hidden="true" /> {tt("series.after")} {enterKbd}
+        </Button>
+      ) : noAgain ? (
+        <Button size="lg" className="min-h-11" onClick={onStart}>{t("result.toStart")}</Button>
+      ) : (
+        <Button size="lg" className="min-h-11" onClick={onAgain} disabled={starting}>
+          <RotateCcw aria-hidden="true" /> {t("result.again")} {enterKbd}
+        </Button>
+      )}
       <div className="flex flex-wrap gap-2">
         {game.meta.mode === "intraday" && (
           <Button asChild variant="outline" size="sm">
             <Link href={`/chart-lab?ticker=${encodeURIComponent(r.ticker)}&date=${r.day}`}><CandlestickChart aria-hidden="true" /> {t("result.replay")}</Link>
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onStart}>{t("result.toStart")}</Button>
+        {(!noAgain || sc) && <Button variant="ghost" size="sm" onClick={onStart}>{t("result.toStart")}</Button>}
       </div>
     </div>
   );
@@ -132,6 +163,11 @@ export function ResultDetails({ game, hiddenDesk, toggleDesk }: { game: GameView
               </tbody>
             </table>
           </DataTable>
+        )}
+        {trades.length > 0 && game.state.fills.some((f) => f.slip != null) && (
+          <p className="mt-2 text-2xs text-muted-foreground">
+            {t("result.slippage", { value: fmtUsd(-game.state.fills.reduce((sum, f) => sum + Math.abs(f.qty) * (f.slip ?? 0), 0)) })}
+          </p>
         )}
         <h3 className="mb-2 mt-4 text-sm font-semibold">{t("result.mistakesTitle")}</h3>
         {res.mistakes.length === 0 ? (

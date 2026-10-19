@@ -74,7 +74,7 @@ export default {
   },
   kpi: {
     netYear: "Нетто {year}",
-    vsYear: "{value} к {year}",
+    vsYear: "{value} к {year} на эту дату",
     tradesDays: "{trades} · {days}",
     goalAria: "Выполнение годовой цели",
     goalOf: "Цель {year}: +{pct}%",
@@ -156,6 +156,9 @@ export default {
   strategies: {
     totalTitle: "Итог по стратегиям",
     totalDesc: "вклад каждой стратегии в результат года · убыток — в скобках",
+    fullYear: "весь год",
+    toDate: "по {date}",
+    avgRBase: "Средний R по {n} из {total} сделок — R есть только там, где известен стоп; итог в $ — по всем сделкам",
     noTradesYears: "Нет сделок за выбранные годы",
     multiplesTitle: "Результат по стратегиям",
     multiplesDesc: "нарастающим итогом по дням года · {years} · полоска — доля объёма",
@@ -326,7 +329,8 @@ export default {
     deltaPrevUnit: "Δ к пред. месяцу {unit}",
     sameMonth: "Тот же месяц {year}",
     deltaYear: "Δ к {year}",
-    deltaYearTip: "Результат месяца минус тот же месяц {year}",
+    deltaYearTip: "Результат месяца минус тот же месяц {year}; текущий месяц — до того же числа",
+    totalVsTip: "{year} к тому же дню ({date}) — как в «к {year} на эту дату» вверху",
     deltaYearUnit: "Δ к {year} {unit}",
     yearUnit: "{year} {unit}",
     ytd: "С начала года",

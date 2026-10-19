@@ -13,7 +13,7 @@
  *
  * Maths and the strategy classifier live in lib/officeStats.ts (pure, unit-tested). Trades: closed, not deleted,
  * with a trader; day = close date (exit_date ?? date); net = pnl − |fees|. The office_capital table is created
- * lazily here (additive, idempotent) — no migration needed. Loaded trades are cached for CACHE_TTL_MS.
+ * lazily here (additive, idempotent) — no migration needed. Loaded trades are cached per close year (see loadTrades).
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
@@ -91,12 +91,23 @@ async function viewerOf(req: Request, res: Response): Promise<Actor | null> {
 
 // ─── trades (cached) ────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 60_000;
-const cache = new Map<string, { at: number; trades: OfficeTrade[] }>();
+/*
+ * Desk-wide trades are cached per close year — the page asks for 2025+2026, then 2024+2025+2026, then one year, and
+ * every combination used to reload (1.5–1.8 s cold, DEV-10). Past years barely change, the current one changes on a
+ * sync: fresh for YEAR_TTL_MS (current) / PAST_YEAR_TTL_MS (earlier), then served stale while ONE background reload
+ * runs, up to STALE_MAX_MS; after that the request waits for the reload. The trade rows carry no viewer data (the $ /
+ * member stripping happens per request below), so one entry serves partners and members alike.
+ */
+const YEAR_TTL_MS = 120_000;
+const PAST_YEAR_TTL_MS = 10 * 60_000;
+const STALE_MAX_MS = 30 * 60_000;
+type YearEntry = { at: number; promise: Promise<OfficeTrade[]>; refreshing?: boolean };
+const yearCache = new Map<number, YearEntry>();
 
 /** Drop cached trades (e.g. after a sync); the next request reloads. */
 export function invalidateOfficeStatsCache(): void {
-  cache.clear();
+  yearCache.clear();
+  dataYearsCache = null;
 }
 
 type TradeRow = {
@@ -105,10 +116,34 @@ type TradeRow = {
   first_entry: Date | null; last_exit: Date | null; fill_qty: number | null;
 };
 
-async function loadTrades(years: number[]): Promise<OfficeTrade[]> {
-  const key = years.join(",");
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.trades;
+/** Cached trades of `years` (each year from its own entry), in close-date order. */
+async function loadTrades(years: number[], now = Date.now()): Promise<OfficeTrade[]> {
+  const thisYear = Number(nyDate().slice(0, 4));
+  const missing: number[] = [];
+  for (const y of years) {
+    const e = yearCache.get(y);
+    const ttl = y >= thisYear ? YEAR_TTL_MS : PAST_YEAR_TTL_MS;
+    if (!e || now - e.at >= STALE_MAX_MS) { missing.push(y); continue; }
+    if (now - e.at >= ttl && !e.refreshing) {
+      e.refreshing = true;
+      const fresh = queryTrades([y]);
+      fresh.then(() => { yearCache.set(y, { at: Date.now(), promise: fresh.then((m) => m.get(y) ?? []) }); })
+        .catch(() => { e.refreshing = false; });
+    }
+  }
+  if (missing.length) {
+    const all = queryTrades(missing);
+    for (const y of missing) yearCache.set(y, { at: now, promise: all.then((m) => m.get(y) ?? []) });
+    all.catch(() => { for (const y of missing) yearCache.delete(y); });
+  }
+  const parts = await Promise.all(years.map((y) => yearCache.get(y)!.promise));
+  const out = parts.flat();
+  out.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.id - b.id));
+  return out;
+}
+
+/** One SQL for every year asked (a hash aggregate of executions — cheaper than a per-trade probe desk-wide). */
+async function queryTrades(years: number[]): Promise<Map<number, OfficeTrade[]>> {
   const CLOSE = closeDateSql();
   const { rows } = await pool.query<TradeRow>(
     `SELECT t.id, t.trader, t.ticker, LEFT(${CLOSE}, 10) AS day, t.date, t.exit_date, t.session, ${horizonSql()} AS horizon,
@@ -116,41 +151,60 @@ async function loadTrades(years: number[]): Promise<OfficeTrade[]> {
             ${signedRSql()}::float AS r, ABS(t.qty)::float AS qty,
             x.first_entry, x.last_exit, x.fill_qty::float AS fill_qty
        FROM trades t
-       LEFT JOIN LATERAL (
-         SELECT MIN(e.executed_at) FILTER (WHERE e.kind IN ('entry','add')) AS first_entry,
+       LEFT JOIN (
+         SELECT e.trade_id,
+                MIN(e.executed_at) FILTER (WHERE e.kind IN ('entry','add')) AS first_entry,
                 MAX(e.executed_at) FILTER (WHERE e.kind IN ('exit','trim','stop')) AS last_exit,
                 SUM(ABS(e.qty)) AS fill_qty
-           FROM trade_executions e WHERE e.trade_id = t.id
-       ) x ON TRUE
+           FROM trade_executions e GROUP BY e.trade_id
+       ) x ON x.trade_id = t.id
       WHERE t.trader IS NOT NULL AND TRIM(t.trader) <> '' AND t.deleted_at IS NULL AND ${closedSql()}
         AND LEFT(${CLOSE}, 4) = ANY($1::text[])
       ORDER BY LEFT(${CLOSE}, 10), t.id`,
     [years.map(String)],
   );
-  const trades = rows.map((r): OfficeTrade => {
-    const res = r.result === "win" || r.result === "loss" || r.result === "be" ? (r.result as Result) : null;
-    const en = nyParts(r.first_entry);
-    return {
-      id: r.id,
-      trader: r.trader.trim(),
-      ticker: (r.ticker ?? "").trim() || "—",
-      day: r.day,
-      net: r.net,
-      result: res,
-      r: r.r,
-      // Shares traded = every fill; a trade without fills counts its size in and out.
-      volume: r.fill_qty != null && r.fill_qty > 0 ? r.fill_qty : (r.qty ?? 0) * 2,
-      strategy: classifyStrategy({
-        ticker: r.ticker, session: r.session, date: r.date, exitDate: r.exit_date, horizon: r.horizon,
-        entryAt: r.first_entry, exitAt: r.last_exit,
-      }),
-      entrySec: en ? en.sec : null,
-      session: r.session,
-    };
-  });
-  cache.set(key, { at: Date.now(), trades });
-  if (cache.size > 16) cache.delete(cache.keys().next().value!);
-  return trades;
+  const byYear = new Map<number, OfficeTrade[]>(years.map((y) => [y, []]));
+  for (const t of rows.map(toOfficeTrade)) byYear.get(Number(t.day.slice(0, 4)))?.push(t);
+  return byYear;
+}
+
+/** Years (close date) with at least one closed desk trade — the page offers only those (empty 2023/2024 chips). */
+let dataYearsCache: { at: number; promise: Promise<number[]> } | null = null;
+async function loadDataYears(now = Date.now()): Promise<number[]> {
+  if (!dataYearsCache || now - dataYearsCache.at >= PAST_YEAR_TTL_MS) {
+    const CLOSE = closeDateSql();
+    const promise = pool
+      .query<{ y: string }>(
+        `SELECT DISTINCT LEFT(${CLOSE}, 4) AS y FROM trades t
+          WHERE t.trader IS NOT NULL AND TRIM(t.trader) <> '' AND t.deleted_at IS NULL AND ${closedSql()} ORDER BY 1`,
+      )
+      .then((r) => r.rows.map((x) => Number(x.y)).filter((y) => Number.isInteger(y) && y >= 2000));
+    dataYearsCache = { at: now, promise };
+    promise.catch(() => { dataYearsCache = null; });
+  }
+  return dataYearsCache.promise;
+}
+
+function toOfficeTrade(r: TradeRow): OfficeTrade {
+  const res = r.result === "win" || r.result === "loss" || r.result === "be" ? (r.result as Result) : null;
+  const en = nyParts(r.first_entry);
+  return {
+    id: r.id,
+    trader: r.trader.trim(),
+    ticker: (r.ticker ?? "").trim() || "—",
+    day: r.day,
+    net: r.net,
+    result: res,
+    r: r.r,
+    // Shares traded = every fill; a trade without fills counts its size in and out.
+    volume: r.fill_qty != null && r.fill_qty > 0 ? r.fill_qty : (r.qty ?? 0) * 2,
+    strategy: classifyStrategy({
+      ticker: r.ticker, session: r.session, date: r.date, exitDate: r.exit_date, horizon: r.horizon,
+      entryAt: r.first_entry, exitAt: r.last_exit,
+    }),
+    entrySec: en ? en.sec : null,
+    session: r.session,
+  };
 }
 
 const hhmm = (sec: number) => `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}${sec % 60 ? `:${String(sec % 60).padStart(2, "0")}` : ""}`;
@@ -180,9 +234,9 @@ router.get("/office-stats", asyncHandler(async (req, res) => {
   const years = parseYears(req.query.years, today);
   const { from, to } = parsePeriod(req.query.from, req.query.to, years, today);
   const loadYears = [...new Set([...years, Number(from.slice(0, 4)), Number(to.slice(0, 4)), Number(shiftYear(from, -1).slice(0, 4)), Number(shiftYear(to, -1).slice(0, 4))])].sort();
-  const [settings, trades] = await Promise.all([loadSettings(), loadTrades(loadYears)]);
+  const [settings, trades, dataYears] = await Promise.all([loadSettings(), loadTrades(loadYears), loadDataYears()]);
   const isAdmin = actor.role === "admin";
-  const base = { years, period: { from, to }, today, rules: rulesPayload(langOf(req)) };
+  const base = { years, period: { from, to }, today, dataYears, rules: rulesPayload(langOf(req)) };
   const viewOpts = { years, settings, from, to, today, lang: langOf(req) };
 
   res.setHeader("Cache-Control", "private, no-store");

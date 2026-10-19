@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { pool } from "@workspace/db";
+import { forgetQuests } from "../lib/quests/cache";
 import { asyncHandler } from "../lib/asyncHandler";
 import { z } from "zod";
 import { hashPassword, verifyPassword, bumpTokenVersion, requireMember, isGuestUser, signToken } from "../lib/auth";
@@ -13,6 +14,7 @@ import { ensureLocaleColumn, langOf, parseLang, rememberLocale } from "../i18n";
 import { cleanNameLatin, ensureNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
 import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
+import { clearFeedStreamCache } from "../lib/feedStream";
 
 const router: IRouter = Router();
 
@@ -67,8 +69,19 @@ function stripModeration(rows: any[]): any[] {
   return rows.map(({ bannedAt: _ba, bannedReason: _br, ...rest }) => rest);
 }
 
+/**
+ * The member view of the roster (DEV-14): other people get directory fields only — id, name, Latin alias, role,
+ * active — and frozen (banned) people are left out; the caller's own row stays full (theme, createdAt for the
+ * profile). Staff (users.read.team) get every column.
+ */
+export function memberDirectory(rows: any[], me: string | null | undefined): any[] {
+  return stripModeration(rows)
+    .filter((r) => r.name === me || !r.banned)
+    .map((r) => (r.name === me ? r : { id: r.id, name: r.name, nameLatin: r.nameLatin ?? null, role: r.role, active: r.active }));
+}
+
 // Signed-in only (owner decision 2026-10-17: no roster before sign-in — the login screen asks for a typed name).
-// Moderation fields stay staff-only.
+// Moderation fields stay staff-only; members get the directory only (memberDirectory).
 router.get("/users", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
   const { rows } = await pool.query<any>(`
@@ -77,7 +90,7 @@ router.get("/users", asyncHandler(async (req, res): Promise<void> => {
     WHERE active = true
     ORDER BY created_at ASC
   `);
-  res.json((await can(req, "users.read.team")) ? rows : stripModeration(rows));
+  res.json((await can(req, "users.read.team")) ? rows : memberDirectory(rows, req.authUser.name));
 }));
 
 router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
@@ -87,7 +100,7 @@ router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
     FROM users
     ORDER BY created_at ASC
   `);
-  res.json((await can(req, "users.read.team")) ? rows : stripModeration(rows));
+  res.json((await can(req, "users.read.team")) ? rows : memberDirectory(rows, req.authUser.name));
 }));
 
 router.patch("/users/theme", asyncHandler(async (req, res): Promise<void> => {
@@ -237,6 +250,8 @@ const SettingsPatch = z.object({
   tradingDefaults: TradingDefaultsSchema.nullable().optional(),
   /** Daily loop in Telegram (morning focus, evening card, contract alerts — lib/daily/telegramJobs). Absent = on. */
   dailyTelegram: z.boolean().optional(),
+  /** Recognition (desk feed, Telegram group, others' rankings, public titles — lib/gamification). Absent = on. */
+  shareAchievements: z.boolean().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -264,12 +279,14 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
     set.tradingDefaults = { ...body.data.tradingDefaults, updatedAt: body.data.tradingDefaults.updatedAt ?? new Date().toISOString() };
   }
   if (body.data.dailyTelegram !== undefined) set.dailyTelegram = body.data.dailyTelegram;
+  if (body.data.shareAchievements !== undefined) set.shareAchievements = body.data.shareAchievements;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,
     [JSON.stringify(set), drop, req.authUser!.id],
   );
   if (!rows[0]) throw notFound();
+  if (body.data.shareAchievements !== undefined) clearFeedStreamCache(); // recognition in the desk feed follows the switch at once
   res.json({ settings: rows[0].settings ?? {} });
 }));
 
@@ -326,6 +343,7 @@ router.post("/users/me/password", asyncHandler(async (req, res): Promise<void> =
   pwAttempts.delete(me.id);
   await pool.query(`UPDATE users SET password_hash = $1, must_change_secret = false WHERE id = $2`, [await hashPassword(newPassword), me.id]);
   await bumpTokenVersion(me.id);
+  forgetQuests(rows[0].name); // onboarding: own PIN
   const token = await signToken({ id: me.id, name: rows[0].name, role: rows[0].role });
   res.json({ success: true, token, reloginRequired: false });
 }));

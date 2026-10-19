@@ -269,9 +269,10 @@ export function dateRu(ymd: string, withYear = ymd.slice(0, 4) !== nyDate().slic
   return fmtDate(ymd, withYear ? "long" : "dayMonthLong");
 }
 
-/** «13–17 окт.» / «29 сент. – 3 окт.» */
+/** «13–17 окт.» / «29 сент. – 3 окт.»; a range across a year carries both years: «2 янв. 2025 г. – 16 окт. 2026 г.». */
 export function rangeRu(from: string, to: string): string {
   if (from === to) return fmtDate(from, "dayMonth");
+  if (from.slice(0, 4) !== to.slice(0, 4)) return `${fmtDate(from, "medium")} – ${fmtDate(to, "medium")}`;
   if (from.slice(0, 7) === to.slice(0, 7)) return `${Number(from.slice(8))}–${fmtDate(to, "dayMonth")}`;
   return `${fmtDate(from, "dayMonth")} – ${fmtDate(to, "dayMonth")}`;
 }

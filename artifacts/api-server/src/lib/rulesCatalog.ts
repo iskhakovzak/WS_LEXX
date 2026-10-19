@@ -173,6 +173,20 @@ export function normTickers(v: unknown): string[] | null {
   return out.length > 50 ? null : out;
 }
 
+/**
+ * Legacy threshold keys still found in stored rules, read as the catalog key (seeded pause rules stored `minutes`
+ * while the catalog field is `min` — migration 0216 renames them; this keeps any leftover readable).
+ */
+const THRESHOLD_ALIASES: Record<string, Record<string, string>> = { min_pause_after_loss: { min: "minutes" } };
+
+/** A stored threshold value by catalog key, falling back to its legacy alias. */
+export function thresholdRaw(kind: string, t: Record<string, unknown> | null | undefined, key: string): unknown {
+  const v = t?.[key];
+  if (v !== undefined && v !== null && v !== "") return v;
+  const alias = THRESHOLD_ALIASES[kind]?.[key];
+  return alias ? t?.[alias] : v;
+}
+
 export type ThresholdValue = number | string[];
 
 export type ThresholdError = { ok: false; code: ErrorCode; params?: { field: string } };
@@ -188,7 +202,7 @@ export function validateThreshold(kind: string, threshold: unknown, lang: Lang =
   const src = (threshold ?? {}) as Record<string, unknown>;
   const out: Record<string, ThresholdValue> = {};
   for (const f of def.fields) {
-    const raw = src[f.key];
+    const raw = thresholdRaw(kind, src, f.key);
     const empty = raw === undefined || raw === null || raw === "" || (typeof raw === "number" && Number.isNaN(raw)) || (Array.isArray(raw) && raw.length === 0);
     const field = { field: f.label };
     if (f.type === "tickers") {
@@ -236,7 +250,7 @@ export function describeThreshold(
   const t = threshold ?? {};
   const tr = rulesT.tFor(lang);
   const num = (k: string) => {
-    const v = Number(t[k]);
+    const v = Number(thresholdRaw(kind, t, k));
     return Number.isFinite(v) && v > 0 ? v : null;
   };
   const desk = (v: number | null | undefined) => (v != null ? tr("summary.deskValue", { usd: usdText(v) }) : tr("summary.deskUnset"));

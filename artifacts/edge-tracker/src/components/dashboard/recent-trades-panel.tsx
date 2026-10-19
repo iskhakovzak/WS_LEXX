@@ -117,7 +117,7 @@ export function RecentTradesPanel({
                     <span className="block truncate text-xs text-muted-foreground">
                       {shortDate(t.closeDate)}
                       {multiDay ? ` ${td("recent.entered", { date: shortDate(t.date) })}` : ""}
-                      {t.setup ? ` · ${t.setup}` : ""}
+                      {setupLabel(t, td("recent.noSetup"))}
                       {showTrader && t.trader ? ` · ${personName(t.trader)}` : ""}
                     </span>
                   </span>
@@ -140,4 +140,11 @@ export function RecentTradesPanel({
       )}
     </Panel>
   );
+}
+
+/** « · Gap & Go» — the office playbook setup the trade is linked to, «без сетапа» when none (OWNER-35); an older server
+ * without the link shows the broker strategy as before. */
+export function setupLabel(t: Pick<RecentTrade, "setup" | "playbookSetup">, none: string): string {
+  if (t.playbookSetup === undefined) return t.setup ? ` · ${t.setup}` : "";
+  return ` · ${t.playbookSetup ?? none}`;
 }

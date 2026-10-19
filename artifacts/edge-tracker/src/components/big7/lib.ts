@@ -370,3 +370,11 @@ export function mergeCatalysts(catalysts: Catalyst[], auto: AutoEarning[]): Merg
 export function catalystsFor(symbol: string, merged: MergedCatalyst[]) {
   return merged.filter((c) => c.ticker === symbol || c.marketWide);
 }
+
+/**
+ * One side of the long / short column: «—» when that side has no trades (ROMAN-31: «−$159 / $0» with no shorts).
+ * Older API payloads without counts: a zero net counts as no trades.
+ */
+export function sideNet(net: number, n: number | undefined): number | null {
+  return (n ?? (net === 0 ? 0 : 1)) > 0 ? net : null;
+}

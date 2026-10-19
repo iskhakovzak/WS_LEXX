@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { DEFAULT_FILTERS, computeStats, dayOf, effectiveR } from "./trade-utils";
+import { linkedPlaybookId } from "./sheet-model";
 import { ResultPill } from "./trade-bits";
 import { TRADES_PAGE_KEY, buildTradesPageParams, fetchTradesPage } from "@/hooks/use-trades-page";
 import { fmtDate, fmtR, fmtRate } from "@/lib/format";
@@ -98,10 +99,14 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
   const ideas = useTickerIdeas(trade.ticker);
 
   const setup = (trade.setup ?? "").trim().toLowerCase();
+  // The playbook setup the trade is linked to (relink / tagging) wins over name matching (ILYA-16). Sent by the API
+  // once the trade payload carries `playbookId`; until then the name match below is the fallback.
+  const linkedId = linkedPlaybookId(trade);
   const pbMatches = React.useMemo(() => {
     const list = playbook.data ?? [];
     const scored = list.map((e) => {
       let score = 0;
+      if (linkedId != null && e.id === linkedId) score += 20;
       if (e.sourceType === "trade" && e.sourceId === trade.id) score += 10;
       if (setup && (e.setupType ?? "").trim().toLowerCase() === setup) score += 5;
       if (setup && e.name.toLowerCase().includes(setup)) score += 2;
@@ -109,7 +114,7 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
       return { e, score };
     }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score);
     return scored.slice(0, 4);
-  }, [playbook.data, setup, trade.id, trade.ticker]);
+  }, [playbook.data, setup, linkedId, trade.id, trade.ticker]);
 
   // Ticker history comes from the paginated endpoint (the page only holds one slice of the book);
   // the rows already on the page are the fallback while it loads / when the API predates it.
@@ -130,15 +135,15 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
   const ideaList = (ideas.data ?? []).slice(0, 4);
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
       <div className="space-y-1">
         <p className="micro-label px-2.5">{shellPlaybook()}</p>
         {playbook.isLoading ? <Skeleton className="h-9 rounded-xl" /> : pbMatches.length === 0 ? (
-          <p className="px-2.5 text-sm text-muted-foreground">{setup ? tt("related.playbookNoSetup") : tt("related.playbookSetSetup")}</p>
+          <p className="px-2.5 text-sm text-muted-foreground">{setup || linkedId != null ? tt("related.playbookNoSetup") : tt("related.playbookSetSetup")}</p>
         ) : pbMatches.map(({ e, score }) => (
           <Row key={e.id} icon={BookOpen} label={tt("related.openInPlaybook", { name: e.name })} onClick={() => setLocation(`/playbook?highlight=${e.id}`)}>
             <span className="block truncate">{e.name}</span>
-            <span className="text-xs text-muted-foreground">{score >= 10 ? tt("related.fromThisTrade") : e.setupType ?? e.folder ?? tt("related.byTicker")}</span>
+            <span className="text-xs text-muted-foreground">{score >= 20 ? tt("related.linkedSetup") : score >= 10 ? tt("related.fromThisTrade") : e.setupType ?? e.folder ?? tt("related.byTicker")}</span>
           </Row>
         ))}
       </div>

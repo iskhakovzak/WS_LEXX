@@ -284,8 +284,9 @@ export function buildTraderDay(
 ): TraderDay | null {
   const aggs = aggregateTraders(rows);
   const trader = [...aliases].find(([, n]) => n === alias)?.[0];
-  if (!trader) return null;
-  const a = aggs.find((x) => x.trader === trader)!;
+  // The roster (aliases) and the rows are two reads: a trade deleted in between leaves an alias without rows — 404, not 500.
+  const a = trader ? aggs.find((x) => x.trader === trader) : undefined;
+  if (!trader || !a) return null;
   const $ = seesMoney(mode, viewer, trader);
 
   const byTicker = new Map<string, TraderDayTicker & { netSum: number }>();

@@ -78,6 +78,12 @@ import uzCalendar from "./uz/calendar";
 import ruDaily from "./ru/daily";
 import enDaily from "./en/daily";
 import uzDaily from "./uz/daily";
+import ruQuests from "./ru/quests";
+import enQuests from "./en/quests";
+import uzQuests from "./uz/quests";
+import ruGamification from "./ru/gamification";
+import enGamification from "./en/gamification";
+import uzGamification from "./uz/gamification";
 
 export const commonT = defineNamespace(ruCommon, { en: enCommon, uz: uzCommon });
 
@@ -155,3 +161,9 @@ export const calendarT = defineNamespace(ruCalendar, { en: enCalendar, uz: uzCal
 
 /** `daily`: daily loop (lib/daily/*): mistake names, focus lines, verdicts, own contract, Telegram cards. */
 export const dailyT = defineNamespace(ruDaily, { en: enDaily, uz: uzDaily });
+
+/** `quests`: quest and achievement texts (lib/quests/*) — same keys as the web `quests` namespace. */
+export const questsT = defineNamespace(ruQuests, { en: enQuests, uz: uzQuests });
+
+/** `gamification`: recognition lines (desk feed, Telegram group), reward notifications (lib/gamification/*). */
+export const gamificationT = defineNamespace(ruGamification, { en: enGamification, uz: uzGamification });

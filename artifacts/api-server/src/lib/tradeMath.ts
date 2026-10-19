@@ -109,3 +109,53 @@ export function netPnl(t: TradeRowLike): number | null {
   const g = num(t.pnl);
   return g == null ? null : g - Math.abs(num(t.fees) ?? 0);
 }
+
+/*
+ * Canonical KPI definitions (same as edge-tracker/src/lib/trade-math.ts — keep both in sync):
+ *   win rate = wins / (wins + losses) by result over all closed trades of the window (BE and open excluded);
+ *   payoff   = mean positive value / |mean negative value| in the card's unit (net $ or signed R);
+ *   net      = Σ (pnl − |fees|) over closed trades, booked on the close date (closeDateSql);
+ *   max DD   = deepest fall of the END-OF-DAY cumulative curve below its running peak (peak starts at 0).
+ */
+
+/** Canonical win rate: wins / (wins + losses); null when nothing is decided. */
+export function winRateOf(wins: number, losses: number): number | null {
+  return wins + losses > 0 ? wins / (wins + losses) : null;
+}
+
+/** Canonical payoff: mean positive / |mean negative|; null without a win or a loss. */
+export function payoffOf(values: number[]): number | null {
+  let pos = 0, posN = 0, neg = 0, negN = 0;
+  for (const v of values) {
+    if (v > 0) { pos += v; posN++; } else if (v < 0) { neg += v; negN++; }
+  }
+  if (!posN || !negN || neg === 0) return null;
+  return pos / posN / Math.abs(neg / negN);
+}
+
+/** Drawdown (≤ 0) of the cumulative series of `values` in order (peak starts at 0). */
+export function maxDrawdownOfSeries(values: number[]): number {
+  let cum = 0, peak = 0, dd = 0;
+  for (const v of values) {
+    cum += v;
+    if (cum > peak) peak = cum;
+    if (cum - peak < dd) dd = cum - peak;
+  }
+  return dd;
+}
+
+/**
+ * Canonical max drawdown (≤ 0) from per-day results: sums `value` per `day` (YYYY-MM-DD, the close date), orders the
+ * days and measures the end-of-day curve. Null when there are no rows.
+ */
+export function maxDrawdownByDay(rows: { day: string; value: number | null }[]): number | null {
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    const d = (r.day ?? "").slice(0, 10);
+    if (r.value == null || !Number.isFinite(r.value) || !d) continue;
+    m.set(d, (m.get(d) ?? 0) + r.value);
+  }
+  if (!m.size) return null;
+  const dd = maxDrawdownOfSeries([...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, v]) => v));
+  return Math.round(dd * 1e6) / 1e6;
+}

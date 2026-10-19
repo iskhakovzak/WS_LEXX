@@ -34,6 +34,11 @@ export default {
     text: "{lead} {parts}. Tanlanma: {na} va {nb} ta savdo.",
     titleR: "{label}: bir savdoga {metric}",
     titleWr: "{label}: win rate {metric}",
+    titleBetterR: "{label}: har bir savdoda {metric} yaxshiroq",
+    titleWorseR: "{label}: har bir savdoda {metric} yomonroq",
+    titleBetterWr: "{label}: win rate {metric} yuqori",
+    titleWorseWr: "{label}: win rate {metric} past",
+    titleMixed: "{label}: aralash taʼsir — har bir savdoda {metric}, win rate {wr}",
     pp: "{value} f.p.",
   },
   coverage: {

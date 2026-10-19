@@ -12,6 +12,8 @@ import { getActor, bumpTokenVersion } from "../lib/auth";
 import { can, forbiddenError, resolveActor, type Capability } from "../lib/permissions";
 import { runDbBackup, listBackups, getBackupDownloadUrl, resolveBackupObjectName } from "../lib/dbBackupCron";
 import { violationDaySql } from "../lib/violationWindow";
+import { inactiveTraders } from "../lib/usage/stats";
+import { isWeekend, maxDate, pulseTz, tableExists, ymdIn, ymdShift } from "../lib/admin/pulseDates";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { langOf } from "../i18n";
 import { adminT } from "../i18n/ns";
@@ -66,13 +68,13 @@ router.get("/admin/users", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.post("/admin/users/:id/role", asyncHandler(async (req, res): Promise<void> => {
+  await requireCapGuard(req, "users.manage.admins");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = roleBodySchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const { role } = parsed.data;
   const actor = getActor(req);
-  await requireCapGuard(req, "users.manage.admins");
   if (req.authUser?.id === id) throw new AppError("CANNOT_CHANGE_OWN_ROLE");
   const { rows } = await pool.query<any>(
     `UPDATE users SET role = $1 WHERE id = $2 RETURNING ${USER_COLUMNS}`,
@@ -86,13 +88,13 @@ router.post("/admin/users/:id/role", asyncHandler(async (req, res): Promise<void
 }));
 
 router.post("/admin/users/:id/ban", asyncHandler(async (req, res): Promise<void> => {
+  const guard = await requireCapGuard(req, "users.manage");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = banBodySchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const { reason } = parsed.data;
   const actor = getActor(req);
-  const guard = await requireCapGuard(req, "users.manage");
   const { rows: target } = await pool.query<any>(`SELECT name, role FROM users WHERE id = $1`, [id]);
   if (!target[0]) throw notFound("USER_NOT_FOUND");
   if (target[0].role === "admin") throw new AppError("CANNOT_BAN_ADMIN");
@@ -108,12 +110,12 @@ router.post("/admin/users/:id/ban", asyncHandler(async (req, res): Promise<void>
 }));
 
 router.post("/admin/users/:id/unban", asyncHandler(async (req, res): Promise<void> => {
+  await requireCapGuard(req, "users.manage");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = unbanBodySchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const actor = getActor(req);
-  await requireCapGuard(req, "users.manage");
   const { rows } = await pool.query<any>(
     `UPDATE users SET banned = false, banned_at = NULL, banned_reason = NULL WHERE id = $1 RETURNING ${USER_COLUMNS}`,
     [id],
@@ -124,10 +126,10 @@ router.post("/admin/users/:id/unban", asyncHandler(async (req, res): Promise<voi
 }));
 
 router.delete("/admin/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
+  await requireCapGuard(req, "discussions.moderate");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const actor = getActor(req);
-  await requireCapGuard(req, "discussions.moderate");
   const [d] = await db.update(discussionsTable).set({ deletedAt: new Date() }).where(eq(discussionsTable.id, id)).returning();
   if (!d) throw notFound();
   await logAudit({ actor: actor!, action: "discussion.delete", targetType: "discussion", targetId: String(id), details: { topic: d.topic, author: d.trader } });
@@ -135,10 +137,10 @@ router.delete("/admin/discussions/:id", asyncHandler(async (req, res): Promise<v
 }));
 
 router.delete("/admin/comments/:id", asyncHandler(async (req, res): Promise<void> => {
+  await requireCapGuard(req, "discussions.moderate");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const actor = getActor(req);
-  await requireCapGuard(req, "discussions.moderate");
   const [existing] = await db.select().from(commentsTable).where(eq(commentsTable.id, id));
   if (!existing) throw notFound();
   await db.delete(commentsTable).where(eq(commentsTable.id, id));
@@ -302,13 +304,13 @@ const banAuthorBodySchema = z.object({
 
 // Moderation shortcut: ban the author of the reported content and close the report(s) in one step.
 router.post("/admin/reports/:id/ban-author", asyncHandler(async (req, res): Promise<void> => {
+  const guard = await requireCapGuard(req, "admin.reports");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = banAuthorBodySchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const { reason, resolveSiblings = true } = parsed.data;
   const actor = getActor(req);
-  const guard = await requireCapGuard(req, "admin.reports");
 
   const [report] = await db.select().from(contentReportsTable).where(eq(contentReportsTable.id, id));
   if (!report) throw new AppError("REPORT_NOT_FOUND");
@@ -340,13 +342,13 @@ router.post("/admin/reports/:id/ban-author", asyncHandler(async (req, res): Prom
 }));
 
 router.post("/admin/reports/:id/resolve", asyncHandler(async (req, res): Promise<void> => {
+  await requireCapGuard(req, "admin.reports");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = resolveBodySchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const { resolution } = parsed.data;
   const actor = getActor(req);
-  await requireCapGuard(req, "admin.reports");
   const [row] = await db.update(contentReportsTable).set({
     status: "resolved",
     resolvedBy: actor!,
@@ -359,13 +361,13 @@ router.post("/admin/reports/:id/resolve", asyncHandler(async (req, res): Promise
 }));
 
 router.post("/admin/reports/:id/dismiss", asyncHandler(async (req, res): Promise<void> => {
+  await requireCapGuard(req, "admin.reports");
   const id = Number(req.params.id);
   if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = resolveBodySchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const { resolution } = parsed.data;
   const actor = getActor(req);
-  await requireCapGuard(req, "admin.reports");
   const [row] = await db.update(contentReportsTable).set({
     status: "dismissed",
     resolvedBy: actor!,
@@ -385,11 +387,11 @@ const bulkReportsBodySchema = z.object({
 
 // Bulk triage: resolve or dismiss several open reports with one reason (one audit entry per report).
 router.post("/admin/reports/bulk", asyncHandler(async (req, res): Promise<void> => {
+  await requireCapGuard(req, "admin.reports");
   const parsed = bulkReportsBodySchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const { ids, kind, resolution } = parsed.data;
   const actor = getActor(req);
-  await requireCapGuard(req, "admin.reports");
   const status = kind === "resolve" ? "resolved" : "dismissed";
   const { rows } = await pool.query<any>(
     `UPDATE content_reports SET status = $1, resolved_by = $2, resolved_at = NOW(), resolution = $3
@@ -419,10 +421,10 @@ const DB_EXPORT_TABLES = {
 } as const;
 type DbExportKey = keyof typeof DB_EXPORT_TABLES;
 
-// DB Export — full JSON backup of all critical tables (admin/curator only)
+// DB Export — full JSON backup of all critical tables (admin.backups.read: admins by default, sensitive)
 router.get("/admin/db-export", asyncHandler(async (req, res): Promise<void> => {
-  const actor = getActor(req);
   await requireCapGuard(req, "admin.backups.read");
+  const actor = getActor(req);
 
   // Optional ?tables=trades,playbook — export a subset. Unknown keys are ignored; empty ⇒ everything
   // (the default keeps the full-backup format that the settings import expects).
@@ -452,15 +454,17 @@ router.get("/admin/db-export", asyncHandler(async (req, res): Promise<void> => {
   res.json(data);
 }));
 
+// Desk overview for staff (team.read). The audit part (count + recent entries) only with admin.audit (OLGA-02).
 router.get("/admin/overview", asyncHandler(async (req, res): Promise<void> => {
-  await requireCapGuard(req, "admin.audit");
+  await requireCapGuard(req, "team.read");
+  const audit = await can(req, "admin.audit");
   const [{ rows: openR }, { rows: bannedR }, { rows: weekR }, { rows: roles }] = await Promise.all([
     pool.query<any>(`SELECT COUNT(*)::int AS c FROM content_reports WHERE status = 'open'`),
     pool.query<any>(`SELECT COUNT(*)::int AS c FROM users WHERE COALESCE(banned, false) = true`),
-    pool.query<any>(`SELECT COUNT(*)::int AS c FROM audit_log WHERE created_at >= NOW() - INTERVAL '7 days'`),
+    audit ? pool.query<any>(`SELECT COUNT(*)::int AS c FROM audit_log WHERE created_at >= NOW() - INTERVAL '7 days'`) : Promise.resolve({ rows: [] as any[] }),
     pool.query<any>(`SELECT role, COUNT(*)::int AS c FROM users WHERE active = true GROUP BY role`),
   ]);
-  const recent = await db.select().from(auditLogTable).orderBy(desc(auditLogTable.createdAt)).limit(10);
+  const recent = audit ? await db.select().from(auditLogTable).orderBy(desc(auditLogTable.createdAt)).limit(10) : [];
   res.json({
     openReports: openR[0]?.c ?? 0,
     bannedUsers: bannedR[0]?.c ?? 0,
@@ -475,38 +479,6 @@ router.get("/admin/overview", asyncHandler(async (req, res): Promise<void> => {
 // Optional tables are probed with to_regclass so the endpoint works on a fresh DB.
 const PULSE_YMD = /^\d{4}-\d{2}-\d{2}$/;
 const PULSE_DAYS = 14;
-
-// Desk day = New York trading date (audit P1-13): default and fallback are America/New_York, never UTC.
-const PULSE_DEFAULT_TZ = "America/New_York";
-function pulseTz(raw: unknown): string {
-  if (typeof raw !== "string" || !raw || raw.length > 64 || !/^[A-Za-z0-9_+\-/]+$/.test(raw)) return PULSE_DEFAULT_TZ;
-  try { new Intl.DateTimeFormat("en-US", { timeZone: raw }); return raw; } catch { return PULSE_DEFAULT_TZ; }
-}
-function ymdIn(tz: string, d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-}
-function ymdShift(ymd: string, n: number): string {
-  const d = new Date(`${ymd}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-function isWeekend(ymd: string): boolean {
-  const wd = new Date(`${ymd}T12:00:00Z`).getUTCDay();
-  return wd === 0 || wd === 6;
-}
-async function tableExists(name: string): Promise<boolean> {
-  const { rows } = await pool.query<any>(`SELECT to_regclass($1) IS NOT NULL AS ok`, [name]);
-  return !!rows[0]?.ok;
-}
-function maxDate(...vals: unknown[]): Date | null {
-  let best: Date | null = null;
-  for (const v of vals) {
-    if (!v) continue;
-    const d = v instanceof Date ? v : new Date(String(v));
-    if (!isNaN(d.getTime()) && (!best || d > best)) best = d;
-  }
-  return best;
-}
 
 interface PulseUser {
   id: number;
@@ -530,10 +502,13 @@ interface PulseUser {
   violationsTotal: number;
   tradeStrip: number[];
   journalStrip: boolean[];
+  /** «Не заходили 3+ торговых дня» — the Использование rule (lib/usage inactiveFrom), OWNER-04. */
+  stale: boolean;
 }
 
 router.get("/admin/desk-pulse", asyncHandler(async (req, res): Promise<void> => {
-  await requireCapGuard(req, "admin.audit");
+  // Per-trader activity is a team read (curators keep it); the audit log is read only for «last seen».
+  await requireCapGuard(req, "team.read");
 
   const tz = pulseTz(req.query.tz);
   const today = typeof req.query.date === "string" && PULSE_YMD.test(req.query.date) ? req.query.date : ymdIn(tz, new Date());
@@ -662,11 +637,15 @@ router.get("/admin/desk-pulse", asyncHandler(async (req, res): Promise<void> => 
       violationsTotal: v?.total ?? 0,
       tradeStrip: days.map((d) => sm?.get(d) ?? 0),
       journalStrip: days.map((d) => jd.has(d)),
+      stale: false,
     };
   });
 
   const desk = users.filter((u) => u.role === "trader" && u.active && !u.banned);
-  const staleCutoff = Date.now() - 3 * 86_400_000;
+  // One rule with «Использование» (OWNER-04): trading days since tracking started, low data → nobody is stale.
+  const idle = await inactiveTraders(desk.map((u) => u.name), today).catch(() => null);
+  const staleNames = new Set((idle?.rows ?? []).map((r) => r.name));
+  for (const u of users) u.stale = staleNames.has(u.name);
   res.json({
     date: today,
     tz,
@@ -683,7 +662,9 @@ router.get("/admin/desk-pulse", asyncHandler(async (req, res): Promise<void> => 
       violationsToday: users.reduce((s, u) => s + u.violationsToday, 0),
       violationsWeek: users.reduce((s, u) => s + u.violationsWeek, 0),
       openReports: reportsR.rows[0]?.c ?? 0,
-      stale: desk.filter((u) => !u.lastSeen || new Date(u.lastSeen).getTime() < staleCutoff).map((u) => u.name),
+      stale: desk.filter((u) => u.stale).map((u) => u.name),
+      staleLowData: idle?.lowData ?? true,
+      trackedSince: idle?.trackedSince ?? null,
       banned: users.filter((u) => u.banned).length,
       deskTradeStrip: days.map((_, i) => users.reduce((s, u) => s + u.tradeStrip[i], 0)),
     },
@@ -740,8 +721,8 @@ const importBodySchema = z.object({
 });
 
 router.post("/admin/import-propreports", uploadXls, asyncHandler(async (req, res): Promise<void> => {
-  const actor = getActor(req);
   await requireCapGuard(req, "propreports.sync");
+  const actor = getActor(req);
   if (!req.file) throw new AppError("FILE_REQUIRED");
 
   const parsed = importBodySchema.safeParse(req.body);

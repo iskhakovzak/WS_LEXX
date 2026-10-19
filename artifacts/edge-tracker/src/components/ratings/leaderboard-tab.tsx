@@ -13,6 +13,9 @@ import { fmtCount, fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ratingsI18n } from "@/i18n/ns/ratings";
 import { comparePersonNames, personName } from "@/i18n";
+import { gamificationTitlesQuery } from "@/lib/api/queries";
+import { TitleTag } from "@/components/shared/season-bar";
+import { titleLabel } from "@/components/shared/gamification-labels";
 
 export type LeaderboardEntry = {
   trader: string;
@@ -117,13 +120,62 @@ function sharpeOf(l: LeaderboardEntry): { value: number | null; basis: "$" | "R"
 
 const MEDAL = ["text-[hsl(var(--chart-3))]", "text-muted-foreground", "text-[hsl(var(--chart-5))]"];
 
-export function LeaderboardTab({ me }: { me: string | null }) {
+/**
+ * A trader's leaderboard holds only their own row (the API never sends teammates' numbers to a trader): no «#1 of 1»,
+ * no podium and no «команды» totals that are really the viewer's own (UMID-15, ILYA-21, DENIS-23, MAKSIM-27, ROMAN-11).
+ */
+export function isSelfOnly(ranked: readonly { trader: string }[], me: string | null, staff: boolean): boolean {
+  return !staff && !!me && ranked.length > 0 && ranked.every((l) => l.trader === me);
+}
+
+/** The viewer's own numbers for the period — no rank, no team wording. */
+export function SelfRow({ row, metric, periodFor, titles }: { row: RankedEntry; metric: Metric; periodFor: string; titles: Record<string, string | undefined> }) {
+  const { t } = ratingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const v = metricOf(metric, row);
+  return (
+    <Panel title={t("leaderboard.self.title")} description={t("leaderboard.self.description", { period: periodFor })}>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">{personName(row.trader)}</span>
+          <TitleTag label={titleLabel(titles[row.trader])} />
+          <StreakBadge value={row.currentStreak} />
+        </div>
+        <StatGrid>
+          <StatCard
+            label={metricOptions().find((m) => m.value === metric)?.label ?? ""}
+            value={fmtMetric(metric, v)}
+            tone={metric === "winrate" ? "neutral" : toneOf(v)}
+            hint={periodFor}
+          />
+          <StatCard label={t("leaderboard.self.trades")} value={fmtCount(row.totalTrades)} hint={row.tradingDays ? tc("units.tradingDays", { count: row.tradingDays }) : undefined} />
+          <StatCard label={t("leaderboard.self.winrate")} value={fmtPct(winPctOf(row), { decimals: 0, signed: false })} hint={t("leaderboard.teamWinrateHint")} />
+          <StatCard
+            label={t("leaderboard.bestStreak")}
+            icon={Flame}
+            value={row.bestStreak > 0 ? `W${row.bestStreak}` : "—"}
+            tone={row.bestStreak > 0 ? "up" : "neutral"}
+            hint={row.bestStreak > 0 ? undefined : t("leaderboard.noStreaks")}
+          />
+        </StatGrid>
+        <div className="flex flex-col gap-1.5">
+          <OutcomeBar wins={row.wins} losses={row.losses} be={row.breakevens} open={row.open ?? 0} />
+          <Sparkline values={row.sparkR ?? []} width={160} height={32} label={t("leaderboard.cumR", { r: fmtR(row.totalR, 1) })} />
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+export function LeaderboardTab({ me, staff = false }: { me: string | null; staff?: boolean }) {
   const [period, setPeriod] = useStoredState<Period>("ratings.lb.period", "30", PERIOD_VALUES);
   const [metricPref, setMetricPref] = useStoredState<Metric | "auto">("ratings.lb.metric", "auto", METRIC_VALUES);
   const { ranked, metric, isLoading, isError, error, refetch, hasPnl } = useLeaderboard(period, metricPref);
   const { t } = ratingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const METRICS = metricOptions();
+  // Earned titles (discipline / review / learning achievements) next to the names; {} on an older API.
+  const titles = useQuery(gamificationTitlesQuery()).data ?? {};
 
   const team = useMemo(() => {
     if (ranked.length === 0) return null;
@@ -142,6 +194,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
   }, [ranked]);
 
   const periodFor = t(`leaderboard.periodFor.${periodKey(period)}`);
+  const selfOnly = isSelfOnly(ranked, me, staff);
   const prevLabel = period === "all" ? t("leaderboard.prevAll") : t("leaderboard.prevPeriod");
 
   function exportCsv() {
@@ -163,9 +216,11 @@ export function LeaderboardTab({ me }: { me: string | null }) {
           value={metric}
           onChange={(v) => setMetricPref(v)}
         />
-        <Button variant="ghost" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={ranked.length === 0}>
-          <Download className="h-4 w-4" aria-hidden="true" /> CSV
-        </Button>
+        {!selfOnly && (
+          <Button variant="ghost" size="sm" className="ml-auto gap-1.5" onClick={exportCsv} disabled={ranked.length === 0}>
+            <Download className="h-4 w-4" aria-hidden="true" /> CSV
+          </Button>
+        )}
       </div>
 
       {isLoading && (
@@ -181,14 +236,16 @@ export function LeaderboardTab({ me }: { me: string | null }) {
         <Panel>
           <EmptyState
             icon={Trophy}
-            title={period === "all" ? t("leaderboard.emptyAll") : t("leaderboard.emptyPeriod", { period: t(`leaderboard.periods.${periodKey(period)}`).toLowerCase() })}
+            title={period === "all" ? t("leaderboard.emptyAll") : t("leaderboard.emptyPeriod", { period: periodFor })}
             description={t("leaderboard.emptyDescription")}
             action={period !== "all" ? <Button variant="outline" size="sm" onClick={() => setPeriod("all")}>{t("leaderboard.showAll")}</Button> : undefined}
           />
         </Panel>
       )}
 
-      {ranked.length > 0 && (
+      {selfOnly && <SelfRow row={ranked[0]!} metric={metric} periodFor={periodFor} titles={titles} />}
+
+      {ranked.length > 0 && !selfOnly && (
         <>
           {/* Podium */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -209,6 +266,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                        <TitleTag label={titleLabel(titles[l.trader])} />
                         {l.trader === me && <Pill tone="accent">{t("shared.you")}</Pill>}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -305,6 +363,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-medium text-foreground">{personName(l.trader)}</span>
+                                <TitleTag label={titleLabel(titles[l.trader])} />
                                 {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                               </div>
                               <div className="text-xs text-muted-foreground tabular-nums">
@@ -355,6 +414,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-medium text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                      <TitleTag label={titleLabel(titles[l.trader])} />
                       {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground tabular-nums">

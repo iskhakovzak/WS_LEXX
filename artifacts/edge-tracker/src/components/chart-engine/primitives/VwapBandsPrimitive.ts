@@ -9,6 +9,7 @@ export type VwapDrawPoint = { idx: number; vwap: number; sd: number };
 export type VwapBandsOptions = {
   color: (a?: number) => string;
   bands: readonly number[];
+  /** Label at the end of the line; "" = no label (the value goes to the levels rail). */
   title: string;
   lineWidth?: number;
   dash?: number[];
@@ -34,6 +35,20 @@ export class VwapBandsPrimitive extends SeriesPrimitiveBase {
   }
   setLimit(idx: number | null): void { if (this.limit !== idx) { this.limit = idx; this.requestUpdate(); } }
   setVisible(on: boolean): void { this.visible = on; this.requestUpdate(); }
+
+  /**
+   * The value at the right edge of what is drawn (the last visible point, or the replay cursor) — for a rail label.
+   * Null when hidden or nothing is in view.
+   */
+  edgeValue(range: { from: number; to: number } | null): number | null {
+    if (!this.visible || !this.points.length) return null;
+    let edge = range ? Math.floor(range.to) : Infinity;
+    if (this.limit != null) edge = Math.min(edge, this.limit);
+    const i = upperBound(this.points, edge);
+    if (i < 0) return null;
+    const p = this.points[i];
+    return range && p.idx < range.from ? null : p.vwap;
+  }
 
   /** Value at a bar (for the legend). */
   at(idx: number): VwapDrawPoint | null { return this.byIdx.get(idx) ?? null; }
@@ -89,6 +104,7 @@ export class VwapBandsPrimitive extends SeriesPrimitiveBase {
     for (let i = 1; i < xy.length; i++) ctx.lineTo(xy[i].x, xy[i].y);
     ctx.stroke();
     ctx.setLineDash([]);
+    if (!o.title) return; // labelled on the levels rail instead (see edgeValue)
     const end = xy[xy.length - 1];
     label(ctx, theme, o.title, Math.min(end.x + 4, width - 4), end.y, { anchor: end.x > width - 60 ? "r" : "l", bg: o.color(0.85), size: 9, pad: 3, clamp: { width, height } });
   }

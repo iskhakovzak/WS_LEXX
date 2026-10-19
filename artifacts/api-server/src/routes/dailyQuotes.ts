@@ -6,6 +6,7 @@ import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logAudit } from "../lib/audit";
 import { AppError, sendError } from "../lib/http";
+import { requireCap } from "../lib/permissions";
 
 const router: IRouter = Router();
 
@@ -190,9 +191,12 @@ router.get("/daily-quote/today", asyncHandler(async (req, res): Promise<void> =>
   }
 }));
 
+// Staff only (dailyfeed.manage, DEV-09): an AI call that replaces today's quote for everyone. The audit actor is the
+// signed-in user — a body `actor` is ignored.
 router.post("/daily-quote/regenerate", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "dailyfeed.manage", null, "STAFF_ONLY"))) return;
   const date = todayKey();
-  const actor = typeof (req.body as any)?.actor === "string" ? (req.body as any).actor : "unknown";
+  const actor = req.authUser!.name;
   let bundle: QuoteBundle;
   try {
     bundle = await singleflightGenerate(date);

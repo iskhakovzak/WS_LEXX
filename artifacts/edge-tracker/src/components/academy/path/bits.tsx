@@ -141,8 +141,8 @@ export function ChallengeStatusPill({ status }: { status: ChallengeStatus }) {
   return <Pill tone={CH_TONE[status]} dot className="shrink-0">{challengeStatusLabel(status)}</Pill>;
 }
 
-const RULE_TONE: Record<RuleState, "up" | "down" | "warn" | "accent" | "muted"> = { ok: "up", met: "up", warn: "warn", breached: "down", pending: "accent", na: "muted" };
-const RULE_PILL: Record<RuleState, Tone> = { ok: "up", met: "up", warn: "warn", breached: "down", pending: "accent", na: "neutral" };
+const RULE_TONE: Record<RuleState, "up" | "down" | "warn" | "accent" | "muted"> = { ok: "up", met: "up", warn: "warn", breached: "down", pending: "accent", missed: "down", na: "muted" };
+const RULE_PILL: Record<RuleState, Tone> = { ok: "up", met: "up", warn: "warn", breached: "down", pending: "accent", missed: "down", na: "neutral" };
 
 /** One challenge rule; `mode` = the exam's drawdown mode (shown next to «Макс. просадка»). */
 export function RuleBar({ p, mode }: { p: RuleProgress; mode?: DrawdownMode }) {

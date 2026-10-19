@@ -16,6 +16,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { topDayI18n } from "@/i18n/ns/topDay";
 import { useTraderDay, type TraderDay, type TraderDayTicker } from "./api";
 import { AliasBadge, whoLabel } from "./TopLists";
+import { displayTicker, isOptionSymbol } from "@/lib/option-symbol";
 
 function placeText(d: TraderDay): string {
   const t = topDayI18n.t;
@@ -31,7 +32,7 @@ function TickerRow({ tk, date, alias }: { tk: TraderDayTicker; date: string; ali
     <li className="glass-panel flex items-center gap-3 rounded-xl px-3 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm font-semibold">{tk.ticker}</span>
+          <span className="text-sm font-semibold" title={tk.ticker}>{displayTicker(tk.ticker)}</span>
           <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(tk.net)))}>
             {tk.net != null ? fmtUsd(tk.net, { signed: true, decimals: "auto" }) : <span className="text-xs font-normal text-muted-foreground">{t("sheet.hidden")}</span>}
           </span>
@@ -43,7 +44,8 @@ function TickerRow({ tk, date, alias }: { tk: TraderDayTicker; date: string; ali
           {times && <span className="tabular-nums">{times}</span>}
         </div>
       </div>
-      <Link
+      {/* The desk-day chart has candles for stocks only (an option symbol answers 400): no chart link for options. */}
+      {!isOptionSymbol(tk.ticker) && <Link
         href={links.deskDay(tk.ticker, date, alias)}
         aria-label={t("sheet.chartAria", { ticker: tk.ticker })}
         title={t("sheet.chartAria", { ticker: tk.ticker })}
@@ -51,7 +53,7 @@ function TickerRow({ tk, date, alias }: { tk: TraderDayTicker; date: string; ali
       >
         <CandlestickChart className="h-4 w-4" aria-hidden="true" />
         <span className="hidden min-[400px]:inline">{t("sheet.chart")}</span>
-      </Link>
+      </Link>}
     </li>
   );
 }
@@ -69,7 +71,7 @@ export function TraderDaySheet({ date, alias, staff, onClose }: { date: string |
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2.5">
             {d && <AliasBadge row={d} />}
-            <span className="min-w-0 truncate">{date ? t("sheet.title", { who, date: fmtDate(date, "weekdayDayMonth") }) : who}</span>
+            <span className="min-w-0 truncate">{date ? t("sheet.title", { who, date: fmtDate(date, date.slice(0, 4) === String(new Date().getFullYear()) ? "weekdayDayMonth" : "fullShortWeekday") }) : who}</span>
           </SheetTitle>
           <SheetDescription asChild>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">

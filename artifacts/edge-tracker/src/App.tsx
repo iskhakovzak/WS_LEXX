@@ -9,20 +9,22 @@ import { humanizeApiError, isAuthError, retryDelay, shouldRetryQuery } from "@/l
 import { STALE } from "@/lib/api/keys";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
-import Dashboard from "@/pages/dashboard";
-import LoginPage from "@/pages/login";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { BASE } from "@/lib/api";
 import { routeTitle } from "@/components/shell/nav";
 import { ROUTE_LOADERS, preloadCommonRoutes } from "@/components/shell/route-loaders";
-import { I18nProvider } from "@/i18n";
+import { I18nProvider, i18nReady } from "@/i18n";
 import { LocaleSync } from "@/i18n/locale-sync";
 import { shellI18n } from "@/i18n/ns/shell";
+import { UsageRouteTracker } from "@/components/shared/usage-tracker";
 
-// Every section except the dashboard (the landing page) is its own chunk; see shell/route-loaders.ts.
+// Every section is its own chunk; see shell/route-loaders.ts. The dashboard too (DEV-11: it pulled the equity chart,
+// the daily cards and the quest strip into the entry chunk, which the login screen and every other page also paid for);
+// a signed-in session starts its download at once (see AppContent), so the landing page doesn't wait for a click.
+const loadDashboard = () => import("@/pages/dashboard").then(async (m) => { await i18nReady(); return m; });
+const Dashboard = lazy(loadDashboard);
 const L = ROUTE_LOADERS;
 const Trades = lazy(L["/trades"]);
 const Events = lazy(L["/events"]);
@@ -57,6 +59,7 @@ const Scaling = lazy(L["/scaling"]);
 const WeeklyReview = lazy(L["/weekly-review"]);
 const Notifications = lazy(L["/notifications"]);
 const Simulator = lazy(L["/simulator"]);
+const Trainer = lazy(L["/trainer"]);
 const WhatIf = lazy(L["/what-if"]);
 const Behavior = lazy(L["/behavior"]);
 const DayReport = lazy(L["/day-report"]);
@@ -73,6 +76,9 @@ const AcademyCohorts = lazy(L["/academy/cohorts"]);
 const AcademyLearn = lazy(L["/academy/learn"]);
 const AcademyLesson = lazy(L["/academy/lesson"]);
 const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
+// Signed-out screen and the 404 page: own chunks too (a signed-in visit never needs the login form).
+const NotFound = lazy(() => import("@/pages/not-found").then(async (m) => { await i18nReady(); return m; }));
+const LoginPage = lazy(() => import("@/pages/login").then(async (m) => { await i18nReady(); return m; }));
 
 const queryClient = new QueryClient({
   // Any mutation without its own onError gets one toast in the UI language (lib/api/errors). 401s are
@@ -144,6 +150,7 @@ function Router() {
   return (
     <Layout>
       <RouteTitle />
+      <UsageRouteTracker />
       <RouteErrorBoundary resetKey={location}>
       <Suspense fallback={<PageFallback />}>
         <Switch>
@@ -184,6 +191,7 @@ function Router() {
           <Route path="/weekly-review" component={WeeklyReview} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/simulator" component={Simulator} />
+          <Route path="/trainer" component={Trainer} />
           <Route path="/what-if" component={WhatIf} />
           <Route path="/behavior" component={Behavior} />
           <Route path="/day-report" component={DayReport} />
@@ -219,9 +227,17 @@ function AppContent() {
     wasAuthed.current = isAuthenticated;
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (isAuthenticated) void loadDashboard().catch(() => undefined);
+  }, [isAuthenticated]);
+
   if (!isAuthenticated) {
     document.title = `${shellI18n.t("titles.login")} · ${APP_NAME}`;
-    return <LoginPage />;
+    return (
+      <Suspense fallback={null}>
+        <LoginPage />
+      </Suspense>
+    );
   }
 
   return (

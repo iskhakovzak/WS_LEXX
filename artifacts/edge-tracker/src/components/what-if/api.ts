@@ -30,6 +30,8 @@ export type SimTrade = {
   horizon?: "intraday" | "overnight" | "swing";
   result?: "win" | "loss" | "be" | null;
   feeBreakdown?: Record<string, number> | null;
+  /** Σ regulatory fees — sent by the compact table instead of `feeBreakdown`. */
+  regFees?: number | null;
   fills?: number | null;
   seq: number;
   /** Own grade A+…C; absent on older API builds. */
@@ -70,6 +72,9 @@ export type SkippedRule = { rule: string; reason: string };
 export type PeriodMeta = { from: string | null; to: string | null; withEntryTime: number; withHold: number; withR: number; withQty: number };
 
 export type Preset = { id: string; label: string; description: string; rules: Rule[] };
+
+/** Compact trade table of /whatif/base?enc=2 (api-server routes/whatif.ts compactTrades). */
+export type TradeTable = { cols: string[]; rows: (string | number | null)[][]; dicts: Record<string, string[]> };
 
 export type BaseResponse = {
   scope: string | null;
@@ -152,8 +157,38 @@ export const whatIfKeys = {
   scenarios: (trader: string) => ["whatif", "scenarios", trader] as const,
 };
 
+/** Trades of the compact table (dictionary columns restored; unknown columns ignored, missing ones → null). */
+export function decodeTrades(t: TradeTable): SimTrade[] {
+  const at = (k: string) => t.cols.indexOf(k);
+  const ix = Object.fromEntries(["id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade"].map((k) => [k, at(k)])) as Record<string, number>;
+  const cell = (r: (string | number | null)[], k: string) => (ix[k] >= 0 ? r[ix[k]] ?? null : null);
+  const num = (r: (string | number | null)[], k: string) => { const v = cell(r, k); return typeof v === "number" ? v : null; };
+  const str = (r: (string | number | null)[], k: string) => {
+    const v = cell(r, k);
+    if (v == null) return null;
+    const d = t.dicts[k];
+    return d && typeof v === "number" ? d[v] ?? null : String(v);
+  };
+  return t.rows.map((r, i) => ({
+    id: num(r, "id") ?? 0, day: str(r, "day") ?? "", entryMin: num(r, "entryMin"), ticker: str(r, "ticker") ?? "",
+    side: (str(r, "side") as Side | null) ?? null, qty: num(r, "qty"), entry: num(r, "entry"), gross: num(r, "gross"),
+    fees: num(r, "fees") ?? 0, holdSec: num(r, "holdSec"), seq: num(r, "seq") ?? i, fills: num(r, "fills"), regFees: num(r, "reg"),
+    setup: str(r, "setup"), grade: str(r, "grade"),
+  }));
+}
+
+type BaseWire = Omit<BaseResponse, "trades"> & { trades?: SimTrade[]; enc?: number; tradeTable?: TradeTable };
+
+/** The compact table (enc=2: ~a third of the JSON for the whole desk); an older API answers with plain `trades`. */
 export function useWhatIfBase(scope: Scope, enabled = true) {
-  return useQuery<BaseResponse>({ queryKey: whatIfKeys.base(scope), enabled, staleTime: 60_000, queryFn: () => http.get<BaseResponse>(`/api/whatif/base?${scopeParams(scope)}`) });
+  return useQuery<BaseResponse>({
+    queryKey: whatIfKeys.base(scope), enabled, staleTime: 60_000,
+    queryFn: async () => {
+      const q = scopeParams(scope);
+      const { tradeTable, trades, ...rest } = await http.get<BaseWire>(`/api/whatif/base?${q ? `${q}&` : ""}enc=2`);
+      return { ...rest, trades: tradeTable ? decodeTrades(tradeTable) : trades ?? [] };
+    },
+  });
 }
 
 /** Read-only POST: nothing is stored, so it is modelled as a query (cached by scope + rules). */
@@ -205,6 +240,28 @@ export function useDeleteScenario() {
   return useMutation({
     mutationFn: (id: number) => http.del<{ ok: true }>(`/api/whatif/scenarios/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["whatif", "scenarios"] }),
+  });
+}
+
+/**
+ * The trader's risk limits (GET /api/risk/limits/:trader — read only; the risk desk owns them). Null for the whole
+ * team, without a limits row, or when the viewer may not read them: the page then falls back to the trades.
+ */
+export function useTraderLimits(trader: string) {
+  return useQuery<{ dailyLossLimit: number | null } | null>({
+    queryKey: ["whatif", "limits", trader],
+    enabled: !!trader,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: async () => {
+      try {
+        const l = await http.get<{ dailyLossLimit?: unknown } | null>(`/api/risk/limits/${encodeURIComponent(trader)}`);
+        const v = Number(l?.dailyLossLimit);
+        return { dailyLossLimit: Number.isFinite(v) && v > 0 ? v : null };
+      } catch {
+        return null;
+      }
+    },
   });
 }
 

@@ -7,7 +7,8 @@
  *   verdictOf(analysis, date, m)  was the mistake there that day: kept / broken / no_trades / unknown (+ hits)
  *   contractOf(analysis, date, p) the own contract (daily stop / max trades / own rule) → disciplineDelta
  *   tradeToReview(analysis, date) biggest loss, else giveback, else a focus hit, else the best trade
- *   tierProgressOf(evaluation)    «to Junior: 3 of 5» from lib/scalingEngine
+ *   tierProgressOf(evaluation)    «to Junior: 3 of 5» from lib/scalingEngine (fallback)
+ *   pathProgressOf(report)        «to Junior: 6 of 13» from the academy path readiness (lib/promotionEngine) — the ladder
  *
  * Window length, repeat days and the minimum cost are desk settings (lib/settings registry, group "daily"), read per call.
  * Money is net ($, ≤ 0 = cost). Dates are New York trading days.
@@ -15,6 +16,7 @@
 import type { BehaviorTrade } from "../behaviorEngine";
 import { addDays, isWeekend } from "../tradingDate";
 import type { Evaluation } from "../scalingEngine";
+import type { ReadinessReport } from "../promotionEngine";
 import { setting } from "../settings/registry";
 import {
   HitBook, dayPath, detectBehavior, detectDay, detectRules, detectStructure, dailyLossLimit, refOf, ruleKinds, windowDays,
@@ -119,6 +121,20 @@ export function analyzeWindow(input: DetectInput): WindowAnalysis {
   return { from: input.from, to: input.to, costs: costsOf(book.days), days: book.days, tradesByDay: days, evaluable };
 }
 
+/** Every trade of the window with the mistakes it took part in, costliest mistake first (all hits, not only examples). */
+export function tradeMistakes(a: Pick<WindowAnalysis, "costs" | "days">): Map<number, MistakeId[]> {
+  const out = new Map<number, MistakeId[]>();
+  for (const c of a.costs) {
+    for (const day of a.days.values()) {
+      for (const ref of day.get(c.id)?.refs ?? []) {
+        const list = out.get(ref.tradeId) ?? [];
+        if (!list.includes(c.id)) out.set(ref.tradeId, [...list, c.id]);
+      }
+    }
+  }
+  return out;
+}
+
 /** The costliest repeating mistake of the window, or null (nothing repeats, or only small costs). */
 export function pickFocus(costs: readonly MistakeCost[], disputed: ReadonlySet<MistakeId> = new Set()): MistakeCost | null {
   let best: MistakeCost | null = null;
@@ -207,5 +223,25 @@ export function tierProgressOf(ev: Evaluation | null | undefined): TierProgress 
       target: r.threshold,
       ok: r.status === "pass",
     }));
-  return { tier: ev.tier?.key ?? null, nextTier: ev.nextTier?.key ?? null, met: ev.promotePassed, total: ev.promoteTotal, items };
+  return { tier: ev.tier?.key ?? null, nextTier: ev.nextTier?.key ?? null, met: ev.promotePassed, total: ev.promoteTotal, items, source: "scaling" };
+}
+
+/**
+ * «To the next stage: passed of total» from the academy path readiness report — the same N/M, targets and next stage as
+ * /academy/path (owner decision 2). Null when the trader has no stage on the ladder (staff, unassigned).
+ */
+export function pathProgressOf(report: ReadinessReport | null | undefined): TierProgress | null {
+  if (!report?.stage) return null;
+  const items = report.criteria.map((c) => ({
+    metric: c.metric,
+    label: { key: `path.metric.${c.metric}` },
+    actual: c.value,
+    target: c.target,
+    ok: c.status === "pass",
+    text: c.label,
+    display: c.display,
+    targetDisplay: c.targetDisplay,
+    ...(c.value == null && c.status !== "pass" ? { noData: true } : {}),
+  }));
+  return { tier: report.stage.key, nextTier: report.nextStage?.key ?? null, met: report.passed, total: report.total, items, source: "path" };
 }

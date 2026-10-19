@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { netPnl, normResult, num, signedR } from "../tradeMath";
+import { maxDrawdownByDay, maxDrawdownOfSeries, netPnl, normResult, num, payoffOf, signedR, winRateOf } from "../tradeMath";
 import { TRADE_ROWS, toSnake } from "./fixtures/trade-rows";
 
 describe("tradeMath.num", () => {
@@ -73,5 +73,25 @@ describe("tradeMath.signedR / netPnl (server JS)", () => {
     expect(netPnl({ pnl: 100, fees: null })).toBe(100);
     expect(netPnl({ pnl: 0, fees: 2 })).toBe(-2);
     expect(netPnl({ pnl: "", fees: 2 })).toBeNull();
+  });
+});
+
+describe("tradeMath canonical KPIs (MAKSIM-08)", () => {
+  it("max DD on end-of-day closes (same as the web trade-math and the equity curve)", () => {
+    const rows = [
+      { day: "2026-03-02", value: 100 }, { day: "2026-03-02", value: -80 },
+      { day: "2026-03-03", value: -50 }, { day: "2026-03-04", value: 200 }, { day: "2026-03-04", value: null },
+    ];
+    expect(maxDrawdownOfSeries([100, -80, -50, 200])).toBe(-130);
+    expect(maxDrawdownByDay(rows)).toBe(-50);
+    expect(maxDrawdownByDay([{ day: "2026-03-05", value: -7 }, { day: "2026-03-01", value: 3 }])).toBe(-7);
+    expect(maxDrawdownByDay([])).toBeNull();
+  });
+
+  it("win rate and payoff", () => {
+    expect(winRateOf(1, 3)).toBe(0.25);
+    expect(winRateOf(0, 0)).toBeNull();
+    expect(payoffOf([3, -1, -2])).toBeCloseTo(3 / 1.5, 9);
+    expect(payoffOf([-1])).toBeNull();
   });
 });

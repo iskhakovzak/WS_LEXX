@@ -8,6 +8,7 @@ import discussionsRouter from "./discussions";
 import dashboardRouter from "./dashboard";
 import watchlistRouter from "./watchlist";
 import playbookRouter from "./playbook";
+import playbookTodayRouter from "./playbook-today";
 import playbookSpacesRouter from "./playbook-spaces";
 import activityRouter from "./activity";
 import errorsRouter from "./errors";
@@ -74,11 +75,16 @@ import adminConsoleRouter from "./admin-console";
 import curatorRouter from "./curator";
 import trainingRouter from "./training";
 import simRouter from "./sim";
+import trainerRouter from "./trainer";
+import chartDrawingsRouter from "./chart-drawings";
 import officeStatsRouter from "./officeStats";
 import askRouter from "./ask";
 import dailyRouter from "./daily";
 import deskDayRouter from "./deskDay";
 import topRouter from "./top";
+import questsRouter from "./quests";
+import gamificationRouter from "./gamification";
+import usageRouter from "./usage";
 
 const router: IRouter = Router();
 
@@ -91,6 +97,7 @@ router.use(dailyfeedRouter);
 router.use(discussionsRouter);
 router.use(dashboardRouter);
 router.use(watchlistRouter);
+router.use(playbookTodayRouter); // before playbookRouter: /playbook/today is not a setup id
 router.use(playbookRouter);
 router.use(playbookSpacesRouter);
 router.use(activityRouter);
@@ -157,10 +164,15 @@ router.use(adminConsoleRouter);
 router.use(curatorRouter);
 router.use(trainingRouter);
 router.use(simRouter);
+router.use(trainerRouter);
+router.use(chartDrawingsRouter);
 router.use(officeStatsRouter);
 router.use(askRouter);
 router.use(dailyRouter);
 router.use(deskDayRouter);
 router.use(topRouter);
+router.use(questsRouter);
+router.use(gamificationRouter);
+router.use(usageRouter);
 
 export default router;

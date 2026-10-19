@@ -223,6 +223,7 @@ export default {
     ruleAria: "Filter by rule",
     allRules: "All rules",
     newCount: "New violations: {count} — mark them “Acknowledged” and explain what happened",
+    shownOf: "Showing the latest {shown} of {total}",
     filteredEmpty: "No violations match the selected filters.",
     openDay: "Open the day review",
     net: "{amount} net",

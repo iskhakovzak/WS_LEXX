@@ -21,7 +21,7 @@ import { STALE } from "@/lib/api/keys";
 import { Avatar, Callout, ROLE_LABEL, ROLE_TONE, fmtDaysAgo } from "./shared";
 import type { SectionId } from "./SettingsNav";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
-import { LanguageSelect } from "@/i18n/language-switcher";
+import { LanguageSelect } from "@/i18n/language-select";
 import { commonI18n } from "@/i18n/ns/common";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { fmtCount, fmtDate } from "@/lib/format";

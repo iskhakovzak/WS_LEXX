@@ -180,6 +180,11 @@ export function describeApiError(err: unknown): ApiErrorInfo {
   return { status, code, raw, message, isNetwork };
 }
 
+/** «Раздел ещё не подключён на сервере» — for clients that turn a missing route (404 without a code) into their own error. */
+export function notConnectedText(): string {
+  return apiErrorsI18n.t("codes.NOT_CONNECTED");
+}
+
 /** Toast-ready text for any error, in the UI language. */
 export function humanizeApiError(err: unknown, fallback?: string): string {
   const info = describeApiError(err);

@@ -4,7 +4,7 @@ import { Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { HORIZON_LABEL } from "@/components/journal/utils";
-import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtDeskDateTime, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { eodI18n } from "@/i18n/ns/eod";
 import { personName } from "@/i18n";
@@ -128,7 +128,7 @@ export function EodDayReadOnly({
             <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
             <span className="font-semibold">{t("readOnly.curator", { name: personName(data.day.reviewedBy) || "—" })}</span>
             <Pill tone="accent">{t("readOnly.score", { score: data.day.curatorScore ?? "—" })}</Pill>
-            <span className="text-muted-foreground">{fmtDate(data.day.reviewedAt, "shortDateTimeSeconds")}</span>
+            <span className="text-muted-foreground">{fmtDeskDateTime(data.day.reviewedAt, { style: "shortDateTime" })}</span>
           </div>
           {data.day.curatorComment && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{data.day.curatorComment}</p>}
         </section>

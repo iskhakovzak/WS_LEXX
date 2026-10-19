@@ -5,6 +5,9 @@
 import { queryOptions } from "@tanstack/react-query";
 import { nyDate } from "@/lib/trading-date";
 import type { DailyMe } from "@/lib/daily/types";
+import type { PlaybookToday } from "@/lib/playbook-today/types";
+import type { GamificationMe } from "@/lib/gamification/types";
+import type { QuestsMe } from "@/lib/quests/types";
 import { apiErrorStatus } from "./errors";
 import { http } from "./http";
 import { KEYS, STALE } from "./keys";
@@ -70,4 +73,61 @@ export const myPlanQuery = <T = unknown>(date: string) =>
     queryKey: KEYS.myPlan(date),
     queryFn: ({ signal }) => http.get<T>("/api/game-plan/my", { query: { date }, signal }),
     staleTime: STALE.short,
+  });
+
+/**
+ * Playbook «Сегодня» (GET /api/playbook/today): the day map, setups by window with the viewer's own edge, tier locks,
+ * today's picks, 1R and the untagged count. Staff may pass a trader. 404 (an older API) → null, so readers hide.
+ */
+export const playbookTodayQuery = (trader?: string | null) =>
+  queryOptions({
+    queryKey: KEYS.playbookToday(trader),
+    queryFn: ({ signal }) =>
+      http.get<PlaybookToday>("/api/playbook/today", { query: trader ? { trader } : undefined, signal }).catch((e: unknown) => {
+        if (apiErrorStatus(e) === 404) return null;
+        throw e;
+      }),
+    staleTime: STALE.short,
+  });
+
+/** 403 (a role without it) and 404 (an older API) read as «nothing to show». */
+function nullOn403or404<T>(p: Promise<T>): Promise<T | null> {
+  return p.catch((e: unknown) => {
+    const s = apiErrorStatus(e);
+    if (s === 403 || s === 404) return null;
+    throw e;
+  });
+}
+
+/**
+ * Season, league, mastery, streak freeze, titles and rewards (GET /api/gamification/me; staff may pass a trader).
+ * Read by the dashboard rewards chip, the «Квесты и достижения» tab and the «Сезон» tab — one cache entry.
+ */
+export const gamificationMeQuery = (trader?: string | null) =>
+  queryOptions({
+    queryKey: KEYS.gamificationMe(trader),
+    queryFn: ({ signal }) => nullOn403or404(http.get<GamificationMe>("/api/gamification/me", { query: trader ? { trader } : undefined, signal })),
+    staleTime: STALE.default,
+    retry: false,
+    meta: { i18n: false },
+  });
+
+/** The viewer's quests and achievements (same key and answer as components/quests useQuestsMe). */
+export const questsMeQuery = () =>
+  queryOptions({
+    queryKey: KEYS.questsMe(),
+    queryFn: ({ signal }) => nullOn403or404(http.get<QuestsMe>("/api/quests/me", { signal })),
+    staleTime: STALE.default,
+    retry: false,
+    meta: { i18n: false },
+  });
+
+/** Active titles by stored name (GET /api/gamification/titles; people who hide their achievements are left out). */
+export const gamificationTitlesQuery = () =>
+  queryOptions({
+    queryKey: ["gamification", "titles"] as const,
+    queryFn: async ({ signal }) => (await nullOn403or404(http.get<{ titles: Record<string, string> }>("/api/gamification/titles", { signal })))?.titles ?? {},
+    staleTime: STALE.long,
+    retry: false,
+    meta: { i18n: false },
   });

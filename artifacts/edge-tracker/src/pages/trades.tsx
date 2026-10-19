@@ -64,7 +64,7 @@ function shortcuts(): [string, string][] {
 const EMPTY_OUTCOMES: Record<Outcome, number> = { all: 0, win: 0, loss: 0, breakeven: 0, open: 0 };
 const DAYS_PAGE = 30;
 /** Min width of the ROW_GRID rows (sum of its fixed tracks + gaps + padding). */
-const ROWS_MIN_W = "min-w-[900px]";
+const ROWS_MIN_W = "md:min-w-[900px]";
 // Keys, not text: the same physical keys on a Russian layout. i18n-ignore
 const KEY_KIND: Record<string, TagKind> = { s: "setup", "ы": "setup", m: "mistake", "ь": "mistake", e: "emotion", "у": "emotion" };
 
@@ -81,7 +81,7 @@ export default function Trades() {
   const { t: tt } = tradesI18n.useT();
   const { t: tc } = commonI18n.useT();
   const qc = useQueryClient();
-  const { user, dbUsers, canEdit } = useAuth();
+  const { user, dbUsers, canEdit, can } = useAuth();
   const { toast } = useToast();
   const [location] = useLocation();
   const traderNames = dbUsers.filter((u) => u.active).map((u) => u.name);
@@ -90,10 +90,10 @@ export default function Trades() {
     () => user?.role === "curator" || user?.role === "admin" || dbUsers.some((u) => u.name === user?.traderName && u.role === "curator"),
     [dbUsers, user?.traderName, user?.role],
   );
-  // Mirrors the API: traders may only change their own trades; curators/admins any.
+  // Mirrors the API (lib/auth canAccessTrade "write"): own trades, or anyone's with trades.write.any for that trader.
   const canEditTrade = useCallback(
-    (t: Trade) => canEdit && (user?.role !== "trader" || !t.trader || t.trader === me),
-    [canEdit, user?.role, me],
+    (t: Trade) => canEdit && (!t.trader || t.trader === me || can("trades.write.any", { trader: t.trader })),
+    [canEdit, me, can],
   );
   /** Broker numbers are read-only for traders: the full form / result / delete stay for manual trades or staff. */
   const canEditForm = useCallback((t: Trade) => canEditTrade(t) && (isStaff || !isBrokerTrade(t)), [canEditTrade, isStaff]);

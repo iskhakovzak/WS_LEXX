@@ -4,7 +4,7 @@ import { Pill, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { LevelsBar } from "./LevelsBar";
 import {
-  QUALITY_TONE, SIDE_TONE, STAGE_BY_KEY, ideaHorizon, horizonLabel, ideaPlan, initials, linkedR, normalizeTradeResult, relTime, rrTone, scoreTone, sideLabel,
+  QUALITY_TONE, SIDE_TONE, STAGE_BY_KEY, ideaHorizon, horizonLabel, ideaOutcome, ideaPlan, initials, linkedR, normalizeTradeResult, relTime, rrTone, scoreTone, sideLabel,
   type IdeaTracking, type Stage, type TradeIdea,
 } from "./model";
 import { fmtDate, fmtNum, fmtPrice, fmtR } from "@/lib/format";
@@ -64,9 +64,13 @@ export function OutcomeChips({ idea, tracking }: { idea: TradeIdea; tracking?: I
   if (tracking?.hit) {
     const isStop = tracking.hit === "stop";
     const when = tracking.hitAt ? fmtDate(tracking.hitAt, "dayMonth") : "";
+    // A closed linked trade decides the board column (model.stageOf); the price-levels result is then secondary and
+    // neutral, so the coloured chip always agrees with the column.
+    const tradeDecides = ideaOutcome(idea, null) != null;
     chips.push(
-      <Pill key="hit" tone={isStop ? "down" : "up"}>
+      <Pill key="hit" tone={tradeDecides ? "neutral" : isStop ? "down" : "up"} title={tradeDecides ? t("card.byPlanTitle") : undefined}>
         {isStop ? <ShieldAlert className="h-3 w-3" aria-hidden="true" /> : <Target className="h-3 w-3" aria-hidden="true" />}
+        {tradeDecides && <span className="opacity-80">{t("card.byPlan")}:</span>}
         {t(isStop ? "card.stopHit" : tracking.hit === "final_target" ? "card.allTargets" : "card.target1")}
         {when && <span className="opacity-80">· {when}</span>}
         {tracking.ambiguous && <span className="opacity-80" title={t("card.ambiguous")}>?</span>}

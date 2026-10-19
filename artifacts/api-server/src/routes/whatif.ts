@@ -1,7 +1,8 @@
 /**
  * «Что-если» simulator + commission optimizer (engine: lib/whatIf.ts — pure, no I/O).
  *
- *   GET  /whatif/base?trader=&from=&to=          input trades + baseline metrics/equity + presets
+ *   GET  /whatif/base?trader=&from=&to=[&enc=2]  input trades + baseline metrics/equity + presets (enc=2: compact
+ *                                                trade table, see compactTrades)
  *   POST /whatif/run   {trader, from, to, rules[]} scenario vs baseline (read-only computation, nothing stored)
  *   GET  /whatif/suggestions?trader=&from=&to=   best single rules by net improvement beyond bootstrap noise
  *   GET  /whatif/fees?trader=&from=&to=          fee breakdown by price/size/hold/hour/ticker, break-even, advice
@@ -19,7 +20,8 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import { scopeTrader, isGuest } from "../lib/auth";
+import { scopeTrader, isGuest, isStaffRole } from "../lib/auth";
+import { TtlCache } from "../lib/hotCache";
 import { num, normResult, signedR } from "../lib/tradeMath";
 import { nyMinutes } from "../lib/tradingDate";
 import { execSpanJoin } from "../lib/execSpan";
@@ -30,6 +32,7 @@ import {
 } from "../lib/whatIf";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
+import { acceptsGzip } from "../lib/jsonCompression";
 
 const router: IRouter = Router();
 
@@ -88,7 +91,7 @@ function normQuery(q: Request["query"]): Record<string, string> {
 /* ─── Loading trades ─────────────────────────────────────────────────────── */
 
 type Row = {
-  id: number; ticker: string; date: string; side: string | null; qty: unknown; entry: unknown; exit: unknown; stop: unknown;
+  id: number; ticker: string; date: string; exit_date?: string | null; side: string | null; qty: unknown; entry: unknown; exit: unknown; stop: unknown;
   result: string; pnl: unknown; fees: unknown; r_multiple: unknown; risk_usd: unknown; hold_time: string | null; setup: string | null; confidence_grade: string | null;
   tags: string | null; horizon: string | null; context_snapshot: Record<string, unknown> | null;
   first_entry: Date | string | null; last_exit: Date | string | null;
@@ -161,6 +164,7 @@ export function rowToSim(r: Row, seq: number): SimTrade {
   return {
     id: r.id,
     day: r.date.slice(0, 10),
+    ...(r.exit_date && r.exit_date.slice(0, 10) !== r.date.slice(0, 10) ? { closeDay: r.exit_date.slice(0, 10) } : {}),
     entryMin,
     ticker: String(r.ticker ?? "").toUpperCase(),
     side,
@@ -188,7 +192,7 @@ export function rowToSim(r: Row, seq: number): SimTrade {
  * Short TTL — trades only change on a PropReports sync, and a 20 s old snapshot is fine for a what-if.
  * The engine never mutates trade objects (it sorts copies), so callers share them; each gets its own array.
  */
-const SIM_CACHE_TTL_MS = 20_000;
+const SIM_CACHE_TTL_MS = 60_000;
 const SIM_CACHE_MAX = 24;
 const simCache = new Map<string, { at: number; promise: Promise<SimTrade[]> }>();
 
@@ -215,7 +219,7 @@ async function querySimTrades(scope: string | null, from?: string, to?: string):
   if (to) cond.push(`substring(t.date from 1 for 10) <= ${p(to)}`);
   // One trader → per-trade index probe; desk-wide → one hash aggregate (lib/execSpan).
   const sql = `
-    SELECT t.id, t.ticker, t.date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
+    SELECT t.id, t.ticker, t.date, t.exit_date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
            t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit
     FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
     WHERE ${cond.join(" AND ")}
@@ -251,12 +255,63 @@ function previewOf(t: SimTrade) {
   };
 }
 
+/* ─── Compact trade table (?enc=2) ───────────────────────────────────────────
+ * The plain preview list is still 14.7 MB for the whole desk (45k trades), a third of it the per-trade fee breakdown
+ * and repeated key names (DEV-10). enc=2 sends one tuple per trade in WHATIF_COLS order, the repeated strings (day,
+ * ticker, side, setup, grade) as indexes into `dicts`, and only the regulatory-fee sum (`reg`) instead of the
+ * breakdown — the client's tariff preview reads nothing else (edge-tracker components/what-if/api.ts decodeTrades).
+ * Plain `trades` stays the default so an older bundle keeps working against a newer API. */
+export const WHATIF_COLS = ["id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade"] as const;
+export const WHATIF_DICT_COLS = ["day", "ticker", "side", "setup", "grade"] as const;
+const REG_KEYS = ["sec", "taf", "cat", "orf", "nfa"];
+type Cell = string | number | null;
+
+/** Σ |regulatory fee| of the broker breakdown; null without a breakdown (same keys as lib/whatIf recomputeFees). */
+export function regulatoryFees(b: Record<string, number> | null | undefined): number | null {
+  if (!b) return null;
+  let s = 0;
+  for (const k of REG_KEYS) s += Math.abs(Number(b[k]) || 0);
+  return Math.round(s * 1e4) / 1e4;
+}
+
+export function compactTrades(trades: SimTrade[]): { cols: typeof WHATIF_COLS; rows: Cell[][]; dicts: Record<(typeof WHATIF_DICT_COLS)[number], string[]> } {
+  const dicts = Object.fromEntries(WHATIF_DICT_COLS.map((k) => [k, [] as string[]])) as Record<(typeof WHATIF_DICT_COLS)[number], string[]>;
+  const idx = Object.fromEntries(WHATIF_DICT_COLS.map((k) => [k, new Map<string, number>()])) as Record<(typeof WHATIF_DICT_COLS)[number], Map<string, number>>;
+  const code = (k: (typeof WHATIF_DICT_COLS)[number], v: string | null | undefined): number | null => {
+    if (v == null) return null;
+    let n = idx[k].get(v);
+    if (n === undefined) { n = dicts[k].length; dicts[k].push(v); idx[k].set(v, n); }
+    return n;
+  };
+  const rows = trades.map((t): Cell[] => [
+    t.id, code("day", t.day), t.entryMin == null ? null : Math.round(t.entryMin * 100) / 100, code("ticker", t.ticker), code("side", t.side),
+    t.qty, t.entry, t.gross, t.fees, t.holdSec, t.seq, t.fills ?? null, regulatoryFees(t.feeBreakdown), code("setup", t.setup), code("grade", t.grade ?? null),
+  ]);
+  return { cols: WHATIF_COLS, rows, dicts };
+}
+
+/*
+ * Suggestions (~40 scenario runs with a bootstrap each: 1.8–2.7 s desk-wide) and the fee report are cached per viewer
+ * kind + scope + period + language for RESULT_TTL_MS (DEV-10). Staff and members never share an entry, even for the
+ * same trader. A PropReports sync shows up after at most that long.
+ */
+const RESULT_TTL_MS = 120_000;
+const suggestionsCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
+const feesCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
+
+export function resultKey(req: Request, scope: string | null, from: string | undefined, to: string | undefined): string {
+  return `${isStaffRole(req.authUser?.role) ? "staff" : "member"}|${scope ?? "*"}|${from ?? ""}|${to ?? ""}|${langOf(req)}`;
+}
+
 const gzipAsync = promisify(gzip);
 
-/** Large JSON gzipped when the client accepts it (no compression middleware in the app); small bodies as is. */
-async function sendJsonGz(req: Request, res: Response, body: unknown): Promise<void> {
+/**
+ * Large JSON gzipped when the client accepts it; small bodies as is. (The check used to be a regex with two literal
+ * backspace bytes instead of word boundaries, so it never matched and /whatif/base always went out uncompressed.)
+ */
+export async function sendJsonGz(req: Request, res: Response, body: unknown): Promise<void> {
   const json = JSON.stringify(body);
-  if (json.length < 64 * 1024 || !/gzip/.test(String(req.headers["accept-encoding"] ?? ""))) {
+  if (json.length < 64 * 1024 || !acceptsGzip(req)) {
     res.type("application/json").send(json);
     return;
   }
@@ -276,9 +331,10 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
   if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
   const daily = dailyResults(trades);
+  const compact = req.query.enc === "2";
   await sendJsonGz(req, res, {
     scope, period: periodMeta(trades, q.from, q.to),
-    trades: trades.map(previewOf),
+    ...(compact ? { enc: 2, tradeTable: compactTrades(trades) } : { trades: trades.map(previewOf) }),
     baseline: computeMetrics(trades),
     equity: equityByDay(daily),
     daily,
@@ -310,16 +366,21 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
+  const key = resultKey(req, scope, q.from, q.to);
+  const hit = suggestionsCache.get(key);
+  if (hit) { res.json(hit); return; }
   const trades = await loadSimTrades(scope, q.from, q.to);
   const baseline = computeMetrics(trades);
   const suggestions = findSuggestions(trades, { lang: langOf(req) });
-  res.json({
+  const body = {
     scope, period: periodMeta(trades, q.from, q.to),
     baselineNet: baseline.net, trades: baseline.trades, days: baseline.days,
     smallSample: baseline.trades < 30 || baseline.days < 30,
     suggestions,
     generatedAt: new Date().toISOString(),
-  });
+  };
+  suggestionsCache.set(key, body);
+  res.json(body);
 }));
 
 router.get("/whatif/fees", asyncHandler(async (req, res) => {
@@ -328,8 +389,13 @@ router.get("/whatif/fees", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
+  const key = resultKey(req, scope, q.from, q.to);
+  const hit = feesCache.get(key);
+  if (hit) { res.json(hit); return; }
   const trades = await loadSimTrades(scope, q.from, q.to);
-  res.json({ scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades, langOf(req)), generatedAt: new Date().toISOString() });
+  const body = { scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades, langOf(req)), generatedAt: new Date().toISOString() };
+  feesCache.set(key, body);
+  res.json(body);
 }));
 
 /* ─── Saved scenarios ────────────────────────────────────────────────────── */

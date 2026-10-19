@@ -55,11 +55,14 @@ export type Cohort = {
   id: number; name: string; format: CohortFormat; mentor: string | null; startsOn: string | null; endsOn: string | null; timezone: string;
   description: string; room: string | null; meetingUrl: string | null; createdBy?: string | null; createdAt?: string; archivedAt?: string | null;
 };
-export type CohortListItem = Cohort & { counts: Record<EnrollmentStatus, number>; sessions: number };
+/** `mine` — the viewer is the cohort's mentor; `canEdit` — admin / the mentor / any staff while there is no mentor. */
+export type CohortListItem = Cohort & { counts: Record<EnrollmentStatus, number>; sessions: number; mine?: boolean; canEdit?: boolean };
 
 export type Enrollment = {
   id: number; cohortId: number; userName: string; stage: Stage; stageLabel: string; status: EnrollmentStatus; statusLabel: string;
   joinedOn: string; note: string; createdAt: string; archivedAt: string | null;
+  /** The trader's tier on the risk desk (one tier everywhere, OLGA-19); null — no limits set. Older API: absent. */
+  deskTier?: Stage | null; deskTierLabel?: string | null;
 };
 
 export type AttendanceSummary = {
@@ -115,6 +118,8 @@ export type Meeting = {
 
 export type CohortDetail = {
   cohort: Cohort;
+  /** May the viewer edit / archive this cohort (older API: absent → staff). */
+  canEdit?: boolean;
   enrollments: (Enrollment & { attendance: AttendanceSummary | null; attendance30: AttendanceSummary | null })[];
   attendance: AttendanceSummary;
   sessions: Session[];
@@ -186,8 +191,9 @@ export function useMyDashboard(user: string) {
     refetchInterval: 60_000,
   });
 }
-export function useMentorDashboard(all: boolean) {
-  return useQuery({ queryKey: academyKeys.mentor(all), queryFn: () => http.get<MentorDashboard>(`/api/academy/mentor${all ? "?all=1" : ""}`), retry: false, refetchInterval: 120_000 });
+/** Staff only: `enabled` = false for a trader, so the page never fires a 403 (DEV-12). */
+export function useMentorDashboard(all: boolean, enabled = true) {
+  return useQuery({ queryKey: academyKeys.mentor(all), queryFn: () => http.get<MentorDashboard>(`/api/academy/mentor${all ? "?all=1" : ""}`), retry: false, refetchInterval: 120_000, enabled });
 }
 export function useIdp(student: string, enabled = true) {
   return useQuery({ queryKey: academyKeys.idp(student), enabled: enabled && !!student, queryFn: () => http.get<{ student: string; goals: Goal[] }>(`/api/academy/idp?student=${enc(student)}`), retry: false });

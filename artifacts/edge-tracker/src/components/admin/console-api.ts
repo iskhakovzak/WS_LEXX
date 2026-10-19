@@ -61,7 +61,17 @@ export interface HealthData {
     lastSyncedAt: string | null;
   };
   errors24h: { count: number; items: { at: string | null; source: string; text: string }[] };
+  /** Newest DB backup — only in production for those who may see backups (OWNER-14); null/absent = not checked. */
+  backup?: { lastAt: string | null } | null;
   source: "console" | "fallback";
+}
+
+/** Review queue per curator (GET /admin/console/review-load, OWNER-05). */
+export interface ReviewLoad {
+  slaHours: number;
+  windowDays: number;
+  curators: { name: string; wards: number; count: number; overdue: number }[];
+  unassigned: { traders: number; count: number; overdue: number };
 }
 
 export interface DataCheck {
@@ -123,6 +133,7 @@ export const consoleKeys = {
   tiers: ["admin-console", "tiers"] as const,
   eod: ["admin-console", "eod"] as const,
   eodQueue: ["admin-console", "eod-queue"] as const,
+  reviewLoad: ["admin-console", "review-load"] as const,
 };
 
 /* ── Queries ─────────────────────────────────────────────────────────────── */
@@ -235,11 +246,22 @@ export function useEodStatus() {
   });
 }
 
-/** Curator review queue size and SLA breaches. null when unavailable. */
+/** Curator review queue size and SLA breaches for the whole desk (scope=desk: the default is the caller's wards). null when unavailable. */
 export function useEodQueueCount() {
   return useQuery<{ count: number; overdue: number; slaHours: number } | null>({
     queryKey: consoleKeys.eodQueue,
-    queryFn: ({ signal }) => http.get<{ count: number; overdue: number; slaHours: number }>("/api/eod/queue/count", { signal }).catch(() => null),
+    queryFn: ({ signal }) => http.get<{ count: number; overdue: number; slaHours: number }>("/api/eod/queue/count", { query: { scope: "desk" }, signal }).catch(() => null),
+    refetchInterval: POLL.minute,
+    retry: false,
+  });
+}
+
+/** Who is late with reviews: the queue per curator + traders without a curator. null when unavailable. */
+export function useReviewLoad(enabled = true) {
+  return useQuery<ReviewLoad | null>({
+    queryKey: consoleKeys.reviewLoad,
+    queryFn: ({ signal }) => http.get<ReviewLoad>("/api/admin/console/review-load", { signal }).catch(() => null),
+    enabled,
     refetchInterval: POLL.minute,
     retry: false,
   });

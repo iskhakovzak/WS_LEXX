@@ -23,7 +23,7 @@ export default {
     progress: "Прогресс",
   },
   time: {
-    yourTime: "Ваше время / {ny}",
+    yourTime: "Время Нью-Йорка. У вас: {local}",
     sameTz: "Время Нью-Йорка совпадает с вашим",
     noActivity: "нет активности",
     today: "сегодня",

@@ -11,6 +11,7 @@
  * (no DB, no Date.now(), no Math.random()).
  */
 import { whatifT } from "../i18n/ns";
+import { maxDrawdownByDay, winRateOf } from "./tradeMath";
 import type { Lang } from "../i18n";
 
 /* ───────────────────────── Types ───────────────────────── */
@@ -23,6 +24,8 @@ export interface SimTrade {
   id: number;
   /** Trading day (New York calendar date), YYYY-MM-DD. */
   day: string;
+  /** Day the result is realised (exit date of a multi-day hold); absent ⇒ `day`. */
+  closeDay?: string;
   /** Minutes since NY midnight of the first entry fill (fractional allowed); null when unknown. */
   entryMin: number | null;
   ticker: string;
@@ -142,7 +145,7 @@ export interface Metrics {
   expectancy: number | null;
   avgWin: number | null;
   avgLoss: number | null;
-  /** Peak-to-trough drawdown of the cumulative net equity (≤ 0), trade by trade. */
+  /** Canonical max drawdown (≤ 0): end-of-day cumulative net curve by close date (lib/tradeMath maxDrawdownByDay). */
   maxDrawdown: number;
   days: number;
   bestDay: DayResult | null;
@@ -319,16 +322,16 @@ export function computeMetrics(input: SimTrade[]): Metrics {
     if (!bestDay || d.net > bestDay.net) bestDay = d;
     if (!worstDay || d.net < worstDay.net) worstDay = d;
   }
-  const decided = wins + losses;
   return {
     trades: trades.length, wins, losses, be,
     gross: round2(gross), fees: round2(fees), net: round2(net),
-    winRate: decided ? wins / decided : null,
+    winRate: winRateOf(wins, losses),
     profitFactor: negNet < 0 ? posNet / Math.abs(negNet) : null,
     expectancy: trades.length ? net / trades.length : null,
     avgWin: wins ? posNet / wins : null,
     avgLoss: losses ? negNet / losses : null,
-    maxDrawdown: round2(maxDrawdownOf(nets)),
+    // MAKSIM-08: one definition with stats / dashboard — the end-of-day curve, not trade by trade (−$724 vs −$642).
+    maxDrawdown: round2(maxDrawdownByDay(trades.map((t) => ({ day: t.closeDay ?? t.day, value: netOf(t) }))) ?? 0),
     days: daily.length,
     bestDay, worstDay,
     dailyMean, dailyStd, sharpe,

@@ -6,13 +6,15 @@
  * Route: /weekly-review?view=trader|curator|partners&trader=&week=YYYY-Www. Week = Mon–Fri, NY dates.
  */
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Briefcase, CalendarRange, ChevronLeft, ChevronRight, ClipboardCopy, FileText, GraduationCap, Lock, Printer, UserRound } from "lucide-react";
 import { EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
-import { currentWeekKey, fmtDay, isWeekKey, reviewToText, shiftWeek, useWeeklyReview, weekLabel } from "@/components/weekly-review/api";
+import { currentWeekKey, fmtDay, isWeekKey, nextWard, reviewToText, shiftWeek, useWeeklyOverview, useWeeklyReview, weekLabel } from "@/components/weekly-review/api";
+import { http } from "@/lib/api/http";
 import { ReviewStatusPill } from "@/components/weekly-review/collab";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
 import { PartnersView } from "@/components/weekly-review/partners-view";
@@ -118,6 +120,22 @@ export default function WeeklyReviewPage() {
   };
 
   const openTrader = (name: string) => { setTrader(name); setView("curator"); };
+  // «Сохранить и следующий» (OLGA-11): my wards in name order, the next one after this trader whose week is not reviewed.
+  const wardsQ = useQuery({
+    queryKey: ["curator", "wards"],
+    queryFn: ({ signal }) => http.get<{ wards: string[] }>("/api/curator/wards", { signal }).then((r) => r.wards).catch(() => null),
+    enabled: staff && effectiveView === "curator",
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const overviewQ = useWeeklyOverview(week, staff && effectiveView === "curator" && !!wardsQ.data?.length);
+  const next = React.useMemo(() => {
+    const wards = wardsQ.data;
+    if (!wards?.length || !trader) return null;
+    const reviewed = new Set((overviewQ.data?.traders ?? []).filter((x) => x.status === "reviewed").map((x) => x.trader));
+    const name = nextWard(wards, trader, reviewed);
+    return name ? { name, open: () => setTrader(name) } : null;
+  }, [wardsQ.data, overviewQ.data, trader]);
   const perTrader = effectiveView !== "partners";
 
   const weekNav = (
@@ -209,7 +227,7 @@ export default function WeeklyReviewPage() {
             <p data-print-title className="mb-3 hidden text-lg font-semibold">
               {t(effectiveView === "curator" ? "page.printTitleCurator" : "page.printTitle", { week: weekLabel(doc.week.key), trader: personName(doc.trader) })}
             </p>
-            {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} />}
+            {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} next={next} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} />}
           </div>
         )}
       </div>

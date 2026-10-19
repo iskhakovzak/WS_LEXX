@@ -9,6 +9,12 @@ import { agoText, runStatusLabel, untilText, type Status } from "./api";
 import { fmtCount } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 
+/** «всё синхронизировано» only when trades come over the API; file uploads say «из файлов» (OWNER-18). */
+export function syncedText(status: Pick<Status, "config" | "lastRun">): string {
+  const fromFiles = !status.config.configured || status.lastRun?.source === "file";
+  return propreportsI18n.t(fromFiles ? "hero.syncedFiles" : "hero.synced");
+}
+
 export function StatusHero({ status, actions }: { status: Status; actions?: React.ReactNode }) {
   const { t } = propreportsI18n.useT();
   const { config, scheduler, accounts, trades, lastRun, connection } = status;
@@ -40,9 +46,11 @@ export function StatusHero({ status, actions }: { status: Status; actions?: Reac
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
+      {/* OWNER-18: the env setup is developer text — folded under «Для разработчика», closed by default. */}
       {!config.configured && (
-        <div className="mt-4 rounded-xl border border-dashed border-[var(--glass-border)] p-3 text-sm">
-          <div className="mb-2 flex items-center gap-2 text-muted-foreground"><KeyRound className="h-4 w-4" aria-hidden="true" /> {t("hero.envTitle")}</div>
+        <details className="mt-4 rounded-xl border border-dashed border-[var(--glass-border)] p-3 text-sm">
+          <summary className="cursor-pointer select-none text-muted-foreground">{t("hero.devTitle")}</summary>
+          <div className="mb-2 mt-2 flex items-center gap-2 text-muted-foreground"><KeyRound className="h-4 w-4" aria-hidden="true" /> {t("hero.envTitle")}</div>
           <ul className="grid gap-1 font-mono text-xs sm:grid-cols-2">
             <li><Kbd>PROPREPORTS_DOMAIN</Kbd> <span className="font-sans text-muted-foreground">{t("hero.env.domain")}</span></li>
             <li><Kbd>PROPREPORTS_TOKEN</Kbd> <span className="font-sans text-muted-foreground">{t("hero.env.token")}</span></li>
@@ -51,14 +59,14 @@ export function StatusHero({ status, actions }: { status: Status; actions?: Reac
             <li><Kbd>PROPREPORTS_SYNC_MINUTES</Kbd> <span className="font-sans text-muted-foreground">{t("hero.env.sync")}</span></li>
           </ul>
           {!!config.missing.length && <p className="mt-2 text-xs text-[hsl(var(--chart-3))]">{t("hero.missing", { list: config.missing.join(", ") })}</p>}
-        </div>
+        </details>
       )}
 
       <StatGrid className="mt-4">
         <StatCard icon={Clock} label={t("hero.lastSync")} value={lastSync ? agoText(lastSync) : t("never")} hint={lastRun ? t("hero.lastRunHint", { source: lastRun.source === "api" ? "API" : t("file"), status: runStatusLabel(lastRun.status) }) : undefined} tone={lastRun?.status === "error" ? "down" : "neutral"} />
         <StatCard icon={Server} label={t("hero.nextAuto")} value={scheduler.enabled ? untilText(scheduler.nextRunAt) : t("hero.off")} hint={scheduler.enabled ? t("hero.every", { minutes: scheduler.minutes ?? 0 }) : t("hero.notSet")} />
         <StatCard label={t("hero.accountsTitle")} value={`${accounts.mapped} / ${accounts.total}`} hint={accounts.unmapped.length ? t("hero.unmapped", { list: accounts.unmapped.join(", ") }) : t("hero.allMapped")} tone={accounts.unmapped.length ? "warn" : "neutral"} />
-        <StatCard label={t("hero.imported")} value={fmtCount(Number(trades.imported))} hint={trades.legacyWithoutId ? t("hero.legacy", { count: trades.legacyWithoutId }) : status.pendingCount ? t("hero.pending", { count: status.pendingCount }) : t("hero.synced")} tone={status.pendingCount ? "warn" : "neutral"} />
+        <StatCard label={t("hero.imported")} value={fmtCount(Number(trades.imported))} hint={trades.legacyWithoutId ? t("hero.legacy", { count: trades.legacyWithoutId }) : status.pendingCount ? t("hero.pending", { count: status.pendingCount }) : syncedText(status)} tone={status.pendingCount ? "warn" : "neutral"} />
       </StatGrid>
     </section>
   );

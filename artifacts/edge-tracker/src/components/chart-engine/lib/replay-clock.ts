@@ -115,3 +115,50 @@ export function sessionEndIndex(bars: readonly Candle[], dayKey: string): number
   }
   return lastRth >= 0 ? lastRth : lastOfDay >= 0 ? lastOfDay : bars.length - 1;
 }
+
+/** First bar of `dayKey` (ET, premarket included), or 0 — the earliest point the replay may seek to. */
+export function dayFloorIndex(bars: readonly Candle[], dayKey: string): number {
+  for (let i = 0; i < bars.length; i++) {
+    const k = etParts(bars[i].t).dayKey;
+    if (k === dayKey) return i;
+    if (k > dayKey) return i;
+  }
+  return 0;
+}
+
+/** The 9:30 open bar of `dayKey` (Home in the replay); falls back to the first bar of the day. */
+export function sessionOpenIndex(bars: readonly Candle[], dayKey: string): number {
+  const open = firstBarOfDayAt(bars, dayKey, RTH_OPEN_MIN);
+  return open >= 0 ? open : dayFloorIndex(bars, dayKey);
+}
+
+export type ReplayKeyAction =
+  | { kind: "toggle" }
+  | { kind: "step"; delta: number }
+  | { kind: "speed"; speed: ReplaySpeed }
+  | { kind: "speedStep"; dir: 1 | -1 }
+  | { kind: "open" }
+  | { kind: "entry" }
+  | { kind: "exit" }
+  | { kind: "nextFill" }
+  | { kind: "pauseOnFills" };
+
+/**
+ * Replay keyboard: Space play/pause · → / ← one bar (Shift — 10) · 1–6 speed 1×…60× · +/− faster/slower ·
+ * Home the 9:30 open · E to the entry · X to the exit · N next fill · P pause on fills. Null for any other key.
+ */
+export function replayKeyAction(key: string, code: string, shift: boolean): ReplayKeyAction | null {
+  if (key === " " || code === "Space") return { kind: "toggle" };
+  if (key === "ArrowRight") return { kind: "step", delta: shift ? 10 : 1 };
+  if (key === "ArrowLeft") return { kind: "step", delta: shift ? -10 : -1 };
+  const digit = /^Digit([1-6])$/.exec(code) ?? /^Numpad([1-6])$/.exec(code);
+  if (digit && !shift) return { kind: "speed", speed: REPLAY_SPEEDS[Number(digit[1]) - 1] };
+  if (key === "+" || key === "=" || code === "Equal" || code === "NumpadAdd") return { kind: "speedStep", dir: 1 };
+  if (key === "-" || key === "_" || code === "Minus" || code === "NumpadSubtract") return { kind: "speedStep", dir: -1 };
+  if (key === "Home") return { kind: "open" };
+  if (code === "KeyE") return { kind: "entry" };
+  if (code === "KeyX") return { kind: "exit" };
+  if (code === "KeyN") return { kind: "nextFill" };
+  if (code === "KeyP") return { kind: "pauseOnFills" };
+  return null;
+}

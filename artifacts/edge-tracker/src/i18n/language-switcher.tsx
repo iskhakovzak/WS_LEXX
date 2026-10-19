@@ -4,12 +4,11 @@ import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LANGS, LANG_META, setLang, useLang, type Lang } from ".";
 import { commonI18n } from "./ns/common";
 
 /** `focus`: what gets keyboard focus back after the app re-mounts in the new language. */
-function choose(lang: Lang, focus?: string) {
+export function choose(lang: Lang, focus?: string) {
   void setLang(lang, { source: "user", focus });
 }
 
@@ -55,25 +54,6 @@ export function LanguageMenuItems({ focus }: { focus?: string } = {}) {
         </DropdownMenuItem>
       ))}
     </>
-  );
-}
-
-/** Settings → Профиль: a labelled select. */
-export function LanguageSelect({ id, className }: { id?: string; className?: string }) {
-  const lang = useLang();
-  return (
-    <Select value={lang} onValueChange={(v) => choose(v as Lang, id ? `#${id}` : undefined)}>
-      <SelectTrigger id={id} className={cn("w-full sm:w-56", className)}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {LANGS.map((l) => (
-          <SelectItem key={l} value={l} lang={l}>
-            {LANG_META[l].native}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }
 

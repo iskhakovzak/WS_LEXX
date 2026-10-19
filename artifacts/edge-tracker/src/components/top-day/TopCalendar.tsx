@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Panel, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
 import { fmtCompact, fmtDate, fmtMonth, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -23,6 +24,8 @@ export function TopCalendar({
   month,
   data,
   loading,
+  error,
+  onRetry,
   selected,
   today,
   canNext,
@@ -32,6 +35,9 @@ export function TopCalendar({
   month: string;
   data: Calendar | undefined;
   loading: boolean;
+  /** The month failed to load: an error with a retry instead of an empty grid. */
+  error?: unknown;
+  onRetry?: () => void;
   selected: string | null;
   today: string;
   canNext: boolean;
@@ -89,9 +95,12 @@ export function TopCalendar({
               ),
             )}
       </div>
+      {error != null && !data && <QueryError compact error={error} onRetry={onRetry} />}
       {data?.days.some((d) => d.mine != null) && (
         <p className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+          {/* Same colours as the cell dots: green = your day in plus, red = in minus. */}
+          <span className="h-1.5 w-1.5 rounded-full bg-up" aria-hidden="true" />
+          <span className="h-1.5 w-1.5 rounded-full bg-down" aria-hidden="true" />
           {t("calendar.legendMine")}
         </p>
       )}

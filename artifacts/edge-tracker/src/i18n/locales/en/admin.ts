@@ -39,6 +39,7 @@ export default {
     riskUnavailable: "risk desk unavailable",
     breaches: { one: "{count} breach", other: "{count} breaches" },
     noBreaches: "no breaches",
+    weekend: "day off",
   },
 
   attention: {
@@ -52,7 +53,7 @@ export default {
     slaDetail: "SLA {hours} h · {count} in the queue",
     queueWaiting: "Awaiting curator review: {count}",
     eodOpen: "Didn’t close {date}: {count}",
-    errors24h: "Errors in 24 h: {count}",
+    errors24h: "Sync errors in 24 h: {count}",
     syncFailed: "The last PropReports sync failed",
     syncPartial: "The last PropReports sync was partial",
     unmappedAccounts: "Accounts without a trader: {count}",
@@ -66,6 +67,11 @@ export default {
     qualityItem: "{label} — {count}",
     violationsToday: "Broke rules today: {count}",
     stale: "Not signed in for 3+ days: {count}",
+    noBackup: "No fresh database backup (older than 24 h)",
+    noBackupLast: "Last backup: {date}",
+    noBackupNever: "No backups yet — turn on the “Database backup” job",
+    slaCurator: "{name} — {count}",
+    slaNoCurator: "no curator — {count}",
     action: {
       review: "Review",
       riskDesk: "Risk desk",
@@ -78,6 +84,8 @@ export default {
       check: "Check",
       show: "Show",
       list: "List",
+      backups: "Data",
+      assign: "Assign",
     },
   },
 
@@ -100,8 +108,22 @@ export default {
     autoNext: " · next {at}",
     autoOff: "off",
     autoNotSet: "not set up",
-    errors24h: "Errors in 24 h",
+    errors24h: "Sync errors",
     errorsNone: "none",
+  },
+
+  reviewLoad: {
+    title: "Reviews by curator",
+    description: "Days in the queue over {days} days · SLA {hours} h",
+    waiting: "{count} waiting",
+    overdue: "{count} overdue",
+    clear: "queue is empty",
+    wards: { one: "{count} trader", other: "{count} traders" },
+    noWards: "no traders",
+    unassigned: "No curator: {count}",
+    unassignedDays: "their days in the queue: {count}",
+    none: "No curators yet",
+    unavailable: "Curator load is unavailable.",
   },
 
   recent: {

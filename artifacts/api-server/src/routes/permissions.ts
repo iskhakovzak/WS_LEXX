@@ -1,7 +1,8 @@
 /**
  * Permissions matrix API.
  *
- *   GET /api/permissions/me        any signed-in member (guests too): my role, effective capabilities, scopes, wards
+ *   GET /api/permissions/me        any signed-in member (guests too): my role, effective capabilities, scopes, wards,
+ *                                  tier (trainee … lead | null for staff / guests) and the simple-menu settings (nav)
  *   GET /api/permissions/matrix    staff: capability catalogue, defaults, desk overrides, effective matrix
  *   PUT /api/permissions/matrix    admin (permissions.manage): { cells: [{ role, capability, allowed, scope? }] }
  *                                  or { reset: true }. Admin and guest rows are locked; adminOnly capabilities can
@@ -27,6 +28,8 @@ import {
 import { badRequest, unauthorized } from "../lib/http";
 import { localizedCapabilityDefs } from "../lib/permissionsI18n";
 import { langOf, type Lang } from "../i18n";
+import { setting } from "../lib/settings/registry";
+import { viewerTier } from "../lib/playbookToday/tier";
 
 const router: IRouter = Router();
 
@@ -61,11 +64,17 @@ router.get("/permissions/me", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
   const actor = await resolveActor(req);
   if (!actor) throw unauthorized();
-  const state = await getMatrixState();
+  const [state, tier] = await Promise.all([
+    getMatrixState(),
+    actor.role === "trader" ? viewerTier(actor.name) : null,
+  ]);
   res.json({
     name: actor.name,
     role: actor.role,
     guest: actor.guest,
+    // Ladder tier as the playbook locks see it (staff / guests: null) + the simple-menu settings — the shell picks the menu.
+    tier,
+    nav: { simpleForTrainees: setting("nav.simpleForTrainees"), simpleUntilTier: setting("nav.simpleUntilTier") },
     capabilities: capabilitiesOf(state.matrix, actor.role),
     scopes: scopesOf(state.matrix, actor.role),
     wards: actor.wards,

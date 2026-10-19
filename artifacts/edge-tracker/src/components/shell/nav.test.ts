@@ -46,7 +46,7 @@ describe("nav groups", () => {
     expect(parentOf(ALL_NAV_ITEMS.find((i) => i.href === "/trade-idea-stats")!)!.href).toBe("/trade-ideas");
     const tools = ALL_NAV_ITEMS.find((i) => i.href === "/chart-lab")!;
     expect(rowLabel(tools)).toBe("Инструменты");
-    expect(rowChildren(tools).map((i) => i.href)).toEqual(["/chart-lab", "/simulator", "/calculator"]);
+    expect(rowChildren(tools).map((i) => i.href)).toEqual(["/chart-lab", "/trainer", "/calculator"]);
   });
 
   it("every item has a label and unique href / go key", () => {

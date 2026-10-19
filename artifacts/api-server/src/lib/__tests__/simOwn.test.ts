@@ -131,9 +131,13 @@ vi.mock("../sim/ownStore", () => ({
   ownCandidates: vi.fn(async (trader: string) => (trader === ME.name ? [structuredClone(TRADE), structuredClone(AVG)] : [])),
   ownTrade: vi.fn(async (trader: string, _last: string, id: number) => (trader === ME.name ? [TRADE, AVG].find((t) => t.id === id) ?? null : null)),
   playedOwnTrades: vi.fn(async (uid: number) => new Map([...games.values()].filter((g) => g.userId === uid && g.params.own && g.status !== "abandoned").map((g) => [g.params.own!.tradeId, g.id]))),
+  activeOwnGame: vi.fn(async (uid: number) => {
+    const g = [...games.values()].reverse().find((x) => x.userId === uid && x.params.own && x.status === "active");
+    return g ? { gameId: g.id, tradeId: g.params.own!.tradeId, ticker: g.ticker, date: g.day } : null;
+  }),
 }));
 
-vi.mock("../daily/service", () => ({ mistakeCosts: vi.fn(async () => [{ id: "behavior:revenge", count: 1, days: 1, costNet: -63.92, examples: [{ tradeId: 501, date: DAY, ticker: "META", net: -63.92 }] }]) }));
+vi.mock("../daily/service", () => ({ mistakesByTrade: vi.fn(async () => new Map([[501, ["behavior:revenge"]]])) }));
 
 const sim = await import("../sim/service");
 const own = await import("../sim/ownService");
@@ -184,6 +188,16 @@ describe("own mode — service", () => {
     expect(stats.totals.games).toBe(0);
     expect(stats.own.games).toBe(1);
     expect(stats.recent[0].own).toBe(true);
+  });
+
+  it("the card's «next» is what «play» creates, also with an untouched unfinished game; the card reports that game", async () => {
+    const first = await own.createOwnGame(ME, "worst", null); // left without an order → abandoned when the next one starts
+    const card = await own.ownCandidates(ME);
+    expect(card.active).toEqual({ gameId: first.id, tradeId: 501, ticker: "META", date: DAY });
+    expect(card.worst).toBe(502);
+    const next = await own.createOwnGame(ME, "worst", null);
+    expect(next.own!.tradeId).toBe(card.worst);
+    expect((await own.ownCandidates(ME)).active).toMatchObject({ gameId: next.id, tradeId: 502 });
   });
 
   it("a played trade is not offered again while another loss is unplayed; another trader's trade is not found", async () => {

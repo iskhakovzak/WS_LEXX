@@ -118,3 +118,8 @@ export function inboxDays(raw: unknown): number {
   if (!Number.isFinite(n) || n <= 0) return 14;
   return Math.min(n, 90);
 }
+
+/** ?from=YYYY-MM-DD (a NY close day, e.g. PlaybookToday.untaggedPeriod.from) — overrides ?days=; anything else → null. */
+export function inboxFrom(raw: unknown): string | null {
+  return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}

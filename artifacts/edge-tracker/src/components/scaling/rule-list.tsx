@@ -53,9 +53,11 @@ export function RuleList({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                   <span className="text-sm font-medium text-foreground" title={m?.hint}>{r.label}</span>
+                  {/* «нужно ≤ −$1,800 · сейчас $513» — the condition, then the current value (never «a < b OK»). */}
                   <span className="text-xs tabular-nums text-muted-foreground">
+                    {t(demote ? "rules.demoteAt" : "rules.need", { op: OP_LABEL[r.op], threshold: fmtThreshold(unit, r.rawValue, r.unit, r.threshold) })}
+                    {" · "}{t("rules.now")}{" "}
                     <span className={cn("font-semibold", r.actual == null ? "text-muted-foreground" : "text-foreground")}>{fmtMetric(unit, r.actual)}</span>
-                    {" "}{OP_LABEL[r.op]} {fmtThreshold(unit, r.rawValue, r.unit, r.threshold)}
                   </span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">

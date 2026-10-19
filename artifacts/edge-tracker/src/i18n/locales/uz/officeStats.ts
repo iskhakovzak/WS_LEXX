@@ -71,7 +71,7 @@ export default {
   },
   kpi: {
     netYear: "Sof natija {year}",
-    vsYear: "{year}-yilga nisbatan {value}",
+    vsYear: "{year}-yilning shu sanasiga nisbatan {value}",
     tradesDays: "{trades} · {days}",
     goalAria: "Yillik maqsadning bajarilishi",
     goalOf: "{year} maqsadi: +{pct}%",
@@ -153,6 +153,9 @@ export default {
   strategies: {
     totalTitle: "Strategiyalar boʻyicha jami",
     totalDesc: "har bir strategiyaning yil natijasidagi hissasi · zarar — qavs ichida",
+    fullYear: "butun yil",
+    toDate: "{date} gacha",
+    avgRBase: "Oʻrtacha R {total} ta savdodan {n} tasi boʻyicha — R faqat stop maʼlum boʻlgan joyda bor; $ dagi jami — barcha savdolar boʻyicha",
     noTradesYears: "Tanlangan yillarda savdolar yoʻq",
     multiplesTitle: "Strategiyalar natijasi",
     multiplesDesc: "yil kunlari boʻyicha jamlanma · {years} · chiziqcha — hajm ulushi",
@@ -323,7 +326,8 @@ export default {
     deltaPrevUnit: "Oʻtgan oyga Δ {unit}",
     sameMonth: "{year}-yilning shu oyi",
     deltaYear: "{year} ga Δ",
-    deltaYearTip: "Oy natijasi minus {year}-yilning shu oyi",
+    deltaYearTip: "Oy natijasi minus {year}-yilning shu oyi; joriy oy — shu sanagacha",
+    totalVsTip: "{year}-yil shu kungacha ({date}) — yuqoridagi «shu sanasiga nisbatan» bilan bir xil asos",
     deltaYearUnit: "{year} ga Δ {unit}",
     yearUnit: "{year} {unit}",
     ytd: "Yil boshidan",

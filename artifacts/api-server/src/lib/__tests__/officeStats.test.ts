@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildOfficeView, classifyStrategy, dayOfYear, drawdownOf, isOptionSymbol, nyParts, parsePeriod, parseYears, shiftYear,
+  buildOfficeView, classifyStrategy, dayOfYear, drawdownOf, isOptionSymbol, monthName, nyParts, parsePeriod, parseYears, shiftYear,
   streaksOf, timeBucketKey, toMemberView, toValued, type OfficeTrade, type YearSetting,
 } from "../officeStats";
 
@@ -149,6 +149,22 @@ const settings = (cap2026: number | null, cap2025: number | null = null) =>
   new Map<number, YearSetting>([[2026, { year: 2026, capital: cap2026, goalPct: 40 }], [2025, { year: 2025, capital: cap2025, goalPct: 40 }]]);
 const opts = (unit: "usd" | "pct", s: Map<number, YearSetting>, traders = false) =>
   ({ years: [2025, 2026], settings: s, unit, from: "2026-01-01", to: "2026-10-17", today: "2026-10-17", traders });
+
+describe("insight wording (OWNER-13)", () => {
+  it("month names: lower case inside an RU / UZ sentence, capitalised in English", () => {
+    expect(monthName(4, "ru")).toBe("апрель");
+    expect(monthName(4, "en")).toBe("April");
+    expect(monthName(4, "uz")).toBe(monthName(4, "uz").toLowerCase());
+  });
+
+  it("avg R carries the number of trades behind it", () => {
+    const v = buildOfficeView(TRADES, opts("usd", settings(100_000), true));
+    const y26 = v.years.find((y) => y.year === 2026)!;
+    const withR = TRADES.filter((t) => t.day.startsWith("2026") && t.r != null).length;
+    expect(y26.totals.rTrades).toBe(withR);
+    expect(y26.strategies.reduce((a, s) => a + s.rTrades, 0)).toBe(withR);
+  });
+});
 
 describe("toValued", () => {
   it("converts to % of the trade year's capital and drops years without one", () => {

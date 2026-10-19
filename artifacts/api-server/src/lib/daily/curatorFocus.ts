@@ -27,11 +27,27 @@ export interface CuratorFocus {
   date: string;
   /** Newest first; days the trader traded. */
   history: FocusHistoryDay[];
-  /** The trader's mistakes over the history window that cost money, costliest first. */
-  options: MistakeCost[];
+  /** The trader's mistakes over the history window that cost money, costliest first; the focus in force is always one of
+   *  them, flagged `current` (also when it is outside the top or the window). */
+  options: FocusOption[];
   window: { from: string; to: string };
   /** Contract streak, discipline points / level and badges (lib/daily/rewards); null when not computed in time. */
   rewards?: Rewards | null;
+}
+
+export type FocusOption = MistakeCost & { current?: boolean };
+
+const MAX_OPTIONS = 8;
+
+/** The costliest money-losing mistakes (top MAX_OPTIONS) with the focus in force flagged, added when it is not among them. */
+export function focusOptions(costs: readonly MistakeCost[], current: DailyFocus | null): FocusOption[] {
+  const cur = current?.mistake ?? null;
+  const out: FocusOption[] = costs.filter((o) => o.id && (o.costNet ?? 0) < 0).slice(0, MAX_OPTIONS).map((o) => (o.id === cur ? { ...o, current: true } : o));
+  if (cur && !out.some((o) => o.id === cur)) {
+    const seen = costs.find((o) => o.id === cur);
+    out.push(seen ? { ...seen, current: true } : { id: cur, count: current!.count, days: 0, costNet: current!.costNet, examples: [], current: true });
+  }
+  return out;
 }
 
 function nextWeekday(d: string): string {
@@ -108,7 +124,7 @@ export async function curatorFocusFor(trader: string, today: string): Promise<Cu
     current,
     date: nextFocusDay(today, now),
     history,
-    options: options.filter((o) => o.id && (o.costNet ?? 0) < 0).slice(0, 8),
+    options: focusOptions(options, current),
     window,
     rewards,
   };

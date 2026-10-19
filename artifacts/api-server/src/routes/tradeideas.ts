@@ -256,9 +256,9 @@ function parseLevelNumbers(raw: string | null | undefined): number[] {
   return out;
 }
 
-type IdeaLevels = { isShort: boolean; entry: number; stop: number; target: number; finalTarget: number };
+export type IdeaLevels = { isShort: boolean; entry: number; stop: number; target: number; finalTarget: number };
 
-function ideaLevels(idea: { side: string | null; entryZone: string | null; stop: string | null; target: string | null }): IdeaLevels | null {
+export function ideaLevels(idea: { side: string | null; entryZone: string | null; stop: string | null; target: string | null }): IdeaLevels | null {
   const entries = parseLevelNumbers(idea.entryZone);
   const stops = parseLevelNumbers(idea.stop);
   const targets = parseLevelNumbers(idea.target);
@@ -273,8 +273,8 @@ function ideaLevels(idea: { side: string | null; entryZone: string | null; stop:
   return { isShort, entry, stop, target, finalTarget };
 }
 
-type Bar = { t: number; h: number; l: number; c: number };
-type Series = { price: number | null; bars: Bar[] };
+export type Bar = { t: number; h: number; l: number; c: number };
+export type Series = { price: number | null; bars: Bar[] };
 const seriesCache = new Map<string, { ts: number; data: Series | null }>();
 const SERIES_TTL = 2 * 60 * 1000;
 const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,10}$/;
@@ -316,41 +316,49 @@ async function fetchSeries(sym: string): Promise<Series | null> {
   return data;
 }
 
-type IdeaTracking = {
+export type IdeaTracking = {
   ticker: string; price: number | null;
   hit: "target" | "final_target" | "stop" | null; hitAt: string | null; ambiguous: boolean;
   rNow: number | null; mfeR: number | null; maeR: number | null; plannedR: number;
   since: string;
 };
 
-function evaluateTracking(lv: IdeaLevels, series: Series, since: Date, ticker: string): IdeaTracking {
+/** Frozen at the outcome: after the stop/target `rNow` is that level's R (−1R at the stop) and the hit bar is capped
+ *  there; while open, the live price counts too, so the max excursions are never smaller than «now». */
+export function evaluateTracking(lv: IdeaLevels, series: Series, since: Date, ticker: string): IdeaTracking {
   const risk = Math.abs(lv.entry - lv.stop);
   const toR = (px: number) => (lv.isShort ? lv.entry - px : px - lv.entry) / risk;
   const r2 = (n: number) => Math.round(n * 100) / 100;
-  let hit: IdeaTracking["hit"] = null; let hitAt: string | null = null; let ambiguous = false;
+  let hit: IdeaTracking["hit"] = null; let hitAt: string | null = null; let ambiguous = false; let hitR: number | null = null;
   let mfe: number | null = null; let mae: number | null = null;
   for (const b of series.bars) {
     // Hourly bar timestamps mark the bar open; include the bar that contains the publish moment.
     if (b.t + 60 * 60 * 1000 <= since.getTime()) continue;
-    const favR = toR(lv.isShort ? b.l : b.h);
-    const advR = toR(lv.isShort ? b.h : b.l);
-    mfe = mfe == null ? favR : Math.max(mfe, favR);
-    mae = mae == null ? advR : Math.min(mae, advR);
+    let favR = toR(lv.isShort ? b.l : b.h);
+    let advR = toR(lv.isShort ? b.h : b.l);
     const stopTouched = lv.isShort ? b.h >= lv.stop : b.l <= lv.stop;
     const targetTouched = lv.isShort ? b.l <= lv.target : b.h >= lv.target;
     if (stopTouched || targetTouched) {
       // Same bar touched both: conservative — count as stop and flag the ambiguity.
       ambiguous = stopTouched && targetTouched;
-      if (stopTouched) hit = "stop";
-      else hit = (lv.isShort ? b.l <= lv.finalTarget : b.h >= lv.finalTarget) ? "final_target" : "target";
+      if (stopTouched) { hit = "stop"; hitR = -1; advR = Math.max(advR, -1); } else {
+        const final = lv.isShort ? b.l <= lv.finalTarget : b.h >= lv.finalTarget;
+        hit = final ? "final_target" : "target";
+        hitR = toR(final ? lv.finalTarget : lv.target);
+        favR = Math.min(favR, hitR);
+      }
       hitAt = new Date(b.t).toISOString();
-      break;
     }
+    mfe = mfe == null ? favR : Math.max(mfe, favR);
+    mae = mae == null ? advR : Math.min(mae, advR);
+    if (hit) break;
   }
+  const rNow = hit ? hitR : series.price != null ? toR(series.price) : null;
+  if (!hit && rNow != null) { mfe = Math.max(mfe ?? rNow, rNow); mae = Math.min(mae ?? rNow, rNow); }
   return {
     ticker, price: series.price,
     hit, hitAt, ambiguous,
-    rNow: series.price != null ? r2(toR(series.price)) : null,
+    rNow: rNow != null ? r2(rNow) : null,
     mfeR: mfe != null ? r2(mfe) : null,
     maeR: mae != null ? r2(mae) : null,
     plannedR: r2(Math.abs(lv.target - lv.entry) / risk),

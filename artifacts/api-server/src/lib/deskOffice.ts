@@ -7,17 +7,19 @@
  * closing leg sells (−qty); a short mirrors it. A position carried in from before the first fill (overnight) starts the
  * walk. Legs without shares or time (report-only trades) are left out and counted in `coverage`.
  *
- *   path        net position after every minute with a fill (step function; the client samples it per chart bar),
- *               as % of the day's maximum absolute office position — traders see the shape, never the size.
- *   peak        the maximum absolute position at a minute close (a scalp inside one minute is not the main position);
- *               its sign is the office's main side.
+ *   side        the office's main side = the side with more $ in opening legs over the whole day (ROMAN-14: five 09:30
+ *               shorts that lost $700 are the office's position, not two longs into the close); tie → larger position.
+ *   path        per minute with fills: the position farthest from flat inside the minute, then its close (step
+ *               function; the client samples it per chart bar), as % of the day's maximum absolute office position —
+ *               traders see the shape, never the size.
+ *   peak        the largest main-side position after any fill instant.
  *   avgEntry    VWAP of every opening leg of main-side trades; avgExit — of every closing leg of main-side trades.
- *   build zone  the core of the build-up: from the minute the position closed past 20 % of the peak to the minute it
- *               closed past 80 % (counted from the last minute the office was flat or on the other side before the
+ *   build zone  the core of the build-up: from the instant the position passed 20 % of the peak to the instant it
+ *               passed 80 % (counted from the last instant the office was flat or on the other side before the
  *               peak); time = first / last fill that grew the position in that window, price range + VWAP of those fills.
- *   exit zone   the core of the unwind after the peak: from the minute it closed under 80 % to the one under 20 %.
+ *   exit zone   the core of the unwind after the peak: from the instant it fell under 80 % to the one under 20 %.
  *               No exit zone when the office never got back under 20 % (held into the close / overnight).
- *   contributors  at the peak minute: each trader's position on the office's side ÷ the sum of all positions on that
+ *   contributors  at the peak: each trader's position on the office's side ÷ the sum of all positions on that
  *               side (shares add up to 100 % even when someone is against the office), top 5; `against` counts the rest.
  *
  * Privacy (who gets shares / office $) is decided by the caller (lib/deskDay.ts): this file computes everything.
@@ -135,6 +137,39 @@ const vwap = (evs: readonly OfficeEvent[]) => {
   return q ? round(pv / q) : null;
 };
 
+/** +1 long / −1 short / 0 none: the side with more $ in opening legs; a tie goes to the larger position reached. */
+export function mainSign(events: readonly OfficeEvent[], steps: readonly { pos: number }[], start = 0): 1 | -1 | 0 {
+  let longUsd = 0, shortUsd = 0;
+  for (const e of events) {
+    if (!e.opening) continue;
+    if (e.side === "short") shortUsd += e.price * e.qty; else longUsd += e.price * e.qty;
+  }
+  if (Math.abs(longUsd - shortUsd) > 1e-6) return longUsd > shortUsd ? 1 : -1;
+  let best = start;
+  for (const x of steps) if (Math.abs(x.pos) > Math.abs(best)) best = x.pos;
+  return best > 0 ? 1 : best < 0 ? -1 : 0;
+}
+
+/**
+ * Chart path per minute with fills (the finest bar): the point farthest from flat inside the minute at the minute
+ * start, then — when the minute ended elsewhere — its close at second 59. A position opened and closed inside one
+ * minute (the 09:30 auction) stays visible instead of vanishing between two minute closes.
+ */
+export function minutePath(steps: readonly { t: number; pos: number }[], point: (pos: number) => Omit<OfficePoint, "t">): OfficePoint[] {
+  const out: OfficePoint[] = [];
+  for (let k = 0; k < steps.length;) {
+    const m = Math.floor(steps[k].t / 60_000) * 60_000;
+    let ext = steps[k].pos, close = steps[k].pos;
+    for (; k < steps.length && steps[k].t < m + 60_000; k++) {
+      if (Math.abs(steps[k].pos) > Math.abs(ext)) ext = steps[k].pos;
+      close = steps[k].pos;
+    }
+    out.push({ t: m / 1000, ...point(ext) });
+    if (Math.abs(close - ext) > 1e-9) out.push({ t: m / 1000 + 59, ...point(close) });
+  }
+  return out;
+}
+
 /**
  * The office position of one ticker-day. `nets` = net $ per trade (null = unknown). Returns null when no leg carries
  * shares + time, or the office never held a position.
@@ -146,40 +181,43 @@ export function officePosition(
   const { events, start, startBy, coverage } = officeEvents(trades, structures);
   if (!events.length) return null;
 
-  // Walk per minute (the chart's finest bar): the position after the last fill of each minute with fills. The peak,
-  // the zones and the contributors are read on these minute closes, so a scalp opened and closed inside one minute does
-  // not become the «main position» — the pane shows exactly what the numbers say.
-  const mins: { t: number; pos: number; last: number }[] = [];
+  // The walk per instant: the position after the last fill of each timestamp (fills of one auction print move it at once).
+  const steps: { t: number; pos: number; last: number }[] = [];
   let p = start;
   for (let i = 0; i < events.length; i++) {
     p += events[i].delta;
-    const m = Math.floor(events[i].t / 60_000) * 60_000;
-    if (mins.length && mins[mins.length - 1].t === m) { mins[mins.length - 1].pos = p; mins[mins.length - 1].last = i; } else mins.push({ t: m, pos: p, last: i });
+    if (steps.length && steps[steps.length - 1].t === events[i].t) { steps[steps.length - 1].pos = p; steps[steps.length - 1].last = i; } else steps.push({ t: events[i].t, pos: p, last: i });
   }
-  let peakMin = -1, peakAbs = Math.abs(start);
-  for (let k = 0; k < mins.length; k++) if (Math.abs(mins[k].pos) > peakAbs + 1e-9) { peakAbs = Math.abs(mins[k].pos); peakMin = k; }
-  if (peakMin < 0 || peakAbs <= 0) return null;
-  const peak = mins[peakMin].pos;
-  const s = peak > 0 ? 1 : -1;
-  const side: Side = s > 0 ? "long" : "short";
-  const pct = (x: number) => round((x / peakAbs) * 100, 1);
-  const path: OfficePoint[] = mins.map((m) => ({ t: m.t / 1000, pct: pct(m.pos), shares: withShares ? round(m.pos, 2) : null }));
 
-  // Build: counted from the last flat / other-side minute before the peak.
+  // Main side = where the office put most of its money that day (ROMAN-14): $ of the opening legs per side. Reading it
+  // off the last minutes instead made five 09:30 shorts (−$700) lose to two 15:57 longs. A tie → the larger position.
+  const s = mainSign(events, steps, start);
+  if (s === 0) return null;
+  const side: Side = s > 0 ? "long" : "short";
+  let peakStep = -1, peakAbs = Math.max(0, s * start);
+  for (let k = 0; k < steps.length; k++) if (s * steps[k].pos > peakAbs + 1e-9) { peakAbs = s * steps[k].pos; peakStep = k; }
+  if (peakStep < 0 || peakAbs <= 0) return null;
+  const peak = steps[peakStep].pos;
+  // The pane's scale: the day's largest position on either side (a bigger spike against the office stays inside ±100).
+  const scale = steps.reduce((m, x) => Math.max(m, Math.abs(x.pos)), Math.max(peakAbs, Math.abs(start)));
+  const pct = (x: number) => round((x / scale) * 100, 1);
+  const path = minutePath(steps, (x) => ({ pct: pct(x), shares: withShares ? round(x, 2) : null }));
+
+  // Build: counted from the last flat / other-side instant before the peak.
   let base = -1;
-  for (let k = peakMin - 1; k >= 0; k--) if (s * mins[k].pos <= 0) { base = k; break; }
-  const firstMin = (from: number, to: number, ok: (x: number) => boolean) => {
-    for (let k = Math.max(0, from); k <= to; k++) if (ok(s * mins[k].pos)) return k;
+  for (let k = peakStep - 1; k >= 0; k--) if (s * steps[k].pos <= 0) { base = k; break; }
+  const firstStep = (from: number, to: number, ok: (x: number) => boolean) => {
+    for (let k = Math.max(0, from); k <= to; k++) if (ok(s * steps[k].pos)) return k;
     return -1;
   };
-  const span = (a: number, b: number): [number, number] => [mins[a].t, mins[b].t + 59_999];
-  const b0 = firstMin(base + 1, peakMin, (x) => x >= ZONE_FROM * peakAbs);
-  const b1 = b0 >= 0 ? firstMin(b0, peakMin, (x) => x >= ZONE_TO * peakAbs) : -1;
+  const span = (a: number, b: number): [number, number] => [steps[a].t, steps[b].t];
+  const b0 = firstStep(base + 1, peakStep, (x) => x >= ZONE_FROM * peakAbs);
+  const b1 = b0 >= 0 ? firstStep(b0, peakStep, (x) => x >= ZONE_TO * peakAbs) : -1;
   const build = b0 >= 0 && b1 >= 0 ? zone(events, ...span(b0, b1), (e) => s * e.delta > 0) : null;
-  const e0 = firstMin(peakMin + 1, mins.length - 1, (x) => x <= ZONE_TO * peakAbs);
-  const e1 = e0 >= 0 ? firstMin(e0, mins.length - 1, (x) => x <= ZONE_FROM * peakAbs) : -1;
+  const e0 = firstStep(peakStep + 1, steps.length - 1, (x) => x <= ZONE_TO * peakAbs);
+  const e1 = e0 >= 0 ? firstStep(e0, steps.length - 1, (x) => x <= ZONE_FROM * peakAbs) : -1;
   const exit = e0 >= 0 && e1 >= 0 ? zone(events, ...span(e0, e1), (e) => s * e.delta < 0) : null;
-  const peakIdx = mins[peakMin].last;
+  const peakIdx = steps[peakStep].last;
 
   // Contributors at the peak.
   const at = new Map(startBy);

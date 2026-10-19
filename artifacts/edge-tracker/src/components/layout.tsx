@@ -3,12 +3,12 @@
  * clock, language, theme, notifications, user menu), bottom tab bar + «More» sheet (phones), and subtle,
  * reduced-motion-aware route transitions.
  */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import { MOTION } from "@/components/ds/motion";
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { GlobalSearch } from "@/components/global-search";
+import { PaletteLauncher } from "@/components/shell/palette-launcher";
 import { useAuth } from "@/contexts/auth-context";
 import { MarketClock } from "@/components/shell/market-clock";
 import { LanguageMenu, NotificationBell, ThemeToggle, UserMenu } from "@/components/shell/header-actions";
@@ -16,6 +16,7 @@ import { shellI18n } from "@/i18n/ns/shell";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-prefs";
+import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
 
 /**
  * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
@@ -52,6 +53,29 @@ function useScrolledFlag(ref: React.RefObject<HTMLDivElement | null>, resetKey: 
     el.addEventListener("scroll", sync, { passive: true });
     return () => el.removeEventListener("scroll", sync);
   }, [ref, resetKey]);
+}
+
+/**
+ * DENIS-19: #main-content is the only scroller, so the browser never resets it — a new route opened at the previous
+ * page's offset (the dashboard at 836 px). Back to the top on every path change; a #hash link scrolls to its anchor.
+ */
+export function scrollTargetFor(hash: string): "top" | { id: string } {
+  const id = hash.replace(/^#/, "");
+  return id ? { id: decodeURIComponent(id) } : "top";
+}
+
+function useScrollTopOnRoute(ref: React.RefObject<HTMLDivElement | null>, location: string) {
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (first.current) { first.current = false; return; } // the first render keeps a restored / anchored position
+    const target = scrollTargetFor(window.location.hash);
+    if (target === "top") { el.scrollTop = 0; return; }
+    const anchor = document.getElementById(target.id);
+    if (anchor && el.contains(anchor)) anchor.scrollIntoView({ block: "start" });
+    else el.scrollTop = 0;
+  }, [ref, location]);
 }
 
 /**
@@ -106,7 +130,7 @@ function Header() {
       <div className="flex min-w-0 items-center gap-2">
         <SidebarTrigger aria-label={t("header.toggleMenu")} className="chip hidden h-10 w-10 shrink-0 hover:text-foreground md:inline-flex" />
         <Logo />
-        <GlobalSearch />
+        <PaletteLauncher />
       </div>
       <MarketClock fit="container" className="justify-self-center" />
       <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
@@ -129,6 +153,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const routeKey = "/" + (location.split("/")[1] ?? "");
   useScrolledFlag(scrollerRef, routeKey);
   useScrollerGutter(scrollerRef);
+  useScrollTopOnRoute(scrollerRef, location);
   // Full sidebar or icon rail (header button, the sidebar footer button, Ctrl/⌘ B); remembered per browser.
   const [sidebarOpen, setSidebarOpen] = React.useState(readSidebarOpen);
   const onSidebarOpen = React.useCallback((v: boolean) => { setSidebarOpen(v); writeSidebarOpen(v); }, []);
@@ -182,6 +207,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <MobileNav location={location} />
+      <PlaybookSheetHost />
     </SidebarProvider>
   );
 }

@@ -46,4 +46,13 @@ export const KEYS = {
   dailyMe: (date: string) => ["daily", "me", date] as const,
   /** GET /api/game-plan/my?date= — personal plan editor (gpKeys.my) and the dashboard contract line. */
   myPlan: (date: string) => ["game-plan", "my", date] as const,
+  /** GET /api/quests/me — dashboard quest strip, «Квесты и достижения» tab. Actions that move a quest (review, plan,
+   * game-plan read, own-day replay) mark it stale from their own feature (quests/api questKeys.me is this key). */
+  questsMe: () => ["quests", "me"] as const,
+  /** GET /api/playbook/today — playbook «Сегодня», the quick sheet, the dashboard day row, the personal plan, the evening
+   * card («Разметь N сделок»). PUT /api/playbook/today/picks writes the picks back into this entry. */
+  playbookToday: (trader?: string | null) => ["playbook-today", trader ?? null] as const,
+  /** GET /api/gamification/me[?trader=] — rewards chip (season bar, freeze), «Квесты и достижения» (titles, mastery,
+   * rewards), «Сезон» tab. Starts with ["gamification"] so gamification mutations invalidate it. */
+  gamificationMe: (trader?: string | null) => ["gamification", "me", trader ?? null] as const,
 } as const;

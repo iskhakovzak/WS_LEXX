@@ -90,7 +90,7 @@ function confidenceOf(minN: number): Confidence {
   return minN >= 15 ? "high" : minN >= 5 ? "medium" : "low";
 }
 
-type Comparison = {
+export type Comparison = {
   key: string;
   label: string;
   withLabel: string;
@@ -110,7 +110,7 @@ const fmtR = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).to
 type Phrase = { label: string; withLabel: string; withoutLabel: string; lead: string; contrast: string };
 
 /** Compare two trade groups and describe the difference in plain words (in `lang`). Null if too small. */
-function compareGroups(
+export function compareGroups(
   key: string,
   phrase: Phrase,
   a: TradeRow[],
@@ -132,14 +132,16 @@ function compareGroups(
   const effect = dR != null ? Math.abs(dR) : Math.abs(dWr!) / 50;
   const minN = Math.min(a.length, b.length);
   const impact = Math.round(effect * Math.sqrt(minN) * 100) / 100;
+  // MAKSIM-33: the headline metric leads the text (R when there is one, else win rate), so the first number the
+  // reader sees has the same sign as the headline; the other metric follows (it carries the contrast group).
   const parts: string[] = [];
-  if (dWr != null) {
-    const wr = { pp: Math.abs(dWr), a: Math.round(w.winRate! * 100), b: Math.round(wo.winRate! * 100), contrast: phrase.contrast };
-    parts.push(t(dWr > 0 ? "compare.wrHigher" : dWr < 0 ? "compare.wrLower" : "compare.wrSame", wr));
-  }
   if (dR != null && w.avgR != null && wo.avgR != null) {
     const rp = { a: fmtR(w.avgR), b: fmtR(wo.avgR) };
     parts.push(dWr == null ? t("compare.rContrast", { ...rp, contrast: phrase.contrast }) : t("compare.r", rp));
+  }
+  if (dWr != null) {
+    const wr = { pp: Math.abs(dWr), a: Math.round(w.winRate! * 100), b: Math.round(wo.winRate! * 100), contrast: phrase.contrast };
+    parts.push(t(dWr > 0 ? "compare.wrHigher" : dWr < 0 ? "compare.wrLower" : "compare.wrSame", wr));
   }
   const text = t("compare.text", { lead: phrase.lead, parts: parts.join("; "), na: a.length, nb: b.length });
   return {
@@ -149,9 +151,43 @@ function compareGroups(
 }
 
 /** Phrases of a check-in factor / behaviour comparison in `lang` (psychology.factors.* / psychology.behavior.*). */
-function phraseOf(group: "factors" | "behavior", key: string, lang: Lang): Phrase {
+export function phraseOf(group: "factors" | "behavior", key: string, lang: Lang): Phrase {
   const tr = (f: string) => psychologyT.tryFor(lang, `${group}.${key}.${f}`) ?? key;
   return { label: tr("label"), withLabel: tr("withLabel"), withoutLabel: tr("withoutLabel"), lead: tr("lead"), contrast: tr("contrast") };
+}
+
+export type RankedInsight = { id: string; title: string; text: string; tone: "up" | "down" | "neutral"; impact: number; sample: number; confidence: Confidence };
+
+/**
+ * Headline of one comparison, phrased by the sign of its effect (MAKSIM-33). The headline metric is ΔR when both
+ * groups have R, else Δ win rate. When ΔR and Δ win rate point in opposite directions the effect is mixed: neutral
+ * tone, and the headline says so instead of picking a side. Phrased keys (`compare.titleBetterR` …) are used when the
+ * dictionary has them; otherwise the signed «{label}: −0.06R на сделку» headline stays.
+ */
+export function rankComparison(c: Comparison, lang: Lang): RankedInsight {
+  const t = psychologyT.tFor(lang);
+  const dWr = c.deltaWinRatePp ?? 0; // compareGroups guarantees deltaR or deltaWinRatePp
+  const signed = c.deltaR ?? dWr / 50;
+  const pp = (v: number) => t("compare.pp", { value: `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}` });
+  const metric = c.deltaR != null ? fmtR(c.deltaR) : pp(dWr);
+  const mixed = c.deltaR != null && c.deltaWinRatePp != null && c.deltaR !== 0 && c.deltaWinRatePp !== 0
+    && Math.sign(c.deltaR) !== Math.sign(c.deltaWinRatePp);
+  const unit = c.deltaR != null ? "R" : "Wr";
+  const abs = c.deltaR != null ? `${Math.abs(c.deltaR).toFixed(2)}R` : t("compare.pp", { value: String(Math.abs(dWr)) });
+  const phrased = mixed
+    ? psychologyT.tryFor(lang, "compare.titleMixed", { label: c.withLabel, metric, wr: pp(dWr) })
+    : signed > 0 ? psychologyT.tryFor(lang, `compare.titleBetter${unit}`, { label: c.withLabel, metric: abs })
+    : signed < 0 ? psychologyT.tryFor(lang, `compare.titleWorse${unit}`, { label: c.withLabel, metric: abs })
+    : undefined;
+  return {
+    id: c.key,
+    title: phrased ?? t(c.deltaR != null ? "compare.titleR" : "compare.titleWr", { label: c.withLabel, metric }),
+    text: c.text,
+    tone: mixed || Math.abs(signed) < 0.05 ? "neutral" : signed > 0 ? "up" : "down",
+    impact: c.impact,
+    sample: Math.min(c.with.count, c.without.count),
+    confidence: c.confidence,
+  };
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -374,21 +410,8 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
     .map((t) => ({ x: Number(t.conviction), y: realizedR(t)! })));
 
   // Ranked insights: strongest, best-supported effects first.
-  type RankedInsight = { id: string; title: string; text: string; tone: "up" | "down" | "neutral"; impact: number; sample: number; confidence: Confidence };
-  const ranked: RankedInsight[] = [...factors, ...behavior].map((c) => {
-    const dWr = c.deltaWinRatePp ?? 0; // compareGroups guarantees deltaR or deltaWinRatePp
-    const signed = c.deltaR ?? dWr / 50;
-    const metric = c.deltaR != null ? fmtR(c.deltaR) : t("compare.pp", { value: `${dWr > 0 ? "+" : dWr < 0 ? "−" : ""}${Math.abs(dWr)}` });
-    return {
-      id: c.key,
-      title: t(c.deltaR != null ? "compare.titleR" : "compare.titleWr", { label: c.withLabel, metric }),
-      text: c.text,
-      tone: Math.abs(signed) < 0.05 ? "neutral" as const : signed > 0 ? "up" as const : "down" as const,
-      impact: c.impact,
-      sample: Math.min(c.with.count, c.without.count),
-      confidence: c.confidence,
-    };
-  }).filter((i) => i.impact > 0).sort((a, b) => b.impact - a.impact);
+  const ranked: RankedInsight[] = [...factors, ...behavior].map((c) => rankComparison(c, lang))
+    .filter((i) => i.impact > 0).sort((a, b) => b.impact - a.impact);
 
   const coveragePct = allTrades.length > 0 ? tradesWithCheckin.length / allTrades.length : 0;
   if (allTrades.length >= 3 && coveragePct < 0.5) {

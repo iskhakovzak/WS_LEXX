@@ -59,18 +59,32 @@ export function proposalStatusMeta(status: string): { label: string; tone: Tone 
  * The ladder's default tiers (seeded with Russian names) are shown in the UI language; a tier the admin renamed or
  * added keeps its own name (user content).
  */
-const DEFAULT_TIERS: Record<string, { ru: string; word: "intern" | "junior" | "trader" | "senior" }> = {
-  trainee: { ru: "Стажёр", word: "intern" }, // i18n-ignore — seeded name (data) to compare with
-  junior: { ru: "Джун", word: "junior" }, // i18n-ignore
-  trader: { ru: "Трейдер", word: "trader" }, // i18n-ignore
-  senior: { ru: "Сеньор", word: "senior" }, // i18n-ignore
+type SeedTierKey = "trainee" | "junior" | "trader" | "senior" | "lead";
+const DEFAULT_TIERS: Record<string, { ru: string; desc: string; label: () => string }> = {
+  trainee: { ru: "Стажёр", desc: "Симулятор / минимальный размер", label: () => commonI18n.t("tiers.intern") }, // i18n-ignore — seeded name / description (data) to compare with
+  junior: { ru: "Джун", desc: "Интрадей, малый лот", label: () => commonI18n.t("tiers.junior") }, // i18n-ignore
+  trader: { ru: "Трейдер", desc: "Интрадей + овернайт", label: () => commonI18n.t("tiers.trader") }, // i18n-ignore
+  senior: { ru: "Сеньор", desc: "Полный BP, свинг", label: () => commonI18n.t("tiers.senior") }, // i18n-ignore
+  lead: { ru: "Лид", desc: "Максимальный BP, менторство", label: () => scalingI18n.t("tierName.lead") }, // i18n-ignore
 };
 
 /** Display name of a tier: the default ladder in the UI language, custom names as written. */
 export function tierLabel(t: { key: string; name: string } | null | undefined): string {
   if (!t) return commonI18n.t("tiers.noTier");
   const d = DEFAULT_TIERS[t.key];
-  return d && t.name === d.ru ? commonI18n.t(`tiers.${d.word}`) : t.name;
+  return d && t.name === d.ru ? d.label() : t.name;
+}
+
+/** A tier's description: the seeded one in the UI language, one the admin wrote as written; null when empty. */
+export function tierDescription(t: { key: string; description?: string | null } | null | undefined): string | null {
+  if (!t?.description) return null;
+  const d = DEFAULT_TIERS[t.key];
+  return d && t.description === d.desc ? scalingI18n.t(`tierDesc.${t.key as SeedTierKey}`) : t.description;
+}
+
+/** The trader ladder ends at «Сеньор»: the staff-only «Лид» tier is shown only to someone already on it. */
+export function traderLadder<T extends { key: string }>(tiers: T[], current: string | null | undefined): T[] {
+  return current === "lead" ? tiers : tiers.filter((t) => t.key !== "lead");
 }
 
 export function tierName(tiers: Tier[], key: string | null | undefined): string {

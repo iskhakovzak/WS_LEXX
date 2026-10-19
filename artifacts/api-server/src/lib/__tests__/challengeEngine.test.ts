@@ -112,6 +112,23 @@ describe("statuses and hard rules", () => {
     expect(r.reason).toMatch(/цель \$1.?000 не достигнута/);
     expect(r.reason).toContain("торговых дней 2 из 3");
   });
+  it("an expired challenge shows final rule states only — nothing «в процессе» (DENIS-22)", () => {
+    const R = rules({ profitTarget: 1000, minTradingDays: 3, consistencyPct: 40 });
+    const r = evaluateChallenge({ startsOn: MON, endsOn: FRI, rules: R }, [t(MON, 100), t(TUE, -150)], "2026-10-12");
+    expect(r.status).toBe("expired");
+    expect(r.progress.map((p) => [p.key, p.state])).toEqual([["profit_target", "missed"], ["consistency", "missed"], ["min_days", "missed"]]);
+    // A running challenge keeps «pending».
+    const live = evaluateChallenge({ startsOn: MON, endsOn: FRI, rules: R }, [t(MON, 100)], TUE);
+    expect(live.progress.find((p) => p.key === "profit_target")!.state).toBe("pending");
+  });
+  it("market holidays are not trading days of the calendar or the counts (DENIS-22)", () => {
+    const closed = new Set(["2026-01-01", "2026-01-19"]);
+    expect(weekdaysBetween("2026-01-01", "2026-01-30", closed)).toBe(20);
+    const r = evaluateChallenge({ startsOn: "2026-01-01", endsOn: "2026-01-30", rules: rules({ profitTarget: 1500 }) }, [t("2026-01-02", -40)], "2026-02-02", "ru", closed);
+    expect(r.tradingDaysTotal).toBe(20);
+    expect(r.timeline.map((d) => d.date)).not.toContain("2026-01-01");
+    expect(r.timeline.map((d) => d.date)).not.toContain("2026-01-19");
+  });
   it("scheduled before the start", () => {
     const r = evaluateChallenge({ startsOn: FRI, endsOn: "2026-10-16", rules: rules({ profitTarget: 100 }) }, [], MON);
     expect(r.status).toBe("scheduled");

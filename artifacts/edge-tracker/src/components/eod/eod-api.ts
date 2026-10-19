@@ -4,6 +4,7 @@ import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
 import { JOURNAL_DAYS_KEY } from "@/components/journal/use-journal-days";
 import { eodI18n } from "@/i18n/ns/eod";
+import { splitHours } from "@/lib/format";
 
 /**
  * «Закрытие дня» client: types + fetchers for /api/eod/* (see api-server/src/routes/eod.ts for the contract).
@@ -69,12 +70,14 @@ export type EodStatusPayload = { date: string; today: string; traders: EodStatus
 
 export type QueueItem = {
   id: number; trader: string; date: string; closedAt: string | null; discipline: number | null; trades: number; net: number | null;
-  /** pending: hours since close; reviewed: hours from close to review. */
+  /** pending: TRADING hours since close (weekends and holidays pause the SLA); reviewed: hours from close to review. */
   hoursWaiting: number; overdue: boolean; mood: number | null;
   reviewedAt?: string | null; reviewedBy?: string | null; curatorScore?: number | null;
 };
 /** `mode` is absent on API builds that predate the «Проверено» tab. */
-export type QueuePayload = { slaHours: number; mode?: "pending" | "reviewed"; items: QueueItem[] };
+export type QueuePayload = { slaHours: number; mode?: "pending" | "reviewed"; scope?: QueueScope; wards?: number; items: QueueItem[] };
+/** Whose days the queue shows: my wards (default when I have any), the whole desk, or traders without a curator. */
+export type QueueScope = "mine" | "desk" | "unassigned";
 
 export type EodDayMark = { date: string; status: EodStatus; closedAt: string | null; reviewedAt: string | null; reviewedBy: string | null; curatorScore: number | null };
 
@@ -95,7 +98,8 @@ export const eodKeys = {
   day: (trader: string, date: string) => ["eod", "day", trader, date] as const,
   status: (date: string, trader: string) => ["eod", "status", date, trader] as const,
   queue: ["eod", "queue"] as const,
-  queueReviewed: ["eod", "queue", "reviewed"] as const,
+  queueScoped: (scope: QueueScope | "auto") => ["eod", "queue", "pending", scope] as const,
+  queueReviewed: (scope: QueueScope | "auto" = "auto") => ["eod", "queue", "reviewed", scope] as const,
   queueCount: ["eod", "queue", "count"] as const,
   range: (trader: string, from: string, to: string) => ["eod", "range", trader, from, to] as const,
   broker: (trader: string, date: string) => ["eod", "broker", trader, date] as const,
@@ -107,8 +111,8 @@ export const eodApi = {
     orNotAvailable(http.get<EodDayPayload>("/api/eod/day", { query: { date, trader } })),
   status: (date: string, trader: string) =>
     orNotAvailable(http.get<EodStatusPayload>("/api/eod/status", { query: { date, trader } })),
-  queue: (limit = 50, reviewed = false) =>
-    orNotAvailable(http.get<QueuePayload>("/api/eod/queue", { query: { limit, reviewed: reviewed ? 1 : null } })),
+  queue: (limit = 50, reviewed = false, scope: QueueScope | "auto" = "auto") =>
+    orNotAvailable(http.get<QueuePayload>("/api/eod/queue", { query: { limit, reviewed: reviewed ? 1 : null, scope: scope === "auto" ? null : scope } })),
   range: (trader: string, from: string, to: string) =>
     orNotAvailable(http.get<{ trader: string; days: EodDayMark[] }>("/api/eod/days", { query: { from, to, trader } })),
   queueCount: () => orNotAvailable(http.get<{ count: number; overdue: number; slaHours: number }>("/api/eod/queue/count")),
@@ -155,30 +159,30 @@ export function useEodStatus(date: string, trader: string, enabled = true) {
   });
 }
 
-export function useEodQueue(enabled: boolean) {
+export function useEodQueue(enabled: boolean, scope: QueueScope | "auto" = "auto") {
   return useQuery<QueuePayload | null>({
-    queryKey: eodKeys.queue,
+    queryKey: eodKeys.queueScoped(scope),
     enabled,
     staleTime: STALE.default,
     refetchInterval: POLL.twoMinutes,
     refetchIntervalInBackground: false,
     retry: false,
     queryFn: async () => {
-      try { return await eodApi.queue(); } catch (e) { if (e instanceof NotAvailable) return null; throw e; }
+      try { return await eodApi.queue(50, false, scope); } catch (e) { if (e instanceof NotAvailable) return null; throw e; }
     },
   });
 }
 
 /** «Проверено за 7 дней». `null` when the API build does not support it yet (it would ignore the flag). */
-export function useEodReviewed(enabled: boolean) {
+export function useEodReviewed(enabled: boolean, scope: QueueScope | "auto" = "auto") {
   return useQuery<QueuePayload | null>({
-    queryKey: eodKeys.queueReviewed,
+    queryKey: eodKeys.queueReviewed(scope),
     enabled,
     staleTime: 60_000,
     retry: false,
     queryFn: async () => {
       try {
-        const out = await eodApi.queue(100, true);
+        const out = await eodApi.queue(100, true, scope);
         return out.mode === "reviewed" ? out : null;
       } catch (e) { if (e instanceof NotAvailable) return null; throw e; }
     },
@@ -274,10 +278,12 @@ export function gradeTone(g: string | null | undefined): "up" | "accent" | "warn
   return "neutral";
 }
 
-export function hoursText(h: number): string {
-  if (h < 1) return eodI18n.t("hours.lessThanHour");
-  if (h < 48) return eodI18n.t("hours.h", { h: Math.round(h) });
-  return eodI18n.t("hours.dh", { d: Math.floor(h / 24), h: Math.round(h % 24) });
+/** Waiting time: «<1 ч» · «5 ч» · «3 дн» · «3 дн 4 ч» — the same format as the curator cabinet (lib/format splitHours). */
+export function hoursText(hours: number): string {
+  if (hours < 1) return eodI18n.t("hours.lessThanHour");
+  const { d, h } = splitHours(hours);
+  if (!d) return eodI18n.t("hours.h", { h });
+  return h ? eodI18n.t("hours.dh", { d, h }) : eodI18n.t("hours.d", { d });
 }
 
 /**

@@ -176,6 +176,18 @@ function applyFill(acc: Acc, f: Fill, dir: 1 | -1, unit: number): void {
   }
 }
 
+/**
+ * Price to mark the replay position at on bar `idx`: the last fill inside that bar when there is one (the moment of
+ * the fill is known — «к входу» shows 0, not the bar close that printed after it, MAKSIM-20), else the bar close.
+ */
+export function replayMark(bars: readonly Candle[], fills: readonly Fill[], idx: number): number | null {
+  const bar = bars[idx];
+  if (!bar) return null;
+  let mark: number | null = null;
+  for (const f of fills) { if (f.idx === idx) mark = f.price; else if (f.idx > idx) break; }
+  return mark ?? bar.c;
+}
+
 /** Position after every fill with `idx <= cursor`, marked at `mark`. */
 export function positionAt(fills: readonly Fill[], cursor: number, side: Side, mark: number, tradeQty: number | null): PositionState {
   const dir: 1 | -1 = side === "short" ? -1 : 1;

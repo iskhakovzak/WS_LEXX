@@ -17,7 +17,7 @@ import { StopRemaining } from "./remaining";
 import { TraderDayBlock } from "./intraday";
 import { BreachHistory } from "./breaches";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { fmtR, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -43,11 +43,13 @@ function Fact({ label, value, tone }: { label: string; value: React.ReactNode; t
   );
 }
 
-export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
+export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAlert = null }: {
   trader: string;
   onUpdatedAt?: (ts: number) => void;
   /** Staff (curator/admin) may set limits right here — the same LimitsForm as in the desk trader card. */
   canEditLimits?: boolean;
+  /** ?tab=breaches&alert=<id> (the breach review notification): the breach row to open with its review. */
+  focusAlert?: number | null;
 }) {
   const me = useRiskMe();
   const pos = useRiskPositions(trader);
@@ -116,6 +118,9 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
                 ? canEditLimits ? t("me.noLimitsStaff") : t("me.noLimitsTrader")
                 : stopMessage(m, L)}
             </p>
+            {m.drawdown.since && (
+              <p className="text-xs text-muted-foreground">{t("me.ddSince", { date: fmtDate(m.drawdown.since, "dayMonth") })}</p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <Fact label={t("me.pnlToday")} value={pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : m.today.trades ? fmtR(m.today.r) : "—"} tone={(pnl ?? 0) > 0 ? "up" : (pnl ?? 0) < 0 ? "down" : undefined} />
@@ -163,7 +168,12 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
               <Allowed ok={L.allowOvernight} label={c("trading.overnight")} />
               <Allowed ok={L.allowSwing} label={c("trading.swing")} />
             </div>
-            {nextTier && <p className="text-xs text-muted-foreground">{t("me.nextTier", { tier: nextTier.label, hint: nextTier.hint })}</p>}
+            {nextTier && (
+              <p className="text-xs text-muted-foreground">
+                {t("me.nextTier", { tier: nextTier.label, hint: nextTier.hint })}{" "}
+                <Link href="/academy/path" className="whitespace-nowrap text-primary hover:underline">{t("me.pathLink")}</Link>
+              </p>
+            )}
             {L.notes && <p className="rounded-xl bg-[var(--glass-bg)] p-3 text-sm text-muted-foreground ring-1 ring-inset ring-[var(--field-border)]">{L.notes}</p>}
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline" size="sm">
@@ -184,7 +194,7 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
 
       {L && (
         <Panel title={t("me.breachesTitle")} icon={ShieldAlert} description={t("me.breachesDesc")}>
-          <BreachHistory trader={trader} limits={L} max={8} />
+          <BreachHistory trader={trader} limits={L} max={8} focusAlert={focusAlert} />
         </Panel>
       )}
 

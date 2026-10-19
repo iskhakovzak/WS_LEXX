@@ -154,7 +154,8 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
       <div className="grid gap-4 lg:grid-cols-5">
         <div className="flex flex-col gap-4 lg:col-span-2">
           {ratingsLoading ? <Skeleton className="h-80 rounded-2xl" /> : card ? (
-            <ScorecardCard card={card} />
+            // The focus lives in «Фокус на неделю» below (with «Прочитал»): shown once, not on the card too (MAKSIM-31).
+            <ScorecardCard card={{ ...card, lastFocus: null }} />
           ) : (
             <Panel>
               <EmptyState icon={Star} title={t("progress.noRatingsTitle")} description={t("progress.noRatingsDescription")} />
@@ -246,7 +247,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
                       <Pill tone={r.overall >= 8 ? "up" : r.overall >= 5 ? "warn" : "down"} className="ml-auto">{r.overall}/10</Pill>
                     </div>
                     <p className="whitespace-pre-wrap text-sm text-foreground/90 [overflow-wrap:anywhere]">{r.comment}</p>
-                    {r.focus?.trim() && (
+                    {r.focus?.trim() && r.id !== curatorFocus?.ratingId && r.focus.trim() !== curatorFocus?.text.trim() && (
                       <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
                         <Crosshair className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
                         <span>{t("progress.focusPrefix")} <span className="text-foreground">{r.focus}</span></span>

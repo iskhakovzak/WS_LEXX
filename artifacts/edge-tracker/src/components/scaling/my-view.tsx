@@ -14,7 +14,7 @@ import { MetricsGrid } from "./metrics-grid";
 import { TierCompare } from "./tier-compare";
 import { HistoryTimeline } from "./history-timeline";
 import { ProposalCard } from "./proposal-card";
-import { ACTION_TONE, actionLabel, tierLabel } from "./format";
+import { ACTION_TONE, actionLabel, tierDescription, tierLabel, traderLadder } from "./format";
 
 /** Trader's personal plan: where I am, what is missing until the next tier, what I get there, my history. */
 export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: (ts: number) => void }) {
@@ -66,7 +66,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
               <Pill tone={ACTION_TONE[action]} dot>{actionLabel(action)}</Pill>
               {me.recommendation.warning && <Pill tone="warn">{t("me.needsReview")}</Pill>}
             </div>
-            {me.tier?.description && <p className="text-xs text-muted-foreground">{me.tier.description}</p>}
+            {tierDescription(me.tier) && <p className="text-xs text-muted-foreground">{tierDescription(me.tier)}</p>}
           </div>
           <div className="flex items-center gap-3">
             <ProgressRing value={pct} size={72} stroke={6} tone={pct >= 100 ? "up" : "accent"} ariaLabel={t("progress.aria")} label={<span className="text-sm">{fmtRate(me.progress ?? 0)}</span>} />
@@ -91,7 +91,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
             <span>{t("me.promoteReady")}</span>
           </p>
         )}
-        <TierLadder tiers={data.tiers} current={me.tierKey} target={me.recommendation.toTier?.key} />
+        <TierLadder tiers={traderLadder(data.tiers, me.tierKey)} current={me.tierKey} target={me.recommendation.toTier?.key} />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Kpi label={t("limit.accountSize")} value={fmtUsd(me.limits?.accountSize ?? me.tier?.accountSize ?? null, { compact: true })} />
           <Kpi label={tc("trading.dailyLimit")} value={fmtUsd(me.limits?.dailyLossLimit ?? me.tier?.dailyLossLimit ?? null, { decimals: 0 })} />

@@ -43,6 +43,7 @@ export default {
     dailyQuote: "Quote of the day",
     latin: "Latin name",
     jobs: "Jobs",
+    playbook: "Playbook",
     login: "Sign-in",
   },
 
@@ -54,6 +55,12 @@ export default {
     archive: "archived {who}{bulk}",
     restore: "restored {who} from the archive{bulk}",
     sessionsReset: "reset sessions for {who}{bulk}",
+    playbookOpen: "opened setup {setup} from level {tier}",
+    playbookClose: "locked setup {setup} until level {tier}",
+    playbookTier: "changed the level of setup {setup}: {tier}",
+    relink: "relinked trades to setups: {count}",
+    startingSecret: { one: "set a starting PIN for {count} person", other: "set a starting PIN for {count} people" },
+    proposalAutoList: "auto tier proposals: {names}",
     create: "created account {who} ({role})",
     roleChange: "changed the role of {who}: {from} → {to}",
     roleSet: "changed the role of {who}: {to}",
@@ -271,6 +278,8 @@ export default {
     challenge: "Challenge #{id}",
     challenges: "Challenges",
     generic: "{type} #{id}",
+    setup: "Setup {name}",
+    setupId: "Setup #{id}",
   },
   objectType: {
     user: "Users",
@@ -294,9 +303,13 @@ export default {
     curator_queue_acks: "Review queue",
     office_capital: "Office capital",
     job: "Background jobs",
+    playbook: "Playbook",
+    trades: "Trades",
     login_name: "Sign-in names",
     backup: "Backups",
   },
+
+  playbookDetail: { relinkBackup: "backup: {file}", wasTier: "was: {tier}" },
 
   log: {
     title: "Audit log",

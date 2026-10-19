@@ -90,7 +90,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
 }
 
 // ── Куратору ─────────────────────────────────────────────────────────────────
-export function CuratorView({ doc }: { doc: WeeklyReview }) {
+export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: string; open: () => void } | null }) {
   const { t } = weeklyI18n.useT();
   const ins = useWeekInsights(doc);
   const k = doc.kpis.current;
@@ -126,7 +126,7 @@ export function CuratorView({ doc }: { doc: WeeklyReview }) {
       <section aria-label={t("audience.oneOnOne")} className="flex flex-col gap-[var(--grid-gap)]">
         <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
           <SelfReviewPanel doc={doc} />
-          <CuratorReviewPanel doc={doc} />
+          <CuratorReviewPanel doc={doc} next={next} />
         </div>
         <PrevGoalsPanel doc={doc} />
       </section>

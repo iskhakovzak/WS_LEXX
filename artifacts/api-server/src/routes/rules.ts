@@ -538,6 +538,7 @@ function shapeViolation(r: any, lang: Lang) {
  * GET /rule-violations?trader&status&from&to&tradeId&tradeIds&ruleId&limit&offset&paged
  *   tradeIds  comma-separated ids (≤ 500) — only the violations of these trades (e.g. the trades of one journal day).
  *   offset    skip N rows of the same order (day desc, id desc) — pagination instead of one big limit=500.
+ *   count=1   respond `{ total }` — how many rows match the same filters (the list itself is capped by `limit`).
  *   paged=1   respond `{ items, nextOffset }` (nextOffset null on the last page); without it the response stays
  *             the plain array (old behaviour).
  * Archive (lib/violationArchive): active rows only by default; `include=archived` adds archived rows (disabled /
@@ -569,6 +570,10 @@ router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
     where.push(`v.trade_id = ANY($${params.length}::int[])`);
   }
   if (typeof req.query.ruleId === "string" && /^\d+$/.test(req.query.ruleId)) { params.push(Number(req.query.ruleId)); where.push(`v.rule_id = $${params.length}`); }
+  if (req.query.count === "1") {
+    const { rows: c } = await pool.query<{ n: number }>(`SELECT COUNT(*)::int AS n ${VIOLATION_SELECT.slice(VIOLATION_SELECT.indexOf("FROM rule_violations"))} WHERE ${where.join(" AND ")}`, params);
+    res.json({ total: c[0]?.n ?? 0 }); return;
+  }
   let sql = VIOLATION_SELECT;
   sql += ` WHERE ${where.join(" AND ")}`;
   const rawOffset = Number(req.query.offset);

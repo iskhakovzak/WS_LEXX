@@ -75,16 +75,22 @@ export function defaultFocus(day: Pick<DeskDay, "traders">, alias?: number | nul
 }
 
 /**
- * The office position per chart bar (signed % of the day's peak): the value after the last minute with a fill that
- * starts before the bar ends; `startPct` before the first fill. Works for any bar size (1m / 5m / 15m).
+ * The office position per chart bar (signed % of the day's peak): a bar with fills shows the point farthest from flat
+ * inside it (a position opened and closed within the 09:30 bar stays visible); a bar without fills carries the value
+ * the last one ended on; `startPct` before the first fill. Works for any bar size (1m / 5m / 15m).
  */
 export function samplePath(office: Pick<DeskOffice, "path" | "startPct">, bars: readonly Pick<Candle, "t">[], barSec: number): number[] {
   const out: number[] = [];
   let j = 0, cur = office.startPct;
   for (const b of bars) {
     const end = b.t + barSec;
-    while (j < office.path.length && office.path[j].t < end) { cur = office.path[j].pct; j++; }
-    out.push(cur);
+    let ext: number | null = null;
+    while (j < office.path.length && office.path[j].t < end) {
+      cur = office.path[j].pct;
+      if (ext == null || Math.abs(cur) > Math.abs(ext)) ext = cur;
+      j++;
+    }
+    out.push(ext ?? cur);
   }
   return out;
 }

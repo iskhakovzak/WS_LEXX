@@ -12,6 +12,7 @@ import { localeOfUser } from "../i18n";
 import { telegramT } from "../i18n/ns";
 import { personNameFor } from "../lib/people/latinNames";
 import { escHtml } from "../lib/telegramBot";
+import { logActivity } from "../lib/activity";
 
 const router: IRouter = Router();
 
@@ -95,6 +96,9 @@ router.post("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<
         telegramT.tFor(lang)("privateReply", { id: ideaId, ticker: escHtml(idea.ticker), author: escHtml(personNameFor(author, lang)), text: escHtml(preview) }));
     }
   } else {
+    // Team activity feed (same row as a discussion comment). Public comments only, and without the text: a private
+    // reply never reaches the public «trade-ideas» section, and a deleted comment leaves no copy of its text behind.
+    void logActivity({ action: "commented", section: "trade-ideas", entityId: String(ideaId), entityTitle: idea.ticker, trader: author });
     // Public comment — fan-out to creator + curator + risk manager + prior commenters
     notifyPublicComment({
       ideaId, ticker: idea.ticker, traderName: idea.trader,

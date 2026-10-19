@@ -222,6 +222,7 @@ export default {
     tabAttendance: "Attendance",
     tabHistory: "History",
     members: {
+      cohortStage: "Tier on the risk desk. The cohort lists stage «{stage}»",
       title: "Roster",
       description: "Stages: {ladder}. Stage and status changes are recorded in the history.",
       enroll: "Enroll",

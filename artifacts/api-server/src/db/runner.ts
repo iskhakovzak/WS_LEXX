@@ -114,6 +114,29 @@ export function loadMigrationFiles(dir: string): MigrationFile[] {
   return files;
 }
 
+/**
+ * Index names a file builds with CREATE INDEX CONCURRENTLY — the only kind a failure can leave behind INVALID (a lock
+ * timeout mid-build keeps the half-built index; the next boot's IF NOT EXISTS then skips it and would record the file as
+ * applied). DEV-08.
+ */
+export function concurrentIndexNames(sql: string): string[] {
+  const re = /CREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"([^"]+)"|([A-Za-z_][\w$]*))/gi;
+  const out = new Set<string>();
+  for (const m of sql.matchAll(re)) out.add(m[1] ?? m[2].toLowerCase());
+  return [...out];
+}
+
+/** INVALID indexes in the current schema (optionally only the given names). */
+export const INVALID_INDEXES_SQL = `SELECT c.relname AS name
+  FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+ WHERE NOT i.indisvalid AND n.nspname = current_schema() AND ($1::text[] IS NULL OR c.relname = ANY($1))
+ ORDER BY 1`;
+
+async function invalidIndexes(client: PgClientLike, names: string[] | null): Promise<string[]> {
+  const { rows } = await client.query(INVALID_INDEXES_SQL, [names]);
+  return rows.map((r: any) => String(r.name));
+}
+
 export async function runMigrationFiles(opts: RunOptions): Promise<RunResult> {
   const { pool, logger } = opts;
   const dir = opts.dir ?? resolveMigrationsDir();
@@ -148,6 +171,13 @@ export async function runMigrationFiles(opts: RunOptions): Promise<RunResult> {
     }
     locked = true;
     await client.query(SCHEMA_MIGRATIONS_DDL);
+    // An INVALID index left by an earlier failed CONCURRENTLY build (or a manual one) is never reported by Postgres on
+    // its own: say it on every boot until someone rebuilds it (DEV-08). Not fatal here — a build running right now in
+    // another process looks the same; the per-file check below is the strict one.
+    const leftovers = await invalidIndexes(client, null).catch(() => [] as string[]);
+    if (leftovers.length) {
+      logger.error({ indexes: leftovers }, "migrations: INVALID index(es) in the schema — DROP INDEX CONCURRENTLY <name>; then rebuild (restart re-runs the file only if it is not recorded)");
+    }
 
     const { rows: appliedRows } = await client.query(`SELECT version, checksum FROM schema_migrations ORDER BY version`);
     const applied = new Map<string, string>(appliedRows.map((r: any) => [String(r.version), String(r.checksum)]));
@@ -200,6 +230,12 @@ export async function runMigrationFiles(opts: RunOptions): Promise<RunResult> {
           for (const stmt of splitSqlStatements(f.sql)) await client.query(stmt);
           await client.query(`RESET lock_timeout`);
           await client.query(`RESET statement_timeout`);
+          // IF NOT EXISTS skips a half-built index from an earlier failed run: never record the file over it.
+          const names = concurrentIndexNames(f.sql);
+          const invalid = names.length ? await invalidIndexes(client, names) : [];
+          if (invalid.length) {
+            throw new Error(`INVALID index(es) ${invalid.join(", ")} — run DROP INDEX CONCURRENTLY for each (with no long transaction open), then restart`);
+          }
           await client.query(
             `INSERT INTO schema_migrations (version, name, checksum, execution_ms) VALUES ($1, $2, $3, $4)`,
             [f.version, f.name, f.checksum, Date.now() - t0],

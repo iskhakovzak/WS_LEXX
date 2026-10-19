@@ -17,8 +17,15 @@
  *                  engine's «day:giveback» thresholds (lib/daily/detectors).
  *   rule         — active rule violations of the day (rule_violations.cost_net, one figure per trade).
  *
- * costNet of a row = Σ reason costs (≤ 0; a focus hit and the same day reason are counted once, see dedupeOverlap);
- * rows sort ascending (most negative first). The pure parts (reasons, sums, ranking, window) are exported for tests;
+ * costNet of a row = Σ reason costs (≤ 0; a focus hit and the same day reason are counted once, see dedupeOverlap)
+ * EXCEPT giveback: profit given back from the day's peak is money not earned («недобрал»), not a desk loss, so it is shown
+ * with its own figure but never adds to costNet (owner default 2026-10-19, OLGA-09). Rows sort ascending by real loss
+ * (most negative first), then by the giveback; each row carries the day's net (`dayNet`) for context.
+ *
+ * Resolved («Разобрано», OLGA-04): the curator reviewed the closed day (eod_days.reviewed_at), reviewed every breach of
+ * it, left a note ABOUT THAT DAY (curator_notes.day; a general note counts for the last finished day when it was
+ * written), or did something the trader sees after the day closed: assigned a quest (it covers the open days of the
+ * window) or finished the weekly review of that week. The pure parts (reasons, sums, ranking, window) are exported for tests;
  * `buildCostQueue` loads the whole roster in one round of grouped queries; focus verdicts come from the stored evening
  * snapshots (daily_reviews.verdict), only missing ones go through service.eveningFor (time-boxed, rest in background).
  * The $ / % thresholds above are the defaults: the fees / giveback ones and the carry window are desk settings
@@ -29,7 +36,8 @@ import { pool } from "@workspace/db";
 import { closeDateSql, netPnlSql, num } from "../tradeMath";
 import { addDays, nyDate, nyMinutes } from "../tradingDate";
 import { violationDaySql } from "../violationWindow";
-import { prevTradingDay, tradingPhase } from "../curatorLogic";
+import { mondayOf, prevTradingDay, tradingPhase } from "../curatorLogic";
+import { ensureCuratorTables } from "../curatorStore";
 import { logger } from "../logger";
 import { setting } from "../settings/registry";
 import { dayThresholds } from "./detectors";
@@ -48,8 +56,9 @@ export const COST_QUEUE = {
 
 export type ReasonKind = CostQueueItem["reasons"][number]["kind"];
 export type CostReason = CostQueueItem["reasons"][number];
-/** A queue row plus the curator's state: `resolved` = the curator already reviewed the day / breach or left a note after it. */
-export type CostQueueRow = CostQueueItem & { resolved: boolean };
+/** A queue row plus the curator's state: `resolved` = the curator already looked at the day (see the header);
+ *  `dayNet` = the day's net P&L (null = no priced trades), shown next to the cost. */
+export type CostQueueRow = CostQueueItem & { resolved: boolean; dayNet?: number | null };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const text = (kind: ReasonKind, params: TextItem["params"] = {}): TextItem => ({ key: `costQueue.detail.${kind}`, params });
@@ -156,7 +165,7 @@ export function giveback(trades: readonly DayTrade[]): { peak: number; close: nu
 export function givebackReason(trades: readonly DayTrade[]): CostReason | null {
   const g = giveback(trades);
   const k = dayThresholds();
-  if (g.peak < k.givebackMinUsd || g.close > g.peak * k.givebackKeepShare) return null;
+  if (g.peak <= 0 || g.peak < k.givebackMinUsd || g.close > g.peak * k.givebackKeepShare) return null;
   return {
     kind: "giveback",
     costNet: r2(g.close - g.peak),
@@ -205,8 +214,15 @@ export function focusReason(v: FocusVerdict | null | undefined): CostReason | nu
 
 const REASON_ORDER: Record<ReasonKind, number> = { stop_breach: 0, focus_broken: 1, disputed: 2, rule: 3, giveback: 4, fees: 5, loss_streak: 6 };
 
+/** Real loss of a row: Σ reason costs except giveback (money not earned is not a loss). */
 export function sumCost(reasons: readonly CostReason[]): number {
-  return r2(reasons.reduce((a, r) => a + Math.min(0, r.costNet ?? 0), 0));
+  return r2(reasons.reduce((a, r) => a + (r.kind === "giveback" ? 0 : Math.min(0, r.costNet ?? 0)), 0));
+}
+
+/** The giveback figure of a row (≤ 0; 0 = none): the secondary sort key. */
+export function missedOf(item: Pick<CostQueueItem, "reasons">): number {
+  const g = item.reasons.find((r) => r.kind === "giveback");
+  return Math.min(0, g?.costNet ?? 0);
 }
 
 /** Which day reason a focus mistake is the same money as (day:fees ↔ fees …). rule:* → the rule reason. */
@@ -238,17 +254,54 @@ export function dedupeOverlap(reasons: readonly CostReason[]): CostReason[] {
 }
 
 /** One queue row from its reasons (null when nothing cost money / needs a look). Reasons: costliest first. */
-export function makeItem(trader: string, date: string, reasons: readonly (CostReason | null)[], resolved: boolean): CostQueueRow | null {
+export function makeItem(trader: string, date: string, reasons: readonly (CostReason | null)[], resolved: boolean, dayNet: number | null = null): CostQueueRow | null {
   const list = dedupeOverlap(reasons.filter((r): r is CostReason => r != null));
   if (!list.length) return null;
-  list.sort((a, b) => (a.costNet ?? 0) - (b.costNet ?? 0) || REASON_ORDER[a.kind] - REASON_ORDER[b.kind]);
-  return { trader, date, costNet: sumCost(list), reasons: list, resolved };
+  // Real losses first; the giveback (not a loss) after them whatever its size.
+  const loss = (r: CostReason) => (r.kind === "giveback" ? 0 : r.costNet ?? 0);
+  list.sort((a, b) => loss(a) - loss(b) || REASON_ORDER[a.kind] - REASON_ORDER[b.kind]);
+  return { trader, date, costNet: sumCost(list), reasons: list, resolved, dayNet: dayNet == null ? null : r2(dayNet) };
 }
 
-/** Most negative first; ties: more reasons, newer day, name. */
+/** Most negative real loss first; ties: bigger giveback, more reasons, newer day, name. */
 export function rankQueue<T extends CostQueueItem>(items: readonly T[]): T[] {
   return [...items].sort((a, b) =>
-    a.costNet - b.costNet || b.reasons.length - a.reasons.length || b.date.localeCompare(a.date) || a.trader.localeCompare(b.trader, "ru"));
+    a.costNet - b.costNet || missedOf(a) - missedOf(b) || b.reasons.length - a.reasons.length || b.date.localeCompare(a.date) || a.trader.localeCompare(b.trader, "ru"));
+}
+
+// ─── resolved (pure) ────────────────────────────────────────────────────────
+
+/** When a trading day counts as closed for «did the curator look after it» (≈ 16:00 NY). */
+export const dayCloseMs = (d: string): number => Date.parse(`${d}T20:00:00Z`);
+
+/** The day a general note (no `day`) is about: the last trading day finished when it was written. */
+export function noteDayOf(createdAt: Date): string {
+  const date = nyDate(createdAt);
+  return lastFinishedDay(date, { date, minutes: nyMinutes(createdAt) });
+}
+
+export type ResolveSignals = {
+  /** The closed day was reviewed (eod_days.reviewed_at). */
+  eodReviewed: boolean;
+  /** Breach alerts attached to the day (all reviewed → resolved). */
+  alerts: readonly { reviewed: boolean }[];
+  /** Days the trader's notes are about (curator_notes.day, or noteDayOf for general notes). */
+  noteDays: ReadonlySet<string>;
+  /** Quests a curator assigned to the trader (ms). */
+  questsAt: readonly number[];
+  /** Weekly reviews finished for the trader: the week's Monday and when (ms). */
+  weekly: readonly { monday: string; at: number }[];
+};
+
+/** OLGA-04: a note resolves only its own day; trader-visible actions after the day closed resolve it too. */
+export function dayResolved(d: string, s: ResolveSignals): boolean {
+  if (s.eodReviewed) return true;
+  if (s.alerts.length && s.alerts.every((a) => a.reviewed)) return true;
+  if (s.noteDays.has(d)) return true;
+  const close = dayCloseMs(d);
+  if (s.questsAt.some((at) => at >= close)) return true;
+  const monday = mondayOf(d);
+  return s.weekly.some((w) => w.monday === monday && w.at >= close);
 }
 
 /** Breach alerts attached to queue days: daily stops to their own day (alerts after D → D); state-like limits
@@ -336,8 +389,22 @@ function loadData(traders: readonly string[], days: readonly string[], today: st
       `SELECT trader, date FROM eod_days WHERE reviewed_at IS NOT NULL AND trader = ANY($1) AND date = ANY($2)`,
       [traders, days],
     ),
-    rowsOf<{ trader: string; last: Date }>(
-      `SELECT trader, MAX(created_at) AS last FROM curator_notes WHERE archived_at IS NULL AND trader = ANY($1) AND created_at >= $2::date GROUP BY trader`,
+    // Notes about the window's days (a general note → the day finished when it was written, noteDayOf).
+    ensureCuratorTables().then(() => rowsOf<{ trader: string; day: string | null; created_at: Date }>(
+      `SELECT trader, day, created_at FROM curator_notes
+        WHERE archived_at IS NULL AND trader = ANY($1) AND (day = ANY($2) OR (day IS NULL AND created_at >= $3::date))`,
+      [traders, days, low],
+    ), () => [] as { trader: string; day: string | null; created_at: Date }[]),
+    // Trader-visible curator actions after the window started: quests given, weekly reviews finished (a scorecard rating
+    // is a weekly score, not a look at the day — it does not resolve days).
+    rowsOf<{ trader: string; at: Date }>(
+      `SELECT trader, created_at AS at FROM quest_instances
+        WHERE assigned_by IS NOT NULL AND status <> 'cancelled' AND trader = ANY($1) AND created_at >= $2::date`,
+      [traders, low],
+    ),
+    rowsOf<{ trader: string; monday: string; at: Date }>(
+      `SELECT trader, TO_CHAR(week_start, 'YYYY-MM-DD') AS monday, reviewed_at AS at FROM weekly_reviews
+        WHERE reviewed_at IS NOT NULL AND trader = ANY($1) AND week_start >= ($2::date - 6)`,
       [traders, low],
     ),
     // Evening verdict snapshots (lib/daily/service eveningFor stores one per finished day) — no engine run per trader.
@@ -401,7 +468,7 @@ export async function buildCostQueue(traders: readonly string[], today: string, 
   const now = deps.now ?? { date: nyDate(), minutes: nyMinutes() };
   const day = lastFinishedDay(today, now);
   const days = queueDays(day);
-  const [aggRows, tradeRows, limitRows, alertRows, violationRows, eodRows, noteRows, verdictRows] = await loadData(traders, days, today);
+  const [aggRows, tradeRows, limitRows, alertRows, violationRows, eodRows, noteRows, questRows, weeklyRows, verdictRows] = await loadData(traders, days, today);
 
   const key = (t: string, d: string) => `${t}|${d}`;
   const history = new Map<string, { date: string; net: number | null }[]>();
@@ -424,15 +491,25 @@ export async function buildCostQueue(traders: readonly string[], today: string, 
     violations.set(k, [...(violations.get(k) ?? []), { tradeId: v.trade_id == null ? null : Number(v.trade_id), costNet: num(v.cost_net), rule: String(v.rule ?? "") }]);
   }
   const eodReviewed = new Set(eodRows.map((r) => key(String(r.trader), String(r.date))));
-  const lastNote = new Map(noteRows.map((r) => [String(r.trader), new Date(r.last).getTime()]));
-  // The curator looked at the day: reviewed the closed day, reviewed every breach of it, or left a note after its close.
-  const resolvedOf = (t: string, d: string): boolean => {
-    if (eodReviewed.has(key(t, d))) return true;
-    const al = alerts.get(key(t, d)) ?? [];
-    if (al.length && al.every((a) => a.reviewed)) return true;
-    const note = lastNote.get(t);
-    return note != null && note >= Date.parse(`${d}T20:00:00Z`);
-  };
+  const noteDays = new Map<string, Set<string>>();
+  for (const r of noteRows) {
+    const t = String(r.trader);
+    const d = r.day ? String(r.day) : noteDayOf(new Date(r.created_at));
+    noteDays.set(t, (noteDays.get(t) ?? new Set<string>()).add(d));
+  }
+  const questsAt = new Map<string, number[]>();
+  for (const r of questRows) questsAt.set(String(r.trader), [...(questsAt.get(String(r.trader)) ?? []), new Date(r.at).getTime()]);
+  const weekly = new Map<string, { monday: string; at: number }[]>();
+  for (const r of weeklyRows) weekly.set(String(r.trader), [...(weekly.get(String(r.trader)) ?? []), { monday: String(r.monday), at: new Date(r.at).getTime() }]);
+  const none = new Set<string>();
+  // The curator looked at the day (dayResolved): reviewed it or its breaches, wrote a note about it, or acted for the trader.
+  const resolvedOf = (t: string, d: string): boolean => dayResolved(d, {
+    eodReviewed: eodReviewed.has(key(t, d)),
+    alerts: alerts.get(key(t, d)) ?? [],
+    noteDays: noteDays.get(t) ?? none,
+    questsAt: questsAt.get(t) ?? [],
+    weekly: weekly.get(t) ?? [],
+  });
 
   const traded = (t: string, d: string) => (agg.get(key(t, d))?.n ?? 0) > 0;
   const verdicts = new Map<string, FocusVerdict | null>(verdictRows.map((r) => [key(String(r.trader), String(r.date)), storedVerdict(r)]));
@@ -458,7 +535,7 @@ export async function buildCostQueue(traders: readonly string[], today: string, 
         d === streakDay ? lossStreakReason(history.get(t) ?? [], d) : null,
         givebackReason(trades),
         rulesReason(violations.get(k) ?? []),
-      ], resolved);
+      ], resolved, a?.net ?? null);
       // A carried day stays only when it cost money or needs a look (a breach, a disputed focus).
       if (item && (d === day || item.costNet < 0 || item.reasons.some((r) => r.kind === "stop_breach" || r.kind === "disputed"))) items.push(item);
     }

@@ -40,11 +40,11 @@ const etTime = (iso: string) => {
 };
 
 /** One takeaway as a sentence; `nameOf` renders a trader key (traderLabel). */
-export function takeawayText(tk: DeskTakeaway, nameOf: (key: string) => string = personName): string {
+export function takeawayText(tk: DeskTakeaway, nameOf: (key: string) => string = personName, isMe: (key: string) => boolean = () => false): string {
   const t = deskDayI18n.t;
   switch (tk.kind) {
     case "best": {
-      const p = { name: nameOf(tk.trader), r: fmtR(tk.r), side: sideLabel(tk.side), time: etTime(tk.at) };
+      const p = { name: isMe(tk.trader) ? t("takeaway.mine") : nameOf(tk.trader), r: fmtR(tk.r), side: sideLabel(tk.side), time: etTime(tk.at) };
       if (tk.minutesFromOpen === 0) return t("takeaway.bestOpen", p);
       return tk.minutesFromOpen > 0 ? t("takeaway.best", { ...p, min: tk.minutesFromOpen }) : t("takeaway.bestPre", p);
     }

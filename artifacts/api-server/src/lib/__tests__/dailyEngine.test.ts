@@ -7,10 +7,11 @@
 import { describe, expect, it } from "vitest";
 import { analyzeBehavior, type BehaviorTrade } from "../behaviorEngine";
 import {
-  DISCIPLINE_POINTS, analyzeWindow, contractOf, focusOf, focusWindow, isMistakeId, pickFocus, tierProgressOf, tradeToReview, verdictOf,
+  DISCIPLINE_POINTS, analyzeWindow, contractOf, focusOf, focusWindow, isMistakeId, pathProgressOf, pickFocus, tierProgressOf, tradeMistakes, tradeToReview, verdictOf,
   type DetectInput,
 } from "../daily/engine";
 import type { ExecRowLite, TradeRowLite } from "../tradeStructureStore";
+import type { ReadinessReport } from "../promotionEngine";
 import type { RuleRow, TradeForRule } from "../rulesEval";
 import type { Evaluation } from "../scalingEngine";
 
@@ -72,6 +73,15 @@ describe("focus pick", () => {
     expect(rev.days).toBe(3);
     expect(rev.costNet!).toBeLessThan(-100); // −45 each vs a positive norm
     expect(rev.examples[0]!.net).toBe(-45);
+  });
+
+  it("tags every trade with its mistakes (all hits of the window, not only the top examples)", () => {
+    const tags = tradeMistakes(a);
+    const rev = a.costs.find((c) => c.id === "behavior:revenge")!;
+    const hit = [...a.days.values()].flatMap((d) => d.get("behavior:revenge")?.refs ?? []).map((r) => r.tradeId);
+    expect(hit.length).toBe(rev.count);
+    for (const id of hit) expect(tags.get(id)).toContain("behavior:revenge");
+    expect(tradeMistakes({ costs: [], days: new Map() }).size).toBe(0);
   });
 
   it("picks the costliest repeating mistake and writes the line", () => {
@@ -224,6 +234,23 @@ describe("tier progress and discipline", () => {
     expect(p.items).toHaveLength(2);
     expect(p.items[1]).toMatchObject({ metric: "profit_factor", ok: false, label: { key: "scaling.metric.profit_factor.label", params: { custom: "PF" } } });
     expect(tierProgressOf(null)).toBeNull();
+  });
+
+  it("maps the academy path readiness to the ladder line (one scorecard: same N/M and next stage as /academy/path)", () => {
+    const report = {
+      stage: { key: "trainee" }, nextStage: { key: "junior" }, passed: 6, total: 13,
+      criteria: [
+        { metric: "trading_days", label: "15 of 20 days", value: 16, target: 15, display: "16", targetDisplay: "≥ 15", status: "pass" },
+        { metric: "violations", label: "≤ 2 violations", value: null, target: 2, display: "—", targetDisplay: "≤ 2", status: "fail" },
+      ],
+    } as unknown as ReadinessReport;
+    const p = pathProgressOf(report)!;
+    expect(p).toMatchObject({ tier: "trainee", nextTier: "junior", met: 6, total: 13, source: "path" });
+    expect(p.items[0]).toMatchObject({ metric: "trading_days", ok: true, text: "15 of 20 days", display: "16", targetDisplay: "≥ 15" });
+    expect(p.items[1]).toMatchObject({ ok: false, noData: true });
+    expect(pathProgressOf({ ...report, stage: null } as unknown as ReadinessReport)).toBeNull();
+    // The top stage has no next one.
+    expect(pathProgressOf({ ...report, stage: { key: "senior" }, nextStage: null } as unknown as ReadinessReport)).toMatchObject({ tier: "senior", nextTier: null });
   });
 
   it("the contract verdict moves the next-day discipline score (behaviour engine)", () => {

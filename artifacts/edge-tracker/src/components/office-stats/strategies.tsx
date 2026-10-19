@@ -16,6 +16,7 @@ import { LineCanvas, monthTicks, type LineSeries } from "./line-canvas";
 import { divergingCell, strategyColor, useDark, yearColor } from "./palette";
 import type { Ctx } from "./overview";
 import { fmtCount } from "@/lib/format";
+import { nyDate } from "@/lib/trading-date";
 import { commonI18n } from "@/i18n/ns/common";
 import { officeI18n } from "@/i18n/ns/officeStats";
 
@@ -44,6 +45,9 @@ export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[]
   const hi = Math.max(0, ...nets);
   const span = Math.max(1e-9, hi - lo);
   const zero = (-lo / span) * 100;
+  // Each year's basis said out loud (OWNER-13): a finished year is the whole year, the current one runs to its last day.
+  const thisYear = Number(nyDate().slice(0, 4));
+  const basis = (y: YearView) => (y.year < thisYear || !y.days.length ? t("strategies.fullYear") : t("strategies.toDate", { date: fmtDay(y.days[y.days.length - 1].date) }));
   return (
     <Panel title={t("strategies.totalTitle")} description={t("strategies.totalDesc")} icon={ListOrdered} fill className="lg:col-span-6">
       {!shown.length ? <EmptyState compact icon={ListOrdered} title={t("strategies.noTradesYears")} /> : (
@@ -57,6 +61,7 @@ export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[]
                 <div className="mb-2 flex items-baseline justify-between gap-2">
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
                     <span className="h-0.5 w-3 rounded-full" style={{ background: yearColor(rank, dark) }} aria-hidden="true" />{y.year}
+                    <span className="text-2xs font-normal text-muted-foreground">{basis(y)}</span>
                   </span>
                   <span className={cn("text-sm font-semibold tabular-nums", y.totals.net >= 0 ? "text-up" : "text-down")}>{fmtParen(y.totals.net, unit)}</span>
                 </div>
@@ -343,7 +348,10 @@ export function StrategyTable({ period, prev, unit, periodLabel }: { period: Per
                   <td className="text-right">{fmtCount(s.trades)}</td>
                   <td className="text-right">{fmtShare(s.winRate)}</td>
                   <td className={cn("text-right", s.profitFactor != null && (s.profitFactor >= 1 ? "text-up" : "text-down"))}>{s.profitFactor != null ? s.profitFactor.toFixed(2) : "—"}</td>
-                  <td className="text-right">{s.avgR != null ? `${s.avgR >= 0 ? "+" : "−"}${Math.abs(s.avgR).toFixed(2)}R` : "—"}</td>
+                  <td className="whitespace-nowrap text-right" title={s.avgR != null && s.rTrades != null ? t("strategies.avgRBase", { n: fmtCount(s.rTrades), total: fmtCount(s.trades) }) : undefined}>
+                    {s.avgR != null ? `${s.avgR >= 0 ? "+" : "−"}${Math.abs(s.avgR).toFixed(2)}R` : "—"}
+                    {s.avgR != null && s.rTrades != null && s.rTrades < s.trades && <span className="ml-1 text-2xs text-muted-foreground">{s.rTrades}/{s.trades}</span>}
+                  </td>
                   <td className={cn("text-right font-semibold", s.net > 0 ? "text-up" : s.net < 0 ? "text-down" : "")}>{s.trades ? fmtParen(s.net, unit) : "—"}</td>
                   {hasPrev && <td className={cn("text-right", d == null ? "" : d >= 0 ? "text-up" : "text-down")}>{d == null ? "—" : fmtV(d, unit)}</td>}
                   <td className="text-right">{fmtShare(s.netShare)}</td>

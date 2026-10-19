@@ -4,21 +4,21 @@
   "description": "lint findings per rule (Biome + ESLint); no rule may gain findings",
   "metrics": {
     "biome": {
-      "total": 260,
+      "total": 258,
       "byKey": {
         "lint/a11y/useKeyWithClickEvents": 16,
         "lint/a11y/useValidAriaRole": 1,
         "lint/correctness/noUnusedVariables": 16,
         "lint/correctness/useJsxKeyInIterable": 3,
-        "lint/nursery/noFloatingPromises": 218,
+        "lint/nursery/noFloatingPromises": 216,
         "lint/style/noRestrictedGlobals": 2,
         "lint/suspicious/noConsole": 4
       }
     },
     "eslint": {
-      "total": 91,
+      "total": 90,
       "byKey": {
-        "@tanstack/query/exhaustive-deps": 19,
+        "@tanstack/query/exhaustive-deps": 18,
         "@tanstack/query/no-rest-destructuring": 8,
         "@tanstack/query/no-unstable-deps": 5,
         "react-hooks/exhaustive-deps": 59

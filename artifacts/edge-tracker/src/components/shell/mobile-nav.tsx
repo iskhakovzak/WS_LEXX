@@ -1,52 +1,52 @@
-/** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section. */
-import { useEffect, useState } from "react";
+/** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section.
+ * New traders (simple menu, nav-model.ts) get Сегодня, План, Плейбук, Тренажёр; the sheet lists the rest. */
+import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
-import { MoreHorizontal, Search, Star } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
-import { openCommandPalette } from "@/components/global-search";
-import { ALL_NAV_ITEMS, MOBILE_TABS, isNavActive, type NavItem } from "./nav";
-import { useVisibleNav } from "./sidebar-nav";
-import { usePinnedNav } from "./use-nav-prefs";
+import { ALL_NAV_ITEMS, isNavActive, type NavItem } from "./nav";
+import { mobileTabs } from "./nav-model";
+import { useNavModel } from "./use-nav-model";
+import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
 import { useShellBadges } from "./use-shell-badges";
 import { preloadRoute } from "./route-loaders";
 import { useAuth } from "@/contexts/auth-context";
 import { shellI18n } from "@/i18n/ns/shell";
 
-function Tile({ item, active, alert }: { item: NavItem; active: boolean; alert?: boolean }) {
-  const { t } = shellI18n.useT();
-  const Icon = item.icon;
-  return (
-    <Link
-      href={item.href}
-      aria-current={active ? "page" : undefined}
-      onPointerDown={() => preloadRoute(item.href)}
-      className={cn(
-        "relative flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl px-1 py-2 text-center text-xs font-medium transition-colors",
-        active ? "bg-primary-solid text-primary-foreground" : "glass-panel text-foreground active:bg-[var(--glass-hover-bg)]",
-      )}
-    >
-      <Icon className={cn("h-5 w-5", active ? "text-primary-foreground" : "text-primary")} aria-hidden="true" />
-      <span className="line-clamp-2 leading-tight">{item.name}</span>
-      {alert && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-down" aria-label={t("mobile.needsAttention")} />}
-    </Link>
-  );
-}
+const loadSheet = () => import("./mobile-more-sheet");
+const MobileMoreSheet = lazy(loadSheet);
+const PHONE = "(max-width: 767px)";
 
 export function MobileNav({ location }: { location: string }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  // The sheet chunk is mounted (closed) once loaded: on the phone layout when idle, or on the first press on «More».
+  const [sheetArmed, setSheetArmed] = useState(false);
+  const arm = useCallback(() => { void loadSheet().then(() => setSheetArmed(true), () => {}); }, []);
   const { t } = shellI18n.useT();
-  const groups = useVisibleNav();
+  const { groups, simple } = useNavModel();
   const { pins } = usePinnedNav();
-  const { isCurator } = useAuth();
+  const { isCurator, user } = useAuth();
+  const [moreGroupOpen, setMoreGroupOpen] = useMoreOpen(user?.traderName);
   const badges = useShellBadges();
-  const tabs = MOBILE_TABS.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i);
+  // Simple menu (new traders): Сегодня, План, Плейбук, Тренажёр + «Ещё»; full menu: Дашборд, План, Сделки, Дневник + «Ещё».
+  const tabs = React.useMemo(() => mobileTabs(groups, simple), [groups, simple]);
+  const tabHrefs = tabs.map((i) => i.href);
   const inTabs = tabs.some((t) => isNavActive(t, location));
   // Same rule as the sidebar: a staff-only section pinned while signed in as curator never shows for a trader.
   const pinnedItems = pins.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i && !i.hidden && (!i.staff || isCurator));
-  const anyAlert = Object.entries(badges).some(([href, b]) => b && !MOBILE_TABS.includes(href));
+  const anyAlert = Object.entries(badges).some(([href, b]) => b && !tabHrefs.includes(href));
 
   useEffect(() => { setMoreOpen(false); }, [location]);
+  useEffect(() => {
+    if (!window.matchMedia?.(PHONE).matches) return;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(arm, { timeout: 5000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const timer = setTimeout(arm, 3000);
+    return () => clearTimeout(timer);
+  }, [arm]);
 
   return (
     <>
@@ -61,7 +61,7 @@ export function MobileNav({ location }: { location: string }) {
             return (
               <li key={t.href}>
                 <Link
-                  href={t.href}
+                  href={t.to ?? t.href}
                   aria-current={active ? "page" : undefined}
                   onPointerDown={() => preloadRoute(t.href)}
                   className={cn(
@@ -81,7 +81,8 @@ export function MobileNav({ location }: { location: string }) {
           <li>
             <button
               type="button"
-              onClick={() => setMoreOpen(true)}
+              onPointerDown={arm}
+              onClick={() => { setSheetArmed(true); setMoreOpen(true); }}
               aria-haspopup="dialog"
               aria-expanded={moreOpen}
               className={cn(
@@ -99,38 +100,15 @@ export function MobileNav({ location }: { location: string }) {
         </ul>
       </nav>
 
-      <Drawer open={moreOpen} onOpenChange={setMoreOpen} shouldScaleBackground={false}>
-        <DrawerContent aria-describedby="more-desc">
-          <DrawerTitle className="sr-only">{t("mobile.allSections")}</DrawerTitle>
-          <DrawerDescription id="more-desc" className="sr-only">{t("mobile.allSectionsDesc")}</DrawerDescription>
-          <div className="overflow-y-auto overscroll-contain px-4 pb-4 pt-3">
-            <button
-              type="button"
-              onClick={() => { setMoreOpen(false); openCommandPalette(); }}
-              className="glass-field mb-4 flex h-11 w-full items-center gap-2 px-4 text-sm text-muted-foreground"
-            >
-              <Search className="h-4 w-4" aria-hidden="true" />
-              {t("mobile.searchPlaceholder")}
-            </button>
-            {pinnedItems.length > 0 && (
-              <section className="mb-4">
-                <h3 className="micro-label mb-2 flex items-center gap-1.5"><Star className="h-3 w-3" aria-hidden="true" /> {t("sidebar.favorites")}</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {pinnedItems.map((i) => <Tile key={`p-${i.href}`} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
-                </div>
-              </section>
-            )}
-            {groups.map((g) => (
-              <section key={g.id} className="mb-4 last:mb-0">
-                <h3 className="micro-label mb-2">{g.label}</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {g.items.map((i) => <Tile key={i.href} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
-                </div>
-              </section>
-            ))}
-          </div>
-        </DrawerContent>
-      </Drawer>
+      {sheetArmed && (
+        <Suspense fallback={null}>
+          <MobileMoreSheet
+            open={moreOpen} onOpenChange={setMoreOpen} location={location} groups={groups} pinnedItems={pinnedItems} badges={badges}
+            simple={simple ? { ...simple, primary: simple.primary.filter((i) => !tabHrefs.includes(i.href)) } : null}
+            moreGroupOpen={moreGroupOpen} setMoreGroupOpen={setMoreGroupOpen}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

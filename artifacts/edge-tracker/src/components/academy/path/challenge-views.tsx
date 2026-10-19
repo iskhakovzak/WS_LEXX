@@ -100,7 +100,8 @@ export function ChallengeDetailView({ id, onArchived, pathHref }: { id: number; 
         <p className={cn("text-sm", r.status === "failed" ? "text-down" : r.status === "passed" ? "text-up" : "text-foreground")} role="status">{r.reason}</p>
         {r.failure && <p className="mt-1 text-xs text-muted-foreground">{failureText(r.failure, mode)}</p>}
         <p className="mt-2 text-xs text-muted-foreground">{rulesSummary(c.rules)}</p>
-        {c.comment && <p className="mt-2 text-sm text-foreground/90">«{c.comment}»</p>}
+        {/* The creator's note, labelled as such — «Сдал» on an expired exam must not read as its outcome (DENIS-22). */}
+        {c.comment && <p className="mt-2 text-sm text-foreground/90">{t("challenge.commentBy", { name: personName(c.createdBy), comment: c.comment })}</p>}
       </Panel>
 
       <StatGrid>

@@ -1,6 +1,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, BellOff, Eye, Mail, Send, ChevronRight } from "lucide-react";
+import { Bell, BellOff, Eye, Mail, Medal, Send, ChevronRight } from "lucide-react";
 import { Panel, Pill, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { useMyProfile } from "./ProfileSection";
 import type { SectionId } from "./SettingsNav";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { commonI18n } from "@/i18n/ns/common";
+import { gamificationI18n } from "@/i18n/ns/gamification";
 
 /** Digest send times — must match MORNING_UTC_HOUR / EVENING_UTC_HOUR in api-server lib/digest.ts. */
 const DIGEST_MORNING_UTC = 9;
@@ -343,8 +344,51 @@ function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => vo
   );
 }
 
+/**
+ * Recognition (lib/gamification): new achievement tiers, streaks and titles go to the desk feed (and the Telegram group
+ * when it is connected) unless the trader hides them — users.settings.shareAchievements, absent = on.
+ */
+function ShareAchievementsPanel() {
+  const { t } = gamificationI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const { toast } = useToast();
+  const [on, setOn] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    http.get<{ settings?: { shareAchievements?: unknown } } | null>("/api/users/me/settings")
+      .then((d) => setOn(d?.settings?.shareAchievements !== false))
+      .catch(() => setOn(true));
+  }, []);
+
+  async function toggle(v: boolean) {
+    const prev = on;
+    setOn(v);
+    setSaving(true);
+    try {
+      await http.put("/api/users/me/settings", { shareAchievements: v });
+      toast({ title: v ? t("recognition.on") : t("recognition.off") });
+    } catch (e) {
+      setOn(prev);
+      toast({ title: e instanceof ApiError && !e.isNetwork ? t("recognition.failed") : tc("states.networkError"), description: e instanceof ApiError && !e.isNetwork ? humanizeApiError(e) : undefined, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel title={t("recognition.panel")} icon={Medal}>
+      {on === null ? <Skeleton className="h-10 rounded-xl" /> : (
+        <SettingRow label={t("recognition.setting")} htmlFor="share-achievements" hint={t("recognition.settingHint")}>
+          <Switch id="share-achievements" checked={on} disabled={saving} onCheckedChange={toggle} />
+        </SettingRow>
+      )}
+    </Panel>
+  );
+}
+
 export function NotificationsSection({ onNavigate }: { onNavigate: (id: SectionId) => void }) {
-  const { user } = useAuth();
+  const { user, isCurator } = useAuth();
   const { t } = settingsI18n.useT();
   if (!user?.traderName || user.role === "guest") {
     return (
@@ -358,6 +402,7 @@ export function NotificationsSection({ onNavigate }: { onNavigate: (id: SectionI
       <DigestPanel />
       <div className="flex flex-col gap-4">
         <TelegramAlertsPanel onNavigate={onNavigate} />
+        {!isCurator && <ShareAchievementsPanel />}
         <Callout icon={Bell}>{t("tgAlerts.about")}</Callout>
       </div>
     </div>

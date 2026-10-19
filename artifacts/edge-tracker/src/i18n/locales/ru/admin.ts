@@ -44,6 +44,7 @@ export default {
     riskUnavailable: "риск-деск недоступен",
     breaches: { one: "{count} превышение", few: "{count} превышения", many: "{count} превышений", other: "{count} превышения" },
     noBreaches: "превышений нет",
+    weekend: "выходной",
   },
 
   attention: {
@@ -62,7 +63,7 @@ export default {
     slaDetail: "SLA {hours} ч · всего в очереди {count}",
     queueWaiting: "Ждут ревью куратора: {count}",
     eodOpen: "Не закрыли день {date}: {count}",
-    errors24h: "Ошибки за 24 ч: {count}",
+    errors24h: "Ошибки синка за 24 ч: {count}",
     syncFailed: "Последний синк PropReports завершился ошибкой",
     syncPartial: "Последний синк PropReports прошёл частично",
     unmappedAccounts: "Счета без трейдера: {count}",
@@ -76,6 +77,11 @@ export default {
     qualityItem: "{label} — {count}",
     violationsToday: "Нарушили правила сегодня: {count}",
     stale: "Не заходили 3+ дня: {count}",
+    noBackup: "Нет свежего бэкапа базы (старше 24 ч)",
+    noBackupLast: "Последний бэкап: {date}",
+    noBackupNever: "Бэкапов ещё нет — включите задачу «Бэкап базы данных»",
+    slaCurator: "{name} — {count}",
+    slaNoCurator: "без куратора — {count}",
     action: {
       review: "Разобрать",
       riskDesk: "Риск-деск",
@@ -88,6 +94,8 @@ export default {
       check: "Проверить",
       show: "Показать",
       list: "Список",
+      backups: "Данные",
+      assign: "Назначить",
     },
   },
 
@@ -110,8 +118,22 @@ export default {
     autoNext: " · след. {at}",
     autoOff: "выключен",
     autoNotSet: "не настроен",
-    errors24h: "Ошибки за 24 ч",
+    errors24h: "Ошибки синка",
     errorsNone: "нет",
+  },
+
+  reviewLoad: {
+    title: "Ревью по кураторам",
+    description: "Дни в очереди за {days} дн · SLA {hours} ч",
+    waiting: "{count} в очереди",
+    overdue: "{count} просрочено",
+    clear: "очередь пуста",
+    wards: { one: "{count} подопечный", few: "{count} подопечных", many: "{count} подопечных", other: "{count} подопечного" },
+    noWards: "нет подопечных",
+    unassigned: "Без куратора: {count}",
+    unassignedDays: "их дней в очереди: {count}",
+    none: "Кураторов пока нет",
+    unavailable: "Нагрузка по кураторам недоступна.",
   },
 
   recent: {

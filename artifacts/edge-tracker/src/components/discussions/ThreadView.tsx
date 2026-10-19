@@ -18,6 +18,7 @@ import {
 import { Pill, Segmented, toneOf, toneText } from "@/components/ds";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
@@ -155,8 +156,12 @@ export function ThreadView({
   const draftKey = (id: number) => `ws_lexx.disc.draft.${me}.${id}`;
   const loadDraft = (id: number) => { try { return localStorage.getItem(draftKey(id)) ?? ""; } catch { return ""; } };
   const [draft, setDraft] = React.useState(() => loadDraft(thread.id));
+  // Position chips (DENIS-26): only on a ticker thread and only for traders (a curator's reply is not a position);
+  // the default is «Без статуса», a chosen status is remembered for the next ticker thread.
+  const { isCurator } = useAuth();
+  const showPositions = !!thread.ticker?.trim() && !isCurator;
   const [status, setStatus] = React.useState<StatusChoice>(() => {
-    try { return (localStorage.getItem("ws_lexx_disc_status") as StatusChoice) || "observing"; } catch { return "observing"; }
+    try { return (localStorage.getItem("ws_lexx_disc_status") as StatusChoice) || "none"; } catch { return "none"; }
   });
   const [replyTo, setReplyTo] = React.useState<Comment | null>(null);
   const [editing, setEditing] = React.useState<{ id: number; text: string } | null>(null);
@@ -232,7 +237,7 @@ export function ThreadView({
   function send() {
     const body = draft.trim();
     if (!body || addMut.isPending) return;
-    const text = buildCommentText(body, status === "none" ? null : status, replyTo?.id && replyTo.id > 0 ? replyTo.id : null);
+    const text = buildCommentText(body, status === "none" || !showPositions ? null : status, replyTo?.id && replyTo.id > 0 ? replyTo.id : null);
     addMut.mutate({ id: thread.id, data: { text } }); // author = signed-in user (server-side)
     setDraft("");
     setReplyTo(null);
@@ -502,18 +507,20 @@ export function ThreadView({
             </div>
           )}
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <Segmented<StatusChoice>
-              ariaLabel={t("thread.statusAria")}
-              size="sm"
-              value={status}
-              onChange={setStatus}
-              options={[
-                { value: "none", label: t("thread.noStatus") },
-                { value: "observing", label: STATUS_LABELS.observing },
-                { value: "in_position", label: STATUS_LABELS.in_position },
-                { value: "exited", label: STATUS_LABELS.exited },
-              ]}
-            />
+            {showPositions ? (
+              <Segmented<StatusChoice>
+                ariaLabel={t("thread.statusAria")}
+                size="sm"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: "none", label: t("thread.noStatus") },
+                  { value: "observing", label: STATUS_LABELS.observing },
+                  { value: "in_position", label: STATUS_LABELS.in_position },
+                  { value: "exited", label: STATUS_LABELS.exited },
+                ]}
+              />
+            ) : <span />}
             <span className="hidden text-2xs text-muted-foreground md:inline">{t("thread.formatHint")}</span>
           </div>
           {mentionOptions.length > 0 && (

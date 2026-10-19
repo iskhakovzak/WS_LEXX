@@ -46,6 +46,8 @@ export type NavItem = {
   also?: string[];
   /** Two-key shortcut after "G" (e.g. G then D). */
   goKey?: string;
+  /** Link target when it differs from `href` (a tab of the page, e.g. «Мой прогресс» → /ratings?tab=quests). */
+  to?: string;
   /** Pages one level below this sidebar row (same job, own routes). */
   children?: NavItem[];
   /** The row is named for its job («Инструменты») instead of its first page; that page is then listed as a child too. */
@@ -119,8 +121,8 @@ export const NAV_GROUPS: NavGroup[] = [
       nav("ask", { short: true, href: "/ask", icon: MessageSquareText, keywords: "ask спроси журнал вопрос поиск запрос сколько лучший худший", goKey: "q" }),
       nav("whatIf", { href: "/what-if", icon: FlaskConical, keywords: "what-if что если комиссии тариф правила издержки costs fees" }),
     ] }),
-    nav("chartLab", { short: true, hub: "tools", hubIcon: Wrench, href: "/chart-lab", icon: CandlestickChart, keywords: "chart lab график реплей тренировка ws chart свечи vwap уровни tools инструменты", children: [
-      nav("simulator", { href: "/simulator", icon: Gamepad2, keywords: "simulator симулятор тренажёр игра chartgame бар за баром торговля на истории practice" }),
+    nav("chartLab", { short: true, hub: "tools", hubIcon: Wrench, href: "/chart-lab", icon: CandlestickChart, keywords: "chart lab график разбор реплей replay review ws chart свечи vwap уровни рисование tools инструменты", children: [
+      nav("trainer", { href: "/trainer", icon: Gamepad2, also: ["/simulator"], keywords: "trainer тренажёр симулятор simulator игра задача дня найди вход мои дни chartgame бар за баром тренировка practice drill" }),
       nav("calculator", { href: "/calculator", icon: Calculator, keywords: "calculator опционы options греки black-scholes страйк IV payoff", goKey: "c" }),
     ] }),
   ]),
@@ -207,9 +209,6 @@ export function rowChildren(item: NavItem): NavItem[] {
   const kids = item.children ?? [];
   return item.hubLabel && kids.length ? [item, ...kids] : kids;
 }
-
-/** Mobile bottom tab bar (the 5th slot is «More»). */
-export const MOBILE_TABS = ["/", "/game-plan", "/trades", "/journal"];
 
 export function isNavActive(item: NavItem, location: string): boolean {
   const match = (p: string) => (p === "/" ? location === "/" : location === p || location.startsWith(p + "/"));

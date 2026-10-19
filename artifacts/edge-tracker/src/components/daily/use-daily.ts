@@ -6,6 +6,7 @@ import { KEYS, POLL } from "@/lib/api/keys";
 import { dailyMeQuery, myPlanQuery } from "@/lib/api/queries";
 import type { DailyMe } from "@/lib/daily/types";
 import { nyDate } from "@/lib/trading-date";
+import { trackAction } from "@/lib/usage";
 import { planContract } from "./daily-model";
 
 /** The viewer's daily loop; refreshed every 5 minutes so the phase (premarket → after close) follows the clock. */
@@ -39,12 +40,15 @@ export function useDailyReview() {
   return useMutation({
     mutationFn: (b: ReviewInput) => http.post<unknown>("/api/daily/review", { date: b.date, note: b.note?.trim() || null, dispute: !!b.dispute }),
     onSuccess: (_res, b) => {
+      trackAction(b.dispute ? "daily.dispute" : "daily.review");
       qc.setQueriesData<DailyMe | null>({ queryKey: ["daily", "me"] }, (prev) => {
         if (!prev?.evening || prev.evening.date !== b.date) return prev;
         const focus = prev.evening.focus && b.dispute ? { ...prev.evening.focus, disputed: true } : prev.evening.focus;
         return { ...prev, evening: { ...prev.evening, reviewed: true, reviewNote: b.note?.trim() || null, focus } };
       });
       void qc.invalidateQueries({ queryKey: KEYS.dailyMe(nyDate()) });
+      // Review quests (review_days, onboarding «first review») and the review achievement line move with it.
+      void qc.invalidateQueries({ queryKey: KEYS.questsMe() });
     },
   });
 }

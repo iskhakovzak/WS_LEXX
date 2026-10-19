@@ -27,7 +27,7 @@ import { http, ApiError } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage } from "./media";
 import { TIERS, moneyTone, tierMeta, type Tier } from "./model";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
-import { buildQuickRows, defaultTier, undoSteps, type AddResponse, type QuickSetup } from "./quick-add-logic";
+import { buildQuickRows, defaultTier, preselectOf, undoSteps, type AddResponse, type QuickSetup } from "./quick-add-logic";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
 
@@ -120,12 +120,13 @@ export function TradeQuickAdd({
   );
   const writableCount = React.useMemo(() => (data?.setups ?? []).filter((s) => s.canAddExamples).length, [data]);
 
-  // Preselect the best guess so the common case is one click on «Добавить».
+  // Preselect the best guess so the common case is one click on «Добавить» — a real guess only (the trade's setup,
+  // strategy / entry time, a recent setup): never just the first name of the list (ROMAN-09: «0.1 Утренняя подготовка»).
   React.useEffect(() => {
     if (!rows.length) return;
     if (picked == null || !rows.some((r) => r.s.id === picked)) {
       if (presetSetupId && byId.get(presetSetupId)?.canAddExamples && !search) setPicked(presetSetupId);
-      else setPicked(rows[0].s.id);
+      else setPicked(preselectOf(rows));
     }
   }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -164,6 +165,7 @@ export function TradeQuickAdd({
         invalidateExamples(qc, setupId);
         invalidateTradeLinks(qc);
         qc.invalidateQueries({ queryKey: ["playbook"] });
+        void qc.invalidateQueries({ queryKey: ["playbook-today"] }); // the «без сетапа» counter in the header
       };
       refresh();
       const canUndo = undoSteps(r).length > 0;
@@ -445,12 +447,15 @@ export function AddTradesToPlaybookDialog({
   /** «Новый сетап из сделки» (single trade): the caller opens its setup form. */
   onNewSetup?: () => void;
 }) {
+  // While the dialog animates closed the caller already dropped the ids: keep describing the last real selection.
+  const lastCount = React.useRef(tradeIds.length);
+  if (tradeIds.length > 0) lastCount.current = tradeIds.length;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85dvh] w-[calc(100vw-1.5rem)] max-w-xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="sr-only">
           <DialogTitle>{dt("quick.title")}</DialogTitle>
-          <DialogDescription>{dt("quick.dialogDesc", { trades: commonI18n.t("units.trades", { count: tradeIds.length }) })}</DialogDescription>
+          <DialogDescription>{dt("quick.dialogDesc", { count: lastCount.current })}</DialogDescription>
         </DialogHeader>
         {open && tradeIds.length > 0 && (
           <TradeQuickAdd

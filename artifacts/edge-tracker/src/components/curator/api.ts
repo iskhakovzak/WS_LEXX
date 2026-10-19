@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
-import { curatorI18n } from "@/i18n/ns/curator";
+import { notConnectedText } from "@/lib/api/errors";
 import type { BadgeState, CostQueueItem, DailyFocus, DisciplineSummary, FocusVerdict, MistakeCost, MistakeId } from "@/lib/daily/types";
 
 /**
@@ -11,7 +11,9 @@ import type { BadgeState, CostQueueItem, DailyFocus, DisciplineSummary, FocusVer
  */
 
 export class NotAvailableError extends Error {
-  constructor() { super(curatorI18n.t("notAvailable")); }
+  // Text from the apiErrors dictionary (already in the entry): the shell badge imports this module, and the curator
+  // dictionary would otherwise ship to every page.
+  constructor() { super(notConnectedText()); }
 }
 
 /** Route missing (404 without a `code`: Express «Cannot GET», not a handler's NOT_FOUND) / SPA HTML fallback → `NotAvailableError`. */
@@ -59,6 +61,8 @@ export type TraderSignal = {
   breaches: { unreviewed: number; last30: number; week?: number; lastDate: string | null };
   lastNote: { body: string; author: string; createdAt: string } | null;
   lastTradeDate: string | null;
+  /** Trading days since the last trade day (weekends and holidays skipped; Fri → Mon = 1). Older API: absent. */
+  idleTradingDays?: number | null;
   nextAction: NextAction;
   /** users.assigned_curator — the trader's group; null = «Без куратора». Absent on older API builds. */
   curator?: string | null;
@@ -80,7 +84,11 @@ export type QueueItem = {
 
 export type TodayPayload = {
   date: string; prevDay: string; phase: Phase; nyMinutes: number; scope: Scope; wards: number; traders: string[]; plansAvailable: boolean;
-  counts: { traders: number; trading: number; halted: number; nearStop: number; noLimits: number; missingPlan: number; missingEod: number; queue: number; queueOverdue: number; queueOld?: number; queueOldOverdue?: number; overdueActions: number };
+  counts: { traders: number; trading: number; halted: number; nearStop: number; noLimits: number; missingPlan: number; missingEod: number; queue: number; queueOverdue: number; queueOld?: number; queueOldOverdue?: number; overdueActions: number;
+    /** «Ждёт разбора»: closed, not reviewed days of the roster within the 14-day window (= /api/eod/queue/count). */
+    reviews?: number; reviewsOverdue?: number;
+    /** Wards without a 1:1 for > 30 days (or never). */
+    oneOnOneDue?: number };
   trading: { trader: string; trades: number; pnlNet: number | null; openPositions: number; state: string; dailyPct: number | null }[];
   risk: { halted: RiskBrief[]; nearStop: RiskBrief[]; noLimits: string[] };
   missingPlan: { trader: string; status: "ready" | "draft" | null }[];
@@ -91,11 +99,19 @@ export type TodayPayload = {
   queueWindow?: { days: number; includeOld: boolean; old: number; oldOverdue: number };
   overdueActions: { id: number; trader: string; title: string; dueOn: string; owner: string; daysOverdue: number }[];
   nextActions: (NextAction & { trader: string })[];
+  /** OLGA-18: wards whose last 1:1 is older than 30 days (`days` null = never had one), longest first. */
+  oneOnOneDue?: { trader: string; days: number | null; last: string | null }[];
   /** The queue by money (lib/daily/costQueue): most negative first; `resolved` — the curator already looked. Absent on older API builds. */
   byCost?: CostQueueRow[];
+  /** Curator quests of traders in scope finished / failed in the last days (api routes/quests). Absent on older API builds. */
+  questEvents?: QuestEvent[];
 };
 
-export type CostQueueRow = CostQueueItem & { resolved: boolean };
+/** `note` — the curator's note of the quest (lib/quests/store curatorQuestEvents; absent on older API builds). */
+export type QuestEvent = { trader: string; questId: number; template: string; status: "done" | "failed" | "expired"; at: string; note?: string | null };
+
+/** `dayNet` — the day's net P&L, shown next to the cost (giveback is not a loss and is not in costNet). */
+export type CostQueueRow = CostQueueItem & { resolved: boolean; dayNet?: number | null };
 export type CostReasonKind = CostQueueItem["reasons"][number]["kind"];
 
 /** Profile `focus` (api lib/daily/curatorFocus): the focus in force, its day-by-day history, the options to replace it. */
@@ -103,7 +119,8 @@ export type CuratorFocus = {
   current: DailyFocus | null;
   date: string;
   history: { date: string; trades: number; netPnl: number | null; focus: FocusVerdict | null; reviewed: boolean }[];
-  options: MistakeCost[];
+  /** `current`: the focus in force (listed too, so it can be marked). */
+  options: (MistakeCost & { current?: boolean })[];
   window: { from: string; to: string };
   /** Contract streak, discipline points / level and badges (api lib/daily/rewards); absent on older servers. */
   rewards?: { discipline: DisciplineSummary; badges: BadgeState[] } | null;
@@ -111,7 +128,8 @@ export type CuratorFocus = {
 
 export type TradersPayload = { date: string; scope: Scope; wards: number; traders: TraderSignal[] };
 
-export type CuratorNote = { id: number; trader: string; author: string; body: string; kind: NoteKind; pinned: boolean; createdAt: string; updatedAt: string };
+/** `day` — the NY trading day the note is about (a queue row's day; it resolves only that day), null = general note. */
+export type CuratorNote = { id: number; trader: string; author: string; body: string; kind: NoteKind; pinned: boolean; day?: string | null; createdAt: string; updatedAt: string };
 export type NoteKind = "note" | "call" | "concern" | "praise";
 
 export type BreachAction = { id: string; title: string; dueOn: string | null; status: "open" | "done" | "dropped" };
@@ -216,7 +234,7 @@ export const curatorApi = {
     orNotAvailable(http.post<{ restored: number }>("/api/curator/queue/restore", { ids })),
   traders: (scope: Scope | "auto") => orNotAvailable(http.get<TradersPayload>("/api/curator/traders", { query: { scope: scopeOf(scope) } })),
   profile: (trader: string) => orNotAvailable(http.get<ProfilePayload>(`/api/curator/trader/${enc(trader)}`)),
-  addNote: (body: { trader: string; body: string; kind: NoteKind; pinned?: boolean }) =>
+  addNote: (body: { trader: string; body: string; kind: NoteKind; pinned?: boolean; day?: string | null }) =>
     orNotAvailable(http.post<CuratorNote>("/api/curator/notes", body)),
   patchNote: (id: number, body: { body?: string; kind?: NoteKind; pinned?: boolean }) =>
     orNotAvailable(http.patch<CuratorNote>(`/api/curator/notes/${id}`, body)),
@@ -236,7 +254,8 @@ export const curatorApi = {
   addGoal: (body: { student: string; title: string; metric: string; target?: number; window?: number | null; dueOn?: string | null; note?: string }) =>
     orNotAvailable(http.post<{ id: number }>("/api/academy/idp", body)),
   /** Curator replaces the trader's focus for a day (routes/daily.ts, contract: PUT /api/daily/focus/:trader/:date {mistake}). */
-  setFocus: (trader: string, date: string, mistake: MistakeId) =>
+  /** `null` drops the override (the automatic focus is back). */
+  setFocus: (trader: string, date: string, mistake: MistakeId | null) =>
     orNotAvailable(http.put<unknown>(`/api/daily/focus/${enc(trader)}/${enc(date)}`, { mistake })),
   behavior: (trader: string, from: string, to: string) =>
     orNotAvailable(http.get<{ patterns?: { key: string; title: string; n: number; share?: number; net?: number | null; cost?: number | null; severity?: string }[] }>(

@@ -81,6 +81,58 @@ export function useTradesWindow(w: TradesWindow, opts: { enabled?: boolean; stal
   });
 }
 
+/** Union of two windowed lists by trade id (a carried / open trade can be in both windows). */
+export function mergeTradeLists(a: Trade[] | undefined, b: Trade[] | undefined): Trade[] | undefined {
+  if (!a) return undefined;
+  if (!b || !b.length) return a;
+  const seen = new Set(a.map((t) => t.id));
+  const out = [...a];
+  for (const t of b) if (!seen.has(t.id)) { seen.add(t.id); out.push(t); }
+  return out;
+}
+
+export type PeriodTradesWindow = {
+  /** YYYY-MM-DD start of the current period; null = «Всё время» (the whole scoped book). */
+  from: string | null;
+  /** The equally long previous period (comparison only); both or neither. */
+  prevFrom?: string | null;
+  prevTo?: string | null;
+  trader?: string | null;
+};
+
+/**
+ * DEV-01: a period page asks for the current window first (GET /api/trades?from=…) and renders on it; the previous
+ * window (?from=…&to=…), needed only for the «к прошлому периоду» deltas, loads after the current one arrives. The
+ * current-window query key is the same on /stats and /analytics, so switching pages reuses it.
+ * `data` = current ∪ previous (deduplicated); `prevLoading` while the comparison is not there yet.
+ */
+export function usePeriodTrades(w: PeriodTradesWindow) {
+  const cur = useTradesWindow({ from: w.from, trader: w.trader });
+  const hasPrev = !!(w.from && w.prevFrom && w.prevTo);
+  const prev = useTradesWindow(
+    { from: hasPrev ? w.prevFrom : null, to: hasPrev ? w.prevTo : null, trader: w.trader },
+    { enabled: hasPrev && cur.isSuccess && !cur.isPlaceholderData },
+  );
+  const prevReady = hasPrev && prev.isSuccess && !prev.isPlaceholderData;
+  const data = useMemo(() => mergeTradeLists(cur.data, prevReady ? prev.data : undefined), [cur.data, prev.data, prevReady]);
+  const { refetch: refetchCur } = cur;
+  const { refetch: refetchPrev } = prev;
+  const refetch = useCallback(async () => {
+    const r = await refetchCur();
+    if (hasPrev) void refetchPrev();
+    return r;
+  }, [refetchCur, refetchPrev, hasPrev]);
+  return {
+    data,
+    isLoading: cur.isLoading,
+    isError: cur.isError,
+    isFetching: cur.isFetching || prev.isFetching,
+    refetch,
+    /** The previous window is requested but not loaded yet (deltas pending). */
+    prevLoading: hasPrev && !prevReady && !prev.isError,
+  };
+}
+
 export type TradesBookFacets = {
   /** Trades in the caller's scope (whole book, not windowed). */
   total: number;

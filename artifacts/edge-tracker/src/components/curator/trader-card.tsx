@@ -9,6 +9,7 @@ import { actionTone, disciplineTone, riskTone, worstUsage } from "./curator-math
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
+import { tierDisplay } from "@/components/shared/tier-labels";
 
 /** One trader in «Мои трейдеры»: trend, discipline, risk usage, patterns, last review, stage and the next action. */
 export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading = false, title }: {
@@ -28,7 +29,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
   const lastReview = [s.eod.lastReviewedAt, s.weekly.lastReviewedAt].filter((v): v is string => !!v).sort().pop() ?? null;
   const tone = actionTone(s.nextAction.kind);
   const { t } = curatorI18n.useT();
-  const stageLine = [s.stage.label ?? t("card.stageNotSet"), s.tierName ? t("card.tierIs", { name: s.tierName }) : null, s.lastTradeDate ? t("card.lastTrade", { date: fmtDate(s.lastTradeDate, "dayMonth") }) : null].filter(Boolean).join(" · ");
+  const stageLine = [s.stage.label ?? t("card.stageNotSet"), s.tierName && tierDisplay(s.tierName) !== s.stage.label ? t("card.tierIs", { name: tierDisplay(s.tierName) }) : null, s.lastTradeDate ? t("card.lastTrade", { date: fmtDate(s.lastTradeDate, "dayMonth") }) : null].filter(Boolean).join(" · ");
 
   return (
     <article

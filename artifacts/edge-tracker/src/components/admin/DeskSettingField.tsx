@@ -13,8 +13,12 @@ import { cn } from "@/lib/utils";
 import { fmtRelative } from "@/i18n/format";
 import { personName } from "@/i18n";
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
-import { inputOf, nyToTashkent, shownBounds, type Problem, type SettingRow, type SettingValue } from "./desk-settings-model";
+import { inputOf, isHhMm, normalizeHhMm, nyToTashkent, shownBounds, type Problem, type SettingRow, type SettingValue } from "./desk-settings-model";
 import { optionLabel, problemText, settingLabel, unitLabel, valueText } from "./desk-settings-text";
+import { PilotUsersField } from "./PilotUsersField";
+
+/** Text settings that hold a list of traders — edited with the people picker instead of a raw text box. */
+const PEOPLE_KEYS = new Set(["usage.pilotUsers"]);
 
 const t = deskSettingsI18n.t;
 
@@ -109,15 +113,25 @@ function Control({ id, row, value, text, label, invalid, errId, onValue }: {
     }
     case "time": {
       const tk = tashkentLine(String(value));
+      // OWNER-30: a 24-hour «ЧЧ:ММ» text box (the native time input follows the OS locale and showed «04:30 PM»).
+      // While typing, the raw text stays in the draft; a valid HH:MM becomes the value.
+      const shownTime = text ?? String(value);
       return (
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
           <Input
             id={id}
-            type="time"
-            step={60}
-            className={cn("h-9 w-32 tabular-nums", invalid && "border-down")}
-            value={String(value)}
-            onChange={(e) => e.target.value && onValue(e.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="08:45"
+            maxLength={5}
+            pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+            className={cn("h-9 w-24 text-center tabular-nums", (invalid || !isHhMm(shownTime)) && "border-down")}
+            value={shownTime}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9:]/g, "").slice(0, 5);
+              const v = normalizeHhMm(raw);
+              onValue(v ?? value, raw);
+            }}
             {...aria}
           />
           <span className="text-sm text-muted-foreground">{t("field.ny")}</span>
@@ -142,6 +156,19 @@ function Control({ id, row, value, text, label, invalid, errId, onValue }: {
             {def.options.map((o) => <SelectItem key={o} value={o}>{optionLabel(key, o)}</SelectItem>)}
           </SelectContent>
         </Select>
+      );
+    case "text":
+      if (PEOPLE_KEYS.has(key)) return <PilotUsersField id={id} value={String(value)} onValue={(v) => onValue(v)} invalid={invalid} />;
+      return (
+        <Input
+          id={id}
+          autoComplete="off"
+          maxLength={def.maxLength}
+          className={cn("h-9 w-80 max-w-full", invalid && "border-down focus-visible:ring-down")}
+          value={String(value)}
+          onChange={(e) => onValue(e.target.value)}
+          {...aria}
+        />
       );
   }
 }

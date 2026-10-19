@@ -260,6 +260,7 @@ export default {
     tkPayoff: "Выигрываете чаще, но средний минус ({loss}) больше среднего плюса ({win}).",
     tkLowWr: "Винрейт ниже 50%, но средний плюс в {x} раза больше минуса.",
     statLine: "{trades}, нетто {net}, винрейт {wr}",
+    statLineNoNet: "{trades}, винрейт {wr}",
     empty: "{subject}: сделок нет",
     tradesTitle: "Сделки",
     open: "Открыть в «Сделках»",

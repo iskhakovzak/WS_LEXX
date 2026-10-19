@@ -33,11 +33,12 @@ import {
 } from "@/components/notes/author-plan";
 import {
   AN_KEYS, BUILTIN_TEMPLATES, MOODS, SECTIONS, addDays, appendText, applyTemplate,
-  isIsoDate, loadCustomTemplates, localToday, parseNote, relTime, saveCustomTemplates, serializeNote,
+  isIsoDate, loadCustomTemplates, parseNote, relTime, saveCustomTemplates, serializeNote,
   type Audience, type AuthorNote, type DayContext, type DayTrade, type NoteTemplate, type SectionKey,
 } from "@/components/notes/author-model";
 import { fmtDate } from "@/lib/format";
 import { http } from "@/lib/api/http";
+import { nyDate, prevWeekday } from "@/lib/trading-date";
 import { isNotFound } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
 import { notesI18n } from "@/i18n/ns/notes";
@@ -94,6 +95,12 @@ function SaveIndicator({ status, savedAt, now, onRetry }: { status: SaveStatus; 
   return <span className="text-xs text-muted-foreground">{t("author.save.draft")}</span>;
 }
 
+/** `today` on a trading day, the previous weekday on Saturday / Sunday. */
+function lastTradingDay(today: string): string {
+  const wd = new Date(`${today}T12:00:00Z`).getUTCDay();
+  return wd === 0 || wd === 6 ? prevWeekday(today) : today;
+}
+
 export default function AuthorNotesPage() {
   const { user, canEdit } = useAuth();
   const { toast } = useToast();
@@ -101,7 +108,8 @@ export default function AuthorNotesPage() {
   const { t: tc } = commonI18n.useT();
   const qc = useQueryClient();
   const trader = user?.traderName ?? "";
-  const today = localToday();
+  // The desk's date (New York): Sunday evening NY is already Monday in Tashkent (ROMAN-13).
+  const today = nyDate();
 
   /* ── View, date, URL ── */
   const initial = useMemo(() => {
@@ -109,7 +117,8 @@ export default function AuthorNotesPage() {
     const d = p.get("date");
     const v = p.get("view") as View | null;
     return {
-      date: isIsoDate(d) && d <= today ? d : today,
+      // On a weekend the note is about the last trading day.
+      date: isIsoDate(d) && d <= today ? d : lastTradingDay(today),
       view: v && ["write", "feed", "history"].includes(v) ? v : null,
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

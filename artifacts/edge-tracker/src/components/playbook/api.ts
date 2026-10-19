@@ -232,14 +232,16 @@ export type InboxTrade = {
   suggestedTier: 1 | 2 | 3;
   redacted?: boolean;
 };
-export type InboxResponse = { trader: string | null; days: number; total: number; trades: InboxTrade[] };
+export type InboxResponse = { trader: string | null; days: number; from?: string | null; total: number; trades: InboxTrade[] };
 
-/** GET /api/playbook-tools/inbox — null on an older API (404) so the home hides the block. */
-export function usePlaybookInbox(days = 14, enabled = true) {
+/** GET /api/playbook-tools/inbox — null on an older API (404) so the home hides the block. `untagged`: «без сетапа» —
+ * closed trades without a live setup (the same rule as PlaybookToday.untagged and EveningCard.untagged); without it
+ * the trades that are no setup's example yet. `from` (a NY close day) replaces `days`: the header's period. */
+export function usePlaybookInbox(days = 14, enabled = true, untagged = false, from: string | null = null) {
   return useQuery<InboxResponse | null>({
-    queryKey: ["playbook-inbox", days],
+    queryKey: ["playbook-inbox", days, untagged, from],
     queryFn: ({ signal }) =>
-      http.get<InboxResponse>("/api/playbook-tools/inbox", { query: { days, limit: 40 }, signal }).catch(nullIfMissing),
+      http.get<InboxResponse>("/api/playbook-tools/inbox", { query: { days, limit: 40, ...(untagged ? { untagged: 1 } : {}), ...(from ? { from } : {}) }, signal }).catch(nullIfMissing),
     enabled,
     staleTime: STALE.default,
     retry: 1,

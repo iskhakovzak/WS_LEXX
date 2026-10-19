@@ -16,14 +16,13 @@ import { downloadReportCsv, openPrintReport } from "@/components/stats/export";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
 import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
 import { usePerformance } from "@/components/propreports/api";
-import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
+import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
 import {
   horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, computeKpis, dailySeries, equitySeries, feeStats, horizonOf, inRange,
-  monthlySeries, parseKey, periodRanges, preferredMetric,
+  fmtDayKey, monthlySeries, periodRanges, preferredMetric, spansYears, toKey,
   type HorizonFilter, type Metric, type PeriodKey, type Range,
 } from "@/components/stats/metrics";
 import { PersonSelect } from "@/components/people/person-select";
-import { fmtDateCustom } from "@/lib/format";
 import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
@@ -36,7 +35,8 @@ import { statsI18n } from "@/i18n/ns/stats";
 
 const PREFS_KEY = "ws.stats.prefs.v2";
 type Prefs = { period: PeriodKey; metric: Metric | null; trader: string; dim: Dimension; horizon: HorizonFilter };
-const DEFAULT_PREFS: Prefs = { period: "all", metric: null, trader: "all", dim: "trader", horizon: "all" };
+/** DEV-01: the page opens on 90 days; «Всё время» (the whole book, tens of MB for staff) is on demand only. */
+const DEFAULT_PREFS: Prefs = { period: "90d", metric: null, trader: "all", dim: "trader", horizon: "all" };
 
 function loadPrefs(): Prefs {
   try {
@@ -44,7 +44,8 @@ function loadPrefs(): Prefs {
     if (!raw) return DEFAULT_PREFS;
     const p = JSON.parse(raw) as Partial<Prefs>;
     return {
-      period: PERIOD_OPTIONS.some((o) => o.value === p.period) ? (p.period as PeriodKey) : DEFAULT_PREFS.period,
+      // «Всё время» is never restored: every visit starts on the cheap default window.
+      period: p.period !== "all" && PERIOD_OPTIONS.some((o) => o.value === p.period) ? (p.period as PeriodKey) : DEFAULT_PREFS.period,
       metric: p.metric === "r" || p.metric === "usd" || p.metric === "net" ? p.metric : null,
       horizon: HORIZON_OPTIONS.some((o) => o.value === p.horizon) ? (p.horizon as HorizonFilter) : "all",
       trader: typeof p.trader === "string" && p.trader ? p.trader : "all",
@@ -55,14 +56,29 @@ function loadPrefs(): Prefs {
   }
 }
 
+/** «22 июл — сегодня»; both ends carry the year when the range crosses a year (MAKSIM-34). */
 function fmtRange(r: Range): string {
-  const f = (k: string) => {
-    const d = parseKey(k);
-    const otherYear = d.getFullYear() !== new Date().getFullYear();
-    return fmtDateCustom(d, { day: "numeric", month: "short", ...(otherYear ? { year: "numeric" } : {}) }).replace(".", "");
-  };
   if (!r.from) return statsI18n.t("range.all");
-  return statsI18n.t("range.span", { from: f(r.from), to: r.to ? f(r.to) : statsI18n.t("range.today") });
+  const y = spansYears(r.from, r.to ?? toKey(new Date()));
+  return statsI18n.t("range.span", { from: fmtDayKey(r.from, y), to: r.to ? fmtDayKey(r.to, y) : statsI18n.t("range.today") });
+}
+
+/** The window every card is computed over: the period, or the real span of the book for «Всё время». */
+function windowLabelOf(cur: Range, days: { key: string }[]): string {
+  if (cur.from || !days.length) return fmtRange(cur);
+  const first = days[0].key, last = days[days.length - 1].key;
+  const y = spansYears(first, last);
+  return statsI18n.t("range.span", { from: fmtDayKey(first, y), to: fmtDayKey(last, y) });
+}
+
+/** «Сравнение с …» line: loading / compared / empty previous period / no period. */
+function prevNoteOf(prev: Range | null, loading: boolean, prevKpis: { total: number } | null): string {
+  const t = statsI18n.t;
+  if (!prev) return t("prevNone");
+  if (loading) return t("prevLoading", { range: fmtRange(prev) });
+  return prevKpis && prevKpis.total > 0
+    ? t("prevCompare", { range: fmtRange(prev), trades: commonI18n.t("units.trades", { count: prevKpis.total }) })
+    : t("prevEmpty", { range: fmtRange(prev) });
 }
 
 export default function Stats() {
@@ -74,14 +90,13 @@ export default function Stats() {
     const urlTrader = new URLSearchParams(window.location.search).get("trader");
     return urlTrader ? { ...p, trader: urlTrader } : p;
   });
-  // Server-side window (P1-5): only the selected period + the equally long previous one, only the picked trader.
-  // "Всё время" still needs the whole (scoped) book.
+  // Server-side window (DEV-01): the selected period first, the equally long previous one after it (deltas only),
+  // only the picked trader. "Всё время" (on demand) still needs the whole (scoped) book.
   const ranges = useMemo(() => periodRanges(prefs.period), [prefs.period]);
   const windowTrader = prefs.trader !== "all" ? prefs.trader : null;
-  const { data: allTrades = [], isLoading, isError, refetch, isFetching } = useTradesWindow({
-    from: ranges.prev?.from ?? ranges.cur.from,
-    trader: windowTrader,
-  });
+  const { data: allTrades = [], isLoading, isError, refetch, isFetching, prevLoading } = usePeriodTrades(
+    { from: ranges.cur.from, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
+  );
   // Scope-wide facts (trader list, totals) without loading the whole book.
   const teamFacets = useTradesBookFacets();
   const traderFacets = useTradesBookFacets({ trader: windowTrader, enabled: !!windowTrader });
@@ -129,7 +144,7 @@ export default function Stats() {
   );
   const metric: Metric = prefs.metric ?? preferredMetric(scoped);
   const trades = useMemo(() => inRange(scoped, ranges.cur), [scoped, ranges]);
-  const prevTrades = useMemo(() => (ranges.prev ? inRange(scoped, ranges.prev) : null), [scoped, ranges]);
+  const prevTrades = useMemo(() => (ranges.prev && !prevLoading ? inRange(scoped, ranges.prev) : null), [scoped, ranges, prevLoading]);
 
   const kpis = useMemo(() => computeKpis(trades, metric), [trades, metric]);
   const prevKpis = useMemo(() => (prevTrades ? computeKpis(prevTrades, metric) : null), [prevTrades, metric]);
@@ -144,6 +159,8 @@ export default function Stats() {
   const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
   // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
   const solo = !isCurator && traders.length <= 1 && reportTraders.length === 0;
+  // One person's report: trade rows don't repeat the name (MAKSIM-37).
+  const oneTrader = solo || prefs.trader !== "all";
   const scopeLabel =
     (prefs.trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : personName(prefs.trader)) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
 
@@ -231,11 +248,8 @@ export default function Stats() {
     );
   }
 
-  const prevNote = ranges.prev
-    ? prevKpis && prevKpis.total > 0
-      ? t("prevCompare", { range: fmtRange(ranges.prev), trades: commonI18n.t("units.trades", { count: prevKpis.total }) })
-      : t("prevEmpty", { range: fmtRange(ranges.prev) })
-    : t("prevNone");
+  const windowLabel = windowLabelOf(ranges.cur, days);
+  const prevNote = prevNoteOf(ranges.prev, prevLoading, prevKpis);
 
   return (
     <Page>
@@ -332,7 +346,7 @@ export default function Stats() {
             <p className="text-xs text-muted-foreground">{prevNote}</p>
           </div>
 
-          <KpiGrid k={kpis} prev={prevKpis} metric={metric} />
+          <KpiGrid k={kpis} prev={prevKpis} metric={metric} windowLabel={windowLabel} />
 
           <div className="grid gap-4 xl:grid-cols-5">
             <div className="min-w-0 xl:col-span-3"><EquityPanel equity={equity} monthly={monthly} metric={metric} trades={trades} trader={prefs.trader} /></div>
@@ -345,7 +359,7 @@ export default function Stats() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <CalendarPanel days={days} metric={metric} trader={prefs.trader} />
+            <CalendarPanel days={days} metric={metric} trader={prefs.trader} hideTrader={oneTrader} />
             <TimeHeatmap trades={trades} metric={metric} />
           </div>
 
@@ -358,7 +372,7 @@ export default function Stats() {
               onPickTrader={prefs.trader === "all" ? (name) => set("trader", name) : undefined}
               hideTrader={solo}
             />
-            <ExtremesPanel trades={trades} metric={metric} />
+            <ExtremesPanel trades={trades} metric={metric} hideTrader={oneTrader} />
           </div>
         </>
       )}

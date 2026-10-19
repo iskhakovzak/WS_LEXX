@@ -422,9 +422,9 @@ export function adviceFor(metric: PromoMetricKey, op: Op, actual: number | null,
         : t("advice.fees", { pct: actual.toFixed(0), target });
     }
     case "violations":
-      return t("advice.violations", { n: actual ?? 0, target });
+      return t("advice.violations", { count: actual ?? 0, target });
     case "limit_breaches":
-      return t("advice.limitBreaches", { n: actual ?? 0 });
+      return t("advice.limitBreaches", { count: actual ?? 0 });
     case "red_streak_max":
       return actual == null ? t("advice.noMoney") : t("advice.redStreak", { n: actual, target });
     case "green_days_pct":
@@ -563,7 +563,11 @@ export function evaluatePromotion(input: PromotionInput, criteriaIn: Criterion[]
     // Previous equal window (trend). Not meaningful for cumulative learning/challenge counters.
     const prevable = meta.source !== "learning" && meta.source !== "challenges";
     const prev = prevable ? metricsFor(n, addDays(from, -1))[cr.metric] : null;
-    const value = m.value;
+    // No trades in the window: a «≤ N» criterion (violations, drawdown, fees…) has nothing to judge — «нет данных», not a
+    // pass (UMID-20). The trade / day counters themselves stay real zeros.
+    const noTrades = (meta.source === "trades" || meta.source === "rules") && cr.metric !== "trading_days" && cr.metric !== "trades"
+      && !metricsFor(n, today).trading_days.value;
+    const value = noTrades ? null : m.value;
     let status: CriterionStatus;
     if (m.unavailable) status = "na";
     else if (value == null) status = "fail";
@@ -588,7 +592,7 @@ export function evaluatePromotion(input: PromotionInput, criteriaIn: Criterion[]
       status,
       progress: Math.round(progress * 1000) / 1000,
       trend: trendOf(meta, value, prev?.value ?? null),
-      note: m.note ?? null,
+      note: noTrades ? t("notes.noTrades") : m.note ?? null,
       advice: status === "fail" ? adviceFor(cr.metric, cr.op, value, cr.value, adviceCtx(input, n, today), lang) : null,
     };
     (status === "na" ? skipped : results).push(res);
@@ -603,7 +607,9 @@ export function evaluatePromotion(input: PromotionInput, criteriaIn: Criterion[]
   else if (!total) headline = t("headline.noCriteria", { stage: stageNameFor(stage.key, stage.name, lang) });
   else headline = ready ? t("headline.readyNext", { stage: stageNameFor(nextStage.key, nextStage.name, lang), passed, total }) : t("headline.progress", { passed, total });
 
-  const sw = criteria.length ? Math.max(...criteria.map((x) => resolveWindow(x.windowDays, input.stageSince, today)).filter((x) => x < 260), 20) : 20;
+  // The summary («Net P&L, 20 days») uses the criteria's explicit trading-day windows — not the «since stage start» length
+  // of the learning / exam criteria (UMID-20: «34 days» next to 20-day criteria).
+  const sw = Math.max(20, ...criteria.filter((x) => x.windowDays != null && x.windowDays > 0 && x.windowDays < 260).map((x) => Math.round(x.windowDays as number)));
   const s = metricsFor(sw, today);
   return {
     user: input.user,

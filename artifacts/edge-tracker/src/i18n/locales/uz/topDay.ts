@@ -3,7 +3,7 @@ import type ru from "../ru/topDay";
 
 export default {
   title: "Kun topi",
-  desc: "Desk treyderlarining eng yaxshi va eng yomon kunlari: kunni oching, tikerlarni va grafikdagi kirishlarni koʻring",
+  desc: "Desk treyderlarining eng yaxshi va eng yomon kunlari (savdolar yopilgan sana boʻyicha): kunni oching, tikerlarni va grafikdagi kirishlarni koʻring",
   link: "Kun topi",
   tabs: { aria: "Top koʻrinishi", day: "Kun", period: "Davr" },
   privacy: {
@@ -22,7 +22,7 @@ export default {
     dayAria: "{date}: desk {net}, {traders}",
     dayAriaNoNet: "{date}: {traders}",
     mine: "Sizning kuningiz: {net}",
-    legendMine: "nuqta — siz savdo qilgansiz",
+    legendMine: "nuqta — sizning kuningiz: plyusda / minusda",
   },
   day: {
     desk: "Desk {net}",

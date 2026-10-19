@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  attachAlerts, dedupeOverlap, feesReason, focusReason, giveback, givebackReason, lastFinishedDay, lossStreak, lossStreakReason, makeItem, queueDays,
+  attachAlerts, dayResolved, dedupeOverlap, feesReason, missedOf, noteDayOf, focusReason, giveback, givebackReason, lastFinishedDay, lossStreak, lossStreakReason, makeItem, queueDays,
   rankQueue, rulesReason, stopBreachReason, storedVerdict, sumCost, type DayTrade,
 } from "../daily/costQueue";
 import type { FocusVerdict } from "../daily/types";
+import { __loadSettingsCache } from "../settings/registry";
 
 const tr = (id: number, net: number | null, exitAt: number | null = id): DayTrade => ({ id, ticker: "AMD", net, exitAt });
 
@@ -66,6 +67,17 @@ describe("costQueue reasons", () => {
     expect(givebackReason([tr(1, 100), tr(2, -75)])).toBeNull(); // kept 25 % of the peak
     // exit order, not id order
     expect(giveback([tr(2, -90, 30), tr(1, 150, 10)]).peak).toBe(150);
+  });
+
+  it("settings at their bounds: a 0 peak threshold never makes a plain losing day a giveback; fees never «earn»", () => {
+    __loadSettingsCache({ "daily.givebackMinPeakUsd": 0, "daily.feesShare": 0.1, "daily.feesHealthyShare": 1 });
+    try {
+      expect(givebackReason([tr(1, -40), tr(2, -30)])).toBeNull(); // never green: nothing to give back
+      expect(givebackReason([tr(1, 10), tr(2, -30)])).toMatchObject({ kind: "giveback", costNet: -30 });
+      expect(feesReason(100, 20)!.costNet).toBe(-10); // healthy share capped at the mistake share (10 %)
+    } finally {
+      __loadSettingsCache({});
+    }
   });
 
   it("rules: one cost per trade (deepest), day-level added, unknown money → null", () => {
@@ -140,5 +152,53 @@ describe("dedupeOverlap", () => {
     // a profitable «broken» focus does not reduce anything
     expect(dedupeOverlap([focus("day:fees", 12), feesReason(40, 30)!]).map((r) => r.kind)).toEqual(["focus_broken", "fees"]);
     expect(makeItem("A", "d", [focus("day:fees", -31.7), feesReason(3.25, 31.7)], false)!.costNet).toBe(-31.7);
+  });
+});
+
+describe("giveback is not a loss (OLGA-09)", () => {
+  const gb = { kind: "giveback" as const, costNet: -168, text: { key: "k", params: { peak: 150, close: -18 } } };
+  const fb = { kind: "focus_broken" as const, costNet: -57, text: { key: "k", params: { mistake: "behavior:revenge", count: 1 } } };
+  it("costNet = real loss only, the giveback listed after the losses, the day net kept", () => {
+    const item = makeItem("Степан Л.", "2026-10-15", [gb, fb], false, -19.17)!;
+    expect(item.costNet).toBe(-57);
+    expect(item.reasons.map((r) => r.kind)).toEqual(["focus_broken", "giveback"]);
+    expect(item.dayNet).toBe(-19.17);
+    expect(missedOf(item)).toBe(-168);
+    expect(makeItem("X", "2026-10-15", [gb], false)!.costNet).toBe(0);
+  });
+  it("ranks by real loss first, then by the giveback", () => {
+    const a = makeItem("A", "2026-10-15", [gb], false)!; // −$168 given back, no loss
+    const b = makeItem("B", "2026-10-15", [fb], false)!; // −$57 real loss
+    const c = makeItem("C", "2026-10-15", [{ ...gb, costNet: -20 }], false)!;
+    expect(rankQueue([a, c, b]).map((r) => r.trader)).toEqual(["B", "A", "C"]);
+  });
+});
+
+describe("dayResolved (OLGA-04)", () => {
+  const base = { eodReviewed: false, alerts: [], noteDays: new Set<string>(), questsAt: [], weekly: [] };
+  it("a note resolves only the day it is about", () => {
+    const s = { ...base, noteDays: new Set(["2026-10-16"]) };
+    expect(dayResolved("2026-10-16", s)).toBe(true);
+    expect(dayResolved("2026-10-14", s)).toBe(false);
+  });
+  it("a general note belongs to the last finished day when it was written", () => {
+    expect(noteDayOf(new Date("2026-10-19T13:00:00Z"))).toBe("2026-10-16"); // Monday 09:00 NY → Friday
+    expect(noteDayOf(new Date("2026-10-16T21:30:00Z"))).toBe("2026-10-16"); // Friday 17:30 NY → Friday
+  });
+  it("a quest after the close resolves the open days; one before the close does not", () => {
+    const s = { ...base, questsAt: [Date.parse("2026-10-17T10:00:00Z")] };
+    expect(dayResolved("2026-10-16", s)).toBe(true);
+    expect(dayResolved("2026-10-14", s)).toBe(true);
+    expect(dayResolved("2026-10-16", { ...base, questsAt: [Date.parse("2026-10-16T15:00:00Z")] })).toBe(false);
+  });
+  it("weekly review of the same week after the close", () => {
+    const s = { ...base, weekly: [{ monday: "2026-10-12", at: Date.parse("2026-10-16T22:00:00Z") }] };
+    expect(dayResolved("2026-10-16", s)).toBe(true);
+    expect(dayResolved("2026-10-09", s)).toBe(false);
+  });
+  it("day review and reviewed breaches still resolve", () => {
+    expect(dayResolved("2026-10-16", { ...base, eodReviewed: true })).toBe(true);
+    expect(dayResolved("2026-10-16", { ...base, alerts: [{ reviewed: true }] })).toBe(true);
+    expect(dayResolved("2026-10-16", { ...base, alerts: [{ reviewed: true }, { reviewed: false }] })).toBe(false);
   });
 });

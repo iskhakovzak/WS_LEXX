@@ -43,20 +43,39 @@ function examplesHref(f: DailyFocus): string {
 
 /**
  * Morning focus: the costliest repeating mistake of the last two weeks, in one line — what, how much, how often, and
- * where to see it. «none» is good news, said in one short line.
+ * where to see it. «none» is good news, said in one short line; with no trades yet it says the focus comes later
+ * (never praise for not trading). The trader's own journal pick («Фокус на завтра») is shown as written.
  */
 export function FocusLine({ focus, compact }: { focus: DailyFocus; compact?: boolean }) {
   const { t } = dailyI18n.useT();
-  if (focus.source === "none" || !focus.mistake) {
+  if (focus.source === "own" && focus.ownText) {
     return (
       <div className="flex min-w-0 items-start gap-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-up/15 text-up">
-          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+          <Crosshair className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="micro-label">{t("focus.title")}</span>
+            <Pill tone="accent">{t("focus.own")}</Pill>
+          </div>
+          <p className="text-base font-semibold leading-6 [overflow-wrap:anywhere]">{focus.ownText}</p>
+          {!compact && <p className="text-xs text-muted-foreground">{t("focus.ownHint")}</p>}
+        </div>
+      </div>
+    );
+  }
+  if (focus.source === "none" || !focus.mistake) {
+    const noTrades = focus.text?.key === "focus.noTrades";
+    return (
+      <div className="flex min-w-0 items-start gap-3">
+        <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", noTrades ? "bg-primary/15 text-primary" : "bg-up/15 text-up")}>
+          {noTrades ? <Crosshair className="h-4 w-4" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
         </span>
         <div className="min-w-0">
           <div className="micro-label">{t("focus.title")}</div>
-          <p className="text-sm font-semibold leading-5">{t("focus.none")}</p>
-          {!compact && <p className="text-xs text-muted-foreground">{t("focus.noneHint")}</p>}
+          <p className="text-sm font-semibold leading-5">{noTrades ? t("focus.noTrades") : t("focus.none")}</p>
+          {!compact && <p className="text-xs text-muted-foreground">{noTrades ? t("focus.noTradesHint") : t("focus.noneHint")}</p>}
         </div>
       </div>
     );

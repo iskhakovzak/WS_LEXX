@@ -245,6 +245,17 @@ export function useWeeklyReview(trader: string | null, week: string, enabled = t
   });
 }
 
+/**
+ * «Сохранить и следующий» (OLGA-11): the next of my wards after `current` (name order, wrapping around) whose week is not
+ * reviewed yet; null when every other ward is done.
+ */
+export function nextWard(wards: readonly string[], current: string, reviewed: ReadonlySet<string>): string | null {
+  const list = [...wards].sort((a, b) => a.localeCompare(b, "ru"));
+  const i = list.indexOf(current);
+  const ordered = i >= 0 ? [...list.slice(i + 1), ...list.slice(0, i)] : list;
+  return ordered.find((x) => x !== current && !reviewed.has(x)) ?? null;
+}
+
 export function useWeeklyOverview(week: string, enabled = true) {
   return useQuery({
     queryKey: weeklyKeys.overview(week),

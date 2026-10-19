@@ -7,7 +7,7 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, ArrowUpFromLine, Building2, CheckCircle2, ChevronRight, Circle, Columns2, Copy, CopyPlus, FileText, History,
-  Link as LinkIcon, ListChecks, MoreHorizontal, Pencil, Plus, Send, Share2, Trash2, Trophy, Undo2, User, Users, X,
+  Link as LinkIcon, ListChecks, Lock, MoreHorizontal, Pencil, Plus, Send, Share2, Trash2, Trophy, Undo2, User, Users, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +33,7 @@ import { LinkedTradesSection } from "./linked-trades-section";
 import { SubSetupsSection } from "./sub-setups-section";
 import { RelatedSetupsSection, SetupHighlights } from "./highlights";
 import { MoveToFolderButton } from "./move-to-folder";
+import { MinTierSelect } from "./min-tier-select";
 import { SetupStatsPanel } from "./setup-stats";
 import { StructuredDescription } from "./structured-editor";
 import {
@@ -42,6 +43,8 @@ import {
 import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookSetupI18n } from "@/i18n/ns/playbookSetup";
+import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
+import { unlockText } from "./today/today-text";
 
 import { personName } from "@/i18n";
 const st = playbookSetupI18n.t; // called at render / call time only
@@ -188,6 +191,7 @@ export function SetupView({
             </button>
           ) : entry.reviewed ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" /> {t("view.reviewed")}</Pill> : null)}
           <ConfidenceMeter level={entry.confidenceLevel} showLabel />
+          {live && access.space === "office" && isCurator && access.canEdit && <MinTierSelect entry={entry} />}
         </div>
         {entry.tags && <div className="mt-2"><TagChips tags={entry.tags} /></div>}
         {proposed && access.canPromote && entry.officeProposedNote && (
@@ -306,7 +310,11 @@ export function SetupView({
                 onOpen={onOpen}
               />
             )}
-            <StructuredDescription entry={entry} canEdit={access.canEdit} live={live} aside={<AboutAside key={entry.id} entry={entry} parent={parent} access={access} />} />
+            {entry.locked ? (
+              <LockedNote entry={entry} />
+            ) : (
+              <StructuredDescription entry={entry} canEdit={access.canEdit} live={live} aside={<AboutAside key={entry.id} entry={entry} parent={parent} access={access} />} />
+            )}
             <SubSetupsSection entry={entry} allEntries={allEntries} summary={summary} onOpen={onOpen} onCreateChild={() => onCreateChild(entry)} />
             {live && <RelatedSetupsSection entry={entry} allEntries={allEntries} summary={summary} viewer={viewer} onOpen={onOpen} />}
           </div>
@@ -318,7 +326,7 @@ export function SetupView({
             ) : (
               <p className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">{t("view.boardNotLive")}</p>
             )}
-            <ExamplesSection entryId={entry.id} />
+            <ExamplesSection entryId={entry.id} canEdit={access.canEdit} />
           </div>
         )}
         {tab === "stats" && (
@@ -337,6 +345,16 @@ export function SetupView({
 }
 
 /* ───────────────────────── pieces ───────────────────────── */
+
+/** A setup above the viewer's tier: the server sent no card — what opens it, instead of an empty description. */
+function LockedNote({ entry }: { entry: PlaybookEntry }) {
+  return (
+    <p role="note" className="glass-panel flex items-start gap-2 rounded-2xl border border-warn/40 bg-warn/10 p-[var(--panel-p)] text-sm text-foreground">
+      <Lock className="mt-0.5 h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
+      <span>{playbookTodayI18n.t("lock.noteCard", { text: unlockText({ unlock: entry.unlock ?? null, minTier: entry.minTier ?? null }) })}</span>
+    </p>
+  );
+}
 
 function SpaceBadge({ access, author }: { access: SetupAccess; author: string | null }) {
   if (access.space === "office") return <span className="inline-flex items-center gap-1 font-medium text-foreground"><Building2 className="h-3.5 w-3.5" aria-hidden="true" /> {st("view.spaceOffice")}</span>;
@@ -387,6 +405,7 @@ function StatusLine({
 }
 
 function AboutAside({ entry, parent, access }: { entry: PlaybookEntry; parent: PlaybookEntry | null; access: SetupAccess }) {
+  const { isCurator } = useAuth();
   const [editingChecklist, setEditingChecklist] = React.useState(false);
   const checklistText = entry.checklist || parent?.checklist || null;
   const checklistItems = entry.checklist ? entry.checklistItems : null;
@@ -414,7 +433,7 @@ function AboutAside({ entry, parent, access }: { entry: PlaybookEntry; parent: P
         ) : checklistText ? (
           <>
             {!entry.checklist && parent?.checklist && <p className="mb-2 text-xs text-muted-foreground">{st("aside.inherited", { name: parent.name })}</p>}
-            <MarkChecklist playbookId={entry.id} items={checklistItems} text={checklistText} />
+            <MarkChecklist playbookId={entry.id} items={checklistItems} text={checklistText} canMarkShared={access.canEdit || isCurator} />
           </>
         ) : (
           <div className="space-y-2">
@@ -485,7 +504,7 @@ function ChecklistInlineEditor({ entry, onDone }: { entry: PlaybookEntry; onDone
 
 type ActivityRow = { id: number; action: string; section: string; entityId?: string | null; entityTitle?: string; trader?: string; details?: string; createdAt: string };
 
-function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
+export function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
   const q = useQuery<ActivityRow[]>({
     queryKey: ["playbook-activity", "setup", entry.id],
     queryFn: async () => {

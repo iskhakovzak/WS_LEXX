@@ -16,6 +16,7 @@ import { MyRiskView } from "@/components/risk/my-risk-view";
 import { OvernightView } from "@/components/risk/overnight-view";
 import { riskKeys } from "@/components/risk/use-risk";
 import { useAgo, useStoredState } from "@/components/risk/primitives";
+import { useHasRiskAccount } from "@/components/shell/use-shell-badges";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
 
@@ -26,13 +27,20 @@ export default function RiskPage() {
   const { t } = riskI18n.useT();
   const { user, isCurator } = useAuth();
   const signedIn = !!user && user.role !== "guest";
-  const me = signedIn ? user!.traderName : null;
+  // «Мой риск» only for someone with a trading account (staff without their own limits get the desk only).
+  const account = useHasRiskAccount();
+  const me = signedIn && account.has ? user!.traderName : null;
   const [stored, setView] = useStoredState<View>("risk.view", "desk", VIEWS);
-  // Traders have no desk view; they still get their own overnight book.
-  const view: View = isCurator ? stored : stored === "overnight" ? "overnight" : "me";
   const search = useSearch();
-  const focusTrader = React.useMemo(() => new URLSearchParams(search).get("trader"), [search]);
-  const focusTab = React.useMemo(() => (new URLSearchParams(search).get("tab") === "limits" ? "limits" : "overview"), [search]);
+  const params = React.useMemo(() => new URLSearchParams(search), [search]);
+  const focusTrader = params.get("trader");
+  const focusTab = params.get("tab") === "limits" ? "limits" : "overview";
+  // ?tab=breaches&alert=<id> (the breach review notification) opens the person's own breach row.
+  const focusAlert = params.get("tab") === "breaches" && /^\d+$/.test(params.get("alert") ?? "") ? Number(params.get("alert")) : null;
+  // Traders have no desk view; they still get their own overnight book.
+  const view: View = focusAlert != null && me ? "me"
+    : isCurator ? (stored === "me" && !me ? "desk" : stored)
+    : stored === "overnight" ? "overnight" : "me";
   const qc = useQueryClient();
   const fetching = useIsFetching({ queryKey: riskKeys.all }) > 0;
   const [updatedAt, setUpdatedAt] = React.useState<number>();
@@ -86,7 +94,7 @@ export default function RiskPage() {
       ) : view === "overnight" ? (
         <OvernightView trader={me} isCurator={isCurator} onUpdatedAt={setUpdatedAt} />
       ) : me ? (
-        <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} />
+        <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} focusAlert={focusAlert} />
       ) : (
         <Panel>
           <EmptyState icon={ShieldAlert} title={t("page.noTraderTitle")} description={t("page.noTraderDesc")} />

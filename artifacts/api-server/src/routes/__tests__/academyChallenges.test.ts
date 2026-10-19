@@ -8,13 +8,14 @@ import express from "express";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { TEMPLATES } from "../../lib/challengeEngine";
+import { addDays, nyDate } from "../../lib/tradingDate";
 
 type Q = { sql: string; params: unknown[] };
 const calls: Q[] = [];
 const tpl = TEMPLATES[0]!;
-// Ended long ago with no trades → evaluates to a terminal status; DB still says "active", nothing notified yet.
-const row = () => ({
-  id: 5, user_name: "Максим Р.", template_key: tpl.key, name: "Экзамен", rules: tpl.rules, starts_on: "2026-01-05", ends_on: "2026-01-30",
+// Ended yesterday with no trades → evaluates to a terminal status; DB still says "active", nothing notified yet.
+const row = (endsOn = addDays(nyDate(), -1)) => ({
+  id: 5, user_name: "Максим Р.", template_key: tpl.key, name: "Экзамен", rules: tpl.rules, starts_on: addDays(endsOn, -30), ends_on: endsOn,
   status: "active", comment: null, created_by: "Антон", created_at: new Date("2026-01-01"), archived_at: null, notified_status: null as string | null,
 });
 let current = row();
@@ -51,6 +52,7 @@ vi.mock("../../lib/auth", async (orig) => ({
 
 process.env.JWT_SECRET ??= "vitest-only-secret";
 const { default: router, refreshChallenges } = await import("../academy-path");
+const { isStaleNotice } = await import("../../lib/academyCalendar");
 
 let server: http.Server;
 let base = "";
@@ -99,5 +101,19 @@ describe("refreshChallenges (sync hook / cron)", () => {
     notifyUser.mockClear();
     await refreshChallenges();
     expect(notifyUser).not.toHaveBeenCalled();
+  });
+
+  it("an exam that ended long ago is recorded as notified without pinging anyone (DENIS-21: no backfilled notices)", async () => {
+    current = row("2026-01-30");
+    const out = await refreshChallenges(["Максим Р."]);
+    expect(out.changed).toBe(1);
+    expect(current.notified_status).toBe(current.status);
+    expect(notifyUser).not.toHaveBeenCalled();
+    expect(notifyUsers).not.toHaveBeenCalled();
+  });
+
+  it("isStaleNotice: more than two calendar days after the decision", () => {
+    expect(isStaleNotice("2026-10-16", "2026-10-18")).toBe(false);
+    expect(isStaleNotice("2026-10-16", "2026-10-19")).toBe(true);
   });
 });

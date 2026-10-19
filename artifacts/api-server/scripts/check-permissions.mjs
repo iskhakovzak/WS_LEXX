@@ -31,6 +31,7 @@ ok("capability keys are unique and well-formed", () => {
     assert.ok(d.label && d.description && d.group, d.key);
     assert.ok(!(d.own && d.team), `${d.key}: own and team are exclusive`);
     assert.ok(!(d.adminOnly && d.own), `${d.key}: adminOnly caps are never own`);
+    assert.ok(!(d.sensitive && (d.adminOnly || d.own)), `${d.key}: sensitive caps are grantable and never own`);
   }
 });
 
@@ -40,14 +41,24 @@ ok("defaults only reference known capabilities; admin holds everything; guest no
   assert.deepEqual(DEFAULT_MATRIX.guest, []);
 });
 
-ok("trader defaults = own caps only; curator = everything except adminOnly", () => {
+ok("trader defaults = own caps only; curator = everything except adminOnly and sensitive", () => {
   for (const c of DEFAULT_MATRIX.trader) {
     const d = capabilityDef(c);
     assert.ok(!d.team && !d.adminOnly, `trader must not hold ${c}`);
   }
-  const expectedCurator = CAPABILITY_KEYS.filter((c) => !capabilityDef(c).adminOnly);
+  const expectedCurator = CAPABILITY_KEYS.filter((c) => !capabilityDef(c).adminOnly && !capabilityDef(c).sensitive);
   assert.deepEqual([...DEFAULT_MATRIX.curator].sort(), expectedCurator.sort());
   assert.ok(DEFAULT_MATRIX.curator.length < DEFAULT_MATRIX.admin.length);
+  // The owner's decision (OLGA-02): a curator never gets the full DB export, user management, the audit log,
+  // PropReports sync/accounts, Telegram broadcast or violation deletes by default. Fixing others' trades
+  // (trades.write.any: setup, tags, playbook link) is curator work and stays on.
+  for (const c of ["admin.backups.read", "users.manage", "admin.audit", "propreports.sync", "propreports.configure",
+    "telegram.broadcast", "rules.violations.delete"]) {
+    assert.ok(capabilityDef(c).sensitive, `${c} must be sensitive`);
+    assert.ok(!DEFAULT_MATRIX.curator.includes(c), `curator must not hold ${c} by default`);
+  }
+  assert.ok(DEFAULT_MATRIX.curator.includes("trades.write.any"), "curator holds trades.write.any by default");
+  assert.ok(!capabilityDef("trades.write.any").sensitive, "trades.write.any is not sensitive");
 });
 
 // ── 2. Frontend mirror ─────────────────────────────────────────────────────
@@ -60,6 +71,7 @@ ok("frontend mirror has the same keys, groups, flags and defaults", () => {
     assert.equal(!!w.team, !!d.team, `${d.key} team`);
     assert.equal(!!w.own, !!d.own, `${d.key} own`);
     assert.equal(!!w.adminOnly, !!d.adminOnly, `${d.key} adminOnly`);
+    assert.equal(!!w.sensitive, !!d.sensitive, `${d.key} sensitive`);
   }
   for (const role of ROLES) assert.deepEqual([...web.DEFAULT_MATRIX[role]], [...DEFAULT_MATRIX[role]], role);
   assert.equal(web.DEFAULT_SCOPE, DEFAULT_SCOPE);
@@ -80,7 +92,8 @@ ok("buildEffectiveMatrix([]) reproduces the defaults with desk scope", () => {
 ok("overrides flip trader/curator cells; admin & guest rows and adminOnly caps are locked", () => {
   const m = buildEffectiveMatrix([
     { role: "trader", capability: "trades.read.team", allowed: true, scope: "assigned" },
-    { role: "curator", capability: "users.manage", allowed: false },
+    { role: "curator", capability: "trades.review", allowed: false },
+    { role: "curator", capability: "users.manage", allowed: true },              // sensitive → the owner may grant it
     { role: "curator", capability: "users.manage.admins", allowed: true },       // adminOnly → ignored
     { role: "admin", capability: "users.manage", allowed: false },               // locked row → ignored
     { role: "guest", capability: "trades.read.own", allowed: true },             // locked row → ignored
@@ -89,14 +102,16 @@ ok("overrides flip trader/curator cells; admin & guest rows and adminOnly caps a
   ]);
   assert.equal(m.trader["trades.read.team"].allowed, true);
   assert.equal(m.trader["trades.read.team"].scope, "assigned");
-  assert.equal(m.curator["users.manage"].allowed, false);
+  assert.equal(m.curator["trades.review"].allowed, false);
+  assert.equal(m.curator["users.manage"].allowed, true);
   assert.equal(m.curator["users.manage.admins"].allowed, false);
   assert.equal(m.admin["users.manage"].allowed, true);
   assert.equal(m.guest["trades.read.own"].allowed, false);
   assert.equal(m.trader["playbook.edit"].scope, "desk");
   const diff = diffFromDefaults(m);
   assert.deepEqual(diff.map((d) => `${d.role}:${d.capability}:${d.allowed}:${d.scope ?? "-"}`).sort(), [
-    "curator:users.manage:false:-",
+    "curator:trades.review:false:desk",
+    "curator:users.manage:true:-",
     "trader:trades.read.team:true:assigned",
   ]);
   // round-trip: rebuilding from the diff gives the same matrix
@@ -135,7 +150,7 @@ ok("guest and missing actor get nothing", () => {
 
 ok("curator defaults: whole desk (assignments do not restrict)", () => {
   const c = actor("Антон", "curator", ["Закир"]);
-  assert.equal(evaluate(base, c, "trades.write.any", { trader: "Умид" }), true);
+  assert.equal(evaluate(base, c, "trades.read.team", { trader: "Умид" }), true);
   assert.equal(evaluate(base, c, "journal.review", { trader: "Умид" }), true);
   assert.equal(readableTraders(base, c, "team.read"), null);
   // but not admin-only things
@@ -144,6 +159,11 @@ ok("curator defaults: whole desk (assignments do not restrict)", () => {
   assert.equal(evaluate(base, c, "discussions.edit.any"), false);
   assert.equal(evaluate(base, c, "admin.backups.run"), false);
   assert.equal(evaluate(base, c, "permissions.manage"), false);
+  // nor the sensitive ones until the owner grants them
+  assert.equal(evaluate(base, c, "admin.backups.read"), false);
+  assert.equal(evaluate(base, c, "users.manage"), false);
+  // fixing a trainee's trade (setup, tags, playbook link) is curator work
+  assert.equal(evaluate(base, c, "trades.write.any", { trader: "Умид" }), true);
 });
 
 ok("assigned scope: curator acts only on self + wards", () => {
@@ -174,7 +194,8 @@ ok("frontend canWith agrees with evaluate for own / team / assigned", () => {
   assert.equal(web.canWith({ ...me, guest: true }, "trades.write.own"), false);
   const d = web.defaultPermissions("curator", "Антон");
   assert.deepEqual(d.capabilities, [...DEFAULT_MATRIX.curator]);
-  assert.equal(web.canWith(d, "trades.write.any", { trader: "Умид" }), true);
+  assert.equal(web.canWith(d, "trades.read.team", { trader: "Умид" }), true);
+  assert.equal(web.canWith(d, "admin.backups.read"), false);
   assert.equal(web.canWith(web.defaultPermissions("trader", "Закир"), "trades.write.any", { trader: "Умид" }), false);
   assert.equal(web.canWith(web.defaultPermissions("guest", null), "trades.read.own"), false);
 });

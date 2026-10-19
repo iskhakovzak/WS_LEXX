@@ -15,8 +15,6 @@ export type Insight = { id: string; tone: Tone; icon: LucideIcon; text: string; 
 export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight[] {
   const t = statsI18n.t;
   const out: Insight[] = [];
-  const unit = metric === "r" ? "R" : "P&L";
-
   if (k.current.kind && k.current.len >= 2) {
     const win = k.current.kind === "win";
     out.push({
@@ -54,14 +52,13 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
     if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstsetup", tone: "down", icon: AlertTriangle, text: t("insights.worstSetup", { setup: worst.key, value: fmtValue(worst.value, metric), trades: commonI18n.t("units.trades", { count: worst.count }) }), href: "/analytics?tab=edge", cta: t("insights.review") });
   }
 
+  // MAKSIM-24: trades come from the broker — never ask to fill R / P&L by hand. Say what the numbers are based on.
   if (k.missing > 0) {
     out.push({
       id: "missing",
-      tone: "warn",
-      icon: AlertTriangle,
-      text: t("insights.missing", { count: k.missing, unit }),
-      href: "/trades",
-      cta: t("insights.toTrades"),
+      tone: "neutral",
+      icon: Lightbulb,
+      text: metric === "r" ? t("insights.rBase", { n: k.valued, m: k.closed }) : t("insights.usdBase", { count: k.missing }),
     });
   }
   if (k.open > 0) {
@@ -103,7 +100,11 @@ export function InsightsPanel({ insights }: { insights: Insight[] }) {
 }
 
 /** Best / worst trades of the period — each row opens the trade in the journal. */
-export function ExtremesPanel({ trades, metric }: { trades: Trade[]; metric: Metric }) {
+export function ExtremesPanel({ trades, metric, hideTrader }: {
+  trades: Trade[]; metric: Metric;
+  /** The report is one person's (own book or a picked trader): rows don't repeat the name (MAKSIM-37). */
+  hideTrader?: boolean;
+}) {
   const { t } = statsI18n.useT();
   const valued = trades.filter((t) => isClosed(t) && valueOf(t, metric) != null);
   const best = valued.filter((t) => valueOf(t, metric)! > 0).sort((a, b) => valueOf(b, metric)! - valueOf(a, metric)!).slice(0, 5);
@@ -118,7 +119,7 @@ export function ExtremesPanel({ trades, metric }: { trades: Trade[]; metric: Met
       </div>
       {items.length ? (
         <ol className="flex flex-col">
-          {items.map((t, i) => <TradeLinkRow key={t.id} trade={t} metric={metric} rank={i + 1} />)}
+          {items.map((t, i) => <TradeLinkRow key={t.id} trade={t} metric={metric} rank={i + 1} hideTrader={hideTrader} />)}
         </ol>
       ) : (
         <p className="px-2 py-4 text-sm text-muted-foreground">{empty}</p>

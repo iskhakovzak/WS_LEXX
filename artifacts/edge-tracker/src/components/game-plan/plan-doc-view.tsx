@@ -7,6 +7,8 @@ import { fmtUsd } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { dailyI18n } from "@/i18n/ns/daily";
 import { mistakeLabel } from "@/components/shared/mistake-labels";
+import { PlanPicks } from "./plan-picks";
+import { focusText } from "./plan-draft";
 
 /** Read-only rendering of a personal plan (trader's own read mode and the curator's «Трейдеры» view). */
 export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; compactTickers?: boolean }) {
@@ -14,17 +16,22 @@ export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; co
   const { t: td } = dailyI18n.useT();
   const bias = MARKET_BIAS[doc.bias ?? "neutral"] ?? MARKET_BIAS.neutral;
   const tickers = doc.inPlay ?? [];
-  const hasRisk = doc.maxLossUsd != null || doc.maxTrades != null || !!doc.riskNotes?.trim() || !!doc.ownRule;
+  const hasRisk = doc.maxLossUsd != null || doc.maxTrades != null || doc.riskPerTradeUsd != null || !!doc.riskNotes?.trim() || !!doc.ownRule;
   const hasMarket = !!doc.marketView?.trim() || !!doc.media?.length || !!doc.tvLinks?.length;
-  const empty = !hasRisk && !hasMarket && tickers.length === 0 && !doc.focus?.trim();
+  // The mood is part of the ready plan's summary even without a written market view (UMID-29).
+  const showMarket = hasMarket || !!doc.bias;
+  const focus = focusText(doc);
+  const picks = Array.isArray(doc.setups) ? doc.setups.filter((x) => typeof x === "number") : [];
+  const empty = !hasRisk && !hasMarket && tickers.length === 0 && !focus && !picks.length;
 
   if (empty) return <p className="text-sm text-muted-foreground">{t("doc.empty")}</p>;
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <FocusBanner focus={doc.focus} />
+      <FocusBanner focus={focus} />
+      {picks.length > 0 && <PlanPicks ids={picks} />}
 
-      {hasMarket && (
+      {showMarket && (
         <section aria-label={t("doc.market")} className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <Globe2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -55,6 +62,12 @@ export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; co
               <span className="text-sm">
                 <span className="text-muted-foreground">{t("doc.maxTrades")} </span>
                 <span className="font-semibold tabular-nums">{doc.maxTrades}</span>
+              </span>
+            )}
+            {doc.riskPerTradeUsd != null && (
+              <span className="text-sm">
+                <span className="text-muted-foreground">{t("doc.riskPerTrade")} </span>
+                <span className="font-semibold tabular-nums">{fmtUsd(doc.riskPerTradeUsd, { decimals: 0 })}</span>
               </span>
             )}
             {doc.ownRule && (

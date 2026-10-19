@@ -2,7 +2,7 @@
  * Nightly rewards run (job «rewards.nightly», src/jobs/definitions.ts, weekdays after the evening sync): for every
  * trader who traded or had a personal-plan contract on the last finished day — writes the missing evening snapshots
  * of the last BACKFILL_DAYS plan days (so the scale judges own rules with fills, not «unknown») and re-evaluates the
- * rewards (lib/daily/rewards.ts: awards new badges once and notifies). Idempotent: a re-run awards and notifies nothing.
+ * rewards (lib/daily/rewards.ts → lib/quests/service: syncs quests, awards new achievement tiers once and notifies). Idempotent: a re-run awards and notifies nothing.
  */
 import { pool } from "@workspace/db";
 import { logger } from "../logger";
@@ -29,7 +29,7 @@ export async function runRewardsNightly(o: { now?: Date; signal?: AbortSignal } 
     if (o.signal?.aborted) break;
     try {
       // Counted before the snapshots: eveningFor of the last finished day already evaluates (and awards) on its own.
-      const before = (await pool.query(`SELECT 1 FROM trader_badges WHERE trader = $1`, [trader])).rowCount ?? 0;
+      const before = (await pool.query(`SELECT 1 FROM trader_achievements WHERE trader = $1`, [trader])).rowCount ?? 0;
       const { rows: missing } = await pool.query<{ date: string }>(
         `SELECT p.date FROM trader_plans p
           WHERE p.trader = $1 AND p.deleted_at IS NULL AND p.date >= $2 AND p.date <= $3
@@ -44,7 +44,7 @@ export async function runRewardsNightly(o: { now?: Date; signal?: AbortSignal } 
         snapshots++;
       }
       await evaluateRewards(trader, now);
-      awarded += Math.max(0, ((await pool.query(`SELECT 1 FROM trader_badges WHERE trader = $1`, [trader])).rowCount ?? 0) - before);
+      awarded += Math.max(0, ((await pool.query(`SELECT 1 FROM trader_achievements WHERE trader = $1`, [trader])).rowCount ?? 0) - before);
     } catch (err) {
       failed++;
       logger.warn({ err: (err as Error)?.message, trader }, "rewards.nightly: trader failed");

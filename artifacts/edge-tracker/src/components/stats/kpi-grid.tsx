@@ -1,6 +1,6 @@
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { StatCard, StatGrid, toneOf, type Tone } from "@/components/ds";
-import { fmtValue, type Kpis, type Metric } from "./metrics";
+import { fmtValue, kpiBase, type Kpis, type Metric } from "./metrics";
 import { fmtCount, fmtNum, fmtRate, fmtRatio } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
@@ -35,10 +35,15 @@ function deltaTone(cur: number | null, prev: number | null, higherBetter = true,
 
 const finite = (v: number | null) => (v != null && Number.isFinite(v) ? v : null);
 
-export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metric: Metric }) {
+export function KpiGrid({ k, prev, metric, windowLabel }: {
+  k: Kpis; prev: Kpis | null; metric: Metric;
+  /** The window every card is computed over («22 июл — сегодня»). */
+  windowLabel?: string;
+}) {
   const { t } = statsI18n.useT();
   const p = prev && prev.total > 0 ? prev : null;
-  const unit = metric === "r" ? "R" : "$";
+  const base = kpiBase(k, metric);
+  const wrBase = t("kpi.wrBase", { m: k.closed });
 
   const cards: {
     key: string;
@@ -56,13 +61,13 @@ export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metri
     {
       key: "net", label: metric === "net" ? t("kpi.netNet") : metric === "usd" ? t("kpi.netGross") : t("kpi.netR"), title: t("kpi.netTitle"),
       value: fmtValue(k.net, metric), tone: toneOf(k.net),
-      hint: k.missing > 0 ? t("kpi.missing", { count: k.missing, unit }) : undefined,
+      hint: k.missing > 0 ? base : undefined,
       cur: k.net, prev: p?.net ?? null, kind: "value",
     },
     {
-      key: "wr", label: "Win rate", title: t("kpi.wrTitle"),
+      key: "wr", label: commonI18n.t("trading.winRate"), title: `${t("kpi.wrTitle")} · ${wrBase}`,
       value: fmtRate(k.winRate), tone: k.winRate == null ? "neutral" : k.winRate >= 0.5 ? "up" : "down",
-      hint: `${k.wins}W · ${k.losses}L${k.breakeven ? ` · ${k.breakeven}BE` : ""}`,
+      hint: `${k.wins}W · ${k.losses}L${k.breakeven ? ` · ${k.breakeven}BE` : ""} · ${t("kpi.wrBaseShort")}`,
       cur: k.winRate, prev: p?.winRate ?? null, kind: "pct",
     },
     {
@@ -78,10 +83,10 @@ export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metri
       cur: k.expectancy, prev: p?.expectancy ?? null, kind: "value",
     },
     {
-      key: "pf", label: "Profit factor", title: t("kpi.pfTitle"),
+      key: "pf", label: t("kpi.pf"), title: t("kpi.pfTitle"),
       value: fmtRatio(k.profitFactor),
       tone: k.profitFactor == null ? "neutral" : k.profitFactor >= 1 ? "up" : "down",
-      hint: k.payoff != null ? `payoff ${fmtNum(k.payoff)}` : undefined,
+      hint: k.payoff != null ? t("kpi.payoff", { value: fmtNum(k.payoff) }) : undefined,
       cur: finite(k.profitFactor), prev: finite(p?.profitFactor ?? null), kind: "ratio",
     },
     {
@@ -118,15 +123,22 @@ export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metri
     },
   ];
 
+  // Every card names its base and window in its tooltip; the caption above the grid says both once, visibly.
+  const allTradesCards = new Set(["wr", "trades", "wstreak", "lstreak"]);
   return (
+    <div className="flex flex-col gap-2">
+    <p className="px-1 text-xs text-muted-foreground" data-testid="kpi-base">
+      {[windowLabel, t("kpi.baseLine", { base, wr: wrBase })].filter(Boolean).join(" · ")}
+    </p>
     <StatGrid className="md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-5">
       {cards.map((c) => {
         const delta = p ? <Delta cur={c.cur} prev={c.prev} kind={c.kind} metric={metric} /> : null;
         const hasDelta = p && c.cur != null && c.prev != null;
+        const tip = [c.title, allTradesCards.has(c.key) ? (c.key === "wr" ? null : wrBase) : base, windowLabel].filter(Boolean).join(" · ");
         return (
           <StatCard
             key={c.key}
-            label={<span title={c.title}>{c.label}</span>}
+            label={<span title={tip}>{c.label}</span>}
             value={c.value}
             tone={c.tone}
             hint={c.hint}
@@ -136,6 +148,7 @@ export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metri
         );
       })}
     </StatGrid>
+    </div>
   );
 }
 

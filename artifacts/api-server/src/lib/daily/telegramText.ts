@@ -6,7 +6,8 @@
  *   morningMessage   premarket focus line + the day's own contract (or a nudge to set it) + «Открыть план» / «Мой день»
  *   eveningMessage   the day's card: own net P&L (private chat only), focus ✓/✗ with the cost, the trade to review,
  *                    «same ticker: N traders», contract verdict; buttons daily:rev:<date> / daily:dis:<date> + the day URL
- *                    + one rewards line: today's new badge, else the kept-contract streak with the day's points
+ *                    + one rewards line: today's new achievement tiers (else badges), else the kept-contract streak with
+ *                    the day's points, plus the quests done that day
  *   contractAlert    intraday «daily stop reached» / «trade limit reached» (scheduled PropReports sync only)
  */
 import type { Lang } from "../../i18n";
@@ -14,6 +15,7 @@ import { fmtDateFor } from "../../i18n/format";
 import { dailyT } from "../../i18n/ns";
 import { escHtml, type InlineKeyboard } from "../telegramBot";
 import { fmtLossLimit, fmtSignedUsd } from "../notifyEventsCore";
+import { achievementNameFor } from "../notificationRenderers/quests";
 import type { ContractVerdict, DailyFocus, EveningCard, TextItem, VerdictStatus } from "./types";
 
 export type TgMessage = { text: string; keyboard: InlineKeyboard };
@@ -112,17 +114,28 @@ function contractVerdictLine(lang: Lang, c: ContractVerdict | null, showMoney: b
   return items.length ? t("tg.contract.line", { items: items.join(" · ") }) : t("tg.evening.contractUnset");
 }
 
-/** One line: the badges earned today, else the kept-contract streak with the day's points (only on a kept day). */
+/**
+ * One line: the achievement tiers earned today (else the legacy badges), else the kept-contract streak with the day's
+ * points (only on a kept day) — with the quests done today appended; or the quests alone.
+ */
 export function rewardsLine(lang: Lang, card: EveningCard): string | null {
   const r = card.rewards;
   if (!r) return null;
   const t = dailyT.tFor(lang);
+  const quests = r.questsDone ?? 0;
+  const suffix = quests > 0 ? t("tg.evening.questsSuffix", { count: quests }) : "";
+  const names = (r.achievements ?? [])
+    .map((a) => achievementNameFor(lang, a.line, a.tier))
+    .filter((n): n is { achievement: string; tier: string } => !!n)
+    .map((n) => escHtml(`${n.achievement} (${n.tier})`));
+  if (names.length) return t("tg.evening.achievement", { names: names.join(", ") }) + suffix;
   if (r.badges.length) {
-    const names = r.badges.map((b) => escHtml(dailyT.tryFor(lang, `badge.${b.id}`, { count: b.target }) ?? b.id));
-    return t("tg.evening.badge", { badges: names.join(", ") });
+    const badges = r.badges.map((b) => escHtml(dailyT.tryFor(lang, `badge.${b.id}`, { count: b.target }) ?? b.id));
+    return t("tg.evening.badge", { badges: badges.join(", ") }) + suffix;
   }
   const points = card.contract?.disciplineDelta ?? 0;
-  return r.streak > 0 && points > 0 ? t("tg.evening.streak", { days: t("tg.evening.streakDays", { count: r.streak }), points: `+${points}` }) : null;
+  if (r.streak > 0 && points > 0) return t("tg.evening.streak", { days: t("tg.evening.streakDays", { count: r.streak }), points: `+${points}` }) + suffix;
+  return quests > 0 ? t("tg.evening.questsDone", { count: quests }) : null;
 }
 
 export type CardState = "open" | "reviewed" | "disputed";

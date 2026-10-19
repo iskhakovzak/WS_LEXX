@@ -8,13 +8,14 @@
  *   normalize              a value equal to the default is sent as null («по умолчанию»: no stored override)
  *   nyToTashkent           "16:30" NY → "01:30" Tashkent, +1 day (today's DST offsets)
  */
-export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio";
+export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 type Base = { group: string; unit?: SettingUnit };
 export type SettingDef =
   | (Base & { type: "number"; default: number; min: number; max: number; step?: number })
   | (Base & { type: "time"; default: string })
   | (Base & { type: "boolean"; default: boolean })
-  | (Base & { type: "select"; default: string; options: readonly string[] });
+  | (Base & { type: "select"; default: string; options: readonly string[] })
+  | (Base & { type: "text"; default: string; maxLength: number });
 export type SettingValue = number | boolean | string;
 
 export interface SettingRow {
@@ -27,20 +28,39 @@ export interface SettingRow {
   updatedAt: string | null;
 }
 
-export type ProblemKind = "empty" | "type" | "range" | "integer" | "time" | "option" | "unknown" | "duplicate";
-export interface Problem { key: string; kind: ProblemKind; min?: number; max?: number; options?: readonly string[] }
+export type ProblemKind = "empty" | "type" | "range" | "integer" | "time" | "option" | "unknown" | "duplicate" | "order" | "length";
+/** `order` (server: ladders must grow): `after` = the key of the step before, `min` = the smallest value that fits. */
+export interface Problem { key: string; kind: ProblemKind; min?: number; max?: number; options?: readonly string[]; after?: string }
 
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Groups in display order; a group the page does not know goes last, in registry order. */
-export const GROUP_ORDER = ["daily", "discipline", "rewards", "telegram", "curator", "privacy"] as const;
+export const GROUP_ORDER = ["daily", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "curator", "privacy", "nav", "usage"] as const;
+
+/**
+ * Rows shown next to another row (OWNER-12: the two streak rules stay together): key → the row it follows. Display
+ * only — the key and its server group do not change.
+ */
+export const SHOW_AFTER: Readonly<Record<string, string>> = {
+  "gamification.missedDayBreaksStreak": "discipline.streakOnBreak",
+};
+
+/** «Пилот: 5 пунктов» — the settings PILOT.md §2.5 asks to check before day one (shortcuts above the form). */
+export const PILOT_KEYS = [
+  "telegram.morningTime", "telegram.eveningTime", "nav.simpleForTrainees", "gamification.missedDayBreaksStreak", "usage.pilotUsers",
+] as const;
 
 export function groupRows(rows: readonly SettingRow[]): { group: string; rows: SettingRow[] }[] {
   const by = new Map<string, SettingRow[]>();
+  const present = new Set(rows.map((r) => r.key));
+  const moved = rows.filter((r) => SHOW_AFTER[r.key] && present.has(SHOW_AFTER[r.key]!));
+  const movedKeys = new Set(moved.map((r) => r.key));
   for (const r of rows) {
+    if (movedKeys.has(r.key)) continue;
     const g = r.def.group || "other";
     const l = by.get(g);
     if (l) l.push(r); else by.set(g, [r]);
+    for (const x of moved) if (SHOW_AFTER[x.key] === r.key) by.get(g)!.push(x);
   }
   const known = GROUP_ORDER.filter((g) => by.has(g));
   const rest = [...by.keys()].filter((g) => !(GROUP_ORDER as readonly string[]).includes(g));
@@ -66,7 +86,28 @@ export function inputOf(def: SettingDef, v: SettingValue): string {
 }
 
 /** Input text → stored number (ratio: percent → share) or a problem. */
-export function parseInput(key: string, def: SettingDef, text: string): { ok: true; value: number } | { ok: false; problem: Problem } {
+/** «HH:MM», 24 h. */
+export function isHhMm(s: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+}
+
+/** Typed time → «HH:MM» (24 h) or null: «845» / «8:45» → «08:45», «1630» → «16:30». */
+export function normalizeHhMm(raw: string): string | null {
+  const s = raw.trim();
+  const m = /^(\d{1,2}):?(\d{2})$/.exec(s);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/** Typed text → value: numbers (ratio shown as %), and «HH:MM» 24-h times (OWNER-30: a text box, not the 12-h native input). */
+export function parseInput(key: string, def: SettingDef, text: string): { ok: true; value: number | string } | { ok: false; problem: Problem } {
+  if (def.type === "time") {
+    const v = normalizeHhMm(text);
+    return v ? { ok: true, value: v } : { ok: false, problem: { key, kind: text.trim() ? "time" : "empty" } };
+  }
   const s = text.trim().replace(",", ".").replace("−", "-");
   if (!s) return { ok: false, problem: { key, kind: "empty" } };
   if (!/^-?\d+(\.\d+)?$/.test(s)) return { ok: false, problem: { key, kind: "type" } };
@@ -92,6 +133,9 @@ export function checkValue(key: string, def: SettingDef, v: SettingValue): Probl
       return typeof v === "boolean" ? null : { key, kind: "type" };
     case "select":
       return typeof v === "string" && def.options.includes(v) ? null : { key, kind: "option" };
+    case "text":
+      if (typeof v !== "string") return { key, kind: "type" };
+      return v.trim().length <= def.maxLength ? null : { key, kind: "length", max: def.maxLength };
   }
 }
 

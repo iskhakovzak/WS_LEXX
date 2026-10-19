@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canCloseDay, computeStreaks, missingFields, missingList, nextTradingDay, prevTradingDay, type ReviewableTrade } from "../eodLogic";
+import { canCloseDay, computeStreaks, missingFields, missingList, nextTradingDay, prevTradingDay, tradingDaysAfter, tradingHoursBetween, type ReviewableTrade } from "../eodLogic";
 
 describe("eodLogic trading-day navigation (weekends only)", () => {
   it.each<[string, string]>([
@@ -114,5 +114,31 @@ describe("eodLogic.computeStreaks", () => {
       tradeDays: days([["2026-06-01", 1, 1]]), // > 60 trading days before today
     });
     expect(s.reviewedStreak).toBe(0);
+  });
+});
+
+describe("eodLogic.tradingHoursBetween (OLGA-07: SLA in trading hours)", () => {
+  it("a day closed Friday evening is not overdue on Sunday", () => {
+    // Fri 16 Oct 18:00 NY (22:00Z) → Sun 18 Oct 12:00 NY: only the 6 h left of Friday count.
+    expect(tradingHoursBetween("2026-10-16T22:00:00Z", new Date("2026-10-18T16:00:00Z"))).toBe(6);
+    // … and Monday 12:00 NY: 6 h of Friday + 12 h of Monday.
+    expect(tradingHoursBetween("2026-10-16T22:00:00Z", new Date("2026-10-19T16:00:00Z"))).toBe(18);
+  });
+  it("weekdays count in full; a holiday pauses the clock", () => {
+    expect(tradingHoursBetween("2026-10-13T16:00:00Z", new Date("2026-10-14T16:00:00Z"))).toBe(24);
+    expect(tradingHoursBetween("2026-10-13T16:00:00Z", new Date("2026-10-14T16:00:00Z"), new Set(["2026-10-14"]))).toBe(12);
+  });
+  it("empty or reversed ranges → 0", () => {
+    expect(tradingHoursBetween("2026-10-14T16:00:00Z", new Date("2026-10-13T16:00:00Z"))).toBe(0);
+    expect(tradingHoursBetween("garbage", new Date())).toBe(0);
+  });
+});
+
+describe("eodLogic.tradingDaysAfter (OLGA-13: idle days in trading days)", () => {
+  it("Friday → Monday is one trading day; holidays skipped", () => {
+    expect(tradingDaysAfter("2026-10-16", "2026-10-19")).toBe(1);
+    expect(tradingDaysAfter("2026-10-16", "2026-10-18")).toBe(0);
+    expect(tradingDaysAfter("2026-11-25", "2026-11-30", new Set(["2026-11-26"]))).toBe(2); // Fri 27 + Mon 30
+    expect(tradingDaysAfter("2026-10-19", "2026-10-19")).toBe(0);
   });
 });
