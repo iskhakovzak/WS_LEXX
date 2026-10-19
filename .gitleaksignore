@@ -1,0 +1,5 @@
+# Known, already-leaked secret in the OLD history of this private repository (Supabase service_role JWT in
+# do_migrate.mjs, removed from the tree long ago). History is not rewritten (owner decision); the key must be rotated
+# in Supabase (Settings → API → JWT secret). Listed here so CI's full-history scan reports only NEW findings.
+4167a7852706328f654390f9d89169f149d095bc:artifacts/api-server/do_migrate.mjs:jwt:5
+4167a7852706328f654390f9d89169f149d095bc:artifacts/backups/do_migrate.mjs:jwt:7
