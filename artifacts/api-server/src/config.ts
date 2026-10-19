@@ -84,6 +84,8 @@ const schema = z.object({
   PROPREPORTS_GROUP_ID: str,
   PROPREPORTS_ACCOUNT_IDS: str,
   PROPREPORTS_SYNC_MINUTES: str,
+  /** Finviz Elite export token (lib/finviz/client.ts); unset ⇒ the Finviz feature is off. Never logged. */
+  FINVIZ_AUTH: str,
   // database pool / jobs
   PG_STATEMENT_TIMEOUT_MS: int(30_000, 0),
   PG_POOL_MAX: int(10, 1),
@@ -164,6 +166,8 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
     } as Record<string, string | undefined>,
     /** Raw PropReports variables (lib/propreports/client.ts readConfig() interprets them). */
     propreportsEnv: (k: string): string => raw(k) ?? "",
+    /** Finviz Elite token (null = feature off). Only lib/finviz/client.ts reads it; never log or send it to a browser. */
+    finvizAuth: e.FINVIZ_AUTH ?? null,
     pg: { statementTimeoutMs: e.PG_STATEMENT_TIMEOUT_MS, poolMax: e.PG_POOL_MAX },
     /** JOBS_ENABLED=false keeps the job scheduler off (e.g. a second local process on a shared DB). Default on. */
     jobsEnabled: !["0", "false", "off", "no"].includes((e.JOBS_ENABLED ?? "").toLowerCase()),

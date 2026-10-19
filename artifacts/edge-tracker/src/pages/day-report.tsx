@@ -28,6 +28,7 @@ import {
 } from "@/components/day-report/sections";
 import { PersonSelect } from "@/components/people/person-select";
 import { DeskDayChips } from "@/components/shared/desk-day-link";
+import { TickerContextList } from "@/components/shared/finviz/ticker-context";
 
 const PRINT_CSS = `
 @media print {
@@ -231,6 +232,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
       </div>
       <TimelinePanel doc={doc} />
       <DeskDayChips tickers={doc.timeline.map((r) => r.ticker)} date={doc.date} trader={doc.trader} className="-mt-1 px-1" />
+      <TickerContextList tickers={doc.timeline.map((r) => r.ticker)} day={doc.date} />
       <div className="grid gap-4 xl:grid-cols-2">
         <LeaksPanel doc={doc} />
         <PlanPanel doc={doc} />

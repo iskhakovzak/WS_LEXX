@@ -18,6 +18,7 @@ import { rowKidLists, type SimpleNav } from "./nav-model";
 import { useNavModel } from "./use-nav-model";
 import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
 import { useRiskToday, useShellBadges, type NavBadge, type RiskToday } from "./use-shell-badges";
+import { LiveBadge } from "@/components/shared/live-badge";
 import { preloadRoute } from "./route-loaders";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
@@ -339,6 +340,7 @@ function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
         <TooltipContent side="right" sideOffset={10}>
           <div className="font-medium">{t("today.title")}{pnl && <span className={cn("ml-2 tabular-nums", pnlCls)}>{pnl}</span>}</div>
           <div className="text-muted-foreground">{tradesLine}{limitLine && <> · {limitLine}</>}</div>
+          <LiveBadge live={risk.live} className="mt-0.5" />
         </TooltipContent>
       </Tooltip>
     );
@@ -370,6 +372,7 @@ function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
           {limitLine && <span className={cn("mt-1 block truncate text-2xs", tone === "down" ? "text-down" : tone === "warn" ? "text-warn" : "text-muted-foreground")}>{limitLine}</span>}
         </>
       )}
+      <LiveBadge live={risk.live} className="mt-0.5 flex max-w-full" />
     </Link>
   );
 }

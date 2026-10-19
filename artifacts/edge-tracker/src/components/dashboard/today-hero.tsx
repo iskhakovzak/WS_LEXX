@@ -11,6 +11,7 @@ import { PHASE_LABEL, formatCountdown, getSessionState, type SessionPhase } from
 import { shortDate } from "./fmt";
 import { DESK_TZ, fmtDate, fmtR, fmtRate, fmtTimeNY, fmtUsd } from "@/lib/format";
 import type { DashboardToday, RiskDesk, RiskMe, Scope } from "./use-dashboard";
+import { LiveBadge } from "@/components/shared/live-badge";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { personName } from "@/i18n";
@@ -139,7 +140,7 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
   if (risk === undefined && loading) return <Cell label={t("hero.dailyLimit")} value="" loading />;
   if (!risk) return <Cell label={t("hero.dailyLimit")} value="—" hint={t("hero.riskUnavailable")} />;
   if (risk.halted) {
-    return <Cell label={t("hero.dailyLimit")} value={risk.stop.label} tone="down" hint={risk.stop.message} href={links.risk(risk.trader)} title={risk.stop.message} />;
+    return <Cell label={t("hero.dailyLimit")} value={risk.stop.label} tone="down" hint={risk.stop.message} href={links.risk(risk.trader)} title={risk.stop.message} extra={<LiveBadge live={risk.live} />} />;
   }
   const limit = risk.limits?.dailyLossLimit ?? null;
   if (!risk.limits || limit == null || limit <= 0) {
@@ -155,7 +156,7 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
       tone={lt === "ok" ? "neutral" : limitToneToTone(lt)}
       hint={t("hero.usedOf", { limit: fmtUsd(limit, { decimals: 0 }), pct: fmtRate(Math.min(1, loss / limit)) })}
       href={links.risk(risk.trader)}
-      extra={<LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" />}
+      extra={<><LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" /><LiveBadge live={risk.live} className="mt-0.5" /></>}
     />
   );
 }

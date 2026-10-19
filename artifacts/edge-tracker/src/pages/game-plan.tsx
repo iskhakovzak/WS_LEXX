@@ -12,6 +12,7 @@ import { http } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
 import { InPlayCard, MacroStrip, PlanHero, longDate, shortDay, type DayEvent } from "@/components/game-plan/plan-briefing";
 import { MyPlan } from "@/components/game-plan/my-plan";
+import { MorningScreener } from "@/components/shared/finviz/screener-card";
 import { TraderPlans } from "@/components/game-plan/trader-plans";
 import { MarkReadButton, ReadStatusPanel } from "@/components/game-plan/read-status";
 import { HistoryPanel } from "@/components/game-plan/history-panel";
@@ -240,6 +241,7 @@ export default function GamePlanPage() {
         )}
       </PageHeader>
 
+      {view === "desk" && isToday && <MorningScreener planDate={date} />}
       {view === "my" ? (
         <MyPlan date={date} deskPlan={plan} />
       ) : view === "traders" ? (

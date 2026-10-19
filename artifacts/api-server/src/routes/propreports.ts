@@ -23,6 +23,8 @@
  *   GET  /settings                     fee columns (include/exclude/rename), chosen group, unmatched accounts, last check
  *   PUT  /settings                     [curator] { groupId?, fees?: { columns, confirm }, unmatched? }
  *   PUT  /accounts also accepts aliases: string[] — raw account names that map to this account
+ *   GET|POST /tick, /tick/run, /backfill, /backfill/:id/cancel — background tick + history backfill: routes/propreports-tick.ts
+ * Uploads are limited to 4 MB (Vercel request body limit 4.5 MB) → 413 PROPREPORTS_FILE_TOO_LARGE.
  */
 import { Router, type IRouter, type Request, type Response, type RequestHandler } from "express";
 import { z } from "zod";
@@ -32,6 +34,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { requireAuth } from "../lib/auth";
 import { can, requireCap } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
+import { logger } from "../lib/logger";
 import { closeDateSql, closedSql, netPnlSql, resultSql } from "../lib/tradeMath";
 import { addDays, nyDate } from "../lib/tradingDate";
 import {
@@ -43,10 +46,10 @@ import {
   savePerformanceReport, listPerformanceReports, getPerformanceReport, deletePerformanceReport, traderForAccount,
   type RoundTrip, type SyncPlan,
 } from "../lib/propreports";
-import { notifyUser, notifyUsers } from "../lib/notifyUtils";
-import { notifLinks } from "../lib/notificationCore";
-import { inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { syncNotice, unmatchedNotice, type SyncCounts } from "../lib/notifyEventsCore";
+import type { SyncCounts } from "../lib/notifyEventsCore";
+import { enqueueOutbox, kickOutbox } from "../lib/propreports/tick/outbox";
+import { canonicalizeFillIds } from "../lib/propreports/replacement";
+import { getCursor } from "../lib/propreports/tick/cursor";
 import { AppError, errorMessage, notFound, sendErrorWith } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { propreportsT } from "../i18n/ns";
@@ -73,9 +76,11 @@ const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const notConfigured = () => new AppError("PROPREPORTS_NOT_CONFIGURED");
 
 const ALLOWED_EXT = new Set([".csv", ".txt", ".xls", ".xlsx"]);
+/** Vercel rejects request bodies over 4.5 MB before the function runs; 4 MB of file leaves room for the multipart frame. */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const uploader = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
     const ext = (file.originalname.match(/\.[a-z0-9]+$/i)?.[0] ?? "").toLowerCase();
     if (!ALLOWED_EXT.has(ext)) return cb(new AppError("FILE_TYPE", 400, { types: ".csv, .txt, .xls, .xlsx" }));
@@ -85,32 +90,21 @@ const uploader = multer({
 const uploadFile: RequestHandler = (req, res, next) => {
   uploader.single("file")(req, res, (err: unknown) => {
     if (!err) return next();
-    next(err); // AppError (file type) / multer errors → the error middleware
+    if ((err as { code?: string }).code === "LIMIT_FILE_SIZE") return next(new AppError("PROPREPORTS_FILE_TOO_LARGE", 413, { max: "4 MB" }));
+    next(err); // AppError (file type) / other multer errors → the error middleware
   });
 };
 
 /**
- * After a real (non-dry) import / API sync: `sync` summary to the actor who ran it (an explicit result receipt —
- * the inbox keeps it after the page is closed) and `sync_unmatched` when broker accounts are not mapped to a
- * trader — to the actor, plus the trader's staff when the actor is a trader importing their own file.
- * Background only: never delays or fails the import response.
+ * After a real (non-dry) import / API sync: the `sync` receipt to the actor and `sync_unmatched` when broker accounts are
+ * not mapped — as an outbox row ("notify.sync", lib/propreports/sideEffects.ts), so a Vercel function frozen after the
+ * response cannot lose it; drained right away (kickOutbox) or by the next tick. Never delays or fails the response.
  */
 function notifySyncOutcome(opts: { actor: string; actorIsStaff: boolean; kind: "import" | "sync"; context: string | null; result: SyncCounts & { runId: number }; unmapped: string[] }): void {
-  inBackground("propreports.sync", async () => {
-    const n = syncNotice(opts.result, opts.kind, opts.context);
-    await notifyUser({
-      userName: opts.actor, type: "sync", source: "propreports", severity: n.severity,
-      params: n.params, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
-    });
-    const u = unmatchedNotice(opts.unmapped);
-    if (u) {
-      const recipients = opts.actorIsStaff ? [opts.actor] : [opts.actor, ...(await staffOrFallback(opts.actor))];
-      await notifyUsers(recipients, {
-        type: "sync_unmatched", source: "propreports", actor: opts.actorIsStaff ? null : opts.actor,
-        params: u.params, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
-      });
-    }
-  });
+  const result = { runId: opts.result.runId, inserted: opts.result.inserted, updated: opts.result.updated, unchanged: opts.result.unchanged, skipped: opts.result.skipped, conflicts: opts.result.conflicts, errors: opts.result.errors };
+  void enqueueOutbox("notify.sync", { actor: opts.actor, actorIsStaff: opts.actorIsStaff, kind: opts.kind, context: opts.context, result, unmapped: opts.unmapped })
+    .then(() => kickOutbox())
+    .catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "propreports: could not enqueue the sync notice"));
 }
 
 /** Compact, JSON-safe preview of a plan (full trips are large; the UI shows executions on expand). */
@@ -211,7 +205,7 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
   const v = await viewer(req);
   const lang = langOf(req);
   const tw = propreportsT.tFor(lang);
-  const cfg = statusConfig(lang);
+  const cfg = statusConfig();
   const accounts = (await loadAccountMappings()).filter((a) => v.staff || a.trader === v.name);
   const pendingCount = await pool.query(`SELECT COUNT(*)::int AS n FROM propreports_pending_trades WHERE $1::text IS NULL OR trader = $1`, [v.staff ? null : v.name]);
   const imported = await pool.query(
@@ -232,12 +226,12 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
   const wizard = {
     env: {
       ok: cfg.configured,
-      detail: cfg.configured ? tw("wizard.env.ok", { domain: String(cfg.domain), auth: tw(cfg.authMode === "token" ? "wizard.env.token" : "wizard.env.login") }) : tw("wizard.env.missing", { vars: cfg.missing.join(", ") }),
+      detail: cfg.configured ? tw("wizard.env.ok", { domain: String(cfg.domain), auth: tw("wizard.env.token") }) : tw("wizard.env.missing", { vars: cfg.missing.join(", ") }),
     },
     connection: {
       ok: conn.ok === true,
       detail: conn.ok === true
-        ? `${tw(conn.mode === "v2" ? "wizard.connection.v2" : "wizard.connection.legacy")}${conn.version ? tw("wizard.connection.version", { version: conn.version }) : ""}`
+        ? `${tw("wizard.connection.v2")}${conn.version ? tw("wizard.connection.version", { version: conn.version }) : ""}`
         : conn.ok === false ? tw("wizard.connection.error", { error: conn.error ?? tw("wizard.connection.unknown") }) : tw("wizard.connection.unchecked"),
     },
     accounts: {
@@ -275,6 +269,8 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
     trades: { imported: imported.rows[0].n, lastSyncedAt: imported.rows[0].last ? new Date(imported.rows[0].last).toISOString() : null, legacyWithoutId: legacy.rows[0].n },
     pendingCount: pendingCount.rows[0].n,
     lastRun: v.staff ? await lastRun() : null,
+    // background tick (heartbeat): last summary + whether CRON_SECRET is set; details at GET /propreports/tick
+    tick: v.staff ? { cronConfigured: cfg.cronConfigured, last: await getCursor("tick:last").catch(() => null) } : null,
   });
 }));
 
@@ -517,6 +513,8 @@ router.post("/propreports/sync", requireAuth, asyncHandler(async (req, res) => {
     req.log?.warn({ err: e }, "propreports fills failed");
     throw new AppError("UPSTREAM_FAILED");
   }
+  // a re-imported fill keeps its data but gets a new propReportsId: map it back to the id first seen (ACCURACY)
+  pulled.fills = (await canonicalizeFillIds(pulled.fills)).fills;
   const built = buildRoundTrips(pulled.fills);
   const plan = await planSync(built.trips);
   const diagnostics = { fills: pulled.fills.length, issueCount: pulled.issues.length, issues: pulled.issues.slice(0, 50), orphanCount: built.orphanFills.length };
@@ -753,6 +751,6 @@ router.delete("/propreports/performance/:id", requireAuth, asyncHandler(async (r
   res.json({ ok: true });
 }));
 
-// Scheduled sync: job "propreports.sync" (src/jobs/definitions.ts), opt-in via PROPREPORTS_SYNC_MINUTES + the API env vars.
+// Classic server: job "propreports.sync" (src/jobs/definitions.ts, PROPREPORTS_SYNC_MINUTES) runs the same tick.
 
 export default router;

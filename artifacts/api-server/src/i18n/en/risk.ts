@@ -145,6 +145,7 @@ export default {
     },
     staffTitle: "{trader} — {label}",
     staffBody: "{trader}: {core}",
+    live: "including open positions {amount}",
     limits: {
       title: "Limits changed: {actor}",
       none: "Risk settings updated",

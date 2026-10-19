@@ -12,6 +12,7 @@ import { riskMeQuery } from "@/lib/api/queries";
 import { useAuth } from "@/contexts/auth-context";
 import { shellI18n } from "@/i18n/ns/shell";
 import { curatorApi, curatorKeys, type TodayPayload } from "@/components/curator/api";
+import type { LiveInfo } from "@/components/shared/live-badge";
 
 export type RiskStatus = "ok" | "warn" | "breach" | "no_limits";
 
@@ -30,6 +31,8 @@ export type RiskToday = {
   dailyUsedPct: number | null;
   dailyRemainingUsd: number | null;
   hasLimits: boolean;
+  /** PropReports open-positions snapshot behind pnlNet (null without one today / on older servers). */
+  live: LiveInfo | null;
 };
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -51,6 +54,9 @@ function toRiskToday(raw: unknown): RiskToday | null {
     dailyUsedPct: limit ? num(d?.today?.dailyLimitUsedPct) : null,
     dailyRemainingUsd: limit ? num(d?.today?.dailyRemainingUsd) : null,
     hasLimits: !!limit,
+    live: typeof d?.live?.fetchedAt === "string"
+      ? { unrealizedUsd: num(d.live.unrealizedUsd) ?? 0, openPositions: num(d.live.openPositions) ?? 0, fetchedAt: d.live.fetchedAt, counted: d.live.counted === true }
+      : null,
   };
 }
 

@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { EarningsBadge } from "@/components/shared/finviz/earnings";
+import { TickerContext } from "@/components/shared/finviz/ticker-context";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { ReplayOwnDayButton } from "@/components/shared/replay-own-day";
 import { RedactedHint, redactedHint } from "@/components/playbook/setup-bits";
@@ -263,6 +265,7 @@ export function TradeDetailSheet(p: Props) {
                     <SidePill side={t.side} />
                     <HorizonPill horizon={horizonOf(t)} showIntraday />
                     <ResultMenu result={t.result} ticker={t.ticker} disabled={!canEditResult} onChange={(r) => { void p.onPatch(t, { result: r }); }} />
+                    <EarningsBadge ticker={t.ticker} day={dayOf(t)} />
                   </div>
                   <SheetDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                     <span className="inline-flex items-center gap-1 tabular-nums">
@@ -354,6 +357,7 @@ export function TradeDetailSheet(p: Props) {
                     <ReviewEditor trade={t} canEdit={p.canEdit} onPatch={p.onPatch} />
                   </section>
                   <ContextRow trade={t} timing={timing} />
+                  <TickerContext ticker={t.ticker} day={dayOf(t)} />
                   {t.screenshotUrl && (
                     <section className="space-y-2">
                       <p className="micro-label">{tc("fields.screenshots")}</p>

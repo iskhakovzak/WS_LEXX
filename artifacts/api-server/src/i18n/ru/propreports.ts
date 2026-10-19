@@ -25,13 +25,10 @@ export default {
     env: {
       ok: "{domain} · {auth}",
       token: "токен API",
-      login: "логин/пароль",
-      missing: "В .env.local не задано: {vars}",
-      or: "{token} (или {user} + {password})",
+      missing: "В окружении сервера (.env.local или Vercel) не задано: {vars}",
     },
     connection: {
       v2: "API v2 (токен)",
-      legacy: "legacy-логин",
       version: " · версия {version}",
       error: "Ошибка: {error}",
       unknown: "неизвестно",
@@ -62,9 +59,8 @@ export default {
   },
   conn: {
     domainInvalid: "{name} содержит недопустимые символы",
-    noCredentials: "Нет токена и нет логина/пароля PropReports",
-    loginUnexpected: "PropReports login: неожиданный ответ",
-    tokenRejected: "Токен отклонён ({status}). Если фирма ещё на legacy API — добавьте {user} и {password}.",
+    tokenRejected: "Токен отклонён ({status}). Создайте новый токен API v2 в PropReports (Profile → API Tokens) и задайте его в {token}.",
+    deadline: "Время фонового запуска вышло — продолжение в следующем запуске",
     authRejected: "Авторизация отклонена ({status}): {error}",
   },
   parse: {

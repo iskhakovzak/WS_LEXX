@@ -18,6 +18,7 @@ export default {
     gamification: { title: "Geymifikatsiya", description: "Mavsumlar, kuratorlar ligasi, eʼtirof, setap mahorati va seriyani muzlatish." },
     nav: { title: "Menyu", description: "Yangi treyderlar uchun qisqa menyu: asosiy boʻlimlar, qolganlari «Yana» guruhida." },
     usage: { title: "Foydalanish", description: "Ichki hisob: qaysi ekranlar ochiladi va kunlik sikl bajariladimi. Faqat adminlar koʻradi; mukofot va reyting uchun emas." },
+    finviz: { title: "Finviz", description: "Finviz Elite’dan ertalabki skriner, tiker konteksti va hisobotlar taqvimi. Serverda FINVIZ_AUTH kaliti boʻlmasa, hammasi oʻchiq." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
   units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta", places: "oʻrin", people: "kishi", shares: "aksiya", bars: "sham", times: "×", bp: "b.p.", atr: "ATR", quests: "kvest", trades: "savdo", months: "oy", lessons: "dars", exams: "imtihon", tasks: "topshiriq", teams: "jamoa" },
@@ -188,6 +189,15 @@ export default {
       enabled: { label: "Foydalanish hisobi yoqilgan", help: "Sayt ochilgan ekranlar va kunlik sikl qadamlarini qayd etadi (summalar, tikerlar va matnsiz). Oʻchirilgan — hech narsa yozilmaydi." },
       retentionDays: { label: "Hodisalarni saqlash", help: "Eskilari tunda oʻchiriladi. Rejalar, tahlillar va bitimlarga tegilmaydi." },
       pilotUsers: { label: "Pilot ishtirokchilari", help: "Treyderlarni roʻyxatdan tanlang — ism boʻyicha lotin yoki kirill harflarida qidiring. «Foydalanish»dagi voronka shular boʻyicha saralanadi; roʻyxat boʻsh boʻlsa, Stajyorlar koʻrsatiladi." },
+    },
+    finviz: {
+      enabled: { label: "Finviz yoqilgan", help: "Skriner, tiker konteksti va hisobotlar jadval boʻyicha yangilanadi. Oʻchirilgan — sahifalar oxirgi saqlangan maʼlumotni koʻrsatadi." },
+      gappersFilters: { label: "«Gaperlar» skrineri: filtrlar", help: "Finviz filtr kodlari vergul bilan, masalan geo_usa,sh_price_o2,ta_gap_u4 (4% dan yuqori gap)." },
+      relvolFilters: { label: "«Hajm» skrineri: filtrlar", help: "Finviz filtr kodlari vergul bilan, masalan sh_relvol_o2 (nisbiy hajm 2 dan yuqori)." },
+      earningsFilters: { label: "«Bugun hisobot» skrineri: filtrlar", help: "Finviz filtr kodlari vergul bilan, masalan earningsdate_today." },
+      maxRows: { label: "Skrinerdagi qatorlar", help: "Har bir skriner nechta eng yaxshi nomzodni saqlaydi va koʻrsatadi." },
+      refreshCooldownMinutes: { label: "Qoʻlda yangilashlar orasidagi pauza", help: "Kuratorlar «Yangilash»ni qanchalik tez-tez bosishi mumkin (butun desk uchun)." },
+      snapshotMaxAgeDays: { label: "Tiker maʼlumoti yangi hisoblanadi", help: "Bundan eski float, short, sektor va kapitalizatsiya eski manbadan olinadi (joylashtirishlar, votchlist, katalizatorlar)." },
     },
     privacy: {
       hideNamesFromTraders: { label: "Ismlarni treyderlardan yashirish", help: "Umumiy grafiklar va kun topida treyder «Treyder N» va summalarni koʻradi; oʻchirilsa — ismlar koʻrinadi, boshqalarning summalari emas." },

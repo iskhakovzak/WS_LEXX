@@ -48,7 +48,7 @@ export default {
     quotes: { daily: "Quote of the day" },
     db: { backup: "Database backup" },
     academy: { challenges: "Academy challenges", readiness: "Promotion readiness" },
-    propreports: { sync: "PropReports sync" },
+    propreports: { sync: "PropReports sync (every 5 min in session)", "tick-hourly": "PropReports sync (hourly)", outbox: "PropReports: after-sync actions" },
     trades: { "structure-backfill": "Trade structure" },
     jobs: { prune: "Job history cleanup" },
     candles: { archive: "Candle archive", prune: "Candle cache cleanup" },
@@ -58,6 +58,7 @@ export default {
     gamification: { nightly: "Gamification: nightly recount" },
     usage: { prune: "Usage log cleanup" },
     trainer: { "daily-pick": "Trainer: task of the day pick" },
+    finviz: { screener: "Finviz: screener", snapshot: "Finviz: ticker data", "snapshot-pending": "Finviz: requested tickers", earnings: "Finviz: earnings calendar" },
   },
   backups: {
     description: "pg_dump daily at 03:15 New York time (cache tables without data). 14 daily and 8 weekly copies are kept.",

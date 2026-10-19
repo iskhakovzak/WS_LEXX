@@ -13,6 +13,7 @@ import { MediaStrip, TvLinkField } from "./plan-media";
 import type { MediaContext } from "./media";
 import { Field } from "./plan-editor-parts";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { EarningsBadge } from "@/components/shared/finviz/earnings";
 
 /** One ticker card of the «Тикеры» block: header row (ticker, bias, grade, horizon) + collapsible body. */
 export function TickerEditor({
@@ -106,6 +107,7 @@ export function TickerEditor({
             ))}
           </SelectContent>
         </Select>
+        <EarningsBadge ticker={t.ticker} short />
         <div className="ml-auto flex items-center gap-1">
           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label={tr("editor.remove", { label })} title={tr("editor.remove", { label })} onClick={onRemove}>
             <Trash2 aria-hidden="true" />

@@ -25,6 +25,10 @@
  * a 2nd breach day within 7 days → risk_repeat_breach to the head of desk (admins, else curators).
  *
  * Trading date = America/New_York (lib/tradingDate). `?date=YYYY-MM-DD` overrides for back-testing.
+ * Intraday: while the PropReports positions tick keeps a fresh open-positions snapshot (lib/livePositions), its unrealized
+ * P&L is added to today's realized net (lib/riskMetrics liveRisk) — every metric carries `live` (fetchedAt, ageMin,
+ * counted). Alerts are queued through the outbox (lib/riskAlertQueue → lib/riskAlerts, kind `risk.alert`).
+ * Data access: lib/riskData.
  * P&L source of truth: broker (PropReports) rows when a trader-day has any, else journal trades; each
  * number carries its `source`. Net = pnl − |fees| (lib/tradeMath), realised on COALESCE(exit_date, date).
  */
@@ -32,278 +36,59 @@ import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import { isMarketClosed } from "../lib/marketDays";
 import { nyDate, nyMinutes, addDays } from "../lib/tradingDate";
-import { signedRSql, netPnlSql, closeDateSql, horizonSql } from "../lib/tradeMath";
 import { can, requireAnyCap, requireCap, resolveTraderParam } from "../lib/permissions";
-import { logger } from "../lib/logger";
-import { assignedStaffOf, notifyUser } from "../lib/notifyUtils";
+import { notifyUser } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
-import { claimOnce, inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { haltedStopText, limitsDiff, limitsDiffItems, limitsDiffParams, riskDedupKey, riskNotice, uniqueRecipients } from "../lib/notifyEventsCore";
+import { inBackground } from "../lib/notifyEvents";
+import { haltedStopText, limitsDiff, limitsDiffItems, limitsDiffParams } from "../lib/notifyEventsCore";
 import { logAudit } from "../lib/audit";
 import { ensureCuratorTables, rowToBreachReview } from "../lib/curatorStore";
 import {
   BREACH_CONSEQUENCE_KEYS, BREACH_REASON_KEYS, STAGE_TIER_KEYS,
-  breachConsequences, breachReasons, breachStats, normalizeBreachActions, repeatBreachKey, stageLabel, templateDiff, type LimitDiff,
+  breachConsequences, breachReasons, breachStats, normalizeBreachActions, stageLabel, templateDiff, type LimitDiff,
 } from "../lib/curatorLogic";
 import { applyTierTemplate, loadTierTemplates } from "./scaling";
 import { badRequest, errorMessage, forbidden, notFound, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
 import {
-  WARN_PCT, computeMetrics, computeStop, drawdownSince, nextPeak, num, pctOf, round2,
-  type DayRow, type Horizon, type Limits, type Metrics, type Position,
+  computeMetrics, drawdownSince, liveRisk, nextPeak, num, pctOf, round2,
+  type DayRow, type LiveRisk, type LiveSnapshot, type Limits, type Metrics, type Position,
 } from "../lib/riskMetrics";
+import {
+  CLOSE_MINUTES, OVERNIGHT_KEY_MINUTES, YMD_RE, afterKeyTime, clientDate, ensureTables, loadDaily, loadDdResets, loadLimits,
+  loadLiveSnapshots, loadPositions, toLimits,
+} from "../lib/riskData";
+import { loadLivePositions } from "../lib/livePositions";
+import { recordStopAlerts } from "../lib/riskAlertQueue";
 
 export { WARN_PCT, computeMetrics, computeStop, pctOf, round2, weekStart } from "../lib/riskMetrics";
-export type { Alert, DayRow, Horizon, Limits, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
+export type { Alert, DayRow, Horizon, Limits, LiveRisk, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
+export { OVERNIGHT_KEY_MINUTES, resolveDay, toPosition } from "../lib/riskData";
 
 const router: IRouter = Router();
 
-// ─── constants / helpers ────────────────────────────────────────────────────
+/** Live risk of one trader from a snapshot map (null without a snapshot of `today`). */
+const liveOf = (snaps: Map<string, LiveSnapshot>, name: string, today: string): LiveRisk | null => liveRisk(snaps.get(name), today);
 
-const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-/** Overnight-book key time: 15:45 ET (minutes since NY midnight). */
-export const OVERNIGHT_KEY_MINUTES = 15 * 60 + 45;
-const CLOSE_MINUTES = 16 * 60;
-
-function clientDate(raw: unknown): string {
-  const s = typeof raw === "string" ? raw.trim() : "";
-  return YMD_RE.test(s) ? s : nyDate();
-}
-
-function daysBetween(a: string, b: string): number {
-  const ms = new Date(`${b}T12:00:00Z`).getTime() - new Date(`${a}T12:00:00Z`).getTime();
-  return Math.max(0, Math.round(ms / 86_400_000));
-}
-
-
-/** Whether "now" (NY) is past the overnight key time for the given trading date (false for other dates). */
-function afterKeyTime(date: string, now = new Date()): boolean {
-  return date === nyDate(now) && nyMinutes(now) >= OVERNIGHT_KEY_MINUTES;
-}
-
-// ─── tables (additive; created lazily on first request) ─────────────────────
-
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = (async () => {
-      await pool.query(`CREATE TABLE IF NOT EXISTS risk_alert_log (
-        id SERIAL PRIMARY KEY,
-        trader TEXT NOT NULL,
-        date TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        level TEXT NOT NULL,
-        used NUMERIC(14,2),
-        "limit" NUMERIC(14,2),
-        message TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE (trader, date, kind)
-      )`);
-      await pool.query(`CREATE TABLE IF NOT EXISTS trader_risk_limit_events (
-        id SERIAL PRIMARY KEY,
-        trader TEXT NOT NULL,
-        before JSONB,
-        after JSONB NOT NULL,
-        reason TEXT,
-        changed_by TEXT,
-        changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS trader_risk_limit_events_trader_idx ON trader_risk_limit_events (trader, changed_at DESC)`);
-    })().catch((e) => {
-      ensured = null; // retry on next request
-      throw e;
-    });
-  }
-  return ensured;
-}
-
-/** Optional trades columns (PropReports contract). Detected once; SQL degrades gracefully without them. */
-let colsPromise: Promise<Set<string>> | null = null;
-function tradeColumns(): Promise<Set<string>> {
-  if (!colsPromise) {
-    colsPromise = pool
-      .query<{ column_name: string }>(`SELECT column_name FROM information_schema.columns WHERE table_name = 'trades'`)
-      .then((r) => new Set(r.rows.map((x) => x.column_name)))
-      .catch(() => { colsPromise = null; return new Set<string>(); });
-  }
-  return colsPromise;
-}
-
-async function brokerSql(): Promise<string> {
-  const cols = await tradeColumns();
-  const parts: string[] = [];
-  if (cols.has("source")) parts.push(`t.source = 'propreports'`);
-  if (cols.has("context_snapshot")) parts.push(`t.context_snapshot ->> 'source' = 'propreports'`);
-  return parts.length ? `(${parts.join(" OR ")})` : "FALSE";
-}
-
-// ─── data access ────────────────────────────────────────────────────────────
-
-
-function toLimits(r: any): Limits {
+/** Desk-level freshness: the latest snapshot, how many traders are counted / stale, their open book. */
+function liveSummary(lives: (LiveRisk | null)[]) {
+  const xs = lives.filter((l): l is LiveRisk => l != null);
+  if (!xs.length) return null;
+  const counted = xs.filter((l) => l.counted);
+  // One tick writes every account at once: the newest snapshot = when the positions step last ran.
+  const newest = xs.reduce((a, b) => (a.fetchedAt > b.fetchedAt ? a : b));
   return {
-    trader: String(r.trader),
-    accountSize: num(r.account_size),
-    dailyLossLimit: num(r.daily_loss_limit),
-    weeklyLossLimit: num(r.weekly_loss_limit),
-    maxDrawdown: num(r.max_drawdown),
-    maxRiskPerTrade: num(r.max_risk_per_trade),
-    maxPositionUsd: num(r.max_position_usd),
-    maxOvernightExposure: num(r.max_overnight_exposure),
-    maxOpenPositions: r.max_open_positions == null ? null : Number(r.max_open_positions),
-    allowOvernight: r.allow_overnight !== false,
-    allowSwing: r.allow_swing !== false,
-    tier: r.tier ?? null,
-    notes: r.notes ?? null,
-    updatedBy: r.updated_by ?? null,
-    updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+    traders: xs.length,
+    counted: counted.length,
+    stale: xs.length - counted.length,
+    openPositions: counted.reduce((s, l) => s + l.openPositions, 0),
+    unrealizedUsd: round2(counted.reduce((s, l) => s + l.unrealizedUsd, 0)),
+    fetchedAt: newest.fetchedAt,
+    ageMin: newest.ageMin,
   };
 }
-
-async function loadLimits(trader: string | null): Promise<Map<string, Limits>> {
-  const { rows } = await pool
-    .query(`SELECT * FROM trader_risk_limits WHERE ($1::text IS NULL OR trader = $1)`, [trader])
-    .catch(() => ({ rows: [] as any[] }));
-  return new Map(rows.map((r: any) => [String(r.trader), toLimits(r)]));
-}
-
-
-/**
- * Daily aggregates per trader, realised on close date. Broker rows win over journal rows for a day
- * (PropReports is the source of truth); journal numbers are used only on days with no broker data.
- * `only` = just these traders (index trades_live_trader_close_day_idx instead of a pass over the whole table).
- */
-async function loadDaily(trader: string | null, upTo: string, only?: readonly string[]): Promise<DayRow[]> {
-  const broker = await brokerSql();
-  const net = netPnlSql("t");
-  const { rows } = await pool.query(
-    `SELECT t.trader, LEFT(${closeDateSql("t")}, 10) AS d,
-            SUM(${net}) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND NOT ${broker})::float AS journal_net,
-            COUNT(*) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND NOT ${broker})::int AS journal_pnl_rows,
-            SUM(${net}) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND ${broker})::float AS broker_net,
-            COUNT(*) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND ${broker})::int AS broker_pnl_rows,
-            COUNT(*) FILTER (WHERE ${broker})::int AS broker_trades,
-            COALESCE(SUM(ABS(t.fees)) FILTER (WHERE ${broker}), 0)::float AS broker_fees,
-            COALESCE(SUM(ABS(t.fees)) FILTER (WHERE NOT ${broker}), 0)::float AS journal_fees,
-            COUNT(*)::int AS trades,
-            COALESCE(SUM(${signedRSql("t")}), 0)::float AS r
-     FROM trades t
-     WHERE t.deleted_at IS NULL AND t.trader IS NOT NULL AND t.trader <> ''
-       AND ($1::text IS NULL OR t.trader = $1)${only ? " AND t.trader = ANY($3::text[])" : ""}
-       AND LEFT(${closeDateSql("t")}, 10) <= $2
-     GROUP BY t.trader, LEFT(${closeDateSql("t")}, 10)
-     ORDER BY d ASC`,
-    only ? [trader, upTo, [...only]] : [trader, upTo],
-  );
-  return rows.map((r: any) => resolveDay(r));
-}
-
-/**
- * Drawdown baselines: NY days of curator reviews of drawdown breaches (not archived) per trader. computeMetrics resets
- * the peak at the latest one not after the trading date (lib/riskMetrics drawdownSince) — that lifts a reviewed halt.
- */
-async function loadDdResets(trader: string | null, only?: readonly string[]): Promise<Map<string, string[]>> {
-  const { rows } = await pool.query<{ trader: string; d: string }>(
-    `SELECT DISTINCT trader, to_char(created_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') AS d
-       FROM risk_breach_reviews WHERE kind = 'drawdown' AND archived_at IS NULL
-        AND ($1::text IS NULL OR trader = $1)${only ? " AND trader = ANY($2::text[])" : ""}`,
-    only ? [trader, [...only]] : [trader],
-  ).catch(() => ({ rows: [] as { trader: string; d: string }[] }));
-  const out = new Map<string, string[]>();
-  for (const r of rows) out.set(String(r.trader), [...(out.get(String(r.trader)) ?? []), String(r.d)]);
-  return out;
-}
-
-/** Pure: pick the day's P&L source (exported for the offline check). */
-export function resolveDay(r: {
-  trader: string; d: string; journal_net: unknown; journal_pnl_rows: unknown; broker_net: unknown; broker_pnl_rows: unknown;
-  broker_trades: unknown; broker_fees: unknown; journal_fees: unknown; trades: unknown; r: unknown;
-}): DayRow {
-  const brokerTrades = Number(r.broker_trades) || 0;
-  const brokerRows = Number(r.broker_pnl_rows) || 0;
-  const journalRows = Number(r.journal_pnl_rows) || 0;
-  const useBroker = brokerTrades > 0;
-  const pnl = useBroker ? (brokerRows ? num(r.broker_net) : null) : journalRows ? num(r.journal_net) : null;
-  return {
-    trader: String(r.trader),
-    date: String(r.d),
-    pnl,
-    source: useBroker ? "propreports" : pnl != null ? "journal" : null,
-    trades: Number(r.trades) || 0,
-    brokerTrades,
-    r: Number(r.r) || 0,
-    fees: useBroker ? Number(r.broker_fees) || 0 : Number(r.journal_fees) || 0,
-  };
-}
-
-
-/** Pure: build a Position from a trades row (exported for the offline check). */
-export function toPosition(p: any, today: string, afterKey: boolean): Position {
-  const horizon: Horizon = p.horizon === "overnight" || p.horizon === "swing" ? p.horizon : "intraday";
-  const qty = num(p.qty);
-  const entry = num(p.entry);
-  const stop = num(p.stop);
-  const planned = num(p.risk_usd);
-  const fromStop = entry != null && stop != null && qty != null ? Math.abs(entry - stop) * Math.abs(qty) : null;
-  const date = String(p.date);
-  const daysHeld = YMD_RE.test(date) ? daysBetween(date, today) : 0;
-  const carried = horizon !== "intraday" || daysHeld > 0;
-  const plannedAbs = planned != null ? Math.abs(planned) : null;
-  const mismatch = plannedAbs != null && fromStop != null && Math.abs(plannedAbs - fromStop) > 0.25 * Math.max(plannedAbs, fromStop, 1);
-  return {
-    id: Number(p.id),
-    ticker: String(p.ticker ?? ""),
-    date,
-    side: p.side ?? null,
-    setup: p.setup ?? null,
-    trader: String(p.trader),
-    horizon,
-    qty,
-    entry,
-    stop,
-    daysHeld,
-    // Prefer the live stop distance when it disagrees with a stale plan.
-    riskUsd: mismatch && fromStop != null ? round2(fromStop) : plannedAbs != null ? round2(plannedAbs) : fromStop != null ? round2(fromStop) : null,
-    riskSource: mismatch && fromStop != null ? "stop" : plannedAbs != null ? "planned" : fromStop != null ? "stop" : null,
-    riskMismatch: mismatch,
-    plannedRiskUsd: plannedAbs != null ? round2(plannedAbs) : null,
-    stopRiskUsd: fromStop != null ? round2(fromStop) : null,
-    exposureUsd: entry != null && qty != null ? round2(Math.abs(entry * qty)) : null,
-    carried,
-    carriedTonight: carried || afterKey,
-    noStatus: !!p.no_status,
-    source: p.is_broker ? "propreports" : "manual",
-    sector: p.sector ?? null,
-    atr: num(p.atr),
-  };
-}
-
-async function loadPositions(trader: string | null, today: string): Promise<Position[]> {
-  const broker = await brokerSql();
-  const { rows } = await pool.query(
-    `SELECT t.id, t.ticker, LEFT(t.date, 10) AS date, t.side, t.setup, t.trader,
-            ${horizonSql("t")} AS horizon,
-            t.qty::float AS qty, t.risk_usd::float AS risk_usd,
-            t.entry::float AS entry, t.stop::float AS stop,
-            (t.result IS NULL OR TRIM(t.result) = '') AS no_status,
-            ${broker} AS is_broker,
-            c.sector AS sector, c.atr::float AS atr
-     FROM trades t
-     LEFT JOIN ticker_data_cache c ON c.ticker = UPPER(t.ticker)
-     WHERE t.deleted_at IS NULL
-       AND (LOWER(TRIM(t.result)) = 'open' OR ((t.result IS NULL OR TRIM(t.result) = '') AND NULLIF(t.exit_date, '') IS NULL AND t.exit IS NULL))
-       AND t.trader IS NOT NULL AND ($1::text IS NULL OR t.trader = $1)
-     ORDER BY t.date ASC, t.id ASC
-     LIMIT 500`,
-    [trader],
-  );
-  const afterKey = afterKeyTime(today);
-  return rows.map((p: any) => toPosition(p, today, afterKey));
-}
-
 
 /** Last N trading days cumulative net (or R when no $ data) for sparklines. */
 function sparkline(days: DayRow[], n = 20): number[] {
@@ -338,82 +123,6 @@ function deskRoster(users: Map<string, { role: string }>, limitsMap: Map<string,
   return names;
 }
 
-// ─── red-day notifications (deduped per trader/date/state) ──────────────────
-
-/**
- * Records warn / stop / weekly / drawdown transitions once per trader per trading day and mirrors them to the
- * in-app notifications table (trader + assigned curator / risk manager). Fire-and-forget; never throws.
- */
-async function recordStopAlerts(m: Metrics, limits: Limits | null, date: string): Promise<void> {
-  // Breaches belong to trading days: a lasting state (drawdown, weekly) seen on a weekend or a market holiday is not a
-  // new breach — no log row, no review form in the curator queue, no critical notification.
-  if (await isMarketClosed(date)) return;
-  // `m` may be rendered in the reader's language; the alert log stores the RU text (the history fallback).
-  const s = computeStop({ todayLoss: Math.max(0, -(m.today.pnlNet ?? 0)), weekLoss: Math.max(0, -(m.week.pnlNet ?? 0)), currentDd: m.drawdown.currentUsd, limits }, "ru");
-  if (s.state === "ok" || s.state === "no_limits") return;
-  const limit = s.state === "weekly" ? limits?.weeklyLossLimit : s.state === "drawdown" ? limits?.maxDrawdown : limits?.dailyLossLimit;
-  const used = s.state === "weekly" ? Math.max(0, -(m.week.pnlNet ?? 0)) : s.state === "drawdown" ? m.drawdown.currentUsd : Math.max(0, -(m.today.pnlNet ?? 0));
-  try {
-    await ensureTables();
-    const { rows } = await pool.query(
-      `INSERT INTO risk_alert_log (trader, date, kind, level, used, "limit", message)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (trader, date, kind) DO NOTHING
-       RETURNING id`,
-      [m.trader, date, s.state, s.halted ? "breach" : "warn", round2(used), limit ?? null, s.message],
-    );
-    if (!rows.length) return; // this state was already recorded today
-    // Notifications only for the live trading day (a ?date= back-test must not alert anyone).
-    if (date !== nyDate()) return;
-    // Repeat breach within a week → head of desk (own dedup key; independent of the trader/curator notice below).
-    if (s.halted) inBackground("risk.repeat_breach", () => escalateRepeatBreach(m.trader, date, { state: s.state, used: round2(used), limit: limit ?? 0 }));
-    const notice = riskNotice({
-      trader: m.trader, state: s.state, halted: s.halted,
-      todayLoss: Math.max(0, -(m.today.pnlNet ?? 0)), weekLoss: Math.max(0, -(m.week.pnlNet ?? 0)), currentDd: m.drawdown.currentUsd,
-      dailyLimit: limits?.dailyLossLimit ?? null, weeklyLimit: limits?.weeklyLossLimit ?? null, maxDrawdown: limits?.maxDrawdown ?? null,
-      dailyPct: s.dailyPct, weeklyPct: s.weeklyPct, drawdownPct: s.drawdownPct, warnPct: WARN_PCT,
-    });
-    if (!notice) return;
-    // At most one notification per type (risk_warn / risk_breach) per trader per trading day.
-    if (!(await claimOnce(riskDedupKey(notice.type, m.trader, date)))) return;
-    const common = { type: notice.type, link: notifLinks.risk(m.trader), entityType: "risk", entityId: `${m.trader}:${date}`, source: "risk" } as const;
-    await notifyUser({ ...common, userName: m.trader, params: { ...notice.params, variant: "trader" } });
-    // Warn → assigned staff only; stop (100%) → assigned staff, or every curator when nobody is assigned.
-    const staff = uniqueRecipients(s.halted ? await staffOrFallback(m.trader) : await assignedStaffOf(m.trader), m.trader);
-    for (const name of staff) await notifyUser({ ...common, userName: name, params: { ...notice.params, variant: "staff" } });
-  } catch (err) {
-    logger.warn({ err, trader: m.trader }, "risk: stop alert notification failed");
-  }
-}
-
-/** Heads of desk: active admins; when the desk has none — every active curator. The trader is never included. */
-async function headsOfDesk(trader: string): Promise<string[]> {
-  const { rows } = await pool.query<{ name: string; role: string }>(
-    `SELECT name, role FROM users WHERE active = true AND role IN ('admin', 'curator') AND COALESCE(banned, false) = false`,
-  ).catch(() => ({ rows: [] as { name: string; role: string }[] }));
-  const admins = rows.filter((r) => r.role === "admin").map((r) => r.name);
-  return uniqueRecipients(admins.length ? admins : rows.map((r) => r.name), trader);
-}
-
-/** Second (or later) breach day within 7 calendar days → one critical notification to the head of desk per day. */
-async function escalateRepeatBreach(trader: string, date: string, stop: { state: string; used: number; limit: number }): Promise<void> {
-  const from = addDays(date, -6);
-  const { rows } = await pool.query<{ date: string }>(
-    `SELECT DISTINCT date FROM risk_alert_log WHERE trader = $1 AND level = 'breach' AND date BETWEEN $2 AND $3`,
-    [trader, from, date],
-  );
-  const stats = breachStats(rows.map((r) => String(r.date)), date);
-  if (!stats.repeat) return;
-  if (!(await claimOnce(repeatBreachKey(trader, date)))) return;
-  const heads = await headsOfDesk(trader);
-  for (const name of heads) {
-    await notifyUser({
-      userName: name, type: "risk_repeat_breach", severity: "critical", source: "risk",
-      params: { trader, days: stats.days7, prior: stats.prior.join(", "), state: stop.state, used: stop.used, limit: stop.limit },
-      link: `/curator?trader=${encodeURIComponent(trader)}&tab=risk`, entityType: "risk", entityId: `${trader}:${date}:repeat`,
-    });
-  }
-}
 
 // ─── routes ─────────────────────────────────────────────────────────────────
 
@@ -421,13 +130,19 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
   if (!me) throw unauthorized();
   const today = clientDate(req.query.date);
-  const [limitsMap, days, positions, resets] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me)]);
+  const [limitsMap, days, positions, resets, snaps] = await Promise.all([
+    loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me), loadLiveSnapshots(today, [me]),
+  ]);
   const limits = limitsMap.get(me) ?? null;
-  const m = computeMetrics(me, days, positions, limits, today, langOf(req), drawdownSince(resets.get(me), today));
+  const live = liveOf(snaps, me, today);
+  const m = computeMetrics(me, days, positions, limits, today, langOf(req), drawdownSince(resets.get(me), today), live);
   void recordStopAlerts(m, limits, today);
+  const book = live && live.openPositions > 0 ? await loadLivePositions(me, today) : null;
   res.json({
     ...m,
     limits,
+    /** Broker open positions behind `live` (symbol, qty, avg, close, unrealized per account). */
+    livePositions: book?.positions ?? [],
     today: { ...m.today, pnl: m.today.pnlNet, openRisk: m.today.openRiskUsd },
     afterClose: afterKeyTime(today),
     // Flat fields read by the dashboard limit bar / calculator / settings.
@@ -439,7 +154,7 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
 router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "risk.read.team"))) return;
   const today = clientDate(req.query.date);
-  const [limitsMap, days, positions, usersRes, resets] = await Promise.all([
+  const [limitsMap, days, positions, usersRes, resets, snaps] = await Promise.all([
     loadLimits(null),
     loadDaily(null, today),
     loadPositions(null, today),
@@ -447,6 +162,7 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
     pool.query(`SELECT name, role, COALESCE(banned, false) AS banned, (assigned_curator = $1 OR assigned_mentor = $1 OR assigned_risk_manager = $1) AS ward
                   FROM users WHERE active = true`, [req.authUser!.name]),
     loadDdResets(null),
+    loadLiveSnapshots(today),
   ]);
   const users = new Map<string, { role: string; banned: boolean; ward: boolean }>(
     usersRes.rows.map((u: any) => [String(u.name), { role: String(u.role), banned: !!u.banned, ward: u.ward === true }]),
@@ -460,7 +176,7 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
   const STATUS_ORDER = { breach: 0, warn: 1, ok: 2, no_limits: 3 } as const;
   const rows = [...names].map((name) => {
     const d = daysBy.get(name) ?? [];
-    const m = computeMetrics(name, d, posBy.get(name) ?? [], limitsMap.get(name) ?? null, today, langOf(req), drawdownSince(resets.get(name), today));
+    const m = computeMetrics(name, d, posBy.get(name) ?? [], limitsMap.get(name) ?? null, today, langOf(req), drawdownSince(resets.get(name), today), liveOf(snaps, name, today));
     void recordStopAlerts(m, limitsMap.get(name) ?? null, today);
     const last = d.length ? d[d.length - 1].date : null;
     return {
@@ -507,6 +223,8 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
       openRiskUsd: round2(positions.reduce((s, p) => s + (p.riskUsd ?? 0), 0)),
       overnightExposureUsd: round2(positions.filter((p) => p.carriedTonight).reduce((s, p) => s + (p.exposureUsd ?? 0), 0)),
     },
+    /** PropReports positions snapshot freshness over the desk (null = no snapshot today). */
+    live: liveSummary(rows.map((r) => r.live)),
     /** Desk banner: who is stopped / close to a stop, with exact numbers. */
     banner: [...halted, ...warned].map((r) => ({ trader: r.trader, state: r.stop.state, label: r.stop.label, message: r.stop.message, halted: r.stop.halted })),
     traders: rows,
@@ -767,11 +485,12 @@ router.get("/risk/overnight", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderScope(req, true);
   const today = clientDate(req.query.date);
   const preview = req.query.all === "1" || req.query.all === "true";
-  const [positions, limitsMap, days, resets] = await Promise.all([
+  const [positions, limitsMap, days, resets, snaps] = await Promise.all([
     loadPositions(scope.trader, today),
     loadLimits(scope.trader),
     loadDaily(scope.trader, today),
     loadDdResets(scope.trader),
+    loadLiveSnapshots(today, scope.trader ? [scope.trader] : null),
   ]);
   const afterKey = afterKeyTime(today);
   const book = positions.filter((p) => p.carriedTonight || preview);
@@ -795,7 +514,7 @@ router.get("/risk/overnight", asyncHandler(async (req, res): Promise<void> => {
   const posBy = groupBy(positions);
   const traders = [...new Set([...book.map((p) => p.trader)])].sort((a, b) => a.localeCompare(b)).map((name) => {
     const L = limitsMap.get(name) ?? null;
-    const m = computeMetrics(name, daysBy.get(name) ?? [], posBy.get(name) ?? [], L, today, langOf(req), drawdownSince(resets.get(name), today));
+    const m = computeMetrics(name, daysBy.get(name) ?? [], posBy.get(name) ?? [], L, today, langOf(req), drawdownSince(resets.get(name), today), liveOf(snaps, name, today));
     const mine = book.filter((p) => p.trader === name);
     const exposure = round2(mine.reduce((s, p) => s + (p.exposureUsd ?? 0), 0));
     return {
@@ -867,10 +586,13 @@ router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
   }).safeParse(req.query);
   if (!q.success) throw q.error;
   const today = clientDate(q.data.date);
-  const [limitsMap, days, positions, resets] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me)]);
+  const [limitsMap, days, positions, resets, snaps] = await Promise.all([
+    loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me), loadLiveSnapshots(today, [me]),
+  ]);
   const limits = limitsMap.get(me) ?? null;
   const ddSince = drawdownSince(resets.get(me), today);
-  const before = computeMetrics(me, days, positions, limits, today, langOf(req), ddSince);
+  const live = liveOf(snaps, me, today);
+  const before = computeMetrics(me, days, positions, limits, today, langOf(req), ddSince, live);
   const horizon = q.data.horizon ?? "intraday";
   const hypothetical: Position = {
     id: -1, ticker: (q.data.ticker ?? "NEW").toUpperCase(), date: today, side: null, setup: null, trader: me, horizon,
@@ -880,7 +602,7 @@ router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
     exposureUsd: q.data.exposureUsd ?? null, carried: horizon !== "intraday", carriedTonight: horizon !== "intraday" || afterKeyTime(today),
     noStatus: false, source: "manual", sector: null, atr: null,
   };
-  const after = computeMetrics(me, days, [...positions, hypothetical], limits, today, langOf(req), ddSince);
+  const after = computeMetrics(me, days, [...positions, hypothetical], limits, today, langOf(req), ddSince, live);
   const newAlerts = after.alerts.filter((a) => !before.alerts.some((b) => b.kind === a.kind && b.level === a.level));
   const horizonBlocked = !!limits && ((horizon === "overnight" && !limits.allowOvernight) || (horizon === "swing" && !limits.allowSwing));
   const remainingAfter = after.today.dailyRemainingAfterOpenRiskUsd;
@@ -914,12 +636,13 @@ export type DeskSnapshotRow = {
  */
 /** `only` = rows for just these traders (the curator's roster) — the same rows the full snapshot has for them. */
 export async function deskSnapshot(today: string, trader: string | null = null, lang: Lang = "ru", only?: readonly string[]): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
-  const [limitsMap, days, positions, usersRes, resets] = await Promise.all([
+  const [limitsMap, days, positions, usersRes, resets, snaps] = await Promise.all([
     loadLimits(trader),
     loadDaily(trader, today, only),
     loadPositions(trader, today),
     pool.query(`SELECT name, role, COALESCE(banned, false) AS banned FROM users WHERE active = true AND ($1::text IS NULL OR name = $1)`, [trader]),
     loadDdResets(trader, only),
+    loadLiveSnapshots(today, trader ? [trader] : only ?? null),
   ]);
   const users = new Map<string, { role: string; banned: boolean; ward: boolean }>(
     usersRes.rows.map((u: any) => [String(u.name), { role: String(u.role), banned: !!u.banned, ward: u.ward === true }]),
@@ -933,7 +656,7 @@ export async function deskSnapshot(today: string, trader: string | null = null, 
   const rows = [...names].filter((name) => !keep || keep.has(name)).map((name) => {
     const d = daysBy.get(name) ?? [];
     const limits = limitsMap.get(name) ?? null;
-    const m = computeMetrics(name, d, posBy.get(name) ?? [], limits, today, lang, drawdownSince(resets.get(name), today));
+    const m = computeMetrics(name, d, posBy.get(name) ?? [], limits, today, lang, drawdownSince(resets.get(name), today), liveOf(snaps, name, today));
     void recordStopAlerts(m, limits, today);
     return { trader: name, role: users.get(name)?.role ?? null, banned: users.get(name)?.banned ?? false, metrics: m, limits, days: d, lastTradeDate: d.length ? d[d.length - 1].date : null };
   }).sort((a, b) => a.trader.localeCompare(b.trader, "ru"));

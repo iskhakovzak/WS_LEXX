@@ -23,23 +23,16 @@ import { pool } from "@workspace/db";
 type PoolClient = { query: (typeof pool)["query"]; release: (err?: Error | boolean) => void };
 import { logger } from "../logger";
 import { logAudit } from "../audit";
-import { invalidateDashboardCache } from "../hotCache";
-import { invalidateTradesPageCache } from "../tradesPageCache";
-import { invalidateOfficeStatsCache } from "../../routes/officeStats";
-import { refreshTradeStructures } from "../tradeStructureStore";
+import { invalidateTradeCaches } from "./tradesVersion";
 import { round2 } from "./csv";
 import { applyFeeSettings, type DetectedFeeColumn } from "./fees";
 import { getSettings, setSetting } from "./settings";
 import type { RoundTrip } from "./types";
 import { normResult } from "../tradeMath";
-import { emitJobEvent } from "../../jobs/registry";
+import { enqueueOutbox, kickOutbox } from "./tick/outbox";
 
-/** The broker book changed: drop every trade-derived cache (dashboard, /trades/page summaries, office stats). */
-function invalidateTradeCaches(): void {
-  invalidateDashboardCache();
-  invalidateTradesPageCache();
-  invalidateOfficeStatsCache();
-}
+/** The broker book changed: drop every trade-derived cache on every instance (tradesVersion.ts — DB stamp). */
+export { invalidateTradeCaches };
 
 export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict" | "skip";
 
@@ -380,6 +373,8 @@ export interface ApplyOptions {
   details?: Record<string, unknown>;
   /** Fee columns detected in the parsed file (recorded in settings so the UI can list them). */
   feeColumns?: DetectedFeeColumn[];
+  /** Start draining the enqueued side effects right away (default true; the tick drains at its end itself). */
+  kick?: boolean;
 }
 
 export interface SyncRunResult {
@@ -418,26 +413,36 @@ async function insertTrade(client: PoolClient, t: RoundTrip, trader: string): Pr
   return Number(rows[0].id);
 }
 
-/** Roles of the fills (Вход / Добор / Частичный фикс / …) and re-entry links; a failure never fails the sync. */
 /**
- * Recompute the structure (roles, re-entry links) of the written trades in the background: the sync never waits for
- * it and never fails because of it (the trade sheet computes the structure live anyway). Chunked, one chunk at a time,
- * so a big first import of the whole desk does not hold many pool connections at once.
+ * Recompute the structure (roles, re-entry links) of the written trades — as outbox rows of ≤ STRUCTURE_CHUNK ids,
+ * enqueued in the caller's transaction (the sync never waits for it and never fails because of it; the trade sheet
+ * computes the structure live anyway). Chunks keep one handler run short and bounded.
  */
-function refreshStructures(tradeIds: number[]): void {
-  if (!tradeIds.length) return;
+export async function enqueueStructures(db: Pick<PoolClient, "query">, tradeIds: number[]): Promise<void> {
   const ids = [...new Set(tradeIds)];
-  void (async () => {
-    for (let i = 0; i < ids.length; i += STRUCTURE_CHUNK) {
-      try {
-        await refreshTradeStructures(ids.slice(i, i + STRUCTURE_CHUNK));
-      } catch (e) {
-        logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: trade structure refresh failed");
-      }
-    }
-  })();
+  for (let i = 0; i < ids.length; i += STRUCTURE_CHUNK) await enqueueOutbox("structures.refresh", { tradeIds: ids.slice(i, i + STRUCTURE_CHUNK) }, db);
 }
 const STRUCTURE_CHUNK = 300;
+
+/** Traders whose book an applied plan changed (insert / update / adopt), sorted. */
+export function changedTraders(plan: SyncPlan): string[] {
+  return [...new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string))].sort();
+}
+
+/**
+ * Side effects of a sync, enqueued in its transaction: rule scan, idea relink, challenge refresh (per changed trader),
+ * trade structures, and the "propreports.synced" event. Drained by the tick / kickOutbox (tick/outbox.ts).
+ */
+async function enqueueSyncEffects(db: Pick<PoolClient, "query">, plan: SyncPlan, writtenTrades: number[], event: Record<string, unknown>): Promise<void> {
+  const traders = changedTraders(plan);
+  if (traders.length) {
+    await enqueueOutbox("rules.scan", { traders }, db);
+    await enqueueOutbox("ideas.relink", { traders }, db);
+    await enqueueOutbox("challenges.refresh", { traders }, db);
+  }
+  await enqueueStructures(db, writtenTrades);
+  await enqueueOutbox("propreports.synced", { ...event, traders }, db);
+}
 
 /** Replace the broker-sourced executions of a trade (manual ones — note not starting with "PropReports" — are kept). */
 async function writeExecutions(client: PoolClient, tradeId: number, t: RoundTrip): Promise<void> {
@@ -518,8 +523,14 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
         [account, last],
       );
     }
+    if (res.inserted || res.updated) {
+      // atomic with the trades: a committed sync never loses its rule scan / structures / "synced" listeners
+      await enqueueSyncEffects(client, plan, writtenTrades, {
+        runId, source: opts.source, dateFrom: opts.dateFrom ?? plan.dateFrom ?? null, dateTo: opts.dateTo ?? plan.dateTo ?? null,
+        inserted: res.inserted, updated: res.updated, changed: true,
+      });
+    }
     await client.query("COMMIT");
-    refreshStructures(writtenTrades);
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     res.errors++;
@@ -537,50 +548,37 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
     ).catch(() => {});
   }
   // remember what was seen, for the «Комиссии» / «Несопоставленные счета» settings blocks (never during dry runs)
+  await rememberSeen(plan.unmappedAccounts, opts.feeColumns);
+  await logAudit({ actor: opts.actor, action: "propreports.sync", targetType: "propreports_sync_runs", targetId: String(runId), details: { ...res, source: opts.source, fileName: opts.fileName ?? null } });
+  if (res.inserted || res.updated) {
+    invalidateTradeCaches();
+    // The side effects were enqueued with the trades (rule scan, idea relink, challenges, structures, "synced"
+    // listeners); start them now — the tick runs whatever a frozen function leaves behind.
+    if (opts.kick !== false) kickOutbox();
+  }
+  return res;
+}
+
+/** Fee columns + unmatched account names seen by a real (non-dry) sync, for the settings blocks. Never throws. */
+export async function rememberSeen(unmappedAccounts: string[], feeColumns?: DetectedFeeColumn[]): Promise<void> {
   try {
     const s = await getSettings();
-    if (opts.feeColumns?.length) {
+    if (feeColumns?.length) {
       const now = new Date().toISOString();
       const detected = new Map(s.fees.detected.map((d) => [d.key, d]));
-      for (const c of opts.feeColumns) detected.set(c.key, c);
+      for (const c of feeColumns) detected.set(c.key, c);
       const columns = { ...s.fees.columns };
-      for (const c of opts.feeColumns) columns[c.key] = { ...columns[c.key], include: columns[c.key]?.include ?? true, header: c.header, known: c.known, heuristic: c.heuristic, lastSeenAt: now };
+      for (const c of feeColumns) columns[c.key] = { ...columns[c.key], include: columns[c.key]?.include ?? true, header: c.header, known: c.known, heuristic: c.heuristic, lastSeenAt: now };
       await setSetting("fees", { ...s.fees, detected: [...detected.values()], columns });
     }
     const unmatched = new Set(s.unmatched);
-    for (const a of plan.unmappedAccounts) unmatched.add(a);
+    for (const a of unmappedAccounts) unmatched.add(a);
     const known = new Set((await loadAccountMappings()).flatMap((m) => [m.account, ...m.aliases]));
     const next = [...unmatched].filter((a) => !known.has(a)).sort();
     if (next.join("|") !== s.unmatched.join("|")) await setSetting("unmatched", next);
   } catch (e) {
     logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: settings bookkeeping failed");
   }
-  await logAudit({ actor: opts.actor, action: "propreports.sync", targetType: "propreports_sync_runs", targetId: String(runId), details: { ...res, source: opts.source, fileName: opts.fileName ?? null } });
-  if (res.inserted || res.updated) {
-    invalidateTradeCaches();
-    // Re-check trading rules for every trader whose book changed, so violations exist right after the sync.
-    const traders = new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string));
-    if (traders.size) {
-      void import("../rulesEngine").then(async ({ scanRulesForTrader }) => {
-        for (const t of traders) await scanRulesForTrader(t).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e), trader: t }, "propreports: rule scan failed"));
-      });
-      // Ideas of these traders: link them to the new broker trades (ticker + side + entry in the idea window).
-      void import("../ideaTradeMatch").then(({ relinkIdeasForTraders }) => relinkIdeasForTraders([...traders]))
-        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: idea relink failed"));
-      // Academy challenges of these traders: status + pass/fail notices move here (write path), not on GET.
-      void import("../../routes/academy-path").then(({ refreshChallenges }) => refreshChallenges([...traders]))
-        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: challenge refresh failed"));
-    }
-  }
-  // Jobs listening to "propreports.synced" (src/jobs/registry.ts) run after every recorded sync that did not fail outright.
-  if (runId && (!res.errors || res.inserted + res.updated > 0)) {
-    const changedTraders = [...new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string))];
-    emitJobEvent("propreports.synced", {
-      runId, source: opts.source, dateFrom: opts.dateFrom ?? plan.dateFrom ?? null, dateTo: opts.dateTo ?? plan.dateTo ?? null,
-      traders: changedTraders, inserted: res.inserted, updated: res.updated, changed: res.inserted + res.updated > 0,
-    });
-  }
-  return res;
 }
 
 // ─── reconcile inbox ────────────────────────────────────────────────────────
@@ -657,8 +655,9 @@ export async function mergePending(pendingId: number, tradeId: number, actor: st
     await client.query(TRADE_UPDATE_SQL, updateParams(tradeId, trip));
     await writeExecutions(client, tradeId, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
+    await enqueueStructures(client, [tradeId]);
     await client.query("COMMIT");
-    refreshStructures([tradeId]);
+    kickOutbox();
     await logAudit({ actor, action: "propreports.merge", targetType: "trades", targetId: String(tradeId), details: { externalId: trip.externalId } });
     invalidateTradeCaches();
     return { ok: true, tradeId };
@@ -684,8 +683,9 @@ export async function keepPendingSeparate(pendingId: number, actor: string): Pro
     const id = await insertTrade(client, trip, String(pending.trader));
     await writeExecutions(client, id, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
+    await enqueueStructures(client, [id]);
     await client.query("COMMIT");
-    refreshStructures([id]);
+    kickOutbox();
     await logAudit({ actor, action: "propreports.keep_separate", targetType: "trades", targetId: String(id), details: { externalId: trip.externalId } });
     invalidateTradeCaches();
     return { ok: true, tradeId: id };

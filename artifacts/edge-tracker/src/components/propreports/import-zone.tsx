@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { isPerformanceResponse, useImportFile, useUsers, type AccountMapping, type ApplyResult, type ImportKind, type IntegrationsTab, type PerformancePreview, type Preview } from "./api";
+import { MAX_UPLOAD_BYTES, isPerformanceResponse, useImportFile, useUsers, type AccountMapping, type ApplyResult, type ImportKind, type IntegrationsTab, type PerformancePreview, type Preview } from "./api";
 import { NextSteps, PreviewSummary, PreviewTable } from "./preview-table";
 import { PerformanceReportBody } from "./PerformanceReportPanel";
 import { PersonSelect } from "@/components/people/person-select";
@@ -46,6 +46,11 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
   }, [isReport, account, accounts]);
 
   const pick = (f: File | null) => {
+    // the API (and Vercel's 4.5 MB body limit) refuses bigger uploads — say so before sending anything
+    if (f && f.size > MAX_UPLOAD_BYTES) {
+      toast({ title: t("import.tooLargeTitle", { max: "4 MB" }), description: t("import.tooLargeText"), variant: "destructive" });
+      f = null;
+    }
     setFile(f); setPreview(null); setApplied(null); setPerf(null);
     if (f && /\.xlsx?$/i.test(f.name) && kind === "auto") setKind(/performance/i.test(f.name) ? "performance" : "trades");
   };

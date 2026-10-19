@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 type Base = { group: SettingGroup; unit?: SettingUnit };
@@ -190,6 +190,18 @@ export const SETTINGS = {
   "usage.enabled": { group: "usage", type: "boolean", default: true },
   "usage.retentionDays": { group: "usage", type: "number", default: 120, min: 14, max: 730, step: 1, unit: "days" },
   "usage.pilotUsers": { group: "usage", type: "text", default: "", maxLength: 2000 },
+
+  // Finviz Elite (lib/finviz; token = env FINVIZ_AUTH, without it everything here is idle): the switch, the screener
+  // presets (comma-separated Finviz filter codes, e.g. "geo_usa,sh_price_o2,ta_gap_u4"), rows kept per preset, the
+  // staff «Обновить» cooldown, and how old a ticker snapshot may be before offerings / watchlist / catalyst code falls
+  // back to its old source
+  "finviz.enabled": { group: "finviz", type: "boolean", default: true },
+  "finviz.gappersFilters": { group: "finviz", type: "text", default: "geo_usa,sh_price_o2,sh_avgvol_o500,ta_gap_u4", maxLength: 400 },
+  "finviz.relvolFilters": { group: "finviz", type: "text", default: "geo_usa,sh_price_o2,sh_avgvol_o500,sh_relvol_o2", maxLength: 400 },
+  "finviz.earningsFilters": { group: "finviz", type: "text", default: "geo_usa,sh_price_o2,sh_avgvol_o300,earningsdate_today", maxLength: 400 },
+  "finviz.maxRows": { group: "finviz", type: "number", default: 50, min: 5, max: 200, step: 5 },
+  "finviz.refreshCooldownMinutes": { group: "finviz", type: "number", default: 5, min: 1, max: 60, step: 1, unit: "minutes" },
+  "finviz.snapshotMaxAgeDays": { group: "finviz", type: "number", default: 3, min: 1, max: 30, step: 1, unit: "days" },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

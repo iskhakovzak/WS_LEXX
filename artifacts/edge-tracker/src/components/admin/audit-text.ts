@@ -257,6 +257,9 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
     case "propreports.accounts.refresh": return { label: L("accounts"), tone: "neutral", text: t("text.accountsRefresh") };
     case "propreports.settings.update": return { label: "PropReports", tone: "neutral", text: t("text.settingsUpdate") };
     case "propreports.check": return { label: "PropReports", tone: "neutral", text: t("text.check") };
+    case "propreports.tick.run": return { label: "PropReports", tone: "neutral", text: t("text.tickRun") };
+    case "propreports.backfill.start": return { label: "PropReports", tone: "accent", text: t("text.backfillStart", { from: s(d.from), to: s(d.to) }) };
+    case "propreports.backfill.cancel": return { label: "PropReports", tone: "warn", text: t("text.backfillCancel") };
     case "propreports.merge": return { label: L("reconcile"), tone: "accent", text: t("text.merge") };
     case "propreports.keep_separate": return { label: L("reconcile"), tone: "neutral", text: t("text.keepSeparate") };
     case "propreports.dismiss": return { label: L("reconcile"), tone: "neutral", text: t("text.dismiss") };

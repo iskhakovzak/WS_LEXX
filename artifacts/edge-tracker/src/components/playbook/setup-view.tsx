@@ -35,6 +35,7 @@ import { RelatedSetupsSection, SetupHighlights } from "./highlights";
 import { MoveToFolderButton } from "./move-to-folder";
 import { MinTierSelect } from "./min-tier-select";
 import { SetupStatsPanel } from "./setup-stats";
+import { TickerContext } from "@/components/shared/finviz/ticker-context";
 import { StructuredDescription } from "./structured-editor";
 import {
   HORIZON_LABEL, SOURCE_LABELS, accessOf, timeOfDayLabel, folderSwatch, moneyTone, timeAgo,
@@ -448,6 +449,7 @@ function AboutAside({ entry, parent, access }: { entry: PlaybookEntry; parent: P
           <div className="divide-y divide-border/60">
             {fundamentals.filter(([, v]) => v != null && v !== "").map(([k, v]) => <StatRow key={k} label={<TermLabel text={k} />} value={String(v)} />)}
           </div>
+          {entry.ticker && !hasFundamentals && <TickerContext ticker={entry.ticker} className="mt-2" />}
         </DocSection>
       )}
     </>

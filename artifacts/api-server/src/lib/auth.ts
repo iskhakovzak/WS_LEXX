@@ -191,6 +191,8 @@ export const PUBLIC_API_ROUTES: readonly PublicRoute[] = [
   { method: "POST", path: "/csp-report" },     // CSP violation reports (browsers send them without credentials)
   { method: "GET", path: "/holidays" },        // market calendar for the login/shell clock
   { method: "POST", path: "/telegram/webhook" }, // Telegram calls us; verified by its own secret
+  { method: "POST", path: "/cron/tick" },       // PropReports heartbeat (pg_cron); Bearer CRON_SECRET checked by routes/cron.ts
+  { method: "GET", path: "/cron/tick" },        // same, Vercel Cron
   { method: "GET", path: /^\/voice-notes\/\d+\/audio$/ }, // media_token checked by the route itself
 ];
 

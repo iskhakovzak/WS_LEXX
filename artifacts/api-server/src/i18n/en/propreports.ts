@@ -27,13 +27,10 @@ export default {
     env: {
       ok: "{domain} · {auth}",
       token: "API token",
-      login: "login/password",
-      missing: "Not set in .env.local: {vars}",
-      or: "{token} (or {user} + {password})",
+      missing: "Not set in the server environment (.env.local or Vercel): {vars}",
     },
     connection: {
       v2: "API v2 (token)",
-      legacy: "legacy login",
       version: " · version {version}",
       error: "Error: {error}",
       unknown: "unknown",
@@ -64,9 +61,8 @@ export default {
   },
   conn: {
     domainInvalid: "{name} contains invalid characters",
-    noCredentials: "No PropReports token and no login/password",
-    loginUnexpected: "PropReports login: unexpected response",
-    tokenRejected: "Token rejected ({status}). If the firm is still on the legacy API, add {user} and {password}.",
+    tokenRejected: "Token rejected ({status}). Create a new API v2 token in PropReports (Profile → API Tokens) and set it in {token}.",
+    deadline: "The background run is out of time — it continues on the next run",
     authRejected: "Authorization rejected ({status}): {error}",
   },
   parse: {

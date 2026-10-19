@@ -145,6 +145,7 @@ export default {
     },
     staffTitle: "{trader} — {label}",
     staffBody: "{trader}: {core}",
+    live: "ochiq pozitsiyalar bilan {amount}",
     limits: {
       title: "Limitlar oʻzgartirildi: {actor}",
       none: "Risk sozlamalari yangilandi",

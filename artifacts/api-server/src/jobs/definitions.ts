@@ -11,17 +11,19 @@
  *   DB backup (3 min after EVERY boot + 48 h)          → db.backup daily BACKUP_CRON (03:15 NY) + catch-up only if > 20 h old
  *   academy challenges (60 s after boot + 15 min)      → academy.challenges
  *   «готов к переводу» notices (were sent by GET)      → academy.readiness (15 min + after each PropReports sync)
- *   PropReports scheduled sync (module-level timer)    → propreports.sync (PROPREPORTS_SYNC_MINUTES → cron)
+ *   PropReports scheduled sync (module-level timer)    → propreports.sync (tick, 5 min NY RTH) + propreports.tick-hourly
+ *                                                        + propreports.outbox (side effects, every 2 min)
  *   trade-structure back-fill (once at boot)           → trades.structure-backfill
  *   (new) job_runs retention                           → jobs.prune daily
  */
 import { pool } from "@workspace/db";
 import { config } from "../config";
 import { registerJob, listJobs } from "./registry";
-import { syncCron } from "../lib/propreports/scheduler";
+import { DESK_TICK_CRON, OFF_HOURS_CRON, offHoursCron, syncCron } from "../lib/propreports/scheduler";
 import { dailyTelegramEnabled, intradayAlertsEnabled } from "../lib/daily/telegramGuard";
 import { contractAlertsEnabled, eveningCron, eveningEnabled, morningCron, morningEnabled } from "../lib/daily/telegramSchedule";
 import { dailyPickCron } from "../lib/trainer/schedule";
+import { registerFinvizJobs } from "../lib/finviz/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -216,13 +218,37 @@ export function registerAllJobs(): void {
 
   registerJob({
     name: "propreports.sync",
-    cron: syncCron() ?? undefined,
+    cron: () => syncCron() ?? DESK_TICK_CRON, // getter: env read on every registry tick; off via enabled()
     timeoutMs: 15 * MIN,
     enabled: () => syncCron() != null,
     async run() {
+      // the same tick as POST /api/cron/tick (steps + outbox), with a classic-server budget; the DB lease keeps them apart
       const { runScheduledSync } = await import("../lib/propreports");
-      await runScheduledSync();
-      return {};
+      return runScheduledSync();
+    },
+  });
+
+  // Outside RTH: the same tick hourly (after-hours corrections, history backfill, nightly reconcile steps).
+  registerJob({
+    name: "propreports.tick-hourly",
+    cron: () => offHoursCron() ?? OFF_HOURS_CRON,
+    timeoutMs: 15 * MIN,
+    enabled: () => offHoursCron() != null,
+    async run() {
+      const { runScheduledSync } = await import("../lib/propreports");
+      return runScheduledSync();
+    },
+  });
+
+  // PropReports outbox (post-sync side effects): drained every 2 minutes on a classic server (on Vercel by the tick);
+  // a sync started from the UI also drains it right away (kickOutbox).
+  registerJob({
+    name: "propreports.outbox",
+    cron: "*/2 * * * *",
+    timeoutMs: 2 * MIN,
+    async run() {
+      const { drainOutbox } = await import("../lib/propreports/tick/outbox");
+      return drainOutbox(Date.now() + 50_000);
     },
   });
 
@@ -300,4 +326,5 @@ export function registerAllJobs(): void {
     },
   });
 
+  registerFinvizJobs(registerJob); // Finviz Elite screener / snapshot / earnings (lib/finviz/jobDefs.ts)
 }

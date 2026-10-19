@@ -143,6 +143,8 @@ export default {
     },
     staffTitle: "{trader} — {label}",
     staffBody: "{trader}: {core}",
+    /** Appended to the core when the stop counts open positions (PropReports positions tick). */
+    live: "с учётом открытых позиций {amount}",
     limits: {
       title: "Лимиты изменены: {actor}",
       none: "Обновлены настройки риска",

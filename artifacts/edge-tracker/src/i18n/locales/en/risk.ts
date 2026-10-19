@@ -520,4 +520,16 @@ export default {
       ofBook: "{pct} of the book",
     },
   },
+  live: {
+    on: "Live",
+    stale: "Positions not updating",
+    open: "open {amount}",
+    closed: "closed {amount}",
+    hint: "Today's P&L = closed trades + unrealized P&L of open PropReports positions. Updated every 5 minutes during the session.",
+    staleHint: "The open-positions snapshot is stale — its unrealized P&L is not counted in the stop.",
+    desk: "PropReports positions: {open} · {amount}",
+    deskOpen: { one: "{count} open", other: "{count} open" },
+    staleCount: "stale: {count}",
+    positionsTitle: "Open positions (PropReports)",
+  },
 } satisfies Messages<typeof ru>;

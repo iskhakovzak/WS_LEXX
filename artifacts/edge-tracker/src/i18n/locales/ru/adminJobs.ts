@@ -49,7 +49,7 @@ export default {
     quotes: { daily: "Цитата дня" },
     db: { backup: "Бэкап базы данных" },
     academy: { challenges: "Экзамены академии", readiness: "Готовность к переводу" },
-    propreports: { sync: "Синхронизация PropReports" },
+    propreports: { sync: "Синхронизация PropReports (каждые 5 мин в сессию)", "tick-hourly": "Синхронизация PropReports (ежечасно)", outbox: "PropReports: действия после синхронизации" },
     trades: { "structure-backfill": "Структура сделок" },
     jobs: { prune: "Очистка истории задач" },
     candles: { archive: "Архив свечей", prune: "Чистка кэша свечей" },
@@ -59,6 +59,7 @@ export default {
     gamification: { nightly: "Геймификация: ночной пересчёт" },
     usage: { prune: "Чистка учёта использования" },
     trainer: { "daily-pick": "Тренажёр: выбор задачи дня" },
+    finviz: { screener: "Finviz: скринер", snapshot: "Finviz: данные тикеров", "snapshot-pending": "Finviz: запрошенные тикеры", earnings: "Finviz: календарь отчётов" },
   },
   backups: {
     description: "pg_dump каждый день в 03:15 по Нью-Йорку (кэш-таблицы без данных). Хранятся 14 дневных и 8 недельных копий.",

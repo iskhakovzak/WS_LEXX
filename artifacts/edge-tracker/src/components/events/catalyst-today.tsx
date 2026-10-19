@@ -21,6 +21,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import type { CatalystData, MyEarnings } from "./use-catalysts";
 import { fmtDay, weekdayLabel, macroTime } from "./event-meta";
 import { MarketReporters } from "./catalyst-market";
+import { useFinvizStatus } from "@/components/shared/finviz/api";
 import { eventsI18n } from "@/i18n/ns/events";
 import { rich } from "./rich-text";
 
@@ -155,6 +156,8 @@ export function DayBrief({
   onPickDay?: (d: string) => void;
 }) {
   const { t } = eventsI18n.useT();
+  // With Finviz on, the page's «Отчёты» block (Finviz calendar) replaces the older market reporters list.
+  const finvizOn = useFinvizStatus().state === "on";
   const { edge, rows, closed, book, today, reportersFor } = data;
   const dayRows = rows.filter((r) => r.date.slice(0, 10) === day);
   const closedRow = dayRows.find(isClosedRow);
@@ -246,7 +249,7 @@ export function DayBrief({
               </section>
             )}
 
-            {!past && <MarketReporters day={day} prev={rep.prev} data={data} onOpenTicker={onOpenTicker} />}
+            {!past && !finvizOn && <MarketReporters day={day} prev={rep.prev} data={data} onOpenTicker={onOpenTicker} />}
 
             {past && (
               <section aria-label={t("today.yourDay")} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">

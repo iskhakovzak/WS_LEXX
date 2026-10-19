@@ -16,6 +16,7 @@ import { AppError, badRequest, unauthorized } from "../lib/http";
 import { offeringsT } from "../i18n/ns";
 import { langOf, type Lang } from "../i18n";
 import { WATCH_DAY_KEEP_MS, WATCH_DAY_KIND, dbCacheRead, dbCacheWrite, watchCachePlan } from "../lib/offeringsCache";
+import { overlaySnapshots } from "../lib/finviz/fundamentals";
 export { watchCachePlan, type WatchCachePlan } from "../lib/offeringsCache";
 
 const router: IRouter = Router();
@@ -1619,13 +1620,16 @@ async function augmentOfferings(list: Offering[], day: string, budgetMs: number)
       .filter((e) => e.reactionDay && e.reactionDay !== thisDay && e.filingDate <= o.date).length;
   });
 
-  // 2) Fundamentals for traded names (dilution context: float, cash runway).
+  // 2) Fundamentals for traded names (dilution context: float, cash runway). Float / short / sector / market cap from
+  //    the Finviz snapshot (DB, instant); Yahoo for cash / burn and for tickers without a fresh snapshot.
+  const snapWork = overlaySnapshots(list);
   const fundTickers = Array.from(new Set(list.filter((o) => o.status !== "withdrawn" && o.currentPrice != null).map((o) => o.ticker))).slice(0, 40);
-  const fundWork = getFundLite(fundTickers).then((m) => {
+  const fundWork = snapWork.then((fromSnap) => getFundLite(fundTickers).then((m) => ({ m, fromSnap }))).then(({ m, fromSnap }) => {
     for (const o of list) {
       const f = m.get(o.ticker);
       if (!f) continue;
-      o.floatShares = f.floatShares; o.cashM = f.cashM; o.burnM = f.burnM; o.runwayMonths = f.runwayMonths; o.shortPctFloat = f.shortPctFloat;
+      o.cashM = f.cashM; o.burnM = f.burnM; o.runwayMonths = f.runwayMonths;
+      if (!fromSnap.has(o.ticker)) { o.floatShares = f.floatShares; o.shortPctFloat = f.shortPctFloat; }
     }
   });
 

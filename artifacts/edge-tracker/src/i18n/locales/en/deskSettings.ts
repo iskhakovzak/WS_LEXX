@@ -18,6 +18,7 @@ export default {
     gamification: { title: "Gamification", description: "Seasons, the curator league, recognition, setup mastery and streak freezes." },
     nav: { title: "Menu", description: "A short menu for new traders: the main sections, everything else under «More»." },
     usage: { title: "Usage", description: "Internal tracking: which screens people open and whether they go through the daily loop. Admins only; never for rewards or rankings." },
+    finviz: { title: "Finviz", description: "Morning screener, ticker context and the earnings calendar from Finviz Elite. Without the FINVIZ_AUTH key on the server all of it is off." },
     other: { title: "Other", description: "Settings without a group." },
   },
   units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times", places: "places", people: "people", shares: "shares", bars: "bars", times: "×", bp: "bp", atr: "ATR", quests: "quests", trades: "trades", months: "mo.", lessons: "lessons", exams: "exams", tasks: "tasks", teams: "teams" },
@@ -188,6 +189,15 @@ export default {
       enabled: { label: "Usage tracking on", help: "The site records opened screens and daily-loop steps (no amounts, tickers or text). Off — nothing is recorded." },
       retentionDays: { label: "Keep events for", help: "Older events are deleted at night. Plans, reviews and trades are never touched." },
       pilotUsers: { label: "Pilot participants", help: "Pick traders from the list — search by name in Latin or Cyrillic. The funnel in «Usage» filters by them; while the list is empty, it shows the Interns." },
+    },
+    finviz: {
+      enabled: { label: "Finviz on", help: "The screener, ticker context and earnings refresh on schedule. Off — pages show the last saved data." },
+      gappersFilters: { label: "«Gappers» screener: filters", help: "Finviz filter codes, comma-separated, e.g. geo_usa,sh_price_o2,ta_gap_u4 (gap up 4% or more)." },
+      relvolFilters: { label: "«Volume» screener: filters", help: "Finviz filter codes, comma-separated, e.g. sh_relvol_o2 (relative volume 2 or more)." },
+      earningsFilters: { label: "«Reports today» screener: filters", help: "Finviz filter codes, comma-separated, e.g. earningsdate_today." },
+      maxRows: { label: "Rows per screener", help: "How many top candidates each screener keeps and shows." },
+      refreshCooldownMinutes: { label: "Pause between manual refreshes", help: "How often curators can press «Refresh» (desk-wide)." },
+      snapshotMaxAgeDays: { label: "Ticker data stays fresh for", help: "Float, short, sector and market cap older than this come from the old source (offerings, watchlist, catalysts)." },
     },
     privacy: {
       hideNamesFromTraders: { label: "Hide names from traders", help: "On shared charts and the top of the day a trader sees “Trader N” and the amounts; off — names show, other traders’ amounts don’t." },

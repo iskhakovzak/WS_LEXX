@@ -48,7 +48,7 @@ export default {
     quotes: { daily: "Kun iqtibosi" },
     db: { backup: "Maʼlumotlar bazasi zaxirasi" },
     academy: { challenges: "Akademiya imtihonlari", readiness: "Keyingi bosqichga tayyorlik" },
-    propreports: { sync: "PropReports sinxronlash" },
+    propreports: { sync: "PropReports sinxronlash (sessiyada har 5 daqiqada)", "tick-hourly": "PropReports sinxronlash (har soatda)", outbox: "PropReports: sinxronlashdan keyingi amallar" },
     trades: { "structure-backfill": "Savdolar tuzilmasi" },
     jobs: { prune: "Vazifalar tarixini tozalash" },
     candles: { archive: "Shamlar arxivi", prune: "Shamlar keshini tozalash" },
@@ -58,6 +58,7 @@ export default {
     gamification: { nightly: "Geymifikatsiya: tungi qayta hisob" },
     usage: { prune: "Foydalanish hisobini tozalash" },
     trainer: { "daily-pick": "Trenajyor: kun vazifasini tanlash" },
+    finviz: { screener: "Finviz: skriner", snapshot: "Finviz: tiker maʼlumotlari", "snapshot-pending": "Finviz: soʻralgan tikerlar", earnings: "Finviz: hisobotlar taqvimi" },
   },
   backups: {
     description: "pg_dump har kuni Nyu-York vaqti bilan 03:15 da (kesh jadvallari maʼlumotlarisiz). 14 kunlik va 8 haftalik nusxa saqlanadi.",

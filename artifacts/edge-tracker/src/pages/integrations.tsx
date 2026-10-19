@@ -2,7 +2,7 @@
  * Интеграции: PropReports ↔ журнал сделок. Только для куратора/админа — единое место для операций PropReports
  * (синк по API, импорт файлов, привязка счетов, сверка, история). Трейдерам сделки приходят автоматически,
  * поэтому для них страница показывает пояснение. Пульт деска (/admin → «Данные») показывает только статус и ведёт сюда.
- * Глубокие ссылки: /integrations?tab=setup|import|performance|accounts|reconcile|history.
+ * Глубокие ссылки: /integrations?tab=setup|import|performance|accounts|reconcile|history|api.
  */
 import * as React from "react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
@@ -23,12 +23,15 @@ import { RunSyncDialog } from "@/components/propreports/run-sync-dialog";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
 import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
 import { SetupPanel } from "@/components/propreports/setup-panel";
+import { BackgroundSync } from "@/components/propreports/background-sync";
+import ReconcileBrokerPanel from "@/components/propreports/reconcile-broker";
+import ApiV2Panel from "@/components/propreports/api-v2-panel";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 
 type Tab = IntegrationsTab;
-const TABS: readonly Tab[] = ["setup", "import", "performance", "accounts", "reconcile", "history"];
+const TABS: readonly Tab[] = ["setup", "import", "performance", "accounts", "reconcile", "history", "api"];
 
 function initialTab(): Tab {
   try {
@@ -138,6 +141,7 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
           { value: "accounts", label: t("page.tabs.accounts"), count: status.data?.accounts.unmapped.length || undefined },
           { value: "reconcile", label: t("page.tabs.reconcile"), count: pending.data?.length || undefined },
           { value: "history", label: t("page.tabs.history"), count: runs.data?.length || undefined },
+          ...(staff && apiConfigured ? [{ value: "api" as const, label: t("apiV2.tab") }] : []),
         ]}
       />
 
@@ -151,7 +155,10 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
       )}
       {tab === "accounts" && <AccountsEditor accounts={accounts.data ?? []} staff={canConfigure} apiConfigured={apiConfigured} />}
       {tab === "reconcile" && <ReconcileInbox pending={pending.data ?? []} staff={canSync} loading={pending.isLoading} />}
+      {tab === "reconcile" && <ReconcileBrokerPanel />}
+      {tab === "history" && staff && <BackgroundSync canSync={canSync} apiConfigured={apiConfigured} />}
       {tab === "history" && <SyncHistory runs={runs.data ?? []} loading={runs.isLoading} />}
+      {tab === "api" && staff && apiConfigured && <ApiV2Panel accounts={accounts.data ?? []} canSync={canSync} />}
 
       {canSync && <RunSyncDialog open={runOpen} onOpenChange={setRunOpen} configured={apiConfigured} onGoTab={(x) => { setRunOpen(false); setTab(x); }} />}
     </Page>

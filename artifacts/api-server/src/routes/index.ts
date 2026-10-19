@@ -55,6 +55,9 @@ import riskRouter from "./risk";
 import gamePlanRouter from "./gameplan";
 import planMediaRouter from "./plan-media";
 import propreportsRouter from "./propreports";
+import cronRouter from "./cron";
+import propreportsTickRouter from "./propreports-tick";
+import { tradesVersionMiddleware } from "../lib/propreports/tradesVersion";
 import tradeQualityRouter from "./trade-quality";
 import scalingRouter from "./scaling";
 import weeklyReviewRouter from "./weekly-review";
@@ -67,6 +70,8 @@ import setupsAutoRouter from "./setups-auto";
 import dayReportRouter from "./day-report";
 import benchmarkRouter from "./benchmark";
 import reconcileRouter from "./reconcile";
+import propreportsAccuracyRouter from "./propreports-accuracy";
+import propreportsApiRouter from "./propreports-api";
 import indicatorNotesRouter from "./indicator-notes";
 import academyPathRouter from "./academy-path";
 import academyCohortsRouter from "./academy-cohorts";
@@ -85,10 +90,13 @@ import topRouter from "./top";
 import questsRouter from "./quests";
 import gamificationRouter from "./gamification";
 import usageRouter from "./usage";
+import finvizRouter from "./finviz";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(cronRouter); // POST|GET /cron/tick — PropReports heartbeat (Bearer CRON_SECRET)
+router.use(tradesVersionMiddleware); // cross-instance trade-cache stamp (≤ 1 SELECT / 15 s / instance)
 router.use(tradeQualityRouter);
 router.use(tradesRouter);
 router.use(eventsRouter);
@@ -145,6 +153,7 @@ router.use(riskRouter);
 router.use(gamePlanRouter);
 router.use(planMediaRouter);
 router.use(propreportsRouter);
+router.use(propreportsTickRouter);
 router.use(scalingRouter);
 router.use(weeklyReviewRouter);
 router.use(eodRouter);
@@ -156,6 +165,8 @@ router.use(setupsAutoRouter);
 router.use(dayReportRouter);
 router.use(benchmarkRouter);
 router.use(reconcileRouter);
+router.use(propreportsAccuracyRouter);
+router.use(propreportsApiRouter);
 router.use(indicatorNotesRouter);
 router.use(academyPathRouter);
 router.use(academyCohortsRouter);
@@ -174,5 +185,6 @@ router.use(topRouter);
 router.use(questsRouter);
 router.use(gamificationRouter);
 router.use(usageRouter);
+router.use(finvizRouter); // Finviz Elite: screener, ticker snapshot, earnings calendar (lib/finviz)
 
 export default router;

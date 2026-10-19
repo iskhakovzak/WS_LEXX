@@ -558,4 +558,17 @@ export default {
       ofBook: "{pct} книги",
     },
   },
+  /** PropReports open positions behind today's P&L (positions tick, every 5 min in the session): components/risk/live-badge. */
+  live: {
+    on: "Онлайн",
+    stale: "Позиции не обновляются",
+    open: "открытые {amount}",
+    closed: "закрытые {amount}",
+    hint: "P&L дня = закрытые сделки + нереализованный результат открытых позиций PropReports. Обновляется каждые 5 минут в торговую сессию.",
+    staleHint: "Снимок открытых позиций устарел — их нереализованный результат не учтён в стопе.",
+    desk: "Позиции PropReports: {open} · {amount}",
+    deskOpen: { one: "{count} открытая", few: "{count} открытые", many: "{count} открытых", other: "{count} открытые" },
+    staleCount: "устарело: {count}",
+    positionsTitle: "Открытые позиции (PropReports)",
+  },
 } as const;

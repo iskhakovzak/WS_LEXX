@@ -313,6 +313,15 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `TRADE_OTHER_TRADER` | 409 | Reconcile merge across traders. | — |
 | `BROKER_TRADE_EXISTS` | 409 | Reconcile keep-separate of an already imported trade. | — |
 | `PROPREPORTS_NOT_CONFIGURED` | 503 | PropReports API endpoints without credentials. | — |
+| `CRON_NOT_CONFIGURED` | 503 | `/api/cron/tick` called while CRON_SECRET is unset. | — |
+| `FINVIZ_NOT_CONFIGURED` | 503 | `POST /api/finviz/refresh` without FINVIZ_AUTH or with the desk switch finviz.enabled off. | — |
+| `BACKFILL_RUNNING` | 409 | A PropReports history backfill is already running. | `{ active }` |
+| `PROPREPORTS_FILE_TOO_LARGE` | 413 | PropReports import file over the 4 MB upload limit (Vercel body limit). | — |
+| `PROPREPORTS_REQUEST_INVALID` | 400 | PropReports v2 request parameter refused before sending (fills filter, report mode / baseCurrency, upload options). | — |
+| `PROPREPORTS_SUPERUSER_REQUIRED` | 403 | PropReports superuser-only action (instruments, profiles, upload*) with a token without the right (vendor 403). | — |
+| `PROPREPORTS_TOKEN_REJECTED` | 502 | PropReports answered 401 to the configured token. | — |
+| `PROPREPORTS_REJECTED` | 502 | PropReports answered 400 / 404 / 405 to a staff request. | — |
+| `PROPREPORTS_BUSY` | 503 | PropReports answered 429 / 503 after the client retries. | — |
 | `FILE_TYPE` | 400 | Upload of an unsupported file type. | — |
 | `TRADES_REPORT_EMPTY` | 400 | PropReports Trades file without recognizable rows. | — |
 | `CHECKLIST_REQUIRED` | 422 | Trade create / entry-field edit without a checklist response (skipChecklist: curator only). | — |

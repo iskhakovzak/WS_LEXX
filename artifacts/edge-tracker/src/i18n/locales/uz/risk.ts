@@ -520,4 +520,16 @@ export default {
       ofBook: "portfelning {pct}",
     },
   },
+  live: {
+    on: "Jonli",
+    stale: "Pozitsiyalar yangilanmayapti",
+    open: "ochiq {amount}",
+    closed: "yopilgan {amount}",
+    hint: "Kunlik P&L = yopilgan bitimlar + PropReports ochiq pozitsiyalarining realizatsiya qilinmagan natijasi. Savdo sessiyasida har 5 daqiqada yangilanadi.",
+    staleHint: "Ochiq pozitsiyalar surati eskirgan — ularning realizatsiya qilinmagan natijasi stopda hisobga olinmagan.",
+    desk: "PropReports pozitsiyalari: {open} · {amount}",
+    deskOpen: { one: "{count} ta ochiq", other: "{count} ta ochiq" },
+    staleCount: "eskirgan: {count}",
+    positionsTitle: "Ochiq pozitsiyalar (PropReports)",
+  },
 } satisfies Messages<typeof ru>;

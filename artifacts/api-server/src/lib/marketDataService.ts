@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { freshSnapshot, fundamentalsFromSnapshot } from "./finviz/fundamentals";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36";
 /** Outbound request budget: a hung upstream (Yahoo / Nasdaq / RSS) must not hold a request or a job forever. */
@@ -270,11 +271,15 @@ function calcATR(candles: { h: number; l: number; c: number }[]): number | null 
   return +(last14.reduce((a, b) => a + b, 0) / last14.length).toFixed(2);
 }
 
-export async function getTickerFundamentals(rawTicker: string, opts: { force?: boolean } = {}): Promise<TickerFundamentals | null> {
+/** `skipSnapshot`: the analyst scan back-fills ticker_data_cache (its market-cap join), so it skips the Finviz snapshot. */
+export async function getTickerFundamentals(rawTicker: string, opts: { force?: boolean; skipSnapshot?: boolean } = {}): Promise<TickerFundamentals | null> {
   const ticker = rawTicker.toUpperCase().trim();
   if (!ticker) return null;
 
   if (!opts.force) {
+    // Finviz snapshot first (lib/finviz/fundamentals); Yahoo below only when it is missing or stale.
+    const snap = opts.skipSnapshot ? null : await freshSnapshot(ticker);
+    if (snap) return fundamentalsFromSnapshot(snap);
     const { rows } = await pool.query<any>(
       `SELECT * FROM ticker_data_cache WHERE ticker = $1 AND fetched_at > NOW() - INTERVAL '15 minutes'`,
       [ticker]
@@ -1014,7 +1019,7 @@ export async function scanWatchlistAnalystActions(opts: { concurrency?: number; 
           }
           if (fetchFundamentals) {
             // Best-effort: backfill marketCap/sector for new tickers (cheap if cached).
-            await getTickerFundamentals(ticker).catch(() => null);
+            await getTickerFundamentals(ticker, { skipSnapshot: true }).catch(() => null);
           }
         }
         // Small delay to avoid hammering Yahoo
