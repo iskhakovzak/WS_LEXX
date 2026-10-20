@@ -49,14 +49,21 @@ const finite = (v: unknown): v is number => typeof v === "number" && Number.isFi
 
 // ─── pure selection ─────────────────────────────────────────────────────────
 
-/** Rows of a run from `date` with a non-zero gap, one per ticker (yesterday's gappers are not today's). */
+/** ETFs / ETNs (leveraged single-stock and country funds flood the gap lists): by name, or a Financial row without a
+ *  market cap. Traders want the stocks themselves. */
+const FUND_NAME = /\b(ETF|ETN|ETP|Fund)\b|\b\d(\.\d+)?[xX]\b/;
+export function isFundRow(r: Pick<ScreenerRow, "company" | "sector"> & { marketCap?: number | null }): boolean {
+  return FUND_NAME.test(r.company ?? "") || (r.sector === "Financial" && r.marketCap == null);
+}
+
+/** Rows of a run from `date` with a non-zero gap, one per ticker (yesterday's gappers are not today's); funds skipped. */
 function gapRows(runs: readonly ScreenerResponse[], date: string): GapRow[] {
   const seen = new Map<string, GapRow>();
   for (const run of runs) {
     if (!run.asOf || nyDate(new Date(run.asOf)) !== date) continue;
     for (const r of run.rows as readonly ScreenerRow[]) {
       const ticker = r.ticker.toUpperCase();
-      if (!finite(r.gapPct) || r.gapPct === 0 || seen.has(ticker)) continue;
+      if (!finite(r.gapPct) || r.gapPct === 0 || seen.has(ticker) || isFundRow(r)) continue;
       seen.set(ticker, { ticker, gapPct: r.gapPct, relVolume: finite(r.relVolume) ? r.relVolume : null, float: finite(r.float) ? r.float : null });
     }
   }

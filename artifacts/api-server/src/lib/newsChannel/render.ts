@@ -55,7 +55,8 @@ const section = (emoji: string, title: string, lines: string[]): Section => ({ h
 
 function gapLine(g: GapRow): string {
   const parts = [`${cashtag(g.ticker)} ${signedPct(g.gapPct)}`];
-  if (g.relVolume != null) parts.push(esc(t("label.rvol", { value: g.relVolume.toFixed(1) })));
+  // Finviz reports RVOL 0.0 until enough premarket volume — skip it rather than print a misleading zero
+  if (g.relVolume != null && g.relVolume >= 0.05) parts.push(esc(t("label.rvol", { value: g.relVolume.toFixed(1) })));
   if (g.float != null && g.float > 0) parts.push(esc(t("label.float", { value: compact(g.float) })));
   return parts.join(" · ");
 }

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@workspace/db", () => ({ db: {}, pool: { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } }));
 
-const { gatherPost, pickEarnings, pickGaps, pickMovers, pickThemes } = await import("../../newsChannel/data");
+const { gatherPost, isFundRow, pickEarnings, pickGaps, pickMovers, pickThemes } = await import("../../newsChannel/data");
 const { compact, esc, fitMessage, renderPost, signedPct, TG_MAX_CHARS } = await import("../../newsChannel/render");
 const F = await import("./fixtures");
 
@@ -106,5 +106,15 @@ describe("rendered posts", () => {
     expect(text.length).toBeLessThanOrEqual(TG_MAX_CHARS);
     expect(text.startsWith("HEADER\n\nA\n$T0")).toBe(true);
     expect(text.endsWith("FOOT")).toBe(true);
+  });
+});
+
+describe("gap lists skip funds", () => {
+  it("leveraged / country ETFs and cap-less Financial rows are funds; real companies are not", () => {
+    expect(isFundRow({ company: "Direxion Daily MSCI South Korea Bull 3X ETF", sector: "Financial", marketCap: null })).toBe(true);
+    expect(isFundRow({ company: "Leverage Shares 2X Long CRWV Daily", sector: "Financial", marketCap: null })).toBe(true);
+    expect(isFundRow({ company: "Some Trust", sector: "Financial", marketCap: null })).toBe(true);
+    expect(isFundRow({ company: "Exascale Labs Holdings Inc", sector: "Technology", marketCap: 174_990_000 })).toBe(false);
+    expect(isFundRow({ company: "Fundamental Global Inc", sector: "Financial", marketCap: 50_000_000 })).toBe(false);
   });
 });
