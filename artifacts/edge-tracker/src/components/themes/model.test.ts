@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  METRICS, ageSeconds, cellIntensity, columnMax, defaultColumn, effectiveSort, hasValues, isMetric, isSort, leadersLaggards, nextSort,
-  parseTickers, phoneColumns, pollInterval, sortMembers, sortThemes, splitHalves, type ThemeOut,
+  METRICS, ageSeconds, cellIntensity, columnMax, defaultColumn, effectiveSort, hasValues, isMetric, isSort, leadersLaggards, mergeBoard, nextSort,
+  parseScreenerInput, parseTickers, phoneColumns, pollInterval, setHidden, sortMembers, sortThemes, splitHalves, toggleColumn, visibleColumns,
+  type PersonalThemeOut, type ThemeOut,
 } from "./model";
 
 type Vals = Partial<Pick<ThemeOut, "today" | "fromOpen" | "premarket" | "afterHours">>;
@@ -80,7 +81,7 @@ describe("cells and header strip", () => {
     expect(hasValues(themes, "premarket")).toBe(true);
     expect(hasValues(themes, "fromOpen")).toBe(false);
     expect(phoneColumns("premarket")).toEqual(["premarket", "today"]);
-    expect(phoneColumns("today")).toEqual(["today", "fromOpen"]);
+    expect(phoneColumns("today")).toEqual(["fromOpen", "today"]);
   });
 
   it("leaders are the best gainers, laggards the worst losers (worst first), never the same theme", () => {
@@ -112,5 +113,54 @@ describe("misc", () => {
   it("parses staff ticker input like the server", () => {
     expect(parseTickers("mu, $wdc  stx;MU")).toEqual({ tickers: ["MU", "WDC", "STX"], invalid: [] });
     expect(parseTickers("brk.b x1")).toEqual({ tickers: ["BRK.B"], invalid: ["X1"] });
+  });
+});
+
+describe("per-user view", () => {
+  const all = [th(1, "AI", { premarket: 1, fromOpen: 2, today: 3, afterHours: 4 })];
+
+  it("visible columns: table order, never empty; the last one cannot be switched off", () => {
+    expect(visibleColumns({ columns: ["today", "premarket"], hidden: [] })).toEqual(["premarket", "today"]);
+    expect(visibleColumns({ columns: [], hidden: [] })).toEqual(METRICS);
+    const v = { columns: ["today" as const], hidden: [] };
+    expect(toggleColumn(v, "today")).toBe(v);
+    expect(toggleColumn(v, "premarket").columns).toEqual(["premarket", "today"]);
+    expect(toggleColumn({ columns: ["premarket", "today"], hidden: [] }, "premarket").columns).toEqual(["today"]);
+  });
+
+  it("the sort skips hidden columns: a stored hidden column and the session default fall to a visible one", () => {
+    expect(effectiveSort({ col: "fromOpen", dir: "asc" }, "rth", all, ["premarket", "today"])).toEqual({ col: "today", dir: "desc" });
+    expect(effectiveSort(null, "pre", all, ["fromOpen", "afterHours"])).toEqual({ col: "fromOpen", dir: "desc" });
+    expect(defaultColumn("rth", [th(1, "x")], ["afterHours"])).toBe("afterHours");
+  });
+
+  it("phones: ≤ 2 of the visible columns", () => {
+    expect(phoneColumns("premarket", ["premarket", "fromOpen"])).toEqual(["premarket", "fromOpen"]);
+    expect(phoneColumns("today", ["today"])).toEqual(["today"]);
+    expect(phoneColumns("afterHours", ["premarket", "today", "afterHours"])).toEqual(["today", "afterHours"]);
+  });
+
+  it("hide / restore a base theme", () => {
+    expect(setHidden({ columns: [...METRICS], hidden: [2] }, 5, true).hidden).toEqual([2, 5]);
+    expect(setHidden({ columns: [...METRICS], hidden: [2, 5] }, 2, false).hidden).toEqual([5]);
+  });
+});
+
+describe("«Мои темы» on the board", () => {
+  it("merges: hidden base themes out, own themes marked, unique keys (ids may repeat across the two lists)", () => {
+    const own: PersonalThemeOut = { ...th(1, "My chips", { today: 5 }), kind: "screener", tickers: ["NVDA"], screener: { filters: ["ind_semiconductors"], order: null }, needsFinviz: false, resolvedAt: null };
+    const rows = mergeBoard({ themes: [th(1, "AI", { today: 1 }), th(2, "Banks")], personal: [own], view: { columns: [...METRICS], hidden: [2] } });
+    expect(rows.map((r) => [r.key, r.name, !!r.mine])).toEqual([["b1", "AI", false], ["p1", "My chips", true]]);
+    expect(rows[1]!.mine).toMatchObject({ kind: "screener", tickers: ["NVDA"] });
+    expect(sortThemes(rows, { col: "today", dir: "desc" }).map((r) => r.key)).toEqual(["p1", "b1"]);
+  });
+
+  it("screener input: a pasted URL keeps only f / o (auth dropped); strict tokens", () => {
+    const r = parseScreenerInput("https://elite.finviz.com/screener.ashx?v=111&f=sec_energy,cap_large&o=-volume&auth=TOKEN");
+    expect(r).toEqual({ ok: true, spec: { filters: ["sec_energy", "cap_large"], order: "-volume" } });
+    expect(JSON.stringify(r)).not.toContain("TOKEN");
+    expect(parseScreenerInput("ind_semiconductors")).toEqual({ ok: true, spec: { filters: ["ind_semiconductors"], order: null } });
+    expect(parseScreenerInput("sh_relvol_o1.5")).toMatchObject({ ok: true }); expect(parseScreenerInput(".x1")).toMatchObject({ ok: false, reason: "invalid" });
+    expect(parseScreenerInput("  ")).toEqual({ ok: false, reason: "empty" });
   });
 });

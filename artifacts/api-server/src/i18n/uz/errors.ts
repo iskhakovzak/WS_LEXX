@@ -347,4 +347,5 @@ export default {
   REWARD_OUT_OF_STOCK: "Bu mukofot tugagan — katalogda qoldiqni oshiring",
   REWARD_NOT_YOUR_TRADER: "Mukofotlarni shu treyderning kuratori yoki admin topshiradi",
   THEME_NOT_FOUND: "Mavzu topilmadi",
+  THEME_LIMIT: "Oʻz mavzularingiz {max} tadan oshmasin — yangisini qoʻshish uchun keraksizini olib tashlang",
 } satisfies Messages<typeof ru>;

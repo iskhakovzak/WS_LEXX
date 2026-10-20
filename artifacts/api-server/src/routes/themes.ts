@@ -1,26 +1,37 @@
 /**
  * Market themes («Темы рынка», lib/themes/*): TradingView-style theme tracker.
  *
- *   GET  /api/themes          ThemesResponse — any signed-in member (global auth gate); quotes refresh lazily
- *   GET  /api/themes/config   staff — every theme incl. archived ({ themes: ThemeRecord[] })
- *   POST /api/themes          staff — { name, tickers, sortOrder?, active? } → ThemeRecord
- *   PUT  /api/themes/:id      staff — any of { name, tickers, sortOrder, active } → ThemeRecord (archive = active false)
+ *   GET  /api/themes            BoardResponse — the shared board + the viewer's own themes and view (guests: base only)
+ *   PUT  /api/themes/view       member — { columns: metric[] (≥ 1), hidden: baseThemeId[] } → ThemesView
+ *                               (users.settings.themesView, follows the user across devices)
+ *   POST /api/themes/mine       member — personal theme { name, kind: tickers | screener, tickers? | screener?, order? }
+ *   PUT  /api/themes/mine/:id   member, owner only — the same fields, or { active: false } to archive
+ *   GET  /api/themes/config     admin (settings.manage) — every shared theme incl. archived ({ themes: ThemeRecord[] })
+ *   POST /api/themes            admin — { name, tickers, sortOrder?, active? } → ThemeRecord
+ *   PUT  /api/themes/:id        admin — any of { name, tickers, sortOrder, active } → ThemeRecord (archive = active false)
  *
- * Staff = gameplan.publish or dailyfeed.manage (the desk-content caps, as POST /finviz/refresh). Tickers are
- * upper-cased, `$` dropped, de-duplicated; 1–30 of /^[A-Z.\-]{1,10}$/. `sort_order` is accepted as an alias of
- * sortOrder. Every write is in the audit log. Nothing is deleted.
+ * Shared themes are desk-wide settings: settings.manage (adminOnly), like the other desk settings. Tickers are
+ * upper-cased, `$` dropped, de-duplicated; 1–30 of /^[A-Z.\-]{1,10}$/. A screener is a Finviz URL / f= query / filter
+ * list: only its f / o values are kept (lib/themes/personal parseScreenerInput — an auth token is never stored or
+ * echoed). ≤ 10 personal themes per user. Every write is in the audit log. Nothing is deleted.
  */
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
-import { idParam, notFound, AppError, route } from "../lib/http";
+import { idParam, notFound, AppError, route, unauthorized } from "../lib/http";
+import { isGuestUser } from "../lib/auth";
 import { logAudit } from "../lib/audit";
-import { MAX_THEME_TICKERS, THEME_TICKER_RE } from "../lib/themes/logic";
-import { getThemes } from "../lib/themes/service";
+import { MAX_THEME_TICKERS, THEME_METRICS, THEME_TICKER_RE } from "../lib/themes/logic";
+import { getBoard, refreshScreener } from "../lib/themes/board";
+import { MAX_HIDDEN, MAX_PERSONAL_THEMES, normalizeView, parseScreenerInput, type ScreenerSpec } from "../lib/themes/personal";
+import { countPersonal, insertPersonal, personalById, updatePersonal, writeView, type PersonalRecord } from "../lib/themes/personalStore";
 import { insertTheme, listThemes, themeById, updateTheme, type ThemePatch } from "../lib/themes/store";
 
 const router: IRouter = Router();
 
-const STAFF = ["gameplan.publish", "dailyfeed.manage"] as const;
+/** Desk-wide theme baskets = desk settings (admin). */
+const ADMIN = "settings.manage" as const;
+/** Create / edit waits this long for a screener's first resolve, then answers (the board shows it when ready). */
+const RESOLVE_WAIT_MS = 8_000;
 
 const Name = z.string().trim().min(1).max(60);
 const Tickers = z
@@ -43,17 +54,105 @@ const toPatch = ({ sort_order, sortOrder, ...rest }: z.infer<typeof Fields>): Th
 const CreateBody = Fields.extend({ name: Name, tickers: Tickers }).transform(toPatch);
 const UpdateBody = Fields.transform(toPatch);
 
-router.get("/themes", route({}, async () => getThemes()));
+/** The signed-in member (guests have no users row: read-only). */
+function member(req: Request): { id: number; name: string } {
+  const u = req.authUser;
+  if (!u) throw unauthorized();
+  if (isGuestUser(u)) throw new AppError("GUEST_READ_ONLY");
+  return { id: u.id, name: u.name };
+}
 
-router.get("/themes/config", route({ cap: STAFF }, async () => ({ themes: await listThemes(true) })));
+const viewer = (req: Request): number | null => (req.authUser && !isGuestUser(req.authUser) ? req.authUser.id : null);
 
-router.post("/themes", route({ cap: STAFF, body: CreateBody }, async ({ body, actor }) => {
+router.get("/themes", route({}, async ({ req }) => getBoard(viewer(req))));
+
+// ─── per-user view ────────────────────────────────────────────────────────────
+
+const ViewBody = z.object({
+  columns: z.array(z.enum(THEME_METRICS)).min(1).max(THEME_METRICS.length),
+  hidden: z.array(z.number().int().positive()).max(MAX_HIDDEN).default([]),
+});
+
+router.put("/themes/view", route({ body: ViewBody }, async ({ req, body }) => writeView(member(req).id, normalizeView(body))));
+
+// ─── «Мои темы» ───────────────────────────────────────────────────────────────
+
+const MineFields = z.object({
+  name: Name,
+  kind: z.enum(["tickers", "screener"]),
+  tickers: Tickers.optional(),
+  /** Finviz screener URL, "f=…&o=…" or a filter list. */
+  screener: z.string().trim().max(2000).optional(),
+  order: z.string().trim().max(41).nullable().optional(),
+});
+const MineUpdate = MineFields.partial().extend({ active: z.boolean().optional() });
+
+/** kind + raw fields → a checked definition (400 VALIDATION with the field when something is missing / invalid). */
+function definition(kind: "tickers" | "screener", body: { tickers?: string[]; screener?: string; order?: string | null }): { tickers: string[]; screener: ScreenerSpec | null } {
+  if (kind === "tickers") {
+    if (!body.tickers?.length) throw new AppError("VALIDATION", 400, undefined, [{ path: "body.tickers", message: "1–30 tickers" }]);
+    return { tickers: body.tickers, screener: null };
+  }
+  const parsed = parseScreenerInput(body.screener ?? "", body.order);
+  if (!parsed.ok) throw new AppError("VALIDATION", 400, undefined, [{ path: "body.screener", message: parsed.reason }]);
+  return { tickers: [], screener: parsed.spec };
+}
+
+/** What the API answers about a personal theme (the board carries the moves). */
+const mineOut = (r: PersonalRecord) => ({
+  id: r.id, name: r.name, kind: r.kind, tickers: r.tickers, screener: r.screener, resolvedTickers: r.resolvedTickers, active: r.active,
+});
+
+async function resolveSoon(r: PersonalRecord): Promise<PersonalRecord> {
+  if (r.kind !== "screener") return r;
+  await Promise.race([refreshScreener(r), new Promise((res) => setTimeout(res, RESOLVE_WAIT_MS).unref?.())]);
+  return r;
+}
+
+router.post("/themes/mine", route({ body: MineFields }, async ({ req, body }) => {
+  const me = member(req);
+  if ((await countPersonal(me.id)) >= MAX_PERSONAL_THEMES) throw new AppError("THEME_LIMIT", undefined, { max: MAX_PERSONAL_THEMES });
+  const def = definition(body.kind, body);
+  const created = await resolveSoon(await insertPersonal(me.id, { name: body.name, kind: body.kind, ...def }));
+  await logAudit({ actor: me.name, action: "themes.mine.create", targetType: "user_theme", targetId: String(created.id), details: { name: created.name, kind: created.kind } });
+  return mineOut(created);
+}));
+
+router.put("/themes/mine/:id", route({ params: z.object({ id: idParam }), body: MineUpdate }, async ({ req, params, body }) => {
+  const me = member(req);
+  const current = await personalById(me.id, params.id);
+  if (!current) throw notFound("THEME_NOT_FOUND");
+  if (body.active === true && !current.active && (await countPersonal(me.id)) >= MAX_PERSONAL_THEMES) {
+    throw new AppError("THEME_LIMIT", undefined, { max: MAX_PERSONAL_THEMES });
+  }
+  const kind = body.kind ?? current.kind;
+  const definitionChanged = body.kind !== undefined || body.tickers !== undefined || body.screener !== undefined || body.order !== undefined;
+  const def = definitionChanged
+    ? definition(kind, {
+      tickers: body.tickers ?? (kind === current.kind ? current.tickers : undefined),
+      screener: body.screener ?? (kind === current.kind && current.screener ? current.screener.filters.join(",") : undefined),
+      order: body.order !== undefined ? body.order : current.screener?.order ?? null,
+    })
+    : {};
+  const updated = await updatePersonal(me.id, params.id, { name: body.name, kind, ...def, active: body.active }, current);
+  if (!updated) throw notFound("THEME_NOT_FOUND");
+  const out = updated.active ? await resolveSoon(updated) : updated;
+  const action = body.active === false && current.active ? "themes.mine.archive" : "themes.mine.update";
+  await logAudit({ actor: me.name, action, targetType: "user_theme", targetId: String(out.id), details: { name: out.name, kind: out.kind } });
+  return mineOut(out);
+}));
+
+// ─── shared themes (admin) ────────────────────────────────────────────────────
+
+router.get("/themes/config", route({ cap: ADMIN }, async () => ({ themes: await listThemes(true) })));
+
+router.post("/themes", route({ cap: ADMIN, body: CreateBody }, async ({ body, actor }) => {
   const created = await insertTheme({ name: body.name!, tickers: body.tickers!, sortOrder: body.sortOrder, active: body.active }, actor.name);
   await logAudit({ actor: actor.name, action: "themes.create", targetType: "market_theme", targetId: String(created.id), details: { after: created } });
   return created;
 }));
 
-router.put("/themes/:id", route({ cap: STAFF, params: z.object({ id: idParam }), body: UpdateBody }, async ({ params, body, actor }) => {
+router.put("/themes/:id", route({ cap: ADMIN, params: z.object({ id: idParam }), body: UpdateBody }, async ({ params, body, actor }) => {
   if (Object.values(body).every((v) => v === undefined)) throw new AppError("NO_FIELDS");
   const before = await themeById(params.id);
   if (!before) throw notFound("THEME_NOT_FOUND");

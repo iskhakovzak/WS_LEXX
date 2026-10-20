@@ -7,7 +7,8 @@
  *             then answers with what it has (the refresh finishes in the background); without any it waits.
  *   failure   the last good numbers stay; no new attempt for FAIL_BACKOFF_MS; `stale: true` once they are older
  *             than 2 × TTL or a refresh after them failed.
- * Per process: two instances may each refresh (the providers' own throttles hold).
+ * Per process: two instances may each refresh (the providers' own throttles hold). Personal themes are added per viewer
+ * in board.ts on top of this shared board.
  */
 import { nyDate } from "../tradingDate";
 import { isMarketClosed } from "../marketDays";
@@ -15,6 +16,7 @@ import { logger } from "../logger";
 import { buildResponse, themeSession, themeTickers, ttlMs, type MemberQuote, type ThemeRow, type ThemeSession, type ThemeSource, type ThemesResponse } from "./logic";
 import { fetchThemeQuotes, type QuotesResult } from "./quotes";
 import { listThemes } from "./store";
+import { seedQuotes } from "./tickerCache";
 
 export const SOFT_WAIT_MS = 4_000;
 export const FAIL_BACKOFF_MS = 30_000;
@@ -60,6 +62,7 @@ function refresh(tickers: string[], session: ThemeSession, today: string): Promi
     try {
       const res = await deps.fetchQuotes(tickers, session, today);
       cache = { quotes: res.quotes, asOf: deps.now(), source: res.source, session, tickers: new Set(tickers) };
+      seedQuotes(res.quotes, session, cache.asOf); // personal themes reuse base quotes (lib/themes/tickerCache)
     } catch (err) {
       lastFailAt = deps.now();
       logger.warn({ error: err instanceof Error ? err.message : String(err) }, "themes: quote refresh failed");

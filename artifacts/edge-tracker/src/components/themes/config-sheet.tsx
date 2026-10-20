@@ -1,6 +1,7 @@
 /**
- * Staff «Настроить темы»: one side sheet — the active themes (edit name + tickers inline, archive), «Новая тема», and
- * the archive folded below (restore). Nothing is deleted. Forms are prefilled with the current values.
+ * Admin «Настроить темы» (shared themes are desk settings, settings.manage): one side sheet — the active themes (edit
+ * name + tickers inline, archive), «Новая тема», and the archive folded below (restore). Nothing is deleted. Forms
+ * are prefilled with the current values.
  */
 import { useState } from "react";
 import { Archive, Loader2, Pencil, Plus, RotateCcw } from "lucide-react";

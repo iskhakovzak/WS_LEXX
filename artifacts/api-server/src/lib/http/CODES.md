@@ -357,7 +357,8 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `REWARD_GRANT_DECIDED` | 409 | Grant / decline of a grant that is already granted or declined. | — |
 | `REWARD_OUT_OF_STOCK` | 409 | Grant of an item whose stock is 0. | — |
 | `REWARD_NOT_YOUR_TRADER` | 403 | Grant / decline by a curator who is not the trader's assigned curator (admins may). | — |
-| `THEME_NOT_FOUND` | 404 | PUT /api/themes/:id: no such market theme (themes are archived, never deleted). | — |
+| `THEME_NOT_FOUND` | 404 | PUT /api/themes/:id or /api/themes/mine/:id (another user's or no such theme) (themes are archived, never deleted). | — |
+| `THEME_LIMIT` | 409 | POST /api/themes/mine (or a restore) over the 10 active personal themes per user. | `params.max` |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.
 

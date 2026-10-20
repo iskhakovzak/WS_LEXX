@@ -347,4 +347,5 @@ export default {
   REWARD_OUT_OF_STOCK: "This reward is out of stock — raise the stock in the catalog",
   REWARD_NOT_YOUR_TRADER: "Rewards are handed over by this trader’s curator or an admin",
   THEME_NOT_FOUND: "Theme not found",
+  THEME_LIMIT: "At most {max} own themes — remove one to add another",
 } satisfies Messages<typeof ru>;

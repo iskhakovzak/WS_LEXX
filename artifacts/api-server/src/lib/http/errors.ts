@@ -367,6 +367,7 @@ export const ERROR_CODES = {
   REWARD_OUT_OF_STOCK: 409,
   REWARD_NOT_YOUR_TRADER: 403,
   THEME_NOT_FOUND: 404,
+  THEME_LIMIT: 409,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

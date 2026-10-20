@@ -8,7 +8,7 @@ import { Pill, StatusDot, toneOf, tonePill } from "@/components/ds";
 import { fmtPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { themesI18n } from "@/i18n/ns/themes";
-import { ageSeconds, isLiveSession, leadersLaggards, type ThemeMetric, type ThemeOut, type ThemesResponse } from "./model";
+import { ageSeconds, isLiveSession, leadersLaggards, type BoardTheme, type ThemeMetric, type ThemesResponse } from "./model";
 
 const SOURCE_NAME = { finviz: "Finviz", yahoo: "Yahoo Finance" } as const;
 
@@ -42,13 +42,13 @@ export function ThemesMeta({ data, refreshFailed }: { data: ThemesResponse; refr
   );
 }
 
-function Chip({ theme, col, onOpen }: { theme: ThemeOut; col: ThemeMetric; onOpen: (id: number) => void }) {
+function Chip({ theme, col, onOpen }: { theme: BoardTheme; col: ThemeMetric; onOpen: (key: string) => void }) {
   const { t } = themesI18n.useT();
   const v = theme[col];
   return (
     <button
       type="button"
-      onClick={() => onOpen(theme.id)}
+      onClick={() => onOpen(theme.key)}
       aria-label={t("openTheme", { name: theme.name })}
       className={cn("inline-flex h-5.5 max-w-[11rem] items-center gap-1 rounded-full px-2 text-xs font-medium hover:brightness-110", tonePill(toneOf(v)))}
     >
@@ -59,16 +59,16 @@ function Chip({ theme, col, onOpen }: { theme: ThemeOut; col: ThemeMetric; onOpe
 }
 
 /** «Лидеры» A B C · «Аутсайдеры» X Y Z of the active column (nothing when the column has no values). */
-export function LeaderChips({ themes, col, onOpen, className }: { themes: readonly ThemeOut[]; col: ThemeMetric; onOpen: (id: number) => void; className?: string }) {
+export function LeaderChips({ themes, col, onOpen, className }: { themes: readonly BoardTheme[]; col: ThemeMetric; onOpen: (key: string) => void; className?: string }) {
   const { t } = themesI18n.useT();
   const { leaders, laggards } = leadersLaggards(themes, col);
   if (!leaders.length && !laggards.length) return null;
   return (
     <span className={cn("min-w-0 items-center gap-1.5", className)}>
       {leaders.length > 0 && <span className="text-muted-foreground">{t("leaders")}</span>}
-      {leaders.map((th) => <Chip key={th.id} theme={th} col={col} onOpen={onOpen} />)}
+      {leaders.map((th) => <Chip key={th.key} theme={th} col={col} onOpen={onOpen} />)}
       {laggards.length > 0 && <span className="ml-1.5 text-muted-foreground">{t("laggards")}</span>}
-      {laggards.map((th) => <Chip key={th.id} theme={th} col={col} onOpen={onOpen} />)}
+      {laggards.map((th) => <Chip key={th.key} theme={th} col={col} onOpen={onOpen} />)}
     </span>
   );
 }
