@@ -1,6 +1,6 @@
 /**
  * «Тренажёр» eligibility (lib/trainer/eligibility.ts): the close-auction window 15:50:00–16:00:00 NY inclusive (any
- * fill, whole ticker-day out), the 25-minute minimum hold, missing times = not eligible, New York time with DST.
+ * fill → only that trade out), the 25-minute minimum hold, missing times = not eligible, New York time with DST.
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -104,18 +104,18 @@ describe("ticker-day pools", () => {
     expect([...days]).toEqual([tickerDayKey("AAPL", WINTER)]);
   });
 
-  it("a close-auction fill takes the whole ticker-day out, other trades of that day included", () => {
+  it("a close-auction fill takes only that trade out; other trades of the day stay (desk block only when passed)", () => {
     type T = { id: number; ticker: string; day: string; f: string[] };
     const trades: T[] = [
       { id: 1, ticker: "AAPL", day: SUMMER, f: [S("10:00:00"), S("11:00:00")] }, // fine on its own
-      { id: 2, ticker: "AAPL", day: SUMMER, f: [S("15:30:00"), S("15:58:00")] }, // the close auction → AAPL day out
+      { id: 2, ticker: "AAPL", day: SUMMER, f: [S("15:30:00"), S("15:58:00")] }, // the close auction → this trade out
       { id: 3, ticker: "MSFT", day: SUMMER, f: [S("10:00:00"), S("11:00:00")] },
       { id: 4, ticker: "NVDA", day: SUMMER, f: [S("10:00:00"), S("11:00:00")] }, // blocked by the desk (another trader)
       { id: 5, ticker: "AMD", day: SUMMER, f: [S("10:00:00"), S("10:20:00")] }, // short hold, its day stays usable
     ];
     const blocked = new Set([tickerDayKey("NVDA", SUMMER)]);
     const ok = eligibleTrades(trades, (t) => ({ ticker: t.ticker, day: t.day, executions: fills(...t.f) }), blocked);
-    expect(ok.map((t) => t.id)).toEqual([3]);
+    expect(ok.map((t) => t.id)).toEqual([1, 3]);
   });
 
   it("withoutBlockedDays drops only the blocked ticker-days", () => {

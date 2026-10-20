@@ -4,8 +4,8 @@
  * (drillStore.ensureDrills) and the free simulator's intraday pool (lib/sim/pick).
  *
  *   close auction  a trade with ANY execution (entry, add, trim, exit, stop) between 15:50:00 and 16:00:00 New York
- *                  time inclusive is close-auction noise: the trade is out, and so is its whole ticker-day — no other
- *                  trade, drill or challenge is built on that ticker-day (closeAuctionDays).
+ *                  time inclusive is close-auction (imbalance) noise: that trade is out. Only that trade — other
+ *                  trades of the same ticker-day stay usable (owner, 2026-10-21: «не тикер целиком, именно тот момент»).
  *   short hold     a trade held less than 25 minutes, first fill → last fill (24:59 out, 25:00 in).
  *   missing times  conservative: a trade whose open / close time is unknown, or with any fill without a time, is out.
  *
@@ -91,23 +91,18 @@ export function withoutBlockedDays<T>(items: readonly T[], keyOf: (x: T) => { ti
 }
 
 /**
- * Trade pools: keep a trade only when it is eligible itself AND its ticker-day is not blocked (by its own fills or by
- * any other trade's close-auction fill in `blocked`).
+ * Trade pools: keep a trade only when it is eligible itself. `blocked` ticker-days are still honoured when a caller
+ * passes some (empty by default — the desk-wide ticker-day block is off since the owner's rule is per trade).
  */
 export function eligibleTrades<T>(
   items: readonly T[],
   view: (x: T) => { ticker: string; day: string; trade?: EligibilityTrade | null; executions?: readonly EligibilityExec[] | null },
   blocked: ReadonlySet<string> = new Set(),
 ): T[] {
-  const own = new Set<string>();
   const views = items.map((x) => view(x));
-  views.forEach((v) => {
-    for (const k of closeAuctionDays((v.executions ?? []).map((e) => ({ ticker: v.ticker, at: e.at })))) own.add(k);
-  });
   return items.filter((_, i) => {
     const v = views[i];
-    const k = tickerDayKey(v.ticker, v.day);
-    if (blocked.has(k) || own.has(k)) return false;
+    if (blocked.size && blocked.has(tickerDayKey(v.ticker, v.day))) return false;
     return isTrainerEligible(v.trade ?? null, v.executions ?? null).ok;
   });
 }

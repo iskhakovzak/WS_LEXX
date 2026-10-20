@@ -25,8 +25,12 @@ async function load(): Promise<Set<string>> {
   return closeAuctionDays(rows.map((r) => ({ ticker: String(r.ticker), at: r.at })));
 }
 
-/** "TICKER:YYYY-MM-DD" keys no trainer pool may use (any desk trade filled in the closing auction that day). */
+/** Owner rule (2026-10-21): the close-auction trade itself is out, NOT its ticker-day. Flip to re-enable the desk-wide block. */
+export const BLOCK_TICKER_DAYS = false;
+
+/** "TICKER:YYYY-MM-DD" keys no trainer pool may use — empty while BLOCK_TICKER_DAYS is off. */
 export async function blockedTickerDays(): Promise<Set<string>> {
+  if (!BLOCK_TICKER_DAYS) return new Set();
   if (memo && Date.now() - memo.at < BLOCKED_TTL_MS) return memo.days;
   if (!inflight) {
     inflight = load()
