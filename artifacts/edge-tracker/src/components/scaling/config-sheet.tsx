@@ -176,7 +176,7 @@ function RulesEditor({ initial, config, onSaved }: { initial: Rule[]; config: Co
               <SelectContent>{config.meta.units.map((u) => <SelectItem key={u.key} value={u.key}>{u.label}</SelectItem>)}</SelectContent>
             </Select>
           ) : (
-            <span className="text-xs text-muted-foreground">{m?.unit === "pct" ? "%" : m?.unit === "r" ? "R" : m?.unit === "x" ? "×" : m?.unit === "score" ? "/10" : ""}</span>
+            <span className="text-xs text-muted-foreground">{m?.unit === "pct" ? "%" : m?.unit === "r" ? "R" : m?.unit === "x" ? "×" : m?.unit === "score" ? "/10" : m?.unit === "index" ? "/100" : ""}</span>
           )}
           <Button variant="ghost" size="icon" className="ml-auto h-8 w-8 text-down" aria-label={t("config.removeRule")} title={t("config.removeRule")} onClick={() => remove(i)}><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
         </div>

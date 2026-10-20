@@ -6,7 +6,7 @@
  *   POST /whatif/run   {trader, from, to, rules[]} scenario vs baseline (read-only computation, nothing stored)
  *   GET  /whatif/suggestions?trader=&from=&to=   best single rules by net improvement beyond bootstrap noise
  *   GET  /whatif/fees?trader=&from=&to=          fee breakdown by price/size/hold/hour/ticker, break-even, advice
- *   GET  /whatif/scenarios?trader=               saved rule sets (table whatif_scenarios, ensured lazily)
+ *   GET  /whatif/scenarios?trader=               saved rule sets (table whatif_scenarios)
  *   POST /whatif/scenarios {trader?, name, rules[]}
  *   DELETE /whatif/scenarios/:id                 soft delete (archived_at)
  *
@@ -25,7 +25,6 @@ import { TtlCache } from "../lib/hotCache";
 import { num, normResult, signedR } from "../lib/tradeMath";
 import { nyMinutes } from "../lib/tradingDate";
 import { execSpanJoin } from "../lib/execSpan";
-import { logger } from "../lib/logger";
 import {
   type SimTrade, type Rule, type Side, type Horizon,
   computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, presets, RULE_TYPES, GRADES,
@@ -400,29 +399,6 @@ router.get("/whatif/fees", asyncHandler(async (req, res) => {
 
 /* ─── Saved scenarios ────────────────────────────────────────────────────── */
 
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS whatif_scenarios (
-           id SERIAL PRIMARY KEY,
-           trader TEXT NOT NULL,
-           name TEXT NOT NULL,
-           rules JSONB NOT NULL DEFAULT '[]'::jsonb,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS whatif_scenarios_trader_idx ON whatif_scenarios(trader);`,
-      )
-      .then(() => undefined)
-      .catch((err) => { ensured = null; throw err; });
-  }
-  return ensured;
-}
-
 type ScenarioRow = { id: number; trader: string; name: string; rules: Rule[]; created_by: string | null; created_at: string; updated_at: string };
 
 function scenarioJson(r: ScenarioRow, lang: Lang = "ru") {
@@ -435,7 +411,6 @@ router.get("/whatif/scenarios", asyncHandler(async (req, res) => {
   const scope = await resolveScope(req, parsed.data.trader);
   if (scope === undefined) throw unauthorized();
   if (isGuest(req)) { res.json([]); return; }
-  try { await ensureTables(); } catch (err) { logger.warn({ err }, "whatif: ensure tables failed"); res.json([]); return; }
   const params: unknown[] = [];
   let where = `archived_at IS NULL`;
   if (scope != null) { params.push(scope); where += ` AND trader = $1`; }
@@ -451,7 +426,6 @@ router.post("/whatif/scenarios", asyncHandler(async (req, res) => {
   if (scope === undefined) throw unauthorized();
   // Staff without an explicit trader save under their own name.
   const trader = scope ?? req.authUser.name;
-  await ensureTables();
   const { rows } = await pool.query<ScenarioRow>(
     `INSERT INTO whatif_scenarios (trader, name, rules, created_by) VALUES ($1, $2, $3::jsonb, $4)
      RETURNING id, trader, name, rules, created_by, created_at, updated_at`,
@@ -464,7 +438,6 @@ router.delete("/whatif/scenarios/:id", asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   if (!req.authUser || isGuest(req)) throw new AppError("MEMBERS_ONLY");
-  await ensureTables();
   const { rows } = await pool.query<{ trader: string }>(`SELECT trader FROM whatif_scenarios WHERE id = $1 AND archived_at IS NULL`, [id]);
   if (!rows[0]) throw new AppError("SCENARIO_NOT_FOUND");
   const scope = await resolveScope(req, rows[0].trader);

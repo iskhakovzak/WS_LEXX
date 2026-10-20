@@ -9,6 +9,7 @@
  */
 import { Router, type IRouter, type Request, } from "express";
 import { mountLatinNameRoutes } from "./adminConsoleLatin";
+import { mountLoopYesterdayRoutes } from "./admin-loop";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -17,7 +18,6 @@ import { bumpTokenVersion, hashPassword } from "../lib/auth";
 import { can, requireCap, resolveActor } from "../lib/permissions";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { getSettings, setSetting, schedulerStatus, statusConfig } from "../lib/propreports";
-import { ensureNameLatin } from "../lib/peopleDirectory";
 import { jobsStatus, listJobs, runJobNow } from "../jobs/registry";
 import { AppError, errorMessage, notFound, unauthorized, type ErrorCode } from "../lib/http";
 import { adminT } from "../i18n/ns";
@@ -162,7 +162,6 @@ router.get("/admin/console/review-load", asyncHandler(async (req, res): Promise<
 router.get("/admin/console/people", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.read.team"))) return;
   const since30 = addDays(nyDate(), -30);
-  await ensureNameLatin().catch(() => undefined);
   const [users, tiers, accounts, seen, trades, settings, latin] = await Promise.all([
     soft<UserRow>(`${USER_SELECT} ORDER BY u.active DESC, CASE u.role WHEN 'admin' THEN 0 WHEN 'curator' THEN 1 ELSE 2 END, u.name`),
     soft<{ trader: string; tier: string | null }>(`SELECT trader, tier FROM trader_risk_limits`),
@@ -345,6 +344,7 @@ router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): 
 
 // Latin display names (single + bulk): routes/adminConsoleLatin.ts
 mountLatinNameRoutes(router);
+mountLoopYesterdayRoutes(router);
 
 router.post("/admin/console/people/:id/role", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage"))) return;

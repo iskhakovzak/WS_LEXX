@@ -509,4 +509,8 @@ export default {
     noTradesDay: "без сделок",
     noMarks: "Без отметок",
   },
+  /** Staff «Обзор» from server sums (Волна 2 п. 2.5, AggOverviewTab). */
+  deskAgg: {
+    edgeLink: "Разрезы по каждой сделке — во вкладке «Edge»",
+  },
 } as const;

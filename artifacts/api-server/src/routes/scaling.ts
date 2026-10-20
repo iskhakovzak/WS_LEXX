@@ -16,7 +16,7 @@
  *
  * Money metrics use broker rows (source='propreports') when the trader has any, otherwise the journal.
  * All per-trade math comes from lib/tradeMath.ts (shared R / net / close-date definitions).
- * Tables are created idempotently (additive) and seeded with defaults on first run.
+ * Tables: src/db/migrations; default tiers / rules are seeded on first use (lib/scalingStore ensureScalingSeed).
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
@@ -24,12 +24,13 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logAudit } from "../lib/audit";
 import { nyDate } from "../lib/tradingDate";
-import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
+import { closeDateSql, closedSql, netPnlSql, num, resultSql, signedRSql } from "../lib/tradeMath";
 import { loadRiskBasis } from "../lib/scalingRiskBasis";
+import { attachDisciplineDays } from "../lib/disciplineDays";
 import { violationDaySql } from "../lib/violationWindow";
 import { can, requireCap, type Capability } from "../lib/permissions";
 import {
-  OPS, evaluateTrader, metricsMeta, renderStoredReasons, unitsMeta, windowStart,
+  OPS, evaluateTrader, metricsMeta, normalizeDisciplineRule, renderStoredReasons, unitsMeta, windowStart,
   type ReasonItem, type Evaluation, type MetricKey, type Rule, type Tier, type TraderInput,
 } from "../lib/scalingEngine";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
@@ -39,18 +40,13 @@ import { uniqueRecipients } from "../lib/notifyEventsCore";
 import { AppError, errorMessage, badRequest, conflict, notFound, sendError, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { scalingT } from "../i18n/ns";
-import { ensureTables, insertRule, loadLimits, loadRules, loadTiers, upsertTier, type LimitsRow, type Queryable } from "../lib/scalingStore";
+import { ensureScalingSeed, insertRule, loadLimits, loadRules, loadTiers, upsertTier, type LimitsRow, type Queryable } from "../lib/scalingStore";
 
 const router: IRouter = Router();
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-const num = (v: unknown): number | null => {
-  if (v == null || v === "") return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
-};
 
 // Access goes through the permissions matrix (lib/permissions.ts): `staff` = scaling.read.team (desk reads),
 // tiers/rules = scaling.configure, proposals/assign = scaling.approve. Role comes from the DB, not the token.
@@ -69,7 +65,8 @@ function clientDate(raw: unknown): string {
   const s = typeof raw === "string" ? raw.trim() : "";
   return YMD_RE.test(s) ? s : nyDate();
 }
-
+/** Stored rules with legacy 0–10 discipline thresholds read on the 0–100 index (lib/disciplineIndex). */
+const loadRulesNow = async (): Promise<Rule[]> => (await loadRules()).map(normalizeDisciplineRule);
 
 type Proposal = {
   id: number; trader: string; action: string; fromTier: string | null; toTier: string; status: string; source: string;
@@ -101,7 +98,7 @@ function rowToHistory(r: any): HistoryRow {
 // ─── data for the engine ────────────────────────────────────────────────────
 
 /** Loads everything the engine needs for the roster (null trader ⇒ whole desk). */
-async function loadInputs(trader: string | null, today: string, rules: Rule[]): Promise<{ inputs: Map<string, TraderInput>; limits: Map<string, LimitsRow> }> {
+async function loadInputs(trader: string | null, today: string, rules: Rule[], view = false): Promise<{ inputs: Map<string, TraderInput>; limits: Map<string, LimitsRow> }> {
   const maxWindow = Math.max(20, ...rules.map((r) => r.windowDays || 20));
   // one extra week so the week-based metrics can see the full first week of the window
   const from = windowStart(today, maxWindow + 5);
@@ -171,6 +168,7 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
   // Staff accounts (admins, curators) may trade, but the ladder is for traders: no rows, no proposals for them.
   if (!trader) for (const u of usersRes.rows) if (u.role === "admin" || u.role === "curator") inputs.delete(String(u.name));
   for (const [name, x] of await basisP) if (inputs.has(name)) Object.assign(get(name), x); // the risk desk's drawdown basis
+  await attachDisciplineDays(inputs, rules, view, today); // the one discipline score (lib/disciplineIndex): rules or the view
   return { inputs, limits };
 }
 
@@ -184,10 +182,10 @@ async function loadPending(trader: string | null): Promise<Map<string, Proposal>
 
 type EvaluatedTrader = Evaluation & { limits: LimitsRow | null; pendingProposal: Proposal | null; role: string | null };
 
-async function evaluateScope(trader: string | null, today: string, lang: Lang = "ru"): Promise<{ tiers: Tier[]; rules: Rule[]; traders: EvaluatedTrader[] }> {
-  const [tiers, rules] = await Promise.all([loadTiers(), loadRules()]);
+async function evaluateScope(trader: string | null, today: string, lang: Lang = "ru", view = false): Promise<{ tiers: Tier[]; rules: Rule[]; traders: EvaluatedTrader[] }> {
+  const [tiers, rules] = await Promise.all([loadTiers(), loadRulesNow()]);
   const [{ inputs, limits }, pending, usersRes] = await Promise.all([
-    loadInputs(trader, today, rules),
+    loadInputs(trader, today, rules, view),
     loadPending(trader),
     pool.query(`SELECT name, role FROM users WHERE ($1::text IS NULL OR name = $1)`, [trader]),
   ]);
@@ -210,7 +208,7 @@ async function evaluateScope(trader: string | null, today: string, lang: Lang = 
 
 /** One trader's evaluation now (lib/daily tier progress «to Junior: 3 of 5»); null when the trader is unknown. */
 export async function evaluateTraderNow(trader: string, today: string, lang: Lang = "ru"): Promise<Evaluation | null> {
-  await ensureTables();
+  await ensureScalingSeed();
   return (await evaluateScope(trader, today, lang)).traders.find((t) => t.trader === trader) ?? null;
 }
 
@@ -221,8 +219,8 @@ const meta = (lang: Lang) => ({ metrics: metricsMeta(lang), ops: OPS, units: uni
 router.get("/scaling/config", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureTables();
-  const [tiers, rules] = await Promise.all([loadTiers(), loadRules()]);
+  await ensureScalingSeed();
+  const [tiers, rules] = await Promise.all([loadTiers(), loadRulesNow()]);
   res.json({ tiers, rules, meta: meta(langOf(req)), canEdit: v.staff });
 }));
 
@@ -249,7 +247,7 @@ const TierBody = z.object({
 router.put("/scaling/tiers", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res, "scaling.configure");
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const parsed = z.array(TierBody).min(1).max(20).safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const keys = new Set<string>();
@@ -297,7 +295,7 @@ const RuleBody = z.object({
 router.put("/scaling/rules", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res, "scaling.configure");
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const parsed = z.array(RuleBody).max(100).safeParse(req.body);
   if (!parsed.success) throw parsed.error;
   const tierKeys = new Set((await loadTiers()).map((t) => t.key));
@@ -330,7 +328,7 @@ router.put("/scaling/rules", asyncHandler(async (req, res): Promise<void> => {
     client.release();
   }
   await logAudit({ actor: v.name, action: "scaling.rules.update", targetType: "scaling_rules", details: { count: parsed.data.length } });
-  res.json({ rules: await loadRules() });
+  res.json({ rules: await loadRulesNow() });
 }));
 
 // ─── evaluation ─────────────────────────────────────────────────────────────
@@ -338,13 +336,13 @@ router.put("/scaling/rules", asyncHandler(async (req, res): Promise<void> => {
 router.get("/scaling/evaluate", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   if (raw.length > 100) throw badRequest("INVALID_TRADER");
   if (!v.staff && raw && raw !== v.name) throw new AppError("SCALING_OWN_ONLY");
   const trader = v.staff ? (raw || null) : v.name;
   const today = clientDate(req.query.date);
-  const { tiers, rules, traders } = await evaluateScope(trader, today, langOf(req));
+  const { tiers, rules, traders } = await evaluateScope(trader, today, langOf(req), true);
   const summary = {
     traders: traders.length,
     promote: traders.filter((t) => t.recommendation.action === "promote").length,
@@ -362,7 +360,7 @@ router.get("/scaling/evaluate", asyncHandler(async (req, res): Promise<void> => 
 router.get("/scaling/proposals", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const status = typeof req.query.status === "string" && ["pending", "approved", "rejected", "all"].includes(req.query.status) ? req.query.status : "pending";
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   const trader = v.staff ? (raw || null) : v.name;
@@ -455,7 +453,7 @@ const ProposalBody = z.object({
 router.post("/scaling/proposals", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res, "scaling.approve");
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const parsed = ProposalBody.safeParse(req.body ?? {});
   if (!parsed.success) throw parsed.error;
   const b = parsed.data;
@@ -494,7 +492,7 @@ router.post("/scaling/proposals", asyncHandler(async (req, res): Promise<void> =
 router.post("/scaling/proposals/auto", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res, "scaling.approve");
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const today = clientDate(req.body?.date);
   const { tiers, traders } = await evaluateScope(null, today, langOf(req));
   const created: (Proposal & { reasonItems: ReasonItem[] })[] = [];
@@ -552,7 +550,7 @@ async function applyTier(client: Queryable, trader: string, tier: Tier, actor: s
 router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res, "scaling.approve");
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const id = parseId(req.params.id);
   if (!id) throw badRequest("INVALID_ID");
   const parsed = DecisionBody.safeParse(req.body ?? {});
@@ -596,7 +594,7 @@ router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Pro
 router.post("/scaling/proposals/:id/reject", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res, "scaling.approve");
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const id = parseId(req.params.id);
   if (!id) throw badRequest("INVALID_ID");
   const parsed = DecisionBody.safeParse(req.body ?? {});
@@ -627,7 +625,7 @@ const AssignBody = z.object({
 router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res, "scaling.approve");
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const parsed = AssignBody.safeParse(req.body ?? {});
   if (!parsed.success) throw parsed.error;
   const b = parsed.data;
@@ -647,8 +645,7 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
     const fromOrder = tiers.find((t) => t.key === fromTier)?.order;
     const action = fromOrder == null ? "assign" : tier.order > fromOrder ? "promote" : "demote";
     const historyId = await applyTier(client, b.trader, tier, v.name, { action, fromTier, proposalId: null, comment: b.comment ?? null });
-    // a pending proposal for this trader is now stale
-    // Stored decision note, in the curator's language (staff read it on the proposal card).
+    // A pending proposal for this trader is now stale. Stored decision note, in the curator's language (proposal card).
     await client.query(
       `UPDATE scaling_proposals SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = $3 WHERE trader = $1 AND status = 'pending'`,
       [b.trader, v.name, scalingT.tFor(langOf(req))("assignDecision")],
@@ -678,7 +675,7 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
 
 /** Active tiers = limit templates (Стажёр / Джун / Трейдер / Сеньор / Лид). Ensures + seeds the tables. */
 export async function loadTierTemplates(): Promise<Tier[]> {
-  await ensureTables();
+  await ensureScalingSeed();
   return loadTiers();
 }
 
@@ -690,7 +687,7 @@ export async function loadTierTemplates(): Promise<Tier[]> {
 export async function applyTierTemplate(trader: string, tierKey: string, actor: string, comment: string | null, lang: Lang = "ru"): Promise<
   { ok: true; tier: Tier; fromTier: string | null; historyId: number; resync: boolean } | { ok: false; status: number; error: string; code: "TIER_NOT_FOUND" }
 > {
-  await ensureTables();
+  await ensureScalingSeed();
   const tiers = await loadTiers();
   const tier = tiers.find((t) => t.key === tierKey);
   if (!tier) return { ok: false, status: 400, code: "TIER_NOT_FOUND", error: errorMessage("TIER_NOT_FOUND", lang, { tier: tierKey }) };
@@ -724,7 +721,7 @@ export async function applyTierTemplate(trader: string, tierKey: string, actor: 
 router.get("/scaling/history", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureTables();
+  await ensureScalingSeed();
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   if (raw.length > 100) throw badRequest("INVALID_TRADER");
   if (!v.staff && raw && raw !== v.name) throw new AppError("SCALING_OWN_ONLY");

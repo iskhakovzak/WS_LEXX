@@ -18,9 +18,10 @@
  * PF = Σ⁺/|Σ⁻|, null (never ∞) when there are no losses; dates are NY trading dates (YYYY-MM-DD).
  */
 import {
-  addDays, compare, computeWindowMetrics, isWeekend, progressOf, windowStart,
+  addDays, compare, computeWindowMetrics, disciplineIndexOf, isWeekend, progressOf, windowStart,
   type LimitsInput, type Op, type RatingInput, type Tier, type TradeInput, type TraderInput,
 } from "./scalingEngine";
+import { curatorDisciplineGradeOf } from "./disciplineIndex";
 import { academyPathT, criterionLabelFor, ruPath, stageNameFor } from "./academyI18n";
 import { DEFAULT_LANG, formatCountFor, type Lang } from "../i18n";
 import { fmtDateFor } from "../i18n/format";
@@ -287,8 +288,9 @@ export function computePromoMetrics(input: PromotionInput, tier: Tier | null, wi
   const val = (k: keyof typeof w.values): MetricOut => ({ value: w.values[k].value, note: w.values[k].note });
 
   const disc = input.disciplineDays;
-  const discWin = disc ? disc.filter((d) => inWin(d.date)) : null;
-  const discAvg = discWin && discWin.length ? discWin.reduce((s, d) => s + d.score, 0) / discWin.length : null;
+  const discOne = disciplineIndexOf(disc, from, today); // the one discipline score (lib/disciplineIndex)
+  const discAvg = discOne.value;
+  const grade = curatorDisciplineGradeOf(input.ratings, from, today); // curators' weekly 1-10 grade, a separate input
 
   const L = input.learning;
   const since = input.stageSince && YMD.test(input.stageSince) ? input.stageSince : null;
@@ -316,8 +318,11 @@ export function computePromoMetrics(input: PromotionInput, tier: Tier | null, wi
     green_days_pct: val("green_days_pct"),
     discipline_index: disc == null
       ? { value: null, unavailable: true, note: t("notes.behaviorOff") }
-      : { value: discAvg == null ? null : r2(discAvg), note: discAvg == null ? t("notes.noEntryTimes") : t("notes.behaviorDays", { n: discWin!.length }) },
-    rating_discipline: { value: w.values.discipline.value, note: w.values.discipline.note },
+      : { value: discAvg == null ? null : r2(discAvg), note: discAvg == null ? t("notes.noEntryTimes") : t("notes.behaviorDays", { n: discOne.days }) },
+    rating_discipline: {
+      value: grade.value == null ? null : r2(grade.value),
+      note: grade.value == null ? t("notes.noRatings") : t("notes.ratings", { count: grade.weeks }),
+    },
     lessons_pct: L == null
       ? { value: null, unavailable: true, note: t("notes.learningOff") }
       : { value: L.lessonsTotal > 0 ? r2((L.lessonsDone / L.lessonsTotal) * 100) : null, note: L.lessonsTotal > 0 ? t("notes.lessonsOf", { done: L.lessonsDone, total: L.lessonsTotal }) : t("notes.noLessons") },

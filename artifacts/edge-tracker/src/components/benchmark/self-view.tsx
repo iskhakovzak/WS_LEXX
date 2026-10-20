@@ -21,6 +21,8 @@ export function SelfView({ data }: { data: BenchmarkResponse }) {
   }
   const strengths = me.badges.filter((b) => b.kind === "strength");
   const weaknesses = me.badges.filter((b) => b.kind === "weakness");
+  const { badgeMinTrades: minT, badgeMinDays: minD } = data.rules;
+  const smallSample = minT != null && minD != null && me.trades < minT && me.days < minD;
   return (
     <div className="flex flex-col gap-4">
       <StatGrid>
@@ -64,7 +66,7 @@ export function SelfView({ data }: { data: BenchmarkResponse }) {
         </Panel>
         <div className="flex flex-col gap-4">
           <Panel title={t("self.strengths")}>
-            {me.badges.length === 0 ? <p className="text-sm text-muted-foreground">{t("self.noSignals")}</p> : (
+            {me.badges.length === 0 ? <p className="text-sm text-muted-foreground">{smallSample ? t("self.signalsFrom", { trades: minT, days: minD, haveTrades: me.trades, haveDays: me.days }) : t("self.noSignals")}</p> : (
               <div className="flex flex-col gap-2">
                 {[...strengths, ...weaknesses].map((b) => (
                   <div key={b.kind + b.key} className="flex items-start gap-2">

@@ -132,6 +132,9 @@ export const CONSISTENCY_BREACH = 0.4;
 export const MIN_DAYS_RATIO = 5;
 /** k-anonymity for the desk median shown to traders: a metric needs ≥ K traders with a value. */
 export const MEDIAN_MIN_TRADERS = 3;
+/** Badges need a real sample (IMPROVEMENT_PLAN 2.7): ≥ 30 trades OR ≥ 10 trading days — a few days are noise, not a trait. */
+export const BADGE_MIN_TRADES = 30, BADGE_MIN_DAYS = 10;
+export const badgeSampleOk = (m: Pick<TraderMetrics, "trades" | "days">): boolean => m.trades >= BADGE_MIN_TRADES || m.days >= BADGE_MIN_DAYS;
 
 export const r2 = (x: number) => Math.round(x * 100) / 100;
 export const r4 = (x: number) => Math.round(x * 10000) / 10000;
@@ -479,10 +482,11 @@ export function deskMedian(rows: readonly TraderMetrics[], defs: readonly Metric
 export interface Badge { kind: "strength" | "weakness"; key: string; label: string; detail: string }
 
 /**
- * Strengths / weaknesses of one trader: absolute prop-desk rules always; desk-relative ones (top / bottom
- * quartile) only when the desk has ≥ `minPeers` traders and this trader has ≥ `minTrades` trades (no badges off one trade).
+ * Strengths / weaknesses of one trader, none below the sample gate (badgeSampleOk): absolute prop-desk rules; desk-relative
+ * ones (top / bottom quartile) only when the desk has ≥ `minPeers` traders and this trader has ≥ `minTrades` trades.
  */
 export function badgesFor(m: TraderMetrics, pct: PercentileMap | undefined, deskSize: number, minPeers = 3, minTrades = 10, lang: Lang = "ru"): Badge[] {
+  if (!badgeSampleOk(m)) return [];
   const t = benchmarkT.tFor(lang);
   const out: Badge[] = [];
   const pctTxt = (x: number) => `${Math.round(x * 100)}%`;
@@ -531,10 +535,7 @@ function slice(m: TraderMetrics): TrendSlice {
   };
 }
 
-function addDaysYmd(ymd: string, n: number): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
+const addDaysYmd = (ymd: string, n: number): string => { const [y, m, d] = ymd.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 
 /** Monday of the week containing `ymd`. */
 export function mondayOfYmd(ymd: string): string {

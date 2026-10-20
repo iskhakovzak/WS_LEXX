@@ -7,6 +7,7 @@ import { EmptyState, Kbd, Page, PageHeader, SectionTabs, UpdatedAgo } from "@/co
 import { cn } from "@/lib/utils";
 import { isTypingTarget, useAdminOverview, useDeskPulse, useRiskDesk } from "@/components/admin/api";
 import { KpiRow, OverviewPanel, type AdminTab } from "@/components/admin/OverviewPanel";
+import { LoopYesterdayPanel } from "@/components/admin/LoopYesterdayPanel";
 import { type RiskStatus, type TraderFilter } from "@/components/admin/TradersTable";
 import { PeoplePanel, type PeopleFilter, type PeopleView } from "@/components/admin/PeoplePanel";
 import { ModerationQueue } from "@/components/admin/ModerationQueue";
@@ -234,9 +235,11 @@ function AdminConsole() {
       </div>
 
       <div role="tabpanel" aria-label={t("page.panelAria")}>
-        {/* OWNER-22: the KPI strip belongs to «Обзор» only (it repeated above every tab). */}
+        {/* OWNER-22: the KPI strip belongs to «Обзор» only (it repeated above every tab). Волна 2 п. 2.4: «Петля вчера»
+            is the focal point on top (pilot verdict for admins); the KPI strip and the overview are secondary below. */}
         {tab === "overview" && (
           <div className="flex flex-col gap-[var(--grid-gap)]">
+            <LoopYesterdayPanel showPilot={showUsage} onOpenUsage={showUsage ? () => setTab("usage") : undefined} onOpenPeople={() => setTab("people")} />
             <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue.data} loading={pulse.isLoading} onGo={go} />
             <OverviewPanel
               pulse={pulse.data}

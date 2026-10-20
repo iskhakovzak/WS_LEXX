@@ -503,4 +503,7 @@ export default {
     noTradesDay: "no trades",
     noMarks: "No marks",
   },
+  deskAgg: {
+    edgeLink: "Cuts by every trade are on the «Edge» tab",
+  },
 } satisfies Messages<typeof ru>;

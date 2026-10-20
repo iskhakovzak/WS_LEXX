@@ -27,9 +27,11 @@ const LIMIT = 8;
 
 /** Compact "where do I make / lose" scorecard table. Deep breakdowns live in /analytics. */
 export function BreakdownPanel({
-  trades, metric, dimension, onDimension, onPickTrader, hideTrader = false,
+  trades, groupsFor, metric, dimension, onDimension, onPickTrader, hideTrader = false,
 }: {
-  trades: Trade[];
+  trades?: Trade[];
+  /** Precomputed rows per cut (staff view, GET /api/stats/aggregate) instead of the trades. */
+  groupsFor?: (dim: Dimension, metric: Metric) => GroupStat[];
   metric: Metric;
   dimension: Dimension;
   onDimension: (d: Dimension) => void;
@@ -44,7 +46,7 @@ export function BreakdownPanel({
   const dim = dims.find((d) => d.value === dimension) ?? dims[0];
 
   const rows = useMemo(() => {
-    const g = groupBy(trades, dim.key, metric);
+    const g = groupsFor ? groupsFor(dim.value, metric) : groupBy(trades ?? [], dim.key, metric);
     if (sort.key === "key") {
       const byKey = dim.value === "trader" ? comparePersonNames : (a: string, b: string) => a.localeCompare(b, localeTag(), { numeric: true });
       return g.sort((a, b) => byKey(a.key, b.key) * sort.dir);
@@ -58,7 +60,7 @@ export function BreakdownPanel({
       if (vb == null) return -1;
       return (va - vb) * sort.dir || b.count - a.count;
     });
-  }, [trades, dim, metric, sort]);
+  }, [trades, groupsFor, dim, metric, sort]);
 
   const maxAbs = Math.max(0, ...rows.map((r) => Math.abs(r.value ?? 0)));
   const visible = showAll ? rows : rows.slice(0, LIMIT);

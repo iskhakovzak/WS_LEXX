@@ -21,6 +21,12 @@ export default {
     signInTitle: "Sign in to see the plan",
     signInHint: "The scaling plan is available to traders and curators.",
   },
+  pathPointer: {
+    desc: "Your progress lives on one page",
+    title: "Your progress is on “Trader path”",
+    hint: "It has the one readiness score for the next stage: what is done and what is still missing. Your curator sets limits and tiers.",
+    cta: "Open “Trader path”",
+  },
   action: {
     promote: "Promotion",
     demote: "Demotion",
@@ -182,7 +188,7 @@ export default {
     colProgress: "To next tier",
     colProgressFull: "Progress to the next tier",
     colDiscipline: "Disc.",
-    colDisciplineFull: "Discipline",
+    colDisciplineFull: "Discipline index (0–100)",
     colBreaches: "Breaches",
     colBreachesFull: "Limit breaches",
     colActions: "Actions",

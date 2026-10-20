@@ -3,6 +3,9 @@ import { Link } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import { useGetTopPatterns } from "@workspace/api-client-react";
 import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
+import { field, useStatsAggregate } from "@/components/stats/aggregate";
+import { type Dimension as StatsDimension } from "@/components/stats/breakdown-panel";
+import { AggOverview } from "@/components/stats/agg-overview";
 import { comparePersonNames, personName } from "@/i18n";
 import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -28,6 +31,8 @@ import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 
 type TabKey = "overview" | "edge" | "matrix" | "whatif" | "montecarlo" | "desk" | "psychology" | "pro";
+/** Tabs that compute from every trade: staff load the raw trades only when one of them is open (Волна 2 п. 2.5). */
+const RAW_TABS: readonly TabKey[] = ["edge", "whatif", "montecarlo", "psychology", "pro"];
 
 // Hotkeys follow the VISIBLE order (1…N): a trader without the staff-only tab gets 1–7, not 1–8 with a gap (MAKSIM-32).
 const TAB_DEFS: { value: TabKey; icon: typeof LayoutDashboard; curatorOnly?: boolean }[] = [
@@ -93,16 +98,36 @@ export default function Analytics() {
 
   // Server-side window (DEV-01): the period first, the equally long previous one after it (comparison only), one
   // trader when picked. "Всё время" (on demand) still loads the whole scoped book.
+  // Staff (Волна 2 п. 2.5): «Обзор», «Матрица», «Деск» run on server sums — the raw trades of the desk load only
+  // when a per-trade tab is open; a trader keeps the own raw trades.
+  const staffView = user?.role === "curator" || user?.role === "admin";
+  const needRaw = !staffView || RAW_TABS.includes(tab);
   const periodWin = useMemo(() => periodRange(filters.period), [filters.period]);
-  const { data: trades = [], isLoading, isError, refetch, prevLoading } = usePeriodTrades({
+  const rawQ = usePeriodTrades({
     from: periodWin?.from ?? null,
     prevFrom: periodWin?.prevFrom ?? null,
     prevTo: periodWin?.prevTo ?? null,
     trader: filters.trader || null,
-  });
+  }, needRaw);
+  const aggBase = {
+    scope: "desk" as const, trader: filters.trader || null, side: filters.side || null, horizon: filters.horizon || null,
+    ticker: filters.ticker || null, setup: filters.setup || null, account: filters.account || null, source: filters.source || null,
+  };
+  const aggQ = useStatsAggregate({ ...aggBase, from: periodWin?.from ?? null, to: periodWin?.to ?? null }, staffView);
+  const aggPrevQ = useStatsAggregate(
+    { ...aggBase, from: periodWin?.prevFrom ?? null, to: periodWin?.prevTo ?? null, lite: true },
+    staffView && !!periodWin && tab === "overview" && aggQ.isSuccess,
+  );
+  const agg = staffView ? aggQ.data : undefined;
+  const trades = useMemo(() => rawQ.data ?? [], [rawQ.data]);
+  const isLoading = (needRaw && rawQ.isLoading) || (staffView && aggQ.isLoading);
+  const isError = (needRaw && rawQ.isError) || (staffView && aggQ.isError);
+  const refetch = useCallback(() => (staffView ? aggQ.refetch() : rawQ.refetch()), [staffView, aggQ, rawQ]);
+  const prevLoading = rawQ.prevLoading;
   const facets = useTradesBookFacets();
   // The book itself is empty (not just the chosen window) — only then show the "no trades yet" state.
-  const bookEmpty = facets.data ? facets.data.total === 0 : trades.length === 0 && filters.period === "all" && !filters.trader;
+  const bookEmpty = facets.data ? facets.data.total === 0 : !staffView && trades.length === 0 && filters.period === "all" && !filters.trader;
+  const [statsDim, setStatsDim] = useState<StatsDimension>("trader");
   const [unitPref, setUnitPref] = useState<Unit>(saved.unit);
   const [dimension, setDimension] = useState<DimensionKey>(saved.dimension);
 
@@ -157,6 +182,12 @@ export default function Analytics() {
   const options: FilterOptions = useMemo(() => {
     const traders = [...new Set([...(facets.data?.traders ?? []), ...trades.map((tr) => tr.trader ?? "")].filter((x) => !!x))]
       .sort(comparePersonNames);
+    const o = agg?.options;
+    if (o) {
+      return {
+        traders, setups: o.setups, hasNoSetup: o.hasNoSetup, tickers: o.tickers, accounts: o.accounts, hasMixedSources: o.sources.length > 1,
+      };
+    }
     const scope = applyNonPeriodFilters(trades, { ...DEFAULT_FILTERS, trader: filters.trader });
     const setups = [...new Set(scope.map((tr) => tr.setup?.trim()).filter((x): x is string => !!x))].sort();
     const counts = new Map<string, number>();
@@ -165,14 +196,16 @@ export default function Analytics() {
     const accounts = [...new Set(scope.map(accountOf).filter(Boolean))].sort();
     const sources = new Set(scope.map(sourceOf));
     return { traders, setups, hasNoSetup: scope.some((tr) => !tr.setup), tickers, accounts, hasMixedSources: sources.size > 1 };
-  }, [trades, filters.trader, facets.data]);
+  }, [trades, filters.trader, facets.data, agg]);
 
   const filtered = useMemo(() => applyAnalyticsFilters(trades, filters), [trades, filters]);
   const current = filtered.current;
   // The comparison window loads after the current one: no deltas until it is there (never a half-loaded «previous»).
   const previous = prevLoading ? null : filtered.previous;
-  const hasR = useMemo(() => current.some((tr) => realizedR(tr) != null), [current]);
-  const hasPnl = useMemo(() => current.some((tr) => pnlValue(tr) != null), [current]);
+  const hasR = useMemo(() => (agg ? field(agg.total, "rN") > 0 : current.some((tr) => realizedR(tr) != null)), [agg, current]);
+  const hasPnl = useMemo(() => (agg ? field(agg.total, "pnlN") > 0 : current.some((tr) => pnlValue(tr) != null)), [agg, current]);
+  /** Trades of the window after the filters (staff: the server total). */
+  const count = agg && !needRaw ? field(agg.total, "n") : current.length;
   const unit: Unit | null = unitPref === "usd" && hasPnl ? "usd" : hasR ? "r" : hasPnl ? "usd" : null;
 
   const openDimension = useCallback((d: DimensionKey) => { setDimension(d); setTab("edge"); }, []);
@@ -180,13 +213,13 @@ export default function Analytics() {
   const psychUser = isCurator ? (filters.trader || user?.traderName || "") : (user?.traderName ?? "");
 
   const summary = useMemo(() => {
-    const parts = [commonI18n.t("units.trades", { count: current.length })];
+    const parts = [commonI18n.t("units.trades", { count })];
     parts.push(personName(filters.trader) || (isCurator ? t("summary.team") : t("summary.mine")));
     parts.push(t(`period.${filters.period}`).toLowerCase());
     if (filters.horizon) parts.push(horizonLabel(filters.horizon).toLowerCase());
     if (!hasPnl && hasR) parts.push(t("summary.rOnly"));
     return parts.filter(Boolean).join(" · ");
-  }, [current.length, filters, hasPnl, hasR, isCurator, t]);
+  }, [count, filters, hasPnl, hasR, isCurator, t]);
   const lastKey = visibleTabs[visibleTabs.length - 1]?.key;
   const [hotBefore, hotAfter] = t("hotkeys", { range: "\u0000" }).split("\u0000");
 
@@ -260,7 +293,7 @@ export default function Analytics() {
         >
           {tab === "psychology" ? (
             <PsychologyTab userId={psychUser} isOwn={psychUser === user?.traderName} filters={filters} trades={current} />
-          ) : current.length === 0 ? (
+          ) : count === 0 ? (
             <Panel>
               <EmptyState
                 icon={SearchX}
@@ -269,6 +302,14 @@ export default function Analytics() {
                 action={activeFilterCount(filters) > 0 ? <Button variant="outline" onClick={() => setFilters(DEFAULT_FILTERS)}>{commonI18n.t("actions.resetFilters")}</Button> : undefined}
               />
             </Panel>
+          ) : tab === "overview" && agg ? (
+            <AggOverview
+              agg={agg} previous={aggPrevQ.data ?? null} unit={unit} horizon={filters.horizon}
+              dimension={statsDim} onDimension={setStatsDim}
+              onHorizon={(h) => setFilters((f) => ({ ...f, horizon: h }))}
+              onPickTrader={!filters.trader ? (name) => setFilters((f) => ({ ...f, trader: name })) : undefined}
+              onOpenEdge={() => openDimension("setup")}
+            />
           ) : tab === "overview" ? (
             <OverviewTab trades={current} previous={previous} unit={unit} onOpenDimension={openDimension} />
           ) : tab === "matrix" ? (

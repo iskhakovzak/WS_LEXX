@@ -27,6 +27,9 @@ export default {
     aria: "Settings groups",
     pilot: "Pilot · {count} items",
     pilotAria: "What to check before the pilot",
+    pilotShown: "Pilot settings: {count} of {total}",
+    showAll: "Show all ({count})",
+    onlyPilot: "Pilot only ({count})",
   },
   field: {
     range: "{min} to {max}",
@@ -185,6 +188,7 @@ export default {
     nav: {
       simpleForTrainees: { label: "Simple menu for newcomers", help: "Traders up to the chosen tier see the 7 main sections; the rest sits in a collapsed «More» group. Curators and admins always get the full menu." },
       simpleUntilTier: { label: "Who gets the simple menu", help: "Up to which tier, inclusive (the tier as the playbook locks see it).", options: { junior: "Juniors (newcomers)" } },
+      authorNotes: { label: "«Author’s summary» section", help: "The author’s end-of-day notes for the team. Off — the section is not in the menu, the page and its API are closed; written summaries are kept." },
     },
     usage: {
       enabled: { label: "Usage tracking on", help: "The site records opened screens and daily-loop steps (no amounts, tickers or text). Off — nothing is recorded." },

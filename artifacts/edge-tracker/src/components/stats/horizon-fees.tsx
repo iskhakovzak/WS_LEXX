@@ -4,7 +4,7 @@ import { Panel, Pill, StatRow, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import {
   horizonLabel, feesOf, fmtValue, groupBy, horizonOf, valueOf, isClosed,
-  type FeeStats, type Horizon, type HorizonFilter, type Metric,
+  type FeeStats, type GroupStat, type Horizon, type HorizonFilter, type Metric,
 } from "./metrics";
 import { fmtRate } from "@/lib/format";
 import { statsI18n } from "@/i18n/ns/stats";
@@ -17,17 +17,20 @@ const toneCls = (v: number | null) => (v == null ? "text-muted-foreground" : v >
  * the active filter row is highlighted and rows act as a quick filter.
  */
 export function HorizonPanel({
-  trades, metric, active, onPick,
+  trades, groupsFor, metric, active, onPick,
 }: {
-  trades: Trade[];
+  trades?: Trade[];
+  /** Precomputed horizon rows (staff view, GET /api/stats/aggregate `horizonAll`) instead of the trades. */
+  groupsFor?: (metric: Metric) => GroupStat[];
   metric: Metric;
   active: HorizonFilter;
   onPick: (h: HorizonFilter) => void;
 }) {
   const { t } = statsI18n.useT();
-  const groups = groupBy(trades, (tr) => horizonOf(tr), metric);
-  const net = groupBy(trades, (tr) => horizonOf(tr), "net");
-  const total = trades.length || 1;
+  const of = (m: Metric) => (groupsFor ? groupsFor(m) : groupBy(trades ?? [], (tr) => horizonOf(tr), m));
+  const groups = of(metric);
+  const net = of("net");
+  const total = (groupsFor ? groups.reduce((s, g) => s + g.count, 0) : trades?.length ?? 0) || 1;
   const rows = ORDER.map((h) => ({
     h,
     g: groups.find((x) => x.key === h),
@@ -91,16 +94,20 @@ export function HorizonPanel({
 }
 
 /** Gross vs net P&L: how much of the result the commissions eat. */
-export function FeesPanel({ fees, prev, trades }: { fees: FeeStats; prev: FeeStats | null; trades: Trade[] }) {
+export function FeesPanel({ fees, prev, trades, counts }: {
+  fees: FeeStats; prev: FeeStats | null; trades?: Trade[];
+  /** Precomputed counts (staff view, GET /api/stats/aggregate) instead of the trades. */
+  counts?: { closed: number; noFee: number };
+}) {
   const { t } = statsI18n.useT();
-  const closed = trades.filter(isClosed).length;
+  const closed = counts ? counts.closed : (trades ?? []).filter(isClosed).length;
   const share = fees.gross != null && fees.gross > 0 ? fees.fees / fees.gross : null;
   const avgFee = fees.withFees ? fees.fees / fees.withFees : null;
   const netDelta = prev && prev.net != null && fees.net != null ? fees.net - prev.net : null;
   const missingPnl = closed - fees.withPnl;
   const bar = fees.gross != null && fees.gross > 0 ? Math.min(100, (fees.fees / fees.gross) * 100) : 0;
   // Trades with P&L but no fees recorded — the net figure would be optimistic.
-  const noFee = trades.filter((tr) => isClosed(tr) && valueOf(tr, "usd") != null && !(feesOf(tr) > 0)).length;
+  const noFee = counts ? counts.noFee : (trades ?? []).filter((tr) => isClosed(tr) && valueOf(tr, "usd") != null && !(feesOf(tr) > 0)).length;
 
   return (
     <Panel

@@ -13,7 +13,7 @@ import { statsI18n } from "@/i18n/ns/stats";
 
 const sd = (n: number) => commonI18n.t("units.tradesShort", { count: n });
 
-type Cell = { n: number; closed: number; wins: number; losses: number; v: number | null };
+export type Cell = { n: number; closed: number; wins: number; losses: number; v: number | null };
 const empty = (): Cell => ({ n: 0, closed: 0, wins: 0, losses: 0, v: null });
 const add = (c: Cell, t: Trade, metric: Metric) => {
   c.n++;
@@ -31,28 +31,48 @@ const add = (c: Cell, t: Trade, metric: Metric) => {
  * places each trade; trades without a time go to the «без времени» column. Colour = sum of the metric; text also
  * shows WR and count.
  */
-export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metric }) {
+/** Cells of the grid keyed "weekday|hour" from the trades (the server sends the same cells in the staff view). */
+export function heatCellsOf(trades: Trade[], metric: Metric): Map<string, Cell> {
+  const grid = new Map<string, Cell>();
+  for (const t of trades) {
+    const k = dayKey(t);
+    if (!k) continue;
+    const id = `${weekdayIdx(k)}|${hourKey(t)}`;
+    if (!grid.has(id)) grid.set(id, empty());
+    add(grid.get(id)!, t, metric);
+  }
+  return grid;
+}
+
+const merge = (into: Cell, c: Cell) => {
+  into.n += c.n; into.closed += c.closed; into.wins += c.wins; into.losses += c.losses;
+  if (c.v != null) into.v = (into.v ?? 0) + c.v;
+};
+
+export function TimeHeatmap({ trades, cells, metric }: {
+  trades?: Trade[];
+  /** Precomputed cells (staff view, GET /api/stats/aggregate) instead of the trades. */
+  cells?: Map<string, Cell>;
+  metric: Metric;
+}) {
   const { t } = statsI18n.useT();
-  const { cols, rows, colTotals, max, noTime } = useMemo(() => {
-    const present = new Set(trades.map(hourKey));
+  const { cols, rows, colTotals, max, noTime, total } = useMemo(() => {
+    const grid = cells ?? heatCellsOf(trades ?? [], metric);
+    const present = new Set([...grid.keys()].map((id) => id.split("|")[1]!));
     const used = HOUR_ORDER.filter((k) => (REGULAR_COLS as readonly string[]).includes(k) || present.has(k));
-    const hasWeekend = trades.some((t) => weekdayIdx(dayKey(t)) >= 5);
+    const hasWeekend = [...grid.keys()].some((id) => Number(id.split("|")[0]) >= 5);
     const dayIdx = hasWeekend ? [0, 1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4];
-    const grid = new Map<string, Cell>();
     const rowT = new Map<number, Cell>();
     const colT = new Map<string, Cell>();
-    for (const t of trades) {
-      const k = dayKey(t);
-      if (!k) continue;
-      const d = weekdayIdx(k);
-      const s = hourKey(t);
-      const id = `${d}|${s}`;
-      if (!grid.has(id)) grid.set(id, empty());
+    let n = 0;
+    for (const [id, c] of grid) {
+      const [ds, s] = id.split("|") as [string, string];
+      const d = Number(ds);
       if (!rowT.has(d)) rowT.set(d, empty());
       if (!colT.has(s)) colT.set(s, empty());
-      add(grid.get(id)!, t, metric);
-      add(rowT.get(d)!, t, metric);
-      add(colT.get(s)!, t, metric);
+      merge(rowT.get(d)!, c);
+      merge(colT.get(s)!, c);
+      n += c.n;
     }
     const m = Math.max(0, ...[...grid.values()].map((c) => Math.abs(c.v ?? 0)));
     return {
@@ -61,8 +81,9 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
       colTotals: used.map((s) => colT.get(s) ?? empty()),
       max: m,
       noTime: colT.get("none")?.n ?? 0,
+      total: n,
     };
-  }, [trades, metric]);
+  }, [trades, cells, metric]);
 
   const valText = (c: Cell) => (c.v != null ? fmtMetricCompact(c.v, metric) : c.wins + c.losses ? fmtRate(c.wins / (c.wins + c.losses)) : "");
   const toneCls = (v: number | null) => (v == null ? "text-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground");
@@ -73,7 +94,7 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
       icon={Clock}
       description={t("heatmap.hint")}
     >
-      {trades.length === 0 ? (
+      {total === 0 ? (
         <EmptyState title={t("heatmap.empty")} />
       ) : (
         <div className="overflow-x-auto">

@@ -27,6 +27,9 @@ export default {
     aria: "Sozlamalar guruhlari",
     pilot: "Pilot · {count} band",
     pilotAria: "Pilotdan oldin nimani tekshirish kerak",
+    pilotShown: "Pilot sozlamalari: {total} tadan {count} tasi",
+    showAll: "Hammasini koʻrsatish ({count})",
+    onlyPilot: "Faqat pilot ({count})",
   },
   field: {
     range: "{min} dan {max} gacha",
@@ -185,6 +188,7 @@ export default {
     nav: {
       simpleForTrainees: { label: "Yangilar uchun oddiy menyu", help: "Tanlangan darajagacha boʻlgan treyderlar 7 ta asosiy boʻlimni koʻradi, qolganlari yigʻilgan «Yana» guruhida. Kuratorlar va adminlar doim toʻliq menyuni koʻradi." },
       simpleUntilTier: { label: "Oddiy menyuni kimlar oladi", help: "Qaysi darajagacha, shu jumladan (daraja — pleybuk qulflaridagidek).", options: { junior: "Juniorlar (yangi treyderlar)" } },
+      authorNotes: { label: "«Muallif sharhi» boʻlimi", help: "Muallifning jamoa uchun kun yakunlari. Oʻchiq — boʻlim menyuda yoʻq, sahifa va uning API yopiq; yozilgan sharhlar saqlanadi." },
     },
     usage: {
       enabled: { label: "Foydalanish hisobi yoqilgan", help: "Sayt ochilgan ekranlar va kunlik sikl qadamlarini qayd etadi (summalar, tikerlar va matnsiz). Oʻchirilgan — hech narsa yozilmaydi." },

@@ -5,21 +5,18 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Page, PageHeader, Panel, Segmented, Toolbar } from "@/components/ds";
-import { KpiGrid, KpiGridSkeleton } from "@/components/stats/kpi-grid";
-import { EquityPanel } from "@/components/stats/equity-panel";
-import { CalendarPanel } from "@/components/stats/calendar-panel";
-import { TimeHeatmap } from "@/components/stats/time-heatmap";
-import { BreakdownPanel, type Dimension } from "@/components/stats/breakdown-panel";
-import { ExtremesPanel, InsightsPanel, buildInsights } from "@/components/stats/insights";
-import { FeesPanel, HorizonPanel } from "@/components/stats/horizon-fees";
+import { KpiGridSkeleton } from "@/components/stats/kpi-grid";
+import { type Dimension } from "@/components/stats/breakdown-panel";
+import { ReportPanels, useReportData, useWindowExport } from "@/components/stats/report";
 import { downloadReportCsv, openPrintReport } from "@/components/stats/export";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
 import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
 import { usePerformance } from "@/components/propreports/api";
 import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
+import { preferredMetricOfAggregate, useStaffAggregates } from "@/components/stats/staff-data";
 import {
-  horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, computeKpis, dailySeries, equitySeries, feeStats, horizonOf, inRange,
-  fmtDayKey, monthlySeries, periodRanges, preferredMetric, spansYears, toKey,
+  horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, horizonOf, inRange,
+  fmtDayKey, periodRanges, preferredMetric, spansYears, toKey,
   type HorizonFilter, type Metric, type PeriodKey, type Range,
 } from "@/components/stats/metrics";
 import { PersonSelect } from "@/components/people/person-select";
@@ -31,6 +28,8 @@ import { statsI18n } from "@/i18n/ns/stats";
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
  * weekday×session heatmap, where-I-make/lose table, best/worst trades and auto-insights.
  * Deep-dive breakdowns (conviction, emotions, patterns) live in /analytics.
+ * Staff (whole desk / another trader) read server aggregates (GET /api/stats/aggregate, Волна 2 п. 2.5) — the same
+ * cards from sums, no raw trades on open; a trader keeps the raw-trade maths over the own book.
  */
 
 const PREFS_KEY = "ws.stats.prefs.v2";
@@ -94,9 +93,17 @@ export default function Stats() {
   // only the picked trader. "Всё время" (on demand) still needs the whole (scoped) book.
   const ranges = useMemo(() => periodRanges(prefs.period), [prefs.period]);
   const windowTrader = prefs.trader !== "all" ? prefs.trader : null;
-  const { data: allTrades = [], isLoading, isError, refetch, isFetching, prevLoading } = usePeriodTrades(
+  const staff = isCurator;
+  const raw = usePeriodTrades(
     { from: ranges.cur.from, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
+    !staff,
   );
+  const agg = useStaffAggregates(
+    { cur: ranges.cur, prev: ranges.prev, trader: windowTrader, horizon: prefs.horizon !== "all" ? prefs.horizon : null },
+    staff,
+  );
+  const { isLoading, isError, refetch, isFetching, prevLoading } = staff ? agg : raw;
+  const allTrades = useMemo(() => raw.data ?? [], [raw.data]);
   // Scope-wide facts (trader list, totals) without loading the whole book.
   const teamFacets = useTradesBookFacets();
   const traderFacets = useTradesBookFacets({ trader: windowTrader, enabled: !!windowTrader });
@@ -112,9 +119,10 @@ export default function Stats() {
   const set = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs((p) => ({ ...p, [k]: v }));
 
   const traders = useMemo(
-    () => [...new Set([...(teamFacets.data?.traders ?? []), ...allTrades.map((tr) => tr.trader ?? "")].map((x) => x.trim()).filter(Boolean))]
-      .sort(comparePersonNames),
-    [allTrades, teamFacets.data],
+    () => [...new Set([
+      ...(teamFacets.data?.traders ?? []), ...allTrades.map((tr) => tr.trader ?? ""), ...(agg.cur?.groups?.trader ?? []).map((g) => g.key),
+    ].map((x) => x.trim()).filter((x) => x && x !== "—"))].sort(comparePersonNames),
+    [allTrades, teamFacets.data, agg.cur],
   );
   // Trades in the scope regardless of the period (for the empty states).
   const bookTotal = (windowTrader ? traderFacets.data?.total : teamFacets.data?.total) ?? null;
@@ -142,19 +150,15 @@ export default function Stats() {
     () => (prefs.horizon === "all" ? traderScoped : traderScoped.filter((tr) => horizonOf(tr) === prefs.horizon)),
     [traderScoped, prefs.horizon],
   );
-  const metric: Metric = prefs.metric ?? preferredMetric(scoped);
+  const a = agg.cur;
+  const metric: Metric = prefs.metric ?? (staff ? preferredMetricOfAggregate(a) : preferredMetric(scoped));
   const trades = useMemo(() => inRange(scoped, ranges.cur), [scoped, ranges]);
   const prevTrades = useMemo(() => (ranges.prev && !prevLoading ? inRange(scoped, ranges.prev) : null), [scoped, ranges, prevLoading]);
 
-  const kpis = useMemo(() => computeKpis(trades, metric), [trades, metric]);
-  const prevKpis = useMemo(() => (prevTrades ? computeKpis(prevTrades, metric) : null), [prevTrades, metric]);
-  const equity = useMemo(() => equitySeries(trades, metric), [trades, metric]);
-  const monthly = useMemo(() => monthlySeries(trades, metric), [trades, metric]);
-  const days = useMemo(() => dailySeries(trades, metric), [trades, metric]);
-  const insights = useMemo(() => buildInsights(trades, kpis, metric), [trades, kpis, metric]);
-  const fees = useMemo(() => feeStats(trades), [trades]);
-  const prevFees = useMemo(() => (prevTrades && prevTrades.length ? feeStats(prevTrades) : null), [prevTrades]);
+  const d = useReportData({ staff, cur: a, prev: agg.prev, trades, prevTrades, metric });
+  const { kpis, prevKpis, days, fees, count } = d;
   const horizonBase = useMemo(() => inRange(traderScoped, ranges.cur), [traderScoped, ranges]);
+  const { exporting, withTrades } = useWindowExport({ staff, trades, range: ranges.cur, trader: windowTrader, horizon: prefs.horizon });
 
   const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
   // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
@@ -193,18 +197,18 @@ export default function Stats() {
             </Link>
           </Button>
           <Button
-            variant="outline" size="sm" className="rounded-full" disabled={!trades.length}
-            onClick={() => downloadReportCsv(trades, kpis, prevKpis, reportMeta())}
+            variant="outline" size="sm" className="rounded-full" disabled={!count || exporting}
+            onClick={() => void withTrades((rows) => downloadReportCsv(rows, kpis, prevKpis, reportMeta()))}
           >
             <FileDown className="mr-1.5 h-4 w-4" aria-hidden="true" /> CSV
           </Button>
           <Button
-            variant="outline" size="sm" className="rounded-full" disabled={!trades.length}
-            onClick={() => {
-              if (!openPrintReport(trades, kpis, prevKpis, reportMeta())) {
+            variant="outline" size="sm" className="rounded-full" disabled={!count || exporting}
+            onClick={() => void withTrades((rows) => {
+              if (!openPrintReport(rows, kpis, prevKpis, reportMeta())) {
                 toast({ title: t("printBlocked"), description: t("printBlockedHint"), variant: "destructive" });
               }
-            }}
+            })}
           >
             <Printer className="mr-1.5 h-4 w-4" aria-hidden="true" /> {t("print")}
           </Button>
@@ -299,7 +303,7 @@ export default function Stats() {
         </div>
       )}
 
-      {prefs.trader === "all" && (bookTotal === 0 || (bookTotal == null && allTrades.length === 0 && prefs.period === "all")) ? (
+      {prefs.trader === "all" && (bookTotal === 0 || (bookTotal == null && !staff && allTrades.length === 0 && prefs.period === "all")) ? (
         <Panel>
           <EmptyState
             icon={BarChart3}
@@ -307,7 +311,7 @@ export default function Stats() {
             description={t("bookEmptyHint")}
           />
         </Panel>
-      ) : trades.length === 0 && hasBroker ? null : trades.length === 0 ? (
+      ) : count === 0 && hasBroker ? null : count === 0 ? (
         <Panel>
           <EmptyState
             icon={SearchX}
@@ -341,39 +345,17 @@ export default function Stats() {
           <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
             <h2 className="text-sm font-semibold text-foreground">
               {scopeLabel} · {fmtRange(ranges.cur)}
-              <span className="ml-2 font-normal text-muted-foreground">{commonI18n.t("units.trades", { count: trades.length })}</span>
+              <span className="ml-2 font-normal text-muted-foreground">{commonI18n.t("units.trades", { count })}</span>
             </h2>
             <p className="text-xs text-muted-foreground">{prevNote}</p>
           </div>
 
-          <KpiGrid k={kpis} prev={prevKpis} metric={metric} windowLabel={windowLabel} />
-
-          <div className="grid gap-4 xl:grid-cols-5">
-            <div className="min-w-0 xl:col-span-3"><EquityPanel equity={equity} monthly={monthly} metric={metric} trades={trades} trader={prefs.trader} /></div>
-            <div className="min-w-0 xl:col-span-2"><InsightsPanel insights={insights} /></div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <HorizonPanel trades={horizonBase} metric={metric} active={prefs.horizon} onPick={(h) => set("horizon", h)} />
-            <FeesPanel fees={fees} prev={prevFees} trades={trades} />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <CalendarPanel days={days} metric={metric} trader={prefs.trader} hideTrader={oneTrader} />
-            <TimeHeatmap trades={trades} metric={metric} />
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <BreakdownPanel
-              trades={trades}
-              metric={metric}
-              dimension={prefs.dim}
-              onDimension={(d) => set("dim", d)}
-              onPickTrader={prefs.trader === "all" ? (name) => set("trader", name) : undefined}
-              hideTrader={solo}
-            />
-            <ExtremesPanel trades={trades} metric={metric} hideTrader={oneTrader} />
-          </div>
+          <ReportPanels
+            d={d} staff={staff} agg={a} trades={trades} horizonBase={horizonBase} metric={metric} windowLabel={windowLabel}
+            trader={prefs.trader} horizon={prefs.horizon} dim={prefs.dim} oneTrader={oneTrader} solo={solo}
+            onHorizon={(h) => set("horizon", h)} onDim={(x) => set("dim", x)}
+            onPickTrader={prefs.trader === "all" ? (name) => set("trader", name) : undefined}
+          />
         </>
       )}
     </Page>

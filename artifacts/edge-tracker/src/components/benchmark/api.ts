@@ -64,7 +64,8 @@ export type BenchmarkResponse = {
   mode: "desk" | "self";
   minTrades: number;
   deskSize: number;
-  rules: { consistencyWarn: number; consistencyBreach: number; firstMinutes: number; medianMinTraders: number };
+  /** badgeMin*: badges and the best-day flag need ≥ badgeMinTrades trades OR ≥ badgeMinDays trading days. */
+  rules: { consistencyWarn: number; consistencyBreach: number; firstMinutes: number; medianMinTraders: number; badgeMinTrades?: number; badgeMinDays?: number };
   metrics: MetricDef[];
   rows: BenchRow[];
   percentiles: Record<string, Record<string, number | null>> | null;
