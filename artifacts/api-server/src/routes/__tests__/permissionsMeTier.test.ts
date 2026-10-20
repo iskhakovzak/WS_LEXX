@@ -90,9 +90,10 @@ describe("GET /permissions/me tier", () => {
     expect(stageQueries()).toBe(0);
   });
 
-  it("nav carries the simple-menu settings (defaults, then a saved value)", async () => {
-    expect((await me()).nav).toEqual({ simpleForTrainees: true, simpleUntilTier: "junior" }); // no «Стажёр» (Волна 1 п. 1.21)
-    __loadSettingsCache({ "nav.simpleForTrainees": false, "nav.simpleUntilTier": "junior" });
-    expect((await me()).nav).toEqual({ simpleForTrainees: false, simpleUntilTier: "junior" });
+  it("nav carries the simple-menu settings and the «Сводка автора» switch (defaults, then a saved value)", async () => {
+    // no «Стажёр» (Волна 1 п. 1.21); «Сводка автора» off by default (Волна 2 п. 2.15)
+    expect((await me()).nav).toEqual({ simpleForTrainees: true, simpleUntilTier: "junior", authorNotes: false });
+    __loadSettingsCache({ "nav.simpleForTrainees": false, "nav.simpleUntilTier": "junior", "nav.authorNotes": true });
+    expect((await me()).nav).toEqual({ simpleForTrainees: false, simpleUntilTier: "junior", authorNotes: true });
   });
 });

@@ -1,10 +1,9 @@
 import { loadBootConfig, ConfigError } from "./config";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { runMigrations } from "./lib/migrate";
+import { runSeeds } from "./lib/migrate";
 import { reloadLatinNames } from "./lib/people/latinNames";
 import { warmSettings } from "./lib/settings/store";
-import { ensureTradeStructureSchema } from "./lib/tradeStructureStore";
 import { registerWebhook } from "./lib/telegramBot";
 import { telegramWebhookSecret } from "./routes/telegram";
 import { pool, setPoolErrorHandler } from "@workspace/db";
@@ -31,7 +30,7 @@ setPoolErrorHandler((err) => logger.error({ err }, "db: idle client error"));
 
 // ─── CRASH POLICY (lib/security/lifecycle.ts) ────────────────────────────────
 // After an uncaught exception / unhandled rejection the process state is undefined: log, record it in the error
-// tracker (bounded wait), exit(1) — Replit restarts the server. Route errors never get here (error middleware).
+// tracker (bounded wait), exit(1) — systemd (Restart=always) restarts the server. Route errors never get here (error middleware).
 installCrashHandlers({ logger, capture: captureProcessError });
 
 // ─── PORT VALIDATION ─────────────────────────────────────────────────────────
@@ -61,8 +60,6 @@ function startBackgroundServices(): void {
   // Register Telegram webhook only in production to avoid dev server stealing the webhook.
   // TELEGRAM_WEBHOOK_URL must be set as an env secret to the stable custom domain
   // (e.g. https://zakit.website/api/telegram/webhook).
-  // REPLIT_DOMAINS is NOT used — it contains ephemeral riker.prod.repl.run URLs that
-  // change on every deployment and break webhook delivery.
   if (bootConfig.isProduction) {
     const webhookUrl = bootConfig.telegram.webhookUrl;
     if (webhookUrl) {
@@ -100,16 +97,11 @@ async function startServer(attempt = 1): Promise<void> {
   if (!migrationsDone) {
     migrationsDone = true;
     await applyVersionedMigrations();
-    // Legacy boot DDL: kept as a no-op safety net while ensure*() bodies move into numbered migrations (Phase D).
+    // Seeds and data repairs only (lib/migrate.ts): the schema comes from the migrations above, no DDL at boot.
     try {
-      await runMigrations();
+      await runSeeds();
     } catch (error) {
-      logger.error({ err: error }, "legacy runMigrations failed, continuing");
-    }
-    try {
-      await ensureTradeStructureSchema();
-    } catch (error) {
-      logger.error({ err: error }, "Failed to ensure trade-structure columns, continuing anyway");
+      logger.error({ err: error }, "boot seeds failed, continuing");
     }
     // Latin display names for EN/UZ readers (lib/people/latinNames): warm the table before the first render.
     await reloadLatinNames();
@@ -140,7 +132,7 @@ async function startServer(attempt = 1): Promise<void> {
         }, delay);
       } else {
         logger.error({ err, attempt }, "Fatal: could not bind to port");
-        // Don't process.exit — let the process manager (Replit) handle the restart.
+        // Don't process.exit — let the process manager (systemd) handle the restart.
         reject(err);
       }
     });

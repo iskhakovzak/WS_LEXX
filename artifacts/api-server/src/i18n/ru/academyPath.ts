@@ -71,6 +71,8 @@ export default {
     quizzes: { one: "{count} тест", few: "{count} теста", many: "{count} тестов", other: "{count} теста" },
     noQuizzes: "тесты не сданы",
     examsOff: "экзамены недоступны",
+    noRatings: "нет оценок куратора",
+    ratings: { one: "{count} оценка", few: "{count} оценки", many: "{count} оценок", other: "{count} оценки" },
   },
   advice: {
     netNoTrades: "Нет сделок с P&L в окне — торгуйте: сделки подтягиваются из PropReports автоматически.",

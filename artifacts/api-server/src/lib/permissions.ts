@@ -38,31 +38,6 @@ const GUEST_ROLE = "guest";
 
 export const FORBIDDEN_CODE = "FORBIDDEN";
 
-// ─── role_permissions table (additive, idempotent) ──────────────────────────
-
-let ensured: Promise<void> | null = null;
-export function ensureRolePermissionsTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS role_permissions (
-           role TEXT NOT NULL,
-           capability TEXT NOT NULL,
-           allowed BOOLEAN NOT NULL DEFAULT true,
-           scope TEXT,
-           updated_by TEXT,
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (role, capability)
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 // ─── overrides cache ────────────────────────────────────────────────────────
 
@@ -78,7 +53,6 @@ type OverrideRow = { role: string; capability: string; allowed: boolean; scope: 
 export async function loadOverrides(): Promise<{ overrides: Override[]; updatedAt: string | null; updatedBy: string | null }> {
   let rows: OverrideRow[] = [];
   try {
-    await ensureRolePermissionsTable();
     rows = (await pool.query<OverrideRow>(`SELECT role, capability, allowed, scope, updated_by, updated_at FROM role_permissions ORDER BY role, capability`)).rows;
   } catch {
     rows = []; // table missing / DB hiccup → defaults (never fail open or closed differently from today)

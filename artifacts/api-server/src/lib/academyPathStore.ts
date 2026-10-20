@@ -8,107 +8,17 @@ import {
 } from "./promotionEngine";
 
 /**
- * Storage of «Путь трейдера» (routes/academy-path.ts): additive idempotent DDL + default seed, the ladder config
+ * Storage of «Путь трейдера» (routes/academy-path.ts): the default seed (tables: migrations), the ladder config
  * loaders (stages, criteria, scaling tiers) and per-user stage resolution. SQL only; no request handling.
  */
 
-// ─── tables ─────────────────────────────────────────────────────────────────
+// ─── default seed ─────────────────────────────────────────────────────────────────
 
 let ensured: Promise<void> | null = null;
-export function ensureAcademyPathTables(): Promise<void> {
+/** Default stages and criteria on an empty ladder (tables: migrations 0234). Once per process; retried after a failure. */
+export function ensureAcademyPathSeed(): Promise<void> {
   if (!ensured) {
     ensured = (async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS academy_stages (
-          key TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          description TEXT,
-          scaling_tier TEXT,
-          updated_by TEXT,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS academy_stage_criteria (
-          id SERIAL PRIMARY KEY,
-          from_stage TEXT NOT NULL,
-          metric TEXT NOT NULL,
-          op TEXT NOT NULL,
-          value NUMERIC(14,4) NOT NULL,
-          window_days INTEGER,
-          label TEXT,
-          enabled BOOLEAN NOT NULL DEFAULT TRUE,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          updated_by TEXT,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          archived_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS academy_stage_criteria_stage_idx ON academy_stage_criteria(from_stage) WHERE archived_at IS NULL;
-        CREATE TABLE IF NOT EXISTS academy_trader_stage (
-          user_name TEXT PRIMARY KEY,
-          stage TEXT NOT NULL,
-          since TEXT NOT NULL,
-          updated_by TEXT,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS academy_stage_history (
-          id SERIAL PRIMARY KEY,
-          user_name TEXT NOT NULL,
-          from_stage TEXT,
-          to_stage TEXT NOT NULL,
-          action TEXT NOT NULL,
-          request_id INTEGER,
-          actor TEXT NOT NULL,
-          comment TEXT,
-          report JSONB,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS academy_stage_history_user_idx ON academy_stage_history(user_name, created_at DESC);
-        CREATE TABLE IF NOT EXISTS academy_promotion_requests (
-          id SERIAL PRIMARY KEY,
-          user_name TEXT NOT NULL,
-          from_stage TEXT,
-          to_stage TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          passed INTEGER NOT NULL DEFAULT 0,
-          total INTEGER NOT NULL DEFAULT 0,
-          ready BOOLEAN NOT NULL DEFAULT FALSE,
-          report JSONB,
-          comment TEXT,
-          requested_by TEXT NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          decided_by TEXT,
-          decided_at TIMESTAMPTZ,
-          decision_comment TEXT,
-          archived_at TIMESTAMPTZ
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS academy_promotion_requests_pending_uniq ON academy_promotion_requests(user_name) WHERE status = 'pending';
-        CREATE INDEX IF NOT EXISTS academy_promotion_requests_user_idx ON academy_promotion_requests(user_name, created_at DESC);
-        CREATE TABLE IF NOT EXISTS academy_readiness_notices (
-          user_name TEXT NOT NULL,
-          stage TEXT NOT NULL,
-          notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          PRIMARY KEY (user_name, stage)
-        );
-        CREATE TABLE IF NOT EXISTS academy_challenges (
-          id SERIAL PRIMARY KEY,
-          user_name TEXT NOT NULL,
-          template_key TEXT,
-          name TEXT NOT NULL,
-          rules JSONB NOT NULL,
-          starts_on TEXT NOT NULL,
-          ends_on TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'active',
-          summary JSONB,
-          notified_status TEXT,
-          comment TEXT,
-          created_by TEXT NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          archived_at TIMESTAMPTZ,
-          archived_by TEXT
-        );
-        CREATE INDEX IF NOT EXISTS academy_challenges_user_idx ON academy_challenges(user_name, starts_on DESC) WHERE archived_at IS NULL;
-      `);
       const { rows: sc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM academy_stages`);
       if (Number(sc[0]?.n ?? 0) === 0) {
         for (const s of DEFAULT_STAGES) {

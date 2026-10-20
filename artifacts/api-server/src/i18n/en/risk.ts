@@ -174,6 +174,7 @@ export default {
       stage: "a stage",
       plan: "the desk plan for the day",
       other: "help from the curator",
+      review: "a review of a thread",
     },
     newTitle: "{trader} asks for {kind}",
     newBody: "{message}",

@@ -37,7 +37,6 @@ import { closeDateSql, netPnlSql, num } from "../tradeMath";
 import { addDays, nyDate, nyMinutes } from "../tradingDate";
 import { violationDaySql } from "../violationWindow";
 import { mondayOf, prevTradingDay, tradingPhase } from "../curatorLogic";
-import { ensureCuratorTables } from "../curatorStore";
 import { logger } from "../logger";
 import { setting } from "../settings/registry";
 import { dayThresholds } from "./detectors";
@@ -390,11 +389,11 @@ function loadData(traders: readonly string[], days: readonly string[], today: st
       [traders, days],
     ),
     // Notes about the window's days (a general note → the day finished when it was written, noteDayOf).
-    ensureCuratorTables().then(() => rowsOf<{ trader: string; day: string | null; created_at: Date }>(
+    rowsOf<{ trader: string; day: string | null; created_at: Date }>(
       `SELECT trader, day, created_at FROM curator_notes
         WHERE archived_at IS NULL AND trader = ANY($1) AND (day = ANY($2) OR (day IS NULL AND created_at >= $3::date))`,
       [traders, days, low],
-    ), () => [] as { trader: string; day: string | null; created_at: Date }[]),
+    ),
     // Trader-visible curator actions after the window started: quests given, weekly reviews finished (a scorecard rating
     // is a weekly score, not a look at the day — it does not resolve days).
     rowsOf<{ trader: string; at: Date }>(

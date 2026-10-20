@@ -1,8 +1,11 @@
 /**
  * Heartbeat endpoint (public route — lib/auth.ts PUBLIC_API_ROUTES; authenticated here by a shared secret):
  *
- *   POST /api/cron/tick   Authorization: Bearer <CRON_SECRET>   ← Supabase pg_cron + pg_net (docs/PROPREPORTS_CRON.sql)
- *   GET  /api/cron/tick   same header                            ← Vercel Cron (it sends `Authorization: Bearer $CRON_SECRET`)
+ *   POST /api/cron/tick   Authorization: Bearer <CRON_SECRET>
+ *   GET  /api/cron/tick   same header
+ *
+ * Optional external heartbeat. On the self-hosted server (docs/DEPLOY.md) the API's own job scheduler runs the tick
+ * (jobs "propreports.sync" / "propreports.tick-hourly"), so CRON_SECRET is normally unset and this answers 503.
  *
  * 401 AUTH_REQUIRED on a missing / wrong secret, 503 CRON_NOT_CONFIGURED when CRON_SECRET is unset. Runs one tick
  * (lib/propreports/tick/runner.ts: lease → due steps ≤ 45 s → outbox) and answers its JSON summary. A tick that finds

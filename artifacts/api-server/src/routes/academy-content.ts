@@ -2,7 +2,7 @@
  * «Академия → Обучение» (F1): программы, модули, уроки (markdown + видео + вложения), тесты с автопроверкой,
  * задания с проверкой наставником по рубрике, прогресс учеников и когорт, привязка уроков к сетапам плейбука.
  *
- * Чистая логика — lib/academyContent.ts. Таблицы academy_* создаются здесь (ensureTables, идемпотентно, лениво).
+ * Чистая логика — lib/academyContent.ts. Таблицы academy_* — миграция 0234.
  * Удаление только мягкое (archived_at). Внешних отправок нет: уведомления — in-app через notifyUser.
  *
  * Ученик / любой участник (гость — только чтение опубликованного, без прогресса):
@@ -55,147 +55,6 @@ import {
 const router: IRouter = Router();
 const P = "/academy/content";
 
-/* ─── Схема ──────────────────────────────────────────────────────────────── */
-
-let ensured: Promise<void> | null = null;
-export function ensureAcademyContentTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(`
-        CREATE TABLE IF NOT EXISTS academy_programs (
-          id SERIAL PRIMARY KEY,
-          slug TEXT UNIQUE,
-          title TEXT NOT NULL,
-          description TEXT,
-          level TEXT,
-          stage TEXT,
-          published BOOLEAN NOT NULL DEFAULT false,
-          position INTEGER NOT NULL DEFAULT 0,
-          created_by TEXT,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          archived_at TIMESTAMPTZ
-        );
-        ALTER TABLE academy_programs ADD COLUMN IF NOT EXISTS stage TEXT;
-        CREATE TABLE IF NOT EXISTS academy_modules (
-          id SERIAL PRIMARY KEY,
-          program_id INTEGER NOT NULL REFERENCES academy_programs(id),
-          title TEXT NOT NULL,
-          description TEXT,
-          position INTEGER NOT NULL DEFAULT 0,
-          seed_key TEXT,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          archived_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS academy_modules_program_idx ON academy_modules (program_id);
-        CREATE TABLE IF NOT EXISTS academy_lessons (
-          id SERIAL PRIMARY KEY,
-          module_id INTEGER NOT NULL REFERENCES academy_modules(id),
-          title TEXT NOT NULL,
-          summary TEXT,
-          body_md TEXT NOT NULL DEFAULT '',
-          video_url TEXT,
-          attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
-          duration_min INTEGER,
-          playbook_ids INTEGER[] NOT NULL DEFAULT '{}',
-          setup_names TEXT[] NOT NULL DEFAULT '{}',
-          position INTEGER NOT NULL DEFAULT 0,
-          draft BOOLEAN NOT NULL DEFAULT false,
-          seed_key TEXT,
-          created_by TEXT,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          archived_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS academy_lessons_module_idx ON academy_lessons (module_id);
-        CREATE INDEX IF NOT EXISTS academy_lessons_playbook_idx ON academy_lessons USING GIN (playbook_ids);
-        CREATE TABLE IF NOT EXISTS academy_quizzes (
-          id SERIAL PRIMARY KEY,
-          module_id INTEGER NOT NULL REFERENCES academy_modules(id),
-          title TEXT NOT NULL,
-          description TEXT,
-          questions JSONB NOT NULL DEFAULT '[]'::jsonb,
-          pass_pct INTEGER NOT NULL DEFAULT 80,
-          max_attempts INTEGER,
-          position INTEGER NOT NULL DEFAULT 0,
-          draft BOOLEAN NOT NULL DEFAULT false,
-          seed_key TEXT,
-          created_by TEXT,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          archived_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS academy_quizzes_module_idx ON academy_quizzes (module_id);
-        CREATE TABLE IF NOT EXISTS academy_quiz_attempts (
-          id SERIAL PRIMARY KEY,
-          quiz_id INTEGER NOT NULL REFERENCES academy_quizzes(id),
-          user_name TEXT NOT NULL,
-          answers JSONB NOT NULL DEFAULT '{}'::jsonb,
-          results JSONB NOT NULL DEFAULT '[]'::jsonb,
-          score NUMERIC(10,2) NOT NULL DEFAULT 0,
-          max_score NUMERIC(10,2) NOT NULL DEFAULT 0,
-          pct NUMERIC(6,2) NOT NULL DEFAULT 0,
-          passed BOOLEAN NOT NULL DEFAULT false,
-          submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        );
-        CREATE INDEX IF NOT EXISTS academy_quiz_attempts_user_idx ON academy_quiz_attempts (user_name, quiz_id);
-        CREATE TABLE IF NOT EXISTS academy_assignments (
-          id SERIAL PRIMARY KEY,
-          module_id INTEGER NOT NULL REFERENCES academy_modules(id),
-          title TEXT NOT NULL,
-          body_md TEXT NOT NULL DEFAULT '',
-          rubric JSONB NOT NULL DEFAULT '[]'::jsonb,
-          pass_pct INTEGER NOT NULL DEFAULT 70,
-          min_trades INTEGER NOT NULL DEFAULT 0,
-          position INTEGER NOT NULL DEFAULT 0,
-          draft BOOLEAN NOT NULL DEFAULT false,
-          seed_key TEXT,
-          created_by TEXT,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          archived_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS academy_assignments_module_idx ON academy_assignments (module_id);
-        CREATE TABLE IF NOT EXISTS academy_submissions (
-          id SERIAL PRIMARY KEY,
-          assignment_id INTEGER NOT NULL REFERENCES academy_assignments(id),
-          user_name TEXT NOT NULL,
-          body TEXT NOT NULL DEFAULT '',
-          url TEXT,
-          trade_ids INTEGER[] NOT NULL DEFAULT '{}',
-          status TEXT NOT NULL DEFAULT 'submitted',
-          scores JSONB,
-          total NUMERIC(10,2),
-          max_total NUMERIC(10,2),
-          pct NUMERIC(6,2),
-          passed BOOLEAN,
-          mentor_comment TEXT,
-          graded_by TEXT,
-          graded_at TIMESTAMPTZ,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          archived_at TIMESTAMPTZ
-        );
-        CREATE INDEX IF NOT EXISTS academy_submissions_user_idx ON academy_submissions (user_name, assignment_id);
-        CREATE INDEX IF NOT EXISTS academy_submissions_status_idx ON academy_submissions (status) WHERE archived_at IS NULL;
-        CREATE TABLE IF NOT EXISTS academy_lesson_progress (
-          user_name TEXT NOT NULL,
-          lesson_id INTEGER NOT NULL REFERENCES academy_lessons(id),
-          started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          completed_at TIMESTAMPTZ,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-          PRIMARY KEY (user_name, lesson_id)
-        );
-      `)
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 /* ─── Общие помощники ────────────────────────────────────────────────────── */
 
@@ -439,7 +298,6 @@ async function navFor(programId: number, kind: ItemKind, id: number, staff: bool
 /* ─── Мета ───────────────────────────────────────────────────────────────── */
 
 router.get(`${P}/meta`, asyncHandler(async (req, res): Promise<void> => {
-  await ensureAcademyContentTables();
   const staff = await isAcademyMentor(req);
   const enrollmentsAvailable = await tableExists("academy_enrollments");
   const cohortsAvailable = await tableExists("academy_cohorts");
@@ -462,7 +320,6 @@ router.get(`${P}/meta`, asyncHandler(async (req, res): Promise<void> => {
 /* ─── Каталог и дерево программы ─────────────────────────────────────────── */
 
 router.get(`${P}/programs`, asyncHandler(async (req, res): Promise<void> => {
-  await ensureAcademyContentTables();
   const who = await progressUser(req, res);
   if (!who) return;
   const programs = await loadPrograms({ staff: who.staff });
@@ -487,7 +344,6 @@ router.get(`${P}/programs`, asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.get(`${P}/programs/:id`, asyncHandler(async (req, res): Promise<void> => {
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
@@ -542,7 +398,6 @@ async function setupsByIds(ids: number[]) {
 
 // Объявлен раньше /lessons/:id, чтобы "by-setup" не принимался за id.
 router.get(`${P}/lessons/by-setup`, asyncHandler(async (req, res): Promise<void> => {
-  await ensureAcademyContentTables();
   const staff = await isAcademyMentor(req);
   const playbookId = qInt(req.query.playbookId);
   let setup = qStr(req.query.setup, 120);
@@ -570,7 +425,6 @@ router.get(`${P}/lessons/by-setup`, asyncHandler(async (req, res): Promise<void>
 }));
 
 router.get(`${P}/lessons/:id`, asyncHandler(async (req, res): Promise<void> => {
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
@@ -593,7 +447,6 @@ router.get(`${P}/lessons/:id`, asyncHandler(async (req, res): Promise<void> => {
 
 router.post(`${P}/lessons/:id/progress`, asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const staff = await isAcademyMentor(req);
@@ -633,7 +486,6 @@ function quizQuestions(q: QuizRow): QuizQuestion[] {
 }
 
 router.get(`${P}/quizzes/:id`, asyncHandler(async (req, res): Promise<void> => {
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
@@ -662,7 +514,6 @@ router.get(`${P}/quizzes/:id`, asyncHandler(async (req, res): Promise<void> => {
 
 router.post(`${P}/quizzes/:id/attempts`, asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const staff = await isAcademyMentor(req);
@@ -757,7 +608,6 @@ async function submissionsJson(rows: SubmissionRow[]) {
 }
 
 router.get(`${P}/assignments/:id`, asyncHandler(async (req, res): Promise<void> => {
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
@@ -791,7 +641,6 @@ async function foreignTrades(ids: number[], user: string): Promise<string | null
 
 router.post(`${P}/assignments/:id/submissions`, asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const staff = await isAcademyMentor(req);
@@ -827,7 +676,6 @@ router.post(`${P}/assignments/:id/submissions`, asyncHandler(async (req, res): P
 
 router.patch(`${P}/submissions/:id`, asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const user = req.authUser!.name;
@@ -855,7 +703,6 @@ router.patch(`${P}/submissions/:id`, asyncHandler(async (req, res): Promise<void
 
 router.post(`${P}/submissions/:id/archive`, asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const staff = await isAcademyMentor(req);
@@ -901,7 +748,6 @@ async function cohortUsers(cohortId: number): Promise<string[] | null> {
 
 router.get(`${P}/review-queue`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const status = qStr(req.query.status) || "submitted";
   const cohortId = qInt(req.query.cohortId);
   const params: unknown[] = [];
@@ -939,7 +785,6 @@ router.get(`${P}/review-queue`, asyncHandler(async (req, res): Promise<void> => 
 
 router.post(`${P}/submissions/:id/grade`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = z.object({
@@ -987,7 +832,6 @@ router.post(`${P}/submissions/:id/grade`, asyncHandler(async (req, res): Promise
 
 router.get(`${P}/progress`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const programId = qInt(req.query.programId);
   const cohortId = qInt(req.query.cohortId);
   const programs = await loadPrograms({ staff: true });
@@ -1058,7 +902,6 @@ router.get(`${P}/setups`, asyncHandler(async (req, res): Promise<void> => {
 
 router.get(`${P}/admin/tree`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const archived = qStr(req.query.archived) === "1";
   const programs = await loadPrograms({ staff: true, archived });
   const programId = qInt(req.query.programId) ?? programs.find((p) => !p.archived_at)?.id ?? null;
@@ -1098,7 +941,6 @@ const programBody = z.object({
 
 router.post(`${P}/programs`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const parsed = programBody.safeParse(req.body ?? {});
   if (!parsed.success) return bad(res, "NAME_REQUIRED");
   const d = parsed.data;
@@ -1116,7 +958,6 @@ router.post(`${P}/programs`, asyncHandler(async (req, res): Promise<void> => {
 
 router.patch(`${P}/programs/:id`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = programBody.partial().safeParse(req.body ?? {});
@@ -1142,7 +983,6 @@ const moduleBody = z.object({ programId: z.number().int().positive(), title: z.s
 
 router.post(`${P}/modules`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const parsed = moduleBody.safeParse(req.body ?? {});
   if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
@@ -1158,7 +998,6 @@ router.post(`${P}/modules`, asyncHandler(async (req, res): Promise<void> => {
 
 router.patch(`${P}/modules/:id`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = moduleBody.omit({ programId: true }).partial().safeParse(req.body ?? {});
@@ -1213,7 +1052,6 @@ async function moduleExists(id: number): Promise<boolean> {
 
 router.post(`${P}/lessons`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const parsed = lessonBody.safeParse(req.body ?? {});
   if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
@@ -1231,7 +1069,6 @@ router.post(`${P}/lessons`, asyncHandler(async (req, res): Promise<void> => {
 
 router.patch(`${P}/lessons/:id`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = lessonBody.omit({ moduleId: true }).partial().safeParse(req.body ?? {});
@@ -1277,7 +1114,6 @@ function quizAdminJson(q: QuizRow) {
 
 router.post(`${P}/quizzes`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const parsed = quizBody.safeParse(req.body ?? {});
   if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
@@ -1298,7 +1134,6 @@ router.post(`${P}/quizzes`, asyncHandler(async (req, res): Promise<void> => {
 
 router.patch(`${P}/quizzes/:id`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = quizBody.omit({ moduleId: true }).partial().safeParse(req.body ?? {});
@@ -1339,7 +1174,6 @@ const assignmentBody = z.object({
 
 router.post(`${P}/assignments`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const parsed = assignmentBody.safeParse(req.body ?? {});
   if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
@@ -1361,7 +1195,6 @@ router.post(`${P}/assignments`, asyncHandler(async (req, res): Promise<void> => 
 
 router.patch(`${P}/assignments/:id`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = assignmentBody.omit({ moduleId: true }).partial().safeParse(req.body ?? {});
@@ -1389,7 +1222,6 @@ for (const action of ["archive", "restore"] as const) {
     const table = ARCHIVE_TABLE[String(req.params.kind)];
     if (!table) return bad(res, "VALIDATION", 404);
     if (!(await requireAcademyMentor(req, res))) return;
-    await ensureAcademyContentTables();
     const id = idParam(req);
     if (!id) return bad(res, "INVALID_ID");
     const { rowCount } = await pool.query(
@@ -1401,7 +1233,6 @@ for (const action of ["archive", "restore"] as const) {
 
 router.post(`${P}/programs/:id/reorder`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = z.object({ moduleIds: z.array(z.number().int().positive()).max(200) }).safeParse(req.body ?? {});
@@ -1424,7 +1255,6 @@ router.post(`${P}/programs/:id/reorder`, asyncHandler(async (req, res): Promise<
 
 router.post(`${P}/programs-order`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const parsed = z.object({ programIds: z.array(z.number().int().positive()).max(200) }).safeParse(req.body ?? {});
   if (!parsed.success) return bad(res, "VALIDATION");
   const cur = await loadPrograms({ staff: true });
@@ -1437,7 +1267,6 @@ const itemRef = z.object({ kind: z.enum(["lesson", "quiz", "assignment"]), id: z
 
 router.post(`${P}/modules/:id/reorder`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const id = idParam(req);
   if (!id) return bad(res, "INVALID_ID");
   const parsed = z.object({ items: z.array(itemRef).max(300) }).safeParse(req.body ?? {});
@@ -1463,7 +1292,6 @@ router.post(`${P}/modules/:id/reorder`, asyncHandler(async (req, res): Promise<v
 
 router.post(`${P}/items/move`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const parsed = itemRef.extend({ moduleId: z.number().int().positive() }).safeParse(req.body ?? {});
   if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
@@ -1557,7 +1385,6 @@ async function seedDemo(actor: string) {
 
 router.post(`${P}/seed-demo`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireAcademyMentor(req, res))) return;
-  await ensureAcademyContentTables();
   const result = await seedDemo(req.authUser!.name);
   const total = Object.values(result.created).reduce((s, v) => s + v, 0);
   res.status(total ? 201 : 200).json({ ...result, alreadySeeded: total === 0 });

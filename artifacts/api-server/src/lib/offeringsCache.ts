@@ -45,26 +45,10 @@ export function watchStorePolicy(o: { sources: WatchSources | null | undefined; 
 }
 
 // ── DB cache (survives API restarts): offering_ticker_cache(ticker, kind) ──
-let ensureCachePromise: Promise<void> | null = null;
-function ensureOfferingCache(): Promise<void> {
-  if (!ensureCachePromise) {
-    ensureCachePromise = pool.query(
-      `CREATE TABLE IF NOT EXISTS offering_ticker_cache (
-         ticker TEXT NOT NULL,
-         kind TEXT NOT NULL,
-         payload JSONB NOT NULL,
-         fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-         PRIMARY KEY (ticker, kind)
-       )`,
-    ).then(() => undefined).catch((e) => { ensureCachePromise = null; throw e; });
-  }
-  return ensureCachePromise;
-}
 export async function dbCacheRead<T>(kind: string, tickers: string[], ttlMs: number): Promise<Map<string, { data: T; ts: number }>> {
   const out = new Map<string, { data: T; ts: number }>();
   if (!tickers.length) return out;
   try {
-    await ensureOfferingCache();
     const { rows } = await pool.query<{ ticker: string; payload: T; fetched_at: Date }>(
       `SELECT ticker, payload, fetched_at FROM offering_ticker_cache WHERE kind = $1 AND ticker = ANY($2::text[])`,
       [kind, tickers],
@@ -80,7 +64,6 @@ export async function dbCacheRead<T>(kind: string, tickers: string[], ttlMs: num
 }
 export async function dbCacheWrite(kind: string, ticker: string, data: unknown): Promise<void> {
   try {
-    await ensureOfferingCache();
     await pool.query(
       `INSERT INTO offering_ticker_cache (ticker, kind, payload, fetched_at) VALUES ($1, $2, $3::jsonb, NOW())
        ON CONFLICT (ticker, kind) DO UPDATE SET payload = EXCLUDED.payload, fetched_at = NOW()`,

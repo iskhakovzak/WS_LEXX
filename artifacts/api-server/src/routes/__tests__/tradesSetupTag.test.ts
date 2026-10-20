@@ -94,7 +94,6 @@ vi.mock("../../lib/playbookToday/service", () => ({
   tradeTagged: vi.fn(async (id: number) => { st.tagged.push(id); }),
   viewerLocks: vi.fn(async () => ({ known: new Map([[210, { locked: true }]]), lockOther: () => ({ locked: false }) })),
 }));
-vi.mock("../checklist", () => ({ findChecklistResponseFor: vi.fn(async () => null) }));
 
 process.env.JWT_SECRET ??= "vitest-only-secret";
 const { default: tradesRouter } = await import("../trades");

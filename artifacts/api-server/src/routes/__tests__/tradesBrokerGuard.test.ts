@@ -22,6 +22,7 @@ const st = vi.hoisted(() => ({
   updates: [] as Record<string, unknown>[],
   inserts: [] as Record<string, unknown>[],
   sql: [] as string[],
+  limits: [] as number[],
 }));
 
 vi.mock("@workspace/db", async () => {
@@ -29,7 +30,8 @@ vi.mock("@workspace/db", async () => {
   const rows = () => (st.trade ? [{ ...st.trade }] : []);
   const select = () => {
     const c: Record<string, unknown> = {};
-    for (const k of ["from", "where", "limit", "orderBy"]) c[k] = () => c;
+    for (const k of ["from", "where", "orderBy"]) c[k] = () => c;
+    c.limit = (n: number) => { st.limits.push(n); return c; };
     c.then = (ok: (v: unknown) => unknown, ko: (e: unknown) => unknown) => Promise.resolve(rows()).then(ok, ko);
     return c;
   };
@@ -93,7 +95,6 @@ vi.mock("../../lib/hotCache", () => ({ invalidateDashboardCache: vi.fn() }));
 vi.mock("../../lib/tradesPageCache", () => ({ invalidateTradesPageCache: vi.fn() }));
 vi.mock("../../lib/tradeStructureStore", () => ({ refreshTradeStructures: vi.fn(async () => undefined), structureForTrade: vi.fn(async () => null) }));
 vi.mock("../../lib/playbookAccess", () => ({ isReadableExampleTrade: vi.fn(async () => false), loadMoneyViewer: vi.fn(async () => ({ name: who.name, staff: who.role !== "trader" })) }));
-vi.mock("../checklist", () => ({ findChecklistResponseFor: vi.fn(async () => null) }));
 
 process.env.JWT_SECRET ??= "vitest-only-secret";
 const { default: tradesRouter } = await import("../trades");
@@ -130,6 +131,7 @@ beforeEach(() => {
   st.updates.length = 0;
   st.inserts.length = 0;
   st.sql.length = 0;
+  st.limits.length = 0;
 });
 
 async function call(method: string, path: string, body?: unknown): Promise<{ status: number; json: any }> {
@@ -213,7 +215,7 @@ describe("DELETE /trades/:id and POST /trades/bulk", () => {
 });
 
 describe("POST /trades marked as broker-sourced", () => {
-  const body = { ticker: "AAPL", date: "2026-10-16", result: "win", pnl: 4998, conviction: 3, confidenceGrade: "A", skipChecklist: true, source: "propreports", externalId: "x" };
+  const body = { ticker: "AAPL", date: "2026-10-16", result: "win", pnl: 4998, conviction: 3, confidenceGrade: "A", source: "propreports", externalId: "x" };
   it("trader 403, curator 403, admin passes (the marker is stripped: booked as a manual trade)", async () => {
     expect((await asRole(TRADER, "POST", "/api/trades", body)).json.code).toBe("BROKER_TRADE_READ_ONLY");
     expect((await asRole(CURATOR, "POST", "/api/trades", body)).status).toBe(403);
@@ -246,5 +248,26 @@ describe("fills of a broker trade (routes/executions.ts)", () => {
     st.trade = manualTrade();
     expect((await asRole(TRADER, "POST", "/api/trades/236675/executions", fill)).status).toBe(201);
     expect((await asRole(TRADER, "DELETE", "/api/trades/236675/executions/9")).status).toBe(204);
+  });
+});
+
+describe("GET /trades never returns the whole book (Волна 2 п. 2.15)", () => {
+  it("no window and no limit → the newest 500", async () => {
+    const r = await asRole(TRADER, "GET", "/api/trades");
+    expect(r.status).toBe(200);
+    expect(st.limits).toEqual([500]);
+  });
+
+  it("a date window of up to 400 days has no row cap; a wider one → 400 RANGE_TOO_LONG", async () => {
+    expect((await asRole(TRADER, "GET", "/api/trades?from=2026-01-01&to=2026-10-20")).status).toBe(200);
+    expect(st.limits).toEqual([]);
+    const wide = await asRole(ADMIN, "GET", "/api/trades?from=2024-01-01&to=2026-10-20");
+    expect([wide.status, wide.json.code, wide.json.details]).toEqual([400, "RANGE_TOO_LONG", undefined]);
+  });
+
+  it("an explicit limit wins (clamped to 5000)", async () => {
+    await asRole(TRADER, "GET", "/api/trades?limit=20");
+    await asRole(TRADER, "GET", "/api/trades?limit=99999");
+    expect(st.limits).toEqual([20, 5000]);
   });
 });

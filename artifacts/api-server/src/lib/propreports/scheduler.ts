@@ -93,13 +93,14 @@ export async function runScheduledSync(budgetMs = 4 * 60_000): Promise<Record<st
 }
 
 /**
- * In-process schedule (classic server). `enabled` is false on Vercel or with JOBS_ENABLED=false — the HTTP heartbeat
- * drives the tick there; `minutes` = the desk-hours cadence; `nextRunAt` = the earlier of the two jobs' next run.
+ * In-process schedule (the API's job scheduler). `enabled` is false with JOBS_ENABLED=false — then only the HTTP
+ * heartbeat (/api/cron/tick) drives the tick; `minutes` = the desk-hours cadence; `nextRunAt` = the earlier of the two
+ * jobs' next run.
  */
 export function schedulerStatus(): { enabled: boolean; minutes: number | null; nextRunAt: string | null; running: boolean; lastError: string | null } {
   const desk = syncCron();
   const off = offHoursCron();
-  const inProcess = !process.env.VERCEL && config.jobsEnabled;
+  const inProcess = config.jobsEnabled;
   const now = new Date();
   const next = [desk, off].filter((c): c is string => !!c).map((c) => nextCronRun(parseCron(c), now)).filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
   return { enabled: inProcess && !!desk, minutes: desk ? syncMinutes() ?? 5 : null, nextRunAt: inProcess && next ? next.toISOString() : null, running, lastError };

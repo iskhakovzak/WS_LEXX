@@ -53,7 +53,6 @@ export default {
     "ideas.review": { label: "Idea review", description: "Idea review status, managing others’ ideas, everyone’s drafts." },
     "discussions.moderate": { label: "Discussion moderation", description: "Delete others’ topics and comments, close topics." },
     "discussions.edit.any": { label: "Edit others’ comments", description: "Edit other people’s comments." },
-    "checklist.template.edit": { label: "Pre-trade checklist", description: "Change the checklist items for the whole desk." },
     "watchlist.manage": { label: "Desk watchlist", description: "Edit the shared watchlist (any member, not a guest)." },
     "users.manage": { label: "Manage users", description: "Add, edit, freeze and archive traders and curators, change assignments." },
     "users.manage.admins": { label: "Manage admins", description: "Create admins, grant the admin role, edit or deactivate admins, ban curators." },

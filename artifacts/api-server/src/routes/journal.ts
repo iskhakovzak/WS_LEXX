@@ -17,48 +17,13 @@ import { AppError, badRequest, sendErrorWith, unauthorized } from "../lib/http";
  *     An entry with every field empty deletes the row (so "has journal" flags clear).
  *   DELETE /api/journal/days/:date — remove the caller's own entry.
  *
- * Table is created lazily (additive, idempotent) on first use.
+ * Table journal_days: migration 0234.
  */
 const router: IRouter = Router();
 
 const COLS = `id, trader, TO_CHAR(day, 'YYYY-MM-DD') AS date, plan, well, mistakes, lessons,
   mood, discipline, followed_plan AS "followedPlan", tags,
   updated_at AS "updatedAt", created_at AS "createdAt"`;
-
-let ensured: Promise<void> | null = null;
-/** Shared with routes/eod.ts (EOD close prefills the journal). */
-export function ensureJournalTable(): Promise<void> {
-  return ensureTable();
-}
-function ensureTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS journal_days (
-           id SERIAL PRIMARY KEY,
-           trader TEXT NOT NULL,
-           day DATE NOT NULL,
-           plan TEXT NOT NULL DEFAULT '',
-           well TEXT NOT NULL DEFAULT '',
-           mistakes TEXT NOT NULL DEFAULT '',
-           lessons TEXT NOT NULL DEFAULT '',
-           mood SMALLINT,
-           discipline SMALLINT,
-           followed_plan BOOLEAN,
-           tags JSONB NOT NULL DEFAULT '[]'::jsonb,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           UNIQUE (trader, day)
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 function isIsoDate(v: unknown): v is string {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v + "T00:00:00Z"));
@@ -138,7 +103,6 @@ router.get("/journal/days", asyncHandler(async (req, res): Promise<void> => {
   const spanDays = (Date.parse(to + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 86_400_000;
   if (spanDays > 400) throw new AppError("RANGE_TOO_LONG", undefined, { max: 400 });
 
-  await ensureTable();
   const params: unknown[] = [from, to];
   let sql = `SELECT ${COLS} FROM journal_days WHERE day BETWEEN $1 AND $2`;
   const qTrader = typeof req.query["trader"] === "string" ? (req.query["trader"] as string).trim() : "";
@@ -160,7 +124,6 @@ router.get("/journal/days/:date", asyncHandler(async (req, res): Promise<void> =
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const qTrader = typeof req.query["trader"] === "string" ? (req.query["trader"] as string).trim() : "";
   const trader = qTrader && (await canReadTeam(req, qTrader)) ? qTrader : req.authUser.name;
-  await ensureTable();
   const { rows } = await pool.query(`SELECT ${COLS} FROM journal_days WHERE trader = $1 AND day = $2`, [trader, date]);
   if (!rows[0]) throw new AppError("NOT_FOUND");
   res.json(rows[0]);
@@ -176,7 +139,6 @@ router.delete("/journal/days/:date", asyncHandler(async (req, res): Promise<void
   if (!req.authUser) throw unauthorized();
   const date = req.params["date"];
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
-  await ensureTable();
   await pool.query(`DELETE FROM journal_days WHERE trader = $1 AND day = $2`, [req.authUser.name, date]);
   res.json({ ok: true, trader: req.authUser.name, date });
 }));
@@ -189,7 +151,6 @@ router.put("/journal/days/:date", asyncHandler(async (req, res): Promise<void> =
   if (!parsed.ok) throw new AppError("INVALID_FIELD", 400, { field: parsed.field });
   const v = parsed.v;
 
-  await ensureTable();
   // Optimistic concurrency: the client sends the `updatedAt` it loaded; a newer row on the server wins.
   const baseRaw = (req.body as { updatedAt?: unknown } | undefined)?.updatedAt;
   if (typeof baseRaw === "string" && baseRaw) {

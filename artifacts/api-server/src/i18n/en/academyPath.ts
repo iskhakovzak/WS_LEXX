@@ -69,6 +69,8 @@ export default {
     quizzes: { one: "{count} quiz", other: "{count} quizzes" },
     noQuizzes: "no quizzes taken",
     examsOff: "exams unavailable",
+    noRatings: "no curator scores",
+    ratings: { one: "{count} score", other: "{count} scores" },
   },
   advice: {
     netNoTrades: "No trades with P&L in the window. Trade: trades come in from PropReports automatically.",

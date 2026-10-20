@@ -25,7 +25,7 @@
  *   POST /academy/path/seed-demo                  settings.manage — idempotent demo challenges (never called automatically)
  *
  * Evaluation is lazy: challenge status / readiness are recomputed on read; a status change is cached in the row and
- * produces one in-app notification (notifyUser) per transition. Tables are additive and created idempotently (lib/academyPathStore).
+ * produces one in-app notification (notifyUser) per transition. Tables: migrations; default ladder seeded by lib/academyPathStore.
  * Money = net of fees via lib/tradeMath, trading date = NY (lib/tradingDate). Optional sources are probed at runtime:
  * behaviour engine (routes/behavior + lib/behaviorEngine), F1 learning tables, F2 enrollments.
  */
@@ -56,9 +56,10 @@ import {
 import { AppError, badRequest, conflict, notFound, sendError, unauthorized, type ErrorCode } from "../lib/http";
 import { can, requireCap, type Capability } from "../lib/permissions";
 import {
-  ensureAcademyPathTables, loadCriteria, loadStageInfo, loadStages, loadTiers, tableExists, type StageInfo,
+  ensureAcademyPathSeed, loadCriteria, loadStageInfo, loadStages, loadTiers, tableExists, type StageInfo,
 } from "../lib/academyPathStore";
 import { loadLearning, loadPromoTrades, loadViolationDates } from "../lib/academy/promotion-input";
+import { loadDisciplineDays } from "../lib/disciplineDays";
 import { setStage } from "../lib/academy/stage-actions";
 import { myPeople, pickScope } from "../lib/people/deskGroups";
 
@@ -127,24 +128,6 @@ function systemComment(c: string | null, lang: Lang): string | null {
   return c;
 }
 
-// ─── optional sources ───────────────────────────────────────────────────────
-
-/** Behaviour engine daily discipline index (D3). Loaded lazily; null when the engine is unavailable. */
-async function loadDiscipline(user: string, from: string, to: string): Promise<{ date: string; score: number }[] | null> {
-  try {
-    const [beh, eng] = await Promise.all([import("./behavior"), import("../lib/behaviorEngine")]);
-    if (typeof beh.loadBehaviorRows !== "function" || typeof eng.analyzeBehavior !== "function") return null;
-    const rows = await beh.loadBehaviorRows(user, from, to);
-    const trades = rows.map(beh.rowToBehaviorTrade);
-    const { contractDeltas } = await import("../lib/daily/discipline");
-    const report = eng.analyzeBehavior(trades, {}, undefined, await contractDeltas(user, trades, from, to, async (f, t) => (await beh.loadBehaviorRows(user, f, t)).map(beh.rowToBehaviorTrade)));
-    return report.discipline.map((d) => ({ date: d.date, score: d.score }));
-  } catch (err) {
-    logger.debug({ err }, "academy-path: behaviour engine unavailable");
-    return null;
-  }
-}
-
 async function buildReport(user: string, today: string, ctx?: { stages: StageMeta[]; criteria: Criterion[]; tiers: Tier[]; info?: StageInfo }, lang: Lang = "ru"): Promise<ReadinessReport & { stageSource: StageInfo["source"]; cohortId: number | null }> {
   const [stages, criteria, tiers] = ctx ? [ctx.stages, ctx.criteria, ctx.tiers] : await Promise.all([loadStages(), loadCriteria(), loadTiers()]);
   const info = ctx?.info ?? (await loadStageInfo([user])).get(user) ?? { stage: null, since: null, source: null, cohortId: null };
@@ -159,7 +142,7 @@ async function buildReport(user: string, today: string, ctx?: { stages: StageMet
     loadViolationDates(user, from),
     pool.query(`SELECT week::text AS week, discipline, overall FROM trader_ratings WHERE trader = $1 AND week::text >= $2`, [user, from]).then((r) => r.rows).catch(() => [] as any[]),
     pool.query(`SELECT account_size, daily_loss_limit, weekly_loss_limit, max_drawdown FROM trader_risk_limits WHERE trader = $1`, [user]).then((r) => r.rows[0] ?? null).catch(() => null),
-    loadDiscipline(user, from, today),
+    loadDisciplineDays(user, from, today),
     loadLearning(user),
     pool.query(`SELECT status, summary->>'passedOn' AS passed_on FROM academy_challenges WHERE user_name = $1 AND archived_at IS NULL AND status = 'passed'`, [user])
       .then((r) => r.rows.map((x: any) => String(x.passed_on ?? "")).filter((d: string) => YMD_RE.test(d)))
@@ -182,7 +165,7 @@ async function buildReport(user: string, today: string, ctx?: { stages: StageMet
 
 /** The one ladder scorecard (owner decision 2) — GET /academy/path/report for the dashboard (lib/daily/service). */
 export async function readinessFor(user: string, today: string = nyDate(), lang: Lang = "ru"): Promise<ReadinessReport> {
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   return buildReport(user, today, undefined, lang);
 }
 
@@ -232,7 +215,7 @@ async function mentorsOf(user: string): Promise<string[]> {
 router.get("/academy/path/config", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const [stages, criteria, tiers] = await Promise.all([loadStages(), loadCriteria(), loadTiers()]);
   res.json({
     stages, criteria, tiers: tiers.map((t) => ({ key: t.key, name: t.name, accountSize: t.accountSize, dailyLossLimit: t.dailyLossLimit, maxDrawdown: t.maxDrawdown })),
@@ -252,7 +235,7 @@ const StageBody = z.object({
 router.put("/academy/path/stages", asyncHandler(async (req, res): Promise<void> => {
   const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const parsed = z.array(StageBody).min(1).max(4).safeParse(req.body);
   if (!parsed.success) { bad(res, parsed.error); return; }
   for (const s of parsed.data) {
@@ -281,7 +264,7 @@ const CriterionBody = z.object({
 router.put("/academy/path/criteria", asyncHandler(async (req, res): Promise<void> => {
   const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const parsed = z.array(CriterionBody).max(120).safeParse(req.body);
   if (!parsed.success) { bad(res, parsed.error); return; }
   const client = await pool.connect();
@@ -322,7 +305,7 @@ router.put("/academy/path/criteria", asyncHandler(async (req, res): Promise<void
 router.get("/academy/path/report", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const user = await targetUser(req, req.query.user);
   if (user === undefined) throw unauthorized();
   const today = clientDate(req.query.date);
@@ -339,7 +322,7 @@ router.get("/academy/path/report", asyncHandler(async (req, res): Promise<void> 
 router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const today = clientDate(req.query.date);
   const lang = langOf(req);
   const [stages, criteria, tiers, info, usersRes, pendingRes] = await Promise.all([
@@ -393,7 +376,7 @@ function rowToHistory(r: any) {
 router.get("/academy/path/requests", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const want = typeof req.query.user === "string" ? req.query.user.trim() : "";
   const scope = await scopeTrader(req, want || null);
   if (scope === undefined) throw unauthorized();
@@ -416,7 +399,7 @@ router.post("/academy/path/requests", asyncHandler(async (req, res): Promise<voi
   if (!requireMember(req, res)) return;
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const parsed = RequestBody.safeParse(req.body ?? {});
   if (!parsed.success) { bad(res, parsed.error); return; }
   const user = v.staff && parsed.data.user ? parsed.data.user : v.name;
@@ -451,7 +434,7 @@ const DecisionBody = z.object({ comment: z.string().trim().max(2000).optional() 
 router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const id = Number(req.params.id);
   const parsed = DecisionBody.safeParse(req.body ?? {});
   if (!Number.isInteger(id) || !parsed.success) throw badRequest();
@@ -480,7 +463,7 @@ router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res):
 router.post("/academy/path/requests/:id/reject", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const id = Number(req.params.id);
   const parsed = DecisionBody.safeParse(req.body ?? {});
   if (!Number.isInteger(id) || !parsed.success) throw badRequest();
@@ -505,7 +488,7 @@ router.post("/academy/path/requests/:id/withdraw", asyncHandler(async (req, res)
   if (!requireMember(req, res)) return;
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const upd = await pool.query(
@@ -525,7 +508,7 @@ const AssignBody = z.object({
 router.post("/academy/path/assign", asyncHandler(async (req, res): Promise<void> => {
   const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const parsed = AssignBody.safeParse(req.body);
   if (!parsed.success) { bad(res, parsed.error); return; }
   const { user, stage, comment } = parsed.data;
@@ -546,7 +529,7 @@ router.post("/academy/path/assign", asyncHandler(async (req, res): Promise<void>
 router.get("/academy/path/history", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const want = typeof req.query.user === "string" ? req.query.user.trim() : "";
   const scope = await scopeTrader(req, want || null);
   if (scope === undefined) throw unauthorized();
@@ -662,7 +645,7 @@ async function persistResult(c: ChallengeRow, result: ChallengeResult, notifiedS
  * ones whose notice has not gone out yet. GET endpoints never write — they evaluate on the fly.
  */
 export async function refreshChallenges(users?: string[] | null): Promise<{ checked: number; changed: number }> {
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const today = nyDate();
   const { rows } = await pool.query(
     users
@@ -689,7 +672,7 @@ export async function refreshChallenges(users?: string[] | null): Promise<{ chec
  * ("academy.readiness": every 15 min and after each PropReports sync). GET endpoints only evaluate, never notify.
  */
 export async function refreshReadinessNotices(users?: string[] | null): Promise<{ checked: number; ready: number }> {
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const today = nyDate();
   const [stages, criteria, tiers, info, usersRes] = await Promise.all([
     loadStages(), loadCriteria(), loadTiers(), loadStageInfo(null),
@@ -724,7 +707,7 @@ router.get("/academy/challenges/templates", asyncHandler(async (req, res): Promi
 router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const want = typeof req.query.user === "string" ? req.query.user.trim() : "";
   const scope = await scopeTrader(req, want || null);
   if (scope === undefined) throw unauthorized();
@@ -752,7 +735,7 @@ router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> =
 router.get("/academy/challenges/:id", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const { rows } = await pool.query(`SELECT * FROM academy_challenges WHERE id = $1`, [id]);
@@ -811,7 +794,7 @@ async function createChallenge(user: string, templateKey: string, startsOn: stri
 router.post("/academy/challenges", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const parsed = ChallengeBody.safeParse(req.body);
   if (!parsed.success) { bad(res, parsed.error); return; }
   const b = parsed.data;
@@ -831,7 +814,7 @@ router.post("/academy/challenges", asyncHandler(async (req, res): Promise<void> 
 router.post("/academy/challenges/:id/archive", asyncHandler(async (req, res): Promise<void> => {
   const v = await staffOnly(req, res);
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const upd = await pool.query(`UPDATE academy_challenges SET archived_at = NOW(), archived_by = $2 WHERE id = $1 AND archived_at IS NULL RETURNING id`, [id, v.name]);
@@ -844,7 +827,7 @@ router.post("/academy/challenges/:id/archive", asyncHandler(async (req, res): Pr
 router.post("/academy/path/seed-demo", asyncHandler(async (req, res): Promise<void> => {
   const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
-  await ensureAcademyPathTables();
+  await ensureAcademyPathSeed();
   const today = nyDate();
   const start = `${today.slice(0, 8)}01`;
   const { rows } = await pool.query(

@@ -18,6 +18,13 @@ export default {
     searching: "Searching…",
     pick: "Pick a trade",
   },
+  overlay: {
+    setup: "Setup: {name}",
+    setupTitle: "The trade's setup from the markup",
+    plan: { one: "Plan: {count} level", other: "Plan: {count} levels" },
+    planOwn: "Levels from your morning plan for this day — the dotted «Plan» lines on the chart",
+    planDesk: "Levels from the desk plan for this day — the dotted «Plan» lines on the chart",
+  },
   openInTrades: "Open in Trades",
   openInTradesAria: "Open the trade in Trades",
   dayReview: "Review of this day",

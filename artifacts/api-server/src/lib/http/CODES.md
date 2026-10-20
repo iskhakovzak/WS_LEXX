@@ -38,7 +38,6 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `IDEA_NOT_FOUND` | 404 | Trade idea. | — |
 | `COHORT_NOT_FOUND` | 404 | Academy cohort. | — |
 | `SESSION_NOT_FOUND` | 404 | Academy session (class). | — |
-| `CHECKLIST_ITEM_NOT_FOUND` | 404 | Pre-trade checklist template item. | — |
 | `CONFLICT` | 409 | Duplicate or conflicting write. pg `23505` (unique) and `23503` (foreign key) map here automatically. | sometimes `{ field }` |
 | `TOO_LARGE` | 413 | The body is over the JSON limit, or a file is over the multer limit. | — |
 | `RATE_LIMITED` | 429 | Too many requests. | — |
@@ -64,10 +63,6 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `VIOLATION_UNACK_STAFF_ONLY` | 403 | A trader un-acknowledges a violation. | — |
 | `VIOLATION_DECISION_STAFF_ONLY` | 403 | A trader sets resolution/consequence. | — |
 | `VIOLATION_DISMISS_STAFF_ONLY` | 403 | DELETE /rule-violations/:id without rules.violations.delete. | `{ capability }` |
-| `CHECKLIST_NOT_FOUND` | 404 | Pre-trade checklist response. | — |
-| `CHECKLIST_FORBIDDEN` | 403 | Linking someone else's checklist response. | — |
-| `CHECKLIST_ALREADY_LINKED` | 409 | Checklist response already linked to a different trade. | — |
-| `CHECKLIST_RESPONSES_REQUIRED` | 400 | POST /checklist-responses without responses. | — |
 | `SETUP_SUGGESTION_MISSING` | 409 | setups-auto accept/reject before a suggestion was computed. | — |
 | `DATE_RANGE_INVALID` | 400 | `from` > `to` (or weekEnd before weekStart). | — |
 | `TRIGGER_NOT_FOUND` | 404 | Personal behaviour trigger (/behavior/triggers). | — |
@@ -326,10 +321,6 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `PROPREPORTS_BUSY` | 503 | PropReports answered 429 / 503 after the client retries. | — |
 | `FILE_TYPE` | 400 | Upload of an unsupported file type. | — |
 | `TRADES_REPORT_EMPTY` | 400 | PropReports Trades file without recognizable rows. | — |
-| `CHECKLIST_REQUIRED` | 422 | Trade create / entry-field edit without a checklist response (skipChecklist: curator only). | — |
-| `CHECKLIST_NOT_PASSED` | 422 | The linked checklist response is recorded as failed. | `{ responseId }` |
-| `CHECKLIST_MISMATCH` | 422 | A checklist response of another ticker / date / trader. | `{ responseId }` |
-| `CHECKLIST_INVALID_ID` | 422 | An unknown checklist response id. | `{ responseId }` |
 | `PROMOTE_STAFF_ONLY` | 403 | POST /playbook/:id/promote without playbook.review. | — |
 | `DESK_TEMPLATES_STAFF_ONLY` | 403 | Game plan template create/edit of a shared or desk template without gameplan.publish. | — |
 | `DESK_PLAN_MEDIA_UPLOAD_STAFF_ONLY` | 403 | Plan media upload with context=desk without gameplan.publish. | — |
@@ -383,8 +374,6 @@ These are hand-written in route files, auth or the security module. They have st
 | Code | Status | Where / when |
 |---|---|---|
 | `INVALID_CREDENTIALS` 401, `BANNED` 403, `GUEST_DISABLED` 403, `PASSWORD_CHANGE_REQUIRED` 403, `LOGIN_LOCKED` 429, `WEAK_PASSWORD` / `WRONG_PASSWORD` / `SAME_PASSWORD` 400 | see code | auth / `lib/security/respond.ts` (owned by the security agent). Some carry extra top-level fields (`retryAfterSec`, `policy`). |
-| `CHECKLIST_REQUIRED`, `CHECKLIST_NOT_PASSED`, `CHECKLIST_MISMATCH` | 422 | trades: create without a valid pre-trade checklist |
-| `CHECKLIST_INVALID_ID` | 400 | trades: checklist id in the body does not exist (`CHECKLIST_ALREADY_LINKED` is in the registry) |
 | `FOLDER_EXISTS` | 409 | playbook folder rename |
 | `JOURNAL_CONFLICT` | 409 | journal: edited in another tab (`current` attached) |
 | `SYNC_RUNNING`, `SYNC_PENDING` | 409 | PropReports sync in progress or not yet run for the date |

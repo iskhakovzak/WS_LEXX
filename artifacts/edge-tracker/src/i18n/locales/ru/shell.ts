@@ -13,6 +13,7 @@ export default {
     analytics: "Аналитика",
     weeklyReview: "Отчёт недели",
     dayReport: "Разбор дня",
+    myReview: "Мой разбор",
     behavior: "Поведение и сетапы",
     trainer: "Тренажёр",
     whatIf: "Что если",

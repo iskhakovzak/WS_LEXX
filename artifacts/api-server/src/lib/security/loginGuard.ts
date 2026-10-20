@@ -10,8 +10,7 @@
  *     real one (an attacker can't tell them apart by the lock). A successful sign-in clears the row.
  *  3. The IP + name limiter (express-rate-limit, skipSuccessfulRequests) lives in lib/security/http.ts.
  *
- * Schema: created idempotently by `ensureLoginLockoutSchema()` until B4's migration runner exists
- * (TODO(B4): move the CREATE TABLE into a numbered migration and delete the ensure).
+ * Schema: login_lockouts, migration 0010_login_lockouts.sql.
  */
 import { createHash } from "node:crypto";
 import { pool } from "@workspace/db";
@@ -134,24 +133,6 @@ export function memoryLockoutStore(): LockoutStore & { rows: Map<string, Row> } 
   };
 }
 
-let schemaReady: Promise<void> | null = null;
-export function ensureLoginLockoutSchema(): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = pool
-      .query(`CREATE TABLE IF NOT EXISTS login_lockouts (
-        key             TEXT PRIMARY KEY,
-        user_id         INTEGER NULL,
-        failures        INTEGER NOT NULL DEFAULT 0,
-        lock_level      INTEGER NOT NULL DEFAULT 0,
-        locked_until    TIMESTAMPTZ NULL,
-        last_failure_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )`)
-      .then(() => undefined)
-      .catch((e) => { schemaReady = null; throw e; });
-  }
-  return schemaReady;
-}
-
 type DbRow = { user_id: number | null; failures: number; lock_level: number; locked_until: Date | null; last_failure_at: Date };
 const toRow = (r: DbRow): Row => ({
   userId: r.user_id, failures: Number(r.failures), level: Number(r.lock_level),
@@ -162,13 +143,11 @@ const toRow = (r: DbRow): Row => ({
 export function pgLockoutStore(): LockoutStore {
   return {
     async check(key, now = new Date()) {
-      await ensureLoginLockoutSchema();
       const { rows } = await pool.query<{ locked_until: Date | null }>(`SELECT locked_until FROM login_lockouts WHERE key = $1`, [key]);
       const until = rows[0]?.locked_until;
       return until ? lockedState(new Date(until), now) : { locked: false };
     },
     async fail(key, userId, now = new Date()) {
-      await ensureLoginLockoutSchema();
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -194,11 +173,9 @@ export function pgLockoutStore(): LockoutStore {
       }
     },
     async clear(key) {
-      await ensureLoginLockoutSchema();
       await pool.query(`DELETE FROM login_lockouts WHERE key = $1`, [key]);
     },
     async clearUser(userId) {
-      await ensureLoginLockoutSchema();
       await pool.query(`DELETE FROM login_lockouts WHERE key = $1`, [`u:${userId}`]);
     },
   };

@@ -1,7 +1,6 @@
 import type { Request } from "express";
 import { pool } from "@workspace/db";
 import { can, readScope, resolveActor } from "./permissions";
-import { logger } from "./logger";
 import type { MoneyViewer } from "./playbookPrivacy";
 
 /**
@@ -16,7 +15,7 @@ import type { MoneyViewer } from "./playbookPrivacy";
  *                                  shared_with = { users: string[], cohorts: number[] }). Others read it and may
  *                                  copy it into their «Мой» (copied_from_* keeps the attribution).
  *
- * Migration (additive; see ensurePlaybookSpaces): space was not stored before. A row without space is
+ * Legacy rows (lib/migrate.ts runSeeds backfills them; readers COALESCE via spaceSql): space was not stored before. A row without space is
  * 'office' when it has no author (trader IS NULL — the historic "team setup") or its author is a curator/admin;
  * otherwise it is the author's personal, private setup. Locally all 120 legacy setups had no author → «Офис».
  *
@@ -220,7 +219,6 @@ export async function isReadableExampleTrade(req: Request, tradeId: number): Pro
   if (!Number.isInteger(tradeId) || tradeId <= 0) return false;
   const v = await loadViewer(req);
   if (!v.name || v.guest) return false;
-  await ensurePlaybookSpaces();
   const params: unknown[] = [tradeId];
   const vis = visibleSql(v, params, "p");
   const { rows } = await pool.query(
@@ -262,101 +260,10 @@ export function accessHints(v: PlaybookViewer, row: SetupAccessRow) {
   };
 }
 
-// ─── schema (additive, idempotent, lazy) ────────────────────────────────────
-
-let ensured: Promise<void> | null = null;
-
-/**
- * Columns: space / visibility / shared_with / shared_at / shared_by / created_by / copied_from_* / promoted_from_id /
- * office_proposed_* / structured card fields / horizon / updated_at. Tables: playbook_examples, playbook_media.
- * Backfill runs only for rows whose space is still NULL (cheap and idempotent).
- */
-export function ensurePlaybookSpaces(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE playbook ADD COLUMN IF NOT EXISTS space TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS visibility TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS shared_with JSONB;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS shared_at TIMESTAMPTZ;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS shared_by TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS created_by TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS copied_from_id INTEGER;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS copied_from_author TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS promoted_from_id INTEGER;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS office_proposed_at TIMESTAMPTZ;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS office_proposed_by TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS office_proposed_note TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS context_text TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS trigger_text TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS entry_text TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS stop_text TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS targets_text TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS management_text TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS invalidation_text TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS ideal_conditions TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS time_of_day TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS horizon TEXT;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS media JSONB;
-         ALTER TABLE playbook ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
-         CREATE INDEX IF NOT EXISTS playbook_space_trader_idx ON playbook (space, trader) WHERE deleted_at IS NULL;
-
-         UPDATE playbook p
-            SET space = CASE
-                  WHEN p.trader IS NULL THEN 'office'
-                  WHEN EXISTS (SELECT 1 FROM users u WHERE u.name = p.trader AND u.role IN ('curator', 'admin')) THEN 'office'
-                  ELSE 'personal' END
-          WHERE p.space IS NULL;
-         UPDATE playbook SET visibility = 'private' WHERE visibility IS NULL;
-
-         CREATE TABLE IF NOT EXISTS playbook_examples (
-           id SERIAL PRIMARY KEY,
-           playbook_id INTEGER NOT NULL,
-           trade_id INTEGER NOT NULL,
-           tier SMALLINT NOT NULL DEFAULT 2 CHECK (tier BETWEEN 1 AND 3),
-           note TEXT,
-           checklist_marks JSONB,
-           media_id INTEGER,
-           sort_order INTEGER NOT NULL DEFAULT 0,
-           added_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           deleted_at TIMESTAMPTZ
-         );
-         CREATE UNIQUE INDEX IF NOT EXISTS playbook_examples_live_uq ON playbook_examples (playbook_id, trade_id) WHERE deleted_at IS NULL;
-         CREATE INDEX IF NOT EXISTS playbook_examples_setup_idx ON playbook_examples (playbook_id, tier, sort_order) WHERE deleted_at IS NULL;
-         CREATE INDEX IF NOT EXISTS playbook_examples_trade_idx ON playbook_examples (trade_id) WHERE deleted_at IS NULL;
-         CREATE INDEX IF NOT EXISTS playbook_examples_tier_idx ON playbook_examples (tier, created_at DESC) WHERE deleted_at IS NULL;
-
-         CREATE TABLE IF NOT EXISTS playbook_media (
-           id SERIAL PRIMARY KEY,
-           playbook_id INTEGER NOT NULL,
-           owner TEXT NOT NULL,
-           mime TEXT NOT NULL,
-           bytes BYTEA NOT NULL,
-           size_bytes INTEGER NOT NULL,
-           width INTEGER,
-           height INTEGER,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           deleted_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS playbook_media_owner_created_idx ON playbook_media (owner, created_at);
-         CREATE INDEX IF NOT EXISTS playbook_media_setup_idx ON playbook_media (playbook_id);`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        logger.warn({ err }, "playbook: ensure spaces failed");
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 /** Load the access-relevant columns of one setup (null when missing / soft-deleted unless includeDeleted). */
 export async function loadSetupAccess(id: number, includeDeleted = false): Promise<(SetupAccessRow & { id: number; name: string; folder: string | null; deletedAt: string | null }) | null> {
   if (!Number.isInteger(id) || id <= 0) return null;
-  await ensurePlaybookSpaces();
   const { rows } = await pool.query<any>(
     `SELECT id, name, folder, trader, space, visibility, shared_with AS "sharedWith", deleted_at AS "deletedAt"
        FROM playbook WHERE id = $1 ${includeDeleted ? "" : "AND deleted_at IS NULL"}`,

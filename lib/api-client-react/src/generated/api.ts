@@ -33,7 +33,6 @@ import type {
   CreateDiscussionBody,
   CreateEmotionalStateBody,
   CreateEventBody,
-  CreateResearchBody,
   CreateTradeBody,
   CreateVoiceNoteBody,
   CreateWarRoomLevelBody,
@@ -66,7 +65,6 @@ import type {
   UpdateBig7TickerBody,
   UpdateDailyFeedBody,
   UpdateEventBody,
-  UpdateResearchBody,
   UpdateTradeBody,
   UpdateWarRoomSessionBody,
   VoiceNote,
@@ -990,77 +988,6 @@ export function useListResearch<TData = Awaited<ReturnType<typeof listResearch>>
 
 
 /**
- * @summary Create a research entry
- */
-export const getCreateResearchUrl = () => {
-
-
-
-
-  return `/api/research`
-}
-
-export const createResearch = async (createResearchBody: CreateResearchBody, options?: RequestInit): Promise<Research> => {
-
-  return customFetch<Research>(getCreateResearchUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      createResearchBody,)
-  }
-);}
-
-
-
-
-export const getCreateResearchMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createResearch>>, TError,{data: BodyType<CreateResearchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createResearch>>, TError,{data: BodyType<CreateResearchBody>}, TContext> => {
-
-const mutationKey = ['createResearch'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createResearch>>, {data: BodyType<CreateResearchBody>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  createResearch(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type CreateResearchMutationResult = NonNullable<Awaited<ReturnType<typeof createResearch>>>
-    export type CreateResearchMutationBody = BodyType<CreateResearchBody>
-    export type CreateResearchMutationError = ErrorType<unknown>
-
-    /**
- * @summary Create a research entry
- */
-export const useCreateResearch = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createResearch>>, TError,{data: BodyType<CreateResearchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof createResearch>>,
-        TError,
-        {data: BodyType<CreateResearchBody>},
-        TContext
-      > => {
-      return useMutation(getCreateResearchMutationOptions(options));
-    }
-
-/**
  * @summary Get research by ID
  */
 export const getGetResearchUrl = (id: number,) => {
@@ -1136,148 +1063,6 @@ export function useGetResearch<TData = Awaited<ReturnType<typeof getResearch>>, 
 
 
 
-
-/**
- * @summary Update a research entry
- */
-export const getUpdateResearchUrl = (id: number,) => {
-
-
-
-
-  return `/api/research/${id}`
-}
-
-export const updateResearch = async (id: number,
-    updateResearchBody: UpdateResearchBody, options?: RequestInit): Promise<Research> => {
-
-  return customFetch<Research>(getUpdateResearchUrl(id),
-  {
-    ...options,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      updateResearchBody,)
-  }
-);}
-
-
-
-
-export const getUpdateResearchMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateResearch>>, TError,{id: number;data: BodyType<UpdateResearchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof updateResearch>>, TError,{id: number;data: BodyType<UpdateResearchBody>}, TContext> => {
-
-const mutationKey = ['updateResearch'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateResearch>>, {id: number;data: BodyType<UpdateResearchBody>}> = (props) => {
-          const {id,data} = props ?? {};
-
-          return  updateResearch(id,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type UpdateResearchMutationResult = NonNullable<Awaited<ReturnType<typeof updateResearch>>>
-    export type UpdateResearchMutationBody = BodyType<UpdateResearchBody>
-    export type UpdateResearchMutationError = ErrorType<unknown>
-
-    /**
- * @summary Update a research entry
- */
-export const useUpdateResearch = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateResearch>>, TError,{id: number;data: BodyType<UpdateResearchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof updateResearch>>,
-        TError,
-        {id: number;data: BodyType<UpdateResearchBody>},
-        TContext
-      > => {
-      return useMutation(getUpdateResearchMutationOptions(options));
-    }
-
-/**
- * @summary Delete a research entry
- */
-export const getDeleteResearchUrl = (id: number,) => {
-
-
-
-
-  return `/api/research/${id}`
-}
-
-export const deleteResearch = async (id: number, options?: RequestInit): Promise<void> => {
-
-  return customFetch<void>(getDeleteResearchUrl(id),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-
-export const getDeleteResearchMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteResearch>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteResearch>>, TError,{id: number}, TContext> => {
-
-const mutationKey = ['deleteResearch'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteResearch>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
-
-          return  deleteResearch(id,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteResearchMutationResult = NonNullable<Awaited<ReturnType<typeof deleteResearch>>>
-
-    export type DeleteResearchMutationError = ErrorType<unknown>
-
-    /**
- * @summary Delete a research entry
- */
-export const useDeleteResearch = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteResearch>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof deleteResearch>>,
-        TError,
-        {id: number},
-        TContext
-      > => {
-      return useMutation(getDeleteResearchMutationOptions(options));
-    }
 
 /**
  * @summary List daily feed entries

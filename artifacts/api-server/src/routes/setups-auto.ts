@@ -31,12 +31,11 @@ import { db, pool, tradesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, canAccessTrade, isGuestUser } from "../lib/auth";
 import { logActivity } from "../lib/activity";
-import { logger } from "../lib/logger";
 import { invalidateDashboardCache } from "../lib/hotCache";
 import { invalidateTradesPageCache } from "../lib/tradesPageCache";
 import { loadBehaviorRows, rowToBehaviorTrade } from "./behavior";
 import { classifyFromFeatures, inputsHash, setupLabelOf, CLASSIFIER_VERSION, type SetupFeatures } from "../lib/setupClassifier";
-import { computeBatch, ensureSuggestionsTable, inFlight, loadSuggestions, suggestionLink, toClassifierTrade, type SuggestionRow } from "../lib/setupsAuto";
+import { computeBatch, inFlight, loadSuggestions, suggestionLink, toClassifierTrade, type SuggestionRow } from "../lib/setupsAuto";
 import { loadOfficeSetups, resolveSetupLink, setupTagged, type OfficeSetup } from "../lib/tradesSetupLink";
 import { setupsT } from "../lib/setupsI18n";
 import { langOf, type Lang } from "../i18n";
@@ -47,9 +46,6 @@ import { lockedSetupIds } from "../lib/playbookLock";
 import { AppError, badRequest, conflict, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
-
-const ensureTable = ensureSuggestionsTable;
-ensureTable().catch((err) => logger.warn({ err }, "setups-auto: ensure table failed at init"));
 
 /* ─── Вспомогательное ─────────────────────────────────────────────────────── */
 
@@ -154,7 +150,6 @@ router.get("/setups-auto", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  await ensureTable();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
   const all = rows
@@ -201,7 +196,6 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  await ensureTable();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
   const trades = rows
@@ -319,7 +313,6 @@ router.get("/setups-auto/for-trades", asyncHandler(async (req, res) => {
   if (!me) throw unauthorized();
   const q = idsQuery.safeParse(String(req.query.ids ?? ""));
   if (!q.success) throw badRequest("INVALID_ID");
-  await ensureTable();
   const ids = [...new Set(q.data.split(",").map(Number))];
   const { rows } = await pool.query<{ id: number; trader: string | null }>(
     `SELECT id, trader FROM trades WHERE id = ANY($1::int[]) AND deleted_at IS NULL AND playbook_id IS NULL`,
@@ -352,7 +345,6 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
   if (!body.success) throw badRequest("VALIDATION", body.error.flatten());
   const me = req.authUser;
   if (!me || isGuestUser(me)) throw new AppError("GUEST_READ_ONLY");
-  await ensureTable();
   const ids = [...new Set(body.data.tradeIds)];
   const minConf = body.data.minConfidence ?? 0;
 
@@ -422,7 +414,6 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   const access = await canAccessTrade(req, id.data, "write");
   if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) throw new AppError("TRADE_FORBIDDEN");
-  await ensureTable();
 
   const current = (await loadSuggestions([id.data])).get(id.data) ?? null;
   if (!body.data.setup && body.data.playbookId == null && !current?.setup) throw conflict("SETUP_SUGGESTION_MISSING");
@@ -465,7 +456,6 @@ router.post("/setups-auto/:tradeId/reject", asyncHandler(async (req, res) => {
   const access = await canAccessTrade(req, id.data, "write");
   if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) throw new AppError("TRADE_FORBIDDEN");
-  await ensureTable();
   const { rowCount } = await pool.query(
     `UPDATE trade_setup_suggestions SET status = 'rejected', decided_by = $2, decided_at = NOW(), updated_at = NOW() WHERE trade_id = $1`,
     [id.data, req.authUser?.name ?? null],
@@ -480,7 +470,6 @@ router.post("/setups-auto/:tradeId/recompute", asyncHandler(async (req, res) => 
   const access = await canAccessTrade(req, id.data, "write");
   if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) throw new AppError("TRADE_FORBIDDEN");
-  await ensureTable();
   const rows = await loadBehaviorRows(null, undefined, undefined, [id.data]);
   if (!rows[0]) throw notFound("TRADE_NOT_FOUND");
   const trade = rowToBehaviorTrade(rows[0]);

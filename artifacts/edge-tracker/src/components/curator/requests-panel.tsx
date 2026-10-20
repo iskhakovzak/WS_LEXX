@@ -5,7 +5,8 @@
  */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, MessageCircleQuestion, X } from "lucide-react";
+import { Link } from "wouter";
+import { Check, ExternalLink, MessageCircleQuestion, X } from "lucide-react";
 import { Panel, Pill, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { askCuratorI18n } from "@/i18n/ns/askCurator";
 import { askCuratorKeys, type CuratorRequest, type RequestKind } from "@/components/shared/ask-curator";
 import type { Scope } from "./api";
 
-const KIND_TONE: Record<RequestKind, Tone> = { limits: "warn", group: "accent", stage: "purple", plan: "neutral", other: "neutral" };
+const KIND_TONE: Record<RequestKind, Tone> = { limits: "warn", group: "accent", stage: "purple", plan: "neutral", other: "neutral", review: "accent" };
 
 /** Cabinet scope → the API's «Моя группа / Все» (auto = the server default: my group when I have one). */
 export const requestsScope = (scope: Scope | "auto"): "group" | "all" | null => (scope === "mine" ? "group" : scope === "desk" ? "all" : null);
@@ -70,6 +71,11 @@ function RequestRow({ r, onOpenTrader }: { r: CuratorRequest; onOpenTrader: (tra
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtDeskDateTime(r.createdAt, { style: "numericDateTime" })}</span>
       </div>
       <p className="text-sm text-muted-foreground">{r.message || t("panel.noMessage")}</p>
+      {r.kind === "review" && r.link && (
+        <Link href={r.link} className="inline-flex min-h-10 w-fit items-center gap-1.5 rounded-lg px-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />{t("panel.openThread")}
+        </Link>
+      )}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Input className="h-8 min-w-0 flex-1 text-sm" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("panel.notePh")} aria-label={t("panel.notePh")} />
         <div className="flex gap-2">

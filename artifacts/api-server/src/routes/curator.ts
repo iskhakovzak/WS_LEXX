@@ -34,7 +34,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { nyDate, nyMinutes, addDays } from "../lib/tradingDate";
 import { can, readScope, requireCap } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
-import { ensureCuratorTables, marketClosedDays, rowToBreachReview, rowToNote } from "../lib/curatorStore";
+import { marketClosedDays, rowToBreachReview, rowToNote } from "../lib/curatorStore";
 import { loadRoster, safe, type TraderSignal } from "../lib/curatorRoster";
 import { REVIEW_SLA_HOURS, tradingDaysAfter, tradingHoursBetween } from "../lib/eodLogic";
 import {
@@ -42,7 +42,6 @@ import {
   trendDirection, weeklyTrend, type QueueKind,
 } from "../lib/curatorLogic";
 import { alertMessage, breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
-import { ensureNameLatin } from "../lib/peopleDirectory";
 import { AppError, badRequest, forbidden, notFound } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
@@ -51,8 +50,11 @@ import { buildCostQueue } from "../lib/daily/costQueue";
 import { eveningFor } from "../lib/daily/service";
 import { curatorFocusFor } from "../lib/daily/curatorFocus";
 import { curatorQuestEvents } from "../lib/quests/store";
+import curatorTasks from "./curatorTasks";
 
 const router: IRouter = Router();
+// «Готово» on a curator task (2.13): POST /curator/tasks/:id/done — routes/curatorTasks.ts.
+router.use(curatorTasks);
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -74,12 +76,10 @@ type Bulk = Awaited<ReturnType<typeof loadBulk>>;
 
 /** `lang` = the reader's language of generated labels (stop texts, stage names, next steps, queue titles). */
 async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
-  await ensureCuratorTables();
   const prev = prevTradingDay(today);
   const from35 = addDays(today, -35);
   const from42 = addDays(today, -42);
   const from30 = addDays(today, -29);
-  await ensureNameLatin().catch(() => undefined);
   const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity, closed] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
     deskSnapshot(today, null, lang, traders),
@@ -405,7 +405,6 @@ router.post("/curator/queue/restore", asyncHandler(async (req, res): Promise<voi
   if (!(await requireCap(req, res, "journal.review"))) return;
   const parsed = restoreSchema.safeParse(req.body ?? {});
   if (!parsed.success) throw badRequest();
-  await ensureCuratorTables();
   const readable = await readScope(req, "journal.review");
   const { rowCount } = await pool.query(
     `UPDATE curator_queue_acks SET revoked_at = NOW()
@@ -502,7 +501,6 @@ router.get("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const trader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   if (!trader || trader.length > 100) throw badRequest("TRADER_REQUIRED");
   if (!(await requireCap(req, res, "journal.review", { trader }))) return;
-  await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE archived_at IS NULL AND trader = $1 ORDER BY pinned DESC, created_at DESC LIMIT 200`, [trader]);
   res.json({ trader, notes: rows.map(rowToNote) });
 }));
@@ -525,7 +523,6 @@ router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const b = parsed.data;
   const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!exists.length) throw notFound("TRADER_NOT_FOUND");
-  await ensureCuratorTables();
   const { rows } = await pool.query(
     `INSERT INTO curator_notes (trader, author, body, kind, pinned, day) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [b.trader, req.authUser!.name, b.body, b.kind, b.pinned, b.day ?? null],
@@ -541,7 +538,6 @@ const NotePatch = z.object({
 
 /** Throws 404 NOTE_NOT_FOUND / 403 FORBIDDEN. */
 async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any }> {
-  await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NULL`, [id]);
   const row = rows[0];
   if (!row) throw notFound("NOTE_NOT_FOUND");
@@ -578,7 +574,6 @@ router.post("/curator/notes/:id/archive", asyncHandler(async (req, res): Promise
 router.post("/curator/notes/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NOT NULL AND archived_at > NOW() - INTERVAL '1 day'`, [id]);
   const row = rows[0];
   if (!row) throw notFound("NOTE_NOT_FOUND");

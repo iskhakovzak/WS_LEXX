@@ -30,27 +30,7 @@ const NOTE_COLS = `id, trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date, ra
 
 const NOTE_COLS_N = `n.id, n.trader, TO_CHAR(n.note_date, 'YYYY-MM-DD') AS note_date, n.raw_text, n.refined_text, n.mood, n.created_at, n.updated_at`;
 
-// Read receipts for the team feed ("прочитано"). Additive table, created lazily (same pattern as journal.ts).
-let readsEnsured: Promise<void> | null = null;
-function ensureReadsTable(): Promise<void> {
-  if (!readsEnsured) {
-    readsEnsured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS author_note_reads (
-           note_id INTEGER NOT NULL REFERENCES author_notes(id) ON DELETE CASCADE,
-           reader TEXT NOT NULL,
-           read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (note_id, reader)
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        readsEnsured = null;
-        throw err;
-      });
-  }
-  return readsEnsured;
-}
+// Read receipts for the team feed ("прочитано"): author_note_reads.
 
 // Looking at another author's day context / read receipts = journal.read.team (permissions matrix, DB role).
 
@@ -164,7 +144,6 @@ router.get("/author-notes/feed", requireAuth, asyncHandler(async (req, res): Pro
   if (Date.parse(to) - Date.parse(from) > 92 * 86_400_000) throw new AppError("RANGE_TOO_LONG", undefined, { max: 92 });
   const rawTrader = req.query["trader"];
   const trader = typeof rawTrader === "string" && rawTrader.trim() ? rawTrader.trim() : null;
-  await ensureReadsTable();
   const params: unknown[] = [from, to];
   let traderSql = "";
   if (trader) { params.push(trader); traderSql = ` AND n.trader = $${params.length}`; }
@@ -289,7 +268,6 @@ router.get("/author-notes/:id/reads", requireAuth, asyncHandler(async (req, res)
   const auth = req.authUser!;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
   if (!noteRows[0]) throw notFound();
   if (noteRows[0].trader !== auth.name && !(await can(req, "journal.read.team", { trader: noteRows[0].trader }))) throw forbidden();
@@ -306,7 +284,6 @@ router.get("/author-notes/:id/audience", requireAuth, asyncHandler(async (req, r
   const auth = req.authUser!;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
   if (!noteRows[0]) throw notFound();
   const author = noteRows[0].trader as string;
@@ -328,7 +305,6 @@ router.post("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res)
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
   if (!noteRows[0]) throw notFound();
   if (noteRows[0].trader === me) throw new AppError("OWN_ENTRY");
@@ -345,7 +321,6 @@ router.delete("/author-notes/:id/read", requireAuth, asyncHandler(async (req, re
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureReadsTable();
   await pool.query(`DELETE FROM author_note_reads WHERE note_id = $1 AND reader = $2`, [id, me]);
   res.json({ ok: true });
 }));

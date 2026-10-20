@@ -18,11 +18,16 @@ import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { askCuratorI18n } from "@/i18n/ns/askCurator";
 
-export type RequestKind = "limits" | "group" | "stage" | "plan" | "other";
+export type RequestKind = "limits" | "group" | "stage" | "plan" | "other" | "review";
 export type CuratorRequest = {
   id: number; trader: string; traderId: number; kind: RequestKind; message: string; status: "open" | "done" | "dismissed"; note: string | null;
   createdAt: string; resolvedAt: string | null; resolvedBy: string | null;
+  /** Kind «review» (Волна 2 п. 2.13): the thread — «/discussions?thread=7», «/trade-ideas?idea=3». Absent on older APIs. */
+  link?: string | null;
 };
+
+/** The thread link of a «Попросить разбор» request (the server accepts exactly these two shapes). */
+export const reviewLink = (where: "discussion" | "idea", id: number): string => (where === "discussion" ? `/discussions?thread=${id}` : `/trade-ideas?idea=${id}`);
 
 export const askCuratorKeys = {
   all: ["curator-requests"] as const,
@@ -41,12 +46,13 @@ export function useMyCuratorRequests(enabled = true) {
   });
 }
 
-/** The open request of `kind` (null = none / still loading). Pure — the button and the tests share it. */
-export function openRequestOf(list: readonly CuratorRequest[] | undefined, kind: RequestKind): CuratorRequest | null {
-  return list?.find((r) => r.kind === kind && r.status === "open") ?? null;
+/** The open request of `kind` (for «review»: of that thread; null = none / still loading). Pure — the button and the tests share it. */
+export function openRequestOf(list: readonly CuratorRequest[] | undefined, kind: RequestKind, link: string | null = null): CuratorRequest | null {
+  return list?.find((r) => r.kind === kind && r.status === "open" && (!link || r.link === link)) ?? null;
 }
 
-export function AskCuratorButton({ kind, className, size = "sm" }: { kind: RequestKind; className?: string; size?: "sm" | "xs" }) {
+/** `link` — kind «review» only: the thread the curator is asked to review (reviewLink). */
+export function AskCuratorButton({ kind, link = null, className, size = "sm" }: { kind: RequestKind; link?: string | null; className?: string; size?: "sm" | "xs" }) {
   const { t } = askCuratorI18n.useT();
   const { user } = useAuth();
   const member = !!user && user.role !== "guest";
@@ -56,7 +62,7 @@ export function AskCuratorButton({ kind, className, size = "sm" }: { kind: Reque
   const [open, setOpen] = React.useState(false);
   const [message, setMessage] = React.useState("");
   const send = useMutation({
-    mutationFn: (body: { kind: RequestKind; message: string }) => http.post<{ request: CuratorRequest }>("/api/curator-requests", body),
+    mutationFn: (body: { kind: RequestKind; message: string; link?: string }) => http.post<{ request: CuratorRequest }>("/api/curator-requests", body),
     onSuccess: () => {
       toast({ title: t("sent") });
       setOpen(false);
@@ -69,7 +75,7 @@ export function AskCuratorButton({ kind, className, size = "sm" }: { kind: Reque
     },
   });
   if (!member) return null;
-  const pending = openRequestOf(mine.data, kind);
+  const pending = openRequestOf(mine.data, kind, link);
   const btn = size === "xs" ? "h-7 px-2 text-xs" : undefined;
   if (pending) {
     return (
@@ -98,7 +104,7 @@ export function AskCuratorButton({ kind, className, size = "sm" }: { kind: Reque
           </label>
           <DialogFooter className="gap-2">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={send.isPending}>{t("cancel")}</Button>
-            <Button type="button" onClick={() => send.mutate({ kind, message: message.trim() })} disabled={send.isPending}>{t("send")}</Button>
+            <Button type="button" onClick={() => send.mutate({ kind, message: message.trim(), ...(link ? { link } : {}) })} disabled={send.isPending}>{t("send")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

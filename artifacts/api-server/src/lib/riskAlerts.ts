@@ -18,7 +18,6 @@ import { notifLinks } from "./notificationCore";
 import { claimOnce, staffOrFallback } from "./notifyEvents";
 import { riskDedupKey, riskNotice, uniqueRecipients } from "./notifyEventsCore";
 import { breachStats, repeatBreachKey } from "./curatorLogic";
-import { ensureTables } from "./riskData";
 import { WARN_PCT, computeStop, round2, type Limits, type Metrics, type StopState } from "./riskMetrics";
 
 export const RISK_ALERT_KIND = "risk.alert";
@@ -92,7 +91,6 @@ export function parseRiskAlertPayload(raw: unknown): RiskAlertPayload | null {
 
 /** Breach / warn record (UNIQUE trader, date, kind). True when this call inserted it. */
 export async function logStopAlert(p: RiskAlertPayload): Promise<boolean> {
-  await ensureTables();
   const { rows } = await pool.query(
     `INSERT INTO risk_alert_log (trader, date, kind, level, used, "limit", message)
      VALUES ($1, $2, $3, $4, $5, $6, $7)

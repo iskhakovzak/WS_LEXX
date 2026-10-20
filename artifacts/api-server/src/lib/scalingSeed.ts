@@ -19,10 +19,17 @@ export const DEFAULT_RULES: Omit<Rule, "id">[] = [
   { kind: "promote", metric: "profit_factor", op: ">=", value: 1.3, unit: "abs", windowDays: 20, tierKey: null, label: "Profit factor", enabled: true }, // i18n-ignore (seed data)
   { kind: "promote", metric: "max_dd_pct", op: "<", value: 50, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка меньше половины лимита", enabled: true }, // i18n-ignore (seed data)
   { kind: "promote", metric: "limit_breaches", op: "=", value: 0, unit: "abs", windowDays: 20, tierKey: null, label: "Без нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "discipline", op: ">=", value: 7, unit: "abs", windowDays: 20, tierKey: null, label: "Оценка дисциплины", enabled: true }, // i18n-ignore (seed data)
+  { kind: "promote", metric: "discipline", op: ">=", value: 70, unit: "abs", windowDays: 20, tierKey: null, label: "Индекс дисциплины", enabled: true }, // i18n-ignore (seed data)
   { kind: "demote", metric: "limit_breaches", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Три и более нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
   { kind: "demote", metric: "max_dd_pct", op: ">=", value: 100, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка достигла лимита", enabled: true }, // i18n-ignore (seed data)
   { kind: "demote", metric: "net_pnl", op: "<=", value: -3, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "Убыток ≥ 3 дневных лимитов", enabled: true }, // i18n-ignore (seed data)
-  { kind: "demote", metric: "discipline", op: "<", value: 4, unit: "abs", windowDays: 20, tierKey: null, label: "Дисциплина ниже 4", enabled: true }, // i18n-ignore (seed data)
+  { kind: "demote", metric: "discipline", op: "<", value: 40, unit: "abs", windowDays: 20, tierKey: null, label: "Индекс дисциплины ниже 40", enabled: true }, // i18n-ignore (seed data)
   { kind: "demote", metric: "red_streak", op: ">=", value: 5, unit: "abs", windowDays: 20, tierKey: null, label: "Пять красных дней подряд", enabled: true }, // i18n-ignore (seed data)
 ];
+
+/**
+ * Seeded labels of the discipline rules before 2.7 (curators' 1–10 grade: «≥ 7», «below 4»). Stored rows may still carry
+ * them; on the 0–100 index they would mislead, so lib/disciplineIndex normalizeDisciplineRule drops them (the reader
+ * then sees the metric label in their language).
+ */
+export const LEGACY_DISCIPLINE_LABELS: readonly string[] = ["Оценка дисциплины", "Дисциплина ниже 4"]; // i18n-ignore (seed data)

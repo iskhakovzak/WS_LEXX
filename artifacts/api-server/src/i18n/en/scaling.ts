@@ -52,8 +52,8 @@ export default {
       hint: "Current streak of losing days",
     },
     discipline: {
-      label: "Discipline (score)",
-      hint: "Curator's average discipline score over the window's weeks (1–10)",
+      label: "Discipline index (0–100)",
+      hint: "Average daily discipline index over the window's days (0–100, as on “Trader path” and “Behavior”)",
     },
     rating_overall: {
       label: "Overall score",
@@ -81,6 +81,8 @@ export default {
     noDdLimit: "no drawdown limit set",
     noRatings: "no curator scores",
     ratings: { one: "{count} score", other: "{count} scores" },
+    noBehavior: "no days with a discipline index",
+    behaviorDays: { one: "over {count} day", other: "over {count} days" },
     noData: "no data",
   },
   rule: {

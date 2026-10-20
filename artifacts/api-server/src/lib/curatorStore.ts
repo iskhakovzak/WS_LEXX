@@ -10,59 +10,6 @@
  */
 import { pool } from "@workspace/db";
 
-let ensured: Promise<void> | null = null;
-
-export function ensureCuratorTables(): Promise<void> {
-  if (!ensured) {
-    ensured = (async () => {
-      await pool.query(`CREATE TABLE IF NOT EXISTS curator_notes (
-        id SERIAL PRIMARY KEY,
-        trader TEXT NOT NULL,
-        author TEXT NOT NULL,
-        body TEXT NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'note',
-        pinned BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        archived_at TIMESTAMPTZ,
-        archived_by TEXT
-      )`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS curator_notes_trader_idx ON curator_notes (trader, created_at DESC) WHERE archived_at IS NULL`);
-      await pool.query(`ALTER TABLE curator_notes ADD COLUMN IF NOT EXISTS day TEXT`);
-      await pool.query(`CREATE TABLE IF NOT EXISTS risk_breach_reviews (
-        id SERIAL PRIMARY KEY,
-        alert_id INTEGER NOT NULL UNIQUE,
-        trader TEXT NOT NULL,
-        date TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        reason TEXT NOT NULL,
-        comment TEXT,
-        actions JSONB NOT NULL DEFAULT '[]'::jsonb,
-        consequence TEXT NOT NULL DEFAULT 'none',
-        created_by TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_by TEXT,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        archived_at TIMESTAMPTZ,
-        archived_by TEXT
-      )`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS risk_breach_reviews_trader_idx ON risk_breach_reviews (trader, date DESC)`);
-      await pool.query(`CREATE TABLE IF NOT EXISTS curator_queue_acks (
-        item_id TEXT PRIMARY KEY,
-        trader TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        acked_by TEXT NOT NULL,
-        acked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        revoked_at TIMESTAMPTZ
-      )`);
-    })().catch((e) => {
-      ensured = null;
-      throw e;
-    });
-  }
-  return ensured;
-}
-
 export type CuratorNote = {
   id: number;
   trader: string;

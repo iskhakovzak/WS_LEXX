@@ -87,13 +87,14 @@ export async function syncNotifyHandler(payload: unknown): Promise<void> {
 const syncedPayload = z.object({ traders: z.array(z.string()).default([]) }).passthrough();
 
 /**
- * "propreports.synced": on a classic server with the job scheduler, the registry's listeners run (evening cards,
- * contract alerts, readiness, candle archive). Without it (Vercel) the light, per-trader listeners run here directly.
+ * "propreports.synced": with the job scheduler registered, the registry's listeners run (evening cards, contract
+ * alerts, readiness, candle archive). Without it (a process that never
+ * registered the jobs, e.g. a one-off script) the light, per-trader listeners run here directly.
  */
 export async function syncedEventHandler(payload: unknown): Promise<void> {
   const p = syncedPayload.parse(payload ?? {});
   const { listJobs, emitJobEvent } = await import("../../jobs/registry");
-  if (!process.env.VERCEL && listJobs().length > 0) {
+  if (listJobs().length > 0) {
     emitJobEvent("propreports.synced", p);
     return;
   }

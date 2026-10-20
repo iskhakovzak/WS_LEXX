@@ -1,5 +1,8 @@
-// Windowed trade list (audit P1-5): the legacy GET /api/trades accepts optional from/to/trader/limit/tagged.
-// Pages that only need a period, one trader or the tagged subset ask for exactly that instead of the whole book.
+// Windowed trade list (audit P1-5): GET /api/trades accepts from/to/trader/limit/tagged. Pages that only need a
+// period, one trader or the tagged subset ask for exactly that instead of the whole book. Since Волна 2 п. 2.15 the
+// server never returns the whole book: no `from` ⇒ the newest `limit` (default 500), a window wider than 400 days ⇒
+// 400. So «Всё время» and very wide windows ask for the newest TRADES_LIST_MAX (the server cap) and the window is
+// applied client-side (`select`).
 //
 // The generated `useListTrades` serialises any key of its params object, so the extra keys are passed through
 // with a cast (no codegen). While the running API predates the filters it ignores them and returns the whole
@@ -25,14 +28,23 @@ export type TradesWindow = {
 
 type WindowParams = { trader?: string; from?: string; to?: string; limit?: number; tagged?: "1" };
 
-export function tradesWindowParams(w: TradesWindow): WindowParams | undefined {
+/** Server caps of GET /api/trades (api lib/tradesListWindow). */
+export const TRADES_LIST_MAX = 5000;
+export const TRADES_LIST_MAX_WINDOW_DAYS = 400;
+
+const dayNo = (ymd: string) => Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10))) / 86_400_000;
+
+export function tradesWindowParams(w: TradesWindow, today: string = new Date().toISOString().slice(0, 10)): WindowParams {
   const p: WindowParams = {};
   if (w.trader) p.trader = w.trader;
-  if (w.from) p.from = w.from;
-  if (w.to) p.to = w.to;
-  if (w.limit != null && w.limit > 0) p.limit = Math.floor(w.limit);
+  // A window the server refuses (> 400 days) is asked as «newest N» and cut client-side.
+  const wide = !!w.from && dayNo(w.to ?? today) - dayNo(w.from) > TRADES_LIST_MAX_WINDOW_DAYS;
+  if (w.from && !wide) p.from = w.from;
+  if (w.to && !wide) p.to = w.to;
+  if (w.limit != null && w.limit > 0) p.limit = Math.min(Math.floor(w.limit), TRADES_LIST_MAX);
+  else if (!p.from) p.limit = TRADES_LIST_MAX;
   if (w.tagged) p.tagged = "1";
-  return Object.keys(p).length ? p : undefined;
+  return p;
 }
 
 const blank = (s: string | null | undefined) => !s || !s.trim();
@@ -66,10 +78,10 @@ export function useTradesWindow(w: TradesWindow, opts: { enabled?: boolean; stal
   const { from, to, trader, limit, tagged } = w;
   const params = useMemo(() => tradesWindowParams({ from, to, trader, limit, tagged }), [from, to, trader, limit, tagged]);
   const select = useCallback(
-    (rows: Trade[]) => (params ? applyTradesWindow(Array.isArray(rows) ? rows : [], { from, to, trader, limit, tagged }) : rows),
-    [params, from, to, trader, limit, tagged],
+    (rows: Trade[]) => applyTradesWindow(Array.isArray(rows) ? rows : [], { from, to, trader, limit, tagged }),
+    [from, to, trader, limit, tagged],
   );
-  const generated = params as unknown as ListTradesParams | undefined;
+  const generated = params as unknown as ListTradesParams;
   return useListTrades(generated, {
     query: {
       queryKey: getListTradesQueryKey(generated),
@@ -105,13 +117,14 @@ export type PeriodTradesWindow = {
  * window (?from=…&to=…), needed only for the «к прошлому периоду» deltas, loads after the current one arrives. The
  * current-window query key is the same on /stats and /analytics, so switching pages reuses it.
  * `data` = current ∪ previous (deduplicated); `prevLoading` while the comparison is not there yet.
+ * `enabled: false` (the staff view of /stats and /analytics reads server aggregates) fetches nothing.
  */
-export function usePeriodTrades(w: PeriodTradesWindow) {
-  const cur = useTradesWindow({ from: w.from, trader: w.trader });
+export function usePeriodTrades(w: PeriodTradesWindow, enabled = true) {
+  const cur = useTradesWindow({ from: w.from, trader: w.trader }, { enabled });
   const hasPrev = !!(w.from && w.prevFrom && w.prevTo);
   const prev = useTradesWindow(
     { from: hasPrev ? w.prevFrom : null, to: hasPrev ? w.prevTo : null, trader: w.trader },
-    { enabled: hasPrev && cur.isSuccess && !cur.isPlaceholderData },
+    { enabled: enabled && hasPrev && cur.isSuccess && !cur.isPlaceholderData },
   );
   const prevReady = hasPrev && prev.isSuccess && !prev.isPlaceholderData;
   const data = useMemo(() => mergeTradeLists(cur.data, prevReady ? prev.data : undefined), [cur.data, prev.data, prevReady]);
@@ -124,12 +137,12 @@ export function usePeriodTrades(w: PeriodTradesWindow) {
   }, [refetchCur, refetchPrev, hasPrev]);
   return {
     data,
-    isLoading: cur.isLoading,
-    isError: cur.isError,
+    isLoading: enabled && cur.isLoading,
+    isError: enabled && cur.isError,
     isFetching: cur.isFetching || prev.isFetching,
     refetch,
     /** The previous window is requested but not loaded yet (deltas pending). */
-    prevLoading: hasPrev && !prevReady && !prev.isError,
+    prevLoading: enabled && hasPrev && !prevReady && !prev.isError,
   };
 }
 

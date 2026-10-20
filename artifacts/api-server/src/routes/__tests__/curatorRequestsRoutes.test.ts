@@ -4,6 +4,8 @@
  *    / assigned staff are notified in their language;
  *  - GET /mine is the caller's own; the staff list needs journal.review (trader 403) and defaults to «Моя группа»;
  *  - PATCH: staff only, 404 outside the matrix scope (`assigned`), 409 when closed; the trader gets the note.
+ *  - Волна 2 п. 2.13: kind «review» needs a thread link (discussion / idea), one open per thread, the curator's
+ *    notification leads to the thread.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import express from "express";
@@ -47,10 +49,11 @@ vi.mock("../../lib/permissions", async (orig) => {
 });
 const req = (over: Record<string, unknown> = {}) => ({
   id: 11, trader: "Trader T.", traderId: 5, kind: "limits", message: "", status: "open", note: null,
-  createdAt: "2026-10-20T14:00:00.000Z", resolvedAt: null, resolvedBy: null, ...over,
+  createdAt: "2026-10-20T14:00:00.000Z", resolvedAt: null, resolvedBy: null, link: null, ...over,
 });
 const store = vi.hoisted(() => ({
-  REQUEST_KINDS: ["limits", "group", "stage", "plan", "other"] as const,
+  REQUEST_KINDS: ["limits", "group", "stage", "plan", "other", "review"] as const,
+  REVIEW_LINK_RE: /^\/(discussions\?thread=|trade-ideas\?idea=)[1-9]\d{0,9}$/,
   REQUEST_STATUSES: ["open", "done", "dismissed"] as const,
   memberId: vi.fn(async (name: string) => ({ "Trader T.": 5, "Other O.": 6, "Curator C.": 3, "Admin A.": 1 } as Record<string, number>)[name] ?? null),
   openRequestOf: vi.fn(async () => null),
@@ -96,7 +99,7 @@ beforeEach(() => {
   overrides = [];
   vi.clearAllMocks();
   store.openRequestOf.mockResolvedValue(null);
-  store.insertRequest.mockImplementation(async (traderId: number, kind: string, message: string) => req({ traderId, kind, message }));
+  store.insertRequest.mockImplementation(async (traderId: number, kind: string, message: string, link: string | null = null) => req({ traderId, kind, message, link }));
   store.requestById.mockResolvedValue(req());
   store.resolveRequest.mockImplementation(async (id: number, status: string, note: string | null) => req({ id, status, note, resolvedAt: "2026-10-20T15:00:00.000Z", resolvedBy: who.name }));
 });
@@ -114,7 +117,7 @@ describe("POST /curator-requests (member)", () => {
     const r = await call("POST", "/api/curator-requests", { kind: "limits", message: "Нужен дневной стоп" });
     expect(r.status).toBe(201);
     expect(r.json.request).toMatchObject({ kind: "limits", message: "Нужен дневной стоп", status: "open" });
-    expect(store.insertRequest).toHaveBeenCalledWith(5, "limits", "Нужен дневной стоп");
+    expect(store.insertRequest).toHaveBeenCalledWith(5, "limits", "Нужен дневной стоп", null);
     expect(notify.notifyUser).toHaveBeenCalledTimes(1);
     expect(notify.notifyUser.mock.calls[0]![0]).toMatchObject({ userName: "Curator C.", type: "curator_request", title: "Trader T. просит: лимиты риска", link: expect.stringContaining("/curator") });
   });
@@ -133,6 +136,43 @@ describe("POST /curator-requests (member)", () => {
     who = CURATOR;
     notify.notifyUser.mockRejectedValueOnce(new Error("telegram down"));
     expect((await call("POST", "/api/curator-requests", { kind: "other" })).status).toBe(201);
+  });
+});
+
+describe("POST /curator-requests kind «review» (2.13)", () => {
+  it("from a discussion thread: 201 with the link; the curator's notification leads to the thread", async () => {
+    const r = await call("POST", "/api/curator-requests", { kind: "review", message: "Посмотрите вход", link: "/discussions?thread=7" });
+    expect(r.status).toBe(201);
+    expect(r.json.request).toMatchObject({ kind: "review", link: "/discussions?thread=7" });
+    expect(store.openRequestOf).toHaveBeenCalledWith(5, "review", "/discussions?thread=7");
+    expect(store.insertRequest).toHaveBeenCalledWith(5, "review", "Посмотрите вход", "/discussions?thread=7");
+    expect(notify.notifyUser.mock.calls[0]![0]).toMatchObject({ userName: "Curator C.", title: "Trader T. просит: разбор темы", link: "/discussions?thread=7" });
+  });
+
+  it("from a trade idea: accepted; one open per thread → 409", async () => {
+    expect((await call("POST", "/api/curator-requests", { kind: "review", link: "/trade-ideas?idea=3" })).status).toBe(201);
+    store.openRequestOf.mockResolvedValue(req({ id: 8, kind: "review", link: "/trade-ideas?idea=3" }) as never);
+    const dup = await call("POST", "/api/curator-requests", { kind: "review", link: "/trade-ideas?idea=3" });
+    expect([dup.status, dup.json.code, dup.json.details]).toEqual([409, "CURATOR_REQUEST_OPEN", { id: 8 }]);
+  });
+
+  it("a review without a link, a foreign link, or a link on another kind → 400", async () => {
+    for (const body of [
+      { kind: "review" },
+      { kind: "review", link: "https://evil.example/discussions?thread=1" },
+      { kind: "review", link: "/admin?thread=1" },
+      { kind: "review", link: "/discussions?thread=0" },
+      { kind: "limits", link: "/discussions?thread=7" },
+    ]) expect((await call("POST", "/api/curator-requests", body)).status).toBe(400);
+    expect(store.insertRequest).not.toHaveBeenCalled();
+  });
+
+  it("closing a review request tells the trader with a link back to the thread", async () => {
+    who = CURATOR;
+    store.requestById.mockResolvedValueOnce(req({ kind: "review", link: "/discussions?thread=7" }) as never);
+    store.resolveRequest.mockResolvedValueOnce(req({ kind: "review", link: "/discussions?thread=7", status: "done", resolvedAt: "2026-10-20T15:00:00.000Z" }) as never);
+    await call("PATCH", "/api/curator-requests/11", { status: "done" });
+    expect(notify.notifyUser.mock.calls[0]![0]).toMatchObject({ userName: "Trader T.", title: "Your curator handled the request: a review of a thread", link: "/discussions?thread=7" });
   });
 });
 

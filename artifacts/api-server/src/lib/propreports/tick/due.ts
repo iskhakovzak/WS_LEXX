@@ -1,6 +1,6 @@
 /**
- * `due()` helpers for tick steps (pure). The heartbeat (docs/PROPREPORTS_CRON.sql) fires every 5 min 13:00–21:59 UTC
- * Mon–Fri ("desk hours": pre-market → post-market in New York) and hourly otherwise; a step asks for its own cadence.
+ * `due()` helpers for tick steps (pure). The tick (the API's job scheduler, lib/propreports/scheduler) fires every few
+ * minutes in desk hours (pre-market → post-market in New York) and hourly otherwise; a step asks for its own cadence.
  */
 
 /** 13:00–21:59 UTC, Monday–Friday — the window in which the heartbeat runs every 5 minutes. */

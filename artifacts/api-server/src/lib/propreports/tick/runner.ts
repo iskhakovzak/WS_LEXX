@@ -1,7 +1,8 @@
 /**
  * Tick runner: lease → due steps in TICK_STEPS order until the budget is spent → outbox drain → release.
- * Called by POST /api/cron/tick (Supabase pg_cron heartbeat / Vercel Cron), POST /api/propreports/tick/run (staff
- * «Run now») and the classic server's job "propreports.sync". Never throws: the summary carries the errors.
+ * Called by the API's jobs "propreports.sync" / "propreports.tick-hourly" (lib/propreports/scheduler), POST
+ * /api/propreports/tick/run (staff «Run now») and the optional external heartbeat POST /api/cron/tick. Never throws:
+ * the summary carries the errors.
  */
 import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
@@ -13,7 +14,7 @@ import { acquireLease, releaseLease, TICK_LEASE } from "./lease";
 import { setCursor } from "./cursor";
 import type { TickStep, TickStepState, TickSummary } from "./types";
 
-/** Vercel maxDuration is 60 s: steps + outbox stop at 45 s, leaving room for the response and DB bookkeeping. */
+/** Steps + outbox stop at 45 s: a tick stays short (an HTTP caller gets its answer within a minute) and leaves room for DB bookkeeping. */
 export const TICK_BUDGET_MS = 45_000;
 /** Steps do not start with less than this left (the outbox gets the rest). */
 const STEP_MIN_MS = 3_000;

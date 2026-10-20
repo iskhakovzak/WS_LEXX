@@ -60,6 +60,8 @@ export default {
   },
   status: {
     examples: "эталонов: {count}",
+    noExamplesAdd: "нет примеров — добавьте из своих сделок",
+    noExamples: "примеров пока нет",
     examplesT1: "эталонов: {count} · T1 {t1}",
     noStatsYet: "Статистики пока нет: сделки этого сетапа ещё не закрыты или не привязаны",
     noTrades: "Сделок по сетапу пока нет — edge неизвестен",

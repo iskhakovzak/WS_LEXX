@@ -51,7 +51,6 @@ export default {
     "ideas.review": { label: "Gʻoyalar tahlili", description: "Gʻoyalar tahlili holati, boshqalarning gʻoyalarini boshqarish, hammaning qoralamalari." },
     "discussions.moderate": { label: "Muhokamalar moderatsiyasi", description: "Boshqalarning mavzulari va izohlarini oʻchirish, mavzularni yopish." },
     "discussions.edit.any": { label: "Boshqalarning izohlarini tahrirlash", description: "Boshqa odamlarning izohlarini tahrirlash." },
-    "checklist.template.edit": { label: "Savdodan oldingi chek-list", description: "Butun desk uchun chek-list bandlarini oʻzgartirish." },
     "watchlist.manage": { label: "Desk kuzatuv roʻyxati", description: "Umumiy kuzatuv roʻyxatini tahrirlash (har qanday aʼzo, mehmon emas)." },
     "users.manage": { label: "Foydalanuvchilarni boshqarish", description: "Treyder va kuratorlarni qoʻshish, tahrirlash, muzlatish va arxivlash, biriktirishlarni oʻzgartirish." },
     "users.manage.admins": { label: "Adminlarni boshqarish", description: "Adminlar yaratish, admin rolini berish, adminlarni tahrirlash yoki faolsizlantirish, kuratorlarni bloklash." },

@@ -17,12 +17,12 @@ import { config } from "../../config";
 
 // ─── trust proxy ────────────────────────────────────────────────────────────────────────────────────────
 /**
- * Replit Deployments (Reserved VM / Autoscale) put exactly ONE reverse proxy in front of the container (Google
- * Front End → Replit router → our port). That proxy appends the real client address as the LAST entry of
- * X-Forwarded-For, so `trust proxy = 1` (trust one hop) makes `req.ip` the client and ignores anything a client
- * puts in the header itself. Never `true`: that would trust the client-supplied left-most entry (spoofable).
- * TRUST_PROXY overrides: a hop count ("2" behind an extra CDN such as Cloudflare in front of the custom domain),
- * "false"/"0" to disable (local dev without a proxy), or a subnet list ("loopback, 10.0.0.0/8").
+ * The self-hosted server (docs/DEPLOY.md) puts exactly ONE reverse proxy in front of the API: Caddy on the same host
+ * (TLS → 127.0.0.1:8080). Caddy appends the real client address as the LAST entry of X-Forwarded-For, so trusting one
+ * hop makes `req.ip` the client and ignores anything a client puts in the header itself. Never `true`: that would
+ * trust the client-supplied left-most entry (spoofable). Unset → 1 hop. TRUST_PROXY overrides: "loopback" (the
+ * production value in DEPLOY.md: trust only Caddy on this host), a hop count ("2" behind an extra CDN or tunnel in
+ * front of Caddy), "false"/"0" to disable (local dev without a proxy), or a subnet list ("loopback, 10.0.0.0/8").
  * Verify once after deploy: log `req.ips` + `req.ip` for one request (see the owner checklist).
  */
 export function trustProxySetting(raw: string | undefined = config.trustProxy): number | string | false {

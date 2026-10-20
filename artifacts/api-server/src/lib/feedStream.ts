@@ -781,35 +781,13 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
 
 // ─── «new since last visit» (per member, server-side so it follows the user across devices) ──
 
-let visitsEnsured: Promise<void> | null = null;
-export function ensureFeedVisits(): Promise<void> {
-  if (!visitsEnsured) {
-    visitsEnsured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS feed_visits (
-           user_name TEXT PRIMARY KEY,
-           seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           prev_seen_at TIMESTAMPTZ
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        visitsEnsured = null;
-        throw err;
-      });
-  }
-  return visitsEnsured;
-}
-
 export async function getLastSeen(user: string): Promise<string | null> {
-  await ensureFeedVisits();
   const { rows } = await pool.query<{ seen_at: Date }>(`SELECT seen_at FROM feed_visits WHERE user_name = $1`, [user]);
   return rows[0] ? rows[0].seen_at.toISOString() : null;
 }
 
 /** Moves the viewer's «last visit» to now; returns the previous value. */
 export async function markSeen(user: string): Promise<{ seenAt: string; previous: string | null }> {
-  await ensureFeedVisits();
   const { rows } = await pool.query<{ seen_at: Date; prev_seen_at: Date | null }>(
     `INSERT INTO feed_visits (user_name, seen_at) VALUES ($1, NOW())
      ON CONFLICT (user_name) DO UPDATE SET prev_seen_at = feed_visits.seen_at, seen_at = NOW()

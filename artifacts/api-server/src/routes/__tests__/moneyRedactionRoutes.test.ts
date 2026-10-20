@@ -19,10 +19,13 @@ let who: Who = KIRILL;
 let traderTeamRead = false;
 let tickerTraders = 2;
 
-const tradeRows = [
+const baseRows = [
   { trader: "Kirill", day: "2026-10-15", result: "win", net: 120, gross: 125, r: 1.2 },
   { trader: "Roman", day: "2026-10-15", result: "loss", net: -300, gross: -295, r: -1 },
 ];
+/** Three more qualified traders (2.14: a trader sees a ranked list only with ≥ 5 qualified). */
+const moreRows = ["Ilya", "Olga", "Denis"].map((trader) => ({ trader, day: "2026-10-15", result: "win", net: 10, gross: 11, r: 0.1 }));
+let tradeRows = baseRows;
 const query = vi.fn(async (sql: string, _params?: unknown[]) => {
   if (/FROM users WHERE id = \$1 AND active = true/.test(sql)) return { rows: [{ role: who.role, name: who.name }] };
   if (/FROM trades t\s+WHERE t.trader IS NOT NULL AND t.deleted_at IS NULL AND/.test(sql) && /AS day/.test(sql)) return { rows: tradeRows };
@@ -72,7 +75,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
-beforeEach(() => { who = KIRILL; traderTeamRead = false; tickerTraders = 2; });
+beforeEach(() => { who = KIRILL; traderTeamRead = false; tickerTraders = 2; tradeRows = baseRows; });
 
 const get = async (path: string) => {
   const r = await fetch(base + path);
@@ -87,8 +90,15 @@ describe("GET /leaderboard × role", () => {
     expect(r.json.rows.map((x: any) => x.trader)).toEqual(["Kirill"]);
     expect(r.json.rows[0]).toMatchObject({ net: 120, totalPnl: 120 });
   });
-  it("trader with a team.read desk override: other rows come without $ (R, % and score stay)", async () => {
+  it("trader with a team.read desk override, < 5 qualified (2.14): own row only, no place («Ваша строка»)", async () => {
     traderTeamRead = true;
+    const r = await board();
+    expect(r.json.qualifiedCount).toBe(2);
+    expect(r.json.rows.map((x: any) => [x.trader, x.rank])).toEqual([["Kirill", null]]);
+  });
+  it("trader with a team.read desk override, ≥ 5 qualified: other rows come without $ (R, % and score stay)", async () => {
+    traderTeamRead = true;
+    tradeRows = [...baseRows, ...moreRows];
     const r = await board();
     const roman = r.json.rows.find((x: any) => x.trader === "Roman");
     const own = r.json.rows.find((x: any) => x.trader === "Kirill");

@@ -116,6 +116,7 @@ export default {
     colPercentile: "Percentile",
     strengths: "Strengths and weaknesses",
     noSignals: "No clear signals yet.",
+    signalsFrom: "Strengths and weaknesses appear from {trades} trades or {days} trading days (now: {haveTrades} trades, {haveDays} days).",
     equity: "Equity curve",
     myTrend: "My trend",
   },

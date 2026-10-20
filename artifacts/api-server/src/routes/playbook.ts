@@ -5,17 +5,13 @@ import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
 import { activityDetails, activityTitle } from "../lib/activityText";
-import { logger } from "../lib/logger";
 import { config } from "../config";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { computeEdge, bucketBy, vixBucket, scoreBucket, edgeScore, type EdgeTrade } from "../lib/playbookEdge";
 import { canAccessTrade, isGuest, requireAuth, scopeTrader } from "../lib/auth";
 import { can, requireCap } from "../lib/permissions";
 import { closeDateSql, decidedSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
-import {
-  accessHints, canEditSetupRow, canReadPure, ensurePlaybookSpaces, loadMoneyViewer, loadSetupAccess, loadViewer, mayShareAny,
-  spaceOf, spaceSql, visibleSql,
-} from "../lib/playbookAccess";
+import { accessHints, canEditSetupRow, canReadPure, loadMoneyViewer, loadSetupAccess, loadViewer, mayShareAny, spaceOf, spaceSql, visibleSql } from "../lib/playbookAccess";
 import { canSeeAggregateMoney, canSeeTradeMoney, redactEdgeStats, redactSummaryRow, redactTradeRow } from "../lib/playbookPrivacy";
 import { AppError, badRequest, notFound, sendError, sendErrorWith, unauthorized } from "../lib/http";
 import { aiLanguageEn } from "../i18n/ai";
@@ -189,30 +185,6 @@ const textOrNull = (v: unknown, max = 8000): string | null => {
   return s.trim() ? s.slice(0, max) : null;
 };
 
-// ─── Schema (additive; idempotent) ───────────────────────────────────────────
-// playbook_reviews: curator verdict history (approved | needs_work | retired).
-
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = ensurePlaybookSpaces().then(() => pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS playbook_reviews (
-           id SERIAL PRIMARY KEY,
-           playbook_id INTEGER NOT NULL,
-           reviewer TEXT NOT NULL,
-           verdict TEXT NOT NULL,
-           comment TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         );
-         CREATE INDEX IF NOT EXISTS playbook_reviews_playbook_idx ON playbook_reviews (playbook_id, created_at DESC);`,
-      ))
-      .then(() => undefined)
-      .catch((err) => { ensured = null; throw err; });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "playbook: ensure tables failed at init"));
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -288,7 +260,6 @@ const iso = (v: unknown): string | null => (v == null ? null : v instanceof Date
  * The response header X-Playbook-Viewer carries the viewer's own flags (mayShare, editAny, review, stage).
  */
 router.get("/playbook", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const v = await loadViewer(req);
   const params: unknown[] = [];
   const vis = visibleSql(v, params, "p");
@@ -334,13 +305,11 @@ function lockRow<T extends { id: number; name: string; minTier?: string | null }
 
 /** The caller's own playbook capabilities (sharing needs the academy stage «Сеньор» or staff). */
 router.get("/playbook/me", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const v = await loadViewer(req);
   res.json({ name: v.name, guest: v.guest, mayShare: mayShareAny(v), editOwn: v.editOwn, editAny: v.editAny, review: v.review, stage: v.stage, cohorts: v.cohorts, teamWide: v.teamScope === null });
 }));
 
 router.get("/playbook/folders", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const params: unknown[] = [];
   const vis = visibleSql(await loadViewer(req), params, "p");
   const { rows } = await pool.query<{ folder: string }>(
@@ -352,7 +321,6 @@ router.get("/playbook/folders", asyncHandler(async (req, res): Promise<void> => 
 }));
 
 router.get("/playbook/tags", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const params: unknown[] = [];
   const vis = visibleSql(await loadViewer(req), params, "p");
   const { rows } = await pool.query<any>(
@@ -375,7 +343,6 @@ const UNTESTED_GRACE_DAYS = 21;
 const IDLE_AFTER_DAYS = 30;
 
 router.get("/playbook/health", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const v = await loadViewer(req);
@@ -469,7 +436,6 @@ router.get("/playbook/health", asyncHandler(async (req, res): Promise<void> => {
 const RECENT_N = 20;
 
 router.get("/playbook/summary", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const params: unknown[] = [];
@@ -642,54 +608,7 @@ router.get("/playbook/summary", asyncHandler(async (req, res): Promise<void> => 
   }
 }));
 
-/**
- * Trades not linked to a setup whose free-text `setup` matches a playbook name (or ticker-specific setup).
- * Lets the journal auto-link broker-imported round trips to the trader's playbook.
- */
-router.get("/playbook/unlinked-suggestions", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  const scope = await tradeScope(req, res);
-  if (scope === undefined) return;
-  const params: unknown[] = [];
-  let traderFilter = "";
-  if (scope) { params.push(scope); traderFilter = `AND t.trader = $1`; }
-  const { rows } = await pool.query<any>(`
-    SELECT t.id AS "tradeId", t.ticker, t.date, t.trader, t.setup, t.source,
-           p.id AS "playbookId", p.name AS "playbookName"
-      FROM trades t
-      JOIN playbook p ON p.deleted_at IS NULL
-           AND LOWER(TRIM(p.name)) = LOWER(TRIM(t.setup))
-           AND (${spaceSql("p")} = 'office' OR p.trader = t.trader)
-     WHERE t.deleted_at IS NULL AND t.playbook_id IS NULL AND NULLIF(TRIM(t.setup), '') IS NOT NULL ${traderFilter}
-     ORDER BY t.date DESC, t.id DESC
-     LIMIT 200
-  `, params);
-  res.json(rows);
-}));
-
-/** Apply suggestions: links each trade (own trades for traders; any for staff) to the matching setup. */
-router.post("/playbook/auto-link", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  const auth = req.authUser!;
-  const staff = await can(req, "playbook.edit.any");
-  const body = req.body as { tradeIds?: unknown };
-  const ids = Array.isArray(body?.tradeIds) ? body.tradeIds.map(Number).filter((n) => Number.isInteger(n) && n > 0) : null;
-  const params: unknown[] = [];
-  const where: string[] = [`t.deleted_at IS NULL`, `t.playbook_id IS NULL`, `NULLIF(TRIM(t.setup), '') IS NOT NULL`];
-  if (!staff) { params.push(auth.name); where.push(`t.trader = $${params.length}`); }
-  if (ids) { params.push(ids); where.push(`t.id = ANY($${params.length}::int[])`); }
-  const { rowCount } = await pool.query(`
-    UPDATE trades t SET playbook_id = p.id
-      FROM playbook p
-     WHERE p.deleted_at IS NULL AND LOWER(TRIM(p.name)) = LOWER(TRIM(t.setup)) AND (${spaceSql("p")} = 'office' OR p.trader = t.trader)
-       AND ${where.join(" AND ")}
-  `, params);
-  if (rowCount) await logActivity({ action: "updated", section: "playbook", entityTitle: activityTitle("autolink"), trader: auth.name, details: activityDetails("autolinked", { count: rowCount }), params: { titleKey: "autolink", detailsKey: "autolinked", count: rowCount } });
-  res.json({ success: true, linked: rowCount ?? 0 });
-}));
-
 router.patch("/playbook/rename-folder", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const { from: fromRaw, to: toRaw, merge, space } = req.body as { from?: unknown; to?: unknown; merge?: unknown; space?: unknown };
   // space: 'personal' renames the caller's own folder in «Мой»; otherwise the «Офис» folder (curators).
   const personal = space === "personal";
@@ -736,7 +655,6 @@ router.patch("/playbook/rename-folder", asyncHandler(async (req, res): Promise<v
 const VERDICTS = new Set(["approved", "needs_work", "retired"]);
 
 router.post("/playbook/:id/reviewed", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!(await requireStaffOr403(req, res))) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
@@ -766,7 +684,6 @@ router.post("/playbook/:id/reviewed", asyncHandler(async (req, res): Promise<voi
 }));
 
 router.get("/playbook/:id/reviews", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
@@ -821,7 +738,6 @@ router.patch("/playbook/folder-settings", asyncHandler(async (req, res): Promise
 }));
 
 router.delete("/playbook/delete-folder", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!(await requireStaffOr403(req, res))) return;
   const actor = req.authUser!.name;
   const { folder, password } = req.body as { folder: string; password?: string };
@@ -838,7 +754,6 @@ router.delete("/playbook/delete-folder", asyncHandler(async (req, res): Promise<
 }));
 
 router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const auth = req.authUser!;
   if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const v = await loadViewer(req);
@@ -915,7 +830,6 @@ router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const id = Number(req.params.id);
   const auth = req.authUser!;
   // `trader` is NOT read here: editors send the whole form (owner included), and for staff that silently took over a
@@ -1019,7 +933,6 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.get("/playbook/:id/children", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
   const v = await loadViewer(req);
@@ -1149,7 +1062,6 @@ router.get("/playbook/:id/revisions", asyncHandler(async (req, res): Promise<voi
 // ─── AI (explicit, author/staff only, 1 call per 10 min per setup) ───────────
 
 router.post("/playbook/:id/ai-critique", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const id = Number(req.params.id);
   if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rows: pbRows } = await pool.query<any>(`SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook WHERE id = $1`, [id]);
@@ -1218,7 +1130,6 @@ ${trRows.map((t: any, i: number) => // i18n-ignore (AI prompt context)
 router.post("/playbook/:id/generate-checklist", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) throw badRequest("INVALID_ID");
-  await ensureTables();
   const { rows } = await pool.query<any>(`SELECT name, trader, space, setup_type AS "setupType", conditions, notes, checklist FROM playbook WHERE id = $1`, [id]);
   if (!rows[0]) throw notFound();
   const pb = rows[0];

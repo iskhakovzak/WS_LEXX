@@ -11,6 +11,7 @@ import { Pill, StatRow, toneOf } from "@/components/ds";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
+import { AskCuratorButton, reviewLink } from "@/components/shared/ask-curator";
 import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -341,6 +342,8 @@ export function IdeaDetailSheet({
               {idea.longName && <span className="truncate">· {idea.longName}</span>}
             </div>
           </SheetDescription>
+          {/* 2.13: the author asks the curator to review this idea — it lands in the curator's «Запросы». */}
+          {isOwner && canEdit && !isReviewer && <AskCuratorButton kind="review" link={reviewLink("idea", idea.id)} size="xs" className="min-h-10 w-fit sm:min-h-0" />}
           <div className="flex flex-wrap items-center gap-2">
             {onPrev && <Button size="sm" variant="ghost" onClick={onPrev} aria-label={t("sheet.prevAria")} className="h-8 w-8 p-0"><ChevronUp className="h-4 w-4" /></Button>}
             {onNext && <Button size="sm" variant="ghost" onClick={onNext} aria-label={t("sheet.nextAria")} className="h-8 w-8 p-0"><ChevronDown className="h-4 w-4" /></Button>}

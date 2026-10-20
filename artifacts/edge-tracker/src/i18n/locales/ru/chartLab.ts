@@ -19,6 +19,14 @@ export default {
     searching: "Ищу…",
     pick: "Выбрать сделку",
   },
+  /** Plan against execution on the chart (Волна 2 п. 2.12). */
+  overlay: {
+    setup: "Сетап: {name}",
+    setupTitle: "Сетап сделки из разметки",
+    plan: { one: "План: {count} уровень", few: "План: {count} уровня", many: "План: {count} уровней", other: "План: {count} уровня" },
+    planOwn: "Уровни из вашего утреннего плана на этот день — пунктир «План» на графике",
+    planDesk: "Уровни из плана деска на этот день — пунктир «План» на графике",
+  },
   openInTrades: "Открыть в «Сделках»",
   openInTradesAria: "Открыть сделку в «Сделках»",
   dayReview: "Разбор этого дня",

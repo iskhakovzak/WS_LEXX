@@ -2,7 +2,6 @@ import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import { logger } from "../lib/logger";
 import { requireMember, scopeTrader, GUEST_SCOPE } from "../lib/auth";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { canSeeTradeMoney } from "../lib/playbookPrivacy";
@@ -20,33 +19,9 @@ import { AppError, unauthorized } from "../lib/http";
  *       a favourite is only ever turned ON — never clears what the server already has.  → same shape as GET
  *
  * Clearing a note / un-starring keeps the row (note '' / favorite false) — no deletes.
- * Table is created idempotently (additive) once per process.
+ * Table indicator_notes: src/db/migrations.
  */
 const router: IRouter = Router();
-
-let ensured: Promise<void> | null = null;
-export function ensureIndicatorNotesTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS indicator_notes (
-           user_name TEXT NOT NULL,
-           key TEXT NOT NULL,
-           note TEXT NOT NULL DEFAULT '',
-           favorite BOOLEAN NOT NULL DEFAULT FALSE,
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (user_name, key)
-         );`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureIndicatorNotesTable().catch((err) => logger.warn({ err }, "indicator-notes: ensure table failed at init"));
 
 const KEY_RE = /^[A-Za-z0-9_.:-]{1,80}$/;
 const NOTE_MAX = 4000;
@@ -82,7 +57,6 @@ router.get("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
   const requested = typeof req.query.user === "string" ? req.query.user : null;
   const scope = await scopeTrader(req, requested);
   if (scope === undefined) throw unauthorized();
-  await ensureIndicatorNotesTable();
   const user = scope ?? req.authUser?.name ?? null;
   if (!user || user === GUEST_SCOPE) { res.json({ user: null, items: [] }); return; }
   res.json({ user, items: await listFor(user) });
@@ -95,7 +69,6 @@ router.put("/indicator-notes/:key", asyncHandler(async (req, res): Promise<void>
   const body = rowPatch.safeParse(req.body ?? {});
   if (!body.success) throw body.error;
   if (body.data.note === undefined && body.data.favorite === undefined) throw new AppError("FIELD_REQUIRED", undefined, { field: "note / favorite" });
-  await ensureIndicatorNotesTable();
   const user = req.authUser!.name;
   const note = body.data.note === undefined ? null : body.data.note.trim();
   const fav = body.data.favorite === undefined ? null : body.data.favorite;
@@ -116,7 +89,6 @@ router.put("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const body = bulkBody.safeParse(req.body ?? {});
   if (!body.success) throw body.error;
-  await ensureIndicatorNotesTable();
   const user = req.authUser!.name;
   const onlyIfEmpty = !!body.data.onlyIfEmpty;
   const client = await pool.connect();

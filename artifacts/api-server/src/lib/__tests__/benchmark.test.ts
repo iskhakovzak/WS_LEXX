@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  badgesFor, bestDayShare, computeTraderMetrics, consistencyFlag, deskMedian, drawdownInfo, parseHoldMinutes, percentileRank,
+  BADGE_MIN_DAYS, BADGE_MIN_TRADES, badgeSampleOk, badgesFor, bestDayShare, computeTraderMetrics, consistencyFlag, deskMedian, drawdownInfo, parseHoldMinutes, percentileRank,
   percentiles, profitFactor, sameTickerCases, sharpeRatio, sortinoRatio, stdev, streaks, trendFor, type BenchTrade,
 } from "../benchmark";
 
@@ -182,7 +182,9 @@ describe("R-only book (manual trades without $)", () => {
 });
 
 describe("desk median (anonymised), badges", () => {
-  const rows = ["A", "B", "C"].map((t, i) => computeTraderMetrics(t, [tr({ trader: t, day: "2026-10-01", net: (i + 1) * 100 }), tr({ trader: t, day: "2026-10-02", net: -50 })]));
+  // 10 trading days each (the badge sample gate, 2.7): one win day, one loss day, eight break-even days.
+  const flat = (t: string) => Array.from({ length: 8 }, (_, k) => tr({ trader: t, day: `2026-10-${String(k + 3).padStart(2, "0")}`, net: 0 }));
+  const rows = ["A", "B", "C"].map((t, i) => computeTraderMetrics(t, [tr({ trader: t, day: "2026-10-01", net: (i + 1) * 100 }), tr({ trader: t, day: "2026-10-02", net: -50 }), ...flat(t)]));
   it("median needs ≥ 3 traders per metric", () => {
     expect(deskMedian(rows).net).toBe(150);
     expect(deskMedian(rows.slice(0, 2)).net).toBeNull();
@@ -194,7 +196,33 @@ describe("desk median (anonymised), badges", () => {
     const b = badgesFor(rows[2], p.C, 3, 3, 1);
     expect(b.some((x) => x.kind === "strength" && x.key === "net")).toBe(true);
     expect(badgesFor(rows[2], p.C, 2, 3, 1).some((x) => x.key === "net")).toBe(false); // too few peers
-    expect(badgesFor(rows[2], p.C, 3).some((x) => x.key === "net")).toBe(false); // 2 trades < 10: no desk-relative badge
+    expect(badgesFor(rows[2], p.C, 3, 3, 11).some((x) => x.key === "net")).toBe(false); // 10 trades < 11: no desk-relative badge
+  });
+});
+
+describe("badge sample gate: ≥ 30 trades or ≥ 10 trading days (IMPROVEMENT_PLAN 2.7)", () => {
+  /** `n` trades over `days` weekdays from 2026-10-01; the first day carries the profit (best day > 100 % of the period). */
+  const book = (n: number, days: number) => computeTraderMetrics("Z", Array.from({ length: n }, (_, k) => {
+    const d = k % days;
+    return tr({ trader: "Z", day: `2026-10-${String(d + 1).padStart(2, "0")}`, net: d === 0 ? 120 : k % 2 ? 5 : -10 });
+  }));
+
+  it("the audit case — 13 trades over 7 days, best day 110 %+ — gets no badge (no «one day makes the period»)", () => {
+    const m = book(13, 7);
+    expect([m.trades, m.days]).toEqual([13, 7]);
+    expect(m.consistencyFlag).toBe("breach"); // the raw metric is still computed …
+    expect(badgeSampleOk(m)).toBe(false);
+    expect(badgesFor(m, undefined, 0)).toEqual([]); // … but no badge is shown
+  });
+
+  it.each<[number, number, boolean]>([
+    [BADGE_MIN_TRADES - 1, BADGE_MIN_DAYS - 1, false],
+    [BADGE_MIN_TRADES, 3, true],
+    [12, BADGE_MIN_DAYS, true],
+  ])("%i trades over %i days ⇒ badges %s", (n, days, ok) => {
+    const m = book(n, days);
+    expect(badgeSampleOk(m)).toBe(ok);
+    expect(badgesFor(m, undefined, 0).some((b) => b.key === "consistency")).toBe(ok);
   });
 });
 

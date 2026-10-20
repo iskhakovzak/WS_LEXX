@@ -25,19 +25,19 @@ import { z } from "zod";
 import { route, idParam, notFound, badRequest } from "../lib/http";
 
 const Params = z.object({ id: idParam });                       // "42" → 42, rejects 0 / "abc"
-const Body = z.object({ label: z.string().trim().min(1).max(500), sortOrder: z.number().int().optional() });
+const Body = z.object({ body: z.string().trim().min(1).max(5000) });
 
-router.patch("/checklist-template/:id", route({ cap: "checklist.template.edit", params: Params, body: Body },
+router.patch("/comments/:id", route({ cap: "discussions.moderate", params: Params, body: Body },
   async ({ params, body, actor }) => {                            // typed from the schemas; actor is non-null with `cap`
-    const row = await updateItem(params.id, body, actor.name);
-    if (!row) throw notFound("CHECKLIST_ITEM_NOT_FOUND");
+    const row = await updateComment(params.id, body, actor.name);
+    if (!row) throw notFound("COMMENT_NOT_FOUND");
     return row;                                                  // → res.json(row)
   }));
 ```
 
 What `route()` does, in order:
 1. With `cap` (one capability, or a list of which any one is enough) it checks the matrix through `resolveActor`/`evaluate`, the same as `requireCap`. Failures: anonymous or inactive → 401 `AUTH_REQUIRED`, guest → 403 `GUEST_READ_ONLY`, missing capability → 403 `FORBIDDEN` with `details.capability`. Without `cap`, any caller that the global gate (`apiAuthGate`) let through gets in. `actor` is then `null`; call `resolveActor(req)` if you need it.
-2. It parses `params`, `query` and `body` with zod. On failure: 400 `VALIDATION`, `details: [{ path: "body.label", message }]`.
+2. It parses `params`, `query` and `body` with zod. On failure: 400 `VALIDATION`, `details: [{ path: "body.body", message }]`.
 3. It calls the handler with `{ params, query, body, actor, req, res }`. A returned value other than `undefined` is sent with `res.json`. For 201 call `res.status(201)` and still return the value. When you answer yourself (stream, file, 204) return nothing.
 4. Anything thrown goes to the error middleware.
 

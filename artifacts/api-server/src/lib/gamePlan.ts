@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { pool } from "@workspace/db";
 import {
   PLAN_MEDIA_MAX_PER_PLAN,
   PLAN_MEDIA_MAX_PER_TICKER,
@@ -12,73 +11,9 @@ import { isMistakeId } from "./daily/engine";
 import { PlanPicksFields } from "./playbookToday/plan";
 
 /**
- * «План дня» storage pieces for routes/gameplan.ts: idempotent DDL (game_plans, game_plan_reads, trader_plans,
- * plan_templates), zod bodies, row serialisation and media sanitising. Pure helpers + SQL; no request handling.
+ * «План дня» storage pieces for routes/gameplan.ts (tables game_plans, game_plan_reads, trader_plans,
+ * plan_templates: migrations), zod bodies, row serialisation and media sanitising. Pure helpers + SQL; no request handling.
  */
-
-let ensured: Promise<void> | null = null;
-export function ensureGamePlanTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS game_plans (
-           id SERIAL PRIMARY KEY,
-           date TEXT NOT NULL UNIQUE,
-           author TEXT NOT NULL,
-           updated_by TEXT,
-           market_view TEXT NOT NULL DEFAULT '',
-           bias TEXT NOT NULL DEFAULT 'neutral',
-           risk_mode TEXT NOT NULL DEFAULT 'normal',
-           key_levels JSONB NOT NULL DEFAULT '{}'::jsonb,
-           in_play JSONB NOT NULL DEFAULT '[]'::jsonb,
-           risk_notes TEXT NOT NULL DEFAULT '',
-           macro JSONB NOT NULL DEFAULT '[]'::jsonb,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           deleted_at TIMESTAMPTZ
-         );
-         ALTER TABLE game_plans ADD COLUMN IF NOT EXISTS focus TEXT NOT NULL DEFAULT '';
-         ALTER TABLE game_plans ADD COLUMN IF NOT EXISTS media JSONB NOT NULL DEFAULT '[]'::jsonb;
-         ALTER TABLE game_plans ADD COLUMN IF NOT EXISTS tv_links JSONB NOT NULL DEFAULT '[]'::jsonb;
-         ALTER TABLE game_plans ADD COLUMN IF NOT EXISTS max_loss_usd NUMERIC;
-         ALTER TABLE game_plans ADD COLUMN IF NOT EXISTS max_trades INTEGER;
-         CREATE TABLE IF NOT EXISTS game_plan_reads (
-           plan_id INTEGER NOT NULL REFERENCES game_plans(id) ON DELETE CASCADE,
-           trader TEXT NOT NULL,
-           read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (plan_id, trader)
-         );
-         CREATE TABLE IF NOT EXISTS trader_plans (
-           id SERIAL PRIMARY KEY,
-           trader TEXT NOT NULL,
-           date TEXT NOT NULL,
-           doc JSONB NOT NULL DEFAULT '{}'::jsonb,
-           status TEXT NOT NULL DEFAULT 'draft',
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           deleted_at TIMESTAMPTZ,
-           UNIQUE (trader, date)
-         );
-         CREATE INDEX IF NOT EXISTS trader_plans_date_idx ON trader_plans (date);
-         CREATE TABLE IF NOT EXISTS plan_templates (
-           id SERIAL PRIMARY KEY,
-           author TEXT NOT NULL,
-           kind TEXT NOT NULL DEFAULT 'personal',
-           name TEXT NOT NULL,
-           doc JSONB NOT NULL DEFAULT '{}'::jsonb,
-           shared BOOLEAN NOT NULL DEFAULT false,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           deleted_at TIMESTAMPTZ
-         );`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 export function isIsoDate(v: unknown): v is string {

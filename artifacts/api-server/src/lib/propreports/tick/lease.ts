@@ -1,6 +1,6 @@
 /**
  * Tick lease: one row per lease name in propreports_tick_lease (holder, expires_at). Not a session advisory lock — the
- * Supabase pooler hands connections around, and a frozen Vercel function would otherwise hold a lock forever. A lease
+ * tick spans several pooled connections, and a lock held by a hung or killed run would otherwise outlive it. A lease
  * that is not released (crash, timeout) simply expires.
  */
 import { pool } from "@workspace/db";

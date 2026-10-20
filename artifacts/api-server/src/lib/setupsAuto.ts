@@ -2,7 +2,6 @@
  * Auto setup classifier — storage and computation (split out of routes/setups-auto.ts; wave 1, 1.2 adds the after-sync
  * run and the playbook mapping).
  *
- *   ensureSuggestionsTable()   trade_setup_suggestions (idempotent)
  *   computeBatch(items, n)     classify ≤ n trades (candles via lib/candles/market cache, 2 workers, 12 s budget)
  *   loadSuggestions(ids)       the latest suggestion per trade
  *   runAutoClassify(opts)      the job hook (jobs/definitions.ts «candles.archive», after each PropReports sync): closed
@@ -20,37 +19,6 @@ import {
 import { classifySetup, inputsHash, type ClassifierTrade, type MarketInputs, type SetupSuggestion } from "./setupClassifier";
 import type { BehaviorTrade } from "./behaviorEngine";
 import { officeSetupForClass, type OfficeSetup } from "./tradesSetupLink";
-
-let ensured: Promise<void> | null = null;
-export function ensureSuggestionsTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS trade_setup_suggestions (
-           id SERIAL PRIMARY KEY,
-           trade_id INTEGER NOT NULL,
-           inputs_hash TEXT NOT NULL,
-           setup TEXT NOT NULL,
-           confidence NUMERIC(4,2) NOT NULL DEFAULT 0,
-           explanation JSONB NOT NULL DEFAULT '{}'::jsonb,
-           features JSONB NOT NULL DEFAULT '{}'::jsonb,
-           candles_available BOOLEAN NOT NULL DEFAULT FALSE,
-           interval TEXT,
-           version TEXT NOT NULL DEFAULT '',
-           status TEXT NOT NULL DEFAULT 'suggested',
-           decided_by TEXT,
-           decided_at TIMESTAMPTZ,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           UNIQUE (trade_id, inputs_hash)
-         );
-         CREATE INDEX IF NOT EXISTS trade_setup_suggestions_trade_idx ON trade_setup_suggestions (trade_id);`,
-      )
-      .then(() => undefined)
-      .catch((err) => { ensured = null; throw err; });
-  }
-  return ensured;
-}
 
 export type SuggestionRow = {
   id: number;
@@ -202,7 +170,6 @@ export const AUTO_BUDGET = 60;
  * with a current suggestion (same inputs hash) or a rejected one. Writes only trade_setup_suggestions.
  */
 export async function runAutoClassify(opts: { signal?: AbortSignal; budget?: number; now?: Date } = {}): Promise<{ candidates: number; computed: number }> {
-  await ensureSuggestionsTable();
   const from = addDays(nyDate(opts.now ?? new Date()), -AUTO_DAYS);
   const { rows: idRows } = await pool.query<{ id: number }>(
     `SELECT t.id FROM trades t

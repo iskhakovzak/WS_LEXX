@@ -21,36 +21,6 @@ export const PLAN_MEDIA_DAILY_LIMIT = 150;
 export const PLAN_MEDIA_MAX_PER_PLAN = 12;
 export const PLAN_MEDIA_MAX_PER_TICKER = 8;
 
-let ensured: Promise<void> | null = null;
-export function ensurePlanMedia(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS plan_media (
-           id SERIAL PRIMARY KEY,
-           context TEXT NOT NULL,
-           owner TEXT NOT NULL,
-           plan_date TEXT NOT NULL,
-           mime TEXT NOT NULL,
-           bytes BYTEA NOT NULL,
-           size_bytes INTEGER NOT NULL,
-           width INTEGER,
-           height INTEGER,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           deleted_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS plan_media_owner_created_idx ON plan_media (owner, created_at);
-         CREATE INDEX IF NOT EXISTS plan_media_date_idx ON plan_media (plan_date, context);`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-
 /** Image type from magic bytes (never trust the Content-Type header). */
 export function sniffImageMime(buf: Buffer): "image/webp" | "image/jpeg" | "image/png" | null {
   if (buf.length < 12) return null;
@@ -85,7 +55,6 @@ export function collectPlanMediaIds(doc: { media?: unknown; inPlay?: unknown } |
  */
 export async function allowedMediaIds(ids: number[], context: MediaContext, owner: string | null): Promise<Set<number>> {
   if (ids.length === 0) return new Set();
-  await ensurePlanMedia();
   const { rows } = await pool.query<{ id: number }>(
     `SELECT id FROM plan_media
       WHERE id = ANY($1::int[]) AND context = $2 AND deleted_at IS NULL
@@ -110,7 +79,6 @@ export async function softDeleteDropped(
   const keep = new Set(after);
   const dropped = before.filter((id) => !keep.has(id));
   if (dropped.length === 0) return;
-  await ensurePlanMedia();
   await pool.query(
     `UPDATE plan_media SET deleted_at = NOW()
       WHERE id = ANY($1::int[]) AND context = $2 AND plan_date = $3 AND deleted_at IS NULL

@@ -1,9 +1,9 @@
 // Paginated trade book: GET /api/trades/page (server-side filters / sort / keyset pagination + summary of the
-// whole filtered set). While the running API predates the endpoint (404) the hook degrades to the legacy
-// full-list GET /api/trades and computes the same page shape client-side with the shared helpers.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// whole filtered set). The book is never loaded whole any more (Волна 2 п. 2.15: GET /api/trades is windowed); on an
+// API without the wave-I review features the pages are walked by cursor and the page shape is computed client-side.
+import { useCallback, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { getListTradesQueryKey, listTrades, type Trade } from "@workspace/api-client-react";
+import { getListTradesQueryKey, type Trade } from "@workspace/api-client-react";
 import { ApiError, http } from "@/lib/api/http";
 import { applyPreset, isUnreviewed, presetCounts, type Preset } from "@/components/trades/review-presets";
 import {
@@ -96,9 +96,6 @@ export type TradesPageResponse = {
   preset?: Preset | null;
 };
 
-export type TradesPageMode = "server" | "local";
-
-
 /** Query string for /api/trades/page from the UI filter model (shared with CSV export and the ticker history). */
 export function buildTradesPageParams(filters: TradeFilters, sort: SortConfig, opts: { limit: number; offset?: number; cursor?: string | null; preset?: Preset | null }): URLSearchParams {
   const p = new URLSearchParams();
@@ -136,7 +133,7 @@ export async function fetchTradesPage(params: URLSearchParams, signal?: AbortSig
   return http.get<TradesPageResponse>(`${TRADES_PAGE_KEY}?${params.toString()}`, { signal });
 }
 
-// ── Local fallback (legacy full-list API) ─────────────────────────────────────
+// ── Local page shape (older API without the wave-I summary / presets) ─────────────
 
 function statsToSummary(stats: TradeStats, list: Trade[]): TradesPageSummary {
   let gross = 0, fees = 0, feeRows = 0, posR = 0, negR = 0;
@@ -190,7 +187,7 @@ export function moneyStats(list: Trade[]): Pick<TradesPageSummary, "avgWinNet" |
   };
 }
 
-/** Same page shape computed client-side from the full list (used until the API is rebuilt with /trades/page). */
+/** Same page shape computed client-side from an already filtered list (older API without the wave-I review features). */
 export function localTradesPage(all: Trade[], filters: TradeFilters, sort: SortConfig, page: number, pageSize: number, quality: QualityMap, preset?: Preset | null): TradesPageResponse {
   const base = applyBaseFilters(all, filters);
   const outcomed = applyOutcome(base, filters.outcome);
@@ -216,10 +213,6 @@ export function localTradesPage(all: Trade[], filters: TradeFilters, sort: SortC
     quality: { available: Object.keys(quality).length > 0, applied: hasQualityFilters(filters) },
     preset: preset ?? null,
   };
-}
-
-async function fetchAllTradesLegacy(qc: QueryClient): Promise<Trade[]> {
-  return qc.fetchQuery({ queryKey: getListTradesQueryKey(), queryFn: () => listTrades(), staleTime: 30_000 });
 }
 
 // ── API capabilities (wave I: /trades/days, ?preset=, sort=impact|hold, $ summary) ──
@@ -261,20 +254,15 @@ export const REVIEW_SORT_COLS: ReadonlySet<SortConfig["col"]> = new Set<SortConf
 
 /**
  * Every trade of the filter (no preset), cached for 30 s. Walks /trades/page by cursor (date desc, 500 per page,
- * cap 20 000) or, without that endpoint, filters the legacy full list. Used by the fallbacks (presets, day groups).
+ * cap 20 000). Used by the fallbacks (presets, day groups).
  */
 export async function fetchAllFiltered(qc: QueryClient, filters: TradeFilters): Promise<Trade[]> {
-  const caps = await getTradesCaps();
   const baseSort: SortConfig = { col: "date", dir: "desc" };
   const key = buildTradesPageParams(filters, baseSort, { limit: 500 }).toString();
   return qc.fetchQuery({
     queryKey: [TRADES_PAGE_KEY, "all", key],
     staleTime: 30_000,
     queryFn: async () => {
-      if (!caps.page) {
-        const all = await fetchAllTradesLegacy(qc);
-        return localTradesPage(all, filters, baseSort, 1, 20_000, {}).items;
-      }
       const out: Trade[] = [];
       let cursor: string | null = null;
       for (let i = 0; i < 40; i++) {
@@ -311,13 +299,10 @@ export type UseTradesPageInput = {
   preset?: Preset | null;
 };
 
-let serverMode: TradesPageMode | null = null;
-
 export function useTradesPage(input: UseTradesPageInput) {
   const qc = useQueryClient();
   const { filters, sort, page, pageSize } = input;
   const preset = input.preset ?? null;
-  const [mode, setMode] = useState<TradesPageMode>(serverMode ?? "server");
   const qualityRef = useRef<QualityMap>(input.quality ?? {});
   qualityRef.current = input.quality ?? {};
 
@@ -326,12 +311,8 @@ export function useTradesPage(input: UseTradesPageInput) {
   const cursorsRef = useRef<{ key: string; map: Map<number, string> }>({ key: scopeKey, map: new Map() });
   if (cursorsRef.current.key !== scopeKey) cursorsRef.current = { key: scopeKey, map: new Map() };
 
-  // In local mode quality filters / sort depend on the quality map, so its size takes part in the key.
-  const needsQuality = hasQualityFilters(filters) || sort.col === "exitEff" || sort.col === "mfeR" || sort.col === "left";
-  const qualityStamp = mode === "local" && needsQuality ? Object.keys(input.quality ?? {}).length : 0;
-
   const query = useQuery<TradesPageResponse, ApiError>({
-    queryKey: [TRADES_PAGE_KEY, scopeKey, page, qualityStamp],
+    queryKey: [TRADES_PAGE_KEY, scopeKey, page],
     enabled: input.enabled !== false,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
@@ -343,27 +324,13 @@ export function useTradesPage(input: UseTradesPageInput) {
         // The server already applied every filter (quality ones included): don't re-filter by the partial local map.
         return localTradesPage(all, withoutQualityFilters(filters), sort, page, pageSize, qualityRef.current, preset);
       }
-      if (serverMode !== "local") {
-        const cursor = cursorsRef.current.map.get(page) ?? null;
-        const params = buildTradesPageParams(filters, sort, { limit: pageSize, cursor, offset: cursor ? 0 : (page - 1) * pageSize, preset });
-        try {
-          const res = await fetchTradesPage(params, signal);
-          if (res.page.nextCursor) cursorsRef.current.map.set(page + 1, res.page.nextCursor);
-          serverMode = "server";
-          return res;
-        } catch (e) {
-          // 404 ⇒ the running API has no /trades/page yet: fall back to the full list for this session.
-          if (!(e instanceof ApiError) || e.status !== 404) throw e;
-          serverMode = "local";
-          setMode("local");
-        }
-      }
-      const all = await fetchAllTradesLegacy(qc);
-      return localTradesPage(all, filters, sort, page, pageSize, qualityRef.current, preset);
+      const cursor = cursorsRef.current.map.get(page) ?? null;
+      const params = buildTradesPageParams(filters, sort, { limit: pageSize, cursor, offset: cursor ? 0 : (page - 1) * pageSize, preset });
+      const res = await fetchTradesPage(params, signal);
+      if (res.page.nextCursor) cursorsRef.current.map.set(page + 1, res.page.nextCursor);
+      return res;
     },
   });
-
-  useEffect(() => { if (serverMode && serverMode !== mode) setMode(serverMode); }, [query.data, mode]);
 
   const data = query.data;
   const total = data?.summary.total ?? 0;
@@ -371,8 +338,7 @@ export function useTradesPage(input: UseTradesPageInput) {
 
   /** Every trade of the current filter (CSV export): walks the server pages by cursor (cap 20 000 rows). */
   const fetchAll = useCallback(async (): Promise<Trade[]> => {
-    if (serverMode === "local" || !(await getTradesCaps()).review) {
-      if (serverMode === "local") return localTradesPage(await fetchAllTradesLegacy(qc), filters, sort, 1, 20_000, qualityRef.current, preset).items;
+    if (!(await getTradesCaps()).review) {
       return localTradesPage(await fetchAllFiltered(qc, filters), withoutQualityFilters(filters), sort, 1, 20_000, qualityRef.current, preset).items;
     }
     const out: Trade[] = [];
@@ -393,7 +359,6 @@ export function useTradesPage(input: UseTradesPageInput) {
     facets: data?.facets ?? null,
     hasMore: data?.page.hasMore ?? false,
     totalPages,
-    mode,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     isPlaceholder: query.isPlaceholderData,

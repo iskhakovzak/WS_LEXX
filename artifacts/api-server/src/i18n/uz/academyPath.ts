@@ -69,6 +69,8 @@ export default {
     quizzes: { one: "{count} ta test", other: "{count} ta test" },
     noQuizzes: "testlar topshirilmagan",
     examsOff: "imtihonlar mavjud emas",
+    noRatings: "kurator baholari yoʻq",
+    ratings: { one: "{count} ta baho", other: "{count} ta baho" },
   },
   advice: {
     netNoTrades: "Oynada P&L li savdolar yoʻq — savdo qiling: savdolar PropReportsdan avtomatik keladi.",

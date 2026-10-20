@@ -13,7 +13,7 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { requireCap } from "../lib/permissions";
 import { badRequest, notFound } from "../lib/http";
-import { ERROR_SOURCES, ensureErrorTrackingSchema, recordError, releaseId, type ErrorSource } from "../lib/errorTracking";
+import { ERROR_SOURCES, recordError, releaseId, type ErrorSource } from "../lib/errorTracking";
 import { cspReportBody, reportLimiter } from "../lib/security/http";
 import { logAudit } from "../lib/audit";
 
@@ -113,7 +113,6 @@ router.get("/admin/app-errors", asyncHandler(async (req, res): Promise<void> => 
   const parsed = ListQuery.safeParse(req.query);
   if (!parsed.success) throw badRequest("VALIDATION");
   const { status, source, q, limit, offset } = parsed.data;
-  await ensureErrorTrackingSchema();
   const where: string[] = [];
   const params: unknown[] = [];
   if (status === "open") where.push("resolved_at IS NULL");
@@ -143,7 +142,6 @@ function parseId(raw: unknown): number {
 router.get("/admin/app-errors/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "admin.errors"))) return;
   const id = parseId(req.params.id);
-  await ensureErrorTrackingSchema();
   const { rows } = await pool.query(`SELECT ${LIST_COLS}, stack, user_agent AS "userAgent", alerted_at AS "alertedAt" FROM app_errors WHERE id = $1`, [id]);
   if (!rows[0]) throw notFound();
   const { rows: occurrences } = await pool.query(
@@ -162,7 +160,6 @@ router.post("/admin/app-errors/:id/resolve", asyncHandler(async (req, res): Prom
   const id = parseId(req.params.id);
   const parsed = ResolveBody.safeParse(req.body ?? {});
   if (!parsed.success) throw badRequest("VALIDATION");
-  await ensureErrorTrackingSchema();
   const actor = req.authUser!.name;
   const { rows } = await pool.query(
     `UPDATE app_errors SET resolved_at = ${parsed.data.resolved ? "now()" : "NULL"}, resolved_by = $2 WHERE id = $1 RETURNING ${LIST_COLS}`,

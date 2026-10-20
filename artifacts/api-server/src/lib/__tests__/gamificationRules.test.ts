@@ -67,6 +67,20 @@ describe("season score", () => {
     expect(season.topFor(ranked, 10, { name: "Kirill", staff: false, hideNames: false }, o).map((x) => [x.label, x.me])).toEqual([["Kirill", true], ["B", false], ["Me", false]]);
   });
 
+  it("season place only with ≥ 5 ranked participants for a trader; staff always (2.14)", () => {
+    const st = { myRank: 1, of: 6, top: [{ label: "t1", me: true, points: 10 }, { label: "t2", me: false, points: 5 }] };
+    const four = [10, 5, 3, 1, 0, 0].map((points) => ({ points }));
+    const hidden = season.withRankThreshold(st, four, false);
+    expect(hidden).toMatchObject({ myRank: null, rankHidden: true, of: 6 });
+    expect(hidden.top).toEqual([{ label: "t1", me: true, points: 10 }]);
+    expect(season.withRankThreshold(st, four, true)).toBe(st);
+    const five = [10, 5, 3, 2, 1].map((points) => ({ points }));
+    expect(season.withRankThreshold(st, five, false)).toBe(st);
+    expect(season.SEASON_MIN_RANKED).toBe(5);
+    // «#1 of 1» (the audit's case): one participant → no place.
+    expect(season.withRankThreshold({ myRank: 1, of: 1, top: [{ me: true }] }, [{ points: 10 }], false).myRank).toBeNull();
+  });
+
   it("seasons to re-score: this month, the judged day's month, the month before in the first days", () => {
     expect(hooks.seasonsToScore("2026-10-18", "2026-10-16")).toEqual(["2026-10"]);
     expect(hooks.seasonsToScore("2026-11-02", "2026-10-30")).toEqual(["2026-10", "2026-11"]);

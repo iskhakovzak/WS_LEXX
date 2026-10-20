@@ -25,6 +25,8 @@ export interface SeasonState {
   of: number;
   /** label = name (staff / names shown) or alias key "t<n>" for traders; title = earned title key or null. */
   top: { label: string; me: boolean; points: number; title: string | null }[];
+  /** A trader's view while fewer than 5 have season points (2.14): no place, the top is the own row only. */
+  rankHidden?: true;
 }
 
 export interface LeagueState {

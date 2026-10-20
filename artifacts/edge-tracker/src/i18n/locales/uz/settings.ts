@@ -167,8 +167,6 @@ export default {
     maxPosition: "Maks. pozitsiya",
     withinDesk: "Parametrlaringiz desk limitlariga sigʻadi.",
     takeDesk: "Desk qiymatlarini olish",
-    checklistTitle: "Savdodan oldingi chek-list shabloni",
-    checklistDesc: "Treyderlar kirishdan oldin belgilaydigan bandlar. Barcha treyderlar koʻradi.",
   },
   tgAlerts: {
     saveError: "Saqlashda xato",
@@ -425,7 +423,6 @@ export default {
       ideas_review: { label: "Gʻoyalar tahlili", description: "Gʻoyalar koʻrib chiqish holati, boshqalarning gʻoyalarini boshqarish, hammaning qoralamalari." },
       discussions_moderate: { label: "Muhokamalar moderatsiyasi", description: "Boshqalarning mavzu va izohlarini oʻchirish, mavzularni yopish." },
       discussions_edit_any: { label: "Boshqalarning izohlarini tahrirlash", description: "Boshqalarning izohlarini tahrirlash." },
-      checklist_template_edit: { label: "Savdodan oldingi chek-list", description: "Butun desk uchun chek-list bandlarini oʻzgartirish." },
       watchlist_manage: { label: "Desk kuzatuv roʻyxati", description: "Umumiy kuzatuv roʻyxatini tahrirlash (istalgan aʼzo, mehmon emas)." },
       users_manage: { label: "Foydalanuvchilarni boshqarish", description: "Treyder va kuratorlarni qoʻshish, tahrirlash, muzlatish va arxivlash, biriktirishlarni oʻzgartirish." },
       users_manage_admins: { label: "Adminlarni boshqarish", description: "Adminlar yaratish, admin rolini berish, adminlarni tahrirlash/nofaol qilish, kuratorlarni bloklash." },

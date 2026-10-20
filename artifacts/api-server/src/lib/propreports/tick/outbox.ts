@@ -34,7 +34,7 @@ export const OUTBOX_HANDLERS: Record<string, OutboxHandler> = {
 };
 
 export const MAX_ATTEMPTS = 5;
-/** A claimed row is invisible to other drainers for this long (a frozen function's claim expires). */
+/** A claimed row is invisible to other drainers for this long (a crashed drainer's claim expires). */
 const CLAIM_SECONDS = 120;
 
 type Queryable = { query: (typeof pool)["query"] };
@@ -115,8 +115,8 @@ export async function drainOutbox(deadline: number, opts: { batch?: number; hand
 
 let kicking: Promise<unknown> | null = null;
 /**
- * Best-effort drain right after a user-triggered write (classic server: completes; Vercel: may be frozen after the
- * response — the rows stay and the next tick runs them). Never throws, never runs twice at once in one process.
+ * Best-effort drain right after a user-triggered write (if the process stops first, the rows stay and the next tick
+ * runs them). Never throws, never runs twice at once in one process.
  */
 export function kickOutbox(budgetMs = 25_000): void {
   if (kicking) return;

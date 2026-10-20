@@ -1,7 +1,7 @@
 /**
  * «Академия» → когорты и наставничество (агент F2). Экспорт по умолчанию — router (регистрирует лид в routes/index.ts).
  *
- * Таблицы (создаются лениво, идемпотентно, только CREATE/ALTER … IF NOT EXISTS; удаление — только archived_at):
+ * Таблицы (миграция 0234; удаление — только archived_at):
  *   academy_cohorts, academy_enrollments, academy_enrollment_history, academy_sessions, academy_attendance,
  *   academy_one_on_ones, academy_action_items, academy_idp_goals.
  *
@@ -61,164 +61,6 @@ import { langOf, type Lang, type Params } from "../i18n";
 
 const router: IRouter = Router();
 
-/* ─── Схема ───────────────────────────────────────────────────────────────── */
-
-let ensured: Promise<void> | null = null;
-export function ensureAcademyCohortTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS academy_cohorts (
-           id SERIAL PRIMARY KEY,
-           name TEXT NOT NULL,
-           format TEXT NOT NULL DEFAULT 'office',
-           mentor TEXT,
-           starts_on DATE,
-           ends_on DATE,
-           timezone TEXT NOT NULL DEFAULT 'America/New_York',
-           description TEXT NOT NULL DEFAULT '',
-           room TEXT,
-           meeting_url TEXT,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE UNIQUE INDEX IF NOT EXISTS academy_cohorts_name_live_uq ON academy_cohorts (name) WHERE archived_at IS NULL;
-         CREATE TABLE IF NOT EXISTS academy_enrollments (
-           id SERIAL PRIMARY KEY,
-           cohort_id INTEGER NOT NULL REFERENCES academy_cohorts(id),
-           user_name TEXT NOT NULL,
-           stage TEXT NOT NULL DEFAULT 'junior',
-           status TEXT NOT NULL DEFAULT 'active',
-           joined_on DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'America/New_York')::date),
-           note TEXT NOT NULL DEFAULT '',
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE UNIQUE INDEX IF NOT EXISTS academy_enrollments_live_uq ON academy_enrollments (cohort_id, user_name) WHERE archived_at IS NULL;
-         CREATE INDEX IF NOT EXISTS academy_enrollments_user_idx ON academy_enrollments (user_name);
-         CREATE TABLE IF NOT EXISTS academy_enrollment_history (
-           id SERIAL PRIMARY KEY,
-           enrollment_id INTEGER NOT NULL,
-           cohort_id INTEGER,
-           user_name TEXT NOT NULL,
-           from_stage TEXT,
-           to_stage TEXT,
-           from_status TEXT,
-           to_status TEXT,
-           changed_by TEXT,
-           note TEXT NOT NULL DEFAULT '',
-           changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         );
-         CREATE INDEX IF NOT EXISTS academy_enrollment_history_enr_idx ON academy_enrollment_history (enrollment_id, changed_at DESC);
-         CREATE INDEX IF NOT EXISTS academy_enrollment_history_user_idx ON academy_enrollment_history (user_name, changed_at DESC);
-         CREATE TABLE IF NOT EXISTS academy_sessions (
-           id SERIAL PRIMARY KEY,
-           cohort_id INTEGER NOT NULL REFERENCES academy_cohorts(id),
-           title TEXT NOT NULL,
-           kind TEXT NOT NULL DEFAULT 'lecture',
-           recurrence TEXT NOT NULL DEFAULT 'none',
-           weekdays SMALLINT[] NOT NULL DEFAULT '{}',
-           start_date DATE NOT NULL,
-           end_date DATE,
-           start_time TEXT NOT NULL,
-           duration_min INTEGER NOT NULL DEFAULT 60,
-           timezone TEXT NOT NULL DEFAULT 'America/New_York',
-           mode TEXT NOT NULL DEFAULT 'office',
-           room TEXT,
-           meeting_url TEXT,
-           host TEXT,
-           description TEXT NOT NULL DEFAULT '',
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_sessions_cohort_idx ON academy_sessions (cohort_id);
-         CREATE TABLE IF NOT EXISTS academy_attendance (
-           id SERIAL PRIMARY KEY,
-           session_id INTEGER NOT NULL REFERENCES academy_sessions(id),
-           occurrence_date DATE NOT NULL,
-           user_name TEXT NOT NULL,
-           status TEXT NOT NULL,
-           source TEXT NOT NULL DEFAULT 'mentor',
-           checked_in_at TIMESTAMPTZ,
-           marked_by TEXT,
-           note TEXT NOT NULL DEFAULT '',
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           UNIQUE (session_id, occurrence_date, user_name)
-         );
-         CREATE INDEX IF NOT EXISTS academy_attendance_user_idx ON academy_attendance (user_name, occurrence_date DESC);
-         CREATE TABLE IF NOT EXISTS academy_one_on_ones (
-           id SERIAL PRIMARY KEY,
-           student TEXT NOT NULL,
-           mentor TEXT NOT NULL,
-           cohort_id INTEGER,
-           met_at TIMESTAMPTZ NOT NULL,
-           duration_min INTEGER,
-           format TEXT NOT NULL DEFAULT 'office',
-           agenda TEXT NOT NULL DEFAULT '',
-           notes TEXT NOT NULL DEFAULT '',
-           private_notes TEXT NOT NULL DEFAULT '',
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_one_on_ones_student_idx ON academy_one_on_ones (student, met_at DESC);
-         CREATE TABLE IF NOT EXISTS academy_action_items (
-           id SERIAL PRIMARY KEY,
-           meeting_id INTEGER,
-           student TEXT NOT NULL,
-           owner TEXT NOT NULL DEFAULT 'student',
-           title TEXT NOT NULL,
-           due_on DATE,
-           status TEXT NOT NULL DEFAULT 'open',
-           done_at TIMESTAMPTZ,
-           overdue_notified_at TIMESTAMPTZ,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_action_items_student_idx ON academy_action_items (student, status);
-         CREATE TABLE IF NOT EXISTS academy_idp_goals (
-           id SERIAL PRIMARY KEY,
-           student TEXT NOT NULL,
-           title TEXT NOT NULL,
-           metric TEXT NOT NULL,
-           comparator TEXT NOT NULL,
-           target NUMERIC NOT NULL,
-           window_n INTEGER,
-           start_date DATE NOT NULL,
-           due_on DATE,
-           status TEXT NOT NULL DEFAULT 'active',
-           manual_progress NUMERIC,
-           note TEXT NOT NULL DEFAULT '',
-           last_value NUMERIC,
-           last_progress NUMERIC,
-           last_evaluated_at TIMESTAMPTZ,
-           achieved_at TIMESTAMPTZ,
-           missed_at TIMESTAMPTZ,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_idp_goals_student_idx ON academy_idp_goals (student, status);`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 /* ─── Общие помощники ─────────────────────────────────────────────────────── */
 
@@ -241,7 +83,6 @@ async function needCohortOwner(v: Viewer, id: number, res: Response): Promise<bo
 
 /** Общий вход для всех маршрутов: схема + личность. Отвечает 401 сам. */
 async function enter(req: Request, res: Response): Promise<Viewer | null> {
-  await ensureAcademyCohortTables();
   const v = await viewer(req);
   if (!v.me && !v.guest) { sendError(res, unauthorized()); return null; }
   return v;
@@ -647,7 +488,6 @@ export async function changeEnrollment(
   historyNote = "",
   lang: Lang = "ru",
 ): Promise<ReturnType<typeof mapEnrollment> | null> {
-  await ensureAcademyCohortTables();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -1656,7 +1496,6 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
  *  Отметки за прошедшие брифинги последних 7 дней, 1:1 с договорённостями, цели ИПР.
  */
 export async function seedDemo(actor: string | null): Promise<Record<string, unknown>> {
-  await ensureAcademyCohortTables();
   const { rows: users } = await pool.query<{ name: string }>(`SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false`);
   const have = new Set(users.map((u) => u.name));
   const pick = (n: string) => (have.has(n) ? n : null);

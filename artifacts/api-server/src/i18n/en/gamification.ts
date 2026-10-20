@@ -13,6 +13,11 @@ export default {
     telegram: "🏆 {text}",
   },
   masteryLevel: { l0: "Novice", l1: "Apprentice", l2: "Practitioner", l3: "Expert", l4: "Master" },
+  taskDone: {
+    title: "{trader}: the curator task is done — please confirm",
+    body: "Task: {note}",
+    bodyNoNote: "Mark the task done in the curator cabinet",
+  },
   notify: {
     eligibleTitle: "Reward available: “{title}”",
     eligibleBody: "Request it on the “Quests” tab — your curator will hand it over.",

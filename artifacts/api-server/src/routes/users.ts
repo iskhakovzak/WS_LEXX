@@ -10,8 +10,8 @@ import { lockoutStore } from "../lib/security/loginGuard";
 import { securityT } from "../lib/security/i18n";
 import { can, requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
-import { ensureLocaleColumn, langOf, parseLang, rememberLocale } from "../i18n";
-import { cleanNameLatin, ensureNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
+import { langOf, parseLang, rememberLocale } from "../i18n";
+import { cleanNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
 import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 import { clearFeedStreamCache } from "../lib/feedStream";
@@ -29,7 +29,6 @@ const USER_COLUMNS = `id, name, role, active,
 /** USER_COLUMNS + the optional Latin alias (users.name_latin) once the column is known to exist. */
 async function userColumns(): Promise<string> {
   try {
-    await ensureNameLatin();
     return `${USER_COLUMNS}, name_latin AS "nameLatin"`;
   } catch {
     return USER_COLUMNS; // never break the login screen over an optional column
@@ -141,10 +140,8 @@ router.get("/users/tg-notifications", asyncHandler(async (req, res): Promise<voi
 router.get("/users/me/profile", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
   if (!me) throw unauthorized();
-  await ensureLocaleColumn().catch(() => {});
-  const latinCol = await ensureNameLatin().then(() => `name_latin AS "nameLatin",`, () => "");
   const { rows } = await pool.query<any>(
-    `SELECT id, name, role, active, ${latinCol}
+    `SELECT id, name, role, active, name_latin AS "nameLatin",
             COALESCE(theme, 'dark') AS theme,
             COALESCE(locale, 'ru') AS locale,
             created_at AS "createdAt",
@@ -192,7 +189,6 @@ router.patch("/users/me/locale", asyncHandler(async (req, res): Promise<void> =>
   const raw = (req.body as { locale?: unknown } | undefined)?.locale;
   const locale = typeof raw === "string" && raw.length <= 10 ? parseLang(raw) : null;
   if (!locale) throw badRequest("INVALID_LOCALE", undefined, { value: String(raw ?? "").slice(0, 20) });
-  await ensureLocaleColumn();
   const me = req.authUser!;
   await pool.query(`UPDATE users SET locale = $1 WHERE id = $2`, [locale, me.id]);
   rememberLocale({ id: me.id, name: me.name }, locale);
@@ -206,7 +202,6 @@ router.patch("/users/me/name-latin", asyncHandler(async (req, res): Promise<void
   if (!requireMember(req, res)) return;
   const cleaned = cleanNameLatin((req.body as { nameLatin?: unknown } | undefined)?.nameLatin);
   if (!cleaned.ok) throw new AppError(cleaned.code, 400, cleaned.params);
-  await ensureNameLatin();
   const me = req.authUser!;
   const changed = await saveLatinNames([{ id: me.id, name: me.name, nameLatin: cleaned.value }], me.name, { bulk: false });
   if (changed.length) await reloadLatinNames();
@@ -216,22 +211,6 @@ router.patch("/users/me/name-latin", asyncHandler(async (req, res): Promise<void
 // ─── Personal settings (users.settings JSONB) — audit P1-7 ─────────────────────
 // GET /users/me/settings → { settings: { tradingDefaults?: {...}, ... } }   (guest/anonymous-safe: {} for a guest)
 // PUT /users/me/settings   { tradingDefaults?: {...} | null }  — top-level merge; null removes the key → { settings }
-// The column is added idempotently on first use (additive, no migrate.ts change).
-
-let settingsColumnEnsured: Promise<void> | null = null;
-function ensureSettingsColumn(): Promise<void> {
-  if (!settingsColumnEnsured) {
-    settingsColumnEnsured = pool
-      .query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb`)
-      .then(() => undefined)
-      .catch((err) => {
-        settingsColumnEnsured = null;
-        throw err;
-      });
-  }
-  return settingsColumnEnsured;
-}
-ensureSettingsColumn().catch((err) => logger.warn({ err }, "users: ensure settings column failed at init"));
 
 const boundedNum = (min: number, max: number) => z.coerce.number().finite().min(min).max(max);
 /** Mirrors edge-tracker components/settings/trading-defaults.ts (TRADING_DEFAULT_LIMITS). Unknown keys are dropped. */
@@ -259,7 +238,6 @@ router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   const me = req.authUser;
   if (!me) throw unauthorized();
   if (isGuestUser(me)) { res.json({ settings: {} }); return; }
-  await ensureSettingsColumn();
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `SELECT settings FROM users WHERE id = $1 LIMIT 1`,
     [me.id],
@@ -272,7 +250,6 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   if (!requireMember(req, res)) return;
   const body = SettingsPatch.safeParse(req.body ?? {});
   if (!body.success) throw body.error;
-  await ensureSettingsColumn();
   const set: Record<string, unknown> = {};
   const drop: string[] = [];
   if (body.data.tradingDefaults === null) drop.push("tradingDefaults");

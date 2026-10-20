@@ -451,7 +451,7 @@ router.get("/analyst-actions/watchlist",asyncHandler(async (_req, res): Promise<
 }));
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Market reaction to analyst calls (J8, additive).
+ * Market reaction to analyst calls (J8).
  *   GET /api/analyst-actions/reaction?ticker=X        one ticker: events + reaction, by kind, by firm, price series
  *   GET /api/analyst-actions/reactions?tickers=A,B    compact per-ticker summaries (cache only, warms the rest in background)
  *   GET /api/analyst-actions/firm-weight?days=730     firm «weight»: how strongly the market reacts to its rating calls
@@ -466,25 +466,6 @@ const SYMBOL_RE = /^[A-Z0-9.\-^=]{1,12}$/;
 const REACTION_LOOKBACK_DAYS = 730;
 const BARS_TTL_MS = 20 * 3600_000;
 const BARS_RETRY_MS = 60 * 60_000;
-
-let barsEnsured: Promise<void> | null = null;
-function ensureBarsTable(): Promise<void> {
-  if (!barsEnsured) {
-    barsEnsured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS analyst_bars_cache (
-           ticker TEXT PRIMARY KEY,
-           bars JSONB NOT NULL DEFAULT '[]'::jsonb,
-           from_date TEXT,
-           to_date TEXT,
-           fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => { barsEnsured = null; throw err; });
-  }
-  return barsEnsured;
-}
 
 /* ── Yahoo gate: one call at a time, spaced, with an hourly budget ─────────── */
 const YAHOO_GAP_MS = 700;
@@ -515,7 +496,6 @@ type CachedBars = { bars: Bar[]; fetchedAt: number };
 async function readBars(tickers: string[]): Promise<Map<string, CachedBars>> {
   const out = new Map<string, CachedBars>();
   if (!tickers.length) return out;
-  await ensureBarsTable();
   const { rows } = await pool.query<{ ticker: string; bars: Bar[]; fetched_at: Date }>(
     `SELECT ticker, bars, fetched_at FROM analyst_bars_cache WHERE ticker = ANY($1::text[])`,
     [tickers],
@@ -762,7 +742,6 @@ router.get("/analyst-actions/firm-weight", asyncHandler(async (req, res): Promis
   let cachedTickers: { ticker: string; fetched_at: Date }[];
   let rated: { ticker: string; n: number }[];
   try {
-    await ensureBarsTable();
     ({ rows: cachedTickers } = await pool.query(`SELECT ticker, fetched_at FROM analyst_bars_cache WHERE jsonb_array_length(bars) > 0`));
     ({ rows: rated } = await pool.query(
       `SELECT ticker, COUNT(*)::int AS n FROM analyst_actions_cache

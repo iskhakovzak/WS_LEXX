@@ -29,8 +29,13 @@ export type TopRow = {
   alias: number;
   me: boolean;
   name: string | null;
+  /** 0 = no place (the loss list for a trader, Волна 2 п. 2.14). */
   place: number;
   net: number | null;
+  /** Σ R of the day (null: no trade has an R; absent on an older API). */
+  r?: number | null;
+  /** Wins / decided in % (null: nothing decided). */
+  winPct?: number | null;
   trades: number;
   wins: number;
   losses: number;
@@ -65,8 +70,11 @@ export type TraderDay = {
   me: boolean;
   name: string | null;
   list: "profit" | "loss" | "flat";
+  /** 0 = no place (a trader's loss day, 2.14). */
   place: number;
   net: number | null;
+  r?: number | null;
+  winPct?: number | null;
   trades: number;
   wins: number;
   losses: number;

@@ -25,7 +25,6 @@ import sectorsRouter from "./sectors";
 import holidaysRouter from "./holidays";
 import marketBriefRouter from "./marketbrief";
 import marketConditionsRouter from "./marketconditions";
-import checklistRouter from "./checklist";
 import tradeIdeasRouter from "./tradeideas";
 import aireviewRouter from "./aireview";
 import emotionalstateRouter from "./emotionalstate";
@@ -57,11 +56,14 @@ import propreportsRouter from "./propreports";
 import cronRouter from "./cron";
 import propreportsTickRouter from "./propreports-tick";
 import { tradesVersionMiddleware } from "../lib/propreports/tradesVersion";
+import { setting } from "../lib/settings/registry";
+import { notFound } from "../lib/http";
 import tradeQualityRouter from "./trade-quality";
 import scalingRouter from "./scaling";
 import weeklyReviewRouter from "./weekly-review";
 import eodRouter from "./eod";
 import edgeRouter from "./edge";
+import statsAggregateRouter from "./stats-aggregate";
 import permissionsRouter from "./permissions";
 import whatifRouter from "./whatif";
 import behaviorRouter from "./behavior";
@@ -90,6 +92,7 @@ import deskDayRouter from "./deskDay";
 import topRouter from "./top";
 import questsRouter from "./quests";
 import gamificationRouter from "./gamification";
+import myReviewRouter from "./my-review";
 import usageRouter from "./usage";
 import finvizRouter from "./finviz";
 import themesRouter from "./themes";
@@ -127,7 +130,6 @@ router.use(sectorsRouter);
 router.use(holidaysRouter);
 router.use(marketBriefRouter);
 router.use(marketConditionsRouter);
-router.use(checklistRouter);
 router.use(tradeIdeasRouter);
 router.use(aireviewRouter);
 router.use(emotionalstateRouter);
@@ -144,6 +146,8 @@ router.use(adminRouter);
 router.use(authRouter);
 router.use(fxRouter);
 router.use(earningsRouter);
+// «Сводка автора» is behind the desk switch nav.authorNotes (default off, Волна 2 п. 2.15): off → every route 404.
+router.use("/author-notes", (_req, _res, next) => next(setting("nav.authorNotes") ? undefined : notFound()));
 router.use(authorNotesRouter);
 router.use(juniorNotesRouter);
 router.use(telegramRouter);
@@ -161,6 +165,7 @@ router.use(scalingRouter);
 router.use(weeklyReviewRouter);
 router.use(eodRouter);
 router.use(edgeRouter);
+router.use(statsAggregateRouter); // GET /stats/aggregate — staff /stats and /analytics without raw trades
 router.use(permissionsRouter);
 router.use(whatifRouter);
 router.use(behaviorRouter);
@@ -189,10 +194,15 @@ router.use(deskDayRouter);
 router.use(topRouter);
 router.use(questsRouter);
 router.use(gamificationRouter);
+router.use(myReviewRouter); // GET /my-review — the trader's own review digest
 router.use(usageRouter);
 router.use(finvizRouter); // Finviz Elite: screener, ticker snapshot, earnings calendar (lib/finviz)
 router.use(themesRouter); // «Темы рынка»: theme tracker (lib/themes)
 router.use(themesBoardsRouter); // «Темы рынка»: personal boards (lib/themes/board*)
 router.use(newsChannelRouter); // WS_NEWS channel briefs: admin preview / send-now (lib/newsChannel)
+
+// Last: an /api path no router answered is a JSON 404 (removed routes included), never Express's HTML page or, in
+// production, the SPA's index.html.
+router.use((_req, _res, next) => next(notFound()));
 
 export default router;

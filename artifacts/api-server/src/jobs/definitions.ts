@@ -164,7 +164,7 @@ export function registerAllJobs(): void {
     cron: config.backupCron,
     runOnStartMs: 5 * MIN,
     timeoutMs: 60 * MIN,
-    enabled: () => !!config.storage.bucketId,
+    enabled: () => !!config.storage.bucketId || !!config.backupDir,
     async run({ trigger }) {
       const { backupJob } = await import("../lib/dbBackupCron");
       return backupJob(trigger);

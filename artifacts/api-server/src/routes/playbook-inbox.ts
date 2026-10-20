@@ -13,31 +13,12 @@ import { AppError, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
-let inboxExtras: Promise<void> | null = null;
-/**
- * Additive, idempotent: «Не для плейбука» marks for the inbox, and an index for the per-setup journal
- * (GET /playbook/:id/activity filters activity_log by section + entity_id).
- */
-export function ensureInboxExtras(): Promise<void> {
-  if (!inboxExtras) {
-    inboxExtras = (async () => {
-      await pool.query(`CREATE TABLE IF NOT EXISTS playbook_inbox_dismissed (
-        trade_id INTEGER PRIMARY KEY,
-        dismissed_by TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_section_entity_idx ON activity_log (section, entity_id, created_at DESC)`);
-    })().catch((e) => { inboxExtras = null; throw e; });
-  }
-  return inboxExtras;
-}
-
 /**
  * POST   /playbook-tools/inbox/dismiss { tradeIds } — «Не для плейбука»: hide own trades from «Разобрать сделки».
  * DELETE /playbook-tools/inbox/dismiss { tradeIds } — undo. Staff may do it for any trader's trades.
  */
 async function inboxDismiss(req: Request, res: Response, on: boolean): Promise<void> {
   if (isGuest(req)) { sendError(res, new AppError("GUEST_READ_ONLY")); return; }
-  await ensureInboxExtras();
   const v = await loadViewer(req);
   if (!v.name) { sendError(res, unauthorized()); return; }
   const body = req.body as { tradeIds?: unknown };

@@ -109,6 +109,22 @@ export default {
     ruleFallback: "правило",
     consequence: "Последствие: {consequence}",
   },
+  /** Names of the desk rules seeded per ladder stage (migration 0235, lib/rulesTemplates.ts); shown while unrenamed. */
+  stageTemplates: {
+    junior: {
+      daily_stop: "Дневной стоп по лимиту риска",
+      max_trades: "Не больше 8 сделок в день",
+      no_size_up: "Не увеличивать размер после убытка",
+      stop_after_losses: "После 2 убытков подряд — стоп на день",
+      no_overnight: "Без овернайта",
+    },
+    trader: {
+      daily_stop: "Дневной стоп по лимиту риска",
+      max_trades: "Не больше 15 сделок в день",
+      no_size_up: "Не увеличивать размер после убытка",
+      stop_after_losses: "После 3 убытков подряд — стоп на день",
+    },
+  },
   /** Activity log details (stored as the RU fallback; params carry the key). */
   activity: {
     deskRule: "Правило для всего деска",

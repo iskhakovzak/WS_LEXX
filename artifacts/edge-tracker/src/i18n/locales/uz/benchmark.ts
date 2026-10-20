@@ -116,6 +116,7 @@ export default {
     colPercentile: "Persentil",
     strengths: "Kuchli va zaif tomonlar",
     noSignals: "Hozircha aniq signallar yoʻq.",
+    signalsFrom: "Kuchli va zaif tomonlar {trades} ta savdo yoki {days} ta savdo kunidan keyin chiqadi (hozir: savdolar {haveTrades}, kunlar {haveDays}).",
     equity: "Kapital egri chizigʻi",
     myTrend: "Mening tendensiyam",
   },

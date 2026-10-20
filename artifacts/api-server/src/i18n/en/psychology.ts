@@ -29,6 +29,7 @@ export default {
     wrHigher: "win rate is higher by {pp} pp: {a}% vs {b}% {contrast}",
     wrLower: "win rate is lower by {pp} pp: {a}% vs {b}% {contrast}",
     wrSame: "win rate is the same: {a}% vs {b}% {contrast}",
+    wrClose: "win rate is about the same: {a}% vs {b}% {contrast} (less than {min} pp apart — noise)",
     r: "average result {a} vs {b} per trade",
     rContrast: "average result {a} vs {b} per trade {contrast}",
     text: "{lead} {parts}. Sample: {na} and {nb} trades.",

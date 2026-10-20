@@ -33,7 +33,7 @@ import { AppError, badRequest, notFound } from "../lib/http";
  *
  * The cache row stores a hash of every input (trade fields, executions, window, algorithm version) and is
  * recomputed when the hash changes, when `?refresh=1` is passed, or — for open positions — once per NY day.
- * Table is created idempotently (additive) once per process.
+ * Table trade_quality: src/db/migrations.
  */
 const router: IRouter = Router();
 
@@ -44,26 +44,6 @@ const MAX_BATCH = 300;
 const MAX_UNCACHED_PER_BATCH = 6;
 const BATCH_CONCURRENCY = 2;
 const MAX_INTRADAY_DAYS = 30;
-
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS trade_quality (
-           trade_id INTEGER PRIMARY KEY,
-           inputs_hash TEXT NOT NULL,
-           after_exit_min INTEGER NOT NULL DEFAULT 30,
-           payload JSONB NOT NULL,
-           computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => { ensured = null; throw err; });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "trade-quality: ensure tables failed at init"));
 
 type TradeRow = {
   id: number;
@@ -320,7 +300,6 @@ async function writeCache(tradeId: number, hash: string, afterExit: number, rec:
  * in this request (bounded Yahoo traffic), the rest are reported in `pending` so the client can poll again.
  */
 async function resolveMany(req: Request, trades: TradeRow[], afterExit: number, refresh: boolean, maxCompute: number) {
-  await ensureTables();
   const ids = trades.map((t) => t.id);
   const [execsMap, cache] = await Promise.all([loadExecutions(ids), readCache(ids)]);
   const items: QualityRecord[] = [];

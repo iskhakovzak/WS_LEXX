@@ -119,6 +119,7 @@ export default {
     colPercentile: "Перцентиль",
     strengths: "Сильные и слабые стороны",
     noSignals: "Пока без выраженных сигналов.",
+    signalsFrom: "Сильные и слабые стороны появятся от {trades} сделок или {days} торговых дней (сейчас: сделок {haveTrades}, дней {haveDays}).",
     equity: "Кривая капитала",
     myTrend: "Мой тренд",
   },

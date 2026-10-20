@@ -527,18 +527,8 @@ export function buildOptionsQuery(scope: string | null): { sql: string; params: 
   return { sql, params: p.list };
 }
 
-// ── Indexes for the hot paths (idempotent) ────────────────────────────────────
-
-export const TRADES_PAGE_INDEX_SQL = [
-  // Default sort + keyset (date DESC, id DESC) over live rows.
-  `CREATE INDEX IF NOT EXISTS trades_live_date_id_idx ON trades (date DESC, id DESC) WHERE deleted_at IS NULL`,
-  // Trader scope (every non-staff request) with the same order.
-  `CREATE INDEX IF NOT EXISTS trades_live_trader_date_id_idx ON trades (trader, date DESC, id DESC) WHERE deleted_at IS NULL`,
-  // Ticker deep links / history in the detail sheet.
-  `CREATE INDEX IF NOT EXISTS trades_live_ticker_date_idx ON trades (ticker, date DESC) WHERE deleted_at IS NULL`,
-  // Source filter (PropReports vs manual) is low-cardinality but partial on live rows keeps it tiny.
-  `CREATE INDEX IF NOT EXISTS trades_live_source_idx ON trades (source) WHERE deleted_at IS NULL`,
-];
+// Hot-path indexes (trades_live_date_id_idx, trades_live_trader_date_id_idx, trades_live_ticker_date_idx,
+// trades_live_source_idx, partial on live rows) live in src/db/migrations.
 
 // ── Streak fold (JS) ──────────────────────────────────────────────────────────
 

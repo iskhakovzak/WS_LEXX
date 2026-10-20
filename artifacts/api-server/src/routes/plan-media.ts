@@ -3,13 +3,7 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { requireCap } from "../lib/permissions";
 import { scopeTrader } from "../lib/auth";
-import {
-  PLAN_MEDIA_DAILY_LIMIT,
-  PLAN_MEDIA_MAX_BYTES,
-  ensurePlanMedia,
-  sniffImageMime,
-  type MediaContext,
-} from "../lib/planMedia";
+import { PLAN_MEDIA_DAILY_LIMIT, PLAN_MEDIA_MAX_BYTES, sniffImageMime, type MediaContext } from "../lib/planMedia";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
@@ -64,7 +58,6 @@ router.post(
     if (!Buffer.isBuffer(body) || body.length === 0) throw new AppError("IMAGE_TYPE", 415);
     const mime = sniffImageMime(body);
     if (!mime) throw new AppError("IMAGE_TYPE", 415);
-    await ensurePlanMedia();
     const { rows: quota } = await pool.query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM plan_media WHERE owner = $1 AND created_at > NOW() - INTERVAL '24 hours'`,
       [me],
@@ -99,7 +92,6 @@ router.get("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) {
     throw unauthorized();
   }
-  await ensurePlanMedia();
   const { rows } = await pool.query<MediaRow>(
     `SELECT id, context, owner, mime, bytes, size_bytes FROM plan_media WHERE id = $1 AND deleted_at IS NULL`,
     [id],
@@ -132,7 +124,6 @@ router.delete("/plan-media/:id", asyncHandler(async (req, res): Promise<void> =>
   if (!me) {
     throw unauthorized();
   }
-  await ensurePlanMedia();
   const { rows } = await pool.query<{ context: MediaContext; owner: string }>(
     `SELECT context, owner FROM plan_media WHERE id = $1 AND deleted_at IS NULL`,
     [id],

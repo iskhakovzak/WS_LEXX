@@ -50,7 +50,7 @@ beforeAll(async () => {
     "/items/:id",
     route(
       {
-        cap: "checklist.template.edit",
+        cap: "discussions.moderate",
         params: z.object({ id: idParam }),
         query: z.object({ dry: z.enum(["1", "0"]).optional() }),
         body: z.object({ label: z.string().trim().min(1), sortOrder: z.number().int().optional() }),
@@ -59,7 +59,7 @@ beforeAll(async () => {
         // typed: params.id is a number, body.label a string, actor non-null
         const id: number = params.id;
         seen.push({ id, dry: query.dry, label: body.label, actor: actor.name });
-        if (id === 404) throw notFound("CHECKLIST_ITEM_NOT_FOUND");
+        if (id === 404) throw notFound("COMMENT_NOT_FOUND");
         return { id, label: body.label, sortOrder: body.sortOrder ?? 0 };
       },
     ),
@@ -98,7 +98,7 @@ describe("route() authorization", () => {
 
   it("missing capability names it in details", async () => {
     const r = await call("POST", "/items/5", "trader", { label: "x" });
-    expect(r.body?.details).toEqual({ capability: "checklist.template.edit" });
+    expect(r.body?.details).toEqual({ capability: "discussions.moderate" });
   });
 
   it("authorizes before validating (no validation details leak to the unauthorized)", async () => {
@@ -136,7 +136,7 @@ describe("route() validation and typed args", () => {
   it("thrown AppError goes through the middleware", async () => {
     expect(await call("POST", "/items/404", "curator", { label: "x" })).toEqual({
       status: 404,
-      body: { error: "Пункт чек-листа не найден", code: "CHECKLIST_ITEM_NOT_FOUND" },
+      body: { error: "Комментарий не найден", code: "COMMENT_NOT_FOUND" },
     });
   });
 

@@ -7,7 +7,6 @@ import { langOf, localeOfUser } from "../i18n";
 import { signToken, signGuestToken, verifyPassword, bumpTokenVersion, hashPassword, isGuest, isGuestModeEnabled, shouldRefreshToken, GUEST_NAME, GUEST_ROLE, GUEST_USER_ID } from "../lib/auth";
 import { logAudit } from "../lib/audit";
 import { logger } from "../lib/logger";
-import { ensureNameLatin } from "../lib/peopleDirectory";
 import { lockoutKey, lockoutStore, resolveLoginName } from "../lib/security/loginGuard";
 import { mustChangeSecret, secretPolicyFor, TRADER_MIN_SECRET } from "../lib/security/passwordPolicy";
 import { securityT } from "../lib/security/i18n";
@@ -39,11 +38,10 @@ const loginSchema = z.object({
 
 type LoginRow = { id: number; name: string; name_latin: string | null; password_hash: string | null; role: string; banned: boolean; must_change_secret: boolean };
 
-/** Active accounts the typed name may resolve to (name_latin is optional on older databases). */
+/** Active accounts the typed name may resolve to. */
 async function loginCandidates(): Promise<LoginRow[]> {
-  const latin = await ensureNameLatin().then(() => true, () => false);
   const { rows } = await pool.query<LoginRow>(
-    `SELECT id, name, ${latin ? "name_latin" : "NULL::text AS name_latin"}, password_hash, role, COALESCE(banned, false) AS banned, must_change_secret
+    `SELECT id, name, name_latin, password_hash, role, COALESCE(banned, false) AS banned, must_change_secret
        FROM users WHERE active = true`,
   );
   return rows;

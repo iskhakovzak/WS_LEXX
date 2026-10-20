@@ -34,41 +34,6 @@ export function afterKeyTime(date: string, now = new Date()): boolean {
   return date === nyDate(now) && nyMinutes(now) >= OVERNIGHT_KEY_MINUTES;
 }
 
-// ─── tables (additive; created lazily on first request) ─────────────────────
-
-let ensured: Promise<void> | null = null;
-export function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = (async () => {
-      await pool.query(`CREATE TABLE IF NOT EXISTS risk_alert_log (
-        id SERIAL PRIMARY KEY,
-        trader TEXT NOT NULL,
-        date TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        level TEXT NOT NULL,
-        used NUMERIC(14,2),
-        "limit" NUMERIC(14,2),
-        message TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        UNIQUE (trader, date, kind)
-      )`);
-      await pool.query(`CREATE TABLE IF NOT EXISTS trader_risk_limit_events (
-        id SERIAL PRIMARY KEY,
-        trader TEXT NOT NULL,
-        before JSONB,
-        after JSONB NOT NULL,
-        reason TEXT,
-        changed_by TEXT,
-        changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS trader_risk_limit_events_trader_idx ON trader_risk_limit_events (trader, changed_at DESC)`);
-    })().catch((e) => {
-      ensured = null; // retry on next request
-      throw e;
-    });
-  }
-  return ensured;
-}
 
 /** Optional trades columns (PropReports contract). Detected once; SQL degrades gracefully without them. */
 let colsPromise: Promise<Set<string>> | null = null;

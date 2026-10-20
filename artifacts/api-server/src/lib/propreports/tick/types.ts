@@ -1,17 +1,17 @@
 /**
  * PropReports tick — shared contract (CORE owns this file; RISK-LIVE / ACCURACY build steps against it).
  *
- * One HTTP tick (POST /api/cron/tick, every 5 min in market hours, hourly otherwise — docs/PROPREPORTS_CRON.sql) takes
+ * One tick (the API's job scheduler: every few minutes in market hours, hourly otherwise — lib/propreports/scheduler) takes
  * a DB lease, runs every DUE step of TICK_STEPS (tick/steps.ts) in order until ~45 s are spent, records each step's
  * last run / result (propreports_tick_steps), then drains the outbox (tick/outbox.ts) with the remaining time.
  *
  * Step rules:
  *   - idempotent and resumable: progress lives in DB cursors (tick/cursor.ts), never in module memory
- *     (a Vercel function instance may be new on every tick);
+ *     (the process may restart between ticks);
  *   - respect `ctx.deadline` (epoch ms): stop before it and return `{ done: false }` — the runner then treats the step
  *     as due on the next tick regardless of `due()`;
  *   - side effects that are not the step's own data (notifications, rule scans, …) go through `ctx.enqueue(kind, payload)`
- *     with a kind registered in OUTBOX_HANDLERS — never fire-and-forget promises (a frozen function loses them);
+ *     with a kind registered in OUTBOX_HANDLERS — never fire-and-forget promises (a restart loses them);
  *   - throw on failure: the runner records the error text, the next tick retries (due() sees `last` = the failed run).
  */
 import type { Logger } from "pino";

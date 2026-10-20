@@ -12,6 +12,7 @@ export default {
     analytics: "Analitika",
     weeklyReview: "Haftalik hisobot",
     dayReport: "Kun tahlili",
+    myReview: "Mening tahlilim",
     behavior: "Xulq va setaplar",
     trainer: "Trenajyor",
     whatIf: "Agar shunday boʻlsa",

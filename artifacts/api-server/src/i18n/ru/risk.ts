@@ -173,6 +173,7 @@ export default {
       stage: "ступень",
       plan: "план деска на день",
       other: "помощь куратора",
+      review: "разбор темы",
     },
     newTitle: "{trader} просит: {kind}",
     newBody: "{message}",

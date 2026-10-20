@@ -12,8 +12,8 @@
  *   PUT /office-stats/capital    { year, capital: number | null, goalPct? } — admin only.
  *
  * Maths and the strategy classifier live in lib/officeStats.ts (pure, unit-tested). Trades: closed, not deleted,
- * with a trader; day = close date (exit_date ?? date); net = pnl − |fees|. The office_capital table is created
- * lazily here (additive, idempotent) — no migration needed. Loaded trades are cached per close year (see loadTrades).
+ * with a trader; day = close date (exit_date ?? date); net = pnl − |fees|. The office_capital table comes from
+ * migration 0234. Loaded trades are cached per close year (see loadTrades).
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
@@ -34,35 +34,11 @@ import { insightsT } from "../i18n/ns";
 
 const router: IRouter = Router();
 
-// ─── office_capital (lazy, additive) ────────────────────────────────────────
-
-let ensured: Promise<void> | null = null;
-export function ensureOfficeCapitalTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS office_capital (
-           year INTEGER PRIMARY KEY,
-           capital NUMERIC(16, 2),
-           goal_pct NUMERIC(7, 2) NOT NULL DEFAULT ${DEFAULT_GOAL_PCT},
-           updated_by TEXT,
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 type CapitalRow = { year: number; capital: string | null; goal_pct: string; updated_by: string | null; updated_at: Date | null };
 type FullSetting = YearSetting & { updatedBy: string | null; updatedAt: string | null };
 
 async function loadSettings(): Promise<Map<number, FullSetting>> {
-  await ensureOfficeCapitalTable();
   const { rows } = await pool.query<CapitalRow>(`SELECT year, capital, goal_pct, updated_by, updated_at FROM office_capital ORDER BY year`);
   const m = new Map<number, FullSetting>();
   for (const r of rows) {
@@ -293,7 +269,6 @@ router.put("/office-stats/capital", asyncHandler(async (req, res) => {
     if (!Number.isFinite(goalPct) || goalPct <= 0 || goalPct > 1000) throw new AppError("INVALID_FIELD", undefined, { field: "target" });
     goalPct = Math.round(goalPct * 100) / 100;
   }
-  await ensureOfficeCapitalTable();
   const { rows } = await pool.query<CapitalRow>(
     `INSERT INTO office_capital (year, capital, goal_pct, updated_by, updated_at)
           VALUES ($1, $2, COALESCE($3, ${DEFAULT_GOAL_PCT}), $4, NOW())

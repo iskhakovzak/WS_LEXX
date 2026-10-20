@@ -167,8 +167,6 @@ export default {
     maxPosition: "Max position",
     withinDesk: "Your parameters fit within the desk limits.",
     takeDesk: "Use desk values",
-    checklistTitle: "Pre-trade checklist template",
-    checklistDesc: "Items traders tick before an entry. All traders see it.",
   },
   tgAlerts: {
     saveError: "Couldn’t save",
@@ -425,7 +423,6 @@ export default {
       ideas_review: { label: "Idea review", description: "Idea review status, managing others’ ideas, everyone’s drafts." },
       discussions_moderate: { label: "Moderate discussions", description: "Delete others’ threads and comments, close threads." },
       discussions_edit_any: { label: "Edit others’ comments", description: "Edit other people’s comments." },
-      checklist_template_edit: { label: "Pre-trade checklist", description: "Change the checklist items for the whole desk." },
       watchlist_manage: { label: "Desk watchlist", description: "Edit the shared watchlist (any member, not a guest)." },
       users_manage: { label: "Manage users", description: "Add, edit, freeze and archive traders and curators, change assignments." },
       users_manage_admins: { label: "Manage admins", description: "Create admins, grant the admin role, edit/deactivate admins, ban curators." },

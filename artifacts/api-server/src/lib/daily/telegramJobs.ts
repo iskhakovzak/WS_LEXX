@@ -190,7 +190,7 @@ export async function dayContract(trader: string, date: string): Promise<DayCont
     const c = { maxLossUsd: num(doc.maxLossUsd), maxTrades: num(doc.maxTrades), rule: typeof doc.ownRule === "string" && doc.ownRule ? doc.ownRule : null };
     return c.maxLossUsd == null && c.maxTrades == null && !c.rule ? null : c;
   } catch {
-    return null; // trader_plans not created yet (routes/gameplan ensures it on first use)
+    return null; // trader_plans missing (database older than the migrations)
   }
 }
 

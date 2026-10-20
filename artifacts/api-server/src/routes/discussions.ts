@@ -53,38 +53,6 @@ import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/
  */
 const router: IRouter = Router();
 
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE discussions ADD COLUMN IF NOT EXISTS trade_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS idea_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS playbook_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS event_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS journal_date TEXT;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS accepted_comment_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS audience TEXT[];
-         CREATE INDEX IF NOT EXISTS discussions_ticker_upper_idx ON discussions (UPPER(ticker));
-         CREATE INDEX IF NOT EXISTS discussions_trade_id_idx ON discussions (trade_id);
-         CREATE INDEX IF NOT EXISTS comments_discussion_id_idx ON comments (discussion_id);
-         CREATE TABLE IF NOT EXISTS discussion_reads (
-           user_name TEXT NOT NULL,
-           thread_id INTEGER NOT NULL REFERENCES discussions(id) ON DELETE CASCADE,
-           read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (user_name, thread_id)
-         );`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "discussions: ensure tables failed at init"));
-
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TOPIC_MAX = 300;
 const COMMENT_MAX = 10000;
@@ -256,7 +224,6 @@ const ListQuery = z.object({
 });
 
 router.get("/discussions", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const viewer = req.authUser.name;
   const q = ListQuery.safeParse(Object.fromEntries(Object.entries(req.query).filter(([, v]) => v !== "" && v !== undefined)));
@@ -402,7 +369,6 @@ async function notifyNewThread(o: { author: string; id: number; topic: string; t
 }
 
 router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateDiscussionBody.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
@@ -461,7 +427,6 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
 // ─── Static paths (before /:id) ─────────────────────────────────────────────
 
 router.get("/discussions/tickers", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const av = await loadAudienceViewer(req);
   const params: unknown[] = [];
@@ -481,7 +446,6 @@ router.get("/discussions/tickers", asyncHandler(async (req, res): Promise<void> 
  *          (the nav badge). All within the viewer's audience.
  */
 router.get("/discussions/unread-count", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const viewer = req.authUser.name;
   const av = await loadAudienceViewer(req);
@@ -510,7 +474,6 @@ router.get("/discussions/unread-count", asyncHandler(async (req, res): Promise<v
 }));
 
 router.post("/discussions/read-all", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const viewer = req.authUser!.name;
   const av = await loadAudienceViewer(req);
@@ -531,7 +494,6 @@ router.post("/discussions/read-all", asyncHandler(async (req, res): Promise<void
  * `moderators` always see every thread (moderation); `viewer` drives the list tabs («Для меня»).
  */
 router.get("/discussions/audience", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const av = await loadAudienceViewer(req);
   const [people, names] = await Promise.all([loadProfiles(null), cohortNames()]);
@@ -557,7 +519,6 @@ router.get("/discussions/audience", asyncHandler(async (req, res): Promise<void>
 
 /** Questions / review requests nobody answered (for the curator digest and the "needs answer" filter). */
 router.get("/discussions/unanswered", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const hoursRaw = Number(req.query.hours);
   const hours = Number.isFinite(hoursRaw) && hoursRaw >= 0 ? Math.min(24 * 30, hoursRaw) : 2;
@@ -593,7 +554,6 @@ router.get("/discussions/unanswered", asyncHandler(async (req, res): Promise<voi
 const TickerParam = z.object({ ticker: z.string().trim().min(1).max(12).regex(/^[A-Za-z0-9.\-]+$/) });
 
 router.get("/discussions/ticker-context/:ticker", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const params = TickerParam.safeParse(req.params);
   if (!params.success) throw badRequest("INVALID_TICKER");
@@ -670,7 +630,6 @@ router.get("/discussions/votes/all", asyncHandler(async (req, res): Promise<void
 // ─── Single thread ──────────────────────────────────────────────────────────
 
 router.get("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const params = GetDiscussionParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -681,7 +640,6 @@ router.get("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
 
 /** The entity a thread is about — for the header card (trade is scoped: own or staff). */
 router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const id = parseId(req, res); if (id == null) return;
   const d = await loadThread(id, req.authUser.name, await loadAudienceViewer(req));
@@ -733,7 +691,6 @@ router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<voi
 }));
 
 router.post("/discussions/:id/read", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const d = await loadThread(id, req.authUser!.name, await loadAudienceViewer(req));
@@ -743,7 +700,6 @@ router.post("/discussions/:id/read", asyncHandler(async (req, res): Promise<void
 }));
 
 router.delete("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteDiscussionParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -773,7 +729,6 @@ const PatchDiscussionBody = z.object({
 
 /** Edit a thread (author or curator/admin). Pin flag is curator/admin-only. */
 router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = PatchDiscussionBody.safeParse(req.body);
@@ -854,7 +809,6 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
 }));
 
 router.post("/discussions/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadThread(id, null, await loadAudienceViewer(req), true);
@@ -873,7 +827,6 @@ const COMMENT_PREFIX = /^(\[(?:Observing|In Position|Exited|Наблюдаю|В 
 const plainComment = (text: string) => text.replace(COMMENT_PREFIX, "").trim();
 
 router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = AddCommentParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -929,7 +882,6 @@ const CommentParams = z.object({ id: z.coerce.number().int().positive(), comment
 const PatchCommentBody = z.object({ text: z.string().min(1) });
 
 router.patch("/discussions/:id/comments/:commentId", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = CommentParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -948,7 +900,6 @@ router.patch("/discussions/:id/comments/:commentId", asyncHandler(async (req, re
 }));
 
 router.delete("/discussions/:id/comments/:commentId", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = CommentParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -965,7 +916,6 @@ router.delete("/discussions/:id/comments/:commentId", asyncHandler(async (req, r
 // ─── Votes ──────────────────────────────────────────────────────────────────
 
 router.post("/discussions/:id/vote", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const thread = await loadThread(id, null, await loadAudienceViewer(req));

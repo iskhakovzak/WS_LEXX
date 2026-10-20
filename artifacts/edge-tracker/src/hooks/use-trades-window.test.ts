@@ -8,7 +8,13 @@ describe("use-trades-window (DEV-01)", () => {
   it("the previous window is a bounded request", () => {
     expect(tradesWindowParams({ from: "2026-04-23", to: "2026-07-21" })).toEqual({ from: "2026-04-23", to: "2026-07-21" });
     expect(tradesWindowParams({ from: "2026-07-22", trader: "Ориф" })).toEqual({ from: "2026-07-22", trader: "Ориф" });
-    expect(tradesWindowParams({ from: null })).toBeUndefined();
+    // Волна 2 п. 2.15: the server never returns the whole book — «Всё время» asks for the newest 5000 (the API cap).
+    expect(tradesWindowParams({ from: null })).toEqual({ limit: 5000 });
+    expect(tradesWindowParams({ trader: "Ориф", limit: 20 })).toEqual({ trader: "Ориф", limit: 20 });
+    // A window wider than 400 days (the API answers 400) → newest 5000, cut client-side by `select`.
+    expect(tradesWindowParams({ from: "2024-01-01", to: "2026-10-20" })).toEqual({ limit: 5000 });
+    expect(tradesWindowParams({ from: "2025-10-01" }, "2026-10-20")).toEqual({ from: "2025-10-01" });
+    expect(tradesWindowParams({ from: "2025-01-01" }, "2026-10-20")).toEqual({ limit: 5000 });
   });
 
   it("current ∪ previous without duplicates; nothing until the current window is there", () => {

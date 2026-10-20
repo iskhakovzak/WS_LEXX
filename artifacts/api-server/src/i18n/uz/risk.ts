@@ -174,6 +174,7 @@ export default {
       stage: "bosqich",
       plan: "kunlik desk rejasi",
       other: "kurator yordami",
+      review: "mavzu tahlili",
     },
     newTitle: "{trader} soʻraydi: {kind}",
     newBody: "{message}",

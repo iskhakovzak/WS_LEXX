@@ -50,7 +50,7 @@ describe("buildTopDay", () => {
     const aliases = deskAliases(everyone, DATE);
     expect(day.profit[0]).toMatchObject({ alias: aliases.get("W01"), name: null, net: null, place: 1, bestTicker: null, me: false, wins: 2 });
     expect(day.profit[0].tickers.every((t) => t.net === null)).toBe(true);
-    expect(day.loss[0]).toMatchObject({ alias: aliases.get("L12"), net: null });
+    expect(day.loss.find((r) => r.alias === aliases.get("L12"))).toMatchObject({ net: null, place: 0 });
     expect(day.desk).toEqual({ net: null, trades: 13 * 2 + 12 * 3 + 3 + 1, traders: everyone.length });
     // Kirill (+55) is outside the top 10 profit list: his own row comes separately with his full place.
     expect(day.profit.some((r) => r.me)).toBe(false);
@@ -84,6 +84,37 @@ describe("buildTopDay", () => {
     const day = buildTopDay(DATE, [], KIRILL, "anonymous");
     expect(day).toMatchObject({ profit: [], loss: [], me: null, desk: { net: null, trades: 0, traders: 0 } });
     expect(buildTopDay(DATE, [], STAFF, "staff").desk.net).toBe(0);
+  });
+});
+
+describe("buildTopDay — trader view without loss places (2.14)", () => {
+  const withR: Rows = [
+    ...rows.filter((r) => r.trader !== "Kirill"),
+    { trader: "Kirill", ticker: "TSLA", net: -90, trades: 3, wins: 1, losses: 2, r: "-1.5", r_n: 2 },
+  ];
+  it.each(["anonymous", "named"] as const)("%s: the loss list has no places and is in alias order; own loss day has place 0, R and win %%", (mode) => {
+    const day = buildTopDay(DATE, withR, KIRILL, mode);
+    expect(day.loss.every((r) => r.place === 0)).toBe(true);
+    const al = day.loss.map((r) => r.alias);
+    expect(al).toEqual([...al].sort((a, b) => a - b));
+    expect(day.me).toMatchObject({ me: true, place: 0, net: -90, r: -1.5, winPct: 33.3, trades: 3 });
+    // The profit list keeps its places (recognition, not pressure).
+    expect(day.profit.map((r) => r.place)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+  it("staff keep the loss places, worst first", () => {
+    const day = buildTopDay(DATE, withR, STAFF, "staff");
+    expect(day.loss.map((r) => r.place)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(day.loss[0].name).toBe("L12");
+  });
+  it("R is null when no trade has one; win % from decided trades", () => {
+    const day = buildTopDay(DATE, rows, KIRILL, "anonymous");
+    expect(day.me).toMatchObject({ r: null, winPct: 66.7 });
+  });
+  it("a trader opening an own loss day sees no place; staff do", () => {
+    const side = withR.map((r) => ({ ...r, side: "Long", first_at: null, last_at: null }));
+    const alias = deskAliases(everyone, DATE).get("Kirill")!;
+    expect(buildTraderDay(DATE, alias, side, KIRILL, "anonymous")).toMatchObject({ list: "loss", place: 0, r: -1.5 });
+    expect(buildTraderDay(DATE, alias, side, STAFF, "staff")!.place).toBeGreaterThan(0);
   });
 });
 

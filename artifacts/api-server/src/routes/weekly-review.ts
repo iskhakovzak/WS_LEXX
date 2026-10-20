@@ -3,7 +3,6 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { can, requireCap } from "../lib/permissions";
-import { logger } from "../lib/logger";
 import { nyDate, addDays, isWeekend } from "../lib/tradingDate";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, resultSql } from "../lib/tradeMath";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
@@ -30,39 +29,6 @@ import { violationMessage } from "../lib/rulesI18n";
  * All R / net P&L / result math comes from lib/tradeMath (shared with the client).
  */
 const router: IRouter = Router();
-
-// ── Table ─────────────────────────────────────────────────────────────────────
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS weekly_reviews (
-           id SERIAL PRIMARY KEY,
-           trader TEXT NOT NULL,
-           week TEXT NOT NULL,
-           week_start DATE NOT NULL,
-           self_review JSONB NOT NULL DEFAULT '{}'::jsonb,
-           curator_review JSONB NOT NULL DEFAULT '{}'::jsonb,
-           goals JSONB NOT NULL DEFAULT '[]'::jsonb,
-           status TEXT NOT NULL DEFAULT 'draft',
-           submitted_at TIMESTAMPTZ,
-           reviewed_at TIMESTAMPTZ,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           UNIQUE (trader, week)
-         );
-         CREATE INDEX IF NOT EXISTS weekly_reviews_week_idx ON weekly_reviews(week);`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "weekly-review: ensure tables failed at init"));
 
 // ── Week helpers (ISO weeks, UTC calendar maths on YYYY-MM-DD strings) ────────
 const WEEK_RE = /^(\d{4})-W(\d{2})$/;
@@ -373,7 +339,6 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader);
   const week = resolveWeek(req.query.week);
   if (!week) throw new AppError("INVALID_WEEK");
-  await ensureTables();
 
   const { trader } = scope;
   const from5 = addDays(week.start, -28); // 4 previous weeks + the current one
@@ -589,7 +554,6 @@ router.get("/weekly-review/overview", asyncHandler(async (req, res): Promise<voi
   if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
   const week = resolveWeek(req.query.week);
   if (!week) throw new AppError("INVALID_WEEK");
-  await ensureTables();
 
   const ALL_BASE = `
     SELECT t.trader, ${resultSql("t")} AS res, ${signedRSql("t")}::float AS r, ${netPnlSql("t")}::float AS net,
@@ -765,7 +729,6 @@ router.put("/weekly-review/self", asyncHandler(async (req, res): Promise<void> =
   if (trader !== auth.name) throw new AppError("SELF_REVIEW_TRADER_ONLY");
   const bounds = weekBounds(b.week);
   if (!bounds) throw new AppError("INVALID_WEEK");
-  await ensureTables();
   const self = { well: b.well, badly: b.badly, focus: b.focus, lessons: b.lessons, mood: b.mood ?? null, updatedAt: new Date().toISOString() };
   const submit = b.submit === true;
   const before = submit ? await loadReview(trader, b.week) : null;
@@ -805,7 +768,6 @@ router.put("/weekly-review/curator", asyncHandler(async (req, res): Promise<void
   if (!bounds) throw new AppError("INVALID_WEEK");
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!known.length) throw notFound("TRADER_NOT_FOUND");
-  await ensureTables();
   const existing = await loadReview(b.trader, b.week);
   const now = new Date().toISOString();
   // Keep ids/status of goals the curator kept (matched by id, else by text), so progress marks survive edits.
@@ -856,7 +818,6 @@ router.patch("/weekly-review/goals", asyncHandler(async (req, res): Promise<void
   const b = parsed.data;
   const trader = b.trader ?? auth.name;
   if (trader !== auth.name && !(await can(req, "journal.review", { trader }))) throw new AppError("GOALS_OWN_ONLY");
-  await ensureTables();
   const existing = await loadReview(trader, b.week);
   if (!existing) throw new AppError("WEEKLY_NOT_FOUND");
   const now = new Date().toISOString();

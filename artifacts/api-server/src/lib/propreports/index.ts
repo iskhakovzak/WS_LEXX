@@ -7,7 +7,7 @@ export { planSync, applySync, listPending, mergePending, keepPendingSeparate, di
 export { getClient, getConfiguredClient, createTickClient, effectiveGroupId, isConfigured, statusConfig, readConfig, syncMinutes, ENV_VARS, USER_AGENT, PropReportsClient, PropReportsError, parseAccountsTable, parseAdjustmentsTable, parseFillsTable, type ClientOptions, type AuthMode, type PropReportsAccount, type PropReportsAdjustment, type Scope } from "./client";
 export { runScheduledSync, schedulerStatus, syncCron } from "./scheduler";
 export { parsePerformanceBuffer, parsePerformanceRows, performanceSheetRows, isPerformanceReport, performanceFileMeta, type PerformanceReport, type PerfRow } from "./parse-performance-report";
-export { ensurePerformanceTable, savePerformanceReport, listPerformanceReports, getPerformanceReport, deletePerformanceReport, traderForAccount, type PerformanceReportRow } from "./performance";
+export { savePerformanceReport, listPerformanceReports, getPerformanceReport, deletePerformanceReport, traderForAccount, type PerformanceReportRow } from "./performance";
 export { detectFeeColumns, applyFeeSettings, feeLabel, orderedFeeKeys, DEFAULT_FEE_SETTINGS, type FeeSettings, type FeeColumnSetting, type DetectedFeeColumn } from "./fees";
 export { getSettings, setSetting, type IntegrationSettings, type ConnectionState } from "./settings";
 export { invalidateTradeCaches, bumpTradesVersion } from "./tradesVersion";

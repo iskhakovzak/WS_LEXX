@@ -39,13 +39,14 @@ describe.skipIf(!available)("people (Волна 1) on a scratch database", () =>
       const rows = await q(`INSERT INTO users (name, role, assigned_curator) VALUES ($1, $2, $3) RETURNING id`, [name, role, curator]);
       ids[name] = Number(rows[0].id);
     }
-    // Academy tables are created by their routes on first use; here the minimal shape the desk had before 0229.
+    // Before 0234 the academy tables were created by their routes on first use; here a minimal shape of what the desk
+    // had before 0229 (0234 then adds the rest with IF NOT EXISTS).
     await db.pool.query(`
       CREATE TABLE academy_trader_stage (user_name text PRIMARY KEY, stage text NOT NULL, since text NOT NULL, updated_by text, updated_at timestamptz NOT NULL DEFAULT now());
       CREATE TABLE academy_enrollments (id serial PRIMARY KEY, cohort_id int, user_name text, stage text NOT NULL DEFAULT 'trainee', status text, joined_on date, archived_at timestamptz);
       CREATE TABLE academy_programs (id serial PRIMARY KEY, stage text);
       CREATE TABLE academy_stage_criteria (id serial PRIMARY KEY, from_stage text NOT NULL, metric text, enabled boolean DEFAULT true, updated_by text, updated_at timestamptz DEFAULT now(), archived_at timestamptz);
-      CREATE TABLE academy_promotion_requests (id serial PRIMARY KEY, user_name text, from_stage text, to_stage text, status text, decided_by text, decided_at timestamptz);
+      CREATE TABLE academy_promotion_requests (id serial PRIMARY KEY, user_name text, from_stage text, to_stage text, status text, created_at timestamptz NOT NULL DEFAULT now(), decided_by text, decided_at timestamptz);
       CREATE TABLE trader_risk_limit_events (id serial PRIMARY KEY, trader text NOT NULL, before jsonb, after jsonb NOT NULL, reason text, changed_by text, changed_at timestamptz NOT NULL DEFAULT now());
       INSERT INTO academy_trader_stage (user_name, stage, since) VALUES ('Олег Е.', 'trainee', '2026-09-01');
       INSERT INTO academy_enrollments (cohort_id, user_name, stage, status) VALUES (1, 'Умид', 'trainee', 'active');

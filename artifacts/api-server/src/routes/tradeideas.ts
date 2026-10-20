@@ -3,13 +3,12 @@ import { eq, and, desc, isNull, sql, inArray } from "drizzle-orm";
 import { db, pool, tradeIdeasTable, tradeIdeaReactionsTable, tradesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
-import { logger } from "../lib/logger";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { notifyReviewersOnPublish, applyIdeaReview } from "../lib/notifyUtils";
 import { GUEST_SCOPE, isGuest, requireMember, scopeTrader } from "../lib/auth";
 import { can, requireCap } from "../lib/permissions";
 import { nyDate } from "../lib/tradingDate";
-import { defaultValidUntil, ensureIdeaLinkColumns, ensureIdeaLinksFresh } from "../lib/ideaTradeMatch";
+import { defaultValidUntil, ensureIdeaLinksFresh } from "../lib/ideaTradeMatch";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { redactTradeRow, type MoneyViewer } from "../lib/playbookPrivacy";
 import { signedR, netPnl, normResult } from "../lib/tradeMath";
@@ -18,31 +17,6 @@ import { reviewT } from "../i18n/ns";
 import { langOf } from "../i18n";
 
 const router: IRouter = Router();
-
-// ─── Additive columns (not in the drizzle schema): horizon + valid_until ────
-// `horizon` ('intraday' | 'overnight' | 'swing') used to live only as a tag («Интрадей/Овернайт/Свинг»);
-// it is now a real column (migrated once from tags). `valid_until` (YYYY-MM-DD, NY calendar) is when a
-// published idea expires: intraday = same session, overnight = next session, swing = +10 sessions.
-let ensured: Promise<void> | null = null;
-function ensureIdeaColumns(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query( // i18n-ignore (migration matches stored RU tags)
-        `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS horizon TEXT;
-         ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS valid_until TEXT;
-         UPDATE trade_ideas SET horizon = CASE
-             WHEN LOWER(tags) ~ '(^|,)\\s*(интрадей|интрадэй|intraday|day)\\s*(,|$)' THEN 'intraday'
-             WHEN LOWER(tags) ~ '(^|,)\\s*(овернайт|overnight)\\s*(,|$)' THEN 'overnight'
-             WHEN LOWER(tags) ~ '(^|,)\\s*(свинг|swing)\\s*(,|$)' THEN 'swing'
-           END
-          WHERE horizon IS NULL AND tags IS NOT NULL;`,
-      )
-      .then(() => undefined)
-      .catch((err) => { ensured = null; throw err; });
-  }
-  return ensured;
-}
-ensureIdeaColumns().catch((err) => logger.warn({ err }, "trade-ideas: ensure columns failed at init"));
 
 const HORIZONS = new Set(["intraday", "overnight", "swing"]);
 const IDEA_STATUSES = new Set(["draft", "published", "converted"]);
@@ -165,7 +139,7 @@ type IdeaMeta = {
 };
 
 /**
- * Review columns live outside the drizzle schema (added by migrate.ts), so `db.select()` never returned them.
+ * Review columns live outside the drizzle schema (src/db/migrations), so `db.select()` never returned them.
  * Also attaches per-viewer comment counts (respecting private-comment visibility) and unread notification counts.
  */
 async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string; role?: string } | undefined): Promise<(T & IdeaMeta)[]> {
@@ -174,8 +148,6 @@ async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string;
   const viewerName = viewer?.name ?? null;
   const isReviewer = viewer?.role === "curator" || viewer?.role === "admin";
   const empty = { rows: [] as unknown[] };
-  await ensureIdeaColumns().catch(() => undefined);
-  await ensureIdeaLinkColumns().catch(() => undefined);
   const [review, comments, unread] = await Promise.all([
     pool.query(
       `SELECT id, review_status, review_reason, reviewed_by, reviewed_at, horizon, valid_until, trade_link_source, trade_linked_at
@@ -608,7 +580,6 @@ function parseSide(v: unknown): "Long" | "Short" | null | "invalid" {
  */
 router.post("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
-  await ensureIdeaColumns().catch(() => undefined);
   const b = req.body as Record<string, unknown>;
   const ticker = String(b.ticker ?? "").trim().toUpperCase();
   if (!ticker) throw badRequest("TICKER_REQUIRED");
@@ -667,7 +638,6 @@ router.post("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id, res); if (id == null) return;
   if (!requireMember(req, res)) return;
-  await ensureIdeaColumns().catch(() => undefined);
   const b = req.body as Record<string, unknown>;
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt, status: tradeIdeasTable.status })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
@@ -738,7 +708,6 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   if (extra.validUntil !== undefined) await pool.query(`UPDATE trade_ideas SET valid_until = $2 WHERE id = $1`, [id, extra.validUntil]);
   if (b.convertedTradeId !== undefined) {
     // A hand-set link is never moved by the auto-matcher; a hand-removed one switches auto-matching off for the idea.
-    await ensureIdeaLinkColumns().catch(() => undefined);
     await pool.query(
       `UPDATE trade_ideas SET trade_link_source = CASE WHEN converted_trade_id IS NULL THEN 'off' ELSE 'manual' END, trade_linked_at = NOW() WHERE id = $1`,
       [id],
@@ -751,7 +720,6 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
 router.post("/trade-ideas/:id/publish", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id, res); if (id == null) return;
   if (!requireMember(req, res)) return;
-  await ensureIdeaColumns().catch(() => undefined);
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt, status: tradeIdeasTable.status })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   if (!existing || existing.deletedAt) throw notFound();

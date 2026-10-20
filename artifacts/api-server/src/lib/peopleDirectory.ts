@@ -2,8 +2,6 @@
  * People directory + cross-script name search (RU / EN / UZ) — shared matcher @workspace/text-search.
  *
  *   users.name_latin (nullable) — optional Latin alias typed by an admin («Zakir Ishakov»); searched next to the name.
- *   The column is created in lib/migrate.ts; `ensureNameLatin()` re-creates it lazily for an API that started before
- *   the migration step existed (same pattern as users.settings).
  *
  * Visibility: staff (team.read = desk) see everyone; a member under own / assigned scope sees only the names that
  * readScope(team.read) returns today (themselves + wards) plus staff (curators / admins are public on the desk anyway).
@@ -12,19 +10,6 @@ import type { Request } from "express";
 import { pool } from "@workspace/db";
 import { searchItems, type MatchTier } from "@workspace/text-search";
 import { readScope } from "./permissions";
-
-let ensured: Promise<void> | null = null;
-
-/** Idempotent: ALTER TABLE users ADD COLUMN IF NOT EXISTS name_latin TEXT (memoised per process). */
-export function ensureNameLatin(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS name_latin TEXT`)
-      .then(() => undefined)
-      .catch((e) => { ensured = null; throw e; });
-  }
-  return ensured;
-}
 
 /** Trim, collapse spaces, cap length; empty → null. Letters (any script), digits, spaces, . - ' ʻ only. */
 /** Failure carries an API error code (+ params) — the route throws AppError(code, 400, params). */
@@ -90,7 +75,6 @@ export type DirectoryPerson = {
 
 /** Every user row the caller may see (active first). */
 export async function loadDirectory(req: Request, opts: { includeInactive?: boolean } = {}): Promise<DirectoryPerson[]> {
-  await ensureNameLatin();
   const [{ rows }, visible] = await Promise.all([
     pool.query<{ id: number; name: string; name_latin: string | null; role: string; assigned_curator: string | null; active: boolean; banned: boolean }>(
       `SELECT id, name, name_latin, role, assigned_curator, active, COALESCE(banned, false) AS banned

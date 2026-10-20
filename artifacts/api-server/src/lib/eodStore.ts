@@ -10,44 +10,6 @@ import { signedRSql, netPnlSql, closeDateSql, horizonSql, resultSql } from "./tr
  * beyond what the route used inline.
  */
 
-let ensured: Promise<void> | null = null;
-export function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS eod_days (
-           id SERIAL PRIMARY KEY,
-           trader TEXT NOT NULL,
-           date TEXT NOT NULL,
-           closed_at TIMESTAMPTZ,
-           discipline SMALLINT,
-           summary JSONB NOT NULL DEFAULT '{}'::jsonb,
-           reviewed_by TEXT,
-           reviewed_at TIMESTAMPTZ,
-           curator_comment TEXT,
-           curator_score SMALLINT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           UNIQUE (trader, date)
-         );
-         CREATE INDEX IF NOT EXISTS eod_days_queue_idx ON eod_days (closed_at) WHERE closed_at IS NOT NULL AND reviewed_at IS NULL;
-         CREATE TABLE IF NOT EXISTS eod_trade_reviews (
-           trade_id INTEGER PRIMARY KEY,
-           trader TEXT NOT NULL,
-           followed_plan BOOLEAN,
-           mistakes TEXT[] NOT NULL DEFAULT '{}',
-           lesson TEXT NOT NULL DEFAULT '',
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         );`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 export const iso = (v: unknown): string | null => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
 
 // ── Validation ────────────────────────────────────────────────────────────────

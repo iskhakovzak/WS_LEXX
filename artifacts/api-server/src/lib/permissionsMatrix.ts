@@ -95,7 +95,6 @@ export const CAPABILITIES = [
   { key: "ideas.review", group: "Контент", label: "Ревью идей", team: true, description: "Статус ревью идей, управление чужими идеями, черновики всех." },
   { key: "discussions.moderate", group: "Контент", label: "Модерация обсуждений", description: "Удалять чужие темы и комментарии, закрывать темы." },
   { key: "discussions.edit.any", group: "Контент", label: "Править чужие комментарии", adminOnly: true, description: "Редактировать чужие комментарии." },
-  { key: "checklist.template.edit", group: "Контент", label: "Чек-лист перед сделкой", description: "Менять пункты чек-листа для всего деска." },
   { key: "watchlist.manage", group: "Контент", label: "Вотчлист деска", description: "Править общий вотчлист (любой участник, не гость)." },
 
   // ── Users / admin ────────────────────────────────────────────────────────
@@ -145,7 +144,7 @@ const CURATOR_CAPS: readonly Capability[] = [
   "rules.manage.team",
   "propreports.read.team",
   "ratings.read.team", "ratings.write",
-  "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate", "checklist.template.edit",
+  "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate",
   "admin.reports",
 ];
 
