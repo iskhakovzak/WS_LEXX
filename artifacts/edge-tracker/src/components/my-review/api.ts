@@ -18,6 +18,8 @@ export type MyReview = {
   from: string;
   to: string;
   totals: { trades: number; net: number; r: number | null; winRate: number | null };
+  /** Closed IMX (close-auction) trades of the window; `excluded` = «Исключить IMX» was on (not in totals). */
+  imx?: { count: number; net: number; excluded: boolean };
   earn: Record<ReviewDimension, ReviewBucket[]>;
   lose: { patterns: ReviewPattern[] } & Record<ReviewDimension, ReviewBucket[]>;
   rule: { mistake: string; costNet: number; count: number; days: number; window: { from: string; to: string }; source: "plan" | "period" } | null;
@@ -26,10 +28,10 @@ export type MyReview = {
 
 export const myReviewKeys = { all: ["my-review"] as const, days: (days: number) => ["my-review", days] as const };
 
-export function useMyReview(days: number) {
+export function useMyReview(days: number, excludeImx = false) {
   return useQuery<MyReview>({
-    queryKey: myReviewKeys.days(days),
-    queryFn: ({ signal }) => http.get<MyReview>("/api/my-review", { query: { days: String(days) }, signal }),
+    queryKey: [...myReviewKeys.days(days), excludeImx ? "no-imx" : "all"],
+    queryFn: ({ signal }) => http.get<MyReview>("/api/my-review", { query: { days: String(days), ...(excludeImx ? { excludeImx: "1" } : {}) }, signal }),
     staleTime: STALE.short,
     placeholderData: keepPreviousData,
   });

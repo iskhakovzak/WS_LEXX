@@ -4,6 +4,7 @@
  *   GET /my-review?days=30   the viewer's OWN trades only (any ?trader= is ignored — staff open /analytics for others):
  *                            where I earn (top 3 setups / tickers / hours), where I lose (costliest patterns + worst 3),
  *                            one rule for tomorrow. days ∈ [7, 90], default 30. A guest gets an empty review.
+ *                            excludeImx=1 leaves close-auction (IMX) trades out; `imx` = their count / net either way.
  */
 import { Router, type IRouter } from "express";
 import { z } from "zod";
@@ -14,7 +15,7 @@ import { clampDays, myReview, type MyReview } from "../lib/myReview";
 
 const router: IRouter = Router();
 
-const query = z.object({ days: z.string().max(4).optional() }).passthrough();
+const query = z.object({ days: z.string().max(4).optional(), excludeImx: z.string().max(5).optional() }).passthrough();
 
 /** The answer for a viewer without trades of his own (a guest). */
 export function emptyReview(days: number, now = new Date()): MyReview {
@@ -35,7 +36,7 @@ router.get("/my-review", route({ query }, async ({ req, query: q, res }) => {
   if (isGuestUser(req.authUser)) return emptyReview(days);
   const me = req.authUser?.name ?? "";
   await assertCap(req, "trades.read.own", { trader: me });
-  return myReview(me, days);
+  return myReview(me, days, undefined, { excludeImx: q.excludeImx === "1" || q.excludeImx === "true" }); // «Исключить IMX» (lib/imxSummary)
 }));
 
 export default router;

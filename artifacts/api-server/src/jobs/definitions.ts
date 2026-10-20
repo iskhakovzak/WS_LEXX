@@ -241,6 +241,21 @@ export function registerAllJobs(): void {
     },
   });
 
+  // Strategy + IMX tag of every trade (lib/tradeStrategyStore, migration 0237): the first run back-fills the book, later
+  // runs pick rows the triggers marked stale (manual edits, fills changed) and re-derive all after an IMX window change.
+  registerJob({
+    name: "trades.strategy-backfill",
+    cron: "*/5 * * * *",
+    runOnStartMs: 2 * MIN,
+    timeoutMs: 20 * MIN,
+    async run() {
+      const { backfillTradeStrategies } = await import("../lib/tradeStrategyStore");
+      const r = await backfillTradeStrategies();
+      if (r.changed) (await import("../lib/propreports/tradesVersion")).invalidateTradeCaches();
+      return r;
+    },
+  });
+
   registerJob({
     name: "jobs.prune",
     cron: "40 3 * * *",

@@ -274,6 +274,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "PUT /themes/boards/:id": member("the own themes and boards (rows looked up by owner)"),
   "PUT /themes/mine/:id": member("the own themes and boards (rows looked up by owner)"),
   "PUT /themes/view": member("the own theme-tracker view"),
+  "PUT /trades/facets/view": member("the own facet panel / exclude-IMX switch of /trades and /stats"),
   "PUT /users/me/settings": member("the own profile, settings or PIN"),
   "PUT /watchlist/view": member("personal watchlist; the desk list needs a senior or staff (checked on the body)"),
   "PUT /weekly-review/self": member("the own weekly self-review"),

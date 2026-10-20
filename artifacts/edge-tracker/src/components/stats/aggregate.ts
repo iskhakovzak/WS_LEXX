@@ -68,6 +68,8 @@ export type AggregateQuery = {
   account?: string | null;
   source?: string | null;
   lite?: boolean;
+  /** «Фильтры» panel + «Исключить IMX» as x* params (lib/trade-facets facetQuery). */
+  facets?: string;
 };
 
 export function aggregateParams(q: AggregateQuery): Record<string, string> {
@@ -77,6 +79,7 @@ export function aggregateParams(q: AggregateQuery): Record<string, string> {
     if (v) p[k] = v;
   }
   if (q.lite) p.lite = "1";
+  if (q.facets) for (const [k, v] of new URLSearchParams(q.facets)) p[k] = v;
   return p;
 }
 

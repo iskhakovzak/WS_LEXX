@@ -1223,6 +1223,15 @@ components:
         syncedAt:
           type: ["string", "null"]
           description: Last time broker-owned fields were refreshed from PropReports (ISO datetime)
+        strategy:
+          type: ["string", "null"]
+          description: PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib/tradeStrategy
+        isImx:
+          type: boolean
+          description: Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)
+        entrySec:
+          type: ["integer", "null"]
+          description: New York seconds since midnight of the first entry (the «Время» facet)
         createdAt:
           type: string
       required:

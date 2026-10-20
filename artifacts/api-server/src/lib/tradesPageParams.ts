@@ -3,6 +3,8 @@ import {
   PAGE_SORT_COLS, PAGE_OUTCOMES, PAGE_HORIZONS, PAGE_SOURCES, PAGE_PRESETS, MONEY_PRESETS, PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX,
   PAGE_OFFSET_MAX, type TradesPageFilters,
 } from "./tradesPageQuery";
+import { hasFacets, parseFacetQuery } from "./tradeFacetsSql";
+import { DESK_TAGS } from "./deskTags";
 
 /**
  * Query parsing of GET /trades/page and /trades/days (routes/trades.ts): the zod schema, empty-param stripping and
@@ -13,6 +15,20 @@ const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const str = (max: number) => z.string().trim().max(max).optional();
 export const ymd = z.string().regex(YMD_RE).optional();
 const numOpt = z.coerce.number().finite().optional();
+
+/** «Улучшенный поиск» (lib/tradeFacetsSql): excluded keys per column, comma-separated; «Исключить IMX». */
+export const FACET_QUERY = {
+  xYears: str(4000), xMonths: str(4000), xDays: str(4000), xTimes: str(4000), xStrategies: str(4000), xTypes: str(4000),
+  xGtags: str(20000), xPtags: str(20000),
+  excludeImx: z.enum(["1", "true", "0", "false"]).optional(),
+};
+export type FacetQueryT = { [K in keyof typeof FACET_QUERY]?: string };
+
+/** Facet filters of a parsed query (undefined when nothing is excluded — the cache key and SQL stay as before). */
+export function facetFiltersOf(q: FacetQueryT) {
+  const f = parseFacetQuery(q as Record<string, unknown>, DESK_TAGS);
+  return hasFacets(f) ? f : undefined;
+}
 
 export const TradesPageQuery = z.object({
   trader: str(80),
@@ -45,6 +61,7 @@ export const TradesPageQuery = z.object({
   cursor: z.string().max(400).optional(),
   // lite=1: only summary.total / firstDate / lastDate + horizon & option facets (no rows, curve, streak, presets).
   lite: z.enum(["1", "true", "0", "false"]).optional(),
+  ...FACET_QUERY,
 });
 
 /** Empty strings (`?setup=&tag=`) mean "not set" — strip them before validation. */
@@ -82,6 +99,7 @@ export function pageFiltersOf(q: TradesPageQueryT, scope: string | null): Trades
     mfeRMin: q.mfeRMin ?? null,
     leftMin: q.leftMin ?? null,
     preset: q.preset ?? "",
+    facets: facetFiltersOf(q),
   };
 }
 

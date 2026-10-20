@@ -19,6 +19,7 @@ export default {
     nav: { title: "Menyu", description: "Yangi treyderlar uchun qisqa menyu: asosiy boʻlimlar, qolganlari «Yana» guruhida." },
     usage: { title: "Foydalanish", description: "Ichki hisob: qaysi ekranlar ochiladi va kunlik sikl bajariladimi. Faqat adminlar koʻradi; mukofot va reyting uchun emas." },
     finviz: { title: "Finviz", description: "Finviz Elite’dan ertalabki skriner, tiker konteksti va hisobotlar taqvimi. Serverda FINVIZ_AUTH kaliti boʻlmasa, hammasi oʻchiq." },
+    trades: { title: "Savdolar: IMX", description: "IMX — yopilish auksioni (disbalans) savdolari. Shu Nyu-York oynasida istalgan ijrosi boʻlgan savdo MOC strategiyasi va «IMX» tegini oladi; roʻyxat va jamilarda qoladi, treyder uni chiqarib tashlashi mumkin." },
     newsChannel: { title: "WS_NEWS kanali", description: "Savdo kunlari WS_NEWS Telegram kanaliga bozor sharhlari: premarket, ochilishdan beri, kun yakuni. Serverda NEWS_CHANNEL_BOT_TOKEN va NEWS_CHANNEL_CHAT_ID boʻlmasa, hammasi oʻchiq." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
@@ -203,6 +204,10 @@ export default {
       maxRows: { label: "Skrinerdagi qatorlar", help: "Har bir skriner nechta eng yaxshi nomzodni saqlaydi va koʻrsatadi." },
       refreshCooldownMinutes: { label: "Qoʻlda yangilashlar orasidagi pauza", help: "Kuratorlar «Yangilash»ni qanchalik tez-tez bosishi mumkin (butun desk uchun)." },
       snapshotMaxAgeDays: { label: "Tiker maʼlumoti yangi hisoblanadi", help: "Bundan eski float, short, sektor va kapitalizatsiya eski manbadan olinadi (joylashtirishlar, votchlist, katalizatorlar)." },
+    },
+    trades: {
+      imxWindowStart: { label: "IMX oynasi: boshlanishi", help: "Nyu-York vaqti. Shu daqiqadan boshlab ijro yopilish auksioni hisoblanadi. Oʻzgartirilgandan keyin barcha savdolar bir necha daqiqada qayta hisoblanadi." },
+      imxWindowEnd: { label: "IMX oynasi: tugashi", help: "Nyu-York vaqti, daqiqa ham kiradi: 16:00 yopilish krossining 16:00:xx printini qamraydi." },
     },
     newsChannel: {
       enabled: { label: "Kanal yoqilgan", help: "Sharhlar quyidagi jadval boʻyicha chiqadi (har biri savdo kunida bir marta, bayramlar oʻtkazib yuboriladi). Oʻchiq — hech narsa chiqmaydi." },

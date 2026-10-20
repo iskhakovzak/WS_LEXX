@@ -49,8 +49,10 @@ import {
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { resolveSetupLink, setupTagged, touchesSetup } from "../lib/tradesSetupLink";
 import { bulkTags, syncMarkerErrors } from "../lib/tradingErrors";
+import tradeFacetsRouter from "./trade-facets";
 
 const router: IRouter = Router();
+router.use(tradeFacetsRouter); // GET /trades/facets, GET|PUT /trades/facets/view — before /trades/:id
 
 type TradeRow = typeof tradesTable.$inferSelect;
 
@@ -111,6 +113,8 @@ export function toTradeResponseShape(t: TradeRow) {
     externalId: t.externalId ?? null,
     brokerAccount: t.brokerAccount ?? null,
     syncedAt: t.syncedAt ? new Date(t.syncedAt).toISOString() : null,
+    // Derived (lib/tradeStrategy, migration 0237): strategy, the IMX mark (strategy MOC) and the NY entry second.
+    strategy: t.strategy ?? null, isImx: t.strategy === "MOC", entrySec: t.entrySec ?? null,
     createdAt: t.createdAt.toISOString(),
     // Playbook setup the trade is linked to (ILYA-16). Not in the generated zod shape: withPlaybookId() re-adds it after parse.
     playbookId: t.playbookId ?? null,

@@ -14,6 +14,9 @@ import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
 import { usePerformance } from "@/components/propreports/api";
 import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
 import { preferredMetricOfAggregate, useStaffAggregates } from "@/components/stats/staff-data";
+import { StatsFacets, facetFilteredTrades, useStatsFacets } from "@/components/stats/StatsFacets";
+import { useFacetView } from "@/components/shared/trade-facets/api";
+import { facetQuery } from "@/lib/trade-facets";
 import {
   horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, horizonOf, inRange,
   fmtDayKey, periodRanges, preferredMetric, spansYears, toKey,
@@ -98,12 +101,14 @@ export default function Stats() {
     { from: ranges.cur.from, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
     !staff,
   );
+  const FV = useFacetView(); // «Фильтры» + «Исключить IMX»: x* params for staff aggregates, a filter over the own book
+  const FQ = useStatsFacets(ranges.cur, windowTrader, FV);
   const agg = useStaffAggregates(
-    { cur: ranges.cur, prev: ranges.prev, trader: windowTrader, horizon: prefs.horizon !== "all" ? prefs.horizon : null },
+    { cur: ranges.cur, prev: ranges.prev, trader: windowTrader, horizon: prefs.horizon !== "all" ? prefs.horizon : null, facets: facetQuery(FV.view) },
     staff,
   );
   const { isLoading, isError, refetch, isFetching, prevLoading } = staff ? agg : raw;
-  const allTrades = useMemo(() => raw.data ?? [], [raw.data]);
+  const allTrades = useMemo(() => facetFilteredTrades(raw.data, FV.view, FQ.data?.deskTags), [raw.data, FV.view, FQ.data?.deskTags]);
   // Scope-wide facts (trader list, totals) without loading the whole book.
   const teamFacets = useTradesBookFacets();
   const traderFacets = useTradesBookFacets({ trader: windowTrader, enabled: !!windowTrader });
@@ -162,7 +167,8 @@ export default function Stats() {
 
   const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
   // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
-  const solo = !isCurator && traders.length <= 1 && reportTraders.length === 0;
+  // Own trades only (owner rule 2026-10-21): a member never gets the trader picker or «the whole team».
+  const solo = !isCurator;
   // One person's report: trade rows don't repeat the name (MAKSIM-37).
   const oneTrader = solo || prefs.trader !== "all";
   const scopeLabel =
@@ -295,6 +301,8 @@ export default function Stats() {
           ariaLabel={t("traderAria")}
         />}
       </Toolbar>
+
+      <StatsFacets fv={FV} data={FQ.data} loading={FQ.isFetching} error={FQ.isError} />
 
       {hasBroker && (
         <div className="space-y-4">

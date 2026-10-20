@@ -30,6 +30,7 @@ import { getSettings, setSetting } from "./settings";
 import type { RoundTrip } from "./types";
 import { normResult } from "../tradeMath";
 import { enqueueOutbox, kickOutbox } from "./tick/outbox";
+import { refreshTradeStrategies } from "../tradeStrategyStore";
 
 /** The broker book changed: drop every trade-derived cache on every instance (tradesVersion.ts — DB stamp). */
 export { invalidateTradeCaches };
@@ -63,8 +64,7 @@ export interface PlanItem {
   reason?: string;
   trader: string | null;
   account: string;
-  tradeId: number | null;
-  pendingId: number | null;
+  tradeId: number | null; pendingId: number | null;
   changes: FieldChange[];
   candidates: ManualCandidate[];
   trip: RoundTrip;
@@ -73,10 +73,8 @@ export interface PlanItem {
 export interface SyncPlan {
   items: PlanItem[];
   counts: Record<PlanAction, number>;
-  unmappedAccounts: string[];
-  inactiveAccounts: string[];
-  dateFrom: string | null;
-  dateTo: string | null;
+  unmappedAccounts: string[]; inactiveAccounts: string[];
+  dateFrom: string | null; dateTo: string | null;
   /** Fee column keys present in the trips (after settings were applied). */
   feeColumns: string[];
   /** raw account name → canonical mapping account, for names that matched only via alias / fuzzy rules. */
@@ -523,6 +521,7 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
         [account, last],
       );
     }
+    if (writtenTrades.length) await refreshTradeStrategies(writtenTrades, client); // strategy + IMX tag, with the fills
     if (res.inserted || res.updated) {
       // atomic with the trades: a committed sync never loses its rule scan / structures / "synced" listeners
       await enqueueSyncEffects(client, plan, writtenTrades, {
@@ -655,6 +654,7 @@ export async function mergePending(pendingId: number, tradeId: number, actor: st
     await client.query(TRADE_UPDATE_SQL, updateParams(tradeId, trip));
     await writeExecutions(client, tradeId, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
+    await refreshTradeStrategies([tradeId], client);
     await enqueueStructures(client, [tradeId]);
     await client.query("COMMIT");
     kickOutbox();
@@ -683,6 +683,7 @@ export async function keepPendingSeparate(pendingId: number, actor: string): Pro
     const id = await insertTrade(client, trip, String(pending.trader));
     await writeExecutions(client, id, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
+    await refreshTradeStrategies([id], client);
     await enqueueStructures(client, [id]);
     await client.query("COMMIT");
     kickOutbox();

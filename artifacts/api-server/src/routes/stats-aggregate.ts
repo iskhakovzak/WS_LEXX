@@ -4,6 +4,7 @@
  *
  *   GET /stats/aggregate  ?scope=desk|trader &trader= &from=YYYY-MM-DD &to=YYYY-MM-DD (by close date; none = all time)
  *                         &horizon &side &ticker &setup (__none__ = without) &account &source   (the page filters)
+ *                         &xYears &xMonths &xDays &xTimes &xStrategies &xTypes &xGtags &xPtags &excludeImx («Фильтры»)
  *                         &lite=1   only totals + days + streaks (the comparison period)
  *     → { scope, trader, from, to, money, ...Aggregate }
  *       KPI cards (total bucket + best / worst + streaks), the daily equity curve and calendar (days), breakdowns by
@@ -24,6 +25,8 @@ import { loadMoneyViewer } from "../lib/playbookAccess";
 import { canSeeBookMoney } from "../lib/playbookPrivacy";
 import { closeDateSql } from "../lib/tradeMath";
 import { buildAggregate, redactAggregateMoney, type AggTradeRow } from "../lib/stats/aggregate";
+import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
+import { facetSqlTail, type FacetFilters } from "../lib/tradeFacetsSql";
 
 const router: IRouter = Router();
 
@@ -40,11 +43,14 @@ const Query = z.object({
   account: z.string().trim().max(120).optional(),
   source: z.enum(["manual", "propreports"]).optional(),
   lite: z.enum(["1", "true", "0", "false"]).optional(),
+  ...FACET_QUERY, // «Улучшенный поиск» columns + excludeImx (lib/tradeFacetsSql)
 });
 
 /** The rows of the window: not deleted, the given traders (null = every trader), close date in [from, to]. */
-export async function loadAggregateRows(traders: string[] | null, from: string | null, to: string | null): Promise<AggTradeRow[]> {
+export async function loadAggregateRows(traders: string[] | null, from: string | null, to: string | null, facets?: FacetFilters): Promise<AggTradeRow[]> {
   const CLOSE = `LEFT(${closeDateSql("t")}, 10)`;
+  const params: unknown[] = [traders, from, to];
+  const tail = facetSqlTail(facets, params);
   const { rows } = await pool.query<AggTradeRow>(
     `SELECT t.id, t.trader, t.ticker, t.date, t.exit_date, t.result, t.side, t.entry, t.exit, t.stop, t.r_multiple, t.pnl,
             t.fees, t.risk_usd, t.horizon, t.setup, t.event_type, t.sector, t.session, t.conviction, t.broker_account,
@@ -53,8 +59,8 @@ export async function loadAggregateRows(traders: string[] | null, from: string |
       WHERE t.deleted_at IS NULL AND t.trader IS NOT NULL
         AND ($1::text[] IS NULL OR t.trader = ANY($1::text[]))
         AND ($2::text IS NULL OR ${CLOSE} >= $2)
-        AND ($3::text IS NULL OR ${CLOSE} <= $3)`,
-    [traders, from, to],
+        AND ($3::text IS NULL OR ${CLOSE} <= $3)${tail}`,
+    params,
   );
   return rows;
 }
@@ -75,7 +81,7 @@ router.get("/stats/aggregate", route({ query: Query }, async ({ req, query: q })
   } else {
     traders = readable === null ? null : [...new Set([...readable, actor.name])];
   }
-  const rows = await loadAggregateRows(traders, q.from ?? null, q.to ?? null);
+  const rows = await loadAggregateRows(traders, q.from ?? null, q.to ?? null, facetFiltersOf(q));
   const agg = buildAggregate(rows, {
     horizon: q.horizon, side: q.side, ticker: q.ticker || undefined, setup: q.setup || undefined,
     account: q.account || undefined, source: q.source,

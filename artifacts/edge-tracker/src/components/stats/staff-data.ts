@@ -11,8 +11,8 @@ import { field, useStatsAggregate, type StatsAggregate } from "./aggregate";
 import type { Metric, Range } from "./metrics";
 
 /** Server aggregates of the period and of the previous one (staff view). */
-export function useStaffAggregates(q: { cur: Range; prev: Range | null; trader: string | null; horizon: string | null }, enabled: boolean) {
-  const base = { scope: q.trader ? ("trader" as const) : ("desk" as const), trader: q.trader, horizon: q.horizon };
+export function useStaffAggregates(q: { cur: Range; prev: Range | null; trader: string | null; horizon: string | null; facets?: string }, enabled: boolean) {
+  const base = { scope: q.trader ? ("trader" as const) : ("desk" as const), trader: q.trader, horizon: q.horizon, facets: q.facets };
   const cur = useStatsAggregate({ ...base, from: q.cur.from, to: q.cur.to }, enabled);
   const hasPrev = !!q.prev;
   const prev = useStatsAggregate({ ...base, from: q.prev?.from ?? null, to: q.prev?.to ?? null, lite: true }, enabled && hasPrev && cur.isSuccess && !cur.isPlaceholderData);

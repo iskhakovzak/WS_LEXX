@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 /**
@@ -224,6 +224,12 @@ export const SETTINGS = {
   "newsChannel.gappersCount": { group: "newsChannel", type: "number", default: 5, min: 3, max: 7, step: 1 },
   "newsChannel.earningsCount": { group: "newsChannel", type: "number", default: 8, min: 3, max: 20, step: 1 },
   "newsChannel.moversCount": { group: "newsChannel", type: "number", default: 5, min: 3, max: 5, step: 1 },
+
+  // IMX = close-auction (imbalance) trades (lib/imx, lib/tradeStrategy): a trade with any fill in this New York window
+  // is strategy MOC and carries the desk tag «IMX». The end minute is inclusive (16:00 covers the 16:00:xx cross print).
+  // A change re-derives every trade (job trades.strategy-backfill).
+  "trades.imxWindowStart": { group: "trades", type: "time", default: "15:50" },
+  "trades.imxWindowEnd": { group: "trades", type: "time", default: "16:00" },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

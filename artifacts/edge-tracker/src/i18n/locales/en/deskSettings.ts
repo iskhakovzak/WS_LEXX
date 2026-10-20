@@ -19,6 +19,7 @@ export default {
     nav: { title: "Menu", description: "A short menu for new traders: the main sections, everything else under «More»." },
     usage: { title: "Usage", description: "Internal tracking: which screens people open and whether they go through the daily loop. Admins only; never for rewards or rankings." },
     finviz: { title: "Finviz", description: "Morning screener, ticker context and the earnings calendar from Finviz Elite. Without the FINVIZ_AUTH key on the server all of it is off." },
+    trades: { title: "Trades: IMX", description: "IMX are closing-auction (imbalance) trades. A trade with any fill inside this New York window gets the MOC strategy and the «IMX» tag; it stays in lists and totals, a trader may exclude it." },
     newsChannel: { title: "WS_NEWS channel", description: "Market briefs in the WS_NEWS Telegram channel on trading days: premarket, from the open, day recap. Without NEWS_CHANNEL_BOT_TOKEN and NEWS_CHANNEL_CHAT_ID on the server all of it is off." },
     other: { title: "Other", description: "Settings without a group." },
   },
@@ -203,6 +204,10 @@ export default {
       maxRows: { label: "Rows per screener", help: "How many top candidates each screener keeps and shows." },
       refreshCooldownMinutes: { label: "Pause between manual refreshes", help: "How often curators can press «Refresh» (desk-wide)." },
       snapshotMaxAgeDays: { label: "Ticker data stays fresh for", help: "Float, short, sector and market cap older than this come from the old source (offerings, watchlist, catalysts)." },
+    },
+    trades: {
+      imxWindowStart: { label: "IMX window: start", help: "New York time. A fill from this minute on counts as the closing auction. After a change every trade is re-derived within a few minutes." },
+      imxWindowEnd: { label: "IMX window: end", help: "New York time, the minute inclusive: 16:00 covers the 16:00:xx closing-cross print." },
     },
     newsChannel: {
       enabled: { label: "Channel on", help: "Briefs are posted on the schedule below (each once per trading day, holidays skipped). Off — nothing is posted." },

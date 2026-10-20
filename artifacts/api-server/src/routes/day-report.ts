@@ -20,6 +20,7 @@ import { nyDate } from "../lib/tradingDate";
 import { buildDayReport, toDayTrade, type DailyNet } from "../lib/dayReport";
 import { badRequest, unauthorized } from "../lib/http";
 import { langOf } from "../i18n";
+import { NOT_IMX_SQL, splitImx } from "../lib/imxSummary";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,7 @@ const querySchema = z.object({
   trader: z.string().trim().max(120).optional(),
   date: z.string().regex(YMD_RE).optional(),
   revengeMin: z.coerce.number().int().min(1).max(30).optional(),
+  excludeImx: z.enum(["1", "true", "0", "false"]).optional(), // «Исключить IMX» (lib/imxSummary)
 });
 
 function normQuery(q: Request["query"]): Record<string, string> {
@@ -45,7 +47,7 @@ const CDATE = `substring(${closeDateSql("t")}, 1, 10)`;
 type Row = {
   id: number; ticker: string | null; side: string | null; setup: string | null; playbook_id: number | null;
   result: string | null; pnl: unknown; fees: unknown; qty: unknown; entry: unknown; exit: unknown;
-  opened_at: string | null; closed_at: string | null; first_entry: Date | null; last_exit: Date | null;
+  opened_at: string | null; closed_at: string | null; first_entry: Date | null; last_exit: Date | null; strategy: string | null;
 };
 
 async function loadDayTrades(trader: string, date: string): Promise<Row[]> {
@@ -53,7 +55,7 @@ async function loadDayTrades(trader: string, date: string): Promise<Row[]> {
     `SELECT t.id, t.ticker, t.side, t.setup, t.playbook_id, ${resultSql("t")} AS result,
             t.pnl::float8 AS pnl, t.fees::float8 AS fees, t.qty::float8 AS qty, t.entry::float8 AS entry, t.exit::float8 AS exit,
             t.context_snapshot->>'openedAt' AS opened_at, t.context_snapshot->>'closedAt' AS closed_at,
-            e.first_entry, e.last_exit
+            e.first_entry, e.last_exit, t.strategy
      FROM trades t ${execSpanJoin("lateral")}
      WHERE t.deleted_at IS NULL AND t.trader = $1 AND ${CDATE} = $2
      ORDER BY COALESCE(e.first_entry, e.last_exit) NULLS LAST, t.id`,
@@ -62,11 +64,11 @@ async function loadDayTrades(trader: string, date: string): Promise<Row[]> {
   return rows;
 }
 
-async function loadHistory(trader: string, date: string, days: number): Promise<DailyNet[]> {
+async function loadHistory(trader: string, date: string, days: number, noImx = false): Promise<DailyNet[]> {
   const { rows } = await pool.query<{ d: string; net: number }>(
     `SELECT ${CDATE} AS d, SUM(${netPnlSql("t")})::float8 AS net
      FROM trades t
-     WHERE t.deleted_at IS NULL AND t.trader = $1 AND t.pnl IS NOT NULL AND ${CDATE} < $2
+     WHERE t.deleted_at IS NULL AND t.trader = $1 AND t.pnl IS NOT NULL AND ${CDATE} < $2${noImx ? ` AND ${NOT_IMX_SQL}` : ""}
      GROUP BY 1 ORDER BY 1 DESC LIMIT $3`,
     [trader, date, days],
   );
@@ -120,20 +122,23 @@ router.get("/day-report", asyncHandler(async (req, res) => {
   if (!trader) throw badRequest("TRADER_REQUIRED");
 
   const isGuestScope = trader === GUEST_SCOPE;
+  const noImx = q.excludeImx === "1" || q.excludeImx === "true";
   const staff = !isGuestScope && isStaffRole(await viewerRole(req));
   const [rows, history, neighbours, limit, traders] = await Promise.all([
     isGuestScope ? Promise.resolve([] as Row[]) : loadDayTrades(trader, date),
-    isGuestScope ? Promise.resolve([] as DailyNet[]) : loadHistory(trader, date, 20),
+    isGuestScope ? Promise.resolve([] as DailyNet[]) : loadHistory(trader, date, 20, noImx),
     isGuestScope ? Promise.resolve({ prev: null, next: null }) : loadNeighbours(trader, date),
     isGuestScope ? Promise.resolve({ value: null, source: null }) : loadDailyLimit(trader),
     staff ? loadTraders() : Promise.resolve([] as string[]),
   ]);
 
-  const trades = rows.map((r) => toDayTrade({
+  const all = rows.map((r) => toDayTrade({
     id: r.id, ticker: r.ticker, side: r.side, setup: r.setup, playbookId: r.playbook_id, result: r.result,
     pnl: r.pnl, fees: r.fees, qty: r.qty, entry: r.entry, exit: r.exit,
     firstEntryAt: r.first_entry, lastExitAt: r.last_exit, openedAt: r.opened_at, closedAt: r.closed_at,
   }));
+  // IMX (close-auction) trades: «из них IMX» line; «Исключить IMX» leaves them out of the report.
+  const { kept: trades, imx } = splitImx(all.map((t, i) => ({ imx: rows[i]!.strategy === "MOC", net: t.net, item: t })), noImx);
   const report = buildDayReport({
     trader: isGuestScope ? "" : trader,
     date,
@@ -146,6 +151,7 @@ router.get("/day-report", asyncHandler(async (req, res) => {
   res.json({
     ...report,
     dailyLossLimitSource: limit.source,
+    imx: { ...imx, excluded: noImx },
     nav: { prevTradeDate: neighbours.prev, nextTradeDate: neighbours.next },
     traders,
     canPickTrader: staff,

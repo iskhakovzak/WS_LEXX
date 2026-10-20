@@ -78,6 +78,8 @@ export type DayReport = {
   canPickTrader: boolean;
   today: string;
   generatedAt: string;
+  /** Close-auction (IMX) trades of the day: count / net; `excluded` = left out of this report («Исключить IMX»). */
+  imx?: { count: number; net: number; excluded: boolean };
 };
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -87,12 +89,14 @@ export const dayReportKeys = {
   holidays: (year: number) => ["day-report", "holidays", year] as const,
 };
 
-export function useDayReport(trader: string | null, date: string, enabled = true) {
+/** `excludeImx`: «Исключить IMX» — close-auction trades left out of the report (its `imx` line counts them either way). */
+export function useDayReport(trader: string | null, date: string, enabled = true, excludeImx = false) {
   return useQuery({
-    queryKey: dayReportKeys.doc(trader ?? "", date),
+    queryKey: [...dayReportKeys.doc(trader ?? "", date), excludeImx ? "no-imx" : "all"],
     queryFn: () => {
       const q = new URLSearchParams({ date });
       if (trader) q.set("trader", trader);
+      if (excludeImx) q.set("excludeImx", "1");
       return http.get<DayReport>(`/api/day-report?${q.toString()}`);
     },
     enabled: enabled && isYmd(date),

@@ -39,26 +39,28 @@ describe("classifyStrategy", () => {
   it("OPG: pre-market or opening-auction entry, flat by 10:00", () => {
     expect(c("09:30:00", "09:45:00")).toBe("OPG");
     expect(c("09:30:59", "10:00:00")).toBe("OPG");
-    expect(c("08:15:00", "09:20:00")).toBe("OPG");
+    expect(c("08:15:00", "09:20:00")).toBe("OPG"); // a pre-market «Print» counts as OPG in the office
     expect(c("09:30:02", null)).toBe("OPG");
   });
 
   it("OPGtoDAY: opened at the open, held past 10:00", () => {
     expect(c("09:30:01", "10:00:01")).toBe("OPGtoDAY");
     expect(c("07:00:00", "13:00:00")).toBe("OPGtoDAY");
-    expect(c("09:30:00", "16:00:03")).toBe("OPGtoDAY");
+    expect(c("09:30:00", "15:49:00")).toBe("OPGtoDAY");
+    expect(c("09:30:00", "16:00:03")).toBe("MOC"); // any fill in the IMX window (lib/tradeStrategy)
   });
 
-  it("MOC: imbalance-window entry or closing-cross exit", () => {
+  it("MOC: any fill in the IMX window 15:50:00–16:00:59", () => {
     expect(c("15:50:00", "15:56:00")).toBe("MOC");
     expect(c("15:52:00", "16:30:00")).toBe("MOC");
     expect(c("14:00:00", "16:00:04")).toBe("MOC");
     expect(c("14:00:00", "15:59:30")).toBe("MOC");
-    expect(c("14:00:00", "15:59:29")).toBe("Day");
+    expect(c("14:00:00", "15:50:00")).toBe("MOC");
+    expect(c("14:00:00", "15:49:59")).toBe("Day");
   });
 
   it("AfterMarket: post-market entry, or an intraday position closed after the cross", () => {
-    expect(c("16:00:00", "17:00:00")).toBe("AfterMarket");
+    expect(c("16:01:00", "17:00:00")).toBe("AfterMarket");
     expect(c("18:30:00", "19:00:00")).toBe("AfterMarket");
     expect(c("14:00:00", "16:01:00")).toBe("AfterMarket");
   });
@@ -66,7 +68,7 @@ describe("classifyStrategy", () => {
   it("Day: everything else intraday", () => {
     expect(c("09:31:00", "09:45:00")).toBe("Day");
     expect(c("11:00:00", "15:49:00")).toBe("Day");
-    expect(c("15:49:59", "15:55:00")).toBe("Day");
+    expect(c("15:30:00", "15:49:59")).toBe("Day");
   });
 
   it("falls back to the session without fill times", () => {
