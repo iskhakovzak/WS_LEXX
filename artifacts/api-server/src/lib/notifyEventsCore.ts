@@ -78,6 +78,20 @@ export function uniqueRecipients(
   return out;
 }
 
+// ─── Telegram mirror ────────────────────────────────────────────────────────
+
+/**
+ * Notification kinds that are mirrored to Telegram (notifyUser `telegram: true`: rendered in the recipient's
+ * language, sent only to a linked chat with the Telegram switch on). The daily loop (Волна 0, item 0.7): the curator's
+ * review of a day reaches the trader's phone, a closed day reaches the curator's.
+ */
+export const TELEGRAM_KINDS: ReadonlySet<string> = new Set(["eod_review_request", "eod_reviewed"]);
+
+/** Does a notification of `type` go to Telegram as well? */
+export function mirrorsToTelegram(type: string): boolean {
+  return TELEGRAM_KINDS.has(type);
+}
+
 // ─── dedup keys ─────────────────────────────────────────────────────────────
 
 /** At most one risk notification per type per trader per (NY) trading day. */

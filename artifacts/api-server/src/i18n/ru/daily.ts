@@ -131,6 +131,7 @@ export default {
     morning: {
       title: "☀️ <b>Фокус на {date}</b>",
       noContract: "📜 Контракт на день не задан — задай стоп и лимит сделок в плане.",
+      unreviewed: "📝 Не разобран день {date} — открой его и нажми «Разобрал».",
     },
     contract: {
       line: "📜 Контракт: {items}",

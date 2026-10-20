@@ -36,9 +36,34 @@ export function missingList(trades: ReviewableTrade[]): MissingItem[] {
   return out;
 }
 
-/** `reasonCode` = the API error code that blocks the close; `reason` = its RU text (translate the code per request). */
-export function canCloseDay(args: { date: string; today: string; trades: ReviewableTrade[] }): { ok: boolean; missing: MissingItem[]; reason: string | null; reasonCode?: "EOD_FUTURE_DAY" | "EOD_INCOMPLETE" } {
+/** NYSE regular close, New York minutes (16:00). */
+export const MARKET_CLOSE_MIN = 16 * 60;
+/** NYSE early close (holiday_calendar «Early close 1pm ET»: day after Thanksgiving, Christmas Eve, July 3). */
+export const EARLY_CLOSE_MIN = 13 * 60;
+
+/** «16:00» / «13:00» — the close time of a NY minutes value (for the hint and the API payload). */
+export function hhmm(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+export type CloseCheck = {
+  ok: boolean; missing: MissingItem[]; reason: string | null; reasonCode?: "EOD_FUTURE_DAY" | "EOD_TOO_EARLY" | "EOD_INCOMPLETE";
+  /** Today's session is still running: the day opens for closing at this NY time («16:00», «13:00» on an early close). */
+  opensAt?: string;
+};
+
+/**
+ * `reasonCode` = the API error code that blocks the close; `reason` = its RU text (translate the code per request).
+ * Today can be closed only after the market close (Волна 0, item 0.5): `nowMinutes` = NY minutes now, `closeMinutes` =
+ * the session's close (MARKET_CLOSE_MIN, EARLY_CLOSE_MIN on a short day). Without `nowMinutes` the time is not checked.
+ * Today before the market close is EOD_TOO_EARLY with `opensAt` set.
+ */
+export function canCloseDay(args: { date: string; today: string; trades: ReviewableTrade[]; nowMinutes?: number; closeMinutes?: number }): CloseCheck {
   if (args.date > args.today) return { ok: false, missing: [], reason: errorMessage("EOD_FUTURE_DAY", "ru"), reasonCode: "EOD_FUTURE_DAY" };
+  const closeAt = args.closeMinutes ?? MARKET_CLOSE_MIN;
+  if (args.date === args.today && args.nowMinutes != null && args.nowMinutes < closeAt) {
+    return { ok: false, missing: [], reason: errorMessage("EOD_TOO_EARLY", "ru", { opensAt: hhmm(closeAt) }), reasonCode: "EOD_TOO_EARLY", opensAt: hhmm(closeAt) };
+  }
   const missing = missingList(args.trades);
   if (missing.length) return { ok: false, missing, reason: errorMessage("EOD_INCOMPLETE", "ru"), reasonCode: "EOD_INCOMPLETE" };
   return { ok: true, missing: [], reason: null };

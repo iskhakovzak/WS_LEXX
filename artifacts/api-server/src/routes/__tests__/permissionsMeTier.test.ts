@@ -75,11 +75,11 @@ describe("GET /permissions/me tier", () => {
     expect(stageQueries()).toBe(3); // second read served from the cache
   });
 
-  it("falls back to the scaling tier, and to null when nothing names a stage", async () => {
+  it("falls back to the scaling tier, and to the default stage («Джун», lib/people/stage) when nothing names one", async () => {
     who = { id: 130, name: "Кирилл Б.", role: "trader" };
     expect((await me()).tier).toBe("junior");
     who = { id: 140, name: "Пётр Н.", role: "trader" };
-    expect((await me()).tier).toBeNull();
+    expect((await me()).tier).toBe("junior");
   });
 
   it("staff get null without reading the stage tables", async () => {

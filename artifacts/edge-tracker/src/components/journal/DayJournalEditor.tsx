@@ -1,17 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle, ArrowUpRight, Check, CheckCircle2, ListChecks, Lock, LockOpen, MessageSquareText, NotebookPen, Plus,
-} from "lucide-react";
-import { Panel, Pill } from "@/components/ds";
-import { Button } from "@/components/ui/button";
+import { Check, NotebookPen, Plus } from "lucide-react";
+import { Panel } from "@/components/ds";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { KEYS } from "@/lib/api/keys";
 import { nyDate } from "@/lib/trading-date";
-import { links } from "@/lib/links";
 import { useDayReport } from "@/components/day-report/api";
 import {
   emptySummary, eodApi, splitMissing, useEodDay, useEodMutation, type EodDayPayload, type MissingItem,
@@ -21,7 +16,7 @@ import {
 } from "./use-journal-days";
 import type { RuleViolation } from "./DayTrades";
 import { stepWeekday } from "./utils";
-import { fmtDate, fmtDeskDateTime } from "@/lib/format";
+import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
 import { personName } from "@/i18n";
@@ -29,11 +24,19 @@ import { MOOD_LABELS, DISCIPLINE_LABELS, MISTAKE_TAGS, GOOD_TAGS, EMOTION_TAGS, 
 import {
   ChipGroup, LessonStep, MorningCheckin, PlanBlock, ReviewField, SaveIndicator, ScaleField, Step, followedAnswer, type SaveState,
 } from "./day-journal-parts";
+import { CloseBar, CuratorFeedback, EodSelfReview } from "./day-journal-close";
 
 export { MOOD_LABELS, DISCIPLINE_LABELS, MISTAKE_TAGS, GOOD_TAGS, EMOTION_TAGS, followedAnswer };
 
 const TEXT_LIMIT = 4000; // eod summary fields (repeat / stop) are capped server-side
 
+/**
+ * GET /api/eod/day additions (Волна 0, items 0.4 / 0.5): `closeOpensAt` — today before the market close, the NY time
+ * the day opens for closing («16:00», «13:00» on a short day); `closedVia` — "daily" when «Разобрал» (dashboard /
+ * Telegram) closed the day: the form then extends it (send the summary without reopening); `traderNote` — the note
+ * left with «Разобрал». Absent on older API builds.
+ */
+type EodDayView = EodDayPayload & { closeOpensAt?: string | null; closedVia?: "daily" | "journal" | null; traderNote?: string | null };
 
 /**
  * «Дневник дня»: a short guided reflection on top of the automatically imported trades —
@@ -77,7 +80,7 @@ export function DayJournalEditor({
   const isFuture = date > today;
   const nextDate = stepWeekday(date, 1);
   const eodQ = useEodDay(trader, date, !!trader && !isFuture);
-  const eod = eodQ.data ?? null;
+  const eod: EodDayView | null = eodQ.data ?? null;
 
   const initialFor = useCallback((): { draft: JournalEntry; fromLegacy: boolean } => {
     if (entry && !isEntryEmpty(entry)) return { draft: entry, fromLegacy: false };
@@ -236,11 +239,15 @@ export function DayJournalEditor({
       },
       {
         onError: (e) => {
-          const err = e as Error & { status?: number; body?: { missing?: MissingItem[] } };
-          const n = err.body?.missing?.length ?? 0;
+          type Extra = { missing?: MissingItem[]; opensAt?: string };
+          const err = e as Error & { status?: number; body?: Extra & { details?: Extra } };
+          const extra: Extra = { ...err.body, ...err.body?.details };
+          const n = extra.missing?.length ?? 0;
           toast({
             title: journalI18n.t("editor.notClosed"),
-            description: err.status === 422 && n ? journalI18n.t("editor.missingSetup", { count: n }) : err.message,
+            description: extra.opensAt
+              ? journalI18n.t("editor.closeAfterMarket", { time: extra.opensAt })
+              : err.status === 422 && n ? journalI18n.t("editor.missingSetup", { count: n }) : err.message,
             variant: "destructive",
           });
         },
@@ -277,7 +284,7 @@ export function DayJournalEditor({
           {isFuture ? (
             <p className="text-sm text-muted-foreground">{t("editor.reviewLater")}</p>
           ) : !editable && isEntryEmpty(entry) ? (
-            eod?.day?.closedAt ? <EodSelfReview day={eod.day} /> : (
+            eod?.day?.closedAt ? <EodSelfReview day={eod.day} quick={eod.closedVia === "daily"} note={eod.traderNote ?? null} /> : (
               <p className="py-4 text-center text-sm text-muted-foreground">{t("editor.notFilledBy", { trader: personName(trader) })}</p>
             )
           ) : (
@@ -331,7 +338,7 @@ export function DayJournalEditor({
 
           {!isFuture && eod && (
             <CloseBar
-              eod={eod}
+              eod={eod} blocking={splitMissing(eod).blocking}
               editable={editable}
               hasTrades={hasTrades}
               reviewFilled={reviewFilled}
@@ -342,36 +349,12 @@ export function DayJournalEditor({
               onClose={() => { void doClose(); }}
               onReopen={() => reopen.mutate(undefined, { onError: (e) => toast({ title: t("editor.reopenFailed"), description: (e as Error).message, variant: "destructive" }) })}
               onOpenTradeReview={onOpenTradeReview}
+              showNote={!(!editable && isEntryEmpty(entry) && !!eod.day?.closedAt)}
             />
           )}
         </div>
       )}
     </Panel>
-  );
-}
-
-// ── Pieces ──────────────────────────────────────────────────────────────────
-/** Curator view of a day the trader closed with the day-close form but left the journal empty (OLGA-25). */
-function EodSelfReview({ day }: { day: NonNullable<EodDayPayload["day"]> }) {
-  const { t } = journalI18n.useT();
-  const s = day.summary ?? {};
-  const rows = [
-    [t("editor.eodRepeat"), s.repeat],
-    [t("editor.eodStop"), s.stop],
-    [t("editor.eodTomorrow"), s.tomorrow],
-  ].filter((r): r is [string, string] => typeof r[1] === "string" && !!r[1].trim());
-  return (
-    <section className="space-y-2 rounded-xl bg-[var(--glass-bg)] p-3 text-sm" aria-label={t("editor.closedByEod")}>
-      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" />{t("editor.closedByEod")}
-      </p>
-      {rows.map(([label, text]) => (
-        <div key={label}>
-          <div className="micro-label">{label}</div>
-          <p className="whitespace-pre-wrap leading-relaxed">{text}</p>
-        </div>
-      ))}
-    </section>
   );
 }
 
@@ -484,93 +467,6 @@ function TomorrowFocus({
         </div>
       )}
       <p className="text-2xs text-muted-foreground">{t("editor.focusSavesAs", { date: fmtDate(nextDate, "dayMonth") })}</p>
-    </div>
-  );
-}
-
-function CuratorFeedback({ day }: { day: NonNullable<EodDayPayload["day"]> }) {
-  const { t } = journalI18n.useT();
-  return (
-    <section className="rounded-xl border border-primary/30 bg-primary/5 p-3" aria-label={t("editor.curatorFeedback")}>
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
-        <span className="font-semibold">{t("editor.curatorFeedbackBy", { name: personName(day.reviewedBy) || "—" })}</span>
-        <Pill tone="accent">{t("editor.curatorScore", { score: day.curatorScore ?? "—" })}</Pill>
-        {day.reviewedAt && <span className="text-muted-foreground">{fmtDeskDateTime(day.reviewedAt)}</span>}
-      </div>
-      {day.curatorComment && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{day.curatorComment}</p>}
-    </section>
-  );
-}
-
-function CloseBar({
-  eod, editable, hasTrades, reviewFilled, progress, untaggedIds, closing, reopening, onClose, onReopen, onOpenTradeReview,
-}: {
-  eod: EodDayPayload; editable: boolean; hasTrades: boolean; reviewFilled: boolean; progress: number; untaggedIds: number[];
-  closing: boolean; reopening: boolean; onClose: () => void; onReopen: () => void; onOpenTradeReview?: () => void;
-}) {
-  const { t } = journalI18n.useT();
-  const { blocking } = splitMissing(eod);
-  if (eod.status === "reviewed") {
-    return (
-      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--glass-border)] pt-3 text-xs text-muted-foreground">
-        <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" />{t("editor.closedReviewed")}
-      </div>
-    );
-  }
-  if (eod.status === "closed") {
-    return (
-      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--glass-border)] pt-3 text-xs">
-        <Lock className="h-4 w-4 text-primary" aria-hidden="true" />
-        <span className="text-muted-foreground">{t("editor.closedWaiting")}</span>
-        {editable && (
-          <Button variant="ghost" size="sm" className="ml-auto" disabled={reopening} onClick={onReopen}>
-            <LockOpen aria-hidden="true" />{t("editor.reopen")}
-          </Button>
-        )}
-      </div>
-    );
-  }
-  if (!editable) {
-    return (
-      <div className="flex items-center gap-2 border-t border-[var(--glass-border)] pt-3 text-xs text-muted-foreground">
-        <LockOpen className="h-4 w-4" aria-hidden="true" />{t("editor.traderNotClosed")}
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-2 border-t border-[var(--glass-border)] pt-3">
-      {blocking.length > 0 && (
-        <p className="flex flex-wrap items-center gap-1.5 text-xs">
-          <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden="true" />
-          {t("editor.blocking", { count: blocking.length })}
-          {blocking.map((m) => <span key={m.tradeId} className="font-medium">{m.ticker}</span>)}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground tabular-nums">{t("editor.filled", { done: progress })}</span>
-        {untaggedIds.length > 0 && (
-          <Link href={links.trades({ ids: untaggedIds })} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            {t("editor.markSetups", { untagged: t("untaggedTrades", { count: untaggedIds.length }) })}<ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-          </Link>
-        )}
-        <span className="ml-auto flex flex-wrap items-center gap-2">
-          {hasTrades && onOpenTradeReview && (
-            <Button variant="ghost" size="sm" onClick={onOpenTradeReview}>
-              <ListChecks aria-hidden="true" />{t("editor.tradeReview")}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            disabled={closing || !reviewFilled || blocking.length > 0}
-            title={!reviewFilled ? t("editor.fillFirst") : undefined}
-            onClick={onClose}
-          >
-            <Lock aria-hidden="true" />{closing ? t("editor.closing") : t("editor.closeDay")}
-          </Button>
-        </span>
-      </div>
-      {!reviewFilled && <p className="text-2xs text-muted-foreground">{t("editor.closeHint")}</p>}
     </div>
   );
 }

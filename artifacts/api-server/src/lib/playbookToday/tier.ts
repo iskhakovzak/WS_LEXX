@@ -1,16 +1,16 @@
 /**
  * A member's tier on the trader ladder — the one resolution the playbook tier locks use (./service.ts loadPerson) and the
  * web shell reads through GET /api/permissions/me (`tier`) to pick the simple menu for new traders:
- * own academy stage → active enrolment → scaling tier (lib/discussionAudience pickStage; routes/academy-path order).
- * Staff (curator / admin) have no tier: `viewerTier` answers null for them.
+ * own academy stage → active enrolment → scaling tier → DEFAULT_STAGE («Джун») for a trader without one (lib/people/stage.ts — the
+ * one stage resolution). Staff (curator / admin) have no tier: `viewerTier` answers null for them.
  */
 import { pool } from "@workspace/db";
-import { pickStage } from "../discussionAudience";
+import { pickStage } from "../people/stage";
 import { isTierKey, type TierKey } from "./build";
 
 const none = <T>() => ({ rows: [] as T[] });
 
-/** Role + tier straight from the tables (no cache). `tier` is null when no source names a stage. */
+/** Role + tier straight from the tables (no cache). `tier` is null for staff / unknown members without a stage source. */
 export async function loadStaffTier(trader: string): Promise<{ staff: boolean; tier: string | null }> {
   const [user, own, enr, lim] = await Promise.all([
     pool.query<{ role: string }>(`SELECT role FROM users WHERE name = $1 LIMIT 1`, [trader]).catch(() => none<{ role: string }>()),
@@ -25,7 +25,7 @@ export async function loadStaffTier(trader: string): Promise<{ staff: boolean; t
   const role = user.rows[0]?.role ?? null;
   return {
     staff: role === "curator" || role === "admin",
-    tier: pickStage(own.rows[0]?.stage, enr.rows[0]?.stage, lim.rows[0]?.tier),
+    tier: pickStage(own.rows[0]?.stage, enr.rows[0]?.stage, lim.rows[0]?.tier, role),
   };
 }
 

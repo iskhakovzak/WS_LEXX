@@ -189,40 +189,8 @@ export async function tableExists(name: string): Promise<boolean> {
 
 // ─── stage resolution ───────────────────────────────────────────────────────
 
-export type StageInfo = { stage: StageKey | null; since: string | null; source: "path" | "enrollment" | "scaling" | null; cohortId: number | null };
-
-/** Stage of each user: own table (set by approvals) → F2 enrollment → scaling tier of trader_risk_limits. */
-export async function loadStageInfo(users: string[] | null): Promise<Map<string, StageInfo>> {
-  const out = new Map<string, StageInfo>();
-  const filter = users ? `WHERE user_name = ANY($1::text[])` : "";
-  const params = users ? [users] : [];
-  const { rows: own } = await pool.query(`SELECT user_name, stage, since FROM academy_trader_stage ${filter}`, params);
-  for (const r of own) if (isStageKey(r.stage)) out.set(String(r.user_name), { stage: r.stage, since: r.since ?? null, source: "path", cohortId: null });
-  if (await tableExists("academy_enrollments")) {
-    try {
-      const { rows } = await pool.query(
-        `SELECT DISTINCT ON (user_name) user_name, stage, joined_on::text AS joined_on, cohort_id
-           FROM academy_enrollments
-          WHERE archived_at IS NULL AND COALESCE(status, 'active') IN ('active','paused') ${users ? "AND user_name = ANY($1::text[])" : ""}
-          ORDER BY user_name, joined_on DESC NULLS LAST, id DESC`,
-        params,
-      );
-      for (const r of rows) {
-        const name = String(r.user_name);
-        const cur = out.get(name);
-        if (cur) { cur.cohortId = r.cohort_id == null ? null : Number(r.cohort_id); continue; }
-        if (isStageKey(r.stage)) out.set(name, { stage: r.stage, since: r.joined_on ? String(r.joined_on).slice(0, 10) : null, source: "enrollment", cohortId: r.cohort_id == null ? null : Number(r.cohort_id) });
-      }
-    } catch (err) {
-      logger.warn({ err }, "academy-path: enrollments read failed");
-    }
-  }
-  try {
-    const { rows } = await pool.query(`SELECT trader, tier FROM trader_risk_limits ${users ? "WHERE trader = ANY($1::text[])" : ""}`, params);
-    for (const r of rows) {
-      const name = String(r.trader);
-      if (!out.has(name) && isStageKey(r.tier)) out.set(name, { stage: r.tier, since: null, source: "scaling", cohortId: null });
-    }
-  } catch { /* scaling tables optional */ }
-  return out;
-}
+/**
+ * Stage of each user — the one resolution of lib/people/stage.ts (own table set by approvals → enrolment → scaling
+ * tier → DEFAULT_STAGE («Джун») for a trader without a stage, source "default"). Kept here for the existing imports.
+ */
+export { loadStageInfo, type StageInfo } from "./people/stage";

@@ -12,6 +12,10 @@
  *
  * Recipients: active members with a linked Telegram chat, the Telegram switch on (users.tg_notifications_enabled) and
  * the daily-loop switch on (users.settings.dailyTelegram ≠ false; Settings → Notifications → Telegram).
+ * Morning (Волна 0, item 0.7 — morningReason): everyone who traded in the last 14 days, plus every trader on the
+ * Стажёр / Джун stage (lib/people/stage — a trader without a stage gets DEFAULT_STAGE, «Джун») and every trader who has not traded for
+ * more than 3 days (or never): the newcomer and the one drifting away get the push into the loop. When the previous
+ * trading day had trades and is still not closed (lib/daily/service isDayClosed), the message says so.
  * Every send is claimed first in notification_dedup (lib/notifyEvents claimOnce) — a restart, a second process or the
  * next sync never sends it again; a send Telegram rejected releases its claim so the next run retries.
  * Nothing is sent unless the bot is configured AND this is production (dailyTelegramEnabled).
@@ -21,6 +25,8 @@ import { config } from "../../config";
 import { logger } from "../logger";
 import { parseLang, type Lang } from "../../i18n";
 import { addDays, isWeekend, nyDate, nyMinutes } from "../tradingDate";
+import { closeDateSql } from "../tradeMath";
+import { DEFAULT_STAGE, isTraderRole, loadStageInfo } from "../people/stage";
 import { sendMessage } from "../telegramBot";
 import { claimOnce } from "../notifyEvents";
 import { dailyTelegramEnabled, intradayAlertsEnabled } from "./telegramGuard";
@@ -31,8 +37,12 @@ import { contractAlert, eveningMessage, isPrivateChat, morningMessage, type DayC
 export { EVENING_FROM_MIN };
 /** Intraday alerts: premarket 04:00 → 16:15 NY (after that the evening card carries the verdict). */
 export const ALERT_WINDOW_MIN = [4 * 60, 16 * 60 + 15] as const;
-/** Morning recipients: traded at least once in the last 14 calendar days. */
-const ACTIVE_DAYS = 14;
+/** Morning recipients: traded at least once in the last 14 calendar days … */
+export const ACTIVE_DAYS = 14;
+/** … or a trader idle for more than this many calendar days (or who never traded) … */
+export const IDLE_DAYS = 3;
+/** … or a trader on these stages. */
+const LEARNER_STAGES: ReadonlySet<string> = new Set(["trainee", "junior"]);
 const SEND_GAP_MS = 40; // Telegram: ≤ 30 messages / s per bot
 
 // ─── once-only markers (notification_dedup) ─────────────────────────────────
@@ -90,6 +100,69 @@ export async function dailyRecipients(o: { names?: readonly string[] | null; tra
   return rows.map((r) => ({ name: r.name, chatId: String(r.chat_id), lang: parseLang(r.locale) ?? "ru" }));
 }
 
+export type MorningReason = "active" | "learner" | "idle";
+
+/**
+ * Why a member gets the morning message on `today` (null: not a recipient). `lastTrade` = the last trade date before
+ * today (YYYY-MM-DD, null: never); `stage` = lib/people/stage (null for staff). Staff get it only when they trade.
+ */
+export function morningReason(m: { role: string | null; stage: string | null; lastTrade: string | null }, today: string): MorningReason | null {
+  const last = m.lastTrade ? m.lastTrade.slice(0, 10) : null;
+  if (last && last < today && last >= addDays(today, -ACTIVE_DAYS)) return "active";
+  if (!isTraderRole(m.role)) return null;
+  if (m.stage && LEARNER_STAGES.has(m.stage)) return "learner";
+  if (!last || last < addDays(today, -IDLE_DAYS)) return "idle";
+  return null;
+}
+
+export type MorningRecipient = Recipient & { reason: MorningReason };
+
+/** Opted-in linked members who get the morning message on `today` (morningReason). */
+export async function morningRecipients(today: string): Promise<MorningRecipient[]> {
+  const { rows } = await pool.query<{ name: string; chat_id: string; locale: string | null; role: string | null; last_trade: string | null }>(
+    `SELECT u.name, u.telegram_chat_id AS chat_id, u.locale, u.role,
+            (SELECT MAX(LEFT(t.date, 10)) FROM trades t WHERE t.trader = u.name AND t.deleted_at IS NULL AND LEFT(t.date, 10) < $1) AS last_trade
+       FROM users u
+      WHERE u.active = true AND COALESCE(u.banned, false) = false AND u.role <> 'guest'
+        AND u.telegram_chat_id IS NOT NULL AND u.telegram_chat_id <> ''
+        AND COALESCE(u.tg_notifications_enabled, true) = true
+        AND COALESCE(u.settings->>'dailyTelegram', 'true') <> 'false'
+      ORDER BY u.name`,
+    [today],
+  );
+  if (!rows.length) return [];
+  const stages = await loadStageInfo(rows.map((r) => r.name)).catch(() => new Map<string, { stage: string | null }>());
+  const out: MorningRecipient[] = [];
+  for (const r of rows) {
+    const stage = stages.get(r.name)?.stage ?? (isTraderRole(r.role) ? DEFAULT_STAGE : null);
+    const reason = morningReason({ role: r.role, stage, lastTrade: r.last_trade }, today);
+    if (reason) out.push({ name: r.name, chatId: String(r.chat_id), lang: parseLang(r.locale) ?? "ru", reason });
+  }
+  return out;
+}
+
+/** The last open market day before `date` (weekends and full-day holidays skipped). */
+export async function prevOpenDay(date: string): Promise<string> {
+  let d = addDays(date, -1);
+  for (let i = 0; i < 10 && (await marketClosed(d)); i++) d = addDays(d, -1);
+  return d;
+}
+
+/** Of `names`, who traded on `date` and has not reviewed / closed that day yet («вчера не разобран»). */
+export async function unreviewedOn(names: readonly string[], date: string): Promise<Set<string>> {
+  if (!names.length) return new Set();
+  const { rows } = await pool
+    .query<{ trader: string }>(
+      `SELECT DISTINCT t.trader FROM trades t
+        WHERE t.deleted_at IS NULL AND t.trader = ANY($1::text[]) AND (LEFT(t.date, 10) = $2 OR ${closeDateSql("t")} = $2)`,
+      [[...names], date],
+    )
+    .catch(() => ({ rows: [] as { trader: string }[] }));
+  const out = new Set<string>();
+  for (const r of rows) if (!(await service.isDayClosed(r.trader, date).catch(() => true))) out.add(r.trader);
+  return out;
+}
+
 /** Weekend or a full-day NYSE holiday (holiday_calendar, migrations 0016/0017; early closes still trade). */
 export async function marketClosed(date: string): Promise<boolean> {
   if (isWeekend(date)) return true;
@@ -133,19 +206,23 @@ export async function runMorningFocus(o: RunOpts = {}): Promise<Record<string, u
   if (!morningEnabled()) return { skipped: "off in desk settings" };
   const date = nyDate(o.now ?? new Date());
   if (await marketClosed(date)) return { skipped: "market closed", date };
-  const list = await dailyRecipients({ tradedFrom: addDays(date, -ACTIVE_DAYS), tradedTo: addDays(date, -1) });
+  const list = await morningRecipients(date);
   const done = await existingKeys(list.map((r) => dailyKey.morning(date, r.name)));
+  const prev = await prevOpenDay(date);
+  const unreviewed = await unreviewedOn(list.filter((r) => !done.has(dailyKey.morning(date, r.name))).map((r) => r.name), prev);
   const n = tally();
   for (const r of list) {
     if (o.signal?.aborted) break;
     if (done.has(dailyKey.morning(date, r.name))) { n.dup++; continue; }
     const focus = await service.focusFor(r.name, date).catch((err) => { logger.warn({ err, trader: r.name }, "daily-tg: focus failed"); return null; });
     if (!focus) { n.skipped++; continue; }
-    const msg = morningMessage({ lang: r.lang, date, focus, contract: await dayContract(r.name, date), siteUrl: config.siteUrl });
+    const msg = morningMessage({ lang: r.lang, date, focus, contract: await dayContract(r.name, date), siteUrl: config.siteUrl, unreviewed: unreviewed.has(r.name) ? prev : null });
     n[await deliver(dailyKey.morning(date, r.name), r.chatId, msg)]++;
     await pause();
   }
-  return { date, recipients: list.length, ...n };
+  const reasons = { active: 0, learner: 0, idle: 0 };
+  for (const r of list) reasons[r.reason]++;
+  return { date, recipients: list.length, reasons, unreviewed: unreviewed.size, ...n };
 }
 
 // ─── evening ────────────────────────────────────────────────────────────────

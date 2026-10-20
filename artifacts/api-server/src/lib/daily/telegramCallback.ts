@@ -2,6 +2,8 @@
  * Evening card buttons (routes/telegram.ts routes every `daily:*` callback here):
  *   daily:rev:<date>  «✓ Разобрал»       → markReviewed(trader, date)
  *   daily:dis:<date>  «Это не ошибка»    → markReviewed(trader, date, { dispute: true })
+ * Both close the day for the curator as well (markReviewed → routes/eod closeEodDay, Волна 0 item 0.4): the day lands
+ * in the curator queue and the curator gets one «День закрыт» notice, exactly as after the journal form.
  * The trader is the member linked to the pressing Telegram user; the card of that date must have been sent to that
  * member in that chat (marker daily-tg:card:…), so a chat re-linked to someone else cannot close another trader's day.
  * Idempotent: the first press claims daily-tg:closed:<date>:<trader>; a repeat only answers «already» and re-renders.

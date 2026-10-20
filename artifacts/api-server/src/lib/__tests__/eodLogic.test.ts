@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canCloseDay, computeStreaks, missingFields, missingList, nextTradingDay, prevTradingDay, tradingDaysAfter, tradingHoursBetween, type ReviewableTrade } from "../eodLogic";
+import { EARLY_CLOSE_MIN, MARKET_CLOSE_MIN, canCloseDay, computeStreaks, missingFields, missingList, nextTradingDay, prevTradingDay, tradingDaysAfter, tradingHoursBetween, type ReviewableTrade } from "../eodLogic";
 
 describe("eodLogic trading-day navigation (weekends only)", () => {
   it.each<[string, string]>([
@@ -59,6 +59,29 @@ describe("eodLogic.canCloseDay", () => {
     const r = canCloseDay({ date: "2026-10-17", today: "2026-10-17", trades: [ok, { id: 2, ticker: "B", setup: "", confidenceGrade: null }] });
     expect(r.ok).toBe(false);
     expect(r.missing).toEqual([{ tradeId: 2, ticker: "B", fields: ["setup", "grade"] }]);
+  });
+  // Волна 0, item 0.5: today closes only after the market close (16:00 NY; 13:00 on an early-close day).
+  it("today before 16:00 NY is refused with opensAt; from 16:00 it closes", () => {
+    const at = (h: number, m = 0) => ({ date: "2026-10-16", today: "2026-10-16", trades: [ok], nowMinutes: h * 60 + m });
+    const early = canCloseDay(at(10, 30));
+    expect(early).toMatchObject({ ok: false, reasonCode: "EOD_TOO_EARLY", opensAt: "16:00", missing: [] });
+    expect(canCloseDay(at(15, 59)).ok).toBe(false);
+    expect(canCloseDay(at(16, 0))).toEqual({ ok: true, missing: [], reason: null });
+    expect(canCloseDay(at(18, 45)).ok).toBe(true);
+  });
+  it("a short day (Christmas Eve, 13:00 close) opens at 13:00", () => {
+    const at = (h: number) => canCloseDay({ date: "2026-12-24", today: "2026-12-24", trades: [], nowMinutes: h * 60, closeMinutes: EARLY_CLOSE_MIN });
+    expect(at(12)).toMatchObject({ ok: false, opensAt: "13:00" });
+    expect(at(13).ok).toBe(true);
+    expect(MARKET_CLOSE_MIN).toBe(960);
+  });
+  it("the time only matters for today: yesterday closes at 09:00, without nowMinutes nothing is checked", () => {
+    expect(canCloseDay({ date: "2026-10-15", today: "2026-10-16", trades: [ok], nowMinutes: 9 * 60 }).ok).toBe(true);
+    expect(canCloseDay({ date: "2026-10-16", today: "2026-10-16", trades: [ok] }).ok).toBe(true);
+  });
+  it("the time rule comes before the trade check (no «incomplete» list mid-session)", () => {
+    const r = canCloseDay({ date: "2026-10-16", today: "2026-10-16", trades: [{ id: 2, ticker: "B", setup: "", confidenceGrade: null }], nowMinutes: 600 });
+    expect(r).toMatchObject({ reasonCode: "EOD_TOO_EARLY", opensAt: "16:00", missing: [] });
   });
 });
 

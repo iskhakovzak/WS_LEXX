@@ -84,7 +84,10 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
     templateStatus(traders, lang),
     safe(`SELECT trader, status FROM trader_plans WHERE date = $1 AND deleted_at IS NULL AND trader = ANY($2)`, [today, traders]),
     safe(`SELECT id, trader, date, closed_at, reviewed_at, discipline, curator_score FROM eod_days WHERE date >= $1 AND trader = ANY($2)`, [from35, traders]),
-    safe(`SELECT id, trader, date, closed_at FROM eod_days WHERE closed_at IS NOT NULL AND reviewed_at IS NULL AND trader = ANY($1) ORDER BY closed_at DESC LIMIT 500`, [traders]),
+    // note = the trader's «Разобрал» note of the day (daily_reviews) — «Разобрал» closes the day too (Волна 0, item 0.4).
+    safe(`SELECT d.id, d.trader, d.date, d.closed_at, d.summary ->> 'via' AS via,
+                 (SELECT r.note FROM daily_reviews r WHERE r.trader = d.trader AND r.date = d.date) AS note
+            FROM eod_days d WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL AND d.trader = ANY($1) ORDER BY d.closed_at DESC LIMIT 500`, [traders]),
     safe(`SELECT id, trader, week, TO_CHAR(week_start, 'YYYY-MM-DD') AS week_start, status, submitted_at, reviewed_at FROM weekly_reviews
            WHERE trader = ANY($1) AND (week_start >= $2::date OR status = 'submitted') ORDER BY week_start DESC`, [traders, from42]),
     safe(`SELECT s.id, s.user_name, s.created_at, a.title FROM academy_submissions s JOIN academy_assignments a ON a.id = s.assignment_id
@@ -230,8 +233,13 @@ function maxIso(values: unknown[]): string | null {
 
 // ─── очередь разборов ───────────────────────────────────────────────────────
 
-/** `date` — торговый день / неделя элемента; `eodId` — id дня (eod_days) для разбора прямо в кабинете. */
-type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; ageHours?: number | null; href: string; date?: string | null; eodId?: number };
+/** `date` — торговый день / неделя элемента; `eodId` — id дня (eod_days) для разбора прямо в кабинете; `note` — заметка трейдера к «Разобрал». */
+type QueueRaw = {
+  kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; ageHours?: number | null; href: string;
+  date?: string | null; eodId?: number;
+  /** eod: the trader's «Разобрал» note (null: none) and how the day was closed. */
+  note?: string | null; via?: "daily" | "journal";
+};
 
 function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
   const t = riskT.tFor(b.lang);
@@ -242,6 +250,7 @@ function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
       since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now, b.closed), ageHours: ageOf(e.closed_at, now),
       href: `/journal?date=${encodeURIComponent(String(e.date))}&trader=${encodeURIComponent(String(e.trader))}`,
       date: String(e.date), eodId: Number(e.id),
+      note: e.note == null || e.note === "" ? null : String(e.note), via: e.via === "daily" ? ("daily" as const) : ("journal" as const),
     })),
     ...b.weekly.filter((w: any) => w.status === "submitted").map((w: any) => ({
       // A human week «12 окт. – 16 окт.», never the raw ISO key (OLGA-22).
