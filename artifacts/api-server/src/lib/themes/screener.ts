@@ -1,6 +1,6 @@
 /**
  * Screener themes → tickers: one Finviz export with the theme's filters (lib/finviz/client, the shared ≥ 3 s queue),
- * sorted by the user's order or by market cap, top SCREENER_TOP tickers. Results are cached per screener key (the same
+ * sorted by the user's order or by market cap, top SCREENER_MAX (50) tickers — callers take their 25 / 50. Results are cached per screener key (the same
  * sector picked by several users resolves once an hour) and stored on the theme row. Single-flight per key.
  * Finviz off → nothing is resolved (the theme says it needs Finviz).
  */
@@ -8,7 +8,7 @@ import { fetchExport } from "../finviz/client";
 import { finvizEnabled } from "../finviz/presets";
 import { logger } from "../logger";
 import { nyDate } from "../tradingDate";
-import { RESOLVE_TTL_MS, SCREENER_DEFAULT_ORDER, SCREENER_TOP, screenerKey, type ScreenerSpec } from "./personal";
+import { RESOLVE_TTL_MS, SCREENER_DEFAULT_ORDER, SCREENER_MAX, screenerKey, type ScreenerSpec } from "./personal";
 
 export type ScreenerDeps = {
   enabled: () => boolean;
@@ -50,7 +50,7 @@ export function resolveScreener(spec: ScreenerSpec): Promise<{ tickers: string[]
   if (running) return running;
   const job = (async () => {
     try {
-      const tickers = [...new Set(await deps.run(spec))].slice(0, SCREENER_TOP);
+      const tickers = [...new Set(await deps.run(spec))].slice(0, SCREENER_MAX);
       const out = { tickers, at: deps.now() };
       cache.set(key, out);
       if (cache.size > 500) cache.delete(cache.keys().next().value!);

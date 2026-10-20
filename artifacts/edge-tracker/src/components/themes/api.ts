@@ -1,18 +1,20 @@
 /**
- * «Темы рынка» — data layer. GET /api/themes refreshes its quotes lazily on the server (30 s cache while the market is
- * open), so the page re-asks every 30 s in pre / rth / post while the tab is visible and not at all when closed.
- * The answer also carries the viewer's view (columns, hidden themes) and «Мои темы»; the view saves optimistically.
+ * «Темы рынка» — data layer. GET /api/themes (the shared board + the viewer's view and boards) refreshes its quotes
+ * lazily on the server (30 s cache while the market is open); the page re-asks every 30 s in pre / rth / post while the
+ * tab is visible and not at all when closed. The active personal board (GET /api/themes/boards/:id) polls the same way.
+ * View, sort and board edits save optimistically.
  */
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { http } from "@/lib/api/http";
-import { STALE } from "@/lib/api/keys";
+import { http, isApiError } from "@/lib/api/http";
+import { KEYS, STALE } from "@/lib/api/keys";
 import { toast } from "@/hooks/use-toast";
 import { themesI18n } from "@/i18n/ns/themes";
-import { pollInterval, type ThemeRecord, type ThemesResponse, type ThemesView } from "./model";
+import { pollInterval, type BoardColumn, type BoardData, type BoardMeta, type ColSort, type ThemeRecord, type ThemesResponse, type ThemesView } from "./model";
 
 export const themeKeys = {
   all: ["themes"] as const,
   board: () => ["themes", "board"] as const,
+  boardData: (id: number) => ["themes", "boardData", id] as const,
   config: () => ["themes", "config"] as const,
 };
 
@@ -32,7 +34,20 @@ export function useThemes() {
   return useQuery(themesQuery());
 }
 
-/** Staff: every theme incl. archived. */
+/** One personal board's rows (only while its tab is open). */
+export function useBoardData(id: number | null) {
+  return useQuery({
+    queryKey: themeKeys.boardData(id ?? 0),
+    queryFn: ({ signal }) => http.get<BoardData>(`/api/themes/boards/${id}`, { signal }),
+    enabled: id != null,
+    staleTime: STALE.live,
+    refetchInterval: (q) => pollInterval(q.state.data?.session),
+    refetchOnWindowFocus: true,
+    meta: { i18n: false },
+  });
+}
+
+/** Admin: every shared theme incl. archived. */
 export function useThemeConfig(enabled: boolean) {
   return useQuery({
     queryKey: themeKeys.config(),
@@ -57,18 +72,18 @@ export function useSaveTheme() {
   });
 }
 
-/** PUT /api/themes/view — applied to the board at once, rolled back when the server refuses. */
+/** PUT /api/themes/view (any of columns / hidden / sort / tab) — applied at once, rolled back when refused. */
 export function useSaveView() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (view: ThemesView) => http.put<ThemesView>("/api/themes/view", view),
-    onMutate: async (view) => {
+    mutationFn: (patch: Partial<ThemesView>) => http.put<ThemesView>("/api/themes/view", patch),
+    onMutate: async (patch) => {
       await qc.cancelQueries({ queryKey: themeKeys.board() });
       const prev = qc.getQueryData<ThemesResponse>(themeKeys.board());
-      if (prev) qc.setQueryData<ThemesResponse>(themeKeys.board(), { ...prev, view });
+      if (prev) qc.setQueryData<ThemesResponse>(themeKeys.board(), { ...prev, view: { ...prev.view, ...patch } });
       return { prev };
     },
-    onError: (_err, _view, ctx) => {
+    onError: (_err, _patch, ctx) => {
       if (ctx?.prev) qc.setQueryData(themeKeys.board(), ctx.prev);
       toast({ title: themesI18n.t("view.failed"), variant: "destructive" });
     },
@@ -79,6 +94,7 @@ export function useSaveView() {
 }
 
 export type MineDraft = {
+  boardId?: number;
   name?: string;
   kind?: "tickers" | "screener";
   tickers?: string[];
@@ -88,13 +104,70 @@ export type MineDraft = {
   active?: boolean;
 };
 
-/** «Мои темы»: POST (id null) or PUT /api/themes/mine/:id; the board is refetched. Errors are shown by the form. */
+/** «Мои темы»: POST (id null) or PUT /api/themes/mine/:id; boards are refetched. Errors are shown by the form. */
 export function useSaveMine() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, draft }: { id: number | null; draft: MineDraft }) =>
       id == null ? http.post<{ id: number }>("/api/themes/mine", draft) : http.put<{ id: number }>(`/api/themes/mine/${id}`, draft),
-    onSuccess: () => qc.invalidateQueries({ queryKey: themeKeys.board() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: themeKeys.all }),
     onError: () => undefined,
+  });
+}
+
+export type BoardDraft = {
+  name?: string;
+  kind?: "themes" | "tickers";
+  columns?: BoardColumn[];
+  sort?: ColSort<BoardColumn> | null;
+  pinned?: number[];
+  tickers?: string[];
+  screener?: string;
+  order?: string | null;
+  top?: 25 | 50;
+  move?: "left" | "right";
+  active?: boolean;
+};
+
+/** POST /api/themes/boards (id null) or PUT …/:id. Columns / sort / pins show at once (optimistic on the tab list). */
+export function useSaveBoard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, draft }: { id: number | null; draft: BoardDraft }) =>
+      id == null ? http.post<BoardMeta>("/api/themes/boards", draft) : http.put<BoardMeta>(`/api/themes/boards/${id}`, draft),
+    onMutate: async ({ id, draft }) => {
+      if (id == null) return { prev: undefined };
+      const prev = qc.getQueryData<ThemesResponse>(themeKeys.board());
+      const local: Partial<BoardMeta> = {};
+      if (draft.columns) local.columns = draft.columns;
+      if (draft.sort !== undefined) local.sort = draft.sort;
+      if (draft.pinned) local.pinned = draft.pinned;
+      if (draft.name) local.name = draft.name;
+      if (prev && Object.keys(local).length) {
+        qc.setQueryData<ThemesResponse>(themeKeys.board(), { ...prev, boards: prev.boards.map((b) => (b.id === id ? { ...b, ...local } : b)) });
+      }
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(themeKeys.board(), ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: themeKeys.all }),
+  });
+}
+
+/** «В вотчлист»: the desk watchlist (POST /api/watchlist); a ticker already there is not an error. */
+export function useAddToWatchlist() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ticker: string): Promise<"added" | "exists"> => {
+      try {
+        await http.post("/api/watchlist", { ticker, catalyst: themesI18n.t("actions.watchCatalyst"), status: "watching" });
+        return "added";
+      } catch (err) {
+        if (isApiError(err) && err.status === 409) return "exists";
+        throw err;
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: KEYS.watchlist() }),
   });
 }

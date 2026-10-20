@@ -349,4 +349,6 @@ export default {
   REWARD_NOT_YOUR_TRADER: "Mukofotlarni shu treyderning kuratori yoki admin topshiradi",
   THEME_NOT_FOUND: "Mavzu topilmadi",
   THEME_LIMIT: "Oʻz mavzularingiz {max} tadan oshmasin — yangisini qoʻshish uchun keraksizini olib tashlang",
+  BOARD_NOT_FOUND: "Doska topilmadi",
+  BOARD_LIMIT: "Oʻz doskalaringiz {max} tadan oshmasin — yangisini qoʻshish uchun keraksizini olib tashlang",
 } satisfies Messages<typeof ru>;

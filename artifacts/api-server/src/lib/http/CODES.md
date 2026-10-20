@@ -360,6 +360,8 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `REWARD_NOT_YOUR_TRADER` | 403 | Grant / decline by a curator who is not the trader's assigned curator (admins may). | — |
 | `THEME_NOT_FOUND` | 404 | PUT /api/themes/:id or /api/themes/mine/:id (another user's or no such theme) (themes are archived, never deleted). | — |
 | `THEME_LIMIT` | 409 | POST /api/themes/mine (or a restore) over the 10 active personal themes per user. | `params.max` |
+| `BOARD_NOT_FOUND` | 404 | /api/themes/boards/:id (or POST /api/themes/mine boardId): not the caller's board, archived, or the wrong kind. | — |
+| `BOARD_LIMIT` | 409 | POST /api/themes/boards over the 8 active boards per user. | `params.max` |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.
 

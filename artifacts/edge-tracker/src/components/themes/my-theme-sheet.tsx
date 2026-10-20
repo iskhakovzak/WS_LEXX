@@ -33,7 +33,7 @@ function useScreenerProblem(text: string): { problem: string | null; ok: string 
   return { problem: t("my.filterEmpty"), ok: null };
 }
 
-function MyThemeForm({ initial, finviz, onDone }: { initial: BoardTheme | null; finviz: boolean; onDone: () => void }) {
+function MyThemeForm({ initial, boardId, finviz, onDone }: { initial: BoardTheme | null; boardId: number | null; finviz: boolean; onDone: () => void }) {
   const { t } = themesI18n.useT();
   const save = useSaveMine();
   const mine = initial?.mine ?? null;
@@ -69,6 +69,7 @@ function MyThemeForm({ initial, finviz, onDone }: { initial: BoardTheme | null; 
     const draft: MineDraft = kind === "tickers"
       ? { name: name.trim(), kind, tickers: tickers.tickers }
       : { name: name.trim(), kind, screener: filterText, order: mine?.screener?.order ?? null };
+    if (!initial && boardId != null) draft.boardId = boardId;
     try {
       await save.mutateAsync({ id: initial?.id ?? null, draft });
       toast({ title: initial ? t("config.saved") : t("config.created") });
@@ -129,8 +130,8 @@ function MyThemeForm({ initial, finviz, onDone }: { initial: BoardTheme | null; 
   );
 }
 
-/** `editing`: undefined = closed, null = new theme, a theme = edit it. */
-export function MyThemeSheet({ editing, finviz, onClose }: { editing: BoardTheme | null | undefined; finviz: boolean; onClose: () => void }) {
+/** `editing`: undefined = closed, null = new theme (on `boardId`), a theme = edit it. */
+export function MyThemeSheet({ editing, boardId, finviz, onClose }: { editing: BoardTheme | null | undefined; boardId: number | null; finviz: boolean; onClose: () => void }) {
   const { t } = themesI18n.useT();
   const mobile = useIsMobile();
   return (
@@ -143,7 +144,7 @@ export function MyThemeSheet({ editing, finviz, onClose }: { editing: BoardTheme
           <SheetTitle>{editing ? t("my.titleEdit") : t("my.titleNew")}</SheetTitle>
           <SheetDescription>{t("my.desc")}</SheetDescription>
         </SheetHeader>
-        {editing !== undefined && <MyThemeForm key={editing?.key ?? "new"} initial={editing} finviz={finviz} onDone={onClose} />}
+        {editing !== undefined && <MyThemeForm key={editing?.key ?? "new"} initial={editing} boardId={boardId} finviz={finviz} onDone={onClose} />}
       </SheetContent>
     </Sheet>
   );

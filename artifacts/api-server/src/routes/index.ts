@@ -92,6 +92,7 @@ import gamificationRouter from "./gamification";
 import usageRouter from "./usage";
 import finvizRouter from "./finviz";
 import themesRouter from "./themes";
+import themesBoardsRouter from "./themes-boards";
 import newsChannelRouter from "./news-channel";
 
 const router: IRouter = Router();
@@ -189,6 +190,7 @@ router.use(gamificationRouter);
 router.use(usageRouter);
 router.use(finvizRouter); // Finviz Elite: screener, ticker snapshot, earnings calendar (lib/finviz)
 router.use(themesRouter); // «Темы рынка»: theme tracker (lib/themes)
+router.use(themesBoardsRouter); // «Темы рынка»: personal boards (lib/themes/board*)
 router.use(newsChannelRouter); // WS_NEWS channel briefs: admin preview / send-now (lib/newsChannel)
 
 export default router;

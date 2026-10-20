@@ -349,4 +349,6 @@ export default {
   REWARD_NOT_YOUR_TRADER: "Rewards are handed over by this trader’s curator or an admin",
   THEME_NOT_FOUND: "Theme not found",
   THEME_LIMIT: "At most {max} own themes — remove one to add another",
+  BOARD_NOT_FOUND: "Board not found",
+  BOARD_LIMIT: "At most {max} own boards — remove one to add another",
 } satisfies Messages<typeof ru>;

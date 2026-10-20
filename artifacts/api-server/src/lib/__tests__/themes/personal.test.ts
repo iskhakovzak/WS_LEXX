@@ -4,23 +4,23 @@
  * personal quotes fetched only for missing / stale tickers.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import type { MemberQuote, ThemesResponse } from "../../themes/logic";
+import type { MemberQuote } from "../../themes/logic";
 import {
   DEFAULT_VIEW, MAX_PERSONAL_THEMES, MAX_SCREENER_FILTERS, RESOLVE_TTL_MS, SCREENER_TOP, normalizeView, parseScreenerInput, resolveStale, screenerKey,
 } from "../../themes/personal";
 import { FAIL_BACKOFF_MS, MAX_AGE_MS, isFresh, quotesFor, seedQuotes, setTickerCacheDeps } from "../../themes/tickerCache";
 import { resolveScreener, setScreenerDeps } from "../../themes/screener";
-import { getBoard, setBoardDeps } from "../../themes/board";
-import type { PersonalRecord } from "../../themes/personalStore";
 
 const q = (ticker: string, today: number): MemberQuote => ({ ticker, price: 10, today, fromOpen: today / 2, premarket: null, afterHours: null });
 const TODAY = "2026-10-20";
 
 describe("view", () => {
   it("keeps known columns in table order, ≥ 1; hidden = unique positive ids", () => {
-    expect(normalizeView({ columns: ["today", "premarket", "week"], hidden: [3, 3, -1, 2.5, 7] })).toEqual({ columns: ["premarket", "today"], hidden: [3, 7] });
+    expect(normalizeView({ columns: ["today", "premarket", "week"], hidden: [3, 3, -1, 2.5, 7] })).toEqual({ columns: ["premarket", "today"], hidden: [3, 7], sort: null, tab: "shared" });
     expect(normalizeView({ columns: [] })).toEqual(DEFAULT_VIEW);
-    expect(normalizeView(null)).toEqual({ columns: ["premarket", "fromOpen", "today", "afterHours"], hidden: [] });
+    expect(normalizeView(null)).toEqual({ columns: ["premarket", "fromOpen", "today", "afterHours"], hidden: [], sort: null, tab: "shared" });
+    expect(normalizeView({ sort: { col: "today", dir: "asc" }, tab: 12 })).toMatchObject({ sort: { col: "today", dir: "asc" }, tab: 12 });
+    expect(normalizeView({ sort: { col: "gap", dir: "asc" }, tab: -1 })).toMatchObject({ sort: null, tab: "shared" });
   });
 });
 
@@ -126,61 +126,20 @@ describe("per-ticker cache", () => {
   });
 });
 
-describe("screener resolution and the merged board", () => {
+describe("screener resolution", () => {
   const restores: (() => void)[] = [];
   afterEach(() => { while (restores.length) restores.pop()!(); });
 
-  const base: ThemesResponse = { asOf: "2026-10-20T15:00:00.000Z", session: "rth", source: "finviz", stale: false, themes: [] };
-  const rec = (over: Partial<PersonalRecord>): PersonalRecord => ({
-    id: 1, userId: 7, name: "Mine", kind: "tickers", tickers: ["MU", "WDC"], screener: null, resolvedTickers: [], resolvedAt: null, active: true, ...over,
-  });
-
-  it("top 25 of the export, one run per screener key per hour; Finviz off → null", async () => {
+  it("top 50 of the export (themes take 25, boards 25 / 50), one run per screener key per hour; Finviz off → null", async () => {
     let runs = 0;
-    restores.push(setScreenerDeps({ enabled: () => true, now: () => 0, run: async () => { runs++; return Array.from({ length: 40 }, (_, i) => `S${i}`); } }));
+    restores.push(setScreenerDeps({ enabled: () => true, now: () => 0, run: async () => { runs++; return Array.from({ length: 70 }, (_, i) => `S${i}`); } }));
     const a = await resolveScreener({ filters: ["sec_energy"], order: null });
     const b = await resolveScreener({ filters: ["sec_energy"], order: null });
-    expect(a!.tickers).toHaveLength(25);
+    expect(a!.tickers).toHaveLength(50);
+    expect(SCREENER_TOP).toBe(25);
     expect(b).toBe(a);
     expect(runs).toBe(1);
     restores.push(setScreenerDeps({ enabled: () => false }));
     expect(await resolveScreener({ filters: ["sec_energy"], order: null })).toBeNull();
-  });
-
-  it("personal themes merge with their own quotes; a screener resolves and is stored; guests get none", async () => {
-    restores.push(setScreenerDeps({ enabled: () => true, now: () => Date.UTC(2026, 9, 20, 15), run: async () => ["NVDA", "AMD"] }));
-    const saved: unknown[] = [];
-    const asked: string[][] = [];
-    restores.push(setBoardDeps({
-      now: () => Date.UTC(2026, 9, 20, 15),
-      base: async () => base,
-      listPersonal: async () => [rec({}), rec({ id: 2, name: "Chips", kind: "screener", tickers: [], screener: { filters: ["ind_semiconductors"], order: null } })],
-      readView: async () => ({ columns: ["today"], hidden: [4] }),
-      saveResolved: async (id, tickers) => { saved.push([id, tickers]); },
-      quotesFor: async (t) => { asked.push([...t]); return new Map(t.filter((x) => x !== "WDC").map((x) => [x, q(x, x === "MU" ? 2 : 4)])); },
-    }));
-    const b = await getBoard(7);
-    expect(asked).toEqual([["MU", "WDC", "NVDA", "AMD"]]);
-    expect(saved).toEqual([[2, ["NVDA", "AMD"]]]);
-    expect(b.view).toEqual({ columns: ["today"], hidden: [4] });
-    expect(b.finviz).toBe(true);
-    expect(b.personal.map((p) => [p.id, p.kind, p.today, p.missing, p.needsFinviz])).toEqual([[1, "tickers", 2, ["WDC"], false], [2, "screener", 4, [], false]]);
-    expect(b.personal[1]!.tickers).toEqual(["NVDA", "AMD"]);
-    const guest = await getBoard(null);
-    expect([guest.personal, guest.view]).toEqual([[], DEFAULT_VIEW]);
-  });
-
-  it("Finviz off: a screener theme says it needs Finviz and is not resolved", async () => {
-    restores.push(setScreenerDeps({ enabled: () => false }));
-    restores.push(setBoardDeps({
-      base: async () => base,
-      listPersonal: async () => [rec({ kind: "screener", tickers: [], screener: { filters: ["sec_energy"], order: null } })],
-      readView: async () => DEFAULT_VIEW,
-      saveResolved: async () => { throw new Error("must not save"); },
-      quotesFor: async () => { throw new Error("no tickers, no quotes"); },
-    }));
-    const b = await getBoard(7);
-    expect(b.finviz).toBe(false);
-    expect(b.personal[0]).toMatchObject({ kind: "screener", needsFinviz: true, members: [], tickers: [], today: null });
   });
 });

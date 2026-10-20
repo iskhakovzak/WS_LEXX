@@ -105,7 +105,26 @@ export function normalizeTickers(input: readonly string[] | string): { tickers: 
 // ─── provider rows → MemberQuote ────────────────────────────────────────────
 
 /** The fields of a Finviz export row the themes use (lib/finviz/csv FinvizRow). */
-export type FinvizLike = { ticker: string; price: number | null; changePct: number | null; gapPct: number | null };
+export type FinvizLike = {
+  ticker: string;
+  price: number | null;
+  changePct: number | null;
+  gapPct: number | null;
+  relVolume?: number | null;
+  float?: number | null;
+};
+
+/** Per-ticker context of the tickers boards: gap % (open vs previous close), relative volume, float (shares). */
+export type TickerExtras = { gap: number | null; rvol: number | null; float: number | null };
+export const NO_EXTRAS: TickerExtras = { gap: null, rvol: null, float: null };
+
+export function extrasFromFinviz(row: FinvizLike, session: ThemeSession): TickerExtras {
+  return {
+    gap: session === "pre" ? null : round2(finite(row.gapPct) ? row.gapPct : null),
+    rvol: round2(finite(row.relVolume) ? row.relVolume : null),
+    float: finite(row.float) && row.float > 0 ? row.float : null,
+  };
+}
 
 export function quoteFromFinviz(row: FinvizLike, session: ThemeSession): MemberQuote {
   const today = finite(row.changePct) ? row.changePct : null;
@@ -133,6 +152,8 @@ export type YahooQuoteLike = {
   postMarketPrice?: number | null;
   postMarketTime?: number | null;
   postMarketChangePercent?: number | null;
+  regularMarketVolume?: number | null;
+  averageDailyVolume3Month?: number | null;
 };
 
 const dayOf = (sec: number | null | undefined): string | null => (finite(sec) && sec > 0 ? nyDate(new Date(sec * 1000)) : null);
@@ -189,6 +210,22 @@ export function quoteFromYahoo(q: YahooQuoteLike, session: ThemeSession, today: 
   if (session === "post" && finite(q.postMarketPrice) && dayOf(q.postMarketTime) === today) price = q.postMarketPrice;
   if (price == null) return null;
   return { ticker, price, today: round2(pctChange(price, prev)), fromOpen: round2(pctChange(price, open)), ...ext };
+}
+
+/**
+ * Yahoo quote → gap / RVOL for the session the page describes (float: Yahoo's quote has none → null; the Finviz
+ * snapshot fills it). Gap = today's open vs the previous close (none before the open); RVOL = the session's volume /
+ * the 3-month average volume (not time-of-day adjusted).
+ */
+export function extrasFromYahoo(q: YahooQuoteLike, session: ThemeSession, today: string): TickerExtras {
+  const regDay = dayOf(q.regularMarketTime);
+  const sameDay = session === "closed" || regDay === today;
+  if (session === "pre" || !sameDay) return { ...NO_EXTRAS };
+  const prev = finite(q.regularMarketPreviousClose) ? q.regularMarketPreviousClose : null;
+  const open = finite(q.regularMarketOpen) ? q.regularMarketOpen : null;
+  const vol = finite(q.regularMarketVolume) ? q.regularMarketVolume : null;
+  const avg = finite(q.averageDailyVolume3Month) && q.averageDailyVolume3Month > 0 ? q.averageDailyVolume3Month : null;
+  return { gap: round2(pctChange(open, prev)), rvol: vol != null && avg != null ? round2(vol / avg) : null, float: null };
 }
 
 // ─── aggregation ────────────────────────────────────────────────────────────

@@ -14,13 +14,16 @@ import { finvizEnabled } from "../finviz/presets";
 import { fetchYahooWithSession } from "../marketDataService";
 import { logger } from "../logger";
 import {
-  quoteFromFinviz, quoteFromYahoo, type FinvizLike, type MemberQuote, type ThemeSession, type ThemeSource, type YahooQuoteLike,
+  extrasFromFinviz, extrasFromYahoo, quoteFromFinviz, quoteFromYahoo, type FinvizLike, type MemberQuote, type ThemeSession, type ThemeSource,
+  type TickerExtras, type YahooQuoteLike,
 } from "./logic";
 
 export const YAHOO_BATCH = 50;
 const YAHOO_PARALLEL = 3;
 
-export type QuotesResult = { source: ThemeSource; quotes: Map<string, MemberQuote> };
+/** `extras` (gap / RVOL / float per ticker) is optional: a provider (or a test double) may not send it. */
+export type QuotesResult = { source: ThemeSource; quotes: Map<string, MemberQuote>; extras?: Map<string, TickerExtras> };
+type Got = { quotes: Map<string, MemberQuote>; extras: Map<string, TickerExtras> };
 
 export type QuoteDeps = {
   finvizOn: () => boolean;
@@ -46,19 +49,21 @@ export const LIVE_QUOTE_DEPS: QuoteDeps = {
 
 const hasMove = (q: MemberQuote) => q.today != null || q.price != null;
 
-async function fromFinviz(tickers: readonly string[], session: ThemeSession, today: string, deps: QuoteDeps): Promise<Map<string, MemberQuote>> {
-  const out = new Map<string, MemberQuote>();
+async function fromFinviz(tickers: readonly string[], session: ThemeSession, today: string, deps: QuoteDeps): Promise<Got> {
+  const out: Got = { quotes: new Map(), extras: new Map() };
   const { rows, errors } = await deps.finviz(tickers, today);
   for (const r of rows) {
     const q = quoteFromFinviz(r, session);
-    if (hasMove(q)) out.set(q.ticker, q);
+    if (!hasMove(q)) continue;
+    out.quotes.set(q.ticker, q);
+    out.extras.set(q.ticker, extrasFromFinviz(r, session));
   }
-  if (errors.length) logger.warn({ errors: errors.slice(0, 3), got: out.size }, "themes: finviz batches failed");
+  if (errors.length) logger.warn({ errors: errors.slice(0, 3), got: out.quotes.size }, "themes: finviz batches failed");
   return out;
 }
 
-async function fromYahoo(tickers: readonly string[], session: ThemeSession, today: string, deps: QuoteDeps): Promise<Map<string, MemberQuote>> {
-  const out = new Map<string, MemberQuote>();
+async function fromYahoo(tickers: readonly string[], session: ThemeSession, today: string, deps: QuoteDeps): Promise<Got> {
+  const out: Got = { quotes: new Map(), extras: new Map() };
   const batches: string[][] = [];
   for (let i = 0; i < tickers.length; i += YAHOO_BATCH) batches.push(tickers.slice(i, i + YAHOO_BATCH));
   let next = 0;
@@ -71,7 +76,9 @@ async function fromYahoo(tickers: readonly string[], session: ThemeSession, toda
         if (!res) { failed++; continue; }
         for (const raw of res) {
           const q = quoteFromYahoo(raw, session, today);
-          if (q && hasMove(q)) out.set(q.ticker, q);
+          if (!q || !hasMove(q)) continue;
+          out.quotes.set(q.ticker, q);
+          out.extras.set(q.ticker, extrasFromYahoo(raw, session, today));
         }
       } catch (err) {
         failed++;
@@ -80,7 +87,7 @@ async function fromYahoo(tickers: readonly string[], session: ThemeSession, toda
     }
   };
   await Promise.all(Array.from({ length: Math.min(YAHOO_PARALLEL, batches.length) }, worker));
-  if (failed) logger.warn({ failed, batches: batches.length, got: out.size }, "themes: yahoo batches failed");
+  if (failed) logger.warn({ failed, batches: batches.length, got: out.quotes.size }, "themes: yahoo batches failed");
   return out;
 }
 
@@ -89,7 +96,7 @@ async function fillExtended(quotes: Map<string, MemberQuote>, session: ThemeSess
   try {
     const extra = await fromYahoo([...quotes.keys()], session, today, deps);
     for (const [t, q] of quotes) {
-      const y = extra.get(t);
+      const y = extra.quotes.get(t);
       if (y) quotes.set(t, { ...q, premarket: y.premarket, afterHours: y.afterHours });
     }
   } catch (err) {
@@ -105,16 +112,16 @@ export async function fetchThemeQuotes(
 ): Promise<QuotesResult> {
   if (deps.finvizOn()) {
     try {
-      const quotes = await fromFinviz(tickers, session, today, deps);
-      if (quotes.size) {
-        await fillExtended(quotes, session, today, deps);
-        return { source: "finviz", quotes };
+      const got = await fromFinviz(tickers, session, today, deps);
+      if (got.quotes.size) {
+        await fillExtended(got.quotes, session, today, deps);
+        return { source: "finviz", ...got };
       }
     } catch (err) {
       logger.warn({ error: err instanceof Error ? err.message : String(err) }, "themes: finviz failed, trying yahoo");
     }
   }
-  const quotes = await fromYahoo(tickers, session, today, deps);
-  if (!quotes.size) throw new Error("themes: no quotes from any provider");
-  return { source: "yahoo", quotes };
+  const got = await fromYahoo(tickers, session, today, deps);
+  if (!got.quotes.size) throw new Error("themes: no quotes from any provider");
+  return { source: "yahoo", ...got };
 }

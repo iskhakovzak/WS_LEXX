@@ -62,7 +62,7 @@ function refresh(tickers: string[], session: ThemeSession, today: string): Promi
     try {
       const res = await deps.fetchQuotes(tickers, session, today);
       cache = { quotes: res.quotes, asOf: deps.now(), source: res.source, session, tickers: new Set(tickers) };
-      seedQuotes(res.quotes, session, cache.asOf); // personal themes reuse base quotes (lib/themes/tickerCache)
+      seedQuotes(res.quotes, session, cache.asOf, res.extras); // personal themes / boards reuse base quotes (lib/themes/tickerCache)
     } catch (err) {
       lastFailAt = deps.now();
       logger.warn({ error: err instanceof Error ? err.message : String(err) }, "themes: quote refresh failed");
@@ -74,6 +74,13 @@ function refresh(tickers: string[], session: ThemeSession, today: string): Promi
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.());
+
+/** The NY session and date right now (boards read quotes for it without touching the shared board). */
+export async function sessionNow(): Promise<{ session: ThemeSession; today: string; now: number }> {
+  const now = deps.now();
+  const today = nyDate(new Date(now));
+  return { session: themeSession(new Date(now), await deps.isClosed(today)), today, now };
+}
 
 export async function getThemes(): Promise<ThemesResponse> {
   const now = deps.now();

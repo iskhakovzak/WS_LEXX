@@ -39,8 +39,13 @@ const mine = vi.hoisted(() => ({
   personalById: vi.fn(),
   updatePersonal: vi.fn(async (_u: number, id: number, p: Record<string, unknown>, cur: Record<string, unknown>) => ({ ...cur, ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)), id })),
   writeView: vi.fn(async (_id: number, v: unknown) => v),
+  readView: vi.fn(async () => ({ columns: ["premarket", "fromOpen", "today", "afterHours"], hidden: [9], sort: null, tab: "shared" })),
 }));
 vi.mock("../../lib/themes/personalStore", () => mine);
+const boards = vi.hoisted(() => ({
+  boardById: vi.fn(async (userId: number, id: number) => (userId === 5 && id === 4 ? { id: 4, userId: 5, kind: "themes", active: true } : null)),
+}));
+vi.mock("../../lib/themes/boardsStore", () => boards);
 const shared = vi.hoisted(() => ({
   listThemes: vi.fn(async () => []),
   themeById: vi.fn(async () => ({ id: 2, name: "AI", tickers: ["NVDA"], sortOrder: 10, active: true })),
@@ -107,9 +112,13 @@ describe("shared themes are admin-only (settings.manage)", () => {
 describe("view", () => {
   it("saves visible columns (≥ 1, table order) and hidden ids; refuses junk and guests", async () => {
     const r = await call("PUT", "/api/themes/view", { columns: ["today", "premarket"], hidden: [3] });
-    expect(r.json).toEqual({ columns: ["premarket", "today"], hidden: [3] });
-    expect(mine.writeView).toHaveBeenCalledWith(5, { columns: ["premarket", "today"], hidden: [3] });
+    expect(r.json).toEqual({ columns: ["premarket", "today"], hidden: [3], sort: null, tab: "shared" });
+    expect(mine.writeView).toHaveBeenCalledWith(5, { columns: ["premarket", "today"], hidden: [3], sort: null, tab: "shared" });
+    // A partial save merges with the stored view (here: the sort and the last tab only).
+    const p = await call("PUT", "/api/themes/view", { sort: { col: "today", dir: "asc" }, tab: 4 });
+    expect(p.json).toEqual({ columns: ["premarket", "fromOpen", "today", "afterHours"], hidden: [9], sort: { col: "today", dir: "asc" }, tab: 4 });
     expect((await call("PUT", "/api/themes/view", { columns: [] })).status).toBe(400);
+    expect((await call("PUT", "/api/themes/view", { tab: "mine" })).status).toBe(400);
     expect((await call("PUT", "/api/themes/view", { columns: ["week"] })).status).toBe(400);
     who = GUEST;
     expect((await call("PUT", "/api/themes/view", { columns: ["today"] })).json.code).toBe("GUEST_READ_ONLY");
@@ -118,24 +127,27 @@ describe("view", () => {
 
 describe("«Мои темы»", () => {
   it("tickers theme: created for the caller; ≤ 10 per user", async () => {
-    const r = await call("POST", "/api/themes/mine", { name: "Mine", kind: "tickers", tickers: ["mu", "ionq"] });
+    const r = await call("POST", "/api/themes/mine", { boardId: 4, name: "Mine", kind: "tickers", tickers: ["mu", "ionq"] });
     expect(r.status).toBe(200);
-    expect(mine.insertPersonal).toHaveBeenCalledWith(5, { name: "Mine", kind: "tickers", tickers: ["MU", "IONQ"], screener: null });
-    expect((await call("POST", "/api/themes/mine", { name: "Mine", kind: "tickers" })).status).toBe(400);
+    expect(mine.insertPersonal).toHaveBeenCalledWith(5, { name: "Mine", kind: "tickers", tickers: ["MU", "IONQ"], screener: null, boardId: 4 });
+    expect((await call("POST", "/api/themes/mine", { boardId: 4, name: "Mine", kind: "tickers" })).status).toBe(400);
+    // Only onto one of the caller's own themes boards.
+    expect((await call("POST", "/api/themes/mine", { boardId: 77, name: "X", kind: "tickers", tickers: ["MU"] })).json.code).toBe("BOARD_NOT_FOUND");
+    expect((await call("POST", "/api/themes/mine", { name: "X", kind: "tickers", tickers: ["MU"] })).status).toBe(400);
     mine.countPersonal.mockResolvedValue(10);
-    const over = await call("POST", "/api/themes/mine", { name: "Eleventh", kind: "tickers", tickers: ["MU"] });
+    const over = await call("POST", "/api/themes/mine", { boardId: 4, name: "Eleventh", kind: "tickers", tickers: ["MU"] });
     expect([over.status, over.json.code]).toEqual([409, "THEME_LIMIT"]);
   });
 
   it("screener from a pasted URL: only f / o kept, the auth token is neither stored nor echoed", async () => {
     const url = "https://elite.finviz.com/screener.ashx?v=111&f=sec_technology,cap_large&o=-volume&auth=SECRET-TOKEN";
-    const r = await call("POST", "/api/themes/mine", { name: "Tech", kind: "screener", screener: url });
+    const r = await call("POST", "/api/themes/mine", { boardId: 4, name: "Tech", kind: "screener", screener: url });
     expect(r.status).toBe(200);
-    expect(mine.insertPersonal).toHaveBeenCalledWith(5, { name: "Tech", kind: "screener", tickers: [], screener: { filters: ["sec_technology", "cap_large"], order: "-volume" } });
+    expect(mine.insertPersonal).toHaveBeenCalledWith(5, { name: "Tech", kind: "screener", tickers: [], screener: { filters: ["sec_technology", "cap_large"], order: "-volume" }, boardId: 4 });
     expect(r.text).not.toContain("SECRET");
     expect(JSON.stringify(mine.insertPersonal.mock.calls)).not.toContain("SECRET");
     expect(board.refreshScreener).toHaveBeenCalledTimes(1);
-    const bad = await call("POST", "/api/themes/mine", { name: "Bad", kind: "screener", screener: "sec_technology,<x>" });
+    const bad = await call("POST", "/api/themes/mine", { boardId: 4, name: "Bad", kind: "screener", screener: "sec_technology,<x>" });
     expect([bad.status, bad.json.details?.[0]?.path]).toEqual([400, "body.screener"]);
   });
 

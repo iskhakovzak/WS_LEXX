@@ -1,9 +1,9 @@
 /**
- * «Темы рынка» — the API shapes (api-server lib/themes/logic.ts) and the pure view logic of the heat-table (unit-tested
- * in model.test.ts): the default sort column per session (visible columns only), the header click cycle, sorting
- * (unknown always last), the two halves on wide screens, cell intensity, leaders / laggards, the per-user view
- * (visible columns, hidden base themes), merging «Мои темы» into the board, Finviz screener input, polling, ticker input.
- * Percentages are percent units (1.25 = 1.25 %); null = unknown.
+ * «Темы рынка» — the API shapes (api-server lib/themes/*) and the pure view logic of the workspace (unit-tested in
+ * model.test.ts): the default sort column per session (visible, non-empty columns only), the header click cycle, sorting
+ * (unknown always last), the two halves on wide screens, cell intensity, empty-column rails, market breadth, the per-user
+ * view (visible columns, hidden shared themes, sort, last tab), boards as tabs, Finviz screener input, the «В план дня»
+ * date, polling, ticker input. Percentages are percent units (1.25 = 1.25 %); null = unknown.
  */
 
 export type ThemeSession = "pre" | "rth" | "post" | "closed";
@@ -15,15 +15,13 @@ export type ThemeSource = "finviz" | "yahoo";
  */
 export type ThemeMetric = "premarket" | "fromOpen" | "today" | "afterHours";
 export const METRICS: readonly ThemeMetric[] = ["premarket", "fromOpen", "today", "afterHours"];
+/** Tickers boards add gap %, relative volume and float (shares). */
+export type BoardColumn = ThemeMetric | "gap" | "rvol" | "float";
+export const TICKER_COLUMNS: readonly BoardColumn[] = [...METRICS, "gap", "rvol", "float"];
+/** Signed % columns: tinted cells, counted in the breadth strip. */
+export const isSigned = (c: BoardColumn): boolean => c !== "rvol" && c !== "float";
 
-export type MemberQuote = {
-  ticker: string;
-  price: number | null;
-  today: number | null;
-  fromOpen: number | null;
-  premarket: number | null;
-  afterHours: number | null;
-};
+export type MemberQuote = { ticker: string; price: number | null; today: number | null; fromOpen: number | null; premarket: number | null; afterHours: number | null };
 
 export type ThemeOut = {
   id: number;
@@ -36,18 +34,35 @@ export type ThemeOut = {
   missing: string[];
 };
 
-/** Visible columns (≥ 1, table order) and base themes this user hid — users.settings.themesView on the server. */
-export type ThemesView = { columns: ThemeMetric[]; hidden: number[] };
+export type SortDir = "desc" | "asc";
+export type ColSort<C extends string = ThemeMetric> = { col: C; dir: SortDir };
+export type ThemeSort = ColSort<ThemeMetric>;
+export type BoardTab = "shared" | number;
+
+/** Visible columns, hidden shared themes, the shared board's sort (null = session default), the last tab. */
+export type ThemesView = { columns: ThemeMetric[]; hidden: number[]; sort: ThemeSort | null; tab: BoardTab };
 export type ScreenerSpec = { filters: string[]; order: string | null };
 
-/** «Мои темы»: only the owner gets them. */
-export type PersonalThemeOut = ThemeOut & {
-  kind: "tickers" | "screener";
-  tickers: string[];
-  screener: ScreenerSpec | null;
-  needsFinviz: boolean;
+/** «Мои темы» on a themes board (only the owner gets them). */
+export type PersonalThemeOut = ThemeOut & { kind: "tickers" | "screener"; tickers: string[]; screener: ScreenerSpec | null; needsFinviz: boolean; resolvedAt: string | null };
+
+export type BoardKind = "themes" | "tickers";
+export type BoardSource = { kind: "tickers"; tickers: string[] } | { kind: "screener"; screener: ScreenerSpec; top: 25 | 50 };
+/** A personal board (tab): name, columns and sort of its own. */
+export type BoardMeta = {
+  id: number;
+  name: string;
+  kind: BoardKind;
+  position: number;
+  columns: BoardColumn[];
+  sort: ColSort<BoardColumn> | null;
+  pinned: number[];
+  source: BoardSource | null;
   resolvedAt: string | null;
 };
+
+/** One row of a tickers board. */
+export type TickerRow = Record<BoardColumn, number | null> & { ticker: string; price: number | null };
 
 /** GET /api/themes */
 export type ThemesResponse = {
@@ -56,25 +71,23 @@ export type ThemesResponse = {
   source: ThemeSource | null;
   stale: boolean;
   themes: ThemeOut[];
-  personal: PersonalThemeOut[];
   view: ThemesView;
-  /** Finviz is on: screener themes resolve. */
+  boards: BoardMeta[];
+  /** Finviz is on: screeners resolve. */
   finviz: boolean;
 };
 
-/** A table row: a base theme (`b<id>`) or one of the user's (`p<id>`, `mine` set). */
+type BoardCommon = { board: BoardMeta; session: ThemeSession; finviz: boolean };
+/** GET /api/themes/boards/:id */
+export type BoardData =
+  | (BoardCommon & { kind: "themes"; asOf: string | null; stale: boolean; themes: ThemeOut[]; personal: PersonalThemeOut[] })
+  | (BoardCommon & { kind: "tickers"; rows: TickerRow[]; missing: string[]; needsFinviz: boolean; resolvedAt: string | null });
+
+/** A themes-table row: a shared theme (`b<id>`) or one of the user's (`p<id>`, `mine` set). */
 export type BoardTheme = ThemeOut & { key: string; mine: Omit<PersonalThemeOut, keyof ThemeOut> | null };
 
-/** GET /api/themes/config (staff), POST / PUT answers. */
-export type ThemeRecord = {
-  id: number;
-  name: string;
-  tickers: string[];
-  sortOrder: number;
-  active: boolean;
-  updatedBy: string | null;
-  updatedAt: string;
-};
+/** GET /api/themes/config (admin), POST / PUT answers. */
+export type ThemeRecord = { id: number; name: string; tickers: string[]; sortOrder: number; active: boolean; updatedBy: string | null; updatedAt: string };
 
 export const POLL_MS = 30_000;
 
@@ -85,75 +98,69 @@ export function pollInterval(session: ThemeSession | null | undefined): number |
 
 export const isLiveSession = (s: ThemeSession | null | undefined): boolean => pollInterval(s) !== false;
 
-const val = (v: number | null | undefined): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const val = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+type Valued<C extends string> = { readonly [K in C]?: number | null };
 
 export function isMetric(v: unknown): v is ThemeMetric {
   return typeof v === "string" && (METRICS as readonly string[]).includes(v);
 }
 
-/** Some theme has a value for the metric right now (else its header is dimmed with «appears at …»). */
-export function hasValues(themes: readonly ThemeOut[], metric: ThemeMetric): boolean {
-  return themes.some((t) => val(t[metric]) != null);
+/** Some row has a value in the column right now. */
+export function hasValues<C extends string>(rows: readonly Valued<C>[], col: C): boolean {
+  return rows.some((r) => val(r[col]) != null);
+}
+
+/** The visible columns without a single value right now (shown as a narrow rail with «appears at …»). */
+export function emptyColumns<C extends string>(rows: readonly Valued<C>[], visible: readonly C[]): C[] {
+  return visible.filter((c) => !hasValues(rows, c));
 }
 
 // ─── sorting ────────────────────────────────────────────────────────────────
 
-export type SortDir = "desc" | "asc";
-export type ThemeSort = { col: ThemeMetric; dir: SortDir };
-
-export function isSort(v: unknown): v is ThemeSort {
-  const s = v as ThemeSort | null;
-  return !!s && typeof s === "object" && isMetric(s.col) && (s.dir === "desc" || s.dir === "asc");
+export function isSortOf<C extends string>(v: unknown, cols: readonly C[]): v is ColSort<C> {
+  const s = v as ColSort<C> | null;
+  return !!s && typeof s === "object" && cols.includes(s.col) && (s.dir === "desc" || s.dir === "asc");
 }
 
 /** The column that matters most in each session. */
-export const SESSION_COLUMN: Readonly<Record<ThemeSession, ThemeMetric>> = {
-  pre: "premarket",
-  rth: "fromOpen",
-  post: "afterHours",
-  closed: "today",
-};
+export const SESSION_COLUMN: Readonly<Record<ThemeSession, ThemeMetric>> = { pre: "premarket", rth: "fromOpen", post: "afterHours", closed: "today" };
 
 /**
  * Default sort column among the visible ones: the session's one when it has values now, else the first visible that
- * has (today, fromOpen, …), else «За день» (or the first visible).
+ * has (today, fromOpen, premarket, afterHours, the rest), else «За день» (or the first visible).
  */
-export function defaultColumn(session: ThemeSession, themes: readonly ThemeOut[], visible: readonly ThemeMetric[] = METRICS): ThemeMetric {
-  const cols = visible.length ? visible : METRICS;
-  const order: ThemeMetric[] = [SESSION_COLUMN[session], "today", "fromOpen", "premarket", "afterHours"];
-  return order.find((m) => cols.includes(m) && hasValues(themes, m)) ?? (cols.includes("today") ? "today" : cols[0]!);
+export function defaultColumn<C extends string>(session: ThemeSession, rows: readonly Valued<C>[], visible: readonly C[]): C {
+  const prefer = [SESSION_COLUMN[session], "today", "fromOpen", "premarket", "afterHours"] as string[];
+  const order = [...prefer.filter((c) => visible.includes(c as C)), ...visible.filter((c) => !prefer.includes(c))] as C[];
+  return order.find((c) => hasValues(rows, c)) ?? ((visible.includes("today" as C) ? "today" : visible[0]) as C);
 }
 
-/** The user's stored sort when they picked one and its column is visible, else the session default (desc). */
-export function effectiveSort(stored: unknown, session: ThemeSession, themes: readonly ThemeOut[], visible: readonly ThemeMetric[] = METRICS): ThemeSort {
-  if (isSort(stored) && visible.includes(stored.col)) return stored;
-  return { col: defaultColumn(session, themes, visible), dir: "desc" };
+/** The user's stored sort when its column is visible, else the session default (desc). */
+export function effectiveSort<C extends string>(stored: unknown, session: ThemeSession, rows: readonly Valued<C>[], visible: readonly C[]): ColSort<C> {
+  if (isSortOf(stored, visible)) return stored;
+  return { col: defaultColumn(session, rows, visible), dir: "desc" };
 }
 
 /** Header click: another column → it, desc; same column desc → asc; asc → null (back to the default). */
-export function nextSort(current: ThemeSort, col: ThemeMetric): ThemeSort | null {
+export function nextSort<C extends string>(current: ColSort<C>, col: C): ColSort<C> | null {
   if (current.col !== col) return { col, dir: "desc" };
   return current.dir === "desc" ? { col, dir: "asc" } : null;
 }
 
-function byValue<T>(rows: readonly T[], get: (r: T) => number | null, label: (r: T) => string, dir: SortDir): T[] {
+/** Sorted by the column (unknown last in both directions), ties by label. */
+export function sortRows<R, C extends string>(rows: readonly R[], sort: ColSort<C>, get: (r: R, c: C) => number | null | undefined, label: (r: R) => string): R[] {
   return [...rows].sort((a, b) => {
-    const x = val(get(a));
-    const y = val(get(b));
+    const x = val(get(a, sort.col));
+    const y = val(get(b, sort.col));
     if (x == null && y == null) return label(a).localeCompare(label(b));
-    if (x == null) return 1; // unknown last in both directions
+    if (x == null) return 1;
     if (y == null) return -1;
-    return (dir === "desc" ? y - x : x - y) || label(a).localeCompare(label(b));
+    return (sort.dir === "desc" ? y - x : x - y) || label(a).localeCompare(label(b));
   });
 }
 
-export function sortThemes<T extends ThemeOut>(themes: readonly T[], sort: ThemeSort): T[] {
-  return byValue(themes, (t) => t[sort.col], (t) => t.name, sort.dir);
-}
-
-export function sortMembers(members: readonly MemberQuote[], sort: ThemeSort): MemberQuote[] {
-  return byValue(members, (m) => m[sort.col], (m) => m.ticker, sort.dir);
-}
+export const sortThemes = <T extends ThemeOut>(themes: readonly T[], sort: ThemeSort): T[] => sortRows(themes, sort, (t, c) => t[c], (t) => t.name);
+export const sortMembers = (members: readonly MemberQuote[], sort: ThemeSort): MemberQuote[] => sortRows(members, sort, (m, c) => m[c], (m) => m.ticker);
 
 /** Wide screens: ranks 1…⌈n/2⌉ left, the rest right. */
 export function splitHalves<T>(rows: readonly T[]): [T[], T[]] {
@@ -161,10 +168,10 @@ export function splitHalves<T>(rows: readonly T[]): [T[], T[]] {
   return [rows.slice(0, mid), rows.slice(mid)];
 }
 
-// ─── cells ──────────────────────────────────────────────────────────────────
+// ─── cells, breadth ─────────────────────────────────────────────────────────
 
 /** Largest |value| of a column (0 without values): the scale of its cell tint. */
-export function columnMax(rows: readonly Pick<ThemeOut, ThemeMetric>[], col: ThemeMetric): number {
+export function columnMax<C extends string>(rows: readonly Valued<C>[], col: C): number {
   let max = 0;
   for (const r of rows) {
     const v = val(r[col]);
@@ -180,33 +187,45 @@ export function cellIntensity(value: number | null | undefined, max: number): nu
   return Math.min(1, Math.abs(v) / max);
 }
 
-/**
- * The phone shows ≤ 2 of the visible columns: the active one and «За день» (for «За день» itself: «От открытия», or
- * the next visible one); in table order.
- */
-export function phoneColumns(col: ThemeMetric, visible: readonly ThemeMetric[] = METRICS): ThemeMetric[] {
+/** Phones show ≤ 2 of the visible columns: the active one and «За день» (for «За день»: «От открытия» or the next). */
+export function phoneColumns<C extends string>(col: C, visible: readonly C[]): C[] {
   const others = visible.filter((c) => c !== col);
-  const second = col === "today" ? (others.includes("fromOpen") ? "fromOpen" : others[0]) : others.includes("today") ? "today" : others[0];
-  const set = new Set<ThemeMetric>([col, ...(second ? [second] : [])]);
-  return METRICS.filter((c) => set.has(c));
+  const pick = (c: string) => (others as string[]).includes(c);
+  const second = col === "today" ? (pick("fromOpen") ? "fromOpen" : others[0]) : pick("today") ? "today" : others[0];
+  const set = new Set<string>([col, ...(second ? [second] : [])]);
+  return visible.filter((c) => set.has(c));
 }
 
-// ─── the user's view and themes ─────────────────────────────────────────────
+export type Breadth = { up: number; down: number; flat: number; total: number; median: number | null };
 
-export const DEFAULT_VIEW: ThemesView = { columns: [...METRICS], hidden: [] };
+/** «▲ 29 · ▼ 10» and the median move of a column (unknown values left out). */
+export function breadth(values: readonly (number | null | undefined)[]): Breadth {
+  const xs = values.map(val).filter((v): v is number => v != null).sort((a, b) => a - b);
+  const up = xs.filter((v) => v > 0).length;
+  const down = xs.filter((v) => v < 0).length;
+  const n = xs.length;
+  const median = n ? (n % 2 ? xs[(n - 1) / 2]! : (xs[n / 2 - 1]! + xs[n / 2]!) / 2) : null;
+  return { up, down, flat: n - up - down, total: n, median: median == null ? null : Math.round(median * 100) / 100 };
+}
+
+/** The breadth strip counts the active column when it is a signed move, else «За день». */
+export const breadthColumn = (col: BoardColumn): BoardColumn => (isSigned(col) ? col : "today");
+
+// ─── the user's view, shared rows ───────────────────────────────────────────
+
+export const DEFAULT_VIEW: ThemesView = { columns: [...METRICS], hidden: [], sort: null, tab: "shared" };
 export const MAX_PERSONAL = 10;
 
-/** Visible columns in table order (never empty). */
-export function visibleColumns(view: ThemesView | null | undefined): ThemeMetric[] {
+/** Visible shared-board columns in table order (never empty). */
+export function visibleColumns(view: Pick<ThemesView, "columns"> | null | undefined): ThemeMetric[] {
   const cols = METRICS.filter((m) => view?.columns?.includes(m));
   return cols.length ? cols : [...METRICS];
 }
 
-/** Checkbox click: show / hide a column; the last visible one stays. */
-export function toggleColumn(view: ThemesView, col: ThemeMetric): ThemesView {
-  const cols = visibleColumns(view);
-  const next = cols.includes(col) ? cols.filter((c) => c !== col) : METRICS.filter((m) => m === col || cols.includes(m));
-  return next.length ? { ...view, columns: next } : view;
+/** Checkbox click: show / hide a column (canonical order kept); the last visible one stays. */
+export function toggleIn<C extends string>(visible: readonly C[], all: readonly C[], col: C): C[] {
+  const next = visible.includes(col) ? visible.filter((c) => c !== col) : all.filter((m) => m === col || visible.includes(m));
+  return next.length ? next : [...visible];
 }
 
 export function setHidden(view: ThemesView, id: number, hidden: boolean): ThemesView {
@@ -214,14 +233,47 @@ export function setHidden(view: ThemesView, id: number, hidden: boolean): Themes
   return { ...view, hidden: hidden ? [...rest, id] : rest };
 }
 
-/** Table rows: the base themes the user did not hide, then his own (marked), each with a unique key. */
-export function mergeBoard(data: Pick<ThemesResponse, "themes" | "personal" | "view">): BoardTheme[] {
+const shared = (t: ThemeOut): BoardTheme => ({ ...t, key: `b${t.id}`, mine: null });
+const own = ({ kind, tickers, screener, needsFinviz, resolvedAt, ...t }: PersonalThemeOut): BoardTheme => ({
+  ...t, key: `p${t.id}`, mine: { kind, tickers, screener, needsFinviz, resolvedAt },
+});
+
+/** «Общие темы»: the shared themes the user did not hide. */
+export const sharedRows = (data: Pick<ThemesResponse, "themes" | "view">): BoardTheme[] => {
   const hidden = new Set(data.view?.hidden ?? []);
-  const base: BoardTheme[] = data.themes.filter((t) => !hidden.has(t.id)).map((t) => ({ ...t, key: `b${t.id}`, mine: null }));
-  const mine: BoardTheme[] = (data.personal ?? []).map(({ kind, tickers, screener, needsFinviz, resolvedAt, ...t }) => ({
-    ...t, key: `p${t.id}`, mine: { kind, tickers, screener, needsFinviz, resolvedAt },
-  }));
-  return [...base, ...mine];
+  return data.themes.filter((t) => !hidden.has(t.id)).map(shared);
+};
+
+/** A themes board: the pinned shared themes, then the user's own (marked). */
+export const themesBoardRows = (data: { themes: ThemeOut[]; personal: PersonalThemeOut[] }): BoardTheme[] => [...data.themes.map(shared), ...data.personal.map(own)];
+
+// ─── boards ─────────────────────────────────────────────────────────────────
+
+export const MAX_BOARDS = 8;
+export const MAX_BOARD_TICKERS = 50;
+export const columnsOf = (kind: BoardKind): readonly BoardColumn[] => (kind === "tickers" ? TICKER_COLUMNS : METRICS);
+
+/** Tab strip values: "shared" or "b<id>". */
+export const tabValue = (tab: BoardTab): string => (tab === "shared" ? "shared" : `b${tab}`);
+export const tabOf = (value: string): BoardTab => (value.startsWith("b") && Number(value.slice(1)) > 0 ? Number(value.slice(1)) : "shared");
+
+/** ← / → between tabs (wraps). */
+export function nextTab(tabs: readonly BoardTab[], current: BoardTab, dir: -1 | 1): BoardTab {
+  if (!tabs.length) return current;
+  const i = Math.max(0, tabs.indexOf(current));
+  return tabs[(i + dir + tabs.length) % tabs.length]!;
+}
+
+/** Which day's plan «В план дня» writes to (New York): today until the close, then the next session; weekend → Monday. */
+export function planDay(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" })
+    .formatToParts(now)
+    .reduce<Record<string, string>>((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  const day = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
+  const step = () => day.setUTCDate(day.getUTCDate() + 1);
+  if (Number(parts.hour) >= 16) step();
+  while (day.getUTCDay() === 0 || day.getUTCDay() === 6) step();
+  return day.toISOString().slice(0, 10);
 }
 
 // ─── Finviz screener input (mirror of api-server lib/themes/personal.ts) ────
@@ -273,15 +325,6 @@ export function parseScreenerInput(input: string, orderInput?: string | null): S
   return { ok: true, spec: { filters: tokens, order } };
 }
 
-/** Header strip: the 3 best and the 3 worst themes of a column (worst first), never the same theme twice. */
-export function leadersLaggards<T extends ThemeOut>(themes: readonly T[], col: ThemeMetric, n = 3): { leaders: T[]; laggards: T[] } {
-  const ranked = sortThemes(themes, { col, dir: "desc" }).filter((t) => val(t[col]) != null);
-  const leaders = ranked.slice(0, n).filter((t) => (t[col] as number) > 0);
-  const taken = new Set<T>(leaders);
-  const laggards = ranked.slice(-n).reverse().filter((t) => !taken.has(t) && (t[col] as number) < 0);
-  return { leaders, laggards };
-}
-
 /** Seconds since `asOf` (null without one); never negative. */
 export function ageSeconds(asOf: string | null | undefined, now: number): number | null {
   if (!asOf) return null;
@@ -293,7 +336,7 @@ export function ageSeconds(asOf: string | null | undefined, now: number): number
 export const MAX_TICKERS = 30;
 const TICKER_RE = /^[A-Z.\-]{1,10}$/;
 
-/** Staff input "mu, $wdc  stx" → { tickers: ["MU", "WDC", "STX"], invalid: [] } (server rule: 1–30 of A–Z . -). */
+/** "mu, $wdc  stx" → { tickers: ["MU", "WDC", "STX"], invalid: [] } (server rule: A–Z . -, ≤ 10 letters). */
 export function parseTickers(text: string): { tickers: string[]; invalid: string[] } {
   const tickers: string[] = [];
   const invalid: string[] = [];
@@ -306,3 +349,6 @@ export function parseTickers(text: string): { tickers: string[]; invalid: string
   }
   return { tickers, invalid };
 }
+
+/** All tickers of a theme (quoted and missing), for «Скопировать тикеры» / «Новая доска из темы». */
+export const themeTickerList = (t: Pick<ThemeOut, "members" | "missing">): string[] => [...new Set([...t.members.map((m) => m.ticker), ...t.missing])];

@@ -10,7 +10,7 @@
  *            not); the caller waits ≤ softWaitMs for fetches.
  * Per process, bounded (MAX_ENTRIES, the oldest entries go first).
  */
-import { ttlMs, type MemberQuote, type ThemeSession } from "./logic";
+import { NO_EXTRAS, ttlMs, type MemberQuote, type ThemeSession, type TickerExtras } from "./logic";
 import { fetchThemeQuotes, type QuotesResult } from "./quotes";
 import { logger } from "../logger";
 
@@ -19,7 +19,10 @@ export const FAIL_BACKOFF_MS = 60_000;
 export const MAX_ENTRIES = 5_000;
 export const MAX_AGE_MS = 12 * 60 * 60_000;
 
-type Entry = { quote: MemberQuote; at: number; session: ThemeSession };
+type Entry = { quote: MemberQuote; extras: TickerExtras; at: number; session: ThemeSession };
+
+/** One ticker as the tickers boards read it. */
+export type TickerDetail = { quote: MemberQuote; extras: TickerExtras };
 
 export type TickerCacheDeps = {
   now: () => number;
@@ -50,16 +53,17 @@ export function setTickerCacheDeps(d: Partial<TickerCacheDeps>): () => void {
   };
 }
 
-function put(ticker: string, quote: MemberQuote, session: ThemeSession, at: number): void {
+function put(ticker: string, quote: MemberQuote, session: ThemeSession, at: number, extras?: TickerExtras): void {
+  const prev = entries.get(ticker);
   entries.delete(ticker); // re-insert: Map order = age order
-  entries.set(ticker, { quote, at, session });
+  entries.set(ticker, { quote, extras: extras ?? prev?.extras ?? NO_EXTRAS, at, session });
   failedAt.delete(ticker);
   while (entries.size > MAX_ENTRIES) entries.delete(entries.keys().next().value!);
 }
 
 /** The base refresh hands its quotes over (same timestamp and session as the base cache). */
-export function seedQuotes(quotes: ReadonlyMap<string, MemberQuote>, session: ThemeSession, at: number): void {
-  for (const [t, q] of quotes) put(t, q, session, at);
+export function seedQuotes(quotes: ReadonlyMap<string, MemberQuote>, session: ThemeSession, at: number, extras?: ReadonlyMap<string, TickerExtras>): void {
+  for (const [t, q] of quotes) put(t, q, session, at, extras?.get(t));
 }
 
 export function isFresh(ticker: string, session: ThemeSession, now = deps.now()): boolean {
@@ -74,7 +78,7 @@ function fetchBatch(batch: string[], session: ThemeSession, today: string): Prom
       const at = deps.now();
       for (const t of batch) {
         const q = res.quotes.get(t);
-        if (q) put(t, q, session, at);
+        if (q) put(t, q, session, at, res.extras?.get(t));
         else failedAt.set(t, at);
       }
     } catch (err) {
@@ -98,17 +102,28 @@ export async function quotesFor(
   today: string,
   softWaitMs = 4_000,
 ): Promise<Map<string, MemberQuote>> {
+  const details = await detailsFor(tickers, session, today, softWaitMs);
+  return new Map([...details].map(([t, d]) => [t, d.quote]));
+}
+
+/** Like quotesFor, with the gap / RVOL / float of each ticker (tickers boards). */
+export async function detailsFor(
+  tickers: readonly string[],
+  session: ThemeSession,
+  today: string,
+  softWaitMs = 4_000,
+): Promise<Map<string, TickerDetail>> {
   const now = deps.now();
   const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))];
   const need = uniq.filter((t) => !isFresh(t, session, now) && !inflight.has(t) && now - (failedAt.get(t) ?? -Infinity) >= FAIL_BACKOFF_MS);
   for (let i = 0; i < need.length; i += BATCH) void fetchBatch(need.slice(i, i + BATCH), session, today);
   const waits = [...new Set(uniq.map((t) => inflight.get(t)).filter((p): p is Promise<void> => !!p))];
   if (waits.length) await Promise.race([Promise.all(waits), sleep(softWaitMs)]);
-  const out = new Map<string, MemberQuote>();
+  const out = new Map<string, TickerDetail>();
   const at = deps.now();
   for (const t of uniq) {
     const e = entries.get(t);
-    if (e && at - e.at < MAX_AGE_MS) out.set(t, e.quote);
+    if (e && at - e.at < MAX_AGE_MS) out.set(t, { quote: e.quote, extras: e.extras });
   }
   return out;
 }

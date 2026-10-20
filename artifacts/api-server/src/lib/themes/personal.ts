@@ -1,7 +1,8 @@
 /**
  * «Мои темы» and the per-user view of /themes — pure rules (unit-tested in __tests__/themes/personal.test.ts).
  *
- *   view      users.settings.themesView = { columns: visible metrics (≥ 1, in table order), hidden: base theme ids }
+ *   view      users.settings.themesView = { columns: visible metrics (≥ 1, in table order), hidden: base theme ids,
+ *             sort: the shared board's sort or null (session default), tab: the last active tab ("shared" | board id) }
  *   screener  a Finviz screener URL, a "f=…&o=…" query or a plain filter list → { filters, order }. Only `f` and `o`
  *             are read from a URL: `auth` (the Elite token) and every other parameter are dropped, never stored or echoed.
  *             Filters: ≤ 15 tokens of /^[a-z0-9_][a-z0-9_.]{1,39}$/; order: /^-?[a-z0-9_]{1,40}$/.
@@ -13,6 +14,8 @@ import { THEME_METRICS, type ThemeMetric, type ThemeOut } from "./logic";
 export const MAX_PERSONAL_THEMES = 10;
 export const MAX_SCREENER_FILTERS = 15;
 export const SCREENER_TOP = 25;
+/** A screener resolves up to this many (tickers boards may show 50; personal themes take the first 25). */
+export const SCREENER_MAX = 50;
 export const SCREENER_DEFAULT_ORDER = "-marketcap";
 export const RESOLVE_TTL_MS = 60 * 60_000;
 export const MAX_HIDDEN = 200;
@@ -20,18 +23,30 @@ export const MAX_HIDDEN = 200;
 const FILTER_RE = /^[a-z0-9_][a-z0-9_.]{1,39}$/; // dots: sh_relvol_o1.5
 const ORDER_RE = /^-?[a-z0-9_]{1,40}$/;
 
-export type ThemesView = { columns: ThemeMetric[]; hidden: number[] };
-export const DEFAULT_VIEW: ThemesView = { columns: [...THEME_METRICS], hidden: [] };
+export type SortDir = "desc" | "asc";
+export type ColumnSort<C extends string = ThemeMetric> = { col: C; dir: SortDir };
+export type ViewTab = "shared" | number;
+export type ThemesView = { columns: ThemeMetric[]; hidden: number[]; sort: ColumnSort | null; tab: ViewTab };
+export const DEFAULT_VIEW: ThemesView = { columns: [...THEME_METRICS], hidden: [], sort: null, tab: "shared" };
 
-/** Stored JSON → a valid view: known columns in table order (none → all), positive unique ids. */
+/** { col, dir } with col among `cols`, else null. */
+export function normalizeSort<C extends string>(raw: unknown, cols: readonly C[]): ColumnSort<C> | null {
+  const r = raw as { col?: unknown; dir?: unknown } | null;
+  if (!r || typeof r !== "object" || !cols.includes(r.col as C) || (r.dir !== "desc" && r.dir !== "asc")) return null;
+  return { col: r.col as C, dir: r.dir };
+}
+
+export const normalizeTab = (raw: unknown): ViewTab => (Number.isSafeInteger(raw) && (raw as number) > 0 ? (raw as number) : "shared");
+
+/** Stored JSON → a valid view: known columns in table order (none → all), positive unique ids, a valid sort / tab. */
 export function normalizeView(raw: unknown): ThemesView {
-  const r = (raw && typeof raw === "object" ? raw : {}) as { columns?: unknown; hidden?: unknown };
+  const r = (raw && typeof raw === "object" ? raw : {}) as { columns?: unknown; hidden?: unknown; sort?: unknown; tab?: unknown };
   const cols = Array.isArray(r.columns) ? r.columns : [];
   const columns = THEME_METRICS.filter((m) => cols.includes(m));
   const hidden = Array.isArray(r.hidden)
     ? [...new Set(r.hidden.filter((x): x is number => Number.isSafeInteger(x) && (x as number) > 0))].slice(0, MAX_HIDDEN)
     : [];
-  return { columns: columns.length ? columns : [...THEME_METRICS], hidden };
+  return { columns: columns.length ? columns : [...THEME_METRICS], hidden, sort: normalizeSort(r.sort, THEME_METRICS), tab: normalizeTab(r.tab) };
 }
 
 export type ScreenerSpec = { filters: string[]; order: string | null };

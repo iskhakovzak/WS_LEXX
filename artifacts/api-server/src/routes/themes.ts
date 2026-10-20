@@ -1,10 +1,11 @@
 /**
  * Market themes («Темы рынка», lib/themes/*): TradingView-style theme tracker.
  *
- *   GET  /api/themes            BoardResponse — the shared board + the viewer's own themes and view (guests: base only)
- *   PUT  /api/themes/view       member — { columns: metric[] (≥ 1), hidden: baseThemeId[] } → ThemesView
- *                               (users.settings.themesView, follows the user across devices)
- *   POST /api/themes/mine       member — personal theme { name, kind: tickers | screener, tickers? | screener?, order? }
+ *   GET  /api/themes            BoardResponse — the shared board + the viewer's view and boards (guests: base only)
+ *   PUT  /api/themes/view       member — any of { columns: metric[] (≥ 1), hidden: baseThemeId[], sort, tab } → ThemesView
+ *                               (merged into users.settings.themesView, follows the user across devices)
+ *   POST /api/themes/mine       member — personal theme { boardId, name, kind: tickers | screener, tickers? | screener?, order? }
+ *                               on one of the user's themes boards (routes/themes-boards.ts)
  *   PUT  /api/themes/mine/:id   member, owner only — the same fields, or { active: false } to archive
  *   GET  /api/themes/config     admin (settings.manage) — every shared theme incl. archived ({ themes: ThemeRecord[] })
  *   POST /api/themes            admin — { name, tickers, sortOrder?, active? } → ThemeRecord
@@ -23,7 +24,8 @@ import { logAudit } from "../lib/audit";
 import { MAX_THEME_TICKERS, THEME_METRICS, THEME_TICKER_RE } from "../lib/themes/logic";
 import { getBoard, refreshScreener } from "../lib/themes/board";
 import { MAX_HIDDEN, MAX_PERSONAL_THEMES, normalizeView, parseScreenerInput, type ScreenerSpec } from "../lib/themes/personal";
-import { countPersonal, insertPersonal, personalById, updatePersonal, writeView, type PersonalRecord } from "../lib/themes/personalStore";
+import { boardById } from "../lib/themes/boardsStore";
+import { countPersonal, insertPersonal, personalById, readView, updatePersonal, writeView, type PersonalRecord } from "../lib/themes/personalStore";
 import { insertTheme, listThemes, themeById, updateTheme, type ThemePatch } from "../lib/themes/store";
 
 const router: IRouter = Router();
@@ -69,15 +71,24 @@ router.get("/themes", route({}, async ({ req }) => getBoard(viewer(req))));
 // ─── per-user view ────────────────────────────────────────────────────────────
 
 const ViewBody = z.object({
-  columns: z.array(z.enum(THEME_METRICS)).min(1).max(THEME_METRICS.length),
-  hidden: z.array(z.number().int().positive()).max(MAX_HIDDEN).default([]),
+  columns: z.array(z.enum(THEME_METRICS)).min(1).max(THEME_METRICS.length).optional(),
+  hidden: z.array(z.number().int().positive()).max(MAX_HIDDEN).optional(),
+  sort: z.object({ col: z.enum(THEME_METRICS), dir: z.enum(["desc", "asc"]) }).nullable().optional(),
+  tab: z.union([z.literal("shared"), z.number().int().positive()]).optional(),
 });
 
-router.put("/themes/view", route({ body: ViewBody }, async ({ req, body }) => writeView(member(req).id, normalizeView(body))));
+router.put("/themes/view", route({ body: ViewBody }, async ({ req, body }) => {
+  const me = member(req);
+  const current = await readView(me.id);
+  const next = Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
+  return writeView(me.id, normalizeView({ ...current, ...next }));
+}));
 
 // ─── «Мои темы» ───────────────────────────────────────────────────────────────
 
 const MineFields = z.object({
+  /** The themes board it sits on (one of the caller's). */
+  boardId: idParam,
   name: Name,
   kind: z.enum(["tickers", "screener"]),
   tickers: Tickers.optional(),
@@ -85,7 +96,7 @@ const MineFields = z.object({
   screener: z.string().trim().max(2000).optional(),
   order: z.string().trim().max(41).nullable().optional(),
 });
-const MineUpdate = MineFields.partial().extend({ active: z.boolean().optional() });
+const MineUpdate = MineFields.omit({ boardId: true }).partial().extend({ active: z.boolean().optional() });
 
 /** kind + raw fields → a checked definition (400 VALIDATION with the field when something is missing / invalid). */
 function definition(kind: "tickers" | "screener", body: { tickers?: string[]; screener?: string; order?: string | null }): { tickers: string[]; screener: ScreenerSpec | null } {
@@ -100,7 +111,7 @@ function definition(kind: "tickers" | "screener", body: { tickers?: string[]; sc
 
 /** What the API answers about a personal theme (the board carries the moves). */
 const mineOut = (r: PersonalRecord) => ({
-  id: r.id, name: r.name, kind: r.kind, tickers: r.tickers, screener: r.screener, resolvedTickers: r.resolvedTickers, active: r.active,
+  id: r.id, boardId: r.boardId, name: r.name, kind: r.kind, tickers: r.tickers, screener: r.screener, resolvedTickers: r.resolvedTickers, active: r.active,
 });
 
 async function resolveSoon(r: PersonalRecord): Promise<PersonalRecord> {
@@ -111,9 +122,11 @@ async function resolveSoon(r: PersonalRecord): Promise<PersonalRecord> {
 
 router.post("/themes/mine", route({ body: MineFields }, async ({ req, body }) => {
   const me = member(req);
+  const board = await boardById(me.id, body.boardId);
+  if (!board || !board.active || board.kind !== "themes") throw notFound("BOARD_NOT_FOUND");
   if ((await countPersonal(me.id)) >= MAX_PERSONAL_THEMES) throw new AppError("THEME_LIMIT", undefined, { max: MAX_PERSONAL_THEMES });
   const def = definition(body.kind, body);
-  const created = await resolveSoon(await insertPersonal(me.id, { name: body.name, kind: body.kind, ...def }));
+  const created = await resolveSoon(await insertPersonal(me.id, { name: body.name, kind: body.kind, ...def, boardId: board.id }));
   await logAudit({ actor: me.name, action: "themes.mine.create", targetType: "user_theme", targetId: String(created.id), details: { name: created.name, kind: created.kind } });
   return mineOut(created);
 }));
