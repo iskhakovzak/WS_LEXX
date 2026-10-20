@@ -7,10 +7,11 @@ import { useAuth } from "@/contexts/auth-context";
 import { isSimpleNav, simpleNav, visibleNav, type SimpleNav, type VisibleGroup } from "./nav-model";
 import { readSimpleMode, writeSimpleMode } from "./use-nav-prefs";
 
-/** Full menu for the current role (staff-only pages filtered, hidden ones dropped). */
+/** Full menu for the current role (staff-only pages filtered, hidden ones and switched-off sections dropped). */
 export function useVisibleNav(): VisibleGroup[] {
-  const { isCurator } = useAuth();
-  return React.useMemo(() => visibleNav(isCurator), [isCurator]);
+  const { isCurator, permissions } = useAuth();
+  const nav = permissions.nav;
+  return React.useMemo(() => visibleNav(isCurator, nav), [isCurator, nav]);
 }
 
 export function useNavModel(): { groups: VisibleGroup[]; simple: SimpleNav | null } {

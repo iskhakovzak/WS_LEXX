@@ -13,7 +13,7 @@
  * - Phone tab bar for juniors (item 1.3): Дашборд · План · Дневник (labelled «Вечер») · Сделки · Ещё.
  */
 import { shellI18n } from "@/i18n/ns/shell";
-import { NAV_GROUPS, type NavGroup, type NavItem } from "./nav";
+import { NAV_GROUPS, type NavFeature, type NavGroup, type NavItem } from "./nav";
 
 export type VisibleGroup = Omit<NavGroup, "items"> & {
   /** Sidebar rows with only the children this viewer may open. */
@@ -27,9 +27,15 @@ export function withGetters(i: NavItem): NavItem {
   return Object.create(Object.getPrototypeOf(i), Object.getOwnPropertyDescriptors(i));
 }
 
-/** Full nav for the role (staff-only pages filtered, hidden ones dropped). */
-export function visibleNav(isCurator: boolean): VisibleGroup[] {
-  const ok = (i: NavItem) => !i.hidden && (!i.staff || isCurator);
+/** A section behind a desk switch is shown only when GET /api/permissions/me → `nav.<feature>` is true. */
+export function navFeatureOn(feature: NavFeature | undefined, nav: unknown): boolean {
+  if (!feature) return true;
+  return !!nav && typeof nav === "object" && (nav as Record<string, unknown>)[feature] === true;
+}
+
+/** Full nav for the role (staff-only pages filtered, hidden ones and switched-off sections dropped). */
+export function visibleNav(isCurator: boolean, nav?: unknown): VisibleGroup[] {
+  const ok = (i: NavItem) => !i.hidden && (!i.staff || isCurator) && navFeatureOn(i.feature, nav);
   return NAV_GROUPS.map((g) => {
     const rows = g.items.filter(ok).map((r) => {
       if (!r.children) return r;

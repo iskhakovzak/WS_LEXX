@@ -491,33 +491,6 @@ export const ListResearchResponse = zod.array(ListResearchResponseItem)
 
 
 /**
- * @summary Create a research entry
- */
-export const CreateResearchBody = zod.object({
-  "patternName": zod.string(),
-  "ticker": zod.string().nullish(),
-  "context": zod.string().nullish(),
-  "marketCondition": zod.string().nullish(),
-  "whatWorked": zod.string().nullish(),
-  "whatFailed": zod.string().nullish(),
-  "repeatCount": zod.number().nullish(),
-  "confidenceLevel": zod.number().nullish(),
-  "screenshotUrl": zod.string().nullish(),
-  "screenshotNotes": zod.string().nullish(),
-  "tags": zod.string().nullish(),
-  "marketCap": zod.string().nullish(),
-  "float": zod.string().nullish(),
-  "adv": zod.string().nullish(),
-  "atr": zod.number().nullish(),
-  "relativeVolume": zod.number().nullish(),
-  "beta": zod.number().nullish(),
-  "shortInterest": zod.number().nullish(),
-  "sector": zod.string().nullish(),
-  "longName": zod.string().nullish()
-})
-
-
-/**
  * @summary Get research by ID
  */
 export const GetResearchParams = zod.object({
@@ -547,70 +520,6 @@ export const GetResearchResponse = zod.object({
   "sector": zod.string().nullish(),
   "longName": zod.string().nullish(),
   "createdAt": zod.string()
-})
-
-
-/**
- * @summary Update a research entry
- */
-export const UpdateResearchParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const UpdateResearchBody = zod.object({
-  "patternName": zod.string().nullish(),
-  "ticker": zod.string().nullish(),
-  "context": zod.string().nullish(),
-  "marketCondition": zod.string().nullish(),
-  "whatWorked": zod.string().nullish(),
-  "whatFailed": zod.string().nullish(),
-  "repeatCount": zod.number().nullish(),
-  "confidenceLevel": zod.number().nullish(),
-  "screenshotUrl": zod.string().nullish(),
-  "screenshotNotes": zod.string().nullish(),
-  "tags": zod.string().nullish(),
-  "marketCap": zod.string().nullish(),
-  "float": zod.string().nullish(),
-  "adv": zod.string().nullish(),
-  "atr": zod.number().nullish(),
-  "relativeVolume": zod.number().nullish(),
-  "beta": zod.number().nullish(),
-  "shortInterest": zod.number().nullish(),
-  "sector": zod.string().nullish(),
-  "longName": zod.string().nullish()
-})
-
-export const UpdateResearchResponse = zod.object({
-  "id": zod.number(),
-  "patternName": zod.string(),
-  "ticker": zod.string().nullish(),
-  "context": zod.string().nullish(),
-  "marketCondition": zod.string().nullish(),
-  "whatWorked": zod.string().nullish(),
-  "whatFailed": zod.string().nullish(),
-  "repeatCount": zod.number().nullish(),
-  "confidenceLevel": zod.number().nullish(),
-  "screenshotUrl": zod.string().nullish(),
-  "screenshotNotes": zod.string().nullish(),
-  "tags": zod.string().nullish(),
-  "marketCap": zod.string().nullish(),
-  "float": zod.string().nullish(),
-  "adv": zod.string().nullish(),
-  "atr": zod.number().nullish(),
-  "relativeVolume": zod.number().nullish(),
-  "beta": zod.number().nullish(),
-  "shortInterest": zod.number().nullish(),
-  "sector": zod.string().nullish(),
-  "longName": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-
-/**
- * @summary Delete a research entry
- */
-export const DeleteResearchParams = zod.object({
-  "id": zod.coerce.number()
 })
 
 

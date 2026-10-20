@@ -11,7 +11,11 @@
 export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
-type Base = { group: SettingGroup; unit?: SettingUnit };
+/**
+ * `pilot: true` = one of the ~10 settings the pilot needs (docs/PILOT.md §2.5 / §3): the admin page shows only these
+ * by default, the rest under «Показать все» (Волна 2 п. 2.4; the web list PILOT_KEYS must agree, test there).
+ */
+type Base = { group: SettingGroup; unit?: SettingUnit; pilot?: true };
 export type NumberDef = Base & { type: "number"; default: number; min: number; max: number; step?: number };
 export type TimeDef = Base & { type: "time"; default: string /* "HH:MM", New York time */ };
 export type BoolDef = Base & { type: "boolean"; default: boolean };
@@ -22,8 +26,8 @@ export type SettingDef = NumberDef | TimeDef | BoolDef | SelectDef | TextDef;
 
 export const SETTINGS = {
   // Daily focus (lib/daily/detectors + engine)
-  "daily.focusWindowDays": { group: "daily", type: "number", default: 10, min: 3, max: 30, step: 1, unit: "days" },
-  "daily.focusMinDays": { group: "daily", type: "number", default: 2, min: 1, max: 10, step: 1, unit: "days" },
+  "daily.focusWindowDays": { group: "daily", type: "number", default: 10, min: 3, max: 30, step: 1, unit: "days", pilot: true },
+  "daily.focusMinDays": { group: "daily", type: "number", default: 2, min: 1, max: 10, step: 1, unit: "days", pilot: true },
   "daily.focusMinCostUsd": { group: "daily", type: "number", default: 10, min: 0, max: 1000, step: 5, unit: "usd" },
   "daily.feesShare": { group: "daily", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
   "daily.feesHealthyShare": { group: "daily", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
@@ -38,7 +42,7 @@ export const SETTINGS = {
   "discipline.streakStepPoints": { group: "discipline", type: "number", default: 1, min: 0, max: 20, step: 1, unit: "points" },
   "discipline.streakBonusCapPoints": { group: "discipline", type: "number", default: 10, min: 0, max: 100, step: 1, unit: "points" },
   // A broken day: «reset» = the streak starts again from 0; «halve» = it keeps half (rounded down).
-  "discipline.streakOnBreak": { group: "discipline", type: "select", default: "reset", options: ["reset", "halve"] },
+  "discipline.streakOnBreak": { group: "discipline", type: "select", default: "reset", options: ["reset", "halve"], pilot: true },
   "discipline.pointsWindowDays": { group: "discipline", type: "number", default: 30, min: 5, max: 120, step: 1, unit: "days" },
 
   // Rewards: levels by all-time discipline points (contract + quest points); traded days a clean month needs
@@ -118,9 +122,9 @@ export const SETTINGS = {
 
   // Telegram daily loop (lib/daily/telegramJobs; New York time, weekdays)
   "telegram.morningEnabled": { group: "telegram", type: "boolean", default: true },
-  "telegram.morningTime": { group: "telegram", type: "time", default: "08:45" },
+  "telegram.morningTime": { group: "telegram", type: "time", default: "08:45", pilot: true },
   "telegram.eveningEnabled": { group: "telegram", type: "boolean", default: true },
-  "telegram.eveningTime": { group: "telegram", type: "time", default: "16:30" },
+  "telegram.eveningTime": { group: "telegram", type: "time", default: "16:30", pilot: true },
   "telegram.contractAlertsEnabled": { group: "telegram", type: "boolean", default: true },
 
   // Curator queue (lib/daily/costQueue)
@@ -135,7 +139,7 @@ export const SETTINGS = {
   "gamification.leagueMinTeams": { group: "gamification", type: "number", default: 2, min: 1, max: 10, step: 1, unit: "teams" },
   // A traded day without a contract breaks the contract streak (off = it neither grows nor breaks it, as before);
   // a freeze (N per NY month) covers the first such day of a running streak automatically. A broken contract is never covered.
-  "gamification.missedDayBreaksStreak": { group: "gamification", type: "boolean", default: true },
+  "gamification.missedDayBreaksStreak": { group: "gamification", type: "boolean", default: true, pilot: true },
   "gamification.freezePerMonth": { group: "gamification", type: "number", default: 1, min: 0, max: 5, step: 1, unit: "count" },
   // Recognition of long contract streaks: every N kept days in a row (on top of the achievement tiers)
   "gamification.streakMilestoneStep": { group: "gamification", type: "number", default: 25, min: 5, max: 100, step: 5, unit: "days" },
@@ -151,8 +155,11 @@ export const SETTINGS = {
   // Simple menu for new traders (web shell, GET /api/permissions/me → nav): a short primary menu + one «Ещё» group for
   // traders up to `simpleUntilTier` (tier as for the playbook locks, lib/playbookToday/tier); staff always get the full menu.
   // The ladder starts at Джун (Волна 1 п. 1.21): the only value left is «junior» (a stored «trainee» falls back to it).
-  "nav.simpleForTrainees": { group: "nav", type: "boolean", default: true },
+  "nav.simpleForTrainees": { group: "nav", type: "boolean", default: true, pilot: true },
   "nav.simpleUntilTier": { group: "nav", type: "select", default: "junior", options: ["junior"] },
+  // «Сводка автора» (/author-notes, Волна 2 п. 2.15): off until someone on the desk writes it — the menu row, the page
+  // and every /api/author-notes route (404) follow this switch.
+  "nav.authorNotes": { group: "nav", type: "boolean", default: false },
 
   // Privacy of cross-trader views (desk-day, top of the day)
   "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true },
@@ -172,7 +179,7 @@ export const SETTINGS = {
   "trainer.oneRUsd": { group: "trainer", type: "number", default: 50, min: 1, max: 10_000, step: 5, unit: "usd" },
   "trainer.dailyEnabled": { group: "trainer", type: "boolean", default: true },
   "trainer.dailyPickTime": { group: "trainer", type: "time", default: "08:30" },
-  "trainer.dailyPlayMinutes": { group: "trainer", type: "number", default: 120, min: 30, max: 390, step: 15, unit: "minutes" },
+  "trainer.dailyPlayMinutes": { group: "trainer", type: "number", default: 120, min: 30, max: 390, step: 15, unit: "minutes", pilot: true },
   "trainer.dailyNoRepeatDays": { group: "trainer", type: "number", default: 90, min: 7, max: 365, step: 1, unit: "days" },
   "trainer.dailyMinVolume": { group: "trainer", type: "number", default: 2_000_000, min: 0, max: 500_000_000, step: 100_000, unit: "shares" },
   "trainer.dailyMinPriceUsd": { group: "trainer", type: "number", default: 5, min: 0, max: 1000, step: 1, unit: "usd" },
@@ -188,9 +195,9 @@ export const SETTINGS = {
 
   // Internal usage tracking (lib/usage, admin console → «Использование»; staff-only, never for rewards or rankings):
   // the switch, how long events are kept (nightly job usage.prune) and the pilot participants the funnel filters by
-  "usage.enabled": { group: "usage", type: "boolean", default: true },
+  "usage.enabled": { group: "usage", type: "boolean", default: true, pilot: true },
   "usage.retentionDays": { group: "usage", type: "number", default: 120, min: 14, max: 730, step: 1, unit: "days" },
-  "usage.pilotUsers": { group: "usage", type: "text", default: "", maxLength: 2000 },
+  "usage.pilotUsers": { group: "usage", type: "text", default: "", maxLength: 2000, pilot: true },
 
   // Finviz Elite (lib/finviz; token = env FINVIZ_AUTH, without it everything here is idle): the switch, the screener
   // presets (comma-separated Finviz filter codes, e.g. "geo_usa,sh_price_o2,ta_gap_u4"), rows kept per preset, the

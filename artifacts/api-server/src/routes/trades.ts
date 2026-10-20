@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { eq, desc, isNull, and, sql, inArray } from "drizzle-orm";
-import { db, pool, tradesTable, preTradeChecklistResponsesTable } from "@workspace/db";
+import { db, pool, tradesTable } from "@workspace/db";
 import { logActivity } from "../lib/activity";
 import { activityTitle } from "../lib/activityText";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -15,7 +15,6 @@ import {
   DAYS_LIMIT_DEFAULT,
   DAYS_LIMIT_MAX,
   MONEY_SORT_COLS,
-  TRADES_PAGE_INDEX_SQL,
   buildPageQuery,
   buildDaysQuery,
   decodeCursor,
@@ -25,7 +24,7 @@ import {
   sortValueOf,
 } from "../lib/tradesPageQuery";
 import { TradesPageQuery, compactQuery, moneyBlindFilters, pageFiltersOf, ymd } from "../lib/tradesPageParams";
-import { findChecklistResponseFor } from "./checklist";
+import { tradesListWindow } from "../lib/tradesListWindow";
 import { captureAndAttach } from "../lib/marketContext";
 import { maybeAutoGenerateReview } from "../lib/aiReview";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
@@ -49,6 +48,7 @@ import {
 } from "@workspace/api-zod";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { resolveSetupLink, setupTagged, touchesSetup } from "../lib/tradesSetupLink";
+import { bulkTags, syncMarkerErrors } from "../lib/tradingErrors";
 
 const router: IRouter = Router();
 
@@ -128,13 +128,14 @@ async function forbiddenFor(req: Parameters<typeof can>[0], cap: "trades.read.te
   return !(await can(req, cap, { trader: owner })) && owner !== req.authUser?.name;
 }
 
-// Optional window for the legacy list (P1-5). Without any of these the endpoint behaves exactly as before
-// (whole scoped book, newest createdAt first). The generated ListTradesQueryParams strips unknown keys, so these
-// are parsed separately and never reach the generated schema.
+// Window of the plain list (P1-5, Волна 2 п. 2.15 — lib/tradesListWindow): never the whole book. The generated
+// ListTradesQueryParams strips unknown keys, so these are parsed separately and never reach the generated schema.
 //   from/to  YYYY-MM-DD — trades that TOUCH the window: entered on/before `to` AND realised (exit date, else
 //            entry date) on/after `from`, plus still-open positions entered on/before `to` (carried positions).
 //            A superset of "closeDate in [from,to]" and of "entry date in [from,to]" — callers refine client-side.
-//   limit    ≥1 (clamped to 5000) — newest by trade date first (date desc, id desc) when set.
+//            At most 400 days (`to` defaults to today) → otherwise 400 RANGE_TOO_LONG.
+//   limit    ≥1 (clamped to 5000) — newest by trade date first (date desc, id desc). Without `from` the list is always
+//            capped: `limit`, else the newest 500. Everything else (CSV, the book) walks GET /trades/page by cursor.
 //   tagged   1|true — only trades with a non-empty setup or tags (the indicators page needs nothing else).
 //   lite     1|true — omit the bulky `contextSnapshot` (raw broker snapshot, ~35% of the payload) — calendar /
 //            journal views that never read it. Field stays in the shape as null.
@@ -157,7 +158,9 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
     throw win.error;
   }
   const { setup, eventType, session, trader, result } = query.data;
-  const { from, to, limit } = win.data;
+  const { from, to } = win.data;
+  const listWin = tradesListWindow(win.data);
+  if (!listWin.ok) throw new AppError("RANGE_TOO_LONG", undefined, { max: listWin.max });
   const tagged = win.data.tagged === "1" || win.data.tagged === "true";
   const conditions: ReturnType<typeof eq>[] = [isNull(tradesTable.deletedAt) as unknown as ReturnType<typeof eq>];
   if (setup) conditions.push(eq(tradesTable.setup, setup));
@@ -181,9 +184,8 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
   if (scope !== null) conditions.push(eq(tradesTable.trader, scope));
 
   const base = db.select().from(tradesTable).where(and(...conditions));
-  const rows = limit != null
-    ? await base.orderBy(desc(tradesTable.date), desc(tradesTable.id)).limit(limit)
-    : await base.orderBy(desc(tradesTable.createdAt));
+  const ordered = base.orderBy(desc(tradesTable.date), desc(tradesTable.id));
+  const rows = listWin.limit != null ? await ordered.limit(listWin.limit) : await ordered;
 
   // $ privacy (lib/playbookPrivacy): a trader only ever lists their own book; anyone else's $ is nulled for non-staff.
   const lite = win.data.lite === "1" || win.data.lite === "true";
@@ -198,21 +200,7 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
 // Scope via lib/auth scopeTrader (staff may pass ?trader=, everyone else sees their own book).
 // Contract (query → response) is documented in the handler body; the pure SQL builders live in lib/tradesPageQuery.ts.
 
-let pageIndexesEnsured: Promise<void> | null = null;
-function ensurePageIndexes(): Promise<void> {
-  if (!pageIndexesEnsured) {
-    pageIndexesEnsured = (async () => {
-      for (const stmt of TRADES_PAGE_INDEX_SQL) await pool.query(stmt);
-    })().catch((err) => {
-      pageIndexesEnsured = null;
-      throw err;
-    });
-  }
-  return pageIndexesEnsured;
-}
-ensurePageIndexes().catch((err) => logger.warn({ err }, "trades/page: ensure indexes failed at init"));
-
-// trade_quality is created lazily by routes/trade-quality.ts; re-check every minute so a fresh DB picks it up.
+// trade_quality comes from the migrations; probed (cached a minute) so an older database still answers.
 let qualityTableCheck: { ok: boolean; exp: number } | null = null;
 async function qualityTableExists(): Promise<boolean> {
   const now = Date.now();
@@ -258,7 +246,6 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   }
   const filters = moneyBlindFilters(pageFiltersOf(q, scope), showMoney);
 
-  await ensurePageIndexes().catch((err) => req.log.warn({ err: err instanceof Error ? err.message : String(err) }, "trades/page: ensure indexes failed"));
   const quality = await qualityTableExists();
 
   // lite=1 (counters, global search, pickers): rows + total / date span + option facets only — the summary aggregates,
@@ -446,45 +433,6 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
   // Broker trades arrive only through the PropReports sync (lib/brokerTradeGuard); the generated schema strips the
   // marker fields anyway, a request that sends them is refused rather than silently booked as a manual trade.
   if (claimsBrokerSource(req.body) && !(await canEditBrokerTrades(req))) throw brokerReadOnly(["source"]);
-  const skipChecklist = req.query.skipChecklist === "true" || req.body?.skipChecklist === true;
-  const submittedResponseId = typeof req.body?.checklistResponseId === "number" ? req.body.checklistResponseId : null;
-  let validatedChecklist: { id: number; passed: boolean } | null = null;
-  if (submittedResponseId) {
-    const [row] = await db
-      .select({
-        id: preTradeChecklistResponsesTable.id,
-        passed: preTradeChecklistResponsesTable.passed,
-        ticker: preTradeChecklistResponsesTable.ticker,
-        tradeDate: preTradeChecklistResponsesTable.tradeDate,
-        trader: preTradeChecklistResponsesTable.trader,
-      })
-      .from(preTradeChecklistResponsesTable)
-      .where(eq(preTradeChecklistResponsesTable.id, submittedResponseId))
-      .limit(1);
-    if (!row) {
-      throw new AppError("CHECKLIST_INVALID_ID", 422, undefined, { responseId: submittedResponseId });
-    }
-    if (row.ticker.toUpperCase() !== parsed.data.ticker.toUpperCase() || row.tradeDate !== parsed.data.date) {
-      throw new AppError("CHECKLIST_MISMATCH", 422, undefined, { responseId: submittedResponseId });
-    }
-    const traderClaimed = parsed.data.trader ?? null;
-    if (row.trader && traderClaimed && row.trader !== traderClaimed) {
-      throw new AppError("CHECKLIST_MISMATCH", 422, undefined, { responseId: submittedResponseId });
-    }
-    validatedChecklist = { id: row.id, passed: row.passed };
-  } else if (!skipChecklist) {
-    validatedChecklist = await findChecklistResponseFor({
-      ticker: parsed.data.ticker,
-      tradeDate: parsed.data.date,
-      trader: parsed.data.trader ?? null,
-    });
-  }
-  if (!skipChecklist && !validatedChecklist) {
-    throw new AppError("CHECKLIST_REQUIRED", 422);
-  }
-  if (!skipChecklist && validatedChecklist && !validatedChecklist.passed) {
-    throw new AppError("CHECKLIST_NOT_PASSED", 422, undefined, { responseId: validatedChecklist.id });
-  }
   const insertData: Record<string, unknown> = { ...parsed.data };
   // Canonical result code on write (win / loss / be / open), never a synonym (ARCHITECTURE.md §3.5).
   if (typeof insertData.result === "string") insertData.result = normResult(insertData.result) ?? insertData.result;
@@ -497,11 +445,6 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
     insertData.trader = auth.name;
   }
   const [trade] = await db.insert(tradesTable).values(insertData as any).returning();
-  if (validatedChecklist) {
-    await db.update(preTradeChecklistResponsesTable)
-      .set({ tradeId: trade.id })
-      .where(eq(preTradeChecklistResponsesTable.id, validatedChecklist.id));
-  }
   captureAndAttach(trade.id, {
     tradeDate: trade.date,
     sector: trade.sector ?? null,
@@ -543,9 +486,6 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!parsed.success) {
     throw parsed.error;
   }
-  const skipChecklist = req.query.skipChecklist === "true" || req.body?.skipChecklist === true;
-  const ENTRY_DECISION_FIELDS = ["ticker", "date", "side", "setup", "entry", "stop", "eventType"] as const;
-  const touchesEntryDecision = ENTRY_DECISION_FIELDS.some((f) => Object.prototype.hasOwnProperty.call(req.body ?? {}, f));
   const [existing] = await db
     .select()
     .from(tradesTable)
@@ -558,36 +498,11 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   if (typeof updateData.result === "string") updateData.result = normResult(updateData.result) ?? updateData.result;
   // Reassigning a trade to another trader needs the "write any" capability.
   if (!(await can(req, "trades.write.any", { trader: (updateData.trader as string | null | undefined) ?? existing.trader }))) delete updateData.trader;
-  // Broker trade (checked before the checklist gate): its numbers (pnl, fees, qty, entry/exit, dates, result…) and
+  // Broker trade: its numbers (pnl, fees, qty, entry/exit, dates, result…) and
   // owner change only by an admin; the review layer (setup, tags, notes, grade, stop / risk) stays editable.
   if (isBrokerTrade(existing) && !(await canEditBrokerTrades(req))) {
     const changed = changedBrokerFields(updateData, existing as unknown as Record<string, unknown>, normResult);
     if (changed.length) throw brokerReadOnly(changed);
-  }
-  // Broker-imported trades: the entry already happened at the broker, a pre-trade checklist cannot be filled in
-  // retroactively. Post-hoc classification (setup / event type / a reference stop for R) is review, not an entry
-  // decision — same as setups-auto/accept, which writes trades.setup directly. Broker-owned fields still go through the gate.
-  const POST_HOC_FIELDS = new Set(["setup", "eventType", "stop"]);
-  const importedPostHoc = existing.source === "propreports"
-    && ENTRY_DECISION_FIELDS.every((f) => !Object.prototype.hasOwnProperty.call(req.body ?? {}, f) || POST_HOC_FIELDS.has(f));
-  if (touchesEntryDecision && !skipChecklist && !importedPostHoc) {
-    const [linked] = await db
-      .select({ id: preTradeChecklistResponsesTable.id, passed: preTradeChecklistResponsesTable.passed })
-      .from(preTradeChecklistResponsesTable)
-      .where(eq(preTradeChecklistResponsesTable.tradeId, existing.id))
-      .limit(1);
-    const effective = linked
-      ?? (await findChecklistResponseFor({
-        ticker: existing.ticker,
-        tradeDate: existing.date,
-        trader: existing.trader ?? null,
-      }));
-    if (!effective) {
-      throw new AppError("CHECKLIST_REQUIRED", 422);
-    }
-    if (!effective.passed) {
-      throw new AppError("CHECKLIST_NOT_PASSED", 422, undefined, { responseId: effective.id });
-    }
   }
   if (updateData.screenshotUrl !== undefined) updateData.screenshotUrl = sanitizeMultiLineUrls(updateData.screenshotUrl as string | null | undefined);
   // Setup tag = a playbook setup (1.2): playbook_id + the setup's name as text (lib/tradesSetupLink).
@@ -624,6 +539,10 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   invalidateDashboardCache();
   invalidateTradesPageCache();
   if (setupTouched) await setupTagged(trade.id);
+  // Key M: mistakes in the tags are rows of the one errors store (Волна 2 п. 2.8, lib/tradingErrors).
+  if (trade.trader && Object.prototype.hasOwnProperty.call(req.body ?? {}, "tags")) {
+    await syncMarkerErrors({ trader: trade.trader, tradeId: trade.id, ticker: trade.ticker, source: "tag", actor: req.authUser?.name ?? null }, existing.tags, trade.tags);
+  }
   const shape = toTradeResponseShape(trade);
   res.json(withPlaybookId(UpdateTradeResponse.parse(shape), shape));
 }));
@@ -675,7 +594,7 @@ router.post("/trades/:id/restore", asyncHandler(async (req, res): Promise<void> 
 // POST /trades/bulk { action, ids, tags?, result? }
 // Traders only affect their own trades (others are counted as `forbidden`).
 // setResult intentionally does not trigger AI auto-review (bulk would fan out).
-// setSetup — post-hoc setup classification (review), like setups-auto/accept: no pre-trade checklist gate. Body
+// setSetup — post-hoc setup classification (review), like setups-auto/accept. Body
 // { setup } (an office setup's name links it) or { playbookId } (null clears): playbook_id + name, lib/tradesSetupLink.
 const BULK_ACTIONS = ["delete", "restore", "addTags", "removeTags", "setResult", "setSetup"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
@@ -743,14 +662,12 @@ router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
       await db.update(tradesTable).set({ setup: link.setup, playbookId: link.playbookId }).where(inArray(tradesTable.id, targetIds));
       for (const owner of owners) await setupTagged(targets.find((r) => (r.trader ?? null) === owner)!.id);
     } else {
-      const lower = new Set(tags.map((t) => t.toLowerCase()));
       for (const r of targets) {
         const cur = splitTags(r.tags);
-        const next = action === "addTags"
-          ? [...cur, ...tags.filter((t) => !cur.some((c) => c.toLowerCase() === t.toLowerCase()))]
-          : cur.filter((c) => !lower.has(c.toLowerCase()));
+        const next = bulkTags(cur, tags, action === "addTags" ? "addTags" : "removeTags"); // a mistake: any spelling (2.8)
         if (next.join(", ") === cur.join(", ")) continue;
         await db.update(tradesTable).set({ tags: next.length ? next.join(", ") : null }).where(eq(tradesTable.id, r.id));
+        if (r.trader) await syncMarkerErrors({ trader: r.trader, tradeId: r.id, ticker: null, source: "tag", actor: req.authUser?.name ?? null }, cur, next);
       }
     }
     logActivity({

@@ -6,7 +6,7 @@ WS_LEXX is a prop trading desk application with a React/Vite frontend and an Exp
 
 Production assumptions for this scan:
 - `NODE_ENV=production` in deployed environments.
-- Replit terminates TLS for deployed traffic.
+- Caddy terminates TLS for deployed traffic and proxies to the API on 127.0.0.1:8080 (self-hosted server, docs/DEPLOY.md).
 - Only code reachable through the production frontend, API, background jobs, object storage access paths, or configured third-party integrations is in scope.
 - Local scripts, backups, and mockup/sandbox-only flows are out of scope unless a production route invokes them.
 

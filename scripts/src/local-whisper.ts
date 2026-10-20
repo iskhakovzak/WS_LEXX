@@ -8,7 +8,7 @@
  *   bin-cuda/Release/whisper-server.exe  — CUDA build (preferred when present, NVIDIA GPU)
  *   bin-cpu/Release/whisper-server.exe   — CPU build (fallback)
  *   models/ggml-large-v3-turbo-q5_0.bin  — model (override with WHISPER_MODEL)
- * See DEPLOY.md → «Локальный Whisper» for download links and the server (CPU) setup.
+ * See docs/DEPLOY.md §13 (local Whisper) for download links and the server (CPU) setup.
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -24,11 +24,11 @@ const port = process.env.WHISPER_PORT ?? "8178";
 const threads = process.env.WHISPER_THREADS ?? String(Math.max(4, Math.min(12, os.cpus().length - 2)));
 
 if (!server) {
-  console.error(`whisper-server not found. Looked in:\n  ${candidates.join("\n  ")}\nSee DEPLOY.md → «Локальный Whisper».`);
+  console.error(`whisper-server not found. Looked in:\n  ${candidates.join("\n  ")}\nSee docs/DEPLOY.md §13 (local Whisper).`);
   process.exit(1);
 }
 if (!existsSync(model)) {
-  console.error(`Model not found: ${model}\nSee DEPLOY.md → «Локальный Whisper».`);
+  console.error(`Model not found: ${model}\nSee docs/DEPLOY.md §13 (local Whisper).`);
   process.exit(1);
 }
 

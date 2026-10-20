@@ -2,79 +2,30 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import { sanitizeMultiLineUrls } from "../lib/safe-url";
-import { logger } from "../lib/logger";
-import { logActivity } from "../lib/activity";
-import { canAccessTrade, isStaffRole, requireMember, scopeTrader, viewerRole, GUEST_SCOPE } from "../lib/auth";
+import { scopeTrader } from "../lib/auth";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
-import { nyDate } from "../lib/tradingDate";
 import { loadViewer, visibleSql } from "../lib/playbookAccess";
-import {
-  CreateResearchBody,
-  GetResearchParams,
-  UpdateResearchParams,
-  UpdateResearchBody,
-  DeleteResearchParams,
-  ListResearchResponse,
-  GetResearchResponse,
-  UpdateResearchResponse,
-} from "@workspace/api-zod";
-import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { GetResearchParams, ListResearchResponse, GetResearchResponse } from "@workspace/api-zod";
+import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
- * Research notes ("Ресёрч") — patterns the desk keeps studying.
+ * Research notes («Исследования») — a read-only archive since Волна 2 п. 2.15 (nothing new is written: earnings and
+ * reactions live in «Катализаторы», repeatable patterns in the Playbook; the old notes stay readable).
  *
  *   GET    /research?ticker&q&tag&limit&offset   member; SQL-filtered; each note carries derived evidence
  *                                                (tradeCount / winRate / sumR / netPnl from trades.pattern_id, scoped) + viewer pin
- *   POST   /research                             member; author = authUser, date = NY trading date unless given
  *   GET    /research/:id
- *   PATCH  /research/:id                         owner or staff (also {date, playbookId} lineage)
- *   DELETE /research/:id, POST /research/:id/restore
  *   GET    /research/:id/trades                  scoped trades linked via pattern_id + net stats
  *   GET    /research/:id/setups                  playbook setups promoted from the note (viewer-visible, lean)
- *   GET    /research/:id/candidates              scoped trades in the note's ticker(s) not linked to it yet (≤12)
- *   POST   /research/:id/link-trade              {tradeId, unlink?}
- *   POST   /research/:id/pin                     {pinned} — per-user pin (research_pins)
- *
- * Additive columns/tables are ensured here (never in migrate.ts).
+ * Any other method on /research… answers 404 (routes/index.ts JSON fallback).
  */
 const router: IRouter = Router();
-
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE research ADD COLUMN IF NOT EXISTS created_by TEXT;
-         ALTER TABLE research ADD COLUMN IF NOT EXISTS date TEXT;
-         ALTER TABLE research ADD COLUMN IF NOT EXISTS playbook_id INTEGER;
-         CREATE TABLE IF NOT EXISTS research_pins (
-           user_name TEXT NOT NULL,
-           research_id INTEGER NOT NULL REFERENCES research(id) ON DELETE CASCADE,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (user_name, research_id)
-         );
-         CREATE INDEX IF NOT EXISTS research_ticker_upper_idx ON research (UPPER(ticker));`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "research: ensure tables failed at init"));
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const strToNum = (v: unknown): number | null => {
   if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
-const numToStr = (v: number | null | undefined): string | null | undefined =>
-  v === undefined ? undefined : v === null ? null : String(v);
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 type ResearchRow = {
@@ -137,22 +88,16 @@ function serializeResearch(r: ResearchRow, viewer: string | null) {
   return { ...GetResearchResponse.parse(base), ...extra };
 }
 
-async function loadResearch(id: number, viewer: string | null, scope: string | null, includeDeleted = false): Promise<ResearchRow | null> {
+async function loadResearch(id: number, viewer: string | null, scope: string | null): Promise<ResearchRow | null> {
   const { rows } = await pool.query<ResearchRow>(
     `SELECT ${COLS}, ev.*, (p.research_id IS NOT NULL) AS pinned
        FROM research r
        ${EVIDENCE("$2")}
        LEFT JOIN research_pins p ON p.research_id = r.id AND p.user_name = $3
-      WHERE r.id = $1 ${includeDeleted ? "" : "AND r.deleted_at IS NULL"} LIMIT 1`,
+      WHERE r.id = $1 AND r.deleted_at IS NULL LIMIT 1`,
     [id, scope, viewer],
   );
   return rows[0] ?? null;
-}
-
-async function canModify(req: Request, r: ResearchRow): Promise<boolean> {
-  if (!req.authUser) return false;
-  if (isStaffRole(await viewerRole(req))) return true;
-  return r.created_by == null || r.created_by === req.authUser.name;
 }
 
 function parseId(req: Request, res: Response): number | null {
@@ -177,7 +122,6 @@ const ListQuery = z.object({
 });
 
 router.get("/research", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const scope = await evidenceScope(req);
   if (scope === undefined) throw unauthorized();
   const q = ListQuery.safeParse({
@@ -213,42 +157,7 @@ router.get("/research", asyncHandler(async (req, res): Promise<void> => {
   res.json(items);
 }));
 
-const CreateExtra = z.object({
-  date: z.string().regex(ISO_DATE).nullish(),
-  playbookId: z.coerce.number().int().positive().nullish(),
-});
-
-router.post("/research", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  if (!requireMember(req, res)) return;
-  const parsed = CreateResearchBody.safeParse(req.body);
-  if (!parsed.success) throw parsed.error;
-  const extra = CreateExtra.safeParse(req.body);
-  if (!extra.success) throw extra.error;
-  const d = parsed.data;
-  const name = d.patternName.trim();
-  if (!name) throw new AppError("NAME_REQUIRED_GENERIC");
-  const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO research (pattern_name, ticker, context, market_condition, what_worked, what_failed, repeat_count, confidence_level,
-       screenshot_url, screenshot_notes, tags, market_cap, float, adv, atr, relative_volume, beta, short_interest, sector, long_name,
-       created_by, date, playbook_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING id`,
-    [
-      name, d.ticker ? d.ticker.trim().toUpperCase() : null, d.context ?? null, d.marketCondition ?? null, d.whatWorked ?? null, d.whatFailed ?? null,
-      d.repeatCount ?? null, d.confidenceLevel ?? null, d.screenshotUrl != null ? sanitizeMultiLineUrls(d.screenshotUrl) : null,
-      d.screenshotNotes ?? null, d.tags ?? null, d.marketCap ?? null, d.float ?? null, d.adv ?? null, numToStr(d.atr) ?? null,
-      numToStr(d.relativeVolume) ?? null, numToStr(d.beta) ?? null, numToStr(d.shortInterest) ?? null, d.sector ?? null, d.longName ?? null,
-      req.authUser!.name, extra.data.date ?? nyDate(), extra.data.playbookId ?? null,
-    ],
-  );
-  const scope = (await evidenceScope(req)) ?? null;
-  const entry = await loadResearch(rows[0].id, req.authUser!.name, scope);
-  logActivity({ action: "created", section: "research", entityId: String(rows[0].id), entityTitle: name, trader: req.authUser!.name });
-  res.status(201).json(serializeResearch(entry!, req.authUser!.name));
-}));
-
 router.get("/research/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const scope = await evidenceScope(req);
   if (scope === undefined) throw unauthorized();
   const params = GetResearchParams.safeParse(req.params);
@@ -259,87 +168,6 @@ router.get("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   res.json(serializeResearch(entry, viewer));
 }));
 
-const PatchExtra = z.object({
-  date: z.string().regex(ISO_DATE).nullish(),
-  playbookId: z.coerce.number().int().positive().nullish(),
-});
-
-const COL: Record<string, string> = {
-  patternName: "pattern_name", ticker: "ticker", context: "context", marketCondition: "market_condition", whatWorked: "what_worked",
-  whatFailed: "what_failed", repeatCount: "repeat_count", confidenceLevel: "confidence_level", screenshotUrl: "screenshot_url",
-  screenshotNotes: "screenshot_notes", tags: "tags", marketCap: "market_cap", float: "float", adv: "adv", atr: "atr",
-  relativeVolume: "relative_volume", beta: "beta", shortInterest: "short_interest", sector: "sector", longName: "long_name",
-  date: "date", playbookId: "playbook_id",
-};
-
-router.patch("/research/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  if (!requireMember(req, res)) return;
-  const params = UpdateResearchParams.safeParse(req.params);
-  if (!params.success) throw params.error;
-  const parsed = UpdateResearchBody.safeParse(req.body);
-  if (!parsed.success) throw parsed.error;
-  const extra = PatchExtra.safeParse(req.body);
-  if (!extra.success) throw extra.error;
-  const viewer = req.authUser!.name;
-  const scope = (await evidenceScope(req)) ?? null;
-  const existing = await loadResearch(params.data.id, viewer, scope);
-  if (!existing) throw notFound("RESEARCH_NOT_FOUND");
-  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
-  const d = parsed.data;
-  const patch: Record<string, unknown> = {
-    ...d,
-    patternName: d.patternName != null ? d.patternName.trim() : undefined,
-    ticker: d.ticker !== undefined ? (d.ticker ? d.ticker.trim().toUpperCase() : null) : undefined,
-    atr: numToStr(d.atr), relativeVolume: numToStr(d.relativeVolume), beta: numToStr(d.beta), shortInterest: numToStr(d.shortInterest),
-    screenshotUrl: d.screenshotUrl !== undefined ? sanitizeMultiLineUrls(d.screenshotUrl) : undefined,
-    date: extra.data.date !== undefined ? extra.data.date : undefined,
-    playbookId: extra.data.playbookId !== undefined ? extra.data.playbookId : undefined,
-  };
-  const sets: string[] = [];
-  const vals: unknown[] = [];
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined || !COL[k]) continue;
-    vals.push(v);
-    sets.push(`${COL[k]} = $${vals.length}`);
-  }
-  if (sets.length) {
-    vals.push(existing.id);
-    await pool.query(`UPDATE research SET ${sets.join(", ")} WHERE id = $${vals.length} AND deleted_at IS NULL`, vals);
-  }
-  const entry = await loadResearch(existing.id, viewer, scope);
-  if (!entry) throw notFound("RESEARCH_NOT_FOUND");
-  logActivity({ action: extra.data.playbookId ? "promoted" : "updated", section: "research", entityId: String(entry.id), entityTitle: entry.pattern_name, trader: viewer, details: extra.data.playbookId ? `playbook #${extra.data.playbookId}` : undefined });
-  const out = serializeResearch(entry, viewer);
-  UpdateResearchResponse.parse(out);
-  res.json(out);
-}));
-
-router.delete("/research/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  if (!requireMember(req, res)) return;
-  const params = DeleteResearchParams.safeParse(req.params);
-  if (!params.success) throw params.error;
-  const existing = await loadResearch(params.data.id, req.authUser!.name, GUEST_SCOPE);
-  if (!existing) throw notFound("RESEARCH_NOT_FOUND");
-  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
-  await pool.query(`UPDATE research SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [existing.id]);
-  logActivity({ action: "deleted", section: "research", entityId: String(existing.id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
-  res.sendStatus(204);
-}));
-
-router.post("/research/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  if (!requireMember(req, res)) return;
-  const id = parseId(req, res); if (id == null) return;
-  const existing = await loadResearch(id, req.authUser!.name, GUEST_SCOPE, true);
-  if (!existing || !existing.deleted_at) throw notFound("RESEARCH_NOT_FOUND");
-  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
-  await pool.query(`UPDATE research SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
-  logActivity({ action: "restored", section: "research", entityId: String(id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
-  res.json({ success: true });
-}));
-
 // ─── Evidence: linked trades ───────────────────────────────────────────────
 
 const TRADE_SELECT = `t.id, t.ticker, t.date, t.exit_date, ${closeDateSql("t")} AS close_date, t.side, t.setup, t.result,
@@ -347,7 +175,6 @@ const TRADE_SELECT = `t.id, t.ticker, t.date, t.exit_date, ${closeDateSql("t")} 
   ${resultSql("t")} AS res, t.trader, t.source, t.broker_account, t.qty, t.pattern_id`;
 
 router.get("/research/:id/trades", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const scope = await evidenceScope(req);
   if (scope === undefined) throw unauthorized();
@@ -388,7 +215,6 @@ router.get("/research/:id/trades", asyncHandler(async (req, res): Promise<void> 
  * the viewer may read. The note preview used to load the whole /playbook list (~300 KB) just for this lookup.
  */
 router.get("/research/:id/setups", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const { rows: exists } = await pool.query<{ playbook_id: number | null }>(`SELECT playbook_id FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
   if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
@@ -402,70 +228,6 @@ router.get("/research/:id/setups", asyncHandler(async (req, res): Promise<void> 
     params,
   );
   res.json(rows.map((r) => ({ id: r.id, name: r.name, folder: r.folder, sourceType: r.source_type, sourceId: r.source_id })));
-}));
-
-/**
- * Trades the viewer could link to this note: same ticker(s), not linked to this note yet, newest first (scoped like
- * /research/:id/trades — a trader sees only their own). Saves looking up trade IDs in the journal.
- */
-router.get("/research/:id/candidates", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  const id = parseId(req, res); if (id == null) return;
-  const scope = await evidenceScope(req);
-  if (scope === undefined) throw unauthorized();
-  if (scope === GUEST_SCOPE) { res.json([]); return; }
-  const { rows: exists } = await pool.query<{ ticker: string | null }>(`SELECT ticker FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
-  const tickers = [...new Set((exists[0].ticker ?? "").toUpperCase().split(/[\s,;/]+/).map((t) => t.trim()).filter((t) => /^[A-Z][A-Z0-9.\-]{0,11}$/.test(t)))];
-  if (!tickers.length) { res.json([]); return; }
-  const { rows } = await pool.query<Record<string, unknown>>(
-    `SELECT ${TRADE_SELECT} FROM trades t
-      WHERE t.deleted_at IS NULL AND UPPER(t.ticker) = ANY($1::text[]) AND t.pattern_id IS DISTINCT FROM $2
-        AND ($3::text IS NULL OR t.trader = $3)
-      ORDER BY ${closeDateSql("t")} DESC, t.id DESC LIMIT 12`,
-    [tickers, id, scope],
-  );
-  res.json(rows.map((r) => ({
-    id: Number(r.id), ticker: String(r.ticker ?? ""), date: String(r.date ?? "").slice(0, 10), side: (r.side as string | null) ?? null,
-    setup: (r.setup as string | null) ?? null, result: (r.result as string | null) ?? null, netPnl: strToNum(r.net_pnl),
-    signedR: strToNum(r.signed_r), trader: (r.trader as string | null) ?? null, patternId: r.pattern_id == null ? null : Number(r.pattern_id),
-  })));
-}));
-
-const LinkBody = z.object({ tradeId: z.coerce.number().int().positive(), unlink: z.coerce.boolean().optional() });
-
-router.post("/research/:id/link-trade", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  if (!requireMember(req, res)) return;
-  const id = parseId(req, res); if (id == null) return;
-  const body = LinkBody.safeParse(req.body);
-  if (!body.success) throw new AppError("FIELD_REQUIRED", undefined, { field: "tradeId" });
-  const { rows: exists } = await pool.query<{ pattern_name: string }>(`SELECT pattern_name FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
-  const access = await canAccessTrade(req, body.data.tradeId);
-  if (access === null) throw notFound("TRADE_NOT_FOUND");
-  if (!access) throw new AppError("OWN_TRADES_ONLY");
-  await pool.query(`UPDATE trades SET pattern_id = $1 WHERE id = $2 AND deleted_at IS NULL`, [body.data.unlink ? null : id, body.data.tradeId]);
-  logActivity({ action: body.data.unlink ? "unlinked" : "linked", section: "research", entityId: String(id), entityTitle: exists[0].pattern_name, trader: req.authUser!.name, details: `trade #${body.data.tradeId}` });
-  res.json({ success: true, patternId: body.data.unlink ? null : id, tradeId: body.data.tradeId });
-}));
-
-const PinBody = z.object({ pinned: z.coerce.boolean() });
-
-router.post("/research/:id/pin", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
-  if (!requireMember(req, res)) return;
-  const id = parseId(req, res); if (id == null) return;
-  const body = PinBody.safeParse(req.body);
-  if (!body.success) throw new AppError("INVALID_FIELD", undefined, { field: "pinned" });
-  const { rows: exists } = await pool.query(`SELECT 1 FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
-  if (body.data.pinned) {
-    await pool.query(`INSERT INTO research_pins (user_name, research_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [req.authUser!.name, id]);
-  } else {
-    await pool.query(`DELETE FROM research_pins WHERE user_name = $1 AND research_id = $2`, [req.authUser!.name, id]);
-  }
-  res.json({ id, pinned: body.data.pinned });
 }));
 
 export default router;

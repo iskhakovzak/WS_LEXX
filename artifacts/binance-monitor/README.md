@@ -10,8 +10,9 @@ GET https://www.binanceuz.co/bapi/composite/v2/friendly/pgc/content/
     ?targetSquareUid=RF5v7JH_6MiIJr-91F-aBA&timeOffset=-1&filterType=ALL
 ```
 
-> ⚠️ Binance блокирует IP-адреса облачных провайдеров (Replit, AWS, GCP, Hetzner cloud).
-> Запускать на домашнем VPS или машине с жилым IP.
+> ⚠️ Binance блокирует IP-адреса облачных провайдеров (AWS, GCP, Hetzner cloud и т. п.).
+> Запускать на машине с жилым / офисным IP: сейчас это ПК владельца, после переезда — офисный сервер
+> (`ws-news.service`, см. `docs/DEPLOY.md`, раздел 5.2). Отправитель всегда один.
 
 ## Структура
 
@@ -33,16 +34,17 @@ binance-monitor/
 └── filters.last-good.json  # копия последнего рабочего filters.json (создаётся автоматически)
 ```
 
-## Запуск на VPS (Ubuntu/Debian)
+## Запуск
 
-### 1. Установка Python и зависимостей
+На сервере деска бот работает как systemd-сервис `ws-news` из общего репозитория, в своём venv и с переменными в
+`/etc/ws-lexx/news.env` — установка, unit-файл и обновление описаны в `docs/DEPLOY.md` (раздел 5.2). Ниже — ручной
+запуск (ПК, отладка).
+
+### 1. Зависимости
 
 ```bash
-sudo apt update && sudo apt install -y python3 python3-pip
-cd /opt
-git clone <repo> binance-monitor   # или скопируй файлы вручную
-cd binance-monitor
-pip3 install -r requirements.txt
+python3 -m venv ~/.venvs/ws-news && . ~/.venvs/ws-news/bin/activate   # venv вне репозитория
+pip install -r requirements.txt
 ```
 
 ### 2. Переменные окружения
@@ -51,8 +53,6 @@ pip3 install -r requirements.txt
 export TELEGRAM_BOT_TOKEN="<токен_от_BotFather>"
 export TELEGRAM_CHAT_ID="<chat_id>"
 ```
-
-Или создай файл `.env` и загружай через `source .env`.
 
 ### 3. Тест запуска
 
@@ -93,46 +93,9 @@ POLL_ALERT_MINUTES=10     # опрос Binance падает N минут под�
 2026-06-16 12:00:00 [INFO] monitor — ✅ Polling every 1.0s  |  Ctrl+C to stop
 ```
 
-### 4. Автозапуск через systemd
+### 4. Автозапуск
 
-Создай файл `/etc/systemd/system/binance-monitor.service`:
-
-```ini
-[Unit]
-Description=Binance Square → Telegram Monitor
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/binance-monitor
-Environment=TELEGRAM_BOT_TOKEN=<токен_от_BotFather>
-Environment=TELEGRAM_CHAT_ID=<chat_id>
-ExecStart=/usr/bin/python3 main.py
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable binance-monitor
-sudo systemctl start binance-monitor
-sudo journalctl -u binance-monitor -f   # логи в реальном времени
-```
-
-### 5. Запуск через screen (альтернатива без systemd)
-
-```bash
-screen -S binance
-python3 main.py
-# Ctrl+A, D — отсоединиться
-screen -r binance  # вернуться
-```
+systemd-сервис `ws-news` — `docs/DEPLOY.md`, раздел 5.2 (логи: `journalctl -u ws-news -f`).
 
 ## Настройка (config.py)
 
@@ -156,9 +119,10 @@ screen -r binance  # вернуться
 - Каждый пост обрабатывается отдельно: «битый» пост (неожиданная структура) пишется в лог `Malformed post id=… skipped` и помечается — бот не падает и не зацикливается на нём.
 - Ошибка Telegram: до 3 попыток (с учётом `retry_after` при 429), затем пост помечается, чтобы не зациклиться.
 
-## Логи на Replit VM
+## Логи
 
-`scripts/start-vm.sh` запускает монитор в фоне с автоперезапуском и пишет лог в `/tmp/binance-monitor.log` (ротация по 2 MB). Последние 200 строк доступны админу через `GET /api/monitor-log`.
+Под systemd лог идёт в journald (`journalctl -u ws-news -f`). `BINANCE_MONITOR_LOG=/path/file.log` дополнительно пишет
+его в файл с ротацией по 2 MB.
 
 ## Формат сообщений в Telegram
 

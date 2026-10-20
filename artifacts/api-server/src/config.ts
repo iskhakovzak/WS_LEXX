@@ -64,6 +64,8 @@ const schema = z.object({
   PUBLIC_OBJECT_SEARCH_PATHS: str,
   PRIVATE_OBJECT_DIR: str,
   BACKUP_CRON: str,
+  /** Own server (docs/DEPLOY.md): pg_dump files go to this directory instead of Object Storage. */
+  BACKUP_DIR: str,
   // AI
   ANTHROPIC_MODEL: str,
   AI_DAILY_COST_BUDGET_USD: str,
@@ -153,6 +155,8 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
     },
     /** Daily backup schedule, cron in America/New_York (default 03:15). */
     backupCron: e.BACKUP_CRON ?? "15 3 * * *",
+    /** Local backup directory (own server); null → Object Storage (DEFAULT_OBJECT_STORAGE_BUCKET_ID) or no backups. */
+    backupDir: e.BACKUP_DIR ?? null,
     ai: {
       anthropicModel: e.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
       dailyCostBudgetUsd: Number(e.AI_DAILY_COST_BUDGET_USD ?? "5.0"),

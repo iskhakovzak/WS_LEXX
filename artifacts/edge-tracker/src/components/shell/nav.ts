@@ -20,10 +20,13 @@ import {
   LineChart, BarChart3, ListChecks, BookMarked, Eye, Radar, CalendarClock, BookOpen, Newspaper,
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
   Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, MessageSquareText,
-  GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Wrench, Gamepad2, Shapes,
+  GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Wrench, Gamepad2, Shapes, ScanSearch,
 } from "lucide-react";
 import { shellI18n, type NavGroupKey, type NavHubKey, type NavKey, type NavShortKey } from "@/i18n/ns/shell";
 import ruShell from "@/i18n/locales/ru/shell";
+
+/** Sections behind a desk switch (GET /api/permissions/me → `nav.<feature>`); off or unknown → not in the menu. */
+export type NavFeature = "authorNotes";
 
 export type NavItem = {
   /** Stable id = the dictionary key (shell `nav.<key>`). */
@@ -42,6 +45,8 @@ export type NavItem = {
   staff?: boolean;
   /** Not shown in the sidebar (still searchable, still titled). */
   hidden?: boolean;
+  /** Shown only while this desk switch is on (sidebar, phone sheet and palette alike). */
+  feature?: NavFeature;
   /** Other path prefixes that should highlight this item. */
   also?: string[];
   /** Two-key shortcut after "G" (e.g. G then D). */
@@ -102,7 +107,7 @@ export const NAV_GROUPS: NavGroup[] = [
     nav("curator", { short: true, href: "/curator", icon: ClipboardList, keywords: "curator куратор кабинет подопечные разбор очередь нарушения риск заметки трейдеры", staff: true, goKey: "k" }),
     nav("gamePlan", { short: true, href: "/game-plan", icon: Crosshair, keywords: "game plan премаркет premarket in play катализаторы уровни", goKey: "p" }),
     nav("risk", { short: true, href: "/risk", icon: ShieldAlert, keywords: "risk лимиты limits просадка drawdown buying power стоп", goKey: "r", children: [
-      nav("scaling", { href: "/scaling", icon: TrendingUp, keywords: "scaling масштабирование лимиты уровни tier тир" }),
+      nav("scaling", { href: "/scaling", icon: TrendingUp, keywords: "scaling масштабирование лимиты уровни tier тир", staff: true }),
     ] }),
   ]),
   group("trade", [
@@ -114,6 +119,8 @@ export const NAV_GROUPS: NavGroup[] = [
     nav("journal", { href: "/journal", icon: NotebookPen, keywords: "journal журнал дневник разбор дня eod закрытие дня вечер сводка итог дня junior notes", goKey: "j", children: [
       nav("dayReport", { href: "/day-report", icon: FileText, keywords: "day report разбор дня итоги дня отчёт план на завтра" }),
       nav("weeklyReview", { href: "/weekly-review", icon: ClipboardCheck, keywords: "weekly review неделя итоги недели отчёт" }),
+      // Волна 2 п. 2.9: the trader's own 30-day answer (where I earn / lose, one rule for tomorrow); staff keep /analytics.
+      nav("myReview", { href: "/my-review", icon: ScanSearch, keywords: "my review мой разбор где зарабатываю где теряю правило на завтра итоги месяца" }),
     ] }),
     nav("analytics", { href: "/analytics", icon: LineChart, keywords: "analytics equity expectancy R аналитика", goKey: "a", children: [
       nav("stats", { href: "/stats", icon: BarChart3, keywords: "stats статистика winrate", goKey: "s" }),
@@ -139,7 +146,8 @@ export const NAV_GROUPS: NavGroup[] = [
   ]),
   group("team", [
     nav("discussions", { href: "/discussions", icon: MessageSquare, keywords: "discussions чат треды обсуждения", goKey: "m", children: [
-      nav("authorNotes", { href: "/author-notes", icon: Mic, keywords: "author notes авторская сводка" }),
+      // Волна 2 п. 2.15: behind the desk switch nav.authorNotes (default off) — nobody writes it on the pilot.
+      nav("authorNotes", { href: "/author-notes", icon: Mic, keywords: "author notes авторская сводка", feature: "authorNotes" }),
       // Волна 1, item 1.20: the day's desk news and manual posts are on the desk plan; the full feeds stay, last.
       nav("dailyFeed", { href: "/dailyfeed", icon: Newspaper, keywords: "daily feed дневная лента тема дня" }),
       nav("activity", { href: "/activity", icon: Activity, keywords: "activity лента активности" }),

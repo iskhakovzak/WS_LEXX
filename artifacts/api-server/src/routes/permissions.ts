@@ -19,12 +19,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { logAudit } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { requireStaff } from "../lib/auth";
-import {
-  CAPABILITY_DEFS, DEFAULT_MATRIX, DEFAULT_SCOPE, ROLES,
-  buildEffectiveMatrix, capabilitiesOf, capabilityDef, diffFromDefaults, ensureRolePermissionsTable, getMatrixState,
-  invalidatePermissionsCache, isEditableRole, requireCap, resolveActor,
-  type Capability, type EffectiveMatrix, type Override, type Role,
-} from "../lib/permissions";
+import { CAPABILITY_DEFS, DEFAULT_MATRIX, DEFAULT_SCOPE, ROLES, buildEffectiveMatrix, capabilitiesOf, capabilityDef, diffFromDefaults, getMatrixState, invalidatePermissionsCache, isEditableRole, requireCap, resolveActor, type Capability, type EffectiveMatrix, type Override, type Role } from "../lib/permissions";
 import { badRequest, unauthorized } from "../lib/http";
 import { localizedCapabilityDefs } from "../lib/permissionsI18n";
 import { langOf, type Lang } from "../i18n";
@@ -33,7 +28,6 @@ import { viewerTier } from "../lib/playbookToday/tier";
 
 const router: IRouter = Router();
 
-ensureRolePermissionsTable().catch((err) => logger.warn({ err }, "permissions: ensure table failed at init"));
 
 function scopesOf(matrix: EffectiveMatrix, role: Role): Record<string, "desk" | "assigned"> {
   const out: Record<string, "desk" | "assigned"> = {};
@@ -74,7 +68,7 @@ router.get("/permissions/me", asyncHandler(async (req, res): Promise<void> => {
     guest: actor.guest,
     // Ladder tier as the playbook locks see it (staff / guests: null) + the simple-menu settings — the shell picks the menu.
     tier,
-    nav: { simpleForTrainees: setting("nav.simpleForTrainees"), simpleUntilTier: setting("nav.simpleUntilTier") },
+    nav: { simpleForTrainees: setting("nav.simpleForTrainees"), simpleUntilTier: setting("nav.simpleUntilTier"), authorNotes: setting("nav.authorNotes") },
     capabilities: capabilitiesOf(state.matrix, actor.role),
     scopes: scopesOf(state.matrix, actor.role),
     wards: actor.wards,
@@ -106,7 +100,6 @@ router.put("/permissions/matrix", asyncHandler(async (req, res): Promise<void> =
     throw badRequest("VALIDATION", { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
   }
   const actor = req.authUser!.name;
-  await ensureRolePermissionsTable();
   const before = (await getMatrixState()).overrides;
 
   let next: Override[];

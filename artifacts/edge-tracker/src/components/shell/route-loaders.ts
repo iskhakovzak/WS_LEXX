@@ -51,6 +51,7 @@ const PAGE_IMPORTS = {
   "/what-if": () => import("@/pages/what-if"),
   "/behavior": () => import("@/pages/behavior"),
   "/day-report": () => import("@/pages/day-report"),
+  "/my-review": () => import("@/pages/my-review"),
   "/benchmark": () => import("@/pages/benchmark"),
   "/office": () => import("@/pages/office-stats"),
   "/ask": () => import("@/pages/ask"),

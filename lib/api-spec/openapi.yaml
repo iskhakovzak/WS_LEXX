@@ -272,23 +272,6 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Research"
-    post:
-      operationId: createResearch
-      tags: [research]
-      summary: Create a research entry
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateResearchBody"
-      responses:
-        "201":
-          description: Created research
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Research"
 
   /research/{id}:
     get:
@@ -310,42 +293,6 @@ paths:
                 $ref: "#/components/schemas/Research"
         "404":
           description: Not found
-    patch:
-      operationId: updateResearch
-      tags: [research]
-      summary: Update a research entry
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateResearchBody"
-      responses:
-        "200":
-          description: Updated research
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Research"
-    delete:
-      operationId: deleteResearch
-      tags: [research]
-      summary: Delete a research entry
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "204":
-          description: Deleted
 
   # ── DAILY FEED ────────────────────────────────────────────────────────────
   /dailyfeed:
@@ -1682,96 +1629,6 @@ components:
         - id
         - patternName
         - createdAt
-
-    CreateResearchBody:
-      type: object
-      properties:
-        patternName:
-          type: string
-        ticker:
-          type: ["string", "null"]
-        context:
-          type: ["string", "null"]
-        marketCondition:
-          type: ["string", "null"]
-        whatWorked:
-          type: ["string", "null"]
-        whatFailed:
-          type: ["string", "null"]
-        repeatCount:
-          type: ["integer", "null"]
-        confidenceLevel:
-          type: ["integer", "null"]
-        screenshotUrl:
-          type: ["string", "null"]
-        screenshotNotes:
-          type: ["string", "null"]
-        tags:
-          type: ["string", "null"]
-        marketCap:
-          type: ["string", "null"]
-        float:
-          type: ["string", "null"]
-        adv:
-          type: ["string", "null"]
-        atr:
-          type: ["number", "null"]
-        relativeVolume:
-          type: ["number", "null"]
-        beta:
-          type: ["number", "null"]
-        shortInterest:
-          type: ["number", "null"]
-        sector:
-          type: ["string", "null"]
-        longName:
-          type: ["string", "null"]
-      required:
-        - patternName
-
-    UpdateResearchBody:
-      type: object
-      properties:
-        patternName:
-          type: ["string", "null"]
-        ticker:
-          type: ["string", "null"]
-        context:
-          type: ["string", "null"]
-        marketCondition:
-          type: ["string", "null"]
-        whatWorked:
-          type: ["string", "null"]
-        whatFailed:
-          type: ["string", "null"]
-        repeatCount:
-          type: ["integer", "null"]
-        confidenceLevel:
-          type: ["integer", "null"]
-        screenshotUrl:
-          type: ["string", "null"]
-        screenshotNotes:
-          type: ["string", "null"]
-        tags:
-          type: ["string", "null"]
-        marketCap:
-          type: ["string", "null"]
-        float:
-          type: ["string", "null"]
-        adv:
-          type: ["string", "null"]
-        atr:
-          type: ["number", "null"]
-        relativeVolume:
-          type: ["number", "null"]
-        beta:
-          type: ["number", "null"]
-        shortInterest:
-          type: ["number", "null"]
-        sector:
-          type: ["string", "null"]
-        longName:
-          type: ["string", "null"]
 
     # ── DAILY FEED ─────────────────────────────────────────────────────────
     DailyFeed:

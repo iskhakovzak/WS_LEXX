@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
 import { ALL_NAV_ITEMS, rowChildren } from "./nav";
-import { TIERS, isSimpleNav, mobileTabs, simpleNav, visibleNav, type NavPrefs } from "./nav-model";
+import { TIERS, isSimpleNav, mobileTabs, navFeatureOn, simpleNav, visibleNav, type NavPrefs } from "./nav-model";
 
 afterEach(async () => {
   await setLang("ru", { source: "init" });
@@ -135,5 +135,21 @@ describe("phone sheet (ILYA-18, OWNER-28)", async () => {
     const items = [{ href: "/a" }, { href: "/office" }, { href: "/b" }];
     expect(withoutPinned(items, ["/office"]).map((i) => i.href)).toEqual(["/a", "/b"]);
     expect(withoutPinned(items, [])).toEqual(items);
+  });
+});
+
+describe("sections behind a desk switch (Волна 2 п. 2.15)", () => {
+  const hrefs = (nav?: unknown) => visibleNav(true, nav).flatMap((g) => g.items.map((i) => i.href));
+
+  it("«Сводка автора» is in the menu only while nav.authorNotes is on (default off)", () => {
+    expect(hrefs()).not.toContain("/author-notes");
+    expect(hrefs({ simpleForTrainees: true, simpleUntilTier: "junior" })).not.toContain("/author-notes");
+    expect(hrefs({ authorNotes: false })).not.toContain("/author-notes");
+    expect(hrefs({ authorNotes: true })).toContain("/author-notes");
+  });
+
+  it("an item without a switch is always on", () => {
+    expect(navFeatureOn(undefined, null)).toBe(true);
+    expect(navFeatureOn("authorNotes", { authorNotes: "yes" })).toBe(false);
   });
 });

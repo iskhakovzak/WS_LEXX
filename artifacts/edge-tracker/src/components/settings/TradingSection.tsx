@@ -1,11 +1,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Calculator, ClipboardCheck, Landmark, RotateCcw, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Calculator, Landmark, RotateCcw, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import { Panel, Pill, Segmented, StatRow } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChecklistTemplateAdmin } from "@/components/checklist-template-admin";
 import { useAuth } from "@/contexts/auth-context";
 import { STALE } from "@/lib/api/keys";
 import { riskMeQuery } from "@/lib/api/queries";
@@ -116,7 +115,7 @@ function useSecondsAgo(iso: string | null): string | null {
 }
 
 export function TradingSection() {
-  const { user, can } = useAuth();
+  const { user } = useAuth();
   const { t } = settingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const isMember = !!user?.traderName && user.role !== "guest";
@@ -361,12 +360,6 @@ export function TradingSection() {
           )}
         </div>
       </div>
-
-      {can("checklist.template.edit") && (
-        <Panel title={t("trading.checklistTitle")} description={t("trading.checklistDesc")} icon={ClipboardCheck}>
-          <ChecklistTemplateAdmin />
-        </Panel>
-      )}
     </div>
   );
 }

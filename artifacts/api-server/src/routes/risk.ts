@@ -44,7 +44,7 @@ import { notifLinks } from "../lib/notificationCore";
 import { inBackground } from "../lib/notifyEvents";
 import { haltedStopText, limitsDiff, limitsDiffItems, limitsDiffParams } from "../lib/notifyEventsCore";
 import { logAudit } from "../lib/audit";
-import { ensureCuratorTables, rowToBreachReview } from "../lib/curatorStore";
+import { rowToBreachReview } from "../lib/curatorStore";
 import {
   BREACH_CONSEQUENCE_KEYS, BREACH_REASON_KEYS, STAGE_TIER_KEYS,
   breachConsequences, breachReasons, breachStats, normalizeBreachActions, stageLabel, templateDiff, type LimitDiff,
@@ -57,10 +57,7 @@ import {
   computeMetrics, drawdownSince, liveRisk, nextPeak, num, pctOf, round2,
   type DayRow, type LiveRisk, type LiveSnapshot, type Limits, type Metrics, type Position,
 } from "../lib/riskMetrics";
-import {
-  CLOSE_MINUTES, OVERNIGHT_KEY_MINUTES, YMD_RE, afterKeyTime, clientDate, ensureTables, loadDaily, loadDdResets, loadLimits,
-  loadLiveSnapshots, loadPositions, toLimits,
-} from "../lib/riskData";
+import { CLOSE_MINUTES, OVERNIGHT_KEY_MINUTES, YMD_RE, afterKeyTime, clientDate, loadDaily, loadDdResets, loadLimits, loadLiveSnapshots, loadPositions, toLimits } from "../lib/riskData";
 import { loadLivePositions } from "../lib/livePositions";
 import { recordStopAlerts } from "../lib/riskAlertQueue";
 import { buyingPowerProblem } from "../lib/people/stageLimits";
@@ -250,7 +247,6 @@ router.get("/risk/limits/:trader/history", asyncHandler(async (req, res): Promis
   const trader = String(req.params.trader ?? "").trim();
   if (!trader || trader.length > 100) throw badRequest("INVALID_TRADER");
   if (trader !== req.authUser.name && !(await can(req, "risk.read.team", { trader }))) throw forbidden();
-  await ensureTables();
   const { rows } = await pool.query(
     `SELECT id, trader, before, after, reason, changed_by, changed_at FROM trader_risk_limit_events WHERE trader = $1 ORDER BY changed_at DESC LIMIT 50`,
     [trader],
@@ -352,7 +348,6 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
   const after = toLimits(rows[0]);
   // Change log (best-effort; the limits are already saved).
   try {
-    await ensureTables();
     const strip = (l: Limits | null) => {
       if (!l) return null;
       const copy: Partial<Limits> = { ...l };
@@ -570,7 +565,6 @@ router.get("/risk/alerts", asyncHandler(async (req, res): Promise<void> => {
   const daysRaw = Number(req.query.days ?? 14);
   const span = Number.isFinite(daysRaw) ? Math.min(180, Math.max(1, Math.round(daysRaw))) : 14;
   const from = addDays(nyDate(), -(span - 1));
-  await ensureTables();
   const { rows } = await pool.query(
     `SELECT id, trader, date, kind, level, used::float AS used, "limit"::float AS "limit", message, created_at
      FROM risk_alert_log WHERE ($1::text IS NULL OR trader = $1) AND date >= $2 AND level IN ('warn', 'breach')
@@ -584,51 +578,6 @@ router.get("/risk/alerts", asyncHandler(async (req, res): Promise<void> => {
       id: Number(r.id), trader: String(r.trader), date: String(r.date), kind: String(r.kind), level: String(r.level),
       used: num(r.used), limit: num(r.limit), message: alertMessage(r, langOf(req)), createdAt: new Date(r.created_at).toISOString(),
     })),
-  });
-}));
-
-/** Pre-trade check: would this hypothetical position (for the caller) breach anything? */
-router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
-  const me = req.authUser?.name;
-  if (!me) throw unauthorized();
-  const q = z.object({
-    riskUsd: z.coerce.number().min(0).max(1e9).optional(),
-    exposureUsd: z.coerce.number().min(0).max(1e12).optional(),
-    horizon: z.enum(["intraday", "overnight", "swing"]).optional(),
-    ticker: z.string().trim().max(12).optional(),
-    date: z.string().optional(),
-  }).safeParse(req.query);
-  if (!q.success) throw q.error;
-  const today = clientDate(q.data.date);
-  const [limitsMap, days, positions, resets, snaps] = await Promise.all([
-    loadLimits(me), loadDaily(me, today), loadPositions(me, today), loadDdResets(me), loadLiveSnapshots(today, [me]),
-  ]);
-  const limits = limitsMap.get(me) ?? null;
-  const ddSince = drawdownSince(resets.get(me), today);
-  const live = liveOf(snaps, me, today);
-  const before = computeMetrics(me, days, positions, limits, today, langOf(req), ddSince, live);
-  const horizon = q.data.horizon ?? "intraday";
-  const hypothetical: Position = {
-    id: -1, ticker: (q.data.ticker ?? "NEW").toUpperCase(), date: today, side: null, setup: null, trader: me, horizon,
-    qty: null, entry: null, stop: null, daysHeld: 0,
-    riskUsd: q.data.riskUsd ?? null, riskSource: q.data.riskUsd != null ? "planned" : null, riskMismatch: false,
-    plannedRiskUsd: q.data.riskUsd ?? null, stopRiskUsd: null,
-    exposureUsd: q.data.exposureUsd ?? null, carried: horizon !== "intraday", carriedTonight: horizon !== "intraday" || afterKeyTime(today),
-    noStatus: false, source: "manual", sector: null, atr: null,
-  };
-  const after = computeMetrics(me, days, [...positions, hypothetical], limits, today, langOf(req), ddSince, live);
-  const newAlerts = after.alerts.filter((a) => !before.alerts.some((b) => b.kind === a.kind && b.level === a.level));
-  const horizonBlocked = !!limits && ((horizon === "overnight" && !limits.allowOvernight) || (horizon === "swing" && !limits.allowSwing));
-  const remainingAfter = after.today.dailyRemainingAfterOpenRiskUsd;
-  res.json({
-    ok: !before.halted && !horizonBlocked && !newAlerts.some((a) => a.level === "breach") && (remainingAfter == null || remainingAfter >= 0),
-    halted: before.halted,
-    stop: before.stop,
-    horizonBlocked,
-    alerts: newAlerts,
-    dailyRemainingUsd: before.today.dailyRemainingUsd,
-    dailyRemainingAfterUsd: remainingAfter,
-    limits,
   });
 }));
 
@@ -742,7 +691,6 @@ router.post("/risk/templates/apply", asyncHandler(async (req, res): Promise<void
   const actor = req.authUser!.name;
   const lang = langOf(req);
   const { items, reason } = parsed.data;
-  await ensureTables();
   const results: { trader: string; ok: boolean; error?: string; code?: string; tier?: string; fromTier?: string | null; resync?: boolean; changes?: string[] }[] = [];
   for (const it of items) {
     if (!(await can(req, "risk.limits.edit", { trader: it.trader }))) { results.push({ trader: it.trader, ok: false, error: errorMessage("FORBIDDEN", lang), code: "FORBIDDEN" }); continue; }
@@ -816,7 +764,6 @@ router.get("/risk/breaches", asyncHandler(async (req, res): Promise<void> => {
   const span = Number.isFinite(daysRaw) ? Math.min(365, Math.max(1, Math.round(daysRaw))) : 30;
   const today = nyDate();
   const from = addDays(today, -(span - 1));
-  await Promise.all([ensureTables(), ensureCuratorTables()]);
   const { rows } = await pool.query(
     `SELECT a.id, a.trader, a.date, a.kind, a.level, a.used::float AS used, a."limit"::float AS "limit", a.message, a.created_at,
             CASE WHEN r.id IS NULL THEN NULL ELSE row_to_json(r.*) END AS review
@@ -862,7 +809,6 @@ const ReviewBody = z.object({
 router.post("/risk/breaches/:alertId/review", asyncHandler(async (req, res): Promise<void> => {
   const alertId = Number(req.params.alertId);
   if (!Number.isInteger(alertId) || alertId <= 0) throw badRequest("INVALID_ID");
-  await Promise.all([ensureTables(), ensureCuratorTables()]);
   const { rows: al } = await pool.query(`SELECT id, trader, date, kind, level, message FROM risk_alert_log WHERE id = $1`, [alertId]);
   const alert = al[0];
   if (!alert) throw notFound("BREACH_NOT_FOUND");
@@ -903,7 +849,6 @@ const ActionStatusBody = z.object({ actionId: z.string().min(1).max(40), status:
 router.post("/risk/breach-reviews/:id/action", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureCuratorTables();
   const { rows: ex } = await pool.query(`SELECT * FROM risk_breach_reviews WHERE id = $1 AND archived_at IS NULL`, [id]);
   if (!ex[0]) throw notFound("BREACH_REVIEW_NOT_FOUND");
   if (!(await requireAnyCap(req, res, ["risk.limits.edit", "journal.review"], { trader: String(ex[0].trader) }))) return;
@@ -922,7 +867,6 @@ router.post("/risk/breach-reviews/:id/action", asyncHandler(async (req, res): Pr
 router.post("/risk/breach-reviews/:id/archive", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureCuratorTables();
   const { rows: ex } = await pool.query(`SELECT trader FROM risk_breach_reviews WHERE id = $1 AND archived_at IS NULL`, [id]);
   if (!ex[0]) throw notFound("BREACH_REVIEW_NOT_FOUND");
   if (!(await requireAnyCap(req, res, ["risk.limits.edit", "journal.review"], { trader: String(ex[0].trader) }))) return;
@@ -938,7 +882,6 @@ router.get("/risk/summary", asyncHandler(async (req, res): Promise<void> => {
   const today = clientDate(req.query.date);
   const lang = langOf(req);
   const { rows, positions } = await deskSnapshot(today, null, lang);
-  await Promise.all([ensureTables(), ensureCuratorTables()]);
   const from7 = addDays(today, -6);
   const from14 = addDays(today, -13);
   const [breachRes, unreviewedRes] = await Promise.all([

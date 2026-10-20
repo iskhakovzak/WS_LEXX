@@ -6,7 +6,8 @@ import {
   AlertTriangle, Archive, BookOpen, CalendarDays, CheckCircle2, Database, Download, FileJson, FileSearch, Info,
   LineChart, ListChecks, MessagesSquare, Newspaper, ScrollText, Target, Upload, XCircle, Eye,
 } from "lucide-react";
-import { useListDailyFeed, useListDiscussions, useListEvents, useListResearch, useListTrades } from "@workspace/api-client-react";
+import { useListDailyFeed, useListDiscussions, useListEvents, useListResearch } from "@workspace/api-client-react";
+import { TRADES_PAGE_KEY, type TradesPageResponse } from "@/hooks/use-trades-page";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { Panel, Pill, Segmented, SortableTh, StatCard, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,25 @@ function cutoffFor(p: Period): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Trades for the CSV: GET /api/trades is windowed (Волна 2 п. 2.15), so the export walks /trades/page by cursor
+ * (500 per page, newest first, cap 20 000 rows) from the period start — the same scope as the book.
+ */
+async function fetchTradesForExport(from: string | null): Promise<unknown[]> {
+  const out: unknown[] = [];
+  let cursor: string | null = null;
+  for (let i = 0; i < 40; i++) {
+    const p = new URLSearchParams({ sort: "date", dir: "desc", limit: "500" });
+    if (from) p.set("from", from);
+    if (cursor) p.set("cursor", cursor);
+    const res: TradesPageResponse = await http.get<TradesPageResponse>(`${TRADES_PAGE_KEY}?${p.toString()}`);
+    out.push(...res.items);
+    if (!res.page.hasMore || !res.page.nextCursor) break;
+    cursor = res.page.nextCursor;
+  }
+  return out;
+}
+
 function ExportTile({ item, period, count }: { item: (typeof EXPORTS)[number]; period: Period; count?: number }) {
   const { t } = settingsI18n.useT();
   const label = t(`data.exports.${item.key}`);
@@ -73,7 +93,7 @@ function ExportTile({ item, period, count }: { item: (typeof EXPORTS)[number]; p
     try {
       let data: unknown;
       try {
-        data = await http.get<unknown>(`/api${item.endpoint}`);
+        data = item.key === "trades" ? await fetchTradesForExport(cutoffFor(period)) : await http.get<unknown>(`/api${item.endpoint}`);
       } catch (e) {
         if (e instanceof ApiError && e.status >= 400) {
           toast({ title: t("data.downloadFailed", { name: label }), description: e.message, variant: "destructive" });
@@ -327,12 +347,11 @@ export function DataSection() {
   const { toast } = useToast();
   const [period, setPeriod] = useState<Period>("all");
   const [fullLoading, setFullLoading] = useState(false);
-  // P1-5: the counter needs only the size of the book — /trades/page?limit=1 (summary.total). The legacy full
-  // list is fetched only if that endpoint is unavailable. CSV export (ExportTile) still downloads the full list.
+  // P1-5: the counter needs only the size of the book — /trades/page?limit=1 (summary.total). The CSV export walks
+  // /trades/page by cursor (fetchTradesForExport); the whole book is never loaded in one response.
   const facets = useTradesBookFacets();
-  const legacyTrades = useListTrades(undefined, { query: { queryKey: ["/api/trades"], enabled: facets.isFetched && facets.data == null } });
-  const l1 = facets.isLoading || (facets.data == null && legacyTrades.isLoading);
-  const tradesCount = facets.data?.total ?? legacyTrades.data?.length ?? 0;
+  const l1 = facets.isLoading;
+  const tradesCount = facets.data?.total ?? 0;
   const { data: events = [], isLoading: l2 } = useListEvents();
   const { data: research = [], isLoading: l3 } = useListResearch();
   const { data: feed = [], isLoading: l4 } = useListDailyFeed();
