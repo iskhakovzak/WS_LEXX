@@ -7,9 +7,12 @@
  *   2. calendar    weekend / NYSE full-day holiday (lib/marketDays isMarketClosed) ⇒ skipped (force: sent anyway)
  *   3. lock        pg_try_advisory_lock('news-channel:<post>') — a manual push and the scheduled run never overlap
  *   4. once a day  notification_dedup key news-channel:<post>:<NY date>: already there ⇒ "dup" (force: sent again)
- *   5. render      nothing to say (every section empty) ⇒ skipped, nothing marked (a later run may have data)
- *   6. send        Telegram with retries (./send.ts); only a delivered post is marked (INSERT … ON CONFLICT DO
- *                  NOTHING, never a delete), so a failed one is retried by the next run / push
+ *   5. fresh       «open» / «close»: the themes board of the post's session, polled up to 60 s (./data.ts
+ *                  awaitThemes); stale or another session's numbers ⇒ skipped with the reason, `retryable`
+ *   6. render      nothing to say (every section empty) ⇒ skipped, nothing marked (a later run may have data), `retryable`
+ *   7. send        Telegram with retries (./send.ts); only a delivered post is marked (INSERT … ON CONFLICT DO
+ *                  NOTHING, never a delete), so a failed one (`retryable`) is retried by the next run / push
+ * A `retryable` result of a scheduled run is retried every 5 min until the post's cutoff (./schedule.ts planRetry).
  */
 import { pool } from "@workspace/db";
 import { config } from "../../config";
@@ -18,7 +21,7 @@ import { setting } from "../settings/registry";
 import { isMarketClosed } from "../marketDays";
 import { claimOnce } from "../notifyEvents";
 import { nyDate } from "../tradingDate";
-import { gatherPost, type NewsDataDeps } from "./data";
+import { awaitThemes, gatherPost, isThemesPost, LIVE_NEWS_DEPS, type NewsDataDeps } from "./data";
 import { renderPost, type RenderCaps } from "./render";
 import { newsChannelConfigured, newsChannelOn, postEnabled, type NewsPost } from "./schedule";
 import { sendChannelMessage, type SendResult } from "./send";
@@ -33,6 +36,10 @@ export type PublishResult = {
   reason?: string;
   chars?: number;
   attempts?: number;
+  /** A later run may succeed (no fresh data yet, nothing to say yet, Telegram failed): the scheduled job retries. */
+  retryable?: boolean;
+  /** NY "HH:MM" of the next scheduled retry (set by the job). */
+  retryAt?: string;
 };
 
 export type PublishDeps = {
@@ -82,9 +89,9 @@ export function renderCaps(): RenderCaps {
   return { gappers: setting("newsChannel.gappersCount"), earnings: setting("newsChannel.earningsCount"), movers: setting("newsChannel.moversCount") };
 }
 
-/** Rendered text of `post` for `date` from the current data (null: nothing to say). */
-export async function buildPostText(post: NewsPost, date: string, data?: NewsDataDeps): Promise<string | null> {
-  const d = await gatherPost(post, date, data);
+/** Rendered text of `post` for `date` from the current data (null: nothing to say). `board`: an already checked one. */
+export async function buildPostText(post: NewsPost, date: string, data?: NewsDataDeps, board?: Parameters<typeof gatherPost>[3]): Promise<string | null> {
+  const d = await gatherPost(post, date, data, board);
   return renderPost(d, { caps: renderCaps(), siteUrl: config.siteUrlSet ? config.siteUrl : null });
 }
 
@@ -101,11 +108,22 @@ export async function publishNewsPost(post: NewsPost, o: PublishOpts, deps: Part
   const key = newsKey(post, date);
   const res = await d.withLock(`news-channel:${post}`, async (): Promise<PublishResult> => {
     if (!o.force && (await d.wasSent(key))) return { post, date, status: "dup" };
-    const text = await buildPostText(post, date, d.data);
-    if (!text) return skip("no data");
+    const data = d.data ?? LIVE_NEWS_DEPS;
+    let board: Parameters<typeof gatherPost>[3];
+    if (isThemesPost(post)) {
+      // Never post another session's or stale numbers, force or not: wait for a fresh board, else skip (retried).
+      const fresh = await awaitThemes(post, data, { signal: o.signal });
+      if (fresh.problem) {
+        logger.info({ post, date, reason: fresh.problem, waitedMs: fresh.waitedMs, asOf: fresh.board.asOf }, "news-channel: themes not fresh, skipped");
+        return { ...skip(fresh.problem), retryable: true };
+      }
+      board = fresh.board;
+    }
+    const text = await buildPostText(post, date, data, board);
+    if (!text) return { ...skip("no data"), retryable: true };
     if (o.signal?.aborted) return skip("aborted");
     const sent = await d.send(text, o.signal);
-    if (!sent.ok) return { post, date, status: "failed", reason: sent.description ?? `status ${sent.status ?? "network"}`, chars: text.length, attempts: sent.attempts };
+    if (!sent.ok) return { post, date, status: "failed", reason: sent.description ?? `status ${sent.status ?? "network"}`, chars: text.length, attempts: sent.attempts, retryable: true };
     if (!(await d.markSent(key))) logger.info({ post, date, force: !!o.force }, "news-channel: posted again (already marked)");
     logger.info({ post, date, trigger: o.trigger, chars: text.length }, "news-channel: posted");
     return { post, date, status: "sent", chars: text.length, attempts: sent.attempts };

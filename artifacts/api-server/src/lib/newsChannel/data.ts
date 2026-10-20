@@ -9,14 +9,21 @@
  *   macro      holiday_calendar (the /events market calendar): today's FOMC / CPI / PPI / NFP / OPEX / early close…,
  *              names in Russian (lib/calendarText); a missing table or read error ⇒ no macro section
  *
+ * Freshness (audit 2026-10-20, plan 0.13): «От открытия» needs the board of the regular session (rth), «Итоги дня»
+ * the board of the post-market session (post); `awaitThemes` polls getThemes for up to THEMES_WAIT_MS (a refresh takes
+ * ~44 s, getThemes itself waits only 4 s) and `themesProblem` says why a board must not be posted (stale, another
+ * session, numbers fetched before the session began) — publish then skips with that reason and the job retries.
+ * Premarket: a «gappers» run older than GAPPERS_MAX_AGE_MS triggers one screener refresh (lib/finviz/refresh, with its
+ * desk cooldown) and the post waits for it once.
+ *
  * The selection helpers are pure (unit-tested with fixtures); `gatherPost` takes injectable readers.
  */
 import { pool } from "@workspace/db";
-import { nyDate } from "../tradingDate";
+import { nyDate, nyMinutes } from "../tradingDate";
 import { readEarnings, readScreener } from "../finviz/read";
 import type { EarningsRow, ScreenerPreset, ScreenerResponse, ScreenerRow } from "../finviz/types";
 import { getThemes } from "../themes/service";
-import type { ThemeMetric, ThemeOut, ThemesResponse } from "../themes/logic";
+import { ttlMs, type ThemeMetric, type ThemeOut, type ThemeSession, type ThemesResponse } from "../themes/logic";
 import { calendarDescription, calendarName } from "../calendarText";
 import type { NewsPost } from "./schedule";
 
@@ -129,6 +136,11 @@ export type NewsDataDeps = {
   earnings: (from: string, to: string) => Promise<EarningsRow[]>;
   themes: () => Promise<ThemesResponse>;
   macro: (date: string) => Promise<MacroItem[]>;
+  /** Start one screener refresh and wait for it (true: it ran, re-read the runs). Absent ⇒ never refreshed. */
+  refreshScreener?: () => Promise<boolean>;
+  /** Clock / sleep of the freshness waits (tests inject a fake clock). */
+  now?: () => number;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 };
 
 const IMPORTANCE_ORDER = `CASE importance WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END`;
@@ -148,7 +160,20 @@ export async function readMacro(date: string): Promise<MacroItem[]> {
   }
 }
 
-export const LIVE_NEWS_DEPS: NewsDataDeps = { screener: readScreener, earnings: readEarnings, themes: getThemes, macro: readMacro };
+/** One screener refresh unless Finviz is off or a refresh started within the desk cooldown (then nothing is waited). */
+async function refreshScreenerOnce(): Promise<boolean> {
+  const { finvizEnabled } = await import("../finviz/presets");
+  if (!finvizEnabled()) return false;
+  const { refreshWait, runRefresh, startRefresh } = await import("../finviz/refresh");
+  if (refreshWait("screener") > 0) return false;
+  startRefresh("screener", null);
+  await runRefresh("screener");
+  return true;
+}
+
+export const LIVE_NEWS_DEPS: NewsDataDeps = {
+  screener: readScreener, earnings: readEarnings, themes: getThemes, macro: readMacro, refreshScreener: refreshScreenerOnce,
+};
 
 const soft = async <T>(p: () => Promise<T>, fallback: T): Promise<T> => {
   try {
@@ -161,20 +186,93 @@ const soft = async <T>(p: () => Promise<T>, fallback: T): Promise<T> => {
 const NO_THEMES: ThemesResponse = { asOf: null, session: "closed", source: null, stale: false, themes: [] };
 const NO_RUN = (preset: ScreenerPreset): ScreenerResponse => ({ asOf: null, preset, rows: [] });
 
-export async function gatherPost(post: NewsPost, date: string, deps: NewsDataDeps = LIVE_NEWS_DEPS): Promise<PostData> {
-  const board = await soft(deps.themes, NO_THEMES);
+const realSleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+    signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+  });
+
+// ─── freshness ──────────────────────────────────────────────────────────────
+
+/** The session whose board each themes post describes. */
+export const POST_THEME_SESSION = { open: "rth", close: "post" } as const satisfies Record<"open" | "close", ThemeSession>;
+export type ThemesPost = keyof typeof POST_THEME_SESSION;
+export const isThemesPost = (post: NewsPost): post is ThemesPost => post in POST_THEME_SESSION;
+/** NY minute each session begins; numbers stamped before start + SESSION_SETTLE_MIN may come from a refresh that
+ *  started in the previous session (getThemes stamps a refresh when it ends). */
+const SESSION_START_MIN: Record<ThemeSession, number> = { pre: 4 * 60, rth: 9 * 60 + 30, post: 16 * 60, closed: 0 };
+export const SESSION_SETTLE_MIN = 2;
+export const THEMES_WAIT_MS = 60_000;
+export const THEMES_POLL_MS = 5_000;
+/** A «gappers» run older than this before the premarket post triggers one screener refresh. */
+export const GAPPERS_MAX_AGE_MS = 20 * 60_000;
+
+/** Why `board` must not feed `post` at `now` (null: fresh numbers of the right session). */
+export function themesProblem(post: ThemesPost, board: ThemesResponse, now: number): string | null {
+  const want = POST_THEME_SESSION[post];
+  if (board.session !== want) return `session mismatch: ${board.session}, need ${want}`;
+  const asOf = board.asOf ? Date.parse(board.asOf) : NaN;
+  if (!Number.isFinite(asOf)) return "no themes data yet";
+  if (board.stale) return "stale: the themes refresh failed or is still running";
+  const at = new Date(asOf);
+  if (nyDate(at) !== nyDate(new Date(now)) || nyMinutes(at) < SESSION_START_MIN[want] + SESSION_SETTLE_MIN) {
+    return `session mismatch: numbers from before the ${want} session`;
+  }
+  if (now - asOf > 2 * ttlMs(want)) return "stale: themes older than 2 × TTL";
+  return null;
+}
+
+/**
+ * The shared board for `post`, polled until fresh or `waitMs` ran out (aborted ⇒ stops). `problem` null = fresh.
+ * Each getThemes call joins the single-flight refresh, so polling never starts a second one.
+ */
+export async function awaitThemes(
+  post: ThemesPost,
+  deps: NewsDataDeps,
+  o: { waitMs?: number; pollMs?: number; signal?: AbortSignal } = {},
+): Promise<{ board: ThemesResponse; problem: string | null; waitedMs: number }> {
+  const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? realSleep;
+  const waitMs = o.waitMs ?? THEMES_WAIT_MS;
+  const pollMs = o.pollMs ?? THEMES_POLL_MS;
+  const maxPolls = Math.ceil(waitMs / pollMs) + 1; // a clock that does not move never spins forever
+  const t0 = now();
+  for (let i = 1; ; i++) {
+    const board = await soft(deps.themes, NO_THEMES);
+    const problem = themesProblem(post, board, now());
+    const waitedMs = now() - t0;
+    if (!problem || waitedMs >= waitMs || i >= maxPolls || o.signal?.aborted) return { board, problem, waitedMs };
+    await sleep(Math.min(pollMs, waitMs - waitedMs), o.signal);
+  }
+}
+
+/** No run, or a run older than GAPPERS_MAX_AGE_MS at `now`. */
+export function runIsOld(run: ScreenerResponse, now: number): boolean {
+  const t = run.asOf ? Date.parse(run.asOf) : NaN;
+  return !Number.isFinite(t) || now - t > GAPPERS_MAX_AGE_MS;
+}
+
+/** `board`: a board the caller already checked (awaitThemes); otherwise the current one is read once. */
+export async function gatherPost(post: NewsPost, date: string, deps: NewsDataDeps = LIVE_NEWS_DEPS, board?: ThemesResponse): Promise<PostData> {
+  const themes = board ?? (await soft(deps.themes, NO_THEMES));
   if (post === "open") {
-    return { post, date, ...pickThemes(board.themes, "fromOpen"), movers: pickMovers(board.themes, "fromOpen") };
+    return { post, date, ...pickThemes(themes.themes, "fromOpen"), movers: pickMovers(themes.themes, "fromOpen") };
   }
   if (post === "close") {
-    return { post, date, ...pickThemes(board.themes, "today"), afterHours: pickMovers(board.themes, "afterHours") };
+    return { post, date, ...pickThemes(themes.themes, "today"), afterHours: pickMovers(themes.themes, "afterHours") };
   }
-  const [gappers, relvol, earnings, macro] = await Promise.all([
-    soft(() => deps.screener("gappers"), NO_RUN("gappers")),
+  let gappers = await soft(() => deps.screener("gappers"), NO_RUN("gappers"));
+  if (deps.refreshScreener && runIsOld(gappers, (deps.now ?? Date.now)())) {
+    // Once: a refresh that did not help leaves the older run (or none); the post goes out with what there is.
+    if (await soft(deps.refreshScreener, false)) gappers = await soft(() => deps.screener("gappers"), gappers);
+  }
+  const [relvol, earnings, macro] = await Promise.all([
     soft(() => deps.screener("relvol"), NO_RUN("relvol")),
     soft(() => deps.earnings(date, date), [] as EarningsRow[]),
     soft(() => deps.macro(date), [] as MacroItem[]),
   ]);
   const gaps = pickGaps(gappers, [relvol], date);
-  return { post, date, gapUp: gaps.up, gapDown: gaps.down, ...pickThemes(board.themes, "premarket"), earnings: pickEarnings(earnings, date), macro };
+  return { post, date, gapUp: gaps.up, gapDown: gaps.down, ...pickThemes(themes.themes, "premarket"), earnings: pickEarnings(earnings, date), macro };
 }

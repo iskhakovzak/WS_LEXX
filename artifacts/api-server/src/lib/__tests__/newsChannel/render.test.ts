@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@workspace/db", () => ({ db: {}, pool: { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } }));
 
-const { gatherPost, isFundRow, pickEarnings, pickGaps, pickMovers, pickThemes } = await import("../../newsChannel/data");
+const { gatherPost, isFundRow, pickEarnings, pickGaps, pickMovers, pickThemes, runIsOld, themesProblem } = await import("../../newsChannel/data");
 const { compact, esc, fitMessage, renderPost, signedPct, TG_MAX_CHARS } = await import("../../newsChannel/render");
 const F = await import("./fixtures");
 
@@ -116,5 +116,46 @@ describe("gap lists skip funds", () => {
     expect(isFundRow({ company: "Some Trust", sector: "Financial", marketCap: null })).toBe(true);
     expect(isFundRow({ company: "Exascale Labs Holdings Inc", sector: "Technology", marketCap: 174_990_000 })).toBe(false);
     expect(isFundRow({ company: "Fundamental Global Inc", sector: "Financial", marketCap: 50_000_000 })).toBe(false);
+  });
+});
+
+describe("premarket gappers: an old run triggers one screener refresh", () => {
+  it("a run older than 20 min ⇒ refresh once, then the new run is read", async () => {
+    const fresh = { ...F.GAPPERS, asOf: F.ny(8, 29).toISOString() };
+    let reads = 0;
+    const refreshScreener = vi.fn(async () => true);
+    const deps = F.fixtureDeps({
+      now: () => F.ny(8, 30).getTime(),
+      refreshScreener,
+      screener: async (p) => (p === "gappers" ? (reads++ === 0 ? { ...F.GAPPERS, asOf: F.ny(8, 5).toISOString(), rows: [] } : fresh) : F.RELVOL),
+    });
+    const d = await gatherPost("premarket", F.DAY, deps);
+    expect(refreshScreener).toHaveBeenCalledTimes(1);
+    expect(d.post === "premarket" && d.gapUp[0]?.ticker).toBe("ABCD");
+  });
+
+  it("a recent run is not refreshed; a refresh that did not run (cooldown / Finviz off) keeps the old run", async () => {
+    const refreshScreener = vi.fn(async () => false);
+    await gatherPost("premarket", F.DAY, F.fixtureDeps({ now: () => F.ny(8, 30).getTime(), refreshScreener })); // run of 08:25
+    expect(refreshScreener).not.toHaveBeenCalled();
+    const screener = vi.fn(async () => F.GAPPERS);
+    const d = await gatherPost("premarket", F.DAY, F.fixtureDeps({ now: () => F.ny(8, 50).getTime(), refreshScreener, screener }));
+    expect(refreshScreener).toHaveBeenCalledTimes(1);
+    expect(screener.mock.calls.filter((c) => (c as unknown[])[0] === "gappers").length).toBe(1);
+    expect(d.post === "premarket" && d.gapUp.length).toBe(8);
+    expect(runIsOld({ asOf: null, preset: "gappers", rows: [] }, Date.now())).toBe(true);
+  });
+});
+
+describe("themesProblem", () => {
+  it("fresh board of the right session ⇒ null; otherwise the reason", () => {
+    expect(themesProblem("open", F.boardAt(F.ny(10)), F.ny(10).getTime())).toBeNull();
+    expect(themesProblem("close", F.boardAt(F.ny(16, 15)), F.ny(16, 15).getTime())).toBeNull();
+    expect(themesProblem("open", F.THEMES, F.ny(10).getTime())).toBe("session mismatch: pre, need rth");
+    expect(themesProblem("open", { ...F.boardAt(F.ny(10)), asOf: null }, F.ny(10).getTime())).toBe("no themes data yet");
+    expect(themesProblem("open", F.boardAt(F.ny(10), { stale: true }), F.ny(10).getTime())).toMatch(/^stale/);
+    // yesterday's post-market numbers at today's close post
+    const y = new Date(F.ny(16, 15).getTime() - 86_400_000);
+    expect(themesProblem("close", F.boardAt(y), F.ny(16, 15).getTime())).toBe("session mismatch: numbers from before the post session");
   });
 });

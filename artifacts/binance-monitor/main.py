@@ -3,6 +3,7 @@ Binance Square → Telegram monitor
 ==================================
 Polls the confirmed Binance News endpoint every second.
 Sends only NEW posts to Telegram. Deduplicates across restarts via storage.json.
+Per-poll logic (filter reload, age cutoff, per-post error isolation, polling alert) lives in processing.py.
 
 Run:
     python3 main.py
@@ -11,6 +12,8 @@ Env:
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID — required (unless DRY_RUN=1)
     DRY_RUN=1            — print messages to the log instead of sending
     FILTER_OFF=1         — forward every post (disable the news filter, see filters.json)
+    MAX_POST_AGE_MINUTES — older posts are marked seen, not sent (default 15, see config.py)
+    POLL_ALERT_MINUTES   — alert after this many minutes of failed polling (default 10)
     BINANCE_MONITOR_LOG  — also write logs to this file (rotated)
 """
 
@@ -27,15 +30,17 @@ import filter as news_filter
 import telegram_client as tc
 from config import (
     FILTER_OFF,
-    FILTERS_FILE,
     LOG_FILE,
     LOG_MAX_BYTES,
+    MAX_POST_AGE_MINUTES,
+    POLL_ALERT_MINUTES,
+    POLL_ALERT_TEXT,
     POLL_INTERVAL,
     RETRY_DELAY_BASE,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
-    load_filters,
 )
+from processing import FilterRules, PollHealth, handle_new_posts
 from storage import State, load_state, save_state
 
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
@@ -58,30 +63,43 @@ logging.basicConfig(
 logger = logging.getLogger("monitor")
 
 
-async def fetch_with_backoff(session: aiohttp.ClientSession, errors: list[int]) -> list[dict] | None:
+async def poll_alert(session: aiohttp.ClientSession, health: PollHealth) -> None:
+    minutes = health.down_minutes()
+    logger.error(f"🚨 ALERT: Binance polling has failed for {minutes:.0f} min ({health.errors} errors in a row)")
+    if DRY_RUN or not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
+        return
+    try:
+        await tc.send_message(session, POLL_ALERT_TEXT.format(minutes=minutes), parse_mode=None)
+    except Exception as e:
+        logger.error(f"Could not send the polling alert to Telegram: {e}")
+
+
+async def fetch_with_backoff(session: aiohttp.ClientSession, health: PollHealth) -> list[dict] | None:
     """Fetch posts; on failure sleep with linear back-off (cap 60s) and return None."""
     try:
         posts = await bc.fetch_posts(session)
     except Exception as e:
-        errors[0] += 1
-        delay = min(RETRY_DELAY_BASE * errors[0], 60)
-        logger.error(f"Binance API error #{errors[0]}: {e!r} — retrying in {delay}s")
+        alert = health.failed()
+        delay = min(RETRY_DELAY_BASE * health.errors, 60)
+        logger.error(f"Binance API error #{health.errors}: {e!r} — retrying in {delay}s")
+        if alert:
+            await poll_alert(session, health)
         await asyncio.sleep(delay)
         return None
-    if errors[0]:
-        logger.info(f"Binance API recovered after {errors[0]} error(s)")
-    errors[0] = 0
+    recovered = health.ok()
+    if recovered:
+        logger.info(f"Binance API recovered after {recovered} error(s)")
     return posts
 
 
-async def bootstrap(session: aiohttp.ClientSession, errors: list[int]) -> State:
+async def bootstrap(session: aiohttp.ClientSession, health: PollHealth) -> State:
     """
     On first launch: mark every currently visible post as seen so we don't
     spam Telegram with historical content. Retries until the API answers —
     otherwise the first successful poll would forward the whole page.
     """
     while True:
-        posts = await fetch_with_backoff(session, errors)
+        posts = await fetch_with_backoff(session, health)
         if posts is not None:
             break
 
@@ -94,37 +112,6 @@ async def bootstrap(session: aiohttp.ClientSession, errors: list[int]) -> State:
     else:
         logger.info("Bootstrap: no posts found, will watch from scratch")
     return state
-
-
-class FilterRules:
-    """filters.json, re-read automatically when the file changes (no restart needed)."""
-
-    def __init__(self, path: str = FILTERS_FILE):
-        self.path = path
-        self.mtime: float | None = None
-        self.rules = news_filter.Rules({"enabled": False})
-        self.refresh()
-
-    def refresh(self) -> None:
-        try:
-            mtime = os.path.getmtime(self.path)
-        except OSError:
-            mtime = -1.0
-        if mtime == self.mtime:
-            return
-        first = self.mtime is None
-        self.mtime = mtime
-        self.rules = news_filter.Rules(load_filters(self.path))
-        if self.rules.enabled:
-            logger.info(
-                f"{'Loaded' if first else 'Reloaded'} {os.path.basename(self.path)}: "
-                f"min_score={self.rules.min_score:g}, crypto_major={self.rules.crypto_major}, "
-                f"categories={', '.join(self.rules.categories)}"
-            )
-
-    @property
-    def active(self) -> bool:
-        return self.rules.enabled and not FILTER_OFF
 
 
 async def deliver(session: aiohttp.ClientSession, post: dict, verdict: dict) -> None:
@@ -155,8 +142,10 @@ async def run() -> None:
     filters = FilterRules()
     if FILTER_OFF:
         logger.info("FILTER_OFF=1 — news filter disabled, forwarding every post")
+    logger.info(f"Age cutoff: posts older than {MAX_POST_AGE_MINUTES:g} min when first seen are not sent; "
+                f"polling alert after {POLL_ALERT_MINUTES:g} min of errors")
 
-    errors = [0]
+    health = PollHealth()
     connector = aiohttp.TCPConnector(limit=4)
     async with aiohttp.ClientSession(connector=connector) as session:
 
@@ -164,7 +153,7 @@ async def run() -> None:
         state = load_state()
         if state is None:
             logger.info("No usable storage.json — running bootstrap (skip history)")
-            state = await bootstrap(session, errors)
+            state = await bootstrap(session, health)
         else:
             logger.info(f"Resuming — {len(state.seen)} known ids, last_time={state.last_time}")
 
@@ -174,43 +163,13 @@ async def run() -> None:
         while True:
             await asyncio.sleep(POLL_INTERVAL)
 
-            posts = await fetch_with_backoff(session, errors)
+            posts = await fetch_with_backoff(session, health)
             if not posts:
                 continue
 
-            # New = not seen before. Posts much older than the newest handled one
-            # (e.g. old posts resurfacing after an edit/unpin) are marked silently.
-            cutoff = state.last_time - 3600_000
-            new_posts = [p for p in posts if not state.is_seen(bc.post_id(p))]
-            if not new_posts:
-                continue
-
-            filters.refresh()
-
-            # Send oldest-first so Telegram thread reads chronologically
-            for post in reversed(new_posts):
-                pid = bc.post_id(post)
-                ts  = bc.post_release_ms(post)
-
-                if ts and ts < cutoff:
-                    logger.info(f"Skipping old post id={pid} (released before last handled)")
-                else:
-                    verdict = news_filter.classify(post, filters.rules)
-                    title = bc.post_title(post)[:90]
-                    if filters.active and not verdict["keep"]:
-                        logger.info(f"⛔ DROP id={pid} score={verdict['score']:g} | {verdict['reason']} | {title!r}")
-                    else:
-                        why = verdict["reason"] if filters.active else "filter off"
-                        logger.info(f"🆕 SEND id={pid} {verdict['emoji']} {verdict['category'] or '-'} "
-                                    f"score={verdict['score']:g} | {why} | {title!r}")
-                        try:
-                            await deliver(session, post, verdict)
-                        except Exception as e:
-                            logger.error(f"Telegram send failed for id={pid}: {e}")
-
-                # Always advance — prevents infinite retry on Telegram errors
-                state.mark(pid, ts)
-                save_state(state)
+            # New = not seen before; each post is isolated (a malformed one is logged and
+            # marked seen), too-old ones are marked silently — see processing.handle_new_posts
+            await handle_new_posts(posts, state, filters, lambda post, verdict: deliver(session, post, verdict))
 
 
 def main() -> None:

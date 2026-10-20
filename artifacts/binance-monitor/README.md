@@ -18,6 +18,7 @@ GET https://www.binanceuz.co/bapi/composite/v2/friendly/pgc/content/
 ```
 binance-monitor/
 ├── main.py            # точка входа, asyncio event loop
+├── processing.py      # логика опроса: перечитывание фильтра, отсечка по возрасту, изоляция постов, алерт
 ├── binance_client.py  # запросы к Binance Square API
 ├── filter.py          # фильтр новостей: classify(post) → keep/drop + категория + причина
 ├── filters.json       # ключевые слова, веса и пороги фильтра (редактируется без кода)
@@ -28,7 +29,8 @@ binance-monitor/
 ├── review_filter.py   # прогон фильтра по сохранённым постам (для настройки)
 ├── tests/             # unit-тесты (без сети) + fixtures/posts.json — 200 реальных постов
 ├── requirements.txt
-└── storage.json       # создаётся автоматически при первом запуске
+├── storage.json       # создаётся автоматически при первом запуске
+└── filters.last-good.json  # копия последнего рабочего filters.json (создаётся автоматически)
 ```
 
 ## Запуск на VPS (Ubuntu/Debian)
@@ -72,11 +74,22 @@ FILTER_OFF=1 python3 main.py
 python3 main.py
 ```
 
+Необязательные переменные:
+
+```bash
+MAX_POST_AGE_MINUTES=15   # посты старше N минут на момент, когда бот их впервые увидел, не отправляются (0 — без отсечки)
+POLL_ALERT_MINUTES=10     # опрос Binance падает N минут подряд → алерт
+```
+
+Если опрос Binance не работает `POLL_ALERT_MINUTES` минут подряд, в логе появляется строка `🚨 ALERT: Binance polling has failed for N min`, а в канал (`TELEGRAM_CHAT_ID`, кроме `DRY_RUN=1`) уходит одно короткое сообщение — не чаще раза в час. После восстановления в логе: `Binance API recovered after N error(s)`.
+
 Ожидаемый вывод при успехе:
 ```
 2026-06-16 12:00:00 [INFO] monitor — Binance Square Monitor — starting
-2026-06-16 12:00:00 [INFO] monitor — No storage.json found — running bootstrap (skip history)
-2026-06-16 12:00:00 [INFO] monitor — Bootstrap: baseline set to id=XXX | title='...'
+2026-06-16 12:00:00 [INFO] monitor — Loaded filters.json: enabled=True, min_score=5, crypto_major=True, categories=…
+2026-06-16 12:00:00 [INFO] monitor — Age cutoff: posts older than 15 min when first seen are not sent; polling alert after 10 min of errors
+2026-06-16 12:00:00 [INFO] monitor — No usable storage.json — running bootstrap (skip history)
+2026-06-16 12:00:00 [INFO] monitor — Bootstrap: 20 existing posts marked seen | newest='...'
 2026-06-16 12:00:00 [INFO] monitor — ✅ Polling every 1.0s  |  Ctrl+C to stop
 ```
 
@@ -130,12 +143,17 @@ screen -r binance  # вернуться
 | `POLL_INTERVAL` | `1.0` | Интервал опроса в секундах |
 | `REQUEST_TIMEOUT` | `10` | HTTP timeout |
 | `RETRY_DELAY_BASE` | `5` | Базовая задержка при ошибке (×N, cap 60s) |
+| `MAX_POST_AGE_MINUTES` | `15` (env) | Пост старше N минут на момент первого появления — только помечается, не отправляется; `0` — без отсечки |
+| `POLL_ALERT_MINUTES` | `10` (env) | Через сколько минут непрерывных ошибок опроса писать алерт |
+| `POLL_ALERT_REPEAT_S` | `3600` | Алерт в Telegram — не чаще раза в N секунд |
+| `FILTERS_LAST_GOOD_FILE` | `filters.last-good.json` (env) | Куда сохраняется последний рабочий filters.json |
 
 ## Логика дедупликации
 
 - `storage.json` хранит последние 500 `id` уже обработанных постов и время самого нового (`last_time`). Запись атомарная.
 - При первом запуске (или если файла нет / старый формат): все видимые посты помечаются как просмотренные — история не отправляется. Если API недоступен, bootstrap повторяется, пока не получится, чтобы не отправить всю страницу разом.
-- При каждом опросе: отправляются посты, чьих `id` нет в `storage.json`, от старых к новым. Посты, опубликованные больше чем на час раньше `last_time` (старый пост всплыл после правки), только помечаются.
+- При каждом опросе: отправляются посты, чьих `id` нет в `storage.json`, от старых к новым. Пост старше `MAX_POST_AGE_MINUTES` (15 мин) на момент, когда бот его впервые увидел, только помечается (`⏳ OLD` в логе): после простоя бота в канал не уходит пачка старых новостей, всплывший после правки старый пост — тоже.
+- Каждый пост обрабатывается отдельно: «битый» пост (неожиданная структура) пишется в лог `Malformed post id=… skipped` и помечается — бот не падает и не зацикливается на нём.
 - Ошибка Telegram: до 3 попыток (с учётом `retry_after` при 429), затем пост помечается, чтобы не зациклиться.
 
 ## Логи на Replit VM
@@ -186,7 +204,7 @@ Loop Capital downgraded Apple to hold from buy.   ← одно короткое 
 
 ### Как настраивать filters.json
 
-Файл перечитывается автоматически при изменении — перезапуск не нужен (в логе будет `Reloaded filters.json`). Если файл удалён или в нём ошибка JSON — фильтр отключается и бот пересылает всё (ошибка пишется в лог).
+Файл перечитывается автоматически при изменении — перезапуск не нужен (в логе будет `Reloaded filters.json`). Если файл удалён, в нём ошибка JSON, неверное значение (например, `"weight": null`) или нет категорий — бот **оставляет последние рабочие правила** и пишет в лог ошибку `filters.json is broken (…) — keeping the last working rules`; после исправления файл подхватится сам. Последний рабочий файл сохраняется в `filters.last-good.json`, поэтому и перезапуск с битым filters.json фильтрует по нему. Только если рабочих правил нет вовсе (ни файла, ни копии), фильтр выключается и в лог пишется ошибка. Выключить фильтр намеренно: `"enabled": false` в файле или `FILTER_OFF=1`.
 
 - **Слишком много шума** → поднять `min_score` (6–7) или добавить слово в подходящую группу `deny`.
 - **Пропускается нужное** → снизить `min_score`, добавить слово/поднять вес в категории или добавить слово в `allow`.

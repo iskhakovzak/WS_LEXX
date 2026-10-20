@@ -3,7 +3,7 @@
  * these feed gatherPost through its injectable readers.
  */
 import type { EarningsRow, ScreenerPreset, ScreenerResponse, ScreenerRow } from "../../finviz/types";
-import type { MemberQuote, ThemeOut, ThemesResponse } from "../../themes/logic";
+import { themeSession, type MemberQuote, type ThemeOut, type ThemesResponse } from "../../themes/logic";
 import type { MacroItem, NewsDataDeps } from "../../newsChannel/data";
 
 export const DAY = "2026-10-20";
@@ -65,6 +65,28 @@ export const THEMES: ThemesResponse = {
     theme(7, "Quiet", [q("ZZZ", {})]),
   ],
 };
+
+/** The shared board as getThemes would answer at `now`: that NY session, refreshed `ageMs` before (fresh by default). */
+export const boardAt = (now: Date, o: { ageMs?: number; stale?: boolean; themes?: ThemeOut[] } = {}): ThemesResponse => ({
+  ...THEMES,
+  session: themeSession(now, false),
+  asOf: new Date(now.getTime() - (o.ageMs ?? 20_000)).toISOString(),
+  stale: o.stale ?? false,
+  themes: o.themes ?? THEMES.themes,
+});
+
+/** A fake clock for the freshness waits: `sleep` moves it, nothing really waits. */
+export function fakeClock(start: Date) {
+  const c = { t: start.getTime(), slept: [] as number[] };
+  return {
+    clock: c,
+    now: () => c.t,
+    sleep: async (ms: number) => {
+      c.slept.push(ms);
+      c.t += ms;
+    },
+  };
+}
 
 export const EARNINGS: EarningsRow[] = [
   { ticker: "SMALL", date: DAY, timing: "bmo", company: null, marketCap: 900_000_000 },
