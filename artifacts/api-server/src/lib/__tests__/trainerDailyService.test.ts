@@ -3,6 +3,8 @@
  * visibility, start / resume / closed.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+// Trainer eligibility (lib/trainer/eligibility): no close-auction ticker-days in these fixtures.
+vi.mock("../trainer/eligibilityStore", () => ({ blockedTickerDays: vi.fn(async () => new Set<string>()), _resetEligibilityMemo: vi.fn() }));
 import type { ChallengeRow } from "../trainer/dailyStore";
 
 const DAY_BARS_DATE = "2026-10-01";

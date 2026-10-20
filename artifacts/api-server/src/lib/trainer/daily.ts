@@ -11,6 +11,8 @@
  *   open               new games only inside the ranked window; a game started inside it can be finished later (its
  *                      reveal waits until it is finished).
  *   reveal / ranking   after the viewer finished, or for everyone once the window closed (not while mid-game).
+ *   eligibility        a ticker-day with any desk fill at 15:50–16:00 NY is never picked (lib/trainer/eligibility);
+ *                      existing picks stay as they are.
  *   game               an ordinary sim game (mode 'intraday', 1-minute bars, trainer.dailyPlayMinutes from the open)
  *                      marked by params.daily; one per user and date — an abandoned one is re-activated, never
  *                      replaced (its bars were seen). Played through POST /api/sim/games/:id/step like any game.
@@ -28,6 +30,8 @@ import { gameSnapshot, newGameExtras, remember, settleActive, snapshotOf, type S
 import { forgetAllTrainerHomes, forgetTrainerHome } from "./cache";
 import { buildRanking, dailyStreak, pickOrder, type PickRules } from "./dailyPick";
 import * as ds from "./dailyStore";
+import { withoutBlockedDays } from "./eligibility";
+import { blockedTickerDays } from "./eligibilityStore";
 import type { DailyChallengeState } from "./types";
 
 export const CLOSE_MIN = 16 * 60;
@@ -105,7 +109,9 @@ async function pickNow(date: string): Promise<ds.ChallengeRow | null> {
   const recent = await ds.recentChallenges(date, 400);
   const used = new Set(recent.filter((r) => r.date >= addDays(date, -noRepeat)).map((r) => `${r.ticker}:${r.barsDay}`));
   const recentTickers = new Set(recent.slice(0, 5).map((r) => r.ticker));
-  const order = pickOrder(date, await ds.dailyCandidates(date), rules(), used, recentTickers);
+  // Trainer eligibility: no ticker-day the desk traded in the closing auction (15:50–16:00 NY) — lib/trainer/eligibility.
+  const [cands, blocked] = await Promise.all([ds.dailyCandidates(date), blockedTickerDays()]);
+  const order = pickOrder(date, withoutBlockedDays(cands, (c) => c, blocked), rules(), used, recentTickers);
   for (const c of order.slice(0, 8)) {
     if (!(await buildDay(c.ticker, c.day))) continue;
     const row = await ds.savePick({

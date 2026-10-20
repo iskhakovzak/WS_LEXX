@@ -7,6 +7,8 @@
  */
 import { pool } from "@workspace/db";
 import { horizonSql, netPnlSql, signedRSql } from "../tradeMath";
+import { eligibleTrades } from "./eligibility";
+import { blockedTickerDays } from "./eligibilityStore";
 
 const OFFICE = `COALESCE(p.space, CASE WHEN p.trader IS NULL THEN 'office' ELSE 'personal' END) = 'office'`;
 const SIDE = `CASE WHEN lower(trim(COALESCE(t.side, ''))) LIKE 's%' THEN 'short' ELSE 'long' END`;
@@ -17,45 +19,97 @@ const FIRST_FILL = `CROSS JOIN LATERAL (
 const HAS_1M = `EXISTS (SELECT 1 FROM candle_archive a WHERE a.symbol = t.ticker AND a.day = left(t.date, 10)::date AND a.tf = '1m')`;
 const TRADE_OK = `t.deleted_at IS NULL AND t.ticker ~ '^[A-Z]{1,5}$' AND t.date ~ '^\\d{4}-\\d{2}-\\d{2}' AND ${horizonSql("t")} = 'intraday'`;
 
+const EXECS = `(SELECT COALESCE(json_agg(x.executed_at ORDER BY x.executed_at, x.sort_order, x.id), '[]'::json)
+    FROM trade_executions x WHERE x.trade_id = t.id) AS execs`;
+const CAND_COLS = `t.id AS trade_id, t.trader, t.ticker, left(t.date, 10) AS day, ${SIDE} AS side, f.executed_at, f.price, ${EXECS}`;
+
+type DrillCand = {
+  setup_id: number; trade_id: number; trader: string; ticker: string; day: string; side: "long" | "short";
+  executed_at: Date | string; price: string; execs: (string | null)[] | null;
+};
+
+/** Trainer eligibility (lib/trainer/eligibility): no close-auction fill / ticker-day, held ≥ 25 min, every fill timed. */
+function eligibleCands(rows: readonly DrillCand[], blocked: ReadonlySet<string>): DrillCand[] {
+  return eligibleTrades(rows, (r) => ({ ticker: r.ticker, day: r.day, executions: (r.execs ?? []).map((at) => ({ at })) }), blocked);
+}
+
+async function insertDrills(rows: readonly DrillCand[], source: "playbook_example" | "desk_trade"): Promise<number> {
+  if (!rows.length) return 0;
+  const conflict = source === "playbook_example"
+    ? `ON CONFLICT (trade_id) DO UPDATE SET source = 'playbook_example', setup_id = EXCLUDED.setup_id WHERE trainer_drills.source <> 'playbook_example'`
+    : `ON CONFLICT (trade_id) DO NOTHING`;
+  const r = await pool.query(
+    `INSERT INTO trainer_drills (setup_id, source, trade_id, trader, ticker, day, side, entry_at, entry_price)
+     SELECT u.setup_id, $1, u.trade_id, u.trader, u.ticker, u.day, u.side, u.entry_at, u.entry_price
+       FROM unnest($2::int[], $3::int[], $4::text[], $5::text[], $6::text[], $7::text[], $8::timestamptz[], $9::numeric[])
+            AS u(setup_id, trade_id, trader, ticker, day, side, entry_at, entry_price)
+     ${conflict}`,
+    [
+      source, rows.map((x) => Number(x.setup_id)), rows.map((x) => Number(x.trade_id)), rows.map((x) => String(x.trader)),
+      rows.map((x) => String(x.ticker)), rows.map((x) => String(x.day)), rows.map((x) => x.side),
+      rows.map((x) => new Date(x.executed_at).toISOString()), rows.map((x) => String(x.price)),
+    ],
+  );
+  return r.rowCount ?? 0;
+}
+
+/**
+ * Desk trades to add, per setup in the given order (best R first): only setups with fewer than `minExamples` example
+ * drills, and up to `maxPerSetup` drills per setup in total. Pure; `counts` = current (enabled) drills per setup.
+ */
+export function deskQuota<T extends { setup_id: number }>(
+  cands: readonly T[], counts: ReadonlyMap<number, { ex: number; n: number }>, minExamples: number, maxPerSetup: number,
+): T[] {
+  const taken = new Map<number, number>();
+  return cands.filter((c) => {
+    const k = counts.get(Number(c.setup_id)) ?? { ex: 0, n: 0 };
+    if (k.ex >= minExamples) return false;
+    const used = taken.get(Number(c.setup_id)) ?? 0;
+    if (used >= Math.max(0, maxPerSetup - k.n)) return false;
+    taken.set(Number(c.setup_id), used + 1);
+    return true;
+  });
+}
+
 /**
  * Creates the missing drills: every playbook example of an office setup with 1-minute bars and a timed first fill;
  * then, for setups with fewer than `minExamples` example drills, desk trades linked to the setup with R ≥ 0 (best R
- * first) up to `maxPerSetup` drills. Idempotent (one drill per trade). Returns how many rows were added.
+ * first) up to `maxPerSetup` drills. Only trainer-eligible trades (lib/trainer/eligibility: no fill at 15:50–16:00 NY
+ * and no such fill by the desk on that ticker-day, held ≥ 25 min, every fill timed); drills built earlier stay.
+ * Idempotent (one drill per trade). Returns how many rows were added.
  */
 export async function ensureDrills(minExamples: number, maxPerSetup: number): Promise<number> {
-  const ex = await pool.query(
-    `INSERT INTO trainer_drills (setup_id, source, trade_id, trader, ticker, day, side, entry_at, entry_price)
-     SELECT DISTINCT ON (t.id) e.playbook_id, 'playbook_example', t.id, t.trader, t.ticker, left(t.date, 10), ${SIDE}, f.executed_at, f.price
+  const blocked = await blockedTickerDays();
+  const ex = await pool.query<DrillCand>(
+    `SELECT DISTINCT ON (t.id) e.playbook_id AS setup_id, ${CAND_COLS}
        FROM playbook_examples e
        JOIN trades t ON t.id = e.trade_id
        JOIN playbook p ON p.id = e.playbook_id AND p.deleted_at IS NULL AND ${OFFICE}
        ${FIRST_FILL}
       WHERE e.deleted_at IS NULL AND ${TRADE_OK} AND ${HAS_1M}
-      ORDER BY t.id, e.id
-     ON CONFLICT (trade_id) DO UPDATE SET source = 'playbook_example', setup_id = EXCLUDED.setup_id
-       WHERE trainer_drills.source <> 'playbook_example'`,
+        AND NOT EXISTS (SELECT 1 FROM trainer_drills d WHERE d.trade_id = t.id AND d.source = 'playbook_example')
+      ORDER BY t.id, e.id`,
   );
-  const desk = await pool.query(
-    `WITH counts AS (
-       SELECT setup_id, count(*) FILTER (WHERE source = 'playbook_example') AS ex, count(*) AS n
-         FROM trainer_drills WHERE NOT disabled GROUP BY 1),
-     cand AS (
-       SELECT t.playbook_id AS setup_id, t.id, t.trader, t.ticker, left(t.date, 10) AS day, ${SIDE} AS side, f.executed_at, f.price,
-              row_number() OVER (PARTITION BY t.playbook_id ORDER BY ${signedRSql("t")} DESC NULLS LAST, t.id DESC) AS rn
-         FROM trades t
-         JOIN playbook p ON p.id = t.playbook_id AND p.deleted_at IS NULL AND ${OFFICE}
-         ${FIRST_FILL}
-        WHERE ${TRADE_OK} AND ${HAS_1M}
-          AND COALESCE(${signedRSql("t")}, CASE WHEN ${netPnlSql("t")} >= 0 THEN 0 ELSE -1 END) >= 0
-          AND NOT EXISTS (SELECT 1 FROM trainer_drills d WHERE d.trade_id = t.id))
-     INSERT INTO trainer_drills (setup_id, source, trade_id, trader, ticker, day, side, entry_at, entry_price)
-     SELECT c.setup_id, 'desk_trade', c.id, c.trader, c.ticker, c.day, c.side, c.executed_at, c.price
-       FROM cand c LEFT JOIN counts k ON k.setup_id = c.setup_id
-      WHERE COALESCE(k.ex, 0) < $1 AND c.rn <= GREATEST(0, $2 - COALESCE(k.n, 0))
-     ON CONFLICT (trade_id) DO NOTHING`,
-    [minExamples, maxPerSetup],
+  const added = await insertDrills(eligibleCands(ex.rows, blocked), "playbook_example");
+  const counts = await pool.query<{ setup_id: number; ex: number; n: number }>(
+    `SELECT setup_id, count(*) FILTER (WHERE source = 'playbook_example')::int AS ex, count(*)::int AS n
+       FROM trainer_drills WHERE NOT disabled GROUP BY 1`,
   );
-  return (ex.rowCount ?? 0) + (desk.rowCount ?? 0);
+  const countMap = new Map(counts.rows.map((r) => [Number(r.setup_id), { ex: Number(r.ex), n: Number(r.n) }]));
+  const full = [...countMap].filter(([, k]) => k.ex >= minExamples || k.n >= maxPerSetup).map(([id]) => id);
+  const desk = await pool.query<DrillCand>(
+    `SELECT t.playbook_id AS setup_id, ${CAND_COLS}
+       FROM trades t
+       JOIN playbook p ON p.id = t.playbook_id AND p.deleted_at IS NULL AND ${OFFICE}
+       ${FIRST_FILL}
+      WHERE ${TRADE_OK} AND ${HAS_1M}
+        AND COALESCE(${signedRSql("t")}, CASE WHEN ${netPnlSql("t")} >= 0 THEN 0 ELSE -1 END) >= 0
+        AND NOT EXISTS (SELECT 1 FROM trainer_drills d WHERE d.trade_id = t.id)
+        AND NOT (t.playbook_id = ANY($1::int[]))
+      ORDER BY t.playbook_id, ${signedRSql("t")} DESC NULLS LAST, t.id DESC`,
+    [full],
+  );
+  return added + (await insertDrills(deskQuota(eligibleCands(desk.rows, blocked), countMap, minExamples, maxPerSetup), "desk_trade"));
 }
 
 export type DrillRow = {

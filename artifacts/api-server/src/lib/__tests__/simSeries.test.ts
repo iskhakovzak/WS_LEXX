@@ -3,6 +3,8 @@
  * series (prepared next game, next / skip / no-trade / finish), one active game per user, skip rules.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+// Trainer eligibility (lib/trainer/eligibility): no close-auction ticker-days in these fixtures.
+vi.mock("../trainer/eligibilityStore", () => ({ blockedTickerDays: vi.fn(async () => new Set<string>()), _resetEligibilityMemo: vi.fn() }));
 import type { SimBar } from "../sim/engine";
 
 const DAY = "2026-10-16";
