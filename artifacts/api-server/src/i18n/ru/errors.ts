@@ -314,6 +314,7 @@ export default {
   PROPREPORTS_NOT_CONFIGURED: "PropReports API не настроено: задайте PROPREPORTS_DOMAIN и PROPREPORTS_TOKEN в переменных окружения сервера (.env.local или Vercel) и перезапустите его",
   CRON_NOT_CONFIGURED: "Фоновая синхронизация не настроена: задайте CRON_SECRET в переменных окружения сервера (.env.local или Vercel)",
   FINVIZ_NOT_CONFIGURED: "Finviz не подключён: нужен FINVIZ_AUTH в переменных окружения сервера и включённый Finviz в настройках деска",
+  NEWS_CHANNEL_NOT_CONFIGURED: "Канал WS_NEWS не подключён: нужны NEWS_CHANNEL_BOT_TOKEN и NEWS_CHANNEL_CHAT_ID в переменных окружения сервера и включённый канал в настройках деска",
   BACKFILL_RUNNING: "Загрузка истории уже идёт — дождитесь её окончания или остановите её",
   PROPREPORTS_FILE_TOO_LARGE: "Файл больше {max}. Выгрузите из PropReports период покороче (например, по месяцу) или подключите API — он загрузит историю сам",
   PROPREPORTS_REQUEST_INVALID: "Неверный параметр запроса к PropReports: {detail}",

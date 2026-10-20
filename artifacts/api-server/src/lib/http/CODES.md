@@ -315,6 +315,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `PROPREPORTS_NOT_CONFIGURED` | 503 | PropReports API endpoints without credentials. | — |
 | `CRON_NOT_CONFIGURED` | 503 | `/api/cron/tick` called while CRON_SECRET is unset. | — |
 | `FINVIZ_NOT_CONFIGURED` | 503 | `POST /api/finviz/refresh` without FINVIZ_AUTH or with the desk switch finviz.enabled off. | — |
+| `NEWS_CHANNEL_NOT_CONFIGURED` | 503 | `POST /api/news-channel/send-now` without NEWS_CHANNEL_BOT_TOKEN + NEWS_CHANNEL_CHAT_ID or with the desk switch newsChannel.enabled off. | — |
 | `BACKFILL_RUNNING` | 409 | A PropReports history backfill is already running. | `{ active }` |
 | `PROPREPORTS_FILE_TOO_LARGE` | 413 | PropReports import file over the 4 MB upload limit (Vercel body limit). | — |
 | `PROPREPORTS_REQUEST_INVALID` | 400 | PropReports v2 request parameter refused before sending (fills filter, report mode / baseCurrency, upload options). | — |

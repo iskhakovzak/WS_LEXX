@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 type Base = { group: SettingGroup; unit?: SettingUnit };
@@ -202,6 +202,20 @@ export const SETTINGS = {
   "finviz.maxRows": { group: "finviz", type: "number", default: 50, min: 5, max: 200, step: 5 },
   "finviz.refreshCooldownMinutes": { group: "finviz", type: "number", default: 5, min: 1, max: 60, step: 1, unit: "minutes" },
   "finviz.snapshotMaxAgeDays": { group: "finviz", type: "number", default: 3, min: 1, max: 30, step: 1, unit: "days" },
+
+  // WS_NEWS Telegram channel briefs (lib/newsChannel; env NEWS_CHANNEL_BOT_TOKEN + NEWS_CHANNEL_CHAT_ID, without them
+  // everything here is idle): the switch (off until the owner turns it on), each post's switch and New York time
+  // (trading days; premarket ≤ 09:25, «от открытия» 09:35–15:55, «итоги дня» ≥ 16:05) and the list sizes
+  "newsChannel.enabled": { group: "newsChannel", type: "boolean", default: false },
+  "newsChannel.premarketEnabled": { group: "newsChannel", type: "boolean", default: true },
+  "newsChannel.premarketTime": { group: "newsChannel", type: "time", default: "08:30" },
+  "newsChannel.openEnabled": { group: "newsChannel", type: "boolean", default: true },
+  "newsChannel.openTime": { group: "newsChannel", type: "time", default: "10:00" },
+  "newsChannel.closeEnabled": { group: "newsChannel", type: "boolean", default: true },
+  "newsChannel.closeTime": { group: "newsChannel", type: "time", default: "16:15" },
+  "newsChannel.gappersCount": { group: "newsChannel", type: "number", default: 5, min: 3, max: 7, step: 1 },
+  "newsChannel.earningsCount": { group: "newsChannel", type: "number", default: 8, min: 3, max: 20, step: 1 },
+  "newsChannel.moversCount": { group: "newsChannel", type: "number", default: 5, min: 3, max: 5, step: 1 },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

@@ -86,6 +86,9 @@ const schema = z.object({
   PROPREPORTS_SYNC_MINUTES: str,
   /** Finviz Elite export token (lib/finviz/client.ts); unset ⇒ the Finviz feature is off. Never logged. */
   FINVIZ_AUTH: str,
+  /** WS_NEWS Telegram channel briefs (lib/newsChannel): bot token + channel chat id; either unset ⇒ off. Never logged. */
+  NEWS_CHANNEL_BOT_TOKEN: str,
+  NEWS_CHANNEL_CHAT_ID: str,
   // database pool / jobs
   PG_STATEMENT_TIMEOUT_MS: int(30_000, 0),
   PG_POOL_MAX: int(10, 1),
@@ -132,6 +135,8 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
     guestMode: e.GUEST_MODE,
     replitDomains: (e.REPLIT_DOMAINS ?? "").split(",").map((d) => d.trim()).filter(Boolean),
     siteUrl: e.SITE_URL ?? "https://zakit.website",
+    /** SITE_URL was set explicitly (the default domain is not live — channel posts link the site only when set). */
+    siteUrlSet: !!e.SITE_URL?.trim(),
     /** Raw TRUST_PROXY (lib/security/http.ts trustProxySetting() interprets it). */
     trustProxy: e.TRUST_PROXY,
     /** Build/deploy id for the error tracker. */
@@ -168,6 +173,8 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
     propreportsEnv: (k: string): string => raw(k) ?? "",
     /** Finviz Elite token (null = feature off). Only lib/finviz/client.ts reads it; never log or send it to a browser. */
     finvizAuth: e.FINVIZ_AUTH ?? null,
+    /** WS_NEWS channel (lib/newsChannel/schedule.ts newsChannelConfigured): both set, or the briefs are off. Never log them. */
+    newsChannel: { botToken: e.NEWS_CHANNEL_BOT_TOKEN ?? "", chatId: e.NEWS_CHANNEL_CHAT_ID ?? "" },
     pg: { statementTimeoutMs: e.PG_STATEMENT_TIMEOUT_MS, poolMax: e.PG_POOL_MAX },
     /** JOBS_ENABLED=false keeps the job scheduler off (e.g. a second local process on a shared DB). Default on. */
     jobsEnabled: !["0", "false", "off", "no"].includes((e.JOBS_ENABLED ?? "").toLowerCase()),

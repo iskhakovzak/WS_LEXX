@@ -24,6 +24,7 @@ import { dailyTelegramEnabled, intradayAlertsEnabled } from "../lib/daily/telegr
 import { contractAlertsEnabled, eveningCron, eveningEnabled, morningCron, morningEnabled } from "../lib/daily/telegramSchedule";
 import { dailyPickCron } from "../lib/trainer/schedule";
 import { registerFinvizJobs } from "../lib/finviz/jobDefs";
+import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -326,5 +327,11 @@ export function registerAllJobs(): void {
     },
   });
 
+  registerModuleJobs();
+}
+
+/** Feature modules that declare their own jobs (kept out of registerAllJobs, which is at the function-size limit). */
+function registerModuleJobs(): void {
   registerFinvizJobs(registerJob); // Finviz Elite screener / snapshot / earnings (lib/finviz/jobDefs.ts)
+  registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
 }

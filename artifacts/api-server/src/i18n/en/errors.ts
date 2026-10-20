@@ -304,6 +304,7 @@ export default {
   PROPREPORTS_NOT_CONFIGURED: "The PropReports API isn't configured: set PROPREPORTS_DOMAIN and PROPREPORTS_TOKEN in the server environment (.env.local or Vercel) and restart it",
   CRON_NOT_CONFIGURED: "Background sync isn't configured: set CRON_SECRET in the server environment (.env.local or Vercel)",
   FINVIZ_NOT_CONFIGURED: "Finviz isn't connected: the server needs FINVIZ_AUTH in its environment and Finviz switched on in the desk settings",
+  NEWS_CHANNEL_NOT_CONFIGURED: "The WS_NEWS channel isn't connected: the server needs NEWS_CHANNEL_BOT_TOKEN and NEWS_CHANNEL_CHAT_ID in its environment and the channel switched on in the desk settings",
   BACKFILL_RUNNING: "A history load is already running — wait for it to finish or stop it",
   PROPREPORTS_FILE_TOO_LARGE: "The file is larger than {max}. Export a shorter period from PropReports (e.g. one month) or connect the API — it loads the history by itself",
   PROPREPORTS_REQUEST_INVALID: "Invalid PropReports request parameter: {detail}",

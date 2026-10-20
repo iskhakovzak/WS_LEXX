@@ -304,6 +304,7 @@ export default {
   PROPREPORTS_NOT_CONFIGURED: "PropReports API sozlanmagan: server muhitida (.env.local yoki Vercel) PROPREPORTS_DOMAIN va PROPREPORTS_TOKEN ni belgilang va uni qayta ishga tushiring",
   CRON_NOT_CONFIGURED: "Fon sinxronizatsiyasi sozlanmagan: server muhitida (.env.local yoki Vercel) CRON_SECRET ni belgilang",
   FINVIZ_NOT_CONFIGURED: "Finviz ulanmagan: server muhitida FINVIZ_AUTH va desk sozlamalarida yoqilgan Finviz kerak",
+  NEWS_CHANNEL_NOT_CONFIGURED: "WS_NEWS kanali ulanmagan: server muhitida NEWS_CHANNEL_BOT_TOKEN va NEWS_CHANNEL_CHAT_ID hamda desk sozlamalarida yoqilgan kanal kerak",
   BACKFILL_RUNNING: "Tarix yuklanishi allaqachon ketmoqda — tugashini kuting yoki uni to'xtating",
   PROPREPORTS_FILE_TOO_LARGE: "Fayl {max} dan katta. PropReports dan qisqaroq davrni (masalan, bir oylik) yuklab oling yoki API ni ulang — u tarixni o'zi yuklaydi",
   PROPREPORTS_REQUEST_INVALID: "PropReports soʻrovining parametri notoʻgʻri: {detail}",

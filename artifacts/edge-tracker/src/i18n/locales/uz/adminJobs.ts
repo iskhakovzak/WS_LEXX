@@ -59,6 +59,7 @@ export default {
     usage: { prune: "Foydalanish hisobini tozalash" },
     trainer: { "daily-pick": "Trenajyor: kun vazifasini tanlash" },
     finviz: { screener: "Finviz: skriner", snapshot: "Finviz: tiker maʼlumotlari", "snapshot-pending": "Finviz: soʻralgan tikerlar", earnings: "Finviz: hisobotlar taqvimi" },
+    "news-channel": { premarket: "WS_NEWS kanali: premarket", open: "WS_NEWS kanali: ochilishdan beri", close: "WS_NEWS kanali: kun yakuni" },
   },
   backups: {
     description: "pg_dump har kuni Nyu-York vaqti bilan 03:15 da (kesh jadvallari maʼlumotlarisiz). 14 kunlik va 8 haftalik nusxa saqlanadi.",

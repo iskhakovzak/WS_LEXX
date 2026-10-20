@@ -84,6 +84,9 @@ import uzQuests from "./uz/quests";
 import ruGamification from "./ru/gamification";
 import enGamification from "./en/gamification";
 import uzGamification from "./uz/gamification";
+import ruNewsChannel from "./ru/newsChannel";
+import enNewsChannel from "./en/newsChannel";
+import uzNewsChannel from "./uz/newsChannel";
 
 export const commonT = defineNamespace(ruCommon, { en: enCommon, uz: uzCommon });
 
@@ -167,3 +170,6 @@ export const questsT = defineNamespace(ruQuests, { en: enQuests, uz: uzQuests })
 
 /** `gamification`: recognition lines (desk feed, Telegram group), reward notifications (lib/gamification/*). */
 export const gamificationT = defineNamespace(ruGamification, { en: enGamification, uz: uzGamification });
+
+/** `newsChannel`: WS_NEWS Telegram channel briefs (lib/newsChannel/render.ts); the channel posts in `ru`. */
+export const newsChannelT = defineNamespace(ruNewsChannel, { en: enNewsChannel, uz: uzNewsChannel });
