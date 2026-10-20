@@ -10,6 +10,7 @@ Run:
 Env:
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID — required (unless DRY_RUN=1)
     DRY_RUN=1            — print messages to the log instead of sending
+    FILTER_OFF=1         — forward every post (disable the news filter, see filters.json)
     BINANCE_MONITOR_LOG  — also write logs to this file (rotated)
 """
 
@@ -22,14 +23,18 @@ from logging.handlers import RotatingFileHandler
 import aiohttp
 
 import binance_client as bc
+import filter as news_filter
 import telegram_client as tc
 from config import (
+    FILTER_OFF,
+    FILTERS_FILE,
     LOG_FILE,
     LOG_MAX_BYTES,
     POLL_INTERVAL,
     RETRY_DELAY_BASE,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
+    load_filters,
 )
 from storage import State, load_state, save_state
 
@@ -91,12 +96,44 @@ async def bootstrap(session: aiohttp.ClientSession, errors: list[int]) -> State:
     return state
 
 
-async def deliver(session: aiohttp.ClientSession, post: dict) -> None:
+class FilterRules:
+    """filters.json, re-read automatically when the file changes (no restart needed)."""
+
+    def __init__(self, path: str = FILTERS_FILE):
+        self.path = path
+        self.mtime: float | None = None
+        self.rules = news_filter.Rules({"enabled": False})
+        self.refresh()
+
+    def refresh(self) -> None:
+        try:
+            mtime = os.path.getmtime(self.path)
+        except OSError:
+            mtime = -1.0
+        if mtime == self.mtime:
+            return
+        first = self.mtime is None
+        self.mtime = mtime
+        self.rules = news_filter.Rules(load_filters(self.path))
+        if self.rules.enabled:
+            logger.info(
+                f"{'Loaded' if first else 'Reloaded'} {os.path.basename(self.path)}: "
+                f"min_score={self.rules.min_score:g}, crypto_major={self.rules.crypto_major}, "
+                f"categories={', '.join(self.rules.categories)}"
+            )
+
+    @property
+    def active(self) -> bool:
+        return self.rules.enabled and not FILTER_OFF
+
+
+async def deliver(session: aiohttp.ClientSession, post: dict, verdict: dict) -> None:
     text = tc.build_message(
-        title    = bc.post_title(post),
-        body     = bc.post_body(post),
-        time_str = bc.post_time(post),
-        link     = bc.post_link(post),
+        title   = bc.post_title(post),
+        body    = bc.post_body(post),
+        link    = bc.post_link(post),
+        emoji   = verdict.get("emoji") or news_filter.DEFAULT_EMOJI,
+        tickers = verdict.get("tickers") or (),
     )
     if DRY_RUN:
         logger.info("DRY_RUN — message not sent:\n" + text)
@@ -112,6 +149,10 @@ async def run() -> None:
     if not DRY_RUN and not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
         logger.critical("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set (or use DRY_RUN=1)")
         sys.exit(1)
+
+    filters = FilterRules()
+    if FILTER_OFF:
+        logger.info("FILTER_OFF=1 — news filter disabled, forwarding every post")
 
     errors = [0]
     connector = aiohttp.TCPConnector(limit=4)
@@ -142,6 +183,8 @@ async def run() -> None:
             if not new_posts:
                 continue
 
+            filters.refresh()
+
             # Send oldest-first so Telegram thread reads chronologically
             for post in reversed(new_posts):
                 pid = bc.post_id(post)
@@ -150,11 +193,18 @@ async def run() -> None:
                 if ts and ts < cutoff:
                     logger.info(f"Skipping old post id={pid} (released before last handled)")
                 else:
-                    logger.info(f"🆕 New post — id={pid} | {bc.post_title(post)[:60]!r}")
-                    try:
-                        await deliver(session, post)
-                    except Exception as e:
-                        logger.error(f"Telegram send failed for id={pid}: {e}")
+                    verdict = news_filter.classify(post, filters.rules)
+                    title = bc.post_title(post)[:90]
+                    if filters.active and not verdict["keep"]:
+                        logger.info(f"⛔ DROP id={pid} score={verdict['score']:g} | {verdict['reason']} | {title!r}")
+                    else:
+                        why = verdict["reason"] if filters.active else "filter off"
+                        logger.info(f"🆕 SEND id={pid} {verdict['emoji']} {verdict['category'] or '-'} "
+                                    f"score={verdict['score']:g} | {why} | {title!r}")
+                        try:
+                            await deliver(session, post, verdict)
+                        except Exception as e:
+                            logger.error(f"Telegram send failed for id={pid}: {e}")
 
                 # Always advance — prevents infinite retry on Telegram errors
                 state.mark(pid, ts)

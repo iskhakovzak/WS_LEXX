@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 
 # ─── Binance Square API ────────────────────────────────────────────────────────
@@ -43,6 +45,58 @@ STORAGE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage
 
 # How many recent post IDs to remember for deduplication
 SEEN_IDS_LIMIT = 500
+
+# ─── News filter ──────────────────────────────────────────────────────────────
+# Keywords / weights / thresholds live in filters.json (see README «Фильтр»).
+# FILTER_OFF=1 — forward every post, as before the filter existed.
+FILTERS_FILE = os.environ.get("FILTERS_FILE") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "filters.json"
+)
+FILTER_OFF = os.environ.get("FILTER_OFF") == "1"
+
+# Used for keys missing from filters.json. Without any keyword lists nothing would
+# match, so a missing/broken filters.json disables filtering (forward everything)
+# instead of silently dropping all news.
+FILTER_DEFAULTS = {
+    "enabled": True,
+    "crypto_major": True,
+    "min_score": 4,
+    "title_weight": 2,
+    "body_weight": 1,
+    "body_chars": 400,
+    "ticker_bonus": 1,
+    "ticker_bonus_cap": 2,
+    "minor_crypto_penalty": 3,
+    "hard_penalty": 100,
+    "max_cashtags": 6,
+    "default_emoji": "📰",
+    "allow": [],
+    "categories": {},
+    "deny": {},
+    "pairs": {},
+}
+
+
+def load_filters(path: str = FILTERS_FILE) -> dict:
+    """Read filters.json merged over FILTER_DEFAULTS; on any problem → filter disabled."""
+    log = logging.getLogger("config")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("top level must be a JSON object")
+    except FileNotFoundError:
+        log.warning(f"{path} not found — news filter disabled, forwarding everything")
+        return {**FILTER_DEFAULTS, "enabled": False}
+    except Exception as e:
+        log.error(f"Cannot read {path}: {e} — news filter disabled, forwarding everything")
+        return {**FILTER_DEFAULTS, "enabled": False}
+    cfg = {**FILTER_DEFAULTS, **data}
+    if not cfg.get("categories"):
+        log.warning(f"{path} has no categories — news filter disabled, forwarding everything")
+        cfg["enabled"] = False
+    return cfg
+
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 # If set, logs also go to this file with rotation (read by /api/monitor-log)

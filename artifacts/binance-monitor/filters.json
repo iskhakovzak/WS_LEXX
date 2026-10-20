@@ -1,0 +1,198 @@
+{
+  "_help": "Фильтр новостей. Описание и примеры — README.md, раздел «Фильтр». Изменения подхватываются без перезапуска.",
+
+  "crypto_major": true,
+  "min_score": 5,
+  "require_title_hit": true,
+  "title_weight": 2,
+  "body_weight": 1,
+  "body_chars": 400,
+  "ticker_bonus": 1,
+  "ticker_bonus_cap": 2,
+  "minor_crypto_penalty": 3,
+  "max_cashtags": 6,
+  "default_emoji": "📰",
+
+  "allow": [
+    "fomc", "powell", "federal reserve", "Fed", "nonfarm", "jobless claims", "CPI", "PCE"
+  ],
+
+  "categories": {
+    "macro": {
+      "emoji": "🇺🇸",
+      "label": "Macro / Fed / data",
+      "keywords": {
+        "Fed": 3, "federal reserve": 3, "fomc": 4, "powell": 3, "fed chair": 3,
+        "rate cut*": 3, "rate hike*": 3, "rate-cut*": 3, "rate-hike*": 3, "interest rate*": 2, "rate decision": 3,
+        "inflation": 2, "CPI": 3, "PPI": 3, "PCE": 3, "nonfarm": 3, "payrolls": 2, "jobless claims": 3,
+        "unemployment": 2, "jobless*": 1, "ADP": 3, "employment": 1, "jobs report": 3, "jobs data": 2,
+        "GDP": 2, "recession": 2, "slowdown": 1, "economy": 1, "economic data": 2,
+        "consumer confidence": 2, "consumer sentiment": 2, "retail sales": 2, "ISM": 2, "PMI": 2,
+        "housing starts": 2, "durable goods": 2,
+        "treasury yield*": 3, "treasuries": 2, "10-year": 2, "bond yield*": 2, "yield*": 1, "basis points": 1,
+        "central bank*": 2, "ECB": 2, "bank of england": 2, "BOJ": 2, "bank of japan": 2,
+        "dollar index": 2, "DXY": 2, "U.S. economy": 2, "US economy": 2, "wall street": 1,
+        "U.S.": 0.5, "US": 0.5, "ZEW": 2, "investor confidence": 2
+      }
+    },
+    "policy": {
+      "emoji": "🏛",
+      "label": "Trump / policy / geopolitics",
+      "keywords": {
+        "trump": 4, "white house": 3, "tariff*": 4, "trade war": 3, "trade deal": 3, "trade talks": 3,
+        "sanction*": 3, "executive order": 3, "congress": 2, "senate": 2, "government shutdown": 3,
+        "debt ceiling": 3, "export control*": 3, "entity list": 3, "blacklist*": 2,
+        "bessent": 3, "lutnick": 3, "rubio": 2, "vance": 2, "secretary of state": 2, "treasury secretary": 3,
+        "^geopolitics |": 3, "putin": 2, "xi jinping": 2, "kremlin": 2, "nato": 2,
+        "hormuz": 3, "ceasefire": 3, "embargo": 3, "tanker*": 2, "blockade": 3, "invasion": 3,
+        "iran*": 0.5, "israel*": 0.5, "russia*": 0.5, "ukrain*": 0.5, "china": 0.5, "houthi*": 0.5,
+        "missile*": 0.5, "military": 0.5, "war": 0.5, "attack*": 0.5, "strike*": 0.5, "mines": 0.5,
+        "nuclear": 0.5, "U.S.": 0.5, "US": 0.5
+      }
+    },
+    "commodities": {
+      "emoji": "🛢",
+      "label": "Commodities",
+      "keywords": {
+        "oil": 3, "crude": 3, "brent": 3, "WTI": 3, "opec*": 3, "barrel*": 2, "natural gas": 3, "LNG": 2,
+        "gas price*": 3, "european gas": 3, "gasoline": 2, "diesel": 2, "refin*": 1, "petroleum": 2,
+        "oil reserve*": 2, "IEA": 2,
+        "gold": 3, "silver": 3, "copper": 2, "precious metal*": 3, "bullion": 3, "platinum": 2, "commodit*": 2
+      }
+    },
+    "ai": {
+      "emoji": "🤖",
+      "label": "AI / semis",
+      "keywords": {
+        "nvidia": 3, "AMD": 3, "TSMC": 3, "micron": 3, "qualcomm": 3, "broadcom": 3, "Intel": 2, "ASML": 3,
+        "arm holdings": 3, "sk hynix": 2, "samsung electronics": 2, "supermicro": 3, "super micro": 3,
+        "coreweave": 3, "nebius": 2, "oracle": 2,
+        "semiconductor*": 3, "chipmaker*": 3, "chip*": 2, "GPU*": 2, "data center*": 2, "hyperscaler*": 2,
+        "AI capex": 3, "capex": 2, "AI": 1, "artificial intelligence": 1
+      }
+    },
+    "stocks": {
+      "emoji": "📈",
+      "label": "Stocks",
+      "keywords": {
+        "^stocks |": 2, "^premarket moves |": 4, "^asia market close |": 2,
+        "premarket": 3, "pre-market": 3, "after-hours": 3, "after hours": 2,
+        "earnings": 3, "EPS": 2, "per share": 2, "revenue": 1, "guidance": 3, "profit forecast": 3,
+        "forecast*": 1, "outlook": 1, "tops estimates": 3, "beats estimates": 3, "misses estimates": 3, "estimates": 1,
+        "price target": 3, "upgrade*": 2, "downgrade*": 2, "overweight": 2, "underweight": 2,
+        "outperform": 2, "underperform": 2, "buy rating": 2, "sell rating": 2, "reduce rating": 2,
+        "reiterat*": 1, "reaffirm*": 1, "analyst*": 1,
+        "buyback": 3, "share repurchase": 3, "repurchase": 2, "acquire*": 1, "acquisition": 1, "merger": 1,
+        "takeover": 2, "IPO": 2, "shares": 1, "stock*": 1, "equit*": 1,
+        "S&P 500": 3, "S&P": 2, "nasdaq": 2, "nasdaq 100": 3, "dow jones": 3, "russell 2000": 3,
+        "e-mini": 3, "futures": 2, "VIX": 3, "market value": 2, "market cap*": 2, "index": 1,
+        "nikkei": 2, "KOSPI": 2, "hang seng": 2,
+        "apple": 2, "microsoft": 2, "alphabet": 2, "google": 1, "amazon": 2, "Meta": 2, "tesla": 2,
+        "netflix": 2, "palantir": 2, "salesforce": 2, "IBM": 2, "berkshire": 2, "jpmorgan": 1,
+        "goldman sachs": 1, "general motors": 2, "boeing": 2, "exxon": 2, "chevron": 2, "spacex": 1,
+        "walmart": 1, "3M": 2
+      }
+    },
+    "crypto": {
+      "emoji": "₿",
+      "label": "Crypto (BTC/ETH, ETF, regulation)",
+      "requires_any": ["bitcoin", "BTC", "ethereum", "ether", "ETH", "crypto*", "digital asset*", "stablecoin*"],
+      "keywords": {
+        "ETF*": 3, "spot ETF*": 2, "SEC": 3, "securities and exchange commission": 3, "CFTC": 2,
+        "regulat*": 2, "rule*": 1, "legislation": 2, "bill": 1, "law": 1, "approv*": 2,
+        "strategic bitcoin reserve": 4, "blackrock": 2, "fidelity": 2, "institutional": 1,
+        "Strategy": 1, "all-time high": 3, "record high": 3,
+        "plunge*": 2, "crash*": 2, "surge*": 2, "tumble*": 2, "soar*": 2, "liquidation*": 2,
+        "sell-off": 2, "selloff": 2
+      }
+    }
+  },
+
+  "company_tickers": {
+    "apple": "AAPL", "microsoft": "MSFT", "alphabet": "GOOGL", "google": "GOOGL", "amazon": "AMZN",
+    "Meta": "META", "tesla": "TSLA", "nvidia": "NVDA", "netflix": "NFLX", "palantir": "PLTR",
+    "salesforce": "CRM", "IBM": "IBM", "oracle": "ORCL", "micron": "MU", "qualcomm": "QCOM",
+    "broadcom": "AVGO", "AMD": "AMD", "Intel": "INTC", "TSMC": "TSM", "ASML": "ASML", "arm holdings": "ARM",
+    "super micro": "SMCI", "supermicro": "SMCI", "dell": "DELL", "adobe": "ADBE", "coreweave": "CRWV",
+    "nebius": "NBIS", "texas instruments": "TXN", "spacex": "SPCX", "microstrategy": "MSTR",
+    "coinbase": "COIN", "robinhood": "HOOD", "shopify": "SHOP", "alibaba": "BABA", "uber": "UBER",
+    "disney": "DIS", "Ford": "F", "general motors": "GM", "boeing": "BA", "RTX": "RTX",
+    "GE Aerospace": "GE", "northrop grumman": "NOC", "lockheed martin": "LMT", "steel dynamics": "STLD",
+    "mastercard": "MA", "exxon": "XOM", "chevron": "CVX",
+    "3M": "MMM", "walmart": "WMT", "costco": "COST", "best buy": "BBY", "home depot": "HD",
+    "nike": "NKE", "starbucks": "SBUX", "coca-cola": "KO", "pepsico": "PEP", "pfizer": "PFE",
+    "eli lilly": "LLY", "unitedhealth": "UNH", "astrazeneca": "AZN", "at&t": "T", "verizon": "VZ"
+  },
+
+  "pairs": {
+    "crypto_major_codes": ["BTC", "ETH"],
+    "commodity_codes": ["CL", "BZ", "XAU", "XAG", "NATGAS", "COPPER", "XPT", "XPD"],
+    "not_stock_codes": ["BNB"]
+  },
+
+  "deny": {
+    "binance_promo": {
+      "penalty": 100, "where": "title",
+      "keywords": ["^binance", "binance wallet", "bnb chain", "bnb smart chain", "binance alpha", "launchpool",
+                   "megadrop", "hodler", "copytrade", "copy trading", "trading competition", "red packet",
+                   "prediction market*", "polymarket*", "kalshi", "bstocks", "USDT"]
+    },
+    "altcoins_onchain": {
+      "penalty": 100, "where": "title",
+      "keywords": ["meme coin*", "memecoin*", "meme token*", "airdrop*", "pump.fun", "pumpswap", "four.meme",
+                   "launchpad*", "TVL", "mainnet", "testnet", "DEX", "defi", "staking", "validator*",
+                   "governance", "perps", "on-chain", "onchain", "hyperliquid", "whale*", "^trader ",
+                   "^address ", "win rate", "unrealized", "long position", "short position", "tornado cash",
+                   "attacker", "exploit*", "hack*", "private key*", "lookonchain", "smart money",
+                   "solana", "XRP", "dogecoin", "shiba", "pepe", "bonk", "SUI", "aave", "uniswap", "lido",
+                   "celestia", "cardano", "tokenized", "tokenised"]
+    },
+    "ta_opinion": {
+      "penalty": 100, "where": "title",
+      "keywords": ["^technical", "technical analysis", "price prediction", "price analysis", "^degentrading",
+                   "chart pattern", "support level", "resistance level", "POC", "fibonacci"]
+    },
+    "sports_celebrity": {
+      "penalty": 100, "where": "title",
+      "keywords": ["NBA", "NFL", "MLB", "NHL", "UFC", "FIFA", "premier league", "champions league", "la liga",
+                   "world cup", "super bowl", "olympic*", "warriors", "celtics", "lakers", "steph curry",
+                   "draymond", "paris saint-germain", "barcelona", "real madrid", "PSG", "shark tank",
+                   "mrbeast", "celebrit*", "kardashian", "taylor swift", "grand theft auto", "zelda", "gaming hub"]
+    },
+    "local_crime": {
+      "penalty": 100, "where": "title",
+      "keywords": ["arrest*", "staged-crash", "insurance fraud", "police", "murder", "shooting", "residents",
+                   "municipal bond*", "muni bond*", "airport", "ultrawealthy", "luxury home*", "weight-loss",
+                   "illegal market"]
+    },
+    "startup_funding": {
+      "penalty": 5, "where": "title",
+      "keywords": ["raises $", "raised $", "secures $", "series a", "series b", "series c", "series d",
+                   "seed round", "funding", "fundraising", "unicorn", "minority stake", "strategic investor",
+                   "venture capital"]
+    },
+    "ai_trends_listicle": {
+      "penalty": 4, "where": "title",
+      "keywords": ["^ai trends |"]
+    },
+    "bitcoin_column": {
+      "penalty": 3, "where": "title",
+      "keywords": ["^bitcoin news |"]
+    },
+    "official_quotes": {
+      "penalty": 5, "where": "title",
+      "keywords": ["spokesperson", "supreme leader", "foreign ministry", "parliament*"]
+    },
+    "exec_commentary": {
+      "penalty": 2, "where": "title",
+      "keywords": ["CEO", "CFO", "chief executive", "founder"]
+    },
+    "non_us_local": {
+      "penalty": 3, "where": "title",
+      "keywords": ["UK", "U.K.", "british", "britain", "healey", "healy", "gilt*", "senegal", "colombia*",
+                   "ghana", "brazil*", "indonesia*", "malaysia*", "philippine*", "estonia*", "dubai",
+                   "nashville", "poland*", "thames water", "revolut", "pernod", "tikehau", "partners group",
+                   "nomura", "ocado", "pakistan*", "yemen", "egypt*"]
+    }
+  }
+}
