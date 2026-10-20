@@ -134,6 +134,8 @@ async def deliver(session: aiohttp.ClientSession, post: dict, verdict: dict) -> 
         link    = bc.post_link(post),
         emoji   = verdict.get("emoji") or news_filter.DEFAULT_EMOJI,
         tickers = verdict.get("tickers") or (),
+        keywords = verdict.get("keywords") or (),
+        category = verdict.get("category"),
     )
     if DRY_RUN:
         logger.info("DRY_RUN — message not sent:\n" + text)

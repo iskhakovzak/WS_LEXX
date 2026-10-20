@@ -1,7 +1,7 @@
 """
 Rule-based relevance filter for Binance News posts.
 
-    classify(post) -> {"keep", "category", "emoji", "score", "reason", "reasons", "tickers", "scores"}
+    classify(post) -> {"keep", "keywords", "category", "emoji", "score", "reason", "reasons", "tickers", "scores"}
 
 Everything tunable (keywords, weights, penalties, thresholds) lives in filters.json.
 The scoring is deliberately simple so every decision can be explained in one log line:
@@ -278,6 +278,29 @@ def _fmt(x: float) -> str:
     return str(int(x)) if float(x).is_integer() else f"{x:g}"
 
 
+def headline_keywords(title: str, r: Rules, categories: list, limit: int = 4) -> list[str]:
+    """The words that made the post relevant, as written in the headline («tariffs», «Fed», «price target»):
+    strongest first, best category first; anchored section prefixes («STOCKS |») and weight-1 noise skipped."""
+    found: list[tuple[float, str]] = []
+    for name in categories:
+        cat = r.categories.get(name) if name else None
+        if not cat:
+            continue
+        for _phrase, w, rx, anchored in cat["keywords"]:
+            if anchored or w < 2:
+                continue
+            m = rx.search(title)
+            if m and m.group(0).strip():
+                found.append((w, m.group(0).strip()))
+    out: list[str] = []
+    for _w, word in sorted(found, key=lambda x: -x[0]):
+        if not any(word.lower() == o.lower() or word.lower() in o.lower() or o.lower() in word.lower() for o in out):
+            out.append(word)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def classify(post: dict, rules: Rules | dict | None = None) -> dict:
     r = _get_rules(rules)
     title, body = post_text(post)
@@ -373,6 +396,7 @@ def classify(post: dict, rules: Rules | dict | None = None) -> dict:
 
     return {
         "keep": keep,
+        "keywords": headline_keywords(title, r, [best] + sorted((k for k in scores if k != best), key=lambda k: -scores[k])),
         "category": best,
         "emoji": r.emoji(best),
         "score": net,

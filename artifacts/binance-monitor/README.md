@@ -147,18 +147,14 @@ screen -r binance  # вернуться
 Отправляются с `parse_mode=HTML` (весь текст экранируется; если Telegram всё же отвергнет разметку — сообщение уходит обычным текстом). Длина ≤ 4096 символов.
 
 ```
-📈 <b>Apple Gets Loop Capital Downgrade on Slow iPhone Sales Fears</b>
-
-Loop Capital downgraded Apple to hold from buy, citing the risk that iPhone revenue will fall short of expectations…
-
-$AAPL
-🔗 Binance Square        ← ссылка на исходный пост
+📈 Акции · #Downgrade #iPhone · $AAPL         ← категория, ключевые слова из заголовка, тикеры
+Apple Gets Loop Capital Downgrade on Slow…     ← жирный заголовок = ссылка на исходный пост
+Loop Capital downgraded Apple to hold from buy.   ← одно короткое предложение (≤ 180 символов)
 ```
 
-- эмодзи категории + жирный заголовок;
-- коротко: 1–2 первых предложения, ≤ 400 символов (префикс «According to Jin10, …» убирается);
+- первая строка: эмодзи и категория по-русски, до 4 ключевых слов, из-за которых пост прошёл фильтр (хэштеги, как в заголовке), и кэштеги;
 - кэштеги US-тикеров: из текста (`AAPL.O`, `(NASDAQ: NVDA)`), по названию компании (`company_tickers` в filters.json) и из торговых пар поста — пара берётся, только если тикер/компания упомянуты в тексте (Binance часто прикрепляет лишние пары);
-- ссылка на пост.
+- превью ссылки выключено — лента компактная.
 
 ## Фильтр
 

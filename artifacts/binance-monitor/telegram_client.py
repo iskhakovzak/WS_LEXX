@@ -25,7 +25,7 @@ async def send_message(session: aiohttp.ClientSession, text: str, parse_mode: st
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": text[:MAX_LEN],
-        "disable_web_page_preview": False,
+        "disable_web_page_preview": True,   # compact: no Binance card under every post
     }
     if parse_mode:
         payload["parse_mode"] = parse_mode
