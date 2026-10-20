@@ -123,6 +123,7 @@ export default {
     range: " · диапазон {range}%",
     streak: " · {count} {kind} подряд",
     noHistory: "история реакции недоступна",
+    sourceDown: "источник недоступен · {time}",
     youTraded: "вы: {count} сд. · {net}",
     watchNoTrades: "в вотчлисте, сделок не было",
     noTrades: "сделок не было",

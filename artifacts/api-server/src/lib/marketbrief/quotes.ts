@@ -1,6 +1,6 @@
 import { logger } from "../logger";
 import { nyDate } from "../tradingDate";
-import { isMarketClosed } from "../marketDays";
+import { sessionFor } from "../marketDays";
 import { themeSession } from "../themes/logic";
 import { detailsFor } from "../themes/tickerCache";
 
@@ -131,7 +131,7 @@ export async function watchPremarket(tickers: readonly string[]): Promise<Map<st
   try {
     const now = new Date();
     const today = nyDate(now);
-    const session = themeSession(now, await isMarketClosed(today));
+    const session = themeSession(now, await sessionFor(today));
     if (session === "closed") return out;
     const details = await detailsFor(tickers, session, today, PREMARKET_WAIT_MS);
     for (const [t, d] of details) if (d.quote.premarket != null) out.set(t, d.quote.premarket);

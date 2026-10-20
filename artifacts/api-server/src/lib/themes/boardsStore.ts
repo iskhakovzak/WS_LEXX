@@ -127,6 +127,77 @@ export async function setPositions(userId: number, order: readonly { id: number;
   }
 }
 
+// ─── archive / restore (migration 0233: user_themes.archived_with_board) ──────
+
+/** A board being archived archives its active themes with it (they come back with the board). Returns how many. */
+export async function archiveBoardThemes(userId: number, boardId: number): Promise<number> {
+  const { rowCount } = await db().query(
+    `UPDATE user_themes SET active = false, archived_with_board = true, updated_at = now()
+      WHERE user_id = $1 AND board_id = $2 AND active`,
+    [userId, boardId],
+  );
+  return rowCount ?? 0;
+}
+
+export type ArchivedBoard = { id: number; name: string; kind: BoardKind; themes: number };
+export type ArchivedTheme = { id: number; name: string; kind: "tickers" | "screener"; boardId: number; boardName: string };
+export const ARCHIVE_LIST_MAX = 50;
+
+/**
+ * The owner's «Архив»: archived boards (+ how many themes come back with each) and archived themes sitting on an
+ * active board (archived on their own, or left over when the board came back at the theme limit). Newest first.
+ */
+export async function listArchive(userId: number): Promise<{ boards: ArchivedBoard[]; themes: ArchivedTheme[] }> {
+  const [boards, themes] = await Promise.all([
+    db().query<{ id: number; name: string; kind: BoardKind; themes: string }>(
+      `SELECT b.id, b.name, b.kind,
+              (SELECT count(*) FROM user_themes t
+                WHERE t.user_id = b.user_id AND t.board_id = b.id AND NOT t.active AND t.archived_with_board)::text AS themes
+         FROM user_boards b WHERE b.user_id = $1 AND NOT b.active
+        ORDER BY b.updated_at DESC, b.id DESC LIMIT ${ARCHIVE_LIST_MAX}`,
+      [userId],
+    ),
+    db().query<{ id: number; name: string; kind: "tickers" | "screener"; board_id: number; board_name: string }>(
+      `SELECT t.id, t.name, t.kind, t.board_id, b.name AS board_name
+         FROM user_themes t JOIN user_boards b ON b.id = t.board_id AND b.user_id = t.user_id
+        WHERE t.user_id = $1 AND NOT t.active AND b.active
+        ORDER BY t.updated_at DESC, t.id DESC LIMIT ${ARCHIVE_LIST_MAX}`,
+      [userId],
+    ),
+  ]);
+  return {
+    boards: boards.rows.map((r) => ({ id: Number(r.id), name: String(r.name), kind: r.kind, themes: Number(r.themes) })),
+    themes: themes.rows.map((r) => ({ id: Number(r.id), name: String(r.name), kind: r.kind, boardId: Number(r.board_id), boardName: String(r.board_name) })),
+  };
+}
+
+/**
+ * Bring an archived board back at the end of the strip with the themes archived with it, as many as the personal
+ * limit leaves room for (oldest first; the rest stay in the archive). null: not this user's board.
+ */
+export async function restoreBoard(userId: number, id: number, maxThemes: number): Promise<{ board: BoardRecord; restored: number; skipped: number } | null> {
+  const { rows } = await db().query<Row>(
+    `UPDATE user_boards SET active = true, updated_at = now(),
+       position = (SELECT COALESCE(MAX(position), -1) + 1 FROM user_boards WHERE user_id = $2 AND active)
+     WHERE id = $1 AND user_id = $2 RETURNING ${COLS}`,
+    [id, userId],
+  );
+  if (!rows[0]) return null;
+  const back = await db().query(
+    `WITH room AS (SELECT GREATEST(0, $3::int - count(*))::int AS n FROM user_themes WHERE user_id = $1 AND active),
+          pick AS (SELECT id FROM user_themes WHERE user_id = $1 AND board_id = $2 AND NOT active AND archived_with_board
+                    ORDER BY id LIMIT (SELECT n FROM room))
+     UPDATE user_themes t SET active = true, archived_with_board = false, updated_at = now()
+       FROM pick WHERE t.id = pick.id`,
+    [userId, id, maxThemes],
+  );
+  const left = await db().query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM user_themes WHERE user_id = $1 AND board_id = $2 AND NOT active AND archived_with_board`,
+    [userId, id],
+  );
+  return { board: toRecord(rows[0]), restored: back.rowCount ?? 0, skipped: Number(left.rows[0]?.n ?? 0) };
+}
+
 export async function saveBoardResolved(id: number, tickers: string[], at: number): Promise<void> {
   await db().query(`UPDATE user_boards SET resolved_tickers = $2::text[], resolved_at = $3 WHERE id = $1`, [id, tickers, new Date(at)]);
 }

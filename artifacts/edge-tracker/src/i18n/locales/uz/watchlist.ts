@@ -7,6 +7,13 @@ export default {
     descWeekend: "Dam olish kuni: PDH/PDL sathlari {date} sessiyasi uchun, VWAP ochilishdan keyin chiqadi.",
     desc: "Kunning ishchi roʻyxati: tikerlar, sathlar, ssenariy va har biri boʻyicha tarixingiz.",
   },
+  scope: {
+    aria: "Kimning roʻyxati",
+    mine: "Meniki",
+    desk: "Desk",
+    mineHint: "Mening roʻyxatim: faqat men koʻraman va yuritaman",
+    deskHint: "Desk roʻyxati: hamma koʻradi, seniorlar va kuratorlar yuritadi",
+  },
   list: {
     today: "Bugun",
     swing: "Swinglar",
@@ -149,6 +156,7 @@ export default {
     addHintToday: "Tikerlarni yuqoridagi maydonga yozing — bir nechtasini vergul yoki boʻsh joy bilan. Bu yerga — bugun savdo qiladiganlaringiz.",
     addHintSwing: "Tikerlarni yuqoridagi maydonga yozing — bir nechtasini vergul yoki boʻsh joy bilan. Bu yerga — pozitsiyalar va bir necha kunga olib oʻtishlar.",
     readOnly: "Tikerlarni jamoa treyderlari qoʻshadi.",
+    deskReadOnly: "Desk roʻyxatini seniorlar va kuratorlar yuritadi.",
     addTickers: "Tiker qoʻshish",
   },
   filters: {
@@ -387,6 +395,7 @@ export default {
     inPosition: "Pozitsiyada",
     traded: "savdo qilindi",
     gap: "Gap",
+    premarket: "Premarket",
     atr14: "ATR 14k",
     volume: "Hajm",
     w52: "52h",

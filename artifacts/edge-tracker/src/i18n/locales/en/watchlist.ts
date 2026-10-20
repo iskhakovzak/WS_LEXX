@@ -7,6 +7,13 @@ export default {
     descWeekend: "Weekend: PDH/PDL levels are for the {date} session, VWAP appears after the open.",
     desc: "Today's working list: tickers, levels, the plan and your history on each one.",
   },
+  scope: {
+    aria: "Whose watchlist",
+    mine: "Mine",
+    desk: "Desk",
+    mineHint: "My watchlist: only I see and keep it",
+    deskHint: "The desk watchlist: everyone sees it, seniors and curators keep it",
+  },
   list: {
     today: "Today",
     swing: "Swings",
@@ -149,6 +156,7 @@ export default {
     addHintToday: "Type tickers in the field above — several at once, separated by commas or spaces. This list is for what you trade today.",
     addHintSwing: "Type tickers in the field above — several at once, separated by commas or spaces. This list is for positions and multi-day holds.",
     readOnly: "Tickers are added by the team's traders.",
+    deskReadOnly: "The desk watchlist is kept by seniors and curators.",
     addTickers: "Add tickers",
   },
   filters: {
@@ -387,6 +395,7 @@ export default {
     inPosition: "In position",
     traded: "traded",
     gap: "Gap",
+    premarket: "Premarket",
     atr14: "ATR 14d",
     volume: "Volume",
     w52: "52w",

@@ -6,7 +6,13 @@
  *   POST /api/themes/boards       { name, kind: themes | tickers, columns?, pinned? (themes), tickers? | screener? +
  *                                 order? + top? (tickers: a list ≤ 50, or a Finviz screener, top 25 / 50) } → BoardMeta
  *   PUT  /api/themes/boards/:id   any of { name, columns, sort, pinned, tickers | screener + order + top, move: left |
- *                                 right, active } → BoardMeta (archive = active false; nothing is deleted)
+ *                                 right, active } → BoardMeta (archive = active false; nothing is deleted). Archiving
+ *                                 a board archives its active themes with it (user_themes.archived_with_board).
+ *   GET  /api/themes/archive      { boards: [{ id, name, kind, themes }], themes: [{ id, name, kind, boardId, boardName }] }
+ *                                 — the owner's archived boards (themes = how many come back with it) and archived themes
+ *                                 on an active board («Архив» in the «Вид» popover)
+ *   POST /api/themes/boards/:id/restore  BoardMeta + { restoredThemes, skippedThemes } — the board back at the end of the
+ *                                 strip (≤ 8 active) with the themes archived with it, as far as the limit of 10 allows
  *
  * A screener is a Finviz URL / f= query / filter list: only f and o are kept (lib/themes/personal parseScreenerInput —
  * the auth token is never stored or echoed). Writes are in the audit log.
@@ -22,7 +28,10 @@ import {
   BOARD_TOPS, MAX_BOARDS, MAX_BOARD_TICKERS, MAX_PINNED, TICKER_COLUMNS, movePositions, normalizeColumns, normalizeBoardSort,
   type BoardKind, type BoardSource, type BoardTop,
 } from "../lib/themes/boards";
-import { boardById, countBoards, insertBoard, listBoards, setPositions, updateBoard, type BoardRecord } from "../lib/themes/boardsStore";
+import {
+  archiveBoardThemes, boardById, countBoards, insertBoard, listArchive, listBoards, restoreBoard, setPositions, updateBoard, type BoardRecord,
+} from "../lib/themes/boardsStore";
+import { MAX_PERSONAL_THEMES } from "../lib/themes/personal";
 import { boardMeta, getBoardData, refreshBoardScreener } from "../lib/themes/board";
 
 const router: IRouter = Router();
@@ -119,12 +128,34 @@ router.put("/themes/boards/:id", route({ params: z.object({ id: idParam }), body
     active: body.active,
   }, current);
   if (!updated) throw notFound("BOARD_NOT_FOUND");
+  const archiving = body.active === false && current.active;
+  const themesArchived = archiving ? await archiveBoardThemes(me.id, current.id) : 0;
   const out = updated.active && source ? await resolveSoon(updated) : updated;
-  const action = body.active === false && current.active ? "themes.board.archive" : "themes.board.update";
+  const action = archiving ? "themes.board.archive" : "themes.board.update";
   if (body.name || body.active !== undefined || source || body.pinned) {
-    await logAudit({ actor: me.name, action, targetType: "user_board", targetId: String(out.id), details: { name: out.name, kind: out.kind } });
+    const details = archiving ? { name: out.name, kind: out.kind, themes: themesArchived } : { name: out.name, kind: out.kind };
+    await logAudit({ actor: me.name, action, targetType: "user_board", targetId: String(out.id), details });
   }
   return boardMeta(out);
+}));
+
+// ─── «Архив» ──────────────────────────────────────────────────────────────────
+
+router.get("/themes/archive", route({}, async ({ req }) => listArchive(member(req).id)));
+
+router.post("/themes/boards/:id/restore", route({ params: z.object({ id: idParam }) }, async ({ req, params }) => {
+  const me = member(req);
+  const current = await boardById(me.id, params.id);
+  if (!current) throw notFound("BOARD_NOT_FOUND");
+  if (current.active) return { ...boardMeta(current), restoredThemes: 0, skippedThemes: 0 };
+  if ((await countBoards(me.id)) >= MAX_BOARDS) throw new AppError("BOARD_LIMIT", undefined, { max: MAX_BOARDS });
+  const done = await restoreBoard(me.id, current.id, MAX_PERSONAL_THEMES);
+  if (!done) throw notFound("BOARD_NOT_FOUND");
+  await logAudit({
+    actor: me.name, action: "themes.board.restore", targetType: "user_board", targetId: String(done.board.id),
+    details: { name: done.board.name, kind: done.board.kind, restoredThemes: done.restored, skippedThemes: done.skipped },
+  });
+  return { ...boardMeta(done.board), restoredThemes: done.restored, skippedThemes: done.skipped };
 }));
 
 export default router;

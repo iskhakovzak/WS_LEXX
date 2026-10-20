@@ -2,10 +2,9 @@ import * as React from "react";
 import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
-import { canModifyOwned } from "@/lib/ownership";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LIST_LABELS, type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem } from "./lib";
+import { LIST_LABELS, rowWritable, type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem } from "./lib";
 import type { DayLevelSet, UpcomingEarnings } from "./use-market";
 import type { TickerHistory } from "./use-history";
 import { EventMarks, HistoryCell, InlineNote, LevelCell } from "./bits";
@@ -187,7 +186,7 @@ const Row = React.memo(function Row({
 }: RowProps) {
   const { item, quote: q, plan } = r;
   const { isCurator } = useAuth();
-  const mayModify = canEdit && canModifyOwned(item.createdBy, me, isCurator);
+  const mayModify = rowWritable(item, canEdit, me, isCurator);
   const ref = React.useRef<HTMLTableRowElement>(null);
   React.useEffect(() => {
     if (focused && ref.current && document.activeElement !== ref.current && !ref.current.contains(document.activeElement)) {
@@ -298,7 +297,7 @@ const Row = React.memo(function Row({
         />
       </td>
       <td className={cn("!pl-0 !pr-2 text-right", cellY)}>
-        {!r.pending && <RowMenu item={item} list={r.list} canEdit={canEdit} canModify={mayModify} actions={actions} scoring={scoring} />}
+        {!r.pending && <RowMenu item={item} list={r.list} canEdit={canEdit} canModify={mayModify} canPlan={!!me} actions={actions} scoring={scoring} />}
       </td>
     </tr>
   );

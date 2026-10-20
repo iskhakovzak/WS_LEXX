@@ -2,6 +2,7 @@
 import type { Tone } from "@/components/ds";
 import { fmtPct } from "@/lib/format";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
+import { canModifyOwned } from "@/lib/ownership";
 
 /** Record whose values are read from the dictionary on access (UI language at render time, never frozen). */
 function labelRecord<K extends string>(keys: readonly K[], get: (k: K) => string): Record<K, string> {
@@ -40,7 +41,16 @@ export type WatchlistItem = {
   tradedToday?: boolean; autoTraded?: boolean;
   /** Working list (GET /api/watchlist after the list_name column; older builds omit it → client fallback). */
   list?: ListName;
+  /** Which watchlist the row is on (personal «Свой» / the desk) and whether the caller may write it (server rule). */
+  scope?: "mine" | "desk";
+  canEdit?: boolean;
 };
+
+/** Content edit / delete of a row: the server's per-row answer; older API builds → the author-or-staff rule. */
+export function rowWritable(item: Pick<WatchlistItem, "canEdit" | "createdBy">, canEdit: boolean, me: string | null, isStaff: boolean): boolean {
+  if (!canEdit) return false;
+  return item.canEdit ?? canModifyOwned(item.createdBy, me, isStaff);
+}
 
 /** Working lists of the day. «Сегодня» ⇔ the team «В игре» flag. */
 export const LISTS = ["today", "swing", "watch"] as const;
@@ -76,6 +86,8 @@ export type Quote = {
   spark?: number[]; marketTime?: number | null;
   /** NY trading date of the last regular-session print (stale when ≠ today's NY date). */
   marketDate?: string | null;
+  /** Premarket print vs the previous close, % (common quote layer; held for the day after 09:30). */
+  premarketPct?: number | null;
 };
 
 export type NewsDigest = {

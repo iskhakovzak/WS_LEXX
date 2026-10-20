@@ -56,7 +56,7 @@ async function buildQuotes() {
   // Fetch watchlist tickers from DB first so we can batch all symbols together
   const { rows: watchRows } = await pool.query<any>(
     `SELECT id, ticker, catalyst, target_price, stop_price, status, sector
-     FROM watchlist WHERE deleted_at IS NULL AND status = 'watching' ORDER BY created_at DESC LIMIT 50`
+     FROM watchlist WHERE deleted_at IS NULL AND owner IS NULL AND status = 'watching' ORDER BY created_at DESC LIMIT 50`
   );
   const watchTickers = watchRows.map((r: any) => r.ticker as string).slice(0, 12);
 

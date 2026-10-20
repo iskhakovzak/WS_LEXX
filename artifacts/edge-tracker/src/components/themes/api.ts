@@ -2,20 +2,23 @@
  * «Темы рынка» — data layer. GET /api/themes (the shared board + the viewer's view and boards) refreshes its quotes
  * lazily on the server (30 s cache while the market is open); the page re-asks every 30 s in pre / rth / post while the
  * tab is visible and not at all when closed. The active personal board (GET /api/themes/boards/:id) polls the same way.
- * View, sort and board edits save optimistically.
+ * View, sort and board edits save optimistically. «Архив» (GET /api/themes/archive, read while «Вид» is open): archived
+ * boards and themes, each with «Вернуть».
  */
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http, isApiError } from "@/lib/api/http";
 import { KEYS, STALE } from "@/lib/api/keys";
 import { toast } from "@/hooks/use-toast";
+import { humanizeApiError } from "@/lib/api/errors";
 import { themesI18n } from "@/i18n/ns/themes";
-import { pollInterval, type BoardColumn, type BoardData, type BoardMeta, type ColSort, type ThemeRecord, type ThemesResponse, type ThemesView } from "./model";
+import { MAX_PERSONAL, pollInterval, type BoardColumn, type BoardData, type BoardMeta, type ColSort, type ThemeRecord, type ThemesResponse, type ThemesView } from "./model";
 
 export const themeKeys = {
   all: ["themes"] as const,
   board: () => ["themes", "board"] as const,
   boardData: (id: number) => ["themes", "boardData", id] as const,
   config: () => ["themes", "config"] as const,
+  archive: () => ["themes", "archive"] as const,
 };
 
 export const themesQuery = () =>
@@ -155,13 +158,59 @@ export function useSaveBoard() {
   });
 }
 
-/** «В вотчлист»: the desk watchlist (POST /api/watchlist); a ticker already there is not an error. */
+/** The owner's archive: boards (with how many themes come back with each) and themes archived on an active board. */
+export type ThemesArchive = {
+  boards: { id: number; name: string; kind: "themes" | "tickers"; themes: number }[];
+  themes: { id: number; name: string; kind: "tickers" | "screener"; boardId: number; boardName: string }[];
+};
+
+export function useThemesArchive(enabled: boolean) {
+  return useQuery({
+    queryKey: themeKeys.archive(),
+    queryFn: ({ signal }) => http.get<ThemesArchive>("/api/themes/archive", { signal }),
+    staleTime: STALE.short,
+    enabled,
+    meta: { i18n: false },
+  });
+}
+
+const restoreFailed = (err: unknown) =>
+  toast({ title: themesI18n.t("view.restoreFailed"), description: humanizeApiError(err), variant: "destructive" });
+
+/** POST /api/themes/boards/:id/restore — the board comes back with its themes (as far as the limit of 10 allows). */
+export function useRestoreBoard() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => http.post<BoardMeta & { restoredThemes: number; skippedThemes: number }>(`/api/themes/boards/${id}/restore`),
+    onSuccess: (b) => {
+      toast({
+        title: themesI18n.t("view.boardRestored"),
+        description: b.skippedThemes > 0 ? themesI18n.t("view.boardRestoredSkipped", { n: b.skippedThemes, max: MAX_PERSONAL }) : b.name,
+      });
+    },
+    onError: restoreFailed,
+    onSettled: () => qc.invalidateQueries({ queryKey: themeKeys.all }),
+  });
+}
+
+/** POST /api/themes/mine/:id/restore — an archived theme back onto its (active) board. */
+export function useRestoreMine() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => http.post<{ id: number; name: string }>(`/api/themes/mine/${id}/restore`),
+    onSuccess: (th) => toast({ title: themesI18n.t("view.themeRestored"), description: th.name }),
+    onError: restoreFailed,
+    onSettled: () => qc.invalidateQueries({ queryKey: themeKeys.all }),
+  });
+}
+
+/** «В вотчлист»: the trader's own watchlist (POST /api/watchlist scope mine); a ticker already there is not an error. */
 export function useAddToWatchlist() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (ticker: string): Promise<"added" | "exists"> => {
       try {
-        await http.post("/api/watchlist", { ticker, catalyst: themesI18n.t("actions.watchCatalyst"), status: "watching" });
+        await http.post("/api/watchlist", { ticker, catalyst: themesI18n.t("actions.watchCatalyst"), status: "watching", scope: "mine" });
         return "added";
       } catch (err) {
         if (isApiError(err) && err.status === 409) return "exists";

@@ -15,7 +15,7 @@
  *   theme     equal-weight mean of the members that have the value; `missing` = tickers with no quote at all.
  * Percentages are percent units (1.25 = 1.25 %) rounded to 2 decimals; unknown = null, never NaN.
  */
-import { nySession, nyDate } from "../tradingDate";
+import { nySession, nyDate, type DaySession } from "../tradingDate";
 
 export type ThemeSession = "pre" | "rth" | "post" | "closed";
 export type ThemeSource = "finviz" | "yahoo";
@@ -63,9 +63,14 @@ export const TTL_SLOW_MS = 5 * 60_000;
 export const THEME_TICKER_RE = /^[A-Z.\-]{1,10}$/;
 export const MAX_THEME_TICKERS = 30;
 
-export function themeSession(now: Date, marketClosedToday: boolean): ThemeSession {
-  if (marketClosedToday) return "closed";
-  const s = nySession(now);
+/**
+ * The themes session at `now`. `day` = today's session (lib/marketDays sessionFor: closed / early close at 13:00 —
+ * the post-market then runs 13:00–17:00) or, as before, just «the market is closed today».
+ */
+export function themeSession(now: Date, day: boolean | Pick<DaySession, "closed" | "closeMin">): ThemeSession {
+  const session = typeof day === "boolean" ? { closed: day, closeMin: undefined } : day;
+  if (session.closed) return "closed";
+  const s = nySession(now, session.closeMin == null ? null : { closed: false, closeMin: session.closeMin });
   return s === "premarket" ? "pre" : s === "regular" ? "rth" : s === "postmarket" ? "post" : "closed";
 }
 

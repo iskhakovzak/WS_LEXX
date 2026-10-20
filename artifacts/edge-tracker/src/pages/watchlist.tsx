@@ -11,11 +11,14 @@ import { KEYS } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { nyDate, prevWeekday } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
-import { EmptyState, Kbd, Page, PageHeader, Panel, TableSkeleton, usePersistentState, type SortDir } from "@/components/ds";
+import { EmptyState, Kbd, Page, PageHeader, Panel, Segmented, TableSkeleton, usePersistentState, type SortDir } from "@/components/ds";
 import {
-  LISTS, LIST_LABELS, computePlan, copyText, isListName, isStaleToday, keyLevels, normStatus, readLS, writeLS, num,
+  LISTS, LIST_LABELS, computePlan, copyText, isListName, isStaleToday, keyLevels, normStatus, readLS, rowWritable, writeLS, num,
   type ListName, type WatchlistItem,
 } from "@/components/watchlist/lib";
+import { useWatchlistScope, watchlistKey, type WatchScope } from "@/components/watchlist/use-scope";
+import { useAddToPlan } from "@/components/shared/add-to-plan";
+import { PLAN_MAX_TICKERS } from "@/components/shared/finviz/model";
 import { useWatchlistLevels, useWatchlistMarket, sessionDays } from "@/components/watchlist/use-market";
 import { useTickerHistory } from "@/components/watchlist/use-history";
 import { AddTickerBar, type ActiveInfo } from "@/components/watchlist/AddTickerBar";
@@ -28,9 +31,6 @@ import { IdeaFromWatchlistDialog } from "@/components/watchlist/IdeaFromWatchlis
 import {
   DeleteTickersDialog, FILTERS, SelectionBar, WatchlistHeaderMenus, WatchlistSearch, WatchlistTabs, type Filter, type View,
 } from "@/components/watchlist/WatchlistToolbar";
-import { canModifyOwned } from "@/lib/ownership";
-import { gpApi, gpKeys, type InPlayItem } from "@/components/game-plan/types";
-import { docToDraft, draftToDoc } from "@/components/game-plan/plan-draft";
 import { commonI18n } from "@/i18n/ns/common";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 import { fmtDate } from "@/lib/format";
@@ -39,7 +39,6 @@ const wt = watchlistI18n.t;
 
 const LS_LISTS = "wl:lists";
 const LS_PINS = "wl:pins";
-const PLAN_MAX = 30;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 class DuplicateTickerError extends Error {
@@ -69,7 +68,6 @@ function csvCell(v: unknown) {
   const s = v == null ? "" : String(v);
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
-const round2 = (v: number) => Math.round(v * 100) / 100;
 /** «AVGO, COIN, MSTR и ещё 3» */
 const tickerList = (ts: string[], max = 6) => (ts.length <= max ? ts.join(", ") : wt("tickerList", { list: ts.slice(0, max).join(", "), count: ts.length - max }));
 
@@ -91,10 +89,14 @@ export default function Watchlist() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { t } = watchlistI18n.useT();
-  const { canEdit, user, isCurator } = useAuth();
+  const { canEdit: canEditApp, user, isCurator } = useAuth();
   const me = user && user.role !== "guest" ? user.traderName ?? null : null;
-  /** Content edit / delete of a row: its author or staff (server: 403 NOT_OWNER otherwise). */
-  const mayModify = (i: WatchlistItem) => canEdit && canModifyOwned(i.createdBy, me, isCurator);
+  // «Свой / Деска»: the personal list is the trader's own; the desk list is kept by seniors and staff (server-enforced).
+  const { scope, setScope, canEditDesk, ready: scopeReady } = useWatchlistScope();
+  const listKey = watchlistKey(scope);
+  const canEdit = canEditApp && (scope === "mine" || canEditDesk);
+  /** Content edit / delete of a row (server: canEdit per row; 403 NOT_OWNER otherwise). */
+  const mayModify = (i: WatchlistItem) => rowWritable(i, canEdit, me, isCurator);
   const [, navigate] = useLocation();
   const today = nyDate();
   // The session being prepared: today on weekdays, Monday on the weekend (same rule as «План дня»).
@@ -138,8 +140,9 @@ export default function Watchlist() {
 
   // ── data ────────────────────────────────────────────────────────────
   const { data: rawItems, isLoading, isError, error, refetch, isFetching } = useQuery<WatchlistItem[]>({
-    queryKey: KEYS.watchlist(),
-    queryFn: ({ signal }) => http.get<WatchlistItem[]>("/api/watchlist", { signal }),
+    queryKey: listKey,
+    queryFn: ({ signal }) => http.get<WatchlistItem[]>("/api/watchlist", { query: { scope }, signal }),
+    enabled: scopeReady,
   });
   const items = useMemo<WatchlistItem[]>(
     () => (Array.isArray(rawItems) ? rawItems.map((i) => ({ ...i, status: normStatus(i.status) })) : []),
@@ -258,8 +261,8 @@ export default function Watchlist() {
   // ── mutations ───────────────────────────────────────────────────────
   const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: KEYS.watchlist() }), [qc]);
   const patchCache = useCallback((fn: (i: WatchlistItem) => WatchlistItem) => {
-    qc.setQueryData<WatchlistItem[]>(KEYS.watchlist(), (old) => old?.map(fn));
-  }, [qc]);
+    qc.setQueryData<WatchlistItem[]>(listKey, (old) => old?.map(fn));
+  }, [qc, listKey]);
 
   const bulk = useCallback(async (body: { ids: number[]; action: "status" | "delete" | "restore" | "inplay" | "list"; status?: string; inPlay?: boolean; list?: ListName }) => {
     try {
@@ -361,12 +364,12 @@ export default function Watchlist() {
   const notePatch = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => http.patch<WatchlistItem>(`/api/watchlist/${id}`, data),
     onMutate: async ({ id, data }) => {
-      await qc.cancelQueries({ queryKey: KEYS.watchlist() });
-      const prev = qc.getQueryData<WatchlistItem[]>(KEYS.watchlist());
+      await qc.cancelQueries({ queryKey: listKey });
+      const prev = qc.getQueryData<WatchlistItem[]>(listKey);
       patchCache((i) => (i.id === id ? { ...i, ...data } as WatchlistItem : i));
       return { prev };
     },
-    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev); toast({ title: wt("toast.noteFailed"), description: errMsg(e), variant: "destructive" }); },
+    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(listKey, ctx.prev); toast({ title: wt("toast.noteFailed"), description: errMsg(e), variant: "destructive" }); },
     onSettled: invalidate,
   });
 
@@ -379,19 +382,19 @@ export default function Watchlist() {
     if (tickers.length > 30) { toast({ title: wt("toast.max30"), variant: "destructive" }); return false; }
     setAdding(true);
     // Optimistic rows for the new tickers.
-    const prev = qc.getQueryData<WatchlistItem[]>(KEYS.watchlist());
+    const prev = qc.getQueryData<WatchlistItem[]>(listKey);
     const stamp = Date.now();
     if (fresh.length) {
       const temps: WatchlistItem[] = fresh.map((ticker, k) => ({
         id: -(stamp + k), ticker, catalyst: null, targetPrice: null, stopPrice: null, status: "watching", notes: null, sector: null, tags: null,
         createdAt: new Date().toISOString(), score: null, scoreBreakdown: null, scoredAt: null, inPlay: list === "today", list,
       }));
-      qc.setQueryData<WatchlistItem[]>(KEYS.watchlist(), (old) => [...(old ?? []), ...temps]);
+      qc.setQueryData<WatchlistItem[]>(listKey, (old) => [...(old ?? []), ...temps]);
     }
     try {
       let createdCount = 0;
       try {
-        const j = await http.post<{ created?: WatchlistItem[] }>("/api/watchlist/quick", { tickers, list }).catch((err: unknown) => {
+        const j = await http.post<{ created?: WatchlistItem[] }>("/api/watchlist/quick", { tickers, list, scope }).catch((err: unknown) => {
           if (err instanceof ApiError && (err.status === 404 || err.status === 405)) throw new NotDeployedError();
           throw err;
         });
@@ -404,7 +407,7 @@ export default function Watchlist() {
         // Fallback for API builds without /quick: one POST per ticker (2 at a time) + move the existing ones.
         if (list !== "watch") setLocalLists((cur) => { const n = { ...cur }; for (const t of tickers) n[t] = list; return n; });
         const res = await pool(fresh, 2, async (ticker) => {
-          return createWatchRow({ ticker, status: "watching", inPlay: list === "today", list }, wt("toast.duplicate", { ticker }));
+          return createWatchRow({ ticker, status: "watching", inPlay: list === "today", list, scope }, wt("toast.duplicate", { ticker }));
         });
         createdCount = res.filter((x) => x.status === "fulfilled").length;
         const failed = res.map((x, k) => (x.status === "rejected" ? `${fresh[k]}: ${errMsg(x.reason)}` : null)).filter(Boolean);
@@ -424,14 +427,14 @@ export default function Watchlist() {
       if (isListName(view) && view !== list) setView(list);
       return true;
     } catch (e) {
-      if (prev) qc.setQueryData(KEYS.watchlist(), prev);
+      if (prev) qc.setQueryData(listKey, prev);
       toast({ title: wt("toast.addFailed"), description: errMsg(e), variant: "destructive" });
       return false;
     } finally {
       setAdding(false);
       void invalidate();
     }
-  }, [adding, realItems, qc, toast, serverLists, moveTo, patchCache, listOf, view, setView, invalidate]);
+  }, [adding, realItems, qc, toast, serverLists, moveTo, patchCache, listOf, view, setView, invalidate, listKey, scope]);
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => http.patch<WatchlistItem>(`/api/watchlist/${id}`, data),
@@ -440,7 +443,7 @@ export default function Watchlist() {
   });
   const createMut = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
-      createWatchRow({ ...data, list: addTarget, inPlay: addTarget === "today" }, wt("toast.duplicateGeneric")),
+      createWatchRow({ ...data, list: addTarget, inPlay: addTarget === "today", scope }, wt("toast.duplicateGeneric")),
     onSuccess: (row) => {
       if (!serverLists && addTarget !== "watch") setLocalLists((cur) => ({ ...cur, [row.ticker]: addTarget }));
       void invalidate(); setFormOpen(false);
@@ -488,7 +491,7 @@ export default function Watchlist() {
     onError: (e) => toast({ title: wt("toast.scoreFailed"), description: errMsg(e), variant: "destructive" }),
   });
   const scoreAllMut = useMutation({
-    mutationFn: () => http.post<{ count: number; failed?: number; failures?: { ticker: string }[] }>("/api/watchlist/score-all"),
+    mutationFn: () => http.post<{ count: number; failed?: number; failures?: { ticker: string }[] }>("/api/watchlist/score-all", undefined, { query: { scope } }),
     onSuccess: (data) => {
       void invalidate();
       const failed = data.failed ?? 0;
@@ -501,51 +504,40 @@ export default function Watchlist() {
     onError: (e) => toast({ title: wt("toast.rescoreFailed"), description: errMsg(e), variant: "destructive" }),
   });
 
-  /** «В план дня»: append the ticker to «В игре» of my plan for today (levels from PDH/PDL/stop/target, note → plan). */
+  /** «В план дня»: the shared «В план» — the row's levels (PDH/PDL/PMH/PML, stop / target) around the price, note → plan. */
+  const addPlan = useAddToPlan().mutateAsync;
   const addToPlan = useCallback(async (item: WatchlistItem) => {
     if (!me) { toast({ title: wt("toast.planOwnerOnly"), variant: "destructive" }); return; }
     setPlanBusy(true);
     try {
-      const date = planDay;
-      const r = await gpApi.my(date);
-      const doc = draftToDoc(docToDraft(r.plan?.doc));
-      if (doc.inPlay.some((t) => t.ticker.toUpperCase() === item.ticker.toUpperCase())) {
-        toast({ title: wt("toast.alreadyInPlan", { ticker: item.ticker }) });
-        return;
-      }
-      if (doc.inPlay.length >= PLAN_MAX) { toast({ title: wt("toast.planFull", { count: PLAN_MAX }), variant: "destructive" }); return; }
       const q = market.quotes[item.ticker];
-      const price = q?.price ?? null;
       const lv = levels[item.ticker];
       const plan = computePlan(item, q);
-      const pts = [lv?.pdh, lv?.pdl, lv?.pmh, lv?.pml, plan.stop, plan.target].filter((v): v is number => v != null && v > 0);
-      const support = price ? Array.from(new Set(pts.filter((p) => p < price).map(round2))).sort((a, b) => b - a).slice(0, 4) : [];
-      const resistance = price ? Array.from(new Set(pts.filter((p) => p >= price).map(round2))).sort((a, b) => a - b).slice(0, 4) : [];
       const earn = market.earnings[item.ticker];
-      const entry: InPlayItem = {
+      const r = await addPlan({
         ticker: item.ticker,
+        date: planDay,
         catalyst: item.catalyst ?? (earn ? wt(earn.when === "recent" ? "toast.planCatalystEarnRecent" : "toast.planCatalystEarn", { call: earn.callType }) : ""),
         bias: plan.side === "long" ? "bull" : plan.side === "short" ? "bear" : "neutral",
-        grade: null,
-        levels: { support, resistance },
-        plan: item.notes ?? "",
         horizon: listOf(item) === "swing" ? "swing" : "intraday",
-        risk_note: plan.stop != null ? wt("toast.planStop", { price: plan.stop }) : "",
-        trigger: "",
-      };
-      await gpApi.saveMy(date, { ...doc, inPlay: [...doc.inPlay, entry], status: r.plan?.status ?? "draft" });
-      void qc.invalidateQueries({ queryKey: gpKeys.my(date) });
+        plan: item.notes ?? "",
+        riskNote: plan.stop != null ? wt("toast.planStop", { price: plan.stop }) : "",
+        // Levels known here go in as they are; otherwise the shared hook reads the session bars.
+        levels: lv ? { price: q?.price, pdh: lv.pdh, pdl: lv.pdl, pmh: lv.pmh, pml: lv.pml, stop: plan.stop, target: plan.target } : undefined,
+      });
+      if (r.kind === "exists") { toast({ title: wt("toast.alreadyInPlan", { ticker: item.ticker }) }); return; }
+      if (r.kind === "full") { toast({ title: wt("toast.planFull", { count: PLAN_MAX_TICKERS }), variant: "destructive" }); return; }
       toast({
-        title: date === today ? wt("toast.addedToPlanToday", { ticker: item.ticker }) : wt("toast.addedToPlanOn", { ticker: item.ticker, date: fmtDate(date, "dayMonthNumeric") }),
-        description: support.length || resistance.length ? wt("toast.planLevels", { levels: [...support, ...resistance].sort((a, b) => a - b).join(" · ") }) : undefined,
-        action: <ToastAction altText={wt("toast.openPlan")} onClick={() => navigate(links.gamePlan(date))}>{commonI18n.t("actions.open")}</ToastAction>,
+        title: planDay === today ? wt("toast.addedToPlanToday", { ticker: item.ticker }) : wt("toast.addedToPlanOn", { ticker: item.ticker, date: fmtDate(planDay, "dayMonthNumeric") }),
+        description: r.levels.length ? wt("toast.planLevels", { levels: r.levels.join(" · ") }) : undefined,
+        action: <ToastAction altText={wt("toast.openPlan")} onClick={() => navigate(links.gamePlan(planDay))}>{commonI18n.t("actions.open")}</ToastAction>,
       });
     } catch (e) {
       toast({ title: wt("toast.planFailed"), description: errMsg(e), variant: "destructive" });
     } finally {
       setPlanBusy(false);
     }
-  }, [me, planDay, today, market.quotes, market.earnings, levels, listOf, qc, toast, navigate]);
+  }, [me, planDay, today, market.quotes, market.earnings, levels, listOf, toast, navigate, addPlan]);
 
   // ── row actions (stable identity for memoised rows) ─────────────────
   const impl = useRef({ moveTo, archive, restore, addToPlan, scoreMutate: scoreMut.mutate, notePatch: notePatch.mutate, scoringIds });
@@ -759,6 +751,15 @@ export default function Watchlist() {
         description={days.weekend ? t("page.descWeekend", { date: fmtDate(days.levelsDay, "dayMonthNumeric") }) : t("page.desc")}
         actions={
           <>
+            {user && user.role !== "guest" && (
+              <Segmented<WatchScope>
+                size="sm"
+                value={scope}
+                onChange={(next) => { setScope(next); setSelected(new Set()); setOpenId(null); setFocusedId(null); }}
+                ariaLabel={t("scope.aria")}
+                options={[{ value: "mine", label: t("scope.mine"), title: t("scope.mineHint") }, { value: "desk", label: t("scope.desk"), title: t("scope.deskHint") }]}
+              />
+            )}
             <QuoteStatus
               updatedAt={market.quotesUpdatedAt}
               fetching={market.quotesFetching}
@@ -905,7 +906,7 @@ export default function Watchlist() {
               title={view === "all" ? t("empty.allTitle") : t("empty.listTitle", { list: LIST_LABELS[view as ListName] })}
               description={canEdit
                 ? t(view === "today" ? "empty.addHintToday" : view === "swing" ? "empty.addHintSwing" : "empty.addHint")
-                : t("empty.readOnly")}
+                : t(scope === "desk" ? "empty.deskReadOnly" : "empty.readOnly")}
               action={canEdit ? <Button className="bg-primary-solid" onClick={() => addRef.current?.focus()}>{t("empty.addTickers")} <Kbd className="ml-1">A</Kbd></Button> : undefined}
             />
           )

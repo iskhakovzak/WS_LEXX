@@ -26,6 +26,24 @@ export function watchCachePlan(o: { storedAt: number | null; day: string; today:
   return o.revalidate ? "fetch" : "stale";
 }
 
+export type WatchSources = { nasdaq: boolean; edgar: boolean; market: boolean };
+/** In-memory life of a payload with a failed source: the next poll (60 s) retries upstream. */
+export const WATCH_RETRY_TTL_MS = 60_000;
+/** In-memory life of a payload whose enrichment missed the budget: the next poll picks up the warmed caches. */
+export const WATCH_ENRICH_TTL_MS = 90_000;
+/**
+ * How long a freshly fetched GET /offerings/watch payload is trusted (item 1.14: an outage must not look like «сегодня
+ * размещений нет» for 10 minutes). memTtlMs: any failed source → 60 s, unfinished enrichment → 90 s, else fullTtlMs.
+ * storeInDb: only a payload whose listing sources (NASDAQ and EDGAR) both answered — a partial outage page must not
+ * become the cache-first answer after a restart. Missing `sources` (payloads stored before the flags) count as ok.
+ */
+export function watchStorePolicy(o: { sources: WatchSources | null | undefined; complete: boolean; fullTtlMs: number }): { memTtlMs: number; storeInDb: boolean } {
+  const s = o.sources ?? { nasdaq: true, edgar: true, market: true };
+  const listing = s.nasdaq !== false && s.edgar !== false;
+  const memTtlMs = !listing || s.market === false ? WATCH_RETRY_TTL_MS : !o.complete ? WATCH_ENRICH_TTL_MS : o.fullTtlMs;
+  return { memTtlMs: Math.min(memTtlMs, o.fullTtlMs), storeInDb: listing };
+}
+
 // ── DB cache (survives API restarts): offering_ticker_cache(ticker, kind) ──
 let ensureCachePromise: Promise<void> | null = null;
 function ensureOfferingCache(): Promise<void> {

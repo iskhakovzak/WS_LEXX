@@ -1,7 +1,8 @@
 /**
  * What a trader does with a ticker or a theme from /themes, reusing the desk's own flows:
- *   «В вотчлист»          POST /api/watchlist (a ticker already there is fine)
- *   «В план дня»          the personal day plan (shared finviz addToPlan: today until the close, then the next session)
+ *   «В вотчлист»          POST /api/watchlist — the trader's own list (the server's default; a ticker already there is fine)
+ *   «В план дня»          the personal day plan (components/shared/add-to-plan: levels prefilled, an open plan editor
+ *                         is merged into; today until the close, then the next session)
  *   «Скопировать тикеры»  the clipboard
  * `TickerMenu` wraps a row (tickers boards, theme members) in a dropdown: click / tap / Enter opens it.
  */
@@ -11,13 +12,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { toast } from "@/hooks/use-toast";
 import { humanizeApiError } from "@/lib/api/errors";
 import { themesI18n } from "@/i18n/ns/themes";
-import { useAddToPlan } from "@/components/shared/finviz/api";
+import { useAddToPlan } from "@/components/shared/add-to-plan";
 import { useAddToWatchlist } from "./api";
 import { planDay } from "./model";
 
 export function useTickerActions(source: string) {
   const watch = useAddToWatchlist();
-  const plan = useAddToPlan(planDay());
+  const plan = useAddToPlan();
   const t = themesI18n.t;
   return {
     toWatchlist: (ticker: string) =>
@@ -25,8 +26,8 @@ export function useTickerActions(source: string) {
         onSuccess: (kind) => toast({ title: kind === "exists" ? t("actions.watchExists", { ticker }) : t("actions.watchAdded", { ticker }) }),
       }),
     toPlan: (ticker: string) =>
-      plan.mutate({ ticker, catalyst: t("actions.planCatalyst", { source }) }, {
-        onSuccess: (kind) => toast({ title: kind === "full" ? t("actions.planFull") : kind === "exists" ? t("actions.planExists", { ticker }) : t("actions.planAdded", { ticker }) }),
+      plan.mutate({ ticker, date: planDay(), catalyst: t("actions.planCatalyst", { source }) }, {
+        onSuccess: ({ kind }) => toast({ title: kind === "full" ? t("actions.planFull") : kind === "exists" ? t("actions.planExists", { ticker }) : t("actions.planAdded", { ticker }) }),
         onError: (e) => toast({ title: t("actions.planFailed", { ticker }), description: humanizeApiError(e), variant: "destructive" }),
       }),
     copy: async (tickers: readonly string[]) => {

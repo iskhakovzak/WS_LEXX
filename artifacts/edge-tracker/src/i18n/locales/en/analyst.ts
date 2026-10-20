@@ -261,6 +261,8 @@ export default {
     title: "Analyst ratings",
     description: "What came out for the session, how the stock usually reacts and what matters to you",
     timeNy: "Time — New York (ET)",
+    sourceDown: "source unavailable · {time}",
+    sourceDownTitle: "The last analyst scan did not go through — the feed may be incomplete",
     refreshAria: "Refresh the feed",
     exportAria: "Export CSV",
     exportTitle: "Export the current selection as CSV",

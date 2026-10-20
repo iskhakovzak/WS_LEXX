@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Award, Download, HelpCircle, ListFilter, Loader2, MoreHorizontal, RefreshCw, SearchX, Sunrise, UserRound, Zap } from "lucide-react";
 import {
-  EmptyState, Kbd, Page, PageHeader, Panel, StatCard, StatGrid, TableSkeleton, UpdatedAgo, usePersistentState, type SortDir,
+  EmptyState, Kbd, Page, PageHeader, Panel, StatCard, StatGrid, TableSkeleton, UpdatedAgo, usePersistentState,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,7 +13,7 @@ import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { fmtRate } from "@/lib/format";
+import { fmtDeskTime, fmtRate } from "@/lib/format";
 import {
   runSourceScan, scanCooldownMinutes, useAddToPlan, useAddToWatchlist, useAnalystFeed, useFirmStats, useFirmWeight, useMyDays, useMyPlanTickers,
   useOpenPositions, useQuotes, useReactionSummaries, useWatchlistTickers,
@@ -24,7 +24,7 @@ import { FirmStatsPanel, FirmStatsSheet, FirmWeightPanel } from "@/components/an
 import { MyDaysPanel } from "@/components/analyst/MyDaysPanel";
 import { PremarketPanel } from "@/components/analyst/PremarketPanel";
 import { TickerSheet } from "@/components/analyst/TickerSheet";
-import { enrich, weightMap, type Row } from "@/components/analyst/rows";
+import { enrich, sortRows, weightMap, type Row, type SortState } from "@/components/analyst/rows";
 import {
   DEFAULT_FILTERS, PERIODS, gapOf, isTopFirm, matchesFilters, matchesType, normalizeFilters, nyKey, nyParts, previousSessionDay,
   ptChangePct, sessionWindow, shortDay, watchlistCatalyst,
@@ -35,34 +35,8 @@ import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
 
 import { personName } from "@/i18n";
-type SortState = { key: SortKey; dir: SortDir };
 const DEFAULT_SORT: SortState = { key: "time", dir: "desc" };
 const SORT_KEYS: SortKey[] = ["score", "time", "pt", "gap", "weight", "ticker"];
-
-/** Sort accessors: empty values always sink. */
-const SORT_GET: Record<SortKey, (r: Row) => number | string | null> = {
-  score: (r) => r.score,
-  time: (r) => r.a.gradedAt ?? null,
-  pt: (r) => { const p = ptChangePct(r.a); return p == null ? null : Math.abs(p); },
-  gap: (r) => { const g = gapOf(r.quote); return g == null ? null : Math.abs(g); },
-  weight: (r) => (r.weight && r.weight.n >= 5 ? r.weight.ratio : null),
-  ticker: (r) => r.a.ticker,
-};
-
-function sortRows(rows: Row[], s: SortState): Row[] {
-  const get = SORT_GET[s.key];
-  const out = [...rows];
-  out.sort((x, y) => {
-    const a = get(x);
-    const b = get(y);
-    if (a == null && b == null) return (y.a.gradedAt ?? "").localeCompare(x.a.gradedAt ?? "");
-    if (a == null) return 1;
-    if (b == null) return -1;
-    const c = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
-    return (s.dir === "asc" ? c : -c) || (y.a.gradedAt ?? "").localeCompare(x.a.gradedAt ?? "");
-  });
-  return out;
-}
 
 /** Key → hotkey label key (labels resolved at render). */
 const HOTKEYS = [
@@ -408,7 +382,7 @@ export default function AnalystActionsPage() {
         icon={Award}
         meta={
           <>
-            <UpdatedAgo at={feed.dataUpdatedAt} />
+            {feed.data?.sourceUnavailable ? items.length > 0 && <SourceDown at={feed.data.checkedAt} /> : <UpdatedAgo at={feed.data?.scannedAt ?? feed.dataUpdatedAt} />}
             <span>{tf("page.timeNy")}</span>
           </>
         }
@@ -566,7 +540,7 @@ export default function AnalystActionsPage() {
             ) : feed.isError ? (
               <QueryError error={feed.error} onRetry={() => feed.refetch()} />
             ) : tableRows.length === 0 ? (
-              items.length === 0 ? (
+              items.length === 0 && feed.data?.sourceUnavailable ? <p className="px-1 py-6"><SourceDown at={feed.data.checkedAt} /></p> : items.length === 0 ? (
                 <EmptyState
                   icon={Award}
                   title={tf("page.emptyTitle")}
@@ -646,4 +620,10 @@ export default function AnalystActionsPage() {
       />
     </Page>
   );
+}
+
+/** «источник недоступен · HH:MM NY» — the scan failed / never ran (item 1.14); one muted line, never a banner. */
+function SourceDown({ at }: { at: string | undefined }) {
+  const { t } = analystI18n.useT();
+  return <span role="status" className="text-2xs text-muted-foreground tabular-nums" title={t("page.sourceDownTitle")}>{t("page.sourceDown", { time: fmtDeskTime(at ?? Date.now()) })}</span>;
 }

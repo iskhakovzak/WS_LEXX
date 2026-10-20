@@ -7,7 +7,9 @@ import { http, isApiError } from "@/lib/api/http";
 import { nullIfMissing } from "@/lib/api/errors";
 import { KEYS, POLL, STALE } from "@/lib/api/keys";
 import { openTradesQuery, type OpenTradeRow } from "@/lib/api/queries";
-import { gpApi, gpKeys, type InPlayItem, type PlanDoc } from "@/components/game-plan/types";
+import { gpApi, gpKeys, type InPlayItem } from "@/components/game-plan/types";
+import { addToPlan } from "@/components/shared/add-to-plan";
+import { PLAN_MAX_TICKERS } from "@/components/shared/finviz/model";
 import type { FeedAction, FeedResponse, OpenPosition, Quote } from "./lib";
 import { analystI18n } from "@/i18n/ns/analyst";
 
@@ -313,32 +315,17 @@ export function useMyPlanTickers(date: string, enabled = true) {
   }, [q.data]);
 }
 
-const EMPTY_DOC: PlanDoc = {
-  marketView: "", bias: "neutral", riskMode: "normal", keyLevels: {}, inPlay: [], riskNotes: "", macro: [],
-  focus: "", maxLossUsd: null, maxTrades: null, media: [], tvLinks: [],
-};
-const MAX_IN_PLAY = 30;
-
-/** Append a ticker to my personal plan for `date` (existing plan API; keeps everything else as is). */
+/**
+ * «В план» for a rating change: the shared hook (components/shared/add-to-plan — levels prefilled from the session
+ * bars, an open plan editor merged into, the quest credited once). `already` = the ticker was in the plan.
+ */
 export function useAddToPlan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (vars: { date: string; ticker: string; catalyst: string; bias: InPlayItem["bias"] }) => {
-      const cur = await gpApi.my(vars.date);
-      const doc: PlanDoc = { ...EMPTY_DOC, ...(cur.plan?.doc ?? {}) } as PlanDoc;
-      const list = Array.isArray(doc.inPlay) ? doc.inPlay : [];
-      const t = vars.ticker.toUpperCase();
-      if (list.some((i) => String(i.ticker).toUpperCase() === t)) return { already: true as const };
-      if (list.length >= MAX_IN_PLAY) throw new Error(analystI18n.t("planFull", { count: MAX_IN_PLAY }));
-      const item: InPlayItem = {
-        ticker: t, catalyst: vars.catalyst.slice(0, 240), bias: vars.bias, grade: null,
-        levels: { support: [], resistance: [] }, plan: "", horizon: "intraday", risk_note: "",
-      };
-      await gpApi.saveMy(vars.date, { ...doc, inPlay: [...list, item], status: cur.plan?.status ?? "draft" });
-      return { already: false as const };
-    },
-    onSettled: (_d, _e, vars) => {
-      qc.invalidateQueries({ queryKey: gpKeys.my(vars.date) });
+      const r = await addToPlan(qc, vars);
+      if (r.kind === "full") throw new Error(analystI18n.t("planFull", { count: PLAN_MAX_TICKERS }));
+      return { already: r.kind === "exists" };
     },
   });
 }

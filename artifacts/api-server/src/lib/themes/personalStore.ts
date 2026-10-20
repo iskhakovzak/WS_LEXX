@@ -70,7 +70,10 @@ export async function insertPersonal(userId: number, input: PersonalInput): Prom
   return toRecord(rows[0]!);
 }
 
-/** Full replace of the definition (a changed screener drops its resolved list), or archive with active false. */
+/**
+ * Full replace of the definition (a changed screener drops its resolved list), or archive with active false. An
+ * active theme is no longer «archived with its board» (migration 0233).
+ */
 export async function updatePersonal(userId: number, id: number, patch: Partial<PersonalInput> & { active?: boolean }, current: PersonalRecord): Promise<PersonalRecord | null> {
   const kind = patch.kind ?? current.kind;
   const tickers = kind === "tickers" ? (patch.tickers ?? current.tickers) : [];
@@ -80,7 +83,7 @@ export async function updatePersonal(userId: number, id: number, patch: Partial<
     `UPDATE user_themes SET name = $3, kind = $4, tickers = $5::text[], filters = $6::text[], sort_order = $7,
        resolved_tickers = CASE WHEN $8 THEN '{}'::text[] ELSE resolved_tickers END,
        resolved_at = CASE WHEN $8 THEN NULL ELSE resolved_at END,
-       active = $9, updated_at = now()
+       active = $9, archived_with_board = archived_with_board AND NOT $9::boolean, updated_at = now()
      WHERE id = $1 AND user_id = $2 RETURNING ${COLS}`,
     [id, userId, patch.name ?? current.name, kind, tickers, screener?.filters ?? [], screener?.order ?? null, screenerChanged || kind !== current.kind, patch.active ?? current.active],
   );

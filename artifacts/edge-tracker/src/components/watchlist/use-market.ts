@@ -8,6 +8,7 @@ import { dayLevels } from "@/components/chart-engine/lib/levels";
 import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { etParts } from "@/components/chart-engine/lib/time";
 import { type EarningsHit, type NewsDigest, type Quote } from "./lib";
+import { overlayLayer, type LayerResponse } from "./quote-layer";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 
 /** Quote refresh choices (ms). 0 = paused. The API caches each symbol for 60 s, so faster polling buys nothing. */
@@ -79,6 +80,26 @@ export function useWatchlistMarket(tickers: string[], intervalMs: number) {
     retry: 1,
   });
 
+  // Gap / time-of-day RVOL / premarket from the common quote layer (the numbers /themes shows).
+  const layer = useQuery<LayerResponse | null>({
+    queryKey: ["watchlist-layer", key],
+    enabled,
+    queryFn: async () => {
+      const chunks: string[][] = [];
+      for (let i = 0; i < key.length; i += 200) chunks.push(key.slice(i, i + 200));
+      const parts = await Promise.all(chunks.map((c) => http.get<LayerResponse>("/api/watchlist/quotes", { query: { tickers: c.join(",") } }).catch(() => null)));
+      const ok = parts.filter((p): p is LayerResponse => !!p);
+      return ok.length ? { ...ok[0]!, quotes: Object.assign({}, ...ok.map((p) => p.quotes)) } : null;
+    },
+    staleTime: STALE.default,
+    refetchInterval: live ? intervalMs : false,
+    refetchIntervalInBackground: false,
+    placeholderData: (prev) => prev,
+    retry: 0,
+    meta: { i18n: false },
+  });
+  const merged = useMemo(() => overlayLayer(quotes.data ?? {}, layer.data), [quotes.data, layer.data]);
+
   const news = useQuery<Record<string, NewsDigest>>({
     queryKey: ["watchlist-news-summary", key],
     enabled,
@@ -132,12 +153,12 @@ export function useWatchlistMarket(tickers: string[], intervalMs: number) {
   });
 
   return {
-    quotes: quotes.data ?? {},
+    quotes: merged,
     quotesLoading: quotes.isLoading && enabled,
     quotesError: quotes.isError,
     quotesFetching: quotes.isFetching,
     quotesUpdatedAt: quotes.dataUpdatedAt,
-    refetchQuotes: () => { void quotes.refetch(); void news.refetch(); },
+    refetchQuotes: () => { void quotes.refetch(); void layer.refetch(); void news.refetch(); },
     news: news.data ?? {},
     earnings: earnings.data ?? {},
     upcoming: upcoming.data ?? {},

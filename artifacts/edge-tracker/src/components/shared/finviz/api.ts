@@ -3,14 +3,10 @@
  * feature off (no FINVIZ_AUTH on the server) nothing else is requested and the widgets show «Finviz не подключён» or
  * hide. Data is read from the server's DB cache (jobs refresh it), so the client never polls hard.
  */
-import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { KEYS, POLL, STALE } from "@/lib/api/keys";
-import { trackAction } from "@/lib/usage";
-import {
-  addTickerToDoc, newPlanItem, normTicker, type AddToPlanResult, type EarningsRow, type FinvizStatus, type PlanInPlayItem, type ScreenerPreset,
-  type ScreenerResponse, type TickerSnapshot,
-} from "./model";
+import type { EarningsRow, FinvizStatus, ScreenerPreset, ScreenerResponse, TickerSnapshot } from "./model";
 
 export const finvizKeys = {
   all: ["finviz"] as const,
@@ -77,36 +73,6 @@ export function useFinvizRefresh() {
 }
 
 type MyPlanRes = { date: string; plan: { status?: "draft" | "ready"; doc?: Record<string, unknown> | null } | null; prevDate?: string | null } | null;
-
-/**
- * «В план»: append a ticker to the viewer's personal plan for `date` (GET → merge → PUT of the whole doc, the same
- * write the plan editor does). Answers the merge result; the plan query cache gets the saved plan.
- */
-export async function addToPlan(qc: QueryClient, date: string, input: { ticker: string; catalyst: string }): Promise<AddToPlanResult["kind"]> {
-  const ticker = normTicker(input.ticker);
-  if (!ticker) return "exists";
-  const res = await qc.fetchQuery({
-    queryKey: KEYS.myPlan(date),
-    queryFn: ({ signal }) => http.get<MyPlanRes>("/api/game-plan/my", { query: { date }, signal }),
-    staleTime: 0,
-  });
-  const item: PlanInPlayItem = newPlanItem(ticker, input.catalyst);
-  const merged = addTickerToDoc(res?.plan?.doc ?? null, item);
-  if (merged.kind !== "added") return merged.kind;
-  const saved = await http.put<NonNullable<MyPlanRes>["plan"]>(`/api/game-plan/my/${encodeURIComponent(date)}`, {
-    ...merged.doc,
-    status: res?.plan?.status === "ready" ? "ready" : "draft",
-  });
-  qc.setQueryData<MyPlanRes>(KEYS.myPlan(date), (prev) => (prev ? { ...prev, plan: saved } : { date, plan: saved, prevDate: null }));
-  void qc.invalidateQueries({ queryKey: KEYS.questsMe(), refetchType: "none" });
-  trackAction("plan.save");
-  return "added";
-}
-
-export function useAddToPlan(date: string) {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: (input: { ticker: string; catalyst: string }) => addToPlan(qc, date, input) });
-}
 
 /** Tickers of the viewer's personal plan for `date` (shares the plan editor's cache entry). */
 export function usePlanTickerDoc(date: string, enabled: boolean) {

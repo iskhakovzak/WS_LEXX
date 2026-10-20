@@ -8,8 +8,8 @@ import { openTradesQuery, type OpenTradeRow } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
 import { links } from "@/lib/links";
-import { gpApi, gpKeys } from "@/components/game-plan/types";
-import { docToDraft, draftToDoc, emptyTicker, MAX_TICKERS } from "@/components/game-plan/plan-draft";
+import { addToPlan } from "@/components/shared/add-to-plan";
+import { PLAN_MAX_TICKERS } from "@/components/shared/finviz/model";
 import type {
   Exposure, InsiderSummary, IpoCalendarResponse, MyOfferingStats, Offering, OfferingsResponse, OpenTrade, TickerDetail,
   TickerHistory, TradeRow, WatchItem,
@@ -224,25 +224,19 @@ export function useAddToWatchlist() {
 }
 
 /**
- * Add the ticker to the viewer's own plan for `date` (personal game plan, same API the plan editor autosaves to).
- * Reads the current plan first and appends — nothing in the plan is overwritten.
+ * Add the ticker to the viewer's own plan for `date` through the shared «В план» (components/shared/add-to-plan:
+ * levels prefilled, an open plan editor merged into, nothing in the plan overwritten, the quest credited once).
  */
 export function useAddToPlan() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
     mutationFn: async ({ o, date }: { o: Offering; date: string }) => {
-      const cur = await gpApi.my(date);
-      const draft = docToDraft(cur.plan?.doc);
-      const t = o.ticker.toUpperCase();
-      if (draft.inPlay.some((i) => i.ticker.trim().toUpperCase() === t)) return { already: true, date };
-      if (draft.inPlay.length >= MAX_TICKERS) throw new Error(offeringsI18n.t("toast.planFull", { count: MAX_TICKERS }));
-      draft.inPlay.push(emptyTicker({ ticker: t, catalyst: watchCatalyst(o), bias: "bear" }));
-      await gpApi.saveMy(date, { ...draftToDoc(draft), status: cur.plan?.status ?? "draft" });
-      return { already: false, date };
+      const r = await addToPlan(qc, { ticker: o.ticker, date, catalyst: watchCatalyst(o), bias: "bear" });
+      if (r.kind === "full") throw new Error(offeringsI18n.t("toast.planFull", { count: PLAN_MAX_TICKERS }));
+      return { already: r.kind === "exists", date };
     },
     onSuccess: (r, { o }) => {
-      void qc.invalidateQueries({ queryKey: gpKeys.my(r.date) });
       toast({ title: r.already ? offeringsI18n.t("toast.alreadyInPlan", { ticker: o.ticker }) : offeringsI18n.t("toast.addedPlan", { ticker: o.ticker }), description: r.already ? undefined : watchCatalyst(o) });
     },
     onError: (e, { o }) => {

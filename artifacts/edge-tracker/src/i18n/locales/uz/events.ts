@@ -121,6 +121,7 @@ export default {
     range: " · diapazon {range}%",
     streak: " · ketma-ket {count} {kind}",
     noHistory: "reaksiya tarixi mavjud emas",
+    sourceDown: "manba mavjud emas · {time}",
     youTraded: "siz: {count} ta savdo · {net}",
     watchNoTrades: "kuzatuv roʻyxatida, savdo boʻlmagan",
     noTrades: "savdo boʻlmagan",

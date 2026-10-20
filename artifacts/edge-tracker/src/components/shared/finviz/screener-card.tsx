@@ -21,7 +21,8 @@ import { fmtCompact, fmtDeskDate, fmtNum, fmtPct, fmtPrice, fmtRelative } from "
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { finvizI18n } from "@/i18n/ns/finviz";
-import { screenerQuery, useAddToPlan, useFinvizRefresh, useFinvizStatus, usePlanTickerDoc } from "./api";
+import { screenerQuery, useFinvizRefresh, useFinvizStatus, usePlanTickerDoc } from "./api";
+import { useAddToPlan } from "../add-to-plan";
 import { EarningsFlagPill, FinvizOff, useMinuteClock } from "./earnings";
 import {
   DEFAULT_SORT, PLAN_MAX_TICKERS, SCREENER_PRESETS, catalystLine, earningsFlagOf, morningState, planTickers, rowMove, screenerSummary, sortRows,
@@ -176,15 +177,15 @@ function DeskTable({ rows, preset, a, day, sort, onSort }: {
 /** Adds a row to the plan and says what happened (toast with «Открыть план»). */
 function useAddRow(planDate: string) {
   const { t } = finvizI18n.useT();
-  const add = useAddToPlan(planDate);
+  const add = useAddToPlan();
   const [adding, setAdding] = useState<string | null>(null);
   const onAdd = (r: ScreenerRow, preset: ScreenerPreset) => {
     const flag = earningsFlagOf(r, planDate);
     const earnings = flag ? t(`earnings.badge.${flag}`) : null;
     setAdding(r.ticker);
-    add.mutate({ ticker: r.ticker, catalyst: catalystLine(r, preset, earnings) }, {
+    add.mutate({ ticker: r.ticker, date: planDate, catalyst: catalystLine(r, preset, earnings) }, {
       onSettled: () => setAdding(null),
-      onSuccess: (kind) => {
+      onSuccess: ({ kind }) => {
         const date = fmtDeskDate(planDate, "dayMonth");
         if (kind === "full") { toast({ title: t("screener.planFull", { max: PLAN_MAX_TICKERS }), variant: "destructive" }); return; }
         toast({

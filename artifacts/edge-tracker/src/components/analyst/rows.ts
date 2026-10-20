@@ -5,8 +5,9 @@
 import type { FirmWeightRow, ReactionAgg, ReactionKind, TickerReaction } from "./api";
 import {
   gapOf, isTopFirm, ptChangePct, scoreAction,
-  type FeedAction, type FirmWeightLite, type OpenPosition, type Quote, type ScoreReason,
+  type FeedAction, type FirmWeightLite, type OpenPosition, type Quote, type ScoreReason, type SortKey,
 } from "./lib";
+import type { SortDir } from "@/components/ds";
 import { analystI18n } from "@/i18n/ns/analyst";
 
 export type Row = {
@@ -72,4 +73,33 @@ export function enrich(a: FeedAction, ctx: EnrichCtx): Row {
   const reaction = kind ? ctx.reactions?.[t]?.[kind] ?? null : null;
   const { score, reasons } = scoreAction(a, { held: held.length > 0, watched, traded, top, weight, gapPct: gapOf(quote) });
   return { a, quote, held, watched, traded, top, weight, reaction, reactionKind: kind, score, reasons };
+}
+
+/* ── Table sort (moved from pages/analyst-actions.tsx) ─────────────────── */
+
+export type SortState = { key: SortKey; dir: SortDir };
+
+/** Sort accessors: empty values always sink. */
+const SORT_GET: Record<SortKey, (r: Row) => number | string | null> = {
+  score: (r) => r.score,
+  time: (r) => r.a.gradedAt ?? null,
+  pt: (r) => { const p = ptChangePct(r.a); return p == null ? null : Math.abs(p); },
+  gap: (r) => { const g = gapOf(r.quote); return g == null ? null : Math.abs(g); },
+  weight: (r) => (r.weight && r.weight.n >= 5 ? r.weight.ratio : null),
+  ticker: (r) => r.a.ticker,
+};
+
+export function sortRows(rows: Row[], s: SortState): Row[] {
+  const get = SORT_GET[s.key];
+  const out = [...rows];
+  out.sort((x, y) => {
+    const a = get(x);
+    const b = get(y);
+    if (a == null && b == null) return (y.a.gradedAt ?? "").localeCompare(x.a.gradedAt ?? "");
+    if (a == null) return 1;
+    if (b == null) return -1;
+    const c = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
+    return (s.dir === "asc" ? c : -c) || (y.a.gradedAt ?? "").localeCompare(x.a.gradedAt ?? "");
+  });
+  return out;
 }

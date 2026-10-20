@@ -3,21 +3,23 @@
  * JOBS_ENABLED=false and on serverless.
  *
  *   fresh     same NY session, younger than its TTL (30 s rth / 5 min otherwise), covers every active ticker → answer
- *   stale     one refresh at a time (single-flight). With older numbers in hand a request waits ≤ SOFT_WAIT_MS for it,
- *             then answers with what it has (the refresh finishes in the background); without any it waits.
+ *   stale     one refresh at a time (single-flight). With older numbers in hand a request answers them at once and the
+ *             refresh runs in the background (a full refresh of ~350 tickers takes ~45 s: the Finviz queue + Yahoo);
+ *             the next request reads its numbers. Only a cold start (no numbers at all) waits for it.
  *   failure   the last good numbers stay; no new attempt for FAIL_BACKOFF_MS; `stale: true` once they are older
  *             than 2 × TTL or a refresh after them failed.
  * Per process: two instances may each refresh (the providers' own throttles hold). Personal themes are added per viewer
  * in board.ts on top of this shared board.
  */
-import { nyDate } from "../tradingDate";
-import { isMarketClosed } from "../marketDays";
+import { nyDate, type DaySession } from "../tradingDate";
+import { sessionFor } from "../marketDays";
 import { logger } from "../logger";
 import { buildResponse, themeSession, themeTickers, ttlMs, type MemberQuote, type ThemeRow, type ThemeSession, type ThemeSource, type ThemesResponse } from "./logic";
 import { fetchThemeQuotes, type QuotesResult } from "./quotes";
 import { listThemes } from "./store";
 import { seedQuotes } from "./tickerCache";
 
+/** How long a personal board waits for its screener re-resolve before answering (lib/themes/board.ts). */
 export const SOFT_WAIT_MS = 4_000;
 export const FAIL_BACKOFF_MS = 30_000;
 
@@ -26,14 +28,14 @@ type Cache = { quotes: Map<string, MemberQuote>; asOf: number; source: ThemeSour
 export type ServiceDeps = {
   now: () => number;
   loadThemes: () => Promise<ThemeRow[]>;
-  isClosed: (nyDay: string) => Promise<boolean>;
+  isClosed: (nyDay: string) => Promise<boolean | DaySession>;
   fetchQuotes: (tickers: readonly string[], session: ThemeSession, today: string) => Promise<QuotesResult>;
 };
 
 const LIVE: ServiceDeps = {
   now: () => Date.now(),
   loadThemes: async () => (await listThemes(false)).map((t) => ({ id: t.id, name: t.name, tickers: t.tickers })),
-  isClosed: isMarketClosed,
+  isClosed: sessionFor,
   fetchQuotes: (tickers, session, today) => fetchThemeQuotes(tickers, session, today),
 };
 
@@ -73,8 +75,6 @@ function refresh(tickers: string[], session: ThemeSession, today: string): Promi
   return inflight;
 }
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref?.());
-
 /** The NY session and date right now (boards read quotes for it without touching the shared board). */
 export async function sessionNow(): Promise<{ session: ThemeSession; today: string; now: number }> {
   const now = deps.now();
@@ -93,8 +93,7 @@ export async function getThemes(): Promise<ThemesResponse> {
 
   if (tickers.length && !isFresh(cache) && now - lastFailAt >= FAIL_BACKOFF_MS) {
     const job = refresh(tickers, session, today);
-    if (cache) await Promise.race([job, sleep(SOFT_WAIT_MS)]);
-    else await job;
+    if (!cache) await job; // cold start: nothing to answer yet; otherwise the refresh lands in the background
   }
   const c = cache as Cache | null;
   const t = deps.now();

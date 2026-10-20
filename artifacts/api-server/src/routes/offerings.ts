@@ -10,12 +10,13 @@ import { fetchDailyRange } from "../lib/candles/market";
 import {
   barIndexOnOrAfter, barsFromCandles, filingEvents, isWksi, nextWeekday, offeringDays, PRICED_FORM_RE, reactionDayFor, reactionOn,
   rollToWeekday, splitByOfferingDays, summarize,
-  type Bar, type FilingEvent, type Reaction, type Session, type TradeLite,
+  type Bar, type FilingEvent, type Reaction, type TradeLite,
 } from "../lib/offeringReaction";
 import { AppError, badRequest, unauthorized } from "../lib/http";
-import { offeringsT } from "../i18n/ns";
 import { langOf, type Lang } from "../i18n";
-import { WATCH_DAY_KEEP_MS, WATCH_DAY_KIND, dbCacheRead, dbCacheWrite, watchCachePlan } from "../lib/offeringsCache";
+import { WATCH_DAY_KEEP_MS, WATCH_DAY_KIND, dbCacheRead, dbCacheWrite, watchCachePlan, watchStorePolicy } from "../lib/offeringsCache";
+import type { FilingKind, IpoCalendarItem, Offering, OfferingBase, OfferingType, SellerType } from "../lib/offeringsTypes";
+import { applyOfferPriceCheck, byRiskThenRating, factorText, finalize } from "../lib/offeringsScore";
 import { overlaySnapshots } from "../lib/finviz/fundamentals";
 export { watchCachePlan, type WatchCachePlan } from "../lib/offeringsCache";
 
@@ -34,101 +35,7 @@ const NASDAQ_HEADERS = {
 const cache = new Map<string, { data: unknown; ts: number }>();
 const CACHE_TTL = 10 * 60_000;
 
-export type OfferingType = "IPO" | "Follow-on" | "ATM" | "Bought Deal" | "SPAC" | "Shelf" | "Other";
-export type SellerType = "company" | "insiders" | "mixed" | "unknown";
-/** Filing bucket for the dilution dashboard: priced takedown (424B), ATM program, shelf (S-3/F-3), registration (S-1/F-1), IPO. */
-export type FilingKind = "IPO" | "424B" | "ATM" | "S-3" | "S-1";
-export type RiskLevel = "high" | "medium" | "low";
-
-export type Offering = {
-  ticker: string;
-  company: string;
-  type: OfferingType;
-  date: string;
-  offerPrice: number | null;
-  currentPrice: number | null;
-  priceChangePct: number | null;
-  dealSizeM: number | null;
-  sharesOffered: number | null;
-  sharesOutstandingBefore: number | null;
-  sharesOutstandingAfter: number | null;
-  dilutionPct: number | null;
-  sellerType: SellerType;
-  insiderShares: number | null;
-  companyShares: number | null;
-  underwriter: string | null;
-  lockupDays: number | null;
-  volume: number | null;
-  avgVolume: number | null;
-  relVol: number | null;
-  marketCapM: number | null;
-  sector: string | null;
-  rating: number;
-  ratingFactors: string[];
-  /** ratingFactors as data (offerings namespace `rating.*`), re-rendered per request language. */
-  ratingFactorItems?: FactorItem[];
-  status: "upcoming" | "priced" | "trading" | "withdrawn" | "filed";
-  source: "nasdaq" | "edgar";
-  // ── Dilution-dashboard fields (additive) ──
-  kind: FilingKind;
-  /** Raw SEC form (424B5, S-3, S-1/A…) or "IPO" for the NASDAQ calendar. */
-  form: string | null;
-  filingUrl: string | null;
-  cik: string | null;
-  exchange: string | null;
-  /** NASDAQ price range text for upcoming IPOs ("10.00-12.00"). */
-  priceRange: string | null;
-  /** Registered shelf / program size, $M (S-3 base shelf, ATM program). */
-  shelfCapacityM: number | null;
-  /** Small-cap S-3 (public float < $75M) can sell at most 1/3 of float per 12 months (General Instruction I.B.6). */
-  babyShelf: boolean;
-  babyShelfLimitM: number | null;
-  /** Offering (or shelf) size as % of current market cap. */
-  offerPctOfMcap: number | null;
-  dealFlags: string[];
-  dilutionRisk: number;
-  riskLevel: RiskLevel;
-  riskFactors: string[];
-  /** riskFactors as data (offerings namespace `risk.*`). */
-  riskFactorItems?: FactorItem[];
-  // ── Intraday-trader fields (additive, optional: filled by augmentOfferings) ──
-  /** SEC acceptance time, New York wall clock ("2026-10-15 16:31"). */
-  acceptedAt?: string | null;
-  session?: Session | null;
-  /** First session that trades the deal (after-close acceptance → next weekday). */
-  reactionDate?: string | null;
-  /** Priced takedowns (424B1/4/5/7) in the 12 months before this one. */
-  priorOfferings12m?: number | null;
-  /** Close before the reaction session; discount = offer / prevClose − 1. */
-  prevClose?: number | null;
-  discountPct?: number | null;
-  /** Daily reaction on the reaction session (live = today, bar still forming). */
-  reaction?: (Pick<Reaction, "gapPct" | "o2cPct" | "dayPct" | "lowFromOpenPct" | "highFromOpenPct" | "relVol"> & { live: boolean }) | null;
-  floatShares?: number | null;
-  cashM?: number | null;
-  /** Monthly operating cash burn, $M (0 = cash-flow positive). */
-  burnM?: number | null;
-  runwayMonths?: number | null;
-  shortPctFloat?: number | null;
-};
-
-export type IpoCalendarItem = {
-  ticker: string;
-  company: string;
-  date: string;
-  status: "upcoming" | "priced" | "filed" | "withdrawn";
-  priceRange: string | null;
-  offerPrice: number | null;
-  sharesOffered: number | null;
-  dealSizeM: number | null;
-  exchange: string | null;
-};
-
-type OfferingBase = Omit<Offering, "rating" | "ratingFactors" | "ratingFactorItems" | "dilutionRisk" | "riskLevel" | "riskFactors" | "riskFactorItems">;
-
-/** A factor as data: key in the `offerings` namespace + params. */
-export type FactorItem = { k: string; p?: Record<string, string | number> };
-const factorText = (it: FactorItem, lang: Lang) => offeringsT.tryFor(lang, it.k, it.p) ?? it.k;
+export type { FactorItem, FilingKind, IpoCalendarItem, Offering, OfferingType, RiskLevel, SellerType } from "../lib/offeringsTypes";
 /** Re-render the factor texts of every offering in a payload in `lang` (cached payloads hold the data items). */
 function localizeOfferings<T>(payload: T, lang: Lang): T {
   if (lang === "ru" || !payload || typeof payload !== "object") return payload;
@@ -223,145 +130,12 @@ function parseShares(s: string | null | undefined): number | null {
   return isNaN(n) ? null : n;
 }
 
-// ── Underwriter tier (for algo rating) ───────────────────────────────────────
-
-const TIER1_UW = ["Goldman", "Morgan Stanley", "JPMorgan", "J.P. Morgan", "Bank of America", "BofA", "Citigroup", "Citi", "Barclays", "Credit Suisse", "Deutsche Bank", "UBS"];
-const TIER2_UW = ["Jefferies", "Piper Sandler", "Oppenheimer", "Needham", "Cowen", "Canaccord", "Stifel", "Raymond James", "RBC", "Guggenheim", "William Blair", "Baird", "Truist"];
-
-function uwTier(uw: string | null): 1 | 2 | 3 {
-  if (!uw) return 3;
-  if (TIER1_UW.some(t => uw.includes(t))) return 1;
-  if (TIER2_UW.some(t => uw.includes(t))) return 2;
-  return 3;
-}
-
 // ── Bond issuer filter (skip from EDGAR equity follow-on list) ────────────────
 const BOND_ISSUERS = new Set([
   "JPM", "GS", "MS", "BAC", "C", "WFC", "USB", "TFC", "BNS", "RY", "TD", "BMO",
   "DB", "UBS", "BCS", "HSBC", "SAN", "ING", "AIG", "MET", "PRU", "LNC", "AXP",
   "COF", "DFS", "SLM", "ALLY", "CMA", "ZION", "HBAN", "RF", "MTB", "CFG",
 ]);
-
-// ── Algo rating ───────────────────────────────────────────────────────────────
-
-/**
- * Dilution risk 0–100 for holders (overnight/swing) and short-side ideas:
- * size vs market cap, structure (ATM / shelf / warrants / registered direct), cap size, price vs offer.
- */
-function computeRisk(o: OfferingBase): { dilutionRisk: number; riskLevel: RiskLevel; riskFactors: string[]; riskFactorItems: FactorItem[] } {
-  let s = 15;
-  const f: FactorItem[] = [];
-  const pct = Math.max(o.offerPctOfMcap ?? 0, o.dilutionPct ?? 0);
-  if (pct > 30) { s += 40; f.push({ k: "risk.size", p: { pct: pct.toFixed(0) } }); }
-  else if (pct > 15) { s += 28; f.push({ k: "risk.size", p: { pct: pct.toFixed(0) } }); }
-  else if (pct > 7) { s += 15; f.push({ k: "risk.size", p: { pct: pct.toFixed(1) } }); }
-  else if (pct > 3) { s += 6; f.push({ k: "risk.size", p: { pct: pct.toFixed(1) } }); }
-
-  if (o.kind === "ATM") { s += 15; f.push({ k: "risk.atm" }); }
-  else if (o.kind === "S-3") {
-    if (o.form?.toUpperCase().includes("ASR")) { s -= 10; f.push({ k: "risk.wksi" }); }
-    else { s += 10; f.push({ k: "risk.newShelf" }); }
-  } else if (o.kind === "S-1" && o.currentPrice != null) { s += 18; f.push({ k: "risk.s1" }); }
-
-  if (o.babyShelf) { s += 6; f.push({ k: "risk.babyShelf" }); }
-  if (o.marketCapM != null) {
-    if (o.marketCapM < 50) { s += 20; f.push({ k: "risk.micro", p: { cap: o.marketCapM.toFixed(0) } }); }
-    else if (o.marketCapM < 300) { s += 10; f.push({ k: "risk.small", p: { cap: o.marketCapM.toFixed(0) } }); }
-    else if (o.marketCapM > 10_000) { s -= 15; f.push({ k: "risk.mega" }); }
-  }
-  if (o.dealFlags.includes("warrants")) { s += 12; f.push({ k: "risk.warrants" }); }
-  if (o.dealFlags.includes("Pre-funded")) s += 5;
-  if (o.dealFlags.includes("Registered direct") || o.dealFlags.includes("Best efforts")) { s += 10; f.push({ k: "risk.direct" }); }
-  if (o.sellerType === "insiders" || o.sellerType === "mixed") { s += 5; f.push({ k: "risk.insiders" }); }
-  if (o.priceChangePct != null && o.offerPrice != null) {
-    if (o.priceChangePct > 20) { s += 8; f.push({ k: "risk.aboveOffer", p: { pct: o.priceChangePct.toFixed(0) } }); }
-    else if (o.priceChangePct < -10) { f.push({ k: "risk.broken", p: { pct: o.priceChangePct.toFixed(0) } }); }
-  }
-  const dilutionRisk = Math.max(0, Math.min(100, Math.round(s)));
-  const riskLevel: RiskLevel = dilutionRisk >= 60 ? "high" : dilutionRisk >= 35 ? "medium" : "low";
-  return { dilutionRisk, riskLevel, riskFactors: f.map((it) => factorText(it, "ru")), riskFactorItems: f };
-}
-
-function finalize(base: OfferingBase): Offering {
-  const offerPctOfMcap = base.marketCapM && base.marketCapM > 0
-    ? (base.dealSizeM ?? base.shelfCapacityM) != null
-      ? +((((base.dealSizeM ?? base.shelfCapacityM) as number) / base.marketCapM) * 100).toFixed(1)
-      : null
-    : null;
-  const babyShelf = (base.kind === "S-3" || base.kind === "ATM") && base.marketCapM != null && base.marketCapM < 75;
-  const withDerived: OfferingBase = {
-    ...base,
-    offerPctOfMcap,
-    babyShelf,
-    babyShelfLimitM: babyShelf && base.marketCapM != null ? +(base.marketCapM / 3).toFixed(1) : null,
-  };
-  const { rating, factors } = computeRating(withDerived);
-  return { ...withDerived, rating, ratingFactors: factors.map((it) => factorText(it, "ru")), ratingFactorItems: factors, ...computeRisk(withDerived) };
-}
-
-function computeRating(o: OfferingBase): { rating: number; factors: FactorItem[] } {
-  let score = 50;
-  const factors: FactorItem[] = [];
-
-  // Price vs offer — biggest signal
-  if (o.priceChangePct !== null) {
-    if (o.priceChangePct > 30) { score += 25; factors.push({ k: "rating.strongStart", p: { pct: o.priceChangePct.toFixed(1) } }); }
-    else if (o.priceChangePct > 15) { score += 18; factors.push({ k: "rating.aboveOffer", p: { pct: o.priceChangePct.toFixed(1) } }); }
-    else if (o.priceChangePct > 5) { score += 10; factors.push({ k: "rating.aboveOffer", p: { pct: o.priceChangePct.toFixed(1) } }); }
-    else if (o.priceChangePct >= -5) { factors.push({ k: "rating.atOffer", p: { pct: o.priceChangePct.toFixed(1) } }); }
-    else if (o.priceChangePct < -20) { score -= 25; factors.push({ k: "rating.farBelow", p: { pct: o.priceChangePct.toFixed(1) } }); }
-    else if (o.priceChangePct < -10) { score -= 15; factors.push({ k: "rating.below", p: { pct: o.priceChangePct.toFixed(1) } }); }
-    else { score -= 6; factors.push({ k: "rating.weakStart", p: { pct: o.priceChangePct.toFixed(1) } }); }
-  }
-
-  // Dilution
-  if (o.dilutionPct !== null) {
-    if (o.dilutionPct > 40) { score -= 18; factors.push({ k: "rating.dilCritical", p: { pct: o.dilutionPct.toFixed(1) } }); }
-    else if (o.dilutionPct > 20) { score -= 10; factors.push({ k: "rating.dilHigh", p: { pct: o.dilutionPct.toFixed(1) } }); }
-    else if (o.dilutionPct > 10) { score -= 4; factors.push({ k: "rating.dilModerate", p: { pct: o.dilutionPct.toFixed(1) } }); }
-    else if (o.dilutionPct < 5 && o.dilutionPct > 0) { score += 8; factors.push({ k: "rating.dilLow", p: { pct: o.dilutionPct.toFixed(1) } }); }
-  }
-
-  // Who sells
-  if (o.sellerType === "insiders") { score -= 22; factors.push({ k: "rating.insiders" }); }
-  else if (o.sellerType === "mixed") { score -= 10; factors.push({ k: "rating.mixed" }); }
-  else if (o.sellerType === "company") { score += 10; factors.push({ k: "rating.company" }); }
-
-  // Volume relative
-  if (o.relVol !== null) {
-    if (o.relVol > 5) { score += 15; factors.push({ k: "rating.volExtreme", p: { x: o.relVol.toFixed(1) } }); }
-    else if (o.relVol > 3) { score += 10; factors.push({ k: "rating.volHigh", p: { x: o.relVol.toFixed(1) } }); }
-    else if (o.relVol > 1.5) { score += 5; factors.push({ k: "rating.volHigh", p: { x: o.relVol.toFixed(1) } }); }
-    else if (o.relVol < 0.5) { score -= 10; factors.push({ k: "rating.volLow" }); }
-  }
-
-  // Offering type
-  if (o.type === "IPO") { score += 5; factors.push({ k: "rating.ipo" }); }
-  else if (o.type === "Bought Deal") { score += 8; factors.push({ k: "rating.bought" }); }
-  else if (o.type === "ATM") { score -= 12; factors.push({ k: "rating.atm" }); }
-  else if (o.type === "SPAC") { score -= 5; factors.push({ k: "rating.spac" }); }
-
-  // Underwriter quality
-  const tier = uwTier(o.underwriter);
-  if (tier === 1) { score += 8; factors.push({ k: "rating.uw1", p: { name: String(o.underwriter) } }); }
-  else if (tier === 2) { score += 4; factors.push({ k: "rating.uw2", p: { name: String(o.underwriter) } }); }
-
-  // Lockup
-  if (o.lockupDays !== null) {
-    if (o.lockupDays < 60) { score -= 8; factors.push({ k: "rating.lockShortest", p: { days: o.lockupDays } }); }
-    else if (o.lockupDays <= 90) { score -= 4; factors.push({ k: "rating.lockShort", p: { days: o.lockupDays } }); }
-    else if (o.lockupDays >= 180) { score += 3; factors.push({ k: "rating.lockStandard", p: { days: o.lockupDays } }); }
-  }
-
-  // Deal size
-  if (o.dealSizeM !== null) {
-    if (o.dealSizeM > 1000) { score += 10; factors.push({ k: "rating.dealBig", p: { b: (o.dealSizeM / 1000).toFixed(1) } }); }
-    else if (o.dealSizeM > 200) { score += 6; factors.push({ k: "rating.deal", p: { m: o.dealSizeM.toFixed(0) } }); }
-    else if (o.dealSizeM < 15) { score -= 6; factors.push({ k: "rating.dealSmall", p: { m: o.dealSizeM.toFixed(0) } }); }
-  }
-
-  return { rating: Math.max(0, Math.min(100, Math.round(score))), factors };
-}
 
 // ── Yahoo Finance enrichment ──────────────────────────────────────────────────
 
@@ -1266,10 +1040,10 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
   }
 
   // Cache-first (ROMAN-04): the payload stored by the last upstream fetch of this day, whatever the API restarts.
-  const stored = force ? null : (await dbCacheRead<{ fetchedAt?: number; enrichment?: { complete?: boolean } }>(WATCH_DAY_KIND, [day], WATCH_DAY_KEEP_MS)).get(day) ?? null;
+  const stored = force ? null : (await dbCacheRead<{ fetchedAt?: number; enrichment?: { complete?: boolean }; sources?: { nasdaq: boolean; edgar: boolean; market: boolean } }>(WATCH_DAY_KIND, [day], WATCH_DAY_KEEP_MS)).get(day) ?? null;
   const storedAt = stored ? Number(stored.data?.fetchedAt) || stored.ts : null;
-  // An incomplete payload is fresh for ~90 s only (same rule as the in-memory cache below).
-  const ttlMs = stored?.data?.enrichment?.complete === false ? 90_000 : CACHE_TTL;
+  // An incomplete payload or one with a failed source is fresh briefly only (same rule as the in-memory cache below).
+  const ttlMs = watchStorePolicy({ sources: stored?.data?.sources, complete: stored?.data?.enrichment?.complete !== false, fullTtlMs: CACHE_TTL }).memTtlMs;
   const plan = watchCachePlan({ storedAt, day, today: todayNy(), now: Date.now(), ttlMs, force, revalidate: req.query.revalidate === "1" });
   if (stored && plan === "fresh") {
     cache.set(cacheKey, { data: stored.data, ts: (storedAt ?? Date.now()) - (CACHE_TTL - ttlMs) });
@@ -1307,7 +1081,7 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
     const { offerings: enriched, ok: yahooOk } = await enrichWithMarketData(merged);
 
     // Sort: highest dilution risk first, then rating
-    enriched.sort((a, b) => b.dilutionRisk - a.dilutionRisk || b.rating - a.rating);
+    enriched.sort(byRiskThenRating);
 
     // IPO calendar strip: a week back, three weeks ahead
     const from = new Date(Date.parse(day + "T12:00:00Z") - 7 * 86400_000).toISOString().slice(0, 10);
@@ -1316,6 +1090,7 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
 
     // Timing / discount / reaction / cash (time-boxed; whatever misses the budget keeps warming the caches).
     const complete = await augmentOfferings(enriched, day, AUGMENT_BUDGET_MS);
+    enriched.sort(byRiskThenRating); // a rejected offer price re-scored some rows
 
     const payload = {
       day,
@@ -1326,10 +1101,10 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
       sources: { nasdaq: nasdaqResult.ok, edgar: edgarResult.ok, market: yahooOk },
       enrichment: { complete },
     };
-    // An incomplete payload lives ~90 s so the next poll picks up the warmed caches.
-    cache.set(cacheKey, { data: payload, ts: complete ? Date.now() : Date.now() - CACHE_TTL + 90_000 });
-    // Stored for the next cold call (not while every source is down — an empty outage page must not stick).
-    if (nasdaqResult.ok || edgarResult.ok) void dbCacheWrite(WATCH_DAY_KIND, day, payload);
+    // A failed source / unfinished enrichment lives 60–90 s so the next poll retries; only a full listing is stored.
+    const policy = watchStorePolicy({ sources: payload.sources, complete, fullTtlMs: CACHE_TTL });
+    cache.set(cacheKey, { data: payload, ts: Date.now() - CACHE_TTL + policy.memTtlMs });
+    if (policy.storeInDb) void dbCacheWrite(WATCH_DAY_KIND, day, payload);
     res.json(localizeOfferings(payload, langOf(req)));
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -1586,12 +1361,8 @@ function shiftDay(d: string, n: number): string {
  * lookup finished inside the budget (the rest keeps running and warms the caches).
  */
 const AUGMENT_BUDGET_MS = 6000;
-/** Offer vs the last close. Outside −70%…+25% the parsed offer price is almost surely wrong (warrant / pre-split price). */
-function setDiscount(o: Offering): void {
-  if (o.offerPrice == null || !o.prevClose) { o.discountPct = null; return; }
-  const d = ((o.offerPrice / o.prevClose) - 1) * 100;
-  o.discountPct = d >= -70 && d <= 25 ? +d.toFixed(2) : null;
-}
+/** Offer vs the last close; a rejected offer price (outside −70 %…+25 %) is re-scored without priceChangePct. */
+const setDiscount = (o: Offering): void => { applyOfferPriceCheck(o, finalize); };
 async function augmentOfferings(list: Offering[], day: string, budgetMs: number): Promise<boolean> {
   const today = nyDate();
   const yearAgo = shiftDay(day, -365);

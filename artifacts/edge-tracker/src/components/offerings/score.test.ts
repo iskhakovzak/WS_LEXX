@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanUnderwriter, dealTypeOf, dilutionScore, discountOf, advMultiple, pctOfFloat } from "./score";
+import { cleanUnderwriter, dealTypeOf, dilutionScore, discountOf, advMultiple, pctOfFloat, sourcesDown } from "./score";
 import { EMPTY_FILTERS, activeFilterCount, matchesFilters, normalizeFilters } from "./filters";
 import { fmtPctCap, type Offering } from "./types";
 
@@ -100,5 +100,21 @@ describe("filters", () => {
     expect(f.types).toEqual(["spo"]);
     expect(f.minScore).toBeNull();
     expect(activeFilterCount(f)).toBe(2);
+  });
+});
+
+describe("sourcesDown (item 1.14)", () => {
+  it("nothing down / no flags → no line", () => {
+    expect(sourcesDown({ nasdaq: true, edgar: true, market: true })).toEqual({ names: [], listing: false });
+    expect(sourcesDown(undefined)).toEqual({ names: [], listing: false });
+  });
+  it("SEC or NASDAQ down → listing incomplete", () => {
+    expect(sourcesDown({ nasdaq: true, edgar: false, market: true })).toEqual({ names: ["SEC EDGAR"], listing: true });
+    expect(sourcesDown({ nasdaq: false, edgar: true, market: true }).listing).toBe(true);
+  });
+  it("only quotes down → named, the listing itself is complete", () => {
+    const r = sourcesDown({ nasdaq: true, edgar: true, market: false });
+    expect(r.listing).toBe(false);
+    expect(r.names).toHaveLength(1);
   });
 });

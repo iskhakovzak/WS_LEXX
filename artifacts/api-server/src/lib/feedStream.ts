@@ -395,7 +395,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
       `SELECT UPPER(t.ticker) AS ticker FROM trades t
         WHERE t.deleted_at IS NULL AND t.trader = $1 AND substring(t.date, 1, 10) >= $2 AND t.ticker IS NOT NULL
         GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 40`, [me, addDays(today, -30)]) : [],
-    safe<{ ticker: string }>("in-play", `SELECT UPPER(ticker) AS ticker FROM watchlist WHERE deleted_at IS NULL AND in_play = true LIMIT 40`, []),
+    safe<{ ticker: string }>("in-play", `SELECT UPPER(ticker) AS ticker FROM watchlist WHERE deleted_at IS NULL AND owner IS NULL AND in_play = true LIMIT 40`, []),
     me && !noPrivate ? safe<{ ticker: string }>(
       "held",
       `SELECT DISTINCT UPPER(t.ticker) AS ticker FROM trades t

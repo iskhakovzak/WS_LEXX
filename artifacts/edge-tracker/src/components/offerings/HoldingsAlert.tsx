@@ -33,7 +33,7 @@ function whyLine(o: Offering): string {
   if (p != null) bits.push(t("watch.pctMcap", { pct: fmtPctCap(p, 0) }));
   const d = discountOf(o);
   if (d != null) bits.push(t("watch.discount", { pct: Math.abs(d).toFixed(1) }));
-  if (o.offerPrice != null) bits.push(t("watch.offer", { price: fmtPrice(o.offerPrice, { dollar: true }) }));
+  if (o.offerPrice != null && !o.offerPriceSuspect) bits.push(t("watch.offer", { price: fmtPrice(o.offerPrice, { dollar: true }) }));
   return bits.join(" · ");
 }
 

@@ -261,6 +261,8 @@ export default {
     title: "Tahlilchilar reytingi",
     description: "Sessiyaga nima chiqdi, aksiya odatda qanday reaksiya qiladi va bulardan aynan siz uchun nima muhim",
     timeNy: "Vaqt — Nyu-York (ET)",
+    sourceDown: "manba mavjud emas · {time}",
+    sourceDownTitle: "Soʻnggi analitiklar skani oʻtmadi — lenta toʻliq boʻlmasligi mumkin",
     refreshAria: "Lentani yangilash",
     exportAria: "CSV eksport",
     exportTitle: "Joriy tanlovni CSV ga eksport qilish",

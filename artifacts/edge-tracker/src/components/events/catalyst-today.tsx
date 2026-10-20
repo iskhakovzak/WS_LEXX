@@ -16,7 +16,7 @@ import {
   catLabel, categoryOf, earningsEdge, isClosedRow, isShortDayRow, nextTradingDay,
   type CatalystEdge, type CategoryEdge, type MacroRow, type Verdict,
 } from "./catalyst-math";
-import { fmtUsd } from "@/lib/format";
+import { fmtDeskTime, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import type { CatalystData, MyEarnings } from "./use-catalysts";
 import { fmtDay, weekdayLabel, macroTime } from "./event-meta";
@@ -118,6 +118,8 @@ export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: Catalyst
               {tr("today.usually", { gap: h.data.avgAbsGap?.toFixed(1) ?? "—" })}{range != null && tr("today.range", { range: range.toFixed(1) })}
               {h.data.streak.kind && h.data.streak.count > 1 && tr("today.streak", { count: h.data.streak.count, kind: h.data.streak.kind === "beat" ? "beat" : "miss" })}
             </span>
+          ) : h.data?.sourceUnavailable ? (
+            <span className="tabular-nums">{tr("today.sourceDown", { time: fmtDeskTime(h.data.checkedAt ?? h.data.fetchedAt) })}</span>
           ) : (
             <span>{tr("today.noHistory")}</span>
           )}

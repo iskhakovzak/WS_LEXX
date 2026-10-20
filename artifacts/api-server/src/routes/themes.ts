@@ -7,6 +7,8 @@
  *   POST /api/themes/mine       member — personal theme { boardId, name, kind: tickers | screener, tickers? | screener?, order? }
  *                               on one of the user's themes boards (routes/themes-boards.ts)
  *   PUT  /api/themes/mine/:id   member, owner only — the same fields, or { active: false } to archive
+ *   POST /api/themes/mine/:id/restore  member, owner only — an archived theme back (≤ 10; its board must be active,
+ *                               else 404 BOARD_NOT_FOUND — the same rule holds for PUT { active: true })
  *   GET  /api/themes/config     admin (settings.manage) — every shared theme incl. archived ({ themes: ThemeRecord[] })
  *   POST /api/themes            admin — { name, tickers, sortOrder?, active? } → ThemeRecord
  *   PUT  /api/themes/:id        admin — any of { name, tickers, sortOrder, active } → ThemeRecord (archive = active false)
@@ -131,13 +133,30 @@ router.post("/themes/mine", route({ body: MineFields }, async ({ req, body }) =>
   return mineOut(created);
 }));
 
+/** An archived theme may come back only onto an active board of its owner and within the limit of 10. */
+async function canRevive(userId: number, theme: PersonalRecord): Promise<void> {
+  const board = theme.boardId != null ? await boardById(userId, theme.boardId) : null;
+  if (!board || !board.active) throw notFound("BOARD_NOT_FOUND");
+  if ((await countPersonal(userId)) >= MAX_PERSONAL_THEMES) throw new AppError("THEME_LIMIT", undefined, { max: MAX_PERSONAL_THEMES });
+}
+
+router.post("/themes/mine/:id/restore", route({ params: z.object({ id: idParam }) }, async ({ req, params }) => {
+  const me = member(req);
+  const current = await personalById(me.id, params.id);
+  if (!current) throw notFound("THEME_NOT_FOUND");
+  if (current.active) return mineOut(current);
+  await canRevive(me.id, current);
+  const updated = await updatePersonal(me.id, current.id, { active: true }, current);
+  if (!updated) throw notFound("THEME_NOT_FOUND");
+  await logAudit({ actor: me.name, action: "themes.mine.restore", targetType: "user_theme", targetId: String(updated.id), details: { name: updated.name, kind: updated.kind } });
+  return mineOut(updated);
+}));
+
 router.put("/themes/mine/:id", route({ params: z.object({ id: idParam }), body: MineUpdate }, async ({ req, params, body }) => {
   const me = member(req);
   const current = await personalById(me.id, params.id);
   if (!current) throw notFound("THEME_NOT_FOUND");
-  if (body.active === true && !current.active && (await countPersonal(me.id)) >= MAX_PERSONAL_THEMES) {
-    throw new AppError("THEME_LIMIT", undefined, { max: MAX_PERSONAL_THEMES });
-  }
+  if (body.active === true && !current.active) await canRevive(me.id, current);
   const kind = body.kind ?? current.kind;
   const definitionChanged = body.kind !== undefined || body.tickers !== undefined || body.screener !== undefined || body.order !== undefined;
   const def = definitionChanged
@@ -150,7 +169,7 @@ router.put("/themes/mine/:id", route({ params: z.object({ id: idParam }), body: 
   const updated = await updatePersonal(me.id, params.id, { name: body.name, kind, ...def, active: body.active }, current);
   if (!updated) throw notFound("THEME_NOT_FOUND");
   const out = updated.active ? await resolveSoon(updated) : updated;
-  const action = body.active === false && current.active ? "themes.mine.archive" : "themes.mine.update";
+  const action = body.active === false && current.active ? "themes.mine.archive" : body.active === true && !current.active ? "themes.mine.restore" : "themes.mine.update";
   await logAudit({ actor: me.name, action, targetType: "user_theme", targetId: String(out.id), details: { name: out.name, kind: out.kind } });
   return mineOut(out);
 }));
