@@ -6,6 +6,9 @@
  *      the shared cookie/crumb session (marketDataService.fetchYahooWithSession), 3 requests in parallel.
  * Finviz has no premarket / after-hours columns: with Finviz as the source those two values are filled from the same
  * Yahoo batches (best effort — a failed Yahoo call leaves them null; today / fromOpen stay Finviz's).
+ * Premarket of the day: the last premarket print per ticker is held in this process for the NY day (logic.holdPremarket),
+ * so after 09:30 — when Yahoo stops sending premarket fields — both paths still answer it; the shared board and the
+ * per-ticker cache (tickerCache) both read their quotes from here.
  * Throws when neither produced a single quote (the caller keeps its last good numbers).
  * `deps` are injectable: tests never touch the network.
  */
@@ -14,8 +17,8 @@ import { finvizEnabled } from "../finviz/presets";
 import { fetchYahooWithSession } from "../marketDataService";
 import { logger } from "../logger";
 import {
-  extrasFromFinviz, extrasFromYahoo, quoteFromFinviz, quoteFromYahoo, type FinvizLike, type MemberQuote, type ThemeSession, type ThemeSource,
-  type TickerExtras, type YahooQuoteLike,
+  extrasFromFinviz, extrasFromYahoo, holdPremarket, quoteFromFinviz, quoteFromYahoo, type FinvizLike, type MemberQuote, type PremarketHold,
+  type ThemeSession, type ThemeSource, type TickerExtras, type YahooQuoteLike,
 } from "./logic";
 
 export const YAHOO_BATCH = 50;
@@ -46,6 +49,11 @@ export const LIVE_QUOTE_DEPS: QuoteDeps = {
   finviz: (tickers, today) => fetchTickers(tickers, today),
   yahooBatch: yahooBatchLive,
 };
+
+/** Last premarket print of the day per ticker (logic.holdPremarket). Per process. */
+const premarketHold: PremarketHold = new Map();
+/** Tests: forget the held premarket prints. */
+export function _resetPremarketHold(): void { premarketHold.clear(); }
 
 const hasMove = (q: MemberQuote) => q.today != null || q.price != null;
 
@@ -115,6 +123,7 @@ export async function fetchThemeQuotes(
       const got = await fromFinviz(tickers, session, today, deps);
       if (got.quotes.size) {
         await fillExtended(got.quotes, session, today, deps);
+        holdPremarket(got.quotes, premarketHold, today);
         return { source: "finviz", ...got };
       }
     } catch (err) {
@@ -123,5 +132,6 @@ export async function fetchThemeQuotes(
   }
   const got = await fromYahoo(tickers, session, today, deps);
   if (!got.quotes.size) throw new Error("themes: no quotes from any provider");
+  holdPremarket(got.quotes, premarketHold, today);
   return { source: "yahoo", ...got };
 }

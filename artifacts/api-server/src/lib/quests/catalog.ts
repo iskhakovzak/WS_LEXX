@@ -12,8 +12,10 @@
  *              day's trades up to quests.tagYesterdayMax) — quests.tagYesterdayPoints
  *   weekly     Monday → Friday, quests.weeklyCount (3) of: contract_days (4 of 5), focus_absent_days (3),
  *              replay_own_days (2), review_traded_days (every traded day on time), read_game_plan (3), and for a
- *              learner (Стажёр, or no traded day in 30 days) the practice ones that need no trades: trainer_drills
- *              («Найди вход» answers), academy_lessons (when enrolled), plan_days (plans before the open) — 10 points
+ *              learner (Стажёр, or no traded day in 30 days) the practice ones that need no trades: daily_task_days
+ *              («Задача дня» played on distinct challenge days), academy_lessons (when enrolled), plan_days (plans before
+ *              the open) — 10 points. trainer_drills («Найди вход» answers) is retired: never issued again (the desk has
+ *              no drills yet), kept only so rows already issued still evaluate and expire
  *   monthly    clean_month_progress (the daily stop never reached, ≥ rewards.cleanMonthMinDays traded days),
  *              review_month (≥ quests.monthlyReviewPct % of traded days reviewed on time) — 25 points
  *   curator    assigned from CURATOR_TEMPLATES with the curator's target / deadline / points / note (counted over the
@@ -62,6 +64,8 @@ export type QuestData = {
   academy?: boolean;
   /** NY days of «Найди вход» drill answers of the last weeks, one entry per answer. */
   drillDays?: readonly string[];
+  /** Challenge dates of the «Задача дня» games the trader finished in the last weeks (one game per user and date). */
+  dailyTaskDays?: readonly string[];
   /** NY days of completed academy lessons, one entry per lesson. */
   lessonDays?: readonly string[];
 };
@@ -163,11 +167,13 @@ export const count = {
   plansBeforeOpen: (d: QuestData, from: string, to: string) => [...d.plans].filter(([date, p]) => p.beforeOpen && inRange(date, from, to)).length,
   gamePlanReads: (d: QuestData, from: string, to: string) => d.gamePlans.filter((g) => inRange(g.date, from, to) && g.readOn != null).length,
   drills: (d: QuestData, from: string, to: string) => (d.drillDays ?? []).filter((x) => inRange(x, from, to)).length,
+  /** Distinct «Задача дня» challenge days played in [from, to]. */
+  dailyTasks: (d: QuestData, from: string, to: string) => new Set((d.dailyTaskDays ?? []).filter((x) => inRange(x, from, to))).size,
   lessons: (d: QuestData, from: string, to: string) => (d.lessonDays ?? []).filter((x) => inRange(x, from, to)).length,
 };
 
 /** Targets of the learner practice quests until the desk settings are registered (lib/settings is another area's). */
-export const PRACTICE_TARGETS = { drills: 10, lessons: 2, plans: 3 } as const;
+export const PRACTICE_TARGETS = { drills: 10, dailyTasks: 3, lessons: 2, plans: 3 } as const;
 
 /** Counting quest: done at the target, else active (the engine expires it after its last day). */
 const reach = (progress: number, target: number): Eval => ({ progress: Math.min(progress, target), target, status: progress >= target ? "done" : "active" });
@@ -299,9 +305,18 @@ export const WEEKLY: readonly Template[] = [
   weekCounter("read_game_plan", () => setting("quests.weeklyGamePlanReads"), count.gamePlanReads,
     (d) => d.gamePlans.filter((g) => g.date >= recent(d, 14)).length >= setting("quests.weeklyGamePlanReads"), links.gamePlan),
   // Practice for learners (no P&L, no trades needed): the trainer, academy lessons, the personal plan.
-  weekCounter("trainer_drills", () => PRACTICE_TARGETS.drills, count.drills, (d) => !!d.learner, () => "/trainer"),
+  weekCounter("daily_task_days", () => PRACTICE_TARGETS.dailyTasks, count.dailyTasks, (d) => !!d.learner, () => "/trainer"),
   weekCounter("academy_lessons", () => PRACTICE_TARGETS.lessons, count.lessons, (d) => !!d.learner && !!d.academy, () => "/academy/my"),
   weekCounter("plan_days", () => PRACTICE_TARGETS.plans, count.plansBeforeOpen, (d) => !!d.learner, (d) => links.plan(d)),
+];
+
+/**
+ * Retired weekly templates: never offered again, still evaluated (and expired after their week) for rows already
+ * issued. trainer_drills: «Найди вход» has no drills on live data (no trade carries a playbook setup), so the quest could
+ * not be done — replaced by daily_task_days (audit 2026-10-20, growth P1).
+ */
+export const RETIRED_WEEKLY: readonly Template[] = [
+  weekCounter("trainer_drills", () => PRACTICE_TARGETS.drills, count.drills, () => false, () => "/trainer"),
 ];
 
 // ─── monthly ────────────────────────────────────────────────────────────────
@@ -358,7 +373,7 @@ export const CURATOR_TEMPLATES: readonly (Template & { assign: AssignSpec })[] =
 
 export const MANUAL_TEMPLATE = "curator_task";
 
-const ALL: readonly Template[] = [...ONBOARDING, ...DAILY, ...WEEKLY, ...MONTHLY, ...CURATOR_TEMPLATES];
+const ALL: readonly Template[] = [...ONBOARDING, ...DAILY, ...WEEKLY, ...RETIRED_WEEKLY, ...MONTHLY, ...CURATOR_TEMPLATES];
 
 export function templateOf(scope: QuestScope, key: string): Template | null {
   return ALL.find((t) => t.scope === scope && t.key === key) ?? null;

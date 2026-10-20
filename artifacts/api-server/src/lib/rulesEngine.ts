@@ -22,6 +22,9 @@ import { planStaleViolations, STALE_PLAN_COLUMNS } from "./violationArchive";
  *   them; otherwise they are archived as `stale` (lib/violationArchive). Scoped to the trader — desk rules share one
  *   rule_id across traders. A re-produced key un-archives its row (re-enabled rule, trade edited back).
  * - Disabling / deleting a rule archives its violations (routes/rules.ts) — they are never dropped with their comments.
+ * - A rule produces violations only from the NY day it was created (ruleSince): its past is never written to the
+ *   queue (audit 2026-10-20: a rule created today raised 60 open violations from 04.05–24.09). The create response
+ *   counts that past as a preview only (historyPreview). Rows already stored before this rule (older scans) are kept.
  * - Newly found violations of today / yesterday notify the trader and their staff (rule_violation) through
  *   lib/notifyEvents: in the background, once per violation key.
  */
@@ -248,15 +251,47 @@ ensureRulesSchema().catch((err) => logger.warn({ err }, "rules: ensure schema fa
 
 type FreshViolation = ViolationItem & { ruleId: number; key: string; msg?: ViolationMsg };
 
+/** The NY day a rule starts producing violations: the day it was created (null = unknown, legacy → the whole history). */
+export function ruleSince(createdAt: string | Date | null | undefined): string | null {
+  if (createdAt == null) return null;
+  const d = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  return Number.isFinite(d.getTime()) ? nyDate(d) : null;
+}
+
+/** Drafts of the rule's own time (day ≥ since) and its history before it (never written; preview only). Pure. */
+export function splitBySince<T extends { day: string }>(drafts: readonly T[], since: string | null): { live: T[]; history: T[] } {
+  if (!since) return { live: [...drafts], history: [] };
+  const live: T[] = [];
+  const history: T[] = [];
+  for (const d of drafts) (String(d.day).slice(0, 10) >= since ? live : history).push(d);
+  return { live, history };
+}
+
+/**
+ * Preview for a just-created rule: the violations its threshold would have had before `since` (not written).
+ * `from` / `to` = the first / last such day.
+ */
+export function historyPreview(drafts: readonly { day: string; costNet?: number | null }[], since: string | null): { violations: number; from: string | null; to: string | null; costNet: number } {
+  const { history } = splitBySince(drafts, since);
+  const days = history.map((d) => d.day).sort();
+  const cost = history.reduce((a, d) => a + (typeof d.costNet === "number" && Number.isFinite(d.costNet) ? d.costNet : 0), 0);
+  return { violations: history.length, from: days[0] ?? null, to: days[days.length - 1] ?? null, costNet: Math.round(cost * 100) / 100 };
+}
+
 async function upsertDrafts(
   rule: RuleRow,
   trader: string,
-  drafts: ReturnType<typeof evalRule>,
+  all: ReturnType<typeof evalRule>,
+  ruleStart: string | null,
 ): Promise<{ written: number; removed: number; fresh: FreshViolation[] }> {
   let written = 0;
   const keys: string[] = [];
   const fresh: FreshViolation[] = [];
   const since = addDays(nyDate(), -1);
+  // Before the rule existed: nothing is written; the keys still count as produced, so a row an older scan stored is
+  // neither deleted nor archived here.
+  const { live: drafts, history } = splitBySince(all, ruleStart);
+  for (const d of history) keys.push(d.key);
   for (const d of drafts) {
     keys.push(d.key);
     try {
@@ -365,7 +400,7 @@ export async function scanRulesForTrader(trader: string): Promise<{ violationsWr
   for (const r of rules) {
     const scoped: RuleRow = { ...r, trader };
     const drafts = trades.length ? evalRule(scoped, trades, limits) : [];
-    const res = await upsertDrafts(scoped, trader, drafts);
+    const res = await upsertDrafts(scoped, trader, drafts, ruleSince(r.createdAt));
     written += res.written;
     removed += res.removed;
     fresh.push(...res.fresh);

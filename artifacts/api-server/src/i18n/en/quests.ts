@@ -45,6 +45,10 @@ export default {
       title: { one: "Beat yourself {count} time", other: "Beat yourself {count} times" },
       desc: "Better than the real trade in the simulator: {done} of {target}.",
     },
+    daily_task_days: {
+      title: { one: "Play the «Daily challenge» {count} time this week", other: "Play the «Daily challenge» {count} times this week" },
+      desc: "Days with the «Daily challenge»: {done} of {target}.",
+    },
     trainer_drills: {
       title: { one: "Answer {count} «Find the entry» drill", other: "Answer {count} «Find the entry» drills" },
       desc: "Trainer answers: {done} of {target}.",

@@ -193,18 +193,42 @@ describe("weekly quests", () => {
     expect(run(data(), [], ONLY("weekly"))).toEqual([]);
   });
 
-  it("a learner without trades gets practice quests: drills, lessons, plans — progress from the trainer (UMID-19)", () => {
+  it("a learner without trades gets practice quests: the daily task, lessons, plans — progress from the trainer (UMID-19)", () => {
     const learner = data({ today: "2026-10-19", lastFinished: "2026-10-16", learner: true, academy: true });
     const s = run(learner, [], ONLY("weekly"));
-    expect(s.map((q) => q.template).sort()).toEqual(["academy_lessons", "plan_days", "trainer_drills"]);
+    expect(s.map((q) => q.template).sort()).toEqual(["academy_lessons", "daily_task_days", "plan_days"]);
     expect(e.weekSummary(s, "2026-10-19", "2026-10-23")).toEqual({ weekDone: 0, weekTotal: 3 });
-    const drills = Array(10).fill("2026-10-19");
-    run({ ...learner, drillDays: drills, lessonDays: ["2026-10-19"] }, s, ONLY("weekly"));
-    expect(tpl(s, "trainer_drills")!).toMatchObject({ status: "done", progress: 10, target: c.PRACTICE_TARGETS.drills });
+    run({ ...learner, today: "2026-10-20", dailyTaskDays: ["2026-10-19", "2026-10-20"], lessonDays: ["2026-10-19"] }, s, ONLY("weekly"));
+    expect(tpl(s, "daily_task_days")!).toMatchObject({ status: "active", progress: 2, target: 3 });
     expect(tpl(s, "academy_lessons")!).toMatchObject({ status: "active", progress: 1 });
     // Not enrolled in the academy → no lesson quest; not a learner → none of them.
     expect(run({ ...learner, academy: false }, [], ONLY("weekly")).map((q) => q.template)).not.toContain("academy_lessons");
     expect(run({ ...learner, learner: false }, [], ONLY("weekly"))).toEqual([]);
+  });
+
+  it("«Задача дня» 3 times a week: distinct challenge days inside Monday–Friday (audit 2026-10-20, growth P1)", () => {
+    const wq: StoredQuest = {
+      id: 1, trader: "chert", scope: "weekly", template: "daily_task_days", period: "2026-10-19", params: {}, progress: 0, target: c.PRACTICE_TARGETS.dailyTasks,
+      status: "active", rewardPoints: 10, startsOn: "2026-10-19", endsOn: "2026-10-23", completedOn: null, assignedBy: null, note: null,
+    };
+    expect(c.PRACTICE_TARGETS.dailyTasks).toBe(3);
+    // chert's game 147 (challenge 2026-10-20) + last week's game (not this week) + a duplicate date → 1 day.
+    expect(e.evaluateQuest(data({ today: "2026-10-20", dailyTaskDays: ["2026-10-16", "2026-10-20", "2026-10-20"] }), wq))
+      .toEqual({ progress: 1, target: 3, status: "active" });
+    expect(e.evaluateQuest(data({ today: "2026-10-22", dailyTaskDays: ["2026-10-19", "2026-10-20", "2026-10-22"] }), wq))
+      .toEqual({ progress: 3, target: 3, status: "done" });
+    expect(e.evaluateQuest(data({ today: "2026-10-24", lastFinished: "2026-10-23", dailyTaskDays: ["2026-10-19"] }), wq).status).toBe("expired");
+  });
+
+  it("the retired «Найди вход» quest is never issued again, but rows already issued still evaluate and expire", () => {
+    const learner = data({ today: "2026-10-19", lastFinished: "2026-10-16", learner: true, academy: true, drillDays: Array(10).fill("2026-10-19") });
+    expect(run(learner, [], ONLY("weekly")).map((q) => q.template)).not.toContain("trainer_drills");
+    expect(c.WEEKLY.map((t) => t.key)).not.toContain("trainer_drills");
+    const old: StoredQuest = {
+      id: 1, trader: "chert", scope: "weekly", template: "trainer_drills", period: "2026-10-12", params: {}, progress: 0, target: 10,
+      status: "active", rewardPoints: 10, startsOn: "2026-10-12", endsOn: "2026-10-16", completedOn: null, assignedBy: null, note: null,
+    };
+    expect(e.evaluateQuest(data({ today: "2026-10-19", lastFinished: "2026-10-16" }), old).status).toBe("expired");
   });
 
   const q = (template: string, over: Partial<StoredQuest> = {}): StoredQuest => ({

@@ -3,12 +3,12 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import {
   scanRulesForTrader, scanRulesAll, ensureRulesSchema, fetchRulesFor, fetchTrades, fetchRiskLimits, fetchSelfMarks,
-  syncSelfCheckViolation, mapRuleRow, DESK_TRADER, type StoredRule,
+  syncSelfCheckViolation, mapRuleRow, DESK_TRADER, evalRule, historyPreview, ruleSince, type StoredRule,
 } from "../lib/rulesEngine";
 import { RULE_CATALOG, catalogFor, ruleGroupsFor, kindMeta, validateThreshold, describeThreshold, type ThresholdError } from "../lib/rulesCatalog";
-import { rulesT, violationMessage, violationMsgParams, type ViolationMsg } from "../lib/rulesI18n";
+import { rulesT, violationMsgParams, type ViolationMsg } from "../lib/rulesI18n";
 import { langOf, type Lang } from "../i18n";
-import { buildRulesReport, previewRule, type PersistedViolation } from "../lib/rulesReport";
+import { buildRulesReport, previewRule } from "../lib/rulesReport";
 import { GUEST_SCOPE, isGuest } from "../lib/auth";
 import { can, readScope } from "../lib/permissions";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
@@ -17,7 +17,8 @@ import { logActivity } from "../lib/activity";
 import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
 import { notifyUser } from "../lib/notifyUtils";
-import { activeViolationSql, archiveWhereSql, isArchiveReason, parseArchiveMode } from "../lib/violationArchive";
+import { activeViolationSql, archiveWhereSql, parseArchiveMode } from "../lib/violationArchive";
+import { VIOLATION_SELECT, archivedCounts, persistedMap, shapeViolation } from "../lib/rulesViolationStore";
 import { AppError, badRequest, forbidden, notFound, unauthorized, type ErrorCode } from "../lib/http";
 
 const router: IRouter = Router();
@@ -132,7 +133,10 @@ router.get("/rules", asyncHandler(async (req, res): Promise<void> => {
 /**
  * Create a rule. Contract (backward compatible; used by «Сделать правилом» on /behavior):
  *   POST /api/rules { name, kind, threshold?, enabled?, trader?, note?, desk? }
- *   → 201 { id, trader, name, kind, threshold, enabled, createdAt, origin, desk, createdBy, note, auto, kindLabel, summary }
+ *   → 201 { id, trader, name, kind, threshold, enabled, createdAt, origin, desk, createdBy, note, auto, kindLabel, summary,
+ *           history: { violations, from, to, costNet } | null }
+ * - violations are written only from the creation day on; `history` = what the rule would have caught before it
+ *   (preview, not written; null for a desk-wide or disabled rule).
  * - trader: whose rule (staff only for others; default — the caller). desk: true → applies to every trader (staff).
  * - origin is derived: staff creating for another trader → "office", otherwise "personal".
  * - threshold is validated against the kind's fields (GET /rules/kinds); empty optional fields fall back to the risk desk.
@@ -168,6 +172,18 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
      RETURNING ${RULE_COLS}`,
     [owner, cleanName, String(kind), JSON.stringify(th.value), enabled === false ? false : true, origin, actor, cleanNote],
   );
+  // The rule counts violations from its creation day only (lib/rulesEngine ruleSince); its past is a preview here, never
+  // written to the queue. Desk-wide rules: no per-trader preview.
+  let history: ReturnType<typeof historyPreview> | null = null;
+  if (owner !== DESK_TRADER && rows[0].enabled !== false) {
+    try {
+      const [trades, limits] = await Promise.all([fetchTrades(owner), fetchRiskLimits(owner)]);
+      const stored = mapRuleRow(rows[0]);
+      history = historyPreview(trades.length ? evalRule({ ...stored, trader: owner }, trades, limits) : [], ruleSince(stored.createdAt));
+    } catch (e: any) {
+      req.log.warn({ err: e?.message }, "rule history preview failed");
+    }
+  }
   if (owner === DESK_TRADER) scanRulesAll().catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   else scanRulesForTrader(owner).catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   if (origin === "office") {
@@ -178,7 +194,7 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
       params: owner === DESK_TRADER ? { detailsKey: "rules.activity.deskRule" } : { detailsKey: "rules.activity.officeRule", trader: owner },
     }).catch(() => {});
   }
-  res.status(201).json(shapeRule(rows[0], lang));
+  res.status(201).json({ ...shapeRule(rows[0], lang), history });
 }));
 
 router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
@@ -304,32 +320,6 @@ function maybeBackgroundScan(trader: string, log: Request["log"]) {
   if ((lastScan.get(trader) ?? 0) > now - 10 * 60_000) return;
   lastScan.set(trader, now);
   scanRulesForTrader(trader).catch((e) => log.warn({ err: e.message }, "rule scan failed"));
-}
-
-async function persistedMap(trader: string): Promise<Map<string, PersistedViolation>> {
-  const { rows } = await pool.query<any>(
-    `SELECT id, rule_id, dedup_key, acknowledged_at, resolved_at, resolution FROM rule_violations
-      WHERE trader = $1 AND dedup_key IS NOT NULL AND ${activeViolationSql()}`,
-    [trader],
-  );
-  const m = new Map<string, PersistedViolation>();
-  for (const r of rows) {
-    m.set(`${r.rule_id}:${r.dedup_key}`, {
-      id: Number(r.id),
-      status: r.resolved_at ? "resolved" : r.acknowledged_at ? "acknowledged" : "open",
-      resolution: r.resolution ?? null,
-    });
-  }
-  return m;
-}
-
-/** Per rule: this trader's violations archived because the rule is disabled (they come back when it is re-enabled). */
-async function archivedCounts(trader: string): Promise<Map<number, number>> {
-  const { rows } = await pool.query<any>(
-    `SELECT rule_id, COUNT(*)::int AS n FROM rule_violations WHERE trader = $1 AND archived_reason = 'rule_disabled' GROUP BY rule_id`,
-    [trader],
-  );
-  return new Map(rows.map((r: any) => [Number(r.rule_id), Number(r.n)] as [number, number]));
 }
 
 /**
@@ -496,43 +486,6 @@ router.get("/rules/discipline", asyncHandler(async (req, res): Promise<void> => 
 }));
 
 // ─── Violations ───────────────────────────────────────────────────────────────
-
-const VIOLATION_SELECT = `
-  SELECT v.id, v.trader, v.rule_id AS "ruleId", v.trade_id AS "tradeId",
-         v.occurred_at AS "occurredAt", v.severity, v.message, v.details,
-         v.day, v.cost_net::float AS "costNet",
-         v.acknowledged_by AS "acknowledgedBy", v.acknowledged_at AS "acknowledgedAt", v.comment,
-         v.resolution, v.consequence, v.resolved_by AS "resolvedBy", v.resolved_at AS "resolvedAt",
-         v.archived_at AS "archivedAt", v.archived_reason AS "archivedReason",
-         r.enabled AS "ruleEnabled", (r.deleted_at IS NOT NULL) AS "ruleDeleted",
-         r.name AS "ruleName", r.kind AS "ruleKind", r.origin AS "ruleOrigin", (r.trader = '${DESK_TRADER}') AS "ruleDesk",
-         t.ticker, t.date AS "tradeDate", ${closeDateSql()} AS "tradeCloseDate", ${resultSql()} AS "tradeResult",
-         ${signedRSql()} AS "tradeR", t.pnl::float AS "tradePnl", ${netPnlSql()}::float AS "tradeNetPnl",
-         t.setup AS "tradeSetup", t.playbook_id AS "playbookId", p.name AS "playbookName", t.source AS "tradeSource"
-    FROM rule_violations v
-    LEFT JOIN trading_rules r ON v.rule_id = r.id
-    LEFT JOIN trades t ON v.trade_id = t.id
-    LEFT JOIN playbook p ON p.id = t.playbook_id
-`;
-
-function shapeViolation(r: any, lang: Lang) {
-  return {
-    ...r,
-    // Stored reason (Russian) → the reader's language when the row carries it as data (details.msg).
-    message: violationMessage(r.message, r.details, lang),
-    costNet: r.costNet == null ? null : Number(r.costNet),
-    tradeR: r.tradeR == null ? null : Number(r.tradeR),
-    tradePnl: r.tradePnl == null ? null : Number(r.tradePnl),
-    tradeNetPnl: r.tradeNetPnl == null ? null : Number(r.tradeNetPnl),
-    ruleOrigin: r.ruleDesk ? "office" : r.ruleOrigin ?? "personal",
-    ruleDesk: !!r.ruleDesk,
-    status: r.resolvedAt ? "resolved" : r.acknowledgedAt ? "acknowledged" : "open",
-    archived: r.archivedAt != null,
-    archivedReason: isArchiveReason(r.archivedReason) ? r.archivedReason : r.archivedAt != null ? "stale" : null,
-    ruleEnabled: r.ruleEnabled !== false,
-    ruleDeleted: !!r.ruleDeleted,
-  };
-}
 
 /**
  * GET /rule-violations?trader&status&from&to&tradeId&tradeIds&ruleId&limit&offset&paged

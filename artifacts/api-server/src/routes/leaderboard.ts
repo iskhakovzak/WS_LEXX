@@ -2,7 +2,7 @@
 //
 //   GET /leaderboard?period=week|month|quarter|all|days&days=N&from&to&metric&minTrades&format=desk
 //
-// One source of numbers: ../lib/tradeMath (signed R, net $, W/(W+L), PF = ΣR⁺/|ΣR⁻|) on the New York
+// One source of numbers: ../lib/tradeMath (signed R, net $, W/(W+L), PF = ΣR⁺/|ΣR⁻|, in $ without R) on the New York
 // trading calendar (../lib/tradingDate), by close date. Staff see the whole desk; a trader gets only
 // their own row (no place, no one else's numbers).
 //
@@ -14,6 +14,7 @@ import { signedRSql, netPnlSql, closeDateSql, closedSql, resultSql } from "../li
 import { nyDate, addDays } from "../lib/tradingDate";
 import { scopeTrader } from "../lib/auth";
 import { unauthorized } from "../lib/http";
+import { DEFAULT_TIERS } from "../lib/scalingSeed";
 
 const router: IRouter = Router();
 
@@ -79,10 +80,10 @@ export function resolveWindow(q: { period?: unknown; days?: unknown; from?: unkn
 /** Weights of the desk score — the one place to tune the ranking. */
 export const SCORE_WEIGHTS = {
   expectancy: 0.25,   // mean signed R per closed trade
-  profitFactor: 0.15, // ΣR⁺ / |ΣR⁻|
-  net: 0.15,          // net $ vs the trader's loss limits (excluded when no $ or no limits)
+  profitFactor: 0.15, // ΣR⁺ / |ΣR⁻|; without R: Σnet⁺ / |Σnet⁻| ($)
+  net: 0.15,          // net $ vs the trader's loss limits (desk default limits when the trader has none)
   consistency: 0.20,  // % green trading days
-  drawdown: 0.15,     // max drawdown vs limit (or vs 10R without $)
+  drawdown: 0.15,     // max $ drawdown vs the drawdown limit (desk default when none); 10R only when R is known
   discipline: 0.10,   // rule violations per week
 } as const;
 export type ScorePart = keyof typeof SCORE_WEIGHTS;
@@ -97,6 +98,10 @@ export type ScoreInput = {
   greenDays: number;
   maxDrawdownNet: number | null;
   maxDrawdownR: number;
+  /** Profit factor in $ (aggregate profitFactorUsd) — used when PF in R is unknown. */
+  profitFactorUsd?: number | null;
+  /** Trades with a known R; 0 → maxDrawdownR (always 0 then) is not a measurement. */
+  rCount?: number;
   violations: number;
   /** Window length in calendar days (violations are normalised per week). */
   windowDays: number;
@@ -105,19 +110,41 @@ export type ScoreInput = {
   accountSize: number | null;
 };
 
+/**
+ * Desk default limits for a trader without trader_risk_limits: the ladder seed of the trader's tier (lib/scalingSeed),
+ * else DEFAULT_LIMITS_TIER. Audit 2026-10-20 (team P1): without limits the drawdown part fell back to «1.0 for free».
+ */
+export const DEFAULT_LIMITS_TIER = "junior";
+export function deskDefaultLimits(tier: string | null): { dailyLossLimit: number; maxDrawdown: number; accountSize: number } {
+  const t = DEFAULT_TIERS.find((x) => x.key === tier) ?? DEFAULT_TIERS.find((x) => x.key === DEFAULT_LIMITS_TIER)!;
+  return { dailyLossLimit: t.dailyLossLimit ?? 300, maxDrawdown: t.maxDrawdown ?? 2_000, accountSize: t.accountSize ?? 25_000 };
+}
+
+/**
+ * Profit factor in $: Σ winning net / |Σ losing net|. With wins and no loss yet it is the number of winning trades
+ * (as if one average win were still to be lost) — one lucky trade is PF 1, not «infinite». null without $ wins/losses.
+ */
+export function profitFactorUsd(winNet: number, lossNet: number, winTrades: number): number | null {
+  if (lossNet < 0) return round(winNet / Math.abs(lossNet));
+  if (winNet > 0 && winTrades > 0) return winTrades;
+  return null;
+}
+
 /** Each component in [0,1] (null = not measurable → excluded and weights renormalised). */
 export function scoreParts(i: ScoreInput): Record<ScorePart, number | null> {
   const lossUnit = i.dailyLossLimit ?? (i.accountSize != null ? i.accountSize * 0.02 : null);
   const ddLimit = i.maxDrawdownLimit ?? (lossUnit != null ? lossUnit * 3 : null);
   const expectancy = i.expectancyR == null ? null : clamp01((i.expectancyR + 0.5) / 1.0);
-  const profitFactor =
-    i.profitFactorR == null ? (i.closed > 0 ? (i.wins > 0 ? 1 : 0.5) : null) : clamp01((i.profitFactorR - 0.5) / 1.5);
+  // PF in R when known, else in $ — never a free 1.0 for «some win, no R» (audit 2026-10-20: chert 81 > Закир 79).
+  const pf = i.profitFactorR ?? i.profitFactorUsd ?? null;
+  const profitFactor = pf == null ? null : clamp01((pf - 0.5) / 1.5);
   const net = i.net == null || lossUnit == null || lossUnit <= 0 ? null : clamp01(0.5 + i.net / (4 * lossUnit));
   const consistency = i.tradingDays > 0 ? clamp01(i.greenDays / i.tradingDays) : null;
+  const rKnown = (i.rCount ?? 0) > 0;
   const drawdown =
     i.maxDrawdownNet != null && ddLimit != null && ddLimit > 0
       ? 1 - clamp01(Math.abs(i.maxDrawdownNet) / ddLimit)
-      : i.closed > 0 ? 1 - clamp01(Math.abs(i.maxDrawdownR) / 10) : null;
+      : i.closed > 0 && rKnown ? 1 - clamp01(Math.abs(i.maxDrawdownR) / 10) : null;
   const weeks = Math.max(1, i.windowDays / 7);
   // No closed trades and no violations ⇒ nothing to judge (otherwise an idle trader scores 100).
   const discipline = i.closed > 0 || i.violations > 0 ? 1 - clamp01(i.violations / weeks / 3) : null;
@@ -159,7 +186,7 @@ function maxDrawdown(values: number[]): number {
 function aggregate(rows: Row[]) {
   // rows sorted by day ASC, id ASC
   let wins = 0, losses = 0, bes = 0;
-  let net = 0, gross = 0, pnlCount = 0, rSum = 0, rCount = 0, rPos = 0, rNeg = 0;
+  let net = 0, gross = 0, pnlCount = 0, rSum = 0, rCount = 0, rPos = 0, rNeg = 0, winNet = 0, lossNet = 0, winTrades = 0;
   let best = -Infinity, worst = Infinity, bestR = -Infinity, worstR = Infinity;
   let cur = 0, bestStreak = 0, worstStreak = 0, last: string = "";
   const netByDay = new Map<string, number>();
@@ -174,6 +201,7 @@ function aggregate(rows: Row[]) {
     if (t.result === "win") wins++; else if (t.result === "loss") losses++; else bes++;
     if (t.net != null) {
       net += t.net; gross += t.gross ?? 0; pnlCount++;
+      if (t.net > 0) { winNet += t.net; winTrades++; } else if (t.net < 0) lossNet += t.net;
       best = Math.max(best, t.net); worst = Math.min(worst, t.net);
       netByDay.set(t.day, (netByDay.get(t.day) ?? 0) + t.net);
       netSeries.push(t.net);
@@ -211,6 +239,8 @@ function aggregate(rows: Row[]) {
     rCount,
     expectancyR: rCount > 0 ? round(rSum / rCount) : null,
     profitFactorR: rNeg < 0 ? round(rPos / Math.abs(rNeg)) : null,
+    /** Σ winning net / |Σ losing net| ($), see profitFactorUsd. */
+    profitFactorUsd: profitFactorUsd(winNet, lossNet, winTrades),
     bestR: rCount > 0 ? round(bestR) : null, worstR: rCount > 0 ? round(worstR) : null,
     bestTrade: pnlCount > 0 ? round(best) : 0, worstTrade: pnlCount > 0 ? round(worst) : 0,
     tradingDays: days.length,
@@ -297,11 +327,14 @@ router.get("/leaderboard", asyncHandler(async (req, res): Promise<void> => {
     const a = aggregate(cur.get(trader) ?? []);
     const L = limitsBy.get(trader) ?? { tier: null, accountSize: null, dailyLossLimit: null, maxDrawdown: null };
     const v = violBy.get(trader) ?? { cur: 0, prev: 0 };
+    // No own limits → the desk default of the trader's tier for the score (the row still shows the trader's own: null).
+    const noLimits = L.dailyLossLimit == null && L.maxDrawdown == null && L.accountSize == null;
+    const SL = noLimits ? deskDefaultLimits(L.tier) : { dailyLossLimit: L.dailyLossLimit, maxDrawdown: L.maxDrawdown, accountSize: L.accountSize };
     const scoreOf = (x: ReturnType<typeof aggregate>, violations: number, days: number) =>
       deskScore({
-        closed: x.closed, wins: x.wins, expectancyR: x.expectancyR, profitFactorR: x.profitFactorR, net: x.net,
-        tradingDays: x.tradingDays, greenDays: x.greenDays, maxDrawdownNet: x.maxDrawdownNet, maxDrawdownR: x.maxDrawdownR,
-        violations, windowDays: days, dailyLossLimit: L.dailyLossLimit, maxDrawdownLimit: L.maxDrawdown, accountSize: L.accountSize,
+        closed: x.closed, wins: x.wins, expectancyR: x.expectancyR, profitFactorR: x.profitFactorR, profitFactorUsd: x.profitFactorUsd,
+        net: x.net, tradingDays: x.tradingDays, greenDays: x.greenDays, maxDrawdownNet: x.maxDrawdownNet, maxDrawdownR: x.maxDrawdownR,
+        rCount: x.rCount, violations, windowDays: days, dailyLossLimit: SL.dailyLossLimit, maxDrawdownLimit: SL.maxDrawdown, accountSize: SL.accountSize,
       });
     const s = scoreOf(a, v.cur, windowDays);
     const p = prev.get(trader);
@@ -341,7 +374,7 @@ router.get("/leaderboard", asyncHandler(async (req, res): Promise<void> => {
       case "net": return e.net ?? Number.NEGATIVE_INFINITY;
       case "r": return e.totalR ?? Number.NEGATIVE_INFINITY;
       case "expectancy": return e.expectancyR ?? Number.NEGATIVE_INFINITY;
-      case "pf": return e.profitFactorR ?? (e.wins > 0 && e.losses === 0 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY);
+      case "pf": return e.profitFactorR ?? e.profitFactorUsd ?? Number.NEGATIVE_INFINITY;
       case "consistency": return e.consistency ?? Number.NEGATIVE_INFINITY;
       case "drawdown": return e.maxDrawdownNet ?? e.maxDrawdownR; // less negative = better
       case "winrate": return e.winRate ?? Number.NEGATIVE_INFINITY;

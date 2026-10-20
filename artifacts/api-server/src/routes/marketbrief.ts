@@ -6,23 +6,26 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { getSectorStrength, SECTOR_ETFS } from "../lib/marketDataService";
-import { nyDate } from "../lib/tradingDate";
 import { langOf, type Lang } from "../i18n";
 import { marketbriefT } from "../i18n/ns";
 import { aiLanguageName } from "../i18n/ai";
 import { localizeCalendarRow } from "../lib/calendarText";
+import {
+  EMPTY_CHART, EMPTY_QUOTE, fetchBatchQuotes, futuresPremarketPct, gapOf, watchPremarket, type ChartQuote,
+} from "../lib/marketbrief/quotes";
+
+export { futuresPremarketPct, gapOf, quoteFromChart, type ChartQuote } from "../lib/marketbrief/quotes";
 
 const router: IRouter = Router();
 
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-const YAHOO_HEADERS = { "User-Agent": UA, "Accept": "application/json", "Accept-Language": "en-US,en;q=0.9" };
 const FUTURES = [
-  // indexSymbol  → used for Friday session changePct (may be composite index for correct %)
-  // pmIndexSymbol → used for premarket deviation % (must match futures price scale)
-  { symbol: "ES=F",  name: "S&P 500",    indexSymbol: "^GSPC", pmIndexSymbol: "^GSPC" },
-  { symbol: "NQ=F",  name: "Nasdaq 100", indexSymbol: "^IXIC", pmIndexSymbol: "^NDX"  },
-  { symbol: "YM=F",  name: "Dow",        indexSymbol: "^DJI",  pmIndexSymbol: "^DJI"  },
-  { symbol: "RTY=F", name: "Russell",    indexSymbol: "^RUT",  pmIndexSymbol: "^RUT"  },
+  // indexSymbol → the cash index: the last regular session's change (changePct).
+  // The premarket % is the contract against ITS OWN previous close (futuresPremarketPct), never against the cash index:
+  // a future trades above the index by the basis (fair value, ~0.5 %), which read as «futures up» on a flat morning.
+  { symbol: "ES=F",  name: "S&P 500",    indexSymbol: "^GSPC" },
+  { symbol: "NQ=F",  name: "Nasdaq 100", indexSymbol: "^IXIC" },
+  { symbol: "YM=F",  name: "Dow",        indexSymbol: "^DJI"  },
+  { symbol: "RTY=F", name: "Russell",    indexSymbol: "^RUT"  },
 ];
 
 const OVERNIGHT_INDICES = [
@@ -48,96 +51,6 @@ const MACRO_TICKERS = [
 const AI_MODEL = "claude-sonnet-4-6";
 const AI_TIMEOUT_MS = 25_000;
 
-type QuoteSnapshot = {
-  price: number | null;
-  changePct: number | null;
-  prevClose: number | null;
-  preMarketPrice: number | null;
-  preMarketChangePct: number | null;
-  postMarketPrice: number | null;
-  postMarketChangePct: number | null;
-};
-
-const EMPTY_QUOTE: QuoteSnapshot = { price: null, changePct: null, prevClose: null, preMarketPrice: null, preMarketChangePct: null, postMarketPrice: null, postMarketChangePct: null };
-
-type YahooV8Meta = {
-  regularMarketPrice?: number;
-  chartPreviousClose?: number;
-  previousClose?: number;
-  preMarketPrice?: number;
-  preMarketChangePercent?: number;
-  postMarketPrice?: number;
-  postMarketChangePercent?: number;
-};
-type YahooV8Result = {
-  meta?: YahooV8Meta;
-  timestamp?: number[];
-  indicators?: { quote?: Array<{ close?: (number | null)[] }> };
-};
-type YahooV8Response = { chart?: { result?: YahooV8Result[] } };
-
-async function fetchYahooQuote(symbol: string): Promise<QuoteSnapshot> {
-  try {
-    // range=5d gives enough history so chartPreviousClose / closes array reliably
-    // reflects the last completed trading SESSION, not a stale or partial reference.
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
-    const resp = await fetch(url, { headers: YAHOO_HEADERS, signal: AbortSignal.timeout(10_000) });
-    if (!resp.ok) return { ...EMPTY_QUOTE };
-    const data = (await resp.json()) as YahooV8Response;
-    const result = data?.chart?.result?.[0];
-    if (!result) return { ...EMPTY_QUOTE };
-    const meta = result.meta ?? {};
-    const price = meta.regularMarketPrice ?? null;
-
-    // Build validated closes list from OHLC bars
-    const rawCloses = result.indicators?.quote?.[0]?.close ?? [];
-    const timestamps = result.timestamp ?? [];
-    const closes: number[] = [];
-    for (let i = 0; i < rawCloses.length; i++) {
-      const c = rawCloses[i];
-      if (c != null && isFinite(c)) closes.push(c);
-    }
-
-    // Determine prevClose:
-    // If the most recent bar's timestamp is TODAY (in progress), use closes[-2] as the last
-    // completed session close; otherwise closes[-1] is the last completed close.
-    let prevClose: number | null = null;
-    if (closes.length >= 2) {
-      const lastTs = timestamps[timestamps.length - 1];
-      // session dates in New York (audit P1-12): UTC flips to "tomorrow" at 20:00 ET
-      const todayDateStr = nyDate();
-      const lastBarDateStr = lastTs ? nyDate(new Date(lastTs * 1000)) : null;
-      const lastBarIsToday = lastBarDateStr === todayDateStr;
-      if (lastBarIsToday) {
-        // Partial bar (futures/crypto trading today): use closes[-2] = last completed session
-        prevClose = closes[closes.length - 2];
-      } else {
-        // Closed market (cash index, premarket): closes[-1] = last session, closes[-2] = prev session
-        prevClose = closes[closes.length - 2];
-      }
-    }
-    prevClose = prevClose ?? meta.chartPreviousClose ?? meta.previousClose ?? null;
-
-    const changePct = price != null && prevClose ? +(((price - prevClose) / prevClose) * 100).toFixed(3) : null;
-    const preMarketPrice = meta.preMarketPrice ?? null;
-    const preMarketChangePct = preMarketPrice != null && prevClose
-      ? +(((preMarketPrice - prevClose) / prevClose) * 100).toFixed(3)
-      : (meta.preMarketChangePercent != null ? +meta.preMarketChangePercent.toFixed(3) : null);
-    const postMarketPrice = meta.postMarketPrice ?? null;
-    const postMarketChangePct = postMarketPrice != null && price
-      ? +(((postMarketPrice - price) / price) * 100).toFixed(3)
-      : (meta.postMarketChangePercent != null ? +meta.postMarketChangePercent.toFixed(3) : null);
-    return { price, changePct, prevClose, preMarketPrice, preMarketChangePct, postMarketPrice, postMarketChangePct };
-  } catch {
-    return { ...EMPTY_QUOTE };
-  }
-}
-
-async function fetchBatchQuotes(symbols: string[]): Promise<Record<string, QuoteSnapshot>> {
-  const entries = await Promise.all(symbols.map(async (s) => [s, await fetchYahooQuote(s)] as const));
-  return Object.fromEntries(entries);
-}
-
 /** Live quotes part of the brief (futures, overnight, macro, watchlist movers). No AI, no DB writes. */
 async function buildQuotes() {
   // Fetch watchlist tickers from DB first so we can batch all symbols together
@@ -148,42 +61,30 @@ async function buildQuotes() {
   const watchTickers = watchRows.map((r: any) => r.ticker as string).slice(0, 12);
 
   // Single batch call for all symbols (futures + their underlying indices)
-  const futuresIndexSymbols = [
-    ...new Set([
-      ...FUTURES.map((f) => f.indexSymbol),
-      ...FUTURES.map((f) => f.pmIndexSymbol),
-    ]),
-  ];
   const allSymbols = [
     ...FUTURES.map((f) => f.symbol),
-    ...futuresIndexSymbols,
+    ...new Set(FUTURES.map((f) => f.indexSymbol)),
     ...OVERNIGHT_INDICES.map((i) => i.symbol),
     ...MACRO_TICKERS.map((m) => m.symbol),
     ...watchTickers,
   ];
-  const quotes = await fetchBatchQuotes(allSymbols);
+  // Premarket prints of the watchlist come from the shared quote layer of /themes (Yahoo v7 through tickerCache): the
+  // v8 chart carries none. Best effort: a slow provider leaves them null.
+  const [quotes, pmOf] = await Promise.all([fetchBatchQuotes(allSymbols), watchPremarket(watchTickers)]);
 
-  // For futures: use the underlying INDEX's changePct (last completed session = Friday's move)
-  // and preMarketChangePct = deviation of futures price from the price-scale-matched index close.
-  // This gives traders the Friday context (-2.64%) AND today's premarket indication (+0.46%).
+  // Futures: the cash index's last session move (changePct) and the contract against its own previous close
+  // (preMarketChangePct). Audit 2026-10-20: ES vs SPX showed the basis (+0.6 %) as a premarket move.
   const futures = FUTURES.map((f) => {
-    const q = quotes[f.symbol] ?? { ...EMPTY_QUOTE };            // futures contract
-    const idx = quotes[f.indexSymbol] ?? { ...EMPTY_QUOTE };     // index for session changePct
-    const pmIdx = quotes[f.pmIndexSymbol] ?? idx;                // price-scale-matched index for pmPct
-    const futuresPrice = q.price;
-    const pmIndexLastClose = pmIdx.price;  // last session close at same price scale as futures
-    const sessionChangePct = idx.changePct;  // Friday session % from composite/cash index
-    const preMarketChangePct = futuresPrice != null && pmIndexLastClose != null && pmIndexLastClose !== 0
-      ? +(((futuresPrice - pmIndexLastClose) / pmIndexLastClose) * 100).toFixed(3)
-      : null;
+    const q = quotes[f.symbol] ?? { ...EMPTY_CHART };            // futures contract
+    const idx = quotes[f.indexSymbol] ?? { ...EMPTY_CHART };     // cash index for the session changePct
     return {
       symbol: f.symbol,
       name: f.name,
-      price: futuresPrice,
-      changePct: sessionChangePct,
+      price: q.price,
+      changePct: idx.changePct,
       prevClose: idx.prevClose,
-      preMarketPrice: futuresPrice,
-      preMarketChangePct,
+      preMarketPrice: q.price,
+      preMarketChangePct: futuresPremarketPct(q),
       postMarketPrice: q.postMarketPrice,
       postMarketChangePct: q.postMarketChangePct,
     };
@@ -199,20 +100,30 @@ async function buildQuotes() {
     return { symbol: m.symbol, name: m.name, kind: m.kind, price: q.price, changePct: q.changePct };
   });
 
-  const gapData: Record<string, QuoteSnapshot> = {};
-  watchTickers.forEach((t: string) => { gapData[t] = quotes[t] ?? { ...EMPTY_QUOTE }; });
+  const gapData: Record<string, ChartQuote> = {};
+  watchTickers.forEach((t: string) => {
+    const q = quotes[t] ?? { ...EMPTY_CHART };
+    const pm = q.preMarketChangePct ?? pmOf.get(t.toUpperCase()) ?? null;
+    const pmPrice = q.preMarketPrice ?? (pm != null && q.lastClose ? +(q.lastClose * (1 + pm / 100)).toFixed(4) : null);
+    gapData[t] = { ...q, preMarketChangePct: pm, preMarketPrice: pmPrice };
+  });
 
+  // Gap = today's open (before the open: the premarket print) vs the previous close, not the day change
+  // (audit 2026-10-20: MSTR «gap» +6.85 % in the brief vs -1.66 % in the watchlist).
   const gapLeaders = watchRows
-    .map((r: any) => ({ ...r, gap: gapData[r.ticker] }))
-    .filter((r: any) => r.gap?.changePct != null && Math.abs(r.gap.changePct as number) > 1)
-    .sort((a: any, b: any) => Math.abs(b.gap.changePct as number) - Math.abs(a.gap.changePct as number))
+    .map((r: any) => {
+      const q = gapData[r.ticker];
+      return { ...r, q, gapPct: q ? gapOf(q, q.preMarketChangePct) : null };
+    })
+    .filter((r: any) => r.gapPct != null && Math.abs(r.gapPct as number) > 1)
+    .sort((a: any, b: any) => Math.abs(b.gapPct as number) - Math.abs(a.gapPct as number))
     .slice(0, 8)
     .map((r: any) => ({
       ticker: r.ticker,
       catalyst: r.catalyst,
       sector: r.sector,
-      gapPct: r.gap.changePct,
-      price: r.gap.price,
+      gapPct: r.gapPct,
+      price: r.q.open ?? r.q.preMarketPrice ?? r.q.price,
     }));
 
   // Premarket movers: ranked by abs(preMarketChangePct) when available
@@ -227,7 +138,7 @@ async function buildQuotes() {
       sector: r.sector,
       preMarketPct: r.gap.preMarketChangePct,
       preMarketPrice: r.gap.preMarketPrice,
-      prevClose: r.gap.prevClose,
+      prevClose: r.gap.lastClose ?? r.gap.prevClose,
     }));
 
   return { futures, overnight, macro, premarketMovers, gapLeaders };

@@ -5,7 +5,9 @@
  *   TTL       30 s while the market is open (rth), 5 min otherwise (pre / post still move, slower)
  *   quote     today      = price / previous close − 1         (%; pre: the premarket print vs yesterday's close)
  *             fromOpen   = price / today's open − 1           (%; null before 09:30 NY — there is no open yet)
- *             premarket  = last premarket print / previous close − 1 (live 04:00–09:30, then frozen for the day)
+ *             premarket  = last premarket print / previous close − 1 (live 04:00–09:30, then frozen for the day: the
+ *                          providers stop sending it after the open, so the last print of the day is held —
+ *                          holdPremarket, kept per process by quotes.ts for both the Finviz and the Yahoo path)
  *             afterHours = after-hours print / the session's regular close − 1 (null while the market is open)
  *             Both belong to the session the page describes: today in pre / rth / post, the last regular session when
  *             closed (night, weekend) — a print of another day is never shown as this session's.
@@ -226,6 +228,32 @@ export function extrasFromYahoo(q: YahooQuoteLike, session: ThemeSession, today:
   const vol = finite(q.regularMarketVolume) ? q.regularMarketVolume : null;
   const avg = finite(q.averageDailyVolume3Month) && q.averageDailyVolume3Month > 0 ? q.averageDailyVolume3Month : null;
   return { gap: round2(pctChange(open, prev)), rvol: vol != null && avg != null ? round2(vol / avg) : null, float: null };
+}
+
+// ─── premarket of the day ──────────────────────────────────────────────────
+
+/** The last premarket move seen per ticker and the NY day it belongs to (percent units). */
+export type PremarketHold = Map<string, { day: string; pct: number }>;
+export const PREMARKET_HOLD_MAX = 10_000;
+
+/**
+ * Keeps the premarket column filled for the whole day (in place): a quote with a premarket move updates the hold for
+ * `today`; a quote without one (after 09:30 NY Yahoo stops sending premarket fields, Finviz never has them) gets the
+ * value held for `today`. A print of another day is never shown (weekend / next morning start empty). Entries of
+ * older days are dropped; the hold is bounded by PREMARKET_HOLD_MAX.
+ */
+export function holdPremarket(quotes: Map<string, MemberQuote>, hold: PremarketHold, today: string): void {
+  for (const [t, h] of hold) if (h.day !== today) hold.delete(t);
+  for (const [t, q] of quotes) {
+    if (q.premarket != null) {
+      hold.delete(t);
+      hold.set(t, { day: today, pct: q.premarket });
+      continue;
+    }
+    const h = hold.get(t);
+    if (h && h.day === today) quotes.set(t, { ...q, premarket: h.pct });
+  }
+  while (hold.size > PREMARKET_HOLD_MAX) hold.delete(hold.keys().next().value!);
 }
 
 // ─── aggregation ────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { fetchTickers, setFinvizClientDeps } from "../../finviz/client";
 import type { MemberQuote, YahooQuoteLike } from "../../themes/logic";
-import { fetchThemeQuotes, YAHOO_BATCH, type QuoteDeps } from "../../themes/quotes";
+import { _resetPremarketHold, fetchThemeQuotes, YAHOO_BATCH, type QuoteDeps } from "../../themes/quotes";
 import { FAIL_BACKOFF_MS, getThemes, setThemeServiceDeps } from "../../themes/service";
 
 const TODAY = "2026-10-20";
@@ -25,7 +25,7 @@ const noFinviz: Pick<QuoteDeps, "finvizOn" | "finviz"> = {
 
 describe("fetchThemeQuotes", () => {
   let restoreFinviz: (() => void) | null = null;
-  afterEach(() => { restoreFinviz?.(); restoreFinviz = null; });
+  afterEach(() => { restoreFinviz?.(); restoreFinviz = null; _resetPremarketHold(); });
 
   it("Yahoo when Finviz is off: batches of ≤ 50 symbols, rows → moves", async () => {
     const tickers = Array.from({ length: 120 }, (_, i) => `T${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(65 + Math.floor(i / 26))}`);
@@ -108,6 +108,41 @@ describe("fetchThemeQuotes", () => {
     });
     expect(res.source).toBe("yahoo");
     expect(res.quotes.get("MU")!.today).toBe(100);
+  });
+});
+
+describe("premarket of the day is held after 09:30 (audit 2026-10-20: 0 of 358 tickers had it at 11:08 NY)", () => {
+  afterEach(() => { _resetPremarketHold(); });
+  /** 2026-10-20 08:00 NY — premarket. */
+  const PRE_8 = Date.UTC(2026, 9, 20, 12, 0);
+  const preRow = (s: string): YahooQuoteLike => ({
+    symbol: s, regularMarketPrice: 100, regularMarketPreviousClose: 99, regularMarketTime: sec(Date.UTC(2026, 9, 19, 20, 0)),
+    preMarketPrice: 101.5, preMarketTime: sec(PRE_8),
+  });
+  // After the open Yahoo sends no premarket fields at all.
+  const rthRow = (s: string): YahooQuoteLike => yahooRow(s, 103, 100, 102);
+
+  it("Yahoo path: the 08:00 print (+1,5 %) is still answered at 11:00; another day starts empty", async () => {
+    const pre = await fetchThemeQuotes(["MU"], "pre", TODAY, { ...noFinviz, yahooBatch: async (s) => s.map(preRow) });
+    expect(pre.quotes.get("MU")!.premarket).toBe(1.5);
+    const rth = await fetchThemeQuotes(["MU"], "rth", TODAY, { ...noFinviz, yahooBatch: async (s) => s.map(rthRow) });
+    expect(rth.quotes.get("MU")).toMatchObject({ today: 3, premarket: 1.5 });
+    const post = await fetchThemeQuotes(["MU"], "post", TODAY, { ...noFinviz, yahooBatch: async (s) => s.map(rthRow) });
+    expect(post.quotes.get("MU")!.premarket).toBe(1.5);
+    const next = await fetchThemeQuotes(["MU"], "rth", "2026-10-21", { ...noFinviz, yahooBatch: async (s) => s.map(rthRow) });
+    expect(next.quotes.get("MU")!.premarket).toBeNull();
+  });
+
+  it("Finviz path: premarket filled from the Yahoo extended fetch before the open, held after it", async () => {
+    const finviz = async () => ({ rows: [{ ticker: "MU", price: 103, changePct: 3, gapPct: 2 }], errors: [] });
+    const pre = await fetchThemeQuotes(["MU"], "pre", TODAY, { finvizOn: () => true, finviz, yahooBatch: async (s) => s.map(preRow) });
+    expect(pre.source).toBe("finviz");
+    expect(pre.quotes.get("MU")!.premarket).toBe(1.5);
+    const rth = await fetchThemeQuotes(["MU"], "rth", TODAY, { finvizOn: () => true, finviz, yahooBatch: async (s) => s.map(rthRow) });
+    expect(rth.quotes.get("MU")).toMatchObject({ today: 3, premarket: 1.5 });
+    // Yahoo down after the open: still held.
+    const down = await fetchThemeQuotes(["MU"], "rth", TODAY, { finvizOn: () => true, finviz, yahooBatch: async () => null });
+    expect(down.quotes.get("MU")!.premarket).toBe(1.5);
   });
 });
 
