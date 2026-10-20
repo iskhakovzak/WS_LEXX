@@ -70,7 +70,7 @@ function Row({ theme, metric, scale, open, onToggle }: { theme: ThemeOut; metric
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-label={t("rowAria", { name: theme.name, value: fmtPct(v) })}
-        className="press grid w-full grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_4.25rem] items-center gap-3 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_4.5rem]"
+        className="press grid w-full grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)_4rem] items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[minmax(0,9rem)_minmax(0,1fr)_4.25rem]"
       >
         <span className="flex min-w-0 items-center gap-1">
           <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} aria-hidden="true" />

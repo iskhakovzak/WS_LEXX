@@ -36,9 +36,9 @@ export default function ThemesPage() {
   let body: ReactNode;
   if (q.isPending) {
     body = (
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-2">
+      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2">
         <PanelSkeleton height={520} />
-        <PanelSkeleton height={520} className="hidden md:flex" />
+        <PanelSkeleton height={520} className="hidden lg:flex" />
       </div>
     );
   } else if (!data) {
@@ -51,15 +51,15 @@ export default function ThemesPage() {
     body = (
       <>
         <Segmented
-          className="self-start md:hidden"
+          className="self-start lg:hidden"
           ariaLabel={t("viewAria")}
           value={view}
           onChange={setView}
           options={METRICS.map((m) => ({ value: m, label: t(`panels.${m}`) }))}
         />
-        <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-2">
+        <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-2">
           {METRICS.map((m) => (
-            <ThemePanel key={m} metric={m} themes={data.themes} session={data.session} className={cn(m !== view && "hidden md:block")} />
+            <ThemePanel key={m} metric={m} themes={data.themes} session={data.session} className={cn(m !== view && "hidden lg:block")} />
           ))}
         </div>
       </>
