@@ -176,19 +176,23 @@ async function safe<T>(label: string, fn: () => Promise<T>, fallback: T): Promis
   try { return await fn(); } catch (err) { logger.warn({ err, label }, "watchlist list: stats failed"); return fallback; }
 }
 
-/** Cross-links of the list (best effort, never fails it): ideas (desk), the viewer's own trades, open positions. */
-export async function tickerStats(tickers: readonly string[], trader: string | null): Promise<TickerStats> {
+/**
+ * Cross-links of the list (best effort, never fails it): ideas (desk), the viewer's own trades, open positions — the
+ * desk's for staff (`deskOpen`), else only the viewer's own (own trades only, owner rule 2026-10-21).
+ */
+export async function tickerStats(tickers: readonly string[], trader: string | null, deskOpen = false): Promise<TickerStats> {
   const out: TickerStats = { ideas: new Map(), trades: new Map(), open: new Map() };
   if (!tickers.length) return out;
   await Promise.all([
-    safe("open", async () => {
+    deskOpen || trader ? safe("open", async () => {
       const { rows } = await pool.query<{ t: string; c: string; traders: string[] | null; ids: number[] | null }>(
         `SELECT UPPER(ticker) AS t, COUNT(*) AS c, ARRAY_REMOVE(ARRAY_AGG(DISTINCT trader), NULL) AS traders, ARRAY_AGG(id ORDER BY id DESC) AS ids
-           FROM trades WHERE deleted_at IS NULL AND LOWER(TRIM(result)) = 'open' AND UPPER(ticker) = ANY($1::text[]) GROUP BY UPPER(ticker)`,
-        [tickers],
+           FROM trades WHERE deleted_at IS NULL AND LOWER(TRIM(result)) = 'open' AND UPPER(ticker) = ANY($1::text[])
+            AND ($2::text IS NULL OR trader = $2) GROUP BY UPPER(ticker)`,
+        [tickers, deskOpen ? null : trader],
       );
       for (const r of rows) out.open.set(r.t, { count: Number(r.c) || 0, traders: r.traders ?? [], ids: (r.ids ?? []).slice(0, 5) });
-    }, undefined),
+    }, undefined) : Promise.resolve(),
     safe("ideas", async () => {
       const { rows } = await pool.query<{ t: string; c: string; last: Date | null }>(
         `SELECT UPPER(ticker) AS t, COUNT(*) AS c, MAX(created_at) AS last

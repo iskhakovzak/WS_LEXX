@@ -24,6 +24,7 @@ import {
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 import { langOf, localeTagFor } from "../i18n";
 import { feedT } from "../i18n/ns";
+import { loadMoneyViewer } from "../lib/playbookAccess";
 
 /**
  * Daily feed ("Дейли-фид") — the desk's briefing per trading date.
@@ -43,6 +44,7 @@ import { feedT } from "../i18n/ns";
 const router: IRouter = Router();
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const EOD_TAG = "eod";
 const ACK_KINDS = ["read", "ack", "trading_this"] as const;
 type AckKind = (typeof ACK_KINDS)[number];
 
@@ -85,10 +87,15 @@ async function acksFor(ids: number[], viewer: string | null): Promise<Map<number
   return out;
 }
 
-function serializeFeed(r: FeedRow, acks?: AckSummary) {
+/**
+ * `staff` false: the EOD recap's notes (one line per trader with W/L and $, the carried positions) are dropped — a
+ * member sees only own results (owner rule 2026-10-21); the desk totals in the theme / setups / tickers stay.
+ */
+function serializeFeed(r: FeedRow, acks?: AckSummary, staff = true) {
+  const eod = (r.tags ?? "").split(",").some((t) => t.trim().toLowerCase() === EOD_TAG);
   const base = {
     id: r.id, date: r.date, whatWorksNow: r.what_works_now, whatDoesntWork: r.what_doesnt_work, bestTickers: r.best_tickers,
-    marketTheme: r.market_theme, notes: r.notes, tags: r.tags, screenshotUrl: r.screenshot_url, screenshotNotes: r.screenshot_notes,
+    marketTheme: r.market_theme, notes: eod && !staff ? null : r.notes, tags: r.tags, screenshotUrl: r.screenshot_url, screenshotNotes: r.screenshot_notes,
     createdAt: r.created_at.toISOString(),
   };
   return { ...GetDailyFeedResponse.parse(base), createdBy: r.created_by, acks: acks ?? emptyAcks() };
@@ -134,7 +141,8 @@ router.get("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
     params,
   );
   const acks = await acksFor(rows.map((r) => r.id), req.authUser.name);
-  const items = rows.map((r) => serializeFeed(r, acks.get(r.id)));
+  const { staff } = await loadMoneyViewer(req);
+  const items = rows.map((r) => serializeFeed(r, acks.get(r.id), staff));
   ListDailyFeedResponse.parse(items);
   res.json(items);
 }));
@@ -307,7 +315,6 @@ router.post("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
 
 // ─── EOD recap (staff) ──────────────────────────────────────────────────────
 
-const EOD_TAG = "eod";
 
 type EodTrader = { trader: string; n: number; wins: number; losses: number; be: number; open: number; sumR: number | null; gross: number | null; fees: number | null; net: number | null; synced: boolean };
 
@@ -442,7 +449,7 @@ router.get("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
   const entry = await loadFeed(params.data.id);
   if (!entry) throw notFound("FEED_ENTRY_NOT_FOUND");
   const acks = await acksFor([entry.id], req.authUser.name);
-  res.json(serializeFeed(entry, acks.get(entry.id)));
+  res.json(serializeFeed(entry, acks.get(entry.id), (await loadMoneyViewer(req)).staff));
 }));
 
 const COL: Record<string, string> = {

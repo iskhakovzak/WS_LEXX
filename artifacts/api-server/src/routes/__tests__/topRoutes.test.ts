@@ -98,11 +98,9 @@ describe("GET /top/day/:date", () => {
 
 describe("GET /top/day/:date/trader/:alias", () => {
   const aliases = deskAliases(NAMES, "2026-10-16");
-  it("trader opens another trader's day by alias: tickers and times, no $ (1.22), no name", async () => {
+  it("own trades only (owner rule 2026-10-21): a trader asking for another trader's day by alias gets 404", async () => {
     const r = await get(`/api/top/day/2026-10-16/trader/${aliases.get("Максим Р.")}`);
-    expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ me: false, name: null, net: null, place: 1 });
-    expect(r.json.tickers[0]).toMatchObject({ ticker: "META", side: "long", net: null, firstAt: "2026-10-16T13:45:00.000Z" });
+    expect(r.status).toBe(404);
     noNames(r.text);
     expect(query).toHaveBeenCalledTimes(2); // the grouped rows + the desk roster (lib/deskDayStore)
   });

@@ -19,7 +19,8 @@ import { personName } from "@/i18n";
  * Numbers come from the shared API math (net = gross − |fees|, signed R). */
 
 type EntityTrade =
-  | { id: number; restricted: true }
+  // Another trader's trade (own trades only, owner rule 2026-10-21): ticker / date / setup at most.
+  | { id: number; restricted: true; ticker?: string; date?: string; setup?: string | null }
   | {
       id: number; ticker: string; date: string; exitDate: string | null; closeDate: string; side: string | null; setup: string | null;
       result: string | null; res: string | null; horizon: string | null; entry: number | null; exit: number | null; stop: number | null; qty: number | null;
@@ -76,7 +77,11 @@ export function EntityCard({ thread }: { thread: Thread }) {
     <div className="space-y-1.5" aria-label={tr("entity.aria")}>
       {t && ("restricted" in t && t.restricted ? (
         <div className="flex items-center gap-2 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs text-muted-foreground">
-          <Lock className="h-3.5 w-3.5" aria-hidden="true" />{tr("entity.tradeRestricted", { id: t.id })}
+          <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+          {t.ticker && <span className="font-semibold text-foreground">{t.ticker}</span>}
+          {t.date && <span className="tabular-nums">{t.date}</span>}
+          {t.setup && <span className="truncate">{t.setup}</span>}
+          {tr("entity.tradeRestricted", { id: t.id })}
         </div>
       ) : (
         <Row icon={LineChart} label={tr("entity.trade")} href={links.trade(t.id)}>

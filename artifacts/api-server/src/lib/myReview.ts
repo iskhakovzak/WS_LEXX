@@ -20,6 +20,7 @@ import { focusSettings } from "./daily/engine";
 import { mistakeCosts } from "./daily/service";
 import { pickSuggestedRule, planPrefill, type SuggestedRule } from "./planPrefill";
 import type { MistakeCost } from "./daily/types";
+import { excludeImxSql, imxTotals, type ImxLine } from "./imxSummary";
 
 export const MY_REVIEW_DEFAULT_DAYS = 30;
 export const MY_REVIEW_MIN_DAYS = 7;
@@ -50,6 +51,8 @@ export type MyReview = {
   from: string;
   to: string;
   totals: { trades: number; net: number; r: number | null; winRate: number | null };
+  /** Closed IMX trades of the window (strategy MOC) — «из них IMX»; `excluded` = «Исключить IMX» was on (not in totals). */
+  imx?: ImxLine & { excluded: boolean };
   earn: Record<ReviewDimension, ReviewBucket[]>;
   lose: { patterns: ReviewPattern[] } & Record<ReviewDimension, ReviewBucket[]>;
   /** The one rule for tomorrow; `source` = «plan» (what tomorrow's plan suggests) or «period» (the period's costliest). */
@@ -131,10 +134,11 @@ export function totalsOf(rows: readonly MatrixRow[]): MyReview["totals"] {
   return { trades, net: round2(net), r: rN > 0 ? round2(r) : null, winRate: wins + losses > 0 ? Math.round((wins / (wins + losses)) * 1000) / 1000 : null };
 }
 
-async function matrixRows(trader: string, rows: "setup" | "ticker" | "tod", from: string, to: string): Promise<MatrixRow[]> {
+async function matrixRows(trader: string, rows: "setup" | "ticker" | "tod", from: string, to: string, noImx = false): Promise<MatrixRow[]> {
   // cols = rows → one column «—»; tod in 60-minute buckets (entry hour).
   const q = { rows, cols: rows, from, to, tod: rows === "tod" ? 60 : undefined } as MatrixQuery;
-  const { sql, params } = buildMatrixQuery(q, trader, false);
+  const built = buildMatrixQuery(q, trader, false);
+  const { sql, params } = noImx ? { ...built, sql: excludeImxSql(built.sql) } : built;
   const { rows: out } = await pool.query<MatrixRow>(sql, params);
   return out;
 }
@@ -147,17 +151,19 @@ async function disputedIn(trader: string, from: string, to: string): Promise<Set
 }
 
 /** «Мой разбор» of `trader` over the last `days` NY calendar days up to today. */
-export async function myReview(trader: string, days: number, now = new Date()): Promise<MyReview> {
+export async function myReview(trader: string, days: number, now = new Date(), opts: { excludeImx?: boolean } = {}): Promise<MyReview> {
   const to = nyDate(now);
   const from = addDays(to, -(days - 1));
-  const [setups, tickers, hours, costs] = await Promise.all([
-    matrixRows(trader, "setup", from, to),
-    matrixRows(trader, "ticker", from, to),
-    matrixRows(trader, "tod", from, to),
+  const noImx = opts.excludeImx === true;
+  const [setups, tickers, hours, costs, imx] = await Promise.all([
+    matrixRows(trader, "setup", from, to, noImx),
+    matrixRows(trader, "ticker", from, to, noImx),
+    matrixRows(trader, "tod", from, to, noImx),
     mistakeCosts(trader, from, to).catch((err) => {
       logger.warn({ err: (err as Error)?.message, trader }, "my-review: mistake costs failed");
       return [] as MistakeCost[];
     }),
+    imxTotals(trader, from, to).catch(() => null),
   ]);
   const s = splitTop(bucketsOf(setups, "setup"));
   const t = splitTop(bucketsOf(tickers, "ticker"));
@@ -171,6 +177,7 @@ export async function myReview(trader: string, days: number, now = new Date()): 
   return {
     trader, days, from, to,
     totals: totalsOf(setups),
+    ...(imx ? { imx: { ...imx, excluded: noImx } } : {}),
     earn: { setup: s.earn, ticker: t.earn, hour: h.earn },
     lose: { patterns: topPatterns(costs), setup: s.lose, ticker: t.lose, hour: h.lose },
     rule,

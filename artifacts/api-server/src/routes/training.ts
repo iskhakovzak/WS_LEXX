@@ -5,7 +5,9 @@
  *   GET /api/training/task?…same…&res=1m|5m|any&exclude=t12,d:AAPL:2026-10-14 — one random task (no hints: only
  *       the ticker, day and the finest bars the day has; trader / side / result come after the reveal)
  *   GET /api/training/trades/:id — the trade, its fills and structure for the training chart. Own trades in full;
- *       someone else's (source «desk») with $ / size nulled for non-staff (lib/playbookPrivacy).
+ *       someone else's (source «desk») for staff only.
+ * Own trades only (owner rule 2026-10-21): for a non-staff member the source «desk» reads as «mine» and another
+ * trader's trade is 403 OWN_TRADES_ONLY.
  *
  * Resolution: a day has 1-minute bars when the provider still serves them (≤ 29 days) or they are stored (candle_archive /
  * candles_cache), 5-minute when ≤ 59 days old or stored — otherwise only hourly (lib/candleLimits). Picking tasks by default only from days with
@@ -94,17 +96,23 @@ async function viewerFor(req: Request): Promise<{ name: string | null; staff: bo
   return { ...v, member: canTrainOnTrades(v, isGuestUser(req.authUser)) };
 }
 
-router.get("/training/pool", asyncHandler(async (req: Request, res: Response): Promise<void> => {
+/** Task filters of the request; «desk» is staff-only (a member trains on their own trades). */
+function filtersFor(req: Request, v: { staff: boolean }): TaskFilters {
   const f = parseTaskFilters(req.query as Record<string, unknown>);
+  return f.source === "desk" && !v.staff ? { ...f, source: "mine" } : f;
+}
+
+router.get("/training/pool", asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const v = await viewerFor(req);
+  const f = filtersFor(req, v);
   if (f.source !== "day" && !v.member) { res.json({ source: f.source, counts: resolutionCounts([]), member: false }); return; }
   const list = await loadCandidates(f, v.name);
   res.json({ source: f.source, counts: resolutionCounts(list), member: v.member });
 }));
 
 router.get("/training/task", asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const f = parseTaskFilters(req.query as Record<string, unknown>);
   const v = await viewerFor(req);
+  const f = filtersFor(req, v);
   if (f.source !== "day" && !v.member) throw new AppError("MEMBERS_ONLY");
   const list = await loadCandidates(f, v.name);
   const counts = resolutionCounts(list);
@@ -126,6 +134,7 @@ router.get("/training/trades/:id", asyncHandler(async (req: Request, res: Respon
   const v = await viewerFor(req);
   const own = !!v.name && t.trader === v.name;
   if (!own && !v.member) throw new AppError("MEMBERS_ONLY");
+  if (!own && !v.staff) throw new AppError("OWN_TRADES_ONLY");
   const { rows: execs } = await pool.query(
     `SELECT id, trade_id, kind, price, qty, executed_at, note, sort_order FROM trade_executions WHERE trade_id = $1 ORDER BY sort_order ASC, id ASC`,
     [id],

@@ -20,6 +20,11 @@
  * with ≥ 3 traders on the ticker-day (lib/moneyVisibility canSeeDeskAggregate: a sum over three people does not reveal
  * one of them, even after the viewer subtracts their own result; with two it would).
  *
+ * Own trades only (owner rule 2026-10-21): a trader's answer carries only their own row and trades — other traders'
+ * trades, rows and the «best trade» takeaway of somebody else are dropped (not just their money). What stays is the
+ * desk aggregate over >= 3 traders (office position walk, counts in the takeaways), the way /benchmark keeps a desk
+ * median; with fewer traders the aggregate would reveal the other one, so it is dropped too (ownOnly below).
+ *
  * Unit-tested in __tests__/deskDay.test.ts.
  */
 import { officePosition, type OfficePosition } from "./deskOffice";
@@ -356,6 +361,19 @@ export function anonymize(day: DeskDay, aliases: ReadonlyMap<string, number>, vi
   };
 }
 
+/** A trader's answer: own row and trades only; desk aggregates only over >= 3 traders (see the header). */
+export function ownOnly(day: DeskDay, viewerName: string | null): DeskDay {
+  const mine = (n: string) => !!viewerName && n === viewerName;
+  const enough = canSeeDeskAggregate(false, day.traders.length);
+  return {
+    ...day,
+    traders: day.traders.filter((t) => mine(t.name)),
+    trades: day.trades.filter((t) => mine(t.trader)),
+    takeaways: enough ? day.takeaways.filter((tk) => tk.kind !== "best" || mine(tk.trader)) : [],
+    office: enough && day.office ? { ...day.office, contributors: day.office.contributors.filter((c) => mine(c.trader)) } : null,
+  };
+}
+
 /** The whole answer from rows + their structures (rows without a structure are skipped). */
 export function buildDeskDay(
   ticker: string, date: string, rows: readonly DeskTradeRow[], structures: ReadonlyMap<number, TradeStructure>, viewer: MoneyViewer,
@@ -379,5 +397,6 @@ export function buildDeskDay(
       contributors: office.contributors.map((c) => ({ ...c, alias: aliases.get(c.trader) ?? null, me: !!viewer.name && viewer.name === c.trader })),
     },
   };
-  return view === "anonymous" ? anonymize(day, aliases, viewer.name) : day;
+  const visible = view === "staff" ? day : ownOnly(day, viewer.name);
+  return view === "anonymous" ? anonymize(visible, aliases, viewer.name) : visible;
 }

@@ -49,7 +49,7 @@ export default {
     db: { backup: "Бэкап базы данных" },
     academy: { challenges: "Экзамены академии", readiness: "Готовность к переводу" },
     propreports: { sync: "Синхронизация PropReports (каждые 5 мин в сессию)", "tick-hourly": "Синхронизация PropReports (ежечасно)", outbox: "PropReports: действия после синхронизации" },
-    trades: { "structure-backfill": "Структура сделок" },
+    trades: { "structure-backfill": "Структура сделок", "strategy-backfill": "Стратегии сделок и IMX" },
     jobs: { prune: "Очистка истории задач" },
     candles: { archive: "Архив свечей", prune: "Чистка кэша свечей" },
     telegram: { "daily-morning": "Telegram: утренний фокус", "daily-evening": "Telegram: карточка дня", "contract-alerts": "Telegram: стоп по контракту" },

@@ -639,7 +639,11 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   res.json({
     cohort: mapCohort(c),
     canEdit: canManageCohort(v, c),
-    enrollments: enrollments.map((e) => ({ ...e, attendance: att.get(e.userName)?.all ?? null, attendance30: att.get(e.userName)?.last30 ?? null })),
+    // A student sees the classmates' names and stages; the curator's note on another student is staff-only.
+    enrollments: enrollments.map((e) => ({
+      ...e, note: v.staff || e.userName === v.me ? e.note : null,
+      attendance: att.get(e.userName)?.all ?? null, attendance30: att.get(e.userName)?.last30 ?? null,
+    })),
     attendance: mergeSummaries(summaries),
     sessions,
     history,

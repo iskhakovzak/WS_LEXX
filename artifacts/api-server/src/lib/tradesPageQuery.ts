@@ -5,6 +5,7 @@
 // Sort expressions and result buckets reuse the shared math from ./tradeMath (signedRSql / netPnlSql / resultSql…).
 
 import { signedRSql, netPnlSql, resultSql, horizonSql } from "./tradeMath";
+import { facetPredicates, type FacetDim, type FacetFilters } from "./tradeFacetsSql";
 
 export const PAGE_SORT_COLS = ["date", "ticker", "side", "setup", "trader", "entry", "exit", "r", "result", "pnl", "gross", "fees", "exitEff", "mfeR", "left", "impact", "hold"] as const;
 export type PageSortCol = (typeof PAGE_SORT_COLS)[number];
@@ -68,6 +69,8 @@ export interface TradesPageFilters {
   preset?: PagePreset | "";
   /** The viewer may not see this book's $ (lib/playbookPrivacy canSeeBookMoney): `q` does not match pnl. */
   moneyBlind?: boolean;
+  /** «Улучшенный поиск» columns + «Исключить IMX» (lib/tradeFacetsSql). */
+  facets?: FacetFilters;
 }
 
 export interface TradesPageSort { col: PageSortCol; dir: PageDir }
@@ -206,6 +209,9 @@ export interface WhereOptions {
   skip?: "outcome" | "horizon" | "preset";
   /** trade_quality table exists in this DB (else quality filters match nothing, as on the client without a map). */
   quality: boolean;
+  /** Facet counts of one column drop that column's own exclusion; `imx: false` keeps IMX trades (the IMX line). */
+  skipFacet?: FacetDim;
+  imx?: boolean;
 }
 
 /** Builds the WHERE clause (without the leading keyword). Always includes the soft-delete and scope predicates. */
@@ -245,6 +251,7 @@ export function buildWhere(f: TradesPageFilters, p: Params, opts: WhereOptions):
       if (f.leftMin != null) w.push(`${QUALITY_EXPR.leftR} >= ${p.add(f.leftMin)}::numeric`);
     }
   }
+  w.push(...facetPredicates(f.facets, p, { skip: opts.skipFacet, imx: opts.imx }));
   return w.join(" AND ");
 }
 

@@ -48,7 +48,7 @@ export default {
     db: { backup: "Database backup" },
     academy: { challenges: "Academy challenges", readiness: "Promotion readiness" },
     propreports: { sync: "PropReports sync (every 5 min in session)", "tick-hourly": "PropReports sync (hourly)", outbox: "PropReports: after-sync actions" },
-    trades: { "structure-backfill": "Trade structure" },
+    trades: { "structure-backfill": "Trade structure", "strategy-backfill": "Trade strategies and IMX" },
     jobs: { prune: "Job history cleanup" },
     candles: { archive: "Candle archive", prune: "Candle cache cleanup" },
     telegram: { "daily-morning": "Telegram: morning focus", "daily-evening": "Telegram: day card", "contract-alerts": "Telegram: contract stop alerts" },

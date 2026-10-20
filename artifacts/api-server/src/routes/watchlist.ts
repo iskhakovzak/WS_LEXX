@@ -105,7 +105,7 @@ router.get("/watchlist", asyncHandler(async (req, res): Promise<void> => {
   const scope = readScope(asked, asked || a.guest ? "mine" : (await readWatchView(a.id)).scope, a);
   const rows = await store.listRows(ownerOf(scope, a));
   const tickers = Array.from(new Set(rows.map((r) => r.ticker.toUpperCase())));
-  const stats = await store.tickerStats(tickers, a.guest ? null : a.name);
+  const stats = await store.tickerStats(tickers, a.guest ? null : a.name, a.role === "curator" || a.role === "admin");
   const today = nyDate();
   const list = rows.map((r) => {
     const t = r.ticker.toUpperCase();

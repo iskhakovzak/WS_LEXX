@@ -3519,9 +3519,9 @@ export const getGetAiTradeReviewUrl = (id: number,) => {
   return `/api/trades/${id}/ai-review`
 }
 
-export const getAiTradeReview = async (id: number, options?: RequestInit): Promise<AiTradeReview> => {
+export const getAiTradeReview = async (id: number, options?: RequestInit): Promise<AiTradeReview | null> => {
 
-  return customFetch<AiTradeReview>(getGetAiTradeReviewUrl(id),
+  return customFetch<AiTradeReview | null>(getGetAiTradeReviewUrl(id),
   {
     ...options,
     method: 'GET'

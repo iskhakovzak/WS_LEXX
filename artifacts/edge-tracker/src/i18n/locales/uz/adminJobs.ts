@@ -48,7 +48,7 @@ export default {
     db: { backup: "Maʼlumotlar bazasi zaxirasi" },
     academy: { challenges: "Akademiya imtihonlari", readiness: "Keyingi bosqichga tayyorlik" },
     propreports: { sync: "PropReports sinxronlash (sessiyada har 5 daqiqada)", "tick-hourly": "PropReports sinxronlash (har soatda)", outbox: "PropReports: sinxronlashdan keyingi amallar" },
-    trades: { "structure-backfill": "Savdolar tuzilmasi" },
+    trades: { "structure-backfill": "Savdolar tuzilmasi", "strategy-backfill": "Savdo strategiyalari va IMX" },
     jobs: { prune: "Vazifalar tarixini tozalash" },
     candles: { archive: "Shamlar arxivi", prune: "Shamlar keshini tozalash" },
     telegram: { "daily-morning": "Telegram: ertalabki fokus", "daily-evening": "Telegram: kun kartasi", "contract-alerts": "Telegram: shartnoma stopi" },

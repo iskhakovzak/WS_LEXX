@@ -127,6 +127,8 @@ router.patch("/users/tg-notifications", asyncHandler(async (req, res): Promise<v
 router.get("/users/tg-notifications", asyncHandler(async (req, res): Promise<void> => {
   const name = typeof req.query.name === "string" ? req.query.name : null;
   if (!name) throw new AppError("VALIDATION");
+  // Another member's setting: staff only (a trader reads their own, owner rule 2026-10-21).
+  if (!(await canActOnName(req, name)) && !(await can(req, "users.read.team"))) throw forbidden();
   const { rows } = await pool.query<any>(
     `SELECT COALESCE(tg_notifications_enabled, true) AS tg_notifications_enabled FROM users WHERE name = $1`, [name]
   );

@@ -1,0 +1,33 @@
+/** «Улучшенный поиск» — панель «Фильтры» на /trades и /stats, переключатель «Исключить IMX» (components/shared/trade-facets/*). */
+export default {
+  title: "Фильтры",
+  aria: "Фильтры сделок по колонкам",
+  open: "Показать фильтры",
+  close: "Скрыть фильтры",
+  hidden: { one: "скрыто {count} значение", few: "скрыто {count} значения", many: "скрыто {count} значений", other: "скрыто {count} значения" },
+  dims: {
+    years: "Годы",
+    months: "Месяцы",
+    days: "Дни",
+    times: "Время",
+    strategies: "Стратегия",
+    types: "Тип",
+    gtags: "Глобальные теги",
+    ptags: "Личные теги",
+  },
+  all: "все",
+  none: "ничего",
+  reset: "Сбросить",
+  empty: "Нет сделок",
+  loadFailed: "Не удалось загрузить фильтры",
+  bucketAria: "{label}: {count} сделок, {net}",
+  activeAria: "Скрытые значения фильтров",
+  restore: "Вернуть «{label}» ({dim})",
+  imx: {
+    toggle: "Исключить IMX",
+    hint: "IMX — сделки закрывающего аукциона (любое исполнение 15:50–16:00 по Нью-Йорку, тег «IMX»). По умолчанию они остаются в списках и итогах.",
+    line: "Итог {total} · из них IMX {imx}",
+    lineExcluded: "Итог {total} без IMX · IMX исключены: {imx}",
+    trades: { one: "{count} сделка", few: "{count} сделки", many: "{count} сделок", other: "{count} сделки" },
+  },
+};

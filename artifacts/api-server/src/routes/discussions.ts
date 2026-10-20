@@ -10,7 +10,7 @@ import { notifyMentions, notifyUser } from "../lib/notifyUtils";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { preview as textPreview, uniqueRecipients } from "../lib/notifyEventsCore";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
-import { canSeeDeskAggregate, redactOthersMoney } from "../lib/moneyVisibility";
+import { canSeeDeskAggregate } from "../lib/moneyVisibility";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import {
   AUDIENCE_LABELS, AUDIENCE_STAGES, STAFF_TOKEN, audienceOf, audienceRecipients, audienceSql, cohortOf, cohortToken,
@@ -647,23 +647,23 @@ router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<voi
   const out: Record<string, unknown> = { id, tradeId: d.trade_id, eventId: d.event_id, ideaId: d.idea_id, playbookId: d.playbook_id, journalDate: d.journal_date, ticker: d.ticker };
   if (d.trade_id) {
     const access = await canAccessTrade(req, d.trade_id, "read");
-    if (access) {
-      const { rows } = await pool.query<Record<string, unknown>>(
-        `SELECT t.id, t.ticker, t.date, t.exit_date, ${closeDateSql("t")} AS close_date, t.side, t.setup, t.result, ${resultSql("t")} AS res,
-                ${horizonSql("t")} AS horizon, t.entry, t.exit, t.stop, t.qty, t.pnl, t.fees, ${netPnlSql("t")} AS net_pnl, ${signedRSql("t")} AS signed_r,
-                t.trader, t.source, t.broker_account, t.playbook_id, t.screenshot_url
-           FROM trades t WHERE t.id = $1 AND t.deleted_at IS NULL`, [d.trade_id]);
-      const t = rows[0];
-      out.trade = t ? {
+    const { rows } = await pool.query<Record<string, unknown>>(
+      `SELECT t.id, t.ticker, t.date, t.exit_date, ${closeDateSql("t")} AS close_date, t.side, t.setup, t.result, ${resultSql("t")} AS res,
+              ${horizonSql("t")} AS horizon, t.entry, t.exit, t.stop, t.qty, t.pnl, t.fees, ${netPnlSql("t")} AS net_pnl, ${signedRSql("t")} AS signed_r,
+              t.trader, t.source, t.broker_account, t.playbook_id, t.screenshot_url
+         FROM trades t WHERE t.id = $1 AND t.deleted_at IS NULL`, [d.trade_id]);
+    const t = rows[0];
+    const mv = await loadMoneyViewer(req);
+    // Own trades only (owner rule 2026-10-21): another trader's trade is ticker / date / setup for a non-staff viewer.
+    if (t && access && (mv.staff || t.trader === mv.name)) {
+      out.trade = {
         id: Number(t.id), ticker: t.ticker, date: String(t.date ?? "").slice(0, 10), exitDate: t.exit_date ?? null, closeDate: String(t.close_date ?? "").slice(0, 10),
         side: t.side ?? null, setup: t.setup ?? null, result: t.result ?? null, res: t.res ?? null, horizon: t.horizon, entry: strToNum(t.entry), exit: strToNum(t.exit),
         stop: strToNum(t.stop), qty: strToNum(t.qty), pnl: strToNum(t.pnl), fees: strToNum(t.fees), netPnl: strToNum(t.net_pnl), signedR: strToNum(t.signed_r),
         trader: t.trader ?? null, source: t.source ?? null, brokerAccount: t.broker_account ?? null, playbookId: t.playbook_id ?? null, screenshotUrl: t.screenshot_url ?? null,
-      } : null;
-      const mv = await loadMoneyViewer(req); // another trader's $ only for staff (1.22), whatever trades.read.team allows
-      if (out.trade) out.trade = redactOthersMoney([out.trade as { trader: string | null }], mv.name, mv.staff)[0];
+      };
     } else {
-      out.trade = { id: d.trade_id, restricted: true };
+      out.trade = t ? { id: d.trade_id, ticker: t.ticker, date: String(t.date ?? "").slice(0, 10), setup: t.setup ?? null, restricted: true } : null;
     }
   }
   if (d.event_id) {

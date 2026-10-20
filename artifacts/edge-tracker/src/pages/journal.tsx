@@ -37,6 +37,8 @@ import { EodStatusBadge } from "@/components/eod/EodStatusCard";
 import { EodQueuePanel } from "@/components/eod/EodQueuePanel";
 import { useEodQueue, useEodRange, type EodDayMark } from "@/components/eod/eod-api";
 import { PersonSelect } from "@/components/people/person-select";
+import { useFacetView } from "@/components/shared/trade-facets/api";
+import { isImxTrade } from "@/lib/trade-facets";
 
 const ACCOUNT_KEY = "journal:account";
 const METRIC_KEY = "journal:metric";
@@ -150,11 +152,12 @@ export default function JournalPage() {
   // Days are keyed by the day the result is realised (exit day for overnight/swing), never by the entry day.
   const byDate = useMemo(() => groupByDate(trades), [trades]);
   const openedCounts = useMemo(() => openedCountByDate(trades), [trades]);
+  const noImx = useFacetView().view.excludeImx; // «Исключить IMX»: day totals without close-auction trades
   const statsByDate = useMemo(() => {
     const m = new Map<string, DayStats>();
-    for (const [d, ts] of byDate) m.set(d, computeStats(d, ts, openedCounts.get(d) ?? 0));
+    for (const [d, ts] of byDate) m.set(d, computeStats(d, noImx ? ts.filter((x) => !isImxTrade(x)) : ts, openedCounts.get(d) ?? 0));
     return m;
-  }, [byDate, openedCounts]);
+  }, [byDate, openedCounts, noImx]);
   const tradeDays = useMemo(() => Array.from(byDate.keys()).sort(), [byDate]);
   const windowLatest = tradeDays.length ? tradeDays[tradeDays.length - 1] : null;
   const bookLatest = bookFacets.data?.lastDate ?? null;

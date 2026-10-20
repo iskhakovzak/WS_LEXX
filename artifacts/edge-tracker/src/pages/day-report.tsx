@@ -32,6 +32,8 @@ import { nyDate } from "@/lib/trading-date";
 import { defaultReportDay } from "@/components/journal/default-day";
 import { DeskDayChips } from "@/components/shared/desk-day-link";
 import { TickerContextList } from "@/components/shared/finviz/ticker-context";
+import { useFacetView } from "@/components/shared/trade-facets/api";
+import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
 
 const PRINT_CSS = `
 @media print {
@@ -117,7 +119,8 @@ export default function DayReportPage() {
     if (date) writeParams(isCurator ? trader : null, date);
   }, [trader, date, isCurator]);
 
-  const q = useDayReport(isCurator ? trader : null, date, !!me);
+  const FV = useFacetView(); // «Исключить IMX» — the same saved switch as /trades and /stats
+  const q = useDayReport(isCurator ? trader : null, date, !!me, FV.view.excludeImx);
   const doc = q.data;
   // The API's `today` is the NY calendar date: on a weekend / holiday step back to the last trading day,
   // otherwise «Последний торговый день» jumped to an empty Saturday.
@@ -154,8 +157,10 @@ export default function DayReportPage() {
       title={shellI18n.t("nav.dayReport")}
       description={t("page.desc", { trader: personName(trader) || "—", date: fmtDayLong(date) })}
       icon={ClipboardList}
+      meta={doc?.imx?.count ? <ImxLine total={doc.summary.net} imx={doc.imx} excluded={doc.imx.excluded} /> : undefined}
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
+          <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />
           {isCurator && (
             <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders} self={me} className="w-44" ariaLabel={commonI18n.t("fields.trader")} />
           )}

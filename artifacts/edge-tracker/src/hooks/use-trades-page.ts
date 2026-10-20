@@ -121,6 +121,7 @@ export function buildTradesPageParams(filters: TradeFilters, sort: SortConfig, o
   set("mfeRMin", filters.mfeRMin);
   set("leftMin", filters.leftMin);
   set("preset", opts.preset ?? "");
+  if (filters.facets) for (const [k, v] of new URLSearchParams(filters.facets)) p.set(k, v); // «Фильтры» + «Исключить IMX»
   set("sort", sort.col);
   set("dir", sort.dir);
   set("limit", opts.limit);

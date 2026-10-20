@@ -3,7 +3,8 @@
  *   GET /leaderboard                       trader own row keeps $; a trader whose desk override opens team.read sees
  *                                          other rows without $ (R, %, score stay); curator / admin see every $.
  *   GET /discussions/ticker-context/:t     desk $ on the ticker: staff; a trader only over ≥ 3 traders.
- *   GET /discussions/:id/entity            the attached trade of another trader: $ null for a trader, kept for staff.
+ *   GET /discussions/:id/entity            the attached trade of another trader: ticker / date / setup only for a trader
+ *                                          (own trades only, owner rule 2026-10-21), full card for staff.
  * «Топ дня» and «Деск на тикере» are covered in topRoutes.test.ts / deskDayViews.test.ts. DB mocked.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -130,11 +131,11 @@ describe("GET /discussions/ticker-context/:ticker × role", () => {
 });
 
 describe("GET /discussions/:id/entity × role (another trader's trade)", () => {
-  it("trader allowed to read team trades still gets the $ fields null", async () => {
+  it("trader (even one allowed to read team trades) gets ticker / date / setup only", async () => {
     traderTeamRead = true;
     const r = await get("/api/discussions/7/entity");
     expect(r.status).toBe(200);
-    expect(r.json.trade).toMatchObject({ trader: "Roman", pnl: null, fees: null, netPnl: null, qty: null, signedR: -1 });
+    expect(r.json.trade).toEqual({ id: 900, ticker: "SPCX", date: "2026-10-15", setup: null, restricted: true });
   });
   it("curator sees the $", async () => {
     who = CURATOR;

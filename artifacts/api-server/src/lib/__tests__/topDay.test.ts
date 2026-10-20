@@ -49,7 +49,7 @@ describe("buildTopDay", () => {
     const day = buildTopDay(DATE, rows, KIRILL, "anonymous");
     const aliases = deskAliases(everyone, DATE);
     expect(day.profit[0]).toMatchObject({ alias: aliases.get("W01"), name: null, net: null, place: 1, bestTicker: null, me: false, wins: 2 });
-    expect(day.profit[0].tickers.every((t) => t.net === null)).toBe(true);
+    expect(day.profit[0].tickers).toEqual([]); // own trades only (owner rule 2026-10-21): no tickers of another trader
     expect(day.loss.find((r) => r.alias === aliases.get("L12"))).toMatchObject({ net: null, place: 0 });
     expect(day.desk).toEqual({ net: null, trades: 13 * 2 + 12 * 3 + 3 + 1, traders: everyone.length });
     // Kirill (+55) is outside the top 10 profit list: his own row comes separately with his full place.
@@ -69,7 +69,7 @@ describe("buildTopDay", () => {
   it("named (setting off): names shown, other traders' $ hidden, own $ kept", () => {
     const day = buildTopDay(DATE, rows, KIRILL, "named");
     expect(day.profit[0]).toMatchObject({ name: "W01", net: null, bestTicker: null });
-    expect(day.profit[0].tickers.every((t) => t.net === null)).toBe(true);
+    expect(day.profit[0].tickers).toEqual([]);
     expect(day.desk.net).toBeNull();
     expect(day.me).toMatchObject({ name: "Kirill", net: 55 });
     expect(day.me!.tickers.map((t) => t.net)).toEqual([80, -25]);
@@ -136,17 +136,10 @@ describe("buildTraderDay", () => {
     expect(d.tickers[1]).toMatchObject({ side: "both", trades: 2, net: 80, firstAt: at("09:45"), lastAt: at("11:20") });
     expect(d.tickers[0]).toMatchObject({ side: "short", net: -25, lastAt: null });
   });
-  it("anonymous: another trader's day has no $ (1.22) and no name; counts and place stay", () => {
-    const d = buildTraderDay(DATE, wAlias, side, KIRILL, "anonymous")!;
-    expect(d).toMatchObject({ me: false, name: null, net: null, place: 1, list: "profit", trades: 2 });
-    expect(d.tickers.every((t) => t.net === null)).toBe(true);
+  it("own trades only (owner rule 2026-10-21): another trader's day is not served to a trader, staff see it", () => {
+    expect(buildTraderDay(DATE, wAlias, side, KIRILL, "anonymous")).toBeNull();
+    expect(buildTraderDay(DATE, wAlias, side, KIRILL, "named")).toBeNull();
     expect(buildTraderDay(DATE, wAlias, side, STAFF, "staff")).toMatchObject({ name: "W01", net: 1300 });
-    expect(JSON.stringify(d)).not.toContain("W01");
-  });
-  it("named: name shown, $ hidden for another trader", () => {
-    const d = buildTraderDay(DATE, wAlias, side, KIRILL, "named")!;
-    expect(d).toMatchObject({ name: "W01", net: null });
-    expect(d.tickers.every((t) => t.net === null)).toBe(true);
   });
   it("unknown alias → null", () => {
     expect(buildTraderDay(DATE, 999, side, KIRILL, "anonymous")).toBeNull();

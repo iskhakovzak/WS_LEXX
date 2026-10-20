@@ -56,35 +56,32 @@ describe("desk-day views — anonymous (names hidden from traders)", () => {
     expect(day.trades.every((t) => /^t\d+$/.test(t.trader))).toBe(true);
   });
 
-  it("own row is marked «me»; other traders' trade ids are synthetic", () => {
+  it("own row is marked «me»; only the own row and own trades reach a trader (owner rule 2026-10-21)", () => {
     const me = day.traders.find((t) => t.me)!;
     expect(me.name).toBe(`t${aliases.get(NAMES[0])}`);
     expect(day.me).toBe(me.name);
-    expect(day.trades.find((t) => t.trader === me.name)!.id).toBe(101);
-    expect(day.trades.filter((t) => t.trader !== me.name).every((t) => t.id < 0)).toBe(true);
+    expect(day.traders.map((t) => t.name)).toEqual([me.name]);
+    expect(day.trades.map((t) => t.id)).toEqual([101]);
   });
 
-  it("other traders' $ and share counts are hidden, own kept, R stays (owner decision 9, item 1.22)", () => {
-    const mine = day.trades.filter((t) => t.id > 0);
-    const others = day.trades.filter((t) => t.id < 0);
-    expect(mine.every((t) => !t.redacted && t.net != null && t.qty != null)).toBe(true);
-    expect(others.length).toBe(2);
-    expect(others.every((t) => t.redacted && t.net == null && t.qty == null)).toBe(true);
-    const roman = day.traders.find((t) => t.alias === aliases.get(NAMES[1]))!;
-    expect(roman).toMatchObject({ net: null, redacted: true });
+  it("own $ kept; the office walk is a desk aggregate (>= 3 traders), its size staff-only", () => {
+    expect(day.trades.every((t) => !t.redacted && t.net != null && t.qty != null)).toBe(true);
     expect(day.office?.net).toBe(190); // a sum over 3 traders (lib/moneyVisibility canSeeDeskAggregate)
     expect(day.office?.peakShares).toBeNull(); // office size stays staff-only
+    expect(day.office?.contributors.every((c) => c.trader === day.me)).toBe(true);
     const two = build(amd, amdEx, { name: NAMES[1], staff: false }, true);
-    expect(two.office?.net ?? null).toBeNull(); // 2 traders: the sum would reveal the other one
+    expect(two.office).toBeNull(); // 2 traders: the aggregate would reveal the other one
+    expect(two.traders.map((t) => t.alias)).toEqual([aliases.get(NAMES[1])]);
     expect(build(meta, metaEx, asStaff, true).trades.every((t) => t.net != null)).toBe(true);
   });
 
   it("the same trader has the same alias on two tickers of one day", () => {
-    const a = build(amd, amdEx, asKirill, true);
-    const romanMeta = day.traders.find((t) => t.alias === aliases.get(NAMES[1]))!;
-    const romanAmd = a.traders.find((t) => t.alias === aliases.get(NAMES[1]))!;
-    expect(romanMeta.name).toBe(romanAmd.name);
-    expect(a.me).toBeNull(); // the viewer did not trade AMD
+    const asRoman: MoneyViewer = { name: NAMES[1], staff: false };
+    const m = build(meta, metaEx, asRoman, true);
+    const a = build(amd, amdEx, asRoman, true);
+    expect(m.me).not.toBeNull();
+    expect(m.me).toBe(a.me);
+    expect(build(amd, amdEx, asKirill, true).me).toBeNull(); // the viewer did not trade AMD
     expect(JSON.stringify(a)).not.toContain(NAMES[1]);
   });
 });
@@ -99,13 +96,12 @@ describe("desk-day views — staff and named", () => {
     expect(s.office?.contributors.every((c) => NAMES.includes(c.trader) && c.alias === aliases.get(c.trader))).toBe(true);
   });
 
-  it("setting off: names, no other trader's $; office $ only with ≥ 3 traders", () => {
+  it("setting off: own name and trades only; office $ only with >= 3 traders", () => {
     const n = build(meta, metaEx, asKirill, false);
     expect(n.view).toBe("named");
-    expect(n.trades.filter((t) => t.trader !== NAMES[0]).every((t) => t.redacted && t.net == null && t.qty == null)).toBe(true);
+    expect(n.trades.map((t) => t.trader)).toEqual([NAMES[0]]);
+    expect(n.traders.map((t) => t.name)).toEqual([NAMES[0]]);
     expect(n.office?.net).toBe(190);
-    const two = build(amd, amdEx, asKirill, false);
-    expect(two.office).not.toBeNull();
-    expect(two.office?.net).toBeNull();
+    expect(build(amd, amdEx, { name: NAMES[1], staff: false }, false).office).toBeNull();
   });
 });

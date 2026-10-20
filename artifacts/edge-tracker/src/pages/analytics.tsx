@@ -148,8 +148,8 @@ export default function Analytics() {
   const isCurator = user?.role === "curator" || user?.role === "admin";
   // The source switch is staff-only; drop a source filter a trader may have saved earlier (it would be invisible).
   useEffect(() => {
-    if (user && !isCurator && filters.source) setFilters((f) => ({ ...f, source: "" }));
-  }, [user, isCurator, filters.source]);
+    if (user && !isCurator && (filters.source || filters.trader)) setFilters((f) => ({ ...f, source: "", trader: "" }));
+  }, [user, isCurator, filters.source, filters.trader]);
   useEffect(() => {
     if (user && !isCurator && dimension === "source") setDimension("horizon");
   }, [user, isCurator, dimension]);
@@ -247,7 +247,7 @@ export default function Analytics() {
           onUnitChange={setUnitPref}
           hasPnl={hasPnl}
           hasR={hasR}
-          showTrader={isCurator || options.traders.length > 1}
+          showTrader={isCurator}
           showSource={isCurator}
           className="lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:bg-[var(--sticky-bg)]"
         />

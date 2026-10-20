@@ -110,7 +110,8 @@ describe("GET /watchlist — which list", () => {
     store.listRows.mockResolvedValueOnce([row(1)]);
     store.tickerStats.mockResolvedValueOnce({ ideas: new Map(), trades: new Map([["MINE", { count: 2, last: today }]]), open: new Map() });
     const r = await call("GET", "/api/watchlist");
-    expect(store.tickerStats).toHaveBeenCalledWith(["MINE"], "Owner O.");
+    // false: a trader's open positions are their own only (owner rule 2026-10-21); staff get the desk's.
+    expect(store.tickerStats).toHaveBeenCalledWith(["MINE"], "Owner O.", false);
     expect(r.json[0]).toMatchObject({ tradedToday: true, tradeCount: 2 });
     expect(store.setStatus).not.toHaveBeenCalled();
   });

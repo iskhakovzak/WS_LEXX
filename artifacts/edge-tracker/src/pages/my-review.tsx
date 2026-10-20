@@ -11,12 +11,15 @@ import { useMyReview } from "@/components/my-review/api";
 import { isPeriod, PERIODS, reviewState, totalsLine, type Period } from "@/components/my-review/model";
 import { AnswerCard, RuleCard } from "@/components/my-review/sections";
 import { myReviewI18n } from "@/i18n/ns/myReview";
+import { useFacetView } from "@/components/shared/trade-facets/api";
+import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
 
 export default function MyReviewPage() {
   const { t } = myReviewI18n.useT();
   const [stored, setPeriod] = usePersistentState<Period>("myReview.days", 30);
   const days: Period = isPeriod(stored) ? stored : 30;
-  const q = useMyReview(days);
+  const FV = useFacetView(); // «Исключить IMX» — the same saved switch as /trades and /stats
+  const q = useMyReview(days, FV.view.excludeImx);
   const state = reviewState(q.data);
   const options = PERIODS.map((p) => ({ value: String(p), label: t(`period.d${p}`) }));
 
@@ -26,9 +29,17 @@ export default function MyReviewPage() {
         title={t("title")}
         icon={ScanSearch}
         description={t("description", { days })}
-        meta={q.data && state === "ready" ? <span className="tabular-nums">{totalsLine(q.data.totals)}</span> : undefined}
+        meta={q.data && state === "ready" ? (
+          <span className="flex flex-col gap-0.5">
+            <span className="tabular-nums">{totalsLine(q.data.totals)}</span>
+            <ImxLine total={q.data.totals.net} imx={q.data.imx} excluded={!!q.data.imx?.excluded} />
+          </span>
+        ) : undefined}
         actions={
+          <>
+          <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />
           <Segmented size="sm" ariaLabel={t("period.aria")} value={String(days)} options={options} onChange={(v) => setPeriod(Number(v) === 90 ? 90 : 30)} />
+          </>
         }
       />
       {q.isError && !q.data ? (

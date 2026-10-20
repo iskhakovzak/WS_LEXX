@@ -198,7 +198,9 @@ export function winPctOf(wins: number, losses: number): number | null {
 function shapeRow(a: TraderAgg, place: number, aliases: ReadonlyMap<string, number>, viewer: MoneyViewer, mode: TopMode): TopRow {
   const me = !!viewer.name && a.trader === viewer.name;
   const $ = seesMoney(mode, viewer, a.trader);
-  const tickers = $ ? a.tickers : [...a.tickers].sort((x, y) => y.trades - x.trades || x.ticker.localeCompare(y.ticker));
+  // Own trades only (owner rule 2026-10-21): another trader's row keeps R / win % / counts, never what he traded.
+  const ownTrades = mode === "staff" || me;
+  const tickers = !ownTrades ? [] : $ ? a.tickers : [...a.tickers].sort((x, y) => y.trades - x.trades || x.ticker.localeCompare(y.ticker));
   return {
     alias: aliases.get(a.trader) ?? 0,
     me,
@@ -211,7 +213,7 @@ function shapeRow(a: TraderAgg, place: number, aliases: ReadonlyMap<string, numb
     wins: a.wins,
     losses: a.losses,
     tickers: tickers.map((t) => ({ ticker: t.ticker, trades: t.trades, net: $ ? round2(t.net) : null })),
-    bestTicker: $ && a.tickers.length && a.tickers[0].net > 0 ? a.tickers[0].ticker : null,
+    bestTicker: ownTrades && $ && a.tickers.length && a.tickers[0].net > 0 ? a.tickers[0].ticker : null,
   };
 }
 
@@ -312,7 +314,10 @@ const iso = (x: Date | string | null): string | null => {
 };
 const sideOf = (s: string | null): "long" | "short" => ((s ?? "").toLowerCase().includes("short") ? "short" : "long");
 
-/** The trader-day of `alias`, or null when no trader has that alias on `date`. */
+/**
+ * The trader-day of `alias`, or null when no trader has that alias on `date` — or when it is another trader's day and
+ * the viewer is not staff (own trades only, owner rule 2026-10-21: tickers, sides and fill times are trades).
+ */
 export function buildTraderDay(
   date: string, alias: number, rows: readonly TraderTickerSideRow[], viewer: MoneyViewer, mode: TopMode,
   aliases: ReadonlyMap<string, number> = deskAliases(rows.map((r) => String(r.trader ?? "")), date),
@@ -322,6 +327,7 @@ export function buildTraderDay(
   // The roster (aliases) and the rows are two reads: a trade deleted in between leaves an alias without rows — 404, not 500.
   const a = trader ? aggs.find((x) => x.trader === trader) : undefined;
   if (!trader || !a) return null;
+  if (mode !== "staff" && trader !== viewer.name) return null;
   const $ = seesMoney(mode, viewer, trader);
 
   const byTicker = new Map<string, TraderDayTicker & { netSum: number }>();
