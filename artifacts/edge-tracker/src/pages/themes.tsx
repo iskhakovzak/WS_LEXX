@@ -74,7 +74,7 @@ export default function ThemesPage() {
         meta={data ? (
           <>
             <ThemesMeta data={data} refreshFailed={q.isRefetchError} />
-            {data.asOf && <LeaderChips themes={themes} col={sort.col} onOpen={setOpenId} className="hidden lg:inline-flex" />}
+            {data.asOf && <LeaderChips themes={themes} col={sort.col} onOpen={setOpenId} className="hidden xl:inline-flex" />}
           </>
         ) : undefined}
         actions={themes.length > 0 ? configure : null}
