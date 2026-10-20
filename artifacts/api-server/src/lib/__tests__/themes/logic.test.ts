@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  aggregateTheme, buildResponse, normalizeTickers, pctChange, quoteFromFinviz, quoteFromYahoo, round2, themeSession,
+  aggregateTheme, buildResponse, extendedFromYahoo, normalizeTickers, pctChange, quoteFromFinviz, quoteFromYahoo, round2, themeSession,
   themeTickers, ttlMs, TTL_OPEN_MS, TTL_SLOW_MS, type MemberQuote,
 } from "../../themes/logic";
 
@@ -66,7 +66,7 @@ describe("Finviz rows", () => {
   it("no open before 09:30 → fromOpen null; missing gap → null", () => {
     expect(quoteFromFinviz({ ticker: "A", price: 1, changePct: 2, gapPct: 1 }, "pre").fromOpen).toBeNull();
     expect(quoteFromFinviz({ ticker: "A", price: 1, changePct: 2, gapPct: null }, "rth").fromOpen).toBeNull();
-    expect(quoteFromFinviz({ ticker: "A", price: null, changePct: null, gapPct: 3 }, "rth")).toEqual({ ticker: "A", price: null, today: null, fromOpen: null });
+    expect(quoteFromFinviz({ ticker: "A", price: null, changePct: null, gapPct: 3 }, "rth")).toEqual({ ticker: "A", price: null, today: null, fromOpen: null, premarket: null, afterHours: null });
   });
 });
 
@@ -74,7 +74,7 @@ describe("Yahoo quotes", () => {
   const base = { symbol: "mu", regularMarketPrice: 105, regularMarketOpen: 102, regularMarketPreviousClose: 100, regularMarketTime: sec(ny(11)) };
 
   it("rth: price vs previous close and vs today's open", () => {
-    expect(quoteFromYahoo(base, "rth", TODAY)).toEqual({ ticker: "MU", price: 105, today: 5, fromOpen: round2((105 / 102 - 1) * 100) });
+    expect(quoteFromYahoo(base, "rth", TODAY)).toEqual({ ticker: "MU", price: 105, today: 5, fromOpen: round2((105 / 102 - 1) * 100), premarket: null, afterHours: null });
   });
 
   it("rth with a quote still from yesterday: no open of today", () => {
@@ -86,12 +86,12 @@ describe("Yahoo quotes", () => {
       { symbol: "MU", regularMarketPrice: 100, regularMarketPreviousClose: 95, regularMarketOpen: 96, regularMarketTime: yesterdayClose, preMarketPrice: 98, preMarketTime: sec(ny(8)) },
       "pre", TODAY,
     );
-    expect(q).toEqual({ ticker: "MU", price: 98, today: -2, fromOpen: null });
+    expect(q).toEqual({ ticker: "MU", price: 98, today: -2, fromOpen: null, premarket: -2, afterHours: null });
   });
 
   it("pre without a print today: price = last close, today unknown", () => {
     const q = quoteFromYahoo({ symbol: "MU", regularMarketPrice: 100, regularMarketTime: yesterdayClose, preMarketPrice: 97, preMarketTime: yesterdayClose - 3600 }, "pre", TODAY);
-    expect(q).toEqual({ ticker: "MU", price: 100, today: null, fromOpen: null });
+    expect(q).toEqual({ ticker: "MU", price: 100, today: null, fromOpen: null, premarket: null, afterHours: null });
   });
 
   it("post: today's after-hours print moves both values", () => {
@@ -108,11 +108,52 @@ describe("Yahoo quotes", () => {
   });
 });
 
+describe("Yahoo premarket / after hours", () => {
+  /** A Yahoo row of the 2026-10-20 session: last premarket print 09:29 at 101, close 105, after hours 17:00 at 106.05. */
+  const day = {
+    symbol: "MU", regularMarketPrice: 105, regularMarketOpen: 102, regularMarketPreviousClose: 100, regularMarketTime: sec(ny(16)),
+    preMarketPrice: 101, preMarketTime: sec(ny(9, 29)), preMarketChangePercent: 1,
+    postMarketPrice: 106.05, postMarketTime: sec(ny(17)), postMarketChangePercent: 1,
+  };
+
+  it("premarket moves live before the open (vs yesterday's close)", () => {
+    const q = { symbol: "MU", regularMarketPrice: 100, regularMarketPreviousClose: 95, regularMarketTime: yesterdayClose, preMarketPrice: 102.5, preMarketTime: sec(ny(9)) };
+    expect(extendedFromYahoo(q, "pre", TODAY)).toEqual({ premarket: 2.5, afterHours: null });
+  });
+
+  it("after the open premarket stays frozen at the last print; after hours is null during rth", () => {
+    const rth = { ...day, regularMarketPrice: 104, regularMarketTime: sec(ny(11)), postMarketPrice: 99, postMarketTime: yesterdayClose + 3600 };
+    expect(extendedFromYahoo(rth, "rth", TODAY)).toEqual({ premarket: 1, afterHours: null });
+  });
+
+  it("post: after hours vs today's regular close", () => {
+    expect(extendedFromYahoo(day, "post", TODAY)).toEqual({ premarket: 1, afterHours: 1 });
+    const q = quoteFromYahoo(day, "post", TODAY)!;
+    expect([q.premarket, q.afterHours, q.today]).toEqual([1, 1, 6.05]);
+  });
+
+  it("closed at night: the session that just ended keeps its premarket and after hours", () => {
+    expect(extendedFromYahoo(day, "closed", TODAY)).toEqual({ premarket: 1, afterHours: 1 });
+    // After midnight (NY date 10-21) the quote still describes 10-20: the same values, as the last session's.
+    expect(extendedFromYahoo(day, "closed", "2026-10-21")).toEqual({ premarket: 1, afterHours: 1 });
+  });
+
+  it("next premarket: yesterday's after hours / premarket are not shown as today's", () => {
+    expect(extendedFromYahoo(day, "pre", "2026-10-21")).toEqual({ premarket: null, afterHours: null });
+  });
+
+  it("Yahoo's own % when the base close is unknown; no print: null", () => {
+    const q = { symbol: "MU", regularMarketTime: sec(ny(16)), preMarketPrice: 50, preMarketTime: sec(ny(8)), preMarketChangePercent: 3.456 };
+    expect(extendedFromYahoo(q, "post", TODAY).premarket).toBe(3.46);
+    expect(extendedFromYahoo({ symbol: "MU", regularMarketPrice: 1, regularMarketTime: sec(ny(16)) }, "post", TODAY)).toEqual({ premarket: null, afterHours: null });
+  });
+});
+
 describe("aggregation", () => {
   const quotes = new Map<string, MemberQuote>([
-    ["MU", { ticker: "MU", price: 100, today: 2, fromOpen: 1 }],
-    ["WDC", { ticker: "WDC", price: 50, today: -1, fromOpen: null }],
-    ["STX", { ticker: "STX", price: 90, today: 0.5, fromOpen: 0.4 }],
+    ["MU", { ticker: "MU", price: 100, today: 2, fromOpen: 1, premarket: 1.5, afterHours: null }],
+    ["WDC", { ticker: "WDC", price: 50, today: -1, fromOpen: null, premarket: -0.25, afterHours: null }],
+    ["STX", { ticker: "STX", price: 90, today: 0.5, fromOpen: 0.4, premarket: null, afterHours: 0.333 }],
   ]);
 
   it("equal-weight mean of the members that have the value; missing listed", () => {
@@ -120,13 +161,15 @@ describe("aggregation", () => {
     expect(th.today).toBe(round2((2 - 1 + 0.5) / 3));
     expect(th.today).toBe(0.5);
     expect(th.fromOpen).toBe(0.7);
+    expect(th.premarket).toBe(0.63);
+    expect(th.afterHours).toBe(0.33);
     expect(th.members.map((m) => m.ticker)).toEqual(["MU", "WDC", "STX"]);
     expect(th.missing).toEqual(["SNDK"]);
   });
 
   it("no quotes → nulls, every ticker missing", () => {
     const th = aggregateTheme({ id: 2, name: "X", tickers: ["A", "B"] }, new Map());
-    expect(th).toEqual({ id: 2, name: "X", today: null, fromOpen: null, members: [], missing: ["A", "B"] });
+    expect(th).toEqual({ id: 2, name: "X", today: null, fromOpen: null, premarket: null, afterHours: null, members: [], missing: ["A", "B"] });
   });
 
   it("themeTickers: distinct, upper-case, first-seen order", () => {

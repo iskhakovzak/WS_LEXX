@@ -1,31 +1,38 @@
 /**
- * «Темы рынка» (/themes) — TradingView-style theme tracker: equal-weight baskets of US tickers, two tables sorted best
- * → worst — «От открытия» (price vs today's open) and «За день» (price vs the previous close). Desktop: side by side;
- * phone: one table with a two-option switch (remembered). Re-asks every 30 s while the market is in pre / rth / post and
- * the tab is visible. Staff edit the themes in a side sheet («Настроить темы»).
+ * «Темы рынка» (/themes) — TradingView-style theme tracker on one screen: a compact heat-table, one row per theme,
+ * columns Премаркет | От открытия | За день | После закрытия. A header click sorts (desc → asc → back to the default);
+ * the default column follows the session (pre → Премаркет, rth → От открытия, post → После закрытия, closed → За день)
+ * until the user picks one (remembered). Phones: the theme plus two columns, a segmented picker chooses the active one.
+ * A row (or a leaders / laggards chip) opens the theme's members sheet. Re-asks every 30 s while the market is in
+ * pre / rth / post and the tab is visible. Staff edit the themes in a side sheet («Настроить темы»).
  */
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { Settings2, Shapes } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, Page, PageHeader, PanelSkeleton, Segmented, usePersistentState } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
-import { cn } from "@/lib/utils";
 import { themesI18n } from "@/i18n/ns/themes";
 import { useThemes } from "@/components/themes/api";
 import { ThemeConfigSheet } from "@/components/themes/config-sheet";
-import { ThemesMeta } from "@/components/themes/meta";
-import { ThemePanel } from "@/components/themes/theme-board";
-import { METRICS, isMetric, type ThemeMetric } from "@/components/themes/model";
+import { HeatTable } from "@/components/themes/heat-table";
+import { LeaderChips, ThemesMeta } from "@/components/themes/meta";
+import { ThemeSheet } from "@/components/themes/theme-sheet";
+import { METRICS, effectiveSort, hasValues, nextSort, type ThemeMetric, type ThemeSort } from "@/components/themes/model";
 
 export default function ThemesPage() {
   const { t } = themesI18n.useT();
   const { can } = useAuth();
   const staff = can("gameplan.publish") || can("dailyfeed.manage");
   const q = useThemes();
-  const [stored, setView] = usePersistentState<ThemeMetric>("themes.view", "fromOpen");
-  const view: ThemeMetric = isMetric(stored) ? stored : "fromOpen";
-  const [configOpen, setConfigOpen] = useState(false);
   const data = q.data;
+  const themes = data?.themes ?? [];
+  // null = the user never picked a column: the default follows the session.
+  const [stored, setStored] = usePersistentState<ThemeSort | null>("themes.sort", null);
+  const sort = effectiveSort(stored, data?.session ?? "closed", themes);
+  const onSort = useCallback((col: ThemeMetric) => setStored(nextSort(sort, col)), [setStored, sort]);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
+  const openTheme = themes.find((th) => th.id === openId) ?? null;
 
   const configure = staff ? (
     <Button type="button" variant="outline" size="sm" onClick={() => setConfigOpen(true)}>
@@ -35,40 +42,25 @@ export default function ThemesPage() {
 
   let body: ReactNode;
   if (q.isPending) {
-    body = (
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
-        <PanelSkeleton height={520} />
-        <PanelSkeleton height={520} className="hidden xl:flex" />
-      </div>
-    );
+    body = <PanelSkeleton height={540} title={false} />;
   } else if (!data) {
     body = <ErrorState error={q.error} onRetry={() => void q.refetch()} title={t("loadFailed")} />;
-  } else if (data.themes.length === 0) {
+  } else if (themes.length === 0) {
     body = <EmptyState icon={Shapes} title={t("noThemes.title")} description={t("noThemes.desc")} action={configure} />;
   } else if (!data.asOf) {
     body = <EmptyState icon={Shapes} title={t("noData.title")} description={t("noData.desc")} />;
   } else {
-    // Before the open nobody has a «from open» value: show «За день» alone (full width) instead of an empty table.
-    const shown = data.themes.some((th) => th.fromOpen != null) ? METRICS : (["today"] as const);
-    const two = shown.length > 1;
     body = (
       <>
-        {two ? (
-          <Segmented
-            className="self-start xl:hidden"
-            ariaLabel={t("viewAria")}
-            value={view}
-            onChange={setView}
-            options={METRICS.map((m) => ({ value: m, label: t(`panels.${m}`) }))}
-          />
-        ) : (
-          <p className="text-xs text-muted-foreground">{t("noOpenYet")}</p>
-        )}
-        <div className={cn("grid items-start gap-[var(--grid-gap)]", two && "xl:grid-cols-2")}>
-          {shown.map((m) => (
-            <ThemePanel key={m} metric={m} themes={data.themes} session={data.session} className={cn(two && m !== view && "hidden xl:block")} />
-          ))}
-        </div>
+        <Segmented
+          size="sm"
+          className="self-start sm:hidden"
+          ariaLabel={t("columnAria")}
+          value={sort.col}
+          onChange={(col) => setStored({ col, dir: "desc" })}
+          options={METRICS.map((m) => ({ value: m, label: t(`colsShort.${m}`), title: hasValues(themes, m) ? t(`cols.${m}`) : t(`unavailable.${m}`) }))}
+        />
+        <HeatTable themes={themes} sort={sort} onSort={onSort} onOpen={setOpenId} />
       </>
     );
   }
@@ -79,10 +71,16 @@ export default function ThemesPage() {
         icon={Shapes}
         title={t("title")}
         description={t("description")}
-        meta={data ? <ThemesMeta data={data} refreshFailed={q.isRefetchError} /> : undefined}
-        actions={data && data.themes.length > 0 ? configure : null}
+        meta={data ? (
+          <>
+            <ThemesMeta data={data} refreshFailed={q.isRefetchError} />
+            {data.asOf && <LeaderChips themes={themes} col={sort.col} onOpen={setOpenId} className="hidden lg:inline-flex" />}
+          </>
+        ) : undefined}
+        actions={themes.length > 0 ? configure : null}
       />
       {body}
+      <ThemeSheet theme={openTheme} sort={sort} onOpenChange={(o) => { if (!o) setOpenId(null); }} />
       {staff && <ThemeConfigSheet open={configOpen} onOpenChange={setConfigOpen} />}
     </Page>
   );

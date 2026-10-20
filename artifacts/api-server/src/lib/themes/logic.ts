@@ -3,8 +3,12 @@
  *
  *   session   pre (04:00–09:30 NY) · rth (09:30–16:00) · post (16:00–20:00) · closed (night, weekend, NYSE holiday)
  *   TTL       30 s while the market is open (rth), 5 min otherwise (pre / post still move, slower)
- *   quote     today    = price / previous close − 1      (%; pre: the premarket print vs yesterday's close)
- *             fromOpen = price / today's open − 1        (%; null before 09:30 NY — there is no open yet)
+ *   quote     today      = price / previous close − 1         (%; pre: the premarket print vs yesterday's close)
+ *             fromOpen   = price / today's open − 1           (%; null before 09:30 NY — there is no open yet)
+ *             premarket  = last premarket print / previous close − 1 (live 04:00–09:30, then frozen for the day)
+ *             afterHours = after-hours print / the session's regular close − 1 (null while the market is open)
+ *             Both belong to the session the page describes: today in pre / rth / post, the last regular session when
+ *             closed (night, weekend) — a print of another day is never shown as this session's.
  *             Finviz exports Change (vs prev close) and Gap (open vs prev close): fromOpen = (1+change)/(1+gap) − 1.
  *   theme     equal-weight mean of the members that have the value; `missing` = tickers with no quote at all.
  * Percentages are percent units (1.25 = 1.25 %) rounded to 2 decimals; unknown = null, never NaN.
@@ -15,7 +19,18 @@ export type ThemeSession = "pre" | "rth" | "post" | "closed";
 export type ThemeSource = "finviz" | "yahoo";
 
 /** One ticker's move (percent units, 2 decimals; null = unknown). */
-export type MemberQuote = { ticker: string; price: number | null; today: number | null; fromOpen: number | null };
+export type MemberQuote = {
+  ticker: string;
+  price: number | null;
+  today: number | null;
+  fromOpen: number | null;
+  premarket: number | null;
+  afterHours: number | null;
+};
+
+/** The four reference points of a move (percent units). */
+export const THEME_METRICS = ["premarket", "fromOpen", "today", "afterHours"] as const;
+export type ThemeMetric = (typeof THEME_METRICS)[number];
 
 export type ThemeRow = { id: number; name: string; tickers: readonly string[] };
 
@@ -24,6 +39,8 @@ export type ThemeOut = {
   name: string;
   today: number | null;
   fromOpen: number | null;
+  premarket: number | null;
+  afterHours: number | null;
   members: MemberQuote[];
   missing: string[];
 };
@@ -96,7 +113,11 @@ export function quoteFromFinviz(row: FinvizLike, session: ThemeSession): MemberQ
   if (session !== "pre" && today != null && finite(row.gapPct) && row.gapPct > -100) {
     fromOpen = ((1 + today / 100) / (1 + row.gapPct / 100) - 1) * 100;
   }
-  return { ticker: row.ticker.toUpperCase(), price: finite(row.price) ? row.price : null, today: round2(today), fromOpen: round2(fromOpen) };
+  // Finviz exports no premarket / after-hours columns: quotes.ts fills those two from Yahoo when it can.
+  return {
+    ticker: row.ticker.toUpperCase(), price: finite(row.price) ? row.price : null, today: round2(today), fromOpen: round2(fromOpen),
+    premarket: null, afterHours: null,
+  };
 }
 
 /** The fields of a Yahoo v7 /finance/quote result the themes use. Times are epoch seconds. */
@@ -108,11 +129,38 @@ export type YahooQuoteLike = {
   regularMarketTime?: number | null;
   preMarketPrice?: number | null;
   preMarketTime?: number | null;
+  preMarketChangePercent?: number | null;
   postMarketPrice?: number | null;
   postMarketTime?: number | null;
+  postMarketChangePercent?: number | null;
 };
 
 const dayOf = (sec: number | null | undefined): string | null => (finite(sec) && sec > 0 ? nyDate(new Date(sec * 1000)) : null);
+
+/**
+ * Premarket / after-hours moves of a Yahoo quote for the session the page describes (`sessionDay`: today in pre / rth /
+ * post, the last regular session's day when closed).
+ *   premarket   the sessionDay's last premarket print vs the close before it (Yahoo's own % when that
+ *               close is unknown); a print of another day → null.
+ *   afterHours  the sessionDay's after-hours print vs that day's regular close; only once the regular session is over
+ *               (post / closed) — during rth Yahoo still carries yesterday's print, which is not this session's.
+ */
+export function extendedFromYahoo(q: YahooQuoteLike, session: ThemeSession, today: string): { premarket: number | null; afterHours: number | null } {
+  const reg = finite(q.regularMarketPrice) ? q.regularMarketPrice : null;
+  const regDay = dayOf(q.regularMarketTime);
+  const sessionDay = session === "closed" ? (regDay ?? today) : today;
+  // Close before sessionDay: before the open the "regular" fields still describe the previous session.
+  const prevClose = regDay != null && regDay < sessionDay ? reg : finite(q.regularMarketPreviousClose) ? q.regularMarketPreviousClose : null;
+  let premarket: number | null = null;
+  if (finite(q.preMarketPrice) && dayOf(q.preMarketTime) === sessionDay) {
+    premarket = pctChange(q.preMarketPrice, prevClose) ?? (finite(q.preMarketChangePercent) ? q.preMarketChangePercent : null);
+  }
+  let afterHours: number | null = null;
+  if ((session === "post" || session === "closed") && regDay === sessionDay && finite(q.postMarketPrice) && dayOf(q.postMarketTime) === sessionDay) {
+    afterHours = pctChange(q.postMarketPrice, reg) ?? (finite(q.postMarketChangePercent) ? q.postMarketChangePercent : null);
+  }
+  return { premarket: round2(premarket), afterHours: round2(afterHours) };
+}
 
 /**
  * Yahoo quote → member, for the session at hand (`today` = NY date):
@@ -121,24 +169,26 @@ const dayOf = (sec: number | null | undefined): string | null => (finite(sec) &&
  *   rth     regular price vs previous close / today's open
  *   post    the after-hours print (today's) when there is one, else the close; same bases as rth
  *   closed  the last regular session as it ended
+ * premarket / afterHours: extendedFromYahoo.
  */
 export function quoteFromYahoo(q: YahooQuoteLike, session: ThemeSession, today: string): MemberQuote | null {
   const ticker = String(q.symbol ?? "").toUpperCase();
   if (!ticker) return null;
   const reg = finite(q.regularMarketPrice) ? q.regularMarketPrice : null;
   const regDay = dayOf(q.regularMarketTime);
+  const ext = extendedFromYahoo(q, session, today);
   if (session === "pre") {
     // Before the open the "regular" fields still describe the previous session.
     const base = regDay != null && regDay < today ? reg : finite(q.regularMarketPreviousClose) ? q.regularMarketPreviousClose : null;
     const pre = finite(q.preMarketPrice) && dayOf(q.preMarketTime) === today ? q.preMarketPrice : null;
-    return { ticker, price: pre ?? base, today: round2(pctChange(pre, base)), fromOpen: null };
+    return { ticker, price: pre ?? base, today: round2(pctChange(pre, base)), fromOpen: null, ...ext };
   }
   const prev = finite(q.regularMarketPreviousClose) ? q.regularMarketPreviousClose : null;
   const open = finite(q.regularMarketOpen) && (session === "closed" || regDay === today) ? q.regularMarketOpen : null;
   let price = reg;
   if (session === "post" && finite(q.postMarketPrice) && dayOf(q.postMarketTime) === today) price = q.postMarketPrice;
   if (price == null) return null;
-  return { ticker, price, today: round2(pctChange(price, prev)), fromOpen: round2(pctChange(price, open)) };
+  return { ticker, price, today: round2(pctChange(price, prev)), fromOpen: round2(pctChange(price, open)), ...ext };
 }
 
 // ─── aggregation ────────────────────────────────────────────────────────────
@@ -164,6 +214,8 @@ export function aggregateTheme(theme: ThemeRow, quotes: ReadonlyMap<string, Memb
     name: theme.name,
     today: round2(mean(members.map((m) => m.today))),
     fromOpen: round2(mean(members.map((m) => m.fromOpen))),
+    premarket: round2(mean(members.map((m) => m.premarket))),
+    afterHours: round2(mean(members.map((m) => m.afterHours))),
     members,
     missing,
   };

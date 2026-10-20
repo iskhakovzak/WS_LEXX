@@ -4,15 +4,32 @@ import type ru from "../ru/themes";
 export default {
   title: "Market themes",
   description: "Equal-weight ticker baskets by market theme. Strongest themes on top.",
-  panels: {
+  cols: {
+    rank: "#",
+    theme: "Theme",
+    ticker: "Ticker",
+    price: "Price",
+    premarket: "Premarket",
     fromOpen: "From open",
     today: "Today",
+    afterHours: "After hours",
   },
-  panelHints: {
+  colsShort: {
+    premarket: "Pre",
+    fromOpen: "Open",
+    today: "Day",
+    afterHours: "AH",
+  },
+  hints: {
+    premarket: "Last premarket price vs the previous session close; frozen after the open",
     fromOpen: "Price vs today's session open",
     today: "Price vs the previous session close (premarket and after hours included)",
+    afterHours: "After-hours price vs today's regular close",
   },
-  viewAria: "Which table to show",
+  columnAria: "Column",
+  sortBy: "Sort by «{col}»",
+  leaders: "Leaders",
+  laggards: "Laggards",
   session: {
     pre: "premarket",
     rth: "market open",
@@ -24,14 +41,16 @@ export default {
   source: "Source: {name}",
   stale: "data is stale",
   staleHint: "Quotes did not refresh — showing the last ones received.",
-  noOpenYet: "«From open» appears at the 09:30 NY open",
-  rowAria: "{name}: {value}",
-  missing: "No data: {list}",
-  cols: {
-    ticker: "Ticker",
-    today: "Today",
-    fromOpen: "From open",
+  unavailable: {
+    premarket: "«Premarket» appears at 04:00 NY, when the premarket starts",
+    fromOpen: "«From open» appears at the 09:30 NY open",
+    today: "«Today» appears with the session's first quotes",
+    afterHours: "«After hours» appears at 16:00 NY, after the market closes",
   },
+  rowAria: "{rank}. {name}: {value}. Open the theme's tickers",
+  openTheme: "Open theme {name}",
+  sheetDesc: "The theme's tickers, equal weight. Click a column header to sort.",
+  missing: "No data: {list}",
   noData: {
     title: "No quotes",
     desc: "The quote source is unavailable right now. The page will refresh by itself.",

@@ -1,21 +1,36 @@
 /**
- * «Темы рынка» — the API shapes (api-server lib/themes/logic.ts) and the pure view logic (unit-tested in model.test.ts):
- * sorting best → worst, the diverging bar geometry, polling by session, ticker input parsing for staff.
+ * «Темы рынка» — the API shapes (api-server lib/themes/logic.ts) and the pure view logic of the heat-table (unit-tested
+ * in model.test.ts): the default sort column per session, the header click cycle, sorting (unknown always last), the
+ * two halves on wide screens, cell intensity, leaders / laggards, polling, staff ticker input.
  * Percentages are percent units (1.25 = 1.25 %); null = unknown.
  */
 
 export type ThemeSession = "pre" | "rth" | "post" | "closed";
 export type ThemeSource = "finviz" | "yahoo";
-export type ThemeMetric = "fromOpen" | "today";
-export const METRICS: readonly ThemeMetric[] = ["fromOpen", "today"];
 
-export type MemberQuote = { ticker: string; price: number | null; today: number | null; fromOpen: number | null };
+/**
+ * Reference point of a move: premarket (last premarket print vs previous close, frozen after the open), from today's
+ * open, for the day (vs previous close), after hours (vs today's regular close).
+ */
+export type ThemeMetric = "premarket" | "fromOpen" | "today" | "afterHours";
+export const METRICS: readonly ThemeMetric[] = ["premarket", "fromOpen", "today", "afterHours"];
+
+export type MemberQuote = {
+  ticker: string;
+  price: number | null;
+  today: number | null;
+  fromOpen: number | null;
+  premarket: number | null;
+  afterHours: number | null;
+};
 
 export type ThemeOut = {
   id: number;
   name: string;
   today: number | null;
   fromOpen: number | null;
+  premarket: number | null;
+  afterHours: number | null;
   members: MemberQuote[];
   missing: string[];
 };
@@ -49,55 +64,108 @@ export function pollInterval(session: ThemeSession | null | undefined): number |
 
 export const isLiveSession = (s: ThemeSession | null | undefined): boolean => pollInterval(s) !== false;
 
-export function isMetric(v: unknown): v is ThemeMetric {
-  return v === "fromOpen" || v === "today";
-}
-
 const val = (v: number | null | undefined): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** Best → worst by the metric; themes without a value go last (by name). */
-export function sortThemes(themes: readonly ThemeOut[], metric: ThemeMetric): ThemeOut[] {
-  return [...themes].sort((a, b) => {
-    const x = val(a[metric]);
-    const y = val(b[metric]);
-    if (x == null && y == null) return a.name.localeCompare(b.name);
-    if (x == null) return 1;
+export function isMetric(v: unknown): v is ThemeMetric {
+  return typeof v === "string" && (METRICS as readonly string[]).includes(v);
+}
+
+/** Some theme has a value for the metric right now (else its header is dimmed with «appears at …»). */
+export function hasValues(themes: readonly ThemeOut[], metric: ThemeMetric): boolean {
+  return themes.some((t) => val(t[metric]) != null);
+}
+
+// ─── sorting ────────────────────────────────────────────────────────────────
+
+export type SortDir = "desc" | "asc";
+export type ThemeSort = { col: ThemeMetric; dir: SortDir };
+
+export function isSort(v: unknown): v is ThemeSort {
+  const s = v as ThemeSort | null;
+  return !!s && typeof s === "object" && isMetric(s.col) && (s.dir === "desc" || s.dir === "asc");
+}
+
+/** The column that matters most in each session. */
+export const SESSION_COLUMN: Readonly<Record<ThemeSession, ThemeMetric>> = {
+  pre: "premarket",
+  rth: "fromOpen",
+  post: "afterHours",
+  closed: "today",
+};
+
+/** Default sort column: the session's one when it has values now, else the first that has (today, fromOpen, …). */
+export function defaultColumn(session: ThemeSession, themes: readonly ThemeOut[]): ThemeMetric {
+  const order: ThemeMetric[] = [SESSION_COLUMN[session], "today", "fromOpen", "premarket", "afterHours"];
+  return order.find((m) => hasValues(themes, m)) ?? "today";
+}
+
+/** The user's stored sort when they picked one, else the session default (desc). */
+export function effectiveSort(stored: unknown, session: ThemeSession, themes: readonly ThemeOut[]): ThemeSort {
+  return isSort(stored) ? stored : { col: defaultColumn(session, themes), dir: "desc" };
+}
+
+/** Header click: another column → it, desc; same column desc → asc; asc → null (back to the default). */
+export function nextSort(current: ThemeSort, col: ThemeMetric): ThemeSort | null {
+  if (current.col !== col) return { col, dir: "desc" };
+  return current.dir === "desc" ? { col, dir: "asc" } : null;
+}
+
+function byValue<T>(rows: readonly T[], get: (r: T) => number | null, label: (r: T) => string, dir: SortDir): T[] {
+  return [...rows].sort((a, b) => {
+    const x = val(get(a));
+    const y = val(get(b));
+    if (x == null && y == null) return label(a).localeCompare(label(b));
+    if (x == null) return 1; // unknown last in both directions
     if (y == null) return -1;
-    return y - x || a.name.localeCompare(b.name);
+    return (dir === "desc" ? y - x : x - y) || label(a).localeCompare(label(b));
   });
 }
 
-/** Members of an opened theme, best → worst by the same metric (unknown last, by ticker). */
-export function sortMembers(members: readonly MemberQuote[], metric: ThemeMetric): MemberQuote[] {
-  return [...members].sort((a, b) => {
-    const x = val(a[metric]);
-    const y = val(b[metric]);
-    if (x == null && y == null) return a.ticker.localeCompare(b.ticker);
-    if (x == null) return 1;
-    if (y == null) return -1;
-    return y - x || a.ticker.localeCompare(b.ticker);
-  });
+export function sortThemes(themes: readonly ThemeOut[], sort: ThemeSort): ThemeOut[] {
+  return byValue(themes, (t) => t[sort.col], (t) => t.name, sort.dir);
 }
 
-/** Bar scale of a panel: the largest |value| (0 when the panel has no values). */
-export function panelScale(themes: readonly ThemeOut[], metric: ThemeMetric): number {
+export function sortMembers(members: readonly MemberQuote[], sort: ThemeSort): MemberQuote[] {
+  return byValue(members, (m) => m[sort.col], (m) => m.ticker, sort.dir);
+}
+
+/** Wide screens: ranks 1…⌈n/2⌉ left, the rest right. */
+export function splitHalves<T>(rows: readonly T[]): [T[], T[]] {
+  const mid = Math.ceil(rows.length / 2);
+  return [rows.slice(0, mid), rows.slice(mid)];
+}
+
+// ─── cells ──────────────────────────────────────────────────────────────────
+
+/** Largest |value| of a column (0 without values): the scale of its cell tint. */
+export function columnMax(rows: readonly Pick<ThemeOut, ThemeMetric>[], col: ThemeMetric): number {
   let max = 0;
-  for (const t of themes) {
-    const v = val(t[metric]);
+  for (const r of rows) {
+    const v = val(r[col]);
     if (v != null) max = Math.max(max, Math.abs(v));
   }
   return max;
 }
 
-/**
- * Diverging bar: the centre line is 0, down grows left, up grows right. `width` is the share of ONE half (0…100 %),
- * so the largest |value| of the panel fills its half. A non-zero value gets at least a sliver (visible).
- */
-export function barOf(value: number | null | undefined, scale: number): { side: "up" | "down" | null; width: number } {
+/** Tint strength of a cell, 0…1 = |value| / column max (0 for unknown / zero / no scale). */
+export function cellIntensity(value: number | null | undefined, max: number): number {
   const v = val(value);
-  if (v == null || v === 0 || !(scale > 0)) return { side: null, width: 0 };
-  const width = Math.min(100, Math.max(2, (Math.abs(v) / scale) * 100));
-  return { side: v > 0 ? "up" : "down", width: Math.round(width * 10) / 10 };
+  if (v == null || v === 0 || !(max > 0)) return 0;
+  return Math.min(1, Math.abs(v) / max);
+}
+
+/** The phone shows two values: the active column and «За день» (for «За день» itself: «От открытия»). */
+export function phoneColumns(col: ThemeMetric): [ThemeMetric, ThemeMetric] {
+  return col === "today" ? ["today", "fromOpen"] : [col, "today"];
+}
+
+/** Header strip: the 3 best and the 3 worst themes of a column (worst first), never the same theme twice. */
+export function leadersLaggards(themes: readonly ThemeOut[], col: ThemeMetric, n = 3): { leaders: ThemeOut[]; laggards: ThemeOut[] } {
+  const ranked = sortThemes(themes, { col, dir: "desc" }).filter((t) => val(t[col]) != null);
+  const leaders = ranked.slice(0, n).filter((t) => (t[col] as number) > 0);
+  const taken = new Set(leaders.map((t) => t.id));
+  const laggards = ranked.slice(-n).reverse().filter((t) => !taken.has(t.id) && (t[col] as number) < 0);
+  return { leaders, laggards };
 }
 
 /** Seconds since `asOf` (null without one); never negative. */

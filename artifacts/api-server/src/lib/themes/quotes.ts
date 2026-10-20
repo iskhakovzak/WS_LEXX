@@ -4,6 +4,8 @@
  *      feature is on (FINVIZ_AUTH set + desk switch finviz.enabled);
  *   2. otherwise — or when Finviz returned nothing usable — Yahoo v7 /finance/quote, 50 symbols per request through
  *      the shared cookie/crumb session (marketDataService.fetchYahooWithSession), 3 requests in parallel.
+ * Finviz has no premarket / after-hours columns: with Finviz as the source those two values are filled from the same
+ * Yahoo batches (best effort — a failed Yahoo call leaves them null; today / fromOpen stay Finviz's).
  * Throws when neither produced a single quote (the caller keeps its last good numbers).
  * `deps` are injectable: tests never touch the network.
  */
@@ -82,6 +84,19 @@ async function fromYahoo(tickers: readonly string[], session: ThemeSession, toda
   return out;
 }
 
+/** Premarket / after-hours of Finviz quotes from Yahoo (in place). Never throws. */
+async function fillExtended(quotes: Map<string, MemberQuote>, session: ThemeSession, today: string, deps: QuoteDeps): Promise<void> {
+  try {
+    const extra = await fromYahoo([...quotes.keys()], session, today, deps);
+    for (const [t, q] of quotes) {
+      const y = extra.get(t);
+      if (y) quotes.set(t, { ...q, premarket: y.premarket, afterHours: y.afterHours });
+    }
+  } catch (err) {
+    logger.warn({ error: err instanceof Error ? err.message : String(err) }, "themes: yahoo pre/post fill failed");
+  }
+}
+
 export async function fetchThemeQuotes(
   tickers: readonly string[],
   session: ThemeSession,
@@ -91,7 +106,10 @@ export async function fetchThemeQuotes(
   if (deps.finvizOn()) {
     try {
       const quotes = await fromFinviz(tickers, session, today, deps);
-      if (quotes.size) return { source: "finviz", quotes };
+      if (quotes.size) {
+        await fillExtended(quotes, session, today, deps);
+        return { source: "finviz", quotes };
+      }
     } catch (err) {
       logger.warn({ error: err instanceof Error ? err.message : String(err) }, "themes: finviz failed, trying yahoo");
     }

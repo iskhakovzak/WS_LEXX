@@ -4,15 +4,32 @@ import type ru from "../ru/themes";
 export default {
   title: "Bozor mavzulari",
   description: "Bozor mavzulari boʻyicha teng vaznli tiker savatlari. Kuchli mavzular yuqorida.",
-  panels: {
+  cols: {
+    rank: "#",
+    theme: "Mavzu",
+    ticker: "Tiker",
+    price: "Narx",
+    premarket: "Premarket",
     fromOpen: "Ochilishdan",
     today: "Kun davomida",
+    afterHours: "Yopilgandan keyin",
   },
-  panelHints: {
+  colsShort: {
+    premarket: "Prem.",
+    fromOpen: "Ochil.",
+    today: "Kun",
+    afterHours: "Postm.",
+  },
+  hints: {
+    premarket: "Premarketning oxirgi narxi oldingi sessiya yopilishiga nisbatan; ochilgandan keyin oʻzgarmaydi",
     fromOpen: "Narx bugungi sessiya ochilishiga nisbatan",
     today: "Narx oldingi sessiya yopilishiga nisbatan (premarket va postmarket bilan)",
+    afterHours: "Postmarket narxi bugungi sessiya yopilishiga nisbatan",
   },
-  viewAria: "Qaysi jadvalni koʻrsatish",
+  columnAria: "Ustun",
+  sortBy: "«{col}» ustuni boʻyicha saralash",
+  leaders: "Yetakchilar",
+  laggards: "Ortda qolganlar",
   session: {
     pre: "premarket",
     rth: "bozor ochiq",
@@ -24,14 +41,16 @@ export default {
   source: "Manba: {name}",
   stale: "maʼlumotlar eskirgan",
   staleHint: "Kotirovkalar yangilanmadi — oxirgi olinganlari koʻrsatilmoqda.",
-  noOpenYet: "«Ochilishdan» NY 09:30 da, bozor ochilgach paydo boʻladi",
-  rowAria: "{name}: {value}",
-  missing: "Maʼlumot yoʻq: {list}",
-  cols: {
-    ticker: "Tiker",
-    today: "Kun davomida",
-    fromOpen: "Ochilishdan",
+  unavailable: {
+    premarket: "«Premarket» NY 04:00 da, premarket boshlanganda paydo boʻladi",
+    fromOpen: "«Ochilishdan» NY 09:30 da, bozor ochilgach paydo boʻladi",
+    today: "«Kun davomida» sessiyaning birinchi kotirovkalari bilan paydo boʻladi",
+    afterHours: "«Yopilgandan keyin» NY 16:00 da, bozor yopilgach paydo boʻladi",
   },
+  rowAria: "{rank}. {name}: {value}. Mavzu tikerlarini ochish",
+  openTheme: "{name} mavzusini ochish",
+  sheetDesc: "Mavzu tikerlari, teng vazn. Saralash uchun ustun sarlavhasini bosing.",
+  missing: "Maʼlumot yoʻq: {list}",
   noData: {
     title: "Kotirovkalar yoʻq",
     desc: "Kotirovkalar manbasi hozir mavjud emas. Sahifa oʻzi yangilanadi.",

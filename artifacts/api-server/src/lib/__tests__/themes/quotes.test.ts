@@ -40,7 +40,7 @@ describe("fetchThemeQuotes", () => {
     expect(calls.map((c) => c.length)).toEqual([YAHOO_BATCH, YAHOO_BATCH, 20]);
     expect(res.source).toBe("yahoo");
     expect(res.quotes.size).toBe(120);
-    expect(res.quotes.get(tickers[0]!)).toEqual({ ticker: tickers[0], price: 102, today: 2, fromOpen: 0.99 });
+    expect(res.quotes.get(tickers[0]!)).toEqual({ ticker: tickers[0], price: 102, today: 2, fromOpen: 0.99, premarket: null, afterHours: null });
   });
 
   it("a failed Yahoo batch only drops its symbols; nothing at all → throws", async () => {
@@ -54,8 +54,9 @@ describe("fetchThemeQuotes", () => {
     await expect(fetchThemeQuotes(["MU"], "rth", TODAY, { ...noFinviz, yahooBatch: async () => null })).rejects.toThrow(/no quotes/);
   });
 
-  it("Finviz first (real client, fake fetch): Change / Gap → today / fromOpen; Yahoo untouched", async () => {
+  it("Finviz first (real client, fake fetch): Change / Gap → today / fromOpen; Yahoo only fills pre / post", async () => {
     const urls: string[] = [];
+    const yahooCalls: string[][] = [];
     let clock = 1_000_000;
     restoreFinviz = setFinvizClientDeps({
       token: () => "TEST-TOKEN",
@@ -74,14 +75,29 @@ describe("fetchThemeQuotes", () => {
     const res = await fetchThemeQuotes(["MU", "WDC", "STX"], "rth", TODAY, {
       finvizOn: () => true,
       finviz: (t, d) => fetchTickers(t, d),
-      yahooBatch: async () => { throw new Error("yahoo must not be called"); },
+      // Only the premarket / after-hours fill: Finviz's today / fromOpen win over Yahoo's.
+      yahooBatch: async (symbols) => {
+        yahooCalls.push([...symbols]);
+        return [{ ...yahooRow("MU", 999, 100, 100), preMarketPrice: 101.2, preMarketTime: sec(RTH_NOON) - 3 * 3600 }];
+      },
     });
+    expect(yahooCalls).toEqual([["MU", "WDC"]]);
     expect(urls).toHaveLength(1);
     expect(new URL(urls[0]!).searchParams.get("t")).toBe("MU,WDC,STX");
     expect(res.source).toBe("finviz");
-    expect(res.quotes.get("MU")).toEqual({ ticker: "MU", price: 110, today: 10, fromOpen: 4.76 });
-    expect(res.quotes.get("WDC")).toEqual({ ticker: "WDC", price: 50, today: -1, fromOpen: null });
+    expect(res.quotes.get("MU")).toEqual({ ticker: "MU", price: 110, today: 10, fromOpen: 4.76, premarket: 1.2, afterHours: null });
+    expect(res.quotes.get("WDC")).toEqual({ ticker: "WDC", price: 50, today: -1, fromOpen: null, premarket: null, afterHours: null });
     expect(res.quotes.has("STX")).toBe(false);
+  });
+
+  it("Finviz with Yahoo down: pre / post stay null, Finviz values kept", async () => {
+    const res = await fetchThemeQuotes(["MU"], "rth", TODAY, {
+      finvizOn: () => true,
+      finviz: async () => ({ rows: [{ ticker: "MU", price: 10, changePct: 1, gapPct: 0 }], errors: [] }),
+      yahooBatch: async () => { throw new Error("down"); },
+    });
+    expect(res.source).toBe("finviz");
+    expect(res.quotes.get("MU")).toEqual({ ticker: "MU", price: 10, today: 1, fromOpen: 1, premarket: null, afterHours: null });
   });
 
   it("Finviz on but empty / failing → Yahoo", async () => {
@@ -104,7 +120,7 @@ describe("getThemes cache", () => {
     { id: 2, name: "Steel", tickers: ["NUE"] },
   ];
   const quotes = (v: number) =>
-    new Map<string, MemberQuote>(["MU", "WDC", "NUE"].map((t) => [t, { ticker: t, price: 10, today: v, fromOpen: v / 2 }]));
+    new Map<string, MemberQuote>(["MU", "WDC", "NUE"].map((t) => [t, { ticker: t, price: 10, today: v, fromOpen: v / 2, premarket: null, afterHours: null }]));
 
   function setup(fetchQuotes: () => Promise<{ source: "yahoo" | "finviz"; quotes: Map<string, MemberQuote> }>) {
     let now = RTH_NOON;
