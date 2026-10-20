@@ -57,7 +57,7 @@ describe("simpleNav", () => {
 
   it("«Ещё» keeps the full-menu order; the trainer leaves the tools hub, the ratings' pages become rows", () => {
     expect(s.more.map((r) => r.href)).toEqual([
-      "/risk", "/rules", "/analytics", "/chart-lab", "/events", "/watchlist", "/discussions", "/trade-ideas",
+      "/risk", "/rules", "/analytics", "/chart-lab", "/events", "/themes", "/watchlist", "/discussions", "/trade-ideas",
       "/benchmark", "/top-results", "/office",
     ]);
     const tools = s.more.find((r) => r.href === "/chart-lab")!;

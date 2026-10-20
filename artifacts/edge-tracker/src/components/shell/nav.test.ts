@@ -49,6 +49,14 @@ describe("nav groups", () => {
     expect(rowChildren(tools).map((i) => i.href)).toEqual(["/chart-lab", "/trainer", "/calculator"]);
   });
 
+  it("«Темы рынка» is a row of the market group, between catalysts and the watchlist", async () => {
+    const market = NAV_GROUPS.find((g) => g.id === "market")!;
+    expect(market.items.map((i) => i.href)).toEqual(["/events", "/themes", "/watchlist"]);
+    expect(routeTitle("/themes")).toBe("Темы рынка");
+    await setLang("en", { source: "init" });
+    expect(routeTitle("/themes")).toBe("Market themes");
+  });
+
   it("every item has a label and unique href / go key", () => {
     expect(ALL_NAV_ITEMS.every((i) => i.name && i.name !== `nav.${i.key}`)).toBe(true);
     expect(new Set(ALL_NAV_ITEMS.map((i) => i.href)).size).toBe(ALL_NAV_ITEMS.length);

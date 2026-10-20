@@ -346,4 +346,5 @@ export default {
   REWARD_GRANT_DECIDED: "Bu mukofot soʻrovi boʻyicha qaror allaqachon qabul qilingan",
   REWARD_OUT_OF_STOCK: "Bu mukofot tugagan — katalogda qoldiqni oshiring",
   REWARD_NOT_YOUR_TRADER: "Mukofotlarni shu treyderning kuratori yoki admin topshiradi",
+  THEME_NOT_FOUND: "Mavzu topilmadi",
 } satisfies Messages<typeof ru>;

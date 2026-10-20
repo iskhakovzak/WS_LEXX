@@ -23,6 +23,7 @@ export default {
     watchlist: "Kuzatuv roʻyxati",
     big7: "Big 7",
     events: "Katalizatorlar",
+    themes: "Bozor mavzulari",
     dailyFeed: "Lenta",
     analystActions: "Tahlilchilar reytingi",
     offerings: "Joylashtirishlar",

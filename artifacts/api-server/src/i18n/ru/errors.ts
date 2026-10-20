@@ -356,4 +356,5 @@ export default {
   REWARD_GRANT_DECIDED: "По этому запросу награды уже принято решение",
   REWARD_OUT_OF_STOCK: "Эта награда закончилась — увеличьте остаток в каталоге",
   REWARD_NOT_YOUR_TRADER: "Награды вручает куратор этого трейдера или админ",
+  THEME_NOT_FOUND: "Тема не найдена",
 } as const;

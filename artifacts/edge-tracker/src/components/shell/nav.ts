@@ -20,7 +20,7 @@ import {
   LineChart, BarChart3, ListChecks, BookMarked, Eye, Radar, CalendarClock, BookOpen, Newspaper,
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
   Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, MessageSquareText,
-  GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Wrench, Gamepad2,
+  GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Wrench, Gamepad2, Shapes,
 } from "lucide-react";
 import { shellI18n, type NavGroupKey, type NavHubKey, type NavKey, type NavShortKey } from "@/i18n/ns/shell";
 import ruShell from "@/i18n/locales/ru/shell";
@@ -131,6 +131,7 @@ export const NAV_GROUPS: NavGroup[] = [
       nav("analystActions", { href: "/analyst-actions", icon: Award, keywords: "analyst upgrades downgrades апгрейды даунгрейды аналитики" }),
       nav("offerings", { href: "/offerings", icon: Layers, keywords: "offerings размещения dilution SPO" }),
     ] }),
+    nav("themes", { href: "/themes", icon: Shapes, keywords: "themes темы рынка theme tracker сектора секторы корзины сильные слабые от открытия за день" }),
     nav("watchlist", { href: "/watchlist", icon: Eye, keywords: "watchlist список тикеров", goKey: "w", children: [
       nav("big7", { href: "/big7", icon: Radar, keywords: "big7 мегакапы magnificent" }),
       nav("indicators", { href: "/indicators", icon: Gauge, keywords: "indicators макро VIX breadth" }),

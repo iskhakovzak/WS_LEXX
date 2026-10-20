@@ -91,6 +91,7 @@ import questsRouter from "./quests";
 import gamificationRouter from "./gamification";
 import usageRouter from "./usage";
 import finvizRouter from "./finviz";
+import themesRouter from "./themes";
 
 const router: IRouter = Router();
 
@@ -186,5 +187,6 @@ router.use(questsRouter);
 router.use(gamificationRouter);
 router.use(usageRouter);
 router.use(finvizRouter); // Finviz Elite: screener, ticker snapshot, earnings calendar (lib/finviz)
+router.use(themesRouter); // «Темы рынка»: theme tracker (lib/themes)
 
 export default router;

@@ -1,0 +1,72 @@
+/**
+ * `themes` — «Темы рынка» (/themes, components/themes/*): TradingView-style theme tracker. Theme names come from the
+ * server as stored (English, as on TradingView) and are not translated; tickers and provider names neither.
+ */
+export default {
+  title: "Темы рынка",
+  description: "Корзины тикеров по темам рынка с равным весом. Сильные темы сверху.",
+  panels: {
+    fromOpen: "От открытия",
+    today: "За день",
+  },
+  panelHints: {
+    fromOpen: "Цена к открытию сегодняшней сессии",
+    today: "Цена к закрытию прошлой сессии (с премаркетом и постмаркетом)",
+  },
+  viewAria: "Какую таблицу показать",
+  session: {
+    pre: "премаркет",
+    rth: "рынок открыт",
+    post: "после закрытия",
+    closed: "закрыт",
+  },
+  updatedSec: "обновлено {sec} с назад",
+  updatedMin: "обновлено {min} мин назад",
+  source: "Источник: {name}",
+  stale: "данные устарели",
+  staleHint: "Котировки не обновились — показаны последние полученные.",
+  noOpenYet: "До открытия в 09:30 NY значений нет",
+  rowAria: "{name}: {value}",
+  missing: "Нет данных: {list}",
+  cols: {
+    ticker: "Тикер",
+    today: "За день",
+    fromOpen: "От открытия",
+  },
+  noData: {
+    title: "Нет котировок",
+    desc: "Источник котировок сейчас недоступен. Страница обновится сама.",
+  },
+  noThemes: {
+    title: "Темы не настроены",
+    desc: "Тема — это корзина тикеров. Добавьте первую в настройке тем.",
+  },
+  loadFailed: "Не удалось загрузить темы рынка",
+  config: {
+    open: "Настроить темы",
+    title: "Настройка тем",
+    desc: "Название и тикеры через запятую (от 1 до 30). Все тикеры темы весят одинаково. Тему из архива можно вернуть.",
+    name: "Название",
+    tickers: "Тикеры",
+    tickersHint: "Через запятую или пробел, например MU, WDC, STX",
+    invalid: "Не похоже на тикер: {list}",
+    tooMany: "Не больше {max} тикеров в теме",
+    needOne: "Нужен хотя бы один тикер",
+    nameRequired: "Нужно название",
+    add: "Новая тема",
+    create: "Добавить тему",
+    archive: "В архив",
+    restore: "Вернуть",
+    editAria: "Изменить тему {name}",
+    archiveAria: "Убрать в архив: {name}",
+    restoreAria: "Вернуть тему {name}",
+    archivedTitle: "Архив: {n}",
+    saved: "Тема сохранена",
+    created: "Тема добавлена",
+    archivedToast: "Тема убрана в архив",
+    restoredToast: "Тема возвращена",
+    duplicate: "Тема с таким названием уже есть (может быть, в архиве)",
+    failed: "Не удалось сохранить",
+    loadFailed: "Не удалось загрузить список тем",
+  },
+} as const;

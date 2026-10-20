@@ -24,6 +24,7 @@ export default {
     watchlist: "Вотчлист",
     big7: "Big 7",
     events: "Катализаторы",
+    themes: "Темы рынка",
     dailyFeed: "Лента",
     analystActions: "Рейтинги аналитиков",
     offerings: "Размещения",

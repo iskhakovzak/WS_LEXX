@@ -52,6 +52,7 @@ const Curator = lazy(L["/curator"]);
 const AuthorNotes = lazy(L["/author-notes"]);
 const JuniorNotes = lazy(L["/junior-notes"]);
 const Offerings = lazy(L["/offerings"]);
+const Themes = lazy(L["/themes"]);
 const RiskDesk = lazy(L["/risk"]);
 const GamePlan = lazy(L["/game-plan"]);
 const Integrations = lazy(L["/integrations"]);
@@ -184,6 +185,7 @@ function Router() {
           <Route path="/author-notes" component={AuthorNotes} />
           <Route path="/junior-notes" component={JuniorNotes} />
           <Route path="/offerings" component={Offerings} />
+          <Route path="/themes" component={Themes} />
           <Route path="/risk" component={RiskDesk} />
           <Route path="/game-plan" component={GamePlan} />
           <Route path="/integrations" component={Integrations} />

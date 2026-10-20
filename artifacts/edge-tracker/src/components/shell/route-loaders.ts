@@ -39,6 +39,7 @@ const PAGE_IMPORTS = {
   "/author-notes": () => import("@/pages/author-notes"),
   "/junior-notes": () => import("@/pages/junior-notes"),
   "/offerings": () => import("@/pages/offerings"),
+  "/themes": () => import("@/pages/themes"),
   "/risk": () => import("@/pages/risk"),
   "/game-plan": () => import("@/pages/game-plan"),
   "/integrations": () => import("@/pages/integrations"),

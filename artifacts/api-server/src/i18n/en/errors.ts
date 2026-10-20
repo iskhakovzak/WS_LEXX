@@ -346,4 +346,5 @@ export default {
   REWARD_GRANT_DECIDED: "This reward request has already been decided",
   REWARD_OUT_OF_STOCK: "This reward is out of stock — raise the stock in the catalog",
   REWARD_NOT_YOUR_TRADER: "Rewards are handed over by this trader’s curator or an admin",
+  THEME_NOT_FOUND: "Theme not found",
 } satisfies Messages<typeof ru>;

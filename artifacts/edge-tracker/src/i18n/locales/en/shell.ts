@@ -23,6 +23,7 @@ export default {
     watchlist: "Watchlist",
     big7: "Big 7",
     events: "Catalysts",
+    themes: "Market themes",
     dailyFeed: "Feed",
     analystActions: "Analyst ratings",
     offerings: "Offerings",
