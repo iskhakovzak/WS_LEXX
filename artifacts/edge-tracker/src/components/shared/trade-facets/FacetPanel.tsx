@@ -40,7 +40,7 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
   const title = t(`dims.${dim}`);
   const keys = buckets.map((b) => b.key);
   return (
-    <section className="flex w-44 shrink-0 flex-col gap-1.5 md:w-auto md:min-w-[10.5rem] md:flex-1" aria-label={title}>
+    <section className="flex w-52 shrink-0 flex-col gap-1.5 md:w-auto md:min-w-[13rem] md:flex-1" aria-label={title}>
       <header className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
         <h3 className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
         <span className="flex shrink-0 gap-1 text-2xs">
