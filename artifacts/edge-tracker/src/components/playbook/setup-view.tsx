@@ -280,7 +280,10 @@ export function SetupView({
           </span>
         </div>
 
-        <StatusLine s={s} exampleCount={exampleCount} tier1={tier1} onStats={() => onTab("stats")} onExamples={() => onTab("examples")} />
+        <StatusLine
+          s={s} exampleCount={examplesQ.data ? examplesQ.data.length : exampleCount} tier1={tier1} onStats={() => onTab("stats")} onExamples={() => onTab("examples")}
+          onAdd={access.canAddExamples && live ? () => onAddExamples(entry) : undefined}
+        />
       </header>
 
       <SectionTabs<SetupTab>
@@ -363,11 +366,18 @@ function SpaceBadge({ access, author }: { access: SetupAccess; author: string | 
   return <span className="inline-flex items-center gap-1 font-medium text-foreground"><Users className="h-3.5 w-3.5" aria-hidden="true" /> {author ?? commonI18n.t("roles.trader")}</span>;
 }
 
-/** One line instead of a row of empty KPI tiles. */
+/**
+ * One line instead of a row of empty KPI tiles. A setup without examples says so and offers to add them from the
+ * viewer's own trades (Волна 2 п. 2.6 — the office examples are seeded from the desk's best trades, the rest is ours).
+ */
 function StatusLine({
-  s, exampleCount, tier1, onStats, onExamples,
-}: { s: SetupSummary | undefined; exampleCount?: number; tier1?: number; onStats: () => void; onExamples: () => void }) {
-  const ex = (
+  s, exampleCount, tier1, onStats, onExamples, onAdd,
+}: { s: SetupSummary | undefined; exampleCount?: number; tier1?: number; onStats: () => void; onExamples: () => void; onAdd?: () => void }) {
+  const ex = exampleCount === 0 ? (
+    onAdd
+      ? <button type="button" onClick={onAdd} className="font-medium text-primary hover:underline">{st("status.noExamplesAdd")}</button>
+      : <span>{st("status.noExamples")}</span>
+  ) : (
     <button type="button" onClick={onExamples} className="hover:text-foreground">
       {tier1 ? st("status.examplesT1", { count: exampleCount ?? 0, t1: tier1 }) : st("status.examples", { count: exampleCount ?? 0 })}
     </button>

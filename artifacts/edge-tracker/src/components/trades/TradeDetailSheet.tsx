@@ -26,7 +26,8 @@ import { eventLabel, sessionLabel, dayOf, tradePlaybookPayload, daysHeld, effect
 import { stopIsEstimate } from "./sheet-model";
 import { ConvictionDots, HorizonPill, ResultMenu, SidePill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
-import { ReviewChips, type PickerTarget } from "./review-tagging";
+import { TradeMarkup } from "./trade-markup";
+import { usePlanOverlay } from "@/components/chart-engine/hooks/usePlanOverlay";
 import { ExecutionsPanel } from "./ExecutionsPanel";
 import { ChecklistStatus, TradeRelated, useSourceIdeaTarget } from "./TradeRelated";
 import { TradeSocial } from "./TradeSocial";
@@ -74,7 +75,8 @@ const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) 
 const LazyAiReviewPanel = React.lazy(() => import("@/components/ai-review-panel").then((m) => ({ default: m.AiReviewPanel })));
 const LazyVoiceNotePlayer = React.lazy(() => import("@/components/voice-note-player").then((m) => ({ default: m.VoiceNotePlayer })));
 
-export type TradePatch = Partial<Pick<Trade, "result" | "notes" | "whatWorked" | "whatFailed" | "conclusion" | "tags" | "screenshotNotes" | "setup">>;
+export type TradePatch = Partial<Pick<Trade, "result" | "notes" | "whatWorked" | "whatFailed" | "conclusion" | "tags" | "screenshotNotes" | "setup">>
+  & { confidenceGrade?: "A+" | "A" | "B" | "C" };
 
 /** Idea targets are free text («125 / 130», «$12.50») — the replay draws the first price it finds. */
 function parseTargetPrice(target: string | null): number | null {
@@ -235,8 +237,9 @@ export function TradeDetailSheet(p: Props) {
   const [afterExit, setAfterExit] = useAfterExitMinutes();
   const ideaTarget = useSourceIdeaTarget(t);
   const timing = React.useMemo(() => (t ? tradeTiming(t) : null), [t]);
-  const [picker, setPicker] = React.useState<PickerTarget>(null);
-  React.useEffect(() => { setReviewCount(null); setPicker(null); }, [t?.id]);
+  React.useEffect(() => { setReviewCount(null); }, [t?.id]);
+  // Plan against execution: the morning plan's levels of this ticker-day on both charts (Волна 2 п. 2.12).
+  const plan = usePlanOverlay(t && t.id > 0 ? { tradeId: t.id } : null);
   const canEditForm = p.canEditForm ?? p.canEdit;
   const canEditResult = p.canEditResult ?? p.canEdit;
   const canDelete = p.canDelete ?? p.canEdit;
@@ -323,39 +326,31 @@ export function TradeDetailSheet(p: Props) {
                 <TabsList className="w-full justify-start overflow-x-auto">
                   <TabsTrigger value="overview">{tt("sheet.tabs.overview")}</TabsTrigger>
                   <TabsTrigger value="chart">{tt("sheet.tabs.chart")}</TabsTrigger>
-                  <TabsTrigger value="replay">{tt("sheet.tabs.replay")}</TabsTrigger>
                   <TabsTrigger value="executions">{tt("sheet.tabs.executions")}</TabsTrigger>
                   {showAi && <TabsTrigger value="ai">{tt("sheet.tabs.ai")}</TabsTrigger>}
                   <TabsTrigger value="social">{tt("sheet.tabs.social")}{reviewCount ? ` · ${reviewCount}` : ""}</TabsTrigger>
                 </TabsList>
               </div>
               <div className="px-5 pb-8 pt-2 md:min-h-0 md:flex-1 md:overflow-y-auto">
+                {/* «Обзор» = разметка + разбор + график (Волна 2 п. 2.12); quality, replay and the news live in «График». */}
                 <TabsContent value="overview" className="space-y-5">
-                  <section className="space-y-2">
-                    <p className="micro-label">{tt("sheet.markup")}</p>
-                    {/* data-active keeps the "+" buttons visible here (they are hover-only in the list rows). */}
-                    <div className="group" data-active="true">
-                      <ReviewChips
-                        trade={t}
-                        canTag={p.canEdit && !!p.onTag}
-                        picker={picker}
-                        setPicker={setPicker}
-                        onPick={(tr, kind, value) => p.onTag?.(tr, kind, value)}
-                        setupOptions={p.setupOptions ?? []}
-                      />
-                    </div>
-                  </section>
+                  <TradeMarkup trade={t} canEdit={p.canEdit} onTag={p.onTag} onPatch={p.onPatch} />
                   {!isBrokerTrade(t) && !redacted && <ChecklistStatus tradeId={t.id} />}
-                  {(t.entry != null || t.exit != null) && !redacted && (
-                    <section className="space-y-2">
-                      <p className="micro-label">{tt("sheet.quality")}</p>
-                      <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
-                    </section>
-                  )}
                   <section className="space-y-2">
                     <p className="micro-label">{tt("sheet.review")}</p>
                     <ReviewEditor trade={t} canEdit={p.canEdit} onPatch={p.onPatch} />
                   </section>
+                  {tab === "overview" && (
+                    <section className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="micro-label">{tt("sheet.chart")}</p>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setTab("chart")}>{tt("sheet.chartOpen")}</Button>
+                      </div>
+                      <React.Suspense fallback={<Skeleton className="h-[300px] rounded-2xl" />}>
+                        <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={300} mode="analysis" showModes={false} planLevels={plan?.levels} />
+                      </React.Suspense>
+                    </section>
+                  )}
                   <ContextRow trade={t} timing={timing} />
                   <TickerContext ticker={t.ticker} day={dayOf(t)} />
                   {t.screenshotUrl && (
@@ -379,30 +374,24 @@ export function TradeDetailSheet(p: Props) {
                 </TabsContent>
                 <TabsContent value="chart" className="space-y-4">
                   {tab === "chart" && (
-                    // One chart engine for the sheet: «График» = the whole day with the trade, «Реплей» = bar by bar.
-                    <React.Suspense fallback={<Skeleton className="h-[468px] rounded-2xl" />}>
-                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={420} mode="analysis" showModes={false} />
+                    // One chart engine: analysis (the whole day with the trade) and replay (bar by bar) are a mode switch.
+                    <React.Suspense fallback={<Skeleton className="h-[504px] rounded-2xl" />}>
+                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={440} mode="analysis" showModes planLevels={plan?.levels} />
                     </React.Suspense>
+                  )}
+                  {(t.entry != null || t.exit != null) && !redacted && (
+                    <section className="space-y-2">
+                      <p className="micro-label">{tt("sheet.quality")}</p>
+                      <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
+                    </section>
                   )}
                   <React.Suspense fallback={<Skeleton className="h-32 rounded-2xl" />}>
                     <LazyNewsFeed ticker={t.ticker} limit={10} compact cutoffDate={t.createdAt ?? `${dayOf(t)}T23:59:59Z`} />
                   </React.Suspense>
                 </TabsContent>
-                <TabsContent value="replay" className="space-y-4">
-                  {tab === "replay" && (
-                    <React.Suspense fallback={<Skeleton className="h-[504px] rounded-2xl" />}>
-                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} mode="replay" showModes={false} />
-                    </React.Suspense>
-                  )}
-                  {!redacted && (
-                      <section className="space-y-2">
-                        <p className="micro-label">{tt("sheet.quality")}</p>
-                        <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
-                      </section>
-                    )}
-                  </TabsContent>
                   <TabsContent value="executions">
-                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit && canEditForm} fees={t.fees} qty={t.qty} pnl={t.pnl} onOpenTradeId={(id) => { const x = p.allTrades.find((a) => a.id === id); if (x) p.onOpenTrade(x); }} />
+                    {/* Broker fills are the broker's record: no basket, no «Добавить» (read-only on the server too). */}
+                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit && canEditForm && !isBrokerTrade(t)} fees={t.fees} qty={t.qty} pnl={t.pnl} onOpenTradeId={(id) => { const x = p.allTrades.find((a) => a.id === id); if (x) p.onOpenTrade(x); }} />
                   </TabsContent>
                   {showAi && (
                   <TabsContent value="ai">

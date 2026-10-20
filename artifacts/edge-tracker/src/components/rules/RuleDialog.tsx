@@ -18,7 +18,27 @@ import { rulesI18n } from "@/i18n/ns/rules";
 import { personName } from "@/i18n";
 import { rich } from "./rich";
 import { autoName, type RuleDraft } from "./templates";
-import type { Rule, RuleField, RuleGroup, RuleKindDef, RuleReport } from "./types";
+import type { Rule, RuleField, RuleGroup, RuleKindDef, RuleReport, RuleStage } from "./types";
+
+type StageChoice = RuleStage | "all";
+
+/** «Для ступени»: every trader, or the traders on one ladder stage only (from the day the stage is assigned). */
+function StageField({ value, onChange }: { value: StageChoice; onChange: (v: StageChoice) => void }) {
+  const { t } = rulesI18n.useT();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">{t("dialog.forStage")}</span>
+      <Segmented<StageChoice>
+        ariaLabel={t("dialog.forStage")}
+        size="sm"
+        value={value}
+        onChange={onChange}
+        options={(["all", "junior", "trader", "senior"] as const).map((v) => ({ value: v, label: t(`stage.${v}`) }))}
+      />
+      <span className="text-xs text-muted-foreground">{t("dialog.forStageHint")}</span>
+    </div>
+  );
+}
 
 const GROUP_ICON: Record<RuleGroup, LucideIcon> = {
   loss: ShieldAlert,
@@ -105,6 +125,8 @@ export function RuleDialog({
   const [note, setNote] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [scope, setScope] = useState<"trader" | "desk">("trader");
+  // Desk rules: one ladder stage or every trader (Волна 2 п. 2.6).
+  const [stage, setStage] = useState<StageChoice>("all");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,6 +138,7 @@ export function RuleDialog({
     setError(null);
     setSaving(false);
     setScope("trader");
+    setStage(editing?.stage ?? "all");
     if (editing) {
       const def = kinds.find((k) => k.kind === editing.kind);
       setKind(editing.kind);
@@ -181,11 +204,11 @@ export function RuleDialog({
     setError(null);
     try {
       if (editing) {
-        await http.patch(`/api/rules/${editing.id}`, { name: n, threshold, enabled, note: note.trim() || null });
+        await http.patch(`/api/rules/${editing.id}`, { name: n, threshold, enabled, note: note.trim() || null, ...(editing.desk ? { stage: stage === "all" ? null : stage } : {}) });
         toast({ title: t("dialog.updated") });
       } else {
         const body: Record<string, unknown> = { name: n, kind, threshold, enabled, note: note.trim() || null };
-        if (scope === "desk") body.desk = true;
+        if (scope === "desk") { body.desk = true; if (stage !== "all") body.stage = stage; }
         else body.trader = trader;
         await http.post(`/api/rules`, body);
         toast({ title: t("dialog.added"), description: kindDef.auto === false ? t("dialog.addedSelf") : t("dialog.addedAuto") });
@@ -296,6 +319,7 @@ export function RuleDialog({
                 )}
               </div>
             )}
+            {((!isEdit && scope === "desk") || (isEdit && editing?.desk)) && <StageField value={stage} onChange={setStage} />}
 
             {isEdit && (
               <div className="flex flex-col gap-1">

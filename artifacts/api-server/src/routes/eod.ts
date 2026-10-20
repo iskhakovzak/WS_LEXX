@@ -6,12 +6,8 @@ import { logger } from "../lib/logger";
 import { nyDate } from "../lib/tradingDate";
 import { REVIEW_SLA_HOURS, missingFields, missingList, tradingHoursBetween } from "../lib/eodLogic";
 import { netPnlSql, closeDateSql, resultSql } from "../lib/tradeMath";
-import {
-  DAY_COLS, Summary, closeCheckNow, ensureTables, focusDayFor, isQuickClose, iso, loadCarried, loadDay, loadDayById, loadDayTrades,
-  loadPlanTickers, loadStreaks, serializeDay, statusOf, totals, traderNote, type DayRow, type SummaryT, type TradeRow,
-} from "../lib/eodStore";
-import { ensureJournalTable } from "./journal";
-import { ensureCuratorTables, marketClosedDays } from "../lib/curatorStore";
+import { DAY_COLS, Summary, closeCheckNow, focusDayFor, isQuickClose, iso, loadCarried, loadDay, loadDayById, loadDayTrades, loadPlanTickers, loadStreaks, serializeDay, statusOf, totals, traderNote, type DayRow, type SummaryT, type TradeRow } from "../lib/eodStore";
+import { marketClosedDays } from "../lib/curatorStore";
 import { queueRoster, sweepOverdue } from "../lib/eodQueue";
 import { forgetQuests } from "../lib/quests/cache";
 import { forgetPlanPrefill } from "../lib/planPrefill";
@@ -26,6 +22,7 @@ import { fmtSignedUsd, mirrorsToTelegram, preview as textPreview } from "../lib/
 import { AppError, badRequest, errorMessage, notFound, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { reviewT } from "../i18n/ns";
+import { syncMarkerErrors } from "../lib/tradingErrors";
 
 export { closeMinutesFor, type DayStatus, type TradeRow } from "../lib/eodStore";
 
@@ -81,14 +78,13 @@ export { closeMinutesFor, type DayStatus, type TradeRow } from "../lib/eodStore"
  * closeEodDay(trader, date, {}, "daily") — the same row, the same curator notice (once per day), the same queue.
  * The trader's one-line note (daily_reviews.note) rides along in the queue items (`note`) and in GET /eod/day.
  *
- * Tables (additive, created idempotently at module load / first request):
+ * Tables (src/db/migrations):
  *   eod_days(trader, date, closed_at, discipline, summary jsonb, reviewed_by, reviewed_at, curator_comment, curator_score)
  *   eod_trade_reviews(trade_id, trader, followed_plan, mistakes text[], lesson)
  * Per-trade setup / grade live on the trade itself (trades PATCH API); only what's missing there is stored here.
  */
 const router: IRouter = Router();
 
-ensureTables().catch((err) => logger.warn({ err }, "eod: ensure tables failed at init"));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -178,13 +174,11 @@ router.get("/eod/day", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, req.query.trader);
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
-  await ensureTables();
   res.json(await buildDay(scope.trader, date, langOf(req)));
 }));
 
 router.get("/eod/streaks", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, req.query.trader);
-  await ensureTables();
   res.json({ trader: scope.trader, ...(await loadStreaks(scope.trader, nyDate())) });
 }));
 
@@ -194,7 +188,6 @@ router.get("/eod/days", asyncHandler(async (req, res): Promise<void> => {
   const { from, to } = req.query;
   if (!isIsoDate(from) || !isIsoDate(to) || from > to) throw new AppError("INVALID_RANGE", 400, { max: 120 });
   if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 120) throw new AppError("INVALID_RANGE", 400, { max: 120 });
-  await ensureTables();
   const { rows } = await pool.query<DayRow>(
     `SELECT ${DAY_COLS} FROM eod_days d WHERE d.trader = $1 AND d.date >= $2 AND d.date <= $3 ORDER BY d.date`,
     [scope.trader, from, to],
@@ -215,7 +208,6 @@ router.put("/eod/trades/:id/review", asyncHandler(async (req, res): Promise<void
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = TradeReviewBody.safeParse(req.body ?? {});
   if (!parsed.success) throw parsed.error;
-  await ensureTables();
   const { rows: tr } = await pool.query<{ trader: string | null; date: string; closeDate: string }>(
     `SELECT t.trader, LEFT(t.date, 10) AS date, ${closeDateSql()} AS "closeDate" FROM trades t WHERE t.id = $1 AND t.deleted_at IS NULL`,
     [id],
@@ -230,6 +222,7 @@ router.put("/eod/trades/:id/review", asyncHandler(async (req, res): Promise<void
   }
   const b = parsed.data;
   const mistakes = b.mistakes ? Array.from(new Set(b.mistakes.map((m) => m.trim()).filter(Boolean))) : null;
+  const before = mistakes ? (await pool.query<{ mistakes: string[] }>(`SELECT mistakes FROM eod_trade_reviews WHERE trade_id = $1`, [id])).rows[0]?.mistakes ?? [] : null;
   const { rows } = await pool.query(
     `INSERT INTO eod_trade_reviews (trade_id, trader, followed_plan, mistakes, lesson, updated_at)
      VALUES ($1, $2, $3, COALESCE($4::text[], '{}'), COALESCE($5, ''), NOW())
@@ -241,6 +234,8 @@ router.put("/eod/trades/:id/review", asyncHandler(async (req, res): Promise<void
      RETURNING trade_id AS "tradeId", trader, followed_plan AS "followedPlan", mistakes, lesson, updated_at AS "updatedAt"`,
     [id, me.name, b.followedPlan ?? null, mistakes, b.lesson ?? null, b.followedPlan !== undefined],
   );
+  // The journal's mistakes are rows of the one errors store (Волна 2 п. 2.8, lib/tradingErrors).
+  if (mistakes && before) await syncMarkerErrors({ trader: me.name, tradeId: id, ticker: null, source: "journal", actor: me.name }, before, mistakes);
   res.json({ ...rows[0], updatedAt: iso(rows[0].updatedAt) });
 }));
 
@@ -265,7 +260,6 @@ router.put("/eod/day/:date", asyncHandler(async (req, res): Promise<void> => {
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const parsed = DayBody.safeParse(req.body ?? {});
   if (!parsed.success) throw parsed.error;
-  await ensureTables();
   const existing = await loadDay(me.name, date);
   if (existing?.closedAt) throw new AppError("EOD_DAY_CLOSED", 409, { date: existing.date }, { date: existing.date });
   const day = await upsertDay(me.name, date, parsed.data);
@@ -274,7 +268,6 @@ router.put("/eod/day/:date", asyncHandler(async (req, res): Promise<void> => {
 
 /** Fill the trader's journal_days row for `date` (and tomorrow's plan) where it is still empty — never overwrites text. */
 async function prefillJournal(trader: string, date: string, day: DayRow, trades: TradeRow[]): Promise<void> {
-  await ensureJournalTable();
   const s = day.summary ?? ({} as SummaryT);
   const lessonText = trades
     .filter((t) => t.lesson.trim())
@@ -322,7 +315,6 @@ export type CloseVia = "journal" | "daily";
 export async function closeEodDay(
   trader: string, date: string, body: z.infer<typeof DayBody>, via: CloseVia, now = new Date(),
 ): Promise<{ day: DayRow; changed: boolean; trades: TradeRow[] }> {
-  await ensureTables();
   const trades = await loadDayTrades(trader, date);
   const check = await closeCheckNow(date, trades, now);
   if (check.opensAt) throw new AppError("EOD_TOO_EARLY", 422, { opensAt: check.opensAt }, { opensAt: check.opensAt });
@@ -414,7 +406,6 @@ router.post("/eod/day/:date/reopen", asyncHandler(async (req, res): Promise<void
   if (!me) throw unauthorized();
   const date = req.params.date;
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
-  await ensureTables();
   const { rows } = await pool.query<DayRow>(
     `UPDATE eod_days d SET closed_at = NULL, updated_at = NOW() WHERE d.trader = $1 AND d.date = $2 RETURNING ${DAY_COLS}`,
     [me.name, date],
@@ -431,7 +422,6 @@ router.get("/eod/status", asyncHandler(async (req, res): Promise<void> => {
   if (!auth) throw unauthorized();
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
-  await ensureTables();
   const qTrader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   let traders: string[];
   if (!(await can(req, "journal.read.team", { trader: qTrader || null }))) {
@@ -530,7 +520,6 @@ router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
   const limitRaw = Number(req.query.limit ?? 50);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 50;
-  await ensureTables();
   sweepOverdue();
   const roster = await queueRoster(req, req.query.scope);
   const who = `AND ($2::text[] IS NULL OR d.trader = ANY($2::text[]))`;
@@ -540,7 +529,6 @@ router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
     res.json({ slaHours: SLA_HOURS, mode: "reviewed", ...meta, items: rows.map(serializeQueue) });
     return;
   }
-  await ensureCuratorTables();
   const [{ rows }, closed] = await Promise.all([
     pool.query<QueueRow>(`${QUEUE_SQL} ${pendingWindowSql(req.query.old === "1")} ${who} ORDER BY d.closed_at DESC LIMIT $1`, [limit, roster.traders]),
     marketClosedDays(nyDate()),
@@ -551,8 +539,6 @@ router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
 router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
   if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
-  await ensureTables();
-  await ensureCuratorTables();
   sweepOverdue();
   const roster = await queueRoster(req, req.query.scope);
   const [{ rows }, closed] = await Promise.all([
@@ -577,7 +563,6 @@ router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void>
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = CuratorReviewBody.safeParse(req.body ?? {});
   if (!parsed.success) throw parsed.error;
-  await ensureTables();
   const existing = await loadDayById(id);
   if (!existing) throw new AppError("EOD_DAY_NOT_FOUND");
   if (!existing.closedAt) throw new AppError("EOD_NOT_CLOSED");

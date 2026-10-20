@@ -16,7 +16,7 @@ import { nyDate } from "@/lib/trading-date";
 import { useSelfChecks } from "./api";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
-import { ORIGIN_LABEL, originOf, severityMeta } from "./constants";
+import { ORIGIN_LABEL, originOf, severityMeta, stageChip } from "./constants";
 import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { SelfMarkButtons } from "./RulesOverview";
 import { commonI18n } from "@/i18n/ns/common";
@@ -113,6 +113,7 @@ export function RuleDetailSheet({
         <SheetHeader className="pr-10 text-left">
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={o.tone} title={o.hint}>{o.label}</Pill>
+            {stageChip(r.stage) && <Pill tone="neutral" title={stageChip(r.stage)!.hint}>{stageChip(r.stage)!.label}</Pill>}
             <span className="text-xs text-muted-foreground">{r.kindLabel}</span>
             {!r.enabled && <Pill>{t("row.disabled")}</Pill>}
           </div>

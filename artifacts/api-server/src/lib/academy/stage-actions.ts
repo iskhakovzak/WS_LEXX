@@ -2,8 +2,8 @@ import { pool } from "@workspace/db";
 import { syncRiskTier } from "../people/stage";
 import { applyStageDefaultLimits } from "../people/stageLimits";
 import { loadTiers } from "../academyPathStore";
-import { ensureTables as ensureRiskTables } from "../riskData";
 import { forgetTier } from "../playbookToday/tier";
+import { onStageAssigned } from "../rulesTemplates";
 import { riskT } from "../../i18n/ns";
 import { nyDate } from "../tradingDate";
 import type { StageKey } from "../promotionEngine";
@@ -16,7 +16,7 @@ import type { StageKey } from "../promotionEngine";
  */
 
 export async function setStage(user: string, from: StageKey | null, to: StageKey, actor: string, action: string, comment: string | null, requestId: number | null, report: unknown): Promise<{ limitsApplied: boolean }> {
-  const [tiers] = await Promise.all([loadTiers(), ensureRiskTables()]);
+  const [tiers] = await Promise.all([loadTiers()]);
   let limitsApplied = false;
   const client = await pool.connect();
   try {
@@ -40,6 +40,7 @@ export async function setStage(user: string, from: StageKey | null, to: StageKey
     client.release();
   }
   forgetTier(user);
+  onStageAssigned(user, to); // the stage's desk rules (Волна 2 п. 2.6) are live at once
   return { limitsApplied };
 }
 

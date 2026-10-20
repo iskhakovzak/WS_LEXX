@@ -13,9 +13,10 @@ import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { eodI18n } from "@/i18n/ns/eod";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
-import { tagLabel } from "@/components/shared/trade-labels";
+import { ErrorPicker } from "@/components/shared/error-picker";
+import { codesOfWords, withErrorCode } from "@/components/shared/error-vocab";
 import {
-  GRADES, MISTAKE_TAGS, emptySummary, eodApi, gradeTone, splitMissing, useBrokerDaily, useEodDay,
+  GRADES, emptySummary, eodApi, gradeTone, splitMissing, useBrokerDaily, useEodDay,
   useEodMutation, usePlaybookNames, type EodDayPayload, type EodPosition, type EodSummary, type EodTrade, type Grade,
   type MissingItem,
 } from "./eod-api";
@@ -374,22 +375,8 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {MISTAKE_TAGS.map((m) => {
-          const on = t.mistakes.includes(m);
-          return (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onMistakes(on ? t.mistakes.filter((x) => x !== m) : [...t.mistakes, m])}
-              className={cn("chip min-h-6 px-2 text-2xs font-medium", on && "!border-transparent !bg-down/15 !text-down")}
-            >
-              {tagLabel(m)}
-            </button>
-          );
-        })}
-      </div>
+      {/* The one mistakes picker (Волна 2 п. 2.8): the server writes these into the one errors store too. */}
+      <ErrorPicker className="mt-2" size="sm" value={codesOfWords(t.mistakes)} onChange={(code, on) => onMistakes(withErrorCode(t.mistakes, code, on))} />
       <Input
         aria-label={te("flow.lessonAria")}
         data-eod-lesson="1"

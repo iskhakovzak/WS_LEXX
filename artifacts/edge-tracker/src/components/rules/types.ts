@@ -30,6 +30,7 @@ export type RuleKindDef = {
 };
 
 export type RuleOrigin = "personal" | "office";
+export type RuleStage = "junior" | "trader" | "senior";
 
 export type Rule = {
   id: number;
@@ -41,6 +42,8 @@ export type Rule = {
   createdAt: string;
   origin?: RuleOrigin;
   desk?: boolean;
+  /** Desk rule for one ladder stage only (Волна 2 п. 2.6); null / absent = every trader. */
+  stage?: RuleStage | null;
   createdBy?: string | null;
   note?: string | null;
   auto?: boolean;
@@ -194,6 +197,7 @@ export type RuleReport = {
   auto: boolean;
   origin: RuleOrigin;
   desk: boolean;
+  stage?: RuleStage | null;
   trader: string;
   note: string | null;
   createdBy: string | null;

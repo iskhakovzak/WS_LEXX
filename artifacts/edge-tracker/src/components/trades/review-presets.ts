@@ -2,7 +2,7 @@
 // The predicates mirror the server (api-server lib/tradesPageQuery.ts → presetPredicate) so the page works the same
 // while the running API predates `?preset=` (then the client filters the full filtered list itself).
 import type { Trade } from "@workspace/api-client-react";
-import { MISTAKE_TAGS } from "@/components/eod/eod-api";
+import { ERROR_VOCAB, errorCodeOf, withErrorCode } from "@/components/shared/error-vocab";
 import { tradesI18n } from "@/i18n/ns/trades";
 export { tagLabel, tagMatches } from "@/components/shared/trade-labels";
 import { holdSeconds, netPnl, resultKey, splitTags, tradeWall, type SortConfig } from "./trade-utils";
@@ -50,14 +50,16 @@ export function isPreset(v: string | null | undefined): v is Preset {
 
 // ── Quick-tag vocabulary ─────────────────────────────────────────────────────
 
-/** Mistakes: the same list as the EOD review (one vocabulary across the desk). */
-export const MISTAKES: readonly string[] = MISTAKE_TAGS;
+/**
+ * Mistakes: the one vocabulary of the desk (components/shared/error-vocab, Волна 2 п. 2.8) — stored as the canonical word;
+ * older spellings («FOMO», «Реванш»…) still count as the same mistake. The server puts them into trading_errors.
+ */
+export const MISTAKES: readonly string[] = ERROR_VOCAB.map((e) => e.canonical);
 // Stored values (codes): the Russian word is what trades.tags keeps; `tagLabel` shows it in the UI language.
 // i18n-ignore (stored tag codes)
 export const EMOTIONS: readonly string[] = ["Спокойствие", "Уверенность", "Страх", "Жадность", "Тильт", "Скука", "Нетерпение", "Эйфория"];
 
 
-const MISTAKE_SET = new Set(MISTAKES.map((m) => m.toLowerCase()));
 const EMOTION_SET = new Set(EMOTIONS.map((m) => m.toLowerCase()));
 
 export type TagKind = "setup" | "mistake" | "emotion";
@@ -67,23 +69,32 @@ export function classifyTags(tags: string | null | undefined): { mistakes: strin
   const out = { mistakes: [] as string[], emotions: [] as string[], other: [] as string[] };
   for (const t of splitTags(tags)) {
     const k = t.toLowerCase();
-    if (MISTAKE_SET.has(k)) out.mistakes.push(t);
+    if (errorCodeOf(t)) out.mistakes.push(t);
     else if (EMOTION_SET.has(k)) out.emotions.push(t);
     else out.other.push(t);
   }
   return out;
 }
 
-/** Toggle one tag in the comma list; returns the new column value (null when empty). */
+/**
+ * Toggle one tag in the comma list; returns the new column value (null when empty). A mistake toggles by its code: any
+ * spelling of it counts as present, and off removes every spelling.
+ */
 export function toggleTag(tags: string | null | undefined, tag: string): string | null {
   const cur = splitTags(tags);
-  const has = cur.some((c) => c.toLowerCase() === tag.toLowerCase());
-  const next = has ? cur.filter((c) => c.toLowerCase() !== tag.toLowerCase()) : [...cur, tag];
+  const code = errorCodeOf(tag);
+  let next: string[];
+  if (code) next = withErrorCode(cur, code, !cur.some((c) => errorCodeOf(c) === code));
+  else {
+    const has = cur.some((c) => c.toLowerCase() === tag.toLowerCase());
+    next = has ? cur.filter((c) => c.toLowerCase() !== tag.toLowerCase()) : [...cur, tag];
+  }
   return next.length ? next.join(", ") : null;
 }
 
 export function hasTag(tags: string | null | undefined, tag: string): boolean {
-  return splitTags(tags).some((c) => c.toLowerCase() === tag.toLowerCase());
+  const code = errorCodeOf(tag);
+  return splitTags(tags).some((c) => (code ? errorCodeOf(c) === code : c.toLowerCase() === tag.toLowerCase()));
 }
 
 // ── Client-side predicates (fallback while the API has no ?preset=) ─────────

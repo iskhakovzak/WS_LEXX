@@ -241,6 +241,7 @@ export default {
   canvas: {
     stop: "Stop {price}",
     target: "Target {price}",
+    planShort: "Plan",
     stopShort: "Stop",
     targetShort: "Target",
     avgEntry: "Avg entry {price}",

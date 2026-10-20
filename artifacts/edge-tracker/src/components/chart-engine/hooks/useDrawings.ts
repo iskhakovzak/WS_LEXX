@@ -1,5 +1,6 @@
 /**
- * The viewer's drawings on a ticker-day: GET / PUT /api/chart/drawings?ticker=&date= (body { drawings }, replace-all).
+ * The viewer's drawings of a ticker — ONE set across days (Волна 2 п. 2.12: a level drawn yesterday is on today's chart):
+ * GET / PUT /api/chart/drawings?ticker= (body { drawings }, replace-all). `day` only keys this browser's fallback copy.
  * Changes are shown at once and saved shortly after (debounced); while a drag is in progress nothing is saved until the
  * drop. A server without the route (404), a guest (403) or a signed-out viewer falls back to this browser's storage;
  * drawings left there from before are moved to the server the first time it answers.
@@ -22,7 +23,7 @@ export type DrawingsStore = {
   saveFailed: boolean;
 };
 
-const url = (ticker: string, day: string) => `/api/chart/drawings?ticker=${encodeURIComponent(ticker.toUpperCase())}&date=${encodeURIComponent(day)}`;
+const url = (ticker: string) => `/api/chart/drawings?ticker=${encodeURIComponent(ticker.toUpperCase())}`;
 const toLocal = (s: number | null) => s === 404 || s === 401 || s === 403;
 
 export function useDrawings(ticker: string, day: string, enabled = true): DrawingsStore {
@@ -38,7 +39,7 @@ export function useDrawings(ticker: string, day: string, enabled = true): Drawin
     if (!enabled || !ticker || !day) return;
     const ac = new AbortController();
     setState({ key, list: [], source: sourceRef.current, loading: true });
-    http.get<unknown>(url(ticker, day), { signal: ac.signal })
+    http.get<unknown>(url(ticker), { signal: ac.signal })
       .then((body) => {
         sourceRef.current = "server";
         let list = parseDrawingsResponse(body);
@@ -57,7 +58,7 @@ export function useDrawings(ticker: string, day: string, enabled = true): Drawin
 
   const flush = React.useCallback((list: Drawing[]) => {
     if (sourceRef.current !== "server") { saveDrawings(ticker, day, list); return; }
-    http.put<unknown>(url(ticker, day), { drawings: list.slice(0, MAX_DRAWINGS).map(toApiDrawing) })
+    http.put<unknown>(url(ticker), { drawings: list.slice(0, MAX_DRAWINGS).map(toApiDrawing) })
       .then(() => { setSaveFailed(false); saveDrawings(ticker, day, []); })
       .catch((e: unknown) => {
         // No route / read-only viewer: keep them in this browser. Otherwise keep a browser copy until the next save works.

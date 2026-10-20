@@ -7,13 +7,15 @@
  * The header has the trade picker (search by ticker / day, recent trades) and the links back to the trade and its day.
  * Mode and timeframe live in the chart toolbar and are mirrored to the URL. Without a trade the page offers the
  * viewer's latest trades (prefill), so one click opens a chart.
+ * Plan against execution (Волна 2 п. 2.12): the morning plan's levels of the ticker-day are dotted «План» lines on the
+ * chart and the trade's setup is a chip in the header (GET /api/chart/plan-overlay).
  * Reads only: GET /api/trades/:id, GET /api/trades/page, GET /api/training/trades/:id (a desk trade, $ nulled for others).
  */
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
 import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Loader2, Search } from "lucide-react";
-import { EmptyState } from "@/components/ds";
+import { EmptyState, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { Input } from "@/components/ui/input";
@@ -28,6 +30,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { chartLabI18n } from "@/i18n/ns/chartLab";
 import { personName } from "@/i18n";
 import { entryTimeOf, netOf, searchParams } from "@/components/chart-engine/lib/picker";
+import { usePlanOverlay } from "@/components/chart-engine/hooks/usePlanOverlay";
+import type { PlanOverlay } from "@/components/chart-engine/lib/plan-levels";
 
 /** `movePct`: side-aware entry → exit move, % (desk payload) — the result when neither $ nor R is available. */
 type TradeRow = TradeLike & { rMultiple?: number | string | null; movePct?: number | null };
@@ -146,6 +150,20 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
   );
 }
 
+/** The trade's setup and how many plan levels are on the chart (nothing when neither is known). */
+function OverlayChips({ overlay }: { overlay: PlanOverlay | null }) {
+  const { t: tl } = chartLabI18n.useT();
+  if (!overlay || (!overlay.setup && !overlay.levels.length)) return null;
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {overlay.setup && <Pill tone="accent" title={tl("overlay.setupTitle")} className="max-w-[14rem]"><span className="truncate">{tl("overlay.setup", { name: overlay.setup })}</span></Pill>}
+      {overlay.levels.length > 0 && (
+        <Pill tone="neutral" title={overlay.source === "desk" ? tl("overlay.planDesk") : tl("overlay.planOwn")}>{tl("overlay.plan", { count: overlay.levels.length })}</Pill>
+      )}
+    </span>
+  );
+}
+
 /** No trade picked: the latest trades as one-click rows (prefill) and the way to the trainer. */
 function StartState({ onPick }: { onPick: (t: TradeRow) => void }) {
   const { t: tl } = chartLabI18n.useT();
@@ -218,6 +236,7 @@ export default function ChartLabPage() {
   const { user } = useAuth();
   const adHoc: TradeLike | null = React.useMemo(() => (tradeId == null && adTicker && adDate ? { id: adHocId(adTicker, adDate), ticker: adTicker, date: adDate } : null), [tradeId, adTicker, adDate]);
   const current: TradeRow | null = tradeId != null ? trade.data?.trade ?? null : adHoc;
+  const overlay = usePlanOverlay(tradeId != null ? { tradeId } : adTicker && adDate ? { ticker: adTicker, date: adDate } : null);
   const openTrade = (t: TradeRow) => navigate(`/chart-lab?trade=${t.id}${mode !== "analysis" ? `&mode=${mode}` : ""}${tf !== "1m" ? `&tf=${tf}` : ""}`);
 
   const label = current ? (
@@ -253,6 +272,7 @@ export default function ChartLabPage() {
         {tradeId != null && current && !viaDesk && (
           <AddToPlaybookButton payload={{ name: `${current.ticker} ${current.date.slice(0, 10)}`, ticker: current.ticker, sourceType: "trade", sourceId: tradeId }} className="h-9 shrink-0" />
         )}
+        <OverlayChips overlay={current ? overlay : null} />
         <PlaybookSheetButton />
       </header>
 
@@ -275,6 +295,7 @@ export default function ChartLabPage() {
           initialTimeframe={tf}
           onTimeframeChange={(t) => setParams({ tf: t })}
           showModes
+          planLevels={overlay?.levels}
         />
       ) : null}
     </div>
