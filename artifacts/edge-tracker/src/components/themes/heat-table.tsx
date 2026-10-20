@@ -1,6 +1,6 @@
 /**
- * The dense heat-table every board uses: rank, name, the visible value columns, sorted by the active one. From xl the
- * sorted list splits into two halves side by side (ranks 1–20 | 21–39) so a full board fits one screen; below xl one
+ * The dense heat-table every board uses: rank, name, the visible value columns, sorted by the active one. From xl a
+ * board of 13+ rows splits into two columns, 41+ rows into three from 1360 px (55 themes fit one screen); below xl one
  * list; on phones the name plus ≤ 2 columns (the active one and «За день»). A column with no values right now collapses
  * to a narrow rail (its header says when it appears). Rows are rendered by the caller (`renderRow`: a button that opens
  * a sheet, or a menu trigger) — every row carries `data-row`, and ↑ / ↓ move the focus through them in rank order.
@@ -10,7 +10,7 @@ import { Panel } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { themesI18n } from "@/i18n/ns/themes";
 import { RailCell, SortHeader, ValueCell, valueTracks } from "./heat";
-import { columnMax, emptyColumns, phoneColumns, sortRows, splitHalves, type BoardColumn, type ColSort } from "./model";
+import { SPLIT_MIN_ROWS, THREE_COLUMNS_MIN_ROWS, columnMax, emptyColumns, phoneColumns, sortRows, splitColumns, type BoardColumn, type ColSort } from "./model";
 
 /** rank · name · value tracks; the value tracks come from CSS variables (--pvt on phones, --vt from sm). */
 export const ROW_GRID = "grid grid-cols-[1.25rem_minmax(0,1fr)_var(--pvt)] items-center gap-x-1.5 sm:grid-cols-[1.5rem_minmax(0,1fr)_var(--vt)]";
@@ -83,7 +83,10 @@ export function HeatTable<R, C extends BoardColumn>({ spec, toolbar, footer }: {
   const phone = useMemo(() => phoneColumns(sort.col, columns.filter((c) => !empty.includes(c))), [sort.col, columns, empty]);
   const maxes = useMemo(() => new Map(columns.map((c) => [c, columnMax(valued, c)])), [valued, columns]);
   const sorted = useMemo(() => sortRows(rows, sort, spec.get, spec.labelOf), [rows, sort, spec]);
-  const [left, right] = splitHalves(sorted);
+  const split = sorted.length >= SPLIT_MIN_ROWS;
+  const three = sorted.length >= THREE_COLUMNS_MIN_ROWS;
+  const halves = splitColumns(sorted, 2);
+  const thirds = three ? splitColumns(sorted, 3) : [];
   const vars = {
     "--vt": valueTracks(columns, empty, "4.75rem"),
     "--pvt": valueTracks(phone, [], "4.5rem"),
@@ -92,11 +95,21 @@ export function HeatTable<R, C extends BoardColumn>({ spec, toolbar, footer }: {
     <Panel padded bodyClassName="p-2 sm:p-3" style={vars}>
       {toolbar && <div className="mb-1.5 flex flex-wrap items-center gap-2">{toolbar}</div>}
       <div onKeyDown={onRowKeys}>
-        <List spec={spec} rows={sorted} start={1} empty={empty} phone={phone} maxes={maxes} className="xl:hidden" />
-        <div className="hidden gap-x-6 xl:grid xl:grid-cols-2">
-          <List spec={spec} rows={left} start={1} empty={empty} phone={phone} maxes={maxes} />
-          <List spec={spec} rows={right} start={left.length + 1} empty={empty} phone={phone} maxes={maxes} />
-        </div>
+        <List spec={spec} rows={sorted} start={1} empty={empty} phone={phone} maxes={maxes} className={split ? "xl:hidden" : undefined} />
+        {split && (
+          <div className={cn("hidden gap-x-6 xl:grid xl:grid-cols-2", three && "min-[1360px]:!hidden")}>
+            {halves.map((rows, i) => (
+              <List key={i} spec={spec} rows={rows} start={i * halves[0]!.length + 1} empty={empty} phone={phone} maxes={maxes} />
+            ))}
+          </div>
+        )}
+        {three && (
+          <div className="hidden gap-x-5 min-[1360px]:grid min-[1360px]:grid-cols-3">
+            {thirds.map((rows, i) => (
+              <List key={i} spec={spec} rows={rows} start={i * thirds[0]!.length + 1} empty={empty} phone={phone} maxes={maxes} />
+            ))}
+          </div>
+        )}
       </div>
       {footer}
     </Panel>

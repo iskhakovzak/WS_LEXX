@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   METRICS, TICKER_COLUMNS, ageSeconds, breadth, breadthColumn, cellIntensity, columnMax, defaultColumn, effectiveSort, emptyColumns, hasValues,
   isMetric, isSortOf, nextSort, nextTab, parseScreenerInput, parseTickers, phoneColumns, planDay, pollInterval, setHidden, sharedRows, sortMembers,
-  sortRows, sortThemes, splitHalves, tabOf, tabValue, themeTickerList, themesBoardRows, toggleIn, visibleColumns,
+  sortRows, sortThemes, splitColumns, tabOf, tabValue, themeTickerList, themesBoardRows, toggleIn, visibleColumns,
   type PersonalThemeOut, type ThemeMetric, type ThemeOut, type ThemesView, type TickerRow,
 } from "./model";
 
@@ -63,10 +63,12 @@ describe("sorting and layout", () => {
     expect(sortRows(rows, { col: "rvol", dir: "desc" }, (r, c) => r[c], (r) => r.ticker).map((r) => r.ticker)).toEqual(["B", "A", "C"]);
   });
 
-  it("wide screens split the sorted list in halves: 39 → 20 | 19", () => {
-    const [l, r] = splitHalves(Array.from({ length: 39 }, (_, i) => i + 1));
-    expect([l.length, r.length, l[0], l.at(-1), r[0], r.at(-1)]).toEqual([20, 19, 1, 20, 21, 39]);
-    expect(splitHalves([])).toEqual([[], []]);
+  it("wide screens split the sorted list into columns: 39 → 20 | 19, 55 → 19 | 19 | 17", () => {
+    const [l, r] = splitColumns(Array.from({ length: 39 }, (_, i) => i + 1), 2);
+    expect([l!.length, r!.length, l![0], l!.at(-1), r![0], r!.at(-1)]).toEqual([20, 19, 1, 20, 21, 39]);
+    const three = splitColumns(Array.from({ length: 55 }, (_, i) => i + 1), 3);
+    expect(three.map((c) => [c.length, c[0], c.at(-1)])).toEqual([[19, 1, 19], [19, 20, 38], [17, 39, 55]]);
+    expect(splitColumns([], 2)).toEqual([[], []]);
   });
 
   it("phones: ≤ 2 of the visible columns — the active one and «За день»", () => {

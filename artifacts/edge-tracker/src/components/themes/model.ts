@@ -162,11 +162,15 @@ export function sortRows<R, C extends string>(rows: readonly R[], sort: ColSort<
 export const sortThemes = <T extends ThemeOut>(themes: readonly T[], sort: ThemeSort): T[] => sortRows(themes, sort, (t, c) => t[c], (t) => t.name);
 export const sortMembers = (members: readonly MemberQuote[], sort: ThemeSort): MemberQuote[] => sortRows(members, sort, (m, c) => m[c], (m) => m.ticker);
 
-/** Wide screens: ranks 1…⌈n/2⌉ left, the rest right. */
-export function splitHalves<T>(rows: readonly T[]): [T[], T[]] {
-  const mid = Math.ceil(rows.length / 2);
-  return [rows.slice(0, mid), rows.slice(mid)];
+/** Wide screens: the sorted list in `n` columns read top-down, left to right (55 → 19 | 18 | 18). */
+export function splitColumns<T>(rows: readonly T[], n: number): T[][] {
+  const per = Math.ceil(rows.length / Math.max(1, n));
+  return Array.from({ length: Math.max(1, n) }, (_, i) => rows.slice(i * per, (i + 1) * per));
 }
+
+/** Short boards stay one list; long ones (a full shared board) get a third column on very wide screens. */
+export const SPLIT_MIN_ROWS = 13;
+export const THREE_COLUMNS_MIN_ROWS = 41;
 
 // ─── cells, breadth ─────────────────────────────────────────────────────────
 
