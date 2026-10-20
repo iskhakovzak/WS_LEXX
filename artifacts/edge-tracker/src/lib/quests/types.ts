@@ -62,6 +62,8 @@ export interface Quest {
   /** Curator quests: who assigned it (stored name; display via personName) and an optional note. */
   assignedBy: string | null;
   note: string | null;
+  /** The manual curator task: the NY day the trader pressed «Готово» (the curator still confirms; Волна 2 п. 2.13). */
+  reportedOn?: string | null;
   /** Where to go to make progress (site path), e.g. "/game-plan?view=my". */
   href: string | null;
 }

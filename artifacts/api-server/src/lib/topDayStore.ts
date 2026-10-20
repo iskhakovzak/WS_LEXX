@@ -6,13 +6,14 @@
  * execution day (lib/deskDayStore).
  */
 import { pool } from "@workspace/db";
-import { closeDateSql, netPnlSql } from "./tradeMath";
+import { closeDateSql, netPnlSql, signedRSql } from "./tradeMath";
 import type { CalendarRow, TraderTickerRow, TraderTickerSideRow } from "./topDay";
 
 type Queryable = { query: (typeof pool)["query"] };
 
 const LIVE = `t.deleted_at IS NULL AND t.trader IS NOT NULL AND t.trader <> ''`;
 const NET = netPnlSql("t");
+const R = signedRSql("t");
 /** The trade's NY close day (exit date, else the entry date) — the expression of index trades_live_close_day_idx. */
 export const CLOSE_DAY = `LEFT(${closeDateSql("t")}, 10)`;
 
@@ -44,11 +45,12 @@ export async function loadCalendarRows(month: string, viewerName: string | null,
   return { rows: days.rows as CalendarRow[], holidays: (hol.rows as { date: string }[]).map((r) => String(r.date)) };
 }
 
-/** Every (trader, ticker) closed on `date` with net, trades, wins, losses. */
+/** Every (trader, ticker) closed on `date` with net, trades, wins, losses, Σ R (2.14: the trader's own day in R). */
 export async function loadDayRows(date: string, q: Queryable = pool): Promise<TraderTickerRow[]> {
   const { rows } = await q.query(
     `SELECT t.trader, t.ticker, SUM(${NET}) AS net, COUNT(*)::int AS trades,
-            COUNT(*) FILTER (WHERE ${NET} > 0)::int AS wins, COUNT(*) FILTER (WHERE ${NET} < 0)::int AS losses
+            COUNT(*) FILTER (WHERE ${NET} > 0)::int AS wins, COUNT(*) FILTER (WHERE ${NET} < 0)::int AS losses,
+            SUM(${R}) AS r, COUNT(${R})::int AS r_n
        FROM trades t
       WHERE ${CLOSE_DAY} = $1 AND ${LIVE}
       GROUP BY t.trader, t.ticker`,
@@ -65,6 +67,7 @@ export async function loadDaySideRows(date: string, q: Queryable = pool): Promis
   const { rows } = await q.query(
     `SELECT t.trader, t.ticker, t.side, SUM(${NET}) AS net, COUNT(*)::int AS trades,
             COUNT(*) FILTER (WHERE ${NET} > 0)::int AS wins, COUNT(*) FILTER (WHERE ${NET} < 0)::int AS losses,
+            SUM(${R}) AS r, COUNT(${R})::int AS r_n,
             MIN(x.first_at) AS first_at, MAX(x.last_at) AS last_at
        FROM trades t
        LEFT JOIN LATERAL (

@@ -4,31 +4,17 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LIST_LABELS, rowWritable, type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem } from "./lib";
-import type { DayLevelSet, UpcomingEarnings } from "./use-market";
-import type { TickerHistory } from "./use-history";
+import { LIST_LABELS, rowWritable, type Plan } from "./lib";
 import { EventMarks, HistoryCell, InlineNote, LevelCell } from "./bits";
 import { RowMenu, type RowActions } from "./WatchlistRow";
 import { Sparkline } from "./visuals";
+import { WatchlistCards } from "./WatchlistCards";
+import type { WlRow } from "./card-model";
 import { fmtPct, fmtPrice } from "@/lib/format";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 
-/** One prepared row: the watchlist item plus everything the table shows next to it. */
-export type WlRow = {
-  item: WatchlistItem;
-  /** Working list; null = archived. */
-  list: ListName | null;
-  quote?: Quote;
-  plan: Plan;
-  levels: DayLevelSet | null | undefined;
-  keys: KeyLevel[];
-  history?: TickerHistory;
-  earnings?: EarningsHit;
-  upcoming?: UpcomingEarnings;
-  news?: NewsDigest;
-  /** Temporary optimistic row (being created). */
-  pending?: boolean;
-};
+/** One prepared row (card-model.ts — shared with the phone cards). */
+export type { WlRow };
 
 export type SortKey = "ticker" | "change" | "gap" | "rvol" | "atr" | "level" | "hist" | "added" | "score";
 export const SORT_DEFAULT_DIR: Record<SortKey, SortDir> = {
@@ -87,7 +73,10 @@ export function WatchlistTable({
   const th = (k: SortKey) => ({ active: sort.key === k, dir: sort.dir, onSort: () => onSort(k) });
 
   return (
-    <DataTable density={density} className="[&_tbody_td]:py-0 [&_thead_th]:py-1.5">
+    <>
+    {/* 2.11: phones get cards (no 1000 px table); the table from `sm` up. */}
+    <WatchlistCards className="sm:hidden" rows={rows} showList={showList} canEdit={canEdit} me={me} actions={actions} scoringIds={scoringIds} levelsLoading={levelsLoading} today={today} />
+    <DataTable density={density} className="hidden sm:block [&_tbody_td]:py-0 [&_thead_th]:py-1.5">
       <table className="table-fixed">
         <colgroup>
           <col style={{ width: canEdit ? 52 : 12 }} />
@@ -156,6 +145,7 @@ export function WatchlistTable({
         </tbody>
       </table>
     </DataTable>
+    </>
   );
 }
 

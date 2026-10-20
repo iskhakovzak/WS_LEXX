@@ -3,9 +3,12 @@
  * the desk plan — one button sends a request; it waits in the curator cabinet («Сегодня» → «Запросы») and the answer
  * comes back as a notification (in-app + Telegram).
  *
- *   POST  /curator-requests           member {kind, message?} → 201 {request}; one open request per kind
+ *   POST  /curator-requests           member {kind, message?, link?} → 201 {request}; one open request per kind
  *                                     (409 CURATOR_REQUEST_OPEN, details.id); notifies the group curator / assigned
- *                                     staff (nobody assigned → every curator)
+ *                                     staff (nobody assigned → every curator). Kind «review» (Волна 2 п. 2.13,
+ *                                     «Попросить разбор» from a discussion / an idea) needs `link` = that thread
+ *                                     («/discussions?thread=7», «/trade-ideas?idea=3»; 400 otherwise), one open per
+ *                                     thread; the curator's notification and queue row lead to the thread
  *   GET   /curator-requests/mine      member → {requests} own open + resolved in the last 30 days
  *   GET   /curator-requests           journal.review ?status=open|done|dismissed&scope=group|all → {requests, scope}
  *                                     within the matrix scope; default «Моя группа» when the viewer leads anyone
@@ -25,7 +28,7 @@ import { conflict, notFound, unauthorized } from "../lib/http";
 import { localeOfUser } from "../i18n";
 import { riskT } from "../i18n/ns";
 import {
-  REQUEST_KINDS, REQUEST_STATUSES, insertRequest, listForStaff, listMine, memberId, openRequestOf, requestById, requestRecipients,
+  REQUEST_KINDS, REQUEST_STATUSES, REVIEW_LINK_RE, insertRequest, listForStaff, listMine, memberId, openRequestOf, requestById, requestRecipients,
   resolveRequest, type CuratorRequest, type RequestKind,
 } from "../lib/people/curatorRequests";
 import { myPeople, pickScope } from "../lib/people/deskGroups";
@@ -33,13 +36,18 @@ import { myPeople, pickScope } from "../lib/people/deskGroups";
 const router: IRouter = Router();
 
 /** Where the trader acts on the answer. */
-const TRADER_LINK: Record<RequestKind, string> = { limits: "/risk", group: "/academy/my", stage: "/academy/path", plan: "/game-plan", other: "/" };
+const TRADER_LINK: Record<RequestKind, string> = { limits: "/risk", group: "/academy/my", stage: "/academy/path", plan: "/game-plan", other: "/", review: "/discussions" };
 const CURATOR_LINK = "/curator?view=today#curator-requests";
+
+/** Where a notification about `r` leads: a review request → its thread; else the kind's page / the curator cabinet. */
+export const linkFor = (r: Pick<CuratorRequest, "kind" | "link">, side: "trader" | "curator"): string =>
+  r.kind === "review" && r.link ? r.link : side === "trader" ? TRADER_LINK[r.kind] : CURATOR_LINK;
 
 const CreateBody = z.object({
   kind: z.enum(REQUEST_KINDS),
   message: z.string().trim().max(500).optional().default(""),
-}).strict();
+  link: z.string().trim().max(120).regex(REVIEW_LINK_RE).optional(),
+}).strict().refine((b) => (b.kind === "review") === !!b.link, { path: ["link"], message: "link is required for a review request (and only for it)" });
 
 const ResolveBody = z.object({
   status: z.enum(["done", "dismissed"]),
@@ -53,7 +61,7 @@ async function notifyCurators(r: CuratorRequest): Promise<void> {
       userName: name, type: "curator_request", actor: r.trader, source: "curator",
       title: t("curatorRequests.newTitle", { trader: r.trader, kind: t(`curatorRequests.kind.${r.kind}`) }),
       message: r.message ? t("curatorRequests.newBody", { message: r.message }) : t("curatorRequests.noMessage"),
-      link: CURATOR_LINK, entityType: "curator_request", entityId: r.id,
+      link: linkFor(r, "curator"), entityType: "curator_request", entityId: r.id,
     });
   }
 }
@@ -65,7 +73,7 @@ async function notifyTrader(r: CuratorRequest, actor: string): Promise<void> {
     userName: r.trader, type: "curator_request_done", actor, source: "curator", telegram: true,
     title: t(r.status === "done" ? "curatorRequests.doneTitle" : "curatorRequests.dismissedTitle", { kind }),
     message: r.note ?? t(r.status === "done" ? "curatorRequests.doneBody" : "curatorRequests.dismissedBody"),
-    link: TRADER_LINK[r.kind], entityType: "curator_request", entityId: r.id,
+    link: linkFor(r, "trader"), entityType: "curator_request", entityId: r.id,
   });
 }
 
@@ -77,9 +85,10 @@ router.post("/curator-requests", asyncHandler(async (req, res): Promise<void> =>
   const id = await memberId(me);
   if (id == null) throw unauthorized();
   const { kind, message } = parsed.data;
-  const open = await openRequestOf(id, kind);
+  const link = parsed.data.link ?? null;
+  const open = await openRequestOf(id, kind, link);
   if (open) throw conflict("CURATOR_REQUEST_OPEN", { id: open.id });
-  const created = await insertRequest(id, kind, message);
+  const created = await insertRequest(id, kind, message, link);
   if (!created) throw conflict("CURATOR_REQUEST_OPEN");
   await notifyCurators(created).catch(() => undefined); // the request is saved; a failed notification must not fail it
   res.status(201).json({ request: created });

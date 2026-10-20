@@ -25,6 +25,23 @@ const round = (n: number, d = 2) => Number(n.toFixed(d));
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
+/** A non-staff viewer sees a ranked list only with at least this many qualified traders (Волна 2 п. 2.14). */
+export const MIN_QUALIFIED_FOR_TRADERS = 5;
+
+/**
+ * The rows a viewer gets. Non-staff: own row only, without a place (owner default 2026-10-19, UMID-15: «#1 of 1» / a
+ * rank among teammates the trader can't see read as a real ranking) — also when a desk override opens team reads
+ * (`scope` null) to a trader while fewer than MIN_QUALIFIED_FOR_TRADERS qualified (2.14: the web then shows «Ваша
+ * строка»). Staff: everything (one trader's row, without a place, when they asked for that trader). Pure.
+ */
+export function rowsForViewer<T extends { trader: string; rank: number | null }>(
+  ranked: readonly T[], v: { scope: string | null; staff: boolean; name: string | null; qualified: number },
+): T[] {
+  if (v.scope === null && (v.staff || v.qualified >= MIN_QUALIFIED_FOR_TRADERS)) return [...ranked];
+  const own = v.scope ?? v.name;
+  return ranked.filter((e) => e.trader === own).map((e) => ({ ...e, rank: null }));
+}
+
 // ─── Period windows (NY calendar, Mon–Fri weeks) ─────────────────────────────
 export type PeriodKind = "week" | "month" | "quarter" | "all" | "days" | "custom";
 
@@ -390,10 +407,8 @@ router.get("/leaderboard", asyncHandler(async (req, res): Promise<void> => {
   const improved = ranked.filter((e) => e.qualified && e.deltaScore != null && e.prev?.qualified).sort((a, b) => (b.deltaScore ?? 0) - (a.deltaScore ?? 0))[0];
   const mostImproved = improved && (improved.deltaScore ?? 0) > 0 ? { trader: improved.trader, deltaScore: improved.deltaScore, score: improved.score, prevScore: improved.prevScore } : null;
 
-  // Non-staff: own row only, without a place (owner default 2026-10-19, UMID-15: «#1 of 1» / a rank among teammates the
-  // trader can't see read as a real ranking; anonymised cohort ranks are an open owner decision).
-  const listed = scope === null ? ranked : ranked.filter((e) => e.trader === scope).map((e) => ({ ...e, rank: null }));
   const viewer = await loadMoneyViewer(req);
+  const listed = rowsForViewer(ranked, { scope, staff: viewer.staff, name: me, qualified: rank });
   const visible = redactOthersMoney(listed, viewer.name, viewer.staff, { nested: { prev: ["totalPnl", "net", "expectancy"] } });
   if (format === "array") { res.json(visible); return; }
   res.json({

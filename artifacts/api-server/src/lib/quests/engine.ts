@@ -166,6 +166,7 @@ export function toQuest(q: StoredQuest, d: QuestData | null): Quest {
     ...(q.status === "cancelled" ? { cancelled: true } : {}),
     rewardPoints: q.rewardPoints, startsOn: q.startsOn, endsOn: q.endsOn, completedAt: q.completedOn,
     assignedBy: q.assignedBy, note: q.note,
+    ...(q.template === "curator_task" && typeof q.params?.traderDoneOn === "string" ? { reportedOn: q.params.traderDoneOn } : {}),
     href: q.status === "active" && t && d ? t.href(d, q) : null,
   };
 }

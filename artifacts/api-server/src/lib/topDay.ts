@@ -11,6 +11,9 @@
  * Money (owner decision 9, 2026-10-20 — lib/moneyVisibility): in both trader modes other traders' $ is null and desk
  * sums ($ of the desk, best / worst trader-day) are staff-only; the trader's own $ stays. Counts, wins / losses,
  * tickers and ranks stay.
+ * Less money pressure on newcomers (Волна 2 п. 2.14): in both trader modes the loss list carries no places and is ordered
+ * by alias (no «1 место по убытку»), a trader-day in the loss list has place 0, and the viewer's own day comes with Σ R
+ * and the win share (the trader view leads with R and %, not with a place).
  * Money = net (pnl − |fees|, lib/tradeMath). Unit-tested in __tests__/topDay.test.ts.
  */
 import { deskAliases } from "./deskAliases";
@@ -106,6 +109,10 @@ export interface TraderTickerRow {
   trades: unknown;
   wins: unknown;
   losses: unknown;
+  /** Σ signed R of the group's trades with an R (null / absent when none). */
+  r?: unknown;
+  /** Trades with an R. */
+  r_n?: unknown;
 }
 
 export interface TopTicker {
@@ -120,9 +127,13 @@ export interface TopRow {
   me: boolean;
   /** Real name: staff and the named mode only; null in the anonymous mode. */
   name: string | null;
-  /** 1-based place in its list (profit or loss). */
+  /** 1-based place in its list (profit or loss); 0 = no place (the loss list for a trader, 2.14). */
   place: number;
   net: number | null;
+  /** Σ signed R of the day (null when no trade has an R). */
+  r: number | null;
+  /** Wins / (wins + losses) in % (null when nothing was decided). */
+  winPct: number | null;
   trades: number;
   wins: number;
   losses: number;
@@ -144,6 +155,8 @@ export interface TopDay {
 interface TraderAgg {
   trader: string;
   net: number;
+  r: number;
+  rN: number;
   trades: number;
   wins: number;
   losses: number;
@@ -158,12 +171,13 @@ export function aggregateTraders(rows: readonly TraderTickerRow[]): TraderAgg[] 
     if (!name) continue;
     let a = by.get(name);
     if (!a) {
-      a = { trader: name, net: 0, trades: 0, wins: 0, losses: 0, tickers: [] };
+      a = { trader: name, net: 0, r: 0, rN: 0, trades: 0, wins: 0, losses: 0, tickers: [] };
       by.set(name, a);
     }
     const net = num(r.net) ?? 0;
     const trades = int(r.trades);
     a.net += net;
+    if (int(r.r_n) > 0) { a.r += num(r.r) ?? 0; a.rN += int(r.r_n); }
     a.trades += trades;
     a.wins += int(r.wins);
     a.losses += int(r.losses);
@@ -173,6 +187,12 @@ export function aggregateTraders(rows: readonly TraderTickerRow[]): TraderAgg[] 
   }
   for (const a of by.values()) a.tickers.sort((x, y) => y.net - x.net || x.ticker.localeCompare(y.ticker));
   return [...by.values()];
+}
+
+/** Wins / decided in % (one decimal), null when nothing was decided. */
+export function winPctOf(wins: number, losses: number): number | null {
+  const d = wins + losses;
+  return d > 0 ? Math.round((wins / d) * 1000) / 10 : null;
 }
 
 function shapeRow(a: TraderAgg, place: number, aliases: ReadonlyMap<string, number>, viewer: MoneyViewer, mode: TopMode): TopRow {
@@ -185,6 +205,8 @@ function shapeRow(a: TraderAgg, place: number, aliases: ReadonlyMap<string, numb
     name: showsNames(mode) ? a.trader : null,
     place,
     net: $ ? round2(a.net) : null,
+    r: a.rN > 0 ? round2(a.r) : null,
+    winPct: winPctOf(a.wins, a.losses),
     trades: a.trades,
     wins: a.wins,
     losses: a.losses,
@@ -209,6 +231,11 @@ function fullPlace(aggs: readonly TraderAgg[], a: TraderAgg): number {
   return i >= 0 ? i + 1 : 0;
 }
 
+/** The place a viewer in `mode` may see: a loss place only for staff (2.14), else 0. */
+function placeFor(aggs: readonly TraderAgg[], a: TraderAgg, mode: TopMode): number {
+  return a.net < 0 && mode !== "staff" ? 0 : fullPlace(aggs, a);
+}
+
 /**
  * `aliases`: the desk-wide day aliases (lib/deskDayStore.loadDayAliases — the same source as the desk-day chart); when
  * omitted they are numbered over the traders in `rows` (same roster: every live trader of the date).
@@ -221,6 +248,9 @@ export function buildTopDay(
   const { profit, loss } = rankTraders(aggs, n);
   const mine = viewer.name ? aggs.find((a) => a.trader === viewer.name) : undefined;
   const deskMoney = mode === "staff";
+  const lossRows = loss.map((a, i) => shapeRow(a, deskMoney ? i + 1 : 0, aliases, viewer, mode));
+  // A trader: the worst days without places, in alias order — the list says who had a red day, not who was «first».
+  if (!deskMoney) lossRows.sort((x, y) => x.alias - y.alias);
   return {
     date,
     mode,
@@ -230,8 +260,8 @@ export function buildTopDay(
       traders: aggs.length,
     },
     profit: profit.map((a, i) => shapeRow(a, i + 1, aliases, viewer, mode)),
-    loss: loss.map((a, i) => shapeRow(a, i + 1, aliases, viewer, mode)),
-    me: mine ? shapeRow(mine, fullPlace(aggs, mine), aliases, viewer, mode) : null,
+    loss: lossRows,
+    me: mine ? shapeRow(mine, placeFor(aggs, mine, mode), aliases, viewer, mode) : null,
   };
 }
 
@@ -264,9 +294,11 @@ export interface TraderDay {
   name: string | null;
   /** Which order `place` is in (sent even when $ is hidden, so the client can say «3rd by loss»). */
   list: "profit" | "loss" | "flat";
-  /** Place in the profit list (net > 0) or the loss list (net < 0); 0 for a flat day. */
+  /** Place in the profit list (net > 0) or the loss list (net < 0, staff only — 0 for a trader, 2.14); 0 for a flat day. */
   place: number;
   net: number | null;
+  r: number | null;
+  winPct: number | null;
   trades: number;
   wins: number;
   losses: number;
@@ -325,8 +357,10 @@ export function buildTraderDay(
     me: !!viewer.name && trader === viewer.name,
     name: showsNames(mode) ? trader : null,
     list: a.net > 0 ? "profit" : a.net < 0 ? "loss" : "flat",
-    place: fullPlace(aggs, a),
+    place: placeFor(aggs, a, mode),
     net: $ ? round2(a.net) : null,
+    r: a.rN > 0 ? round2(a.r) : null,
+    winPct: winPctOf(a.wins, a.losses),
     trades: a.trades,
     wins: a.wins,
     losses: a.losses,

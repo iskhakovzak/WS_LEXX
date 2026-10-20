@@ -5,7 +5,8 @@
  *
  *   seasonState(viewer, key?)      season points ranking: top N (points > 0) + the subject's own place; aliases «t<n>»
  *                                  for traders when names are hidden (privacy.hideNamesFromTraders), names for staff;
- *                                  a risk-halted trader is left out of the top (no season lead while halted)
+ *                                  a risk-halted trader is left out of the top (no season lead while halted); a trader
+ *                                  sees no place while fewer than 5 have points (2.14, season.withRankThreshold)
  *   leagueState(viewer, key?)      curator teams by average season points per active member (no teams while fewer than
  *                                  LEAGUE_MIN_TEAMS are ranked); the curator's own team members (real names — staff only)
  *   gamificationMe(subject, …)     GamificationMe: season, league, mastery (stored → level-up recognition), freeze,
@@ -28,7 +29,7 @@ import { recordRecognition } from "./recognition";
 import type { EligibilityInput } from "./rewards";
 import { syncRewards } from "./rewardsService";
 import { grantsOf, listItems } from "./rewardsStore";
-import { endsInDays, previousSeason, rankRows, seasonKeyOf, seasonRange, topFor, type Ranked } from "./season";
+import { endsInDays, previousSeason, rankRows, SEASON_MIN_RANKED, seasonKeyOf, seasonRange, topFor, withRankThreshold, type Ranked } from "./season";
 import { finalizeSeason, finalRanking, seasonPlaces, seasonRows } from "./seasonStore";
 import { activeTitleOf } from "./titles";
 import { activeTitles, earnedTitles } from "./titlesStore";
@@ -95,10 +96,10 @@ export async function seasonState(v: GView, key: string | null = null, now = new
     hidden, alias: deskAliases(ranked.map((r) => r.trader), season), titles, excluded: halted,
   });
   const { from, to } = seasonRange(season);
-  return {
+  return withRankThreshold({
     key: season, from, to, endsInDays: endsInDays(season, today), myPoints: mine?.points ?? 0,
     myRank: mine && mine.points > 0 ? mine.rank : null, of: ranked.length, top,
-  };
+  }, ranked, v.staff, settingOr("gamification.seasonMinRanked", SEASON_MIN_RANKED));
 }
 
 export async function leagueState(v: GView, key: string | null = null, now = new Date()): Promise<LeagueState | null> {

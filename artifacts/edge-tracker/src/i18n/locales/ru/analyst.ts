@@ -237,6 +237,7 @@ export default {
     sourceAria: "Источник: {source}",
     showMore: "Показать ещё {count} из {total}",
   },
+  cards: { more: "Показать ещё {count} из {total}" },
   page: {
     hotkeys: {
       search: "поиск",

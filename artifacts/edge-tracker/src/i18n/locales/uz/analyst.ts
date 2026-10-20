@@ -236,6 +236,7 @@ export default {
     sourceAria: "Manba: {source}",
     showMore: "{total} tadan yana {count} tasini koʻrsatish",
   },
+  cards: { more: "Yana {count} tasini koʻrsatish ({total} dan)" },
   page: {
     hotkeys: {
       search: "qidiruv",

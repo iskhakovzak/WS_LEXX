@@ -7,6 +7,7 @@ import { personName } from "@/i18n";
 import { questsI18n } from "@/i18n/ns/quests";
 import type { Quest } from "@/lib/quests/types";
 import { daysLeft, isOptionalStep, questDescription, questPct, questTitle } from "./model";
+import { TaskDoneButton } from "@/components/shared/curator-task-done";
 
 /**
  * «Перейти» to the page the viewer is already on is a dead link (e.g. the focus quest → the dashboard). A link with its
@@ -93,6 +94,8 @@ export function QuestRow({ q, today, compact = false, action, showStatus = false
             <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         )}
+        {/* 2.13: the trader's own curator task — «Готово» tells the curator (staff views pass links={false}). */}
+        {links && !compact && q.template === "curator_task" && <TaskDoneButton q={q} />}
         {action}
       </div>
     </li>

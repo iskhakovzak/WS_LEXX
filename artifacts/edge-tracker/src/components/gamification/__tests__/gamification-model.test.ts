@@ -77,6 +77,12 @@ describe("rewards", () => {
     expect(seasonRows(season({ top: [{ label: "t1", me: true, points: 90, title: null }], myRank: 1 })).own).toBeNull();
   });
 
+  it("season below 5 ranked participants (2.14): the own row without a place, no gap row", () => {
+    const r = seasonRows(season({ top: [{ label: "t1", me: true, points: 10, title: null }], myRank: null, rankHidden: true }));
+    expect(r.rows).toEqual([{ label: "t1", me: true, points: 10, title: null, rank: 0 }]);
+    expect(r.own).toBeNull();
+  });
+
   it("admin draft ↔ body with the agreed refs", () => {
     expect(bodyOf(draftOf(items[0]))).toEqual({ ok: true, body: { title: "Обед с руководителем", description: "Раз в месяц", active: true, stock: 3, condition: { kind: "achievement", ref: "contract_streak", tier: "gold", rank: null } } });
     expect(bodyOf(draftOf(items[1]))).toMatchObject({ ok: true, body: { stock: null, condition: { kind: "season_rank", ref: "season", rank: 3, tier: null } } });

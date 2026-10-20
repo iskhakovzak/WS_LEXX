@@ -236,6 +236,7 @@ export default {
     sourceAria: "Source: {source}",
     showMore: "Show {count} more of {total}",
   },
+  cards: { more: "Show {count} more of {total}" },
   page: {
     hotkeys: {
       search: "search",

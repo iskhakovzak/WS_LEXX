@@ -23,7 +23,7 @@ function SeasonLine({ row }: { row: SeasonRow }) {
   const name = rankingName(row.label, row.me);
   return (
     <li className={cn("flex min-h-11 min-w-0 items-center gap-3 rounded-xl px-2 py-1.5", row.me && "bg-primary/[0.08] ring-1 ring-primary/40")} aria-current={row.me ? "true" : undefined}>
-      <RankCell rank={row.rank} />
+      {row.rank > 0 && <RankCell rank={row.rank} />}
       <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className={cn("min-w-0 truncate text-sm", row.me ? "font-semibold text-foreground" : "font-medium text-foreground")}>{name}</span>
         <TitleTag label={titleLabel(row.title)} />
@@ -60,6 +60,7 @@ export function SeasonRanking({ season, participant = true }: { season: SeasonSt
           </ol>
         )}
         {participant && season.myRank == null && season.top.every((r) => !r.me) && season.myPoints === 0 && <p className="text-xs text-muted-foreground">{t("season.notRanked")}</p>}
+        {participant && season.rankHidden && <p className="text-xs text-muted-foreground">{t("season.rankHidden")}</p>}
       </div>
     </Panel>
   );
