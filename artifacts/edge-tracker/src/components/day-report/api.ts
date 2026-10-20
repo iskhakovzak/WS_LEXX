@@ -101,16 +101,16 @@ export function useDayReport(trader: string | null, date: string, enabled = true
   });
 }
 
-type HolidayEvent = { date: string; type: string };
+type HolidayEvent = { date: string; type: string; earlyClose?: boolean };
 
-/** Market-closed days (type "holiday") for the year of `date` ± a week of margin. */
+/** Market-closed days (type "holiday", not the 13:00 early closes — those trade) for the year of `date` ± a margin. */
 export function useMarketHolidays(date: string) {
   const year = Number(date.slice(0, 4)) || new Date().getFullYear();
   return useQuery({
     queryKey: dayReportKeys.holidays(year),
     queryFn: async () => {
       const j = await http.get<{ events: HolidayEvent[] }>(`/api/holidays?from=${year - 1}-12-01&to=${year + 1}-01-31&types=holiday`);
-      return new Set(j.events.filter((e) => String(e.type).toLowerCase() === "holiday").map((e) => String(e.date).slice(0, 10)));
+      return new Set(j.events.filter((e) => String(e.type).toLowerCase() === "holiday" && e.earlyClose !== true).map((e) => String(e.date).slice(0, 10)));
     },
     staleTime: 6 * 60 * 60_000,
   });

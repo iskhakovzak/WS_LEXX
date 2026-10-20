@@ -56,7 +56,7 @@ export default {
   },
   tagging: {
     kind: {
-      setup: { label: "Setup", placeholder: "Find or type a setup" },
+      setup: { label: "Setup", placeholder: "Find a setup: number or name" },
       mistake: { label: "Mistake", placeholder: "Find or type a mistake" },
       emotion: { label: "Emotion", placeholder: "Find or type an emotion" },
     },
@@ -65,6 +65,14 @@ export default {
     clearSetup: "Remove setup",
     addAria: "{kind}: add ({key})",
     chipTitle: "{kind}: {value}",
+  },
+  /** Setup tag = an office playbook setup (components/shared/setup-picker.tsx; wave 1, 1.2). */
+  setupPicker: {
+    label: "Playbook setup",
+    choose: "Choose a setup",
+    search: "Setup number or name",
+    empty: "No matching setups",
+    acceptTitle: "Accept the suggestion: {name} ({pct}%)",
   },
   bulk: {
     toolbar: "Actions for selected: {count}",

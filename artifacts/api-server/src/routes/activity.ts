@@ -54,7 +54,7 @@ const FeedQuery = z.object({
 });
 
 /** Sections every signed-in member may read in full (no personal money / review texts inside). */
-const PUBLIC_SECTIONS = ["trade-ideas", "discussions", "playbook", "research", "dailyfeed", "events", "watchlist", "game-plan", "digest", "offerings"];
+const PUBLIC_SECTIONS = ["trade-ideas", "discussions", "playbook", "research", "dailyfeed", "events", "watchlist", "game-plan", "offerings"];
 
 /** `owner` = the trader whose trade/idea the row is about (lets a trader see reviews of their own trades). */
 const FEED_CTE = `

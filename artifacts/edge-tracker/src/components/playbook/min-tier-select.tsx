@@ -12,7 +12,7 @@ import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import { notLiveMessage } from "./api";
 import type { PlaybookEntry } from "./model";
 
-const TIERS = ["trainee", "junior", "trader", "senior"] as const;
+const TIERS = ["junior", "trader", "senior"] as const;
 const EVERYONE = "__all";
 
 export function MinTierSelect({ entry }: { entry: PlaybookEntry }) {

@@ -92,7 +92,7 @@ export default function AcademyChallengesPage() {
       ) : !items.length ? (
         <Panel>
           <EmptyState icon={Flag} title={filter === "archived" ? t("page.archiveEmpty") : t("page.noExams")}
-            description={isCurator ? t("page.noExamsStaff", { from: defaultStageName("trainee"), to: defaultStageName("junior") }) : t("page.noExamsTrader")}
+            description={isCurator ? t("page.noExamsStaff", { from: defaultStageName("junior"), to: defaultStageName("trader") }) : t("page.noExamsTrader")}
             action={list.data?.canCreate && config.data ? <Button size="sm" onClick={() => setCreateOpen(true)}>{t("page.assignExam")}</Button> : undefined} />
         </Panel>
       ) : (

@@ -10,7 +10,8 @@ import {
   type CallType,
   type EarningsHistory,
 } from "@/components/shared/market/earnings-api";
-import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtDeskTime, fmtPct, fmtUsd } from "@/lib/format";
+import { eventsI18n } from "@/i18n/ns/events";
 import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { researchI18n } from "@/i18n/ns/research";
@@ -113,6 +114,10 @@ export function EarningsHistoryView({
     );
   }
   if (!data || data.quarters.length === 0) {
+    // Item 1.14: every source failed / answered empty for a ticker that must have reported — not «no reports».
+    if (data?.sourceUnavailable) {
+      return <p role="status" className="text-sm text-muted-foreground tabular-nums">{eventsI18n.t("today.sourceDown", { time: fmtDeskTime(data.checkedAt ?? data.fetchedAt) })}</p>;
+    }
     return <p className="text-sm text-muted-foreground">{t("earnings.none", { ticker })}</p>;
   }
 

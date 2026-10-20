@@ -83,6 +83,8 @@ export default {
     discussionDeleteTopicAuthor: "удалил обсуждение «{topic}» (автор {author})",
     commentDelete: "удалил комментарий",
     commentDeleteAuthor: "удалил комментарий {author}",
+    ideaDelete: "удалил идею",
+    ideaDeleteAuthor: "удалил идею {author}",
 
     sync: "синхронизировал PropReports",
     syncFile: "синхронизировал PropReports из файла {file}",
@@ -183,6 +185,7 @@ export default {
     noteRestore: "восстановил заметку",
     noteRestoreFor: "восстановил заметку о {trader}",
     lockout: "вход заблокирован на {minutes} мин",
+    logoutOthers: "вышел на всех других устройствах",
 
     /** Unknown action: «удалил: widget». */
     fallbackVerb: "{verb}: {subject}",

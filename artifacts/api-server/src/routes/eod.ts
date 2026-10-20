@@ -4,16 +4,17 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { nyDate } from "../lib/tradingDate";
-import { REVIEW_SLA_HOURS, missingFields, missingList, nextTradingDay, tradingHoursBetween } from "../lib/eodLogic";
+import { REVIEW_SLA_HOURS, missingFields, missingList, tradingHoursBetween } from "../lib/eodLogic";
 import { netPnlSql, closeDateSql, resultSql } from "../lib/tradeMath";
 import {
-  DAY_COLS, Summary, closeCheckNow, ensureTables, isQuickClose, iso, loadCarried, loadDay, loadDayById, loadDayTrades,
+  DAY_COLS, Summary, closeCheckNow, ensureTables, focusDayFor, isQuickClose, iso, loadCarried, loadDay, loadDayById, loadDayTrades,
   loadPlanTickers, loadStreaks, serializeDay, statusOf, totals, traderNote, type DayRow, type SummaryT, type TradeRow,
 } from "../lib/eodStore";
 import { ensureJournalTable } from "./journal";
 import { ensureCuratorTables, marketClosedDays } from "../lib/curatorStore";
 import { queueRoster, sweepOverdue } from "../lib/eodQueue";
 import { forgetQuests } from "../lib/quests/cache";
+import { forgetPlanPrefill } from "../lib/planPrefill";
 import { QUEUE_DEFAULT_DAYS } from "../lib/curatorLogic";
 import { can, requireCap } from "../lib/permissions";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
@@ -301,7 +302,7 @@ async function prefillJournal(trader: string, date: string, day: DayRow, trades:
        ON CONFLICT (trader, day) DO UPDATE SET
          plan = CASE WHEN journal_days.plan = '' THEN EXCLUDED.plan ELSE journal_days.plan END,
          updated_at = NOW()`,
-      [trader, nextTradingDay(date), tomorrow],
+      [trader, focusDayFor(date), tomorrow],
     );
   }
 }
@@ -335,6 +336,7 @@ export async function closeEodDay(
     // The journal form extends a «Разобрал» day: its summary replaces the marker, closed_at stays (no second notice).
     const day = await upsertDay(trader, date, body);
     forgetQuests(trader);
+    forgetPlanPrefill(trader);
     await prefillJournal(trader, date, day, trades).catch((err) => logger.warn({ err }, "eod: journal prefill failed"));
     return { day, changed: false, trades };
   }
@@ -363,6 +365,7 @@ export async function closeEodDay(
     day = rows[0];
   }
   forgetQuests(trader); // the review quest credits the closed day now, not after the quest cache expires
+  forgetPlanPrefill(trader); // the suggested rule of the next plan reads the window with this day closed
   if (via === "journal") {
     try {
       await prefillJournal(trader, date, day, trades);

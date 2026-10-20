@@ -8,8 +8,8 @@ import { fmtDate, fmtTimeNY } from "@/lib/format";
 
 // ─── ladder / readiness ─────────────────────────────────────────────────────
 
-export type StageKey = "trainee" | "junior" | "trader" | "senior";
-export const STAGE_KEYS: readonly StageKey[] = ["trainee", "junior", "trader", "senior"];
+export type StageKey = "junior" | "trader" | "senior";
+export const STAGE_KEYS: readonly StageKey[] = ["junior", "trader", "senior"];
 
 export type Op = ">=" | ">" | "<=" | "<" | "=";
 export const OPS: readonly Op[] = [">=", ">", "<=", "<", "="];

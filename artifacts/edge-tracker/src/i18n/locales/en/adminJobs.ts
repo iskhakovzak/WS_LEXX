@@ -43,7 +43,6 @@ export default {
   cancel: "Cancel",
   names: {
     market: { sectors: "Sector strength", "analyst-actions": "Analyst actions" },
-    digest: { morning: "Morning digest", evening: "Evening digest" },
     psychology: { "weekly-report": "Weekly psychology report" },
     quotes: { daily: "Quote of the day" },
     db: { backup: "Database backup" },

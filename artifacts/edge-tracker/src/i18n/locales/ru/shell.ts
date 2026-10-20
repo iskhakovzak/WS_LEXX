@@ -130,6 +130,8 @@ export default {
   /** Simple menu for new traders (components/shell/nav-model.ts): seven primary rows + one collapsed «Ещё» group. */
   simple: {
     progress: "Квесты и достижения",
+    /** Phone tab label of the journal for juniors (the evening step of the day). */
+    evening: "Вечер",
     more: "Ещё",
     main: "Главное",
     showMore: "Показать остальные разделы",
@@ -181,6 +183,7 @@ export default {
       toPremarket: "до премаркета",
     },
     weekend: "выходные",
+    earlyClose: "сокращённый день, до {time}",
     holidayFallback: "Выходной биржи",
     daysPrefix: "{count}д",
     aria: "Нью-Йорк {time}. {phase}. {next} {countdown}",
@@ -188,6 +191,7 @@ export default {
     ny: "NY",
     tooltipTimes: "Нью-Йорк {ny} · у вас {local}",
     tooltipSchedule: "Пре 4:00–9:30 · основная 9:30–16:00 · пост до 20:00 ET",
+    tooltipScheduleEarly: "Сокращённый день: пре 4:00–9:30 · основная 9:30–13:00 · пост до 17:00 ET",
   },
   palette: {
     title: "Поиск и команды",

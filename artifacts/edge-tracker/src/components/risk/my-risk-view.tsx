@@ -24,6 +24,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { stopMessage } from "./labels";
 import { LivePositionsList } from "./live";
 import { LiveBadge } from "@/components/shared/live-badge";
+import { AskCuratorButton } from "@/components/shared/ask-curator";
 
 function Allowed({ ok, label }: { ok: boolean; label: string }) {
   const { t } = riskI18n.useT();
@@ -130,7 +131,7 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAl
             <Fact label={t("me.tradesToday")} value={m.today.trades} />
             {m.today.openPositions > 0 && <Fact label={t("me.openRisk")} value={fmtUsd(m.today.openRiskUsd, { decimals: 0 })} tone={afterOpen != null && afterOpen < 0 ? "down" : undefined} />}
           </div>
-          {stop.state === "no_limits" && canEditLimits && <Button size="sm" onClick={() => setLimitsOpen(true)}>{t("me.setLimits")}</Button>}
+          {stop.state === "no_limits" && (canEditLimits ? <Button size="sm" onClick={() => setLimitsOpen(true)}>{t("me.setLimits")}</Button> : <AskCuratorButton kind="limits" />)}
         </div>
 
         {L && <StopRemaining m={m} limits={L} big />}

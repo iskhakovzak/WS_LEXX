@@ -60,7 +60,6 @@ export default {
     allowSwing: "Свинг",
   },
   tier: {
-    trainee: "Стажёр",
     junior: "Джун",
     trader: "Трейдер",
     senior: "Сеньор",
@@ -163,6 +162,25 @@ export default {
       agreed: "Договорились: {actions}. ",
       ddReset: "Отсчёт макс. просадки начат заново с этого дня — стоп по просадке снят.",
     },
+  },
+  stageDefaults: {
+    logReason: "Шаблон лимитов ступени: лимитов ещё не было",
+  },
+  curatorRequests: {
+    kind: {
+      limits: "лимиты риска",
+      group: "запись в группу обучения",
+      stage: "ступень",
+      plan: "план деска на день",
+      other: "помощь куратора",
+    },
+    newTitle: "{trader} просит: {kind}",
+    newBody: "{message}",
+    noMessage: "Без комментария — откройте кабинет куратора",
+    doneTitle: "Куратор выполнил запрос: {kind}",
+    dismissedTitle: "Куратор закрыл запрос: {kind}",
+    doneBody: "Готово",
+    dismissedBody: "Запрос закрыт без изменений",
   },
   queue: {
     eod: "Закрытый день {date}",

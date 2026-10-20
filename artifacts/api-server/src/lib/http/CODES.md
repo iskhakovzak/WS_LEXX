@@ -364,6 +364,15 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `BOARD_NOT_FOUND` | 404 | /api/themes/boards/:id (or POST /api/themes/mine boardId): not the caller's board, archived, or the wrong kind. | — |
 | `BOARD_LIMIT` | 409 | POST /api/themes/boards over the 8 active boards per user. | `params.max` |
 | `BROKER_TRADE_READ_ONLY` | 403 | Broker-sourced trade (PropReports): a non-admin (no `settings.manage`) changed a broker-owned field (pnl, fees, qty, entry/exit, dates, result…), deleted it (single / bulk), added or removed its fills, or created a trade marked as broker-sourced. Review fields (setup, tags, grade, notes) stay editable. | `{ capability, fields? }` |
+| `BUYING_POWER_RANGE` | 400 | PUT /api/risk/limits/:trader: `buyingPower` of a junior (the trader's stage, or `tier` in the body) outside 25 000 – 800 000 $. | `params.min`, `params.max` |
+| `BUYING_POWER_MIN` | 400 | PUT /api/risk/limits/:trader: `buyingPower` below 25 000 $ (Трейдер / Сеньор: no upper cap). | `params.min` |
+| `CURATOR_REQUEST_OPEN` | 409 | POST /api/curator-requests: the trader already has an open request of this kind (one open request per kind). | `details.id` |
+| `CURATOR_REQUEST_NOT_FOUND` | 404 | PATCH /api/curator-requests/:id: no such request, or it belongs to a trader outside the curator's scope. | — |
+| `CURATOR_REQUEST_CLOSED` | 409 | PATCH /api/curator-requests/:id on a request that is already done or dismissed. | — |
+| `DESK_GROUP_NOT_FOUND` | 404 | PUT /api/desk-groups (group id that does not exist or is archived when a trader is moved into it). | — |
+| `DESK_GROUP_NAME_TAKEN` | 409 | PUT /api/desk-groups: another active group has this name (case-insensitive). | `params.name` |
+| `DESK_GROUP_CURATOR_INVALID` | 400 | PUT /api/desk-groups: `curatorId` is not an active curator / admin. | — |
+| `JUNIOR_NOTES_RETIRED` | 410 | Any non-GET /api/junior-notes/*: the juniors' summary is read-only history now (the evening form in the journal replaced it). | — |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.
 

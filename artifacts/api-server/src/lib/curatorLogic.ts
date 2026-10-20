@@ -105,12 +105,16 @@ export function templateDiff(limits: LimitFields | null, template: LimitFields, 
   return out;
 }
 
-/** Академические ступени ↔ ключи тиров масштабирования (одни и те же ключи; «lead» — только в масштабировании). */
-export const STAGE_TIER_KEYS = ["trainee", "junior", "trader", "senior"] as const;
-const TIER_KEYS = ["trainee", "junior", "trader", "senior", "lead"] as const;
+/**
+ * Академические ступени ↔ ключи тиров масштабирования (одни и те же ключи; «lead» — только в масштабировании).
+ * Лестница без «Стажёра» (Волна 1 п. 1.21): старое значение «trainee» читается как Джун.
+ */
+export const STAGE_TIER_KEYS = ["junior", "trader", "senior"] as const;
+const TIER_KEYS = ["junior", "trader", "senior", "lead"] as const;
 /** Stage / tier name in `lang` (risk namespace `tier.*`); unknown keys → undefined. */
 export function stageLabel(key: string | null | undefined, lang: Lang = "ru"): string | undefined {
-  return key ? riskT.tryFor(lang, `tier.${key}`) : undefined;
+  const k = key === "trainee" ? "junior" : key;
+  return k ? riskT.tryFor(lang, `tier.${k}`) : undefined;
 }
 /** Stage / tier names by key in `lang`. */
 export function stageLabels(lang: Lang = "ru"): Record<string, string> {

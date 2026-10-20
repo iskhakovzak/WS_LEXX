@@ -140,6 +140,24 @@ export default {
     otherTasks: "Остальные задачи",
     more: "Ещё {count}",
   },
+  /** Волна 1, item 1.3 — the phone's one «Следующий шаг» (components/daily/next-step-card.tsx). */
+  step: {
+    aria: "Следующий шаг",
+    plan: {
+      titleToday: "Напиши план на сегодня",
+      titleOn: "Напиши план на {date}",
+      hint: "Контракт дня: стоп, макс. сделок и своё правило — пара минут до открытия.",
+      cta: "Написать план",
+    },
+    contract: { title: "Торгуй по контракту", cta: "Мой план" },
+    close: {
+      title: "Закрой день · {date}",
+      hint: "Итог дня в дневнике — куратор ответит в очереди.",
+      cta: "Закрыть день",
+    },
+    task: { title: "День закрыт — задача дня ждёт", hint: "10 минут на один день для всего деска, рейтинг по R.", cta: "Играть задачу дня" },
+    done: { title: "День закрыт, план на {date} готов", hint: "На сегодня всё. Отдыхай." },
+  },
   hero: {
     greeting: { night: "Доброй ночи", morning: "Доброе утро", day: "Добрый день", evening: "Добрый вечер" },
     weekend: "выходной",
@@ -153,6 +171,7 @@ export default {
     dailyLimit: "Дневной лимит",
     notSet: "Не задан",
     setByCurator: "Лимиты задаёт куратор",
+    buyingPower: "BP {amount}",
     remaining: "Остаток дневного лимита",
     usedOf: "из {limit} · использовано {pct}",
     fees: "комиссии {amount}",

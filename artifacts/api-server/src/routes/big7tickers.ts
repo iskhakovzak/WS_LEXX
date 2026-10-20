@@ -6,7 +6,8 @@ import { scopeTrader } from "../lib/auth";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { netPnlSql, resultSql, num } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
-import { nyDate, addDays as nyAddDays } from "../lib/tradingDate";
+import { nyDate, addDays as nyAddDays, EARLY_CLOSE_MIN, REGULAR_CLOSE_MIN } from "../lib/tradingDate";
+import { sessionFor } from "../lib/marketDays";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { reviewT } from "../i18n/ns";
 import { langOf, type Lang } from "../i18n";
@@ -326,7 +327,9 @@ const HOUR_BUCKETS: Array<{ key: string; label: string; from: number; to: number
 ];
 /** Bucket label in `lang` (pre / post are words, the rest are time ranges). */
 const hourLabel = (b: { key: string; label: string }, lang: Lang): string => (b.key === "pre" || b.key === "post" ? reviewT.tFor(lang)(`hours.${b.key}`) : b.label);
-const bucketOf = (min: number | null) => (min == null ? null : HOUR_BUCKETS.find((b) => min >= b.from && min < b.to) ?? null);
+/** Entry-time bucket; on an early-close day (`closeMin` 13:00, lib/marketDays) an entry after the close is post-market. */
+export const bucketOf = (min: number | null, closeMin: number = REGULAR_CLOSE_MIN) =>
+  (min == null ? null : min >= closeMin ? HOUR_BUCKETS[HOUR_BUCKETS.length - 1] : HOUR_BUCKETS.find((b) => min >= b.from && min < b.to) ?? null);
 
 type Agg = { n: number; net: number; wins: number; losses: number };
 const emptyAgg = (): Agg => ({ n: 0, net: 0, wins: 0, losses: 0 });
@@ -383,6 +386,11 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
     [scope, Array.from(toBoard.keys()), from],
   );
 
+  // Early-close days (13:00) among the days with an entry between 13:00 and 16:00: one cached calendar read per date.
+  const closeOf = new Map<string, number>();
+  for (const d of new Set(rows.filter((r) => r.entry_min != null && Number(r.entry_min) >= EARLY_CLOSE_MIN && Number(r.entry_min) < REGULAR_CLOSE_MIN).map((r) => r.d))) {
+    closeOf.set(d, (await sessionFor(d)).closeMin);
+  }
   const total = emptyAgg();
   const hours = new Map<string, Agg>();
   const per = new Map<string, { all: Agg; long: Agg; short: Agg; hours: Map<string, Agg>; last: string | null }>();
@@ -397,7 +405,7 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
     addAgg(p.all, net, result);
     addAgg(String(r.side ?? "").trim().toLowerCase().startsWith("s") ? p.short : p.long, net, result);
     if (!p.last || r.d > p.last) p.last = r.d;
-    const b = bucketOf(r.entry_min == null ? null : Number(r.entry_min));
+    const b = bucketOf(r.entry_min == null ? null : Number(r.entry_min), closeOf.get(r.d));
     if (b) {
       if (!hours.has(b.key)) hours.set(b.key, emptyAgg());
       addAgg(hours.get(b.key)!, net, result);

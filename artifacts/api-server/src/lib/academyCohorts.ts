@@ -23,10 +23,12 @@ import { fmtDateFor } from "../i18n/format";
 export const COHORT_FORMATS = ["office", "remote", "hybrid"] as const;
 export type CohortFormat = (typeof COHORT_FORMATS)[number];
 
-/** Лестница (решение владельца): Стажёр → Джун → Трейдер → Сеньор. */
-export const STAGES = ["trainee", "junior", "trader", "senior"] as const;
+/** Лестница (решение владельца 2026-10-20): Джун → Трейдер → Сеньор; старое «trainee» читается как Джун (legacyStage). */
+export const STAGES = ["junior", "trader", "senior"] as const;
 export type Stage = (typeof STAGES)[number];
-export const STAGE_LABELS: Record<Stage, string> = { trainee: ruPath.stages.trainee.name, junior: ruPath.stages.junior.name, trader: ruPath.stages.trader.name, senior: ruPath.stages.senior.name };
+export const STAGE_LABELS: Record<Stage, string> = { junior: ruPath.stages.junior.name, trader: ruPath.stages.trader.name, senior: ruPath.stages.senior.name };
+export const legacyStage = (v: unknown): unknown => (v === "trainee" ? "junior" : v);
+export const normalizeCohortStage = (v: unknown): Stage | null => (STAGES as readonly unknown[]).includes(legacyStage(v)) ? (legacyStage(v) as Stage) : null;
 /** Stage name in `lang` (academyPath.stages). */
 export function stageLabelFor(stage: Stage, lang: Lang = DEFAULT_LANG): string {
   return academyPathT.tFor(lang)(`stages.${stage}.name`);

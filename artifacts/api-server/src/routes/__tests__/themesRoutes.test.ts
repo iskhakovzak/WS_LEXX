@@ -1,7 +1,8 @@
 /**
  * routes/themes.ts over mocked stores (no DB, no network): shared themes are admin-only (settings.manage), the view
  * is per member, personal themes are owner-only with a limit of 10, a pasted screener URL keeps only f / o (the auth
- * token is never stored or echoed), guests are read-only.
+ * token is never stored or echoed), an archived theme comes back only onto an active board of its owner, guests are
+ * read-only.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import express from "express";
@@ -56,6 +57,7 @@ vi.mock("../../lib/themes/store", () => shared);
 
 process.env.JWT_SECRET ??= "vitest-only-secret";
 const { default: router } = await import("../themes");
+const { logAudit } = await import("../../lib/audit");
 const { errorMiddleware } = await import("../../lib/http");
 
 let server: http.Server;
@@ -165,5 +167,47 @@ describe("«Мои темы»", () => {
     expect(mine.updatePersonal.mock.calls[0]![2]).toEqual({ name: "Renamed", kind: "tickers", active: undefined });
     await call("PUT", "/api/themes/mine/9", { tickers: ["amd"] });
     expect(mine.updatePersonal.mock.calls[1]![2]).toMatchObject({ kind: "tickers", tickers: ["AMD"], screener: null });
+  });
+});
+
+describe("restore a personal theme", () => {
+  const archived = (over: Record<string, unknown> = {}) => rec({ boardId: 4, active: false, ...over });
+
+  it("POST /themes/mine/:id/restore: owner only, ≤ 10, its board must be active", async () => {
+    mine.personalById.mockResolvedValue(null);
+    expect((await call("POST", "/api/themes/mine/9/restore")).json.code).toBe("THEME_NOT_FOUND");
+    who = GUEST;
+    expect((await call("POST", "/api/themes/mine/9/restore")).json.code).toBe("GUEST_READ_ONLY");
+    who = TRADER;
+    mine.personalById.mockResolvedValue(archived());
+    mine.countPersonal.mockResolvedValue(10);
+    const over = await call("POST", "/api/themes/mine/9/restore");
+    expect([over.status, over.json.code]).toEqual([409, "THEME_LIMIT"]);
+    mine.personalById.mockResolvedValue(archived({ boardId: 77 })); // a board that is archived / not the caller's
+    mine.countPersonal.mockResolvedValue(3);
+    const gone = await call("POST", "/api/themes/mine/9/restore");
+    expect([gone.status, gone.json.code]).toEqual([404, "BOARD_NOT_FOUND"]);
+    boards.boardById.mockResolvedValueOnce({ id: 4, userId: 5, kind: "themes", active: false });
+    mine.personalById.mockResolvedValue(archived());
+    expect((await call("POST", "/api/themes/mine/9/restore")).json.code).toBe("BOARD_NOT_FOUND");
+    expect(mine.updatePersonal).not.toHaveBeenCalled();
+    const ok = await call("POST", "/api/themes/mine/9/restore");
+    expect([ok.status, ok.json.active, ok.json.boardId]).toEqual([200, true, 4]);
+    expect(mine.updatePersonal).toHaveBeenCalledWith(5, 9, { active: true }, expect.objectContaining({ id: 9 }));
+    expect(boards.boardById).toHaveBeenLastCalledWith(5, 4);
+    expect(logAudit).toHaveBeenLastCalledWith(expect.objectContaining({ action: "themes.mine.restore", targetId: "9" }));
+  });
+
+  it("PUT { active: true } obeys the same rules (no theme revived onto an archived board)", async () => {
+    mine.personalById.mockResolvedValue(archived());
+    boards.boardById.mockResolvedValueOnce({ id: 4, userId: 5, kind: "themes", active: false });
+    const r = await call("PUT", "/api/themes/mine/9", { active: true });
+    expect([r.status, r.json.code]).toEqual([404, "BOARD_NOT_FOUND"]);
+    expect(mine.updatePersonal).not.toHaveBeenCalled();
+    mine.countPersonal.mockResolvedValue(10);
+    expect((await call("PUT", "/api/themes/mine/9", { active: true })).json.code).toBe("THEME_LIMIT");
+    mine.countPersonal.mockResolvedValue(9);
+    expect((await call("PUT", "/api/themes/mine/9", { active: true })).json.active).toBe(true);
+    expect(logAudit).toHaveBeenLastCalledWith(expect.objectContaining({ action: "themes.mine.restore" }));
   });
 });

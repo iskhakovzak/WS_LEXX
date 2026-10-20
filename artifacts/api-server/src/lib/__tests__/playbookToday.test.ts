@@ -100,20 +100,20 @@ const setup = (id: number, name: string, timeOfDay: string | null, minTier: stri
   checklistItems: [{ id: "a", text: "Range marked" }, { id: "b", text: "Volume" }], checklist: null, minTier, schemaKey: null, space: "office", ...over,
 });
 const SETUPS: SetupRow[] = [
-  setup(202, "0.1 Утренняя подготовка", "9:00–9:30 NY", "trainee", { schemaKey: "routine", folder: "0 · Pre" }), // i18n-ignore
-  setup(205, "1.3 ORB 5 минут", "9:35–10:30 NY", "trainee", { schemaKey: "orb" }), // i18n-ignore
-  setup(203, "1.1 Gap & Go", "9:30–9:45 NY", "junior", { schemaKey: "gap_go" }),
-  setup(208, "2.1 VWAP Hold / Reclaim", "10:00–15:00 NY", "trainee", { folder: "2 · Trend" }),
-  setup(215, "4.2 Gap Fill", "9:35–11:30 NY", "junior", { folder: "4 · News" }),
-  setup(213, "3.3 Parabolic Backside", "10:00–15:30 NY", "trader", { folder: "3 · Rev" }),
-  setup(217, "5.2 MOC Imbalance", "15:50–16:00 NY", "trader", { folder: "5 · Close", schemaKey: "not_a_key" }),
+  setup(202, "0.1 Утренняя подготовка", "9:00–9:30 NY", "junior", { schemaKey: "routine", folder: "0 · Pre" }), // i18n-ignore
+  setup(205, "1.3 ORB 5 минут", "9:35–10:30 NY", "junior", { schemaKey: "orb" }), // i18n-ignore
+  setup(203, "1.1 Gap & Go", "9:30–9:45 NY", "trader", { schemaKey: "gap_go" }),
+  setup(208, "2.1 VWAP Hold / Reclaim", "10:00–15:00 NY", "junior", { folder: "2 · Trend" }),
+  setup(215, "4.2 Gap Fill", "9:35–11:30 NY", "trader", { folder: "4 · News" }),
+  setup(213, "3.3 Parabolic Backside", "10:00–15:30 NY", "senior", { folder: "3 · Rev" }),
+  setup(217, "5.2 MOC Imbalance", "15:50–16:00 NY", "senior", { folder: "5 · Close", schemaKey: "not_a_key" }),
   setup(300, "My own idea", null, null, { space: "personal", folder: "2 · Trend", notes: null, checklistItems: null, checklist: "- one\n- two" }),
 ];
 const edge = (setupId: number, trades: number, sumR: number, rTrades = trades, gradedA = 0): EdgeRow => ({
   setupId, trades, wins: Math.ceil(trades / 2), decided: trades, rTrades, sumR, lastOn: "2026-10-16", gradedA,
 });
 const input = (over: Partial<import("../playbookToday/build").TodayInput> = {}) => ({
-  date: "2026-10-19", nyMinutes: 500, setups: SETUPS, edges: [] as EdgeRow[], viewer: { staff: false, tier: "trainee" }, gateCount: 10,
+  date: "2026-10-19", nyMinutes: 500, setups: SETUPS, edges: [] as EdgeRow[], viewer: { staff: false, tier: "junior" }, gateCount: 10,
   planSetups: undefined as unknown, oneR: { usd: 50, source: "limits" as const }, untagged: 3, ...over,
 });
 
@@ -145,7 +145,7 @@ describe("today builder", () => {
       ["premarket", [202]], ["open", [203, 205, 215]], ["trend", [208, 213, 300]], ["close", [217]],
     ]);
     const orb = t.setups.find((s) => s.id === 205)!;
-    expect(orb).toMatchObject({ code: "1.3", schema: "orb", time: { from: "09:35", to: "10:30" }, window: "open", locked: false, minTier: "trainee" });
+    expect(orb).toMatchObject({ code: "1.3", schema: "orb", time: { from: "09:35", to: "10:30" }, window: "open", locked: false, minTier: "junior" });
     expect(orb.cheat).toEqual({ entry: "Timeframe 1m. Buy the break.", stop: "Below the range.", target: "½ at +1R", invalidation: null, gradeA: ["пробой в сторону гэпа и рынка", "объём", "узкий диапазон"] }); // i18n-ignore
     expect(t.setups.find((s) => s.id === 217)?.schema).toBeNull(); // unknown picture key
     expect(t.setups.find((s) => s.id === 300)).toMatchObject({ window: "trend", code: null, locked: false, checklist: ["one", "two"] }); // folder fallback
@@ -164,21 +164,21 @@ describe("today builder", () => {
     expect(b.edgesOf([edge(1, 20, -2)]).get(1)?.verdict).toBe("careful"); // no best when nothing is positive
   });
 
-  it("locks: trainee sees trainee setups open, the rest locked with the unlock condition", () => {
+  it("locks: a junior sees junior setups open, the rest locked with the unlock condition", () => {
     const t = b.buildToday(input({ edges: [edge(205, 8, 2, 8, 4)] }));
     const s = (id: number) => t.setups.find((x) => x.id === id)!;
     expect(s(202).locked).toBe(false);
     expect(s(205).locked).toBe(false);
-    expect(s(203)).toMatchObject({ locked: true, unlock: { key: "unlock.gradeA", params: { count: 10, done: 4, code: "1.3", tier: "junior" } } });
-    expect(s(215).unlock).toEqual({ key: "unlock.gradeA", params: { count: 10, done: 0, code: "2.1", tier: "junior" } });
-    expect(s(213)).toMatchObject({ locked: true, unlock: { key: "unlock.tier", params: { tier: "trader" } } });
+    expect(s(203)).toMatchObject({ locked: true, unlock: { key: "unlock.gradeA", params: { count: 10, done: 4, code: "1.3", tier: "trader" } } });
+    expect(s(215).unlock).toEqual({ key: "unlock.gradeA", params: { count: 10, done: 0, code: "2.1", tier: "trader" } });
+    expect(s(213)).toMatchObject({ locked: true, unlock: { key: "unlock.tier", params: { tier: "senior" } } });
     expect(s(300).locked).toBe(false); // own setup, no tier
   });
 
   it("a locked setup comes without its rules and checklist (DEV-06); open ones keep them", () => {
     const t = b.buildToday(input());
     const locked = t.setups.find((x) => x.id === 213)!;
-    expect(locked).toMatchObject({ locked: true, name: "3.3 Parabolic Backside", minTier: "trader", unlock: { key: "unlock.tier" } });
+    expect(locked).toMatchObject({ locked: true, name: "3.3 Parabolic Backside", minTier: "senior", unlock: { key: "unlock.tier" } });
     expect(locked.cheat).toEqual({ entry: null, stop: null, target: null, invalidation: null, gradeA: [] });
     expect(locked.checklist).toEqual([]);
     expect(t.setups.find((x) => x.id === 205)!.checklist).toEqual(["Range marked", "Volume"]);
@@ -197,13 +197,13 @@ describe("today builder", () => {
   it("graded-A trades on the gateway open the setup early; the tier opens everything up to it; staff see all", () => {
     const early = b.buildToday(input({ edges: [edge(205, 12, 3, 12, 10)] }));
     expect(early.setups.find((x) => x.id === 203)?.locked).toBe(false);
-    expect(early.setups.find((x) => x.id === 213)?.locked).toBe(true); // trader+ stays tier-only
+    expect(early.setups.find((x) => x.id === 213)?.locked).toBe(true); // senior+ stays tier-only (early unlock: junior → trader only)
     const off = b.buildToday(input({ edges: [edge(205, 12, 3, 12, 10)], gateCount: 0 }));
-    expect(off.setups.find((x) => x.id === 203)?.unlock).toEqual({ key: "unlock.tier", params: { tier: "junior" } });
-    const junior = b.buildToday(input({ viewer: { staff: false, tier: "junior" } }));
-    expect(junior.setups.filter((x) => x.locked).map((x) => x.id).sort()).toEqual([213, 217]);
+    expect(off.setups.find((x) => x.id === 203)?.unlock).toEqual({ key: "unlock.tier", params: { tier: "trader" } });
+    const trader = b.buildToday(input({ viewer: { staff: false, tier: "trader" } }));
+    expect(trader.setups.filter((x) => x.locked).map((x) => x.id).sort()).toEqual([213, 217]);
     const unknown = b.buildToday(input({ viewer: { staff: false, tier: null } }));
-    expect(unknown.setups.find((x) => x.id === 203)?.locked).toBe(true); // no stage = trainee
+    expect(unknown.setups.find((x) => x.id === 203)?.locked).toBe(true); // no stage = junior
     const staff = b.buildToday(input({ viewer: { staff: true, tier: null } }));
     expect(staff.setups.some((x) => x.locked)).toBe(false);
   });

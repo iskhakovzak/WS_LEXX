@@ -16,6 +16,7 @@ import {
   type Actor, type Capability, type EffectiveMatrix, type Override, type Role, type Target,
 } from "./permissionsMatrix";
 import { AppError, errorMessage, forbidden, isErrorCode, sendError, unauthorized, type ErrorCode } from "./http/errors";
+import { groupMembersOf } from "./people/deskGroups";
 
 export type { Actor, Capability, EffectiveMatrix, Override, Role, Scope, Target } from "./permissionsMatrix";
 export {
@@ -136,12 +137,16 @@ export async function resolveActor(req: Request): Promise<Actor | null> {
   const role = normalizeRole(rows[0].role);
   let wards: string[] = [];
   if (hasAssignedScope(await getEffectiveMatrix(), role)) {
-    const { rows: w } = await pool.query<{ name: string }>(
-      `SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false
-         AND (assigned_curator = $1 OR assigned_risk_manager = $1 OR assigned_mentor = $1)`,
-      [u.name],
-    );
-    wards = w.map((r) => r.name);
+    // «assigned» = the traders assigned to me + the traders of the desk groups I lead (Волна 1 п. 1.19, migration 0231).
+    const [assigned, group] = await Promise.all([
+      pool.query<{ name: string }>(
+        `SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false
+           AND (assigned_curator = $1 OR assigned_risk_manager = $1 OR assigned_mentor = $1)`,
+        [u.name],
+      ),
+      groupMembersOf(u.name),
+    ]);
+    wards = [...new Set([...assigned.rows.map((r) => r.name), ...group])];
   }
   return (req.permActor = { id: u.id, name: u.name, role, guest: false, wards });
 }

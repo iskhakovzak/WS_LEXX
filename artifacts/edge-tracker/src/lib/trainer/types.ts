@@ -23,9 +23,12 @@ export interface DailyChallengeState {
   /** The viewer's daily game of this date in any status (active / finished / abandoned) — opens the review after it. */
   gameId?: number | null;
   my: { r: number | null; rank: number | null; of: number } | null;
-  /** Desk ranking (after the viewer finished, or after 16:00 NY). label = name (staff / names shown) or alias key "t<n>". */
+  /** Desk ranking (after the viewer finished, or once the ranked window closed). label = name (staff / names shown) or alias key "t<n>". */
   ranking: { label: string; me: boolean; r: number | null; trades: number }[];
   streak: number; // days in a row the viewer played the daily challenge
+  /** The ranked window (Волна 1, item 1.8): from the challenge day's close until the next trading day's pick time, NY
+   * dates and HH:MM; `open` = new ranked games may start now. Absent on older servers. */
+  window?: { from: { date: string; time: string }; until: { date: string; time: string }; open: boolean };
 }
 
 export interface FindEntryDrill {

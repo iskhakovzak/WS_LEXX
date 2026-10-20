@@ -18,7 +18,8 @@
 import { pool } from "@workspace/db";
 import { addDays, isWeekend, nyDate, nyMinutes } from "../tradingDate";
 import { closeDateSql } from "../tradeMath";
-import { tradingPhase } from "../curatorLogic";
+import { CLOSE_MINUTES, tradingPhase } from "../curatorLogic";
+import { sessionFor } from "../marketDays";
 import { syncCron } from "../propreports/scheduler";
 import { loadBehaviorRows, rowToBehaviorTrade } from "../../routes/behavior";
 import {
@@ -332,7 +333,10 @@ export function dailyDates(today: string, minutes: number, closed: ReadonlySet<s
 export async function dailyMe(trader: string, lang: Lang = "ru"): Promise<DailyMe | null> {
   const now = new Date();
   const today = nyDate(now);
-  const { phase, focusDate, eveningDate } = dailyDates(today, nyMinutes(now), await closedDaysAround(today));
+  // Early-close days (13:00): past the close the clock jumps to the regular close so the evening card opens at 13:00.
+  const nowMin = nyMinutes(now);
+  const minutes = nowMin >= (await sessionFor(today)).closeMin ? Math.max(nowMin, CLOSE_MINUTES) : nowMin;
+  const { phase, focusDate, eveningDate } = dailyDates(today, minutes, await closedDaysAround(today));
   // The rewards evaluation (lib/quests, cached per trader) starts alongside the cards instead of after them; the evening
   // card's rewards line awaits the same run. When the card stores a changed snapshot it drops the cache, and the run
   // that started before is then neither reused nor cached (lib/quests/cache generations) — the answer stays the same.

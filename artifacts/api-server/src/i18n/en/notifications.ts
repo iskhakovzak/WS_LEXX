@@ -112,6 +112,8 @@ export default {
     reward_requested: { label: "Reward request", description: "A trader asks to be handed a catalog reward (curators and admins)" },
     reward_granted: { label: "Reward granted", description: "Your curator handed you a catalog reward" },
     reward_declined: { label: "Reward declined", description: "A reward request was declined" },
+    curator_request: { label: "Curator request", description: "A trader asked a curator for help" },
+    curator_request_done: { label: "Curator answered your request", description: "A curator closed your request" },
     system: { label: "System", description: "Service messages" },
   },
   groups: {

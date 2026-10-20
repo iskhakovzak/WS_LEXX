@@ -115,6 +115,8 @@ export default {
     reward_requested: { label: "Запрос награды", description: "Трейдер просит вручить награду из каталога (кураторам и админам)" },
     reward_granted: { label: "Награда вручена", description: "Куратор вручил вам награду из каталога" },
     reward_declined: { label: "Награда отклонена", description: "Запрос награды отклонён" },
+    curator_request: { label: "Запрос куратору", description: "Трейдер попросил куратора о помощи" },
+    curator_request_done: { label: "Куратор ответил на запрос", description: "Куратор закрыл ваш запрос" },
     system: { label: "Системное", description: "Служебные сообщения" },
   },
   groups: {

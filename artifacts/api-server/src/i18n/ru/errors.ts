@@ -363,4 +363,13 @@ export default {
   BOARD_NOT_FOUND: "Доска не найдена",
   BOARD_LIMIT: "Не больше {max} своих досок — уберите ненужную, чтобы добавить новую",
   BROKER_TRADE_READ_ONLY: "Цифры брокерской сделки приходят из PropReports и не меняются вручную. Можно указать сетап, теги, оценку и заметки",
+  BUYING_POWER_RANGE: "BP джуна — от {min} до {max}",
+  BUYING_POWER_MIN: "BP — не меньше {min}",
+  CURATOR_REQUEST_OPEN: "Такой запрос уже отправлен — куратор его видит",
+  CURATOR_REQUEST_NOT_FOUND: "Запрос не найден",
+  CURATOR_REQUEST_CLOSED: "Запрос уже закрыт",
+  DESK_GROUP_NOT_FOUND: "Группа не найдена",
+  DESK_GROUP_NAME_TAKEN: "Группа «{name}» уже есть",
+  DESK_GROUP_CURATOR_INVALID: "Куратором группы может быть только куратор или админ",
+  JUNIOR_NOTES_RETIRED: "Сводка джунов больше не ведётся — заполните вечернюю форму в дневнике",
 } as const;

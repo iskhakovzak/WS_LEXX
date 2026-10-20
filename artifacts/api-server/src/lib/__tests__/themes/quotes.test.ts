@@ -157,6 +157,8 @@ describe("getThemes cache", () => {
   const quotes = (v: number) =>
     new Map<string, MemberQuote>(["MU", "WDC", "NUE"].map((t) => [t, { ticker: t, price: 10, today: v, fromOpen: v / 2, premarket: null, afterHours: null }]));
 
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
   function setup(fetchQuotes: () => Promise<{ source: "yahoo" | "finviz"; quotes: Map<string, MemberQuote> }>) {
     let now = RTH_NOON;
     let calls = 0;
@@ -169,7 +171,7 @@ describe("getThemes cache", () => {
     return { advance: (ms: number) => { now += ms; }, calls: () => calls };
   }
 
-  it("first request waits for quotes; within the TTL answers from cache; after it refreshes", async () => {
+  it("first request waits for quotes; within the TTL answers from cache; after it the refresh lands for the next call", async () => {
     let v = 1;
     const h = setup(async () => ({ source: "yahoo", quotes: quotes(v) }));
     const a = await getThemes();
@@ -180,8 +182,37 @@ describe("getThemes cache", () => {
     expect((await getThemes()).themes[0]!.today).toBe(1);
     expect(h.calls()).toBe(1);
     h.advance(25_000);
+    expect((await getThemes()).themes[0]!.today).toBe(1); // stale numbers at once, the refresh runs in the background
+    expect(h.calls()).toBe(2);
+    await flush();
     expect((await getThemes()).themes[0]!.today).toBe(2);
     expect(h.calls()).toBe(2);
+  });
+
+  it("with older numbers in hand never waits for a slow refresh (no 4 s pause); a cold start still waits", async () => {
+    let hang = false;
+    let release!: () => void;
+    const h = setup(async () => {
+      if (hang) await new Promise<void>((r) => { release = r; }); // a refresh that does not finish on its own
+      return { source: "yahoo", quotes: quotes(hang ? 7 : 1) };
+    });
+    // Cold start: waits for the first numbers.
+    const first = await getThemes();
+    expect([first.asOf, first.themes[0]!.today]).toEqual([new Date(RTH_NOON).toISOString(), 1]);
+    hang = true;
+    h.advance(40_000);
+    const t0 = performance.now();
+    const r = await getThemes();
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect([r.asOf, r.themes[0]!.today, r.stale]).toEqual([new Date(RTH_NOON).toISOString(), 1, false]);
+    expect(h.calls()).toBe(2);
+    // Single-flight: another request meanwhile neither waits nor starts a second refresh.
+    expect((await getThemes()).asOf).toBe(new Date(RTH_NOON).toISOString());
+    expect(h.calls()).toBe(2);
+    release();
+    await flush();
+    const next = await getThemes();
+    expect([next.asOf, next.themes[0]!.today]).toEqual([new Date(RTH_NOON + 40_000).toISOString(), 7]);
   });
 
   it("single-flight: concurrent requests share one refresh", async () => {
@@ -202,6 +233,8 @@ describe("getThemes cache", () => {
     await getThemes();
     fail = true;
     h.advance(31_000);
+    await getThemes(); // answers the last numbers at once; the refresh fails in the background
+    await flush();
     const r = await getThemes();
     expect(r.stale).toBe(true);
     expect(r.themes[0]!.today).toBe(1);

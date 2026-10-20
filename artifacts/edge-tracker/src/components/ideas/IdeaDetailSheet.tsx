@@ -115,7 +115,7 @@ function Section({ title, children, className, action }: { title: string; childr
   );
 }
 
-function ReportIdea({ idea, currentUser }: { idea: TradeIdea; currentUser: string }) {
+function ReportIdea({ idea }: { idea: TradeIdea }) {
   const { toast } = useToast();
   const { t } = ideasI18n.useT();
   const [open, setOpen] = React.useState(false);
@@ -127,8 +127,8 @@ function ReportIdea({ idea, currentUser }: { idea: TradeIdea; currentUser: strin
     if (!reason.trim()) return;
     setSubmitting(true);
     try {
-      await http.post("/api/reports", { reporter: currentUser, targetType: "trade_idea", targetId: String(idea.id), reason: reason.trim() });
-      toast({ title: ideasI18n.t("sheet.reportSent") });
+      const r = await http.post<{ alreadyReported?: boolean }>("/api/reports", { targetType: "trade_idea", targetId: String(idea.id), reason: reason.trim() });
+      toast({ title: ideasI18n.t(r?.alreadyReported ? "sheet.reportAlready" : "sheet.reportSent") });
       setReason(""); setOpen(false);
     } catch (e) {
       toast({ title: humanizeApiError(e, ideasI18n.t("sheet.reportFailed")), variant: "destructive" });
@@ -471,7 +471,7 @@ export function IdeaDetailSheet({
             )}
           </WriteOnly>
           <div className="ml-auto flex items-center gap-1">
-            {me && <ReportIdea idea={idea} currentUser={me} />}
+            {me && <ReportIdea idea={idea} />}
             {canManage && (
               <Button size="sm" variant="ghost" onClick={() => onDelete(idea)} aria-label={t("sheet.deleteIdea")} className="h-8 w-8 p-0 text-down hover:bg-down/15">
                 <Trash2 className="h-4 w-4" aria-hidden="true" />

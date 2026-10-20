@@ -62,6 +62,13 @@ describe("pickStage (pure)", () => {
     expect(stage.pickStage(null, null, null)).toBeNull();
     expect(stage.resolveStage({ role: "trader" })).toEqual({ stage: "junior", source: "default" });
   });
+  it("1.21: the ladder has no «Стажёр» — a legacy «trainee» value is the entry stage, unknown values are no stage", () => {
+    expect(stage.normalizeStageKey("trainee")).toBe("junior");
+    expect(stage.normalizeStageKey("senior")).toBe("senior");
+    expect(stage.normalizeStageKey("lead")).toBeNull();
+    expect(stage.pickStage("trainee", "trader", null, "trader")).toBe("junior");
+    expect(stage.pickStage(null, null, "trainee", "trader")).toBe("junior");
+  });
   it("discussions use the same rule (with the member's role)", () => {
     expect(audiencePick(null, null, null, "trader")).toBe("junior");
     expect(audiencePick(null, null, "lead")).toBeNull();
@@ -77,8 +84,9 @@ describe("loadStageInfo — the one source", () => {
   it("precedence and metadata: path keeps its date, enrolment its cohort, the admin's limits tier still counts", async () => {
     const m = await stage.loadStageInfo(null);
     expect(m.get("Джун Д.")).toMatchObject({ stage: "junior", source: "path", since: "2026-09-01" });
-    expect(m.get("Олег Е.")).toMatchObject({ stage: "trainee", source: "enrollment", since: "2026-10-01", cohortId: 7 });
-    expect(m.get("Закир")).toMatchObject({ stage: "trainee", source: "scaling" });
+    // A stored legacy «trainee» (before migration 0229) reads as the entry stage, Джун (Волна 1 п. 1.21).
+    expect(m.get("Олег Е.")).toMatchObject({ stage: "junior", source: "enrollment", since: "2026-10-01", cohortId: 7 });
+    expect(m.get("Закир")).toMatchObject({ stage: "junior", source: "scaling" });
     expect(m.get("chert")?.source).toBe("default");
     expect(await stage.stageOf("chert")).toBe("junior");
     expect(await stage.stageOf("Ольга Н.")).toBeNull();

@@ -11,7 +11,7 @@ const tr = (date: string, net: number, fees = 1, source: PromoTrade["source"] = 
   ({ date, net, gross: net + fees, fees, r: null, result: net > 0 ? "win" : net < 0 ? "loss" : "be", source });
 
 const input = (trades: PromoTrade[], extra: Partial<PromotionInput> = {}): PromotionInput => ({
-  user: "u", stage: "trainee", stageSince: null, today: TODAY, trades, violationDates: [], ratings: [], limits: null,
+  user: "u", stage: "junior", stageSince: null, today: TODAY, trades, violationDates: [], ratings: [], limits: null,
   disciplineDays: null, learning: null, challengesPassed: null, ...extra,
 });
 
@@ -23,15 +23,15 @@ function weekdays(n: number, end = TODAY): string[] {
 }
 
 const crit = (metric: Criterion["metric"], op: Criterion["op"], value: number, windowDays: number | null = 20, id = 1): Criterion =>
-  ({ id, fromStage: "trainee", metric, op, value, windowDays, label: null, enabled: true });
+  ({ id, fromStage: "junior", metric, op, value, windowDays, label: null, enabled: true });
 
 describe("ladder", () => {
-  it("has exactly four stages mapped onto the scaling tiers", () => {
-    expect(DEFAULT_STAGES.map((s) => s.key)).toEqual(["trainee", "junior", "trader", "senior"]);
+  it("has exactly three stages (no «Стажёр», owner 2026-10-20) mapped onto the scaling tiers", () => {
+    expect(DEFAULT_STAGES.map((s) => s.key)).toEqual(["junior", "trader", "senior"]);
     for (const s of DEFAULT_STAGES) expect(DEFAULT_TIERS.some((t) => t.key === s.scalingTier)).toBe(true);
     expect(nextStageOf(DEFAULT_STAGES, "junior")?.key).toBe("trader");
     expect(nextStageOf(DEFAULT_STAGES, "senior")).toBeNull();
-    expect(new Set(DEFAULT_CRITERIA.map((c) => c.fromStage))).toEqual(new Set(["trainee", "junior", "trader"]));
+    expect(new Set(DEFAULT_CRITERIA.map((c) => c.fromStage))).toEqual(new Set(["junior", "trader"]));
   });
   it("window helpers", () => {
     expect(tradingDaysBetween("2026-10-12", TODAY)).toBe(5);
@@ -109,7 +109,7 @@ describe("evaluatePromotion", () => {
       crit("lessons_pct", ">=", 80, null, 5), // learning module absent ⇒ skipped, not counted
     ];
     const rep = evaluatePromotion(input(steady), criteria, DEFAULT_STAGES, DEFAULT_TIERS);
-    expect(rep.nextStage?.key).toBe("junior");
+    expect(rep.nextStage?.key).toBe("trader");
     expect(rep.total).toBe(4);
     expect(rep.skipped.map((s) => s.metric)).toEqual(["lessons_pct"]);
     expect(rep.passed).toBe(3);
@@ -124,7 +124,7 @@ describe("evaluatePromotion", () => {
   it("ready when everything passes; top stage has no next step", () => {
     const rep = evaluatePromotion(input(steady), [crit("trading_days", ">=", 10)], DEFAULT_STAGES, DEFAULT_TIERS);
     expect(rep.ready).toBe(true);
-    expect(rep.headline).toBe("Готов к переводу на «Джун»: 1 из 1 критериев");
+    expect(rep.headline).toBe("Готов к переводу на «Трейдер»: 1 из 1 критериев");
     const top = evaluatePromotion(input(steady, { stage: "senior" }), [crit("trading_days", ">=", 10)], DEFAULT_STAGES, DEFAULT_TIERS);
     expect(top.nextStage).toBeNull();
     expect(top.ready).toBe(false);
@@ -157,8 +157,8 @@ describe("evaluatePromotion", () => {
   });
   it("max_dd_pct uses the stage's scaling tier limit when the trader has no own limits", () => {
     const d = weekdays(3);
-    const rep = evaluatePromotion(input([tr(d[0], 100), tr(d[1], -400), tr(d[2], 10)]), [crit("max_dd_pct", "<=", 50)], DEFAULT_STAGES, DEFAULT_TIERS);
-    // trainee tier maxDrawdown = 800 → 400 / 800 = 50%
+    const rep = evaluatePromotion(input([tr(d[0], 100), tr(d[1], -1000), tr(d[2], 10)]), [crit("max_dd_pct", "<=", 50)], DEFAULT_STAGES, DEFAULT_TIERS);
+    // junior tier maxDrawdown = 2 000 → 1 000 / 2 000 = 50%
     expect(rep.criteria[0].value).toBe(50);
     expect(rep.criteria[0].status).toBe("pass");
   });

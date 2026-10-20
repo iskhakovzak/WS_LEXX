@@ -3,7 +3,8 @@
  *   GET /api/top/calendar?month=YYYY-MM        → TopCalendar
  *   GET /api/top/day/:date                     → TopDay (top 10 profit / loss + the viewer's own day)
  *   GET /api/top/day/:date/trader/:alias       → TraderDay
- * `mode`: staff (names + $), anonymous (aliases + $, a trader while names are hidden), named (names, others' $ = null).
+ * `mode`: staff (names + $), anonymous (aliases, a trader while names are hidden), named (names). In both trader modes
+ * other traders' $ and the desk sums are null (owner decision 9, 2026-10-20); the trader's own $ stays.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";

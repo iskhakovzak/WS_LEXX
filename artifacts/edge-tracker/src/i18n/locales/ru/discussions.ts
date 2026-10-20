@@ -38,7 +38,7 @@ export default {
   audience: {
     everyone: "Всем",
     cohort: "Когорта #{id}",
-    token: { trainee: "Стажёрам", junior: "Джунам", trader: "Трейдерам", senior: "Сеньорам", staff: "Кураторам" },
+    token: { junior: "Джунам", trader: "Трейдерам", senior: "Сеньорам", staff: "Кураторам" },
     label: "Кому видна тема",
     counting: "Считаем, кто увидит…",
     onlyGroups: "Тему увидят только выбранные группы, вы и кураторы.",

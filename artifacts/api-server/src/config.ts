@@ -53,13 +53,12 @@ const schema = z.object({
   RELEASE_SHA: str,
   REPLIT_DEPLOYMENT_ID: str,
   SITE_URL: str,
-  // telegram / email
+  // telegram
   TELEGRAM_BOT_TOKEN: str,
   TELEGRAM_BOT_USERNAME: str,
   TELEGRAM_WEBHOOK_URL: str,
   /** Desk Telegram group for recognition posts (lib/gamification/recognition; also gated by gamification.telegramGroup). */
   TELEGRAM_GROUP_CHAT_ID: str,
-  RESEND_API_KEY: str,
   // object storage & backups
   DEFAULT_OBJECT_STORAGE_BUCKET_ID: str,
   PUBLIC_OBJECT_SEARCH_PATHS: str,
@@ -147,7 +146,6 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
       webhookUrl: e.TELEGRAM_WEBHOOK_URL ?? null,
       groupChatId: e.TELEGRAM_GROUP_CHAT_ID?.trim() || null,
     },
-    resendApiKey: e.RESEND_API_KEY ?? null,
     storage: {
       bucketId: e.DEFAULT_OBJECT_STORAGE_BUCKET_ID ?? "",
       publicSearchPaths: e.PUBLIC_OBJECT_SEARCH_PATHS ?? "",

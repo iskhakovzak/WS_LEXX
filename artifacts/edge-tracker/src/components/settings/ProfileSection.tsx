@@ -1,16 +1,12 @@
 import * as React from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, LogOut, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette, Languages } from "lucide-react";
+import { KeyRound, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette, Languages } from "lucide-react";
 import { Panel, Pill, StatCard } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { authI18n } from "@/i18n/ns/auth";
 import { useTheme } from "@/contexts/theme-context";
@@ -27,6 +23,7 @@ import { settingsI18n } from "@/i18n/ns/settings";
 import { fmtCount, fmtDate } from "@/lib/format";
 import { personName } from "@/i18n";
 import { LatinNameLine } from "./LatinNameLine";
+import { LogoutOthersRow } from "./LogoutOthersRow";
 
 /** Interface language (also in the top bar and the login screen); saved to the profile by i18n/locale-sync. */
 function LanguagePanel() {
@@ -179,14 +176,13 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
 }
 
 export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => void }) {
-  const { user, can, logout } = useAuth();
+  const { user, can } = useAuth();
   const { themeLabel } = useTheme();
   const { t } = settingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const isMember = !!user?.traderName && user.role !== "guest";
   const { data: profile, isLoading } = useMyProfile(isMember);
   const [pwOpen, setPwOpen] = useState(false);
-  const [logoutAllOpen, setLogoutAllOpen] = useState(false);
 
   if (!isMember) {
     return (
@@ -299,35 +295,13 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
               </span>
               <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             </button>
-            <button type="button" onClick={() => setLogoutAllOpen(true)}
-              className="lift flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-3 text-left hover:bg-[var(--glass-hover-bg)]">
-              <span className="flex items-center gap-3">
-                <LogOut className="h-4 w-4 text-down" aria-hidden="true" />
-                <span>
-                  <span className="block text-sm font-medium text-foreground">{t("profile.logoutAll")}</span>
-                  <span className="block text-xs text-muted-foreground">{t("profile.logoutAllHint")}</span>
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            </button>
+            <LogoutOthersRow />
           </div>
         </Panel>
       </div>
 
       <PasswordSheet open={pwOpen} onOpenChange={setPwOpen} />
 
-      <AlertDialog open={logoutAllOpen} onOpenChange={setLogoutAllOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("profile.logoutAllTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("profile.logoutAllDesc")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => logout()} className="bg-destructive text-destructive-foreground hover:brightness-110">{t("profile.logoutEverywhere")}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

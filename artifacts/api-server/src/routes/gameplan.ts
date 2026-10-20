@@ -9,6 +9,7 @@ import { nyDate } from "../lib/tradingDate";
 import { collectPlanMediaIds, softDeleteDropped } from "../lib/planMedia";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { keepPlanPicks } from "../lib/playbookToday/plan";
+import { planPrefill } from "../lib/planPrefill";
 import {
   PLAN_COLS,
   PlanBody,
@@ -39,7 +40,11 @@ import {
  * Personal plan — each member's own plan for the day (autosaved draft → «готов»).
  *   GET  /api/game-plan/my?date=          my plan (journal.write.own)
  *   PUT  /api/game-plan/my/:date          upsert my plan (autosave); body = plan doc + status
- *   GET  /api/game-plan/traders?date=     read view: plans of the traders the caller may read (journal.read.team scope)
+ *   GET  /api/game-plan/my/prefill?date=  journal.write.own — what the evening hands to this plan (lib/planPrefill):
+ *                                         { date, focus: { text, source, from } | null, rule: SuggestedRule | null } —
+ *                                         the own «Фокус на завтра» (item 1.5) and the costliest pattern of the last two
+ *                                         weeks as the suggested own rule of the contract (item 1.9)
+ *   GET  /api/game-plan/traders?date=    read view: plans of the traders the caller may read (journal.read.team scope)
  *
  * Templates — reusable plan skeletons.
  *   GET    /api/game-plan/templates?kind=desk|personal   mine + shared
@@ -152,6 +157,19 @@ router.get("/game-plan/my", asyncHandler(async (req, res): Promise<void> => {
     ),
   ]);
   res.json({ date, plan: rows[0] ? serializeTraderPlan(rows[0]) : null, prevDate: prev[0]?.date ?? null });
+}));
+
+router.get("/game-plan/my/prefill", asyncHandler(async (req, res): Promise<void> => {
+  const me = req.authUser?.name;
+  if (!me) {
+    throw unauthorized();
+  }
+  if (!(await requireCap(req, res, "journal.write.own", { trader: me }))) return;
+  const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
+  if (!isIsoDate(date)) {
+    throw badRequest("INVALID_DATE");
+  }
+  res.json(await planPrefill(me, date));
 }));
 
 router.put("/game-plan/my/:date", asyncHandler(async (req, res): Promise<void> => {

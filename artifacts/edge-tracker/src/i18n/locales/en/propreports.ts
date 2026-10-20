@@ -4,10 +4,8 @@ import type ru from "../ru/propreports";
 export default {
   page: {
     description: "PropReports → journal: round trips, fees, overnight/swing and broker reconciliation",
-    descriptionTrader: "Trade import from PropReports",
+    descriptionTrader: "Your trades come from PropReports automatically — nothing to enter",
     descriptionGuest: "Import trades and statements from external systems",
-    traderTitle: "For curators",
-    traderText: "Your trades are loaded from PropReports automatically. If trades are missing or landed on the wrong account, message your curator.",
     signInTitle: "Sign-in required",
     signInText: "Sign in to see your accounts and import trades.",
     syncNow: "Sync now",
@@ -16,6 +14,26 @@ export default {
     statusFailed: "Couldn’t load the status",
     tabsAria: "Integration sections",
     tabs: { setup: "Setup", import: "Import", performance: "Statistics", accounts: "Accounts", reconcile: "Reconciliation", history: "History" },
+  },
+
+  /** /integrations header for a trader (wave 1, 1.13): did the last trading day's trades arrive. */
+  fresh: {
+    title: "Trades for {day}",
+    aria: "Freshness of your trades",
+    sync: "synced {time}",
+    noSync: "no sync yet",
+    openTrades: "Open trades",
+    state: { ok: "in", mismatch: "mismatch", behind: "waiting for sync", no_account: "no account linked" },
+    detail: {
+      verified: "Matches the broker report for this day.",
+      synced: "Synced after the market close. The broker check runs in the evening.",
+      missingOurs: "The broker has trades that are not in the journal. Tell your curator — they will rerun the import.",
+      missingBroker: "The journal has trades the broker report does not. Your curator will check.",
+      mismatch: "The day's total differs from the broker by {diff}. Your curator will check.",
+      behind: "No sync since the close yet — the trades will come in automatically.",
+      noAccount: "No PropReports account is linked to you, so trades are not loaded. Ask your curator to link it.",
+    },
+    failed: "Couldn’t check your trades",
   },
 
   runStatus: { ok: "success", partial: "partial", error: "error", running: "running" },

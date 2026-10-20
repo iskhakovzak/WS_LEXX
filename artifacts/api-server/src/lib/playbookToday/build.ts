@@ -13,7 +13,7 @@
  * for the first week or two of a setup and let the desk's typical 2 trades a day reach «best» within a month.
  *
  * Tier locks (never a trading block): a setup is locked when the viewer's stage ranks below its min_tier.
- * A setup one step above the trainee (min_tier junior) with a gateway setup (UNLOCK_GATE) opens early once the trader has
+ * A setup one step above the junior (min_tier trader) with a gateway setup (UNLOCK_GATE) opens early once the trader has
  * N trades graded A / A+ on the gateway (quests.setupUnlockGradeA, 0 = off); otherwise the lock names the tier.
  * The lock is real (DEV-06, owner decision 6): a locked setup comes with its title, tier and unlock condition only — the
  * cheat lines and the checklist are redacted (LOCKED_CHEAT, []). Staff are never locked.
@@ -32,7 +32,7 @@ export const SCHEMA_KEYS = [
 ] as const;
 export const isSchemaKey = (v: unknown): boolean => typeof v === "string" && (SCHEMA_KEYS as readonly string[]).includes(v);
 
-/** Gateway setup per office code: N graded-A trades on the gateway open the setup before the tier (trainee → junior). */
+/** Gateway setup per office code: N graded-A trades on the gateway open the setup before the tier (junior → trader). */
 export const UNLOCK_GATE: Readonly<Record<string, string>> = {
   "1.1": "1.3", "1.2": "1.3", "1.4": "1.3", "3.2": "1.3", "4.1": "1.3",
   "2.3": "2.2", "5.1": "2.2", "3.1": "2.1", "4.2": "2.1",
@@ -161,18 +161,18 @@ export type SetupRow = {
   space: "office" | "personal";
 };
 
-/** Viewer for locks: staff see everything open; a trader without a known stage counts as a trainee. */
+/** Viewer for locks: staff see everything open; a trader without a known stage counts as a junior (the ladder starts there). */
 export type LockViewer = { staff: boolean; tier: string | null };
 
 export type LockState = { locked: boolean; unlock: TextItem | null };
 
 export function lockOf(s: Pick<SetupRow, "minTier" | "name">, viewer: LockViewer, gradedAByCode: ReadonlyMap<string, number>, gateCount: number): LockState {
   if (viewer.staff || !isTierKey(s.minTier)) return { locked: false, unlock: null };
-  const mine = TIER_RANK[isTierKey(viewer.tier) ? viewer.tier : "trainee"];
+  const mine = TIER_RANK[isTierKey(viewer.tier) ? viewer.tier : "junior"];
   const need = TIER_RANK[s.minTier];
   if (mine >= need) return { locked: false, unlock: null };
   const gate = UNLOCK_GATE[codeFromName(s.name) ?? ""];
-  if (gate && gateCount > 0 && need === mine + 1 && need === TIER_RANK.junior) {
+  if (gate && gateCount > 0 && need === mine + 1 && need === TIER_RANK.trader) {
     const done = gradedAByCode.get(gate) ?? 0;
     if (done >= gateCount) return { locked: false, unlock: null };
     return { locked: true, unlock: { key: "unlock.gradeA", params: { count: gateCount, done, code: gate, tier: s.minTier } } };

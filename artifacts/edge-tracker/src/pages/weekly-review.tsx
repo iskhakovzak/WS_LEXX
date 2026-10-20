@@ -14,6 +14,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { currentWeekKey, fmtDay, isWeekKey, nextWard, reviewToText, shiftWeek, useWeeklyOverview, useWeeklyReview, weekLabel } from "@/components/weekly-review/api";
+import { reviewLastWeek } from "@/components/journal/default-day";
+import { nyDate } from "@/lib/trading-date";
 import { http } from "@/lib/api/http";
 import { ReviewStatusPill } from "@/components/weekly-review/collab";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
@@ -82,7 +84,8 @@ export default function WeeklyReviewPage() {
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const staff = isCurator || can("journal.review");
   const initial = React.useMemo(readParams, []);
-  const [week, setWeek] = React.useState<string>(initial.week ?? currentWeekKey());
+  // Item 1.4: Monday–Wednesday the week to assess is the previous one (this one is nearly empty).
+  const [week, setWeek] = React.useState<string>(() => initial.week ?? (reviewLastWeek(nyDate()) ? shiftWeek(currentWeekKey(), -1) : currentWeekKey()));
   const [trader, setTrader] = React.useState<string | null>(initial.trader && staff ? initial.trader : me);
   const [view, setView] = React.useState<View>(
     // A link that names a trader (chart click-through, day report) opens that trader's week, not the desk.

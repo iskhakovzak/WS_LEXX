@@ -21,6 +21,9 @@ export default {
     attachmentsAria: "Материалы урока",
     setupLessons: "Как торговать этот сетап",
     progress: "Прогресс",
+    ruLesson: "урок на русском",
+    ruCourse: "курс на русском",
+    ruHint: "Материалы Академии пока только на русском языке",
   },
   time: {
     yourTime: "Время Нью-Йорка. У вас: {local}",

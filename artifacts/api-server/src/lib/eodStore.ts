@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { pool } from "@workspace/db";
-import { nyDate, nyMinutes } from "./tradingDate";
-import { EARLY_CLOSE_MIN, MARKET_CLOSE_MIN, canCloseDay, computeStreaks, missingList, type Streaks } from "./eodLogic";
+import { isWeekend, nyDate, nyMinutes } from "./tradingDate";
+import { EARLY_CLOSE_MIN, MARKET_CLOSE_MIN, canCloseDay, computeStreaks, missingList, nextTradingDay, type Streaks } from "./eodLogic";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, resultSql } from "./tradeMath";
 
 /**
@@ -130,6 +130,18 @@ export async function closeCheckNow(date: string, trades: TradeRow[], now = new 
   const today = nyDate(now);
   const at = date === today ? { nowMinutes: nyMinutes(now), closeMinutes: await closeMinutesFor(date) } : undefined;
   return closeCheck(date, today, trades, at);
+}
+
+/**
+ * The day the «Фокус на завтра» of `date` is for: the next trading day after it — or, when the day is closed late
+ * (Friday closed on Tuesday), the session still ahead of `now` (today before the close, else the next weekday), so the
+ * focus never lands in the past where no plan reads it.
+ */
+export function focusDayFor(date: string, now = new Date()): string {
+  const next = nextTradingDay(date);
+  const today = nyDate(now);
+  const ahead = !isWeekend(today) && nyMinutes(now) < MARKET_CLOSE_MIN ? today : nextTradingDay(today);
+  return next >= ahead ? next : ahead;
 }
 
 /** Closed by the «Разобрал» button (dashboard / Telegram), not by the journal form. */

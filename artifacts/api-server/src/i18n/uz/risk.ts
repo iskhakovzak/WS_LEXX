@@ -62,7 +62,6 @@ export default {
     allowSwing: "Swing",
   },
   tier: {
-    trainee: "Stajyor",
     junior: "Junior",
     trader: "Treyder",
     senior: "Senior",
@@ -164,6 +163,25 @@ export default {
       agreed: "Kelishildi: {actions}. ",
       ddReset: "Maks. pasayish shu kundan qaytadan hisoblanadi — pasayish stopi olib tashlandi.",
     },
+  },
+  stageDefaults: {
+    logReason: "Bosqich limitlari shabloni: limitlar hali yoʻq edi",
+  },
+  curatorRequests: {
+    kind: {
+      limits: "risk limitlari",
+      group: "oʻquv guruhiga yozilish",
+      stage: "bosqich",
+      plan: "kunlik desk rejasi",
+      other: "kurator yordami",
+    },
+    newTitle: "{trader} soʻraydi: {kind}",
+    newBody: "{message}",
+    noMessage: "Izohsiz — kurator kabinetini oching",
+    doneTitle: "Kurator soʻrovni bajardi: {kind}",
+    dismissedTitle: "Kurator soʻrovni yopdi: {kind}",
+    doneBody: "Tayyor",
+    dismissedBody: "Oʻzgarishsiz yopildi",
   },
   queue: {
     eod: "Yopilgan kun {date}",

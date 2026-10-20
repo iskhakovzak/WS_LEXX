@@ -10,6 +10,8 @@ import { notifyMentions, notifyUser } from "../lib/notifyUtils";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { preview as textPreview, uniqueRecipients } from "../lib/notifyEventsCore";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
+import { canSeeDeskAggregate, redactOthersMoney } from "../lib/moneyVisibility";
+import { loadMoneyViewer } from "../lib/playbookAccess";
 import {
   AUDIENCE_LABELS, AUDIENCE_STAGES, STAFF_TOKEN, audienceOf, audienceRecipients, audienceSql, cohortOf, cohortToken,
   filterVisibleNames, isPublicAudience, loadAudienceViewer, loadProfiles, parseAudience, viewerTokens, type AudienceViewer,
@@ -626,6 +628,8 @@ router.get("/discussions/ticker-context/:ticker", asyncHandler(async (req, res):
          ORDER BY date DESC LIMIT 5`, [ticker]),
   ]);
   const tr = trades.rows[0] ?? { count: 0, lastDate: null, traders: 0, wins: 0, losses: 0, be: 0, sumR: null, netPnl: null };
+  // Desk $ on the ticker: staff, or a sum over ≥ 3 traders (1.22, lib/moneyVisibility); R and win rate always.
+  if (!canSeeDeskAggregate((await loadMoneyViewer(req)).staff, Number(tr.traders))) tr.netPnl = null;
   const decided = Number(tr.wins) + Number(tr.losses);
   res.json({
     ticker,
@@ -698,6 +702,8 @@ router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<voi
         stop: strToNum(t.stop), qty: strToNum(t.qty), pnl: strToNum(t.pnl), fees: strToNum(t.fees), netPnl: strToNum(t.net_pnl), signedR: strToNum(t.signed_r),
         trader: t.trader ?? null, source: t.source ?? null, brokerAccount: t.broker_account ?? null, playbookId: t.playbook_id ?? null, screenshotUrl: t.screenshot_url ?? null,
       } : null;
+      const mv = await loadMoneyViewer(req); // another trader's $ only for staff (1.22), whatever trades.read.team allows
+      if (out.trade) out.trade = redactOthersMoney([out.trade as { trader: string | null }], mv.name, mv.staff)[0];
     } else {
       out.trade = { id: d.trade_id, restricted: true };
     }

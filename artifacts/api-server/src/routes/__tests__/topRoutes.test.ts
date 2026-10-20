@@ -67,12 +67,13 @@ async function get(path: string): Promise<{ status: number; text: string; json: 
 const noNames = (text: string) => { for (const n of NAMES) expect(text).not.toContain(n); };
 
 describe("GET /top/day/:date", () => {
-  it("trader (default setting): aliases + $, own row flagged, no real name in the body", async () => {
+  it("trader (default setting): aliases, own $ only (1.22), own row flagged, no real name in the body", async () => {
     const r = await get("/api/top/day/2026-10-16");
     expect(r.status).toBe(200);
     expect(r.json.mode).toBe("anonymous");
-    expect(r.json.profit.map((x: any) => x.net)).toEqual([640, 120.5]);
-    expect(r.json.loss.map((x: any) => x.net)).toEqual([-310, -45]);
+    expect(r.json.profit.map((x: any) => x.net)).toEqual([null, 120.5]);
+    expect(r.json.loss.map((x: any) => x.net)).toEqual([null, null]);
+    expect(r.json.desk.net).toBeNull();
     expect(r.json.profit[1]).toMatchObject({ me: true, name: null, alias: deskAliases(NAMES, "2026-10-16").get("Кирилл Б.") });
     noNames(r.text);
     expect(query).toHaveBeenCalledTimes(2); // the grouped rows + the desk roster (lib/deskDayStore)
@@ -97,13 +98,20 @@ describe("GET /top/day/:date", () => {
 
 describe("GET /top/day/:date/trader/:alias", () => {
   const aliases = deskAliases(NAMES, "2026-10-16");
-  it("trader opens another trader's day by alias: tickers with $ and times, no name", async () => {
+  it("trader opens another trader's day by alias: tickers and times, no $ (1.22), no name", async () => {
     const r = await get(`/api/top/day/2026-10-16/trader/${aliases.get("Максим Р.")}`);
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ me: false, name: null, net: 640, place: 1 });
-    expect(r.json.tickers[0]).toMatchObject({ ticker: "META", side: "long", net: 640, firstAt: "2026-10-16T13:45:00.000Z" });
+    expect(r.json).toMatchObject({ me: false, name: null, net: null, place: 1 });
+    expect(r.json.tickers[0]).toMatchObject({ ticker: "META", side: "long", net: null, firstAt: "2026-10-16T13:45:00.000Z" });
     noNames(r.text);
     expect(query).toHaveBeenCalledTimes(2); // the grouped rows + the desk roster (lib/deskDayStore)
+  });
+  it("trader opens their own day: $ kept; admin sees another trader's $", async () => {
+    const own = await get(`/api/top/day/2026-10-16/trader/${aliases.get("Кирилл Б.")}`);
+    expect(own.json).toMatchObject({ me: true, net: 120.5 });
+    who = ADMIN;
+    const r = await get(`/api/top/day/2026-10-16/trader/${aliases.get("Максим Р.")}`);
+    expect(r.json).toMatchObject({ name: "Максим Р.", net: 640 });
   });
   it("unknown alias → 404; non-numeric → 400", async () => {
     expect((await get("/api/top/day/2026-10-16/trader/99")).status).toBe(404);
@@ -112,10 +120,13 @@ describe("GET /top/day/:date/trader/:alias", () => {
 });
 
 describe("GET /top/calendar", () => {
-  it("days + holidays; month is validated", async () => {
+  it("days + holidays; month is validated; desk $ staff-only (1.22)", async () => {
     const r = await get("/api/top/calendar?month=2026-10");
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ month: "2026-10", holidays: ["2026-10-12"], days: [{ date: "2026-10-16", net: 405.5, best: 640, worst: -310, mine: 120.5 }] });
+    expect(r.json).toMatchObject({ month: "2026-10", holidays: ["2026-10-12"], days: [{ date: "2026-10-16", net: null, best: null, worst: null, mine: 120.5 }] });
+    who = ADMIN;
+    expect((await get("/api/top/calendar?month=2026-10")).json.days[0]).toMatchObject({ net: 405.5, best: 640, worst: -310 });
+    who = TRADER;
     expect((await get("/api/top/calendar?month=2026-13")).status).toBe(400);
     expect((await get("/api/top/calendar")).status).toBe(400);
   });

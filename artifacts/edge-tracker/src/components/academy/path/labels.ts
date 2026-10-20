@@ -20,15 +20,17 @@ const usd0 = (v: number) => fmtUsd(v, { decimals: 0 });
 
 // ─── stages ─────────────────────────────────────────────────────────────────
 
-const TIER_KEY = { trainee: "intern", junior: "junior", trader: "trader", senior: "senior" } as const satisfies Record<StageKey, keyof typeof ruCommon.tiers>;
+const TIER_KEY = { junior: "junior", trader: "trader", senior: "senior" } as const satisfies Record<StageKey, keyof typeof ruCommon.tiers>;
+/** The removed first stage (wave 1, item 1.21): an old exam / history row may still carry «trainee»; it reads as junior. */
+const tierKeyOf = (key: StageKey): (typeof TIER_KEY)[StageKey] => TIER_KEY[key] ?? TIER_KEY.junior;
 
-/** Ladder tier name in the current language (Стажёр = Intern / Stajyor …). */
-export const defaultStageName = (key: StageKey): string => commonI18n.t(`tiers.${TIER_KEY[key]}`);
+/** Ladder tier name in the current language (Джун = Junior …). */
+export const defaultStageName = (key: StageKey): string => commonI18n.t(`tiers.${tierKeyOf(key)}`);
 
 /** A configured stage's name: translated while it is the default RU name, as is when staff renamed it. */
 export function stageTitle(s: Pick<StageMeta, "key" | "name">): string {
   const name = s.name?.trim();
-  return !name || name === ruCommon.tiers[TIER_KEY[s.key]] ? defaultStageName(s.key) : name;
+  return !name || name === ruCommon.tiers[tierKeyOf(s.key)] ? defaultStageName(s.key) : name;
 }
 
 export function stageDescription(s: Pick<StageMeta, "key" | "description">): string {
@@ -42,8 +44,8 @@ export function stageName(stages: StageMeta[] | undefined, key: StageKey | null 
   return s ? stageTitle(s) : defaultStageName(key);
 }
 
-/** «Стажёр → Джун → Трейдер → Сеньор» in the current language. */
-export const ladderText = (): string => (["trainee", "junior", "trader", "senior"] as const).map(defaultStageName).join(" → ");
+/** «Джун → Трейдер → Сеньор» in the current language. */
+export const ladderText = (): string => (["junior", "trader", "senior"] as const).map(defaultStageName).join(" → ");
 
 // ─── metrics and criteria ───────────────────────────────────────────────────
 
@@ -174,7 +176,7 @@ export function describeRules(r: ChallengeRules, durationTradingDays: number): s
 
 const isCapital = (tpl: ChallengeTemplate): tpl is ChallengeTemplate & { forStage: StageKey; toStage: StageKey } => tpl.forStage != null && tpl.toStage != null;
 
-/** Template name: capital exams «Перевод Стажёр → Джун (капитал $25k)» and the known trainee tests by key. */
+/** Template name: capital exams «Перевод Джун → Трейдер (капитал $50k)» and the known newcomer tests by key. */
 export function templateName(tpl: ChallengeTemplate): string {
   if (isCapital(tpl)) {
     return t("challenge.templates.capital", { from: defaultStageName(tpl.forStage), to: defaultStageName(tpl.toStage), size: `$${Math.round(tpl.rules.accountSize / 1000)}k` });

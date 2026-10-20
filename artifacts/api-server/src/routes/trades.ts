@@ -48,6 +48,7 @@ import {
   UpdateTradeResponse,
 } from "@workspace/api-zod";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
+import { resolveSetupLink, setupTagged, touchesSetup } from "../lib/tradesSetupLink";
 
 const router: IRouter = Router();
 
@@ -589,6 +590,9 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
     }
   }
   if (updateData.screenshotUrl !== undefined) updateData.screenshotUrl = sanitizeMultiLineUrls(updateData.screenshotUrl as string | null | undefined);
+  // Setup tag = a playbook setup (1.2): playbook_id + the setup's name as text (lib/tradesSetupLink).
+  const setupTouched = touchesSetup(req.body);
+  if (setupTouched) Object.assign(updateData, await resolveSetupLink(req.body, existing.trader ?? null));
   const [trade] = await db
     .update(tradesTable)
     .set(updateData)
@@ -619,7 +623,9 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   logActivity({ action: "updated", section: "trades", entityId: String(trade.id), entityTitle: trade.ticker, trader: trade.trader ?? undefined });
   invalidateDashboardCache();
   invalidateTradesPageCache();
-  res.json(UpdateTradeResponse.parse(toTradeResponseShape(trade)));
+  if (setupTouched) await setupTagged(trade.id);
+  const shape = toTradeResponseShape(trade);
+  res.json(withPlaybookId(UpdateTradeResponse.parse(shape), shape));
 }));
 
 router.delete("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
@@ -669,7 +675,8 @@ router.post("/trades/:id/restore", asyncHandler(async (req, res): Promise<void> 
 // POST /trades/bulk { action, ids, tags?, result? }
 // Traders only affect their own trades (others are counted as `forbidden`).
 // setResult intentionally does not trigger AI auto-review (bulk would fan out).
-// setSetup — post-hoc setup classification (review), like setups-auto/accept: no pre-trade checklist gate.
+// setSetup — post-hoc setup classification (review), like setups-auto/accept: no pre-trade checklist gate. Body
+// { setup } (an office setup's name links it) or { playbookId } (null clears): playbook_id + name, lib/tradesSetupLink.
 const BULK_ACTIONS = ["delete", "restore", "addTags", "removeTags", "setResult", "setSetup"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
 const BULK_RESULTS = ["win", "loss", "breakeven", "open"] as const;
@@ -701,7 +708,7 @@ router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
   }
   let setup: string | null = null;
   if (action === "setSetup") {
-    if (b.setup !== null && (typeof b.setup !== "string" || b.setup.trim().length > 120)) throw new AppError("INVALID_FIELD", undefined, { field: "setup" });
+    if (b.playbookId === undefined && b.setup !== null && (typeof b.setup !== "string" || b.setup.trim().length > 120)) throw new AppError("INVALID_FIELD", undefined, { field: "setup" });
     setup = typeof b.setup === "string" && b.setup.trim() ? b.setup.trim() : null;
   }
 
@@ -729,7 +736,12 @@ router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
     } else if (action === "setResult" && result) {
       await db.update(tradesTable).set({ result }).where(inArray(tradesTable.id, targetIds));
     } else if (action === "setSetup") {
-      await db.update(tradesTable).set({ setup }).where(inArray(tradesTable.id, targetIds));
+      // playbookId (or an office setup's name) links the setup; a personal setup only within one owner's trades.
+      const owners = new Set(targets.map((r) => r.trader ?? null));
+      const link = await resolveSetupLink(b.playbookId !== undefined ? { playbookId: b.playbookId } : { setup }, owners.size === 1 ? [...owners][0] : null);
+      setup = link.setup;
+      await db.update(tradesTable).set({ setup: link.setup, playbookId: link.playbookId }).where(inArray(tradesTable.id, targetIds));
+      for (const owner of owners) await setupTagged(targets.find((r) => (r.trader ?? null) === owner)!.id);
     } else {
       const lower = new Set(tags.map((t) => t.toLowerCase()));
       for (const r of targets) {

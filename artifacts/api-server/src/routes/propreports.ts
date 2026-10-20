@@ -2,6 +2,7 @@
  * PropReports integration endpoints (all under /api/propreports, auth required).
  *
  *   GET  /status                       config state (env var NAMES only, never values), scheduler, accounts, last run, inbox size
+ *   GET  /my-freshness                 the signed-in trader's «trades of the last trading day» line (lib/propreports/freshness)
  *   GET  /accounts                     broker account → trader mapping (traders: own only)
  *   PUT  /accounts                     [curator] upsert mappings  body: { accounts: [{ account, trader, active, notes }] }
  *   POST /accounts/refresh             [curator] pull the account list from the API (503 when not configured)
@@ -53,6 +54,7 @@ import {
 import { canonicalizeFillIds } from "../lib/propreports/replacement";
 import { prepareTradesImport } from "../lib/propreports/import-target";
 import { getCursor } from "../lib/propreports/tick/cursor";
+import { myFreshness } from "../lib/propreports/freshness";
 import { AppError, errorMessage, notFound, sendErrorWith } from "../lib/http";
 import { langOf } from "../i18n";
 import { propreportsT } from "../i18n/ns";
@@ -174,6 +176,11 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
     // background tick (heartbeat): last summary + whether CRON_SECRET is set; details at GET /propreports/tick
     tick: v.staff ? { cronConfigured: cfg.cronConfigured, last: await getCursor("tick:last").catch(() => null) } : null,
   });
+}));
+
+/** Own data only (no `trader` parameter): the /integrations header for a trader (wave 1, 1.13). */
+router.get("/propreports/my-freshness", requireAuth, asyncHandler(async (req, res) => {
+  res.json(await myFreshness(req.authUser!.name));
 }));
 
 // ─── accounts ───────────────────────────────────────────────────────────────

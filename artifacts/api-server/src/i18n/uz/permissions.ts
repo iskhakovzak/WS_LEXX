@@ -60,7 +60,6 @@ export default {
     "admin.backups.read": { label: "Bazani yuklab olish", description: "Bazani toʻliq yuklab olish (barcha treyderlarning summalari bilan savdolari, foydalanuvchilar) va zaxiralar roʻyxati." },
     "admin.backups.run": { label: "Zaxirani ishga tushirish va yuklab olish", description: "Baza zaxirasini ishga tushirish va yuklab olish." },
     "telegram.broadcast": { label: "Telegram ommaviy xabari", description: "Hammaga ommaviy xabar va foydalanuvchilar Telegramini uzish." },
-    "digest.manage.any": { label: "Boshqalar uchun dayjest", description: "Boshqa aʼzoning dayjest obunasini koʻrish yoki oʻzgartirish." },
     "permissions.manage": { label: "Huquqlarni oʻzgartirish", description: "PUT /permissions/matrix." },
     "admin.errors": { label: "Ilova xatolari", description: "Boshqaruv → Xatolar: server va brauzer xatolari, «tuzatildi» belgisi." },
     "settings.manage": { label: "Desk sozlamalari", description: "Boshqaruv → Desk sozlamalari: kunlik sikl chegaralari, Telegram yuborish vaqti, maxfiylik (GET/PUT /admin/settings)." },

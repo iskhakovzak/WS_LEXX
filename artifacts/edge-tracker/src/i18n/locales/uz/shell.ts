@@ -126,6 +126,7 @@ export default {
   /** Simple menu for new traders (components/shell/nav-model.ts): seven primary rows + one collapsed «Yana» group. */
   simple: {
     progress: "Kvestlar va yutuqlar",
+    evening: "Kechqurun",
     more: "Yana",
     main: "Asosiy",
     showMore: "Qolgan boʻlimlarni koʻrsatish",
@@ -177,6 +178,7 @@ export default {
       toPremarket: "premarketgacha",
     },
     weekend: "dam olish kunlari",
+    earlyClose: "qisqartirilgan kun, {time} gacha",
     holidayFallback: "Birja dam olish kuni",
     daysPrefix: "{count}k",
     aria: "Nyu-York {time}. {phase}. {next} {countdown}",
@@ -184,6 +186,7 @@ export default {
     ny: "NY",
     tooltipTimes: "Nyu-York {ny} · sizda {local}",
     tooltipSchedule: "Pre 4:00–9:30 · asosiy 9:30–16:00 · post 20:00 ET gacha",
+    tooltipScheduleEarly: "Qisqartirilgan kun: pre 4:00–9:30 · asosiy 9:30–13:00 · post 17:00 ET gacha",
   },
   palette: {
     title: "Qidiruv va buyruqlar",

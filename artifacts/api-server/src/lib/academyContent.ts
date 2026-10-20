@@ -24,11 +24,13 @@ import { DEFAULT_LANG, type Lang } from "../i18n";
 export type ItemKind = "lesson" | "quiz" | "assignment";
 export const ITEM_KINDS: readonly ItemKind[] = ["lesson", "quiz", "assignment"];
 
-/** Лестница деска (решение владельца): ровно 4 ступени. Программа может быть привязана к ступени. */
-export type Stage = "trainee" | "junior" | "trader" | "senior";
-export const STAGES: readonly Stage[] = ["trainee", "junior", "trader", "senior"];
-export const STAGE_LABELS: Record<Stage, string> = { trainee: ruPath.stages.trainee.name, junior: ruPath.stages.junior.name, trader: ruPath.stages.trader.name, senior: ruPath.stages.senior.name };
+/** Лестница деска (решение владельца 2026-10-20): Джун → Трейдер → Сеньор. Программа может быть привязана к ступени. */
+export type Stage = "junior" | "trader" | "senior";
+export const STAGES: readonly Stage[] = ["junior", "trader", "senior"];
+export const STAGE_LABELS: Record<Stage, string> = { junior: ruPath.stages.junior.name, trader: ruPath.stages.trader.name, senior: ruPath.stages.senior.name };
+/** The removed first stage «trainee» (Волна 1 п. 1.21) reads as junior. */
 export function normalizeStage(v: unknown): Stage | null {
+  if (v === "trainee") return "junior";
   return typeof v === "string" && (STAGES as readonly string[]).includes(v) ? (v as Stage) : null;
 }
 

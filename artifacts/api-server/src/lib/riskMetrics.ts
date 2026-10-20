@@ -45,6 +45,8 @@ export type Limits = {
   maxOpenPositions: number | null;
   allowOvernight: boolean;
   allowSwing: boolean;
+  /** Buying power set per trader by the curator (Волна 1 п. 1.21): junior 25 000 – 800 000 $, above junior no cap. */
+  buyingPower?: number | null;
   tier: string | null;
   notes: string | null;
   updatedBy: string | null;

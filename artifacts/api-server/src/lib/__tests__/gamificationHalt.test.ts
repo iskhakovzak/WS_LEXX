@@ -49,12 +49,13 @@ describe("quests loader helpers", () => {
     expect(load.mustChangeOf(true)).toBe(true);
   });
 
-  it("a learner: Стажёр, or no tier and no traded day in 30 days; Джун and above never (UMID-19)", () => {
+  it("a learner: Джун (the entry stage, Волна 1 п. 1.21; a legacy «trainee» too), or no tier and no traded day in 30 days; Трейдер and above never (UMID-19)", () => {
     const today = "2026-10-19";
     expect(load.isLearner("trainee", [{ date: "2026-10-16" }], today)).toBe(true);
+    expect(load.isLearner("junior", [{ date: "2026-10-16" }], today)).toBe(true);
     expect(load.isLearner(null, [], today)).toBe(true);
     expect(load.isLearner(null, [{ date: "2026-10-16" }], today)).toBe(false);
-    expect(load.isLearner("junior", [], today)).toBe(false);
+    expect(load.isLearner("trader", [], today)).toBe(false);
     expect(load.isLearner("senior", [], today)).toBe(false);
   });
 });

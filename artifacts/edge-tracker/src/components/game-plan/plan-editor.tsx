@@ -21,7 +21,7 @@ import {
 } from "./plan-draft";
 import { MediaStrip, PasteRouterProvider, TvLinkField, useEditorPaste } from "./plan-media";
 import type { MediaContext } from "./media";
-import { OwnRuleField } from "./own-rule-field";
+import { OwnRuleField, type RuleSuggestionData } from "@/components/shared/own-rule-field";
 import { Block, Field, IndexLevels, type SetDraft, type TickerSuggestion } from "./plan-editor-parts";
 import { TickerEditor } from "./ticker-editor";
 import { WatchlistPicker } from "./watchlist-picker";
@@ -50,6 +50,8 @@ export function PlanEditor(props: {
   stickyClassName?: string;
   /** Personal plan for the focus day: today's focus (MistakeId), listed first in «Правило дня». */
   focusMistake?: string | null;
+  /** Personal plan: the suggested own rule (the costliest pattern of two weeks, item 1.9). */
+  ruleSuggestion?: RuleSuggestionData | null;
 }) {
   return (
     <PasteRouterProvider>
@@ -68,6 +70,7 @@ function EditorInner({
   navSlot,
   stickyClassName,
   focusMistake,
+  ruleSuggestion,
 }: Parameters<typeof PlanEditor>[0]) {
   const { t: tr } = gpI18n.useT();
   const uid = useId();
@@ -283,7 +286,7 @@ function EditorInner({
             <Input id={`${uid}-rp`} inputMode="decimal" placeholder="—" value={draft.riskPerTrade} onChange={(e) => patch({ riskPerTrade: e.target.value })} className="tabular-nums" />
           </Field>}
         </div>
-        {!isDesk && <OwnRuleField id={`${uid}-or`} value={draft.ownRule} onChange={(v) => patch({ ownRule: v })} focusMistake={focusMistake} />}
+        {!isDesk && <OwnRuleField id={`${uid}-or`} value={draft.ownRule} onChange={(v) => patch({ ownRule: v })} focusMistake={focusMistake} suggestion={ruleSuggestion} />}
         <Field label={isDesk ? tr("editor.riskNotesDesk") : tr("editor.riskNotes")} htmlFor={`${uid}-rn`}>
           <Textarea
             id={`${uid}-rn`}

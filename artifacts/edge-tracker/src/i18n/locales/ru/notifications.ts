@@ -45,6 +45,8 @@ export default {
     reward_requested: { label: "Запрос награды", description: "Трейдер запросил награду — вручите или отклоните" },
     reward_granted: { label: "Награда вручена", description: "Куратор отметил вашу награду врученной" },
     reward_declined: { label: "Запрос награды отклонён", description: "Куратор отклонил запрос награды" },
+    curator_request: { label: "Запрос куратору", description: "Трейдер попросил куратора о помощи" },
+    curator_request_done: { label: "Куратор ответил на запрос", description: "Куратор закрыл ваш запрос" },
     risk_warn: { label: "Близко к лимиту", description: "Использовано ≥ 70 % дневного / недельного лимита или просадки" },
     risk_breach: { label: "Лимит превышен", description: "Дневной / недельный лимит или максимальная просадка пробиты — стоп торговли" },
     risk_repeat_breach: { label: "Повторное нарушение", description: "Трейдер второй раз за неделю пробил лимит — нужен разбор куратора" },

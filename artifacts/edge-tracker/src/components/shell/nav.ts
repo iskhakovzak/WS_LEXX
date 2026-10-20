@@ -111,7 +111,7 @@ export const NAV_GROUPS: NavGroup[] = [
     nav("rules", { href: "/rules", icon: ListChecks, keywords: "rules ошибки errors дисциплина error-tracker нарушения", also: ["/error-tracker"] }),
   ]),
   group("growth", [
-    nav("journal", { href: "/journal", icon: NotebookPen, keywords: "journal журнал дневник разбор дня eod закрытие дня", goKey: "j", children: [
+    nav("journal", { href: "/journal", icon: NotebookPen, keywords: "journal журнал дневник разбор дня eod закрытие дня вечер сводка итог дня junior notes", goKey: "j", children: [
       nav("dayReport", { href: "/day-report", icon: FileText, keywords: "day report разбор дня итоги дня отчёт план на завтра" }),
       nav("weeklyReview", { href: "/weekly-review", icon: ClipboardCheck, keywords: "weekly review неделя итоги недели отчёт" }),
     ] }),
@@ -139,10 +139,12 @@ export const NAV_GROUPS: NavGroup[] = [
   ]),
   group("team", [
     nav("discussions", { href: "/discussions", icon: MessageSquare, keywords: "discussions чат треды обсуждения", goKey: "m", children: [
-      nav("dailyFeed", { href: "/dailyfeed", icon: Newspaper, keywords: "daily feed дневная лента тема дня" }),
       nav("authorNotes", { href: "/author-notes", icon: Mic, keywords: "author notes авторская сводка" }),
-      nav("juniorNotes", { href: "/junior-notes", icon: NotebookText, keywords: "junior notes джуны" }),
+      // Волна 1, item 1.20: the day's desk news and manual posts are on the desk plan; the full feeds stay, last.
+      nav("dailyFeed", { href: "/dailyfeed", icon: Newspaper, keywords: "daily feed дневная лента тема дня" }),
       nav("activity", { href: "/activity", icon: Activity, keywords: "activity лента активности" }),
+      // Item 1.5: the evening summary is the journal's «Закрыть день»; the old page only reads past notes (legacy).
+      nav("juniorNotes", { href: "/junior-notes", icon: NotebookText, keywords: "junior notes джуны", hidden: true }),
     ] }),
     nav("ideas", { href: "/trade-ideas", icon: Lightbulb, keywords: "ideas trade ideas идеи", goKey: "i", children: [
       nav("ideaStats", { href: "/trade-idea-stats", icon: PieChart, keywords: "idea stats статистика идей" }),

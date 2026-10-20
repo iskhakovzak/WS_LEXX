@@ -353,4 +353,13 @@ export default {
   BOARD_NOT_FOUND: "Doska topilmadi",
   BOARD_LIMIT: "Oʻz doskalaringiz {max} tadan oshmasin — yangisini qoʻshish uchun keraksizini olib tashlang",
   BROKER_TRADE_READ_ONLY: "Broker savdosining raqamlari PropReports’dan keladi va qoʻlda oʻzgartirilmaydi. Setap, teglar, baho va izohlarni koʻrsatish mumkin",
+  BUYING_POWER_RANGE: "Juniorning BP {min} dan {max} gacha boʻlishi kerak",
+  BUYING_POWER_MIN: "BP kamida {min} boʻlishi kerak",
+  CURATOR_REQUEST_OPEN: "Bunday soʻrov allaqachon yuborilgan — kurator uni koʻradi",
+  CURATOR_REQUEST_NOT_FOUND: "Soʻrov topilmadi",
+  CURATOR_REQUEST_CLOSED: "Soʻrov allaqachon yopilgan",
+  DESK_GROUP_NOT_FOUND: "Guruh topilmadi",
+  DESK_GROUP_NAME_TAKEN: "«{name}» guruhi allaqachon bor",
+  DESK_GROUP_CURATOR_INVALID: "Guruh kuratori faqat kurator yoki admin boʻlishi mumkin",
+  JUNIOR_NOTES_RETIRED: "Juniorlar xulosasi endi yuritilmaydi — kundalikdagi kechki shaklni toʻldiring",
 } satisfies Messages<typeof ru>;

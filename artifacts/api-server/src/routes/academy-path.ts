@@ -1,14 +1,15 @@
 /**
- * «Путь трейдера и экзамены» (Academy F3) — stage ladder Стажёр → Джун → Трейдер → Сеньор, objective promotion
+ * «Путь трейдера и экзамены» (Academy F3) — stage ladder Джун → Трейдер → Сеньор, objective promotion
  * readiness from real trades, mentor approve/reject, and prop-style evaluation challenges.
  *
- * Ladder / readiness
+ * Ladder (Джун → Трейдер → Сеньор; «Стажёр» left it in Волна 1 п. 1.21) / readiness
  *   GET  /academy/path/config                     stages, criteria, metric meta, templates (any member; canEdit = settings.manage)
  *   PUT  /academy/path/stages                     settings.manage — names / descriptions / scaling tier per stage (keys are fixed)
  *   PUT  /academy/path/criteria                   settings.manage — replace the criteria set (removed rows are archived, never deleted)
  *   GET  /academy/path/report?user=&date=         readiness report (trader: self only; staff: anyone)
- *   GET  /academy/path/funnel?date=               staff — everybody grouped by stage with readiness
- *   GET  /academy/path/requests?status=&user=     promotion requests (trader: own)
+ *   GET  /academy/path/funnel?date=&scope=        staff — everybody grouped by stage with readiness; scope=group →
+ *                                                 «Моя группа» (desk groups + assigned, Волна 1 п. 1.19), default all
+ *   GET  /academy/path/requests?status=&user=&scope=   promotion requests (trader: own; staff: scope as the funnel)
  *   POST /academy/path/requests                   {user?, comment?} — trader asks for self, staff for anyone
  *   POST /academy/path/requests/:id/approve       staff {comment?} — comment required when the report is not "ready"
  *   POST /academy/path/requests/:id/reject        staff {comment} (required)
@@ -59,8 +60,12 @@ import {
 } from "../lib/academyPathStore";
 import { loadLearning, loadPromoTrades, loadViolationDates } from "../lib/academy/promotion-input";
 import { setStage } from "../lib/academy/stage-actions";
+import { myPeople, pickScope } from "../lib/people/deskGroups";
 
 const router: IRouter = Router();
+
+/** Templates a curator may start: the capital exam «Стажёр → Джун» is retired with the stage (Волна 1 п. 1.21). */
+const offeredTemplates = (lang: Lang) => templatesFor(lang).filter((t) => t.key !== "trainee_to_junior");
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 const PATH_LINK = (user?: string | null) => (user ? `/academy/path?user=${encodeURIComponent(user)}` : "/academy/path");
@@ -231,7 +236,7 @@ router.get("/academy/path/config", asyncHandler(async (req, res): Promise<void> 
   const [stages, criteria, tiers] = await Promise.all([loadStages(), loadCriteria(), loadTiers()]);
   res.json({
     stages, criteria, tiers: tiers.map((t) => ({ key: t.key, name: t.name, accountSize: t.accountSize, dailyLossLimit: t.dailyLossLimit, maxDrawdown: t.maxDrawdown })),
-    meta: { metrics: promoMetricsFor(langOf(req)), ops: OPS }, templates: templatesFor(langOf(req)), canEdit: !v.guest && (await can(req, "settings.manage")), me: v.name,
+    meta: { metrics: promoMetricsFor(langOf(req)), ops: OPS }, templates: offeredTemplates(langOf(req)), canEdit: !v.guest && (await can(req, "settings.manage")), me: v.name,
     // Display names of the (possibly seeded) stages in the reader's language; `stages` keeps the stored values for editing.
     stageLabels: Object.fromEntries(stages.map((s) => [s.key, stageNameFor(s.key, s.name, langOf(req))])),
   });
@@ -347,6 +352,10 @@ router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> 
   // People on the ladder: anyone with a stage, plus active traders without one ("не назначена").
   const names = new Set<string>([...info.keys()].filter((n) => roles.has(n)));
   for (const [n, role] of roles) if (role === "trader") names.add(n);
+  // «Моя группа / Все» (scope=group|all): the path page has no switch yet, so without ?scope= it stays «Все».
+  const { scope, names: mine } = pickScope(req.query.scope ?? "all", await myPeople(v.name));
+  if (mine) for (const n of [...names]) if (!mine.has(n)) names.delete(n);
+  for (const [n] of pending) if (!names.has(n)) pending.delete(n);
   const people = await Promise.all([...names].map(async (name) => {
     const i = info.get(name) ?? { stage: null, since: null, source: null, cohortId: null };
     const r = await buildReport(name, today, { stages, criteria, tiers, info: i }, lang);
@@ -361,7 +370,7 @@ router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> 
   people.sort((a, b) => Number(b.ready) - Number(a.ready) || (b.total ? b.passed / b.total : 0) - (a.total ? a.passed / a.total : 0) || a.user.localeCompare(b.user, "ru"));
   const columns = [...stages.map((s) => ({ key: s.key as string, name: stageNameFor(s.key, s.name, lang), people: people.filter((p) => p.stage === s.key) })),
     { key: "none", name: academyPathT.tFor(lang)("stages.none"), people: people.filter((p) => !p.stage) }];
-  res.json({ today, stages: stages.map((s) => localizeStage(s, lang)), columns, totals: { people: people.length, ready: people.filter((p) => p.ready).length, pending: pending.size } });
+  res.json({ today, scope, stages: stages.map((s) => localizeStage(s, lang)), columns, totals: { people: people.length, ready: people.filter((p) => p.ready).length, pending: pending.size } });
 }));
 
 // ─── promotion requests ─────────────────────────────────────────────────────
@@ -389,13 +398,16 @@ router.get("/academy/path/requests", asyncHandler(async (req, res): Promise<void
   const scope = await scopeTrader(req, want || null);
   if (scope === undefined) throw unauthorized();
   const status = typeof req.query.status === "string" && ["pending", "approved", "rejected", "withdrawn"].includes(req.query.status) ? req.query.status : null;
+  // Staff without ?user=: «Моя группа / Все» like the funnel.
+  const group = scope == null && v.staff ? pickScope(req.query.scope ?? "all", await myPeople(v.name)) : null;
   const { rows } = await pool.query(
     `SELECT * FROM academy_promotion_requests WHERE archived_at IS NULL AND ($1::text IS NULL OR user_name = $1) AND ($2::text IS NULL OR status = $2)
+        AND ($3::text[] IS NULL OR user_name = ANY($3::text[]))
       ORDER BY (status = 'pending') DESC, created_at DESC LIMIT 200`,
-    [scope, status],
+    [scope, status, group?.names ? [...group.names] : null],
   );
   const lang = langOf(req);
-  res.json({ requests: rows.map((x) => rowToRequest(x, lang)) });
+  res.json({ requests: rows.map((x) => rowToRequest(x, lang)), ...(group ? { scope: group.scope } : {}) });
 }));
 
 const RequestBody = z.object({ user: z.string().trim().min(1).max(120).optional(), comment: z.string().trim().max(2000).optional() }).strict();
@@ -706,7 +718,7 @@ export async function refreshReadinessNotices(users?: string[] | null): Promise<
 router.get("/academy/challenges/templates", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  res.json({ templates: templatesFor(langOf(req)), statuses: statusLabelsFor(langOf(req)) });
+  res.json({ templates: offeredTemplates(langOf(req)), statuses: statusLabelsFor(langOf(req)) });
 }));
 
 router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> => {
@@ -828,7 +840,7 @@ router.post("/academy/challenges/:id/archive", asyncHandler(async (req, res): Pr
   res.json({ ok: true });
 }));
 
-/** Demo: «Перевод Стажёр → Джун» from the 1st weekday of the current month for every member with broker trades. Idempotent. */
+/** Demo: «Перевод Джун → Трейдер» from the 1st weekday of the current month for every member with broker trades. Idempotent. */
 router.post("/academy/path/seed-demo", asyncHandler(async (req, res): Promise<void> => {
   const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
@@ -842,9 +854,9 @@ router.post("/academy/path/seed-demo", asyncHandler(async (req, res): Promise<vo
   const created: { user: string; id: number }[] = [];
   for (const r of rows) {
     const user = String(r.trader);
-    const ex = await pool.query(`SELECT id FROM academy_challenges WHERE user_name = $1 AND template_key = 'trainee_to_junior' AND starts_on = $2 AND archived_at IS NULL LIMIT 1`, [user, start]);
+    const ex = await pool.query(`SELECT id FROM academy_challenges WHERE user_name = $1 AND template_key = 'junior_to_trader' AND starts_on = $2 AND archived_at IS NULL LIMIT 1`, [user, start]);
     if (ex.rows.length) continue;
-    const out = await createChallenge(user, "trainee_to_junior", start, undefined, undefined, undefined, academyPathT.tFor("ru")("route.demo"), v.name);
+    const out = await createChallenge(user, "junior_to_trader", start, undefined, undefined, undefined, academyPathT.tFor("ru")("route.demo"), v.name);
     if ("id" in out) created.push({ user, id: out.id });
   }
   await logAudit({ actor: v.name, action: "academy.path.seed_demo", targetType: "academy_challenges", details: { created } });

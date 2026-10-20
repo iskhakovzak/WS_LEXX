@@ -2,7 +2,6 @@
 export default {
   audience: {
     all: "Всем",
-    trainee: "Стажёрам",
     junior: "Джунам",
     trader: "Трейдерам",
     senior: "Сеньорам",

@@ -43,7 +43,6 @@ export default {
   cancel: "Bekor qilish",
   names: {
     market: { sectors: "Sektorlar kuchi", "analyst-actions": "Tahlilchilar harakatlari" },
-    digest: { morning: "Ertalabki dayjest", evening: "Kechki dayjest" },
     psychology: { "weekly-report": "Psixologiya boʻyicha haftalik hisobot" },
     quotes: { daily: "Kun iqtibosi" },
     db: { backup: "Maʼlumotlar bazasi zaxirasi" },

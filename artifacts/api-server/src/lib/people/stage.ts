@@ -1,13 +1,13 @@
 /**
- * The trader's ladder stage (Стажёр → Джун → Трейдер → Сеньор) — ONE resolution for every screen (Волна 0, item 0.6):
+ * The trader's ladder stage (Джун → Трейдер → Сеньор) — ONE resolution for every screen (Волна 0, item 0.6):
  * daily/me «До Джуна» (through lib/academyPathStore loadStageInfo → «Путь трейдера»), the shell menu tier and the playbook
  * tier locks (lib/playbookToday/tier.ts), the discussion audiences (lib/discussionAudience.ts), author notes.
  *
  * Precedence: approved transfer (academy_trader_stage) → active enrolment (academy_enrollments.stage) → risk tier
  * (trader_risk_limits.tier) → DEFAULT_STAGE for a member with the role `trader`, so the path shows criteria and the next
- * step from day one. Owner decision 2026-10-20: the default is «Джун» — «Стажёр» leaves the ladder in Волна 1; removing
- * it is a change of this one module (DEFAULT_STAGE, LEARNER sets in the callers read stage keys, not this default).
- * Staff without a stage stay without one.
+ * step from day one. Owner decision 2026-10-20: the default is «Джун» and «Стажёр» left the ladder (Волна 1 п. 1.21):
+ * migration 0229 moved the stored «trainee» rows to junior, and a stray legacy value still reads as junior
+ * (normalizeStageKey). Staff without a stage stay without one.
  *
  * A promotion along the path (academy_trader_stage) also moves the risk tier: `syncRiskTier` writes
  * trader_risk_limits.tier in the caller's transaction (limits themselves are kept — the per-stage limit template is
@@ -15,7 +15,7 @@
  */
 import { pool } from "@workspace/db";
 import { logger } from "../logger";
-import { isStageKey, type StageKey } from "../promotionEngine";
+import { LEGACY_STAGE_KEYS, isStageKey, type StageKey } from "../promotionEngine";
 import { forgetTier } from "../playbookToday/tier";
 
 /** The stage of a trader nobody assigned one to (owner decision 2026-10-20: «Джун»). */
@@ -34,11 +34,20 @@ export function pickStage(own: unknown, enrollment: unknown, tier: unknown, role
   return resolveStage({ own, enrollment, tier, role }).stage;
 }
 
+/** A stored stage / tier value as a ladder stage: the removed «trainee» reads as junior; anything else unknown → null. */
+export function normalizeStageKey(v: unknown): StageKey | null {
+  if (isStageKey(v)) return v;
+  return typeof v === "string" ? LEGACY_STAGE_KEYS[v] ?? null : null;
+}
+
 /** Same as pickStage, with the source the stage came from. */
 export function resolveStage(src: { own?: unknown; enrollment?: unknown; tier?: unknown; role?: unknown }): { stage: StageKey | null; source: StageSource | null } {
-  if (isStageKey(src.own)) return { stage: src.own, source: "path" };
-  if (isStageKey(src.enrollment)) return { stage: src.enrollment, source: "enrollment" };
-  if (isStageKey(src.tier)) return { stage: src.tier, source: "scaling" };
+  const own = normalizeStageKey(src.own);
+  if (own) return { stage: own, source: "path" };
+  const enrollment = normalizeStageKey(src.enrollment);
+  if (enrollment) return { stage: enrollment, source: "enrollment" };
+  const tier = normalizeStageKey(src.tier);
+  if (tier) return { stage: tier, source: "scaling" };
   if (isTraderRole(src.role)) return { stage: DEFAULT_STAGE, source: "default" };
   return { stage: null, source: null };
 }

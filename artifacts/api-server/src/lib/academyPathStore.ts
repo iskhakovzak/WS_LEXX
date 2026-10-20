@@ -3,7 +3,7 @@ import { logger } from "./logger";
 import { num } from "./tradeMath";
 import { DEFAULT_TIERS, type Op, type Tier } from "./scalingEngine";
 import {
-  DEFAULT_CRITERIA, DEFAULT_STAGES, LEGACY_TRAINEE_DESCRIPTION, TRAINEE_DESCRIPTION, PROMO_METRIC_KEYS, isStageKey, sortStages,
+  DEFAULT_CRITERIA, DEFAULT_STAGES, PROMO_METRIC_KEYS, isStageKey, sortStages,
   type Criterion, type PromoMetricKey, type StageKey, type StageMeta,
 } from "./promotionEngine";
 
@@ -119,11 +119,8 @@ export function ensureAcademyPathTables(): Promise<void> {
         }
         logger.info("academy-path: seeded default stages");
       }
-      // The first seed described «Стажёр» via the selection / bootcamp funnel, which is not part of the ladder.
-      await pool.query(
-        `UPDATE academy_stages SET description = $1 WHERE key = 'trainee' AND description = $2 AND updated_by = 'system'`,
-        [TRAINEE_DESCRIPTION, LEGACY_TRAINEE_DESCRIPTION],
-      );
+      // The former first stage («trainee») is not on the ladder any more (Волна 1 п. 1.21): its row stays in the table
+      // (migration 0229 archives its criteria) and loadStages() only reads the keys of DEFAULT_STAGES.
       const { rows: cc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM academy_stage_criteria`);
       if (Number(cc[0]?.n ?? 0) === 0) {
         let i = 0;

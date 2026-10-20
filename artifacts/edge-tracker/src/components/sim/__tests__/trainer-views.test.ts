@@ -165,7 +165,7 @@ describe("daily closed without playing", () => {
   it("shows the reveal and no play button", () => {
     const html = cards(home({ daily: daily({ revealed: { ticker: "GOOGL", barsDate: "2026-10-14" } }) }));
     expect(html).toContain("GOOGL · 14 окт.");
-    expect(html).toContain("новая появится утром");
+    expect(html).toContain("Новая задача — вечером, после закрытия рынка (16:00 NY)"); // item 1.8: an evening task
     expect(html).not.toContain("Играть задачу дня");
   });
 });

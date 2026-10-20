@@ -21,6 +21,16 @@ function isIsoDate(s: string): boolean {
   return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
 }
 
+/**
+ * Language-neutral session facts of a `holiday` row (the description is localized): `marketClosed` = a full-day
+ * closure, `earlyClose` = the 13:00 half day (the market trades — clocks and day pickers must not treat it as closed).
+ */
+function sessionFlags(r: { type?: unknown; description?: unknown }): { marketClosed?: boolean; earlyClose?: boolean } {
+  if (String(r.type ?? "").toLowerCase() !== "holiday") return {};
+  const d = String(r.description ?? "").toLowerCase();
+  return { marketClosed: d.startsWith("market closed"), earlyClose: d.startsWith("early close") };
+}
+
 router.get("/holidays", asyncHandler(async (req, res): Promise<void> => {
   const from = typeof req.query.from === "string" ? req.query.from.trim() : "";
   const to = typeof req.query.to === "string" ? req.query.to.trim() : "";
@@ -42,7 +52,7 @@ router.get("/holidays", asyncHandler(async (req, res): Promise<void> => {
     params
   );
   const lang = langOf(req);
-  res.json({ events: rows.map((r) => localizeCalendarRow(r, lang)) });
+  res.json({ events: rows.map((r) => ({ ...localizeCalendarRow(r, lang), ...sessionFlags(r) })) });
 }));
 
 router.get("/holidays/today", asyncHandler(async (req, res): Promise<void> => {

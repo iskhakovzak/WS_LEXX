@@ -3,7 +3,7 @@ import { eq, desc, and, ilike, or, gte } from "drizzle-orm";
 import { z } from "zod";
 import multer from "multer";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
-import { db, pool, auditLogTable, contentReportsTable, discussionsTable, commentsTable, } from "@workspace/db";
+import { db, pool, auditLogTable, contentReportsTable, discussionsTable, commentsTable, tradeIdeasTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { config } from "../config";
 import { logAudit } from "../lib/audit";
@@ -17,6 +17,7 @@ import { isWeekend, maxDate, pulseTz, tableExists, ymdIn, ymdShift } from "../li
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { langOf } from "../i18n";
 import { adminT } from "../i18n/ns";
+import { REPORT_TARGET_TYPES, createOrReuseReport, loadIdeaReportTargets, reportTargetExists } from "../lib/contentReports";
 
 const router: IRouter = Router();
 
@@ -30,7 +31,7 @@ const USER_COLUMNS = `id, name, role, active,
 const reasonSchema = z.string().trim().max(2000).optional();
 const resolutionSchema = z.string().trim().max(2000).optional();
 const roleSchema = z.enum(["admin", "curator", "trader"]);
-const targetTypeSchema = z.enum(["discussion", "comment"]);
+const targetTypeSchema = z.enum(REPORT_TARGET_TYPES); // + trade_idea (1.17, lib/contentReports)
 
 const roleBodySchema = z.object({ role: roleSchema });
 const banBodySchema = z.object({ reason: reasonSchema });
@@ -148,6 +149,16 @@ router.delete("/admin/comments/:id", asyncHandler(async (req, res): Promise<void
   res.sendStatus(204);
 }));
 
+router.delete("/admin/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => { // a reported idea (1.17): soft delete
+  await requireCapGuard(req, "discussions.moderate");
+  const id = Number(req.params.id);
+  if (isNaN(id)) throw new AppError("INVALID_ID");
+  const [idea] = await db.update(tradeIdeasTable).set({ deletedAt: new Date() }).where(eq(tradeIdeasTable.id, id)).returning();
+  if (!idea) throw notFound();
+  await logAudit({ actor: getActor(req)!, action: "trade_idea.delete", targetType: "trade_idea", targetId: String(id), details: { author: idea.trader } });
+  res.sendStatus(204);
+}));
+
 router.get("/admin/audit", asyncHandler(async (req, res): Promise<void> => {
   await requireCapGuard(req, "admin.audit");
   const filterActor = typeof req.query.filterActor === "string" ? req.query.filterActor : null;
@@ -186,13 +197,10 @@ router.post("/reports", asyncHandler(async (req, res): Promise<void> => {
   if (!reporter) throw unauthorized();
   const { rows: bannedCheck } = await pool.query<any>(`SELECT COALESCE(banned, false) AS banned FROM users WHERE name = $1`, [reporter]);
   if (bannedCheck[0]?.banned) throw new AppError("REPORTER_BANNED");
-  const [row] = await db.insert(contentReportsTable).values({
-    reporter,
-    targetType,
-    targetId,
-    reason,
-  }).returning();
-  res.status(201).json({ ...row, createdAt: row.createdAt.toISOString(), resolvedAt: row.resolvedAt?.toISOString() ?? null });
+  if (!(await reportTargetExists(targetType, targetId))) throw notFound();
+  // A repeat report by the same person on the same target answers the open one (200) — no new row (1.17).
+  const { report, created } = await createOrReuseReport({ reporter, targetType, targetId, reason });
+  res.status(created ? 201 : 200).json({ ...report, alreadyReported: !created });
 }));
 
 router.get("/admin/reports", asyncHandler(async (req, res): Promise<void> => {
@@ -241,7 +249,7 @@ async function loadReportTargets(rows: { targetType: string; targetId: string }[
   const discIds = ids("discussion");
   const commentIds = ids("comment");
   const empty = { rows: [] as any[] };
-  const [discRes, comRes, usersRes] = await Promise.all([
+  const [discRes, comRes, usersRes, ideaRows] = await Promise.all([
     discIds.length
       ? pool.query<any>(`SELECT id, trader, topic, notes, deleted_at, created_at FROM discussions WHERE id = ANY($1::int[])`, [discIds])
       : Promise.resolve(empty),
@@ -254,6 +262,7 @@ async function loadReportTargets(rows: { targetType: string; targetId: string }[
         )
       : Promise.resolve(empty),
     pool.query<any>(`SELECT id, name, role, COALESCE(banned, false) AS banned FROM users`),
+    loadIdeaReportTargets(ids("trade_idea")),
   ]);
   const users = new Map<string, any>(usersRes.rows.map((u: any) => [u.name, u]));
   const clip = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 280) : null);
@@ -284,6 +293,7 @@ async function loadReportTargets(rows: { targetType: string; targetId: string }[
       createdAt: iso(c.created_at),
     });
   }
+  for (const i of ideaRows) out.set(`trade_idea:${i.id}`, { ...withAuthor(i.trader), title: i.title, preview: i.preview, discussionId: null, deleted: i.deleted, createdAt: i.createdAt });
   // Comments are hard-deleted: a missing row means the content is already gone.
   for (const id of commentIds) {
     if (!foundComments.has(id)) {

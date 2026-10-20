@@ -18,6 +18,7 @@ import { trainerI18n } from "@/i18n/ns/trainer";
 import type { TrainerHome } from "@/lib/trainer/types";
 import { ownCandidatesQuery, type Difficulty, type IntradayTf, type SimMode, type Snapshot } from "./api";
 import { DailyRanking } from "./daily-reveal";
+import { dailyCardText } from "@/lib/trainer/daily-window";
 import { useSeriesChoice } from "./series-context";
 import { FREE_TFS, type SeriesChoice } from "./series-model";
 
@@ -78,14 +79,18 @@ function DailyCard({ home, loading, a }: { home: TrainerHome | undefined; loadin
   const d = home?.daily;
   // The viewer's daily game for the review (`gameId`, any status; older servers: only the active one).
   const reviewId = d ? d.gameId ?? d.activeGameId : null;
-  // Revealed without playing = the session closed (the ticker is out): results only, a new challenge tomorrow.
-  const closed = !!d && !d.played && d.revealed != null && d.activeGameId == null;
+  // The ranked window is the evening (item 1.8): closed = outside it and not played — results only, the next one tonight.
+  const text = d ? dailyCardText(d) : null;
+  const closed = !!d && !d.played && !text?.open;
   return (
     <Card title={t("daily.title")} icon={CalendarCheck} accent>
       {loading || !d ? <ListSkeleton rows={3} /> : (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{d.played ? t("daily.playedHint") : closed ? t("daily.closedHint") : t("daily.hint")}</p>
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="text-xs text-muted-foreground">{text?.hint}</p>
+              {text?.window && <p className="text-xs font-medium">{text.window}</p>}
+            </div>
             {d.streak > 0 && <p className="flex items-center gap-1 text-xs font-medium"><Flame className="h-3.5 w-3.5 text-warn" aria-hidden="true" />{t("daily.streak", { count: d.streak })}</p>}
           </div>
           {d.played || closed ? (

@@ -353,4 +353,13 @@ export default {
   BOARD_NOT_FOUND: "Board not found",
   BOARD_LIMIT: "At most {max} own boards — remove one to add another",
   BROKER_TRADE_READ_ONLY: "A broker trade’s numbers come from PropReports and can’t be changed by hand. You can set the setup, tags, grade and notes",
+  BUYING_POWER_RANGE: "A junior's BP must be between {min} and {max}",
+  BUYING_POWER_MIN: "BP must be at least {min}",
+  CURATOR_REQUEST_OPEN: "You have already sent this request — your curator sees it",
+  CURATOR_REQUEST_NOT_FOUND: "Request not found",
+  CURATOR_REQUEST_CLOSED: "This request is already closed",
+  DESK_GROUP_NOT_FOUND: "Group not found",
+  DESK_GROUP_NAME_TAKEN: "A group named “{name}” already exists",
+  DESK_GROUP_CURATOR_INVALID: "A group's curator must be a curator or an admin",
+  JUNIOR_NOTES_RETIRED: "The juniors' summary is no longer kept — fill in the evening form in the journal",
 } satisfies Messages<typeof ru>;

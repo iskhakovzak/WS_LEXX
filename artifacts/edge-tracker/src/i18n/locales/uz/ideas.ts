@@ -121,6 +121,7 @@ export default {
     entryWorse: "Kirish rejadan riskning choragi yoki undan koʻproq yomon — kirish intizomini tekshiring.",
     entryBetter: "Kirish rejadan yaxshi — gʻoya ertaroq ishladi yoki agressivroq olindi.",
     reportSent: "Shikoyat kuratorga yuborildi",
+    reportAlready: "Bu gʻoya ustidan allaqachon shikoyat qilgansiz — kurator uni koʻradi",
     reportFailed: "Yuborish xatosi",
     report: "Shikoyat",
     reportLabel: "#{id} gʻoya boʻyicha shikoyat yoki taklif",

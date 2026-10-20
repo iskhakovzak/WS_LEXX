@@ -65,7 +65,7 @@ export interface ChallengeTemplate {
 
 // ─── templates ──────────────────────────────────────────────────────────────
 
-const stageName = (k: StageKey, lang: Lang) => academyPathT.tFor(lang)(`stages.${k}.name`);
+const stageName = (k: StageKey, lang: Lang) => academyPathT.tFor(lang)(`stages.${k === "trainee" ? "junior" : k}.name`); // no «Стажёр» (1.21)
 
 /** Capital-exam policy: every number is derived from the target scaling tier (DEFAULT_TIERS). */
 export const CAPITAL_EXAM_POLICY = {
@@ -180,7 +180,7 @@ export function capitalExam(
 }
 
 function traineeRules(r: Pick<ChallengeRules, "profitTarget" | "maxDrawdown" | "drawdownMode" | "trailingStopsAtStart" | "consistencyPct" | "minTradingDays">): ChallengeRules {
-  const tier = tierOf("trainee");
+  const tier = { accountSize: 10_000, dailyLossLimit: 150, maxPositionUsd: 10_000 }; // former intern limits: that tier left the seed (1.21)
   return {
     accountSize: tier.accountSize, dailyLossLimit: tier.dailyLossLimit, maxPositionUsd: tier.maxPositionUsd, maxPositionQty: null,
     tradingWindow: { ...TRAINEE_WINDOW }, tradingWindowStrict: true, rulesVersion: RULES_VERSION, ...r,

@@ -195,7 +195,7 @@ export default {
     levelTop: "top level",
     window: "Last {days} trading days: {points}",
     total: "All time: {points}",
-    hint: "Points come from a kept contract, a streak and finished quests — never from profit or the number of trades; a breach costs points and breaks the streak. Days without a contract do not break it.",
+    hint: "Points come from a kept contract, a streak and finished quests — never from profit or the number of trades; a breach costs points and breaks the streak. A trading day without a contract breaks the streak; once a month a freeze saves it. Days without trades leave it as is.",
     allLink: "Quests and achievements",
     earnedOn: "earned {date}",
     progress: "{progress} of {target}",

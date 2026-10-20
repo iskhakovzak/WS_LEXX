@@ -20,6 +20,7 @@ import { fmtDate, fmtUsd } from "@/lib/format";
 import { TemplateDialog } from "./template-dialog";
 import { AttentionPanel } from "./attention-panel";
 import { QuestEventChips } from "./quest-events";
+import { CuratorRequestsPanel } from "./requests-panel";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -139,7 +140,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
           hint={[c.overdueActions ? t("today.agreements") : t("today.noOverdue"), c.oneOnOneDue ? t("today.oneOnOneDue", { count: c.oneOnOneDue }) : null].filter(Boolean).join(" · ")}
         />
       </StatGrid>
-
+      <CuratorRequestsPanel scope={scope} onOpenTrader={onOpenTrader} />
       <BentoGrid>
         <AttentionPanel data={data} onOpenTrader={onOpenTrader} onTemplate={setTemplateFor} onReviewDay={review.open} extra={attentionExtra} />
 

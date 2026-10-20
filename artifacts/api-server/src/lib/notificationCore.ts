@@ -64,6 +64,8 @@ const TYPE_DEFS: readonly NotificationTypeDef[] = [
   { type: "reward_requested", group: "review", severity: "info" },
   { type: "reward_granted", group: "review", severity: "info" },
   { type: "reward_declined", group: "review", severity: "info" },
+  { type: "curator_request", group: "review", severity: "info" },
+  { type: "curator_request_done", group: "review", severity: "info" },
   // risk
   { type: "risk_warn", group: "risk", severity: "warn" },
   { type: "risk_breach", group: "risk", severity: "critical" },

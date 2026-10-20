@@ -97,7 +97,6 @@ export const CAPABILITIES = [
   { key: "admin.backups.read", group: G.admin, sensitive: true },
   { key: "admin.backups.run", group: G.admin, adminOnly: true },
   { key: "telegram.broadcast", group: G.admin, sensitive: true },
-  { key: "digest.manage.any", group: G.admin, team: true },
   { key: "permissions.manage", group: G.admin, adminOnly: true },
   { key: "admin.errors", group: G.admin, adminOnly: true },
   { key: "settings.manage", group: G.admin, adminOnly: true },
@@ -130,7 +129,7 @@ const CURATOR_CAPS: readonly Capability[] = [
   "propreports.read.team",
   "ratings.read.team", "ratings.write",
   "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate", "checklist.template.edit",
-  "admin.reports", "digest.manage.any",
+  "admin.reports",
 ];
 
 export const DEFAULT_MATRIX: Readonly<Record<Role, readonly Capability[]>> = {

@@ -56,7 +56,7 @@ export default {
   },
   tagging: {
     kind: {
-      setup: { label: "Setap", placeholder: "Setapni toping yoki yozing" },
+      setup: { label: "Setap", placeholder: "Setapni toping: raqam yoki nom" },
       mistake: { label: "Xato", placeholder: "Xatoni toping yoki yozing" },
       emotion: { label: "Hissiyot", placeholder: "Hissiyotni toping yoki yozing" },
     },
@@ -65,6 +65,14 @@ export default {
     clearSetup: "Setapni olib tashlash",
     addAria: "{kind}: qoʻshish ({key})",
     chipTitle: "{kind}: {value}",
+  },
+  /** Setup tag = an office playbook setup (components/shared/setup-picker.tsx; wave 1, 1.2). */
+  setupPicker: {
+    label: "Pleybuk setapi",
+    choose: "Setapni tanlash",
+    search: "Setap raqami yoki nomi",
+    empty: "Mos setaplar yoʻq",
+    acceptTitle: "Taklifni qabul qilish: {name} ({pct}%)",
   },
   bulk: {
     toolbar: "Tanlanganlar bilan amallar: {count}",

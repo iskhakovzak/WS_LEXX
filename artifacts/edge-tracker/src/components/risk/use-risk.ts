@@ -23,6 +23,8 @@ export type RiskLimits = {
   maxOpenPositions: number | null;
   allowOvernight: boolean;
   allowSwing: boolean;
+  /** Buying power set per trader (Волна 1 п. 1.21); absent on older API builds. */
+  buyingPower?: number | null;
   tier: string | null;
   notes: string | null;
   updatedBy: string | null;

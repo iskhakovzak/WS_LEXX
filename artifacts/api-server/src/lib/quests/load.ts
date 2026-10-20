@@ -239,11 +239,12 @@ async function userFlags(trader: string): Promise<{ mustChangeSecret: boolean; t
 }
 
 /**
- * A learner gets the practice quests: a Стажёр, or a trader without a higher tier who has not traded in the last
- * 30 days (a newcomer before the first trades). Джун and above are never learners.
+ * A learner gets the practice quests: a Джун — the entry stage since «Стажёр» left the ladder (Волна 1 п. 1.21; a stored
+ * legacy «trainee» counts too) — or a trader without a tier who has not traded in the last 30 days (a newcomer before
+ * the first trades). Трейдер and above are never learners.
  */
 export function isLearner(tier: string | null, reviews: readonly { date: string }[], today: string): boolean {
-  if (tier === "trainee") return true;
+  if (tier === "trainee" || tier === "junior") return true;
   if (tier && (TIER_RANK[tier] ?? 0) > 0) return false;
   return !reviews.some((r) => r.date >= addDays(today, -30));
 }

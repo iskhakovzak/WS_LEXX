@@ -3,11 +3,9 @@ import type ru from "../ru/academyPath";
 
 export default {
   stages: {
-    trainee: { name: "Stajyor", description: "Deskning birinchi bosqichi: minimal oʻlcham, qatʼiy limitlar, taʼlim va imtihonlar" },
     junior: { name: "Junior", description: "Firma kapitali, kichik lot, faqat intraday" },
     trader: { name: "Treyder", description: "Toʻlaqonli desk treyderi: intraday + overnight" },
     senior: { name: "Senior", description: "Toʻliq BP, swing, mentorlik" },
-    legacyTraineeDescription: "Saralash va butkempdan keyin: minimal oʻlcham, qatʼiy limitlar, taʼlim va imtihonlar",
     none: "Bosqich belgilanmagan",
   },
   metrics: {
@@ -31,21 +29,6 @@ export default {
     challenges_passed: { label: "Topshirilgan imtihonlar", hint: "Bosqich boshidan beri oʻtilgan sinovlar (imtihonlar)" },
   },
   seedCriteria: {
-    trainee: {
-      trading_days: "20 kundan kamida 15 savdo kuni",
-      net_pnl: "20 kunda sof P&L ≥ $300",
-      max_dd_usd: "Pasayish $500 dan koʻp emas",
-      consistency: "Eng yaxshi kun ≤ foydaning 40%",
-      win_rate: "Win rate ≥ 45%",
-      profit_factor: "Profit factor ≥ 1.2",
-      fee_share: "Komissiyalar ≤ yalpining 50%",
-      violations: "Koʻpi bilan 2 ta qoidabuzarlik",
-      red_streak_max: "Ketma-ket koʻpi bilan 4 qizil kun",
-      discipline_index: "Intizom indeksi ≥ 70",
-      lessons_pct: "Darslarning ≥ 80% oʻtilgan",
-      quiz_avg: "Testlarning oʻrtacha bali ≥ 70%",
-      challenges_passed: "«Koʻtarilish Stajyor → Junior» imtihoni topshirilgan",
-    },
     junior: {
       trading_days: "40 kundan kamida 30 savdo kuni",
       net_pnl: "40 kunda sof P&L ≥ $1,500",
@@ -168,8 +151,8 @@ export default {
     templates: {
       capitalName: "Koʻtarilish {from} → {to} (kapital ${k}k)",
       capitalLead: "Koʻtarilish imtihoni {from} → {to}",
-      trainee_test_10d: { name: "Stajyor testi, 10 kun", lead: "Stajyorni qisqa tekshirish: kunlik limit intizomi va bir tekis savdo" },
-      sim_exam_20d: { name: "Simulyator imtihoni, 20 kun", lead: "Stajyor uchun simulyatordagi imtihon" },
+      trainee_test_10d: { name: "Kirish testi, 10 kun", lead: "Yangi treyderni qisqa tekshirish: kunlik limit intizomi va bir tekis savdo" },
+      sim_exam_20d: { name: "Simulyator imtihoni, 20 kun", lead: "Yangi treyderlar uchun simulyatordagi imtihon" },
     },
     trade: "savdo",
     failure: {

@@ -1,14 +1,14 @@
 /**
  * «Кабинет куратора» — агрегирующие эндпоинты (только чтение чужих таблиц) + приватные заметки персонала.
  *
- *   GET  /curator/today                 ?scope=mine|desk&date=&old=1 — фаза дня, кто торгует, риск, нет плана / не закрыт день,
+ *   GET  /curator/today                 ?scope=group|all (старые mine|desk)&date=&old=1 — фаза дня, кто торгует, риск, нет плана / не закрыт день,
  *                                       общая очередь разборов (EOD + недельные + задания Академии + нарушения;
  *                                       по умолчанию за последние 14 дн., old=1 — со старыми; важное и свежее сверху),
  *                                       просроченные договорённости 1:1, приоритетные «следующие шаги», byCost (lib/daily/costQueue),
  *                                       oneOnOneDue (1:1 > 30 дн. или ни одной), counts.reviews/reviewsOverdue — «ждёт разбора»:
  *                                       закрытые и не разобранные дни ростера за 14 дн. (то же число, что /eod/queue/count)
  *                                       Часы ожидания очереди — торговые (выходные и праздники не идут в SLA, OLGA-07).
- *   GET  /curator/traders               ?scope=mine|desk — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
+ *   GET  /curator/traders               ?scope=group|all — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
  *                                       последний разбор, 1:1, нарушения, последняя заметка, следующий шаг
  *   GET  /curator/trader/:name          профиль: карточка + лимиты/метрики, нарушения с разбором, дни EOD, недели,
  *                                       Академия (договорённости, 1:1 без приватных заметок, цели ИПР), заметки, focus (lib/daily/curatorFocus)
@@ -22,7 +22,9 @@
  *   POST /curator/queue/restore         {ids} — вернуть элементы, убранные «архивировать старые»
  *   POST /curator/queue/archive-old     {scope?, olderThanDays?} — мягко скрыть из очереди элементы старше N дн. (curator_queue_acks)
  *
- * Доступ: journal.review (куратор / админ); ?scope=mine — подопечные (assigned_*), иначе весь деск в пределах readScope.
+ * Доступ: journal.review (куратор / админ); ?scope=group (= mine) — «Моя группа»: трейдеры групп деска, которые ведёт
+ * читатель (desk_groups, Волна 1 п. 1.19), и назначенные ему (assigned_*); all (= desk) — весь деск в пределах readScope.
+ * По умолчанию — своя группа, если она есть (lib/curatorRoster loadRoster). Запросы трейдеров — routes/curator-requests.ts.
  * Необязательные таблицы (планы, EOD, недельные, Академия) читаются с catch → пустые данные, если модуль ещё не создан.
  */
 import { Router, type IRouter, type Request } from "express";
@@ -367,7 +369,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 const archiveOldSchema = z.object({
-  scope: z.enum(["mine", "desk"]).optional(),
+  scope: z.enum(["mine", "desk", "group", "all"]).optional(),
   olderThanDays: z.number().int().min(1).max(365).optional(),
 });
 

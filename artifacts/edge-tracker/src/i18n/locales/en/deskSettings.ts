@@ -132,7 +132,7 @@ export default {
       tagYesterdayEnabled: { label: "«Tag trades» quest", help: "Daily quest: mark the setup of your trades of the last day (while some are untagged)." },
       tagYesterdayPoints: { label: "Points for tagging", help: "Discipline points for a completed «Tag trades» quest." },
       tagYesterdayMax: { label: "Tagging: max trades", help: "The quest target is the last day's trades, but not more than this." },
-      setupUnlockGradeA: { label: "Setup unlock: grade-A trades", help: "A trainee unlocks a Junior setup after this many grade-A trades on its gateway setup. 0 — by level only." },
+      setupUnlockGradeA: { label: "Setup unlock: grade-A trades", help: "A next-level setup opens early after this many grade-A trades on its gateway setup. 0 — by level only." },
     },
     achievements: {
       enabled: { label: "Achievements", help: "Master switch: achievement tiers (bronze, silver, gold, platinum) and their notifications." },
@@ -184,7 +184,7 @@ export default {
     },
     nav: {
       simpleForTrainees: { label: "Simple menu for newcomers", help: "Traders up to the chosen tier see the 7 main sections; the rest sits in a collapsed «More» group. Curators and admins always get the full menu." },
-      simpleUntilTier: { label: "Who gets the simple menu", help: "Up to which tier, inclusive (the tier as the playbook locks see it).", options: { trainee: "Interns only", junior: "Interns and juniors" } },
+      simpleUntilTier: { label: "Who gets the simple menu", help: "Up to which tier, inclusive (the tier as the playbook locks see it).", options: { junior: "Juniors (newcomers)" } },
     },
     usage: {
       enabled: { label: "Usage tracking on", help: "The site records opened screens and daily-loop steps (no amounts, tickers or text). Off — nothing is recorded." },
@@ -242,7 +242,7 @@ export default {
       stopSlipUsd: { label: "Stop slippage, $", help: "A stop fills worse by this amount; on a gap, from the bar open." },
       oneRUsd: { label: "Default 1R, $", help: "For risk sizing when the trader’s plan and limits set no 1R." },
       dailyEnabled: { label: "«Daily challenge»", help: "One ticker-day for the whole desk every trading day." },
-      dailyPickTime: { label: "Challenge pick time", help: "New York time, weekdays." },
+      dailyPickTime: { label: "Challenge pick time", help: "New York time, weekdays. Also closes the rating window of the «Daily challenge»." },
       dailyPlayMinutes: { label: "Challenge length", help: "Minutes of the session played from the open." },
       dailyNoRepeatDays: { label: "No repeats", help: "The same ticker-day does not come back for this many days." },
       dailyMinVolume: { label: "Min day volume, shares", help: "Liquid days only." },

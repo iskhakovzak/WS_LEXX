@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import { BookOpenCheck, CalendarDays, ChevronLeft, ChevronRight, CloudUpload, History, Users } from "lucide-react";
@@ -11,14 +11,14 @@ import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import { prevWeekday } from "@/lib/trading-date";
-import { MonthCalendar, type CalMetric, type ReviewMark } from "@/components/journal/MonthCalendar";
+import { MonthCalendar, type CalMetric } from "@/components/journal/MonthCalendar";
 import { DayTrades, type RuleViolation } from "@/components/journal/DayTrades";
 import { DayJournalEditor } from "@/components/journal/DayJournalEditor";
 import { DaySummary } from "@/components/journal/DaySummary";
 import { TeamDay } from "@/components/journal/TeamDay";
 import { WeekReview } from "@/components/journal/WeekReview";
 import {
-  type JournalEntry, hasReview, readLegacyNote, useJournalRange, useSyncLocalJournal,
+  type JournalEntry, readLegacyNote, useJournalRange, useSyncLocalJournal,
 } from "@/components/journal/use-journal-days";
 import {
   addDays, carriedInto, computeStats, groupByDate, isIsoDate, isTypingTarget,
@@ -30,6 +30,8 @@ import { journalI18n } from "@/i18n/ns/journal";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { comparePersonNames } from "@/i18n";
+import { reviewMarks, useDefaultJournalDay } from "@/components/journal/use-default-day";
+import { OPEN_DAY_LOOKBACK } from "@/components/journal/default-day";
 import { EodFlow } from "@/components/eod/EodFlow";
 import { EodStatusBadge } from "@/components/eod/EodStatusCard";
 import { EodQueuePanel } from "@/components/eod/EodQueuePanel";
@@ -70,6 +72,8 @@ export default function JournalPage() {
   const today = todayStr();
 
   const [url] = useState(initialFromUrl);
+  // Item 1.4: no ?date= → the default day is picked once the data is in (below); a pick by hand cancels it.
+  const autoDay = useRef(!url.date);
   // «Разбор по сделкам» (optional per-trade review) replaces the reflection column for the trader's own day.
   const [eodMode, setEodMode] = useState<boolean>(url.eod);
   const [view, setView] = useState<View>(isCurator ? url.view : "day");
@@ -97,6 +101,7 @@ export default function JournalPage() {
   const [calOpen, setCalOpen] = useState(false);
 
   const selectDate = useCallback((d: string) => {
+    autoDay.current = false;
     setActiveDate(d);
     setViewMonth(monthKey(d));
     setView("day");
@@ -170,6 +175,10 @@ export default function JournalPage() {
   const journal = useJournalRange(effectiveAccount, rangeFrom, rangeTo, !!user);
   const eodRange = useEodRange(effectiveAccount, rangeFrom, rangeTo, !!effectiveAccount);
   const queue = useEodQueue(isCurator);
+  const pickDefault = useCallback((d: string) => { setActiveDate(d); setViewMonth(monthKey(d)); }, []);
+  const ownDefault = !!effectiveAccount && effectiveAccount === traderName;
+  const recentEod = useEodRange(effectiveAccount, addDays(today, -OPEN_DAY_LOOKBACK), today, autoDay.current && ownDefault);
+  useDefaultJournalDay({ pending: autoDay, own: ownDefault, recent: recentEod.data, today, tradesLoading: isLoading, tradeDays, activeDate, pick: pickDefault });
 
   const monthStats = useMemo(() => {
     const inMonth: DayStats[] = [];
@@ -194,21 +203,10 @@ export default function JournalPage() {
     return m;
   }, [journal.entries, effectiveAccount]);
 
-  // One review mark per day: checked by the curator › closed › reflection written › traded without reflection.
-  const marks = useMemo(() => {
-    const m = new Map<string, ReviewMark>();
-    const eod: Map<string, EodDayMark> = effectiveAccount ? eodRange.data ?? new Map() : new Map();
-    const days = new Set<string>([...statsByDate.keys(), ...entriesByDate.keys(), ...eod.keys()]);
-    for (const d of days) {
-      if (d > today) continue;
-      const e = eod.get(d);
-      if (e?.status === "reviewed") m.set(d, "reviewed");
-      else if (e?.status === "closed") m.set(d, "closed");
-      else if ((entriesByDate.get(d) ?? []).some(hasReview)) m.set(d, "filled");
-      else if ((statsByDate.get(d)?.trades ?? 0) > 0) m.set(d, "missing");
-    }
-    return m;
-  }, [eodRange.data, effectiveAccount, statsByDate, entriesByDate, today]);
+  const marks = useMemo(
+    () => reviewMarks((effectiveAccount ? eodRange.data : null) ?? new Map<string, EodDayMark>(), statsByDate, entriesByDate, today),
+    [eodRange.data, effectiveAccount, statsByDate, entriesByDate, today],
+  );
 
   const dayEntries = entriesByDate.get(activeDate) ?? [];
   const ownEntry = effectiveAccount ? dayEntries.find((e) => e.trader === effectiveAccount) ?? null : null;

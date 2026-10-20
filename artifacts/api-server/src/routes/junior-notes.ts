@@ -1,3 +1,10 @@
+/**
+ * LEGACY (Волна 1, item 1.5 — one evening form): «Сводка джунов» merged into the journal's «Закрыть день»
+ * (eod_days.summary: what went well / what to fix / focus tomorrow; the curator answers in the one EOD queue, the
+ * trader gets eod_reviewed; the focus prefills tomorrow's plan — lib/planPrefill). The web page only reads the old
+ * notes (GET /junior-notes/history); the rows are kept. Every non-GET request answers JUNIOR_NOTES_RETIRED (410) — the
+ * guard right after the router; the write handlers below are unreachable and wait for removal.
+ */
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -19,6 +26,8 @@ import { aiAnswerLanguage } from "../i18n/ai";
 import { langOf } from "../i18n";
 
 const router: IRouter = Router();
+// Retired (wave 1): the history stays readable; every write answers 410 — the evening form in the journal replaced it.
+router.use("/junior-notes", (req, _res, next) => next(req.method === "GET" ? undefined : new AppError("JUNIOR_NOTES_RETIRED")));
 const AI_MODEL = "claude-sonnet-4-6";
 const AI_TIMEOUT_MS = 40_000;
 

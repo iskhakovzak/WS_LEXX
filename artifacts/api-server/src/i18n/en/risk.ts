@@ -62,7 +62,6 @@ export default {
     allowSwing: "Swing",
   },
   tier: {
-    trainee: "Intern",
     junior: "Junior",
     trader: "Trader",
     senior: "Senior",
@@ -164,6 +163,25 @@ export default {
       agreed: "Agreed: {actions}. ",
       ddReset: "Max drawdown is counted afresh from this day — the drawdown stop is lifted.",
     },
+  },
+  stageDefaults: {
+    logReason: "Stage limit template: there were no limits yet",
+  },
+  curatorRequests: {
+    kind: {
+      limits: "risk limits",
+      group: "a place in a learning group",
+      stage: "a stage",
+      plan: "the desk plan for the day",
+      other: "help from the curator",
+    },
+    newTitle: "{trader} asks for {kind}",
+    newBody: "{message}",
+    noMessage: "No comment — open the curator cabinet",
+    doneTitle: "Your curator handled the request: {kind}",
+    dismissedTitle: "Your curator closed the request: {kind}",
+    doneBody: "Done",
+    dismissedBody: "Closed without changes",
   },
   queue: {
     eod: "Closed day {date}",

@@ -188,12 +188,26 @@ export const prKeys = {
   groups: ["propreports", "groups"] as const,
   tick: ["propreports", "tick"] as const,
   backfill: ["propreports", "backfill"] as const,
+  myFreshness: ["propreports", "my-freshness"] as const,
 };
 
 const retry = (count: number, err: unknown) => !(err instanceof ApiError && [401, 403, 404, 503].includes(err.status)) && count < 2;
 
 export function useStatus() {
   return useQuery({ queryKey: prKeys.status, queryFn: () => http.get<Status>("/api/propreports/status"), refetchInterval: 60_000, retry });
+}
+/** GET /api/propreports/my-freshness (lib/propreports/freshness.ts): the trader's last trading day line. */
+export type MyFreshness = {
+  day: string;
+  trades: number;
+  lastTradeDate: string | null;
+  lastSyncedAt: string | null;
+  accounts: number;
+  broker: { status: "ok" | "mismatch" | "missing_ours" | "missing_broker"; diff: number; checkedAt: string | null } | null;
+  state: "ok" | "mismatch" | "behind" | "no_account";
+};
+export function useMyFreshness(enabled = true) {
+  return useQuery({ queryKey: prKeys.myFreshness, queryFn: () => http.get<MyFreshness>("/api/propreports/my-freshness"), staleTime: 60_000, refetchInterval: 5 * 60_000, enabled, retry });
 }
 export function useAccounts() {
   return useQuery({ queryKey: prKeys.accounts, queryFn: () => http.get<AccountMapping[]>("/api/propreports/accounts"), retry });

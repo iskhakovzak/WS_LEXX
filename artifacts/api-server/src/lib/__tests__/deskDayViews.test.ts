@@ -64,11 +64,19 @@ describe("desk-day views — anonymous (names hidden from traders)", () => {
     expect(day.trades.filter((t) => t.trader !== me.name).every((t) => t.id < 0)).toBe(true);
   });
 
-  it("$ and share counts are visible (owner policy for anonymous views)", () => {
-    expect(day.trades.every((t) => !t.redacted && t.net != null && t.qty != null)).toBe(true);
-    expect(day.traders.find((t) => t.alias === aliases.get(NAMES[1]))!.net).toBe(295);
-    expect(day.office?.net).toBe(190);
+  it("other traders' $ and share counts are hidden, own kept, R stays (owner decision 9, item 1.22)", () => {
+    const mine = day.trades.filter((t) => t.id > 0);
+    const others = day.trades.filter((t) => t.id < 0);
+    expect(mine.every((t) => !t.redacted && t.net != null && t.qty != null)).toBe(true);
+    expect(others.length).toBe(2);
+    expect(others.every((t) => t.redacted && t.net == null && t.qty == null)).toBe(true);
+    const roman = day.traders.find((t) => t.alias === aliases.get(NAMES[1]))!;
+    expect(roman).toMatchObject({ net: null, redacted: true });
+    expect(day.office?.net).toBe(190); // a sum over 3 traders (lib/moneyVisibility canSeeDeskAggregate)
     expect(day.office?.peakShares).toBeNull(); // office size stays staff-only
+    const two = build(amd, amdEx, { name: NAMES[1], staff: false }, true);
+    expect(two.office?.net ?? null).toBeNull(); // 2 traders: the sum would reveal the other one
+    expect(build(meta, metaEx, asStaff, true).trades.every((t) => t.net != null)).toBe(true);
   });
 
   it("the same trader has the same alias on two tickers of one day", () => {

@@ -19,6 +19,9 @@ export default {
     attachmentsAria: "Dars materiallari",
     setupLessons: "Bu setapda qanday savdo qilish kerak",
     progress: "Progress",
+    ruLesson: "dars rus tilida",
+    ruCourse: "kurs rus tilida",
+    ruHint: "Akademiya materiallari hozircha faqat rus tilida",
   },
   time: {
     yourTime: "Nyu-York vaqti. Sizda: {local}",

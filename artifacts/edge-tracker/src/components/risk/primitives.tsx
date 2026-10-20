@@ -86,8 +86,8 @@ export const HORIZON_TONE: Record<Horizon, Tone> = { intraday: "neutral", overni
 // ─── tiers / scaling plan ───────────────────────────────────────────────────
 
 /** `value` is the stored code; `key` points at common tiers.* and risk tierHint.* (read at render time). */
+// The ladder starts at Джун (Волна 1 п. 1.21): no «Стажёр»; a stored «trainee» reads as Джун (tierLabel).
 const TIER_DEFS = [
-  { value: "trainee", key: "intern" },
   { value: "junior", key: "junior" },
   { value: "trader", key: "trader" },
   { value: "senior", key: "senior" },
@@ -101,7 +101,8 @@ export const TIERS = TIER_DEFS.map((d) => ({
 
 export function tierLabel(tier: string | null | undefined): string | null {
   if (!tier) return null;
-  return TIERS.find((t) => t.value === tier)?.label ?? (tier === "lead" ? riskI18n.t("tierLead") : tier);
+  const code = tier === "trainee" ? "junior" : tier;
+  return TIERS.find((t) => t.value === code)?.label ?? (code === "lead" ? riskI18n.t("tierLead") : code);
 }
 
 export function TierPill({ tier, className }: { tier: string | null | undefined; className?: string }) {

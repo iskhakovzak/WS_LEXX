@@ -10,8 +10,9 @@
 import { queryOptions } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
-import type { DailyChallengeState, FindEntryAnswer, FindEntryDrill, TrainerHome } from "@/lib/trainer/types";
+import type { FindEntryAnswer, FindEntryDrill, TrainerHome } from "@/lib/trainer/types";
 import type { Snapshot } from "./api";
+import { trainerDailyQuery } from "@/lib/api/queries";
 
 export const trainerKeys = {
   all: ["trainer"] as const,
@@ -29,12 +30,8 @@ export const trainerHomeQuery = () => queryOptions({
   meta,
 });
 
-export const dailyQuery = () => queryOptions({
-  queryKey: trainerKeys.daily(),
-  queryFn: () => http.get<DailyChallengeState>("/api/trainer/daily"),
-  staleTime: STALE.short,
-  meta,
-});
+/** Shared with the journal and the dashboard (lib/api/queries). */
+export const dailyQuery = trainerDailyQuery;
 
 export const trainerApi = {
   dailyStart: () => http.post<Snapshot>("/api/trainer/daily/start", {}),

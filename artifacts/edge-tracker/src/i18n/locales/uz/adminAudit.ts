@@ -79,6 +79,8 @@ export default {
     discussionDeleteTopicAuthor: "«{topic}» muhokamasini oʻchirdi (muallif {author})",
     commentDelete: "izohni oʻchirdi",
     commentDeleteAuthor: "{author} izohini oʻchirdi",
+    ideaDelete: "gʻoyani oʻchirdi",
+    ideaDeleteAuthor: "{author} gʻoyasini oʻchirdi",
 
     sync: "PropReports maʼlumotlarini sinxronladi",
     syncFile: "PropReports maʼlumotlarini {file} faylidan sinxronladi",
@@ -159,6 +161,7 @@ export default {
     noteRestore: "qaydni tikladi",
     noteRestoreFor: "{trader} haqidagi qaydni tikladi",
     lockout: "kirish {minutes} daqiqaga bloklandi",
+    logoutOthers: "boshqa barcha qurilmalardan chiqdi",
 
     fallbackVerb: "{verb}: {subject}",
   },

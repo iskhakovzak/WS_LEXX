@@ -92,6 +92,23 @@ export default {
     otherTasks: "Other tasks",
     more: "{count} more",
   },
+  step: {
+    aria: "Next step",
+    plan: {
+      titleToday: "Write today’s plan",
+      titleOn: "Write the plan for {date}",
+      hint: "The day contract: stop, max trades and your own rule — a couple of minutes before the open.",
+      cta: "Write the plan",
+    },
+    contract: { title: "Trade by the contract", cta: "My plan" },
+    close: {
+      title: "Close the day · {date}",
+      hint: "The day summary in the journal — the curator answers in the queue.",
+      cta: "Close day",
+    },
+    task: { title: "Day closed — the daily challenge is waiting", hint: "10 minutes on one day for the whole desk, ranked by R.", cta: "Play the daily challenge" },
+    done: { title: "Day closed, the plan for {date} is ready", hint: "That’s it for today. Rest." },
+  },
   hero: {
     greeting: { night: "Good night", morning: "Good morning", day: "Good afternoon", evening: "Good evening" },
     weekend: "weekend",
@@ -105,6 +122,7 @@ export default {
     dailyLimit: "Daily limit",
     notSet: "Not set",
     setByCurator: "The curator sets limits",
+    buyingPower: "BP {amount}",
     remaining: "Daily limit left",
     usedOf: "of {limit} · used {pct}",
     fees: "fees {amount}",

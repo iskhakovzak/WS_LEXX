@@ -304,7 +304,7 @@ export type RiskMe = {
     allowOvernight: boolean;
     allowSwing: boolean;
     tier: string | null;
-    accountSize: number | null;
+    accountSize: number | null; buyingPower?: number | null; // BP by the curator (1.21), absent on older servers
   } | null;
   dailyLossLimit: number | null;
   todayPnl: number | null;

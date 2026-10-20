@@ -62,7 +62,6 @@ export default {
     "admin.backups.read": { label: "Database export", description: "Full database export (every trader’s trades with amounts, users) and the backup list." },
     "admin.backups.run": { label: "Run and download backups", description: "Run a database backup and download it." },
     "telegram.broadcast": { label: "Telegram broadcast", description: "Mass messages to everyone and disconnecting users’ Telegram." },
-    "digest.manage.any": { label: "Digest for others", description: "View or change another member’s digest subscription." },
     "permissions.manage": { label: "Change permissions", description: "PUT /permissions/matrix." },
     "admin.errors": { label: "App errors", description: "Control room → Errors: server and browser errors, marking them fixed." },
     "settings.manage": { label: "Desk settings", description: "Control room → Desk settings: daily-loop thresholds, Telegram send times, privacy (GET/PUT /admin/settings)." },

@@ -7,7 +7,7 @@ export default {
   link: "Kun topi",
   tabs: { aria: "Top koʻrinishi", day: "Kun", period: "Davr" },
   privacy: {
-    anonymous: "Ismlar yashirilgan: treyder raqami faqat shu kun uchun amal qiladi — tiker grafigidagi bilan bir xil.",
+    anonymous: "Ismlar yashirilgan: treyder raqami faqat shu kun uchun amal qiladi — tiker grafigidagi bilan bir xil. Boshqa treyderlarning summalari yashirilgan.",
     named: "Boshqa treyderlarning summalari yashirilgan.",
   },
   trader: "Treyder {n}",

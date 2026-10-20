@@ -7,7 +7,7 @@ export default {
   link: "Top of the day",
   tabs: { aria: "Top view", day: "Day", period: "Period" },
   privacy: {
-    anonymous: "Names are hidden: a trader's number holds for this day only — the same as on the ticker chart.",
+    anonymous: "Names are hidden: a trader's number holds for this day only — the same as on the ticker chart. Other traders' amounts are hidden.",
     named: "Other traders' amounts are hidden.",
   },
   trader: "Trader {n}",

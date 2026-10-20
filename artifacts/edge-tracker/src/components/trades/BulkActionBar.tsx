@@ -7,6 +7,7 @@ import { RESULTS } from "./trade-utils";
 import { ResultPill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
 import { KIND_META, TagPicker, pickerOptions, type PickState } from "./review-tagging";
+import { useSetupNames } from "@/components/shared/setup-picker";
 import { commonI18n } from "@/i18n/ns/common";
 import { tradesI18n } from "@/i18n/ns/trades";
 
@@ -47,6 +48,8 @@ export function BulkActionBar({
 }) {
   const reduce = useReducedMotion();
   const [open, setOpen] = React.useState<TagKind | null>(null);
+  // Setups = the office playbook setups (the server links the name to playbook_id, wave 1, 1.2).
+  const setupNames = useSetupNames(setupOptions);
 
   const picker = (kind: TagKind) => (
     <TagPicker
@@ -54,7 +57,7 @@ export function BulkActionBar({
       kind={kind}
       open={open === kind}
       onOpenChange={(o) => setOpen(o ? kind : null)}
-      options={pickerOptions(kind, setupOptions)}
+      options={pickerOptions(kind, setupNames)}
       stateOf={(v) => stateOf(kind, v)}
       onPick={(v) => {
         if (kind === "setup") onSetSetup(stateOf("setup", v) === "all" ? null : v);

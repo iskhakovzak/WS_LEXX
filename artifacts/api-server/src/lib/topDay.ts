@@ -5,14 +5,17 @@
  *
  * Pure (no DB): lib/topDayStore.ts loads grouped rows, this file shapes the answer and applies the privacy policy:
  *   - staff (curator / admin, lib/playbookPrivacy)      → real names and every $;
- *   - trader, `privacy.hideNamesFromTraders` on (default) → anonymous: «Трейдер N» (lib/deskAliases) + every $, since
- *     nobody is identifiable; the viewer's own row is flagged `me`. The real name never leaves the server;
- *   - trader, setting off                              → named: names shown, other traders' $ hidden (the old rule:
- *     canSeeTradeMoney); counts, tickers and ranks stay.
+ *   - trader, `privacy.hideNamesFromTraders` on (default) → anonymous: «Трейдер N» (lib/deskAliases); the viewer's own
+ *     row is flagged `me`. The real name never leaves the server;
+ *   - trader, setting off                              → named: names shown.
+ * Money (owner decision 9, 2026-10-20 — lib/moneyVisibility): in both trader modes other traders' $ is null and desk
+ * sums ($ of the desk, best / worst trader-day) are staff-only; the trader's own $ stays. Counts, wins / losses,
+ * tickers and ranks stay.
  * Money = net (pnl − |fees|, lib/tradeMath). Unit-tested in __tests__/topDay.test.ts.
  */
 import { deskAliases } from "./deskAliases";
-import { canSeeTradeMoney, type MoneyViewer } from "./playbookPrivacy";
+import { seesMoneyOf } from "./moneyVisibility";
+import type { MoneyViewer } from "./playbookPrivacy";
 
 export const TOP_N = 10;
 
@@ -26,9 +29,9 @@ export function topMode(viewer: MoneyViewer, hideNames: boolean): TopMode {
 /** May the viewer see the real name of a trader in this mode? (The viewer's own row is flagged `me` instead.) */
 const showsNames = (mode: TopMode): boolean => mode !== "anonymous";
 
-/** May the viewer see the $ of `trader`'s day in this mode? */
+/** May the viewer see the $ of `trader`'s day? Staff: always; a trader: only their own (any names mode). */
 function seesMoney(mode: TopMode, viewer: MoneyViewer, trader: string): boolean {
-  return mode === "named" ? canSeeTradeMoney(viewer, trader) : true;
+  return seesMoneyOf(viewer.name, mode === "staff", trader);
 }
 
 const num = (v: unknown): number | null => {
@@ -58,11 +61,11 @@ export interface CalendarRow {
 
 export interface CalendarDay {
   date: string;
-  /** Desk net (null in the named mode for traders: an aggregate over other traders' money). */
+  /** Desk net (staff only: an aggregate over other traders' money). */
   net: number | null;
   trades: number;
   traders: number;
-  /** Best / worst trader-day net, no names (null in the named mode for traders). */
+  /** Best / worst trader-day net, no names (staff only). */
   best: number | null;
   worst: number | null;
   /** The viewer's own net that day; null when they did not trade. */
@@ -78,7 +81,7 @@ export interface TopCalendar {
 }
 
 export function buildCalendar(month: string, rows: readonly CalendarRow[], holidays: readonly string[], mode: TopMode): TopCalendar {
-  const deskMoney = mode !== "named";
+  const deskMoney = mode === "staff";
   const days = rows
     .map((r): CalendarDay => ({
       date: String(r.date),
@@ -217,7 +220,7 @@ export function buildTopDay(
   const aggs = aggregateTraders(rows);
   const { profit, loss } = rankTraders(aggs, n);
   const mine = viewer.name ? aggs.find((a) => a.trader === viewer.name) : undefined;
-  const deskMoney = mode !== "named";
+  const deskMoney = mode === "staff";
   return {
     date,
     mode,

@@ -25,6 +25,11 @@ import {
   ChipGroup, LessonStep, MorningCheckin, PlanBlock, ReviewField, SaveIndicator, ScaleField, Step, followedAnswer, type SaveState,
 } from "./day-journal-parts";
 import { CloseBar, CuratorFeedback, EodSelfReview } from "./day-journal-close";
+import { DailyTaskCard } from "./daily-task-card";
+import { focusDayFor, nyMinutesOf } from "./default-day";
+import { mistakeRule } from "@/components/shared/mistake-labels";
+import { RuleSuggestion } from "@/components/shared/own-rule-field";
+import { usePlanPrefill } from "@/components/shared/plan-prefill";
 
 export { MOOD_LABELS, DISCIPLINE_LABELS, MISTAKE_TAGS, GOOD_TAGS, EMOTION_TAGS, followedAnswer };
 
@@ -78,9 +83,11 @@ export function DayJournalEditor({
   const save = useSaveJournalDay();
   const key = `${trader}|${date}`;
   const isFuture = date > today;
-  const nextDate = stepWeekday(date, 1);
   const eodQ = useEodDay(trader, date, !!trader && !isFuture);
   const eod: EodDayView | null = eodQ.data ?? null;
+  // The focus is for the next trading day — while the day is still open and closed late, the session ahead (never a
+  // day in the past that no plan reads; api lib/eodStore focusDayFor does the same at the close).
+  const nextDate = editable && eod?.status === "open" ? focusDayFor(date, today, nyMinutesOf()) : stepWeekday(date, 1);
 
   const initialFor = useCallback((): { draft: JournalEntry; fromLegacy: boolean } => {
     if (entry && !isEntryEmpty(entry)) return { draft: entry, fromLegacy: false };
@@ -336,6 +343,9 @@ export function DayJournalEditor({
             </>
           )}
 
+          {/* Item 1.8: the day is closed → the evening goes on in the trainer («Задача дня», ranked until 08:30 NY). */}
+          {editable && !!eod && eod.status !== "open" && date >= stepWeekday(stepWeekday(today, -1), -1) && <DailyTaskCard enabled />}
+
           {!isFuture && eod && (
             <CloseBar
               eod={eod} blocking={splitMissing(eod).blocking}
@@ -373,6 +383,11 @@ function TomorrowFocus({
   const qc = useQueryClient();
   const report = useDayReport(trader, date, editable && !!trader);
   const suggestions = (report.data?.date === date ? report.data.plan : []).slice(0, 3);
+  // Item 1.9: the costliest pattern of two weeks, offered as tomorrow's own rule — one tap puts it into the focus (the
+  // morning plan offers the same rule for its contract).
+  const prefill = usePlanPrefill(nextDate, editable && !!trader);
+  const rule = prefill.data?.rule ?? null;
+  const ruleLine = rule ? journalI18n.t("editor.focusRuleLine", { rule: mistakeRule(rule.mistake) }) : null;
 
   const [text, setText] = useState(loaded?.plan ?? "");
   const baseRef = useRef<JournalEntry | null>(loaded);
@@ -443,6 +458,14 @@ function TomorrowFocus({
         placeholder={t("editor.focusPlaceholder")}
         className="min-h-[72px] leading-relaxed"
       />
+      {rule && ruleLine && (
+        <RuleSuggestion
+          rule={rule}
+          label={t("editor.focusRuleLabel")}
+          accepted={text.includes(ruleLine)}
+          onAccept={() => change(`${text.trim() ? `${text.trimEnd()}\n` : ""}• ${ruleLine}`)}
+        />
+      )}
       {suggestions.length > 0 && (
         <div className="space-y-1">
           <div className="text-2xs text-muted-foreground">{t("editor.suggestions")}</div>

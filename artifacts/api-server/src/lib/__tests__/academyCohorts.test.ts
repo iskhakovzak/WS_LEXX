@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, LATE_GRACE_MIN, NY_TZ, STAGES, canManageCohort,
+  CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, LATE_GRACE_MIN, NY_TZ, STAGES, canManageCohort, normalizeCohortStage,
   dateInTz, describeGoal, describeRule, evaluateCheckin, evaluateGoal, goalTransition, isHhmm, isOccurrence, isValidTimeZone, isYmd,
   lagReasons, lagScore, lastTradingDays, maxLossStreak, mergeSummaries, nextOccurrence, occurrenceDates, occurrences, outcomeOf,
   summarizeAttendance, timeInTz, tzOffsetMinutes, weekdayOf, weekdaysBetween, zonedWallToUtcMs,
@@ -10,8 +10,10 @@ import {
 const MIN = 60_000;
 
 describe("stages", () => {
-  it("ladder is exactly trainee → junior → trader → senior", () => {
-    expect([...STAGES]).toEqual(["trainee", "junior", "trader", "senior"]);
+  it("ladder is exactly junior → trader → senior (no «Стажёр»); a stored «trainee» reads as junior", () => {
+    expect([...STAGES]).toEqual(["junior", "trader", "senior"]);
+    expect(normalizeCohortStage("trainee")).toBe("junior");
+    expect(normalizeCohortStage("lead")).toBeNull();
   });
 });
 
@@ -297,7 +299,7 @@ describe("IDP: net, trading days, manual", () => {
 
 describe("lagging students", () => {
   const base = (over: Partial<LagInput> = {}): LagInput => ({
-    today: "2026-10-16", stage: "trainee", status: "active", joinedOn: "2026-09-01",
+    today: "2026-10-16", stage: "junior", status: "active", joinedOn: "2026-09-01",
     attendance: summarizeAttendance(["present", "present", "present", "present"]),
     overdueActions: 0, missedGoals: 0, atRiskGoals: 0, lastTradeDate: "2026-10-15", lastJournalDate: "2026-10-15", ...over,
   });

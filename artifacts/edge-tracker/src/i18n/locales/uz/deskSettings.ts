@@ -132,7 +132,7 @@ export default {
       tagYesterdayEnabled: { label: "«Bitimlarni belgilash» kvesti", help: "Kun kvesti: oʻtgan kungi bitimlaringiz setapini belgilash (belgilanmaganlari bor ekan)." },
       tagYesterdayPoints: { label: "Belgilash uchun ochkolar", help: "«Bitimlarni belgilash» kvesti bajarilgani uchun intizom ochkolari." },
       tagYesterdayMax: { label: "Belgilash: maks. bitimlar", help: "Kvest maqsadi — oʻtgan kungi bitimlar, lekin bu sondan koʻp emas." },
-      setupUnlockGradeA: { label: "Setap ochilishi: A baholi bitimlar", help: "Stajyor «Junior» setapini uning asosiy setapi boʻyicha shuncha A baholi bitimdan keyin ochadi. 0 — faqat daraja boʻyicha." },
+      setupUnlockGradeA: { label: "Setap ochilishi: A baholi bitimlar", help: "Keyingi daraja setapi uning asosiy setapi boʻyicha shuncha A baholi bitimdan keyin oldinroq ochiladi. 0 — faqat daraja boʻyicha." },
     },
     achievements: {
       enabled: { label: "Yutuqlar", help: "Asosiy kalit: yutuq bosqichlari (bronza, kumush, oltin, platina) va ular haqida bildirishnomalar." },
@@ -184,7 +184,7 @@ export default {
     },
     nav: {
       simpleForTrainees: { label: "Yangilar uchun oddiy menyu", help: "Tanlangan darajagacha boʻlgan treyderlar 7 ta asosiy boʻlimni koʻradi, qolganlari yigʻilgan «Yana» guruhida. Kuratorlar va adminlar doim toʻliq menyuni koʻradi." },
-      simpleUntilTier: { label: "Oddiy menyuni kimlar oladi", help: "Qaysi darajagacha, shu jumladan (daraja — pleybuk qulflaridagidek).", options: { trainee: "Faqat stajyorlar", junior: "Stajyorlar va juniorlar" } },
+      simpleUntilTier: { label: "Oddiy menyuni kimlar oladi", help: "Qaysi darajagacha, shu jumladan (daraja — pleybuk qulflaridagidek).", options: { junior: "Juniorlar (yangi treyderlar)" } },
     },
     usage: {
       enabled: { label: "Foydalanish hisobi yoqilgan", help: "Sayt ochilgan ekranlar va kunlik sikl qadamlarini qayd etadi (summalar, tikerlar va matnsiz). Oʻchirilgan — hech narsa yozilmaydi." },
@@ -242,7 +242,7 @@ export default {
       stopSlipUsd: { label: "Stop sirpanishi, $", help: "Stop shu summaga yomonroq bajariladi; gepda — bar ochilish narxidan." },
       oneRUsd: { label: "Standart 1R, $", help: "Treyder rejasi va limitlarida 1R boʻlmasa, risk boʻyicha hajm uchun." },
       dailyEnabled: { label: "«Kun vazifasi»", help: "Har savdo kuni butun desk uchun bitta tiker-kun." },
-      dailyPickTime: { label: "Vazifani tanlash vaqti", help: "Nyu-York vaqti, ish kunlari." },
+      dailyPickTime: { label: "Vazifani tanlash vaqti", help: "Nyu-York vaqti, ish kunlari. «Kun vazifasi» reyting oynasini ham yopadi." },
       dailyPlayMinutes: { label: "Vazifa davomiyligi", help: "Ochilishdan boshlab sessiyaning necha daqiqasi oʻynaladi." },
       dailyNoRepeatDays: { label: "Takrorlanmaslik", help: "Shu tiker-kun shuncha kun qaytmaydi." },
       dailyMinVolume: { label: "Min. kunlik hajm, aksiya", help: "Faqat likvid kunlar." },

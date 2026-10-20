@@ -106,7 +106,7 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
 }
 
 type TemplateRow = TemplatesPayload["traders"][number];
-const TIER_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
+const TIER_ORDER: Record<string, number> = { junior: 1, trader: 2, senior: 3 };
 /** Проблемные строки (нет лимитов → нет тира → расхождение) поднимаются наверх при сортировке по возрастанию. */
 const TEMPLATE_ACCESSORS = {
   trader: (r: TemplateRow) => personName(r.trader),
@@ -120,7 +120,7 @@ const TEMPLATE_ACCESSORS = {
 function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader: (trader: string, tab?: string) => void }) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [dialog, setDialog] = React.useState<{ traders: string[]; tier: string | null } | null>(null);
-  const ladder = t.tiers.filter((x) => ["trainee", "junior", "trader", "senior"].includes(x.key));
+  const ladder = t.tiers.filter((x) => ["junior", "trader", "senior"].includes(x.key));
   const needs = t.traders.filter((r) => !r.hasLimits || r.drift.length > 0 || !r.tier);
   const toggle = (name: string) => setSelected((s) => { const n = new Set(s); if (n.has(name)) n.delete(name); else n.add(name); return n; });
   const allOn = t.traders.length > 0 && t.traders.every((r) => selected.has(r.trader));

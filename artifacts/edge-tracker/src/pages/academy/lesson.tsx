@@ -15,7 +15,7 @@ import {
 import { ApiError } from "@/lib/api/http";
 import { Markdown } from "@/components/academy/content/markdown";
 import { outlineOf, parseMarkdown, readingMinutes } from "@/components/academy/content/markdown-parse";
-import { AttachmentList, KindIcon, VideoPlayer } from "@/components/academy/content/bits";
+import { AttachmentList, KindIcon, RuContentPill, VideoPlayer } from "@/components/academy/content/bits";
 import { QuizRunner } from "@/components/academy/content/quiz-runner";
 import { AssignmentPanel } from "@/components/academy/content/assignment-panel";
 import { academyLinks } from "@/components/academy/content/links";
@@ -249,6 +249,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
         <>
           <span className="inline-flex items-center gap-1 tabular-nums"><Clock className="h-3 w-3" aria-hidden="true" />{t("units.minutesApprox", { count: minutes })}</span>
           {lesson.draft && <Pill tone="warn">{t("lesson.draftHidden")}</Pill>}
+          <RuContentPill />
           {done ? <Pill tone="up" dot>{t("lesson.completed")}</Pill> : progress.startedAt ? <Pill tone="accent">{t("lesson.started")}</Pill> : null}
           {progress.completedAt && <span>{t("lesson.markedAt")} <DualTime iso={progress.completedAt} /></span>}
         </>

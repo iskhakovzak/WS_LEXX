@@ -56,7 +56,6 @@ export default {
   },
 
   tierHint: {
-    intern: "simulyator / minimal oʻlcham",
     junior: "intraday, kichik lot",
     trader: "intraday + overnight",
     senior: "toʻliq BP, swing",
@@ -222,6 +221,8 @@ export default {
     errWeekly: "Haftalik limit kunlik limitdan kam boʻlishi mumkin emas",
     errRisk: "Bitta savdo riski kunlik limitdan katta",
     errDrawdown: "Maks. pasayish kunlik limitdan kam",
+    errBpJunior: "Juniorning BP $25 000 dan $800 000 gacha",
+    errBpMin: "BP kamida $25 000",
     field: {
       accountSize: "Hisob hajmi, $",
       maxPositionUsd: "Pozitsiyaga buying power, $",
@@ -230,12 +231,14 @@ export default {
       maxDrawdown: "Choʻqqidan maks. pasayish, $",
       maxRiskPerTrade: "Bitta savdoga maks. risk, $",
       maxOvernightExposure: "Maks. overnight ekspozitsiyasi, $",
+      buyingPower: "Treyderning buying power (BP), $",
     },
     hint: {
       accountSize: "Pasayish % uchun asos",
       dailyLossLimit: "Kunlik stop",
       maxRiskPerTrade: "1R",
       maxOvernightExposure: "Yopilishdan keyin qoladigan pozitsiyalar",
+      buyingPower: "Junior: $25 000 dan $800 000 gacha; Juniordan yuqorida — yuqori chegara yoʻq",
     },
     saved: "Limitlar saqlandi",
     checkFields: "Maydonlarni tekshiring: {list}",

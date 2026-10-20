@@ -201,7 +201,6 @@ const tierOf = (k: string) => DEFAULT_TIERS.find((x) => x.key === k)!;
 
 describe("capital exam templates are built from the target tier", () => {
   const expected = [
-    { key: "trainee_to_junior", from: "trainee", tier: "junior", name: "Перевод Стажёр → Джун (капитал $25k)", account: 25_000, target: 1_500, dd: 1_500, daily: 300, maxPos: 25_000, cons: 40, min: 10 },
     { key: "junior_to_trader", from: "junior", tier: "trader", name: "Перевод Джун → Трейдер (капитал $50k)", account: 50_000, target: 3_000, dd: 3_000, daily: 600, maxPos: 50_000, cons: 35, min: 15 },
     { key: "trader_to_senior", from: "trader", tier: "senior", name: "Перевод Трейдер → Сеньор (капитал $100k)", account: 100_000, target: 6_000, dd: 6_000, daily: 1_200, maxPos: 100_000, cons: 30, min: 15 },
   ];
@@ -238,8 +237,9 @@ describe("capital exam templates are built from the target tier", () => {
   it("policy constants", () => {
     expect(CAPITAL_EXAM_POLICY).toMatchObject({ profitTargetPct: 6, drawdownShare: 0.75, durationTradingDays: 20, tradingWindow: { start: 240, end: 960 }, tradingWindowStrict: false });
   });
-  it("trainee tests take account, daily limit and position from the trainee tier and keep the strict 09:30–15:55 window", () => {
-    const tier = tierOf("trainee");
+  it("newcomer tests keep the former intern limits (that tier left the seed) and the strict 09:30–15:55 window", () => {
+    expect(DEFAULT_TIERS.some((x) => x.key === "trainee")).toBe(false);
+    const tier = { accountSize: 10_000, dailyLossLimit: 150, maxPositionUsd: 10_000 };
     for (const key of ["trainee_test_10d", "sim_exam_20d"]) {
       const tpl = TEMPLATE_BY_KEY[key];
       expect(tpl.toStage).toBeNull();

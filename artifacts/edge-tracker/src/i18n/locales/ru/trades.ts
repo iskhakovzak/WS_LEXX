@@ -55,7 +55,7 @@ export default {
   },
   tagging: {
     kind: {
-      setup: { label: "Сетап", placeholder: "Найти или ввести сетап" },
+      setup: { label: "Сетап", placeholder: "Найти сетап: номер или название" },
       mistake: { label: "Ошибка", placeholder: "Найти или ввести ошибку" },
       emotion: { label: "Эмоция", placeholder: "Найти или ввести эмоцию" },
     },
@@ -64,6 +64,14 @@ export default {
     clearSetup: "Убрать сетап",
     addAria: "{kind}: добавить ({key})",
     chipTitle: "{kind}: {value}",
+  },
+  /** Setup tag = an office playbook setup (components/shared/setup-picker.tsx; wave 1, 1.2). */
+  setupPicker: {
+    label: "Сетап из плейбука",
+    choose: "Выбрать сетап",
+    search: "Номер или название сетапа",
+    empty: "Нет подходящих сетапов",
+    acceptTitle: "Принять предложение: {name} ({pct}%)",
   },
   bulk: {
     toolbar: "Действия с выбранными: {count}",

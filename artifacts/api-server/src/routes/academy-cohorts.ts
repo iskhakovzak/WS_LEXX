@@ -27,19 +27,18 @@
  *   GET    /academy/attendance/stats              ?cohortId | ?user    статистика посещаемости
  *   GET    /academy/one-on-ones                   ?student&mentor      журнал 1:1 (студент — свои, без приватных заметок)
  *   POST   /academy/one-on-ones | PATCH /academy/one-on-ones/:id | POST /academy/one-on-ones/:id/archive   (staff)
- *   GET    /academy/action-items                  ?student&status      договорённости
- *   POST   /academy/action-items (staff) | PATCH /academy/action-items/:id (staff; студент — статус своих)
- *   GET    /academy/idp/metrics                                        каталог метрик ИПР
- *   GET    /academy/idp                           ?student             цели ИПР с прогрессом (пересчёт + уведомления)
+ *   GET    /academy/action-items ?student&status — договорённости;  POST (staff) | PATCH /:id (staff; студент — статус своих)
+ *   GET    /academy/idp/metrics — каталог метрик ИПР;  GET /academy/idp ?student — цели ИПР с прогрессом (пересчёт + уведомления)
  *   POST   /academy/idp (staff) | PATCH /academy/idp/:id | POST /academy/idp/:id/archive (staff)
  *   GET    /academy/my                            ?user (staff)        дашборд студента
- *   GET    /academy/mentor                        ?all=1               дашборд наставника (staff)
+ *   GET    /academy/mentor                        ?all=1 | scope=all   дашборд наставника (staff); без них — «Моя группа»
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { isGuest, isStaffRole, viewerRole } from "../lib/auth";
+import { academySubject } from "../lib/academyAccess"; // reads of another person: can(team.read, { trader }) — 1.6
 import { notifyUser } from "../lib/notifyUtils";
 import { safeHttpUrl } from "../lib/safe-url";
 import { addDays, nyDate } from "../lib/tradingDate";
@@ -48,7 +47,7 @@ import { logger } from "../lib/logger";
 import {
   ACTION_STATUSES, ATTENDANCE_STATUSES, CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, COHORT_FORMATS, COMPARATORS, ENROLLMENT_STATUSES,
   GOAL_STATUSES, LATE_GRACE_MIN, METRICS, METRIC_KEYS, NY_TZ, RECURRENCES, SESSION_KINDS, SESSION_MODES,
-  STAGES, canManageCohort, enrollmentStatusLabelFor, metricsFor, stageLabelFor,
+  STAGES, canManageCohort, enrollmentStatusLabelFor, legacyStage, metricsFor, normalizeCohortStage, stageLabelFor,
   dateInTz, describeGoal, describeRule, evaluateCheckin, evaluateGoal, goalTransition, isOccurrence, isValidTimeZone, lagReasons,
   lagScore, mergeSummaries, nextOccurrence, occurrenceAt, occurrences, summarizeAttendance,
   type AttendanceStatus, type AttendanceSummary, type Comparator, type EnrollmentStatus, type GoalEval, type GoalStatus, type IdpTrade,
@@ -90,7 +89,7 @@ export function ensureAcademyCohortTables(): Promise<void> {
            id SERIAL PRIMARY KEY,
            cohort_id INTEGER NOT NULL REFERENCES academy_cohorts(id),
            user_name TEXT NOT NULL,
-           stage TEXT NOT NULL DEFAULT 'trainee',
+           stage TEXT NOT NULL DEFAULT 'junior',
            status TEXT NOT NULL DEFAULT 'active',
            joined_on DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'America/New_York')::date),
            note TEXT NOT NULL DEFAULT '',
@@ -329,7 +328,7 @@ type EnrollmentRow = {
   created_at: Date; updated_at: Date; archived_at: Date | null;
 };
 function mapEnrollment(r: EnrollmentRow, lang: Lang = "ru") {
-  const stage = (STAGES as readonly string[]).includes(r.stage) ? (r.stage as Stage) : "trainee";
+  const stage: Stage = normalizeCohortStage(r.stage) ?? "junior";
   const status = (ENROLLMENT_STATUSES as readonly string[]).includes(r.status) ? (r.status as EnrollmentStatus) : "active";
   return {
     id: r.id, cohortId: r.cohort_id, userName: r.user_name, stage, stageLabel: stageLabelFor(stage, lang), status, statusLabel: enrollmentStatusLabelFor(status, lang),
@@ -863,7 +862,7 @@ for (const [path, archive] of [["archive", true], ["restore", false]] as const) 
 const enrollBody = z.object({
   cohortId: z.number().int().positive(),
   userName: name,
-  stage: z.enum(STAGES).default("trainee"),
+  stage: z.preprocess(legacyStage, z.enum(STAGES).default("junior")), // an older web build still sends «trainee» (1.21)
   status: z.enum(ENROLLMENT_STATUSES).default("active"),
   joinedOn: ymd.optional(),
   note: z.string().max(2000).optional(),
@@ -904,7 +903,7 @@ router.post("/academy/enrollments", asyncHandler(async (req, res) => {
 }));
 
 const enrollPatch = z.object({
-  stage: z.enum(STAGES).optional(),
+  stage: z.preprocess(legacyStage, z.enum(STAGES).optional()),
   status: z.enum(ENROLLMENT_STATUSES).optional(),
   joinedOn: ymd.optional(),
   note: z.string().max(2000).optional(),
@@ -1178,7 +1177,7 @@ router.get("/academy/attendance/stats", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v) return;
   if (!v.me) { res.json({ cohorts: [] }); return; }
   const user = qs(req, "user");
-  const target = v.staff ? user ?? null : v.me;
+  const target = v.staff && !user ? null : await academySubject(req, v.me, user);
   const cohortId = qs(req, "cohortId") ? Number(qs(req, "cohortId")) : null;
   const params: unknown[] = [];
   let where = "e.archived_at IS NULL AND c.archived_at IS NULL";
@@ -1241,7 +1240,7 @@ router.get("/academy/one-on-ones", asyncHandler(async (req, res) => {
   if (!v.me) { res.json({ meetings: [] }); return; }
   const params: unknown[] = [];
   let where = "m.archived_at IS NULL";
-  const student = v.staff ? qs(req, "student") : v.me;
+  const student = v.staff && !qs(req, "student") ? undefined : await academySubject(req, v.me, qs(req, "student"));
   if (student) { params.push(student); where += ` AND m.student = $${params.length}`; }
   const mentor = v.staff ? qs(req, "mentor") : undefined;
   if (mentor) { params.push(mentor); where += ` AND m.mentor = $${params.length}`; }
@@ -1309,7 +1308,7 @@ router.get("/academy/action-items", asyncHandler(async (req, res) => {
   let students: string[];
   if (v.staff) {
     const s = qs(req, "student");
-    students = s ? [s] : (await pool.query<{ student: string }>(`SELECT DISTINCT student FROM academy_action_items WHERE archived_at IS NULL`)).rows.map((r) => r.student);
+    students = s ? [await academySubject(req, v.me, s)] : (await pool.query<{ student: string }>(`SELECT DISTINCT student FROM academy_action_items WHERE archived_at IS NULL`)).rows.map((r) => r.student);
   } else students = [v.me];
   res.json({ items: await actionsFor(students, { status: qs(req, "status") }) });
 }));
@@ -1369,7 +1368,7 @@ router.get("/academy/idp/metrics", asyncHandler(async (req, res) => {
 router.get("/academy/idp", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v) return;
   if (!v.me) { res.json({ goals: [] }); return; }
-  const student = v.staff ? qs(req, "student") ?? v.me : v.me;
+  const student = await academySubject(req, v.me, qs(req, "student"));
   res.json({ student, goals: await goalsFor(student, v.me, langOf(req)) });
 }));
 
@@ -1476,7 +1475,7 @@ router.get("/academy/my", asyncHandler(async (req, res) => {
   const nowMs = Date.now();
   const base = { serverNow: new Date(nowMs).toISOString(), checkin: { beforeMin: CHECKIN_BEFORE_MIN, afterMin: CHECKIN_AFTER_MIN, graceMin: LATE_GRACE_MIN } };
   if (!v.me) { res.json({ ...base, user: null, enrollments: [], upcoming: [], recent: [], goals: [], actionItems: [], meetings: [], attendance: null }); return; }
-  const user = v.staff ? qs(req, "user") ?? v.me : v.me;
+  const user = await academySubject(req, v.me, qs(req, "user"));
   const { rows: enrRows } = await pool.query<EnrollmentRow & { c_name: string; c_format: string; c_mentor: string | null; c_starts_on: string | null; c_ends_on: string | null; c_timezone: string; c_description: string; c_room: string | null; c_meeting_url: string | null }>(
     `SELECT ${ENR_COLS}, c.name AS c_name, c.format AS c_format, c.mentor AS c_mentor, c.starts_on::text AS c_starts_on, c.ends_on::text AS c_ends_on,
             c.timezone AS c_timezone, c.description AS c_description, c.room AS c_room, c.meeting_url AS c_meeting_url
@@ -1552,7 +1551,7 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const nowMs = Date.now();
   const today = nyDate(new Date(nowMs));
-  const all = qs(req, "all") === "1";
+  const all = qs(req, "all") === "1" || qs(req, "scope") === "all"; // «Моя группа / Все» (Волна 1 п. 1.19)
   const { rows: allCohorts } = await pool.query<CohortRow>(`SELECT ${COHORT_COLS} FROM academy_cohorts c WHERE c.archived_at IS NULL ORDER BY c.name`);
   const { enr, cohortIds: shownIds, scoped, ownCohorts } = await mentorPeople(v.me, allCohorts, all, async (ids, names) => (await pool.query<EnrollmentRow>(
     `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.archived_at IS NULL AND e.status IN ('active','paused')

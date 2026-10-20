@@ -15,6 +15,7 @@ import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
+import { DeskGroupsPanel } from "@/components/settings/groups-panel";
 import { UsagePanel } from "@/components/admin/UsagePanel";
 import { ALL_NAV_ITEMS, routeTitle } from "@/components/shell/nav";
 import { usageI18n } from "@/i18n/ns/usage";
@@ -279,6 +280,7 @@ function AdminConsole() {
           <div className="flex flex-col gap-[var(--grid-gap)]">
             {/* The rewards catalog sits with the other desk settings (gamification numbers live in the registry form below). */}
             <RewardsEditorPanel enabled={showSettings} />
+            <DeskGroupsPanel enabled={showSettings} />
             <DeskSettingsPanel canManage={showSettings} />
           </div>
         )}

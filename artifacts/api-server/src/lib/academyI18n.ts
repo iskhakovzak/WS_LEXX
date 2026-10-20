@@ -22,24 +22,27 @@ export const academyContentT = defineNamespace(ruContent, { en: enContent, uz: u
 export { ruContent };
 export { ruPath };
 
-type StageKey = "trainee" | "junior" | "trader" | "senior";
-const STAGE_KEYS: readonly StageKey[] = ["trainee", "junior", "trader", "senior"];
+type StageKey = "junior" | "trader" | "senior";
+const STAGE_KEYS: readonly StageKey[] = ["junior", "trader", "senior"];
 const isStage = (v: unknown): v is StageKey => typeof v === "string" && (STAGE_KEYS as readonly string[]).includes(v);
+/** The removed first stage «trainee» (Волна 1 п. 1.21) reads as the entry stage, Джун (old history rows, old exams). */
+const stageKeyOf = (v: string | null | undefined): string | null | undefined => (v === "trainee" ? "junior" : v);
 
 /** Stage name for display: the seeded Russian name (or empty) → translated; a name staff typed stays as is. */
 export function stageNameFor(key: string | null | undefined, stored: string | null | undefined, lang: Lang | null | undefined): string {
   const l: Lang = isLang(lang) ? lang : DEFAULT_LANG;
-  if (!isStage(key)) return stored ?? "";
-  if (!stored || stored === ruPath.stages[key].name) return academyPathT.tFor(l)(`stages.${key}.name`);
+  const k = stageKeyOf(key);
+  if (!isStage(k)) return stored ?? "";
+  if (!stored || stored === ruPath.stages[k].name || k !== key) return academyPathT.tFor(l)(`stages.${k}.name`);
   return stored;
 }
 
-/** Stage description for display (seeded text, current or legacy → translated). */
+/** Stage description for display (seeded text → translated). */
 export function stageDescriptionFor(key: string | null | undefined, stored: string | null | undefined, lang: Lang | null | undefined): string | null {
   const l: Lang = isLang(lang) ? lang : DEFAULT_LANG;
-  if (!isStage(key)) return stored ?? null;
-  if (stored == null || stored === ruPath.stages[key].description) return academyPathT.tFor(l)(`stages.${key}.description`);
-  if (key === "trainee" && stored === ruPath.stages.legacyTraineeDescription) return academyPathT.tFor(l)("stages.trainee.description");
+  const k = stageKeyOf(key);
+  if (!isStage(k)) return stored ?? null;
+  if (stored == null || stored === ruPath.stages[k].description || k !== key) return academyPathT.tFor(l)(`stages.${k}.description`);
   return stored;
 }
 

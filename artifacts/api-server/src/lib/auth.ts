@@ -6,6 +6,7 @@ import { config } from "../config";
 import { can, readScope, resolveActor, type Capability } from "./permissions";
 import { canReadPersonal, guestModeEnabled } from "./accessRules";
 import { AppError, sendError, unauthorized } from "./http/errors";
+import { isSessionRevoked, newSessionId, sessionKey } from "./security/sessions";
 
 const SECRET = config.jwtSecret;
 if (!SECRET) {
@@ -90,10 +91,12 @@ function invalidateTvCache(userId: number): void {
  * `pwc` (password change required): the account still has an issued secret (users.must_change_secret), or staff whose
  * secret is shorter than the staff minimum (lib/security/passwordPolicy).
  * While it is set, apiAuthGate allows only PASSWORD_CHANGE_ROUTES.
+ * `sid`: the session id (lib/security/sessions) — a new one per sign-in; the sliding refresh passes the current one on.
  */
-export async function signToken(u: AuthUser, opts: { pwc?: boolean } = {}): Promise<string> {
+export async function signToken(u: AuthUser, opts: { pwc?: boolean; sid?: string } = {}): Promise<string> {
   const tv = (await getTokenVersion(u.id)) ?? 0;
-  return jwt.sign({ sub: u.id, name: u.name, role: u.role, tv, ...(opts.pwc ? { pwc: true } : {}) }, SECRET_OK, {
+  const sid = opts.sid || newSessionId();
+  return jwt.sign({ sub: u.id, name: u.name, role: u.role, tv, sid, ...(opts.pwc ? { pwc: true } : {}) }, SECRET_OK, {
     expiresIn: TOKEN_TTL_SEC,
     algorithm: JWT_ALG,
   });
@@ -109,7 +112,9 @@ export async function bumpTokenVersion(userId: number): Promise<void> {
   invalidateTvCache(userId);
 }
 
-type DecodedToken = { id: number; name: string; role: string; tv: number; guest: boolean; iat?: number; pwc: boolean };
+type DecodedToken = {
+  id: number; name: string; role: string; tv: number; guest: boolean; iat?: number; exp?: number; pwc: boolean; sid?: string;
+};
 
 function decodeToken(token: string): DecodedToken | null {
   try {
@@ -121,7 +126,9 @@ function decodeToken(token: string): DecodedToken | null {
     // A token claiming the guest role without the signed guest marker (or vice versa) is rejected.
     if ((decoded.role === GUEST_ROLE || decoded.sub === GUEST_USER_ID) && !guest) return null;
     const iat = typeof decoded.iat === "number" ? decoded.iat : undefined;
-    return { id: decoded.sub, name: decoded.name, role: decoded.role, tv, guest, iat, pwc: decoded.pwc === true };
+    const exp = typeof decoded.exp === "number" ? decoded.exp : undefined;
+    const sid = typeof decoded.sid === "string" && decoded.sid ? decoded.sid.slice(0, 64) : undefined;
+    return { id: decoded.sub, name: decoded.name, role: decoded.role, tv, guest, iat, exp, pwc: decoded.pwc === true, sid };
   } catch {
     return null;
   }
@@ -146,8 +153,11 @@ declare global {
   namespace Express {
     interface Request {
       authUser?: AuthUser;
-      /** Facts about the bearer token itself (set with authUser for members). */
-      authMeta?: { iat?: number; pwc: boolean };
+      /**
+       * Facts about the bearer token itself (set with authUser for members). `sid` = the session's revocation key
+       * (lib/security/sessions.sessionKey), `exp` = expiry in seconds.
+       */
+      authMeta?: { iat?: number; exp?: number; pwc: boolean; sid: string };
     }
   }
 }
@@ -165,9 +175,11 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
         if (isGuestModeEnabled()) req.authUser = { id: GUEST_USER_ID, name: GUEST_NAME, role: GUEST_ROLE };
       } else {
         const currentTv = await getTokenVersion(decoded.id);
-        if (currentTv !== null && currentTv === decoded.tv) {
+        const sid = sessionKey(decoded.sid, token);
+        // token_version = «signed out everywhere»; the session row = «signed out on that device» (menu «Выйти»).
+        if (currentTv !== null && currentTv === decoded.tv && !(await isSessionRevoked(sid))) {
           req.authUser = { id: decoded.id, name: decoded.name, role: decoded.role };
-          req.authMeta = { iat: decoded.iat, pwc: decoded.pwc };
+          req.authMeta = { iat: decoded.iat, exp: decoded.exp, pwc: decoded.pwc, sid };
         }
       }
     }

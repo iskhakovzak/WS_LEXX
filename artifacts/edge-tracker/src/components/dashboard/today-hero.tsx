@@ -12,6 +12,7 @@ import { shortDate } from "./fmt";
 import { DESK_TZ, fmtDate, fmtR, fmtRate, fmtTimeNY, fmtUsd } from "@/lib/format";
 import type { DashboardToday, RiskDesk, RiskMe, Scope } from "./use-dashboard";
 import { LiveBadge } from "@/components/shared/live-badge";
+import { AskCuratorButton } from "@/components/shared/ask-curator";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { personName } from "@/i18n";
@@ -144,8 +145,10 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
   }
   const limit = risk.limits?.dailyLossLimit ?? null;
   if (!risk.limits || limit == null || limit <= 0) {
-    return <Cell label={t("hero.dailyLimit")} value={t("hero.notSet")} hint={t("hero.setByCurator")} href={links.risk(risk.trader)} />;
+    // No dead end (Волна 1 п. 1.1): the trader asks the curator right here (a button cannot sit inside the cell link).
+    return <Cell label={t("hero.dailyLimit")} value={t("hero.notSet")} hint={t("hero.setByCurator")} extra={<AskCuratorButton kind="limits" size="xs" className="mt-1 self-start" />} />;
   }
+  const bp = risk.limits.buyingPower ?? null;
   const loss = Math.max(0, -(risk.today.pnlNet ?? 0));
   const remaining = risk.today.dailyRemainingUsd ?? Math.max(0, limit - loss);
   const lt = limitTone(loss, limit, 0.6);
@@ -156,7 +159,11 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
       tone={lt === "ok" ? "neutral" : limitToneToTone(lt)}
       hint={t("hero.usedOf", { limit: fmtUsd(limit, { decimals: 0 }), pct: fmtRate(Math.min(1, loss / limit)) })}
       href={links.risk(risk.trader)}
-      extra={<><LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" /><LiveBadge live={risk.live} className="mt-0.5" /></>}
+      extra={<>
+        <LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" />
+        {bp != null && <span className="truncate text-2xs tabular-nums text-muted-foreground">{t("hero.buyingPower", { amount: fmtUsd(bp, { decimals: 0 }) })}</span>}
+        <LiveBadge live={risk.live} className="mt-0.5" />
+      </>}
     />
   );
 }

@@ -76,6 +76,11 @@ export type EarningsHistory = {
   upReactions: number;
   downReactions: number;
   fetchedAt: string;
+  /** Which upstream gave the quarters (NASDAQ, Yahoo EPS × Finviz dates, Finviz dates only); null = none. */
+  source?: "nasdaq" | "yahoo" | "finviz" | null;
+  /** No quarters although the ticker must have reported: «источник недоступен · HH:MM» (checkedAt), not «нет отчётов». */
+  sourceUnavailable?: boolean;
+  checkedAt?: string;
 };
 
 

@@ -1,7 +1,8 @@
 /**
  * routes/themes-boards.ts over mocked stores (no DB, no network): boards are owner-only, ≤ 8 per user, a tickers board
  * needs a list (≤ 50) or a screener (only f / o of a pasted URL kept — the auth token never stored or echoed), ← / →
- * reorders, archive with active false, guests are read-only.
+ * reorders, archive with active false (its themes archived with it), «Архив» lists / restores (≤ 8 boards, themes up to
+ * the limit of 10), guests are read-only.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import express from "express";
@@ -27,6 +28,9 @@ const store = vi.hoisted(() => ({
   listBoards: vi.fn(async () => [{ id: 3, position: 0 }, { id: 4, position: 1 }]),
   setPositions: vi.fn(async () => undefined),
   updateBoard: vi.fn(async (_u: number, _id: number, p: Record<string, unknown>, cur: Record<string, unknown>) => ({ ...cur, ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) })),
+  archiveBoardThemes: vi.fn(async () => 3),
+  listArchive: vi.fn(async (userId: number) => ({ boards: userId === 5 ? [{ id: 4, name: "Chips", kind: "themes", themes: 3 }] : [], themes: [] })),
+  restoreBoard: vi.fn(async (_u: number, _id: number, max: number) => ({ board: rec({ active: true, position: 2 }), restored: Math.min(3, max), skipped: 0 })),
 }));
 vi.mock("../../lib/themes/boardsStore", () => store);
 const data = vi.hoisted(() => ({
@@ -38,6 +42,7 @@ vi.mock("../../lib/themes/board", () => data);
 
 process.env.JWT_SECRET ??= "vitest-only-secret";
 const { default: router } = await import("../themes-boards");
+const { logAudit } = await import("../../lib/audit");
 const { errorMiddleware } = await import("../../lib/http");
 
 let server: http.Server;
@@ -115,5 +120,54 @@ describe("edit", () => {
     expect(store.setPositions).toHaveBeenCalledWith(5, [{ id: 4, position: 0 }, { id: 3, position: 1 }]);
     expect((await call("PUT", "/api/themes/boards/4", { active: false })).json.name).toBe("Chips");
     expect(store.updateBoard.mock.calls.at(-1)![2]).toMatchObject({ active: false });
+  });
+});
+
+describe("archive", () => {
+  it("archiving a board archives its active themes with it (same request, owner-scoped); other edits do not", async () => {
+    await call("PUT", "/api/themes/boards/4", { name: "Semis" });
+    expect(store.archiveBoardThemes).not.toHaveBeenCalled();
+    expect((await call("PUT", "/api/themes/boards/4", { active: false })).status).toBe(200);
+    expect(store.archiveBoardThemes).toHaveBeenCalledWith(5, 4);
+    expect(logAudit).toHaveBeenLastCalledWith(expect.objectContaining({ action: "themes.board.archive", details: expect.objectContaining({ themes: 3 }) }));
+    // Already archived: no second cascade.
+    store.boardById.mockResolvedValue(rec({ active: false }));
+    await call("PUT", "/api/themes/boards/4", { active: false });
+    expect(store.archiveBoardThemes).toHaveBeenCalledTimes(1);
+  });
+
+  it("GET /themes/archive: the caller's own archive only; guests are read-only", async () => {
+    expect((await call("GET", "/api/themes/archive")).json).toEqual({ boards: [{ id: 4, name: "Chips", kind: "themes", themes: 3 }], themes: [] });
+    expect(store.listArchive).toHaveBeenCalledWith(5);
+    who = OTHER;
+    expect((await call("GET", "/api/themes/archive")).json).toEqual({ boards: [], themes: [] });
+    expect(store.listArchive).toHaveBeenLastCalledWith(6);
+    who = GUEST;
+    expect((await call("GET", "/api/themes/archive")).json.code).toBe("GUEST_READ_ONLY");
+  });
+
+  it("restore a board: owner only, ≤ 8 boards, its themes back up to the limit of 10", async () => {
+    store.boardById.mockImplementation(async (userId: number, id: number) => (userId === 5 && id === 4 ? rec({ active: false }) : null));
+    who = OTHER;
+    const foreign = await call("POST", "/api/themes/boards/4/restore");
+    expect([foreign.status, foreign.json.code]).toEqual([404, "BOARD_NOT_FOUND"]);
+    expect((await call("POST", "/api/themes/boards/77/restore")).json.code).toBe("BOARD_NOT_FOUND");
+    who = GUEST;
+    expect((await call("POST", "/api/themes/boards/4/restore")).json.code).toBe("GUEST_READ_ONLY");
+    expect(store.restoreBoard).not.toHaveBeenCalled();
+    who = OWNER;
+    store.countBoards.mockResolvedValue(8);
+    const over = await call("POST", "/api/themes/boards/4/restore");
+    expect([over.status, over.json.code]).toEqual([409, "BOARD_LIMIT"]);
+    expect(store.restoreBoard).not.toHaveBeenCalled();
+    store.countBoards.mockResolvedValue(7);
+    const ok = await call("POST", "/api/themes/boards/4/restore");
+    expect(ok.json).toMatchObject({ id: 4, name: "Chips", position: 2, restoredThemes: 3, skippedThemes: 0 });
+    expect(store.restoreBoard).toHaveBeenCalledWith(5, 4, 10);
+    expect(logAudit).toHaveBeenLastCalledWith(expect.objectContaining({ action: "themes.board.restore", targetId: "4" }));
+    // An active board: nothing to do.
+    store.boardById.mockResolvedValue(rec());
+    expect((await call("POST", "/api/themes/boards/4/restore")).json).toMatchObject({ id: 4, restoredThemes: 0, skippedThemes: 0 });
+    expect(store.restoreBoard).toHaveBeenCalledTimes(1);
   });
 });

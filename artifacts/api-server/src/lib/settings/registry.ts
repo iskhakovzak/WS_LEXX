@@ -149,9 +149,10 @@ export const SETTINGS = {
   "gamification.masteryDrillsPerPoint": { group: "gamification", type: "number", default: 2, min: 1, max: 20, step: 1, unit: "tasks" },
 
   // Simple menu for new traders (web shell, GET /api/permissions/me → nav): a short primary menu + one «Ещё» group for
-  // traders up to `simpleUntilTier` (tier as for the playbook locks, lib/playbookToday/tier); staff always get the full menu
+  // traders up to `simpleUntilTier` (tier as for the playbook locks, lib/playbookToday/tier); staff always get the full menu.
+  // The ladder starts at Джун (Волна 1 п. 1.21): the only value left is «junior» (a stored «trainee» falls back to it).
   "nav.simpleForTrainees": { group: "nav", type: "boolean", default: true },
-  "nav.simpleUntilTier": { group: "nav", type: "select", default: "trainee", options: ["trainee", "junior"] },
+  "nav.simpleUntilTier": { group: "nav", type: "select", default: "junior", options: ["junior"] },
 
   // Privacy of cross-trader views (desk-day, top of the day)
   "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true },

@@ -1,12 +1,12 @@
 /**
  * Интеграции: PropReports ↔ журнал сделок. Только для куратора/админа — единое место для операций PropReports
  * (синк по API, импорт файлов, привязка счетов, сверка, история). Трейдерам сделки приходят автоматически,
- * поэтому для них страница показывает пояснение. Пульт деска (/admin → «Данные») показывает только статус и ведёт сюда.
+ * поэтому для них страница показывает одну строку свежести их сделок (MyFreshnessCard). Пульт деска (/admin → «Данные») показывает только статус и ведёт сюда.
  * Глубокие ссылки: /integrations?tab=setup|import|performance|accounts|reconcile|history|api.
  */
 import * as React from "react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
-import { PlayCircle, Plug, RefreshCw, ShieldAlert } from "lucide-react";
+import { PlayCircle, Plug, RefreshCw } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, SectionTabs } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/http";
 import { prKeys, useAccounts, usePending, useRuns, useStatus, type IntegrationsTab } from "@/components/propreports/api";
 import { StatusHero } from "@/components/propreports/status-hero";
+import { MyFreshnessCard } from "@/components/propreports/my-freshness";
 import { ImportZone } from "@/components/propreports/import-zone";
 import { AccountsEditor } from "@/components/propreports/accounts-editor";
 import { ReconcileInbox } from "@/components/propreports/reconcile-inbox";
@@ -46,16 +47,11 @@ export default function IntegrationsPage() {
   const { t } = propreportsI18n.useT();
   const signedIn = !!user && user.role !== "guest";
   if (signedIn && !isCurator) {
+    // Wave 1, 1.13: the trader sees whether the last trading day's trades arrived instead of a staff-only placeholder.
     return (
       <Page>
         <PageHeader title={shellI18n.t("nav.integrations")} description={t("page.descriptionTrader")} icon={Plug} />
-        <Panel>
-          <EmptyState
-            icon={ShieldAlert}
-            title={t("page.traderTitle")}
-            description={t("page.traderText")}
-          />
-        </Panel>
+        <MyFreshnessCard />
       </Page>
     );
   }

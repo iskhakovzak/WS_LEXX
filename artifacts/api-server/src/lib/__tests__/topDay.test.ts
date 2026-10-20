@@ -45,15 +45,17 @@ describe("aggregateTraders / rankTraders", () => {
 });
 
 describe("buildTopDay", () => {
-  it("anonymous: aliases over every trader of the day, $ visible, no names anywhere", () => {
+  it("anonymous: aliases over every trader of the day, other traders' $ hidden (1.22), no names anywhere", () => {
     const day = buildTopDay(DATE, rows, KIRILL, "anonymous");
     const aliases = deskAliases(everyone, DATE);
-    expect(day.profit[0]).toMatchObject({ alias: aliases.get("W01"), name: null, net: 1300, place: 1, bestTicker: "AMD", me: false });
-    expect(day.loss[0]).toMatchObject({ alias: aliases.get("L12"), net: -1200 });
-    expect(day.desk).toEqual({ net: rows.reduce((s, r) => s + Number(r.net), 0), trades: 13 * 2 + 12 * 3 + 3 + 1, traders: everyone.length });
+    expect(day.profit[0]).toMatchObject({ alias: aliases.get("W01"), name: null, net: null, place: 1, bestTicker: null, me: false, wins: 2 });
+    expect(day.profit[0].tickers.every((t) => t.net === null)).toBe(true);
+    expect(day.loss[0]).toMatchObject({ alias: aliases.get("L12"), net: null });
+    expect(day.desk).toEqual({ net: null, trades: 13 * 2 + 12 * 3 + 3 + 1, traders: everyone.length });
     // Kirill (+55) is outside the top 10 profit list: his own row comes separately with his full place.
     expect(day.profit.some((r) => r.me)).toBe(false);
     expect(day.me).toMatchObject({ me: true, name: null, net: 55, place: 14, alias: aliases.get("Kirill") });
+    expect(day.me!.tickers.map((t) => t.net)).toEqual([80, -25]);
     const json = JSON.stringify(day);
     for (const n of everyone) expect(json).not.toContain(`"${n}"`);
   });
@@ -74,12 +76,14 @@ describe("buildTopDay", () => {
   });
   it("staff: names and $", () => {
     const day = buildTopDay(DATE, rows, STAFF, "staff");
-    expect(day.profit[0]).toMatchObject({ name: "W01", net: 1300 });
+    expect(day.profit[0]).toMatchObject({ name: "W01", net: 1300, bestTicker: "AMD" });
+    expect(day.desk.net).toBe(rows.reduce((s, r) => s + Number(r.net), 0));
     expect(day.me).toBeNull();
   });
   it("empty day", () => {
     const day = buildTopDay(DATE, [], KIRILL, "anonymous");
-    expect(day).toMatchObject({ profit: [], loss: [], me: null, desk: { net: 0, trades: 0, traders: 0 } });
+    expect(day).toMatchObject({ profit: [], loss: [], me: null, desk: { net: null, trades: 0, traders: 0 } });
+    expect(buildTopDay(DATE, [], STAFF, "staff").desk.net).toBe(0);
   });
 });
 
@@ -101,9 +105,11 @@ describe("buildTraderDay", () => {
     expect(d.tickers[1]).toMatchObject({ side: "both", trades: 2, net: 80, firstAt: at("09:45"), lastAt: at("11:20") });
     expect(d.tickers[0]).toMatchObject({ side: "short", net: -25, lastAt: null });
   });
-  it("anonymous: another trader's day has $ and no name", () => {
+  it("anonymous: another trader's day has no $ (1.22) and no name; counts and place stay", () => {
     const d = buildTraderDay(DATE, wAlias, side, KIRILL, "anonymous")!;
-    expect(d).toMatchObject({ me: false, name: null, net: 1300, place: 1 });
+    expect(d).toMatchObject({ me: false, name: null, net: null, place: 1, list: "profit", trades: 2 });
+    expect(d.tickers.every((t) => t.net === null)).toBe(true);
+    expect(buildTraderDay(DATE, wAlias, side, STAFF, "staff")).toMatchObject({ name: "W01", net: 1300 });
     expect(JSON.stringify(d)).not.toContain("W01");
   });
   it("named: name shown, $ hidden for another trader", () => {
@@ -121,15 +127,15 @@ describe("buildCalendar", () => {
     { date: "2026-10-02", net: "-120.456", trades: 125, traders: 20, best: 400, worst: -600, mine: null, traded: false },
     { date: "2026-10-01", net: 300, trades: 113, traders: 16, best: 900, worst: -200, mine: "45.5", traded: true },
   ];
-  it("sorts days, rounds $, keeps the viewer's own net", () => {
-    const c = buildCalendar("2026-10", cal, ["2026-10-12", "2026-10-12"], "anonymous");
+  it("sorts days, rounds $ (staff), keeps the viewer's own net", () => {
+    const c = buildCalendar("2026-10", cal, ["2026-10-12", "2026-10-12"], "staff");
     expect(c.days.map((d) => d.date)).toEqual(["2026-10-01", "2026-10-02"]);
     expect(c.days[1]).toMatchObject({ net: -120.46, best: 400, worst: -600, mine: null });
     expect(c.days[0].mine).toBe(45.5);
     expect(c.holidays).toEqual(["2026-10-12"]);
   });
-  it("named mode hides desk aggregates from traders but keeps counts and own net", () => {
-    const c = buildCalendar("2026-10", cal, [], "named");
+  it.each(["named", "anonymous"] as const)("%s mode hides desk aggregates from traders but keeps counts and own net", (mode) => {
+    const c = buildCalendar("2026-10", cal, [], mode);
     expect(c.days[0]).toMatchObject({ net: null, best: null, worst: null, trades: 113, traders: 16, mine: 45.5 });
   });
 });

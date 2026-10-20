@@ -45,9 +45,6 @@ import uzWhatif from "./uz/whatif";
 import ruDayReport from "./ru/dayReport";
 import enDayReport from "./en/dayReport";
 import uzDayReport from "./uz/dayReport";
-import ruDigest from "./ru/digest";
-import enDigest from "./en/digest";
-import uzDigest from "./uz/digest";
 import ruBenchmark from "./ru/benchmark";
 import enBenchmark from "./en/benchmark";
 import uzBenchmark from "./uz/benchmark";
@@ -131,9 +128,6 @@ export const whatifT = defineNamespace(ruWhatif, { en: enWhatif, uz: uzWhatif })
 
 /** `dayReport` (server-b). */
 export const dayReportT = defineNamespace(ruDayReport, { en: enDayReport, uz: uzDayReport });
-
-/** `digest` (server-b). */
-export const digestT = defineNamespace(ruDigest, { en: enDigest, uz: uzDigest });
 
 /** `benchmark` (server-b). */
 export const benchmarkT = defineNamespace(ruBenchmark, { en: enBenchmark, uz: uzBenchmark });

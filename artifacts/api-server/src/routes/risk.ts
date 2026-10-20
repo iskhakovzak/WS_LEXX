@@ -4,7 +4,8 @@
  *   GET  /risk/me                 caller's limits, today/week/drawdown usage, stop state, alerts, P&L source
  *   GET  /risk/desk               curator/admin: one row per trader + desk banner (red-day stops)
  *   GET  /risk/limits/:trader     self or curator/admin
- *   PUT  /risk/limits/:trader     curator/admin only (zod, upsert, sets updated_by, writes limit change log)
+ *   PUT  /risk/limits/:trader     curator/admin only (zod, upsert, sets updated_by, writes limit change log); buyingPower
+ *                                 (BP, per trader): junior 25 000 – 800 000 $, above junior no cap (BUYING_POWER_RANGE)
  *   GET  /risk/limits/:trader/history   limit change log
  *   GET  /risk/history            ?trader=&days=60 — daily net P&L, equity, drawdown, red-day streak
  *   GET  /risk/positions          ?trader= — open book with horizon / days held / $ at risk / exposure / sector / ATR
@@ -62,6 +63,8 @@ import {
 } from "../lib/riskData";
 import { loadLivePositions } from "../lib/livePositions";
 import { recordStopAlerts } from "../lib/riskAlertQueue";
+import { buyingPowerProblem } from "../lib/people/stageLimits";
+import { normalizeStageKey, stageOf } from "../lib/people/stage";
 
 export { WARN_PCT, computeMetrics, computeStop, pctOf, round2, weekStart } from "../lib/riskMetrics";
 export type { Alert, DayRow, Horizon, Limits, LiveRisk, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
@@ -279,6 +282,8 @@ const LimitsBody = z.object({
   maxOpenPositions: z.number().int().min(0).max(1000).nullable().optional(),
   allowOvernight: z.boolean().optional(),
   allowSwing: z.boolean().optional(),
+  /** Buying power; absent = keep the stored value, null = clear. */
+  buyingPower: money,
   tier: z.string().trim().max(40).nullable().optional().transform((v) => (v ? v : null)),
   notes: z.string().max(2000).nullable().optional().transform((v) => (v && v.trim() ? v.trim() : null)),
   /** Why the limits changed — stored in the change log (not in trader_risk_limits). */
@@ -296,12 +301,18 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
 
   const before = (await loadLimits(trader)).get(trader) ?? null;
   const b = parsed.data;
+  const hasBp = b.buyingPower !== undefined;
+  if (hasBp) {
+    const problem = buyingPowerProblem(b.buyingPower, normalizeStageKey(b.tier) ?? (await stageOf(trader)));
+    const usd = (n: number) => `$${n.toLocaleString("en-US")}`; // money is preformatted (same in every language)
+    if (problem) throw problem.max == null ? badRequest("BUYING_POWER_MIN", undefined, { min: usd(problem.min) }) : badRequest("BUYING_POWER_RANGE", undefined, { min: usd(problem.min), max: usd(problem.max) });
+  }
   const { rows } = await pool.query(
     `INSERT INTO trader_risk_limits AS l (
        trader, account_size, daily_loss_limit, weekly_loss_limit, max_drawdown, max_risk_per_trade,
        max_position_usd, max_overnight_exposure, max_open_positions, allow_overnight, allow_swing,
-       tier, notes, updated_by, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10, TRUE),COALESCE($11, TRUE),$12,$13,$14,NOW())
+       tier, notes, updated_by, updated_at, buying_power)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10, TRUE),COALESCE($11, TRUE),$12,$13,$14,NOW(),$15)
      ON CONFLICT (trader) DO UPDATE SET
        account_size = EXCLUDED.account_size,
        daily_loss_limit = EXCLUDED.daily_loss_limit,
@@ -315,6 +326,7 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
        allow_swing = COALESCE($11, l.allow_swing),
        tier = EXCLUDED.tier,
        notes = EXCLUDED.notes,
+       buying_power = CASE WHEN $16::boolean THEN EXCLUDED.buying_power ELSE l.buying_power END,
        updated_by = EXCLUDED.updated_by,
        updated_at = NOW()
      RETURNING *`,
@@ -333,6 +345,8 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
       b.tier ?? null,
       b.notes ?? null,
       req.authUser!.name,
+      b.buyingPower ?? null,
+      hasBp,
     ],
   );
   const after = toLimits(rows[0]);

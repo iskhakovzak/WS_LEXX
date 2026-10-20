@@ -44,7 +44,6 @@ export default {
   cancel: "Отмена",
   names: {
     market: { sectors: "Сила секторов", "analyst-actions": "Действия аналитиков" },
-    digest: { morning: "Утренний дайджест", evening: "Вечерний дайджест" },
     psychology: { "weekly-report": "Недельный отчёт по психологии" },
     quotes: { daily: "Цитата дня" },
     db: { backup: "Бэкап базы данных" },

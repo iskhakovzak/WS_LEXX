@@ -1,5 +1,6 @@
 /** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section.
- * New traders (simple menu, nav-model.ts) get Сегодня, План, Плейбук, Тренажёр; the sheet lists the rest. */
+ * Juniors (simple menu, nav-model.ts) get the day's loop — Дашборд, План, Вечер (the journal), Сделки; the sheet lists
+ * the rest. */
 import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { MoreHorizontal } from "lucide-react";
@@ -28,7 +29,7 @@ export function MobileNav({ location }: { location: string }) {
   const { isCurator, user } = useAuth();
   const [moreGroupOpen, setMoreGroupOpen] = useMoreOpen(user?.traderName);
   const badges = useShellBadges();
-  // Simple menu (new traders): Сегодня, План, Плейбук, Тренажёр + «Ещё»; full menu: Дашборд, План, Сделки, Дневник + «Ещё».
+  // Simple menu (juniors): Дашборд, План, Вечер, Сделки + «Ещё»; full menu: Дашборд, План, Сделки, Дневник + «Ещё».
   const tabs = React.useMemo(() => mobileTabs(groups, simple), [groups, simple]);
   const tabHrefs = tabs.map((i) => i.href);
   const inTabs = tabs.some((t) => isNavActive(t, location));

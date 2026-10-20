@@ -79,6 +79,8 @@ export default {
     discussionDeleteTopicAuthor: "deleted discussion «{topic}» (author {author})",
     commentDelete: "deleted a comment",
     commentDeleteAuthor: "deleted a comment by {author}",
+    ideaDelete: "deleted an idea",
+    ideaDeleteAuthor: "deleted an idea by {author}",
 
     sync: "synced PropReports",
     syncFile: "synced PropReports from file {file}",
@@ -159,6 +161,7 @@ export default {
     noteRestore: "restored a note",
     noteRestoreFor: "restored a note about {trader}",
     lockout: "sign-in locked for {minutes} min",
+    logoutOthers: "signed out on all other devices",
 
     fallbackVerb: "{verb}: {subject}",
   },

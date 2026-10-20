@@ -7,7 +7,7 @@ const opts: AudienceOptions = {
   everyone: ["Антон", "Артур", "Закир", "Максат", "Ориф", "Тимур", "Умид"],
   moderators: ["Антон", "Тимур", "Ориф"],
   groups: [
-    { token: "trainee", label: "Стажёрам", kind: "stage", members: ["Закир", "Умид"] },
+    { token: "senior", label: "Сеньорам", kind: "stage", members: ["Закир", "Умид"] },
     { token: "junior", label: "Джунам", kind: "stage", members: ["Артур", "Максат"] },
     { token: "trader", label: "Трейдерам", kind: "stage", members: ["Ориф"] },
     { token: "staff", label: "Кураторам", kind: "staff", members: ["Антон", "Тимур", "Ориф"] },
@@ -24,7 +24,8 @@ describe("audience helpers", () => {
     expect(tokenLabel("cohort:9", opts)).toBe("Когорта #9");
     expect(audienceText([])).toBe("Всем");
     expect(audienceText(["junior", "staff"])).toBe("Джунам, Кураторам");
-    expect(sortTokens(["cohort:10", "staff", "cohort:2", "senior", "trainee", "staff"])).toEqual(["trainee", "senior", "staff", "cohort:2", "cohort:10"]);
+    expect(sortTokens(["cohort:10", "staff", "cohort:2", "senior", "junior", "staff"])).toEqual(["junior", "senior", "staff", "cohort:2", "cohort:10"]);
+    expect(tokenLabel("trainee")).toBe("Джунам"); // an old thread's removed first stage reads as junior
     expect(isRestricted(undefined)).toBe(false);
     expect(isRestricted(["junior"])).toBe(true);
   });

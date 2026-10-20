@@ -12,7 +12,7 @@
  *              day's trades up to quests.tagYesterdayMax) — quests.tagYesterdayPoints
  *   weekly     Monday → Friday, quests.weeklyCount (3) of: contract_days (4 of 5), focus_absent_days (3),
  *              replay_own_days (2), review_traded_days (every traded day on time), read_game_plan (3), and for a
- *              learner (Стажёр, or no traded day in 30 days) the practice ones that need no trades: daily_task_days
+ *              learner (Джун, or no traded day in 30 days) the practice ones that need no trades: daily_task_days
  *              («Задача дня» played on distinct challenge days), academy_lessons (when enrolled), plan_days (plans before
  *              the open) — 10 points. trainer_drills («Найди вход» answers) is retired: never issued again (the desk has
  *              no drills yet), kept only so rows already issued still evaluate and expire
@@ -58,7 +58,8 @@ export type QuestData = {
   replayTradeId: number | null;
   /** Own closed trades per NY close day of the last two weeks and how many carry a live setup (lib/playbookToday/untagged). */
   tagDays?: ReadonlyMap<string, { trades: number; tagged: number }>;
-  /** A learner: Стажёр, or nobody yet trading (no traded day in the last 30 days and no higher tier) — practice quests. */
+  /** A learner: Джун (the entry stage since «Стажёр» left the ladder), or nobody yet trading (no traded day in the last
+   *  30 days and no tier) — practice quests. */
   learner?: boolean;
   /** The trader has academy data (enrolled / lessons / exams): lesson quests make sense. */
   academy?: boolean;

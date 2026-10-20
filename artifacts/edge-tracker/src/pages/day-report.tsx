@@ -27,6 +27,9 @@ import {
   BreakdownPanel, ComparisonPanel, EquityPanel, LeaksPanel, LinksPanel, PlanPanel, StrengthsPanel, SummaryBento, TimelinePanel,
 } from "@/components/day-report/sections";
 import { PersonSelect } from "@/components/people/person-select";
+import { useTradesBookFacets } from "@/hooks/use-trades-window";
+import { nyDate } from "@/lib/trading-date";
+import { defaultReportDay } from "@/components/journal/default-day";
 import { DeskDayChips } from "@/components/shared/desk-day-link";
 import { TickerContextList } from "@/components/shared/finviz/ticker-context";
 
@@ -100,6 +103,16 @@ export default function DayReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holidays]);
 
+  // Item 1.4: no ?date= → the last day with trades (never an empty today mid-session); once, a pick by hand wins.
+  const autoDate = React.useRef(!initial.date);
+  const facets = useTradesBookFacets({ trader: isCurator ? trader : null, enabled: autoDate.current && !!trader });
+  React.useEffect(() => {
+    if (!autoDate.current || facets.isLoading || !trader) return;
+    autoDate.current = false;
+    const d = defaultReportDay(nyDate(), facets.data?.lastDate ?? null);
+    if (isYmd(d)) setDate(d);
+  }, [facets.isLoading, facets.data, trader]);
+
   React.useEffect(() => {
     if (date) writeParams(isCurator ? trader : null, date);
   }, [trader, date, isCurator]);
@@ -112,7 +125,7 @@ export default function DayReportPage() {
   const nextDay = shiftTradingDay(date, 1, holidays);
   const canNext = nextDay <= today;
 
-  const go = React.useCallback((d: string) => { if (isYmd(d)) setDate(d); }, []);
+  const go = React.useCallback((d: string) => { if (isYmd(d)) { autoDate.current = false; setDate(d); } }, []);
 
   // ← / → between trading days (ignored while typing in a field).
   React.useEffect(() => {
@@ -120,8 +133,8 @@ export default function DayReportPage() {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
       if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key === "ArrowLeft") { e.preventDefault(); setDate((d) => shiftTradingDay(d, -1, holidays)); }
-      if (e.key === "ArrowRight" && canNext) { e.preventDefault(); setDate((d) => shiftTradingDay(d, 1, holidays)); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); autoDate.current = false; setDate((d) => shiftTradingDay(d, -1, holidays)); }
+      if (e.key === "ArrowRight" && canNext) { e.preventDefault(); autoDate.current = false; setDate((d) => shiftTradingDay(d, 1, holidays)); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

@@ -147,10 +147,12 @@ export function CloseBar({
               <ListChecks aria-hidden="true" />{t("editor.tradeReview")}
             </Button>
           )}
+          {/* Item 1.5: one evening form — the summary fields are optional, closing never waits for them. */}
           <Button
             size="sm"
-            disabled={closing || !reviewFilled || (!quick && blocking.length > 0) || !!opensAt}
-            title={opensAt ? t("editor.closeAfterMarket", { time: opensAt }) : !reviewFilled ? t("editor.fillFirst") : undefined}
+            className="min-h-11 sm:min-h-8"
+            disabled={closing || (!quick && blocking.length > 0) || !!opensAt}
+            title={opensAt ? t("editor.closeAfterMarket", { time: opensAt }) : undefined}
             onClick={onClose}
           >
             <Lock aria-hidden="true" />{closing ? t("editor.closing") : quick ? t("editor.sendSummary") : t("editor.closeDay")}
@@ -159,7 +161,7 @@ export function CloseBar({
       </div>
       {opensAt
         ? <p className="text-2xs text-muted-foreground">{t("editor.closeAfterMarket", { time: opensAt })}</p>
-        : !reviewFilled && <p className="text-2xs text-muted-foreground">{t("editor.closeHint")}</p>}
+        : !reviewFilled && <p className="text-2xs text-muted-foreground">{t("editor.closeOptional")}</p>}
     </div>
   );
 }

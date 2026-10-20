@@ -373,6 +373,16 @@ export const ERROR_CODES = {
   BOARD_NOT_FOUND: 404,
   BOARD_LIMIT: 409,
   BROKER_TRADE_READ_ONLY: 403,
+  // ── Волна 1: people (curator requests, desk groups, buying power) ──
+  BUYING_POWER_RANGE: 400,
+  BUYING_POWER_MIN: 400,
+  CURATOR_REQUEST_OPEN: 409,
+  CURATOR_REQUEST_NOT_FOUND: 404,
+  CURATOR_REQUEST_CLOSED: 409,
+  DESK_GROUP_NOT_FOUND: 404,
+  DESK_GROUP_NAME_TAKEN: 409,
+  DESK_GROUP_CURATOR_INVALID: 400,
+  JUNIOR_NOTES_RETIRED: 410,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

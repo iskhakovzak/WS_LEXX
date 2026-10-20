@@ -5,7 +5,7 @@
  * Former timers (backend.md §1.9) → jobs:
  *   sector poller (boot + 15 min, weekdays 9–16 NY) → market.sectors
  *   analyst-actions poller (30 s after boot + 20 min) → market.analyst-actions
- *   digest 09:00 / 18:00 UTC (60 s tick)             → digest.morning 05:00 NY / digest.evening 14:00 NY (same instants in EDT)
+ *   digest 09:00 / 18:00 UTC                          → removed (wave 1, 1.16): the Telegram daily loop replaces it
  *   weekly psychology report (Fri ≥ 17:00 server-local) → psychology.weekly-report Fri 17:00 NY
  *   daily quote (15 s after boot + 06:00 MSK)          → quotes.daily 23:00 NY (≈ 06:00 MSK) + 15 s after boot
  *   DB backup (3 min after EVERY boot + 48 h)          → db.backup daily BACKUP_CRON (03:15 NY) + catch-up only if > 20 h old
@@ -57,28 +57,6 @@ export function registerAllJobs(): void {
     async run() {
       const { runAnalystActionsScan } = await import("../lib/marketDataService");
       return runAnalystActionsScan();
-    },
-  });
-
-  registerJob({
-    name: "digest.morning",
-    cron: "0 5 * * *",
-    timeoutMs: 10 * MIN,
-    async run() {
-      const { runDigestIfNeeded } = await import("../lib/digest");
-      await runDigestIfNeeded("morning");
-      return { period: "morning" };
-    },
-  });
-
-  registerJob({
-    name: "digest.evening",
-    cron: "0 14 * * *",
-    timeoutMs: 10 * MIN,
-    async run() {
-      const { runDigestIfNeeded } = await import("../lib/digest");
-      await runDigestIfNeeded("evening");
-      return { period: "evening" };
     },
   });
 
@@ -276,6 +254,8 @@ export function registerAllJobs(): void {
   // Permanent candle archive (lib/candleArchive): every finished symbol-day with trades / playbook examples / ideas /
   // simulator games, once for the whole desk. After each PropReports sync, nightly after the post-market (21:15 NY,
   // every day so weekends finish a backfill), and 2 min after boot. ≤ 400 provider calls per run; the next run resumes.
+  // Then the setup auto-classifier (wave 1, 1.2; lib/setupsAuto) suggests a setup for the new broker trades without a
+  // playbook link — on the bars just archived; suggestions only, accepting stays one tap (journal, /trades).
   registerJob({
     name: "candles.archive",
     cron: "15 21 * * *",
@@ -284,7 +264,10 @@ export function registerAllJobs(): void {
     timeoutMs: 30 * MIN,
     async run({ signal, logger }) {
       const { runArchiveFill } = await import("../lib/candleArchive");
-      return runArchiveFill({ signal, logger, budget: 400, gapMs: 400 });
+      const archive = await runArchiveFill({ signal, logger, budget: 400, gapMs: 400 });
+      const { runAutoClassify } = await import("../lib/setupsAuto");
+      const setups = signal.aborted ? null : await runAutoClassify({ signal }).catch((err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }));
+      return { archive, setups };
     },
   });
 

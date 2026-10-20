@@ -8,7 +8,7 @@ import {
 import { Pill, Truncate, toneOf, tonePill, toneText, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { fmtValue, isNewItem, type FeedKind, type StreamItem } from "./stream-api";
-import { formatDayLong, relativeDayLabel } from "./feed-utils";
+import { formatDayLong, relativeDayLabel } from "./day-label";
 import { fmtCount, fmtTimeNY } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { feedI18n } from "@/i18n/ns/feed";

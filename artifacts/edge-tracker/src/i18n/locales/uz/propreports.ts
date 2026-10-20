@@ -4,10 +4,8 @@ import type ru from "../ru/propreports";
 export default {
   page: {
     description: "PropReports → jurnal: raund-triplar, komissiyalar, overnight/swing va broker bilan solishtirish",
-    descriptionTrader: "PropReportsdan savdolarni import qilish",
+    descriptionTrader: "Savdolaringiz PropReportsdan avtomatik keladi — hech narsa kiritish shart emas",
     descriptionGuest: "Tashqi tizimlardan savdolar va koʻchirmalarni import qilish",
-    traderTitle: "Kuratorlar uchun boʻlim",
-    traderText: "Savdolaringiz PropReportsdan avtomatik yuklanadi. Agar savdolar koʻrinmasa yoki boshqa hisobga tushgan boʻlsa — kuratoringizga yozing.",
     signInTitle: "Kirish kerak",
     signInText: "Hisoblaringizni koʻrish va savdolarni import qilish uchun tizimga kiring.",
     syncNow: "Hozir sinxronlash",
@@ -16,6 +14,26 @@ export default {
     statusFailed: "Holatni yuklab boʻlmadi",
     tabsAria: "Integratsiya boʻlimlari",
     tabs: { setup: "Sozlash", import: "Import", performance: "Statistika", accounts: "Hisoblar", reconcile: "Solishtirish", history: "Tarix" },
+  },
+
+  /** /integrations header for a trader (wave 1, 1.13): did the last trading day's trades arrive. */
+  fresh: {
+    title: "{day} savdolari",
+    aria: "Savdolaringiz yangiligi",
+    sync: "sinxronlash {time}",
+    noSync: "sinxronlash hali boʻlmagan",
+    openTrades: "Savdolarni ochish",
+    state: { ok: "joyida", mismatch: "farq bor", behind: "sinxronlash kutilmoqda", no_account: "hisob ulanmagan" },
+    detail: {
+      verified: "Shu kun uchun broker hisoboti bilan mos.",
+      synced: "Bozor yopilgandan keyin sinxronlandi. Broker bilan solishtirish — kechqurun.",
+      missingOurs: "Brokerda jurnalda yoʻq savdolar bor. Kuratorga yozing — u yuklashni qayta ishga tushiradi.",
+      missingBroker: "Jurnalda broker hisobotida yoʻq savdolar bor. Kurator tekshiradi.",
+      mismatch: "Kun natijasi broker bilan {diff} ga farq qiladi. Kurator tekshiradi.",
+      behind: "Yopilishdan keyin hali sinxronlash boʻlmagan — savdolar avtomatik keladi.",
+      noAccount: "Sizga PropReports hisobi ulanmagan, shuning uchun savdolar yuklanmaydi. Kuratordan hisobni ulashni soʻrang.",
+    },
+    failed: "Savdolar yangiligini tekshirib boʻlmadi",
   },
 
   runStatus: { ok: "muvaffaqiyatli", partial: "qisman", error: "xato", running: "bajarilmoqda" },

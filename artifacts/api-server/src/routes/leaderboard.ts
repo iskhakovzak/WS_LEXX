@@ -4,7 +4,8 @@
 //
 // One source of numbers: ../lib/tradeMath (signed R, net $, W/(W+L), PF = ΣR⁺/|ΣR⁻|, in $ without R) on the New York
 // trading calendar (../lib/tradingDate), by close date. Staff see the whole desk; a trader gets only
-// their own row (no place, no one else's numbers).
+// their own row (no place, no one else's numbers). Money (1.22, lib/moneyVisibility): if a desk override ever opens
+// other rows to a non-staff member, those rows come without $ (R, %, counts and the score stay).
 //
 // Default response is the legacy array (ratings tabs); `format=desk` wraps it with period/weights/mostImproved.
 import { Router, type IRouter } from "express";
@@ -15,6 +16,8 @@ import { nyDate, addDays } from "../lib/tradingDate";
 import { scopeTrader } from "../lib/auth";
 import { unauthorized } from "../lib/http";
 import { DEFAULT_TIERS } from "../lib/scalingSeed";
+import { loadMoneyViewer } from "../lib/playbookAccess";
+import { redactOthersMoney } from "../lib/moneyVisibility";
 
 const router: IRouter = Router();
 
@@ -389,7 +392,9 @@ router.get("/leaderboard", asyncHandler(async (req, res): Promise<void> => {
 
   // Non-staff: own row only, without a place (owner default 2026-10-19, UMID-15: «#1 of 1» / a rank among teammates the
   // trader can't see read as a real ranking; anonymised cohort ranks are an open owner decision).
-  const visible = scope === null ? ranked : ranked.filter((e) => e.trader === scope).map((e) => ({ ...e, rank: null }));
+  const listed = scope === null ? ranked : ranked.filter((e) => e.trader === scope).map((e) => ({ ...e, rank: null }));
+  const viewer = await loadMoneyViewer(req);
+  const visible = redactOthersMoney(listed, viewer.name, viewer.staff, { nested: { prev: ["totalPnl", "net", "expectancy"] } });
   if (format === "array") { res.json(visible); return; }
   res.json({
     period: { kind: win.kind, from: win.from === "0000-01-01" ? (tradeRows.rows[0]?.day ? String(tradeRows.rows[0].day) : win.to) : win.from, to: win.to, prevFrom: win.prevFrom, prevTo: win.prevTo, today: nyDate() },
