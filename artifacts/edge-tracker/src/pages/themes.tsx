@@ -48,18 +48,25 @@ export default function ThemesPage() {
   } else if (!data.asOf) {
     body = <EmptyState icon={Shapes} title={t("noData.title")} description={t("noData.desc")} />;
   } else {
+    // Before the open nobody has a «from open» value: show «За день» alone (full width) instead of an empty table.
+    const shown = data.themes.some((th) => th.fromOpen != null) ? METRICS : (["today"] as const);
+    const two = shown.length > 1;
     body = (
       <>
-        <Segmented
-          className="self-start xl:hidden"
-          ariaLabel={t("viewAria")}
-          value={view}
-          onChange={setView}
-          options={METRICS.map((m) => ({ value: m, label: t(`panels.${m}`) }))}
-        />
-        <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-2">
-          {METRICS.map((m) => (
-            <ThemePanel key={m} metric={m} themes={data.themes} session={data.session} className={cn(m !== view && "hidden xl:block")} />
+        {two ? (
+          <Segmented
+            className="self-start xl:hidden"
+            ariaLabel={t("viewAria")}
+            value={view}
+            onChange={setView}
+            options={METRICS.map((m) => ({ value: m, label: t(`panels.${m}`) }))}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">{t("noOpenYet")}</p>
+        )}
+        <div className={cn("grid items-start gap-[var(--grid-gap)]", two && "xl:grid-cols-2")}>
+          {shown.map((m) => (
+            <ThemePanel key={m} metric={m} themes={data.themes} session={data.session} className={cn(two && m !== view && "hidden xl:block")} />
           ))}
         </div>
       </>

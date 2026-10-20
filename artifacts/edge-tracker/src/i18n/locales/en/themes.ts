@@ -24,7 +24,7 @@ export default {
   source: "Source: {name}",
   stale: "data is stale",
   staleHint: "Quotes did not refresh — showing the last ones received.",
-  noOpenYet: "No values until the 09:30 NY open",
+  noOpenYet: "«From open» appears at the 09:30 NY open",
   rowAria: "{name}: {value}",
   missing: "No data: {list}",
   cols: {

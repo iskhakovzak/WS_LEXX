@@ -24,7 +24,7 @@ export default {
   source: "Manba: {name}",
   stale: "maʼlumotlar eskirgan",
   staleHint: "Kotirovkalar yangilanmadi — oxirgi olinganlari koʻrsatilmoqda.",
-  noOpenYet: "NY 09:30 ochilishigacha qiymatlar yoʻq",
+  noOpenYet: "«Ochilishdan» NY 09:30 da, bozor ochilgach paydo boʻladi",
   rowAria: "{name}: {value}",
   missing: "Maʼlumot yoʻq: {list}",
   cols: {
