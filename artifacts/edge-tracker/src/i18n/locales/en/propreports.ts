@@ -284,7 +284,7 @@ export default {
   },
 
   action: { insert: "New", update: "Will update", unchanged: "Unchanged", adopt: "Will link", conflict: "To reconcile", skip: "Skip" },
-  reason: { unmapped: "account not mapped", inactive: "account disabled", forbidden: "someone else’s account", deleted: "trade deleted in the journal" },
+  reason: { unmapped: "account not mapped", inactive: "account disabled", forbidden: "someone else’s account", deleted: "trade deleted in the journal", broker_locked: "broker trade — numbers changed by an admin" },
   field: {
     ticker: "Ticker",
     date: "Date",

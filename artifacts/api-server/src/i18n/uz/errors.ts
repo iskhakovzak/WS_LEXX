@@ -213,6 +213,7 @@ export default {
   EOD_DAY_CLOSED: "{date} kuni yopilgan — tahlilni tahrirlash uchun uni qayta oching",
   EOD_ALREADY_CLOSED: "Kun allaqachon yopilgan",
   EOD_FUTURE_DAY: "Kelajakdagi kunni yopib boʻlmaydi",
+  EOD_TOO_EARLY: "Kun bozor yopilgandan keyin yopiladi — NY {opensAt} dan",
   EOD_INCOMPLETE: "Hamma savdolarda setap va baho koʻrsatilmagan",
   EOD_DAY_NOT_FOUND: "Kun topilmadi",
   EOD_NOT_CLOSED: "Treyder kunni hali yopmagan",
@@ -351,4 +352,5 @@ export default {
   THEME_LIMIT: "Oʻz mavzularingiz {max} tadan oshmasin — yangisini qoʻshish uchun keraksizini olib tashlang",
   BOARD_NOT_FOUND: "Doska topilmadi",
   BOARD_LIMIT: "Oʻz doskalaringiz {max} tadan oshmasin — yangisini qoʻshish uchun keraksizini olib tashlang",
+  BROKER_TRADE_READ_ONLY: "Broker savdosining raqamlari PropReports’dan keladi va qoʻlda oʻzgartirilmaydi. Setap, teglar, baho va izohlarni koʻrsatish mumkin",
 } satisfies Messages<typeof ru>;

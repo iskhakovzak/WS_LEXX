@@ -213,6 +213,7 @@ export default {
   EOD_DAY_CLOSED: "Day {date} is closed — reopen it to edit the review",
   EOD_ALREADY_CLOSED: "The day is already closed",
   EOD_FUTURE_DAY: "A future day can't be closed",
+  EOD_TOO_EARLY: "The day closes after the market close — from {opensAt} NY",
   EOD_INCOMPLETE: "Not every trade has a setup and a grade",
   EOD_DAY_NOT_FOUND: "Day not found",
   EOD_NOT_CLOSED: "The trader hasn't closed the day yet",
@@ -351,4 +352,5 @@ export default {
   THEME_LIMIT: "At most {max} own themes — remove one to add another",
   BOARD_NOT_FOUND: "Board not found",
   BOARD_LIMIT: "At most {max} own boards — remove one to add another",
+  BROKER_TRADE_READ_ONLY: "A broker trade’s numbers come from PropReports and can’t be changed by hand. You can set the setup, tags, grade and notes",
 } satisfies Messages<typeof ru>;

@@ -10,6 +10,7 @@ import { structureSummary } from "../lib/tradeStructure";
 import { logger } from "../lib/logger";
 import { can, resolveActor } from "../lib/permissions";
 import { canReadTradeExecutions } from "../lib/accessRules";
+import { brokerReadOnly, canEditBrokerTrades, isBrokerTrade } from "../lib/brokerTradeGuard";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
@@ -95,15 +96,16 @@ function parseCreateBody(body: unknown): { ok: true; value: CreateExecutionInput
 
 /**
  * Resolves the parent trade and enforces access through the permission matrix (same rule as GET/PATCH /trades/:id):
- *   write — own trade (trades.write.own) or trades.write.any (curators/admins by default);
+ *   write — own trade (trades.write.own) or trades.write.any (curators/admins by default); the fills of a broker
+ *           trade (PropReports) are broker data: adding / removing them is admin-only (lib/brokerTradeGuard);
  *   read  — own trade, trades.read.team, or the trade is an example of a setup the viewer may read in the playbook
  *           (the chart of «Открыть сделку»; qty / $ are redacted for non-staff by lib/playbookPrivacy).
  * Guests never (lib/accessRules canReadTradeExecutions). Sends the error response itself and returns false when
  * access is denied; otherwise the trade's owner.
  */
 async function assertTradeAccess(req: Request, res: Response, tradeId: number, mode: "read" | "write" = "write"): Promise<{ trader: string | null } | false> {
-  const { rows } = await pool.query<{ trader: string | null }>(
-    `SELECT trader FROM trades WHERE id = $1 AND deleted_at IS NULL`,
+  const { rows } = await pool.query<{ trader: string | null; source: string | null; context_snapshot: unknown }>(
+    `SELECT trader, source, context_snapshot FROM trades WHERE id = $1 AND deleted_at IS NULL`,
     [tradeId]
   );
   if (rows.length === 0) {
@@ -121,6 +123,7 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number, m
     if (actor.guest || !(own || (await can(req, "trades.write.any", { trader: owner })))) {
       throw new AppError("OWN_TRADES_ONLY");
     }
+    if (isBrokerTrade(rows[0]) && !(await canEditBrokerTrades(req))) throw brokerReadOnly();
     return { trader: owner };
   }
   const isOwn = !!owner && owner === actor.name;

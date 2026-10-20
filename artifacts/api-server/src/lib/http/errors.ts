@@ -233,6 +233,7 @@ export const ERROR_CODES = {
   EOD_DAY_CLOSED: 409,
   EOD_ALREADY_CLOSED: 409,
   EOD_FUTURE_DAY: 422,
+  EOD_TOO_EARLY: 422,
   EOD_INCOMPLETE: 422,
   EOD_DAY_NOT_FOUND: 404,
   EOD_NOT_CLOSED: 409,
@@ -371,6 +372,7 @@ export const ERROR_CODES = {
   THEME_LIMIT: 409,
   BOARD_NOT_FOUND: 404,
   BOARD_LIMIT: 409,
+  BROKER_TRADE_READ_ONLY: 403,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

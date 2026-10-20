@@ -84,7 +84,7 @@ export function SetupView({
   const { t } = playbookSetupI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { isCurator } = useAuth();
+  const { isCurator, can } = useAuth();
   const topRef = React.useRef<HTMLDivElement>(null);
   const access = accessOf(entry, viewer);
   const parent = React.useMemo(() => (entry.parentId ? allEntries.find((e) => e.id === entry.parentId) ?? null : null), [entry.parentId, allEntries]);
@@ -192,7 +192,7 @@ export function SetupView({
             </button>
           ) : entry.reviewed ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" /> {t("view.reviewed")}</Pill> : null)}
           <ConfidenceMeter level={entry.confidenceLevel} showLabel />
-          {live && access.space === "office" && isCurator && access.canEdit && <MinTierSelect entry={entry} />}
+          {live && access.space === "office" && can("settings.manage") && access.canEdit && <MinTierSelect entry={entry} />}
         </div>
         {entry.tags && <div className="mt-2"><TagChips tags={entry.tags} /></div>}
         {proposed && access.canPromote && entry.officeProposedNote && (

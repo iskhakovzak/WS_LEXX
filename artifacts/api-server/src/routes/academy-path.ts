@@ -3,9 +3,9 @@
  * readiness from real trades, mentor approve/reject, and prop-style evaluation challenges.
  *
  * Ladder / readiness
- *   GET  /academy/path/config                     stages, criteria, metric meta, templates (any member; canEdit = staff)
- *   PUT  /academy/path/stages                     staff — names / descriptions / scaling tier per stage (keys are fixed)
- *   PUT  /academy/path/criteria                   staff — replace the criteria set (removed rows are archived, never deleted)
+ *   GET  /academy/path/config                     stages, criteria, metric meta, templates (any member; canEdit = settings.manage)
+ *   PUT  /academy/path/stages                     settings.manage — names / descriptions / scaling tier per stage (keys are fixed)
+ *   PUT  /academy/path/criteria                   settings.manage — replace the criteria set (removed rows are archived, never deleted)
  *   GET  /academy/path/report?user=&date=         readiness report (trader: self only; staff: anyone)
  *   GET  /academy/path/funnel?date=               staff — everybody grouped by stage with readiness
  *   GET  /academy/path/requests?status=&user=     promotion requests (trader: own)
@@ -13,7 +13,7 @@
  *   POST /academy/path/requests/:id/approve       staff {comment?} — comment required when the report is not "ready"
  *   POST /academy/path/requests/:id/reject        staff {comment} (required)
  *   POST /academy/path/requests/:id/withdraw      the requester / the trader
- *   POST /academy/path/assign                     staff {user, stage, comment} — direct stage change (logged)
+ *   POST /academy/path/assign                     settings.manage {user, stage, comment} — direct stage change (logged)
  *   GET  /academy/path/history?user=              stage changes (trader: own)
  * Challenges
  *   GET  /academy/challenges/templates
@@ -21,7 +21,7 @@
  *   GET  /academy/challenges/:id                  full evaluation: per-rule progress + day-by-day timeline
  *   POST /academy/challenges                      staff {user, templateKey, startsOn, endsOn?, name?, rules?, comment?}
  *   POST /academy/challenges/:id/archive          staff (soft delete)
- *   POST /academy/path/seed-demo                  staff — idempotent demo challenges (never called automatically)
+ *   POST /academy/path/seed-demo                  settings.manage — idempotent demo challenges (never called automatically)
  *
  * Evaluation is lazy: challenge status / readiness are recomputed on read; a status change is cached in the row and
  * produces one in-app notification (notifyUser) per transition. Tables are additive and created idempotently (lib/academyPathStore).
@@ -39,13 +39,13 @@ import { logAudit } from "../lib/audit";
 import { isGuest, isStaffRole, requireMember, scopeTrader, viewerRole, GUEST_SCOPE } from "../lib/auth";
 import { nyDate, nyMinutes } from "../lib/tradingDate";
 import { isStaleNotice, marketClosedDays } from "../lib/academyCalendar";
-import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql, num } from "../lib/tradeMath";
+import { closeDateSql, closedSql, netPnlSql, num } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
 import { notifyUser, notifyUsers, assignedStaffOf } from "../lib/notifyUtils";
 import { OPS, windowStart, type Tier } from "../lib/scalingEngine";
 import {
   promoMetricsFor, PROMO_METRIC_KEYS, STAGE_KEYS, evaluatePromotion,
-  resolveWindow, type Criterion, type LearningInput, type PromoTrade, type PromotionInput,
+  resolveWindow, type Criterion, type PromotionInput,
   type ReadinessReport, type StageKey, type StageMeta,
 } from "../lib/promotionEngine";
 import {
@@ -53,9 +53,12 @@ import {
   type ChallengeResult, type ChallengeRules, type ChallengeStatus, type ChallengeTrade,
 } from "../lib/challengeEngine";
 import { AppError, badRequest, conflict, notFound, sendError, unauthorized, type ErrorCode } from "../lib/http";
+import { can, requireCap, type Capability } from "../lib/permissions";
 import {
   ensureAcademyPathTables, loadCriteria, loadStageInfo, loadStages, loadTiers, tableExists, type StageInfo,
 } from "../lib/academyPathStore";
+import { loadLearning, loadPromoTrades, loadViolationDates } from "../lib/academy/promotion-input";
+import { setStage } from "../lib/academy/stage-actions";
 
 const router: IRouter = Router();
 
@@ -78,6 +81,17 @@ async function staffOnly(req: Request, res: Response): Promise<Viewer | null> {
   const v = await viewer(req, res);
   if (!v) return null;
   if (!v.staff) { sendError(res, new AppError("STAFF_ONLY")); return null; }
+  return v;
+}
+/**
+ * The ladder itself (stage names, promotion criteria, a direct stage change, demo seeding) is desk configuration:
+ * on the permissions matrix (settings.manage, admin-only), not "any curator" — curators approve / reject requests.
+ */
+async function capOnly(req: Request, res: Response, cap: Capability): Promise<Viewer | null> {
+  if (!requireMember(req, res)) return null;
+  const v = await viewer(req, res);
+  if (!v) return null;
+  if (!(await requireCap(req, res, cap))) return null;
   return v;
 }
 /** Which single user a read is about: staff → requested or self; trader → self; guest → sentinel (empty). */
@@ -110,48 +124,6 @@ function systemComment(c: string | null, lang: Lang): string | null {
 
 // ─── optional sources ───────────────────────────────────────────────────────
 
-/**
- * F1 learning progress, probed by table/column names (contract proposed to F1):
- *   academy_lessons(id, archived_at?, required?) · academy_lesson_progress(user_name, lesson_id, completed_at | status)
- *   academy_quiz_attempts(user_name, quiz_id, pct | score_pct | percent) — F1 ships `pct` (0..100); raw `score` is points, never used.
- * Returns null when the lesson tables are absent (criteria are then reported as "not counted").
- */
-async function loadLearning(user: string): Promise<LearningInput | null> {
-  try {
-    const { rows } = await pool.query<{ t: string; c: string }>(
-      `SELECT table_name AS t, column_name AS c FROM information_schema.columns
-        WHERE table_schema = current_schema() AND table_name IN ('academy_lessons','academy_lesson_progress','academy_quiz_attempts')`,
-    );
-    const cols = new Map<string, Set<string>>();
-    for (const r of rows) (cols.get(r.t) ?? cols.set(r.t, new Set()).get(r.t)!).add(r.c);
-    const L = cols.get("academy_lessons"), P = cols.get("academy_lesson_progress"), Q = cols.get("academy_quiz_attempts");
-    if (!L || !P || !P.has("user_name") || !P.has("lesson_id")) return null;
-    const lessonWhere = [L.has("archived_at") ? "l.archived_at IS NULL" : "TRUE", L.has("draft") ? "NOT l.draft" : "TRUE", L.has("required") ? "COALESCE(l.required, TRUE)" : "TRUE"].join(" AND ");
-    const doneCond = P.has("completed_at") ? "p.completed_at IS NOT NULL" : P.has("status") ? "p.status IN ('completed','done','passed')" : "TRUE";
-    const { rows: tot } = await pool.query<{ total: string; done: string }>(
-      `SELECT COUNT(*)::text AS total,
-              COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM academy_lesson_progress p WHERE p.lesson_id = l.id AND p.user_name = $1 AND ${doneCond}))::text AS done
-         FROM academy_lessons l WHERE ${lessonWhere}`,
-      [user],
-    );
-    let quizAvg: number | null = null, quizzesTaken = 0;
-    const scoreCol = Q ? ["pct", "score_pct", "percent"].find((c) => Q.has(c)) : undefined;
-    if (Q && scoreCol && Q.has("user_name") && Q.has("quiz_id")) {
-      const { rows: q } = await pool.query<{ avg: string | null; n: string }>(
-        `SELECT AVG(best)::text AS avg, COUNT(*)::text AS n FROM (
-           SELECT quiz_id, MAX(${scoreCol})::float8 AS best FROM academy_quiz_attempts WHERE user_name = $1 ${Q.has("archived_at") ? "AND archived_at IS NULL" : ""} GROUP BY quiz_id) s`,
-        [user],
-      );
-      quizAvg = num(q[0]?.avg);
-      quizzesTaken = Number(q[0]?.n ?? 0);
-    }
-    return { lessonsTotal: Number(tot[0]?.total ?? 0), lessonsDone: Number(tot[0]?.done ?? 0), quizAvg, quizzesTaken };
-  } catch (err) {
-    logger.warn({ err }, "academy-path: learning probe failed");
-    return null;
-  }
-}
-
 /** Behaviour engine daily discipline index (D3). Loaded lazily; null when the engine is unavailable. */
 async function loadDiscipline(user: string, from: string, to: string): Promise<{ date: string; score: number }[] | null> {
   try {
@@ -166,41 +138,6 @@ async function loadDiscipline(user: string, from: string, to: string): Promise<{
     logger.debug({ err }, "academy-path: behaviour engine unavailable");
     return null;
   }
-}
-
-// ─── promotion input ────────────────────────────────────────────────────────
-
-async function loadPromoTrades(user: string, from: string, to: string): Promise<PromoTrade[]> {
-  const { rows } = await pool.query(
-    `SELECT ${closeDateSql("t")} AS d, ${netPnlSql("t")}::float8 AS net, t.pnl::float8 AS gross, ABS(COALESCE(t.fees, 0))::float8 AS fees,
-            ${signedRSql("t")}::float8 AS r, ${resultSql("t")} AS result,
-            CASE WHEN t.source = 'propreports' OR t.context_snapshot ->> 'source' = 'propreports' THEN 'propreports' ELSE 'manual' END AS source
-       FROM trades t
-      WHERE t.deleted_at IS NULL AND t.trader = $1 AND ${closedSql("t")}
-        AND ${closeDateSql("t")} >= $2 AND ${closeDateSql("t")} <= $3`,
-    [user, from, to],
-  );
-  const out: PromoTrade[] = [];
-  for (const r of rows) {
-    const result = r.result as string | null;
-    if (result !== "win" && result !== "loss" && result !== "be") continue;
-    const d = String(r.d ?? "").slice(0, 10);
-    if (!YMD_RE.test(d)) continue;
-    out.push({ date: d, net: num(r.net), gross: num(r.gross), fees: num(r.fees) ?? 0, r: num(r.r), result, source: r.source === "propreports" ? "propreports" : "manual" });
-  }
-  return out;
-}
-
-async function loadViolationDates(user: string, from: string): Promise<string[]> {
-  const out: string[] = [];
-  const v = await pool.query(
-    `SELECT COALESCE(NULLIF(day, ''), LEFT(occurred_at::text, 10)) AS d FROM rule_violations WHERE trader = $1 AND occurred_at >= $2::date AND archived_at IS NULL`,
-    [user, from],
-  ).catch(() => pool.query(`SELECT LEFT(occurred_at::text, 10) AS d FROM rule_violations WHERE trader = $1 AND occurred_at >= $2::date`, [user, from]).catch(() => ({ rows: [] as any[] })));
-  for (const r of v.rows) out.push(String(r.d));
-  const e = await pool.query(`SELECT LEFT(created_at::text, 10) AS d FROM trading_errors WHERE trader = $1 AND created_at >= $2::date`, [user, from]).catch(() => ({ rows: [] as any[] }));
-  for (const r of e.rows) out.push(String(r.d));
-  return out;
 }
 
 async function buildReport(user: string, today: string, ctx?: { stages: StageMeta[]; criteria: Criterion[]; tiers: Tier[]; info?: StageInfo }, lang: Lang = "ru"): Promise<ReadinessReport & { stageSource: StageInfo["source"]; cohortId: number | null }> {
@@ -294,7 +231,7 @@ router.get("/academy/path/config", asyncHandler(async (req, res): Promise<void> 
   const [stages, criteria, tiers] = await Promise.all([loadStages(), loadCriteria(), loadTiers()]);
   res.json({
     stages, criteria, tiers: tiers.map((t) => ({ key: t.key, name: t.name, accountSize: t.accountSize, dailyLossLimit: t.dailyLossLimit, maxDrawdown: t.maxDrawdown })),
-    meta: { metrics: promoMetricsFor(langOf(req)), ops: OPS }, templates: templatesFor(langOf(req)), canEdit: v.staff, me: v.name,
+    meta: { metrics: promoMetricsFor(langOf(req)), ops: OPS }, templates: templatesFor(langOf(req)), canEdit: !v.guest && (await can(req, "settings.manage")), me: v.name,
     // Display names of the (possibly seeded) stages in the reader's language; `stages` keeps the stored values for editing.
     stageLabels: Object.fromEntries(stages.map((s) => [s.key, stageNameFor(s.key, s.name, langOf(req))])),
   });
@@ -308,7 +245,7 @@ const StageBody = z.object({
 }).strict();
 
 router.put("/academy/path/stages", asyncHandler(async (req, res): Promise<void> => {
-  const v = await staffOnly(req, res);
+  const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
   await ensureAcademyPathTables();
   const parsed = z.array(StageBody).min(1).max(4).safeParse(req.body);
@@ -337,7 +274,7 @@ const CriterionBody = z.object({
 }).strict();
 
 router.put("/academy/path/criteria", asyncHandler(async (req, res): Promise<void> => {
-  const v = await staffOnly(req, res);
+  const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
   await ensureAcademyPathTables();
   const parsed = z.array(CriterionBody).max(120).safeParse(req.body);
@@ -497,28 +434,6 @@ router.post("/academy/path/requests", asyncHandler(async (req, res): Promise<voi
   }
 }));
 
-async function setStage(user: string, from: StageKey | null, to: StageKey, actor: string, action: string, comment: string | null, requestId: number | null, report: unknown): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(
-      `INSERT INTO academy_trader_stage (user_name, stage, since, updated_by, updated_at) VALUES ($1,$2,$3,$4,NOW())
-       ON CONFLICT (user_name) DO UPDATE SET stage = EXCLUDED.stage, since = EXCLUDED.since, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-      [user, to, nyDate(), actor],
-    );
-    await client.query(
-      `INSERT INTO academy_stage_history (user_name, from_stage, to_stage, action, request_id, actor, comment, report) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [user, from, to, action, requestId, actor, comment, report == null ? null : JSON.stringify(report)],
-    );
-    await client.query("COMMIT");
-  } catch (e) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw e;
-  } finally {
-    client.release();
-  }
-}
-
 const DecisionBody = z.object({ comment: z.string().trim().max(2000).optional() }).strict();
 
 router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res): Promise<void> => {
@@ -596,7 +511,7 @@ const AssignBody = z.object({
 }).strict();
 
 router.post("/academy/path/assign", asyncHandler(async (req, res): Promise<void> => {
-  const v = await staffOnly(req, res);
+  const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
   await ensureAcademyPathTables();
   const parsed = AssignBody.safeParse(req.body);
@@ -915,7 +830,7 @@ router.post("/academy/challenges/:id/archive", asyncHandler(async (req, res): Pr
 
 /** Demo: «Перевод Стажёр → Джун» from the 1st weekday of the current month for every member with broker trades. Idempotent. */
 router.post("/academy/path/seed-demo", asyncHandler(async (req, res): Promise<void> => {
-  const v = await staffOnly(req, res);
+  const v = await capOnly(req, res, "settings.manage");
   if (!v) return;
   await ensureAcademyPathTables();
   const today = nyDate();

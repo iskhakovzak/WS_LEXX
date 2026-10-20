@@ -23,6 +23,7 @@ import { setupTierFields } from "../lib/playbookToday/setupFields";
 import { tradeTagged, viewerLocks, type ViewerLocks } from "../lib/playbookToday/service";
 import { redactLockedSetup } from "../lib/playbookToday/build";
 import marksRouter from "./playbook-marks";
+import { setupLockGuard } from "../lib/playbookLock";
 import { langOf } from "../i18n";
 
 /**
@@ -40,8 +41,11 @@ import { langOf } from "../i18n";
  *  - Mutations: canEditSetupRow (office → curators, personal → owner / staff). Curator-only: review verdicts,
  *    office folder rename/delete. Examples, sharing, copy, promote, media: routes/playbook-spaces.ts.
  *  - AI endpoints are explicit (never auto-fired), author/staff only, 1 call per 10 min per setup.
+ *  - Tier locks (DEV-06): one guard for every /playbook/:id/* route, here and in the routers mounted after this one
+ *    (playbook-marks, playbook-spaces) — lib/playbookLock.ts.
  */
 const router: IRouter = Router();
+router.use("/playbook/:id", setupLockGuard);
 
 type ChecklistItem = { id: string; text: string };
 type Screenshot = { url: string; notes?: string; addedBy?: string | null; addedAt?: string };
@@ -997,6 +1001,8 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (shortInterest !== undefined) { fields.push(`short_interest = $${i++}`); vals.push(shortInterest ? Number(shortInterest) : null); }
   if (sector !== undefined) { fields.push(`sector = $${i++}`); vals.push(sector ? String(sector) : null); }
   if (longName !== undefined) { fields.push(`long_name = $${i++}`); vals.push(longName ? String(longName) : null); }
+  // The lock level (min_tier) of a setup is desk configuration: admin-only (settings.manage), audited by setupTierFields.
+  if (body.minTier !== undefined && !(await can(req, "settings.manage"))) throw new AppError("FORBIDDEN", 403, undefined, { capability: "settings.manage" });
   const tier = setupTierFields(body, prevRows[0], v); for (const [col, val] of tier.cols) { fields.push(`${col} = $${i++}`); vals.push(val); }
   if (!fields.length) throw badRequest("NO_FIELDS");
   fields.push(`updated_at = NOW()`);
@@ -1074,6 +1080,7 @@ router.get("/playbook/:id/edge", asyncHandler(async (req, res): Promise<void> =>
 router.post("/playbook/:id/checklist-run", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (isNaN(id)) throw badRequest("INVALID_ID");
+  if (!(await requireSetupReader(req, res, id))) return; // only a setup the caller may read (the tier lock: setupLockGuard)
   const auth = req.authUser!;
   const { tradeId: rawTradeId, checkedItems, score, total } = req.body as any;
   if (!Array.isArray(checkedItems) || typeof score !== "number" || typeof total !== "number") throw new AppError("VALIDATION");

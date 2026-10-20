@@ -284,7 +284,7 @@ export default {
   },
 
   action: { insert: "Yangi", update: "Yangilanadi", unchanged: "Oʻzgarishsiz", adopt: "Biriktiriladi", conflict: "Solishtirishga", skip: "Oʻtkazish" },
-  reason: { unmapped: "hisob biriktirilmagan", inactive: "hisob faol emas", forbidden: "begona hisob", deleted: "savdo jurnalda oʻchirilgan" },
+  reason: { unmapped: "hisob biriktirilmagan", inactive: "hisob faol emas", forbidden: "begona hisob", deleted: "savdo jurnalda oʻchirilgan", broker_locked: "broker savdosi — raqamlarni admin oʻzgartiradi" },
   field: {
     ticker: "Tiker",
     date: "Sana",

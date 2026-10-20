@@ -15,6 +15,7 @@ import { cleanNameLatin, ensureNameLatin, loadDirectory, saveLatinNames, searchP
 import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 import { clearFeedStreamCache } from "../lib/feedStream";
+import { logAudit } from "../lib/audit";
 
 const router: IRouter = Router();
 
@@ -419,6 +420,7 @@ router.post("/users", asyncHandler(async (req, res): Promise<void> => {
        RETURNING ${USER_COLUMNS}`,
       [cleanName, passwordHash, userRole]
     );
+    await logAudit({ actor: req.authUser?.name ?? "?", action: "user.create", targetType: "user", targetId: String(rows[0].id), details: { name: cleanName, role: userRole } });
     res.status(201).json(rows[0]);
   } catch (e: any) {
     if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
@@ -431,7 +433,7 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   if (id === null) throw badRequest("INVALID_ID");
   if (!(await requireCap(req, res, "users.manage", null, "STAFF_ONLY"))) return;
   const adminMgr = await can(req, "users.manage.admins");
-  const { rows: targetRows } = await pool.query<{ role: string }>(`SELECT role FROM users WHERE id = $1`, [id]);
+  const { rows: targetRows } = await pool.query<{ role: string; name: string; active: boolean }>(`SELECT role, name, active FROM users WHERE id = $1`, [id]);
   const target = targetRows[0];
   if (!target) throw notFound();
   if (target.role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
@@ -485,6 +487,18 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     if (passwordChanged || roleChanged || activeChanged) await bumpTokenVersion(id);
     // An admin reset of the secret also lifts a sign-in lock on that account.
     if (passwordChanged) await lockoutStore().clearUser(id).catch((err) => logger.warn({ err }, "users: clear login lock failed"));
+    // Audit: PIN / password reset, role, (de)activation, rename — never the secret itself.
+    const nameChanged = typeof name === "string" && rows[0].name !== target.name;
+    await logAudit({
+      actor: req.authUser?.name ?? "?", action: "user.update", targetType: "user", targetId: String(id),
+      details: {
+        name: rows[0].name,
+        ...(passwordChanged ? { secretReset: true } : {}),
+        ...(roleChanged ? { role: { from: target.role, to: rows[0].role } } : {}),
+        ...(active !== undefined && active !== target.active ? { active: { from: target.active, to: active } } : {}),
+        ...(nameChanged ? { rename: { from: target.name, to: rows[0].name } } : {}),
+      },
+    });
     res.json(rows[0]);
   } catch (e: any) {
     if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
@@ -498,11 +512,12 @@ router.delete("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage", null, "STAFF_ONLY"))) return;
   const adminMgr = await can(req, "users.manage.admins");
   if (id === req.authUser?.id) throw new AppError("CANNOT_DEACTIVATE_SELF");
-  const { rows: targetRows } = await pool.query<{ role: string }>(`SELECT role FROM users WHERE id = $1`, [id]);
+  const { rows: targetRows } = await pool.query<{ role: string; name: string }>(`SELECT role, name FROM users WHERE id = $1`, [id]);
   if (!targetRows[0]) throw notFound();
   if (targetRows[0].role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
   await pool.query(`UPDATE users SET active = false WHERE id = $1`, [id]);
   await bumpTokenVersion(id);
+  await logAudit({ actor: req.authUser?.name ?? "?", action: "user.deactivate", targetType: "user", targetId: String(id), details: { name: targetRows[0].name } });
   res.json({ success: true });
 }));
 

@@ -95,8 +95,8 @@ export default function Trades() {
     (t: Trade) => canEdit && (!t.trader || t.trader === me || can("trades.write.any", { trader: t.trader })),
     [canEdit, me, can],
   );
-  /** Broker numbers are read-only for traders: the full form / result / delete stay for manual trades or staff. */
-  const canEditForm = useCallback((t: Trade) => canEditTrade(t) && (isStaff || !isBrokerTrade(t)), [canEditTrade, isStaff]);
+  /** Broker numbers are read-only (API: lib/brokerTradeGuard): the full form / result / delete stay for manual trades or admins. */
+  const canEditForm = useCallback((t: Trade) => canEditTrade(t) && (can("settings.manage") || !isBrokerTrade(t)), [canEditTrade, can]);
 
   const F = useTradeFilters();
   const { filters, sort, page, pageSize, preset, view } = F;

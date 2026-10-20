@@ -223,6 +223,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `EOD_DAY_CLOSED` | 409 | Editing a trade review / day summary of a closed day. | `{ date }` |
 | `EOD_ALREADY_CLOSED` | 409 | Closing a closed day. | `{ day }` |
 | `EOD_FUTURE_DAY` | 422 | Closing a day after today (NY). | — |
+| `EOD_TOO_EARLY` | 422 | Closing today before the market close (NY); `opensAt` = HH:MM. | `opensAt` |
 | `EOD_INCOMPLETE` | 422 | Closing a day with trades that lack setup / grade. | `{ missing: [{ tradeId, ticker, fields }] }` |
 | `EOD_DAY_NOT_FOUND` | 404 | End-of-day record. | — |
 | `EOD_NOT_CLOSED` | 409 | Curator review of an open day. | — |
@@ -348,7 +349,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `QUEST_NOT_ACTIVE` | 409 | POST /quests/:id/cancel or /complete for a quest that is no longer active. | — |
 | `QUEST_NOT_MANUAL` | 409 | POST /quests/:id/complete for a quest other than the manual `curator_task`. | — |
 | `QUEST_NOT_YOURS` | 403 | POST /quests/:id/cancel by someone other than the assigner (admins may). | — |
-| `PLAYBOOK_SETUP_LOCKED` | 409 | PUT /playbook/today/picks with a setup above the trader's tier (`params.name`); locks never block trading. | — |
+| `PLAYBOOK_SETUP_LOCKED` | 409 | PUT /playbook/today/picks with a setup above the trader's tier (`params.name`); locks never block trading. Sent as 403 by every `/playbook/:id/*` route (and `POST /playbook-media`) when the setup is above the viewer's tier (`lib/playbookLock.ts`). | — |
 | `GAMIFICATION_DISABLED` | 409 | PUT /gamification/title or a reward request while `gamification.enabled` is off. | — |
 | `TITLE_NOT_EARNED` | 400 | PUT /gamification/title with a key the trader has not earned (GET /gamification/me lists `titles`). | — |
 | `REWARD_ITEM_NOT_FOUND` | 404 | Rewards catalog item (PUT /gamification/rewards/items/:id, POST …/:id/request; inactive items cannot be requested). | — |
@@ -362,6 +363,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `THEME_LIMIT` | 409 | POST /api/themes/mine (or a restore) over the 10 active personal themes per user. | `params.max` |
 | `BOARD_NOT_FOUND` | 404 | /api/themes/boards/:id (or POST /api/themes/mine boardId): not the caller's board, archived, or the wrong kind. | — |
 | `BOARD_LIMIT` | 409 | POST /api/themes/boards over the 8 active boards per user. | `params.max` |
+| `BROKER_TRADE_READ_ONLY` | 403 | Broker-sourced trade (PropReports): a non-admin (no `settings.manage`) changed a broker-owned field (pnl, fees, qty, entry/exit, dates, result…), deleted it (single / bulk), added or removed its fills, or created a trade marked as broker-sourced. Review fields (setup, tags, grade, notes) stay editable. | `{ capability, fields? }` |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.
 

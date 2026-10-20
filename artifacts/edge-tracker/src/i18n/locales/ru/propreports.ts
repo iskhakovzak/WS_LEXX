@@ -289,7 +289,7 @@ export default {
   },
 
   action: { insert: "Новая", update: "Обновится", unchanged: "Без изменений", adopt: "Привяжется", conflict: "На сверку", skip: "Пропуск" },
-  reason: { unmapped: "счёт не привязан", inactive: "счёт выключен", forbidden: "чужой счёт", deleted: "сделка удалена в журнале" },
+  reason: { unmapped: "счёт не привязан", inactive: "счёт выключен", forbidden: "чужой счёт", deleted: "сделка удалена в журнале", broker_locked: "сделка брокера — цифры меняет админ" },
   field: {
     ticker: "Тикер",
     date: "Дата",
