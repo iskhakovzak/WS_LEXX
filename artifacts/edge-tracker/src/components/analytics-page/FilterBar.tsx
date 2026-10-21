@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { RotateCcw, Search } from "lucide-react";
 import { Segmented, Toolbar } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,10 @@ import {
   type AnalyticsFilters, type Period, type SideFilter, type Unit, type Horizon, type HorizonFilter,
   DEFAULT_FILTERS, HORIZONS, activeFilterCount, horizonLabel, periodOptions,
 } from "./metrics";
-import { PersonSelect } from "@/components/people/person-select";
 
 const ALL = "__all__";
 
 export type FilterOptions = {
-  traders: string[];
   setups: string[];
   hasNoSetup: boolean;
   tickers: string[];
@@ -32,7 +30,7 @@ export function FilterBar({
   onUnitChange,
   hasPnl,
   hasR,
-  showTrader,
+  traderPicker,
   showSource = false,
   className,
 }: {
@@ -43,7 +41,8 @@ export function FilterBar({
   onUnitChange: (u: Unit) => void;
   hasPnl: boolean;
   hasR: boolean;
-  showTrader: boolean;
+  /** Staff: the trader picker (own book · whole team · a person), always shown — it decides what every tab reads. */
+  traderPicker?: ReactNode;
   /** Staff only: trades come from PropReports automatically, the manual/broker split is a staff concern. */
   showSource?: boolean;
   className?: string;
@@ -62,6 +61,8 @@ export function FilterBar({
 
   return (
     <Toolbar className={cn("gap-2 p-2 sm:p-2.5", className)}>
+      {traderPicker}
+
       <Segmented<Period>
         ariaLabel={t("filters.period")}
         size="sm"
@@ -92,10 +93,6 @@ export function FilterBar({
         value={filters.horizon || "all"}
         onChange={(v) => set("horizon", (v === "all" ? "" : v) as HorizonFilter)}
       />
-
-      {showTrader && options.traders.length > 1 && (
-        <PersonSelect value={filters.trader || ""} onValueChange={(v) => set("trader", v)} options={options.traders} allLabel={t("filters.allTraders")} ariaLabel={t("filters.trader")} className="h-9 w-auto min-w-[140px] max-w-[200px]" />
-      )}
 
       {(options.setups.length > 0 || filters.setup) && (
         <Select value={filters.setup || ALL} onValueChange={(v) => set("setup", v === ALL ? "" : v)}>

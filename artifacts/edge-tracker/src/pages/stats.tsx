@@ -22,7 +22,9 @@ import {
   fmtDayKey, periodRanges, preferredMetric, spansYears, toKey,
   type HorizonFilter, type Metric, type PeriodKey, type Range,
 } from "@/components/stats/metrics";
-import { PersonSelect } from "@/components/people/person-select";
+import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
+import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
+import { statsScope } from "@/components/stats/staff-data";
 import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
@@ -31,13 +33,17 @@ import { statsI18n } from "@/i18n/ns/stats";
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
  * weekday×session heatmap, where-I-make/lose table, best/worst trades and auto-insights.
  * Deep-dive breakdowns (conviction, emotions, patterns) live in /analytics.
- * Staff (whole desk / another trader) read server aggregates (GET /api/stats/aggregate, Волна 2 п. 2.5) — the same
- * cards from sums, no raw trades on open; a trader keeps the raw-trade maths over the own book.
+ * Staff = traders + extras (owner rule 2026-10-21): staff open on their own book and any single person is the trader
+ * path (raw trades, the equity chart with day hover and «Разбор дня»); only «Вся команда» reads server aggregates
+ * (GET /api/stats/aggregate, Волна 2 п. 2.5) — the same cards from sums, no raw trades on open.
  */
 
 const PREFS_KEY = "ws.stats.prefs.v2";
 type Prefs = { period: PeriodKey; metric: Metric | null; trader: string; dim: Dimension; horizon: HorizonFilter };
-/** DEV-01: the page opens on 90 days; «Всё время» (the whole book, tens of MB for staff) is on demand only. */
+/**
+ * DEV-01: the page opens on 90 days; «Всё время» (the whole book, tens of MB for staff) is on demand only.
+ * `trader`: a picked person, or "all" = the default (the own book; «Вся команда» is a per-visit pick, never stored).
+ */
 const DEFAULT_PREFS: Prefs = { period: "90d", metric: null, trader: "all", dim: "trader", horizon: "all" };
 
 function loadPrefs(): Prefs {
@@ -92,6 +98,8 @@ export default function Stats() {
     const urlTrader = new URLSearchParams(window.location.search).get("trader");
     return urlTrader ? { ...p, trader: urlTrader } : p;
   });
+  // «Вся команда»: an explicit pick (or a ?trader=all link) for this visit only.
+  const [team, setTeam] = useState(() => new URLSearchParams(window.location.search).get("trader") === "all");
   // Server-side window (DEV-01): the selected period first, the equally long previous one after it (deltas only),
   // only the picked trader. "Всё время" (on demand) still needs the whole (scoped) book.
   const ranges = useMemo(() => periodRanges(prefs.period), [prefs.period]);
@@ -100,9 +108,12 @@ export default function Stats() {
   // for the PropReports-only switch below.
   const solo = !isCurator;
   const me = user?.traderName ?? null;
-  const trader = solo ? (me && prefs.trader === me ? me : "all") : prefs.trader;
+  const scope = statsScope({ staff: isCurator, me, picked: prefs.trader, team });
+  const trader = solo ? (me && prefs.trader === me ? me : "all") : scope.trader ?? "all";
   const windowTrader = trader !== "all" ? trader : null;
-  const staff = isCurator;
+  /** The desk aggregate path: staff on «Вся команда» only. Everyone else (staff on one person too) reads raw trades. */
+  const staff = scope.team;
+  const pickTrader = (v: string) => { setTeam(v === TEAM); set("trader", v === TEAM ? "all" : v); };
   const raw = usePeriodTrades(
     { from: ranges.cur.from, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
     !staff,
@@ -145,7 +156,7 @@ export default function Stats() {
   const hasBroker = trader !== "all" && (perf.data?.reports ?? []).some((r) => r.traderName === trader);
   // A trader whose results live only in PropReports opens straight onto their broker report.
   useEffect(() => {
-    if (!me || trader !== "all" || isLoading || !perf.data) return;
+    if (!solo || !me || trader !== "all" || isLoading || !perf.data) return;
     const hasJournal = teamFacets.data ? teamFacets.data.traders.includes(me) : allTrades.some((tr) => (tr.trader ?? "").trim() === me);
     if (!hasJournal && perf.data.reports.some((r) => r.traderName === me)) setPrefs((p) => ({ ...p, trader: me }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,7 +188,7 @@ export default function Stats() {
   // One person's report: trade rows don't repeat the name (MAKSIM-37).
   const oneTrader = solo || trader !== "all";
   const scopeLabel =
-    (trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : personName(trader)) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
+    (trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : trader === me ? t("myTrades") : personName(trader)) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
 
   const reportMeta = () => ({
     title: t("reportTitle", { scope: scopeLabel }),
@@ -291,20 +302,12 @@ export default function Stats() {
             options={HORIZON_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
         </div>
-        {!solo && <PersonSelect
-          value={trader}
-          onValueChange={(v) => set("trader", v)}
-          allValue="all"
-          allLabel={t("wholeTeam")}
-          options={[
-            ...(me && traders.includes(me) ? [{ value: me, label: t("myTradesOf", { name: personName(me) }) }] : []),
-            ...traders.filter((t) => t !== me),
-            ...reportTraders,
-            ...(trader !== "all" && !traders.includes(trader) && !reportTraders.includes(trader) ? [trader] : []),
-          ]}
-          className="h-9 w-full sm:w-[200px]"
-          ariaLabel={t("traderAria")}
-        />}
+        {!solo && (
+          <StaffTraderPicker
+            value={scopePickerValue(scope)} onChange={pickTrader} me={me} names={[...traders, ...reportTraders]} teamLabel={t("wholeTeam")}
+            className="h-9 w-full sm:w-[220px]" ariaLabel={t("traderAria")}
+          />
+        )}
       </Toolbar>
 
       <StatsFacets fv={FV} data={FQ.data} loading={FQ.isFetching} error={FQ.isError} />
@@ -343,7 +346,7 @@ export default function Stats() {
                   <Button className="rounded-full" onClick={() => set("period", "all")}>{t("showAll")}</Button>
                 )}
                 {!solo && trader !== "all" && (
-                  <Button variant="outline" className="rounded-full" onClick={() => set("trader", "all")}>{t("wholeTeam")}</Button>
+                  <Button variant="outline" className="rounded-full" onClick={() => pickTrader(TEAM)}>{t("wholeTeam")}</Button>
                 )}
                 {prefs.horizon !== "all" && (
                   <Button variant="outline" className="rounded-full" onClick={() => set("horizon", "all")}>{t("allHorizons")}</Button>
@@ -365,9 +368,9 @@ export default function Stats() {
 
           <ReportPanels
             d={d} staff={staff} agg={a} trades={trades} horizonBase={horizonBase} metric={metric} windowLabel={windowLabel}
-            trader={trader} horizon={prefs.horizon} dim={prefs.dim} oneTrader={oneTrader} solo={solo}
+            trader={trader} horizon={prefs.horizon} dim={prefs.dim} oneTrader={oneTrader} solo={oneTrader}
             onHorizon={(h) => set("horizon", h)} onDim={(x) => set("dim", x)}
-            onPickTrader={!solo && trader === "all" ? (name) => set("trader", name) : undefined}
+            onPickTrader={!solo && trader === "all" ? pickTrader : undefined}
           />
         </>
       )}

@@ -1,16 +1,26 @@
 /**
- * Data sources of /stats (Волна 2 п. 2.5): a trader reads his own raw trades (small, the page computes everything);
- * staff (whole desk / another trader) read server aggregates — GET /api/stats/aggregate for the period and, after it,
- * the equally long previous period (lite) for the deltas. Raw trades of a staff window are fetched only on demand
+ * Data sources of /stats (Волна 2 п. 2.5): one person's book — a trader's own, and for staff (= traders + extras,
+ * owner rule 2026-10-21) their own by default or any picked person — is read as raw trades (the page computes
+ * everything); only staff on «Вся команда» read server aggregates — GET /api/stats/aggregate for the period and, after
+ * it, the equally long previous period (lite) for the deltas. Raw trades of the desk window are fetched only on demand
  * (CSV / print), never on open.
  */
 import { useCallback } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { http } from "@/lib/api/http";
+import { resolveTraderScope, type TraderScope } from "@/components/people/staff-scope";
 import { field, useStatsAggregate, type StatsAggregate } from "./aggregate";
 import type { Metric, Range } from "./metrics";
 
-/** Server aggregates of the period and of the previous one (staff view). */
+/**
+ * Who /stats shows. `picked` is the stored pick ("all" = none → the viewer's own book); `team` the per-visit
+ * «Вся команда». The aggregate path is `team` only — staff on one person (themselves included) get the trader path.
+ */
+export function statsScope(o: { staff: boolean; me: string | null | undefined; picked: string; team: boolean }): TraderScope {
+  return resolveTraderScope({ staff: o.staff, me: o.me, picked: o.picked === "all" ? null : o.picked, team: o.team });
+}
+
+/** Server aggregates of the period and of the previous one (staff view of the whole team). */
 export function useStaffAggregates(q: { cur: Range; prev: Range | null; trader: string | null; horizon: string | null; facets?: string }, enabled: boolean) {
   const base = { scope: q.trader ? ("trader" as const) : ("desk" as const), trader: q.trader, horizon: q.horizon, facets: q.facets };
   const cur = useStatsAggregate({ ...base, from: q.cur.from, to: q.cur.to }, enabled);

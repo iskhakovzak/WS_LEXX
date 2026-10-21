@@ -42,7 +42,6 @@ export default {
     sideAll: "Все",
     horizon: "Горизонт",
     horizonAll: "Любой горизонт",
-    allTraders: "Все трейдеры",
     trader: "Трейдер",
     setup: "Сетап",
     allSetups: "Все сетапы",

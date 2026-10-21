@@ -40,7 +40,6 @@ export default {
     sideAll: "All",
     horizon: "Horizon",
     horizonAll: "Any horizon",
-    allTraders: "All traders",
     trader: "Trader",
     setup: "Setup",
     allSetups: "All setups",

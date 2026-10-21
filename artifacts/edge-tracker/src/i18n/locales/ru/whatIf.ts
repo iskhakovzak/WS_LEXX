@@ -14,7 +14,6 @@ export default {
   },
   periodAria: "Период",
   wholeTeam: "Вся команда",
-  myTrades: "Мои сделки ({name})",
   traderAria: "Трейдер",
   recalculating: "пересчитываем…",
   meta: "{trades} · {days} {period}",

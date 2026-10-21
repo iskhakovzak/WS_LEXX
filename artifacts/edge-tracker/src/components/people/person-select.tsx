@@ -27,6 +27,8 @@ type Props = {
   /** Adds a first option (e.g. «Все трейдеры») whose value is `allValue` ("" by default). */
   allLabel?: string;
   allValue?: string;
+  /** An option listed above `allLabel` (staff pickers: «Мои сделки (Имя)» before «Вся команда»); searched like the rest. */
+  lead?: { value: string; label: string };
   /** Leading icon inside the trigger. */
   icon?: React.ElementType;
   placeholder?: string;
@@ -51,7 +53,7 @@ const norm = (o: PersonOption): Opt => {
 };
 
 export function PersonSelect({
-  value, onValueChange, options, allLabel, allValue = "", icon: Icon, placeholder: placeholderProp, self, selfSuffix: selfSuffixProp, ariaLabel, className, contentClassName,
+  value, onValueChange, options, allLabel, allValue = "", lead, icon: Icon, placeholder: placeholderProp, self, selfSuffix: selfSuffixProp, ariaLabel, className, contentClassName,
   disabled, align = "start", id,
 }: Props) {
   const { t } = commonI18n.useT();
@@ -60,7 +62,10 @@ export function PersonSelect({
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const aliases = usePeopleAliases();
-  const opts = React.useMemo(() => options.map(norm), [options]);
+  const opts = React.useMemo(
+    () => (lead ? [{ value: lead.value, label: lead.label }, ...options.map(norm).filter((o) => o.value !== lead.value)] : options.map(norm)),
+    [options, lead],
+  );
   const isAll = !value || value === allValue;
   const current = !isAll && value ? opts.find((o) => o.value === value) ?? { value, label: personName(value) } : null;
   // label → the other spelling (the Latin alias in RU), only when it is not what the label already shows.
@@ -127,10 +132,15 @@ export function PersonSelect({
           </div>
           <CommandPrimitive.List className="max-h-[min(20rem,50dvh)] overflow-y-auto overscroll-contain p-1">
             {hits.length === 0 && <div role="status" className="px-3 py-6 text-center text-sm text-muted-foreground">{t("people.nothing")}</div>}
+            {lead && pq.empty && (
+              <Row value={`p:${lead.value}`} selected={lead.value === value} onSelect={() => pick(lead.value)}>
+                <span className="min-w-0 truncate" title={lead.label}>{lead.label}</span>
+              </Row>
+            )}
             {allLabel && pq.empty && (
               <Row value="__all" selected={isAll} onSelect={() => pick(allValue)}>{allLabel}</Row>
             )}
-            {hits.map((h) => {
+            {hits.filter((h) => !(lead && pq.empty && h.item.value === lead.value)).map((h) => {
               const alias = altOf.get(h.item.label);
               return (
                 <Row key={h.item.value} value={`p:${h.item.value}`} selected={h.item.value === value} onSelect={() => pick(h.item.value)}>

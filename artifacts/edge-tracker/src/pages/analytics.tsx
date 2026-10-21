@@ -7,6 +7,9 @@ import { field, useStatsAggregate } from "@/components/stats/aggregate";
 import { type Dimension as StatsDimension } from "@/components/stats/breakdown-panel";
 import { AggOverview } from "@/components/stats/agg-overview";
 import { comparePersonNames, personName } from "@/i18n";
+import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
+import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
+import { analyticsDataPlan, type AnalyticsTabKey } from "@/components/analytics-page/data-plan";
 import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Page, PageHeader, Panel, Segmented, EmptyState, StatGrid } from "@/components/ds";
@@ -30,9 +33,7 @@ import {
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 
-type TabKey = "overview" | "edge" | "matrix" | "whatif" | "montecarlo" | "desk" | "psychology" | "pro";
-/** Tabs that compute from every trade: staff load the raw trades only when one of them is open (Волна 2 п. 2.5). */
-const RAW_TABS: readonly TabKey[] = ["edge", "whatif", "montecarlo", "psychology", "pro"];
+type TabKey = AnalyticsTabKey;
 
 // Hotkeys follow the VISIBLE order (1…N): a trader without the staff-only tab gets 1–7, not 1–8 with a gap (MAKSIM-32).
 const TAB_DEFS: { value: TabKey; icon: typeof LayoutDashboard; curatorOnly?: boolean }[] = [
@@ -95,38 +96,56 @@ export default function Analytics() {
   const [saved] = useState(loadSaved);
   const [tab, setTab] = useState<TabKey>(saved.tab);
   const [filters, setFilters] = useState<AnalyticsFilters>(saved.filters);
+  // «Вся команда» (staff): an explicit pick for this visit, never restored — the page opens on the viewer's own book.
+  const [teamPick, setTeamPick] = useState(false);
 
   // Server-side window (DEV-01): the period first, the equally long previous one after it (comparison only), one
   // trader when picked. "Всё время" (on demand) still loads the whole scoped book.
-  // Staff (Волна 2 п. 2.5): «Обзор», «Матрица», «Деск» run on server sums — the raw trades of the desk load only
-  // when a per-trade tab is open; a trader keeps the own raw trades.
+  // Staff = traders + extras (owner rule 2026-10-21): one person — the viewer's own name unless another is picked —
+  // is exactly the trader experience on raw trades; server sums (Волна 2 п. 2.5) only for «Вся команда» on
+  // «Обзор», «Матрица», «Деск» (components/analytics-page/data-plan).
   const staffView = user?.role === "curator" || user?.role === "admin";
-  const needRaw = !staffView || RAW_TABS.includes(tab);
+  const me = user?.traderName ?? null;
+  const plan = analyticsDataPlan({ staff: staffView, me, picked: filters.trader, team: teamPick, tab });
+  const { scope, needRaw } = plan;
+  const scopeTrader = scope.trader ?? "";
+  /** The filters every tab sees: for staff on one person they carry that name (the own one by default). */
+  const view = useMemo(() => (staffView && filters.trader !== scopeTrader ? { ...filters, trader: scopeTrader } : filters), [staffView, filters, scopeTrader]);
   const periodWin = useMemo(() => periodRange(filters.period), [filters.period]);
   const rawQ = usePeriodTrades({
     from: periodWin?.from ?? null,
     prevFrom: periodWin?.prevFrom ?? null,
     prevTo: periodWin?.prevTo ?? null,
-    trader: filters.trader || null,
+    trader: scope.trader,
   }, needRaw);
   const aggBase = {
-    scope: "desk" as const, trader: filters.trader || null, side: filters.side || null, horizon: filters.horizon || null,
+    scope: "desk" as const, trader: null, side: filters.side || null, horizon: filters.horizon || null,
     ticker: filters.ticker || null, setup: filters.setup || null, account: filters.account || null, source: filters.source || null,
   };
-  const aggQ = useStatsAggregate({ ...aggBase, from: periodWin?.from ?? null, to: periodWin?.to ?? null }, staffView);
+  const aggQ = useStatsAggregate({ ...aggBase, from: periodWin?.from ?? null, to: periodWin?.to ?? null }, plan.aggregate);
   const aggPrevQ = useStatsAggregate(
     { ...aggBase, from: periodWin?.prevFrom ?? null, to: periodWin?.prevTo ?? null, lite: true },
-    staffView && !!periodWin && tab === "overview" && aggQ.isSuccess,
+    plan.aggregate && !!periodWin && tab === "overview" && aggQ.isSuccess,
   );
-  const agg = staffView ? aggQ.data : undefined;
+  const agg = plan.aggregate ? aggQ.data : undefined;
   const trades = useMemo(() => rawQ.data ?? [], [rawQ.data]);
-  const isLoading = (needRaw && rawQ.isLoading) || (staffView && aggQ.isLoading);
-  const isError = (needRaw && rawQ.isError) || (staffView && aggQ.isError);
-  const refetch = useCallback(() => (staffView ? aggQ.refetch() : rawQ.refetch()), [staffView, aggQ, rawQ]);
+  // Only the source the visible tab reads: a failed desk aggregate never blanks a per-trade tab, and vice versa.
+  const isLoading = needRaw ? rawQ.isLoading : aggQ.isLoading;
+  const isError = needRaw ? rawQ.isError : aggQ.isError;
+  const refetch = useCallback(() => (needRaw ? rawQ.refetch() : aggQ.refetch()), [needRaw, aggQ, rawQ]);
   const prevLoading = rawQ.prevLoading;
-  const facets = useTradesBookFacets();
+  const facets = useTradesBookFacets(); // staff: the whole scope — the people of the picker
+  const personFacets = useTradesBookFacets({ trader: scope.trader, enabled: staffView && !!scope.trader });
+  const bookFacets = staffView && scope.trader ? personFacets : facets;
   // The book itself is empty (not just the chosen window) — only then show the "no trades yet" state.
-  const bookEmpty = facets.data ? facets.data.total === 0 : !staffView && trades.length === 0 && filters.period === "all" && !filters.trader;
+  const bookEmpty = bookFacets.data ? bookFacets.data.total === 0 : !staffView && trades.length === 0 && filters.period === "all" && !filters.trader;
+  /** Staff picker: TEAM, the own name (kept as no pick) or another person. */
+  const pickTrader = useCallback((v: string) => {
+    setTeamPick(v === TEAM);
+    setFilters((f) => ({ ...f, trader: v === TEAM || v === me ? "" : v }));
+  }, [me]);
+  /** Tabs hand back `view`: the implicit own name is not a filter. */
+  const changeFilters = useCallback((f: AnalyticsFilters) => setFilters(staffView && me && f.trader === me ? { ...f, trader: "" } : f), [staffView, me]);
   const [statsDim, setStatsDim] = useState<StatsDimension>("trader");
   const [unitPref, setUnitPref] = useState<Unit>(saved.unit);
   const [dimension, setDimension] = useState<DimensionKey>(saved.dimension);
@@ -179,47 +198,48 @@ export default function Analytics() {
     if (!visibleTabs.some((x) => x.value === tab)) setTab("overview");
   }, [visibleTabs, tab]);
 
+  // Everyone with trades in the viewer's scope (traders, curators, admins) — the staff picker's people.
+  const pickerNames = useMemo(
+    () => [...new Set([...(facets.data?.traders ?? []), ...trades.map((tr) => tr.trader ?? "")].filter((x) => !!x))].sort(comparePersonNames),
+    [facets.data, trades],
+  );
   const options: FilterOptions = useMemo(() => {
-    const traders = [...new Set([...(facets.data?.traders ?? []), ...trades.map((tr) => tr.trader ?? "")].filter((x) => !!x))]
-      .sort(comparePersonNames);
     const o = agg?.options;
     if (o) {
-      return {
-        traders, setups: o.setups, hasNoSetup: o.hasNoSetup, tickers: o.tickers, accounts: o.accounts, hasMixedSources: o.sources.length > 1,
-      };
+      return { setups: o.setups, hasNoSetup: o.hasNoSetup, tickers: o.tickers, accounts: o.accounts, hasMixedSources: o.sources.length > 1 };
     }
-    const scope = applyNonPeriodFilters(trades, { ...DEFAULT_FILTERS, trader: filters.trader });
-    const setups = [...new Set(scope.map((tr) => tr.setup?.trim()).filter((x): x is string => !!x))].sort();
+    const book = applyNonPeriodFilters(trades, { ...DEFAULT_FILTERS, trader: view.trader });
+    const setups = [...new Set(book.map((tr) => tr.setup?.trim()).filter((x): x is string => !!x))].sort();
     const counts = new Map<string, number>();
-    scope.forEach((tr) => { const k = (tr.ticker ?? "").toUpperCase(); if (k) counts.set(k, (counts.get(k) ?? 0) + 1); });
+    book.forEach((tr) => { const k = (tr.ticker ?? "").toUpperCase(); if (k) counts.set(k, (counts.get(k) ?? 0) + 1); });
     const tickers = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k]) => k);
-    const accounts = [...new Set(scope.map(accountOf).filter(Boolean))].sort();
-    const sources = new Set(scope.map(sourceOf));
-    return { traders, setups, hasNoSetup: scope.some((tr) => !tr.setup), tickers, accounts, hasMixedSources: sources.size > 1 };
-  }, [trades, filters.trader, facets.data, agg]);
+    const accounts = [...new Set(book.map(accountOf).filter(Boolean))].sort();
+    const sources = new Set(book.map(sourceOf));
+    return { setups, hasNoSetup: book.some((tr) => !tr.setup), tickers, accounts, hasMixedSources: sources.size > 1 };
+  }, [trades, view.trader, agg]);
 
-  const filtered = useMemo(() => applyAnalyticsFilters(trades, filters), [trades, filters]);
+  const filtered = useMemo(() => applyAnalyticsFilters(trades, view), [trades, view]);
   const current = filtered.current;
   // The comparison window loads after the current one: no deltas until it is there (never a half-loaded «previous»).
   const previous = prevLoading ? null : filtered.previous;
   const hasR = useMemo(() => (agg ? field(agg.total, "rN") > 0 : current.some((tr) => realizedR(tr) != null)), [agg, current]);
   const hasPnl = useMemo(() => (agg ? field(agg.total, "pnlN") > 0 : current.some((tr) => pnlValue(tr) != null)), [agg, current]);
   /** Trades of the window after the filters (staff: the server total). */
-  const count = agg && !needRaw ? field(agg.total, "n") : current.length;
+  const count = agg ? field(agg.total, "n") : current.length;
   const unit: Unit | null = unitPref === "usd" && hasPnl ? "usd" : hasR ? "r" : hasPnl ? "usd" : null;
 
   const openDimension = useCallback((d: DimensionKey) => { setDimension(d); setTab("edge"); }, []);
 
-  const psychUser = isCurator ? (filters.trader || user?.traderName || "") : (user?.traderName ?? "");
+  const psychUser = isCurator ? (scopeTrader || me || "") : (me ?? "");
 
   const summary = useMemo(() => {
     const parts = [commonI18n.t("units.trades", { count })];
-    parts.push(personName(filters.trader) || (isCurator ? t("summary.team") : t("summary.mine")));
+    parts.push(scope.self ? t("summary.mine") : scope.team ? t("summary.team") : personName(scope.trader));
     parts.push(t(`period.${filters.period}`).toLowerCase());
     if (filters.horizon) parts.push(horizonLabel(filters.horizon).toLowerCase());
     if (!hasPnl && hasR) parts.push(t("summary.rOnly"));
     return parts.filter(Boolean).join(" · ");
-  }, [count, filters, hasPnl, hasR, isCurator, t]);
+  }, [count, filters, hasPnl, hasR, scope, t]);
   const lastKey = visibleTabs[visibleTabs.length - 1]?.key;
   const [hotBefore, hotAfter] = t("hotkeys", { range: "\u0000" }).split("\u0000");
 
@@ -238,23 +258,29 @@ export default function Analytics() {
         <Segmented<TabKey> ariaLabel={t("tabsAria")} options={visibleTabs} value={tab} onChange={setTab} className="self-start" />
       </PageHeader>
 
-      {!isError && !isLoading && !bookEmpty && (
+      {/* Staff keep the trader picker on an empty / failed book too — the way to another person or the team. */}
+      {!isLoading && (staffView || (!isError && !bookEmpty)) && (
         <FilterBar
           filters={filters}
-          onChange={setFilters}
+          onChange={changeFilters}
           options={options}
           unit={unit ?? unitPref}
           onUnitChange={setUnitPref}
           hasPnl={hasPnl}
           hasR={hasR}
-          showTrader={isCurator}
+          traderPicker={staffView ? (
+            <StaffTraderPicker
+              value={scopePickerValue(scope)} onChange={pickTrader} me={me} names={pickerNames}
+              ariaLabel={t("filters.trader")} className="h-9 w-auto min-w-[160px] max-w-[240px]"
+            />
+          ) : undefined}
           showSource={isCurator}
           className="lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:bg-[var(--sticky-bg)]"
         />
       )}
 
       {!isError && (tab === "overview" || bookEmpty) && (
-        <BrokerStatsCard trader={(isCurator && filters.trader) || user?.traderName} />
+        <BrokerStatsCard trader={(isCurator && scopeTrader) || user?.traderName} />
       )}
 
       {isError ? (
@@ -281,7 +307,9 @@ export default function Analytics() {
             icon={BarChart3}
             title={t("bookEmpty.title")}
             description={t("bookEmpty.description")}
-            action={<Button asChild><Link href="/trades">{t("bookEmpty.action")}</Link></Button>}
+            action={staffView && !scope.team
+              ? <Button variant="outline" onClick={() => pickTrader(TEAM)}>{commonI18n.t("people.wholeTeam")}</Button>
+              : <Button asChild><Link href="/trades">{t("bookEmpty.action")}</Link></Button>}
           />
         </Panel>
       ) : (
@@ -292,7 +320,7 @@ export default function Analytics() {
           transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
         >
           {tab === "psychology" ? (
-            <PsychologyTab userId={psychUser} isOwn={psychUser === user?.traderName} filters={filters} trades={current} />
+            <PsychologyTab userId={psychUser} isOwn={psychUser === user?.traderName} filters={view} trades={current} />
           ) : count === 0 ? (
             <Panel>
               <EmptyState
@@ -307,27 +335,27 @@ export default function Analytics() {
               agg={agg} previous={aggPrevQ.data ?? null} unit={unit} horizon={filters.horizon}
               dimension={statsDim} onDimension={setStatsDim}
               onHorizon={(h) => setFilters((f) => ({ ...f, horizon: h }))}
-              onPickTrader={!filters.trader ? (name) => setFilters((f) => ({ ...f, trader: name })) : undefined}
+              onPickTrader={pickTrader}
               onOpenEdge={() => openDimension("setup")}
             />
           ) : tab === "overview" ? (
             <OverviewTab trades={current} previous={previous} unit={unit} onOpenDimension={openDimension} />
           ) : tab === "matrix" ? (
-            <EdgeMatrixTab filters={filters} unit={unit} hasR={hasR} hasPnl={hasPnl} isCurator={isCurator} />
+            <EdgeMatrixTab filters={view} unit={unit} hasR={hasR} hasPnl={hasPnl} isCurator={isCurator} />
           ) : tab === "whatif" ? (
-            <WhatIfTab trades={current} unit={unit} filters={filters} />
+            <WhatIfTab trades={current} unit={unit} filters={view} />
 
           ) : tab === "montecarlo" ? (
-            <MonteCarloTab trades={current} unit={unit} filters={filters} />
+            <MonteCarloTab trades={current} unit={unit} filters={view} />
           ) : tab === "desk" ? (
-            <DeskTab filters={filters} unit={unit} />
+            <DeskTab filters={view} unit={unit} />
           ) : tab === "edge" ? (
             <EdgeTab
               trades={current}
               dimension={dimension}
               onDimensionChange={setDimension}
-              filters={filters}
-              onFiltersChange={setFilters}
+              filters={view}
+              onFiltersChange={changeFilters}
               hasR={hasR}
               hasPnl={hasPnl}
               topPatterns={topPatterns}

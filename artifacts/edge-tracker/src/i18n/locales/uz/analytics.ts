@@ -40,7 +40,6 @@ export default {
     sideAll: "Hammasi",
     horizon: "Gorizont",
     horizonAll: "Har qanday gorizont",
-    allTraders: "Barcha treyderlar",
     trader: "Treyder",
     setup: "Setap",
     allSetups: "Barcha setaplar",

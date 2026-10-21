@@ -343,6 +343,9 @@ export default {
     nothing: "Никого не нашли",
     hintLayout: "Можно вводить латиницей, кириллицей и даже в другой раскладке",
     selfSuffix: "(я)",
+    /** Staff trader pickers (components/people/staff-trader-picker): the own book first, then the desk. */
+    myTradesOf: "Мои сделки ({name})",
+    wholeTeam: "Вся команда",
   },
   /** components/ds.tsx, ds/states.tsx — shared design-system words. */
   ds: {

@@ -1,7 +1,8 @@
 /**
  * «Поведение и сетапы» — профиль трейдера, поведенческие паттерны с $-стоимостью, трендом и правилом,
  * индекс дисциплины по дням с лентой сессии, «мои триггеры» и авто-классификатор сетапов (правила без ИИ)
- * с интервалами, матрицами и принятием в сделку. Staff выбирает трейдера; трейдер видит себя.
+ * с интервалами, матрицами и принятием в сделку. Трейдер видит себя; staff (= трейдер + доп. функции) — тоже себя
+ * по умолчанию, и любого человека со сделками через выбор (components/behavior/behavior-trader).
  * URL: ?trader=&period=&tab=&day=.
  */
 import * as React from "react";
@@ -18,7 +19,6 @@ import {
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { behaviorI18n } from "@/i18n/ns/behavior";
-import { comparePersonNames } from "@/i18n";
 
 const tb = behaviorI18n.t;
 import { TraderProfilePanel } from "@/components/behavior/trader-profile";
@@ -31,7 +31,9 @@ import { SetupsTable } from "@/components/behavior/setups-table";
 import { SetupsAggregates } from "@/components/behavior/setups-aggregates";
 import { SetupsMatrix } from "@/components/behavior/setups-matrix";
 import { ComputeAllBar } from "@/components/behavior/setups-compute";
-import { PersonSelect } from "@/components/people/person-select";
+import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
+import { useTradesBookFacets } from "@/hooks/use-trades-window";
+import { fallbackBehaviorTrader, initialBehaviorTrader } from "@/components/behavior/behavior-trader";
 
 type Tab = "behavior" | "setups";
 type Period = "30d" | "90d" | "ytd" | "all";
@@ -69,7 +71,8 @@ function writeParams(trader: string | null, period: Period, tab: Tab, day: strin
   window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
 }
 
-const TRADER_KEY = "behavior.trader";
+// v2: the old key also held the «first trader» the page used to swap a staff member's own name for.
+const TRADER_KEY = "behavior.trader.v2";
 function readStoredTrader(): string | null {
   try { return localStorage.getItem(TRADER_KEY) || null; } catch { return null; }
 }
@@ -78,31 +81,26 @@ function storeTrader(name: string) {
 }
 
 export default function BehaviorPage() {
-  const { user, isCurator, dbUsers, canEdit } = useAuth();
+  const { user, isCurator, canEdit } = useAuth();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const initial = React.useMemo(readParams, []);
   const [tab, setTab] = React.useState<Tab>(initial.tab);
   const [period, setPeriod] = React.useState<Period>(initial.period);
-  // Staff: an explicit ?trader= wins, then the trader picked last time on this device.
-  const [trader, setTrader] = React.useState<string | null>(initial.trader && isCurator ? initial.trader : isCurator ? (readStoredTrader() ?? me) : me);
+  // Staff: an explicit ?trader= wins, then the person picked by hand last time, then their own name.
+  const [trader, setTrader] = React.useState<string | null>(() =>
+    initialBehaviorTrader({ staff: isCurator, me, urlTrader: initial.trader, stored: isCurator ? readStoredTrader() : null }));
   const [day, setDay] = React.useState<string | null>(initial.day);
+  // Everyone with trades in the viewer's scope (traders, curators, admins) — the staff picker's people.
+  const facets = useTradesBookFacets({ enabled: isCurator });
+  const names = facets.data?.traders;
 
   React.useEffect(() => { if (!trader && me) setTrader(me); }, [trader, me]);
-  React.useEffect(() => { if (isCurator && trader) storeTrader(trader); }, [isCurator, trader]);
-  // A curator who does not trade landed on own (empty) book: open the first trader instead of «Нет сделок».
   React.useEffect(() => {
-    if (!isCurator || initial.trader || trader !== me || !dbUsers.length) return;
-    if (dbUsers.some((u) => u.name === me && u.role === "trader")) return;
-    const first = dbUsers.filter((u) => u.active && !u.banned && u.role === "trader").sort((a, b) => a.name.localeCompare(b.name, "ru"))[0];
-    if (first) setTrader(first.name);
-  }, [isCurator, initial.trader, trader, me, dbUsers]);
+    const first = fallbackBehaviorTrader({ staff: isCurator, me, trader, names: names ?? [] });
+    if (first) setTrader(first);
+  }, [isCurator, me, trader, names]);
   React.useEffect(() => { writeParams(isCurator ? trader : null, period, tab, day); }, [trader, period, tab, day, isCurator]);
-
-  const traders = React.useMemo(() => {
-    const list = dbUsers.filter((u) => u.active && !u.banned && (u.role === "trader" || u.name === trader));
-    if (trader && !list.some((u) => u.name === trader)) list.push({ id: -1, name: trader, role: "trader", active: true, theme: "default" } as (typeof dbUsers)[number]);
-    return list.sort((a, b) => comparePersonNames(a.name, b.name));
-  }, [dbUsers, trader]);
+  const pickTrader = (v: string) => { setTrader(v); setDay(null); storeTrader(v); };
 
   const range = React.useMemo(() => rangeOf(period), [period]);
   // Сервер сам ограничивает scope: трейдер всегда видит только себя, staff — выбранного.
@@ -119,7 +117,7 @@ export default function BehaviorPage() {
         actions={
           <>
             {isCurator && (
-              <PersonSelect value={trader ?? ""} onValueChange={(v) => { setTrader(v); setDay(null); }} options={traders.map((u) => u.name)} className="w-44" ariaLabel={tb("traderAria")} />
+              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="w-52" ariaLabel={tb("traderAria")} />
             )}
             <Segmented ariaLabel={tb("periodAria")} value={period} onChange={setPeriod} options={periodOptions()} />
           </>

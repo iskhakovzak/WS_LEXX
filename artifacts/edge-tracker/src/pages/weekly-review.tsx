@@ -20,10 +20,11 @@ import { http } from "@/lib/api/http";
 import { ReviewStatusPill } from "@/components/weekly-review/collab";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
 import { PartnersView } from "@/components/weekly-review/partners-view";
-import { PersonSelect } from "@/components/people/person-select";
+import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
+import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 import { shellI18n } from "@/i18n/ns/shell";
-import { comparePersonNames, personName } from "@/i18n";
+import { personName } from "@/i18n";
 
 type View = "trader" | "curator" | "partners";
 const VIEWS: View[] = ["trader", "curator", "partners"];
@@ -88,8 +89,9 @@ export default function WeeklyReviewPage() {
   const [week, setWeek] = React.useState<string>(() => initial.week ?? (reviewLastWeek(nyDate()) ? shiftWeek(currentWeekKey(), -1) : currentWeekKey()));
   const [trader, setTrader] = React.useState<string | null>(initial.trader && staff ? initial.trader : me);
   const [view, setView] = React.useState<View>(
-    // A link that names a trader (chart click-through, day report) opens that trader's week, not the desk.
-    !staff ? "trader" : initial.view ?? (initial.trader ? (initial.trader !== me ? "curator" : "trader") : "partners"),
+    // A link that names a trader (chart click-through, day report) opens that trader's week, not the desk. Staff are
+    // traders too (owner rule 2026-10-21): with no link they open their OWN «Трейдер» week; «Партнёрам» is a tab.
+    !staff ? "trader" : initial.view ?? (initial.trader ? (initial.trader !== me ? "curator" : "trader") : me ? "trader" : "partners"),
   );
   const effectiveView: View = staff ? view : "trader";
 
@@ -106,11 +108,13 @@ export default function WeeklyReviewPage() {
   const today = currentWeekKey();
   const isFuture = week >= today;
 
-  const traders = React.useMemo(() => {
-    const list = dbUsers.filter((u) => u.active && !u.banned && (u.role === "trader" || u.name === trader || u.name === me));
-    if (trader && !list.some((u) => u.name === trader)) list.push({ id: -1, name: trader, role: "trader", active: true, theme: "default" } as (typeof dbUsers)[number]);
-    return list.sort((a, b) => comparePersonNames(a.name, b.name));
-  }, [dbUsers, trader, me]);
+  // The picker: everyone with trades in the viewer's scope (traders, curators, admins) plus active traders without
+  // trades yet (a week to review), the own week first.
+  const pickerFacets = useTradesBookFacets({ enabled: staff });
+  const pickerNames = React.useMemo(
+    () => [...(pickerFacets.data?.traders ?? []), ...dbUsers.filter((u) => u.active && !u.banned && u.role === "trader").map((u) => u.name)],
+    [pickerFacets.data, dbUsers],
+  );
 
   const copy = async (md: boolean) => {
     if (!doc) return;
@@ -173,7 +177,10 @@ export default function WeeklyReviewPage() {
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
           {staff && perTrader && (
-            <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders.map((u) => u.name)} className="w-44" ariaLabel={t("page.traderAria")} />
+            <StaffTraderPicker
+              value={trader ?? ""} onChange={(v) => setTrader(v)} me={me} names={pickerNames} team={false}
+              className="w-52" ariaLabel={t("page.traderAria")}
+            />
           )}
           {perTrader && (
             <DropdownMenu>

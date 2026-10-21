@@ -31,7 +31,6 @@ import { dashboardI18n } from "@/i18n/ns/dashboard";
 import {
   SECTION_WIDTH,
   useDashboardEquity,
-  useDashboardPrefs,
   useDashboardToday,
   useEodDay,
   useEodStatus,
@@ -41,6 +40,7 @@ import {
   useRiskMe,
   type SectionId,
 } from "@/components/dashboard/use-dashboard";
+import { useDashboardPrefs } from "@/components/dashboard/dashboard-prefs";
 
 // Opt-in extras (off by default, switched on in «Настроить») and the open-positions panel: own chunks, so the first screen and every other page
 // don't download them. Resolved after i18nReady() like route chunks (no flash of RU with EN/UZ).
@@ -99,14 +99,11 @@ export default function Dashboard() {
   const staff = isCurator;
   const authed = !isGuest;
 
-  const { prefs, update, reset } = useDashboardPrefs(staff ? "team" : "me", user ? `${user.role}:${userName ?? ""}` : null);
-  // Staff without own trades (an admin with no trading account) get no trader blocks: the team view only, no «Мои»
-  // toggle (OWNER-08). Decided by one light read of their own recent trades.
-  const ownRecentQ = useRecentTrades("me", authed && staff);
-  const staffTrades = !staff || ownRecentQ.isLoading || (ownRecentQ.data?.length ?? 0) > 0;
-  const canChooseScope = staff && staffTrades;
-  // Team scope is for staff only; a trader always sees their own desk.
-  const scope = staff ? (staffTrades ? prefs.scope : "team") : "me";
+  // Staff = traders + extras (owner rule 2026-10-21): everyone opens on «Мои» (own day line, next step, quests,
+  // check-in); staff always have the «Мои» / «Команда» toggle. A trader always sees their own desk.
+  const { prefs, update, reset } = useDashboardPrefs("me", user ? `${user.role}:${userName ?? ""}` : null);
+  const canChooseScope = staff;
+  const scope = staff ? prefs.scope : "me";
   const on = (id: SectionId) => authed && !prefs.hidden.includes(id);
 
   const todayQ = useDashboardToday(scope, authed);
@@ -254,7 +251,7 @@ export default function Dashboard() {
         onRetry={() => todayQ.refetch()}
         guest={isGuest}
         scope={scope}
-        onScopeChange={(s) => update({ scope: s })}
+        onScopeChange={(s) => update({ scope: s, scopePicked: true })}
         canChooseScope={canChooseScope}
         userName={userName}
         dayLine={<DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} quests={<QuestStrip enabled={dailyOn} />} phoneSplit />}

@@ -29,7 +29,6 @@ export default {
   horizonAria: "Горизонт",
   traderAria: "Трейдер",
   myTrades: "Мои сделки",
-  myTradesOf: "Мои сделки ({name})",
   wholeTeam: "Вся команда",
   reportTitle: "Отчёт WS_LEXX — {scope}",
   reportPeriod: "{label} ({range})",

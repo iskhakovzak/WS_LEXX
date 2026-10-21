@@ -31,13 +31,14 @@ import { journalI18n } from "@/i18n/ns/journal";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { comparePersonNames } from "@/i18n";
+import { accountToPick, initialJournalAccount, pickToAccount } from "@/components/journal/journal-account";
 import { reviewMarks, useDefaultJournalDay } from "@/components/journal/use-default-day";
 import { OPEN_DAY_LOOKBACK } from "@/components/journal/default-day";
 import { EodFlow } from "@/components/eod/EodFlow";
 import { EodStatusBadge } from "@/components/eod/EodStatusCard";
 import { EodQueuePanel } from "@/components/eod/EodQueuePanel";
 import { useEodQueue, useEodRange, type EodDayMark } from "@/components/eod/eod-api";
-import { PersonSelect } from "@/components/people/person-select";
+import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { isImxTrade } from "@/lib/trade-facets";
 
@@ -70,7 +71,7 @@ function initialFromUrl(): { date: string | null; trader: string | null; eod: bo
  * for the curator, the review queue. Trades come in automatically; nothing here asks to enter trades.
  */
 export default function JournalPage() {
-  const { user, isCurator, dbUsers } = useAuth();
+  const { user, isCurator } = useAuth();
   const traderName = user?.traderName ?? null;
   const today = todayStr();
 
@@ -80,13 +81,9 @@ export default function JournalPage() {
   // «Разбор по сделкам» (optional per-trade review) replaces the reflection column for the trader's own day.
   const [eodMode, setEodMode] = useState<boolean>(url.eod);
   const [view, setView] = useState<View>(isCurator ? url.view : "day");
-  // Curator: "" = whole team, or a single trader. Trader: always themselves.
-  const [account, setAccount] = useState<string>(() => {
-    if (!isCurator) return traderName ?? "";
-    if (url.trader != null) return url.trader;
-    // A curator's own journal is usually empty — the team day is the useful default until they pick someone.
-    return readLS(ACCOUNT_KEY) ?? (user?.role === "trader" ? traderName ?? "" : "");
-  });
+  // Staff: their own day by default, "" = the whole team, or another person (components/journal/journal-account).
+  const [account, setAccount] = useState<string>(() =>
+    initialJournalAccount({ staff: isCurator, me: traderName, urlTrader: url.trader, stored: readLS(ACCOUNT_KEY) }));
   const effectiveAccount = isCurator ? account : traderName ?? "";
 
   // Saturday / Sunday: open Friday's day (the one to review), not an empty weekend day. The «today» jump (button, key T)
@@ -143,12 +140,13 @@ export default function JournalPage() {
     trader: isCurator && effectiveAccount ? effectiveAccount : null,
   });
   const bookFacets = useTradesBookFacets({ trader: isCurator && effectiveAccount ? effectiveAccount : null });
+  const deskFacets = useTradesBookFacets({ enabled: isCurator }); // the picker: everyone with trades (any role)
 
   const allTraders = useMemo(() => {
-    const names = new Set<string>(dbUsers.filter((u) => u.role === "trader" || u.name === traderName).map((u) => u.name));
+    const names = new Set<string>(deskFacets.data?.traders ?? []);
     for (const t of trades) if (t.trader) names.add(t.trader);
     return Array.from(names).sort(comparePersonNames);
-  }, [dbUsers, traderName, trades]);
+  }, [deskFacets.data, trades]);
 
   // Days are keyed by the day the result is realised (exit day for overnight/swing), never by the entry day.
   const byDate = useMemo(() => groupByDate(trades), [trades]);
@@ -314,15 +312,15 @@ export default function JournalPage() {
                 ]}
               />
               {view === "day" && (
-                <PersonSelect
-                  value={effectiveAccount || ""}
-                  onValueChange={(v) => changeAccount(v)}
-                  options={allTraders}
-                  allLabel={t("page.wholeTeam")}
-                  self={traderName}
+                <StaffTraderPicker
+                  value={accountToPick(effectiveAccount)}
+                  onChange={(v) => changeAccount(pickToAccount(v))}
+                  me={traderName}
+                  names={allTraders}
+                  teamLabel={t("page.wholeTeam")}
                   icon={Users}
                   ariaLabel={tc("fields.trader")}
-                  className="w-full sm:w-[200px]"
+                  className="w-full sm:w-[220px]"
                 />
               )}
             </div>

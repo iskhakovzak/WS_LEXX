@@ -27,7 +27,6 @@ export default {
   horizonAria: "Horizon",
   traderAria: "Trader",
   myTrades: "My trades",
-  myTradesOf: "My trades ({name})",
   wholeTeam: "Whole team",
   reportTitle: "WS_LEXX report — {scope}",
   reportPeriod: "{label} ({range})",

@@ -338,6 +338,9 @@ export default {
     nothing: "Hech kim topilmadi",
     hintLayout: "Lotin, kirill yoki hatto boshqa klaviatura tartibida yozish mumkin",
     selfSuffix: "(men)",
+    /** Staff trader pickers (components/people/staff-trader-picker): the own book first, then the desk. */
+    myTradesOf: "Mening savdolarim ({name})",
+    wholeTeam: "Butun jamoa",
   },
   ds: {
     trend: "Trend: {from} → {to}",

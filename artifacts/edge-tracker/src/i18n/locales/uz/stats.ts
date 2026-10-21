@@ -27,7 +27,6 @@ export default {
   horizonAria: "Gorizont",
   traderAria: "Treyder",
   myTrades: "Mening savdolarim",
-  myTradesOf: "Mening savdolarim ({name})",
   wholeTeam: "Butun jamoa",
   reportTitle: "WS_LEXX hisoboti — {scope}",
   reportPeriod: "{label} ({range})",

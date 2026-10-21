@@ -48,7 +48,9 @@ export default function RatingsPage() {
   const staffQuests = useQuestsMe(!!me && isCurator);
   const questsOn = !!me && (!isCurator || (staffQuests.data?.quests?.length ?? 0) > 0);
 
-  const [tab, setTab] = useStoredState<Tab>("ratings.tab", isCurator ? "curator" : me ? "me" : "leaderboard", TABS);
+  // Staff = traders + extras (owner rule 2026-10-21): everyone with a trader name opens on their own «Мой прогресс»
+  // like a trader; the curator tab stays one click away. Who is rated does not change.
+  const [tab, setTab] = useStoredState<Tab>("ratings.tab", me ? "me" : isCurator ? "curator" : "leaderboard", TABS);
   // ?tab=quests (dashboard quest strip, rewards block, quest / achievement notifications) wins over the stored tab.
   const search = useSearch();
   useEffect(() => {

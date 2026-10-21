@@ -12,7 +12,6 @@ export default {
   },
   periodAria: "Davr",
   wholeTeam: "Butun jamoa",
-  myTrades: "Mening savdolarim ({name})",
   traderAria: "Treyder",
   recalculating: "qayta hisoblanmoqda…",
   meta: "{trades} · {days} {period}",

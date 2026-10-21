@@ -27,7 +27,8 @@ import { ExcludedTable } from "@/components/what-if/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/what-if/questions-bar";
 import { type Question, buildQuestions, changedDays, presetsWithLimits } from "@/components/what-if/presets";
 import { useLocation } from "wouter";
-import { PersonSelect } from "@/components/people/person-select";
+import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
+import { TEAM } from "@/components/people/staff-scope";
 
 /**
  * /what-if — «Что если» (was /simulator; old links with ?r= / ?p= / ?trader= redirect here): the trader's own closed trades re-run under other rules (server engine
@@ -168,17 +169,13 @@ export default function WhatIf() {
     <>
       <Segmented<PeriodKey> ariaLabel={t("periodAria")} value={period} onChange={setPeriod} options={periodOptions} />
       {isCurator && (
-        <PersonSelect
-          value={trader || ALL}
-          onValueChange={setTrader}
-          allValue={ALL}
-          allLabel={t("wholeTeam")}
-          options={[
-            ...(me && traders.includes(me) ? [{ value: me, label: t("myTrades", { name: personName(me) }) }] : []),
-            ...traders.filter((t) => t !== me),
-            ...(trader && trader !== ALL && !traders.includes(trader) ? [trader] : []),
-          ]}
-          className="h-10 w-[200px]"
+        <StaffTraderPicker
+          value={!trader || trader === ALL ? TEAM : trader}
+          onChange={(v) => setTrader(v === TEAM ? ALL : v)}
+          me={me}
+          names={traders}
+          teamLabel={t("wholeTeam")}
+          className="h-10 w-[220px]"
           ariaLabel={t("traderAria")}
         />
       )}

@@ -336,6 +336,9 @@ export default {
     nothing: "No one found",
     hintLayout: "Latin, Cyrillic or even the wrong keyboard layout works",
     selfSuffix: "(me)",
+    /** Staff trader pickers (components/people/staff-trader-picker): the own book first, then the desk. */
+    myTradesOf: "My trades ({name})",
+    wholeTeam: "Whole team",
   },
   ds: {
     trend: "Trend: {from} → {to}",
