@@ -8,6 +8,7 @@
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
  * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
  */
+import { useState } from "react";
 import { ChevronDown, Filter, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -95,10 +96,66 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
           <button type="button" className={LINK} onClick={() => onChange(setColumn(view, dim, keys, false))}>{t("none")}</button>
         </span>
       </header>
-      <ul className="flex max-h-[15rem] flex-col gap-px overflow-y-auto pr-0.5">
+      <ul className="flex max-h-[13rem] flex-col gap-px overflow-y-auto pr-0.5">
         {buckets.map((b) => <Row key={b.key} dim={dim} b={b} scale={scale} money={money} view={view} onChange={onChange} />)}
       </ul>
     </section>
+  );
+}
+
+type GroupId = (typeof FACET_GROUPS)[number]["id"];
+type Group = { id: GroupId; cols: { d: FacetDim; buckets: FacetBucket[] }[] };
+const TAB_KEY = "ws.facets.tab";
+function readTab(): GroupId {
+  try {
+    const v = localStorage.getItem(TAB_KEY);
+    return (FACET_GROUPS.find((g) => g.id === v)?.id ?? "when") as GroupId;
+  } catch { return "when"; }
+}
+function writeTab(id: GroupId) {
+  try { localStorage.setItem(TAB_KEY, id); } catch { /* storage blocked */ }
+}
+
+/** Segmented tabs «Когда · Как · Что · Итог и теги»; a tab with excluded values shows their count. Arrow keys move. */
+function GroupTabs({ groups, active, onPick, view }: { groups: Group[]; active: GroupId | null; onPick: (id: GroupId) => void; view: FacetView }) {
+  const t = tradeFacetsI18n.t;
+  const move = (e: React.KeyboardEvent, i: number) => {
+    const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const next = groups[(i + d + groups.length) % groups.length];
+    onPick(next.id);
+    document.getElementById(`facet-tab-${next.id}`)?.focus();
+  };
+  return (
+    <div role="tablist" aria-label={t("aria")} className="inline-flex max-w-full flex-wrap gap-1 rounded-xl bg-muted/40 p-1">
+      {groups.map((g, i) => {
+        const on = g.id === active;
+        const off = FACET_GROUPS.find((x) => x.id === g.id)!.dims.reduce((n, d) => n + (view.off[d]?.length ?? 0), 0);
+        return (
+          <button
+            key={g.id}
+            id={`facet-tab-${g.id}`}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            aria-controls={`facet-panel-${g.id}`}
+            tabIndex={on ? 0 : -1}
+            onClick={() => onPick(g.id)}
+            onKeyDown={(e) => move(e, i)}
+            className={cn(
+              "inline-flex min-h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors duration-150",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              on ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t(`groups.${g.id}`)}
+            <span className="tabular-nums text-muted-foreground">{g.cols.length}</span>
+            {off > 0 && <span className="rounded-full bg-primary/15 px-1.5 text-2xs text-primary">−{off}</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -112,6 +169,10 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
   const folded = dims.filter((x) => x.buckets.length === 1 && !hasChoice(x.d, x.buckets, view));
   // Groups «when / how / what / result and tags»; a group without a visible column is left out.
   const groups = FACET_GROUPS.map((g) => ({ id: g.id, cols: shown.filter((x) => g.dims.includes(x.d)) })).filter((g) => g.cols.length > 0);
+  // One group at a time (tabs): the panel stays one row of columns high instead of four stacked rows.
+  const [tab, setTab] = useState<GroupId>(readTab);
+  const pickTab = (id: GroupId) => { setTab(id); writeTab(id); };
+  const current = groups.find((g) => g.id === tab) ?? groups[0];
   return (
     <div className={cn("glass-panel rounded-2xl", className)} role="region" aria-label={t("aria")}>
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -151,16 +212,19 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           ) : (
             <>
-              <div className="flex flex-col gap-5" aria-busy={loading || undefined}>
-                {groups.map((g) => (
-                  <section key={g.id} className="flex flex-col gap-2" aria-label={t(`groups.${g.id}`)}>
-                    <h3 className="text-2xs font-semibold uppercase tracking-[0.12em] text-foreground/70">{t(`groups.${g.id}`)}</h3>
-                    <div className={GRID}>
-                      {g.cols.map((x) => <Column key={x.d} dim={x.d} buckets={x.buckets} view={view} onChange={onChange} money={money} />)}
-                    </div>
-                  </section>
-                ))}
-              </div>
+              <GroupTabs groups={groups} active={current?.id ?? null} onPick={pickTab} view={view} />
+              {current && (
+                <div
+                  key={current.id}
+                  role="tabpanel"
+                  id={`facet-panel-${current.id}`}
+                  aria-labelledby={`facet-tab-${current.id}`}
+                  aria-busy={loading || undefined}
+                  className={cn(GRID, "mt-3 animate-in fade-in-0 duration-150 motion-reduce:animate-none")}
+                >
+                  {current.cols.map((x) => <Column key={x.d} dim={x.d} buckets={x.buckets} view={view} onChange={onChange} money={money} />)}
+                </div>
+              )}
               {folded.length > 0 && (
                 <p className="mt-3 text-2xs text-muted-foreground">
                   {t("single")}{" "}
