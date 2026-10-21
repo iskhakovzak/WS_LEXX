@@ -77,6 +77,13 @@ export const ListTradesResponseItem = zod.object({
   "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
   "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
   "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
+  "holdSec": zod.number().nullish().describe('Seconds held (first fill → last fill, else the broker\'s open → close, else hold_time) — api lib\/tradeFacetDerive'),
+  "overnight": zod.boolean().nullish().describe('Closed on a later New York date than opened'),
+  "entryKind": zod.string().nullish().describe('How the position was opened — single | scaled (adds) | reentry'),
+  "exitKind": zod.string().nullish().describe('How the position was closed — whole | partials | stopped'),
+  "notional": zod.number().nullish().describe('Max position × average entry ($)'),
+  "daySeq": zod.number().nullish().describe('Order of the trade among the trader\'s trades of the same New York day (1 = first)'),
+  "prevKind": zod.string().nullish().describe('Result of the previous trade of that trader-day — first | after-win | after-loss | after-be'),
   "createdAt": zod.string()
 })
 export const ListTradesResponse = zod.array(ListTradesResponseItem)
@@ -190,6 +197,13 @@ export const GetTradeResponse = zod.object({
   "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
   "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
   "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
+  "holdSec": zod.number().nullish().describe('Seconds held (first fill → last fill, else the broker\'s open → close, else hold_time) — api lib\/tradeFacetDerive'),
+  "overnight": zod.boolean().nullish().describe('Closed on a later New York date than opened'),
+  "entryKind": zod.string().nullish().describe('How the position was opened — single | scaled (adds) | reentry'),
+  "exitKind": zod.string().nullish().describe('How the position was closed — whole | partials | stopped'),
+  "notional": zod.number().nullish().describe('Max position × average entry ($)'),
+  "daySeq": zod.number().nullish().describe('Order of the trade among the trader\'s trades of the same New York day (1 = first)'),
+  "prevKind": zod.string().nullish().describe('Result of the previous trade of that trader-day — first | after-win | after-loss | after-be'),
   "createdAt": zod.string()
 })
 
@@ -298,6 +312,13 @@ export const UpdateTradeResponse = zod.object({
   "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
   "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
   "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
+  "holdSec": zod.number().nullish().describe('Seconds held (first fill → last fill, else the broker\'s open → close, else hold_time) — api lib\/tradeFacetDerive'),
+  "overnight": zod.boolean().nullish().describe('Closed on a later New York date than opened'),
+  "entryKind": zod.string().nullish().describe('How the position was opened — single | scaled (adds) | reentry'),
+  "exitKind": zod.string().nullish().describe('How the position was closed — whole | partials | stopped'),
+  "notional": zod.number().nullish().describe('Max position × average entry ($)'),
+  "daySeq": zod.number().nullish().describe('Order of the trade among the trader\'s trades of the same New York day (1 = first)'),
+  "prevKind": zod.string().nullish().describe('Result of the previous trade of that trader-day — first | after-win | after-loss | after-be'),
   "createdAt": zod.string()
 })
 
@@ -832,6 +853,13 @@ export const GetRecentTradesResponseItem = zod.object({
   "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
   "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
   "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
+  "holdSec": zod.number().nullish().describe('Seconds held (first fill → last fill, else the broker\'s open → close, else hold_time) — api lib\/tradeFacetDerive'),
+  "overnight": zod.boolean().nullish().describe('Closed on a later New York date than opened'),
+  "entryKind": zod.string().nullish().describe('How the position was opened — single | scaled (adds) | reentry'),
+  "exitKind": zod.string().nullish().describe('How the position was closed — whole | partials | stopped'),
+  "notional": zod.number().nullish().describe('Max position × average entry ($)'),
+  "daySeq": zod.number().nullish().describe('Order of the trade among the trader\'s trades of the same New York day (1 = first)'),
+  "prevKind": zod.string().nullish().describe('Result of the previous trade of that trader-day — first | after-win | after-loss | after-be'),
   "createdAt": zod.string()
 })
 export const GetRecentTradesResponse = zod.array(GetRecentTradesResponseItem)

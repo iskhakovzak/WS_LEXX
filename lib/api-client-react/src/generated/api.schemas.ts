@@ -167,6 +167,41 @@ export interface Trade {
      * @nullable
      */
   entrySec?: number | null;
+  /**
+     * Seconds held (first fill → last fill, else the broker's open → close, else hold_time) — api lib/tradeFacetDerive
+     * @nullable
+     */
+  holdSec?: number | null;
+  /**
+     * Closed on a later New York date than opened
+     * @nullable
+     */
+  overnight?: boolean | null;
+  /**
+     * How the position was opened — single | scaled (adds) | reentry
+     * @nullable
+     */
+  entryKind?: string | null;
+  /**
+     * How the position was closed — whole | partials | stopped
+     * @nullable
+     */
+  exitKind?: string | null;
+  /**
+     * Max position × average entry ($)
+     * @nullable
+     */
+  notional?: number | null;
+  /**
+     * Order of the trade among the trader's trades of the same New York day (1 = first)
+     * @nullable
+     */
+  daySeq?: number | null;
+  /**
+     * Result of the previous trade of that trader-day — first | after-win | after-loss | after-be
+     * @nullable
+     */
+  prevKind?: string | null;
   createdAt: string;
 }
 

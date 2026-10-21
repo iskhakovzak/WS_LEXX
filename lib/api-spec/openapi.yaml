@@ -1232,6 +1232,27 @@ components:
         entrySec:
           type: ["integer", "null"]
           description: New York seconds since midnight of the first entry (the «Время» facet)
+        holdSec:
+          type: ["integer", "null"]
+          description: Seconds held (first fill → last fill, else the broker's open → close, else hold_time) — api lib/tradeFacetDerive
+        overnight:
+          type: ["boolean", "null"]
+          description: Closed on a later New York date than opened
+        entryKind:
+          type: ["string", "null"]
+          description: How the position was opened — single | scaled (adds) | reentry
+        exitKind:
+          type: ["string", "null"]
+          description: How the position was closed — whole | partials | stopped
+        notional:
+          type: ["number", "null"]
+          description: Max position × average entry ($)
+        daySeq:
+          type: ["integer", "null"]
+          description: Order of the trade among the trader's trades of the same New York day (1 = first)
+        prevKind:
+          type: ["string", "null"]
+          description: Result of the previous trade of that trader-day — first | after-win | after-loss | after-be
         createdAt:
           type: string
       required:

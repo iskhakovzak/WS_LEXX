@@ -116,6 +116,9 @@ export function toTradeResponseShape(t: TradeRow) {
     syncedAt: t.syncedAt ? new Date(t.syncedAt).toISOString() : null,
     // Derived (lib/tradeStrategy, migration 0237): strategy, the IMX mark (strategy MOC) and the NY entry second.
     strategy: t.strategy ?? null, isImx: t.strategy === "MOC", entrySec: t.entrySec ?? null,
+    // Derived with it (lib/tradeFacetDerive, migration 0241) — the «Фильтры» columns the web filters raw rows by.
+    holdSec: t.holdSec ?? null, overnight: t.overnight ?? null, entryKind: t.entryKind ?? null, exitKind: t.exitKind ?? null,
+    notional: numOrNull(t.notional), daySeq: t.daySeq ?? null, prevKind: t.prevKind ?? null,
     createdAt: t.createdAt.toISOString(),
     // Playbook setup the trade is linked to (ILYA-16). Not in the generated zod shape: withPlaybookId() re-adds it after parse.
     playbookId: t.playbookId ?? null,

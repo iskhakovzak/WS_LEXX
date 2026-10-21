@@ -19,6 +19,15 @@ export default {
     type: { long: "Long", short: "Short" },
     none: "Teglarsiz",
     unknown: "Maʼlumot yoʻq",
+    prev: { first: "Kundagi birinchi", "after-win": "Foydadan keyin", "after-loss": "Zarardan keyin", "after-be": "Noldan keyin" },
+    entry: { single: "Bitta kirish", scaled: "Qoʻshimchalar bilan", reentry: "Qayta kirish" },
+    exit: { whole: "Toʻliq", partials: "Qismlab", stopped: "Stop boʻyicha" },
+    hold: {
+      lt1m: "< 1 daq", "1-5m": "1–5 daq", "5-15m": "5–15 daq", "15-60m": "15–60 daq", "1-4h": "1–4 soat", gt4h: "> 4 soat",
+      overnight: "Overnayt",
+    },
+    manual: "Qoʻlda",
+    result: { win: "Foyda", loss: "Zarar", be: "Nol" },
   },
   note: {
     time: "Vaqt — Nyu-York boʻyicha, savdoning birinchi kirishi va oxirgi chiqishi boʻyicha.",

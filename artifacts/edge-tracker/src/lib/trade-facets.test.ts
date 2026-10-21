@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Trade } from "@workspace/api-client-react";
 import {
-  EMPTY_FACET_VIEW, activeCount, facetQuery, imxLineOf, isChecked, normalizeFacetView, resetFacets, setColumn, timeBucketOfSec,
-  toggleKey, tradeFacetKeys, tradePassesFacets, uncheckedChips, type FacetsResponse,
+  EMPTY_FACET_VIEW, FACET_DIMS, FACET_GROUPS, activeCount, facetQuery, imxLineOf, isChecked, normalizeFacetView, resetFacets,
+  setColumn, timeBucketOfSec, toggleKey, tradeFacetKeys, tradePassesFacets, uncheckedChips, type FacetView, type FacetsResponse,
 } from "./trade-facets";
 
 const DESK = ["IMX", "FOMO"];
@@ -51,6 +51,8 @@ describe("raw trades (the own /stats book)", () => {
     expect(tradeFacetKeys(trade(), DESK)).toEqual({
       years: ["2026"], months: ["6"], days: ["3"], times: ["13:30-15:30"], strategies: ["MOC"], types: ["long"],
       gtags: ["IMX"], ptags: ["ORB"],
+      seq: ["unknown"], prev: ["unknown"], entry: ["unknown"], exit: ["unknown"], hold: ["unknown"], tickers: ["AAPL"],
+      price: ["unknown"], size: ["unknown"], accounts: ["manual"], result: ["win"],
     });
     const k = tradeFacetKeys(trade({ date: "2026-06-14", tags: null, strategy: null, side: null, entrySec: null }), DESK);
     expect(k).toMatchObject({ days: ["7"], gtags: ["__none__"], ptags: ["__none__"], strategies: ["unknown"], types: ["unknown"], times: ["unknown"] });
@@ -71,6 +73,40 @@ describe("raw trades (the own /stats book)", () => {
     expect(tradePassesFacets(trade({ tags: "ORB, A+" }), { off: { ptags: ["ORB"] }, excludeImx: false, open: false }, DESK)).toBe(true);
     expect(tradePassesFacets(t, { off: {}, excludeImx: true, open: false }, DESK)).toBe(false);
     expect(tradePassesFacets(trade({ strategy: "Day", isImx: false, tags: "ORB" }), { off: {}, excludeImx: true, open: false }, DESK)).toBe(true);
+  });
+
+  it("keys of the derived columns (when / how / what / result)", () => {
+    const t = trade({
+      ticker: " tsla ", entry: 250, pnl: 10, fees: 10, brokerAccount: "ACC1", holdSec: 600, overnight: false,
+      entryKind: "scaled", exitKind: "stopped", notional: 125_000, daySeq: 4, prevKind: "after-loss",
+    });
+    expect(tradeFacetKeys(t, DESK)).toMatchObject({
+      seq: ["4-5"], prev: ["after-loss"], entry: ["scaled"], exit: ["stopped"], hold: ["5-15m"], tickers: ["TSLA"],
+      price: ["gt200"], size: ["gt100k"], accounts: ["ACC1"], result: ["be"],
+    });
+    expect(tradeFacetKeys(trade({ holdSec: 30, overnight: true, pnl: -1, daySeq: 1 }), DESK))
+      .toMatchObject({ hold: ["overnight"], result: ["loss"], seq: ["1"] });
+    expect(tradeFacetKeys(trade({ pnl: null, ticker: "" }), DESK)).toMatchObject({ result: ["unknown"], tickers: ["unknown"] });
+  });
+
+  it("passes the new columns: one excluded bucket drops the trade", () => {
+    const t = trade({ ticker: "TSLA", daySeq: 1, prevKind: "first", brokerAccount: null, holdSec: 30, entry: 4, notional: 400 });
+    const off = (o: FacetView["off"]) => ({ off: o, excludeImx: false, open: false });
+    expect(tradePassesFacets(t, off({ tickers: ["AAPL"] }), DESK)).toBe(true);
+    expect(tradePassesFacets(t, off({ tickers: ["TSLA"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ seq: ["1"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ prev: ["first"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ accounts: ["manual"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ hold: ["lt1m"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ price: ["lt5"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ size: ["lt2k"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ result: ["win"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ result: ["loss", "be"], hold: ["gt4h"], size: ["gt100k"] }), DESK)).toBe(true);
+    expect(facetQuery(off({ tickers: ["TSLA", "AAPL"], hold: ["overnight"] }))).toBe("xHold=overnight&xTickers=AAPL%2CTSLA");
+  });
+
+  it("groups cover every column once, in FACET_DIMS order", () => {
+    expect(FACET_GROUPS.flatMap((g) => g.dims)).toEqual([...FACET_DIMS]);
   });
 
   it("IMX line over raw trades", () => {

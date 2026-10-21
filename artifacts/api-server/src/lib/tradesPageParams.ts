@@ -20,6 +20,8 @@ const numOpt = z.coerce.number().finite().optional();
 export const FACET_QUERY = {
   xYears: str(4000), xMonths: str(4000), xDays: str(4000), xTimes: str(4000), xStrategies: str(4000), xTypes: str(4000),
   xGtags: str(20000), xPtags: str(20000),
+  xSeq: str(4000), xPrev: str(4000), xEntry: str(4000), xExit: str(4000), xHold: str(4000),
+  xTickers: str(20000), xPrice: str(4000), xSize: str(4000), xAccounts: str(20000), xResult: str(4000),
   excludeImx: z.enum(["1", "true", "0", "false"]).optional(),
 };
 export type FacetQueryT = { [K in keyof typeof FACET_QUERY]?: string };
@@ -103,8 +105,16 @@ export function pageFiltersOf(q: TradesPageQueryT, scope: string | null): Trades
   };
 }
 
-/** Filters of a book whose $ the viewer may not see: no $ preset, no free-text match on pnl. */
+/**
+ * Filters of a book whose $ the viewer may not see: no $ preset, no free-text match on pnl, no «Позиция» ($ size)
+ * exclusions (the column is not shown to them — lib/playbookPrivacy redacts `notional`).
+ */
 export function moneyBlindFilters(f: TradesPageFilters, showMoney: boolean): TradesPageFilters {
   if (showMoney) return f;
-  return { ...f, moneyBlind: true, preset: f.preset && MONEY_PRESETS.has(f.preset) ? "" : f.preset };
+  let facets = f.facets;
+  if (facets?.off.size) {
+    const { size: _size, ...off } = facets.off;
+    facets = { ...facets, off };
+  }
+  return { ...f, moneyBlind: true, preset: f.preset && MONEY_PRESETS.has(f.preset) ? "" : f.preset, facets };
 }

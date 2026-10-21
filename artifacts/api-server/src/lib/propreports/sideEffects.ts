@@ -47,6 +47,11 @@ export async function structuresRefreshHandler(payload: unknown): Promise<void> 
   if (!ids.length) return;
   const { refreshTradeStructures } = await import("../tradeStructureStore");
   await refreshTradeStructures([...new Set(ids)]);
+  // The filter columns read the structure (entry / exit kind, hold, size): re-derive them now instead of waiting for
+  // the 5-minute trades.strategy-backfill (the structure write already marked the rows stale).
+  const { refreshTradeStrategies } = await import("../tradeStrategyStore");
+  const r = await refreshTradeStrategies([...new Set(ids)]);
+  if (r.changed) (await import("./tradesVersion")).invalidateTradeCaches();
 }
 
 const notifyPayload = z.object({

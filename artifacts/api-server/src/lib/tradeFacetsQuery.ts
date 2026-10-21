@@ -5,9 +5,11 @@
  * computed once, then per column the buckets {key, count, net} over the trades that pass every OTHER column (the
  * column's own exclusion is ignored, so an unchecked bucket keeps its numbers), plus the totals of the full selection
  * and the IMX part of it (strategy MOC — computed even when «Исключить IMX» is on, for the «из них IMX» line).
+ * With 16 scalar columns the per-column scans are folded into one GROUPING SETS pass (see buildFacetsQuery).
  */
 import { netPnlSql } from "./tradeMath";
 import { FACET_DIMS, NONE_KEY, facetKeySql, tagsSql, type FacetDim, type FacetFilters } from "./tradeFacetsSql";
+import { ENTRY_KEYS, EXIT_KEYS, HOLD_ORDER, PREV_KEYS, PRICE_BUCKETS, RESULT_KEYS, SEQ_BUCKETS, SIZE_BUCKETS, type Bucket } from "./tradeFacetBuckets";
 import { Params, buildFrom, buildWhere, hasQualityFilters, type TradesPageFilters } from "./tradesPageQuery";
 
 export interface FacetBucketRow { dim: string; key: string; n: number | string; net: number | string | null }
@@ -39,22 +41,40 @@ export function buildFacetsQuery(f: TradesPageFilters, quality: boolean): { sql:
     return `NOT (x.k_${d} = ANY(${offP}::text[]))`;
   };
   const passCols = FACET_DIMS.map((d) => `${pass(d)} AS p_${d}`).join(", ");
-  const others = (d: FacetDim | null) => FACET_DIMS.filter((o) => o !== d).map((o) => `y.p_${o}`).join(" AND ");
-  const imxOff = facets?.excludeImx ? `AND NOT y.imx` : "";
-  const parts: string[] = [];
-  for (const d of FACET_DIMS) {
-    const from = d === "gtags" || d === "ptags"
-      ? `y CROSS JOIN LATERAL unnest(CASE WHEN cardinality(y.k_${d}) = 0 THEN ARRAY['${NONE_KEY}'] ELSE y.k_${d} END) k(v)`
-      : "y";
-    const key = d === "gtags" || d === "ptags" ? "k.v" : `y.k_${d}`;
-    parts.push(`SELECT '${d}' AS dim, ${key} AS key, COUNT(*)::int AS n, SUM(y.net) AS net FROM ${from} WHERE ${others(d)} ${imxOff} GROUP BY 2`);
+  // nf = how many columns the row fails. A column's buckets count the rows that pass every OTHER column: nf = 0, or
+  // nf = 1 with the failed column being this one — so all scalar columns come from ONE scan (a VALUES unpivot) instead
+  // of one scan per column.
+  const excluded = FACET_DIMS.filter((d) => (facets?.off[d]?.length ?? 0) > 0);
+  const nf = excluded.length ? excluded.map((d) => `(NOT y.p_${d})::int`).join(" + ") : "0";
+  const passesBut = (p: string) => `(z.nf = 0 OR (z.nf = 1 AND NOT ${p}))`;
+  const imxOff = facets?.excludeImx ? `AND NOT z.imx` : "";
+  const unpivot = SCALAR_DIMS.map((d) => `('${d}', z.k_${d}, z.p_${d})`).join(", ");
+  // Scalar columns: the rows passing everything in one GROUPING SETS pass (one hash table per column, keys are never
+  // NULL), plus the few rows failing exactly one column, unpivoted for that column only; summed per bucket.
+  const dimOfSet = `CASE ${SCALAR_DIMS.map((d) => `WHEN GROUPING(z.k_${d}) = 0 THEN '${d}'`).join(" ")} END`;
+  const parts: string[] = [
+    `SELECT s.dim, s.key, SUM(s.n)::int AS n, SUM(s.net) AS net FROM (
+       SELECT ${dimOfSet} AS dim, COALESCE(${SCALAR_DIMS.map((d) => `z.k_${d}`).join(", ")}) AS key, COUNT(*) AS n, SUM(z.net) AS net
+         FROM z WHERE z.nf = 0 ${imxOff}
+        GROUP BY GROUPING SETS (${SCALAR_DIMS.map((d) => `(z.k_${d})`).join(", ")})
+       UNION ALL
+       SELECT v.dim, v.key, COUNT(*), SUM(z.net)
+         FROM z CROSS JOIN LATERAL (VALUES ${unpivot}) v(dim, key, p)
+        WHERE z.nf = 1 AND NOT v.p ${imxOff} GROUP BY 1, 2
+     ) s GROUP BY 1, 2`,
+  ];
+  for (const d of ["gtags", "ptags"] as const) {
+    parts.push(`SELECT '${d}', k.v, COUNT(*)::int, SUM(z.net)
+       FROM z CROSS JOIN LATERAL unnest(CASE WHEN cardinality(z.k_${d}) = 0 THEN ARRAY['${NONE_KEY}'] ELSE z.k_${d} END) k(v)
+      WHERE ${passesBut(`z.p_${d}`)} ${imxOff} GROUP BY 2`);
   }
-  parts.push(`SELECT '_total', '', COUNT(*)::int, SUM(y.net) FROM y WHERE ${others(null)} ${imxOff}`);
-  parts.push(`SELECT '_imx', '', COUNT(*)::int, SUM(y.net) FROM y WHERE ${others(null)} AND y.imx`);
+  parts.push(`SELECT '_total', '', COUNT(*)::int, SUM(z.net) FROM z WHERE z.nf = 0 ${imxOff}`);
+  parts.push(`SELECT '_imx', '', COUNT(*)::int, SUM(z.net) FROM z WHERE z.nf = 0 AND z.imx`);
   const sql = `WITH x AS MATERIALIZED (
       SELECT ${netPnlSql("t")} AS net, COALESCE(t.strategy, '') = 'MOC' AS imx, ${keyCols}, ${tagCols}
       ${buildFrom(join)} WHERE ${where}
-    ), y AS (SELECT x.*, ${passCols} FROM x)
+    ), y AS (SELECT x.*, ${passCols} FROM x),
+    z AS MATERIALIZED (SELECT y.*, ${nf} AS nf FROM y)
     ${parts.join("\n    UNION ALL ")}`;
   return { sql, params: p.list };
 }
@@ -68,7 +88,15 @@ export interface FacetsAnswer {
 
 const numOf = (v: unknown): number | null => (v == null ? null : Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) / 100 : null);
 
-/** Bucket order inside a column: years newest first, months / days / times by their natural order, the rest by |net|. */
+const keyOrder = (keys: readonly string[]) => (a: FacetBucket, b: FacetBucket) => keys.indexOf(a.key) - keys.indexOf(b.key);
+const byCount = (a: FacetBucket, b: FacetBucket) => b.count - a.count || a.key.localeCompare(b.key);
+const keysOf = (list: readonly Bucket[]) => list.map((x) => x.key);
+
+/**
+ * Bucket order inside a column: years newest first; months / days / times and the bucketed columns (seq, prev, hold,
+ * price, size) in their natural order; entry / exit / result in a fixed order; strategies, tickers, accounts and tags
+ * by count.
+ */
 export function orderBuckets(dim: FacetDim, list: FacetBucket[], timeOrder: readonly string[]): FacetBucket[] {
   const last = (k: string) => (k === NONE_KEY || k === "unknown" ? 1 : 0);
   const cmp: Record<FacetDim, (a: FacetBucket, b: FacetBucket) => number> = {
@@ -78,8 +106,18 @@ export function orderBuckets(dim: FacetDim, list: FacetBucket[], timeOrder: read
     times: (a, b) => timeOrder.indexOf(a.key) - timeOrder.indexOf(b.key),
     strategies: (a, b) => b.count - a.count,
     types: (a, b) => a.key.localeCompare(b.key),
-    gtags: (a, b) => b.count - a.count || a.key.localeCompare(b.key),
-    ptags: (a, b) => b.count - a.count || a.key.localeCompare(b.key),
+    gtags: byCount,
+    ptags: byCount,
+    seq: keyOrder(keysOf(SEQ_BUCKETS)),
+    prev: keyOrder(PREV_KEYS),
+    entry: keyOrder(ENTRY_KEYS),
+    exit: keyOrder(EXIT_KEYS),
+    hold: keyOrder(HOLD_ORDER),
+    tickers: byCount,
+    price: keyOrder(keysOf(PRICE_BUCKETS)),
+    size: keyOrder(keysOf(SIZE_BUCKETS)),
+    accounts: byCount,
+    result: keyOrder(RESULT_KEYS),
   };
   return [...list].sort((a, b) => last(a.key) - last(b.key) || cmp[dim](a, b));
 }

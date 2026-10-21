@@ -7,6 +7,12 @@
  *   times       entry-time bucket of trades.entry_sec (NY): before 8:30 … after 16:00, «unknown» without a time
  *   strategies  trades.strategy (lib/tradeStrategy)     types    long / short (side)
  *   gtags       desk tags («Глобальные»: IMX + the mistakes vocabulary, `deskTags`)   ptags   every other tag
+ * Filters panel v2 (derived columns of migration 0241, lib/tradeFacetDerive; buckets in lib/tradeFacetBuckets):
+ *   seq         trades.day_seq: 1 | 2 | 3 | 4-5 | 6+      prev   trades.prev_kind: first | after-win | after-loss | after-be
+ *   entry       trades.entry_kind: single | scaled | reentry          exit   trades.exit_kind: whole | partials | stopped
+ *   hold        trades.hold_sec / overnight: lt1m … gt4h | overnight  tickers  UPPER(ticker)
+ *   price       entry price: lt5 … gt200                              size   trades.notional: lt2k … gt100k
+ *   accounts    broker_account, «manual» without one                  result win | loss | be by the net (pnl − |fees|)
  * Missing values fall in «unknown»; a trade without tags of a kind is in «__none__» — so «all checked» shows every trade.
  *
  * Selection = what is UNCHECKED: `off[dim]` lists the excluded keys (absent / empty = everything checked; a new year or
@@ -15,20 +21,32 @@
  * Counts of one column are computed with that column's own exclusion removed (`skip`), like the PropReports panel.
  */
 
-export const FACET_DIMS = ["years", "months", "days", "times", "strategies", "types", "gtags", "ptags"] as const;
+import { holdSql, priceSql, resultSql, seqSql, sizeSql } from "./tradeFacetBuckets";
+
+/** Every column, in the panel's group order (when · how · what · result and tags). */
+export const FACET_DIMS = [
+  "years", "months", "days", "times", "seq", "prev",
+  "strategies", "types", "entry", "exit", "hold",
+  "tickers", "price", "size", "accounts",
+  "result", "gtags", "ptags",
+] as const;
 export type FacetDim = (typeof FACET_DIMS)[number];
 
 /** Query parameter of each column's exclusion list (comma-separated keys). */
 export const FACET_PARAMS: Record<FacetDim, string> = {
   years: "xYears", months: "xMonths", days: "xDays", times: "xTimes",
   strategies: "xStrategies", types: "xTypes", gtags: "xGtags", ptags: "xPtags",
+  seq: "xSeq", prev: "xPrev", entry: "xEntry", exit: "xExit", hold: "xHold",
+  tickers: "xTickers", price: "xPrice", size: "xSize", accounts: "xAccounts", result: "xResult",
 };
 export const EXCLUDE_IMX_PARAM = "excludeImx";
 
 export const NONE_KEY = "__none__";
 export const UNKNOWN_KEY = "unknown";
-/** Caps of one exclusion list (keys, characters per key). */
-export const FACET_MAX_KEYS = 300;
+/** The account key of a trade without a broker account (typed in by hand). */
+export const MANUAL_ACCOUNT_KEY = "manual";
+/** Caps of one exclusion list (keys, characters per key); «none» on a long ticker column lists every ticker. */
+export const FACET_MAX_KEYS = 1000;
 export const FACET_MAX_KEY_LEN = 120;
 
 export interface FacetFilters {
@@ -74,6 +92,16 @@ export function facetKeySql(dim: Exclude<FacetDim, "gtags" | "ptags">, a = "t"):
     }
     case "strategies": return `COALESCE(NULLIF(${a}.strategy, ''), '${UNKNOWN_KEY}')`;
     case "types": return `(CASE LOWER(TRIM(COALESCE(${a}.side, ''))) WHEN 'long' THEN 'long' WHEN 'short' THEN 'short' ELSE '${UNKNOWN_KEY}' END)`;
+    case "seq": return seqSql(a);
+    case "prev": return `COALESCE(${a}.prev_kind, '${UNKNOWN_KEY}')`;
+    case "entry": return `COALESCE(${a}.entry_kind, '${UNKNOWN_KEY}')`;
+    case "exit": return `COALESCE(${a}.exit_kind, '${UNKNOWN_KEY}')`;
+    case "hold": return holdSql(a);
+    case "tickers": return `COALESCE(NULLIF(UPPER(TRIM(${a}.ticker)), ''), '${UNKNOWN_KEY}')`;
+    case "price": return priceSql(a);
+    case "size": return sizeSql(a);
+    case "accounts": return `COALESCE(NULLIF(TRIM(${a}.broker_account), ''), '${MANUAL_ACCOUNT_KEY}')`;
+    case "result": return resultSql(a);
   }
 }
 

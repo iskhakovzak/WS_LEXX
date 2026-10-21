@@ -82,7 +82,9 @@ router.get("/stats/aggregate", route({ query: Query }, async ({ req, query: q })
   } else {
     traders = readable === null ? null : [...new Set([...readable, actor.name])];
   }
-  const facets = facetFiltersOf(q);
+  const money = canSeeBookMoney(await loadMoneyViewer(req), trader ?? (traders?.length === 1 ? traders[0]! : null));
+  // No $-size («Позиция») exclusions on a book whose $ the viewer may not see (the column is hidden from them).
+  const facets = money ? facetFiltersOf(q) : facetFiltersOf({ ...q, xSize: undefined });
   const filters = {
     horizon: q.horizon, side: q.side, ticker: q.ticker || undefined, setup: q.setup || undefined,
     account: q.account || undefined, source: q.source,
@@ -93,7 +95,6 @@ router.get("/stats/aggregate", route({ query: Query }, async ({ req, query: q })
   const key = JSON.stringify({ traders: traders ? [...traders].sort() : null, from: q.from ?? null, to: q.to ?? null, facets, filters, lite });
   const agg = (await statsAggregateCache.getOrLoad(key, async () =>
     buildAggregate(await loadAggregateRows(traders, q.from ?? null, q.to ?? null, facets), filters, { lite }))) as Aggregate;
-  const money = canSeeBookMoney(await loadMoneyViewer(req), trader ?? (traders?.length === 1 ? traders[0]! : null));
   return {
     scope: trader ? "trader" : "desk",
     trader,

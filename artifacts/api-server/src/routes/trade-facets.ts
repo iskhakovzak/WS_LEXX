@@ -2,9 +2,11 @@
  * «Улучшенный поиск» — the PropReports-style «Фильтры» panel of /trades and /stats (lib/tradeFacetsSql, lib/tradeFacetsQuery).
  *
  *   GET /trades/facets       the same query as /trades/page (from, to, trader, outcome, setup… + xYears / xMonths / xDays /
- *                            xTimes / xStrategies / xTypes / xGtags / xPtags = excluded keys, excludeImx=1)
- *     → { dims: { years|months|days|times|strategies|types|gtags|ptags: [{ key, label, count, net }] },
+ *                            xTimes / xSeq / xPrev / xStrategies / xTypes / xEntry / xExit / xHold / xTickers / xPrice /
+ *                            xSize / xAccounts / xResult / xGtags / xPtags = excluded keys, excludeImx=1)
+ *     → { dims: { <every FACET_DIMS column>: [{ key, label, count, net }] },
  *         total: { count, net }, imx: { count, net }, excludeImx, money, deskTags }
+ *       Without `money` the size column («Позиция», $) comes back empty and its exclusions are ignored.
  *       Each column is counted with its own exclusion ignored; `imx` = the IMX part of the selection (strategy MOC),
  *       also while «Исключить IMX» is on. Scope as /trades/page (lib/auth scopeTrader: a member reads only the own
  *       book, staff may pass ?trader=); $ of a book the viewer may not see are null (`money: false`).
@@ -24,7 +26,10 @@ import { canSeeBookMoney } from "../lib/playbookPrivacy";
 import { compactQuery, moneyBlindFilters, pageFiltersOf, TradesPageQuery } from "../lib/tradesPageParams";
 import { DESK_TAGS } from "../lib/deskTags";
 import { tradesPageAggregatesCache } from "../lib/tradesPageCache";
-import { FACET_DIMS, NONE_KEY, TIME_BUCKETS, UNKNOWN_KEY, type FacetDim } from "../lib/tradeFacetsSql";
+import { FACET_DIMS, FACET_MAX_KEYS, FACET_MAX_KEY_LEN, MANUAL_ACCOUNT_KEY, NONE_KEY, TIME_BUCKETS, UNKNOWN_KEY, type FacetDim } from "../lib/tradeFacetsSql";
+import {
+  ENTRY_KEYS, EXIT_KEYS, HOLD_ORDER, PREV_KEYS, RESULT_KEYS, type EntryKind, type ExitKind, type PrevKind, type ResultKey,
+} from "../lib/tradeFacetBuckets";
 import { buildFacetsQuery, foldFacets, type FacetBucketRow } from "../lib/tradeFacetsQuery";
 import { DEFAULT_FACET_VIEW, normalizeFacetView, readFacetView, writeFacetView } from "../lib/tradeFacetsView";
 import { insightsT } from "../i18n/ns";
@@ -65,8 +70,28 @@ export function facetLabeler(lang: Lang): (dim: FacetDim, key: string) => string
     if (dim === "days" && n >= 1 && n <= 7) return cap(weekday.format(new Date(Date.UTC(2024, 0, n))));
     if (dim === "times") return key === "before-8:30" ? t("facet.time.before") : key === "after-16:00" ? t("facet.time.after") : key.replace("-", "–");
     if (dim === "types") return key === "long" ? t("facet.type.long") : key === "short" ? t("facet.type.short") : key;
+    if (dim === "prev" && (PREV_KEYS as readonly string[]).includes(key)) return t(`facet.prev.${key as PrevKind}`);
+    if (dim === "entry" && (ENTRY_KEYS as readonly string[]).includes(key)) return t(`facet.entry.${key as EntryKind}`);
+    if (dim === "exit" && (EXIT_KEYS as readonly string[]).includes(key)) return t(`facet.exit.${key as ExitKind}`);
+    if (dim === "result" && (RESULT_KEYS as readonly string[]).includes(key)) return t(`facet.result.${key as ResultKey}`);
+    if (dim === "hold" && HOLD_ORDER.includes(key)) return t(`facet.hold.${key as HoldKey}`);
+    if (dim === "accounts" && key === MANUAL_ACCOUNT_KEY) return t("facet.manual");
+    if (dim === "seq") return key.replace("-", "–");
+    if (dim === "price") return moneyRangeLabel(key, "");
+    if (dim === "size") return moneyRangeLabel(key, "k");
     return key;
   };
+}
+
+type HoldKey = "lt1m" | "1-5m" | "5-15m" | "15-60m" | "1-4h" | "gt4h" | "overnight";
+
+/** «< $5», «$5–10», «> $200» (price) / «< $2k», «$2–5k», «> $100k» (size) — the same in every language. */
+function moneyRangeLabel(key: string, unit: string): string {
+  const v = (s: string) => s.replace(/k$/, "");
+  if (key.startsWith("lt")) return `< $${v(key.slice(2))}${unit}`;
+  if (key.startsWith("gt")) return `> $${v(key.slice(2))}${unit}`;
+  const [a, b] = key.split("-");
+  return b ? `$${a}–${v(b)}${unit}` : key;
 }
 
 router.get("/trades/facets", asyncHandler(async (req, res): Promise<void> => {
@@ -87,8 +112,10 @@ router.get("/trades/facets", asyncHandler(async (req, res): Promise<void> => {
     return (await pool.query<FacetBucketRow>(sql, params)).rows;
   })) as FacetBucketRow[];
   res.setHeader("Cache-Control", "private, no-cache");
+  const folded = foldFacets(rows, facetLabeler(langOf(req)), showMoney, TIME_ORDER);
+  if (!showMoney) folded.dims.size = []; // $ position sizes of a book the viewer may not see: the column is hidden
   res.json({
-    ...foldFacets(rows, facetLabeler(langOf(req)), showMoney, TIME_ORDER),
+    ...folded,
     excludeImx: filters.facets.excludeImx,
     money: showMoney,
     deskTags: DESK_TAGS,
@@ -108,7 +135,7 @@ router.get("/trades/facets/view", asyncHandler(async (req, res): Promise<void> =
   res.json(isGuestUser(u) ? DEFAULT_FACET_VIEW : await readFacetView(u.id));
 }));
 
-const KeyList = z.array(z.string().trim().min(1).max(120)).max(300);
+const KeyList = z.array(z.string().trim().min(1).max(FACET_MAX_KEY_LEN)).max(FACET_MAX_KEYS);
 const ViewBody = z.object({
   off: z.object(Object.fromEntries(FACET_DIMS.map((d) => [d, KeyList.optional()])) as Record<FacetDim, z.ZodOptional<typeof KeyList>>).optional(),
   excludeImx: z.boolean().optional(),

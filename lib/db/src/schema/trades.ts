@@ -8,6 +8,7 @@ import {
   index,
   jsonb,
   check,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -72,6 +73,16 @@ export const tradesTable = pgTable("trades", {
   strategy: text("strategy"),
   entrySec: integer("entry_sec"),
   strategySig: text("strategy_sig"),
+  // Derived with the strategy (api lib/tradeFacetDerive, migration 0241) — the «Фильтры» columns hold / entry / exit /
+  // position / trade-of-the-day: seconds held, closed on a later NY date, single | scaled | reentry,
+  // whole | partials | stopped, max position × avg entry ($), order in the trader's NY day, result of the previous one.
+  holdSec: integer("hold_sec"),
+  overnight: boolean("overnight"),
+  entryKind: text("entry_kind"),
+  exitKind: text("exit_kind"),
+  notional: numeric("notional", { precision: 14, scale: 2 }),
+  daySeq: integer("day_seq"),
+  prevKind: text("prev_kind"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [

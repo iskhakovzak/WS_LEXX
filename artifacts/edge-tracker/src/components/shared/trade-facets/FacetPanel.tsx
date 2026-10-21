@@ -1,6 +1,8 @@
 /**
- * «Фильтры» — the PropReports-style filter panel (lib/trade-facets). Every dimension is visible at once in a grid that
- * wraps into rows (no horizontal scroll at any width). Each value is a row with a profit bar behind it (green / red,
+ * «Фильтры» — the PropReports-style filter panel (lib/trade-facets). The dimensions come in four groups (FACET_GROUPS:
+ * when · how · what · result and tags), each a small uppercase heading over a grid that wraps into rows (no horizontal
+ * scroll at any width, one column on a phone); a group without a visible column is left out. A long column (tickers,
+ * times) scrolls inside itself. Each value is a row with a profit bar behind it (green / red,
  * length = |net| relative to the column's largest; trade count when money is hidden); a click excludes the value
  * (struck through, dimmed), a second click brings it back. Columns with a single value and nothing excluded carry no
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
@@ -14,7 +16,7 @@ import { toneBg, toneOf, toneText } from "@/components/ds";
 import { fmtCount, fmtUsd } from "@/lib/format";
 import { tradeFacetsI18n } from "@/i18n/ns/tradeFacets";
 import {
-  FACET_DIMS, activeCount, isChecked, resetFacets, setColumn, toggleKey,
+  FACET_DIMS, FACET_GROUPS, activeCount, isChecked, resetFacets, setColumn, toggleKey,
   type FacetBucket, type FacetDim, type FacetView, type FacetsResponse,
 } from "@/lib/trade-facets";
 
@@ -83,16 +85,16 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
   return (
     <section className="flex min-w-0 flex-col gap-1" aria-label={title}>
       <header className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
-        <h3 className="truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h4 className="truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}{excluded > 0 && <span className="ml-1 text-primary">−{excluded}</span>}
-        </h3>
+        </h4>
         <span className="flex shrink-0 gap-0.5 text-2xs">
           <button type="button" className={LINK} onClick={() => onChange(setColumn(view, dim, keys, true))}>{t("all")}</button>
           <span aria-hidden="true" className="text-muted-foreground">/</span>
           <button type="button" className={LINK} onClick={() => onChange(setColumn(view, dim, keys, false))}>{t("none")}</button>
         </span>
       </header>
-      <ul className="flex max-h-[22rem] flex-col gap-px overflow-y-auto pr-0.5">
+      <ul className="flex max-h-[15rem] flex-col gap-px overflow-y-auto pr-0.5">
         {buckets.map((b) => <Row key={b.key} dim={dim} b={b} scale={scale} money={money} view={view} onChange={onChange} />)}
       </ul>
     </section>
@@ -107,6 +109,8 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
   const dims = FACET_DIMS.map((d) => ({ d, buckets: data?.dims[d] ?? [] }));
   const shown = dims.filter((x) => hasChoice(x.d, x.buckets, view));
   const folded = dims.filter((x) => x.buckets.length === 1 && !hasChoice(x.d, x.buckets, view));
+  // Groups «when / how / what / result and tags»; a group without a visible column is left out.
+  const groups = FACET_GROUPS.map((g) => ({ id: g.id, cols: shown.filter((x) => g.dims.includes(x.d)) })).filter((g) => g.cols.length > 0);
   return (
     <div className={cn("glass-panel rounded-2xl", className)} role="region" aria-label={t("aria")}>
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -139,8 +143,15 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           ) : (
             <>
-              <div className={GRID} aria-busy={loading || undefined}>
-                {shown.map((x) => <Column key={x.d} dim={x.d} buckets={x.buckets} view={view} onChange={onChange} money={money} />)}
+              <div className="flex flex-col gap-5" aria-busy={loading || undefined}>
+                {groups.map((g) => (
+                  <section key={g.id} className="flex flex-col gap-2" aria-label={t(`groups.${g.id}`)}>
+                    <h3 className="text-2xs font-semibold uppercase tracking-[0.12em] text-foreground/70">{t(`groups.${g.id}`)}</h3>
+                    <div className={GRID}>
+                      {g.cols.map((x) => <Column key={x.d} dim={x.d} buckets={x.buckets} view={view} onChange={onChange} money={money} />)}
+                    </div>
+                  </section>
+                ))}
               </div>
               {folded.length > 0 && (
                 <p className="mt-3 text-2xs text-muted-foreground">

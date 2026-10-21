@@ -6,20 +6,38 @@
  * Selection = what is UNCHECKED (`off[dim]`): every bucket is checked by default, a new year / tag too. A trade passes
  * a scalar column when its key is not unchecked, a tag column when one of its tags (or «__none__» without tags) is not.
  * «Исключить IMX» (`excludeImx`) drops close-auction trades (strategy MOC) from every list and number.
- * Mirrors api lib/tradeFacetsSql (the raw-trade filter below is what /stats applies to the own book).
+ * Mirrors api lib/tradeFacetsSql + lib/tradeFacetBuckets (the raw-trade filter below is what /stats applies to the
+ * own book): the derived columns of a trade row (holdSec, overnight, entryKind, exitKind, notional, daySeq, prevKind —
+ * api lib/tradeFacetDerive) are bucketed here exactly as in SQL (lib/__tests__/facetBucketsParity.test.ts).
  */
 import type { Trade } from "@workspace/api-client-react";
 import { entryMinutes } from "@/lib/trade-math";
 
-export const FACET_DIMS = ["years", "months", "days", "times", "strategies", "types", "gtags", "ptags"] as const;
+export const FACET_DIMS = [
+  "years", "months", "days", "times", "seq", "prev",
+  "strategies", "types", "entry", "exit", "hold",
+  "tickers", "price", "size", "accounts",
+  "result", "gtags", "ptags",
+] as const;
 export type FacetDim = (typeof FACET_DIMS)[number];
+
+/** The panel's groups (headings «when · how · what · result and tags»), each a run of FACET_DIMS. */
+export const FACET_GROUPS: readonly { id: "when" | "how" | "what" | "outcome"; dims: readonly FacetDim[] }[] = [
+  { id: "when", dims: ["years", "months", "days", "times", "seq", "prev"] },
+  { id: "how", dims: ["strategies", "types", "entry", "exit", "hold"] },
+  { id: "what", dims: ["tickers", "price", "size", "accounts"] },
+  { id: "outcome", dims: ["result", "gtags", "ptags"] },
+];
 
 export const FACET_PARAMS: Record<FacetDim, string> = {
   years: "xYears", months: "xMonths", days: "xDays", times: "xTimes",
   strategies: "xStrategies", types: "xTypes", gtags: "xGtags", ptags: "xPtags",
+  seq: "xSeq", prev: "xPrev", entry: "xEntry", exit: "xExit", hold: "xHold",
+  tickers: "xTickers", price: "xPrice", size: "xSize", accounts: "xAccounts", result: "xResult",
 };
 export const NONE_KEY = "__none__";
 export const UNKNOWN_KEY = "unknown";
+export const MANUAL_ACCOUNT_KEY = "manual";
 export const IMX_STRATEGY = "MOC";
 
 export type FacetBucket = { key: string; label: string; count: number; net: number | null };
@@ -110,7 +128,50 @@ export function timeBucketOfSec(sec: number | null | undefined): string {
   return TIME_BUCKETS.find((b) => sec < b.before)!.key;
 }
 
-type FacetTrade = Pick<Trade, "date" | "side" | "tags" | "strategy" | "entrySec" | "contextSnapshot">;
+// ─── Buckets of the numeric columns (mirror of api lib/tradeFacetBuckets — the parity test runs both) ─────────
+
+export type Bucket = { key: string; before: number };
+const b = (key: string, before: number): Bucket => ({ key, before });
+export const SEQ_BUCKETS: readonly Bucket[] = [b("1", 2), b("2", 3), b("3", 4), b("4-5", 6), b("6+", Infinity)];
+export const HOLD_BUCKETS: readonly Bucket[] = [
+  b("lt1m", 60), b("1-5m", 300), b("5-15m", 900), b("15-60m", 3600), b("1-4h", 14_400), b("gt4h", Infinity),
+];
+export const OVERNIGHT_KEY = "overnight";
+export const PRICE_BUCKETS: readonly Bucket[] = [
+  b("lt5", 5), b("5-10", 10), b("10-20", 20), b("20-50", 50), b("50-100", 100), b("100-200", 200), b("gt200", Infinity),
+];
+export const SIZE_BUCKETS: readonly Bucket[] = [
+  b("lt2k", 2000), b("2-5k", 5000), b("5-10k", 10_000), b("10-25k", 25_000), b("25-50k", 50_000), b("50-100k", 100_000), b("gt100k", Infinity),
+];
+
+const toNum = (v: unknown): number | null => {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Key of `v` in a bucket list (first `v < before`); below `min` (or at it, when not inclusive) → unknown. */
+export function bucketOf(list: readonly Bucket[], v: unknown, min: number, minInclusive: boolean): string {
+  const n = toNum(v);
+  if (n == null || (minInclusive ? n < min : n <= min)) return UNKNOWN_KEY;
+  return list.find((x) => n < x.before)!.key;
+}
+export const seqKeyOf = (seq: unknown) => bucketOf(SEQ_BUCKETS, seq, 1, true);
+export const priceKeyOf = (entry: unknown) => bucketOf(PRICE_BUCKETS, entry, 0, false);
+export const sizeKeyOf = (notional: unknown) => bucketOf(SIZE_BUCKETS, notional, 0, false);
+export function holdKeyOf(holdSec: unknown, overnight: unknown): string {
+  return overnight === true ? OVERNIGHT_KEY : bucketOf(HOLD_BUCKETS, holdSec, 0, true);
+}
+/** win / loss / be by the net (pnl − |fees|, to 1/10000 like the stored numeric); unknown without pnl. */
+export function resultKeyOf(pnl: unknown, fees: unknown): string {
+  const g = toNum(pnl);
+  if (g == null) return UNKNOWN_KEY;
+  const net = Math.round((g - Math.abs(toNum(fees) ?? 0)) * 1e4);
+  return net > 0 ? "win" : net < 0 ? "loss" : "be";
+}
+
+type FacetTrade = Pick<Trade, "date" | "side" | "tags" | "strategy" | "entrySec" | "contextSnapshot"> &
+  Partial<Pick<Trade, "ticker" | "entry" | "pnl" | "fees" | "brokerAccount" | "holdSec" | "overnight" | "entryKind" | "exitKind" | "notional" | "daySeq" | "prevKind">>;
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})/;
 
@@ -138,6 +199,16 @@ export function tradeFacetKeys(t: FacetTrade, deskTags: readonly string[]): Reco
     types: [side === "long" || side === "short" ? side : UNKNOWN_KEY],
     gtags: g.length ? g : [NONE_KEY],
     ptags: p.length ? p : [NONE_KEY],
+    seq: [seqKeyOf(t.daySeq)],
+    prev: [t.prevKind || UNKNOWN_KEY],
+    entry: [t.entryKind || UNKNOWN_KEY],
+    exit: [t.exitKind || UNKNOWN_KEY],
+    hold: [holdKeyOf(t.holdSec, t.overnight)],
+    tickers: [(t.ticker ?? "").trim().toUpperCase() || UNKNOWN_KEY],
+    price: [priceKeyOf(t.entry)],
+    size: [sizeKeyOf(t.notional)],
+    accounts: [(t.brokerAccount ?? "").trim() || MANUAL_ACCOUNT_KEY],
+    result: [resultKeyOf(t.pnl, t.fees)],
   };
 }
 

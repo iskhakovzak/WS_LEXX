@@ -129,6 +129,6 @@ describe("tradeStrategyStore deriveRow", () => {
     expect(deriveRow(row({ tags: "ORB, IMX" }), [], DEFAULT_IMX_WINDOW)).toEqual({ id: 1, strategy: "Day", entrySec: 14 * 3600, tags: "ORB" });
   });
   it("the signature carries the rule version and the window", () => {
-    expect(strategySig(DEFAULT_IMX_WINDOW)).toBe("v1|15:50-16:00");
+    expect(strategySig(DEFAULT_IMX_WINDOW)).toBe("v2|15:50-16:00");
   });
 });
