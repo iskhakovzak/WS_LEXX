@@ -44,15 +44,17 @@ function Row({ dim, b, scale, money, view, onChange }: {
   const size = showNet ? Math.abs(b.net as number) : b.count;
   const pct = scale > 0 ? Math.max(4, Math.round((size / scale) * 100)) : 0;
   const tone = showNet ? toneOf(b.net) : "neutral";
-  const net = showNet ? fmtUsd(b.net as number, { signed: true, compact: 10_000, decimals: "auto" }) : "";
+  // Whole dollars in the row (fits the column); the exact amount is in the tooltip.
+  const net = showNet ? fmtUsd(b.net as number, { signed: true, compact: 10_000, decimals: 0 }) : "";
+  const exact = showNet ? fmtUsd(b.net as number, { signed: true }) : "";
   return (
     <li>
       <button
         type="button"
         aria-pressed={on}
         onClick={() => onChange(toggleKey(view, dim, b.key))}
-        title={on ? t("exclude", { label: b.label }) : t("include", { label: b.label })}
-        aria-label={t("bucketAria", { label: b.label, count: b.count, net: net || fmtCount(b.count) })}
+        title={`${b.label} · ${fmtCount(b.count)}${exact ? ` · ${exact}` : ""}\n${on ? t("exclude", { label: b.label }) : t("include", { label: b.label })}`}
+        aria-label={t("bucketAria", { label: b.label, count: b.count, net: exact || fmtCount(b.count) })}
         className={cn(
           "group relative flex h-7 w-full items-center gap-2 overflow-hidden rounded-md px-1.5 text-left text-xs transition-colors",
           "hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -66,7 +68,7 @@ function Row({ dim, b, scale, money, view, onChange }: {
         />
         <span className={cn("relative min-w-0 flex-1 truncate", !on && "line-through decoration-muted-foreground/60")}>{b.label}</span>
         <span className="relative shrink-0 tabular-nums text-muted-foreground">{fmtCount(b.count)}</span>
-        {showNet && <span className={cn("relative w-14 shrink-0 text-right font-semibold tabular-nums", on ? toneText(tone) : "")}>{net}</span>}
+        {showNet && <span className={cn("relative shrink-0 whitespace-nowrap text-right font-semibold tabular-nums", on ? toneText(tone) : "")}>{net}</span>}
       </button>
     </li>
   );
@@ -90,7 +92,7 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
           <button type="button" className={LINK} onClick={() => onChange(setColumn(view, dim, keys, false))}>{t("none")}</button>
         </span>
       </header>
-      <ul className="flex max-h-[15.5rem] flex-col gap-px overflow-y-auto pr-0.5">
+      <ul className="flex max-h-[22rem] flex-col gap-px overflow-y-auto pr-0.5">
         {buckets.map((b) => <Row key={b.key} dim={dim} b={b} scale={scale} money={money} view={view} onChange={onChange} />)}
       </ul>
     </section>
