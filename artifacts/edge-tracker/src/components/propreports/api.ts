@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
+import { invalidateTradeDependents } from "@/lib/query-keys";
 import { fmtDate, fmtPrice as fmtPriceBase, fmtRelative } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 
@@ -255,14 +256,15 @@ export function useUsers(enabled: boolean) {
   return useQuery({ queryKey: prKeys.users, queryFn: () => http.get<UserRow[]>("/api/users"), enabled, staleTime: STALE.long, retry });
 }
 
-/** Invalidate everything that a write to the journal can change. */
+/**
+ * Invalidate everything that a write to the journal can change: the PropReports screens plus every trade-derived key
+ * (lib/query-keys — predicate-based, so ["/api/trades/facets", qs], ["stats-aggregate", …], risk and dashboard too).
+ */
 export function useInvalidateAll() {
   const qc = useQueryClient();
   return () => {
     qc.invalidateQueries({ queryKey: prKeys.all });
-    qc.invalidateQueries({ queryKey: ["/api/trades"] });
-    qc.invalidateQueries({ queryKey: ["risk"] });
-    qc.invalidateQueries({ queryKey: ["dashboard"] });
+    void invalidateTradeDependents(qc);
   };
 }
 

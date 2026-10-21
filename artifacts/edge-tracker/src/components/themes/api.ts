@@ -1,7 +1,7 @@
 /**
  * «Темы рынка» — data layer. GET /api/themes (the shared board + the viewer's view and boards) refreshes its quotes
  * lazily on the server (30 s cache while the market is open); the page re-asks every 30 s in pre / rth / post while the
- * tab is visible and not at all when closed. The active personal board (GET /api/themes/boards/:id) polls the same way.
+ * tab is visible and every 5 min when closed (so the board wakes up for premarket / the open). The active personal board (GET /api/themes/boards/:id) polls the same way.
  * View, sort and board edits save optimistically. «Архив» (GET /api/themes/archive, read while «Вид» is open): archived
  * boards and themes, each with «Вернуть».
  */
@@ -28,7 +28,7 @@ export const themesQuery = () =>
     staleTime: STALE.live,
     // refetchIntervalInBackground stays false: a hidden tab does not poll.
     refetchInterval: (q) => pollInterval(q.state.data?.session),
-    // Closed market = no polling; coming back to the tab (e.g. after 04:00 NY) asks once.
+    // Closed market = a slow 5 min poll (CLOSED_POLL_MS); coming back to the tab also asks once.
     refetchOnWindowFocus: true,
     meta: { i18n: false },
   });

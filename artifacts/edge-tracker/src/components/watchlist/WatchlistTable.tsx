@@ -2,6 +2,7 @@ import * as React from "react";
 import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LIST_LABELS, rowWritable, type Plan } from "./lib";
@@ -71,12 +72,15 @@ export function WatchlistTable({
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.item.id));
   const someSelected = !allSelected && rows.some((r) => selected.has(r.item.id));
   const th = (k: SortKey) => ({ active: sort.key === k, dir: sort.dir, onSort: () => onSort(k) });
+  const isMobile = useIsMobile();
+
+  // 2.11: phones get cards (no 1000 px table), wider screens the table — only one of them is mounted.
+  if (isMobile) {
+    return <WatchlistCards rows={rows} showList={showList} canEdit={canEdit} me={me} actions={actions} scoringIds={scoringIds} levelsLoading={levelsLoading} today={today} />;
+  }
 
   return (
-    <>
-    {/* 2.11: phones get cards (no 1000 px table); the table from `sm` up. */}
-    <WatchlistCards className="sm:hidden" rows={rows} showList={showList} canEdit={canEdit} me={me} actions={actions} scoringIds={scoringIds} levelsLoading={levelsLoading} today={today} />
-    <DataTable density={density} className="hidden sm:block [&_tbody_td]:py-0 [&_thead_th]:py-1.5">
+    <DataTable density={density} className="[&_tbody_td]:py-0 [&_thead_th]:py-1.5">
       <table className="table-fixed">
         <colgroup>
           <col style={{ width: canEdit ? 52 : 12 }} />
@@ -145,7 +149,6 @@ export function WatchlistTable({
         </tbody>
       </table>
     </DataTable>
-    </>
   );
 }
 

@@ -95,7 +95,13 @@ export default function Stats() {
   // Server-side window (DEV-01): the selected period first, the equally long previous one after it (deltas only),
   // only the picked trader. "Всё время" (on demand) still needs the whole (scoped) book.
   const ranges = useMemo(() => periodRanges(prefs.period), [prefs.period]);
-  const windowTrader = prefs.trader !== "all" ? prefs.trader : null;
+  // Own trades only (owner rule 2026-10-21): a member never gets the trader picker or «the whole team», and a saved
+  // prefs.trader / ?trader= is ignored for them (like /analytics) — their scope is the own book, or their own name
+  // for the PropReports-only switch below.
+  const solo = !isCurator;
+  const me = user?.traderName ?? null;
+  const trader = solo ? (me && prefs.trader === me ? me : "all") : prefs.trader;
+  const windowTrader = trader !== "all" ? trader : null;
   const staff = isCurator;
   const raw = usePeriodTrades(
     { from: ranges.cur.from, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
@@ -131,16 +137,15 @@ export default function Stats() {
   );
   // Trades in the scope regardless of the period (for the empty states).
   const bookTotal = (windowTrader ? traderFacets.data?.total : teamFacets.data?.total) ?? null;
-  const me = user?.traderName ?? null;
   const perf = usePerformance(null);
   const reportTraders = useMemo(
     () => [...new Set((perf.data?.reports ?? []).map((r) => r.traderName).filter((x): x is string => !!x))].filter((t) => !traders.includes(t)),
     [perf.data, traders],
   );
-  const hasBroker = prefs.trader !== "all" && (perf.data?.reports ?? []).some((r) => r.traderName === prefs.trader);
+  const hasBroker = trader !== "all" && (perf.data?.reports ?? []).some((r) => r.traderName === trader);
   // A trader whose results live only in PropReports opens straight onto their broker report.
   useEffect(() => {
-    if (!me || prefs.trader !== "all" || isLoading || !perf.data) return;
+    if (!me || trader !== "all" || isLoading || !perf.data) return;
     const hasJournal = teamFacets.data ? teamFacets.data.traders.includes(me) : allTrades.some((tr) => (tr.trader ?? "").trim() === me);
     if (!hasJournal && perf.data.reports.some((r) => r.traderName === me)) setPrefs((p) => ({ ...p, trader: me }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,8 +153,8 @@ export default function Stats() {
 
   // Trader scope (before horizon) — the horizon table compares all three horizons within it.
   const traderScoped = useMemo(
-    () => (prefs.trader === "all" ? allTrades : allTrades.filter((tr) => (tr.trader ?? "").trim() === prefs.trader)),
-    [allTrades, prefs.trader],
+    () => (trader === "all" ? allTrades : allTrades.filter((tr) => (tr.trader ?? "").trim() === trader)),
+    [allTrades, trader],
   );
   const scoped = useMemo(
     () => (prefs.horizon === "all" ? traderScoped : traderScoped.filter((tr) => horizonOf(tr) === prefs.horizon)),
@@ -163,16 +168,16 @@ export default function Stats() {
   const d = useReportData({ staff, cur: a, prev: agg.prev, trades, prevTrades, metric });
   const { kpis, prevKpis, days, fees, count } = d;
   const horizonBase = useMemo(() => inRange(traderScoped, ranges.cur), [traderScoped, ranges]);
-  const { exporting, withTrades } = useWindowExport({ staff, trades, range: ranges.cur, trader: windowTrader, horizon: prefs.horizon });
+  const { exporting, withTrades } = useWindowExport({
+    staff, trades, range: ranges.cur, trader: windowTrader, horizon: prefs.horizon, facets: FV.view, deskTags: FQ.data?.deskTags,
+  });
 
   const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
   // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
-  // Own trades only (owner rule 2026-10-21): a member never gets the trader picker or «the whole team».
-  const solo = !isCurator;
   // One person's report: trade rows don't repeat the name (MAKSIM-37).
-  const oneTrader = solo || prefs.trader !== "all";
+  const oneTrader = solo || trader !== "all";
   const scopeLabel =
-    (prefs.trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : personName(prefs.trader)) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
+    (trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : personName(trader)) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
 
   const reportMeta = () => ({
     title: t("reportTitle", { scope: scopeLabel }),
@@ -287,7 +292,7 @@ export default function Stats() {
           />
         </div>
         {!solo && <PersonSelect
-          value={prefs.trader}
+          value={trader}
           onValueChange={(v) => set("trader", v)}
           allValue="all"
           allLabel={t("wholeTeam")}
@@ -295,7 +300,7 @@ export default function Stats() {
             ...(me && traders.includes(me) ? [{ value: me, label: t("myTradesOf", { name: personName(me) }) }] : []),
             ...traders.filter((t) => t !== me),
             ...reportTraders,
-            ...(prefs.trader !== "all" && !traders.includes(prefs.trader) && !reportTraders.includes(prefs.trader) ? [prefs.trader] : []),
+            ...(trader !== "all" && !traders.includes(trader) && !reportTraders.includes(trader) ? [trader] : []),
           ]}
           className="h-9 w-full sm:w-[200px]"
           ariaLabel={t("traderAria")}
@@ -306,12 +311,12 @@ export default function Stats() {
 
       {hasBroker && (
         <div className="space-y-4">
-          <PerformanceReportPanel trader={prefs.trader} />
-          <ReconcilePanel trader={prefs.trader} compact />
+          <PerformanceReportPanel trader={trader} />
+          <ReconcilePanel trader={trader} compact />
         </div>
       )}
 
-      {prefs.trader === "all" && (bookTotal === 0 || (bookTotal == null && !staff && allTrades.length === 0 && prefs.period === "all")) ? (
+      {trader === "all" && (bookTotal === 0 || (bookTotal == null && !staff && allTrades.length === 0 && prefs.period === "all")) ? (
         <Panel>
           <EmptyState
             icon={BarChart3}
@@ -323,21 +328,21 @@ export default function Stats() {
         <Panel>
           <EmptyState
             icon={SearchX}
-            title={`${prefs.trader !== "all" ? t("noTradesTitleOf", { period: periodOpt.long, trader: personName(prefs.trader) }) : t("noTradesTitle", { period: periodOpt.long })}${prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : ""}`}
+            title={`${trader !== "all" ? t("noTradesTitleOf", { period: periodOpt.long, trader: personName(trader) }) : t("noTradesTitle", { period: periodOpt.long })}${prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : ""}`}
             description={[
               bookTotal != null
-                ? prefs.trader !== "all"
-                  ? t("inJournalOf", { trader: personName(prefs.trader), trades: commonI18n.t("units.trades", { count: bookTotal }) })
+                ? trader !== "all"
+                  ? t("inJournalOf", { trader: personName(trader), trades: commonI18n.t("units.trades", { count: bookTotal }) })
                   : t("inJournal", { trades: commonI18n.t("units.trades", { count: bookTotal }) })
                 : "",
-              prefs.trader !== "all" || prefs.horizon !== "all" ? t("pickLongerOrClear") : t("pickLonger"),
+              trader !== "all" || prefs.horizon !== "all" ? t("pickLongerOrClear") : t("pickLonger"),
             ].filter(Boolean).join(" ")}
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 {prefs.period !== "all" && (
                   <Button className="rounded-full" onClick={() => set("period", "all")}>{t("showAll")}</Button>
                 )}
-                {prefs.trader !== "all" && (
+                {!solo && trader !== "all" && (
                   <Button variant="outline" className="rounded-full" onClick={() => set("trader", "all")}>{t("wholeTeam")}</Button>
                 )}
                 {prefs.horizon !== "all" && (
@@ -360,9 +365,9 @@ export default function Stats() {
 
           <ReportPanels
             d={d} staff={staff} agg={a} trades={trades} horizonBase={horizonBase} metric={metric} windowLabel={windowLabel}
-            trader={prefs.trader} horizon={prefs.horizon} dim={prefs.dim} oneTrader={oneTrader} solo={solo}
+            trader={trader} horizon={prefs.horizon} dim={prefs.dim} oneTrader={oneTrader} solo={solo}
             onHorizon={(h) => set("horizon", h)} onDim={(x) => set("dim", x)}
-            onPickTrader={prefs.trader === "all" ? (name) => set("trader", name) : undefined}
+            onPickTrader={!solo && trader === "all" ? (name) => set("trader", name) : undefined}
           />
         </>
       )}

@@ -391,9 +391,6 @@ export default {
   },
   related: {
     ideaStatus: { draft: "Черновик", published: "Опубликована", approved: "Одобрена", needs_work: "На доработке", rejected: "Отклонена", converted: "Сделка" },
-    checklistNone: "Чек-лист не привязан",
-    checklistPassed: "Чек-лист пройден",
-    checklistFailed: "Чек-лист не пройден",
     playbookNoSetup: "Нет сетапа с таким названием.",
     playbookSetSetup: "Укажите сетап — подтянем запись плейбука.",
     openInPlaybook: "Открыть в плейбуке: {name}",

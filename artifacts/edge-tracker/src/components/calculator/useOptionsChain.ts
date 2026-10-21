@@ -35,36 +35,40 @@ export function useOptionsChain(initialTicker?: string): OptionsChainState {
   const [loading, setLoading] = useState(false);
   const [chainLoading, setChainLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const req = useRef(0);
+  // Separate counters: a ticker load chains into a date load, and the date load must not orphan the ticker load's
+  // spinner. A new ticker also bumps dateReq so any in-flight date answer for the old ticker is dropped.
+  const symReq = useRef(0);
+  const dateReq = useRef(0);
 
   const loadDate = useCallback(async (sym: string, exp: string) => {
-    const id = ++req.current;
+    const id = ++dateReq.current;
     setChainLoading(true); setError(null);
     try {
       const r = await fetchChain(sym, exp);
-      if (id !== req.current) return;
+      if (id !== dateReq.current) return;
       const c = chainOf(r);
       if (r.sourceUnavailable || !c) throw new Error(t("errors.sourceDown"));
       if (!(c.spot > 0)) throw new Error(t("advisor.noSpot"));
       setChain(c);
       setMeta({ symbol: r.symbol, name: r.name, price: r.spot, changePct: r.changePct, source: r.source, delayMinutes: r.delayMinutes ?? null });
     } catch (e: unknown) {
-      if (id !== req.current) return;
+      if (id !== dateReq.current) return;
       setChain(null);
       setError(fetchErrorMessage(e, e instanceof Error && e.message ? e.message : t("advisor.chainLoadError")));
     } finally {
-      if (id === req.current) setChainLoading(false);
+      if (id === dateReq.current) setChainLoading(false);
     }
   }, [t]);
 
   const loadSymbol = useCallback(async (raw: string, preferredExp: string) => {
     const sym = raw.trim().toUpperCase();
     if (!sym) return;
-    const id = ++req.current;
+    const id = ++symReq.current;
+    dateReq.current++;
     setLoading(true); setChainLoading(false); setError(null); setChain(null); setExpirations([]);
     try {
       const r = await fetchChain(sym, null);
-      if (id !== req.current) return;
+      if (id !== symReq.current) return;
       if (r.sourceUnavailable) { setMeta(null); setError(t("errors.sourceDown")); return; }
       const exps = Array.isArray(r.expirations) ? r.expirations : [];
       setExpirations(exps);
@@ -76,11 +80,11 @@ export function useOptionsChain(initialTicker?: string): OptionsChainState {
       if (nearest && (r.expiration ?? exps[0].label) === want) setChain(nearest);
       else void loadDate(sym, want);
     } catch (e: unknown) {
-      if (id !== req.current) return;
+      if (id !== symReq.current) return;
       setMeta(null);
       setError(fetchErrorMessage(e, t("advisor.loadError")));
     } finally {
-      if (id === req.current) setLoading(false);
+      if (id === symReq.current) setLoading(false);
     }
   }, [loadDate, setSelectedExp, t]);
 

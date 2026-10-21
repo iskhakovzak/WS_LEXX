@@ -391,9 +391,6 @@ export default {
   },
   related: {
     ideaStatus: { draft: "Qoralama", published: "Eʼlon qilingan", approved: "Maʼqullangan", needs_work: "Qayta ishlashda", rejected: "Rad etilgan", converted: "Savdo" },
-    checklistNone: "Chek-list biriktirilmagan",
-    checklistPassed: "Chek-list oʻtildi",
-    checklistFailed: "Chek-list oʻtilmadi",
     playbookNoSetup: "Bunday nomli setap yoʻq.",
     playbookSetSetup: "Setapni belgilang — pleybuk yozuvini ulaymiz.",
     openInPlaybook: "Pleybukda ochish: {name}",

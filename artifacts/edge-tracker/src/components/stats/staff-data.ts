@@ -41,9 +41,13 @@ export function preferredMetricOfAggregate(a: StatsAggregate | undefined): Metri
   return usd >= r && usd > 0 ? "net" : "r";
 }
 
-/** Raw trades of a staff window, fetched only for CSV / print (GET /api/trades, the same server window). */
-export async function fetchWindowTrades(q: { from: string | null; to: string | null; trader: string | null }): Promise<Trade[]> {
+/**
+ * Raw trades of a staff window, fetched only for CSV / print (GET /api/trades, the same server window). `facets` is
+ * the «Фильтры» selection (lib/trade-facets facetQuery, x* params); the caller still filters the rows client-side.
+ */
+export async function fetchWindowTrades(q: { from: string | null; to: string | null; trader: string | null; facets?: string }): Promise<Trade[]> {
   const query: Record<string, string> = { lite: "1" };
+  if (q.facets) new URLSearchParams(q.facets).forEach((v, k) => { query[k] = v; });
   if (q.from) query.from = q.from;
   if (q.to) query.to = q.to;
   if (q.trader) query.trader = q.trader;

@@ -5,6 +5,7 @@
 import { useCallback } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http, type ApiError } from "@/lib/api/http";
+import { useAuth } from "@/contexts/auth-context";
 import { EMPTY_FACET_VIEW, facetQuery, normalizeFacetView, type FacetView, type FacetsResponse } from "@/lib/trade-facets";
 
 export const FACET_VIEW_KEY = ["/api/trades/facets/view"] as const;
@@ -13,6 +14,9 @@ export const FACETS_KEY = "/api/trades/facets";
 /** The viewer's panel + «Исключить IMX»; `update` saves at once (optimistic; a guest keeps it for the session). */
 export function useFacetView() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // A guest (read-only token) keeps the view in the cache only — the PUT would be refused.
+  const canSave = !!user && user.role !== "guest";
   const q = useQuery<FacetView, ApiError>({
     queryKey: FACET_VIEW_KEY,
     queryFn: async ({ signal }) => normalizeFacetView(await http.get<unknown>("/api/trades/facets/view", { signal })),
@@ -20,14 +24,17 @@ export function useFacetView() {
   });
   const { mutate: save } = useMutation<FacetView, ApiError, FacetView>({
     mutationFn: async (v) => normalizeFacetView(await http.put<unknown>("/api/trades/facets/view", v)),
+    // Silent: the view already applies locally (optimistic); a failed save only means it won't follow to other
+    // devices — no global error toast for a background preference write.
+    onError: () => {},
   });
   const view = q.data ?? EMPTY_FACET_VIEW;
   const update = useCallback((next: FacetView | ((v: FacetView) => FacetView)) => {
     const cur = qc.getQueryData<FacetView>(FACET_VIEW_KEY) ?? EMPTY_FACET_VIEW;
     const v = typeof next === "function" ? next(cur) : next;
     qc.setQueryData(FACET_VIEW_KEY, v);
-    save(v);
-  }, [qc, save]);
+    if (canSave) save(v);
+  }, [qc, save, canSave]);
   return { view, update, ready: q.isFetched };
 }
 

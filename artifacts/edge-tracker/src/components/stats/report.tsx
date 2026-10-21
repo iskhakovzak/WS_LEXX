@@ -17,6 +17,8 @@ import {
   dailyEquity, daysOf, extremesOf, feesOf as aggFees, groupStat, groupsOf, heatOf, kpisFromAggregate, monthlyOf, type StatsAggregate,
 } from "./aggregate";
 import { fetchWindowTrades } from "./staff-data";
+import { facetFilteredTrades } from "./StatsFacets";
+import { facetQuery, type FacetView } from "@/lib/trade-facets";
 import {
   computeKpis, dailySeries, equitySeries, feeStats, horizonOf, inRange, monthlySeries, weekdayLabel,
   type HorizonFilter, type Metric, type Range,
@@ -51,15 +53,21 @@ export function useReportData(o: {
 }
 export type ReportData = ReturnType<typeof useReportData>;
 
-/** CSV / print: staff fetch the raw trades of the window only now (never on open). */
-export function useWindowExport(o: { staff: boolean; trades: Trade[]; range: Range; trader: string | null; horizon: HorizonFilter }) {
+/**
+ * CSV / print: staff fetch the raw trades of the window only now (never on open), with the same «Фильтры» selection
+ * (incl. «Исключить IMX») as the cards. A trader's `trades` are already filtered by the page.
+ */
+export function useWindowExport(o: {
+  staff: boolean; trades: Trade[]; range: Range; trader: string | null; horizon: HorizonFilter; facets: FacetView; deskTags: readonly string[] | undefined;
+}) {
   const { toast } = useToast();
   const [exporting, setExporting] = useState(false);
   const withTrades = async (run: (rows: Trade[]) => void) => {
     if (!o.staff) return run(o.trades);
     setExporting(true);
     try {
-      const rows = await fetchWindowTrades({ from: o.range.from, to: o.range.to, trader: o.trader });
+      const fetched = await fetchWindowTrades({ from: o.range.from, to: o.range.to, trader: o.trader, facets: facetQuery(o.facets) });
+      const rows = facetFilteredTrades(fetched, o.facets, o.deskTags);
       run(inRange(o.horizon === "all" ? rows : rows.filter((tr) => horizonOf(tr) === o.horizon), o.range));
     } catch {
       toast({ title: statsI18n.t("loadError"), variant: "destructive" });

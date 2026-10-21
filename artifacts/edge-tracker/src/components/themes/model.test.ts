@@ -146,7 +146,7 @@ describe("view, rows, tabs", () => {
 
 describe("misc", () => {
   it("polls only while the market can move", () => {
-    expect([pollInterval("pre"), pollInterval("rth"), pollInterval("post"), pollInterval("closed"), pollInterval(undefined)]).toEqual([30_000, 30_000, 30_000, false, false]);
+    expect([pollInterval("pre"), pollInterval("rth"), pollInterval("post"), pollInterval("closed"), pollInterval(undefined)]).toEqual([30_000, 30_000, 30_000, 300_000, false]);
   });
 
   it("age in seconds, never negative; metric names validated", () => {

@@ -391,9 +391,6 @@ export default {
   },
   related: {
     ideaStatus: { draft: "Draft", published: "Published", approved: "Approved", needs_work: "Needs work", rejected: "Rejected", converted: "Trade" },
-    checklistNone: "No checklist attached",
-    checklistPassed: "Checklist passed",
-    checklistFailed: "Checklist failed",
     playbookNoSetup: "No setup with this name.",
     playbookSetSetup: "Set a setup — we’ll pull in the playbook entry.",
     openInPlaybook: "Open in playbook: {name}",

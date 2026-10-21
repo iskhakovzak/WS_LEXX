@@ -90,13 +90,16 @@ export type BoardTheme = ThemeOut & { key: string; mine: Omit<PersonalThemeOut, 
 export type ThemeRecord = { id: number; name: string; tickers: string[]; sortOrder: number; active: boolean; updatedBy: string | null; updatedAt: string };
 
 export const POLL_MS = 30_000;
+/** A closed market is re-asked slowly, so a board left open overnight wakes up on its own for premarket / the open. */
+export const CLOSED_POLL_MS = 5 * 60_000;
 
-/** Auto-refresh only while something can move (pre / rth / post); a closed market is not polled. */
+export const isLiveSession = (s: ThemeSession | null | undefined): boolean => s === "pre" || s === "rth" || s === "post";
+
+/** Auto-refresh: 30 s while something can move (pre / rth / post), 5 min while closed; nothing before the first answer. */
 export function pollInterval(session: ThemeSession | null | undefined): number | false {
-  return session === "pre" || session === "rth" || session === "post" ? POLL_MS : false;
+  if (isLiveSession(session)) return POLL_MS;
+  return session === "closed" ? CLOSED_POLL_MS : false;
 }
-
-export const isLiveSession = (s: ThemeSession | null | undefined): boolean => pollInterval(s) !== false;
 
 const val = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 type Valued<C extends string> = { readonly [K in C]?: number | null };

@@ -27,9 +27,9 @@ import { stopIsEstimate } from "./sheet-model";
 import { ConvictionDots, HorizonPill, ResultMenu, SidePill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
 import { TradeMarkup } from "./trade-markup";
-import { usePlanOverlay } from "@/components/chart-engine/hooks/usePlanOverlay";
 import { ExecutionsPanel } from "./ExecutionsPanel";
-import { ChecklistStatus, TradeRelated, useSourceIdeaTarget } from "./TradeRelated";
+import { TradeRelated, useSourceIdeaTarget } from "./TradeRelated";
+import { InViewSheetChart, SheetChart } from "./SheetChart";
 import { TradeSocial } from "./TradeSocial";
 import { QualityBlock, useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { ET_SESSION_LABEL, etWallToIso, fmtDuration, sessionOfEt, type EtSession } from "@/components/trade-chart-parts/chart-utils";
@@ -70,22 +70,12 @@ function tradeTiming(t: Trade): TradeTiming {
   };
 }
 
-const LazyReplayChart = React.lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
 const LazyAiReviewPanel = React.lazy(() => import("@/components/ai-review-panel").then((m) => ({ default: m.AiReviewPanel })));
 const LazyVoiceNotePlayer = React.lazy(() => import("@/components/voice-note-player").then((m) => ({ default: m.VoiceNotePlayer })));
 
 export type TradePatch = Partial<Pick<Trade, "result" | "notes" | "whatWorked" | "whatFailed" | "conclusion" | "tags" | "screenshotNotes" | "setup">>
   & { confidenceGrade?: "A+" | "A" | "B" | "C" };
-
-/** Idea targets are free text («125 / 130», «$12.50») — the replay draws the first price it finds. */
-function parseTargetPrice(target: string | null): number | null {
-  if (!target) return null;
-  const m = /\d+(?:[.,]\d+)?/.exec(target);
-  if (!m) return null;
-  const n = Number(m[0].replace(",", "."));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
 
 type Props = {
   trade: Trade | null;
@@ -238,13 +228,11 @@ export function TradeDetailSheet(p: Props) {
   const ideaTarget = useSourceIdeaTarget(t);
   const timing = React.useMemo(() => (t ? tradeTiming(t) : null), [t]);
   React.useEffect(() => { setReviewCount(null); }, [t?.id]);
-  // Plan against execution: the morning plan's levels of this ticker-day on both charts (Волна 2 п. 2.12).
-  const plan = usePlanOverlay(t && t.id > 0 ? { tradeId: t.id } : null);
   const canEditForm = p.canEditForm ?? p.canEdit;
   const canEditResult = p.canEditResult ?? p.canEdit;
   const canDelete = p.canDelete ?? p.canEdit;
   // Another trader's trade opened from the playbook: $ come back null, and the owner-only blocks (quality, AI
-  // review, checklist, voice notes, curator reviews) would only answer 403 — they are not shown at all.
+  // review, voice notes, curator reviews) would only answer 403 — they are not shown at all.
   const redacted = t ? isRedactedTrade(t) : false;
   // The viewer's own losing intraday trade: «Переиграть этот день» in the simulator (the button checks the bars).
   const ownLoss = !!t && !redacted && !!p.traderName && t.trader === p.traderName && (netPnl(t) ?? 0) < 0 && horizonOf(t) === "intraday";
@@ -335,7 +323,6 @@ export function TradeDetailSheet(p: Props) {
                 {/* «Обзор» = разметка + разбор + график (Волна 2 п. 2.12); quality, replay and the news live in «График». */}
                 <TabsContent value="overview" className="space-y-5">
                   <TradeMarkup trade={t} canEdit={p.canEdit} onTag={p.onTag} onPatch={p.onPatch} />
-                  {!isBrokerTrade(t) && !redacted && <ChecklistStatus tradeId={t.id} />}
                   <section className="space-y-2">
                     <p className="micro-label">{tt("sheet.review")}</p>
                     <ReviewEditor trade={t} canEdit={p.canEdit} onPatch={p.onPatch} />
@@ -346,9 +333,8 @@ export function TradeDetailSheet(p: Props) {
                         <p className="micro-label">{tt("sheet.chart")}</p>
                         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setTab("chart")}>{tt("sheet.chartOpen")}</Button>
                       </div>
-                      <React.Suspense fallback={<Skeleton className="h-[300px] rounded-2xl" />}>
-                        <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={300} mode="analysis" showModes={false} planLevels={plan?.levels} />
-                      </React.Suspense>
+                      {/* Mounted (bars + plan levels) only once scrolled near the viewport — opening a trade stays cheap. */}
+                      <InViewSheetChart key={t.id} trade={t} ideaTarget={ideaTarget} height={300} showModes={false} fallbackClassName="h-[300px] rounded-2xl" />
                     </section>
                   )}
                   <ContextRow trade={t} timing={timing} />
@@ -375,9 +361,7 @@ export function TradeDetailSheet(p: Props) {
                 <TabsContent value="chart" className="space-y-4">
                   {tab === "chart" && (
                     // One chart engine: analysis (the whole day with the trade) and replay (bar by bar) are a mode switch.
-                    <React.Suspense fallback={<Skeleton className="h-[504px] rounded-2xl" />}>
-                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={440} mode="analysis" showModes planLevels={plan?.levels} />
-                    </React.Suspense>
+                    <SheetChart key={t.id} trade={t} ideaTarget={ideaTarget} height={440} showModes fallbackClassName="h-[504px] rounded-2xl" />
                   )}
                   {(t.entry != null || t.exit != null) && !redacted && (
                     <section className="space-y-2">

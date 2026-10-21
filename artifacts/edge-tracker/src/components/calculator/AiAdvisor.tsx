@@ -29,6 +29,38 @@ interface AiAnalysisResult {
   altStrategies?: string[];
 }
 
+type AiLeg = AiAnalysisResult["legs"][number];
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/** The model's JSON is untrusted: missing / mistyped fields fall back to empty values so the panel never crashes. */
+function normaliseAiResult(raw: unknown): AiAnalysisResult {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const legs: AiLeg[] = (Array.isArray(r.legs) ? r.legs : []).flatMap((l: unknown) => {
+    const o = (l && typeof l === "object" ? l : {}) as Record<string, unknown>;
+    const strike = num(o.strike);
+    if (strike == null) return [];
+    return [{
+      action: o.action === "sell" ? "sell" : "buy",
+      type: o.type === "put" ? "put" : "call",
+      strike,
+      premium: num(o.premium) ?? 0,
+      contracts: num(o.contracts) ?? 1,
+    }];
+  });
+  return {
+    strategy: str(r.strategy),
+    reasoning: str(r.reasoning),
+    legs,
+    maxRisk: num(r.maxRisk),
+    maxProfit: num(r.maxProfit),
+    breakevens: (Array.isArray(r.breakevens) ? r.breakevens : []).filter((b): b is number => num(b) != null),
+    whyBest: str(r.whyBest),
+    keyRisk: str(r.keyRisk),
+    altStrategies: (Array.isArray(r.altStrategies) ? r.altStrategies : []).filter((a): a is string => typeof a === "string" && a.length > 0),
+  };
+}
+
 export default function AiAdvisor({ chain, atmIv, onOpenInBuilder }: {
   chain: ChainData | null;
   atmIv: number | null;
@@ -44,9 +76,9 @@ export default function AiAdvisor({ chain, atmIv, onOpenInBuilder }: {
     if (!chain || !aiPrompt.trim()) return;
     setAiLoading(true); setAiError(null); setAiResult(null);
     try {
-      setAiResult(await http.post<AiAnalysisResult>("/api/options/ai-analyze", {
+      setAiResult(normaliseAiResult(await http.post<unknown>("/api/options/ai-analyze", {
         symbol: chain.symbol, spot: chain.spot, daysToExpiry: chain.daysToExpiry, ...compactForAi(chain), userPrompt: aiPrompt,
-      }));
+      })));
     } catch (e: unknown) {
       setAiError(e instanceof Error ? e.message : calculatorI18n.t("advisor.aiError"));
     } finally {
@@ -116,11 +148,13 @@ export default function AiAdvisor({ chain, atmIv, onOpenInBuilder }: {
               <MetricTile label={t("shared.maxProfit")} value={aiResult.maxProfit != null ? fmtUsd(aiResult.maxProfit, { decimals: 0 }) : t("shared.unlimited")} tone="text-up" />
               <MetricTile label={t("shared.breakeven")} value={aiResult.breakevens.length ? aiResult.breakevens.map((b) => fmtUsd(b)).join(" / ") : "—"} />
             </div>
-            <p className="border-l-2 border-primary/40 pl-3 text-sm text-muted-foreground">{aiResult.reasoning}</p>
-            <p className="text-sm"><span className="text-muted-foreground">{t("advisor.why")} </span>{aiResult.whyBest}</p>
-            <p className="flex items-start gap-2 text-sm text-[hsl(var(--chart-3))]">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{aiResult.keyRisk}
-            </p>
+            {aiResult.reasoning && <p className="border-l-2 border-primary/40 pl-3 text-sm text-muted-foreground">{aiResult.reasoning}</p>}
+            {aiResult.whyBest && <p className="text-sm"><span className="text-muted-foreground">{t("advisor.why")} </span>{aiResult.whyBest}</p>}
+            {aiResult.keyRisk && (
+              <p className="flex items-start gap-2 text-sm text-[hsl(var(--chart-3))]">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{aiResult.keyRisk}
+              </p>
+            )}
             {aiResult.altStrategies && aiResult.altStrategies.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs text-muted-foreground">{t("advisor.alternatives")}</span>
