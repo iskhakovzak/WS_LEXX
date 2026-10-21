@@ -83,7 +83,7 @@ function TraderName({ row }: { row: LoopRow }) {
   const { t } = adminI18n.useT();
   return (
     <div className="min-w-0">
-      <Link href={profileHref(row.name)} className="block truncate font-medium hover:underline" title={t("loop.profile")}>{personName(row.name)}</Link>
+      <Link href={profileHref(row.name)} className="block truncate py-1 font-medium hover:underline" title={t("loop.profile")}>{personName(row.name)}</Link>
       <span className="block truncate text-2xs text-muted-foreground">{row.group ?? t("loop.noGroup")}</span>
     </div>
   );

@@ -25,7 +25,7 @@ import { invalidateTradeDependents } from "@/lib/query-keys";
 import { ENTRY_DECISION_FIELDS, HORIZONS, HORIZON_LABEL, RESULT_LABEL, advancedFilterCount, apiErrorMessage, blankForm, dayOf, downloadCsv, formToBody, isBrokerTrade, isDefaultFilters, isTypingTarget, resultKey, tradeToForm, type FormData, type Outcome } from "@/components/trades/trade-utils";
 import { useTradeFilters } from "@/components/trades/use-trade-filters";
 import { useTradesPage, useTradeDays, dayTradesQuery, patchTradeInPages } from "@/hooks/use-trades-page";
-import { TradeFilterBar } from "@/components/trades/TradeFilterBar";
+import { TradeFilterBar, SelectedIdsBanner } from "@/components/trades/TradeFilterBar";
 import { TradesFacets, useFacetFilters } from "@/components/trades/TradesFacets";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { TradePagination } from "@/components/trades/TradePagination";
@@ -627,6 +627,7 @@ export default function Trades() {
           searchRef={searchRef}
         />
       )}
+      <SelectedIdsBanner ids={pageFilters.ids} onClear={() => F.patch({ ids: "" })} />
       {!noTrades && <TradesFacets filters={pageFilters} fv={FV} />}
 
       {!noTrades && !P.isError && (

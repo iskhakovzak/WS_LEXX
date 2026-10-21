@@ -113,6 +113,8 @@ export default {
     dateFrom: "From",
     dateTo: "To",
     selectedIds: "Selected ids",
+    onlySelected: { one: "Showing only the selected trade ({count}) — the page was opened from a link to it", other: "Showing only the selected trades ({count}) — the page was opened from a link to them" },
+    showAll: "Show all trades",
     quality: "Execution quality",
     exitEffTitle: "Captured / MFE, in percent",
     exitEffLabel: "Exit ≤ %",

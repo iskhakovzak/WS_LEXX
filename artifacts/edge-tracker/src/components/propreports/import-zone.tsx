@@ -179,13 +179,22 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
             {t("import.preview")}
           </Button>
           {!perf && (
-            <Button onClick={runApply} disabled={!preview || !writable || importFile.isPending || !!applied}>
+            <Button
+              onClick={runApply}
+              disabled={!preview || !writable || importFile.isPending || !!applied}
+              title={!preview ? t("import.needPreview") : !writable && !applied ? t("import.nothingTitle") : undefined}
+            >
               {importFile.isPending && importFile.variables?.dryRun === false ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {t("import.run")}
             </Button>
           )}
           {!staff && <Pill tone="neutral">{t("import.onlyYours")}</Pill>}
         </div>
+        {preview && !writable && !applied && !perf && (
+          <p role="status" className="-mt-1 rounded-xl border border-[var(--glass-border)] px-3 py-2 text-sm text-muted-foreground">
+            {t("import.nothingToImport", { count: preview.counts.unchanged ?? 0 })}
+          </p>
+        )}
         {isReport && staff && fileAccount && (
           <p className="-mt-2 text-xs text-muted-foreground">{t(fileOwner ? "import.fileAccount" : "import.fileAccountLink", { account: fileAccount })}</p>
         )}

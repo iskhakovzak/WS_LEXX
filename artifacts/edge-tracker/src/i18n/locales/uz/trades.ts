@@ -113,6 +113,8 @@ export default {
     dateFrom: "Sanadan",
     dateTo: "Sanagacha",
     selectedIds: "Tanlangan id",
+    onlySelected: { one: "Faqat tanlangan savdo koʻrsatilmoqda ({count}) — sahifa unga havola orqali ochilgan", other: "Faqat tanlangan savdolar koʻrsatilmoqda ({count}) — sahifa ularga havola orqali ochilgan" },
+    showAll: "Barcha savdolarni koʻrsatish",
     quality: "Ijro sifati",
     exitEffTitle: "Olingan / MFE, foizda",
     exitEffLabel: "Chiqish ≤ %",

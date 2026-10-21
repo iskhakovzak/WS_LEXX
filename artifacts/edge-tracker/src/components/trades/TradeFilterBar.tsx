@@ -366,3 +366,21 @@ function SavedViews({ views, onSave, onApply, onRemove, canSave }: {
     </Popover>
   );
 }
+
+/**
+ * Opened from a link with specific trades (?ids=… — a notification, «разобрать эти сделки»): say so above the book and
+ * offer the way back to everything, instead of a list that silently shows only those trades.
+ */
+export function SelectedIdsBanner({ ids, onClear }: { ids: string | undefined; onClear: () => void }) {
+  const { t } = tradesI18n.useT();
+  const n = (ids ?? "").split(",").filter(Boolean).length;
+  if (!n) return null;
+  return (
+    <div role="status" className="glass-panel flex flex-wrap items-center gap-2 rounded-2xl border border-primary/30 px-3 py-2 text-sm">
+      <span className="min-w-0 flex-1">{t("filters.onlySelected", { count: n })}</span>
+      <Button variant="outline" size="sm" className="min-h-8" onClick={onClear}>
+        <X className="h-3.5 w-3.5" aria-hidden="true" />{t("filters.showAll")}
+      </Button>
+    </div>
+  );
+}
