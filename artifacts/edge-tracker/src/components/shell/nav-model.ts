@@ -11,9 +11,14 @@
  *   the desk setting nav.simpleUntilTier never goes below «junior» (an old «trainee» value means «newcomers» = juniors);
  *   a trader without a resolved tier counts as a junior (the stage default).
  * - Phone tab bar for juniors (item 1.3): Дашборд · План · Дневник (labelled «Вечер») · Сделки · Ещё.
+ * - Sections closed for the viewer's ladder stage (desk setting access.sections → GET /api/permissions/me nav.blocked;
+ *   staff never): gone from the sidebar, the phone sheet, the palette and pinned items (`navItemOpen`); a closed row's
+ *   open pages move up as rows of their own. The route guard (App.tsx) shows «Раздел закрыт» for a closed URL
+ *   (`blockedSectionOf`); the admin table lists `blockableSections()`.
  */
 import { shellI18n } from "@/i18n/ns/shell";
-import { NAV_GROUPS, type NavFeature, type NavGroup, type NavItem } from "./nav";
+import { blockedSections } from "@/lib/permissions";
+import { ALL_NAV_ITEMS, NAV_GROUPS, isNavActive, type NavFeature, type NavGroup, type NavItem } from "./nav";
 
 export type VisibleGroup = Omit<NavGroup, "items"> & {
   /** Sidebar rows with only the children this viewer may open. */
@@ -33,15 +38,27 @@ export function navFeatureOn(feature: NavFeature | undefined, nav: unknown): boo
   return !!nav && typeof nav === "object" && (nav as Record<string, unknown>)[feature] === true;
 }
 
-/** Full nav for the role (staff-only pages filtered, hidden ones and switched-off sections dropped). */
+/**
+ * May this viewer open the page at all (staff-only, desk switch, closed for the stage)? Hidden pages stay openable —
+ * the sidebar drops them separately. Used by the menu, the palette and pinned items alike.
+ */
+export function navItemOpen(i: NavItem, isCurator: boolean, nav: unknown): boolean {
+  return (!i.staff || isCurator) && navFeatureOn(i.feature, nav) && !blockedSections(nav).includes(i.href);
+}
+
+/** Full nav for the role (staff-only pages filtered, hidden ones, switched-off and closed sections dropped). */
 export function visibleNav(isCurator: boolean, nav?: unknown): VisibleGroup[] {
-  const ok = (i: NavItem) => !i.hidden && (!i.staff || isCurator) && navFeatureOn(i.feature, nav);
+  const closed = new Set(blockedSections(nav));
+  const ok = (i: NavItem) => !i.hidden && navItemOpen(i, isCurator, nav);
+  // A row closed for the stage: its own page goes, its open children become rows (blocking «Рейтинг» keeps «Бенчмарк»).
+  const base = (i: NavItem) => !i.hidden && (!i.staff || isCurator) && navFeatureOn(i.feature, nav);
   return NAV_GROUPS.map((g) => {
-    const rows = g.items.filter(ok).map((r) => {
-      if (!r.children) return r;
+    const rows = g.items.filter(base).flatMap((r): NavItem[] => {
+      if (closed.has(r.href)) return (r.children ?? []).filter(ok);
+      if (!r.children) return [r];
       const copy = withGetters(r);
       copy.children = r.children.filter(ok);
-      return copy;
+      return [copy];
     });
     return { id: g.id, get label() { return g.label; }, rows, items: rows.flatMap((r) => [r, ...(r.children ?? [])]) };
   }).filter((g) => g.rows.length);
@@ -178,4 +195,54 @@ export function mobileTabs(groups: VisibleGroup[], simple: SimpleNav | null): Na
   }
   const all = groups.flatMap((g) => g.items);
   return MOBILE_TABS.flatMap((h) => all.find((i) => i.href === h) ?? []);
+}
+
+// ─── Sections closed per stage ───────────────────────────────────────────────
+
+/**
+ * The closed section a URL belongs to (its href), or null: the page itself, anything under it, and its `also` paths
+ * (/error-tracker for «Правила», /simulator for «Тренажёр»). Pages outside the nav that can be closed too: /desk-day.
+ */
+export function blockedSectionOf(location: string, nav: unknown): string | null {
+  const closed = blockedSections(nav);
+  if (!closed.length) return null;
+  for (const href of closed) {
+    if (href === "/") continue; // the home page is never closed
+    const item = ALL_NAV_ITEMS.find((i) => i.href === href);
+    if (item ? isNavActive(item, location) : location === href || location.startsWith(href + "/")) return href;
+  }
+  return null;
+}
+
+/** The ladder tier from /permissions/me as the access stage (lead → senior; legacy trainee / none → junior). */
+export function stageOfTier(tier: string | null | undefined): "junior" | "trader" | "senior" {
+  if (tier === "trader") return "trader";
+  if (tier === "senior" || tier === "lead") return "senior";
+  return "junior";
+}
+
+/** A section the admin table can close: href + label getter, grouped as in the sidebar. */
+export type BlockableSection = { href: string; readonly label: string; parent: string | null };
+export type BlockableGroup = { id: NavGroup["id"]; readonly label: string; sections: BlockableSection[] };
+
+/** Pages a trader can open that are not in the nav but can be closed per stage (cross-trader views). */
+const EXTRA_BLOCKABLE: { href: string; group: NavGroup["id"]; label: () => string }[] = [
+  { href: "/desk-day", group: "team", label: () => shellI18n.t("titles.deskDay") },
+];
+
+/**
+ * Rows of the «Доступ по ступеням» table: every page a trader normally sees (no staff pages, no hidden ones, no desk
+ * switch sections, never the home page), grouped and ordered as in the sidebar, children right after their row.
+ */
+export function blockableSections(): BlockableGroup[] {
+  const ok = (i: NavItem) => !i.staff && !i.hidden && !i.feature && i.href !== "/";
+  const section = (i: NavItem, parent: string | null): BlockableSection => ({ href: i.href, get label() { return i.name; }, parent });
+  return NAV_GROUPS.map((g) => {
+    const sections = g.items.flatMap((r) => [
+      ...(ok(r) ? [section(r, null)] : []),
+      ...(r.children ?? []).filter(ok).map((c) => section(c, ok(r) ? r.href : null)),
+    ]);
+    for (const x of EXTRA_BLOCKABLE.filter((e) => e.group === g.id)) sections.push({ href: x.href, get label() { return x.label(); }, parent: null });
+    return { id: g.id, get label() { return g.label; }, sections };
+  }).filter((g) => g.sections.length);
 }

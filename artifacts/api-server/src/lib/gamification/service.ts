@@ -4,7 +4,7 @@
  * the app. Every number is a desk setting (`gamification.*`).
  *
  *   seasonState(viewer, key?)      season points ranking: top N (points > 0) + the subject's own place; aliases «t<n>»
- *                                  for traders when names are hidden (privacy.hideNamesFromTraders), names for staff;
+ *                                  for traders when names are hidden from their stage (lib/access/names), names for staff;
  *                                  a risk-halted trader is left out of the top (no season lead while halted); a trader
  *                                  sees no place while fewer than 5 have points (2.14, season.withRankThreshold)
  *   leagueState(viewer, key?)      curator teams by average season points per active member (no teams while fewer than
@@ -19,6 +19,7 @@ import { logger } from "../logger";
 import { SETTINGS, setting, type SettingKey } from "../settings/registry";
 import { addDays, nyDate } from "../tradingDate";
 import { deskAliases } from "../deskAliases";
+import { namesVisible } from "../access/names";
 import { evaluationFor, type Evaluation } from "../quests/service";
 import { achievementsOf } from "../quests/store";
 import { haltedTraders } from "./halted";
@@ -38,7 +39,8 @@ import type { GamificationMe, LeagueState, RewardItem, SeasonState, SetupMastery
 /** Whose view: `subject` = the trader the numbers are about (the viewer, or a trader staff opened); staff see names. */
 export type GView = { subject: string; staff: boolean };
 
-const hideNames = () => setting("privacy.hideNamesFromTraders");
+/** Names hidden from this view (lib/access/names.ts: per stage; staff always see them). */
+const hideNames = async (v: GView) => !(await namesVisible({ name: v.subject, staff: v.staff }));
 
 /** A numeric desk setting that may not be registered yet (lib/settings is another area's file): the fallback until then. */
 export function settingOr(key: string, fallback: number): number {
@@ -92,7 +94,7 @@ export async function seasonState(v: GView, key: string | null = null, now = new
   // Candidates for the shown top: room for the hidden and for a few halted traders left out of it.
   const candidates = ranked.filter((r) => r.points > 0).slice(0, n + hidden.size + 5).map((r) => r.trader);
   const [titles, halted] = await Promise.all([activeTitles(candidates), haltedTraders(candidates, now)]);
-  const top = topFor(ranked, n, { name: v.subject, staff: v.staff, hideNames: hideNames() }, {
+  const top = topFor(ranked, n, { name: v.subject, staff: v.staff, hideNames: await hideNames(v) }, {
     hidden, alias: deskAliases(ranked.map((r) => r.trader), season), titles, excluded: halted,
   });
   const { from, to } = seasonRange(season);

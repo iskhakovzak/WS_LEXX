@@ -3,7 +3,8 @@
  * daily feed — curators' / traders' theme, what works, tickers, notes) and «Новости деска» (the auto feed of the
  * previous session and of the plan's day: results, achievements, reviews, ideas). The daily feed and the activity pages
  * stay (the full lists are one link away); nothing new is stored. Read-only: GET /api/dailyfeed and
- * GET /api/dailyfeed/stream.
+ * GET /api/dailyfeed/stream. «Дневная лента» closed for the viewer's stage (desk setting access.sections): no «Сегодня
+ * важно» (its posts are that section's) and no link to it; the auto feed stays.
  */
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +15,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { commonI18n } from "@/i18n/ns/common";
 import { http } from "@/lib/api/http";
+import { isSectionBlocked } from "@/lib/permissions";
+import { useAuthOptional } from "@/contexts/auth-context";
 import { STALE } from "@/lib/api/keys";
 import { StreamRow } from "@/components/shared/stream/StreamCard";
 import { useFeedStreamDay } from "@/components/shared/stream/stream-api";
@@ -97,7 +100,7 @@ export function TodayImportant({ date }: { date: string }) {
 }
 
 /** «Новости деска» — the auto feed since the previous session. */
-export function DeskNews({ date }: { date: string }) {
+export function DeskNews({ date, feedLink = true }: { date: string; feedLink?: boolean }) {
   const { t } = gpI18n.useT();
   const prev = shiftTradingDay(date, -1);
   const dayQ = useFeedStreamDay(date);
@@ -110,7 +113,7 @@ export function DeskNews({ date }: { date: string }) {
   const failed = dayQ.isError && prevQ.isError;
   return (
     <Panel title={t("morning.newsTitle")} description={t("morning.newsHint")} icon={Newspaper}
-      footer={<FullLink href="/dailyfeed" label={t("morning.allNews")} />}>
+      footer={feedLink ? <FullLink href="/dailyfeed" label={t("morning.allNews")} /> : undefined}>
       {loading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-10 w-full rounded-xl" />
@@ -129,10 +132,12 @@ export function DeskNews({ date }: { date: string }) {
 
 /** Both sections, in the order a morning reads them. */
 export function DeskMorning({ date }: { date: string }) {
+  const auth = useAuthOptional();
+  const feedOpen = !isSectionBlocked(auth?.permissions.nav, "/dailyfeed");
   return (
     <>
-      <TodayImportant date={date} />
-      <DeskNews date={date} />
+      {feedOpen && <TodayImportant date={date} />}
+      <DeskNews date={date} feedLink={feedOpen} />
     </>
   );
 }

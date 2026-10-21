@@ -2,7 +2,9 @@
  * Permissions matrix API.
  *
  *   GET /api/permissions/me        any signed-in member (guests too): my role, effective capabilities, scopes, wards,
- *                                  tier (trainee … lead | null for staff / guests) and the simple-menu settings (nav)
+ *                                  tier (trainee … lead | null for staff / guests), the simple-menu settings (nav),
+ *                                  nav.blocked (section hrefs closed for my stage, desk setting access.sections; staff
+ *                                  []) and names (do I see other traders' real names — lib/access/names.ts)
  *   GET /api/permissions/matrix    staff: capability catalogue, defaults, desk overrides, effective matrix
  *   PUT /api/permissions/matrix    admin (permissions.manage): { cells: [{ role, capability, allowed, scope? }] }
  *                                  or { reset: true }. Admin and guest rows are locked; adminOnly capabilities can
@@ -25,6 +27,9 @@ import { localizedCapabilityDefs } from "../lib/permissionsI18n";
 import { langOf, type Lang } from "../i18n";
 import { setting } from "../lib/settings/registry";
 import { viewerTier } from "../lib/playbookToday/tier";
+import { accessStageOf } from "../lib/access/stage";
+import { blockedSectionsFor } from "../lib/access/sections";
+import { namesVisibleFor } from "../lib/access/names";
 
 const router: IRouter = Router();
 
@@ -62,13 +67,21 @@ router.get("/permissions/me", asyncHandler(async (req, res): Promise<void> => {
     getMatrixState(),
     actor.role === "trader" ? viewerTier(actor.name) : null,
   ]);
+  const staff = actor.role === "curator" || actor.role === "admin";
+  // Stage for the access rules: staff none; a guest / trader without a stage counts as junior (lib/access/stage.ts).
+  const stage = staff ? null : accessStageOf(tier);
   res.json({
     name: actor.name,
     role: actor.role,
     guest: actor.guest,
     // Ladder tier as the playbook locks see it (staff / guests: null) + the simple-menu settings — the shell picks the menu.
     tier,
-    nav: { simpleForTrainees: setting("nav.simpleForTrainees"), simpleUntilTier: setting("nav.simpleUntilTier"), authorNotes: setting("nav.authorNotes") },
+    nav: {
+      simpleForTrainees: setting("nav.simpleForTrainees"), simpleUntilTier: setting("nav.simpleUntilTier"), authorNotes: setting("nav.authorNotes"),
+      blocked: blockedSectionsFor(stage),
+    },
+    // A guest has no name on the shared screens (MoneyViewer.name null): names only when every stage sees them.
+    names: namesVisibleFor({ staff, stage: actor.guest ? null : stage }),
     capabilities: capabilitiesOf(state.matrix, actor.role),
     scopes: scopesOf(state.matrix, actor.role),
     wards: actor.wards,

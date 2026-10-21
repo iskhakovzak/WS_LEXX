@@ -9,8 +9,11 @@
  *   nyToTashkent           "16:30" NY → "01:30" Tashkent, +1 day (today's DST offsets)
  */
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
-/** `pilot`: one of the ~10 pilot settings (server registry flag) — shown by default, the rest under «Показать все». */
-type Base = { group: string; unit?: SettingUnit; pilot?: true };
+/**
+ * `pilot`: one of the ~10 pilot settings (server registry flag) — shown by default, the rest under «Показать все».
+ * `hidden`: edited on its own screen (stage access: «Роли и права» → «Доступ по ступеням»), never in this form.
+ */
+type Base = { group: string; unit?: SettingUnit; pilot?: true; hidden?: true };
 export type SettingDef =
   | (Base & { type: "number"; default: number; min: number; max: number; step?: number })
   | (Base & { type: "time"; default: string })
@@ -18,6 +21,15 @@ export type SettingDef =
   | (Base & { type: "select"; default: string; options: readonly string[] })
   | (Base & { type: "text"; default: string; maxLength: number });
 export type SettingValue = number | boolean | string;
+
+/** Stage-dependent settings (server lib/settings/registry: stages / sectionStages) — only the access screen edits them. */
+export type StageKey = "junior" | "trader" | "senior";
+export type StageList = readonly StageKey[];
+export type SectionStages = Readonly<Record<string, StageList>>;
+export type AccessDef =
+  | (Base & { type: "stages"; default: StageList })
+  | (Base & { type: "sectionStages"; default: SectionStages; maxSections: number });
+export type AnyValue = SettingValue | StageList | SectionStages;
 
 export interface SettingRow {
   key: string;
@@ -27,6 +39,24 @@ export interface SettingRow {
   default: SettingValue;
   updatedBy: string | null;
   updatedAt: string | null;
+}
+
+/** A row as GET /api/admin/settings sends it, whatever its type (the access screen reads the stage rows). */
+export interface AnySettingRow {
+  key: string;
+  def: SettingDef | AccessDef;
+  value: AnyValue | null;
+  effective: AnyValue;
+  default: AnyValue;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+const FORM_TYPES: ReadonlySet<string> = new Set(["number", "time", "boolean", "select", "text"]);
+
+/** Rows the generic form renders: known field types, not `hidden` (those have their own screen). */
+export function formRows(rows: readonly AnySettingRow[]): SettingRow[] {
+  return rows.filter((r): r is SettingRow => FORM_TYPES.has(r.def.type) && !r.def.hidden);
 }
 
 export type ProblemKind = "empty" | "type" | "range" | "integer" | "time" | "option" | "unknown" | "duplicate" | "order" | "length";

@@ -292,6 +292,13 @@ export default {
     toDashboard: "Boshqaruv paneliga",
     sections: "Boʻlimlar",
   },
+  sectionBlocked: {
+    title: "Bu boʻlim sizning bosqichingiz uchun yopiq",
+    lead: "«{section}» hozir «{stage}» bosqichi uchun yopiq. Qolgan boʻlimlar odatdagidek ishlaydi.",
+    askCurator: "Uni ochish uchun kuratoringizga yozing: {name}.",
+    askStaff: "Uni ochish uchun kurator yoki desk administratoriga murojaat qiling.",
+    toDashboard: "Boshqaruv paneliga",
+  },
   app: {
     pageLoading: "Sahifa yuklanmoqda…",
     actionFailed: "Bajarib boʻlmadi",

@@ -1,7 +1,9 @@
 /**
  * GET /api/permissions/me → `tier` + `nav` (the web shell's simple menu for new traders): the tier comes from the same
  * resolution as the playbook locks (own academy stage → enrolment → scaling tier), is cached per name, and is null for
- * staff without touching the stage tables; `nav` carries the desk settings nav.simpleForTrainees / nav.simpleUntilTier.
+ * staff without touching the stage tables; `nav` carries the desk settings nav.simpleForTrainees / nav.simpleUntilTier,
+ * `nav.blocked` the sections closed for the viewer's stage (access.sections; staff never) and `names` whether the viewer
+ * sees other traders' names (privacy.namesVisibleTo, legacy privacy.hideNamesFromTraders).
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import express from "express";
@@ -15,6 +17,7 @@ const stages: Record<string, { own?: string; enr?: string; tier?: string; role?:
   "Владислав Е.": { own: "senior", enr: "junior", tier: "junior" },
   "Кирилл Б.": { tier: "junior" },
   "Пётр Н.": {},
+  "Анна Т.": { tier: "trader" },
 };
 const query = vi.fn(async (sql: string, params: unknown[] = []) => {
   const p = stages[String(params[0])] ?? {};
@@ -62,7 +65,7 @@ beforeEach(() => {
   query.mockClear();
 });
 
-const me = async () => (await fetch(`${base}/api/permissions/me`)).json() as Promise<{ tier: string | null; nav: { simpleForTrainees: boolean; simpleUntilTier: string }; capabilities: string[] }>;
+const me = async () => (await fetch(`${base}/api/permissions/me`)).json() as Promise<{ tier: string | null; nav: { simpleForTrainees: boolean; simpleUntilTier: string; blocked: string[] }; names: boolean; capabilities: string[] }>;
 const stageQueries = () => query.mock.calls.filter(([sql]) => /academy_trader_stage|academy_enrollments|trader_risk_limits/.test(String(sql))).length;
 
 describe("GET /permissions/me tier", () => {
@@ -92,8 +95,43 @@ describe("GET /permissions/me tier", () => {
 
   it("nav carries the simple-menu settings and the «Сводка автора» switch (defaults, then a saved value)", async () => {
     // no «Стажёр» (Волна 1 п. 1.21); «Сводка автора» off by default (Волна 2 п. 2.15)
-    expect((await me()).nav).toEqual({ simpleForTrainees: true, simpleUntilTier: "junior", authorNotes: false });
+    expect((await me()).nav).toEqual({ simpleForTrainees: true, simpleUntilTier: "junior", authorNotes: false, blocked: [] });
     __loadSettingsCache({ "nav.simpleForTrainees": false, "nav.simpleUntilTier": "junior", "nav.authorNotes": true });
-    expect((await me()).nav).toEqual({ simpleForTrainees: false, simpleUntilTier: "junior", authorNotes: true });
+    expect((await me()).nav).toEqual({ simpleForTrainees: false, simpleUntilTier: "junior", authorNotes: true, blocked: [] });
+  });
+});
+
+describe("GET /permissions/me stage access", () => {
+  const as = (name: string, role: Who["role"] = "trader", id = 200) => { who = { id, name, role }; };
+
+  it("nav.blocked: the sections closed for each stage; staff never", async () => {
+    __loadSettingsCache({ "access.sections": { "/top-results": ["junior", "trader"], "/office": ["junior"], "/benchmark": ["senior"] } });
+    as("Кирилл Б.");
+    expect((await me()).nav.blocked).toEqual(["/office", "/top-results"]);
+    as("Пётр Н."); // no stage source → junior (the default stage)
+    expect((await me()).nav.blocked).toEqual(["/office", "/top-results"]);
+    as("Анна Т.");
+    expect((await me()).nav.blocked).toEqual(["/top-results"]);
+    as("Владислав Е.");
+    expect((await me()).nav.blocked).toEqual(["/benchmark"]);
+    as("Ольга Н.", "curator", 123);
+    expect((await me()).nav.blocked).toEqual([]);
+    as("Дмитрий К.", "admin", 121);
+    expect((await me()).nav.blocked).toEqual([]);
+  });
+
+  it("names: legacy switch while nothing is saved, then the saved list per stage; staff always", async () => {
+    as("Кирилл Б.");
+    expect((await me()).names).toBe(false); // hideNamesFromTraders defaults to on
+    __loadSettingsCache({ "privacy.hideNamesFromTraders": false });
+    expect((await me()).names).toBe(true);
+    __loadSettingsCache({ "privacy.hideNamesFromTraders": false, "privacy.namesVisibleTo": ["senior"] });
+    expect((await me()).names).toBe(false);
+    as("Анна Т.");
+    expect((await me()).names).toBe(false);
+    as("Владислав Е.");
+    expect((await me()).names).toBe(true);
+    as("Ольга Н.", "curator", 123);
+    expect((await me()).names).toBe(true);
   });
 });

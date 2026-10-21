@@ -160,9 +160,25 @@ export type PermissionsMe = {
   updatedAt: string | null;
   /** Ladder tier as the playbook locks resolve it (trainee … lead); null for staff / guests. Absent on older API builds. */
   tier?: "trainee" | "junior" | "trader" | "senior" | "lead" | null;
-  /** Desk settings for the simple menu (components/shell/nav-model.ts). Absent on older API builds. */
-  nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior"; authorNotes?: boolean };
+  /**
+   * Desk settings for the simple menu (components/shell/nav-model.ts) and `blocked`: section hrefs closed for my ladder
+   * stage (desk setting access.sections; staff always []). Absent on older API builds.
+   */
+  nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior"; authorNotes?: boolean; blocked?: string[] };
+  /** Do I see other traders' real names on shared screens (staff: always)? Absent on older API builds. */
+  names?: boolean;
 };
+
+/** Section hrefs closed for the viewer's stage (GET /api/permissions/me → nav.blocked). */
+export function blockedSections(nav: unknown): string[] {
+  const b = nav && typeof nav === "object" ? (nav as { blocked?: unknown }).blocked : undefined;
+  return Array.isArray(b) ? b.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** Is the section at `href` closed for the viewer (its page and everything under it)? */
+export function isSectionBlocked(nav: unknown, href: string): boolean {
+  return blockedSections(nav).includes(href);
+}
 
 export type Target = { trader?: string | null };
 

@@ -483,6 +483,28 @@ export default {
     ladderHint: "— «Odamlar» (qator menyusi → «Daraja») yoki «Masshtablash» boʻlimida oʻzgartiriladi.",
   },
 
+  stageAccess: {
+    title: "Bosqichlar boʻyicha kirish",
+    description: "Yopiq boʻlim shu bosqich uchun menyu, qidiruv va mahkamlanganlardan yoʻqoladi, toʻgʻridan-toʻgʻri havola esa kimga murojaat qilishni aytadigan «Boʻlim yopiq» sahifasini ochadi. Kuratorlar va adminlar hech qachon cheklanmaydi.",
+    section: "Boʻlim",
+    privacy: "Maxfiylik",
+    names: "Boshqa treyderlarning ismlarini koʻradi",
+    namesHint: "Qolganlar «Treyder N»ni koʻradi. Boshqalarning summalari baribir koʻrinmaydi.",
+    open: "ochiq",
+    closed: "yopiq",
+    cellAria: "{section} — {stage}",
+    closedCount: "Yopiq: {count}",
+    allOpen: "Hammasi ochiq",
+    openAll: "Hammasini ochish",
+    openAllHint: "Barcha boʻlimlarni barcha bosqichlar uchun ochadi. Ismlar oʻzgarmaydi.",
+    undo: "Bekor qilish",
+    save: "Saqlash",
+    saved: "Bosqichlar boʻyicha kirish saqlandi",
+    staffNote: "Kuratorlar va adminlar barcha boʻlimlarni koʻradi va ismlarni doim koʻradi.",
+    unknown: "Menyuda endi yoʻq boʻlimlar ham yopiq: {list}",
+    loadFailed: "Kirish sozlamalarini yuklab boʻlmadi",
+  },
+
   moderation: {
     title: "Moderatsiya navbati",
     description: "Muhokama va izohlarga shikoyatlar. Har bir amal sabab talab qiladi va auditga yoziladi.",

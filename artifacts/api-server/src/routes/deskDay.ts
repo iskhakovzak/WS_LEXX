@@ -7,7 +7,7 @@
 //   GET /desk-day/counts?date=&tickers=   the same for several tickers of one day (day report).
 //
 // Signed-in members only (trades.read.own: every role but guest). Names: staff always see them; traders see day aliases
-// while the setting privacy.hideNamesFromTraders is on (lib/deskDay.ts — views). Candles: GET /candles/:ticker/day/:date.
+// unless their stage sees names (lib/access/names.ts; lib/deskDay.ts — views). Candles: GET /candles/:ticker/day/:date.
 // While names are hidden, a trader's `trader` perspective in the counts is always themselves — otherwise «did X trade
 // this ticker?» probes across tickers would map aliases back to names.
 import { Router, type IRouter } from "express";
@@ -17,7 +17,7 @@ import { loadMoneyViewer } from "../lib/playbookAccess";
 import { deskDayCounts, loadDeskDay } from "../lib/deskDayStore";
 import { route } from "../lib/http";
 import type { Actor } from "../lib/permissions";
-import { setting } from "../lib/settings/registry";
+import { namesVisible } from "../lib/access/names";
 import { recordQuestEvent } from "../lib/quests/store";
 import { forgetQuests } from "../lib/quests/cache";
 import { nyDate } from "../lib/tradingDate";
@@ -30,9 +30,9 @@ const traderSchema = z.string().trim().min(1).max(120).optional();
 const CAP = "trades.read.own" as const;
 
 /** Whose perspective «others» is counted from (see the header). */
-function perspective(actor: Actor, trader: string | undefined): string {
+async function perspective(actor: Actor, trader: string | undefined): Promise<string> {
   const staff = actor.role === "curator" || actor.role === "admin";
-  if (!trader || (!staff && setting("privacy.hideNamesFromTraders"))) return actor.name;
+  if (!trader || !(await namesVisible({ name: actor.name, staff }))) return actor.name;
   return trader;
 }
 
@@ -46,7 +46,7 @@ router.get("/desk-day/counts", route({
   }),
 }, async ({ query, actor, res }) => {
   res.setHeader("Cache-Control", "private, no-cache");
-  return { date: query.date, items: await deskDayCounts(query.tickers, query.date, perspective(actor, query.trader)) };
+  return { date: query.date, items: await deskDayCounts(query.tickers, query.date, await perspective(actor, query.trader)) };
 }));
 
 router.get("/desk-day/:ticker/:date/summary", route({
@@ -55,7 +55,7 @@ router.get("/desk-day/:ticker/:date/summary", route({
   query: z.object({ trader: traderSchema }),
 }, async ({ params, query, actor, res }) => {
   res.setHeader("Cache-Control", "private, no-cache");
-  const [c] = await deskDayCounts([params.ticker], params.date, perspective(actor, query.trader));
+  const [c] = await deskDayCounts([params.ticker], params.date, await perspective(actor, query.trader));
   return { date: params.date, ...c };
 }));
 

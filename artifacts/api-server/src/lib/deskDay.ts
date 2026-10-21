@@ -7,7 +7,7 @@
  * for (own trades; staff see all). For everyone else the answer keeps prices, times, roles, side, result and R, and
  * drops every field that would let the client compute $ (qty, position sizes, realized $, net, fees, risk $).
  *
- * Names (owner decision 2026-10-18, setting `privacy.hideNamesFromTraders`): three views.
+ * Names (owner decision 2026-10-18; per stage since 2026-10-21, lib/access/names.ts): three views.
  *   staff      curators / admins — names and every $ (as before).
  *   anonymous  a trader while names are hidden — every trader is a day alias («Трейдер 3», lib/deskAliases, numbered
  *              over the whole desk of that date so the same person has the same number on every ticker and on the top
@@ -15,7 +15,7 @@
  *              lib/moneyVisibility: other traders' $ only for staff, R and % stay). No real name anywhere: trader keys are
  *              "t<alias>", other traders' trade ids are replaced with negative sequence numbers (a real id could be
  *              looked up elsewhere), takeaways and office contributors carry keys only.
- *   named      a trader while the setting is off — names, and no other trader's $ or share counts (the old rule).
+ *   named      a trader whose stage sees names — names, and no other trader's $ or share counts (the old rule).
  * Plus the office position layer (lib/deskOffice.ts): shares only for staff; office $ for staff, and for traders only
  * with ≥ 3 traders on the ticker-day (lib/moneyVisibility canSeeDeskAggregate: a sum over three people does not reveal
  * one of them, even after the viewer subtracts their own result; with two it would).
@@ -324,7 +324,7 @@ export function takeaways(traders: readonly DeskTrader[], trades: readonly DeskT
 export interface DeskDayOpts {
   /** Day aliases over the whole desk (lib/deskAliases); traders missing from it get numbers after the last one. */
   aliases?: ReadonlyMap<string, number>;
-  /** privacy.hideNamesFromTraders (default false here; the store passes the setting). */
+  /** Names hidden from this viewer (default false here; the store passes lib/access/names namesVisible). */
   hideNames?: boolean;
 }
 

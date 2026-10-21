@@ -376,6 +376,8 @@ export const ERROR_CODES = {
   DESK_GROUP_NAME_TAKEN: 409,
   DESK_GROUP_CURATOR_INVALID: 400,
   JUNIOR_NOTES_RETIRED: 410,
+  // ── Stage access (desk setting access.sections, lib/access/sections.ts) ──
+  SECTION_BLOCKED: 403,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

@@ -21,6 +21,7 @@ export default {
     finviz: { title: "Finviz", description: "Morning screener, ticker context and the earnings calendar from Finviz Elite. Without the FINVIZ_AUTH key on the server all of it is off." },
     trades: { title: "Trades: IMX", description: "IMX are closing-auction (imbalance) trades. A trade with any fill inside this New York window gets the MOC strategy and the «IMX» tag; it stays in lists and totals, a trader may exclude it." },
     newsChannel: { title: "WS_NEWS channel", description: "Market briefs in the WS_NEWS Telegram channel on trading days: premarket, from the open, day recap. Without NEWS_CHANNEL_BOT_TOKEN and NEWS_CHANNEL_CHAT_ID on the server all of it is off." },
+    access: { title: "Access by stage", description: "Which sections are closed for Juniors, Traders and Seniors. Changed in “Roles and permissions”." },
     other: { title: "Other", description: "Settings without a group." },
   },
   units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times", places: "places", people: "people", shares: "shares", bars: "bars", times: "×", bp: "bp", atr: "ATR", quests: "quests", trades: "trades", months: "mo.", lessons: "lessons", exams: "exams", tasks: "tasks", teams: "teams" },
@@ -41,6 +42,8 @@ export default {
     changedTitle: "The value differs from the default",
     lastChanged: "{name} · {when}",
     on: "On",
+    nobody: "nobody",
+    allOpen: "everything open",
     off: "Off",
     ny: "NY",
     tashkent: "Tashkent {time}",
@@ -223,6 +226,10 @@ export default {
     },
     privacy: {
       hideNamesFromTraders: { label: "Hide names from traders", help: "On shared charts and the top of the day a trader sees “Trader N” and the amounts; off — names show, other traders’ amounts don’t." },
+      namesVisibleTo: { label: "See other traders’ names", help: "Stages that see colleagues’ real names on shared screens; everyone else sees “Trader N”. Curators and admins always see names." },
+    },
+    access: {
+      sections: { label: "Closed sections", help: "Section → the stages it is closed for. Curators and admins are never restricted." },
     },
     gamification: {
       enabled: { label: "Gamification on", help: "Seasons, league, recognition, mastery and rewards. Turn off to hide all of it from traders." },

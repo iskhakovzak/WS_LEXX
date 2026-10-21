@@ -19,6 +19,7 @@ import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
 import { DeskGroupsPanel } from "@/components/settings/groups-panel";
 import { UsagePanel } from "@/components/admin/UsagePanel";
 import { ALL_NAV_ITEMS, routeTitle } from "@/components/shell/nav";
+import { blockableSections } from "@/components/shell/nav-model";
 import { usageI18n } from "@/i18n/ns/usage";
 import { RewardsEditorPanel } from "@/components/gamification/reward-editor";
 import { RewardsAdminBlock } from "@/components/gamification/rewards-admin-block";
@@ -50,6 +51,9 @@ function initialTab(): AdminTab {
 
 /** The trader menu (no staff-only or hidden pages): «никто не открыл» in Использование is measured against it. */
 const TRADER_MENU = ALL_NAV_ITEMS.filter((i) => !i.staff && !i.hidden).map((i) => ({ href: i.href, also: i.also, get name() { return i.name; } }));
+
+/** «Доступ по ступеням» rows: the trader's sections grouped as in the sidebar (labels are getters: current language). */
+const ACCESS_GROUPS = blockableSections();
 
 /** Usage view: a route pattern ("/playbook?mode=mine") → the section name the shell shows for it (null = unknown). */
 function screenLabel(key: string): string | null {
@@ -278,7 +282,7 @@ function AdminConsole() {
           />
         )}
         {tab === "moderation" && <ModerationQueue actor={actor} openCount={openReports} />}
-        {tab === "roles" && <RolesPanel />}
+        {tab === "roles" && <RolesPanel accessGroups={ACCESS_GROUPS} />}
         {tab === "settings" && (
           <div className="flex flex-col gap-[var(--grid-gap)]">
             {/* The rewards catalog sits with the other desk settings (gamification numbers live in the registry form below). */}

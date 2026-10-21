@@ -5,6 +5,7 @@
  */
 import { fmtUsd } from "@/lib/format";
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
+import { commonI18n } from "@/i18n/ns/common";
 import { shownNumber, type Problem, type SettingDef, type SettingUnit, type SettingValue } from "./desk-settings-model";
 
 const t = deskSettingsI18n.t;
@@ -53,5 +54,18 @@ export function auditValueText(v: unknown, unit?: SettingUnit | null): string {
     if (unit === "ratio") return `${Math.round(v * 10000) / 100}%`;
     return String(v);
   }
+  // Stage lists (privacy.namesVisibleTo) and section → stages maps (access.sections).
+  if (Array.isArray(v)) return v.length ? v.map(stageText).join(", ") : t("field.nobody");
+  if (v && typeof v === "object") {
+    const entries = Object.entries(v as Record<string, unknown>);
+    if (!entries.length) return t("field.allOpen");
+    return entries.map(([href, list]) => `${href}: ${Array.isArray(list) ? list.map(stageText).join("/") : "—"}`).join("; ");
+  }
   return v == null ? "—" : String(v);
+}
+
+/** A ladder stage key as its label («Джун»); an unknown key as is. */
+export function stageText(stage: unknown): string {
+  const s = String(stage);
+  return s === "junior" || s === "trader" || s === "senior" ? commonI18n.t(`tiers.${s}`) : s;
 }

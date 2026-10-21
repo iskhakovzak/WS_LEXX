@@ -355,4 +355,5 @@ export default {
   DESK_GROUP_NAME_TAKEN: "«{name}» guruhi allaqachon bor",
   DESK_GROUP_CURATOR_INVALID: "Guruh kuratori faqat kurator yoki admin boʻlishi mumkin",
   JUNIOR_NOTES_RETIRED: "Juniorlar xulosasi endi yuritilmaydi — kundalikdagi kechki shaklni toʻldiring",
+  SECTION_BLOCKED: "Bu boʻlim sizning bosqichingiz uchun yopiq. Uni ochish uchun kurator yoki administratorga murojaat qiling",
 } satisfies Messages<typeof ru>;

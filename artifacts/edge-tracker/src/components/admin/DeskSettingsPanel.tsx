@@ -19,7 +19,7 @@ import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { useDeskSettings, useSaveDeskSettings } from "./desk-settings-api";
 import { DeskSettingField } from "./DeskSettingField";
 import {
-  changesOf, checkValue, groupRows, normalize, parseInput, pilotRowsOf, shownProblem, visibleRows, type Problem, type SettingRow, type SettingValue,
+  changesOf, checkValue, formRows, groupRows, normalize, parseInput, pilotRowsOf, shownProblem, visibleRows, type Problem, type SettingRow, type SettingValue,
 } from "./desk-settings-model";
 import { settingLabel } from "./desk-settings-text";
 
@@ -40,7 +40,7 @@ export function DeskSettingsPanel({ canManage }: { canManage: boolean }) {
   if (!canManage) return <EmptyState icon={SlidersHorizontal} title={t("title")} description={t("denied")} className="py-16" />;
   if (q.isLoading) return <Panel title={t("title")} icon={SlidersHorizontal}><ListSkeleton rows={6} /></Panel>;
   if (q.isError || !q.data) return <QueryError error={q.error} title={t("loadFailed")} onRetry={() => q.refetch()} />;
-  return <SettingsForm rows={q.data.settings} />;
+  return <SettingsForm rows={formRows(q.data.settings)} />;
 }
 
 function SettingsForm({ rows }: { rows: SettingRow[] }) {

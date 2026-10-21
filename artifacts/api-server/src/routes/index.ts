@@ -56,6 +56,7 @@ import propreportsRouter from "./propreports";
 import cronRouter from "./cron";
 import propreportsTickRouter from "./propreports-tick";
 import { tradesVersionMiddleware } from "../lib/propreports/tradesVersion";
+import { sectionAccessMiddleware } from "../lib/access/sections";
 import { setting } from "../lib/settings/registry";
 import { notFound } from "../lib/http";
 import tradeQualityRouter from "./trade-quality";
@@ -104,6 +105,8 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(cronRouter); // POST|GET /cron/tick — PropReports heartbeat (Bearer CRON_SECRET)
 router.use(tradesVersionMiddleware); // cross-instance trade-cache stamp (≤ 1 SELECT / 15 s / instance)
+// Sections closed per ladder stage (desk setting access.sections, default {} = open): 403 SECTION_BLOCKED, staff never.
+router.use(sectionAccessMiddleware);
 router.use(tradeQualityRouter);
 router.use(tradesRouter);
 router.use(eventsRouter);

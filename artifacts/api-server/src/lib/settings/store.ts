@@ -22,7 +22,7 @@ import { logAudit } from "../audit";
 import { logger } from "../logger";
 import { forgetAllQuests } from "../quests/cache";
 import { SETTINGS, __loadSettingsCache, type SettingDef, type SettingKey } from "./registry";
-import { storedOrNull, validateBatch, type StoredValue } from "./validate";
+import { sameStored, storedOrNull, validateBatch, type StoredValue } from "./validate";
 
 type Row = { key: string; value: unknown; updated_by: string | null; updated_at: Date | string | null };
 type Meta = { value: StoredValue | null; updatedBy: string | null; updatedAt: string | null };
@@ -105,7 +105,7 @@ export async function saveSettings(changes: readonly SettingChange[], actor: str
     const before = new Map(rows.map((r) => [r.key, storedOrNull(r.key, r.value)]));
     for (const c of v.values) {
       const old = before.get(c.key) ?? null;
-      if (old === c.value) continue;
+      if (sameStored(old, c.value)) continue;
       await client.query(
         `INSERT INTO app_settings (key, value, updated_by, updated_at) VALUES ($1, $2::jsonb, $3, now())
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()`,

@@ -292,6 +292,13 @@ export default {
     toDashboard: "Go to dashboard",
     sections: "Sections",
   },
+  sectionBlocked: {
+    title: "This section is closed for your stage",
+    lead: "“{section}” is closed for the “{stage}” stage right now. Every other section works as usual.",
+    askCurator: "To open it, message your curator: {name}.",
+    askStaff: "To open it, ask a curator or a desk admin.",
+    toDashboard: "Go to dashboard",
+  },
   app: {
     pageLoading: "Loading page…",
     actionFailed: "Something went wrong",

@@ -14,7 +14,7 @@ import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { BASE } from "@/lib/api";
 import { routeTitle } from "@/components/shell/nav";
-import { navFeatureOn } from "@/components/shell/nav-model";
+import { blockedSectionOf, navFeatureOn } from "@/components/shell/nav-model";
 import { ROUTE_LOADERS, preloadCommonRoutes } from "@/components/shell/route-loaders";
 import { I18nProvider, i18nReady } from "@/i18n";
 import { LocaleSync } from "@/i18n/locale-sync";
@@ -82,6 +82,8 @@ const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
 // Signed-out screen and the 404 page: own chunks too (a signed-in visit never needs the login form).
 const NotFound = lazy(() => import("@/pages/not-found").then(async (m) => { await i18nReady(); return m; }));
 const LoginPage = lazy(() => import("@/pages/login").then(async (m) => { await i18nReady(); return m; }));
+// «Раздел закрыт для вашей ступени» (desk setting access.sections): own chunk, only a closed URL ever loads it.
+const SectionBlocked = lazy(() => import("@/pages/section-blocked").then(async (m) => { await i18nReady(); return m; }));
 
 const queryClient = new QueryClient({
   // Any mutation without its own onError gets one toast in the UI language (lib/api/errors). 401s are
@@ -154,6 +156,9 @@ function AuthorNotesRoute() {
 
 function Router() {
   const [location] = useLocation();
+  // Route guard: a section closed for the viewer's ladder stage (GET /api/permissions/me → nav.blocked; staff never).
+  const { permissions } = useAuth();
+  const closed = blockedSectionOf(location, permissions.nav);
   // Trades used to ship in the main bundle; warm its chunk once the first screen is idle so the most common
   // next click stays instant.
   useEffect(() => preloadCommonRoutes(["/trades"]), []);
@@ -163,6 +168,7 @@ function Router() {
       <UsageRouteTracker />
       <RouteErrorBoundary resetKey={location}>
       <Suspense fallback={<PageFallback />}>
+        {closed ? <SectionBlocked section={closed} /> : (
         <Switch>
           <Route path="/" component={Dashboard} />
           {/* Signed in already (the login screen renders outside the router): a typed / bookmarked /login goes home. */}
@@ -222,6 +228,7 @@ function Router() {
           <Route path="/academy/content-admin" component={AcademyContentAdmin} />
           <Route component={NotFound} />
         </Switch>
+        )}
       </Suspense>
       </RouteErrorBoundary>
     </Layout>

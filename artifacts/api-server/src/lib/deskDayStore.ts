@@ -7,7 +7,7 @@ import { pool } from "@workspace/db";
 import type { MoneyViewer } from "./playbookPrivacy";
 import { buildDeskDay, type DeskDay, type DeskTradeRow } from "./deskDay";
 import { deskAliases } from "./deskAliases";
-import { setting } from "./settings/registry";
+import { namesVisible } from "./access/names";
 import { computeStructures, loadExtremes, type ExecRowLite, type TradeRowLite } from "./tradeStructureStore";
 import { CLOSE_DAY } from "./topDayStore";
 
@@ -40,8 +40,10 @@ export async function loadDayAliases(date: string, q: Queryable = pool): Promise
 
 export async function loadDeskDay(
   ticker: string, date: string, viewer: MoneyViewer, q: Queryable = pool,
-  hideNames: boolean = setting("privacy.hideNamesFromTraders"),
+  /** Default: the viewer's names rule (lib/access/names.ts). */
+  hideNamesArg?: boolean,
 ): Promise<DeskDay> {
+  const hideNames = hideNamesArg ?? !(await namesVisible(viewer));
   const { rows } = await q.query(
     `SELECT id, trader, broker_account, ticker, date, side, stop, risk_usd, qty, result, source, context_snapshot,
             entry, exit, r_multiple, pnl, fees

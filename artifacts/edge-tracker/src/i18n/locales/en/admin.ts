@@ -483,6 +483,28 @@ export default {
     ladderHint: "— changed in People (row menu → Tier) or in Scaling.",
   },
 
+  stageAccess: {
+    title: "Access by stage",
+    description: "A closed section disappears for that stage from the menu, search and pinned pages; a direct link opens a “Section closed” page that says who to ask. Curators and admins are never restricted.",
+    section: "Section",
+    privacy: "Privacy",
+    names: "Sees other traders’ names",
+    namesHint: "Everyone else sees “Trader N”. Other people’s amounts stay hidden either way.",
+    open: "open",
+    closed: "closed",
+    cellAria: "{section} — {stage}",
+    closedCount: "Closed: {count}",
+    allOpen: "Everything open",
+    openAll: "Open everything",
+    openAllHint: "Opens every section for every stage. Names are not changed.",
+    undo: "Undo",
+    save: "Save",
+    saved: "Access by stage saved",
+    staffNote: "Curators and admins see every section and always see names.",
+    unknown: "Also closed: sections no longer in the menu: {list}",
+    loadFailed: "Could not load the access settings",
+  },
+
   moderation: {
     title: "Moderation queue",
     description: "Reports on discussions and comments. Every action needs a reason and goes to the audit log.",

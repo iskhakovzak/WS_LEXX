@@ -29,7 +29,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
 import { ALL_NAV_ITEMS, groupOf, parentOf, rowChildren, rowLabel, type NavItem } from "@/components/shell/nav";
 import { useVisibleNav } from "@/components/shell/use-nav-model";
-import { navFeatureOn } from "@/components/shell/nav-model";
+import { navItemOpen } from "@/components/shell/nav-model";
 import { rankPeople, usePeopleDirectory, type DirectoryPerson } from "@/components/people/search";
 import { Highlight } from "@/components/people/highlight";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -464,7 +464,7 @@ export default function GlobalSearch({ open, onOpenChange: setOpen, request, tri
   const navGroups = useVisibleNav();
   const pages = useMemo(() => {
     if (!q) return [];
-    const visible = ALL_NAV_ITEMS.filter((i) => (!i.staff || isCurator) && navFeatureOn(i.feature, navPrefs));
+    const visible = ALL_NAV_ITEMS.filter((i) => navItemOpen(i, isCurator, navPrefs));
     // Current-language name, the Russian name and the RU/EN keywords: a section is found whatever language you type in.
     const hit = (s?: string) => !!s && s.toLowerCase().includes(q);
     return visible.filter((i) => hit(i.name) || hit(i.ruName) || hit(i.hubLabel) || hit(i.ruHubLabel) || hit(i.keywords)).slice(0, 8);

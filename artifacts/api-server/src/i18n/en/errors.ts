@@ -355,4 +355,5 @@ export default {
   DESK_GROUP_NAME_TAKEN: "A group named “{name}” already exists",
   DESK_GROUP_CURATOR_INVALID: "A group's curator must be a curator or an admin",
   JUNIOR_NOTES_RETIRED: "The juniors' summary is no longer kept — fill in the evening form in the journal",
+  SECTION_BLOCKED: "This section is closed for your stage. Ask your curator or an admin to open it",
 } satisfies Messages<typeof ru>;

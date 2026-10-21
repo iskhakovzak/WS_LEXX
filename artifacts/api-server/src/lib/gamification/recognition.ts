@@ -2,7 +2,7 @@
  * Recognition — achievement tiers, long contract streaks, season top 3, mastery level-ups and granted rewards, stored
  * once (recognition_events, unique (trader, kind, ref)) and shown:
  *   • in the desk feed (lib/feedStream kind «recognition», cats desk + achievement): the line is rendered per reader;
- *     names follow privacy.hideNamesFromTraders (a trader sees «Трейдер N» — the day's alias — for others, staff and
+ *     names follow the viewer's stage rule (lib/access/names; a trader sees «Трейдер N» — the day's alias — for others, staff and
  *     the trader himself see the name);
  *   • in the desk Telegram group — only with gamification.telegramGroup on, a group chat (TELEGRAM_GROUP_CHAT_ID), a
  *     bot token and NODE_ENV=production (dailyTelegramEnabled: a development API never sends), for fresh events.
@@ -15,6 +15,7 @@ import { logger } from "../logger";
 import { setting } from "../settings/registry";
 import { addDays, nyDate } from "../tradingDate";
 import { deskAliases } from "../deskAliases";
+import { namesVisible } from "../access/names";
 import { personNameFor } from "../people/latinNames";
 import { dailyTelegramEnabled } from "../daily/telegramGuard";
 import { sendMessage, escHtml } from "../telegramBot";
@@ -152,5 +153,5 @@ export async function recognitionFeed(viewer: FeedViewer, from: string, to: stri
   const events = await recognitionBetween(from, to);
   if (!events.length) return [];
   const hidden = await hiddenUsers([...new Set(events.map((e) => e.trader))]);
-  return recognitionItems(events, viewer, lang, { hidden, hideNames: setting("privacy.hideNamesFromTraders") });
+  return recognitionItems(events, viewer, lang, { hidden, hideNames: !(await namesVisible(viewer)) });
 }

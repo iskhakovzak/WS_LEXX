@@ -161,3 +161,34 @@ describe("PUT /admin/settings", () => {
     expect(setting("telegram.eveningTime")).toBe("17:15");
   });
 });
+
+describe("stage access settings (admin → «Доступ по ступеням»)", () => {
+  it("access.sections and privacy.namesVisibleTo save normalized, audit, and an equal map is not re-written", async () => {
+    const r = await call("PUT", "/api/admin/settings", { changes: [
+      { key: "access.sections", value: { "/top-results": ["trader", "junior"], "/office": [] } },
+      { key: "privacy.namesVisibleTo", value: ["senior"] },
+    ] });
+    expect(r.status).toBe(200);
+    expect(r.json.changed).toEqual(["access.sections", "privacy.namesVisibleTo"]);
+    expect(setting("access.sections")).toEqual({ "/top-results": ["junior", "trader"] });
+    expect(setting("privacy.namesVisibleTo")).toEqual(["senior"]);
+    expect(byKey(r.json, "access.sections")).toMatchObject({ def: { type: "sectionStages", hidden: true, group: "access" } });
+    expect(audit.logAudit).toHaveBeenCalledWith({ actor: "Дмитрий К.", action: "settings.update", targetType: "setting", targetId: "access.sections", details: { from: {}, to: { "/top-results": ["junior", "trader"] } } });
+    expect(audit.logAudit).toHaveBeenCalledWith({ actor: "Дмитрий К.", action: "settings.update", targetType: "setting", targetId: "privacy.namesVisibleTo", details: { from: [], to: ["senior"] } });
+
+    vi.clearAllMocks();
+    const again = await call("PUT", "/api/admin/settings", { changes: [{ key: "access.sections", value: { "/top-results": ["junior", "trader"] } }] });
+    expect(again.json.changed).toEqual([]);
+    expect(audit.logAudit).not.toHaveBeenCalled();
+
+    const bad = await call("PUT", "/api/admin/settings", { changes: [{ key: "access.sections", value: { "/top-results": ["lead"] } }] });
+    expect(bad.status).toBe(400);
+    expect(bad.json.details.problems).toEqual([{ key: "access.sections", kind: "option", options: ["junior", "trader", "senior"] }]);
+  });
+
+  it("a curator can not change them (settings.manage is admin-only)", async () => {
+    who = CURATOR;
+    expect((await call("PUT", "/api/admin/settings", { changes: [{ key: "access.sections", value: { "/office": ["junior"] } }] })).status).toBe(403);
+    expect(table.size).toBe(0);
+  });
+});

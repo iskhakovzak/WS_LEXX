@@ -24,6 +24,7 @@ import { isMarketClosed, sessionFor } from "../marketDays";
 import { setting } from "../settings/registry";
 import { pickMinutes } from "./schedule";
 import { deskAliases } from "../deskAliases";
+import { namesVisible } from "../access/names";
 import { buildIntraday, defaultQty, fakeTimes, maxNotionalOf, type BuiltScenario, type IntradaySpec } from "../sim/scenario";
 import * as simStore from "../sim/store";
 import { gameSnapshot, newGameExtras, remember, settleActive, snapshotOf, type Snapshot, type Viewer } from "../sim/service";
@@ -171,7 +172,7 @@ export async function dailyState(viewer: Viewer, now = new Date()): Promise<Dail
     ds.dailyGames(date), ds.dailyParticipants(date),
     pick.deskTraders > 0 ? ds.tradersOfTickerDay(pick.ticker, pick.barsDay) : Promise.resolve(new Set<string>()),
   ]);
-  const mode = viewer.staff || !setting("privacy.hideNamesFromTraders") ? "names" : "aliases";
+  const mode = (await namesVisible(viewer)) ? "names" : "aliases";
   const { ranking, my } = buildRanking(rows, viewer.id, mode, deskAliases(participants, date), setting("trainer.dailyRankingTop"), excluded);
   return { ...base, revealed: { ticker: pick.ticker, barsDate: pick.barsDay }, my, ranking };
 }

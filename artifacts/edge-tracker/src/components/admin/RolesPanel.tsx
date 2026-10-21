@@ -2,6 +2,8 @@
  * Admin → «Роли и права». Explains the three roles and the tier ladder, then embeds the role × capability
  * matrix (GET/PUT /api/permissions/matrix). The matrix is editable only with permissions.manage (admins);
  * curators see it read-only — PermissionsSection handles both modes and every save is audited server-side.
+ * Admins also get «Доступ по ступеням» (StageAccessPanel): sections closed per ladder stage and who sees names; the
+ * page passes the section rows (built from the sidebar) as `accessGroups`.
  */
 import { ChevronRight, Crown, GraduationCap, ShieldCheck, UserCog } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
@@ -9,6 +11,8 @@ import { PermissionsSection } from "@/components/settings/PermissionsSection";
 import { useAuth } from "@/contexts/auth-context";
 import { useTiers } from "./console-api";
 import { roleLabel, tierDisplayName } from "./api";
+import { StageAccessPanel } from "./StageAccessPanel";
+import type { AccessGroup } from "./stage-access-model";
 import { adminI18n } from "@/i18n/ns/admin";
 
 const ROLES = [
@@ -17,7 +21,7 @@ const ROLES = [
   { key: "admin", icon: Crown },
 ] as const;
 
-export function RolesPanel() {
+export function RolesPanel({ accessGroups = [] }: { accessGroups?: AccessGroup[] }) {
   const { can } = useAuth();
   const { t } = adminI18n.useT();
   const { data: tiers } = useTiers();
@@ -55,6 +59,7 @@ export function RolesPanel() {
         )}
       </Panel>
       <PermissionsSection />
+      {editable && can("settings.manage") && <StageAccessPanel groups={accessGroups} />}
     </div>
   );
 }

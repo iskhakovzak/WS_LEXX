@@ -7,13 +7,16 @@
  *   boolean  true / false
  *   select   one of the declared options
  *   text     a string, trimmed, control characters removed, ≤ maxLength
+ *   stages   an array of ladder stages (junior / trader / senior), each once → stored in ladder order
+ *   sectionStages  an object: web section href ("/top-results"; not "/") → stages; ≤ maxSections hrefs, sorted, empty
+ *            lists dropped (an empty object = everything open)
  *
  * A rejected value comes back as a problem the admin page can show next to the field (SETTINGS_INVALID details).
  * Ladders (level thresholds rewards.level1..4Points, each achievement line's tier targets achievements.<line>1..n) must
  * grow strictly: kind "order" on the step that is not above the one before it (`after` = that key, `min` = the
  * smallest value that fits), checked on the values in force after the batch.
  */
-import { SETTINGS, setting, type SettingDef, type SettingKey } from "./registry";
+import { SETTINGS, setting, type AccessStage, type SettingDef, type SettingKey } from "./registry";
 
 export type SettingProblemKind = "unknown" | "duplicate" | "type" | "range" | "integer" | "time" | "option" | "order" | "length";
 export type SettingProblem = {
@@ -25,7 +28,44 @@ export type SettingProblem = {
   max?: number;
   options?: readonly string[];
 };
-export type StoredValue = number | boolean | string;
+export type StageList = readonly AccessStage[];
+export type SectionStages = Readonly<Record<string, StageList>>;
+export type StoredValue = number | boolean | string | StageList | SectionStages;
+
+/** Ladder stages in ladder order (the stage-dependent settings use these; lib/access/stages.ts re-exports them). */
+export const ACCESS_STAGES: readonly AccessStage[] = ["junior", "trader", "senior"];
+/** A web section href: lower-case path segments, never the home page "/" (it can not be closed). */
+export const SECTION_HREF_RE = /^\/[a-z0-9-]+(\/[a-z0-9-]+)*$/;
+
+/** Value equality for stored values (lists and maps compare by content). */
+export function sameStored(a: StoredValue | null, b: StoredValue | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** A stage list → each stage once, ladder order; null when it is not a list of known stages. */
+function stageList(value: unknown): { ok: true; value: StageList } | { ok: false; kind: "type" | "option" } {
+  if (!Array.isArray(value)) return { ok: false, kind: "type" };
+  if (value.some((v) => typeof v !== "string")) return { ok: false, kind: "type" };
+  if (value.some((v) => !(ACCESS_STAGES as readonly string[]).includes(v))) return { ok: false, kind: "option" };
+  return { ok: true, value: ACCESS_STAGES.filter((s) => value.includes(s)) };
+}
+
+function sectionStages(key: string, def: Extract<SettingDef, { type: "sectionStages" }>, value: unknown):
+  { ok: true; value: SectionStages } | { ok: false; problem: SettingProblem } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, problem: { key, kind: "type" } };
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > def.maxSections) return { ok: false, problem: { key, kind: "length", max: def.maxSections } };
+  const out: Record<string, StageList> = {};
+  for (const [href, list] of entries.sort(([a], [b]) => a.localeCompare(b))) {
+    if (!SECTION_HREF_RE.test(href) || href.length > 60) return { ok: false, problem: { key, kind: "type" } };
+    const r = stageList(list);
+    if (!r.ok) return { ok: false, problem: r.kind === "option" ? { key, kind: "option", options: ACCESS_STAGES } : { key, kind: "type" } };
+    if (r.value.length) out[href] = r.value;
+  }
+  return { ok: true, value: out };
+}
 
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -68,6 +108,13 @@ export function validateSetting(key: string, value: unknown): { ok: true; value:
       const v = [...value].map((ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? " " : ch)).join("").trim();
       return v.length <= def.maxLength ? { ok: true, value: v } : { ok: false, problem: { key, kind: "length", max: def.maxLength } };
     }
+    case "stages": {
+      const r = stageList(value);
+      if (r.ok) return { ok: true, value: r.value };
+      return { ok: false, problem: r.kind === "option" ? { key, kind: "option", options: ACCESS_STAGES } : { key, kind: "type" } };
+    }
+    case "sectionStages":
+      return sectionStages(key, def, value);
   }
 }
 

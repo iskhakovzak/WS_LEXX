@@ -411,6 +411,11 @@ export function useAuth() {
   return context;
 }
 
+/** The auth context or null outside an AuthProvider (shared widgets that also render in isolation, e.g. in tests). */
+export function useAuthOptional(): AuthContextType | null {
+  return useContext(AuthContext);
+}
+
 export function WriteOnly({ children }: { children: React.ReactNode }) {
   const { canEdit } = useAuth();
   if (!canEdit) return null;

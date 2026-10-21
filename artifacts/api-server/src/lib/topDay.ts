@@ -5,7 +5,7 @@
  *
  * Pure (no DB): lib/topDayStore.ts loads grouped rows, this file shapes the answer and applies the privacy policy:
  *   - staff (curator / admin, lib/playbookPrivacy)      → real names and every $;
- *   - trader, `privacy.hideNamesFromTraders` on (default) → anonymous: «Трейдер N» (lib/deskAliases); the viewer's own
+ *   - trader whose stage does not see names (lib/access/names; the default) → anonymous: «Трейдер N» (lib/deskAliases); the viewer's own
  *     row is flagged `me`. The real name never leaves the server;
  *   - trader, setting off                              → named: names shown.
  * Money (owner decision 9, 2026-10-20 — lib/moneyVisibility): in both trader modes other traders' $ is null and desk

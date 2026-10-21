@@ -8,7 +8,7 @@
  *                the entry; scored by distance to the reference entry; feeds setup mastery;
  *   free       — the fair random game (existing sim intraday/swing).
  * All attempts are stored on the server (no browser-only stats) and feed quests / achievements / mastery.
- * Money: R-based only; names in desk rankings follow privacy.hideNamesFromTraders (aliases for traders).
+ * Money: R-based only; names in desk rankings follow lib/access/names (aliases for traders whose stage does not see names).
  * Web mirror: edge-tracker src/lib/trainer/types.ts — keep identical.
  */
 export type TextItem = { key: string; params?: Record<string, string | number | null> };

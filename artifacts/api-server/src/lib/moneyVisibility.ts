@@ -4,7 +4,7 @@
  * On shared screens — «Топ дня», the leaderboard, «Деск на тикере», discussions — a trader sees other traders' results
  * in R, %, counts and win rate; the dollar fields of another trader come back null from the server. Their own rows keep
  * every dollar. Staff (curator / admin) see everything. This applies whatever the names setting
- * (privacy.hideNamesFromTraders) is: anonymity by day alias no longer opens other people's money.
+ * (lib/access/names: privacy.namesVisibleTo per stage) is: anonymity by day alias no longer opens other people's money.
  *
  * Aggregates over several traders (desk net of a day, office position on a ticker, desk total on a ticker) follow
  * `canSeeDeskAggregate`: staff always; a trader only when at least DESK_AGGREGATE_MIN_TRADERS traders are in it (a sum

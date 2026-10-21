@@ -8,21 +8,31 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 /**
  * `pilot: true` = one of the ~10 settings the pilot needs (docs/PILOT.md §2.5 / §3): the admin page shows only these
  * by default, the rest under «Показать все» (Волна 2 п. 2.4; the web list PILOT_KEYS must agree, test there).
  */
-type Base = { group: SettingGroup; unit?: SettingUnit; pilot?: true };
+/**
+ * `hidden: true` = edited on its own admin screen (e.g. «Доступ по ступеням» in «Роли и права»), not in the generic
+ * «Настройки деска» form; still validated, stored and audited here like every other key.
+ */
+type Base = { group: SettingGroup; unit?: SettingUnit; pilot?: true; hidden?: true };
 export type NumberDef = Base & { type: "number"; default: number; min: number; max: number; step?: number };
 export type TimeDef = Base & { type: "time"; default: string /* "HH:MM", New York time */ };
 export type BoolDef = Base & { type: "boolean"; default: boolean };
 export type SelectDef = Base & { type: "select"; default: string; options: readonly string[] };
 /** Free text (one line, trimmed, ≤ maxLength): e.g. a comma-separated list of stored names. */
 export type TextDef = Base & { type: "text"; default: string; maxLength: number };
-export type SettingDef = NumberDef | TimeDef | BoolDef | SelectDef | TextDef;
+/** Ladder stages a stage-dependent rule applies to (lib/access/stages.ts ACCESS_STAGES). */
+export type AccessStage = "junior" | "trader" | "senior";
+/** A list of ladder stages: each once, stored in ladder order. */
+export type StagesDef = Base & { type: "stages"; default: readonly AccessStage[] };
+/** Web section href («/top-results») → the stages it is closed for; stored with sorted hrefs, empty lists dropped. */
+export type SectionStagesDef = Base & { type: "sectionStages"; default: Readonly<Record<string, readonly AccessStage[]>>; maxSections: number };
+export type SettingDef = NumberDef | TimeDef | BoolDef | SelectDef | TextDef | StagesDef | SectionStagesDef;
 
 export const SETTINGS = {
   // Daily focus (lib/daily/detectors + engine)
@@ -161,8 +171,17 @@ export const SETTINGS = {
   // and every /api/author-notes route (404) follow this switch.
   "nav.authorNotes": { group: "nav", type: "boolean", default: false },
 
-  // Privacy of cross-trader views (desk-day, top of the day)
-  "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true },
+  // Privacy of cross-trader views (desk-day, top of the day, season ranking, recognition, trainer daily ranking).
+  // Legacy switch: read only while privacy.namesVisibleTo has never been saved (lib/access/names.ts) — on → nobody,
+  // off → every stage. Edited on the «Доступ по ступеням» screen now, so hidden from the generic form.
+  "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true, hidden: true },
+  // Ladder stages that see other traders' real names (staff always do); unsaved → derived from the legacy switch above.
+  "privacy.namesVisibleTo": { group: "privacy", type: "stages", default: [], hidden: true },
+
+  // Sections closed per ladder stage (owner 2026-10-21): web nav href → blocked stages. {} = everything open. Staff are
+  // never blocked. The web menu / route guard read GET /permissions/me → nav.blocked; the API answers 403
+  // SECTION_BLOCKED on the sections' data endpoints (lib/access/sections.ts).
+  "access.sections": { group: "access", type: "sectionStages", default: {}, maxSections: 60, hidden: true },
 
   // «Тренажёр» (lib/trainer, lib/sim/exec): fills (spread + slippage, frozen into each new game), 1R fallback for sizing,
   // «Задача дня» (pick time NY, play length, liquidity / range filters, no-repeat window, ranking size) and «Найди вход»
@@ -235,7 +254,11 @@ export const SETTINGS = {
 export type SettingKey = keyof typeof SETTINGS;
 type DefOf<K extends SettingKey> = (typeof SETTINGS)[K];
 export type SettingValue<K extends SettingKey> =
-  DefOf<K> extends { type: "number" } ? number : DefOf<K> extends { type: "boolean" } ? boolean : string;
+  DefOf<K> extends { type: "number" } ? number
+    : DefOf<K> extends { type: "boolean" } ? boolean
+    : DefOf<K> extends { type: "stages" } ? readonly AccessStage[]
+    : DefOf<K> extends { type: "sectionStages" } ? Readonly<Record<string, readonly AccessStage[]>>
+    : string;
 
 const cache = new Map<string, unknown>();
 
@@ -243,6 +266,11 @@ const cache = new Map<string, unknown>();
 export function setting<K extends SettingKey>(key: K): SettingValue<K> {
   const v = cache.get(key);
   return (v === undefined ? SETTINGS[key].default : v) as SettingValue<K>;
+}
+
+/** Is a stored value in force for `key` (false = the default is read)? lib/access/names.ts: legacy fallback. */
+export function settingStored(key: SettingKey): boolean {
+  return cache.has(key);
 }
 
 /** Replace the cache with stored values (the store calls this on warm-up and after saves). Unknown keys are ignored. */

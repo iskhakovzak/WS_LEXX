@@ -21,6 +21,7 @@ export default {
     finviz: { title: "Finviz", description: "Finviz Elite’dan ertalabki skriner, tiker konteksti va hisobotlar taqvimi. Serverda FINVIZ_AUTH kaliti boʻlmasa, hammasi oʻchiq." },
     trades: { title: "Savdolar: IMX", description: "IMX — yopilish auksioni (disbalans) savdolari. Shu Nyu-York oynasida istalgan ijrosi boʻlgan savdo MOC strategiyasi va «IMX» tegini oladi; roʻyxat va jamilarda qoladi, treyder uni chiqarib tashlashi mumkin." },
     newsChannel: { title: "WS_NEWS kanali", description: "Savdo kunlari WS_NEWS Telegram kanaliga bozor sharhlari: premarket, ochilishdan beri, kun yakuni. Serverda NEWS_CHANNEL_BOT_TOKEN va NEWS_CHANNEL_CHAT_ID boʻlmasa, hammasi oʻchiq." },
+    access: { title: "Bosqichlar boʻyicha kirish", description: "Qaysi boʻlimlar Junior, Treyder va Senior uchun yopiq. «Rollar va huquqlar»da oʻzgartiriladi." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
   units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta", places: "oʻrin", people: "kishi", shares: "aksiya", bars: "sham", times: "×", bp: "b.p.", atr: "ATR", quests: "kvest", trades: "savdo", months: "oy", lessons: "dars", exams: "imtihon", tasks: "topshiriq", teams: "jamoa" },
@@ -41,6 +42,8 @@ export default {
     changedTitle: "Qiymat standartdan farq qiladi",
     lastChanged: "{name} · {when}",
     on: "Yoq",
+    nobody: "hech kim",
+    allOpen: "hammasi ochiq",
     off: "Oʻch",
     ny: "NY",
     tashkent: "Toshkent {time}",
@@ -223,6 +226,10 @@ export default {
     },
     privacy: {
       hideNamesFromTraders: { label: "Ismlarni treyderlardan yashirish", help: "Umumiy grafiklar va kun topida treyder «Treyder N» va summalarni koʻradi; oʻchirilsa — ismlar koʻrinadi, boshqalarning summalari emas." },
+      namesVisibleTo: { label: "Boshqa treyderlarning ismlarini koʻradi", help: "Umumiy ekranlarda hamkasblarning haqiqiy ismlarini koʻradigan bosqichlar; qolganlar «Treyder N»ni koʻradi. Kuratorlar va adminlar ismlarni doim koʻradi." },
+    },
+    access: {
+      sections: { label: "Yopiq boʻlimlar", help: "Boʻlim → u yopiq boʻlgan bosqichlar. Kuratorlar va adminlar cheklanmaydi." },
     },
     gamification: {
       enabled: { label: "Geymifikatsiya yoqilgan", help: "Mavsumlar, liga, eʼtirof, mahorat va mukofotlar. Treyderlardan yashirish uchun oʻchiring." },
