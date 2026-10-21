@@ -4,7 +4,7 @@
 // the pure math in catalyst-math.ts. `tickers=` on /earnings/upcoming is an additive hint (newer API keeps those
 // tickers beyond the market-cap limit), the client filters either way.
 import { useMemo } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { useListEvents, type MarketEvent } from "@workspace/api-client-react";
 import { http } from "@/lib/api/http";
 import { KEYS, STALE } from "@/lib/api/keys";
@@ -47,6 +47,8 @@ export function useMyEarnings(tickers: string[]) {
     queryFn: ({ signal }) => http.get<UpcomingData>(`/api/earnings/upcoming?days=10&limit=60${csv ? `&tickers=${encodeURIComponent(csv)}` : ""}`, { signal }),
     enabled: tickers.length > 0,
     staleTime: 15 * 60_000,
+    // The ticker set grows as the watchlist / trades load: keep the previous list instead of flashing a skeleton.
+    placeholderData: keepPreviousData,
     retry: 1,
   });
 }

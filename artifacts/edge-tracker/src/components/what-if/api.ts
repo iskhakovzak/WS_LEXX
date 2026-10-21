@@ -3,7 +3,7 @@
  * endpoints) and the response types mirrored from api-server/src/lib/whatIf.ts.
  */
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import type { Rule, RuleType } from "./rules";
@@ -183,6 +183,8 @@ type BaseWire = Omit<BaseResponse, "trades"> & { trades?: SimTrade[]; enc?: numb
 export function useWhatIfBase(scope: Scope, enabled = true) {
   return useQuery<BaseResponse>({
     queryKey: whatIfKeys.base(scope), enabled, staleTime: 60_000,
+    // Period / trader switch: keep the previous base on screen (dimmed, «recalculating») instead of a full-page skeleton.
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const q = scopeParams(scope);
       const { tradeTable, trades, ...rest } = await http.get<BaseWire>(`/api/whatif/base?${q ? `${q}&` : ""}enc=2`);
@@ -203,11 +205,11 @@ export function useWhatIfRun(scope: Scope, rules: Rule[], enabled = true) {
 }
 
 export function useWhatIfSuggestions(scope: Scope, enabled = true) {
-  return useQuery<SuggestionsResponse>({ queryKey: whatIfKeys.suggestions(scope), enabled, staleTime: 5 * 60_000, queryFn: () => http.get<SuggestionsResponse>(`/api/whatif/suggestions?${scopeParams(scope)}`) });
+  return useQuery<SuggestionsResponse>({ queryKey: whatIfKeys.suggestions(scope), enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData, queryFn: () => http.get<SuggestionsResponse>(`/api/whatif/suggestions?${scopeParams(scope)}`) });
 }
 
 export function useWhatIfFees(scope: Scope, enabled = true) {
-  return useQuery<FeesResponse>({ queryKey: whatIfKeys.fees(scope), enabled, staleTime: 5 * 60_000, queryFn: () => http.get<FeesResponse>(`/api/whatif/fees?${scopeParams(scope)}`) });
+  return useQuery<FeesResponse>({ queryKey: whatIfKeys.fees(scope), enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData, queryFn: () => http.get<FeesResponse>(`/api/whatif/fees?${scopeParams(scope)}`) });
 }
 
 export function useSavedScenarios(trader: string, enabled = true) {

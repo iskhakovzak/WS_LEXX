@@ -129,6 +129,7 @@ export default {
     commentPlaceholder: "Что трейдер сделал хорошо, что исправить завтра…",
     update: "Обновить отзыв",
     saveNext: "Сохранить и следующий",
+    pickScoreFirst: "Сначала поставьте оценку",
   },
   checkin: {
     readinessAria: "Готовность {score} из 100",

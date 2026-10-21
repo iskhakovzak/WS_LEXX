@@ -297,6 +297,7 @@ export default function ActivityPage() {
               variant="ghost"
               size="icon-sm"
               aria-label={t("refresh")}
+              title={t("refresh")}
               onClick={() => { feed.refetch(); summary.refetch(); }}
               disabled={feed.isFetching && !feed.isFetchingNextPage}
             >
@@ -339,7 +340,7 @@ export default function ActivityPage() {
               type="button"
               onClick={() => setSearch("")}
               aria-label={tc("actions.clearSearch")}
-              className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground"
+              className="absolute right-1 top-1/2 grid h-8 w-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X className="h-4 w-4" />
             </button>

@@ -37,7 +37,7 @@ function TraderRow({ tr, day, color, active, dimmed, onToggle }: { tr: DeskTrade
         aria-pressed={active}
         aria-label={t("legend.focus", { name })}
         className={cn(
-          "flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm transition-opacity hover:bg-[var(--glass-hover-bg)]",
+          "flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left text-sm transition-[opacity,background-color] duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]",
           active && "bg-[var(--glass-hover-bg)] ring-1 ring-[var(--glass-border)]",
           dimmed && "opacity-55",
         )}
@@ -45,7 +45,7 @@ function TraderRow({ tr, day, color, active, dimmed, onToggle }: { tr: DeskTrade
         <span className="mt-1 h-3 w-3 shrink-0 rounded-full ring-2 ring-background" style={{ background: color }} aria-hidden="true" />
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate font-medium text-foreground">{name}</span>
+            <span className="truncate font-medium text-foreground" title={name}>{name}</span>
             {tr.me && day.view !== "anonymous" && <Pill tone="accent">{t("legend.me")}</Pill>}
             <span className="text-xs text-muted-foreground">{sideLabel(tr.side)}</span>
             <span className="text-xs text-muted-foreground">· {t("legend.trades", { count: tr.trades })}</span>
@@ -117,7 +117,7 @@ export function DeskDayLegend({ day, colors, focus, onToggle, onClear }: {
       <div className="flex items-center justify-between gap-2 px-2.5">
         <p className="micro-label">{t("legend.title")} · {t("legend.count", { count: day.traders.length })}</p>
         {focus.length > 0 && (
-          <button type="button" onClick={onClear} className="text-xs font-medium text-primary hover:underline">{t("legend.all")}</button>
+          <button type="button" onClick={onClear} className="-my-1 inline-flex min-h-8 items-center rounded-md px-2 text-xs font-medium text-primary hover:underline">{t("legend.all")}</button>
         )}
       </div>
       <ul className="flex flex-col gap-0.5">

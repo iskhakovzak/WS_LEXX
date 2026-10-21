@@ -24,11 +24,15 @@ import { edgeChip, edgeDetail, timeText } from "./today-text";
 
 type PlanRes = { plan?: { doc?: Record<string, unknown> | null } | null } | null;
 
-function Fact({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+function Fact({ label, value, muted, loading }: { label: string; value: string; muted?: boolean; loading?: boolean }) {
   return (
     <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5">
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className={cn("text-[15px] font-semibold tabular-nums [overflow-wrap:anywhere]", muted ? "font-normal text-muted-foreground" : "text-foreground")}>{value}</span>
+      {loading ? (
+        <span className="skeleton inline-block h-4 w-12 self-center rounded-full" aria-hidden="true" />
+      ) : (
+        <span className={cn("text-[15px] font-semibold tabular-nums [overflow-wrap:anywhere]", muted ? "font-normal text-muted-foreground" : "text-foreground")}>{value}</span>
+      )}
     </span>
   );
 }
@@ -42,16 +46,26 @@ export function PlanStrip({ today }: { today: PlaybookToday }) {
   const focus = me.data?.focus && me.data.focus.date === today.date ? me.data.focus : null;
   const f = planFacts(plan.data, focus, desk.data);
   const unset = t("myPlan.unset");
+  // While the plan / limits are still loading, show placeholders instead of «—» that then jump to numbers.
+  const loading = plan.isLoading || desk.isLoading;
+  // Nothing set at all: one actionable line instead of three dashes (closure: say what to do, and where).
+  const noLimits = !loading && f.maxLossUsd == null && f.maxTrades == null && !today.oneR;
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-[var(--glass-bg)] px-3 py-2.5" aria-busy={loading || undefined}>
       <ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-      <Fact label={t("myPlan.stop")} value={f.maxLossUsd != null ? (f.stopSource === "limits" ? `${fmtUsd(f.maxLossUsd, { decimals: 0 })} · ${t("card.oneRSource.limits")}` : fmtUsd(f.maxLossUsd, { decimals: 0 })) : unset} muted={f.maxLossUsd == null} />
-      <Fact label={t("myPlan.maxTrades")} value={f.maxTrades != null ? String(f.maxTrades) : unset} muted={f.maxTrades == null} />
-      <Fact label={t("myPlan.oneR")} value={today.oneR ? `${fmtUsd(today.oneR.usd, { decimals: 0 })} · ${t(`card.oneRSource.${today.oneR.source}`)}` : unset} muted={!today.oneR} />
+      {noLimits ? (
+        <span className="min-w-0 flex-1 text-sm text-foreground/80">{t("myPlan.unsetAll")}</span>
+      ) : (
+        <>
+          <Fact loading={loading} label={t("myPlan.stop")} value={f.maxLossUsd != null ? (f.stopSource === "limits" ? `${fmtUsd(f.maxLossUsd, { decimals: 0 })} · ${t("card.oneRSource.limits")}` : fmtUsd(f.maxLossUsd, { decimals: 0 })) : unset} muted={f.maxLossUsd == null} />
+          <Fact loading={plan.isLoading} label={t("myPlan.maxTrades")} value={f.maxTrades != null ? String(f.maxTrades) : unset} muted={f.maxTrades == null} />
+          <Fact label={t("myPlan.oneR")} value={today.oneR ? `${fmtUsd(today.oneR.usd, { decimals: 0 })} · ${t(`card.oneRSource.${today.oneR.source}`)}` : unset} muted={!today.oneR} />
+        </>
+      )}
       {f.rule && <Fact label={t("myPlan.rule")} value={f.ruleFromFocus ? `${f.rule} (${t("myPlan.fromFocus")})` : f.rule} />}
       {f.avoid && <Fact label={t("myPlan.avoid")} value={f.avoidFromFocus ? `${mistakeRule(f.avoid)} (${t("myPlan.fromFocus")})` : mistakeRule(f.avoid)} />}
-      <Link href={links.myPlan(today.date)} className="ml-auto inline-flex min-h-9 items-center gap-0.5 text-sm font-medium text-primary hover:underline">
-        {t("myPlan.edit")} <ChevronRight className="h-4 w-4" aria-hidden="true" />
+      <Link href={links.myPlan(today.date)} className="ml-auto inline-flex min-h-9 items-center gap-0.5 rounded-md text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {noLimits ? t("myPlan.setInPlan") : t("myPlan.edit")} <ChevronRight className="h-4 w-4" aria-hidden="true" />
       </Link>
     </div>
   );

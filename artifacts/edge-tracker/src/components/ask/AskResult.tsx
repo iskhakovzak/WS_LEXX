@@ -194,6 +194,8 @@ function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]
                 key={r.key}
                 className={cn(r.ask && "cursor-pointer", hl.has(r.key) && "bg-primary/10")}
                 onClick={r.ask ? () => onAsk(r.ask!) : undefined}
+                tabIndex={r.ask ? 0 : undefined}
+                onKeyDown={r.ask ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAsk(r.ask!); } } : undefined}
                 title={r.ask ? t("result.askRow", { text: r.ask }) : undefined}
               >
                 <td className="max-w-[260px] truncate font-medium" title={labelOf(r)}>{labelOf(r)}</td>
@@ -278,7 +280,7 @@ function TradeTable({ title, trades, index, showTrader }: { title: string; trade
                   {showTrader && <td className="max-w-[140px] truncate text-muted-foreground" title={tr.trader ? personName(tr.trader) : undefined}>{tr.trader ? personName(tr.trader) : "—"}</td>}
                   <td>{tr.side === "Short" ? "Short" : tr.side === "Long" ? "Long" : "—"}</td>
                   <td className="text-right">{m?.qty == null ? "—" : fmtCount(m.qty)}</td>
-                  <td className="text-right">{tr.entry == null ? "—" : `$${Number(tr.entry).toFixed(2)}`}</td>
+                  <td className="text-right">{tr.entry == null ? "—" : fmtUsd(Number(tr.entry))}</td>
                   <td className="text-right">{m?.hold == null ? "—" : fmtDuration(m.hold)}</td>
                   <td className={cn("text-right font-medium", toneText(toneOf(n)))}>{fmtUsd(n, { signed: true })}</td>
                 </tr>

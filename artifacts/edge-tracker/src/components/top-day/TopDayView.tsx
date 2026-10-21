@@ -63,7 +63,7 @@ export function TopDayView({ tabs, staff }: { tabs?: React.ReactNode; staff: boo
         {tabs}
       </PageHeader>
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-5">
-        <div className="lg:sticky lg:top-4">
+        <div className="lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky">
           <TopCalendar
             month={month}
             data={cal.data && cal.data.month === month ? cal.data : undefined}

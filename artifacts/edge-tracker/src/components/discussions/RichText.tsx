@@ -19,6 +19,8 @@ type Ctx = {
   onTickerFilter?: (t: string) => void;
 };
 
+const NO_TICKERS: Set<string> = new Set();
+
 export function Highlight({ text, q }: { text: string; q?: string }) {
   if (!q || q.length < 2) return <>{text}</>;
   const lower = text.toLowerCase();
@@ -91,7 +93,7 @@ export function RichText({ text, className, knownTickers, me, highlight, onTicke
 }) {
   const { dbUsers } = useAuth();
   const people = React.useMemo(() => dbUsers.map((u) => u.name).filter(Boolean), [dbUsers]);
-  const ctx: Ctx = { knownTickers: knownTickers ?? new Set(), people, me, highlight, onTickerFilter };
+  const ctx: Ctx = { knownTickers: knownTickers ?? NO_TICKERS, people, me, highlight, onTickerFilter };
   const re = React.useMemo(() => buildInlineRe(ctx.knownTickers), [ctx.knownTickers]);
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const blocks: React.ReactNode[] = [];

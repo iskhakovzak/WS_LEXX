@@ -2,10 +2,10 @@ import * as React from "react";
 import { Link } from "wouter";
 import { Activity, Briefcase, Calculator, Check, LineChart, OctagonX, ShieldAlert, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EmptyState, Panel } from "@/components/ds";
+import { EmptyState, ErrorState, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { isNotFound } from "@/lib/api/errors";
+import { humanizeApiError, isNotFound } from "@/lib/api/errors";
 import { useRiskMe, useRiskPositions } from "./use-risk";
 import { TIERS, TierPill } from "./primitives";
 import { links } from "@/lib/links";
@@ -74,6 +74,9 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAl
         </div>
       </div>
     );
+  }
+  if (me.isError && !isNotFound(me.error)) {
+    return <ErrorState title={t("me.loadFailed")} error={me.error} onRetry={() => me.refetch()} />;
   }
   if (me.isError || !me.data) {
     const notReady = isNotFound(me.error);
@@ -196,7 +199,7 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAl
           <PositionsTable positions={positions} limitsByTrader={new Map([[trader, L]])} storageKey="risk.me.horizon" />
         </Panel>
       )}
-      {pos.isError && <p role="alert" className="text-sm text-down">{t("me.positionsFailed", { error: (pos.error as Error).message })}</p>}
+      {pos.isError && <ErrorState compact error={pos.error} message={t("me.positionsFailed", { error: humanizeApiError(pos.error) })} onRetry={() => pos.refetch()} />}
 
       {L && (
         <Panel title={t("me.breachesTitle")} icon={ShieldAlert} description={t("me.breachesDesc")}>

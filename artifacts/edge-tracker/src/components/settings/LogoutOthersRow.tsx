@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, LogOut } from "lucide-react";
+import { ChevronRight, Loader2, LogOut } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -45,7 +45,7 @@ export function LogoutOthersRow() {
         </span>
         <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
       </button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialog open={open} onOpenChange={(v) => { if (!busy) setOpen(v); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("profile.logoutAllTitle")}</AlertDialogTitle>
@@ -55,6 +55,7 @@ export function LogoutOthersRow() {
             <AlertDialogCancel disabled={busy}>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction disabled={busy} onClick={(e) => { e.preventDefault(); void run(); }}
               className="bg-destructive text-destructive-foreground hover:brightness-110">
+              {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
               {t("profile.logoutEverywhere")}
             </AlertDialogAction>
           </AlertDialogFooter>

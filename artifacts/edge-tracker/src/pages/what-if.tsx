@@ -155,7 +155,8 @@ export default function WhatIf() {
   const dayTrader = isCurator ? (trader === ALL ? "" : trader) : "";
   const openDay = (day: string) => navigate(`/day-report?date=${day}${dayTrader ? `&trader=${encodeURIComponent(dayTrader)}` : ""}`);
 
-  const recalculating = hasRules && (run.isFetching || pendingRecalc);
+  // Also while a period / trader switch loads: the previous base stays on screen (placeholder), dimmed.
+  const recalculating = (hasRules && (run.isFetching || pendingRecalc)) || base.isPlaceholderData;
   // A link with #fees (e.g. from the analytics «Что если» tab) scrolls to the fee block once it is rendered.
   const feesReady = !!base.data && (base.data.trades.length ?? 0) > 0;
   useEffect(() => {
@@ -219,10 +220,15 @@ export default function WhatIf() {
     return (
       <Page>
         {header}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]">
-          {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[168px] rounded-2xl" />)}
+        {/* Same order as the page: questions (chips) → result panel → suggestion cards. */}
+        <div className="flex flex-col gap-2" aria-hidden="true">
+          <Skeleton className="h-4 w-48 rounded-md" />
+          <div className="flex flex-wrap gap-2">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-9 w-44 rounded-full" />)}</div>
         </div>
         <Skeleton className="h-[560px] rounded-2xl" />
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]" aria-hidden="true">
+          {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[168px] rounded-2xl" />)}
+        </div>
         <span className="sr-only" role="status">{t("loadingTrades")}</span>
       </Page>
     );
@@ -310,7 +316,14 @@ export default function WhatIf() {
           <p className="text-xs text-muted-foreground">{t("suggestionsHint", { period: periodPhrase })}</p>
         </div>
         <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} />
-        {suggestions.isError && <p className="text-xs text-down">{t("suggestionsError")}</p>}
+        {suggestions.isError && (
+          <p className="flex flex-wrap items-center gap-2 text-xs text-down" role="alert">
+            {t("suggestionsError")}
+            <Button variant="ghost" size="sm" onClick={() => void suggestions.refetch()} disabled={suggestions.isFetching}>
+              <RefreshCw className={cn(suggestions.isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" /> {commonI18n.t("actions.retry")}
+            </Button>
+          </p>
+        )}
       </section>
 
       <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
@@ -318,7 +331,7 @@ export default function WhatIf() {
       </Panel>
 
       <Panel title={t("feesTitle")} icon={Receipt} id="fees" className="scroll-mt-[calc(var(--sticky-top,0px)+1rem)]">
-        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} presets={presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} costsByGroup={<CostsByGroup filters={costFilters} isCurator={isCurator} />} />
+        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} error={fees.error} onRetry={() => void fees.refetch()} presets={presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} costsByGroup={<CostsByGroup filters={costFilters} isCurator={isCurator} />} />
       </Panel>
 
       {showScenario && (
@@ -351,10 +364,10 @@ function Fold({ title, hint, icon: Icon, children }: { title: string; hint?: str
   const [open, setOpen] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="glass-panel rounded-2xl">
-      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-2xl p-[var(--panel-p)] text-left hover:bg-[var(--glass-hover-bg)]">
+      <CollapsibleTrigger className="flex min-h-11 w-full items-center gap-2 rounded-2xl p-[var(--panel-p)] text-left transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="text-sm font-semibold">{title}</span>
-        {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
+        {hint && <span className="min-w-0 truncate text-xs text-muted-foreground" title={hint}>{hint}</span>}
         <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
       </CollapsibleTrigger>
       <CollapsibleContent className="px-[var(--panel-p)] pb-[var(--panel-p)]">{children}</CollapsibleContent>

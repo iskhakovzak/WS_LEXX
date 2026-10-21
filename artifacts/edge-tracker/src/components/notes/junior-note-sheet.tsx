@@ -360,7 +360,7 @@ export function JuniorNoteSheet({
                     </span>
                   </div>
                   <Button onClick={() => void saveReview()} disabled={saving}>
-                    {saving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+                    {saving ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send aria-hidden="true" />}
                     {submitLabel ?? (n.reviewed_at ? t("junior.sheet.update") : t("junior.sheet.send"))}
                   </Button>
                 </div>

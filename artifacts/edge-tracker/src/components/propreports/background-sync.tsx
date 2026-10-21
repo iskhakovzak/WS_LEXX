@@ -5,7 +5,7 @@
  */
 import * as React from "react";
 import { AlertTriangle, CheckCircle2, History, Loader2, PlayCircle, Square, Timer } from "lucide-react";
-import { EmptyState, Panel, Pill, type Tone } from "@/components/ds";
+import { EmptyState, Panel, Pill, SkeletonBlock, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -113,14 +113,14 @@ export function BackgroundSync({ canSync, apiConfigured }: { canSync: boolean; a
         <EmptyState icon={Timer} title={t("bg.offTitle")} description={t("bg.offText")} />
       ) : (
         <div className="space-y-4">
-          <p className="flex flex-wrap items-center gap-2 text-sm">
+          {tick.isLoading ? <SkeletonBlock className="h-5 w-64 max-w-full" /> : <p className="flex flex-wrap items-center gap-2 text-sm">
             {lastTick && !lastTick.skipped && lastTick.ok
               ? <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" />
               : <AlertTriangle className="h-4 w-4 text-[hsl(var(--chart-3))]" aria-hidden="true" />}
             {lastTick ? t("bg.lastTick", { ago: agoText(lastTick.startedAt) }) : t("bg.noTick")}
             {tick.data && tick.data.outbox.pending > 0 && <Pill tone="accent">{t("bg.outboxPending", { count: tick.data.outbox.pending })}</Pill>}
             {tick.data && tick.data.outbox.failed > 0 && <Pill tone="down">{t("bg.outboxFailed", { count: tick.data.outbox.failed })}</Pill>}
-          </p>
+          </p>}
           {!!tick.data?.steps.length && <ul className="divide-y divide-[var(--glass-border)]">{tick.data.steps.map((s) => <StepRow key={s.name} s={s} />)}</ul>}
 
           <div className="space-y-2">

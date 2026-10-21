@@ -104,7 +104,7 @@ export function SeriesSummary({ series, onReplay, onAgain, onHome, starting }: {
   const tt = series.totals;
   const share = goodShare(series.results);
   const againRef = React.useRef(onAgain);
-  againRef.current = onAgain;
+  againRef.current = starting ? () => {} : onAgain;
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.code === "Enter" || e.code === "NumpadEnter") && !e.repeat && !(e.target as HTMLElement | null)?.closest("button,a,input,textarea,select")) {

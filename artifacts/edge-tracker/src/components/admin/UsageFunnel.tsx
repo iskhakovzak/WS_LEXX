@@ -4,6 +4,7 @@
  */
 import { useState } from "react";
 import { EmptyState, Panel, Pill, Segmented, TableScroll } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { tierDisplay } from "@/components/shared/tier-labels";
 import { personName } from "@/i18n";
 import { fmtDate, fmtRelative, fmtWeekday } from "@/lib/format";
@@ -68,11 +69,16 @@ function TraderRows({ tr, days, today }: { tr: FunnelTrader; days: string[]; tod
   );
 }
 
+/** Traders rendered before «Показать всех» (8 rows each: «Все» on a 50-trader desk is ~400 rows). */
+const FUNNEL_SHOWN = 12;
+
 export function FunnelPanel({ data, onOpenSettings }: { data: UsageOverview; onOpenSettings?: () => void }) {
   const { t } = usageI18n.useT();
   const [picked, setPicked] = useState<FunnelFilter | null>(null);
+  const [all, setAll] = useState(false);
   const filter = picked ?? defaultFilter(data);
   const rows = filterTraders(data.funnel.traders, filter);
+  const shown = all ? rows : rows.slice(0, FUNNEL_SHOWN);
   const counts: Record<FunnelFilter, number> = {
     pilot: filterTraders(data.funnel.traders, "pilot").length,
     trainees: filterTraders(data.funnel.traders, "trainees").length,
@@ -88,7 +94,7 @@ export function FunnelPanel({ data, onOpenSettings }: { data: UsageOverview; onO
           ariaLabel={t("funnel.filterAria")}
           size="sm"
           value={filter}
-          onChange={setPicked}
+          onChange={(f) => { setPicked(f); setAll(false); }}
           options={(["pilot", "trainees", "all"] as const).map((v) => ({ value: v, label: t(`funnel.filter.${v}`), count: counts[v] }))}
         />
       }
@@ -115,9 +121,16 @@ export function FunnelPanel({ data, onOpenSettings }: { data: UsageOverview; onO
                 <th scope="col" className="px-2 pb-1 text-right font-medium text-muted-foreground">{t("funnel.total")}</th>
               </tr>
             </thead>
-            {rows.map((tr) => <TraderRows key={tr.name} tr={tr} days={days} today={data.today} />)}
+            {shown.map((tr) => <TraderRows key={tr.name} tr={tr} days={days} today={data.today} />)}
           </table>
         </TableScroll>
+      )}
+      {rows.length > FUNNEL_SHOWN && (
+        <div className="mt-2 flex justify-center">
+          <Button variant="outline" size="sm" onClick={() => setAll((v) => !v)}>
+            {all ? t("inactive.showLess") : t("inactive.showAll", { count: rows.length })}
+          </Button>
+        </div>
       )}
     </Panel>
   );

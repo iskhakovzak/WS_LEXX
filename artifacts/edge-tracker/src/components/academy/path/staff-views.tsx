@@ -1,7 +1,7 @@
 /** Mentor views of «Путь трейдера»: funnel by stage, request queue, criteria editor. */
 import * as React from "react";
-import { Filter, Inbox, Plus, Save, Settings2, Trash2 } from "lucide-react";
-import { EmptyState, Panel, Pill } from "@/components/ds";
+import { Filter, Inbox, Loader2, Plus, Save, Settings2, Trash2 } from "lucide-react";
+import { EmptyState, ErrorState, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +26,8 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
   const { t } = academyPathI18n.useT();
   const q = useFunnel(true);
   if (q.isLoading) return <Skeleton className="h-80 rounded-2xl" />;
-  if (q.isError || !q.data) return <Panel><EmptyState icon={Filter} title={t("funnel.unavailable")} description={(q.error as Error | null)?.message} /></Panel>;
+  if (q.isError) return <ErrorState error={q.error} onRetry={q.refetch} title={t("funnel.unavailable")} />;
+  if (!q.data) return <Panel><EmptyState icon={Filter} title={t("funnel.unavailable")} /></Panel>;
   const f = q.data;
   const counts = Object.fromEntries(f.columns.map((c) => [c.key, c.people.length])) as Partial<Record<StageKey, number>>;
   return (
@@ -37,7 +38,7 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
         {" · "}<span className={cn(f.totals.ready > 0 && "font-semibold text-up")}>{t("funnel.ready", { count: f.totals.ready })}</span>
         {" · "}{t("funnel.pending", { count: f.totals.pending })}
       </p>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": f.columns.length } as React.CSSProperties}>
         {f.columns.map((col) => (
           <Panel key={col.key} title={col.key === "none" ? t("stage.unassigned") : stageName(f.stages, col.key)} description={t("stage.people", { count: col.people.length })} bodyClassName="flex flex-col gap-2">
             {col.people.length === 0 && <p className="text-xs text-muted-foreground">{t("funnel.empty")}</p>}
@@ -98,6 +99,7 @@ export function RequestsView({ config, me, onOpen }: { config: PathConfig | unde
   const all = useRequests(null, true);
   const stages = config?.stages ?? [];
   if (pending.isLoading) return <Skeleton className="h-60 rounded-2xl" />;
+  if (pending.isError) return <ErrorState error={pending.error} onRetry={pending.refetch} />;
   const decided = (all.data?.requests ?? []).filter((r) => r.status !== "pending").slice(0, 30);
   return (
     <div className="flex flex-col gap-4">
@@ -206,7 +208,7 @@ export function CriteriaEditor({ config }: { config: PathConfig }) {
             onSuccess: () => toast({ title: t("editor.saved"), description: t("editor.savedDescription") }),
             onError: (err) => toast({ title: commonI18n.t("states.notSaved"), description: (err as Error).message, variant: "destructive" }),
           })}
-        ><Save className="mr-1.5 h-4 w-4" aria-hidden="true" />{t("editor.save")}</Button>
+        >{save.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="mr-1.5 h-4 w-4" aria-hidden="true" />}{t("editor.save")}</Button>
         <Button variant="ghost" onClick={() => setRows(config.criteria.map(toDraft))}>{t("editor.reset")}</Button>
       </div>
     </div>

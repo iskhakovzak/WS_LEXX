@@ -203,18 +203,18 @@ const TriggerRow = React.memo(function TriggerRow({
               <div className="flex flex-wrap items-center gap-1">
                 {ev.recentDates.slice(-10).map((d) => (
                   onPickDay ? (
-                    <button key={d} type="button" onClick={() => onPickDay(d)} className="rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-xs tabular-nums text-muted-foreground hover:text-foreground" title={tb("trig.showDay", { date: fmtDate(d, "medium") })}>
+                    <button key={d} type="button" onClick={() => onPickDay(d)} className="inline-flex min-h-7 items-center rounded-full bg-[var(--glass-bg)] px-2.5 text-xs tabular-nums text-muted-foreground hover:text-foreground" title={tb("trig.showDay", { date: fmtDate(d, "medium") })}>
                       {fmtDate(d, "dayMonthNumeric")}
                     </button>
                   ) : <Pill key={d} tone="neutral">{fmtDate(d, "dayMonthNumeric")}</Pill>
                 ))}
                 {ev.examples.length > 0 && (
-                  <button type="button" onClick={() => setShowEx((v) => !v)} aria-expanded={showEx} className="ml-1 text-xs text-primary underline-offset-2 hover:underline">
+                  <button type="button" onClick={() => setShowEx((v) => !v)} aria-expanded={showEx} className="ml-1 inline-flex min-h-7 items-center rounded-md px-1 text-xs text-primary underline-offset-2 hover:underline">
                     {showEx ? tb("trig.hideExamples") : tb("trig.examples")}
                   </button>
                 )}
                 {ev.tradeIds.length > 0 && (
-                  <Link href={links.trades({ ids: ev.tradeIds })} className="ml-auto text-xs text-primary underline-offset-2 hover:underline">{tb("trig.allTrades")}</Link>
+                  <Link href={links.trades({ ids: ev.tradeIds })} className="ml-auto inline-flex min-h-7 items-center rounded-md px-1 text-xs text-primary underline-offset-2 hover:underline">{tb("trig.allTrades")}</Link>
                 )}
               </div>
               {showEx && (
@@ -225,7 +225,7 @@ const TriggerRow = React.memo(function TriggerRow({
                         <span className="w-11 tabular-nums text-muted-foreground">{fmtDate(e.date, "dayMonthNumeric")}</span>
                         <span className="w-12 font-medium">{e.ticker}</span>
                         <span className={cn("w-14 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsd(e.net, { signed: true, compact: true })}</span>
-                        <span className="min-w-0 flex-1 truncate text-muted-foreground">{e.note}</span>
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground" title={e.note || undefined}>{e.note}</span>
                       </Link>
                     </li>
                   ))}

@@ -53,6 +53,23 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
   );
 }
 
+const scrollBehavior = (): ScrollBehavior => (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
+
+/**
+ * Section jump: land the heading right under the sticky section nav, measured (the nav's height and the header
+ * differ between desktop and phone), instead of relying on a fixed scroll margin that can end up under the nav.
+ */
+function jumpToSection(id: string, nav: HTMLElement | null) {
+  const el = document.getElementById(`office-${id}`);
+  if (!el) return;
+  const scroller = document.getElementById("main-content");
+  if (!scroller || !nav) { el.scrollIntoView({ behavior: scrollBehavior(), block: "start" }); return; }
+  const sc = scroller.getBoundingClientRect();
+  const navH = nav.offsetHeight + (parseFloat(getComputedStyle(nav).top) || 0);
+  const top = scroller.scrollTop + el.getBoundingClientRect().top - sc.top - navH - 12;
+  scroller.scrollTo({ top: Math.max(0, top), behavior: scrollBehavior() });
+}
+
 export default function OfficeStatsPage() {
   const { t } = officeI18n.useT();
   const today = nyToday();
@@ -114,23 +131,10 @@ export default function OfficeStatsPage() {
 
   const [day, setDay] = React.useState<string | null>(null);
   React.useEffect(() => { setDay(null); }, [focusYear]);
-  const pickDay = (d: string) => { setDay(d); document.getElementById("office-day")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); };
+  const pickDay = (d: string) => { setDay(d); document.getElementById("office-day")?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" }); };
   const pickMonth = (m: number) => { setMonth(m); setMode("month"); };
-  // Section jump: land the heading right under the sticky section nav, measured (the nav's height and the header
-  // differ between desktop and phone), instead of relying on a fixed scroll margin that can end up under the nav.
   const navRef = React.useRef<HTMLElement>(null);
-  const jump = (id: string) => {
-    const el = document.getElementById(`office-${id}`);
-    if (!el) return;
-    const scroller = document.getElementById("main-content");
-    const nav = navRef.current;
-    if (!scroller || !nav) { el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
-    const sc = scroller.getBoundingClientRect();
-    const navH = nav.offsetHeight + (parseFloat(getComputedStyle(nav).top) || 0);
-    const top = scroller.scrollTop + el.getBoundingClientRect().top - sc.top - navH - 12;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    scroller.scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
-  };
+  const jump = (id: string) => jumpToSection(id, navRef.current);
 
   const toggleYear = (y: number) => setYears((cur) => {
     const has = cur.includes(y);
@@ -246,9 +250,9 @@ export default function OfficeStatsPage() {
       {/* Section anchors (sticky). */}
       {ctx && !memberNoCapital && (
         <nav ref={navRef} aria-label={t("page.sectionsNav")} className="sticky top-2 z-sticky -my-1 flex justify-center">
-          <div className="glass-panel scrollbar-none flex h-9 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-surface-solid/95 p-[3px] shadow-sm">
+          <div className="glass-panel scrollbar-none flex h-10 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-surface-solid/95 p-[3px] shadow-sm">
             {SECTIONS.filter((s) => !("admin" in s) || isAdmin).map((s) => (
-              <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+              <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
                 <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`page.sections.${s.id}`)}
               </button>
             ))}
@@ -258,8 +262,8 @@ export default function OfficeStatsPage() {
 
       {forbidden ? (
         <Panel><EmptyState icon={Building2} title={t("states.noAccessTitle")} description={t("states.noAccessDesc")} /></Panel>
-      ) : q.isError ? (
-        <Panel><EmptyState icon={AlertTriangle} title={t("states.loadFailed")} description={q.error instanceof Error ? q.error.message : undefined} action={<Button size="sm" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>} /></Panel>
+      ) : q.isError && !data ? (
+        <Panel><EmptyState icon={AlertTriangle} title={t("states.loadFailed")} description={q.error instanceof Error ? q.error.message : undefined} action={<Button size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>{commonI18n.t("actions.retry")}</Button>} /></Panel>
       ) : !data ? (
         <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label={t("page.loading")}>
           <div className="skeleton h-24 rounded-2xl" />
@@ -277,8 +281,10 @@ export default function OfficeStatsPage() {
             ))}
           />
         </Panel>
-      ) : !ctx || !view || !focus ? null : (
-        <div className={cn("flex flex-col gap-[var(--page-gap)] transition-opacity", q.isFetching && "opacity-70")}>
+      ) : !ctx || !view || !focus ? (
+        <Panel><EmptyState icon={CalendarDays} title={t("states.noTradesYear", { year: focusYear })} /></Panel>
+      ) : (
+        <div className={cn("flex flex-col gap-[var(--page-gap)] transition-opacity duration-[var(--dur-2)]", q.isFetching && "opacity-70")} aria-busy={q.isFetching || undefined}>
           {(showAdminHint || adminPctNoCapital) && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-warn/30 bg-warn/10 p-3 text-sm">
               <Landmark className="h-4 w-4 text-warn" aria-hidden="true" />

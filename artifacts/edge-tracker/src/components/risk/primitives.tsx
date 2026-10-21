@@ -401,7 +401,7 @@ export function SortableTableHead({
         type="button"
         onClick={onSort}
         className={cn(
-          "inline-flex items-center gap-1 rounded-full hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "-mx-1 inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-md px-1 transition-colors duration-[var(--dur-1)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           active && "text-foreground",
           align === "right" && "flex-row-reverse",
         )}

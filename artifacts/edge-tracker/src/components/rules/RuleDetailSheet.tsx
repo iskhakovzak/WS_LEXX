@@ -197,7 +197,7 @@ export function RuleDetailSheet({
                     <li key={ex.key} className="flex items-center gap-3 py-2">
                       <span className={cn("h-2 w-2 shrink-0 rounded-full", severityMeta(ex.severity).bar)} aria-hidden="true" title={severityMeta(ex.severity).label} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-foreground">
+                        <p className="truncate text-sm text-foreground" title={ex.ticker ? `${ex.ticker} · ${ex.message}` : ex.message}>
                           {ex.ticker && <span className="font-medium">{ex.ticker} · </span>}
                           {ex.message}
                         </p>

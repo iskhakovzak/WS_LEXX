@@ -278,7 +278,7 @@ export function MorningScreener({ planDate: planDateProp, className }: { planDat
     return (
       <section aria-label={t("screener.aria")} className={cn("glass-panel flex min-w-0 items-center gap-3 rounded-2xl px-[var(--panel-p)] py-2", className)}>
         <ScanSearch className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <button type="button" onClick={() => setOpen(true)} className="min-w-0 flex-1 truncate text-left text-sm">
+        <button type="button" onClick={() => setOpen(true)} aria-expanded={false} className="-my-1 min-h-10 min-w-0 flex-1 truncate rounded-md text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8">
           <span className="font-semibold">{t("screener.title")}</span>
           <span className="text-muted-foreground">
             {" · "}

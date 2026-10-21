@@ -33,7 +33,7 @@ export const NotificationItem = React.memo(function NotificationItem({
   const tile = n.isRead ? "bg-[var(--glass-bg)] text-muted-foreground" : SEVERITY_TILE[n.severity];
   const critical = !n.isRead && n.severity === "critical";
 
-  const iconBtn = "grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const iconBtn = "grid h-8 w-8 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
     <div
@@ -94,9 +94,10 @@ export const NotificationItem = React.memo(function NotificationItem({
           )}
         </span>
       </button>
-      {!full && !n.isRead && <span className="mt-2.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label={t("item.unread")} />}
+      {!full && !n.isRead && <><span className="mt-2.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" /><span className="sr-only">{t("item.unread")}</span></>}
       {full && (
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 data-[focused=true]:opacity-100" data-focused={focused}>
+        // Revealed on hover only where hover exists: on touch screens the read / archive buttons are always visible.
+        <div className="flex shrink-0 items-center gap-0.5 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100 data-[focused=true]:opacity-100 [@media(hover:hover)]:opacity-0" data-focused={focused}>
           {onRead && (
             <button type="button" className={iconBtn} onClick={() => onRead(n, !n.isRead)} title={n.isRead ? t("item.markUnreadTitle") : t("item.markReadTitle")} aria-label={n.isRead ? t("item.markUnread") : t("item.markRead")}>
               {n.isRead ? <Mail className="h-3.5 w-3.5" aria-hidden="true" /> : <Check className="h-3.5 w-3.5" aria-hidden="true" />}

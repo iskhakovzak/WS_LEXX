@@ -1,10 +1,10 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Lock, Send, Trash2, MessageSquare, RotateCcw } from "lucide-react";
+import { Lock, Send, Trash2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Pill } from "@/components/ds";
+import { ErrorState, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -35,7 +35,7 @@ export function CommentsThread({
   const { t: tc } = commonI18n.useT();
   const [text, setText] = React.useState("");
   const [isPrivate, setIsPrivate] = React.useState(false);
-  const { data: comments = [], isLoading, isError, refetch } = useIdeaComments(idea.id);
+  const { data: comments = [], isLoading, isError, error, refetch } = useIdeaComments(idea.id);
   const listRef = React.useRef<HTMLOListElement>(null);
   const inputId = React.useId();
 
@@ -81,18 +81,13 @@ export function CommentsThread({
           <Skeleton className="ml-auto h-10 w-2/3 rounded-xl" />
         </div>
       )}
-      {isError && (
-        <div className="flex items-center gap-2 text-xs text-down">
-          {t("comments.loadFailed")}
-          <Button size="sm" variant="ghost" onClick={() => refetch()} className="gap-1"><RotateCcw className="h-3 w-3" />{tc("actions.retry")}</Button>
-        </div>
-      )}
+      {isError && <ErrorState compact title={t("comments.loadFailed")} error={error} onRetry={refetch} />}
       {!isLoading && !isError && comments.length === 0 && (
         <p className="text-xs text-muted-foreground">{t("comments.empty")}</p>
       )}
 
       {comments.length > 0 && (
-        <ol ref={listRef} className="flex max-h-[60dvh] flex-col gap-2 overflow-y-auto pr-1">
+        <ol ref={listRef} className="flex max-h-[60dvh] flex-col gap-2 overflow-y-auto overscroll-contain pr-1">
           {comments.map((c) => {
             const mine = c.author_name === currentUser;
             const isAuthor = c.author_name === idea.trader;
@@ -120,7 +115,7 @@ export function CommentsThread({
                         onClick={() => del.mutate(c.id)}
                         disabled={del.isPending}
                         aria-label={t("comments.delete")}
-                        className="ml-1 grid h-6 w-6 place-items-center rounded-full text-muted-foreground opacity-70 hover:bg-down/15 hover:text-down focus-visible:opacity-100 group-hover:opacity-100"
+                        className="ml-1 grid h-7 w-7 place-items-center rounded-full text-muted-foreground opacity-70 hover:bg-down/15 hover:text-down focus-visible:opacity-100 group-hover:opacity-100"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden="true" />
                       </button>

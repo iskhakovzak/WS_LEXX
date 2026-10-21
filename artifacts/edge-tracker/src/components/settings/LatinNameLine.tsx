@@ -75,14 +75,14 @@ export function LatinNameLine({ name, fallback }: { name: string; fallback?: str
         ) : current ? (
           <>
             <span className="truncate font-medium text-foreground">{current}</span>
-            <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={start}><Pencil /> {t("profile.latin.edit")}</Button>
+            <Button type="button" size="sm" variant="ghost" className="h-8 px-2" onClick={start}><Pencil /> {t("profile.latin.edit")}</Button>
           </>
         ) : (
           <>
             <span className="text-muted-foreground">{t("profile.latin.none")}</span>
             {suggestion && (
               <Button
-                type="button" size="sm" variant="outline" className="h-7 px-2.5"
+                type="button" size="sm" variant="outline" className="h-8 px-2.5"
                 disabled={save.isPending}
                 aria-label={t("profile.latin.useAria", { latin: suggestion })}
                 onClick={() => save.mutate(suggestion)}
@@ -90,7 +90,7 @@ export function LatinNameLine({ name, fallback }: { name: string; fallback?: str
                 <Check /> {t("profile.latin.use", { latin: suggestion })}
               </Button>
             )}
-            <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={start}><Pencil /> {suggestion ? t("profile.latin.edit") : t("profile.latin.set")}</Button>
+            <Button type="button" size="sm" variant="ghost" className="h-8 px-2" onClick={start}><Pencil /> {suggestion ? t("profile.latin.edit") : t("profile.latin.set")}</Button>
           </>
         )}
       </div>

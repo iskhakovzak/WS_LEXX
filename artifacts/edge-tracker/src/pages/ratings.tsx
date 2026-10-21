@@ -14,7 +14,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { useToast } from "@/hooks/use-toast";
 import { Page, PageHeader, Segmented } from "@/components/ds";
-import { useStoredState } from "@/components/ratings/shared";
+import { ScrollEdgeHint, useStoredState } from "@/components/ratings/shared";
 import { LeaderboardTab } from "@/components/ratings/leaderboard-tab";
 import { ScorecardsTab } from "@/components/ratings/scorecards-tab";
 import { MyProgressTab } from "@/components/ratings/my-progress-tab";
@@ -136,7 +136,10 @@ export default function RatingsPage() {
         ) : undefined}
       >
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented ariaLabel={t("page.tabsAria")} options={tabOptions} value={activeTab} onChange={setTab} />
+          {/* Five tabs overflow a 375 px screen: the bar scrolls sideways and the cut edge fades as a hint. */}
+          <ScrollEdgeHint>
+            <Segmented ariaLabel={t("page.tabsAria")} options={tabOptions} value={activeTab} onChange={setTab} />
+          </ScrollEdgeHint>
           {isCurator && pendingCount > 0 && activeTab !== "curator" && (
             <button type="button" className="chip min-h-8 px-3 text-sm" onClick={() => setTab("curator")}>
               {t("page.pending", { week: weekLabel(thisWeek), count: pendingCount })}

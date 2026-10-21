@@ -140,13 +140,18 @@ export function PreviewSummary({ preview }: { preview: Preview }) {
   );
 }
 
+const PREVIEW_PAGE = 100;
+
 export function PreviewTable({ preview }: { preview: Preview }) {
   const { t } = propreportsI18n.useT();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [open, setOpen] = React.useState<Set<string>>(() => new Set());
   const filtered = React.useMemo(() => (filter === "all" ? preview.items : preview.items.filter((i) => i.action === filter)), [filter, preview.items]);
   const sort = useTableSort(filtered, PREVIEW_ACCESSORS, "date", "asc", PREVIEW_FIRST_DIR);
-  const items = sort.rows;
+  // An import preview can hold hundreds of round trips: render a page at a time.
+  const [limit, setLimit] = React.useState(PREVIEW_PAGE);
+  React.useEffect(() => { setLimit(PREVIEW_PAGE); }, [filter, preview.items]);
+  const items = sort.rows.slice(0, limit);
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const options: Array<{ value: Filter; label: string; count: number }> = [
     { value: "all", label: t("preview.all"), count: preview.items.length },
@@ -159,7 +164,7 @@ export function PreviewTable({ preview }: { preview: Preview }) {
         <table>
           <thead>
             <tr>
-              <th className="w-6" />
+              <th className="w-8"><span className="sr-only">{t("preview.showExec")}</span></th>
               <SortableTh {...sort.thProps("action")}>{t("preview.col.action")}</SortableTh>
               <SortableTh {...sort.thProps("account")}>{t("preview.col.account")}</SortableTh>
               <SortableTh {...sort.thProps("date")}>{t("preview.col.date")}</SortableTh>
@@ -184,8 +189,8 @@ export function PreviewTable({ preview }: { preview: Preview }) {
                 <React.Fragment key={it.externalId}>
                   <tr className={cn(it.action === "conflict" && "bg-[hsl(var(--chart-3))]/5", it.action === "skip" && "opacity-60")}>
                     <td>
-                      <button type="button" onClick={() => toggle(it.externalId)} aria-expanded={isOpen} aria-label={t("preview.showExec")} className="rounded p-0.5 text-muted-foreground hover:text-foreground">
-                        {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                      <button type="button" onClick={() => toggle(it.externalId)} aria-expanded={isOpen} aria-label={t("preview.showExec")} className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground">
+                        {isOpen ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
                       </button>
                     </td>
                     <td>
@@ -236,6 +241,11 @@ export function PreviewTable({ preview }: { preview: Preview }) {
           </tbody>
         </table>
       </DataTable>
+      {sort.rows.length > items.length && (
+        <Button type="button" variant="outline" size="sm" className="justify-self-center" onClick={() => setLimit((n) => n + PREVIEW_PAGE)}>
+          {commonI18n.t("actions.showMore")} · {Math.min(PREVIEW_PAGE, sort.rows.length - items.length)}
+        </Button>
+      )}
     </div>
   );
 }

@@ -153,7 +153,9 @@ export function MarketReporters({ day, prev, data, onOpenTicker }: {
   const add = useQuickAddToWatchlist();
   const { t } = eventsI18n.useT();
   const { open, after } = React.useMemo(() => marketReporters(data, day, prev), [data, day, prev]);
-  const loading = data.upcoming.isLoading || data.watch.isLoading;
+  // /earnings/watch is slow (~3 s) and only adds pre/after-hours prices + yesterday's AMC list: show the calendar's
+  // reporters as soon as /upcoming answers and let the prices fill in, instead of holding the whole block.
+  const loading = data.upcoming.isLoading || (data.watch.isLoading && open.length + after.length === 0);
   return (
     <section aria-label={t("market.title")}>
       <h3 className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">

@@ -52,6 +52,8 @@ import type { GameView } from "./use-sim-game";
 export type { GameControls, Ticket } from "./game-types";
 
 const EVENT_KINDS = ["pdh", "pdl", "pmh", "pml", "hod", "lod", "vwap", "volume"] as const;
+/** A mouse click leaves no focus on the button, so Space stays «play» after the finish dialog closes (focus returns). */
+const noFocus = (e: React.PointerEvent) => e.preventDefault();
 
 export function GameScreen({
   game, c, k, onSkip, onNoTrade, series,
@@ -155,8 +157,8 @@ export function GameScreen({
         </div>
         {!done && (
           <>
-            <Button variant="outline" size="sm" onClick={() => setConfirmFinish(true)}><Flag aria-hidden="true" /> {t("hud.finish")}</Button>
-            <Button variant="ghost" size="sm" onClick={c.leave} title={t("hud.exitHint")}><LogOut aria-hidden="true" /> {t("hud.exit")}</Button>
+            <Button onPointerDown={noFocus} variant="outline" size="sm" onClick={() => setConfirmFinish(true)}><Flag aria-hidden="true" /> {t("hud.finish")}</Button>
+            <Button onPointerDown={noFocus} variant="ghost" size="sm" onClick={c.leave} title={t("hud.exitHint")}><LogOut aria-hidden="true" /> {t("hud.exit")}</Button>
           </>
         )}
       </div>

@@ -27,7 +27,7 @@ function Tile({ item, active, alert }: { item: NavItem; active: boolean; alert?:
     >
       <Icon className={cn("h-5 w-5", active ? "text-primary-foreground" : "text-primary")} aria-hidden="true" />
       <span className="line-clamp-2 leading-tight">{item.name}</span>
-      {alert && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-down" aria-label={t("mobile.needsAttention")} />}
+      {alert && <><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{t("mobile.needsAttention")}</span></>}
     </Link>
   );
 }
@@ -79,7 +79,7 @@ function SimpleSections({ simple, location, badges, open, setOpen, pins }: {
         >
           <span>{t("simple.more")}</span>
           <ChevronRight className={cn("h-3 w-3 transition-transform duration-[var(--dur-2)] motion-reduce:transition-none", shown && "rotate-90")} aria-hidden="true" />
-          {alert && <span className="h-2 w-2 rounded-full bg-down" aria-label={t("mobile.needsAttention")} />}
+          {alert && <><span className="h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{t("mobile.needsAttention")}</span></>}
           <span className="sr-only">{shown ? t("simple.hideMore") : t("simple.showMore")}</span>
         </button>
         {shown && (

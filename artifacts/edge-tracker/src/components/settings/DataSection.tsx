@@ -120,7 +120,7 @@ function ExportTile({ item, period, count }: { item: (typeof EXPORTS)[number]; p
     }
   }
   return (
-    <button type="button" onClick={run} disabled={loading} aria-label={t("data.downloadCsvAria", { name: label })}
+    <button type="button" onClick={run} disabled={loading} aria-busy={loading} aria-label={t("data.downloadCsvAria", { name: label })}
       className="lift group flex items-center gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-3 text-left hover:bg-[var(--glass-hover-bg)] disabled:opacity-60">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--glass-thick-bg)] text-muted-foreground group-hover:text-primary">
         <item.icon className="h-4 w-4" aria-hidden="true" />
@@ -352,22 +352,27 @@ export function DataSection() {
   const facets = useTradesBookFacets();
   const l1 = facets.isLoading;
   const tradesCount = facets.data?.total ?? 0;
-  const { data: events = [], isLoading: l2 } = useListEvents();
-  const { data: research = [], isLoading: l3 } = useListResearch();
-  const { data: feed = [], isLoading: l4 } = useListDailyFeed();
-  const { data: discussions = [], isLoading: l5 } = useListDiscussions();
+  const { data: events = [], isLoading: l2, isError: e2 } = useListEvents();
+  const { data: research = [], isLoading: l3, isError: e3 } = useListResearch();
+  const { data: feed = [], isLoading: l4, isError: e4 } = useListDailyFeed();
+  const { data: discussions = [], isLoading: l5, isError: e5 } = useListDiscussions();
+  const e1 = facets.isError && !facets.data;
   const loading = l1 || l2 || l3 || l4 || l5;
+  const anyError = e1 || e2 || e3 || e4 || e5;
   const total = tradesCount + events.length + research.length + feed.length + discussions.length;
+  // A failed list must not read as «0 records» (that looks like data loss): show a dash instead.
+  const countText = (failed: boolean, n: number) => (failed ? "—" : fmtCount(n));
 
   const counts: Record<string, number | undefined> = {
-    trades: l1 ? undefined : tradesCount, events: l2 ? undefined : events.length, research: l3 ? undefined : research.length,
-    dailyfeed: l4 ? undefined : feed.length, discussions: l5 ? undefined : discussions.length,
+    trades: l1 || e1 ? undefined : tradesCount, events: l2 || e2 ? undefined : events.length, research: l3 || e3 ? undefined : research.length,
+    dailyfeed: l4 || e4 ? undefined : feed.length, discussions: l5 || e5 ? undefined : discussions.length,
   };
-  // Keys used by the db-export format → current counts for the backup comparison.
-  const currentForBackup: Record<string, number | undefined> = loading ? {} : {
-    trades: tradesCount, marketEvents: events.length, events: events.length, research: research.length,
-    dailyFeed: feed.length, discussions: discussions.length,
-  };
+  // Keys used by the db-export format → current counts for the backup comparison (memoised: the inspector's
+  // sort accessors depend on it).
+  const currentForBackup = React.useMemo<Record<string, number | undefined>>(() => (loading ? {} : {
+    trades: e1 ? undefined : tradesCount, marketEvents: e2 ? undefined : events.length, events: e2 ? undefined : events.length,
+    research: e3 ? undefined : research.length, dailyFeed: e4 ? undefined : feed.length, discussions: e5 ? undefined : discussions.length,
+  }), [loading, e1, e2, e3, e4, e5, tradesCount, events.length, research.length, feed.length, discussions.length]);
 
   async function fullBackup() {
     setFullLoading(true);
@@ -397,12 +402,12 @@ export function DataSection() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-busy={loading}>
         {/* Each tile shows its number as soon as its own list arrives — the trade count (/trades/page summary) is
             the slow one and used to hold every tile on a skeleton. */}
-        <StatCard label={t("data.totalRecords")} value={fmtCount(total)} tone="accent" icon={Database} loading={loading} />
-        <StatCard label={t("data.exports.trades")} value={fmtCount(tradesCount)} loading={l1} />
-        <StatCard label={t("data.exports.events")} value={fmtCount(events.length)} loading={l2} />
-        <StatCard label={t("data.exports.research")} value={fmtCount(research.length)} loading={l3} />
-        <StatCard label={t("data.exports.dailyfeed")} value={fmtCount(feed.length)} loading={l4} />
-        <StatCard label={t("data.exports.discussions")} value={fmtCount(discussions.length)} loading={l5} />
+        <StatCard label={t("data.totalRecords")} value={countText(anyError, total)} tone="accent" icon={Database} loading={loading} />
+        <StatCard label={t("data.exports.trades")} value={countText(e1, tradesCount)} loading={l1} />
+        <StatCard label={t("data.exports.events")} value={countText(e2, events.length)} loading={l2} />
+        <StatCard label={t("data.exports.research")} value={countText(e3, research.length)} loading={l3} />
+        <StatCard label={t("data.exports.dailyfeed")} value={countText(e4, feed.length)} loading={l4} />
+        <StatCard label={t("data.exports.discussions")} value={countText(e5, discussions.length)} loading={l5} />
       </div>
 
       <Panel title={t("data.exportCsv")} description={t("data.exportCsvDesc")} icon={Download}

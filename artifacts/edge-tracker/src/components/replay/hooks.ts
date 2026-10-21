@@ -17,6 +17,8 @@ export function useTradeQuality(tradeId: number | null | undefined, afterExit = 
     enabled: Boolean(tradeId),
     staleTime: STALE.short,
     retry: (count, err) => apiErrorStatus(err) === 503 && count < 2,
+    // Switching the after-exit window keeps the same trade's numbers (and the window switch itself) on screen.
+    placeholderData: (prev) => (prev && prev.tradeId === tradeId ? prev : undefined),
   });
   const refresh = async () => {
     if (!tradeId) return;

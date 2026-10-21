@@ -133,6 +133,7 @@ export default {
     reset: "Reset",
     accountSize: "Account size",
     accountSizeHint: "Base for risk and buying power",
+    bpHint: "Buying power {amount}",
     riskPerTrade: "Risk per trade",
     riskUnit: "Risk unit",
     riskPct: "Risk per trade, %",

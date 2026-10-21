@@ -273,7 +273,7 @@ function DataQualityCard() {
                   <Pill tone={c.count ? sev.tone : "up"}>{c.count ? (c.groups ? t("data.quality.inGroups", { count: c.count, groups: c.groups }) : c.count) : t("data.quality.ok")}</Pill>
                   {c.count > 0 && <span className="text-2xs uppercase tracking-wide text-muted-foreground">{sev.label}</span>}
                   {link && c.count > 0 && (
-                    <Button asChild variant="ghost" size="sm" className="ml-auto h-7">
+                    <Button asChild variant="ghost" size="sm" className="ml-auto h-8">
                       <Link href={link.href}>{t(`data.quality.${link.label}`)} <ArrowRight /></Link>
                     </Button>
                   )}
@@ -369,6 +369,11 @@ function ExportCard({ actor }: { actor: string }) {
 /** `file` = name + extension (.dump for pg_dump -Fc, .sql.gz for older backups); absent on older API builds. */
 interface BackupMeta { name: string; objectName: string; file?: string; createdAt: string; sizeKb: number }
 
+/** «SQL.GZ» / «DUMP» from the backup file name (the download button used to say SQL.GZ for every format). */
+function backupFormat(file: string): string {
+  return /\.sql\.gz$/i.test(file) ? "SQL.GZ" : (file.split(".").pop() ?? "").toUpperCase();
+}
+
 function fmtMsk(iso: string) {
   try {
     return adminI18n.t("data.backups.msk", { date: fmtDate(iso, "shortDateTime", { timeZone: "Europe/Moscow" }) });
@@ -439,10 +444,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
       {isLoading ? (
         <div className="flex flex-col gap-2">{[0, 1].map((i) => <Skeleton key={i} className="h-11 w-full rounded-xl" />)}</div>
       ) : isError ? (
-        <div className="flex flex-wrap items-center gap-2 text-sm text-down">
-          {error instanceof Error ? error.message : t("data.backups.loadFailed")}
-          <Button variant="link" size="sm" onClick={() => refetch()}>{commonI18n.t("actions.retry")}</Button>
-        </div>
+        <QueryError compact error={error} title={t("data.backups.loadFailed")} onRetry={() => refetch()} />
       ) : !backups || backups.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {tj("backups.empty")}{isAdmin ? ` ${tj("backups.emptyAdmin")}` : ""} {tj("backups.emptyHint")}
@@ -469,7 +471,11 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
                     aria-label={t("data.backups.downloadAria", { name: b.name })}
                     data-testid={`button-download-backup-${b.name}`}
                   >
-                    <Download /> {downloading === b.name ? "…" : "SQL.GZ"}
+                    {downloading === b.name
+                      ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      : <Download aria-hidden="true" />}
+                    {/* The real format: .dump (pg_dump -Fc) for new backups, .sql.gz for older ones. */}
+                    {backupFormat(b.file ?? `${b.name}.sql.gz`)}
                   </Button>
                 )}
               </li>

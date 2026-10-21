@@ -77,7 +77,7 @@ export function TodayView({
   const take = () => {
     save.mutate(picks.prompt, { onSuccess: () => toast({ title: t("picks.savedToast") }), onError: failed });
   };
-  const jump = (key: string) => document.getElementById(`pb-window-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const jump = (key: string) => document.getElementById(`pb-window-${key}`)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 
   let body: ReactNode;
   if (q.isLoading) {

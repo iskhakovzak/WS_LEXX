@@ -167,6 +167,7 @@ export default {
     hidden: { one: "{count} oʻyinchi natijasini yashirdi", other: "{count} oʻyinchi natijasini yashirdi" },
     empty: "Bu hafta hali hech kim oʻynamadi",
     you: "(siz)",
+    saveError: "Sozlamani saqlab boʻlmadi",
     cols: { rank: "№", name: "Treyder", games: "Oʻyinlar", r: "Jami R", wins: "Foydada", best: "Eng yaxshi" },
   },
   tf: {

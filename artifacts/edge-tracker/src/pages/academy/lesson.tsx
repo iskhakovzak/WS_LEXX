@@ -80,7 +80,7 @@ export default function AcademyLesson() {
 
 /* ─── shared chrome ─────────────────────────────────────────────────────── */
 
-function LoadState({ error }: { error: unknown }) {
+function LoadState({ error, onRetry }: { error: unknown; onRetry: () => unknown }) {
   const { t } = academyI18n.useT();
   if (!error) return <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]"><Skeleton className="h-80 rounded-2xl" /><Skeleton className="h-[28rem] rounded-2xl" /></div>;
   const status = error instanceof ApiError ? error.status : 0;
@@ -90,7 +90,12 @@ function LoadState({ error }: { error: unknown }) {
         icon={BookOpen}
         title={status === 404 ? t("lesson.notFound") : t("lesson.loadFailed")}
         description={status === 404 ? t("lesson.notFoundDesc") : (error as Error).message}
-        action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>}
+        action={
+          <div className="flex flex-wrap justify-center gap-2">
+            {status !== 404 && <Button variant="outline" onClick={() => void onRetry()}>{commonI18n.t("actions.retry")}</Button>}
+            <Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>
+          </div>
+        }
       />
     </Panel>
   );
@@ -226,7 +231,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
   const blocks = useMemo(() => parseMarkdown(data?.lesson.bodyMd ?? ""), [data?.lesson.bodyMd]);
   const toc = useMemo(() => outlineOf(blocks), [blocks]);
 
-  if (!data) return <LoadState error={q.error} />;
+  if (!data) return <LoadState error={q.error} onRetry={q.refetch} />;
   const { lesson, progress, setups, nav } = data;
   const minutes = lesson.durationMin ?? readingMinutes(lesson.bodyMd);
   const done = progress.completed;
@@ -320,7 +325,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
 function QuizView({ id, user, staff }: { id: number; user?: string; staff: boolean }) {
   const q = useQuiz(id, user);
   const { t } = academyI18n.useT();
-  if (!q.data) return <LoadState error={q.error} />;
+  if (!q.data) return <LoadState error={q.error} onRetry={q.refetch} />;
   const d = q.data;
   return (
     <Shell
@@ -351,7 +356,7 @@ function AssignmentView({ id, user, staff, focus }: { id: number; user?: string;
   const all = staff && !user;
   const q = useAssignment(id, user, all);
   const { t } = academyI18n.useT();
-  if (!q.data) return <LoadState error={q.error} />;
+  if (!q.data) return <LoadState error={q.error} onRetry={q.refetch} />;
   const d = q.data;
   return (
     <Shell

@@ -506,11 +506,11 @@ body {
     border-radius: 999px;
     transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
   }
-  .chip:hover {
+  .chip:hover:not(:disabled) {
     background: var(--glass-hover-bg);
     color: hsl(var(--foreground));
   }
-  .chip:active {
+  .chip:active:not(:disabled) {
     transform: scale(.97);
   }
   .chip[data-active="true"],
@@ -786,13 +786,14 @@ body {
     z-index: var(--z-raised);
   }
 
-  .hover-elevate:hover:not(.no-default-hover-elevate)::after,
-  .active-elevate:active:not(.no-default-active-elevate)::after {
+  /* A disabled control (kept hoverable so its title can explain why) shows no hover / press feedback. */
+  .hover-elevate:hover:not(:disabled):not(.no-default-hover-elevate)::after,
+  .active-elevate:active:not(:disabled):not(.no-default-active-elevate)::after {
     background-color: var(--elevate-1);
   }
 
-  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
-  .active-elevate-2:active:not(.no-default-active-elevate)::after {
+  .hover-elevate-2:hover:not(:disabled):not(.no-default-hover-elevate)::after,
+  .active-elevate-2:active:not(:disabled):not(.no-default-active-elevate)::after {
     background-color: var(--elevate-2);
   }
 
@@ -815,6 +816,17 @@ body {
   }
   .scrollbar-none::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Edge fade on a sideways-scrolling bar while content is hidden past an edge (components/ds/edge-fade.ts). */
+  .edge-fade[data-fade="r"] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.75rem), transparent);
+  }
+  .edge-fade[data-fade="l"] {
+    mask-image: linear-gradient(to right, transparent, #000 1.75rem);
+  }
+  .edge-fade[data-fade="l r"] {
+    mask-image: linear-gradient(to right, transparent, #000 1.75rem, #000 calc(100% - 1.75rem), transparent);
   }
 
   /* Fixed bottom bars on phones: keep clear of the home indicator. */

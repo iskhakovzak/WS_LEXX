@@ -322,8 +322,13 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
     >
       {q.isLoading ? (
         <Skeleton className="h-40 w-full rounded-xl" />
-      ) : err ? (
-        <EmptyState icon={BarChart3} title={t("perf.loadFailed")} description={err.message} />
+      ) : q.isError ? (
+        <EmptyState
+          icon={BarChart3}
+          title={t("perf.loadFailed")}
+          description={err?.message ?? (q.error instanceof Error ? q.error.message : undefined)}
+          action={<Button variant="outline" size="sm" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>}
+        />
       ) : !latest ? (
         <EmptyState
           icon={BarChart3}

@@ -49,6 +49,14 @@ export function UndoToast({
 
   const isBusy = busy || !!restoring;
 
+  // A failed restore leaves the toast mounted: once `restoring` drops back to false, re-enable the button
+  // (and the countdown) instead of spinning forever.
+  const wasRestoringRef = useRef(false);
+  useEffect(() => {
+    if (restoring) wasRestoringRef.current = true;
+    else if (wasRestoringRef.current) { wasRestoringRef.current = false; setBusy(false); }
+  }, [restoring]);
+
   useEffect(() => {
     if (paused || isBusy) return;
     let last = performance.now();
@@ -93,7 +101,8 @@ export function UndoToast({
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-toast flex justify-center px-4 sm:bottom-6"
+      // Phones: sit above the fixed bottom tab bar (bottom-2, ~4.5rem tall, md:hidden) instead of covering it.
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-toast flex justify-center px-4 md:bottom-6"
     >
       <div
         onMouseEnter={() => setPaused(true)}
@@ -102,7 +111,7 @@ export function UndoToast({
         onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPaused(false); }}
         className={cn(
           "glass-thick pointer-events-auto flex w-full max-w-[440px] items-center gap-3 rounded-2xl py-2 pl-2 pr-2 sm:w-auto sm:min-w-[340px]",
-          "animate-in fade-in slide-in-from-bottom-4 duration-200 motion-reduce:animate-none",
+          "animate-in fade-in slide-in-from-bottom-4 duration-[var(--dur-2)] ease-[var(--ease)] motion-reduce:animate-none",
         )}
       >
         <span className="relative grid h-10 w-10 shrink-0 place-items-center" aria-hidden="true">
@@ -136,7 +145,7 @@ export function UndoToast({
           type="button"
           onClick={handleUndo}
           disabled={isBusy}
-          className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-3.5 text-sm font-medium text-primary transition-colors hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+          className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-3.5 text-sm font-medium text-primary transition-colors duration-[var(--dur-1)] hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         >
           {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Undo2 className="h-4 w-4" aria-hidden="true" />}
           {isBusy ? t("undo.restoring") : t("actions.undo")}
@@ -146,7 +155,7 @@ export function UndoToast({
           aria-label={t("undo.dismissAria")}
           onClick={() => { dismissedRef.current = true; onDismiss(); }}
           disabled={isBusy}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>

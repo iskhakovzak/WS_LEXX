@@ -106,7 +106,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
                 {!compact && (
                   <span className="ml-auto flex items-center gap-1">
                     <Button
-                      type="button" variant="ghost" size="sm" className="h-7 px-2"
+                      type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
                       aria-label={n.pinned ? tc("actions.unpin") : tc("actions.pin")}
                       title={n.pinned ? tc("actions.unpin") : tc("actions.pin")}
                       disabled={patch.isPending}
@@ -116,7 +116,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
                     </Button>
                     {n.author === me && (
                       <Button
-                        type="button" variant="ghost" size="sm" className="h-7 px-2"
+                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
                         aria-label={t("notes.editText")} title={t("notes.editText")}
                         onClick={() => setEditing({ id: n.id, body: n.body })}
                       >
@@ -125,7 +125,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
                     )}
                     {n.author === me && (
                       <Button
-                        type="button" variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground hover:text-down"
+                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-down"
                         aria-label={t("notes.archive")} title={t("notes.archive")}
                         disabled={archive.isPending}
                         onClick={() => archive.mutate(n.id, {
@@ -169,7 +169,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
         )}
         {compact && shown.length > 3 && (
           onShowAll ? (
-            <button type="button" onClick={onShowAll} className="self-start text-xs text-primary hover:underline">{t("notes.allNotes", { count: shown.length })}</button>
+            <button type="button" onClick={onShowAll} className="inline-flex min-h-8 items-center self-start text-xs text-primary hover:underline">{t("notes.allNotes", { count: shown.length })}</button>
           ) : (
             <p className="text-xs text-muted-foreground">{t("notes.moreInTab", { count: shown.length - 3 })}</p>
           )

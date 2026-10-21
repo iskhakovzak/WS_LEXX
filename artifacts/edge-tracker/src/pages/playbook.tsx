@@ -435,7 +435,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
     setOpenFolders((prev) => { if (prev.has(urlFolder)) return prev; const n = new Set(prev); n.add(urlFolder); lsSet(LS.openFolders, [...n]); return n; });
     navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true });
     window.setTimeout(() => {
-      document.querySelector(`[data-folder-key="${CSS.escape(urlFolder)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+      document.querySelector(`[data-folder-key="${CSS.escape(urlFolder)}"]`)?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     }, 120);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlFolder, entries.length]);
@@ -933,7 +933,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
         className="h-9 pl-9 pr-9"
       />
       {query && (
-        <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
+        <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       )}
@@ -1021,7 +1021,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
           icon={BookOpen}
           title={t("page.loadFailed")}
           description={(error as Error)?.message}
-          action={<Button variant="outline" onClick={() => refetch()}>{commonI18n.t("actions.retry")}</Button>}
+          action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching} aria-busy={isFetching}>{commonI18n.t("actions.retry")}</Button>}
         />
       </div>
     );
@@ -1047,7 +1047,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
           sections.map((sec) => (
             <section key={sec.title ?? "all"} aria-label={sec.title ?? commonI18n.t("trading.setups")}>
               {sec.title && <h2 className="mb-2 px-1 text-sm font-semibold text-foreground">{sec.title} <span className="font-normal text-muted-foreground">{sec.items.length}</span></h2>}
-              <div className="grid grid-cols-2 gap-[var(--grid-gap)] xl:grid-cols-3 2xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-[var(--grid-gap)] min-[480px]:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {sec.items.map((e) => (
                   <SetupCard key={e.id} e={e} s={summary.get(e.id)} folderColors={folderColors} selected={selectedId === e.id} onOpen={(id) => openFromElsewhere(id)} />
                 ))}

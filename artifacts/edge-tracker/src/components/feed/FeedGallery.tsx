@@ -39,10 +39,10 @@ function Thumb({ shot, index, onOpen }: { shot: Shot; index: number; onOpen: () 
         decoding="async"
         width={240}
         height={180}
-        className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+        className="h-full w-full object-cover transition-transform duration-[var(--dur-2)] ease-[var(--ease)] group-hover:scale-[1.02] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
         onError={() => setFailed(true)}
       />
-      <span className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-background/70 text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+      <span className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-background/70 text-foreground opacity-0 transition-opacity duration-[var(--dur-1)] ease-[var(--ease)] group-hover:opacity-100 group-focus-visible:opacity-100">
         <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
       <span className="absolute bottom-1.5 left-1.5 rounded-full bg-background/75 px-1.5 text-xs font-medium tabular-nums text-foreground">
@@ -88,7 +88,8 @@ function Caption({ note, onSave }: { note: string; onSave?: (v: string) => void 
           type="button"
           aria-label={feedI18n.t("gallery.editCaption")}
           onClick={() => { setDraft(note); setEditing(true); }}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground opacity-70 hover:bg-[var(--glass-hover-bg)] hover:text-foreground group-hover/cap:opacity-100"
+          title={feedI18n.t("gallery.editCaption")}
+          className="-my-1.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground opacity-70 hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 group-hover/cap:opacity-100"
         >
           <Pencil className="h-3 w-3" />
         </button>

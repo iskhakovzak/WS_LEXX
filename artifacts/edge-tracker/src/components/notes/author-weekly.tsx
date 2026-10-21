@@ -152,7 +152,7 @@ export function AuthorWeeklyCard({
             disabled={gen.isPending || written === 0}
             title={written === 0 ? t("author.weekly.noEntries") : undefined}
           >
-            {gen.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
+            {gen.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
             {gen.isPending ? t("author.weekly.analyzing") : summary ? t("author.weekly.rebuild") : t("author.weekly.build")}
           </Button>
         )}

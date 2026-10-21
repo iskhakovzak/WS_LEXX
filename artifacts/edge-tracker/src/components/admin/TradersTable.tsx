@@ -15,6 +15,7 @@ import { QueryError } from "@/components/query-error";
 import {
   DataTable, EmptyState, FilterChip, Kbd, Panel, Pill, ProgressRing, SortableTh, StatRow, useTableSort, type Tone,
 } from "@/components/ds";
+import { VirtualRows } from "@/components/ds/virtual";
 import { cn } from "@/lib/utils";
 import { ActivityStrip } from "./ActivityStrip";
 import { downloadCsv, isTypingTarget, roleLabel, timeAgo, type DeskPulse, type PulseUser } from "./api";
@@ -306,8 +307,7 @@ export function TradersTable({
                     <th scope="col"><span className="sr-only">{t("people.col.actions")}</span></th>
                   </tr>
                 </thead>
-                <tbody>
-                  {rows.map((u) => (
+                <VirtualRows rows={rows} colSpan={riskStatus ? 9 : 8} estimateSize={45} getKey={(u) => u.id} renderRow={(u) => (
                     <tr
                       key={u.id}
                       tabIndex={0}
@@ -337,8 +337,7 @@ export function TradersTable({
                       <td className="text-right"><ViolationsCell u={u} available={violationsAvailable} /></td>
                       <td className="w-10 text-right">{menu(u)}</td>
                     </tr>
-                  ))}
-                </tbody>
+                  )} />
               </table>
             </DataTable>
 
@@ -347,14 +346,14 @@ export function TradersTable({
               {rows.map((u) => (
                 <li key={u.id} className="glass-panel group flex flex-col gap-2 rounded-xl p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <button type="button" onClick={() => setOpenName(u.name)} className="min-w-0 text-left">
+                    <button type="button" onClick={() => setOpenName(u.name)} className="min-w-0 flex-1 rounded-md text-left">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate font-medium" title={personName(u.name)}>{personName(u.name)}</span>
                         {u.role !== "trader" && <Pill tone={roleTone(u.role)}>{roleLabel(u.role)}</Pill>}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{timeAgo(u.lastSeen)}</div>
                     </button>
-                    <div className="flex items-center gap-1"><StatusPill u={u} />{menu(u)}</div>
+                    <div className="flex shrink-0 items-center gap-1"><StatusPill u={u} />{menu(u)}</div>
                   </div>
                   <ActivityStrip days={days} trades={u.tradeStrip} journal={journalAvailable ? u.journalStrip : undefined} />
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -491,7 +490,7 @@ function TraderSheet({
                   {u.banned ? (
                     <Button variant="outline" size="sm" onClick={() => actions.unban(u)}><UserCheck /> {t("activity.sheet.unban")}</Button>
                   ) : (
-                    <Button variant="destructive" size="sm" disabled={!canBan} onClick={() => actions.ban(u)}><Ban /> {t("activity.sheet.ban")}</Button>
+                    <Button variant="destructive" size="sm" disabled={!canBan} title={canBan ? undefined : isSelf ? t("activity.menu.cantSelf") : t("activity.menu.banUnavailable")} onClick={() => actions.ban(u)}><Ban /> {t("activity.sheet.ban")}</Button>
                   )}
                 </div>
               </section>

@@ -85,10 +85,15 @@ export function WatchlistPicker({ taken, onPick }: { taken: string[]; onPick: (l
           <CommandList>
             {q.isLoading ? (
               <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {commonI18n.t("states.loading")}
+                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> {commonI18n.t("states.loading")}
               </div>
             ) : q.isError ? (
-              <div className="p-3 text-sm text-muted-foreground">{tr("editor.watchlistUnavailable")}</div>
+              <div className="flex flex-wrap items-center gap-2 p-3 text-sm text-muted-foreground">
+                {tr("editor.watchlistUnavailable")}
+                <Button type="button" variant="outline" size="sm" onClick={() => void q.refetch()} disabled={q.isFetching}>
+                  {commonI18n.t("actions.retry")}
+                </Button>
+              </div>
             ) : (
               <>
                 <CommandEmpty>{tr("editor.noTickers")}</CommandEmpty>

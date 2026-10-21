@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -8,8 +10,7 @@ import { feedI18n } from "@/i18n/ns/feed";
 /** Monday-first weekday indexes (Date#getDay numbering). */
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
-/** Month mini-calendar: dots for days with feed events, ring for today, accent for the selected day. */
-export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect, today, anchor }: {
+type FeedCalendarProps = {
   counts: Map<string, number>;
   unreadDays: Set<string>;
   tradeDays: Set<string>;
@@ -18,7 +19,10 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
   today: string;
   /** Day whose month is shown first when nothing is selected (e.g. the latest entry). */
   anchor?: string;
-}) {
+};
+
+/** Month mini-calendar: dots for days with feed events, ring for today, accent for the selected day. */
+export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect, today, anchor }: FeedCalendarProps) {
   const { t } = feedI18n.useT();
   const initial = selected ?? anchor ?? today;
   const [cursor, setCursor] = useState(() => ({ y: Number(initial.slice(0, 4)), m: Number(initial.slice(5, 7)) - 1 }));
@@ -62,9 +66,9 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-0.5 text-center" role="grid" aria-label={t("calendar.aria", { month: monthLabel })}>
+      <div className="grid grid-cols-7 gap-0.5 text-center" role="group" aria-label={t("calendar.aria", { month: monthLabel })}>
         {weekdays.map((w) => (
-          <div key={w} className="pb-1 text-xs font-medium text-muted-foreground" role="columnheader">{w}</div>
+          <div key={w} className="pb-1 text-xs font-medium text-muted-foreground" aria-hidden="true">{w}</div>
         ))}
         {cells.map((d, i) => {
           if (!d) return <div key={`e${i}`} />;
@@ -76,9 +80,8 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
             <button
               key={d}
               type="button"
-              role="gridcell"
               aria-label={label}
-              aria-selected={isSel}
+              aria-pressed={isSel}
               onClick={() => onSelect(isSel ? null : d)}
               className={cn(
                 "relative flex h-9 flex-col items-center justify-center rounded-lg text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -105,5 +108,24 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
         <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-up" aria-hidden="true" />{t("calendar.legendTrading")}</span>
       </div>
     </div>
+  );
+}
+
+/** Phones / tablets: the side column (with the calendar) is hidden below lg, so the toolbar opens it in a popover. */
+export function FeedCalendarPopover(props: FeedCalendarProps & { className?: string }) {
+  const { t } = feedI18n.useT();
+  const [open, setOpen] = useState(false);
+  const { className, onSelect, ...rest } = props;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="icon" className={cn("shrink-0", props.selected && "border-primary/60 text-primary", className)} aria-label={t("calendar.open")} title={t("calendar.open")}>
+          <CalendarDays aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-3">
+        <FeedCalendar {...rest} onSelect={(d) => { onSelect(d); setOpen(false); }} />
+      </PopoverContent>
+    </Popover>
   );
 }

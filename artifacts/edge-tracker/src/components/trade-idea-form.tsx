@@ -365,11 +365,11 @@ export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitL
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Label htmlFor={fid("thesis")} className={labelCls}>{t("form.thesis")}</Label>
-          <VoiceRecorder onTranscript={(text) => set("thesis", form.thesis ? `${form.thesis}\n${text}` : text)} />
+          <VoiceRecorder onTranscript={(text) => setForm((f) => ({ ...f, thesis: f.thesis ? `${f.thesis}\n${text}` : text }))} />
         </div>
         <div className="flex flex-wrap gap-1.5">
           {THESIS_PROMPTS.map((p) => (
-            <button key={p} type="button" onClick={() => addThesisPrompt(t(`form.thesisPrompts.${p}`))} className="chip min-h-7 px-2.5 text-xs">+ {t(`form.thesisPrompts.${p}`)}</button>
+            <button key={p} type="button" onClick={() => addThesisPrompt(t(`form.thesisPrompts.${p}`))} className="chip min-h-8 px-2.5 text-xs">+ {t(`form.thesisPrompts.${p}`)}</button>
           ))}
         </div>
         <Textarea ref={thesisRef} id={fid("thesis")} className="min-h-[96px]" value={form.thesis} onChange={(e) => set("thesis", e.target.value)} placeholder={t("form.thesisPlaceholder")} />

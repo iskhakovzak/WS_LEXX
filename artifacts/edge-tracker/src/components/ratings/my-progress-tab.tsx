@@ -262,7 +262,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
           <Panel
             icon={Lightbulb}
             title={t("progress.myIdeas")}
-            actions={<Link href="/trade-idea-stats" className="text-xs text-primary hover:underline">{t("progress.detailedStats")}</Link>}
+            actions={<Link href="/trade-idea-stats" className="inline-flex min-h-8 items-center text-xs text-primary hover:underline">{t("progress.detailedStats")}</Link>}
           >
             {ideasQ.isLoading ? <Skeleton className="h-20 rounded-xl" /> : ideas.length === 0 ? (
               <p className="text-sm text-muted-foreground">

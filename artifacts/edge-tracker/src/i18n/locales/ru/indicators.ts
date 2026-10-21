@@ -56,6 +56,7 @@ export default {
     setOnTop: "набор сверху",
     fitsFor: "подходят для: {horizon}",
     bestByR: "Лучший по R:",
+    statsFailed: "Не удалось загрузить сделки — статистика по индикаторам пока пустая",
     coverage: "с тегом индикатора {pct}% сделок",
     listAria: "Индикаторы",
     emptySetTitle: "Твой набор пока пуст",

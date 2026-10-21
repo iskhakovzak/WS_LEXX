@@ -106,6 +106,8 @@ export function useMistakesSummary(trader: string, days: number) {
     queryKey: rulesKeys.errorsSummary(trader, days),
     queryFn: () => http.get<MistakesSummary>(`/api/errors/summary?${q(trader)}&days=${days}`),
     enabled: !!trader,
+    // A period switch keeps the old numbers on screen until the new ones arrive (same trader only).
+    placeholderData: (prev, prevQuery) => (prev && prevQuery?.queryKey[2] === trader ? prev : undefined),
   });
 }
 

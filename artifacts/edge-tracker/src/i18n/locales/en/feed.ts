@@ -180,5 +180,6 @@ export default {
     legendNew: "new",
     legendEvents: "events",
     legendTrading: "trading day",
+    open: "Calendar",
   },
 } satisfies Messages<typeof ru>;

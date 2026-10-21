@@ -247,7 +247,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
                 <th className="w-24 text-left font-medium text-muted-foreground" />
                 {Array.from({ length: cols }, (_, i) => (
                   <th key={i} className="font-medium text-muted-foreground">
-                    <button type="button" onClick={() => onPickMonth(i + 1)} className="rounded px-1 hover:text-foreground">{monthShort(i)}</button>
+                    <button type="button" onClick={() => onPickMonth(i + 1)} className="inline-flex min-h-7 items-center rounded px-1 hover:text-foreground">{monthShort(i)}</button>
                   </th>
                 ))}
                 <th className="pl-2 text-right font-medium text-muted-foreground">{t("strategies.year")}</th>

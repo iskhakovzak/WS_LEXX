@@ -208,13 +208,13 @@ export default function Stats() {
             </Link>
           </Button>
           <Button
-            variant="outline" size="sm" className="rounded-full" disabled={!count || exporting}
+            variant="outline" size="sm" className="hidden rounded-full md:inline-flex" disabled={!count || exporting}
             onClick={() => void withTrades((rows) => downloadReportCsv(rows, kpis, prevKpis, reportMeta()))}
           >
             <FileDown className="mr-1.5 h-4 w-4" aria-hidden="true" /> CSV
           </Button>
           <Button
-            variant="outline" size="sm" className="rounded-full" disabled={!count || exporting}
+            variant="outline" size="sm" className="hidden rounded-full md:inline-flex" disabled={!count || exporting}
             onClick={() => void withTrades((rows) => {
               if (!openPrintReport(rows, kpis, prevKpis, reportMeta())) {
                 toast({ title: t("printBlocked"), description: t("printBlockedHint"), variant: "destructive" });
@@ -252,11 +252,11 @@ export default function Stats() {
     return (
       <Page>
         {header}
-        <div className="glass-panel h-[52px] rounded-2xl" aria-hidden="true" />
+        <div className="skeleton h-[52px] rounded-2xl" aria-hidden="true" />
         <KpiGridSkeleton />
         <div className="grid gap-4 xl:grid-cols-5">
-          <div className="glass-panel h-[360px] animate-pulse rounded-2xl xl:col-span-3" />
-          <div className="glass-panel h-[360px] animate-pulse rounded-2xl xl:col-span-2" />
+          <div className="skeleton h-[360px] rounded-2xl xl:col-span-3" aria-hidden="true" />
+          <div className="skeleton h-[360px] rounded-2xl xl:col-span-2" aria-hidden="true" />
         </div>
         <span className="sr-only" role="status">{t("loading")}</span>
       </Page>

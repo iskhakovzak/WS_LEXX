@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { GitMerge, Inbox, Loader2, Split, Trash2 } from "lucide-react";
-import { EmptyState, Panel, Pill, StatRow } from "@/components/ds";
+import { EmptyState, ErrorState, Panel, Pill, SkeletonBlock, StatRow } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -108,12 +108,14 @@ function PendingCard({ p, staff }: { p: PendingTrade; staff: boolean }) {
   );
 }
 
-export function ReconcileInbox({ pending, staff, loading }: { pending: PendingTrade[]; staff: boolean; loading: boolean }) {
+export function ReconcileInbox({ pending, staff, loading, error = null, onRetry }: { pending: PendingTrade[]; staff: boolean; loading: boolean; error?: unknown; onRetry?: () => void }) {
   const { t } = propreportsI18n.useT();
   return (
     <Panel title={t("inbox.title")} description={t("inbox.description")} icon={Inbox} actions={pending.length ? <Pill tone="warn" dot>{pending.length}</Pill> : undefined}>
-      {loading ? (
-        <div className="py-6 text-center text-sm text-muted-foreground">{commonI18n.t("states.loading")}</div>
+      {error && !pending.length ? (
+        <ErrorState error={error} onRetry={onRetry} inset />
+      ) : loading ? (
+        <div className="grid gap-3" role="status" aria-label={commonI18n.t("states.loading")}>{[0, 1].map((i) => <SkeletonBlock key={i} className="h-48 rounded-2xl" />)}</div>
       ) : !pending.length ? (
         <EmptyState icon={Inbox} title={t("inbox.empty")} description={t("inbox.emptyHint")} />
       ) : (

@@ -22,6 +22,8 @@ function extFor(mime: string): string {
   return "ogg";
 }
 
+const formatDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
 function micErrorMessage(e: unknown): string {
   const name = (e as { name?: string })?.name;
   if (name === "NotAllowedError" || name === "SecurityError") return voiceI18n.t("recorder.micDenied");
@@ -50,6 +52,8 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
   const { t } = voiceI18n.useT();
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Waiting for the mic permission prompt: blocks a second click from opening a second stream.
+  const [starting, setStarting] = useState(false);
   const [duration, setDuration] = useState(0);
   const [bars, setBars] = useState<number[]>(Array(BAR_COUNT).fill(0));
 
@@ -62,6 +66,8 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const discardRef = useRef(false);
+  const mountedRef = useRef(true);
+  const startingRef = useRef(false);
 
   const stopWaveform = useCallback(() => {
     if (rafRef.current != null) {
@@ -99,7 +105,9 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -124,9 +132,14 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
       });
       return;
     }
+    if (startingRef.current || mediaRecorderRef.current?.state === "recording") return;
+    startingRef.current = true;
+    setStarting(true);
     let stream: MediaStream | null = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Unmounted while the permission prompt was open: release the mic instead of recording into nothing.
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
       activeStreamRef.current = stream;
       const picked = pickMimeType();
       const mediaRecorder = picked ? new MediaRecorder(stream, { mimeType: picked }) : new MediaRecorder(stream);
@@ -204,7 +217,10 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
       // Release the mic if it was granted but the recorder couldn't start.
       stream?.getTracks().forEach((t) => t.stop());
       activeStreamRef.current = null;
-      toast({ title: voiceI18n.t("recorder.micUnavailable"), description: micErrorMessage(e), variant: "destructive" });
+      if (mountedRef.current) toast({ title: voiceI18n.t("recorder.micUnavailable"), description: micErrorMessage(e), variant: "destructive" });
+    } finally {
+      startingRef.current = false;
+      if (mountedRef.current) setStarting(false);
     }
   }, [userId, tradeId, dailyFeedId, onTranscript, onUploaded, startWaveform, stopWaveform, toast]);
 
@@ -237,7 +253,6 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
     return () => window.removeEventListener("keydown", onKey, true);
   }, [recording, cancelRecording]);
 
-  const formatDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   // Announced once per state change (not every second) so screen readers know recording started/stopped.
   const liveText = uploading ? t("recorder.liveUploading") : recording ? t("recorder.liveRecording") : "";
   const live = <span className="sr-only" aria-live="polite">{liveText}</span>;
@@ -264,7 +279,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
       <>
         <span
           className={cn(
-            "inline-flex min-h-8 items-center gap-2 rounded-full border border-down/40 bg-down/12 py-0.5 pl-3 pr-0.5 text-xs font-medium text-down",
+            "inline-flex min-h-8 items-center gap-2 rounded-full border border-down/40 bg-down/12 py-px pl-3 pr-px text-xs font-medium text-down",
             className,
           )}
         >
@@ -287,7 +302,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
             onClick={cancelRecording}
             aria-label={t("recorder.cancelAria")}
             title={t("recorder.cancelTitle")}
-            className="grid h-7 w-7 place-items-center rounded-full text-down/90 transition-colors hover:bg-down/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="grid h-8 w-8 place-items-center rounded-full text-down/90 transition-colors hover:bg-down/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -297,7 +312,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
             autoFocus
             aria-label={t("recorder.stopAria", { duration: formatDuration(duration) })}
             title={t("recorder.stopTitle")}
-            className="inline-flex h-7 items-center gap-1 rounded-full bg-down px-2.5 text-xs font-semibold text-primary-foreground transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-8 items-center gap-1 rounded-full bg-down px-3 text-xs font-semibold text-primary-foreground transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Square className="h-3 w-3 fill-current" aria-hidden="true" />
             {t("recorder.stop")}
@@ -314,14 +329,16 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
         aria-label={label ? undefined : t("recorder.startAria")}
         type="button"
         onClick={startRecording}
-        title={t("recorder.startTitle")}
+        disabled={starting}
+        aria-busy={starting || undefined}
+        title={starting ? t("recorder.starting") : t("recorder.startTitle")}
         className={cn(
-          "chip inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "chip inline-flex min-h-8 min-w-8 cursor-pointer items-center justify-center gap-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70",
           label ? "px-3" : "px-0",
           className,
         )}
       >
-        <Mic className="h-3.5 w-3.5" aria-hidden="true" />
+        {starting ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Mic className="h-3.5 w-3.5" aria-hidden="true" />}
         {label && <span>{label}</span>}
       </button>
       {live}

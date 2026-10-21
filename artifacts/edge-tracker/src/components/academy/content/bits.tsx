@@ -142,7 +142,7 @@ export function PctBar({ pct, className, label }: { pct: number; className?: str
   const v = Math.max(0, Math.min(100, pct));
   return (
     <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]", className)} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v)} aria-label={label ?? academyI18n.t("bits.progress")}>
-      <div className={cn("h-full rounded-full transition-[width] duration-500", v >= 100 ? "bg-up" : "bg-primary")} style={{ width: `${v}%` }} />
+      <div className={cn("h-full rounded-full transition-[width] duration-[var(--dur-4)] ease-[var(--ease)] motion-reduce:transition-none", v >= 100 ? "bg-up" : "bg-primary")} style={{ width: `${v}%` }} />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Eye, Lightbulb, LineChart, ArrowUpRight, Filter } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Pill } from "@/components/ds";
+import { ErrorState, Pill } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
@@ -26,7 +26,7 @@ type TickerContextData = {
 const isShort = (side: string) => /short|шорт/i.test(side); // i18n-ignore (matches stored values)
 
 function TickerContextBody({ ticker, onFilter }: { ticker: string; onFilter?: (t: string) => void }) {
-  const { data, isLoading, isError } = useQuery<TickerContextData>({
+  const { data, isLoading, isError, error, refetch } = useQuery<TickerContextData>({
     queryKey: ["discussions-ticker-context", ticker],
     queryFn: ({ signal }) => http.get<TickerContextData>(`/api/discussions/ticker-context/${encodeURIComponent(ticker)}`, { signal }),
     staleTime: STALE.short,
@@ -41,7 +41,7 @@ function TickerContextBody({ ticker, onFilter }: { ticker: string; onFilter?: (t
         {data && <span className="text-xs text-muted-foreground">{t("ticker.threads", { count: data.discussions })}</span>}
       </div>
       {isLoading && <div className="space-y-2"><Skeleton className="h-10 rounded-xl" /><Skeleton className="h-10 rounded-xl" /></div>}
-      {isError && <p className="text-xs text-down">{t("ticker.loadFailed")}</p>}
+      {isError && <ErrorState compact title={t("ticker.loadFailed")} error={error} onRetry={refetch} />}
       {data && (
         <>
           <section className="space-y-1.5">
@@ -117,7 +117,7 @@ export function TickerLink({ ticker, onFilter, variant = "inline", className }: 
           aria-label={discussionsI18n.t("ticker.contextAria", { ticker })}
           className={cn(
             variant === "chip"
-              ? "inline-flex min-h-6 items-center gap-1 rounded-full bg-primary/15 px-2 text-xs font-semibold tabular-nums text-primary hover:bg-primary/25"
+              ? "inline-flex min-h-7 items-center gap-1 rounded-full bg-primary/15 px-2 text-xs font-semibold tabular-nums text-primary hover:bg-primary/25"
               : "rounded px-0.5 font-semibold text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary",
             className,
           )}

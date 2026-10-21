@@ -129,7 +129,7 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
                   {r.rating && <Pill tone={RATING[r.rating]?.tone ?? "neutral"}>{RATING[r.rating]?.label ?? r.rating}</Pill>}
                   <span className="tabular-nums text-muted-foreground">{fmtDate(r.createdAt.substring(0, 10), "short")}</span>
                   {r.curator === traderName && (
-                    <button type="button" aria-label={t("social.deleteReview")} title={t("social.deleteReview")} onClick={() => deleteReview(r.id)} className="ml-auto grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-down">
+                    <button type="button" aria-label={t("social.deleteReview")} title={t("social.deleteReview")} onClick={() => deleteReview(r.id)} className="ml-auto grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-down">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}

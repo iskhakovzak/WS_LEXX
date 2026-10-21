@@ -2,7 +2,7 @@
  * «Академия» → когорты и наставничество: типы ответов (зеркало api-server/src/routes/academy-cohorts.ts и
  * lib/academyCohorts.ts), коды справочников с функциями-подписями (язык читается при вызове) и raw-fetch хуки для /api/academy/* (orval-кодоген для новых эндпоинтов не запускается).
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http, type ApiError } from "@/lib/api/http";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
@@ -184,7 +184,7 @@ export function useCohorts(archived = false) {
   return useQuery({ queryKey: academyKeys.cohorts(archived), queryFn: () => http.get<{ staff: boolean; cohorts: CohortListItem[] }>(`/api/academy/cohorts${archived ? "?archived=1" : ""}`), retry: false });
 }
 export function useCohort(id: number | null) {
-  return useQuery({ queryKey: academyKeys.cohort(id ?? 0), enabled: !!id, queryFn: () => http.get<CohortDetail>(`/api/academy/cohorts/${id}`), retry: false });
+  return useQuery({ queryKey: academyKeys.cohort(id ?? 0), enabled: !!id, queryFn: () => http.get<CohortDetail>(`/api/academy/cohorts/${id}`), retry: false, placeholderData: keepPreviousData });
 }
 export function useMyDashboard(user: string) {
   return useQuery({
@@ -192,11 +192,12 @@ export function useMyDashboard(user: string) {
     queryFn: () => http.get<MyDashboard>(`/api/academy/my${user ? `?user=${enc(user)}` : ""}`),
     retry: false,
     refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
   });
 }
 /** Staff only: `enabled` = false for a trader, so the page never fires a 403 (DEV-12). */
 export function useMentorDashboard(all: boolean, enabled = true) {
-  return useQuery({ queryKey: academyKeys.mentor(all), queryFn: () => http.get<MentorDashboard>(`/api/academy/mentor${all ? "?all=1" : ""}`), retry: false, refetchInterval: 120_000, enabled });
+  return useQuery({ queryKey: academyKeys.mentor(all), queryFn: () => http.get<MentorDashboard>(`/api/academy/mentor${all ? "?all=1" : ""}`), retry: false, refetchInterval: 120_000, enabled, placeholderData: keepPreviousData });
 }
 export function useIdp(student: string, enabled = true) {
   return useQuery({ queryKey: academyKeys.idp(student), enabled: enabled && !!student, queryFn: () => http.get<{ student: string; goals: Goal[] }>(`/api/academy/idp?student=${enc(student)}`), retry: false });
@@ -216,6 +217,7 @@ export function useSchedule(cohortId: number | null, from: string, to: string) {
     queryFn: () => http.get<{ from: string; to: string; serverNow: string; sessions: Session[]; occurrences: Occurrence[] }>(
       `/api/academy/sessions?from=${from}&to=${to}${cohortId ? `&cohortId=${cohortId}` : ""}`),
     retry: false,
+    placeholderData: keepPreviousData,
   });
 }
 export function useEnrollmentHistory(id: number | null) {

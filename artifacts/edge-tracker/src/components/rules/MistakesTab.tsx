@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ArrowRight, Check, NotebookPen, Plus, Tags } from "lucide-react";
 import { BentoGrid, EmptyState, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
@@ -65,8 +66,8 @@ export const MistakesTab = forwardRef<HTMLInputElement, {
         >
           {summaryQ.isLoading ? (
             <div className="flex flex-col gap-2" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="skeleton block h-9 w-full" />)}</div>
-          ) : summaryQ.error ? (
-            <p className="text-sm text-muted-foreground">{humanizeApiError(summaryQ.error, t("mistakesTab.summaryFailed"))}</p>
+          ) : summaryQ.error && !s ? (
+            <QueryError compact error={summaryQ.error} message={humanizeApiError(summaryQ.error, t("mistakesTab.summaryFailed"))} onRetry={() => void summaryQ.refetch()} />
           ) : !s || s.byType.length === 0 ? (
             <EmptyState compact icon={Tags} title={t("mistakesTab.noneTitle")} description={t("mistakesTab.noneDesc")} />
           ) : (
@@ -181,7 +182,7 @@ function UntaggedTrades({ trader, trades, losing, onChanged }: { trader: string;
           const on = sel.has(tr.id);
           return (
             <div key={tr.id} className={cn("tile flex items-center gap-2 p-2.5 transition-shadow duration-[var(--dur-1)]", on && "ring-2 ring-primary")}>
-              <button type="button" aria-pressed={on} onClick={() => toggle(tr.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none">
+              <button type="button" aria-pressed={on} onClick={() => toggle(tr.id)} className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border", on ? "border-transparent bg-primary-solid text-primary-foreground" : "border-[var(--field-border)]")} aria-hidden="true">
                   {on && <Check className="h-3 w-3" />}
                 </span>
@@ -191,7 +192,7 @@ function UntaggedTrades({ trader, trades, losing, onChanged }: { trader: string;
                 </span>
                 <span className="shrink-0 text-sm font-semibold tabular-nums text-down">{fmtUsd(tr.net, { signed: true, decimals: "trim" })}</span>
               </button>
-              <Link href={links.trade(tr.id)} className="shrink-0 text-xs font-medium text-primary hover:underline" aria-label={t("mistakesTab.openTrade", { ticker: tr.ticker })} title={t("mistakesTab.openTrade", { ticker: tr.ticker })}>
+              <Link href={links.trade(tr.id)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-primary hover:bg-[var(--glass-hover-bg)]" aria-label={t("mistakesTab.openTrade", { ticker: tr.ticker })} title={t("mistakesTab.openTrade", { ticker: tr.ticker })}>
                 <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
             </div>
@@ -207,7 +208,7 @@ function UntaggedTrades({ trader, trades, losing, onChanged }: { trader: string;
             disabled={!sel.size || busy}
             onClick={() => tag(c.value, c.severity)}
             title={c.hint}
-            className="chip inline-flex min-h-7 items-center px-2.5 text-xs font-medium disabled:cursor-not-allowed"
+            className="chip inline-flex min-h-8 items-center px-2.5 text-xs font-medium disabled:cursor-not-allowed"
           >
             {c.label}
           </button>

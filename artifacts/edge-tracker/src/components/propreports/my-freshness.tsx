@@ -5,7 +5,7 @@
  */
 import { AlertTriangle, CheckCircle2, Clock, Link2Off, type LucideIcon } from "lucide-react";
 import { Link } from "wouter";
-import { Pill } from "@/components/ds";
+import { ErrorState, Pill } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fmtCount, fmtDate, fmtDeskDateTime, fmtDeskTime, fmtUsd } from "@/lib/format";
 import { nyDate } from "@/lib/trading-date";
@@ -40,6 +40,7 @@ export function MyFreshnessCard() {
   const { t } = propreportsI18n.useT();
   const q = useMyFreshness();
   if (q.isLoading) return <Skeleton className="h-24 w-full rounded-2xl" />;
+  if (q.isError && !q.data) return <ErrorState error={q.error} title={t("fresh.failed")} onRetry={() => q.refetch()} compact />;
   if (!q.data) return <section className="glass-panel rounded-2xl p-4 text-sm text-muted-foreground">{t("fresh.failed")}</section>;
   const f = q.data;
   const v = freshnessView(f);

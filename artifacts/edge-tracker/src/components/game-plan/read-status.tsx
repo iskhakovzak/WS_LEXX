@@ -95,7 +95,10 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
           </div>
         </div>
       ) : q.isError || !d ? (
-        <p className="text-sm text-muted-foreground">{t("reads.unavailable")}</p>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          {t("reads.unavailable")}
+          <Button type="button" variant="outline" size="sm" onClick={() => void q.refetch()} disabled={q.isFetching}>{commonI18n.t("actions.retry")}</Button>
+        </div>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex items-baseline gap-2">
@@ -113,7 +116,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
             aria-valuenow={pct}
             aria-label={t("reads.progressAria")}
           >
-            <div className="h-full rounded-full bg-up transition-[width] duration-300" style={{ width: `${pct}%` }} />
+            <div className="h-full rounded-full bg-up transition-[width] duration-[var(--dur-3)] ease-[var(--ease)] motion-reduce:transition-none" style={{ width: `${pct}%` }} />
           </div>
           {d.read.length > 0 && (
             <div>

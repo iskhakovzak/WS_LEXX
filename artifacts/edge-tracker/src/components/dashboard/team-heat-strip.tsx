@@ -4,6 +4,7 @@ import { ChevronRight, Users } from "lucide-react";
 import { EmptyState, Panel, Pill, StatusDot, limitTone, limitToneToTone, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { SortHead } from "@/components/trades/sort-head";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,7 @@ function TraderRow({ r }: { r: RiskDeskRow }) {
 }
 
 /** Staff only: one row per trader — today, week, daily-limit use (GET /api/risk/desk). Hidden on 404. */
-export function DeskTodayPanel({ data, isLoading, fill }: { data: RiskDesk | null | undefined; isLoading: boolean; fill?: boolean }) {
+export function DeskTodayPanel({ data, isLoading, isError, onRetry, fill }: { data: RiskDesk | null | undefined; isLoading: boolean; isError?: boolean; onRetry?: () => void; fill?: boolean }) {
   if (isLoading && data === undefined) {
     return (
       <Panel title={dashboardI18n.t("desk.title")} icon={Users} fill={fill}>
@@ -85,6 +86,14 @@ export function DeskTodayPanel({ data, isLoading, fill }: { data: RiskDesk | nul
             <Skeleton key={i} className="h-10 w-full rounded-lg" />
           ))}
         </div>
+      </Panel>
+    );
+  }
+  // A failed load (not a 404 = «desk not deployed», which is null) keeps the panel with a retry instead of vanishing.
+  if (data === undefined && isError) {
+    return (
+      <Panel title={dashboardI18n.t("desk.title")} icon={Users} fill={fill}>
+        <QueryError compact onRetry={onRetry} />
       </Panel>
     );
   }

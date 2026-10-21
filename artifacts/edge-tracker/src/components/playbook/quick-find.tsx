@@ -93,7 +93,7 @@ export function QuickFind({
               className="h-12 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
-          <CommandPrimitive.List className="max-h-[min(60vh,440px)] overflow-y-auto p-2">
+          <CommandPrimitive.List className="max-h-[min(60dvh,440px)] overflow-y-auto p-2">
             <CommandPrimitive.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">{pt("quickFind.nothingFor", { query: q })}</CommandPrimitive.Empty>
             {query ? (
               results.length > 0 && (

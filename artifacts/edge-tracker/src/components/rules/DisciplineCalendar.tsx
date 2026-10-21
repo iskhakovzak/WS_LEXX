@@ -79,7 +79,7 @@ export function DisciplineCalendar({
             })}
           </div>
           <div
-            role="grid"
+            role="group"
             aria-label={t("calendar.aria")}
             className="grid grid-flow-col grid-rows-5 gap-[3px]"
             style={{ gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` }}

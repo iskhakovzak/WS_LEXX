@@ -79,6 +79,18 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
   const { t } = settingsI18n.useT();
   const filtered = matchSections(sections, query);
   const listRef = React.useRef<HTMLDivElement>(null);
+  const chipsRef = React.useRef<HTMLDivElement>(null);
+
+  // Mobile chips scroll sideways: keep the active one in view (deep links like /settings#integrations).
+  React.useEffect(() => {
+    const box = chipsRef.current;
+    const el = box?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!box || !el || box.scrollWidth <= box.clientWidth) return;
+    // Horizontal only (scrollIntoView could also move the page vertically).
+    const b = box.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    if (r.left < b.left || r.right > b.right) box.scrollLeft += r.left - b.left - 8;
+  }, [active]);
 
   function onListKey(e: React.KeyboardEvent) {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -110,17 +122,16 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
       </div>
 
       {/* Mobile / tablet: chips */}
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden" role="tablist" aria-label={t("nav.sections")}>
+      <div ref={chipsRef} role="group" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:hidden" aria-label={t("nav.sections")}>
         {filtered.map((s) => (
           <button
             key={s.id}
             type="button"
-            role="tab"
-            aria-selected={active === s.id}
+            aria-current={active === s.id ? "page" : undefined}
             data-active={active === s.id}
             onClick={() => onSelect(s.id)}
             className={cn(
-              "inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors",
+              "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors md:min-h-9",
               active === s.id ? "bg-primary-solid text-primary-foreground" : "chip",
             )}
           >

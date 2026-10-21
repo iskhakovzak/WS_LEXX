@@ -246,25 +246,25 @@ export function LeaderboardList({
                 )}
                 <ScoreParts r={r} weights={weights} />
                 <nav className="flex flex-wrap gap-1.5" aria-label={t("linksAria", { name: personName(r.trader) })}>
-                  <Link href={`${links.trades({ from, to })}&trader=${encodeURIComponent(r.trader)}`} className="chip inline-flex min-h-7 items-center px-2.5 text-xs">
+                  <Link href={`${links.trades({ from, to })}&trader=${encodeURIComponent(r.trader)}`} className="chip inline-flex min-h-8 items-center px-2.5 text-xs">
                     {t("link.trades")}
                   </Link>
                   {r.lastTradeDate && (
-                    <Link href={links.journalDay(r.lastTradeDate, r.trader)} className="chip inline-flex min-h-7 items-center px-2.5 text-xs">
+                    <Link href={links.journalDay(r.lastTradeDate, r.trader)} className="chip inline-flex min-h-8 items-center px-2.5 text-xs">
                       {t("link.journal", { date: r.lastTradeDate })}
                     </Link>
                   )}
-                  <Link href={links.risk(r.trader)} className="chip inline-flex min-h-7 items-center px-2.5 text-xs">
+                  <Link href={links.risk(r.trader)} className="chip inline-flex min-h-8 items-center px-2.5 text-xs">
                     {t("link.risk")}
                   </Link>
-                  <Link href={links.weeklyReview({ trader: r.trader })} className="chip inline-flex min-h-7 items-center px-2.5 text-xs">
+                  <Link href={links.weeklyReview({ trader: r.trader })} className="chip inline-flex min-h-8 items-center px-2.5 text-xs">
                     {t("link.weekly")}
                   </Link>
-                  <Link href={`/ratings?trader=${encodeURIComponent(r.trader)}`} className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs">
+                  <Link href={`/ratings?trader=${encodeURIComponent(r.trader)}`} className="chip inline-flex min-h-8 items-center gap-1 px-2.5 text-xs">
                     <Star className="h-3 w-3" aria-hidden="true" />
                     {t("link.ratings")}
                   </Link>
-                  <Link href={links.scaling(r.trader)} className="chip inline-flex min-h-7 items-center px-2.5 text-xs">
+                  <Link href={links.scaling(r.trader)} className="chip inline-flex min-h-8 items-center px-2.5 text-xs">
                     {t("link.scaling")}
                   </Link>
                 </nav>

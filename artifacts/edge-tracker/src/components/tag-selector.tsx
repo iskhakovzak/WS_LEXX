@@ -112,15 +112,15 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
         {selectedTags.map((tag) => (
           <span
             key={tag}
-            className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-[var(--field-border)] bg-[var(--glass-bg)] py-0.5 pl-2.5 pr-0.5 text-xs font-medium text-foreground"
+            className="inline-flex min-h-8 min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--field-border)] bg-[var(--glass-bg)] py-0.5 pl-2.5 pr-0.5 text-xs font-medium text-foreground"
           >
             <Dot color={tagDotColor(tag)} />
-            {tag}
+            <span className="min-w-0 max-w-[16rem] truncate" title={tag}>{tag}</span>
             <button
               type="button"
               onClick={() => toggle(tag)}
               aria-label={tc("tagPicker.removeAria", { tag })}
-              className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X className="h-3 w-3" aria-hidden="true" />
             </button>
@@ -131,9 +131,9 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
           <PopoverTrigger asChild>
             <button
               type="button"
-              aria-haspopup="listbox"
+              aria-haspopup="dialog"
               aria-expanded={open}
-              className="chip inline-flex min-h-7 items-center gap-1.5 px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               {selectedTags.length === 0 ? placeholder : tc("tagPicker.more")}
@@ -162,7 +162,7 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
                   </button>
                 ))}
               </div>
-              <CommandList className="max-h-[320px]">
+              <CommandList className="max-h-[min(320px,calc(var(--radix-popover-content-available-height)-8.5rem))] min-h-24">
                 <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
                   {allowCreate ? tc("tagPicker.nothingCreate") : tc("states.nothingFound")}
                 </CommandEmpty>
@@ -228,10 +228,10 @@ export function TagSelector({ selectedTags, onChange, allowCreate = true, placeh
               key={t}
               type="button"
               onClick={() => toggle(t)}
-              className="inline-flex min-h-6 items-center gap-1.5 rounded-full px-2 text-2xs text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
+              className="inline-flex min-h-7 max-w-[12rem] items-center gap-1.5 rounded-full px-2 text-2xs text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
             >
               <Dot color={tagDotColor(t)} className="h-1.5 w-1.5" />
-              {t}
+              <span className="truncate" title={t}>{t}</span>
             </button>
           ))}
         </div>

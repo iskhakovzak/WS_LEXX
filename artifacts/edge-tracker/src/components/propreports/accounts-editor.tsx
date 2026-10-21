@@ -3,7 +3,7 @@
  */
 import * as React from "react";
 import { Loader2, Plus, RefreshCw, Save, Trash2, Users } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, SortableTh, useTableSort } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Panel, Pill, SortableTh, TableSkeleton, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -32,7 +32,11 @@ const ACCOUNT_ACCESSORS = {
 };
 const ACCOUNT_FIRST_DIR = { account: "asc", external: "asc", trader: "asc" } as const;
 
-export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: AccountMapping[]; staff: boolean; apiConfigured: boolean }) {
+export function AccountsEditor({ accounts, staff, apiConfigured, loading = false, error = null, onRetry }: {
+  accounts: AccountMapping[]; staff: boolean; apiConfigured: boolean;
+  /** While the list loads / when it failed: no «нет счетов» flash, a skeleton or the error with Retry instead. */
+  loading?: boolean; error?: unknown; onRetry?: () => void;
+}) {
   const { toast } = useToast();
   const { t } = propreportsI18n.useT();
   const tc = commonI18n.t;
@@ -106,7 +110,11 @@ export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: A
         </>
       ) : undefined}
     >
-      {!rows.length ? (
+      {error && !rows.length ? (
+        <ErrorState error={error} onRetry={onRetry} inset />
+      ) : loading && !rows.length ? (
+        <TableSkeleton rows={4} cols={6} />
+      ) : !rows.length ? (
         <EmptyState icon={Users} title={staff ? t("accounts.emptyStaff") : t("accounts.emptyTrader")} description={staff ? t("accounts.emptyStaffHint") : t("accounts.emptyTraderHint")} action={staff ? <Button size="sm" onClick={addRow}><Plus className="mr-1.5 h-4 w-4" />{t("accounts.addFirst")}</Button> : undefined} />
       ) : (
         <DataTable ariaLabel={t("accounts.tableAria")}>
@@ -147,7 +155,7 @@ export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: A
                         className={cn("h-8 w-44 text-xs", !r.trader && "text-[hsl(var(--chart-3))]")}
                       />
                     ) : (
-                      r.trader ?? <span className="text-[hsl(var(--chart-3))]">{t("notMapped")}</span>
+                      r.trader ? personName(r.trader) : <span className="text-[hsl(var(--chart-3))]">{t("notMapped")}</span>
                     )}
                   </td>
                   <td>{staff ? <Switch checked={r.active} onCheckedChange={(v) => update(i, { active: v })} aria-label={t("accounts.col.active")} /> : <Pill tone={r.active ? "up" : "neutral"}>{tc(r.active ? "yes" : "no").toLowerCase()}</Pill>}</td>
@@ -157,7 +165,7 @@ export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: A
                   <td>{staff ? <Input value={r.notes} onChange={(e) => update(i, { notes: e.target.value })} className="h-8 w-48 text-xs" placeholder={t("accounts.notePlaceholder")} /> : <span className="text-xs text-muted-foreground">{r.notes || "—"}</span>}</td>
                   {staff && (
                     <td>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onDelete(r, i)} aria-label={t("accounts.deleteAria")}><Trash2 className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onDelete(r, i)} disabled={del.isPending} aria-label={t("accounts.deleteAria")}><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>
                     </td>
                   )}
                 </tr>

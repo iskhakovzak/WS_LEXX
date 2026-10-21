@@ -4,7 +4,7 @@ import {
   ArrowLeft, ArrowRight, BookOpen, CalendarCheck, GraduationCap, Layers, LayoutDashboard, NotebookPen, ShieldAlert, Target, TrendingUp, UserRound,
 } from "lucide-react";
 import {
-  BentoGrid, DataTable, EmptyState, LimitBar, Panel, Pill, QueryState, SectionTabs, SortableTh, Sparkline, StatCard, StatGrid, StatusDot, toneText, useTableSort,
+  BentoGrid, DataTable, EmptyState, LimitBar, Panel, PanelSkeleton, Pill, QueryState, SectionTabs, SkeletonBlock, SortableTh, Sparkline, StatCard, StatGrid, StatGridSkeleton, StatusDot, toneText, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -63,7 +63,7 @@ export function TraderProfile({ trader, tab, onTab, onBack, quests }: { trader: 
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <QueryState query={q} skeleton={<div className="glass-panel h-40 rounded-2xl" aria-hidden="true" />} errorTitle={t("profile.loadFailed", { name: personName(trader) })}>
+      <QueryState query={q} skeleton={<ProfileSkeleton />} errorTitle={t("profile.loadFailed", { name: personName(trader) })}>
         {(p) => (
           <>
             <ProfileHeader p={p} onBack={onBack} onGoal={() => setGoalOpen(true)} onTemplate={() => setTplOpen(true)} />
@@ -92,6 +92,17 @@ export function TraderProfile({ trader, tab, onTab, onBack, quests }: { trader: 
         )}
       </QueryState>
     </div>
+  );
+}
+
+/** Same shape as the profile: header panel, tab bar, the overview stat row. */
+function ProfileSkeleton() {
+  return (
+    <>
+      <PanelSkeleton height={88} title={false} />
+      <SkeletonBlock className="h-10 w-full max-w-xl rounded-full" />
+      <StatGridSkeleton count={4} />
+    </>
   );
 }
 

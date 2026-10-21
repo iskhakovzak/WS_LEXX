@@ -23,6 +23,7 @@ import { QueryError } from "@/components/query-error";
 import {
   DataTable, EmptyState, FilterChip, Kbd, Panel, Pill, Segmented, SortableTh, TableSkeleton, useTableSort, type Tone,
 } from "@/components/ds";
+import { VirtualRows } from "@/components/ds/virtual";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -472,8 +473,7 @@ export function PeoplePanel({
                         <th scope="col"><span className="sr-only">{t("people.col.actions")}</span></th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {rows.map((p) => (
+                    <VirtualRows rows={rows} colSpan={canManage ? 10 : 9} estimateSize={49} getKey={(p) => p.id} renderRow={(p) => (
                         <tr key={p.id} className={cn(p.status === "archived" && "opacity-60", selected.has(p.id) && "bg-[var(--glass-bg)]")}>
                           {canManage && (
                             <td>
@@ -522,8 +522,7 @@ export function PeoplePanel({
                           <td className="text-right tabular-nums">{p.trades30 || <span className="text-muted-foreground">0</span>}</td>
                           <td className="w-10 text-right">{menu(p)}</td>
                         </tr>
-                      ))}
-                    </tbody>
+                      )} />
                   </table>
                 </DataTable>
               )}

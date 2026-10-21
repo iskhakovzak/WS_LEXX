@@ -6,7 +6,7 @@
  */
 import * as React from "react";
 import { Loader2, RefreshCw, ShieldCheck, Upload } from "lucide-react";
-import { DataTable, EmptyState, ErrorState, Panel, Pill, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, ListSkeleton, Panel, Pill, TableSkeleton, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -145,7 +145,7 @@ function UploadDialog({ id, onClose }: { id: string | null; onClose: () => void 
       <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[min(96vw,56rem)]">
         <DialogHeader><DialogTitle>{t("apiV2.su.status.title", { id: id ?? "" })}</DialogTitle></DialogHeader>
         {status.error ? <ErrorState compact error={status.error} onRetry={() => status.refetch()} /> : !s ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
+          <ListSkeleton rows={4} dense />
         ) : (
           <div className="space-y-4 text-sm">
             <p className="flex flex-wrap items-center gap-2">
@@ -214,7 +214,7 @@ function UploadList({ onOpen }: { onOpen: (id: string) => void }) {
           </Button>
         </div>
       </div>
-      {list.isLoading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" /> : list.error ? (
+      {list.isLoading ? <TableSkeleton rows={5} cols={6} /> : list.error ? (
         <ErrorState compact error={list.error} title={t("apiV2.su.search.failed")} onRetry={() => list.refetch()} />
       ) : !rows.length ? <EmptyState icon={Upload} title={t("apiV2.su.search.empty")} /> : (
         <DataTable maxHeight="50vh" ariaLabel={t("apiV2.su.search.title")}>

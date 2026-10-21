@@ -92,9 +92,9 @@ export function TradeFilterBar(p: Props) {
               type="button"
               aria-label={tc("actions.clearSearch")}
               onClick={() => patch({ q: "" })}
-              className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
+              className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           ) : (
             <Kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>
@@ -126,7 +126,7 @@ export function TradeFilterBar(p: Props) {
             side="bottom"
             align="end"
             collisionPadding={12}
-            className="max-h-[min(var(--radix-popover-content-available-height),calc(100vh-120px))] w-[min(92vw,380px)] overflow-y-auto overscroll-contain p-4"
+            className="max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-120px))] w-[min(92vw,380px)] overflow-y-auto overscroll-contain p-4"
           >
             <QuickFilters {...p} outcomeOptions={outcomeOptions} />
             <AdvancedFilters {...p} />
@@ -158,7 +158,7 @@ export function TradeFilterBar(p: Props) {
 
 function ActiveChip({ children, onClear }: { children: React.ReactNode; onClear: () => void }) {
   return (
-    <FilterChip active onClick={onClear} className="min-h-7 px-2.5 text-xs">
+    <FilterChip active onClick={onClear} className="min-h-8 px-2.5 text-xs">
       {children} <X className="ml-1 h-3 w-3" aria-hidden="true" />
     </FilterChip>
   );
@@ -173,7 +173,7 @@ function QuickFilters(p: Props & { outcomeOptions: { value: Outcome; label: stri
         <Segmented ariaLabel={tc("trading.result")} size="sm" options={p.outcomeOptions} value={f.outcome} onChange={(v) => patch({ outcome: v })} />
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("filters.direction")}>
           {(["Long", "Short"] as const).map((s) => (
-            <FilterChip key={s} active={f.side === s} onClick={() => patch({ side: f.side === s ? "" : s })} className="min-h-7 px-2.5 text-xs">
+            <FilterChip key={s} active={f.side === s} onClick={() => patch({ side: f.side === s ? "" : s })} className="min-h-8 px-2.5 text-xs">
               {s === "Long" ? tc("trading.long") : tc("trading.short")}
             </FilterChip>
           ))}
@@ -206,7 +206,7 @@ function QuickFilters(p: Props & { outcomeOptions: { value: Outcome; label: stri
               </FilterChip>
             ))}
             {f.setup && !p.setups.slice(0, 6).some((s) => s.name === f.setup) && (
-              <FilterChip active onClick={() => patch({ setup: "" })} className="min-h-7 px-2.5 text-xs">{f.setup}</FilterChip>
+              <FilterChip active onClick={() => patch({ setup: "" })} className="min-h-8 px-2.5 text-xs">{f.setup}</FilterChip>
             )}
           </div>
         )}

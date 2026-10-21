@@ -147,7 +147,7 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
   };
   const active = d.enrollments.filter((e) => e.status === "active").length;
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex min-w-0 flex-col gap-4 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
       <Panel title={c.name} icon={Users}
         description={<>
           {formatLabel(c.format)} · {c.mentor ? t("cohortsPage.mentorBy", { name: personName(c.mentor) }) : t("cohortsPage.noMentor")} · {fmtYmd(c.startsOn, true)}{c.endsOn ? ` – ${fmtYmd(c.endsOn, true)}` : ""} · {c.timezone}
@@ -340,7 +340,7 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
         {sched.isLoading && <ListSkeleton rows={4} dense />}
         {sched.isError && <ErrorState error={sched.error} compact />}
         {sched.data && byDay.length === 0 && <p className="text-sm text-muted-foreground">{t("cohortsPage.schedule.rangeEmpty")}</p>}
-        <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+        <div aria-busy={sched.isPlaceholderData || undefined} className={cn("grid gap-2 md:grid-cols-2 2xl:grid-cols-3 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", sched.isPlaceholderData && "pointer-events-none opacity-60")}>
           {byDay.map(([day, list]) => (
             <section key={day} aria-label={fmtYmd(day)} className={cn("glass-field rounded-xl p-2", day === today && "ring-1 ring-primary/60")}>
               <h3 className="mb-1 text-xs font-medium text-muted-foreground">{day === today ? t("cohortsPage.schedule.dayToday", { date: fmtYmd(day) }) : fmtYmd(day)}</h3>

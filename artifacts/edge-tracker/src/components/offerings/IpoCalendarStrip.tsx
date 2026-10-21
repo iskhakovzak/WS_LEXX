@@ -1,5 +1,5 @@
 import { CalendarDays, LockOpen, Rocket } from "lucide-react";
-import { EmptyState, Panel, Pill, SortableTh, UpdatedAgo, useTableSort } from "@/components/ds";
+import { EmptyState, ErrorState, Panel, Pill, SortableTh, UpdatedAgo, useTableSort } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SignedPct } from "./bits";
@@ -123,7 +123,9 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
       <Panel title={t("ipo.lockups")} icon={LockOpen}
         description={t("ipo.lockupsDescription")}
         actions={q.data ? <UpdatedAgo at={q.data.fetchedAt} /> : undefined}>
-        {loading ? <ListSkeleton rows={8} /> : missing ? (
+        {loading ? <ListSkeleton rows={8} /> : q.error && !missing ? (
+          <ErrorState compact inset error={q.error} onRetry={() => q.refetch()} />
+        ) : missing ? (
           <EmptyState compact icon={LockOpen} title={t("ipo.needsServer")} description={t("ipo.needsServerLockups")} />
         ) : lockups.length === 0 ? (
           <EmptyState compact icon={LockOpen} title={t("ipo.noLockups")} />
@@ -132,13 +134,13 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
             <table className="w-full min-w-[480px] text-sm tabular-nums">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground">
-                  <SortableTh {...thProps("date")} className="py-1.5 pr-2 font-medium">{t("ipo.colDate")}</SortableTh>
-                  <SortableTh {...thProps("ticker")} className="px-2 py-1.5 font-medium">{commonI18n.t("trading.ticker")}</SortableTh>
-                  <SortableTh {...thProps("pct")} align="right" className="px-2 py-1.5 font-medium">{t("ipo.colIpoNow")}</SortableTh>
-                  <SortableTh {...thProps("unlock")} align="right" className="px-2 py-1.5 font-medium">
+                  <SortableTh {...thProps("date")} className="py-0.5 [&>button]:min-h-8 pr-2 font-medium">{t("ipo.colDate")}</SortableTh>
+                  <SortableTh {...thProps("ticker")} className="px-2 py-0.5 [&>button]:min-h-8 font-medium">{commonI18n.t("trading.ticker")}</SortableTh>
+                  <SortableTh {...thProps("pct")} align="right" className="px-2 py-0.5 [&>button]:min-h-8 font-medium">{t("ipo.colIpoNow")}</SortableTh>
+                  <SortableTh {...thProps("unlock")} align="right" className="px-2 py-0.5 [&>button]:min-h-8 font-medium">
                     <span title={t("ipo.unlockTitle")}>{t("ipo.colUnlock")}</span>
                   </SortableTh>
-                  <SortableTh {...thProps("mcap")} align="right" className="py-1.5 pl-2 font-medium">{t("ipo.colMcap")}</SortableTh>
+                  <SortableTh {...thProps("mcap")} align="right" className="py-0.5 [&>button]:min-h-8 pl-2 font-medium">{t("ipo.colMcap")}</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">

@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Lock, Minus, RotateCcw, Save, ShieldCheck, Users } from "lucide-react";
+import { Check, Loader2, Lock, Minus, RotateCcw, Save, ShieldCheck, Users } from "lucide-react";
 import { Panel, Pill, TableScroll } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -189,7 +189,7 @@ export function PermissionsSection() {
           <table className="w-full min-w-[640px] text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr className="border-b border-border/60">
-                <th scope="col" className="sticky left-0 z-raised bg-[var(--glass-bg)] px-4 py-2 text-left font-medium sm:px-5">{t("permissions.right")}</th>
+                <th scope="col" className="sticky left-0 z-raised bg-[var(--sticky-bg)] px-4 py-2 text-left font-medium sm:px-5">{t("permissions.right")}</th>
                 {COLUMNS.map((r) => (
                   <th key={r} scope="col" className="px-3 py-2 text-center font-medium">
                     {ROLE_LABEL[r] ?? r}
@@ -201,11 +201,11 @@ export function PermissionsSection() {
             {groups.map((g) => (
               <tbody key={g.group}>
                 <tr>
-                  <th scope="rowgroup" colSpan={COLUMNS.length + 1} className="micro-label sticky left-0 bg-[var(--glass-bg)] px-4 pb-1 pt-3 text-left sm:px-5">{groupName(g.group)}</th>
+                  <th scope="rowgroup" colSpan={COLUMNS.length + 1} className="micro-label sticky left-0 z-raised bg-[var(--sticky-bg)] px-4 pb-1 pt-3 text-left sm:px-5">{groupName(g.group)}</th>
                 </tr>
                 {g.items.map((d) => (
                   <tr key={d.key} className="border-t border-border/40">
-                    <th scope="row" className="sticky left-0 z-raised max-w-[280px] bg-[var(--glass-bg)] px-4 py-2 text-left font-normal sm:px-5">
+                    <th scope="row" className="sticky left-0 z-raised max-w-[280px] bg-[var(--sticky-bg)] px-4 py-2 text-left font-normal sm:px-5">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-foreground">{capName(d)}</span>
                         {d.adminOnly && <Pill tone="warn" className="text-2xs">{t("permissions.adminOnly")}</Pill>}
@@ -235,7 +235,7 @@ export function PermissionsSection() {
                                   type="button"
                                   disabled={busy}
                                   onClick={() => setCell(role, d.key, { scope: cell.scope === "desk" ? "assigned" : "desk" })}
-                                  className={cn("chip min-h-6 rounded-full px-2 text-2xs", cell.scope === "assigned" && "ring-1 ring-primary/50")}
+                                  className={cn("chip min-h-7 rounded-full px-2.5 text-2xs", cell.scope === "assigned" && "ring-1 ring-primary/50")}
                                   title={t("permissions.scopeTitle")}
                                 >
                                   {SCOPE_LABEL[cell.scope]}
@@ -316,10 +316,12 @@ export function PermissionsSection() {
             <AlertDialogCancel disabled={busy}>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={busy}
-              onClick={(e) => { e.preventDefault(); void submit(confirm === "reset" ? { reset: true } : { cells: changes }); }}
+              aria-busy={busy}
+              onClick={(e) => { e.preventDefault(); if (!busy) void submit(confirm === "reset" ? { reset: true } : { cells: changes }); }}
               className={confirm === "reset" ? "bg-destructive text-destructive-foreground hover:brightness-110" : undefined}
             >
-              {busy ? "…" : confirm === "reset" ? tc("actions.reset") : t("permissions.apply")}
+              {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+              {confirm === "reset" ? tc("actions.reset") : t("permissions.apply")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

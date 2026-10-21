@@ -163,7 +163,7 @@ export function PositionsTable({
           {/* desktop table */}
           <TableScroll className="hidden sm:block">
             <Table>
-              <TableHeader className="sticky top-0">
+              <TableHeader className="sticky top-0 z-sticky bg-surface-solid">
                 <TableRow>
                   {sortHead("ticker", c("trading.ticker"))}
                   {showTrader && sortHead("trader", c("fields.trader"))}

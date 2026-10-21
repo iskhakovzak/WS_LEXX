@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { fmtCount, fmtDate, fmtRate } from "@/lib/format";
 import { ScrollContainerContext } from "@/components/ds/scroll-context";
 import { useScrollActiveIntoView } from "@/components/ds/scroll-active";
+import { useEdgeFade } from "@/components/ds/edge-fade";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtRelative } from "@/i18n/format";
@@ -436,12 +437,13 @@ export function Segmented<T extends string>({
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   useScrollActiveIntoView(ref, value); // a phone-width bar scrolls sideways: keep the active option visible
+  useEdgeFade(ref); // …and fade the edge that hides more options
   return (
     <div
       ref={ref}
       role="group"
       aria-label={ariaLabel}
-      className={cn("glass-field relative inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto", size === "sm" ? "h-8 p-0.5" : "h-9 p-[3px]", className)}
+      className={cn("glass-field edge-fade scrollbar-none relative inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto", size === "sm" ? "h-8 p-0.5" : "h-9 p-[3px]", className)}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -499,7 +501,7 @@ export function FilterChip({
       title={title}
       disabled={disabled}
       className={cn(
-        "chip inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium disabled:pointer-events-none disabled:opacity-50",
+        "chip inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:[&:not([title])]:pointer-events-none",
         // min-h (single line, so it acts as the height) keeps page overrides like `min-h-7` working via tailwind-merge.
         size === "sm" ? "min-h-8 px-3 text-xs [&_svg]:size-3.5" : "min-h-9 px-3 text-sm [&_svg]:size-4",
         className,
@@ -539,13 +541,13 @@ export function EmptyState({
 }) {
   if (compact) {
     return (
-      <div className={cn("flex items-center gap-3 px-1 py-4 text-left", className)}>
+      <div className={cn("flex flex-wrap items-center gap-3 px-1 py-4 text-left", className)}>
         {Icon && (
           <span className="tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-muted-foreground">
             <Icon className="h-4 w-4" aria-hidden="true" />
           </span>
         )}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[12rem] flex-1">
           <p className="text-sm font-medium text-foreground">{title}</p>
           {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
         </div>
@@ -908,6 +910,8 @@ export function SectionTabs<T extends string>({
 }) {
   const id = React.useId();
   const reduce = useReducedMotion();
+  const barRef = React.useRef<HTMLDivElement>(null);
+  useEdgeFade(barRef);
   const list = tabs as ReadonlyArray<SectionTab<string>>;
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft" && e.key !== "Home" && e.key !== "End") return;
@@ -930,10 +934,11 @@ export function SectionTabs<T extends string>({
   };
   return (
     <div
+      ref={barRef}
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={cn("scrollbar-none flex max-w-full items-center gap-1 overflow-x-auto border-b border-[var(--glass-border)]", className)}
+      className={cn("edge-fade scrollbar-none flex max-w-full items-center gap-1 overflow-x-auto border-b border-[var(--glass-border)]", className)}
     >
       {list.map((t) => {
         const active = t.value === value;
@@ -1073,7 +1078,7 @@ export function SortableTh({
         onClick={onSort}
         title={state ? (name ? commonI18n.t("ds.sortedBy", { name, state }) : commonI18n.t("ds.sortedNoName", { state })) : name ? commonI18n.t("ds.sortBy", { name }) : commonI18n.t("ds.sort")}
         className={cn(
-          "-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 align-middle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+          "-mx-1 inline-flex min-h-8 items-center gap-1 rounded-md px-1 py-0.5 align-middle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
           active && "text-foreground",
           align === "right" && "flex-row-reverse",
         )}

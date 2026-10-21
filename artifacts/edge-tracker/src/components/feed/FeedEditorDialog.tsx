@@ -81,7 +81,7 @@ export function FeedEditorDialog({ open, onOpenChange, form, setForm, editing, s
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto"
+        className="max-w-2xl"
         onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && form.date && !saving) { e.preventDefault(); onSave(); } }}
       >
         <DialogHeader>
@@ -140,8 +140,8 @@ export function FeedEditorDialog({ open, onOpenChange, form, setForm, editing, s
         />
         {!editing && <p className="text-xs text-muted-foreground">{t("editor.voiceHint")}</p>}
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
-          <Button onClick={onSave} disabled={!form.date || saving}>{saving ? t("editor.saving") : editing ? commonI18n.t("actions.save") : t("editor.publish")}</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
+          <Button type="button" onClick={onSave} disabled={!form.date || saving}>{saving ? t("editor.saving") : editing ? commonI18n.t("actions.save") : t("editor.publish")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

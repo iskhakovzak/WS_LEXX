@@ -36,6 +36,41 @@ export function useStoredState<T extends string>(key: string, initial: T, allowe
   return [v, set];
 }
 
+/**
+ * Wraps a horizontally scrolling bar (its first child is the scroller, e.g. ds Segmented at phone width) and fades the
+ * edge that still has hidden options — the «there is more» hint a bare overflow-x lacks. No fade when it all fits.
+ */
+export function ScrollEdgeHint({ children, className }: { children: React.ReactNode; className?: string }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = React.useState({ left: false, right: false });
+  React.useLayoutEffect(() => {
+    const el = ref.current?.firstElementChild as HTMLElement | null;
+    if (!el) return;
+    const update = () => {
+      const max = el.scrollWidth - el.clientWidth;
+      setEdges((p) => {
+        const n = { left: el.scrollLeft > 2, right: max - el.scrollLeft > 2 };
+        return p.left === n.left && p.right === n.right ? p : n;
+      });
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    return () => { el.removeEventListener("scroll", update); ro?.disconnect(); };
+  }, []);
+  const mask = edges.left && edges.right
+    ? "linear-gradient(to right, transparent, #000 1.5rem, #000 calc(100% - 1.5rem), transparent)"
+    : edges.right ? "linear-gradient(to right, #000 calc(100% - 1.5rem), transparent)"
+    : edges.left ? "linear-gradient(to right, transparent, #000 1.5rem)"
+    : undefined;
+  return (
+    <div ref={ref} className={cn("flex min-w-0 max-w-full", className)} style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}>
+      {children}
+    </div>
+  );
+}
+
 /** Tiny inline SVG trend line. Tone follows last vs first value unless given. */
 export function Sparkline({
   values,

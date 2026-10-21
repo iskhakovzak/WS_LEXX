@@ -7,7 +7,7 @@ import * as React from "react";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { ClipboardList, Lock, RefreshCw, ServerOff, ShieldAlert, Sun, Users } from "lucide-react";
-import { EmptyState, Page, PageHeader, Pill, QueryState, SectionTabs, Segmented, StatGridSkeleton, UpdatedAgo, usePersistentState } from "@/components/ds";
+import { EmptyState, Page, PageHeader, PanelSkeleton, Pill, QueryState, SectionTabs, Segmented, SkeletonBlock, StatGridSkeleton, TableSkeleton, UpdatedAgo, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -72,12 +72,13 @@ function CuratorCabinet() {
     setStoredView(v);
     navigate(v === "today" ? "/curator" : `/curator?view=${v}`);
   };
-  const openTrader = (name: string, tab?: string) => {
+  // Stable: passed down to every memoised table row of the group (25+ rows per curator).
+  const openTrader = React.useCallback((name: string, tab?: string) => {
     const q = new URLSearchParams({ trader: name });
     if (tab && tab !== "overview") q.set("tab", tab);
     navigate(`/curator?${q.toString()}`);
     document.getElementById("main-content")?.scrollTo({ top: 0 });
-  };
+  }, [navigate]);
   const setProfileTab = (t: ProfileTab) => trader && openTrader(trader, t);
 
   const notAvailable = today.error instanceof NotAvailableError;
@@ -141,14 +142,14 @@ function CuratorCabinet() {
           description={t("page.notConnectedHint")}
         />
       ) : view === "today" ? (
-        <QueryState query={today} skeleton={<StatGridSkeleton count={6} />} errorTitle={t("page.todayFailed")}>
+        <QueryState query={today} skeleton={<TodaySkeleton />} errorTitle={t("page.todayFailed")}>
           {(data) => <TodayView data={data} scope={scope} onOpenTrader={openTrader} attentionExtra={<RewardQueueItems onOpenTrader={openTrader} focus={params.has("rewards")} />} />}
         </QueryState>
       ) : view === "traders" ? (
         trader ? (
           <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} quests={<CuratorQuestsPanel trader={trader} />} />
         ) : (
-          <QueryState query={traders} skeleton={<StatGridSkeleton count={6} />} errorTitle={t("page.tradersFailed")}>
+          <QueryState query={traders} skeleton={<GroupSkeleton />} errorTitle={t("page.tradersFailed")}>
             {(data) => <GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} />}
           </QueryState>
         )
@@ -156,5 +157,28 @@ function CuratorCabinet() {
         <RiskProcessesView onOpenTrader={openTrader} />
       )}
     </Page>
+  );
+}
+
+/** Same shape as «Сегодня»: six stat cards, then the two top panels (attention / risk). */
+function TodaySkeleton() {
+  return (
+    <div className="flex flex-col gap-[var(--grid-gap)]">
+      <StatGridSkeleton count={6} />
+      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-12">
+        <PanelSkeleton className="lg:col-span-7" height={280} />
+        <PanelSkeleton className="lg:col-span-5" height={280} />
+      </div>
+    </div>
+  );
+}
+
+/** Same shape as «Группа»: the filter toolbar, then the table. */
+function GroupSkeleton() {
+  return (
+    <div className="flex flex-col gap-[var(--grid-gap)]">
+      <SkeletonBlock className="h-[5.5rem] rounded-2xl" />
+      <div className="glass-panel overflow-hidden rounded-2xl"><TableSkeleton rows={10} cols={8} /></div>
+    </div>
   );
 }

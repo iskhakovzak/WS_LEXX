@@ -217,7 +217,7 @@ export function AskBar({
               aria-label={t("bar.clear")}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { onChange(""); inputRef.current?.focus(); setOpen(true); }}
-              className="chip grid h-7 w-7 shrink-0 place-items-center"
+              className="chip grid h-8 w-8 shrink-0 place-items-center"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
@@ -227,7 +227,7 @@ export function AskBar({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => submit(value)}
             disabled={!value.trim() || busy}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary-solid px-3 text-xs font-medium text-primary-foreground transition-opacity duration-[var(--dur-1)] disabled:opacity-50"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary-solid px-3 text-xs font-medium text-primary-foreground transition-opacity duration-[var(--dur-1)] disabled:cursor-not-allowed disabled:opacity-50 sm:h-8"
           >
             {t("bar.submit")} <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -288,7 +288,7 @@ export function AskBar({
             })}
           </ul>
         )}
-        <div className="flex items-center gap-3 border-t border-[var(--glass-border)] px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 border-t border-[var(--glass-border)] px-3 py-2 text-xs text-muted-foreground pointer-coarse:hidden max-sm:hidden">
           <span className="inline-flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> {t("bar.keyMove")}</span>
           <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> {t("bar.keyAsk")}</span>
           <span className="inline-flex items-center gap-1"><Kbd>Tab</Kbd> {t("bar.keyComplete")}</span>

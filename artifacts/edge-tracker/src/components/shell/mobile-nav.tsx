@@ -74,7 +74,7 @@ export function MobileNav({ location }: { location: string }) {
                     <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                   </span>
                   {t.short ?? t.name}
-                  {badges[t.href] && <span className="absolute right-3 top-1 h-2 w-2 rounded-full bg-down" aria-label={badges[t.href]!.label} />}
+                  {badges[t.href] && <><span className="absolute right-3 top-1 h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{badges[t.href]!.label}</span></>}
                 </Link>
               </li>
             );
@@ -95,7 +95,7 @@ export function MobileNav({ location }: { location: string }) {
                 <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden="true" />
               </span>
               {t("mobile.more")}
-              {anyAlert && <span className="absolute right-3 top-1 h-2 w-2 rounded-full bg-down" aria-label={t("mobile.hasWarnings")} />}
+              {anyAlert && <><span className="absolute right-3 top-1 h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{t("mobile.hasWarnings")}</span></>}
             </button>
           </li>
         </ul>

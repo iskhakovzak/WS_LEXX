@@ -161,7 +161,7 @@ export function TradePickerDialog({
           )}
         </div>
 
-        <div className="min-h-[320px] flex-1 overflow-auto rounded-xl border border-border/60">
+        <div className="min-h-[min(320px,40dvh)] flex-1 overflow-auto rounded-xl border border-border/60">
           {pick.isLoading ? (
             <div className="flex flex-col gap-1 p-2" aria-busy="true">
               {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-[var(--glass-bg)] motion-reduce:animate-none" />)}
@@ -231,7 +231,7 @@ export function TradePickerDialog({
                           </span>
                         ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="max-w-[180px] truncate px-2 py-2 text-xs text-muted-foreground">
+                      <td className="max-w-[180px] truncate px-2 py-2 text-xs text-muted-foreground" title={!t.inSetup && !t.linkedHere ? t.playbookName ?? undefined : undefined}>
                         {t.inSetup ? <Pill tone="accent">{tr("picker.alreadyIn")}</Pill> : t.linkedHere ? tr("picker.thisSetup") : t.playbookName ?? "—"}
                       </td>
                       {t.redacted ? (

@@ -26,7 +26,7 @@ export function StageLadder({ stages, current, readyFor, counts }: {
   const { t } = academyPathI18n.useT();
   const idx = current ? stages.findIndex((s) => s.key === current) : -1;
   return (
-    <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={t("stage.ladderAria")}>
+    <ol className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(var(--steps),minmax(0,1fr))]" style={{ "--steps": Math.max(1, stages.length) } as React.CSSProperties} aria-label={t("stage.ladderAria")}>
       {stages.map((s, i) => {
         const state = idx < 0 ? "locked" : i < idx ? "done" : i === idx ? "current" : i === idx + 1 ? "next" : "locked";
         const Icon = state === "done" ? Check : state === "current" ? CircleDashed : state === "next" ? ArrowRight : Lock;

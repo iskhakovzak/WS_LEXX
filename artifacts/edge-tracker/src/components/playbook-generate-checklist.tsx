@@ -115,7 +115,7 @@ export function PlaybookGenerateChecklistButton({
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="flex max-h-[85vh] max-w-xl flex-col gap-4 p-4 sm:p-6"
+          className="flex max-h-[85dvh] max-w-xl flex-col gap-4 p-4 sm:p-6"
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); apply(); } }}
         >
           <DialogHeader className="pr-10">

@@ -182,7 +182,8 @@ export function SetupView({
               type="button"
               aria-pressed={entry.reviewed}
               onClick={() => reviewedMut.mutate(!entry.reviewed)}
-              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={reviewedMut.isPending}
+              className="rounded-full disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               title={entry.reviewed ? (entry.reviewedBy ? t("view.reviewedByTitle", { name: personName(entry.reviewedBy) }) : t("view.reviewedTitle")) : t("view.markReviewed")}
             >
               <Pill tone={entry.reviewed ? "up" : "neutral"}>
@@ -222,14 +223,14 @@ export function SetupView({
                   <PopoverContent align="start" className="w-80">
                     <form
                       className="flex flex-col gap-2"
-                      onSubmit={(e) => { e.preventDefault(); action.mutate("propose"); }}
+                      onSubmit={(e) => { e.preventDefault(); if (!action.isPending) action.mutate("propose"); }}
                     >
                       <label htmlFor="pb-propose-note" className="text-sm font-medium text-foreground">{t("view.proposeLabel")}</label>
                       <Textarea
                         id="pb-propose-note"
                         value={proposeNote}
                         onChange={(e) => setProposeNote(e.target.value)}
-                        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); action.mutate("propose"); } }}
+                        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!action.isPending) action.mutate("propose"); } }}
                         rows={3}
                         maxLength={2000}
                         autoFocus

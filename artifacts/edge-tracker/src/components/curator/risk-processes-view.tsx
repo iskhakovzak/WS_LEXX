@@ -3,8 +3,9 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, Layers, Moon, Repeat, ShieldAlert, ShieldCheck } from "lucide-react";
 import {
-  BentoGrid, DataTable, EmptyState, Panel, Pill, QueryState, SortableTh, StatCard, StatGrid, toneOf, useTableSort,
+  BentoGrid, DataTable, EmptyState, Panel, PanelSkeleton, Pill, QueryState, SortableTh, StatCard, StatGrid, StatGridSkeleton, toneOf, useTableSort,
 } from "@/components/ds";
+import { VirtualRows } from "@/components/ds/virtual";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
@@ -27,15 +28,15 @@ export function RiskProcessesView({ onOpenTrader }: { onOpenTrader: (trader: str
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <QueryState query={summary} skeleton={<div className="h-28" aria-hidden="true" />} errorCompact>
+      <QueryState query={summary} skeleton={<StatGridSkeleton count={6} />} errorCompact>
         {(s) => <SummaryBlock s={s} onOpenTrader={onOpenTrader} />}
       </QueryState>
 
-      <QueryState query={templates} skeleton={<div className="glass-panel h-64 rounded-2xl" aria-hidden="true" />} errorCompact>
+      <QueryState query={templates} skeleton={<PanelSkeleton height={256} />} errorCompact>
         {(t) => <TemplatesBlock t={t} onOpenTrader={onOpenTrader} />}
       </QueryState>
 
-      <QueryState query={breaches} skeleton={<div className="glass-panel h-40 rounded-2xl" aria-hidden="true" />} errorCompact>
+      <QueryState query={breaches} skeleton={<PanelSkeleton height={160} />} errorCompact>
         {(b) => (
           <BreachReviewPanel
             breaches={b.breaches}
@@ -173,13 +174,13 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                   {t.canEdit && <th />}
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((r) => (
+              {/* The whole desk (≈150+ people): windowed from 120 rows, plain below that. */}
+              <VirtualRows rows={rows} colSpan={t.canEdit ? 8 : 6} estimateSize={49} getKey={(r) => r.trader} renderRow={(r) => (
                   <tr key={r.trader} className={cn(selected.has(r.trader) && "bg-primary/5")}>
                     {t.canEdit && (
                       <td><Checkbox checked={selected.has(r.trader)} onCheckedChange={() => toggle(r.trader)} aria-label={tr("risk.selectOne", { name: personName(r.trader) })} /></td>
                     )}
-                    <td><button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{personName(r.trader)}</button></td>
+                    <td className="max-w-[14rem]"><button type="button" className="block max-w-full truncate text-left font-medium text-foreground hover:text-primary" title={personName(r.trader)} onClick={() => onOpenTrader(r.trader, "risk")}>{personName(r.trader)}</button></td>
                     <td className="text-muted-foreground">{r.tierName ?? "—"}</td>
                     <td className="text-right">{fmtUsd(r.limits?.dailyLossLimit, { decimals: 0 })}</td>
                     <td className="text-right">{fmtUsd(r.limits?.weeklyLossLimit, { decimals: 0 })}</td>
@@ -192,12 +193,11 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                     </td>
                     {t.canEdit && (
                       <td className="text-right">
-                        <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setDialog({ traders: [r.trader], tier: r.tier })}>{tr("risk.template")}</Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setDialog({ traders: [r.trader], tier: r.tier })}>{tr("risk.template")}</Button>
                       </td>
                     )}
                   </tr>
-                ))}
-              </tbody>
+              )} />
             </table>
           </DataTable>
         )}

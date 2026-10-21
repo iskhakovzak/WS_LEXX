@@ -121,7 +121,7 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
       {status.isLoading ? (
         <Skeleton className="h-48 w-full rounded-2xl" />
       ) : err ? (
-        <Panel><EmptyState icon={Plug} title={err.status === 401 ? t("page.sessionExpired") : t("page.statusFailed")} description={err.message} /></Panel>
+        <Panel><EmptyState icon={Plug} title={err.status === 401 ? t("page.sessionExpired") : t("page.statusFailed")} description={err.message} action={err.status === 401 ? undefined : <Button variant="outline" size="sm" onClick={() => status.refetch()}>{commonI18n.t("actions.retry")}</Button>} /></Panel>
       ) : status.data ? (
         <StatusHero status={status.data} />
       ) : null}
@@ -149,11 +149,11 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
           <ReconcilePanel trader={staff ? undefined : status.data?.viewer.name} />
         </div>
       )}
-      {tab === "accounts" && <AccountsEditor accounts={accounts.data ?? []} staff={canConfigure} apiConfigured={apiConfigured} />}
-      {tab === "reconcile" && <ReconcileInbox pending={pending.data ?? []} staff={canSync} loading={pending.isLoading} />}
+      {tab === "accounts" && <AccountsEditor accounts={accounts.data ?? []} staff={canConfigure} apiConfigured={apiConfigured} loading={accounts.isLoading} error={accounts.isError ? accounts.error : null} onRetry={() => accounts.refetch()} />}
+      {tab === "reconcile" && <ReconcileInbox pending={pending.data ?? []} staff={canSync} loading={pending.isLoading} error={pending.isError ? pending.error : null} onRetry={() => pending.refetch()} />}
       {tab === "reconcile" && <ReconcileBrokerPanel />}
       {tab === "history" && staff && <BackgroundSync canSync={canSync} apiConfigured={apiConfigured} />}
-      {tab === "history" && <SyncHistory runs={runs.data ?? []} loading={runs.isLoading} />}
+      {tab === "history" && <SyncHistory runs={runs.data ?? []} loading={runs.isLoading} error={runs.isError ? runs.error : null} onRetry={() => runs.refetch()} />}
       {tab === "api" && staff && apiConfigured && <ApiV2Panel accounts={accounts.data ?? []} canSync={canSync} />}
 
       {canSync && <RunSyncDialog open={runOpen} onOpenChange={setRunOpen} configured={apiConfigured} onGoTab={(x) => { setRunOpen(false); setTab(x); }} />}

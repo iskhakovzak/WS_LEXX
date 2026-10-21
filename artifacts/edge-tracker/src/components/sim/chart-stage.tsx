@@ -47,10 +47,12 @@ export function ChartStage({
   const done = game.done;
   const choose = (kind: "stop" | "target", price: number) => { setMenu(null); onPlace(kind, price); };
   return (
-    <div className="glass-panel relative isolate h-[52dvh] min-h-[300px] overflow-hidden rounded-2xl p-1.5 sm:p-2 lg:h-[calc(100dvh-15rem)] lg:min-h-[480px]">
+    // Phones: the chart, its toolbar and the mobile bar under it fit between the app header and the bottom nav
+    // (100dvh − header, page top padding and nav ≈ 10rem, toolbar ≈ 4.5rem, mobile bar + gaps ≈ 7rem).
+    <div className="glass-panel relative isolate h-[calc(100dvh-21.5rem)] min-h-[260px] overflow-hidden rounded-2xl p-1.5 sm:p-2 lg:h-[calc(100dvh-15rem)] lg:min-h-[480px]">
       <SimChart
         feed={game.feed} mode={game.meta.mode} startIdx={game.meta.startIdx} levels={levels} overlay={overlay} toggles={toggles}
-        className="min-h-[280px]" onDragLine={done ? undefined : onDragLine} dragLabel={dragLabel}
+        className="min-h-[240px]" onDragLine={done ? undefined : onDragLine} dragLabel={dragLabel}
         baseMin={baseMin} dispMin={dispMin}
         onPlace={done ? undefined : onPlace} onMenu={done ? undefined : (price, x, y) => setMenu({ price, x, y })}
       />
@@ -81,7 +83,7 @@ function PlaceMenuView({ menu, onClose, onChoose }: { menu: PlaceMenu; onClose: 
       <div role="menu" aria-label={title} data-testid="sim-place-menu" className="glass-panel absolute z-popover flex min-w-[10rem] flex-col gap-1 rounded-xl p-1.5 shadow-lg" style={style}>
         <div className="flex items-center justify-between gap-2 px-1.5 text-2xs text-muted-foreground">
           <span className="tabular-nums">{title}</span>
-          <button type="button" className="rounded p-0.5 hover:bg-[var(--glass-bg)]" aria-label={t("box.menuClose")} onClick={onClose}><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+          <button type="button" className="-mr-1 grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--glass-bg)]" aria-label={t("box.menuClose")} onClick={onClose}><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
         </div>
         <Button role="menuitem" size="sm" variant="outline" className="justify-start border-down/40 text-down" onClick={() => onChoose("stop", menu.price)}>{t("box.menuStop")}</Button>
         <Button role="menuitem" size="sm" variant="outline" className="justify-start border-up/40 text-up" onClick={() => onChoose("target", menu.price)}><Target aria-hidden="true" />{t("box.menuTarget")}</Button>

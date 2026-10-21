@@ -76,7 +76,7 @@ export function WatchlistTable({
 
   // 2.11: phones get cards (no 1000 px table), wider screens the table — only one of them is mounted.
   if (isMobile) {
-    return <WatchlistCards rows={rows} showList={showList} canEdit={canEdit} me={me} actions={actions} scoringIds={scoringIds} levelsLoading={levelsLoading} today={today} />;
+    return <WatchlistCards rows={rows} showList={showList} canEdit={canEdit} me={me} actions={actions} scoringIds={scoringIds} levelsLoading={levelsLoading} quotesLoading={quotesLoading} today={today} />;
   }
 
   return (
@@ -255,9 +255,9 @@ const Row = React.memo(function Row({
       </td>
 
       <td className={cn("text-right font-medium text-foreground", cellY)}>
-        {loadingQuote ? <span className="ml-auto block h-3.5 w-12 animate-pulse rounded bg-muted motion-reduce:animate-none" /> : fmtPrice(q?.price)}
+        {loadingQuote ? <span className="ml-auto block h-3.5 w-12 animate-pulse rounded bg-muted motion-reduce:animate-none" aria-hidden="true" /> : fmtPrice(q?.price)}
       </td>
-      <td className={cn("text-right", cellY, toneText(toneOf(q?.change)))}>{loadingQuote ? "" : fmtPct(q?.change, 2)}</td>
+      <td className={cn("text-right", cellY, toneText(toneOf(q?.change)))}>{loadingQuote ? <span className="ml-auto block h-3.5 w-10 animate-pulse rounded bg-muted motion-reduce:animate-none" aria-hidden="true" /> : fmtPct(q?.change, 2)}</td>
       <td className={cn("text-right text-xs", cellY, gap != null && Math.abs(gap) >= 3 ? cn("font-semibold", toneText(toneOf(gap))) : "text-muted-foreground")}>
         {fmtPct(gap, 1)}
       </td>

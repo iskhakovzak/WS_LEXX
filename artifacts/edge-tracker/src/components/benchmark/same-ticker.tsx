@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Users } from "lucide-react";
 import { DataTable, EmptyState, FilterChip, Panel, Pill, toneOf, toneText } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { SameTickerCase, SameTickerResponse } from "./api";
@@ -82,7 +83,7 @@ function CaseCard({ c }: { c: SameTickerCase }) {
   );
 }
 
-export function SameTickerView({ data, loading, error }: { data: SameTickerResponse | undefined; loading: boolean; error: Error | null }) {
+export function SameTickerView({ data, loading, error, onRetry }: { data: SameTickerResponse | undefined; loading: boolean; error: Error | null; onRetry?: () => void }) {
   const { t } = benchmarkI18n.useT();
   const [pair, setPair] = useState<string | null>(null);
   const [onlySameSide, setOnlySameSide] = useState(false);
@@ -94,7 +95,7 @@ export function SameTickerView({ data, loading, error }: { data: SameTickerRespo
   }, [data, pair, onlySameSide]);
 
   if (loading && !data) return <div className="flex flex-col gap-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 rounded-2xl" />)}</div>;
-  if (error) return <EmptyState icon={Users} title={t("same.loadError")} description={error.message} />;
+  if (error && !data) return <QueryError error={error} title={t("same.loadError")} onRetry={onRetry} />;
   if (!data || data.total === 0) {
     return (
       <EmptyState icon={Users} title={t("same.none")}

@@ -90,7 +90,7 @@ function CommentItem({
           {isNew && <Pill tone="accent" className="py-0 text-2xs">{t("thread.new")}</Pill>}
           {accepted && <Pill tone="up" className="py-0 text-2xs"><Award className="h-3 w-3" aria-hidden="true" />{t("thread.accepted")}</Pill>}
           {!isEditing && !pending && canEdit && (
-            <div className="ml-auto flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+            <div className="ml-auto flex items-center gap-0.5 opacity-100 transition-opacity duration-[var(--dur-1)] pointer-fine:opacity-0 pointer-fine:group-focus-within:opacity-100 pointer-fine:group-hover:opacity-100">
               {canAccept && onAccept && (
                 <button type="button" aria-label={accepted ? t("thread.unaccept") : t("thread.accept")} title={accepted ? t("thread.unacceptShort") : t("thread.accepted")} onClick={() => onAccept(c)} className={cn("grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]", accepted ? "text-up" : "text-muted-foreground hover:text-up")}><Award className="h-3.5 w-3.5" /></button>
               )}
@@ -382,7 +382,7 @@ export function ThreadView({
                 </Pill>
               )}
             </div>
-            <h2 className="mt-1.5 text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">{thread.topic}</h2>
+            <h2 className="mt-1.5 break-words text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">{thread.topic}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1.5"><Avatar name={thread.trader} size="xs" />{thread.trader ? personName(thread.trader) : tc("roles.guest")}</span>
               <span title={absTime(thread.createdAt)}>{relTime(thread.createdAt)}</span>
@@ -501,12 +501,12 @@ export function ThreadView({
 
       {/* Composer */}
       {canEdit && (
-        <div className="glass-thick glass-solid sticky bottom-0 z-sticky rounded-b-2xl bg-[var(--sticky-bg)] border-x-0 border-b-0 px-4 pb-4 pt-3 sm:px-5">
+        <div className="glass-thick glass-solid sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-sticky rounded-b-2xl bg-[var(--sticky-bg)] border-x-0 border-b-0 px-4 pb-4 pt-3 sm:px-5 md:bottom-0">
           {replyTo && (
             <div className="mb-2 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-1.5 text-xs">
               <Reply className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate">{t("thread.replyTo", { name: replyTo.trader ? personName(replyTo.trader) : tc("roles.guest"), preview: plainPreview(parseBody(replyTo.text), 80) })}</span>
-              <button type="button" aria-label={t("thread.cancelReply")} onClick={() => setReplyTo(null)} className="grid h-7 w-7 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]"><X className="h-3.5 w-3.5" /></button>
+              <button type="button" aria-label={t("thread.cancelReply")} onClick={() => setReplyTo(null)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]"><X className="h-3.5 w-3.5" /></button>
             </div>
           )}
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -537,7 +537,7 @@ export function ThreadView({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => insertMention(n)}
                   title={personName(n) !== n ? `@${n}` : undefined}
-                  className={cn("chip inline-flex min-h-7 items-center gap-1.5 px-2.5 text-xs", n === activeMention && "!border-primary/50 !bg-primary/15 text-foreground")}
+                  className={cn("chip inline-flex min-h-8 items-center gap-1.5 px-2.5 text-xs", n === activeMention && "!border-primary/50 !bg-primary/15 text-foreground")}
                 >
                   <Avatar name={n} size="xs" />@{personName(n)}
                 </button>

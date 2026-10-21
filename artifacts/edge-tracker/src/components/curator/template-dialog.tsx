@@ -3,9 +3,8 @@ import { Layers } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Pill, QueryState, Segmented } from "@/components/ds";
+import { Pill, QueryState, Segmented, SkeletonBlock } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 import { curatorApi, useCuratorMutation, useRiskTemplates, type TierTemplate } from "./api";
 import { fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
@@ -76,7 +75,7 @@ export function TemplateDialog({
             {traders.length === 1 ? t("template.descOne", { name: personName(traders[0]) }) : t("template.descMany", { count: traders.length })} {t("template.descTail")}
           </DialogDescription>
         </DialogHeader>
-        <QueryState query={q} skeleton={<div className="h-48" />}>
+        <QueryState query={q} skeleton={<SkeletonBlock className="h-48 rounded-xl" />}>
           {() => !q.data?.canEdit ? (
             <p className="text-sm text-muted-foreground">{t("template.noRight")}</p>
           ) : (
@@ -107,7 +106,7 @@ export function TemplateDialog({
                         return (
                           <li key={name} className="tile flex flex-col gap-1 p-2.5">
                             <div className="flex items-center gap-2 text-sm">
-                              <span className="font-medium text-foreground">{personName(name)}</span>
+                              <span className="min-w-0 truncate font-medium text-foreground" title={personName(name)}>{personName(name)}</span>
                               <span className="text-xs text-muted-foreground">{row?.tierName ?? t("template.noTier")}{row?.tier && row.tier !== tier.key ? ` → ${tier.stageLabel ?? tier.name}` : ""}</span>
                               <span className="ml-auto">{!cur ? <Pill tone="warn">{t("template.noLimits")}</Pill> : changed.length ? <Pill tone="accent">{t("template.changes", { count: changed.length })}</Pill> : <Pill tone="up">{t("template.matches")}</Pill>}</span>
                             </div>
@@ -129,7 +128,7 @@ export function TemplateDialog({
         </QueryState>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={apply.isPending}>{tc("actions.cancel")}</Button>
-          <Button type="button" onClick={submit} disabled={!tier || !q.data?.canEdit || apply.isPending} className={cn(!traders.length && "opacity-50")}>
+          <Button type="button" onClick={submit} disabled={!tier || !traders.length || !q.data?.canEdit || apply.isPending}>
             {apply.isPending ? t("template.applying") : traders.length > 1 ? t("template.applyTo", { count: traders.length }) : t("template.apply")}
           </Button>
         </DialogFooter>

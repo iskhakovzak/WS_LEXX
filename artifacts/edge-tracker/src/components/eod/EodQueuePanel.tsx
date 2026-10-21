@@ -10,6 +10,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { eodI18n } from "@/i18n/ns/eod";
 import { DISCIPLINE_LABELS, MOOD_LABELS, hoursText, slaText, useEodQueue, useEodReviewed, type QueueItem, type QueueScope } from "./eod-api";
 import { EodReviewSheet } from "./EodReviewSheet";
+import { QueryError } from "@/components/query-error";
 import { PersonSelect } from "@/components/people/person-select";
 
 type Tab = "pending" | "reviewed";
@@ -26,7 +27,8 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
   const [scopePref, setScope] = usePersistentState<QueueScope | "auto">("eod.queueScope", "auto");
   const pendingQ = useEodQueue(enabled, scopePref);
   const [tab, setTab] = useState<Tab>("pending");
-  const reviewedQ = useEodReviewed(enabled && tab === "reviewed", scopePref);
+  // Loaded on both tabs: the «Проверено в срок» KPI needs it (it showed «…» forever on «Ждут проверки»).
+  const reviewedQ = useEodReviewed(enabled, scopePref);
   const scope: QueueScope = scopePref === "auto" ? pendingQ.data?.scope ?? "desk" : scopePref;
   const wards = pendingQ.data?.wards ?? 0;
   const [trader, setTrader] = useState("");
@@ -64,6 +66,9 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
   if (!enabled) return null;
   const loading = tab === "pending" ? pendingQ.isLoading : reviewedQ.isLoading;
   const unavailable = tab === "pending" ? pendingQ.data === null : reviewedQ.data === null && !reviewedQ.isLoading;
+  // A failed load is not «the queue is empty» (that would read as «all reviewed»).
+  const activeQ = tab === "pending" ? pendingQ : reviewedQ;
+  const failed = activeQ.isError && !activeQ.data;
 
   return (
     <>
@@ -102,7 +107,7 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
             <Kpi label={t("queue.avgWait")} value={kpi.avgWait != null ? hoursText(kpi.avgWait) : "—"} />
             <Kpi
               label={t("queue.inSla")}
-              value={kpi.inSla != null ? `${Math.round(kpi.inSla * 100)}%` : tab === "reviewed" ? "—" : "…"}
+              value={kpi.inSla != null ? `${Math.round(kpi.inSla * 100)}%` : reviewedQ.isLoading ? "…" : "—"}
               hint={kpi.avgReview != null ? t("queue.avgReview", { time: hoursText(kpi.avgReview) }) : undefined}
             />
           </dl>
@@ -126,6 +131,8 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
 
           {loading ? (
             <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
+          ) : failed ? (
+            <QueryError compact error={activeQ.error} onRetry={() => void activeQ.refetch()} />
           ) : unavailable ? (
             <p className="text-sm text-muted-foreground">{t("queue.afterUpdate")}</p>
           ) : items.length === 0 ? (

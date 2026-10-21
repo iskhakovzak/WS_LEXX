@@ -6,9 +6,9 @@
  */
 import * as React from "react";
 import { Receipt } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, toneOf, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Panel, Pill, Segmented, StatCard, StatGrid, TableSkeleton, toneOf, type Tone } from "@/components/ds";
+import { VirtualRows } from "@/components/ds/virtual";
 import { fmtDate, fmtUsd } from "@/lib/format";
-import { commonI18n } from "@/i18n/ns/common";
 import { propreportsAccuracyI18n } from "@/i18n/ns/propreportsAccuracy";
 import { useAdjustmentDays, type AdjustmentKind } from "./reconcile-broker-api";
 
@@ -33,8 +33,10 @@ export function BrokerAdjustmentsCard({ trader, from, to }: { trader?: string | 
         <StatCard label={t("adjustments.equity")} value={fmtUsd(totals?.equityDelta, { signed: true })} tone={toneOf(totals?.equityDelta)} loading={q.isLoading} />
       </StatGrid>
 
-      {q.isLoading ? (
-        <div className="py-6 text-center text-sm text-muted-foreground">{commonI18n.t("states.loading")}</div>
+      {q.isError && !data ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} inset />
+      ) : q.isLoading ? (
+        <TableSkeleton rows={4} cols={6} className="mt-3" />
       ) : !data?.items.length ? (
         <EmptyState icon={Receipt} title={t("adjustments.empty")} description={t("adjustments.emptyHint")} />
       ) : (
@@ -86,8 +88,7 @@ export function BrokerAdjustmentsCard({ trader, from, to }: { trader?: string | 
                     <th className="text-left">{t("adjustments.col.comment")}</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {data.items.map((a) => (
+                <VirtualRows rows={data.items} colSpan={6} estimateSize={41} getKey={(a) => a.id} renderRow={(a) => (
                     <tr key={a.id}>
                       <td className="whitespace-nowrap">{fmtDate(a.date, "short")}</td>
                       <td className="whitespace-nowrap">{a.account}</td>
@@ -96,8 +97,7 @@ export function BrokerAdjustmentsCard({ trader, from, to }: { trader?: string | 
                       <td className="text-right tabular-nums">{fmtUsd(a.amount, { signed: true })}</td>
                       <td className="max-w-[16rem] truncate text-muted-foreground" title={a.comment ?? undefined}>{a.comment ?? ""}</td>
                     </tr>
-                  ))}
-                </tbody>
+                  )} />
               </table>
             </DataTable>
           )}

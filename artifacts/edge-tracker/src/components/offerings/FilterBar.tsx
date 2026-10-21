@@ -58,6 +58,7 @@ export function FilterBar({
   canExport,
   shown,
   total,
+  loading = false,
 }: {
   filters: OfferingFilters;
   onChange: (f: OfferingFilters) => void;
@@ -72,6 +73,8 @@ export function FilterBar({
   canExport: boolean;
   shown: number;
   total: number;
+  /** The day is still loading: filters and search already work, counts are not known yet. */
+  loading?: boolean;
 }) {
   const { t } = offeringsI18n.useT();
   const [open, setOpen] = useState(false);
@@ -161,7 +164,7 @@ export function FilterBar({
       </Popover>
 
       <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label={t("filters.presetsAria")}>
-        <FilterChip active={filters.mine} onClick={() => set({ mine: !filters.mine })} count={mineCount} className="min-h-8 text-xs">
+        <FilterChip active={filters.mine} onClick={() => set({ mine: !filters.mine })} count={loading ? undefined : mineCount} className="min-h-8 text-xs">
           {t("filters.myTickers")}
         </FilterChip>
         {all.map((p) => {
@@ -173,7 +176,7 @@ export function FilterBar({
               </FilterChip>
               {!p.builtin && (
                 <button type="button" onClick={() => onDeletePreset(p.id)} aria-label={t("filters.deletePreset", { name: p.name })}
-                  className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
+                  className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <X className="h-3 w-3" aria-hidden="true" />
                 </button>
               )}
@@ -183,7 +186,9 @@ export function FilterBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{shown === total ? `${total}` : commonI18n.t("states.ofTotal", { value: shown, total })}</span>
+        {loading
+          ? <span aria-hidden="true" className="skeleton block h-3 w-8" />
+          : <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{shown === total ? `${total}` : commonI18n.t("states.ofTotal", { value: shown, total })}</span>}
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onExport} disabled={!canExport} aria-label={t("filters.downloadCsv")} title={t("filters.downloadCsv")}>
           <Download aria-hidden="true" />
         </Button>

@@ -68,7 +68,8 @@ export function ReviewActions({
   const [note, setNote] = React.useState("");
   const noteId = React.useId();
 
-  React.useEffect(() => { setDecision(null); setNote(""); }, [idea.id]);
+  // Reset on another idea, and once the saved verdict lands (the form closes after a successful review).
+  React.useEffect(() => { setDecision(null); setNote(""); }, [idea.id, idea.review_status, idea.reviewed_at]);
 
   const addQuick = (q: string) => setNote((n) => (n.includes(q) ? n : n ? `${n.trim()}; ${q}` : q));
 
@@ -104,14 +105,14 @@ export function ReviewActions({
           </label>
           <div className="flex flex-wrap gap-1.5">
             {quickNotes(decision).map((q) => (
-              <button key={q} type="button" onClick={() => addQuick(q)} className="chip min-h-7 px-2.5 text-xs">+ {q}</button>
+              <button key={q} type="button" onClick={() => addQuick(q)} className="chip min-h-8 px-2.5 text-xs">+ {q}</button>
             ))}
           </div>
           <Textarea
             id={noteId}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && (decision === "approved" || note.trim())) { e.preventDefault(); onSubmit(decision, note.trim()); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !pending && (decision === "approved" || note.trim())) { e.preventDefault(); onSubmit(decision, note.trim()); } }}
             rows={2}
             maxLength={2000}
             placeholder={t("review.placeholder")}

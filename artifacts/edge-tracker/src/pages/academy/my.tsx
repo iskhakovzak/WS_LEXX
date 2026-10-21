@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, Loader2, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
 import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -61,7 +61,12 @@ export default function AcademyMyPage() {
       {d && d.user && d.enrollments.length === 0 && (
         <NotEnrolledPanel user={d.user} viewingOther={!!d.viewingOther}>{!d.viewingOther && <AskCuratorButton kind="group" className="mt-3" />}</NotEnrolledPanel>
       )}
-      {d && d.user && d.enrollments.length > 0 && <Dashboard d={d} readOnly={!!d.viewingOther} />}
+      {d && d.user && d.enrollments.length > 0 && (
+        // Staff switching the student keeps the previous dashboard (dimmed) until the new one arrives.
+        <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-4 sm:gap-[var(--page-gap)] transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
+          <Dashboard d={d} readOnly={!!d.viewingOther} />
+        </div>
+      )}
     </Page>
   );
 }
@@ -167,7 +172,7 @@ function CheckinButton({ o, now, onDone }: { o: MyOccurrence; now: number; onDon
         onSuccess: (r) => { toast({ title: r.already ? t("myPage.checkin.already") : r.status === "late" ? t("myPage.checkin.late") : t("myPage.checkin.present") }); onDone?.(); },
         onError: (e) => toast({ title: t("myPage.checkin.failed"), description: e.message, variant: "destructive" }),
       })}>
-      <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" />{t("myPage.checkin.button")}
+      {checkin.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" />}{t("myPage.checkin.button")}
     </Button>
   );
 }
@@ -235,7 +240,7 @@ function ManualProgress({ goal }: { goal: Goal }) {
       });
     }}>
       <Input aria-label={t("myPage.manual.aria")} type="number" min={0} max={100} className="h-8 w-20" value={v} onChange={(e) => setV(e.target.value === "" ? "" : Number(e.target.value))} />
-      <Button type="submit" size="sm" variant="outline" disabled={upd.isPending} title={ct("actions.save")}>%</Button>
+      <Button type="submit" size="sm" variant="outline" disabled={upd.isPending} title={ct("actions.save")} aria-label={ct("actions.save")}>%</Button>
     </form>
   );
 }

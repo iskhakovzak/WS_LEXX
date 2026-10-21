@@ -3,7 +3,7 @@
  */
 import * as React from "react";
 import { ChevronDown, ChevronRight, History } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, SortableTh, useTableSort, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Panel, Pill, SortableTh, TableSkeleton, useTableSort, type Tone } from "@/components/ds";
 import { runStatusLabel, type SyncRun } from "./api";
 import { fmtDate } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
@@ -29,15 +29,17 @@ const RUN_ACCESSORS = {
 };
 const RUN_FIRST_DIR = { source: "asc", period: "asc", actor: "asc" } as const;
 
-export function SyncHistory({ runs, loading }: { runs: SyncRun[]; loading: boolean }) {
+export function SyncHistory({ runs, loading, error = null, onRetry }: { runs: SyncRun[]; loading: boolean; error?: unknown; onRetry?: () => void }) {
   const { t } = propreportsI18n.useT();
   const [open, setOpen] = React.useState<Set<number>>(() => new Set());
   const sort = useTableSort(runs, RUN_ACCESSORS, "when", "desc", RUN_FIRST_DIR);
   const toggle = (id: number) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
     <Panel title={t("history.title")} description={t("history.description")} icon={History}>
-      {loading ? (
-        <div className="py-6 text-center text-sm text-muted-foreground">{commonI18n.t("states.loading")}</div>
+      {error && !runs.length ? (
+        <ErrorState error={error} onRetry={onRetry} inset />
+      ) : loading ? (
+        <TableSkeleton rows={6} cols={8} />
       ) : !runs.length ? (
         <EmptyState icon={History} title={t("history.empty")} />
       ) : (
@@ -45,7 +47,7 @@ export function SyncHistory({ runs, loading }: { runs: SyncRun[]; loading: boole
           <table>
             <thead>
               <tr>
-                <th className="w-6" />
+                <th className="w-8"><span className="sr-only">{t("history.details")}</span></th>
                 <SortableTh {...sort.thProps("when")}>{t("history.col.when")}</SortableTh>
                 <SortableTh {...sort.thProps("source")}>{t("history.col.source")}</SortableTh>
                 <SortableTh {...sort.thProps("period")}>{t("history.col.period")}</SortableTh>
@@ -70,8 +72,8 @@ export function SyncHistory({ runs, loading }: { runs: SyncRun[]; loading: boole
                     <tr>
                       <td>
                         {expandable && (
-                          <button type="button" onClick={() => toggle(r.id)} aria-expanded={isOpen} aria-label={t("history.details")} className="rounded p-0.5 text-muted-foreground hover:text-foreground">
-                            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                          <button type="button" onClick={() => toggle(r.id)} aria-expanded={isOpen} aria-label={t("history.details")} className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground">
+                            {isOpen ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />}
                           </button>
                         )}
                       </td>

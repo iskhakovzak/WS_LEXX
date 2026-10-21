@@ -111,7 +111,8 @@ export default function TrainerPage() {
   const nextInSeries = series.next;
   const seriesAction = series.action;
   const again = React.useCallback(() => {
-    if (!game) return;
+    // Enter + a click (or two quick Enters) must not start two games / skip a series game.
+    if (!game || starting) return;
     // A series game: the next one (instant — prepared by the server), or the summary after the last one.
     if (seriesAction) { void nextInSeries(); return; }
     // «Задача дня» is played once: its result leads on to a series (closure).
@@ -119,7 +120,7 @@ export default function TrainerPage() {
     const own = game.meta.own;
     if (own) { void startOwn(own.pick === "trade" ? "worst" : own.pick, undefined, isIntradayTf(game.meta.tf) ? game.meta.tf : null); return; }
     void start(game.meta.mode, game.meta.difficulty, isIntradayTf(game.meta.tf) ? game.meta.tf : null);
-  }, [game, start, startOwn, seriesAction, nextInSeries, startSeries]);
+  }, [game, starting, start, startOwn, seriesAction, nextInSeries, startSeries]);
 
   const actions: HomeActions = {
     starting,

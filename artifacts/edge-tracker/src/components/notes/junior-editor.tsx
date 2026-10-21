@@ -449,7 +449,7 @@ export function JuniorEditor({
                   <span className="ml-auto text-2xs text-muted-foreground">Ctrl+S</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={improving || !words} onSelect={() => void improve()}>
-                  {improving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+                  {improving ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
                   {improving ? t("improving") : t("improve")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -630,7 +630,7 @@ function SectionField({
 function SaveStatus({ state, savedAt }: { state: SaveState; savedAt: number | null }) {
   const { t } = notesI18n.useT();
   if (state === "saving") {
-    return <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t("savingNow")}</span>;
+    return <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("savingNow")}</span>;
   }
   if (state === "dirty") return <span role="status" className="text-xs text-muted-foreground">{t("dirty")}</span>;
   if (state === "error") {

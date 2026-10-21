@@ -133,6 +133,8 @@ export default {
     title: "My plan for today",
     count: "{count} of {max}",
     unset: "—",
+    unsetAll: "Daily stop, max trades and 1R aren’t set — set them in your day plan.",
+    setInPlan: "Set in plan",
     stop: "Daily stop",
     maxTrades: "Max trades",
     oneR: "1R",

@@ -18,6 +18,8 @@ type Quick = "1" | "7" | "30" | "all" | "custom";
 
 /** Action groups for the «Что» filter («user.*» matches every user action). */
 const ACTION_GROUPS = ["user", "propreports", "scaling", "report", "academy"] as const;
+/** The API returns up to 1000 rows; render them a page at a time (a long DOM list made the tab sluggish). */
+const PAGE = 100;
 
 function rangeFor(q: Quick): { from?: string; to?: string } {
   const today = nyDate();
@@ -96,6 +98,10 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
   };
   const { data, isLoading, isError, error, refetch, isFetching } = useAuditSearch(actor, query);
   const entries = data?.items ?? [];
+  const [limit, setLimit] = useState(PAGE);
+  const queryKey = JSON.stringify(query);
+  useEffect(() => { setLimit(PAGE); }, [queryKey]);
+  const visible = useMemo(() => entries.slice(0, limit), [entries, limit]);
 
   const actors = useMemo(() => {
     const v = new Set((data?.facets.actors ?? []).map((f) => f.value));
@@ -116,14 +122,14 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
 
   const groups = useMemo(() => {
     const out: { key: string; label: string; items: AuditEntry[] }[] = [];
-    for (const e of entries) {
+    for (const e of visible) {
       const key = nyDayOf(e.createdAt);
       const last = out[out.length - 1];
       if (last && last.key === key) last.items.push(e);
       else out.push({ key, label: dayHeading(key), items: [e] });
     }
     return out;
-  }, [entries]);
+  }, [visible]);
 
   const filtersActive = !!q || who !== ALL || what !== ALL || objType !== ALL || !!objId || quick !== "30";
   const reset = () => { setQInput(""); setQ(""); setWho(ALL); setWhat(ALL); setObjType(ALL); setObjIdInput(""); setObjId(""); pickQuick("30"); };
@@ -200,7 +206,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
           {filtersActive && <Button variant="ghost" size="sm" onClick={reset}>{tc("actions.reset")}</Button>}
           {data && (
             <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-              {data.total > entries.length ? ta("log.shown", { shown: entries.length, total: data.total }) : tc("units.entries", { count: entries.length })}
+              {data.total > visible.length ? ta("log.shown", { shown: visible.length, total: data.total }) : tc("units.entries", { count: entries.length })}
             </span>
           )}
         </div>
@@ -226,6 +232,13 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
                 </ul>
               </section>
             ))}
+            {entries.length > visible.length && (
+              <div className="flex justify-center pt-1">
+                <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + PAGE)}>
+                  {tc("actions.showMore")} · {Math.min(PAGE, entries.length - visible.length)}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

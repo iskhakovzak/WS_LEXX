@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { History, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, Pill } from "@/components/ds";
@@ -62,7 +63,10 @@ export function HistoryPanel({
             ))}
           </div>
         ) : hq.isError ? (
-          <p className="py-4 text-sm text-muted-foreground">{t("history.unavailable")}</p>
+          <div className="flex flex-wrap items-center gap-2 py-4 text-sm text-muted-foreground">
+            {t("history.unavailable")}
+            <Button type="button" variant="outline" size="sm" onClick={() => void hq.refetch()} disabled={hq.isFetching}>{commonI18n.t("actions.retry")}</Button>
+          </div>
         ) : list.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">{q ? commonI18n.t("states.nothingFound") : t("history.none")}</p>
         ) : (

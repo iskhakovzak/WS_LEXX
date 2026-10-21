@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronsUpDown, Crown, Download, Flame, Medal, Trophy, Users } from "lucide-react";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
@@ -95,6 +95,7 @@ export function useLeaderboard(period: Period, metric: Metric | "auto") {
     queryKey: ["leaderboard", period],
     queryFn: ({ signal }) => http.get<LeaderboardEntry[]>("/api/leaderboard", { query: { days: period === "all" ? null : period }, signal }),
     staleTime: STALE.default,
+    placeholderData: keepPreviousData, // period switch keeps the board on screen instead of a skeleton flash
   });
   const leaders = q.data ?? [];
   const hasPnl = leaders.some(hasPnlOf);

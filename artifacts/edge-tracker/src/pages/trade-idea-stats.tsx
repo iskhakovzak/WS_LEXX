@@ -182,14 +182,14 @@ export default function TradeIdeaStats() {
             <button type="button" className="chip min-h-9 px-3 text-sm" onClick={() => setAuthor(me)}>{t("stats.myIdeas")}</button>
           )}
           {author !== "all" && (
-            <button type="button" className="chip inline-flex min-h-9 items-center gap-1 px-3 text-sm" aria-pressed="true" onClick={() => setAuthor("all")}>
-              {personName(author)} <X className="h-3.5 w-3.5" aria-label={t("stats.resetAuthor")} />
+            <button type="button" className="chip inline-flex min-h-9 items-center gap-1 px-3 text-sm" aria-pressed="true" title={t("stats.resetAuthor")} onClick={() => setAuthor("all")}>
+              {personName(author)} <X className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           )}
           {trackingPending && <span className="text-xs text-muted-foreground" role="status">{t("stats.loadingPrices")}</span>}
           {byPrice && tracking.isError && (
             <span className="text-xs text-down" role="alert">
-              {t("stats.pricesFailed")} <button type="button" className="underline" onClick={() => tracking.refetch()}>{tc("actions.retry")}</button>
+              {t("stats.pricesFailed")} <button type="button" className="inline-flex min-h-8 items-center rounded px-1 underline" onClick={() => tracking.refetch()}>{tc("actions.retry")}</button>
             </span>
           )}
         </div>

@@ -2,6 +2,7 @@
  * Size in bases: four always-visible buttons ½ · 1 · 2 · 3 (base = the game's defaultQty ≈ a $10k position) and one
  * line saying what the size is — «2 базы = 340 акций · $8,500». With «размер по риску» on the server sizes the entry
  * from 1R and the stop, so the buttons step back and the line shows the R preview instead. Shift+1..4 are the keys.
+ * The line is not a live region: its $ value follows the price on every bar (a screen reader would read it non-stop).
  */
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -48,14 +49,14 @@ export function SizeBar({
             aria-label={basesText(m)}
             aria-keyshortcuts={`Shift+${i + 1}`}
             title={keys ? `${basesText(m)} (Shift+${i + 1})` : basesText(m)}
-            className={cn("px-0 tabular-nums", compact ? "h-9 w-9" : "h-8 w-9")}
+            className={cn("px-0 tabular-nums", compact ? "h-10 w-9" : "h-8 w-9")}
             onClick={() => setQty(baseQty(base, m))}
           >
             {MULT_LABEL[m]}
           </Button>
         ))}
       </div>
-      <span className={cn("min-w-0 text-xs tabular-nums text-muted-foreground", compact ? "truncate" : "")} aria-live="polite" data-testid="sim-size-summary">{summary}</span>
+      <span className={cn("min-w-0 text-xs tabular-nums text-muted-foreground", compact ? "truncate" : "")} title={compact ? summary : undefined} data-testid="sim-size-summary">{summary}</span>
     </div>
   );
 }

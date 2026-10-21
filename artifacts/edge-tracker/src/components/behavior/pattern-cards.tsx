@@ -158,7 +158,7 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
 
       <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--glass-border)] pt-2 text-xs">
         {p.tradeIds.length > 0 && (
-          <Link href={links.trades({ ids: p.tradeIds })} className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline">
+          <Link href={links.trades({ ids: p.tradeIds })} className="inline-flex min-h-7 items-center gap-1 text-primary underline-offset-2 hover:underline">
             {tb("card.allInJournal", { trades: commonI18n.t("units.trades", { count: p.n }) })} <ExternalLink className="h-3 w-3" aria-hidden="true" />
           </Link>
         )}
@@ -167,7 +167,7 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
           onClick={() => setDetails((v) => !v)}
           aria-expanded={details}
           aria-controls={detailsId}
-          className="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+          className="ml-auto inline-flex min-h-7 items-center gap-1 rounded-md px-1 text-muted-foreground hover:text-foreground"
         >
           <Info className="h-3 w-3" aria-hidden="true" /> {tb("card.how")}
         </button>

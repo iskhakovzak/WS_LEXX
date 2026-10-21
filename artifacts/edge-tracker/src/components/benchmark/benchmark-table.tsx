@@ -89,15 +89,18 @@ export function BenchmarkTable({
             const isSel = sel.has(r.trader);
             return (
               <tr key={r.trader} className={cn(!r.qualified && "opacity-60", isSel && "bg-primary/5")}>
-                <td className="min-w-[220px] align-top">
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-3.5 w-3.5 accent-[hsl(var(--primary))]"
-                      checked={isSel}
-                      onChange={() => onToggleSelect(r.trader)}
-                      aria-label={t("table.select", { name: personName(r.trader) })}
-                    />
+                <td className="min-w-[180px] align-top sm:min-w-[220px]">
+                  <div className="flex items-start gap-1">
+                    {/* 32 px hit area around the small native checkbox (two checked rows open «Сравнение»). */}
+                    <label className="-my-1.5 -ml-2 grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md hover:bg-[var(--glass-hover-bg)]">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer accent-[hsl(var(--primary))]"
+                        checked={isSel}
+                        onChange={() => onToggleSelect(r.trader)}
+                        aria-label={t("table.select", { name: personName(r.trader) })}
+                      />
+                    </label>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="font-medium text-foreground">{personName(r.trader)}</span>

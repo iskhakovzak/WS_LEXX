@@ -181,7 +181,7 @@ function EdgeRow({ r, base, open, onToggle, data }: { r: CategoryEdge; base: Cat
                     <Link
                       key={d}
                       href={links.journalDay(d)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--glass-bg)] px-2 py-1 text-xs hover:bg-[var(--glass-hover-bg)]"
+                      className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-[var(--glass-bg)] px-2 py-1 text-xs hover:bg-[var(--glass-hover-bg)]"
                       title={t("edge.openDay")}
                     >
                       <span className="tabular-nums text-muted-foreground">{fmtDay(d)}</span>

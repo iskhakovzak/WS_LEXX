@@ -5,12 +5,13 @@
  */
 import * as React from "react";
 import { Check, Loader2, Scale } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, Segmented, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Panel, Pill, Segmented, TableSkeleton, type Tone } from "@/components/ds";
+import { VirtualRows } from "@/components/ds/virtual";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { fmtDate, fmtRelative, fmtUsd } from "@/lib/format";
 import { personName } from "@/i18n";
-import { commonI18n } from "@/i18n/ns/common";
 import { propreportsAccuracyI18n } from "@/i18n/ns/propreportsAccuracy";
 import { useAcknowledgeReconcile, useReconcileBroker, type ReconcileDayRow, type ReconcileStatus, type ReconcileView } from "./reconcile-broker-api";
 
@@ -45,7 +46,7 @@ function Row({ r, canAcknowledge }: { r: ReconcileDayRow; canAcknowledge: boolea
           <span className="text-2xs text-muted-foreground">{t("reconcile.acknowledged", { who: r.acknowledgedBy ? personName(r.acknowledgedBy) : "—" })}</span>
         ) : canAcknowledge && r.status !== "ok" ? (
           <Button size="sm" variant="ghost" disabled={ack.isPending} onClick={onAck}>
-            {ack.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1 h-3.5 w-3.5" />}{t("reconcile.acknowledge")}
+            {ack.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Check className="mr-1 h-3.5 w-3.5" aria-hidden="true" />}{t("reconcile.acknowledge")}
           </Button>
         ) : null}
       </td>
@@ -80,12 +81,14 @@ export function BrokerReconcileDays({ canAcknowledge = false, trader = null }: {
         />
         <span className="text-2xs text-muted-foreground">{meta}</span>
       </div>
-      {q.isLoading ? (
-        <div className="py-6 text-center text-sm text-muted-foreground">{commonI18n.t("states.loading")}</div>
+      {q.isError && !data ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} inset />
+      ) : q.isLoading ? (
+        <TableSkeleton rows={5} cols={7} />
       ) : !data?.rows.length ? (
         <EmptyState icon={Scale} title={t("reconcile.empty")} description={t("reconcile.emptyHint")} />
       ) : (
-        <DataTable maxHeight="60vh" ariaLabel={t("reconcile.title")} className="[&_tbody_td]:px-2 [&_thead_th]:px-2">
+        <DataTable maxHeight="60vh" ariaLabel={t("reconcile.title")} className={cn("[&_tbody_td]:px-2 [&_thead_th]:px-2", q.isPlaceholderData && "opacity-70")}>
           <table>
             <thead>
               <tr>
@@ -99,7 +102,7 @@ export function BrokerReconcileDays({ canAcknowledge = false, trader = null }: {
                 <th />
               </tr>
             </thead>
-            <tbody>{data.rows.map((r) => <Row key={r.id} r={r} canAcknowledge={canAcknowledge} />)}</tbody>
+            <VirtualRows rows={data.rows} colSpan={8} estimateSize={45} getKey={(r) => r.id} renderRow={(r) => <Row key={r.id} r={r} canAcknowledge={canAcknowledge} />} />
           </table>
         </DataTable>
       )}

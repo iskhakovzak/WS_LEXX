@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { EmptyState, Panel, Pill } from "@/components/ds";
+import { EmptyState, ErrorState, ListSkeleton, Panel, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -95,20 +95,22 @@ function TradePicker({ selected, onChange, user }: { selected: number[]; onChang
       </div>
       <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-[var(--glass-border)]" role="group" aria-label={t("assignment.myTrades")}>
         {trades.isLoading ? (
-          <p className="p-3 text-sm text-muted-foreground">{commonI18n.t("states.loading")}</p>
+          <ListSkeleton rows={4} dense className="p-3" />
+        ) : trades.isError ? (
+          <ErrorState error={trades.error} onRetry={trades.refetch} compact className="m-2" />
         ) : !list.length ? (
           <p className="p-3 text-sm text-muted-foreground">{t("assignment.noTrades")}</p>
         ) : (
-          <ul className="divide-y divide-border/50">
+          <ul aria-busy={trades.isPlaceholderData || undefined} className={cn("divide-y divide-border/50 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", trades.isPlaceholderData && "opacity-60")}>
             {list.map((tr) => (
               <li key={tr.id}>
                 <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-[var(--glass-bg)]">
                   <input type="checkbox" checked={selected.includes(tr.id)} onChange={() => toggle(tr.id)} className="accent-[hsl(var(--primary))]" />
-                  <span className="w-24 shrink-0 tabular-nums text-muted-foreground">{tr.date}</span>
-                  <b className="w-16 shrink-0">{tr.ticker}</b>
+                  <span className="w-20 shrink-0 tabular-nums text-muted-foreground sm:w-24">{tr.date}</span>
+                  <b className="w-14 shrink-0 truncate sm:w-16" title={tr.ticker}>{tr.ticker}</b>
                   <span className="min-w-0 flex-1 truncate text-muted-foreground" title={tr.setup || undefined}>{tr.setup || commonI18n.t("trading.noSetup")}</span>
-                  <span className={cn("tabular-nums", toneOfNum(tr.net) === "up" ? "text-up" : toneOfNum(tr.net) === "down" ? "text-down" : "")}>{fmtUsd(tr.net, { signed: true })}</span>
-                  <span className="w-16 text-right tabular-nums text-muted-foreground">{fmtR(tr.r)}</span>
+                  <span className={cn("shrink-0 tabular-nums", toneOfNum(tr.net) === "up" ? "text-up" : toneOfNum(tr.net) === "down" ? "text-down" : "")}>{fmtUsd(tr.net, { signed: true })}</span>
+                  <span className="hidden w-16 shrink-0 text-right tabular-nums text-muted-foreground sm:inline">{fmtR(tr.r)}</span>
                 </label>
               </li>
             ))}
@@ -198,8 +200,8 @@ export function SubmissionCard({ s, rubric, showUser, actions }: { s: Submission
       </header>
       {s.text ? <Markdown source={s.text} /> : null}
       {s.url && (
-        <a href={s.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline">
-          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />{s.url.length > 80 ? `${s.url.slice(0, 80)}…` : s.url}
+        <a href={s.url} target="_blank" rel="noopener noreferrer nofollow" className="inline-flex w-fit max-w-full items-center gap-1.5 break-all text-sm text-primary hover:underline">
+          <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{s.url.length > 80 ? `${s.url.slice(0, 80)}…` : s.url}
         </a>
       )}
       <TradeChips trades={s.trades} />
@@ -297,6 +299,7 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
   const [editing, setEditing] = useState<Submission | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [gradingId, setGradingId] = useState<number | null>(focusSubmission ?? null);
+  const [withdrawing, setWithdrawing] = useState<number | null>(null);
   const { t } = academyI18n.useT();
   const latest = submissions[0];
   const mine = !data.all;
@@ -311,11 +314,14 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
 
   const withdraw = async (s: Submission) => {
     if (!window.confirm(t("assignment.withdrawConfirm"))) return;
+    setWithdrawing(s.id);
     try {
       await api.withdrawSubmission(s.id);
       void invalidateAcademy(qc);
     } catch (e) {
       toast({ title: commonI18n.t("states.error"), description: (e as Error).message, variant: "destructive" });
+    } finally {
+      setWithdrawing(null);
     }
   };
 
@@ -356,7 +362,7 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
                       {mine && canSubmit && s.status === "submitted" && (
                         <>
                           <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>{commonI18n.t("actions.edit")}</Button>
-                          <Button size="sm" variant="ghost" onClick={() => withdraw(s)}>{t("assignment.withdraw")}</Button>
+                          <Button size="sm" variant="ghost" onClick={() => withdraw(s)} disabled={withdrawing === s.id}>{withdrawing === s.id && <Loader2 className="animate-spin" aria-hidden="true" />}{t("assignment.withdraw")}</Button>
                         </>
                       )}
                       {staff && (

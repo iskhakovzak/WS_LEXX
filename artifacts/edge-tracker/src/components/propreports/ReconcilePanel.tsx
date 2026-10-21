@@ -178,6 +178,8 @@ function DayDetails({ day, issues, trader }: { day: DayRow; issues: Issue[]; tra
   );
 }
 
+const DAY_PAGE = 60;
+
 export function ReconcilePanel({ trader: traderProp, compact = false }: { trader?: string; compact?: boolean }) {
   const { isCurator, isAdmin, dbUsers, user } = useAuth();
   const { t, lang } = propreportsI18n.useT();
@@ -189,6 +191,9 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
   const [onlyBad, setOnlyBad] = React.useState(true);
   const [open, setOpen] = React.useState<Set<string>>(() => new Set());
   const [issueFilter, setIssueFilter] = React.useState<"all" | "error" | "warn">("all");
+  // «Весь период» can be hundreds of days: render the day table a page at a time.
+  const [dayLimit, setDayLimit] = React.useState(DAY_PAGE);
+  React.useEffect(() => { setDayLimit(DAY_PAGE); }, [picked, from, to, onlyBad]);
 
   const trader = traderProp ?? (staff ? (picked === ALL ? null : picked) : null);
   const q = useReconcile({ trader, from: from || null, to: to || null });
@@ -225,7 +230,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
             <Download className="mr-1 h-4 w-4" aria-hidden="true" /> CSV
           </Button>
           <Button type="button" variant="ghost" size="icon" onClick={() => q.refetch()} disabled={q.isFetching} aria-label={t("reconcile.recalc")}>
-            <RefreshCw className={cn("h-4 w-4", q.isFetching && "animate-spin")} aria-hidden="true" />
+            <RefreshCw className={cn("h-4 w-4", q.isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
           </Button>
         </>
       )}
@@ -340,7 +345,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
                     </tr>
                   </thead>
                   <tbody>
-                    {daySort.rows.map((d) => {
+                    {daySort.rows.slice(0, dayLimit).map((d) => {
                       const isOpen = open.has(d.date);
                       const diff = dayDiff(d);
                       const dayIssues = d.issueIds.map((id) => issueById.get(id)).filter((x): x is Issue => !!x);
@@ -348,7 +353,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
                         <React.Fragment key={d.date}>
                           <tr className="cursor-pointer" onClick={() => toggle(d.date)}>
                             <td>
-                              <button type="button" className="grid h-6 w-6 place-items-center rounded hover:bg-[var(--glass-bg)]" aria-expanded={isOpen} aria-label={isOpen ? t("reconcile.collapseDay", { date: d.date }) : t("reconcile.expandDay", { date: d.date })} onClick={(e) => { e.stopPropagation(); toggle(d.date); }}>
+                              <button type="button" className="grid h-7 w-7 place-items-center rounded-md hover:bg-[var(--glass-bg)]" aria-expanded={isOpen} aria-label={isOpen ? t("reconcile.collapseDay", { date: d.date }) : t("reconcile.expandDay", { date: d.date })} onClick={(e) => { e.stopPropagation(); toggle(d.date); }}>
                                 {isOpen ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
                               </button>
                             </td>
@@ -373,6 +378,11 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
                   </tbody>
                 </table>
               </DataTable>
+            )}
+            {daySort.rows.length > dayLimit && (
+              <Button type="button" variant="outline" size="sm" className="justify-self-center" onClick={() => setDayLimit((n) => n + DAY_PAGE)}>
+                {commonI18n.t("actions.showMore")} · {Math.min(DAY_PAGE, daySort.rows.length - dayLimit)}
+              </Button>
             )}
           </section>
 

@@ -9,6 +9,7 @@ import { fmtDuration, fmtEtTimeSec } from "@/components/trade-chart-parts/chart-
 import { useTradeQuality } from "./hooks";
 import { AFTER_EXIT_OPTIONS, DEFAULT_AFTER_EXIT, reasonLabel, shownExitEfficiency, type Excursion, type TradeQuality } from "./types";
 import { chartI18n } from "@/i18n/ns/chart";
+import { commonI18n } from "@/i18n/ns/common";
 import { fmtNum, fmtPrice, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 const AFTER_EXIT_KEY = "ws.trades.quality.afterExit";
@@ -119,7 +120,7 @@ export function QualitySummaryLine({ q }: { q: TradeQuality }) {
 
 export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: { trade: Trade; afterExit: number; onAfterExitChange?: (n: number) => void; compact?: boolean }) {
   const { t } = chartI18n.useT();
-  const { data, isLoading, error, refresh, isFetching } = useTradeQuality(trade.id, afterExit);
+  const { data, isLoading, error, refresh, refetch, isFetching, isPlaceholderData } = useTradeQuality(trade.id, afterExit);
   const [refreshing, setRefreshing] = React.useState(false);
 
   if (isLoading) {
@@ -132,9 +133,14 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
   if (error || !data) {
     const status = (error as Error & { status?: number } | null)?.status;
     return (
-      <div className="flex items-center gap-2 rounded-2xl bg-[var(--glass-bg)] px-3.5 py-3 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-[var(--glass-bg)] px-3.5 py-3 text-sm text-muted-foreground" role={error ? "alert" : undefined}>
         <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" />
-        {status === 404 ? t("quality.notConnected") : error ? t("quality.failedWith", { message: (error as Error).message }) : t("quality.failed")}
+        <span className="min-w-0 flex-1">{status === 404 ? t("quality.notConnected") : error ? t("quality.failedWith", { message: (error as Error).message }) : t("quality.failed")}</span>
+        {status !== 404 && (
+          <Button variant="ghost" size="sm" className="gap-1.5" disabled={isFetching} onClick={() => void refetch()}>
+            <RotateCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" /> {commonI18n.t("actions.retry")}
+          </Button>
+        )}
       </div>
     );
   }
@@ -150,7 +156,7 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
         <p className="flex items-center gap-2 text-muted-foreground"><AlertTriangle className="h-4 w-4 text-[hsl(var(--chart-3))]" aria-hidden="true" /> {t("quality.unavailable")}</p>
         <ul className="list-disc pl-5 text-xs text-muted-foreground">{q.reasons.map((r) => <li key={r}>{reasonLabel(r)}</li>)}</ul>
         <Button variant="outline" size="sm" className="gap-1.5" disabled={refreshing} onClick={async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } }}>
-          <RotateCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> {t("quality.recalc")}
+          <RotateCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin motion-reduce:animate-none")} aria-hidden="true" /> {t("quality.recalc")}
         </Button>
       </div>
     );
@@ -173,7 +179,7 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
   const windowTitle = `${t("quality.windowTitle", { interval: q.interval, bars: t("bars.count", { count: q.barsUsed }) })}${data.window ? ` · ${data.window.to !== data.window.from ? t("quality.windowRange", { from: data.window.from, to: data.window.to }) : data.window.from}` : ""}${timed ? `\n${PARTIAL_BAR_NOTE}` : `\n${t("quality.timedNote")}`}`;
 
   return (
-    <div className="@container space-y-3">
+    <div className={cn("@container space-y-3 transition-opacity duration-[var(--dur-2)]", isPlaceholderData && "opacity-70")} aria-busy={isPlaceholderData || undefined}>
       <div className="flex flex-wrap items-center gap-2">
         <QualitySummaryLine q={q} />
         <div className="ml-auto flex items-center gap-2">
@@ -181,8 +187,8 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
           <span className="text-2xs text-muted-foreground" title={windowTitle}>
             {q.interval} · {t("quality.barsShort", { count: q.barsUsed })}{timed ? ` · ${t("quality.byFillTime")}` : ""}
           </span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t("quality.recalc")} title={t("quality.recalcTitle")} disabled={refreshing || isFetching} onClick={async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } }}>
-            <RotateCw className={cn("h-3.5 w-3.5", (refreshing || isFetching) && "animate-spin")} />
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("quality.recalc")} title={t("quality.recalcTitle")} disabled={refreshing || isFetching} onClick={async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } }}>
+            <RotateCw className={cn("h-3.5 w-3.5", (refreshing || isFetching) && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
           </Button>
         </div>
       </div>

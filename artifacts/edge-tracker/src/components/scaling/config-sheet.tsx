@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pill, Segmented } from "@/components/ds";
+import { Pill, Segmented, SkeletonBlock } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
@@ -155,10 +155,12 @@ function RulesEditor({ initial, config, onSaved }: { initial: Rule[]; config: Co
     }
   };
   const group = (kind: "promote" | "demote") => rules.map((r, i) => ({ r, i })).filter((x) => x.r.kind === kind);
-  const Row = ({ r, i }: { r: RuleInput; i: number }) => {
+  // A render function, not a component: a component declared in render got a new identity every keystroke, so React
+  // re-mounted the row and the threshold / name inputs lost focus after one character.
+  const renderRow = (r: RuleInput, i: number) => {
     const m = metrics.find((x) => x.key === r.metric);
     return (
-      <li className={cn("glass-panel flex flex-col gap-2 rounded-xl p-3", !r.enabled && "opacity-60")}>
+      <li key={i} className={cn("glass-panel flex flex-col gap-2 rounded-xl p-3", !r.enabled && "opacity-60")}>
         <div className="flex flex-wrap items-center gap-2">
           <Switch checked={r.enabled} onCheckedChange={(v) => update(i, { enabled: v })} aria-label={t("config.ruleEnabled")} />
           <Select value={r.metric} onValueChange={(v) => update(i, { metric: v })}>
@@ -205,11 +207,11 @@ function RulesEditor({ initial, config, onSaved }: { initial: Rule[]; config: Co
       <p className="text-xs text-muted-foreground">{withBold(t("config.rulesHint"))}</p>
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between"><h3 className="micro-label">{actionLabel("promote")}</h3><Button variant="ghost" size="sm" onClick={() => add("promote")}><Plus className="h-4 w-4" aria-hidden="true" /> {t("config.addRule")}</Button></div>
-        <ul className="flex flex-col gap-2">{group("promote").map(({ r, i }) => <Row key={i} r={r} i={i} />)}</ul>
+        <ul className="flex flex-col gap-2">{group("promote").map(({ r, i }) => renderRow(r, i))}</ul>
       </section>
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between"><h3 className="micro-label">{actionLabel("demote")}</h3><Button variant="ghost" size="sm" onClick={() => add("demote")}><Plus className="h-4 w-4" aria-hidden="true" /> {t("config.addRule")}</Button></div>
-        <ul className="flex flex-col gap-2">{group("demote").map(({ r, i }) => <Row key={i} r={r} i={i} />)}</ul>
+        <ul className="flex flex-col gap-2">{group("demote").map(({ r, i }) => renderRow(r, i))}</ul>
       </section>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={() => { setRules(initial); setDirty(false); }} disabled={!dirty}><RotateCcw className="h-4 w-4" aria-hidden="true" /> {tc("actions.reset")}</Button>
@@ -236,7 +238,9 @@ export function ConfigSheet({ config, open, onOpenChange }: { config: Config | u
           </SheetHeader>
           <Segmented ariaLabel={t("config.tabsAria")} value={tab} onChange={setTab} size="sm" options={[{ value: "tiers", label: t("config.tabTiers"), count: config?.tiers.length }, { value: "rules", label: t("config.tabRules"), count: config?.rules.length }]} />
           {!config ? (
-            <p className="text-sm text-muted-foreground">{tc("states.loading")}</p>
+            <div className="flex flex-col gap-3" role="status" aria-label={tc("states.loading")}>
+              {[0, 1, 2].map((i) => <SkeletonBlock key={i} className="h-32 rounded-xl" />)}
+            </div>
           ) : tab === "tiers" ? (
             <TiersEditor key={`t${epoch}`} initial={config.tiers} onSaved={() => setEpoch((e) => e + 1)} />
           ) : (

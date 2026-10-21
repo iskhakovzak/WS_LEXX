@@ -5,6 +5,7 @@ import { Activity, BookOpen, Compass, LayoutGrid, Layers, Rows3, Search, Sliders
 import { EmptyState, Page, PageHeader, SectionTabs, Segmented, Toolbar, usePersistentState } from "@/components/ds";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MarketView } from "@/components/indicators/market/MarketView";
+import { QueryError } from "@/components/query-error";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -410,6 +411,11 @@ function IndicatorLibrary() {
               </span>
             )}
           </div>
+
+          {/* The cards / table still render without stats; say why they are empty instead of silent zeros. */}
+          {tradesQuery.isError && (
+            <QueryError compact error={tradesQuery.error} title={t("library.statsFailed")} onRetry={() => void tradesQuery.refetch()} />
+          )}
 
           {filtered.length === 0 ? (
             <div className="glass-panel rounded-2xl">

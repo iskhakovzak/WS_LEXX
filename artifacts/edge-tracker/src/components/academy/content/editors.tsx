@@ -110,7 +110,7 @@ function MarkdownField({ id, label, value, onChange, rows = 18 }: { id: string; 
 function FormActions({ saving, onSave, dirty, extra }: { saving: boolean; onSave: () => void; dirty: boolean; extra?: React.ReactNode }) {
   const { t } = academyI18n.useT();
   return (
-    <div className="sticky bottom-0 z-sticky -mx-1 flex flex-wrap items-center justify-end gap-2 border-t border-border/50 bg-[var(--sticky-bg)] px-1 pt-3">
+    <div className="sticky bottom-[calc(5rem+env(safe-area-inset-bottom))] z-sticky -mx-1 md:bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-border/50 bg-[var(--sticky-bg)] px-1 pb-2 pt-3 md:pb-0">
       {dirty && <span className="mr-auto text-xs text-[hsl(var(--chart-3))]">{t("editor.unsaved")}</span>}
       {extra}
       <Button onClick={onSave} disabled={saving || !dirty}>{saving ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />}{commonI18n.t("actions.save")}</Button>

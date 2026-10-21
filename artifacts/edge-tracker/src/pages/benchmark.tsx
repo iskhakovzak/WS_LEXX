@@ -158,7 +158,7 @@ export default function BenchmarkPage() {
             aria-label={t("minTradesAria")}
           />
         </label>
-        {summary.isFetching && data && <span className="text-xs text-muted-foreground">{t("updating")}</span>}
+        {summary.isFetching && data && <span className="text-xs text-muted-foreground" role="status">{t("updating")}</span>}
         <span className="ml-auto flex items-center gap-2">
           {data?.viewer.scope === "assigned" && <Pill tone="accent">{t("assigned")}</Pill>}
           {staff && data && data.rows.length > 0 && (
@@ -171,7 +171,7 @@ export default function BenchmarkPage() {
 
       {summary.isLoading ? (
         <PageSkeleton />
-      ) : summary.error ? (
+      ) : summary.error && !data ? (
         <QueryError error={summary.error as Error} onRetry={() => summary.refetch()} />
       ) : !data ? null : data.mode === "self" ? (
         <SelfView data={data} />
@@ -205,7 +205,7 @@ export default function BenchmarkPage() {
             </Panel>
           )}
           {tab === "same" && (
-            <SameTickerView data={same.data} loading={same.isLoading} error={(same.error as Error | null) ?? null} />
+            <SameTickerView data={same.data} loading={same.isLoading} error={(same.error as Error | null) ?? null} onRetry={() => void same.refetch()} />
           )}
           {tab === "compare" && (
             <CompareView rows={data.rows} metrics={data.metrics} a={a} b={b}

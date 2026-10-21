@@ -128,7 +128,7 @@ export function ConvictionDots({ value }: { value: number | null | undefined }) 
   const { t } = tradesI18n.useT();
   if (value == null) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className="inline-flex items-center gap-1" aria-label={t("bits.conviction", { value })}>
+    <span role="img" className="inline-flex items-center gap-1" aria-label={t("bits.conviction", { value })}>
       {Array.from({ length: 5 }, (_, i) => (
         <span key={i} className={cn("h-1.5 w-3 rounded-full", i < value ? "bg-primary" : "bg-[var(--glass-bg)] border border-border")} />
       ))}

@@ -142,11 +142,12 @@ export default function WeeklyReviewPage() {
   const perTrader = effectiveView !== "partners";
 
   const weekNav = (
-    <div className="flex items-center gap-1" data-print-hide>
+    // Phones: the week label shrinks and «К текущей» wraps instead of running off the right edge.
+    <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto" data-print-hide>
       <Button type="button" variant="outline" size="icon" aria-label={t("page.prevWeek")} title={t("page.prevWeek")} onClick={() => setWeek(shiftWeek(week, -1))}>
         <ChevronLeft className="h-4 w-4" aria-hidden="true" />
       </Button>
-      <span className="glass-field inline-flex min-h-9 min-w-[13rem] items-center justify-center gap-2 px-3 text-sm font-medium tabular-nums">
+      <span className="glass-field inline-flex min-h-9 min-w-0 flex-1 items-center justify-center gap-2 px-3 text-sm font-medium tabular-nums sm:min-w-[13rem] sm:flex-none">
         <CalendarRange className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         {weekLabel(week)}
         {week === today && <Pill tone="accent">{t("page.current")}</Pill>}

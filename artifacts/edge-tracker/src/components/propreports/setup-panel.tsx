@@ -134,7 +134,7 @@ export function GroupPicker({ status }: { status: Status }) {
             {groups.isFetching ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}{t("setup.group.load")}
           </Button>
           <Select value={choice} onValueChange={setChoice}>
-            <SelectTrigger className="h-9 w-72 text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-72 max-w-full text-xs" aria-label={t("setup.group.title")}><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={MY_ACCOUNTS}>{t("setup.group.myAccounts")}</SelectItem>
               {list.map((g) => (
@@ -275,7 +275,7 @@ export function UnmatchedAccounts({ status, accounts }: { status: Status; accoun
               <Button size="sm" variant="outline" onClick={() => asNew(name)} disabled={busy || !pick[`t:${name}`]}>{t("setup.unmatched.map")}</Button>
               <span className="text-xs text-muted-foreground">{t("setup.unmatched.orAlias")}</span>
               <Select value={pick[`a:${name}`] ?? NONE} onValueChange={(v) => setPick((p) => ({ ...p, [`a:${name}`]: v === NONE ? "" : v }))}>
-                <SelectTrigger className="h-8 w-48 text-xs"><SelectValue placeholder={t("setup.unmatched.account")} /></SelectTrigger>
+                <SelectTrigger className="h-8 w-48 text-xs" aria-label={t("setup.unmatched.account")}><SelectValue placeholder={t("setup.unmatched.account")} /></SelectTrigger>
                 <SelectContent><SelectItem value={NONE}>{t("setup.unmatched.accountPick")}</SelectItem>{accounts.map((a) => <SelectItem key={a.id} value={a.account}>{a.account}{a.trader ? ` — ${personName(a.trader)}` : ""}</SelectItem>)}</SelectContent>
               </Select>
               <Button size="sm" variant="outline" onClick={() => asAlias(name)} disabled={busy || !pick[`a:${name}`]}>{t("setup.unmatched.addAlias")}</Button>

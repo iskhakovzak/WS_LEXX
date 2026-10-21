@@ -440,7 +440,7 @@ export function JournalRiskPanel({ doc, ins, className }: { doc: WeeklyReview; i
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {ins.daysWithoutReview.map((d) => (
-                <Link key={d} href={links.journalDay(d, doc.trader)} className="chip min-h-7 px-2.5 text-xs font-medium text-[hsl(var(--warn))]">
+                <Link key={d} href={links.journalDay(d, doc.trader)} className="chip min-h-8 px-2.5 text-xs font-medium text-[hsl(var(--warn))]">
                   {fmtDay(d, true)}
                 </Link>
               ))}

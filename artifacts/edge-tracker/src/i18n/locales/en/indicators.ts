@@ -54,6 +54,7 @@ export default {
     setOnTop: "your set first",
     fitsFor: "suited for: {horizon}",
     bestByR: "Best by R:",
+    statsFailed: "Couldn’t load trades — indicator stats are empty for now",
     coverage: "{pct}% of trades have an indicator tag",
     listAria: "Indicators",
     emptySetTitle: "Your set is empty",

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette, Languages } from "lucide-react";
+import { KeyRound, Loader2, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette, Languages } from "lucide-react";
 import { Panel, Pill, StatCard } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ApiError, http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
-import { Avatar, Callout, ROLE_LABEL, ROLE_TONE, fmtDaysAgo } from "./shared";
+import { Avatar, Callout, InlineError, ROLE_LABEL, ROLE_TONE, fmtDaysAgo } from "./shared";
 import type { SectionId } from "./SettingsNav";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
 import { LanguageSelect } from "@/i18n/language-select";
@@ -96,7 +96,8 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   const { t } = settingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   // Policy by role (API lib/security/passwordPolicy): PIN ≥ 6 for traders, password ≥ 10 for curators/admins.
-  const min = user?.secretMin ?? (user?.role === "curator" || user?.role === "admin" ? 10 : 6);
+  const staffSecret = user?.role === "curator" || user?.role === "admin";
+  const min = user?.secretMin ?? (staffSecret ? 10 : 6);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -105,13 +106,14 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
 
   const tooShort = next.length > 0 && next.length < min;
   const mismatch = repeat.length > 0 && repeat !== next;
-  const valid = current.length > 0 && next.length >= min && next === repeat && next !== current;
+  const same = next.length > 0 && next === current;
+  const valid = current.length > 0 && next.length >= min && next === repeat && !same;
 
   function reset() { setCurrent(""); setNext(""); setRepeat(""); setError(null); }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid) return;
+    if (!valid || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -152,14 +154,18 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
             <div className="flex flex-col gap-1.5">
               <label htmlFor="pw-new" className="text-xs text-muted-foreground">{t("password.next")}</label>
               <Input id="pw-new" type="password" autoComplete="new-password" value={next} maxLength={200}
-                aria-invalid={tooShort} aria-describedby={tooShort ? "pw-new-err" : undefined}
+                aria-invalid={tooShort || same || undefined} aria-describedby={tooShort || same ? "pw-new-err" : undefined}
                 onChange={(e) => setNext(e.target.value)} />
-              {tooShort && <p id="pw-new-err" className="text-xs text-down">{ta("forced.tooShort", { min })}</p>}
+              {(tooShort || same) && (
+                <p id="pw-new-err" className="text-xs text-down">
+                  {same ? ta(staffSecret ? "forced.same" : "forced.samePin") : ta("forced.tooShort", { min })}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="pw-repeat" className="text-xs text-muted-foreground">{t("password.repeat")}</label>
               <Input id="pw-repeat" type="password" autoComplete="new-password" value={repeat} maxLength={200}
-                aria-invalid={mismatch} aria-describedby={mismatch ? "pw-repeat-err" : undefined}
+                aria-invalid={mismatch || undefined} aria-describedby={mismatch ? "pw-repeat-err" : undefined}
                 onChange={(e) => setRepeat(e.target.value)} />
               {mismatch && <p id="pw-repeat-err" className="text-xs text-down">{t("password.mismatch")}</p>}
             </div>
@@ -167,7 +173,10 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
           </div>
           <SheetFooter className="mt-auto flex-row justify-end gap-2 border-t border-border px-5 py-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>{tc("actions.cancel")}</Button>
-            <Button type="submit" disabled={!valid || saving}>{saving ? tc("states.saving") : t("profile.changePassword")}</Button>
+            <Button type="submit" disabled={!valid || saving} aria-busy={saving}>
+              {saving && <Loader2 className="animate-spin" aria-hidden="true" />}
+              {saving ? tc("states.saving") : t("profile.changePassword")}
+            </Button>
           </SheetFooter>
         </form>
       </SheetContent>
@@ -181,7 +190,7 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
   const { t } = settingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const isMember = !!user?.traderName && user.role !== "guest";
-  const { data: profile, isLoading } = useMyProfile(isMember);
+  const { data: profile, isLoading, isError, refetch } = useMyProfile(isMember);
   const [pwOpen, setPwOpen] = useState(false);
 
   if (!isMember) {
@@ -222,12 +231,12 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => onNavigate("integrations")} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium">
+            <button type="button" onClick={() => onNavigate("integrations")} className="chip inline-flex min-h-10 items-center gap-1.5 px-3 text-xs font-medium sm:min-h-8">
               <Send className="h-3.5 w-3.5" aria-hidden="true" />
               {profile == null ? "Telegram" : profile.telegramLinked ? t("profile.telegramLinked") : t("profile.connectTelegram")}
               <ChevronRight className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
             </button>
-            <button type="button" onClick={() => onNavigate("appearance")} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium">
+            <button type="button" onClick={() => onNavigate("appearance")} className="chip inline-flex min-h-10 items-center gap-1.5 px-3 text-xs font-medium sm:min-h-8">
               <Palette className="h-3.5 w-3.5" aria-hidden="true" /> {t("profile.theme", { name: themeLabel })}
             </button>
           </div>
@@ -259,6 +268,8 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
         <Panel title={t("profile.myTeam")} description={staff ? t("profile.myTeamStaff") : t("profile.myTeamTrader")} icon={Users} fill>
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 rounded-xl" />)}</div>
+          ) : isError && !profile ? (
+            <InlineError message={tc("states.loadFailed")} onRetry={() => void refetch()} />
           ) : profile ? (
             <div className="divide-y divide-border">
               {(!staff || profile.assignedCurator) && <TeamLine label={t("profile.curator")} name={profile.assignedCurator} />}

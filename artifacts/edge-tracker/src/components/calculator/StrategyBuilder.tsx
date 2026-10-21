@@ -165,7 +165,7 @@ export default function StrategyBuilder({ b }: { b: BuilderState }) {
                 onKeyDown={(e) => { if (e.key === "Enter") void loadSpot(); }} />
               <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => void loadSpot()}
                 disabled={loading || !b.symbol.trim()} aria-label={t("builder.loadPriceAria")}>
-                {loading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Search aria-hidden="true" />}
+                {loading ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Search aria-hidden="true" />}
               </Button>
             </div>
           </div>

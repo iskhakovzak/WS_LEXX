@@ -167,6 +167,7 @@ export default {
     hidden: { one: "{count} player hid their results", other: "{count} players hid their results" },
     empty: "Nobody has played this week yet",
     you: "you",
+    saveError: "Could not save the setting",
     cols: { rank: "#", name: "Trader", games: "Games", r: "Total R", wins: "Green", best: "Best" },
   },
   tf: {

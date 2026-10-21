@@ -297,6 +297,7 @@ export type Quote = {
 };
 
 export type EarningsHit = { date: string; callType: "BMO" | "AMC" | "TNS"; company?: string | null };
+type OfferingHitRow = { ticker: string; date: string; type: string; status: string; dealSizeM: number | null; dilutionPct: number | null };
 export type OfferingHit = { date: string; type: string; status: string; dealSizeM: number | null; dilutionPct: number | null };
 
 const REFRESH_MS = 60_000;
@@ -433,12 +434,21 @@ export function useEarningsMap(enabled = true) {
 
 /** Today's offerings / dilution watch → ticker → offering. Degrades to {} when unavailable. */
 export function useOfferingsMap(enabled = true) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: riskKeys.offerings(),
     enabled,
     queryFn: async () => {
-      type Row = { ticker: string; date: string; type: string; status: string; dealSizeM: number | null; dilutionPct: number | null };
-      const j = await http.get<{ offerings: Row[] }>(`/api/offerings/watch`).catch(() => ({ offerings: [] as Row[] }));
+      // Same request and cache entry (["offerings", day]) as the /offerings page: a visit there makes this instant,
+      // and vice versa. The day is the market session (a weekend reads the coming Monday), as on that page.
+      const today = nyDate();
+      const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
+      const day = dow === 6 ? addDays(today, 2) : dow === 0 ? addDays(today, 1) : today;
+      const j = await qc.fetchQuery({
+        queryKey: ["offerings", day],
+        queryFn: () => http.get<{ offerings: OfferingHitRow[] }>(`/api/offerings/watch?day=${encodeURIComponent(day)}`),
+        staleTime: 5 * 60_000,
+      }).catch(() => ({ offerings: [] as OfferingHitRow[] }));
       const map: Record<string, OfferingHit> = {};
       for (const o of j.offerings ?? []) {
         const t = o.ticker.toUpperCase();

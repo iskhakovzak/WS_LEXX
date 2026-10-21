@@ -89,7 +89,7 @@ export function QuestRow({ q, today, compact = false, action, showStatus = false
       <div className="flex min-w-0 items-center gap-2 pl-6">
         <QuestProgress q={q} className="flex-1" />
         {links && active && q.href && !isHere(q.href) && (
-          <Link href={q.href} className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href={q.href} className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {t("row.go")}
             <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>

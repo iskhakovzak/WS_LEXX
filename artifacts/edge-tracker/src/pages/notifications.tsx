@@ -209,8 +209,9 @@ export default function NotificationsPage() {
               </button>
             )}
             {tab === "inbox" && (
-              <button type="button" onClick={archiveAllRead} disabled={actions.archiveRead.isPending} className="chip inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium disabled:opacity-50" title={t("page.archiveReadTitle")}>
-                <Archive className="h-4 w-4" aria-hidden="true" /> {t("page.archiveRead")}
+              <button type="button" onClick={archiveAllRead} disabled={actions.archiveRead.isPending} className="chip inline-flex h-9 min-w-9 items-center justify-center gap-1.5 px-2.5 text-sm font-medium disabled:opacity-50 sm:px-3" title={t("page.archiveReadTitle")} aria-label={t("page.archiveRead")}>
+                {/* Phones: icon only, so the header actions stay on one line. */}
+                <Archive className="h-4 w-4" aria-hidden="true" /> <span className="hidden sm:inline">{t("page.archiveRead")}</span>
               </button>
             )}
           </>
@@ -221,9 +222,9 @@ export default function NotificationsPage() {
           value={tab}
           onChange={(v) => setTab(v)}
           options={[
-            { value: "inbox", label: <span className="inline-flex items-center gap-1.5"><Inbox className="h-3.5 w-3.5" aria-hidden="true" />{t("page.inbox")}</span>, count: unread || undefined },
-            { value: "archive", label: <span className="inline-flex items-center gap-1.5"><Archive className="h-3.5 w-3.5" aria-hidden="true" />{t("page.archive")}</span> },
-            { value: "prefs", label: <span className="inline-flex items-center gap-1.5"><Settings2 className="h-3.5 w-3.5" aria-hidden="true" />{t("page.settings")}</span> },
+            { value: "inbox", label: <span className="inline-flex items-center gap-1.5"><Inbox className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" />{t("page.inbox")}</span>, count: unread || undefined },
+            { value: "archive", label: <span className="inline-flex items-center gap-1.5"><Archive className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" />{t("page.archive")}</span> },
+            { value: "prefs", label: <span className="inline-flex items-center gap-1.5"><Settings2 className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" />{t("page.settings")}</span> },
           ]}
         />
       </PageHeader>
@@ -249,14 +250,14 @@ export default function NotificationsPage() {
             ))}
             <span className="mx-1 hidden h-5 w-px bg-[var(--glass-border)] sm:block" aria-hidden="true" />
             <Select value={group} onValueChange={(v) => { setGroup(v as NotificationGroup | typeof ALL); setTypes([]); }}>
-              <SelectTrigger aria-label={t("page.group")} className="h-9 w-[190px] text-xs"><SelectValue placeholder={t("page.allGroups")} /></SelectTrigger>
+              <SelectTrigger aria-label={t("page.group")} className="h-9 w-full text-xs sm:w-[190px]"><SelectValue placeholder={t("page.allGroups")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>{t("page.allGroups")}</SelectItem>
                 {GROUP_ORDER.map((g) => <SelectItem key={g} value={g}>{GROUP_LABELS[g]}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={types.length === 1 ? types[0] : ALL} onValueChange={(v) => setTypes(v === ALL ? [] : [v])}>
-              <SelectTrigger aria-label={t("page.type")} className="h-9 w-[260px] text-xs"><SelectValue placeholder={t("page.allTypes")} /></SelectTrigger>
+              <SelectTrigger aria-label={t("page.type")} className="h-9 w-full text-xs sm:w-[260px]"><SelectValue placeholder={t("page.allTypes")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>{t("page.allTypes")}</SelectItem>
                 {typeOptions.map((t) => <SelectItem key={t.type} value={t.type}>{t.label}</SelectItem>)}
@@ -276,12 +277,12 @@ export default function NotificationsPage() {
             <div className="glass-panel sticky-top flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2">
               <span className="text-sm font-medium text-foreground">{tc("states.selected", { count: selectedIds.length })}</span>
               {tab === "inbox" && unreadSelected > 0 && (
-                <button type="button" onClick={() => actions.readMany.mutate(selectedIds)} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium">
+                <button type="button" onClick={() => actions.readMany.mutate(selectedIds)} disabled={actions.readMany.isPending} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium disabled:opacity-50">
                   <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" /> {t("page.readSelected", { count: unreadSelected })}
                 </button>
               )}
               {tab === "inbox" && unreadSelected < selectedIds.length && (
-                <button type="button" onClick={() => actions.unreadMany.mutate(selectedIds)} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium">
+                <button type="button" onClick={() => actions.unreadMany.mutate(selectedIds)} disabled={actions.unreadMany.isPending} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium disabled:opacity-50">
                   {t("page.markUnread")}
                 </button>
               )}

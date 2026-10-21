@@ -20,6 +20,8 @@ import { mistakeDate } from "./discipline";
 import type { Mistake } from "./types";
 
 type Status = "all" | "open" | "done";
+/** The log loads up to 1000 entries: render a page at a time (each row is a rich glass card). */
+const PAGE = 50;
 
 function Highlight({ text, q }: { text: string; q: string }) {
   if (!q) return <>{text}</>;
@@ -55,6 +57,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [lessonFor, setLessonFor] = useState<number | null>(null);
   const [lessonDraft, setLessonDraft] = useState("");
+  const [limit, setLimit] = useState(PAGE);
 
   const catCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -77,6 +80,11 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
       return true;
     });
   }, [mistakes, status, cats, q]);
+  // A new search / filter starts from the first page again.
+  const filterKey = `${status}|${cats.join(",")}|${q}`;
+  const [pagedFor, setPagedFor] = useState(filterKey);
+  if (pagedFor !== filterKey) { setPagedFor(filterKey); setLimit(PAGE); }
+  const shown = filtered.length > limit ? filtered.slice(0, limit) : filtered;
 
   async function patch(m: Mistake, body: Record<string, unknown>, okMsg: string) {
     setBusyId(m.id);
@@ -207,7 +215,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
         <Panel><EmptyState icon={Search} title={commonI18n.t("states.nothingFound")} description={t("log.changeFilters")} /></Panel>
       ) : (
         <ul className="flex flex-col gap-2">
-          {filtered.map((m) => {
+          {shown.map((m) => {
             const sev = severityMeta(m.severity);
             const done = m.resolved === "yes";
             const busy = busyId === m.id;
@@ -268,6 +276,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                             if (e.key === "Escape") { e.stopPropagation(); setLessonFor(null); }
                             if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
                               e.preventDefault();
+                              if (busy) return;
                               if (await patch(m, { lesson: lessonDraft }, t("log.lessonSaved"))) setLessonFor(null);
                             }
                           }}
@@ -309,6 +318,14 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
               </li>
             );
           })}
+          {filtered.length > shown.length && (
+            <li className="flex justify-center">
+              <Button variant="outline" size="sm" onClick={() => setLimit((n) => n + PAGE)}>
+                {commonI18n.t("actions.showMore")}
+                <span className="tabular-nums text-muted-foreground">{shown.length}/{filtered.length}</span>
+              </Button>
+            </li>
+          )}
         </ul>
       )}
 

@@ -22,6 +22,7 @@ import { commonI18n } from "@/i18n/ns/common";
 
 type View = "desk" | "overnight" | "me";
 const VIEWS: readonly View[] = ["desk", "overnight", "me"];
+const SLOW_KEYS = new Set<string>([riskKeys.offerings()[1], riskKeys.earnings()[1]]);
 
 export default function RiskPage() {
   const { t } = riskI18n.useT();
@@ -42,7 +43,9 @@ export default function RiskPage() {
     : isCurator ? (stored === "me" && !me ? "desk" : stored)
     : stored === "overnight" ? "overnight" : "me";
   const qc = useQueryClient();
-  const fetching = useIsFetching({ queryKey: riskKeys.all }) > 0;
+  // The slow catalyst lookups (offerings watch, earnings calendar) fill chips in the background; they must not keep
+  // the refresh button spinning for seconds after the book itself is in.
+  const fetching = useIsFetching({ queryKey: riskKeys.all, predicate: (q) => !SLOW_KEYS.has(String(q.queryKey[1])) }) > 0;
   const [updatedAt, setUpdatedAt] = React.useState<number>();
   const ago = useAgo(updatedAt);
 

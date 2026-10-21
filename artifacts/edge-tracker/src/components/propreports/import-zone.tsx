@@ -129,10 +129,10 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
         >
           <Upload className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
           {file ? (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-medium">{file.name}</span>
-              <span className="text-muted-foreground">{t("import.size", { size: fmtCount(Math.round(file.size / 1024)) })}</span>
-              <button type="button" className="rounded p-0.5 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); pick(null); }} aria-label={t("import.removeFile")}><X className="h-4 w-4" /></button>
+            <div className="flex min-w-0 max-w-full items-center gap-2 text-sm">
+              <span className="min-w-0 truncate font-medium" title={file.name}>{file.name}</span>
+              <span className="shrink-0 text-muted-foreground">{t("import.size", { size: fmtCount(Math.round(file.size / 1024)) })}</span>
+              <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground" onClick={(e) => { e.stopPropagation(); pick(null); }} aria-label={t("import.removeFile")}><X className="h-4 w-4" aria-hidden="true" /></button>
             </div>
           ) : (
             <>
@@ -147,7 +147,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
           <div className="grid gap-1">
             <Label className="text-xs text-muted-foreground">{t("import.format")}</Label>
             <Select value={kind} onValueChange={(v) => { setKind(v as Kind); setPreview(null); }}>
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-56" aria-label={t("import.format")}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">{t("import.kind.auto")}</SelectItem>
                 <SelectItem value="fills">{t("import.kind.fills")}</SelectItem>
@@ -166,7 +166,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
             <div className="grid gap-1">
               <Label className="text-xs text-muted-foreground">{t("import.account")}</Label>
               <Select value={account} onValueChange={(v) => { setAccount(v); setPreview(null); }}>
-                <SelectTrigger className="w-60"><SelectValue placeholder={t("import.pickAccount")} /></SelectTrigger>
+                <SelectTrigger className="w-60" aria-label={t("import.account")}><SelectValue placeholder={t("import.pickAccount")} /></SelectTrigger>
                 <SelectContent>
                   {accounts.map((a) => <SelectItem key={a.id} value={a.account}>{a.trader ? `${a.account} — ${personName(a.trader)}` : t("import.accountUnmapped", { account: a.account })}</SelectItem>)}
                   {!accounts.length && <SelectItem value="__none" disabled>{t("import.addAccountFirst")}</SelectItem>}
@@ -175,7 +175,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
             </div>
           )}
           <Button variant="outline" onClick={runPreview} disabled={!file || needAccount || importFile.isPending}>
-            {importFile.isPending && importFile.variables?.dryRun ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {importFile.isPending && importFile.variables?.dryRun ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
             {t("import.preview")}
           </Button>
           {!perf && (

@@ -23,6 +23,7 @@ const retryUnless404 = (count: number, err: unknown) => !isNotFound(err) && coun
 export const isMissingEndpoint = (e: unknown) => isNotFound(e);
 
 
+/** One market day of /offerings/watch. The risk overnight book reads the same cache entry (["offerings", day]). */
 const watchQuery = (day: string) => ({
   queryKey: ["offerings", day] as const,
   queryFn: () => http.get<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}`),

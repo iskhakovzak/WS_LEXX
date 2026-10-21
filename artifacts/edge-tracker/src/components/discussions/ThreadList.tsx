@@ -57,12 +57,12 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, fresh = false,
         onClick={() => onSelect(t.id)}
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "group relative w-full rounded-xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "group relative w-full rounded-xl px-3 py-2.5 text-left transition-colors duration-[var(--dur-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           selected ? "bg-primary/12 ring-1 ring-primary/40" : "hover:bg-[var(--glass-hover-bg)]",
           resolved && !selected && "opacity-80",
         )}
       >
-        {unread && <span className="absolute left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-primary" aria-label={tr("list.unreadAria")} />}
+        {unread && <span className="absolute left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-primary"><span className="sr-only">{tr("list.unreadAria")}</span></span>}
         <div className="flex min-w-0 items-center gap-1.5 pl-2">
           {isPinned(t) && <Pin className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={tr("list.pinnedAria")} />}
           {fresh && <Pill tone="accent" className="py-0 text-2xs font-semibold">{tr("list.fresh")}</Pill>}

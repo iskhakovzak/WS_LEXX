@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, ChevronDown, Layers, Shield, Star, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { STALE } from "@/lib/api/keys";
@@ -177,6 +178,14 @@ export default function ChainAdvisor({
         </Panel>
       )}
 
+      {!chain && (oc.loading || oc.chainLoading) && (
+        // Ladder + advisor shapes while the chain loads (no empty gap under the header, no jump when it lands).
+        <div className="flex flex-col gap-4" aria-busy="true" aria-label={t("advisor.loadingChain")}>
+          <Skeleton className="h-[420px] rounded-2xl" />
+          <Skeleton className="h-[220px] rounded-2xl" />
+        </div>
+      )}
+
       {chain && (
         <>
           <StrikeLadder chain={chain} expLabel={expLabel} picked={picked} onPick={pickContract}
@@ -235,7 +244,7 @@ export default function ChainAdvisor({
               {strategies.length > TOP_STRATEGIES && (
                 <Button type="button" variant="ghost" size="sm" className="self-start" aria-expanded={showAllStrategies}
                   onClick={() => setShowAllStrategies((v) => !v)}>
-                  <ChevronDown className={cn("transition-transform", showAllStrategies && "rotate-180")} aria-hidden="true" />
+                  <ChevronDown className={cn("transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", showAllStrategies && "rotate-180")} aria-hidden="true" />
                   {showAllStrategies ? t("advisor.fewerStrategies") : t("advisor.moreStrategies", { count: strategies.length - TOP_STRATEGIES })}
                 </Button>
               )}

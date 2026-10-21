@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Lock, Users } from "lucide-react";
 import { FilterChip } from "@/components/ds";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ export function AudiencePicker({ value, onChange, options, me, loading }: {
   loading?: boolean;
 }) {
   const { t } = discussionsI18n.useT();
+  const labelId = useId();
   const restricted = isRestricted(value);
   const reach = audienceReach(value, options, me);
   const groups = options?.groups ?? [];
@@ -33,11 +35,11 @@ export function AudiencePicker({ value, onChange, options, me, loading }: {
 
   return (
     <div className="space-y-1.5">
-      <span id="disc-audience-label" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span id={labelId} className="flex items-center gap-1.5 text-xs text-muted-foreground">
         {restricted ? <Lock className="h-3 w-3" aria-hidden="true" /> : <Users className="h-3 w-3" aria-hidden="true" />}
         {t("audience.label")}
       </span>
-      <div role="group" aria-labelledby="disc-audience-label" className="flex flex-wrap gap-1.5">
+      <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
         <FilterChip active={!restricted} onClick={() => onChange([])} className="min-h-8 px-2.5 text-xs">{t("audience.everyone")}</FilterChip>
         {groups.map((g) => (
           <FilterChip

@@ -54,6 +54,7 @@ export default {
     setOnTop: "toʻplam yuqorida",
     fitsFor: "mos: {horizon}",
     bestByR: "R boʻyicha eng yaxshi:",
+    statsFailed: "Savdolarni yuklab boʻlmadi — indikatorlar statistikasi hozircha boʻsh",
     coverage: "savdolarning {pct}%ida indikator tegi bor",
     listAria: "Indikatorlar",
     emptySetTitle: "Toʻplamingiz hozircha boʻsh",

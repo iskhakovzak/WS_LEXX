@@ -133,6 +133,8 @@ export default {
     title: "Bugungi rejam",
     count: "{count} / {max}",
     unset: "—",
+    unsetAll: "Kunlik stop, bitimlar limiti va 1R belgilanmagan — ularni kunlik rejangizda belgilang.",
+    setInPlan: "Rejada belgilash",
     stop: "Kunlik stop",
     maxTrades: "Maks. bitimlar",
     oneR: "1R",

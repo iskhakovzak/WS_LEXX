@@ -56,6 +56,8 @@ export function TickerChart({
     queryFn: () => loadBars(ticker, tf),
     staleTime: tf === "D" ? 30 * 60_000 : 2 * 60_000,
     gcTime: 10 * 60_000,
+    // Timeframe switch keeps the current chart until the new bars arrive (never another ticker's bars).
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === ticker ? prev : undefined),
     retry: 0,
   });
 

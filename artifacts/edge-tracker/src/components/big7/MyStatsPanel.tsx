@@ -172,7 +172,7 @@ export function MyTickerStats({ row }: { row: MyTicker | undefined }) {
     <Panel
       title={t("my.titleTicker", { ticker: row.ticker })}
       actions={
-        <Link href={links.trades({ ticker: row.ticker })} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">
+        <Link href={links.trades({ ticker: row.ticker })} className="inline-flex min-h-8 items-center gap-1 text-xs text-muted-foreground hover:text-primary">
           {t("my.allTrades")} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       }

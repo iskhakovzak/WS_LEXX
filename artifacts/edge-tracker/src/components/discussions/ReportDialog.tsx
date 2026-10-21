@@ -61,7 +61,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget | null;
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div role="radiogroup" aria-label={t("report.reasonAria")} className="flex flex-wrap gap-2">
+          <div role="group" aria-label={t("report.reasonAria")} className="flex flex-wrap gap-2">
             {REASONS.map((r) => (
               <FilterChip key={r} active={reason === r} onClick={() => setReason(r)}>{t(`report.reasons.${r}`)}</FilterChip>
             ))}

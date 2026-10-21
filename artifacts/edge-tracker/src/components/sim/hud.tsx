@@ -266,7 +266,8 @@ export function PlayBar({
           options={PACES.map((p) => ({ value: String(p), label: `${p}×`, title: t("play.speedHint", { count: p }) }))}
         />
       </div>
-      <span className="sr-only" aria-live="polite">{t("hud.bar", { played: game.cursor - game.meta.startIdx, total: game.meta.endIdx - game.meta.startIdx })}</span>
+      {/* Announced on a manual step only: during playback it would be read on every bar. */}
+      <span className="sr-only" aria-live={playing ? "off" : "polite"}>{t("hud.bar", { played: game.cursor - game.meta.startIdx, total: game.meta.endIdx - game.meta.startIdx })}</span>
     </div>
   );
 }

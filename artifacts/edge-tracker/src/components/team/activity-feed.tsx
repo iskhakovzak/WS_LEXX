@@ -150,7 +150,7 @@ export function BurstRow({ burst, isUnread }: { burst: Burst; isUnread: (it: Fee
               type="button"
               onClick={() => setOpen((o) => !o)}
               aria-expanded={open}
-              className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs"
+              className="chip inline-flex min-h-8 items-center gap-1 px-2.5 text-xs"
             >
               {open ? commonI18n.t("actions.collapse") : t("showAllCount", { count: burst.items.length })}
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden="true" />

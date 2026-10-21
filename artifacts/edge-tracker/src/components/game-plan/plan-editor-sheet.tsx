@@ -226,7 +226,7 @@ export function PlanEditorSheet({
             </div>
           )}
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-[var(--panel-p)] pb-[var(--panel-p)] pt-2">
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[var(--panel-p)] pb-[var(--panel-p)] pt-2">
             <PlanEditor
               mode="desk"
               date={date}

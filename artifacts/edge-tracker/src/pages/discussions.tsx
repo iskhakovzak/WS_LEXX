@@ -399,7 +399,7 @@ export default function Discussions() {
         actions={
           canEdit ? (
             <Button onClick={() => openCreate(false)} className="gap-1.5">
-              <Plus className="h-4 w-4" />{t("newThread")}
+              <Plus className="h-4 w-4" aria-hidden="true" />{t("newThread")}
               <kbd className="ml-1 hidden rounded-md bg-white/20 px-1.5 text-2xs font-medium sm:inline">N</kbd>
             </Button>
           ) : undefined
@@ -443,7 +443,7 @@ export default function Discussions() {
               />
               {q ? (
                 <button type="button" aria-label={tc("actions.clearSearch")} onClick={() => setQ("")} className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)]">
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               ) : (
                 <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
@@ -513,7 +513,7 @@ export default function Discussions() {
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="tabular-nums">{t("page.found", { count: filtered.length })}</span>
                 {extraView && <Pill tone="accent">{t(`view.${prefs.view}`)}</Pill>}
-                <button type="button" onClick={resetFilters} className="ml-auto rounded-full px-2 py-1 text-primary hover:bg-primary/10">{tc("actions.resetFilters")}</button>
+                <button type="button" onClick={resetFilters} className="ml-auto inline-flex min-h-8 items-center rounded-full px-2 text-primary hover:bg-primary/10">{tc("actions.resetFilters")}</button>
               </div>
             )}
           </div>
@@ -534,7 +534,7 @@ export default function Discussions() {
                 icon={MessagesSquare}
                 title={t("page.emptyTitle")}
                 description={t("page.emptyHint")}
-                action={canEdit ? <Button onClick={() => openCreate(false)} className="gap-1.5"><Plus className="h-4 w-4" />{t("page.start")}</Button> : undefined}
+                action={canEdit ? <Button onClick={() => openCreate(false)} className="gap-1.5"><Plus className="h-4 w-4" aria-hidden="true" />{t("page.start")}</Button> : undefined}
               />
             ) : filtered.length === 0 ? (
               <EmptyState
@@ -565,7 +565,7 @@ export default function Discussions() {
           </div>
           {unreadIds.size > 0 && (
             <div className="border-t border-[var(--field-border)] px-3 py-2 text-right">
-              <button type="button" onClick={markAllRead} className="rounded-full px-2 py-1 text-xs text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+              <button type="button" onClick={markAllRead} className="inline-flex min-h-8 items-center rounded-full px-2 text-xs text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
                 {t("page.markAllRead")}
               </button>
             </div>

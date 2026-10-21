@@ -122,6 +122,8 @@ function ConfidenceBar({ v }: { v: number }) {
   );
 }
 
+const PAGE = 100;
+
 export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }: { items: SetupItem[]; canEdit: boolean; onlyUntagged?: boolean; onShowAll?: () => void }) {
   const [filter, setFilter] = React.useState<"all" | "suggested" | "accepted" | "rejected" | "pending">("all");
   const [open, setOpen] = React.useState<Set<number>>(() => new Set());
@@ -135,6 +137,10 @@ export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }:
     return items.filter((i) => i.suggestion?.status === filter);
   }, [items, filter]);
   const { rows, thProps } = useTableSort(filtered, ACCESSORS, "date");
+  // A year of trades is 1000+ rows with buttons each: render the first page, the rest on «Показать ещё».
+  const [limit, setLimit] = React.useState(PAGE);
+  React.useEffect(() => { setLimit(PAGE); }, [filter]);
+  const shown = rows.length > limit ? rows.slice(0, limit) : rows;
 
   const counts = React.useMemo(() => ({
     all: items.length,
@@ -184,7 +190,7 @@ export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }:
               type="button"
               aria-pressed={filter === k}
               onClick={() => setFilter(k)}
-              className={cn("rounded-full px-2.5 py-1 tabular-nums transition-colors", filter === k ? "bg-primary-solid text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:text-foreground")}
+              className={cn("inline-flex min-h-8 items-center rounded-full px-3 tabular-nums transition-colors duration-[var(--dur-1)]", filter === k ? "bg-primary-solid text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:text-foreground")}
             >
               {k === "all" ? tb("table.all") : k === "pending" ? tb("table.pending") : STATUS_LABEL[k]} · {counts[k]}
             </button>
@@ -213,7 +219,7 @@ export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }:
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {shown.map((r) => {
               const s = r.suggestion;
               const isOpen = open.has(r.tradeId);
               const busy = (accept.isPending && accept.variables?.tradeId === r.tradeId) || (reject.isPending && reject.variables?.tradeId === r.tradeId) || (recompute.isPending && recompute.variables?.tradeId === r.tradeId);
@@ -275,7 +281,7 @@ export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }:
                             {s.alternatives.length > 0 && <span className="text-muted-foreground">{tb("table.alternatives")}</span>}
                             {s.alternatives.map((a) => (
                               canEdit && s.status !== "accepted"
-                                ? <Button key={a.setup} size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={busy} onClick={() => accept.mutate({ tradeId: r.tradeId, setup: a.setup })} aria-label={tb("table.acceptAltAria", { setup: a.setup })}>{a.setup} · {Math.round(a.score * 100)}%</Button>
+                                ? <Button key={a.setup} size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={busy} onClick={() => accept.mutate({ tradeId: r.tradeId, setup: a.setup })} aria-label={tb("table.acceptAltAria", { setup: a.setup })}>{a.setup} · {Math.round(a.score * 100)}%</Button>
                                 : <Pill key={a.setup} tone="neutral">{a.setup} · {Math.round(a.score * 100)}%</Pill>
                             ))}
                             {s.tags.map((t) => <Pill key={t} tone="accent">{t}</Pill>)}
@@ -294,6 +300,11 @@ export function SetupsTable({ items, canEdit, onlyUntagged = false, onShowAll }:
           </tbody>
         </table>
       </DataTable>
+      {rows.length > shown.length && (
+        <Button size="sm" variant="outline" className="self-center" onClick={() => setLimit((n) => n + PAGE)}>
+          {commonI18n.t("actions.showMore")} · {Math.min(PAGE, rows.length - shown.length)}
+        </Button>
+      )}
       <p className="text-xs text-muted-foreground">
         {tb("table.footnote", { trades: commonI18n.t("units.trades", { count: filtered.length }) })}
 

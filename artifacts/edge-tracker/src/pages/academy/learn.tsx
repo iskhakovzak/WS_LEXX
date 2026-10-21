@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, Page, PageHeader, Panel, SectionTabs, Toolbar } from "@/components/ds";
+import { EmptyState, ErrorState, Page, PageHeader, Panel, SectionTabs, Toolbar } from "@/components/ds";
 import { api, invalidateAcademy, useAcademyMeta, useProgramTree, usePrograms } from "@/components/academy/content/api";
 import { ProgramCard, ProgramOutline } from "@/components/academy/content/program-view";
 import { ReviewQueue } from "@/components/academy/content/review-queue";
@@ -15,8 +15,8 @@ import { ProgressMatrix } from "@/components/academy/content/progress-matrix";
 import { academyLinks } from "@/components/academy/content/links";
 import { PersonSelect } from "@/components/people/person-select";
 import { academyI18n } from "@/i18n/ns/academy";
-import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { cn } from "@/lib/utils";
 import { comparePersonNames, personName } from "@/i18n";
 
 /**
@@ -146,7 +146,7 @@ export default function AcademyLearn() {
           {programs.isLoading ? (
             <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]"><Skeleton className="h-48 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
           ) : programs.isError ? (
-            <Panel><p className="text-sm text-down">{t("learn.coursesFailed", { message: (programs.error as Error).message })}</p></Panel>
+            <ErrorState error={programs.error} onRetry={programs.refetch} title={t("learn.coursesFailed")} />
           ) : !list.length ? (
             <Panel>
               <EmptyState
@@ -168,18 +168,14 @@ export default function AcademyLearn() {
               </nav>
               <div className="min-w-0">
                 {tree.isError ? (
-                  <Panel>
-                    <EmptyState
-                      icon={BookOpenCheck}
-                      title={t("learn.programFailed")}
-                      description={(tree.error as Error | null)?.message ?? commonI18n.t("states.tryAgain")}
-                      action={<Button variant="outline" onClick={() => void tree.refetch()} disabled={tree.isFetching}>{commonI18n.t("actions.retry")}</Button>}
-                    />
-                  </Panel>
+                  <ErrorState error={tree.error} onRetry={tree.refetch} title={t("learn.programFailed")} />
                 ) : tree.isLoading || !tree.data ? (
                   <Skeleton className="h-96 rounded-2xl" />
                 ) : (
-                  <ProgramOutline tree={tree.data} user={viewUser || undefined} viewingOther={!!viewUser} />
+                  /* Switching programs keeps the previous outline (dimmed) instead of flashing a skeleton. */
+                  <div aria-busy={tree.isPlaceholderData || undefined} className={cn("transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", tree.isPlaceholderData && "pointer-events-none opacity-60")}>
+                    <ProgramOutline tree={tree.data} user={viewUser || undefined} viewingOther={!!viewUser} />
+                  </div>
                 )}
               </div>
             </div>

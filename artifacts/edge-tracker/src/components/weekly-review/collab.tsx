@@ -65,7 +65,7 @@ export function PrevGoalsPanel({ doc }: { doc: WeeklyReview }) {
                       aria-pressed={g.status === s}
                       disabled={mut.isPending}
                       onClick={() => set(g, s)}
-                      className={cn("chip min-h-7 px-2.5 text-xs font-medium disabled:opacity-60", g.status === s && (s === "done" ? "text-up" : s === "partial" ? "text-[hsl(var(--chart-3))]" : "text-down"))}
+                      className={cn("chip min-h-8 px-2.5 text-xs font-medium disabled:opacity-60", g.status === s && (s === "done" ? "text-up" : s === "partial" ? "text-[hsl(var(--chart-3))]" : "text-down"))}
                     >
                       {GOAL_LABEL[s]}
                     </button>

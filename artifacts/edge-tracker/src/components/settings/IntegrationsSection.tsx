@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Copy, ExternalLink, Link2, Radio, RefreshCw, Send, Unlink } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, Link2, Loader2, Radio, RefreshCw, Send, Unlink } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -157,7 +157,7 @@ function TelegramConnect() {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-3">
             <span className="text-sm text-muted-foreground">{t("telegram.howTo")}</span>
             <Button size="sm" onClick={handleConnect} disabled={loading} className="gap-1.5">
-              <Link2 className="h-3.5 w-3.5" aria-hidden="true" /> {loading ? t("telegram.gettingCode") : t("telegram.connect")}
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Link2 className="h-3.5 w-3.5" aria-hidden="true" />} {loading ? t("telegram.gettingCode") : t("telegram.connect")}
             </Button>
           </div>
         )}
@@ -178,8 +178,8 @@ function TelegramConnect() {
               <div className="min-w-0 flex-1">
                 <div className="text-sm text-foreground">{t("telegram.pressStart")}</div>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <code className="select-all rounded-full bg-[var(--glass-thick-bg)] px-3 py-1.5 text-sm font-semibold tracking-wider text-primary">/start {linkData.token}</code>
-                  <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("telegram.copyCommand")} onClick={() => copy(`/start ${linkData.token}`)}><Copy aria-hidden="true" /></Button>
+                  <code className="min-w-0 select-all break-all rounded-xl bg-[var(--glass-thick-bg)] px-3 py-1.5 text-sm font-semibold tracking-wider text-primary">/start {linkData.token}</code>
+                  <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label={t("telegram.copyCommand")} onClick={() => copy(`/start ${linkData.token}`)}><Copy aria-hidden="true" /></Button>
                 </div>
               </div>
             </li>
@@ -213,9 +213,10 @@ function TelegramConnect() {
             <AlertDialogDescription>{t("telegram.unlinkDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
-            <AlertDialogAction disabled={disconnecting} onClick={(e) => { e.preventDefault(); handleDisconnect(); }} className="bg-destructive text-destructive-foreground hover:brightness-110">
-              {disconnecting ? "…" : t("telegram.unlink")}
+            <AlertDialogCancel disabled={disconnecting}>{tc("actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction disabled={disconnecting} aria-busy={disconnecting} onClick={(e) => { e.preventDefault(); if (!disconnecting) void handleDisconnect(); }} className="bg-destructive text-destructive-foreground hover:brightness-110">
+              {disconnecting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+              {t("telegram.unlink")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -314,8 +315,11 @@ function TelegramBroadcast() {
             <AlertDialogDescription>{t("broadcast.confirmDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
-            <AlertDialogAction disabled={sending} onClick={(e) => { e.preventDefault(); handleBroadcast(); }}>{sending ? t("broadcast.sending") : t("broadcast.send")}</AlertDialogAction>
+            <AlertDialogCancel disabled={sending}>{tc("actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction disabled={sending} aria-busy={sending} onClick={(e) => { e.preventDefault(); if (!sending) void handleBroadcast(); }}>
+              {sending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+              {sending ? t("broadcast.sending") : t("broadcast.send")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

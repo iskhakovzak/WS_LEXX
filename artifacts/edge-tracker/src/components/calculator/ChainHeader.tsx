@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fmtDeskDate, fmtNum, fmtPct, fmtUsd } from "@/lib/format";
 import { calculatorI18n } from "@/i18n/ns/calculator";
+import { commonI18n } from "@/i18n/ns/common";
 import { DEFAULT_DELAY_MIN, SOURCE_LABEL } from "./chainApi";
 import type { OptionsChainState } from "./useOptionsChain";
 import type { Expiration } from "./strategies";
@@ -32,7 +33,7 @@ export default function ChainHeader({ oc, atmIv }: { oc: OptionsChainState; atmI
                 onChange={(e) => oc.setTicker(e.target.value.toUpperCase())}
                 onKeyDown={(e) => { if (e.key === "Enter") oc.load(); }} />
               <Button type="button" className="shrink-0" onClick={() => oc.load()} disabled={oc.loading || !oc.ticker.trim()}>
-                {oc.loading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Search aria-hidden="true" />} {t("advisor.load")}
+                {oc.loading ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Search aria-hidden="true" />} {t("advisor.load")}
               </Button>
             </div>
           </div>
@@ -45,14 +46,23 @@ export default function ChainHeader({ oc, atmIv }: { oc: OptionsChainState; atmI
                 {meta.name && meta.name !== meta.symbol && <span className="truncate text-xs text-muted-foreground">{meta.name}</span>}
               </>
             )}
-            {oc.chainLoading && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />{t("advisor.loadingChain")}</span>}
+            {oc.chainLoading && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><RefreshCw className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("advisor.loadingChain")}</span>}
             {oc.chain && !oc.chainLoading && atmIv != null && <Pill tone="purple">ATM IV {fmtNum(atmIv, 0)}%</Pill>}
           </div>
         </div>
         {oc.expirations.length > 0 && (
           <ExpirationChips expirations={oc.expirations} selected={oc.selectedExp} onSelect={oc.selectExp} />
         )}
-        {oc.error && <p role="alert" className="flex items-center gap-1.5 text-sm text-down"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />{oc.error}</p>}
+        {oc.error && (
+          <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-down">
+            <span className="flex min-w-0 items-center gap-1.5"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />{oc.error}</span>
+            {oc.ticker.trim() && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => oc.load()} disabled={oc.loading || oc.chainLoading}>
+                <RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </Panel>
   );

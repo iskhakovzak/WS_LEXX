@@ -71,7 +71,7 @@ export function SectionsView({ sections, q, className }: { sections: Sections; q
               {TRADE_SECTIONS.includes(k) ? t("junior.tradesSection", { title: SECTION_META[k].title }) : SECTION_META[k].title}
             </h4>
           )}
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
             <Highlight text={sections[k]!.trim()} q={q} />
           </p>
         </section>
@@ -152,7 +152,7 @@ export function FeedbackCard({ note, fresh, className }: { note: JuniorNote; fre
         <ScoreStars score={note.curator_score} className="ml-auto" />
       </div>
       {note.curator_feedback ? (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{note.curator_feedback}</p>
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">{note.curator_feedback}</p>
       ) : (
         <p className="text-sm text-muted-foreground">{t("junior.feedbackNoComment")}</p>
       )}

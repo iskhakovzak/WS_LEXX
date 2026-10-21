@@ -31,12 +31,13 @@ export function PlanPicks({ date, ids }: { date?: string; ids?: number[] | null 
           onClick={() => openSetupSheet({ setupId: id })}
           aria-haspopup="dialog"
           className="chip min-h-7 max-w-[14rem] truncate px-2.5 text-xs font-medium text-foreground"
+          title={names.get(id) ?? undefined}
         >
           {names.get(id) ?? `#${id}`}
         </button>
       ))}
       {!ids && (
-        <Link href="/playbook" className="text-xs font-medium text-primary hover:underline">
+        <Link href="/playbook" className="inline-flex min-h-7 items-center rounded-md px-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {t("plan.edit")}
         </Link>
       )}

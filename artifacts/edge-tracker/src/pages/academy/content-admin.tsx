@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, Page, PageHeader, Panel, Pill, Toolbar } from "@/components/ds";
+import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, Toolbar } from "@/components/ds";
 import { api, invalidateAcademy, stageLabel, useAcademyMeta, useAdminTree, type ItemKind } from "@/components/academy/content/api";
 import { ContentTree, type Selection } from "@/components/academy/content/content-tree";
 import { ItemEditor, ModuleForm, ProgramForm } from "@/components/academy/content/editors";
@@ -143,7 +143,7 @@ export default function AcademyContentAdmin() {
       {tree.isLoading || meta.isLoading ? (
         <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-[32rem] rounded-2xl" /></div>
       ) : tree.isError ? (
-        <Panel><p className="text-sm text-down">{t("admin.contentFailed", { message: (tree.error as Error).message })}</p></Panel>
+        <ErrorState error={tree.error} onRetry={tree.refetch} title={t("admin.contentFailed")} />
       ) : !programs.length && !creatingProgram ? (
         <Panel>
           <EmptyState

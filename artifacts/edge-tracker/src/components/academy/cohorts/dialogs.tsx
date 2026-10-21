@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Segmented, Pill } from "@/components/ds";
+import { ListSkeleton, Segmented, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
@@ -200,7 +200,7 @@ export function EnrollmentEditDialog({ open, onOpenChange, enrollment }: { open:
           <ErrorNote error={upd.error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{ct("actions.cancel")}</Button>
-            <Button type="submit" disabled={!changed || upd.isPending}>{ct("actions.save")}</Button>
+            <Button type="submit" disabled={!changed || upd.isPending}>{upd.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}{ct("actions.save")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -251,7 +251,7 @@ export function SessionDialog({ open, onOpenChange, cohort, session }: { open: b
   const weeklyEmpty = f.recurrence === "weekly" && f.weekdays.length === 0;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent className="max-w-xl">
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{session ? t("sessionDialog.editTitle", { cohort: cohort.name }) : t("sessionDialog.newTitle", { cohort: cohort.name })}</DialogTitle>
@@ -293,12 +293,12 @@ export function SessionDialog({ open, onOpenChange, cohort, session }: { open: b
               </Field>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Field id="s-time" label={t("sessionDialog.startTime")}><Input id="s-time" type="time" value={f.startTime} onChange={(e) => setF({ ...f, startTime: e.target.value })} required /></Field>
             <Field id="s-dur" label={t("sessionDialog.duration")}>
               <Input id="s-dur" type="number" min={5} max={600} step={5} value={f.durationMin} onChange={(e) => setF({ ...f, durationMin: Number(e.target.value) })} />
             </Field>
-            <Field id="s-tz" label={t("sessionDialog.tz")}><TzSelect id="s-tz" value={f.timezone} onChange={(v) => setF({ ...f, timezone: v })} /></Field>
+            <Field id="s-tz" label={t("sessionDialog.tz")} className="col-span-2 sm:col-span-1"><TzSelect id="s-tz" value={f.timezone} onChange={(v) => setF({ ...f, timezone: v })} /></Field>
           </div>
           <Field label={t("sessionDialog.where")}>
             <Segmented ariaLabel={t("sessionDialog.modeAria")} value={f.mode} onChange={(v) => setF({ ...f, mode: v })}
@@ -316,7 +316,7 @@ export function SessionDialog({ open, onOpenChange, cohort, session }: { open: b
           <ErrorNote error={create.error ?? update.error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{ct("actions.cancel")}</Button>
-            <Button type="submit" disabled={busy || weeklyEmpty || f.title.trim().length < 2}>{ct("actions.save")}</Button>
+            <Button type="submit" disabled={busy || weeklyEmpty || f.title.trim().length < 2}>{busy && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}{ct("actions.save")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -349,7 +349,7 @@ export function RosterDialog({ open, onOpenChange, sessionId, date, title }: { o
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("roster.title", { title: title ?? roster.data?.session.title ?? t("roster.sessionFallback") })}</DialogTitle>
           <DialogDescription>
@@ -357,7 +357,7 @@ export function RosterDialog({ open, onOpenChange, sessionId, date, title }: { o
             {!started && ` · ${t("roster.notStarted")}`}
           </DialogDescription>
         </DialogHeader>
-        {roster.isLoading && <p className="text-sm text-muted-foreground">{t("roster.loading")}</p>}
+        {roster.isLoading && <ListSkeleton rows={4} dense />}
         <ErrorNote error={roster.error} />
         {rows.length > 0 && (
           <>
@@ -383,7 +383,7 @@ export function RosterDialog({ open, onOpenChange, sessionId, date, title }: { o
                       {ATTENDANCE_STATUSES.map((s) => (
                         <button key={s} type="button" role="radio" aria-checked={cur === s} disabled={!started && s !== "excused"}
                           onClick={() => setDraft((d) => ({ ...d, [u]: s }))} title={attendanceTitle(s)}
-                          className={cn("chip min-h-7 px-2.5 text-xs font-medium disabled:opacity-40")} aria-pressed={cur === s}>
+                          className="chip min-h-9 px-3 text-xs font-medium disabled:opacity-40 sm:min-h-7 sm:px-2.5" aria-pressed={cur === s}>
                           {attendanceLabel(s)}
                         </button>
                       ))}
@@ -398,7 +398,7 @@ export function RosterDialog({ open, onOpenChange, sessionId, date, title }: { o
         <ErrorNote error={mark.error} />
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{ct("actions.close")}</Button>
-          <Button type="button" onClick={save} disabled={!changes.length || mark.isPending}>{changes.length ? t("roster.saveCount", { n: changes.length }) : ct("actions.save")}</Button>
+          <Button type="button" onClick={save} disabled={!changes.length || mark.isPending}>{mark.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}{changes.length ? t("roster.saveCount", { n: changes.length }) : ct("actions.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -454,13 +454,13 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{t("meeting.title")}</DialogTitle>
             <DialogDescription>{t("meeting.description")}</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field id="m-student" label={t("cols.student")}>
               <PersonSelect id="m-student" value={student ?? ""} onValueChange={pickStudent} options={names} placeholder={t("meeting.pickStudent")} ariaLabel={t("cols.student")} />
             </Field>
@@ -496,7 +496,7 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
           <ErrorNote error={create.error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{ct("actions.cancel")}</Button>
-            <Button type="submit" disabled={!student || create.isPending}>{t("meeting.submit")}</Button>
+            <Button type="submit" disabled={!student || create.isPending}>{create.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}{t("meeting.submit")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -535,7 +535,7 @@ export function ActionDialog({ open, onOpenChange, student }: { open: boolean; o
           <ErrorNote error={create.error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{ct("actions.cancel")}</Button>
-            <Button type="submit" disabled={!title.trim() || create.isPending}>{ct("actions.add")}</Button>
+            <Button type="submit" disabled={!title.trim() || create.isPending}>{create.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}{ct("actions.add")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -582,7 +582,7 @@ export function GoalDialog({ open, onOpenChange, student }: { open: boolean; onO
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent className="max-w-xl">
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{t("goal.title", { student: personName(student) })}</DialogTitle>
@@ -626,7 +626,7 @@ export function GoalDialog({ open, onOpenChange, student }: { open: boolean; onO
           <ErrorNote error={metrics.error ?? create.error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{ct("actions.cancel")}</Button>
-            <Button type="submit" disabled={create.isPending || !list.length}>{t("goal.submit")}</Button>
+            <Button type="submit" disabled={create.isPending || !list.length}>{create.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}{t("goal.submit")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

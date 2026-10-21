@@ -39,13 +39,14 @@ import { useToast } from "@/hooks/use-toast";
 import { addDays } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { curatorKeys, reassignCurator, useTopPatterns, type TraderSignal } from "./api";
-import { riskTone, sortTraders, type TraderSort } from "./curator-math";
+import { riskTone, type TraderSort } from "./curator-math";
 import {
   ALL_GROUPS, csvHead, DEFAULT_FILTERS, GROUP_SORT, NO_CURATOR, activeFilterCount, applyFilters, breachesWeek, buildGroups, csvRow,
   daysSinceTrade, groupTotals, isIdle, isRiskNow, pendingReviews, searchTraders, tradersOf,
   type GroupFilters, type GroupKey, type GroupTotals, type SearchMark,
 } from "./group-model";
-import { TraderCard } from "./trader-card";
+import { GroupCards } from "./group-cards";
+import { VirtualRows } from "@/components/ds/virtual";
 import { CuratorNameHL, LatinHintHL, TraderNameHL } from "./name-highlight";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { comparePersonNames, personName } from "@/i18n";
@@ -207,7 +208,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
   const [busy, setBusy] = React.useState(false);
   const [undo, setUndo] = React.useState<{ key: number; trader: string; userId: number; from: string | null; to: string | null } | null>(null);
   const userIdOf = (name: string) => dbUsers.find((u) => u.name === name)?.id ?? null;
-  const askMove = (s: TraderSignal, to: string | null) => { setReason(T.actions.reasonDefault); setMove({ s, to }); };
+  const askMove = React.useCallback((s: TraderSignal, to: string | null) => { setReason(T.actions.reasonDefault); setMove({ s, to }); }, []);
   const doMove = async () => {
     if (!move) return;
     const id = userIdOf(move.s.trader);
@@ -246,14 +247,15 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
   const exportCsv = () => downloadCsv(csvHead(), shown.map(csvRow), `group-${group === ALL_GROUPS ? "all" : group === NO_CURATOR ? "none" : group}-${date}.csv`);
 
   const groupLabel = (k: GroupKey) => (k === ALL_GROUPS ? T.allGroups : k === NO_CURATOR ? T.noCurator : k === me ? T.myGroupNamed(k) : personName(k));
-  const groupOptions = [
+  const groupOptions = React.useMemo(() => [
     ...[...new Set([...curators, ...[...groupCounts.keys()].filter((k) => k !== NO_CURATOR)])]
       .sort((a, b) => (a === me ? -1 : b === me ? 1 : comparePersonNames(a, b)))
       .map((c) => ({ value: c, label: personName(c), hint: String(groupCounts.get(c) ?? 0) })),
     { value: NO_CURATOR, label: T.noCurator, hint: String(groupCounts.get(NO_CURATOR) ?? 0) },
-  ];
+  ], [curators, groupCounts, me]);
 
-  const rowProps: RowCommon = { date, marks: searched.marks, onOpenTrader, canMove, curators, onMove: askMove };
+  // Stable while nothing it holds changes, so the memoised rows don't all re-render on every keystroke / filter.
+  const rowProps = React.useMemo<RowCommon>(() => ({ date, marks: searched.marks, onOpenTrader, canMove, curators, onMove: askMove }), [date, searched.marks, onOpenTrader, canMove, curators, askMove]);
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
@@ -355,19 +357,16 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
           ) : mode === "table" ? (
             <GroupTable rows={shown} showCurator={group === ALL_GROUPS} row={rowProps} />
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-[var(--grid-gap)]">
-              {sortTraders(shown, cardSort).map((s) => (
-                <TraderCard
-                  key={s.trader}
-                  s={s}
-                  title={<TraderNameHL s={s} mark={searched.marks.get(s.trader)} />}
-                  showPatterns={patterns === "on"}
-                  patterns={topPatterns.data?.[s.trader] ?? null}
-                  patternsLoading={topPatterns.isLoading}
-                  onOpen={(tab) => onOpenTrader(s.trader, tab)}
-                />
-              ))}
-            </div>
+            <GroupCards
+              key={group}
+              traders={shown}
+              sort={cardSort}
+              marks={searched.marks}
+              showPatterns={patterns === "on"}
+              patterns={topPatterns.data}
+              patternsLoading={topPatterns.isLoading}
+              onOpenTrader={onOpenTrader}
+            />
           )}
         </>
       )}
@@ -490,7 +489,7 @@ function AllGroups({
                 {narrowed && <span className="text-xs tabular-nums text-muted-foreground">{T.shown(g.traders.length, sizes.get(g.key) ?? 0)}</span>}
               </button>
               <span className="min-w-0 flex-1"><TotalsInline t={totals} idleDays={idleDays} /></span>
-              <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0" onClick={() => onOpenGroup(g.key)}>{T.openGroup}</Button>
+              <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={() => onOpenGroup(g.key)}>{T.openGroup}</Button>
             </header>
             {open && (g.traders.length
               ? <div className="border-t border-[var(--glass-border)]"><GroupTable rows={g.traders} showCurator={false} row={row} compact /></div>
@@ -546,9 +545,8 @@ function GroupTable({ rows, showCurator, row, compact = false }: { rows: TraderS
             <th scope="col" className="w-24"><span className="sr-only">{T.cols.actions}</span></th>
           </tr>
         </thead>
-        <tbody>
-          {sorted.map((s) => <GroupRow key={s.trader} s={s} showCurator={showCurator} row={row} />)}
-        </tbody>
+        {/* A single group over ~120 traders (e.g. «Без куратора» after an intake) is windowed; smaller ones render as is. */}
+        <VirtualRows rows={sorted} colSpan={showCurator ? 11 : 10} estimateSize={53} getKey={(s) => s.trader} renderRow={(s) => <GroupRow key={s.trader} s={s} showCurator={showCurator} row={row} />} />
       </table>
     </DataTable>
   );

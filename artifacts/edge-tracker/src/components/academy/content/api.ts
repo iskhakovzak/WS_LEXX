@@ -2,7 +2,7 @@
  * Data layer of «Академия → Обучение»: raw fetch helpers for /api/academy/content/* (no orval codegen for new
  * endpoints) and response types mirrored from api-server/src/routes/academy-content.ts + lib/academyContent.ts.
  */
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
@@ -180,10 +180,10 @@ export const invalidateAcademy = (qc: QueryClient) => qc.invalidateQueries({ que
 export const useAcademyMeta = () => useQuery({ queryKey: academyKeys.meta(), queryFn: () => http.get<Meta>(`${BASE}/meta`), staleTime: 60_000 });
 
 export const usePrograms = (user?: string) =>
-  useQuery({ queryKey: academyKeys.programs(user), queryFn: () => http.get<{ user: string; programs: CatalogProgram[] }>(`${BASE}/programs${qs({ user })}`) });
+  useQuery({ queryKey: academyKeys.programs(user), queryFn: () => http.get<{ user: string; programs: CatalogProgram[] }>(`${BASE}/programs${qs({ user })}`), placeholderData: keepPreviousData });
 
 export const useProgramTree = (id: number | null, user?: string) =>
-  useQuery({ queryKey: academyKeys.program(id ?? 0, user), queryFn: () => http.get<ProgramTree>(`${BASE}/programs/${id}${qs({ user })}`), enabled: !!id });
+  useQuery({ queryKey: academyKeys.program(id ?? 0, user), queryFn: () => http.get<ProgramTree>(`${BASE}/programs/${id}${qs({ user })}`), enabled: !!id, placeholderData: keepPreviousData });
 
 export const useLesson = (id: number | null, user?: string) =>
   useQuery({ queryKey: academyKeys.lesson(id ?? 0, user), queryFn: () => http.get<LessonResponse>(`${BASE}/lessons/${id}${qs({ user })}`), enabled: !!id });
@@ -195,10 +195,10 @@ export const useAssignment = (id: number | null, user?: string, all?: boolean) =
   useQuery({ queryKey: academyKeys.assignment(id ?? 0, user, all), queryFn: () => http.get<AssignmentResponse>(`${BASE}/assignments/${id}${qs({ user, all: all ? 1 : null })}`), enabled: !!id });
 
 export const useReviewQueue = (status: string, cohortId?: number | null, enabled = true) =>
-  useQuery({ queryKey: academyKeys.review(status, cohortId), queryFn: () => http.get<{ status: string; items: ReviewItem[] }>(`${BASE}/review-queue${qs({ status, cohortId })}`), enabled });
+  useQuery({ queryKey: academyKeys.review(status, cohortId), queryFn: () => http.get<{ status: string; items: ReviewItem[] }>(`${BASE}/review-queue${qs({ status, cohortId })}`), enabled, placeholderData: keepPreviousData });
 
 export const useProgressMatrix = (programId: number | null, cohortId: number | null, enabled = true) =>
-  useQuery({ queryKey: academyKeys.progress(programId, cohortId), queryFn: () => http.get<ProgressResponse>(`${BASE}/progress${qs({ programId, cohortId })}`), enabled });
+  useQuery({ queryKey: academyKeys.progress(programId, cohortId), queryFn: () => http.get<ProgressResponse>(`${BASE}/progress${qs({ programId, cohortId })}`), enabled, placeholderData: keepPreviousData });
 
 /** Staff only: `enabled` waits for the role check, so a trader never fires a 403 (DEV-12). */
 export const useAdminTree = (programId: number | null, archived = false, enabled = true) =>
@@ -216,7 +216,7 @@ export const useSetupLessons = (playbookId?: number | null, setup?: string | nul
   });
 
 export const useMyTrades = (q: string, user?: string, enabled = true) =>
-  useQuery({ queryKey: academyKeys.myTrades(q, user), queryFn: () => http.get<{ user: string; trades: TradeRef[] }>(`${BASE}/my-trades${qs({ q, user, limit: 80 })}`), enabled });
+  useQuery({ queryKey: academyKeys.myTrades(q, user), queryFn: () => http.get<{ user: string; trades: TradeRef[] }>(`${BASE}/my-trades${qs({ q, user, limit: 80 })}`), enabled, placeholderData: keepPreviousData });
 
 /** Generic mutation that refreshes every academy query afterwards. */
 export function useAcademyMutation<TVars, TRes>(fn: (v: TVars) => Promise<TRes>) {

@@ -110,13 +110,13 @@ function ReviewSummary({ breach, canReview, onEdit }: { breach: Breach; canRevie
                   type="button"
                   disabled={!canReview || setStatus.isPending}
                   onClick={() => setStatus.mutate({ actionId: a.id, status: done ? "open" : "done" }, { onError: (e) => toast({ title: t("breach.failed"), description: (e as Error).message, variant: "destructive" }) })}
-                  className="press grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-up disabled:cursor-default"
+                  className="press -my-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-up disabled:cursor-default"
                   aria-label={done ? t("breach.markUndone") : t("breach.markDone")}
                   aria-pressed={done}
                 >
                   {done ? <CheckCircle2 className="h-4 w-4 text-up" /> : <Circle className="h-4 w-4" />}
                 </button>
-                <span className={cn("min-w-0 flex-1", done && "text-muted-foreground line-through", a.status === "dropped" && "text-muted-foreground line-through")}>{a.title}</span>
+                <span className={cn("min-w-0 flex-1 break-words", done && "text-muted-foreground line-through", a.status === "dropped" && "text-muted-foreground line-through")}>{a.title}</span>
                 {a.dueOn && <span className={cn("shrink-0 text-xs tabular-nums", !done && a.dueOn < nyDate() ?"text-down" : "text-muted-foreground")}>{t("breach.until", { date: fmtDate(a.dueOn, "dayMonth") })}</span>}
               </li>
             );
@@ -125,7 +125,7 @@ function ReviewSummary({ breach, canReview, onEdit }: { breach: Breach; canRevie
       )}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{personName(r.createdBy)}, {fmtDeskDateTime(r.createdAt)}{r.updatedBy && r.updatedAt !== r.createdAt ? t("breach.editedBy", { name: personName(r.updatedBy) }) : ""}</span>
-        {canReview && <Button type="button" variant="ghost" size="sm" className="ml-auto h-7" onClick={onEdit}>{commonI18n.t("actions.edit")}</Button>}
+        {canReview && <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={onEdit}>{commonI18n.t("actions.edit")}</Button>}
       </div>
     </div>
   );
@@ -165,7 +165,7 @@ function ReviewForm({ breach, onDone, onCancel }: { breach: Breach; onDone: () =
               role="radio"
               aria-checked={d.reason === r.key}
               onClick={() => setD((x) => ({ ...x, reason: r.key }))}
-              className="chip inline-flex min-h-7 items-center px-2.5 text-xs font-medium"
+              className="chip inline-flex min-h-8 items-center px-2.5 text-xs font-medium"
             >
               {r.label}
             </button>
@@ -183,14 +183,14 @@ function ReviewForm({ breach, onDone, onCancel }: { breach: Breach; onDone: () =
       <div className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">{t("breach.agreements")}</span>
         {d.actions.map((a, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={i} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
             <Input
               value={a.title}
               onChange={(e) => setAction(i, { title: e.target.value })}
               placeholder={t("breach.agreementPlaceholder")}
               maxLength={300}
               aria-label={t("breach.agreementAria", { n: i + 1 })}
-              className="h-8 min-w-0 flex-1 text-sm"
+              className="h-8 min-w-0 flex-1 basis-full text-sm sm:basis-0"
             />
             <Input
               type="date"
@@ -198,7 +198,7 @@ function ReviewForm({ breach, onDone, onCancel }: { breach: Breach; onDone: () =
               value={a.dueOn}
               onChange={(e) => setAction(i, { dueOn: e.target.value })}
               aria-label={t("breach.agreementDueAria", { n: i + 1 })}
-              className="h-8 w-[9.5rem] shrink-0 text-sm tabular-nums"
+              className="h-8 w-[9.5rem] shrink-0 grow text-sm tabular-nums sm:grow-0"
             />
             <Button
               type="button" variant="ghost" size="sm" className="h-8 w-8 shrink-0 p-0"

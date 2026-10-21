@@ -181,7 +181,7 @@ export const ChartToolbar = React.memo(function ChartToolbar({
       </Popover>
 
       <div className="ml-auto flex shrink-0 items-center gap-0.5 pl-2">
-        {fetching && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label={tc("toolbar.loading")} />}
+        {fetching && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label={tc("toolbar.loading")} />}
         <Popover open={drawOpen} onOpenChange={setDrawOpen}>
           <PopoverTrigger asChild>
             <Button variant={tool ? "secondary" : "ghost"} size="icon" className="h-8 w-8" aria-label={tool ? tc("toolbar.drawingWith", { tool: DRAWING_LABEL[tool] }) : tc("toolbar.drawing")} title={tc("toolbar.drawing")}>

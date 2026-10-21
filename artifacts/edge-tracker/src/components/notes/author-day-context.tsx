@@ -1,7 +1,7 @@
 
 import { Link } from "wouter";
 import { ArrowUpRight, CandlestickChart, ClipboardList, Moon, CornerDownLeft } from "lucide-react";
-import { Panel, Pill, toneOf, toneText, type Tone } from "@/components/ds";
+import { ErrorState, Panel, Pill, toneOf, toneText, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,8 @@ export function AuthorDayContext({
   data,
   loading,
   unavailable,
+  error,
+  onRetry,
   canInsert,
   onInsertTrades,
   onInsertHeld,
@@ -62,7 +64,11 @@ export function AuthorDayContext({
   date: string;
   data: DayContext | undefined;
   loading: boolean;
+  /** The endpoint is not deployed yet (404): a hint, not an error. */
   unavailable: boolean;
+  /** Any other failure (network, 5xx): shown with «Повторить». */
+  error?: unknown;
+  onRetry?: () => void;
   canInsert: boolean;
   onInsertTrades: (trades: DayTrade[]) => void;
   onInsertHeld: (held: DayTrade[]) => void;
@@ -89,6 +95,8 @@ export function AuthorDayContext({
           <Skeleton className="h-9 w-full rounded-xl" />
           <Skeleton className="h-9 w-full rounded-xl" />
         </div>
+      ) : error && !data ? (
+        <ErrorState error={error} onRetry={onRetry} compact />
       ) : unavailable || !data ? (
         <p className="text-sm text-muted-foreground">
           {t("author.day.unavailable")}{" "}

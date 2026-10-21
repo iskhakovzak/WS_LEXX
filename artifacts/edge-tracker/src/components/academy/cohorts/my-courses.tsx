@@ -6,7 +6,7 @@
 import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { BookOpenCheck, PlayCircle, Users } from "lucide-react";
-import { Panel, Pill } from "@/components/ds";
+import { ErrorState, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { usePrograms } from "@/components/academy/content/api";
 import { PctBar, RuContentPill } from "@/components/academy/content/bits";
@@ -29,7 +29,7 @@ export function CoursesCard({ user }: { user?: string }) {
     <Panel title={t("myPage.courses.title")} icon={BookOpenCheck}
       actions={<Link href={academyLinks.learn({ program: p?.id, user })} className="text-xs font-medium text-primary hover:underline">{t("myPage.courses.all")}</Link>}>
       {q.isLoading ? <Skeleton /> : q.isError ? (
-        <p className="text-sm text-muted-foreground">{t("myPage.courses.failed")}</p>
+        <ErrorState error={q.error} onRetry={q.refetch} title={t("myPage.courses.failed")} compact />
       ) : !step || !p ? (
         <p className="text-sm text-muted-foreground">{t("myPage.courses.empty")}</p>
       ) : (
@@ -72,7 +72,7 @@ function NextLessonCard({ user }: { user?: string }) {
         <Link href={academyLinks.learn({ user })} className="text-xs font-medium text-primary hover:underline">{t("myPage.nextLesson.allCourses", { count: step.others + 1 })}</Link>
       ) : undefined}>
       {q.isLoading ? <Skeleton /> : q.isError ? (
-        <p className="text-sm text-muted-foreground">{t("myPage.courses.failed")}</p>
+        <ErrorState error={q.error} onRetry={q.refetch} title={t("myPage.courses.failed")} compact />
       ) : !step ? (
         <p className="text-sm text-muted-foreground">{t("myPage.courses.empty")}</p>
       ) : (

@@ -85,7 +85,7 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
                 type="button"
                 onClick={() => onSelect(d.date)}
                 aria-pressed={selected === d.date}
-                className={cn("rounded-full px-2 py-0.5 tabular-nums transition-colors duration-[var(--dur-1)] hover:text-foreground", selected === d.date ? "bg-primary/12 text-foreground" : "bg-[var(--glass-bg)]")}
+                className={cn("inline-flex min-h-7 items-center rounded-full px-2.5 tabular-nums transition-colors duration-[var(--dur-1)] hover:text-foreground", selected === d.date ? "bg-primary/12 text-foreground" : "bg-[var(--glass-bg)]")}
                 title={tb("heatmap.worstTitle", { date: fmtDate(d.date, "medium"), score: d.score, net: fmtUsd(d.net, { signed: true, compact: true }) })}
               >
                 {fmtDate(d.date, "dayMonthNumeric")} · {d.score}

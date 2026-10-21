@@ -1,7 +1,8 @@
 import * as React from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LineChart as LineIcon } from "lucide-react";
-import { EmptyState, Pill, Segmented } from "@/components/ds";
+import { EmptyState, ErrorState, Pill, Segmented } from "@/components/ds";
+import { humanizeApiError } from "@/lib/api/errors";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PeriodHint, usePeriodNav } from "@/lib/period-links";
 import { useRiskHistory } from "./use-risk";
@@ -76,7 +77,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
           <Skeleton className="h-24 rounded-xl" />
         </div>
       ) : q.isError ? (
-        <p role="alert" className="text-sm text-down">{t("history.loadFailed", { error: (q.error as Error).message })}</p>
+        <ErrorState compact inset error={q.error} message={t("history.loadFailed", { error: humanizeApiError(q.error) })} onRetry={() => q.refetch()} />
       ) : data.length === 0 ? (
         <EmptyState icon={LineIcon} title={t("history.emptyTitle")} description={t("history.emptyDesc")} className="py-8" />
       ) : (

@@ -9,6 +9,7 @@ import { Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ds";
 import type { BehaviorFlags, TraderDay } from "./use-risk";
 import { useBehaviorDay, useTraderDay } from "./use-risk";
 import { intradayCurve } from "./risk-math";
@@ -161,7 +162,7 @@ export function TraderDayBlock({ trader, dailyLimit, showTrades = false, height 
   const beh = useBehaviorDay(trader, day?.date ?? null);
   const { t } = riskI18n.useT();
   if (q.isLoading) return <DaySkeleton height={height} />;
-  if (q.isError) return <p className="text-xs text-muted-foreground">{t("day.unavailable")}</p>;
+  if (q.isError) return <ErrorState compact inset error={q.error} message={t("day.unavailable")} onRetry={() => q.refetch()} />;
   if (!day?.date || day.trades.length === 0) return <p className="text-sm text-muted-foreground">{t("day.noTrades")}</p>;
   const net = day.net;
   return (

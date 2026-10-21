@@ -5,6 +5,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, Users } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/hooks/use-toast";
+import { humanizeApiError } from "@/lib/api/errors";
 import { DataTable, EmptyState, ErrorState, ListSkeleton, Panel, toneOf, toneText } from "@/components/ds";
 import { fmtDate, fmtPct, fmtR, fmtRate, fmtUsd, fmtCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -68,6 +70,8 @@ export function WeeklyBoard() {
   const m = useMutation({
     mutationFn: (v: boolean) => simApi.prefs(v),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: simKeys.board() }); void qc.invalidateQueries({ queryKey: simKeys.me() }); },
+    // The switch snaps back on failure; say why instead of silently undoing the click.
+    onError: (err) => toast({ title: humanizeApiError(err, t("board.saveError")), variant: "destructive" }),
   });
   const b = q.data;
   return (

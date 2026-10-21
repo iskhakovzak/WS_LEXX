@@ -2,7 +2,7 @@
  * Data layer of «Академия → Путь трейдера / Экзамены»: fetch helpers for /api/academy/path/* and /api/academy/challenges/*
  * and response types mirrored from api-server lib/promotionEngine.ts, lib/challengeEngine.ts and routes/academy-path.ts.
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { fmtDate, fmtTimeNY } from "@/lib/format";
 
@@ -138,14 +138,14 @@ export const pathKeys = {
 
 export const usePathConfig = () => useQuery({ queryKey: pathKeys.config(), queryFn: () => http.get<PathConfig>("/api/academy/path/config"), staleTime: 60_000 });
 export const useReport = (user: string | null, enabled = true) =>
-  useQuery({ queryKey: pathKeys.report(user), queryFn: () => http.get<ReportResponse>(`/api/academy/path/report${qs({ user })}`), enabled });
+  useQuery({ queryKey: pathKeys.report(user), queryFn: () => http.get<ReportResponse>(`/api/academy/path/report${qs({ user })}`), enabled, placeholderData: keepPreviousData });
 export const useFunnel = (enabled: boolean) => useQuery({ queryKey: pathKeys.funnel(), queryFn: () => http.get<Funnel>("/api/academy/path/funnel"), enabled });
 export const useRequests = (status: RequestStatus | null, enabled: boolean) =>
   useQuery({ queryKey: pathKeys.requests(status), queryFn: () => http.get<{ requests: PromotionRequest[] }>(`/api/academy/path/requests${qs({ status })}`), enabled });
 export const useChallenges = (user: string | null, archived: boolean) =>
-  useQuery({ queryKey: pathKeys.challenges(user, archived), queryFn: () => http.get<ChallengeList>(`/api/academy/challenges${qs({ user, archived: archived ? "1" : null })}`) });
+  useQuery({ queryKey: pathKeys.challenges(user, archived), queryFn: () => http.get<ChallengeList>(`/api/academy/challenges${qs({ user, archived: archived ? "1" : null })}`), placeholderData: keepPreviousData });
 export const useChallenge = (id: number | null) =>
-  useQuery({ queryKey: pathKeys.challenge(id ?? 0), queryFn: () => http.get<ChallengeDetail>(`/api/academy/challenges/${id}`), enabled: id != null });
+  useQuery({ queryKey: pathKeys.challenge(id ?? 0), queryFn: () => http.get<ChallengeDetail>(`/api/academy/challenges/${id}`), enabled: id != null, placeholderData: keepPreviousData });
 
 /** Mutation that invalidates everything academy-path related on success. */
 export function usePathMutation<TVars, TOut = unknown>(fn: (v: TVars) => Promise<TOut>) {

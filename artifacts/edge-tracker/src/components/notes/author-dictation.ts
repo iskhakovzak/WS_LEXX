@@ -105,7 +105,12 @@ export function useDictation({
   const start = useCallback(() => startWith(speechLang()), [startWith]);
 
   useEffect(() => () => {
-    try { recRef.current?.abort(); } catch { /* ignore */ }
+    const rec = recRef.current;
+    recRef.current = null;
+    if (!rec) return;
+    // Detach first: a late final phrase must not edit (and autosave) a note whose page is gone.
+    rec.onresult = null; rec.onend = null; rec.onerror = null;
+    try { rec.abort(); } catch { /* ignore */ }
   }, []);
 
   return { supported, recording, interim, start, stop, toggle: recording ? stop : start };

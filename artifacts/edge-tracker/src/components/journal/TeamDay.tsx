@@ -92,10 +92,11 @@ export function TeamDay({
                 <button
                   type="button"
                   onClick={() => onPick(r.trader)}
-                  className="tile tile-interactive grid w-full grid-cols-[minmax(0,9rem)_minmax(0,6rem)_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="tile tile-interactive grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:grid-cols-[minmax(0,9rem)_minmax(0,6rem)_minmax(0,1fr)_auto] sm:gap-y-3 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="truncate text-sm font-semibold" title={personName(r.trader)}>{personName(r.trader)}</span>
-                  <span className="tabular-nums">
+                  {/* Phones: name | result on the first line, reflection | status on the second. */}
+                  <span className="tabular-nums max-sm:text-right">
                     {r.trades > 0 ? (
                       <>
                         <span className={cn("font-semibold", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true, decimals: "auto" })}</span>

@@ -132,7 +132,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v && !busy) onClose(); }}>
-      <DialogContent className="max-h-[92vh] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto rounded-2xl">
+      <DialogContent className="max-h-[92dvh] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto overscroll-contain rounded-2xl">
         <DialogHeader>
           <DialogTitle>{editing ? t("form.editTitle") : t("form.newTitle")}</DialogTitle>
           <DialogDescription>{t("form.description", { author: personName(editing?.trader ?? author) })}</DialogDescription>
@@ -172,9 +172,9 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
               <Label htmlFor="disc-notes" className="text-xs text-muted-foreground">{t("form.notes")}</Label>
               <div className="flex items-center gap-1.5">
                 {TEMPLATES[form.type] && (
-                  <Button type="button" variant="ghost" size="sm" onClick={applyTemplate} className="gap-1"><Sparkles className="h-3.5 w-3.5" />{t("form.templateButton", { type: TYPE_LABELS[form.type] ?? form.type })}</Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={applyTemplate} className="gap-1"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />{t("form.templateButton", { type: TYPE_LABELS[form.type] ?? form.type })}</Button>
                 )}
-                <VoiceRecorder onTranscript={(text) => set("notes", form.notes ? `${form.notes}\n${text}` : text)} />
+                <VoiceRecorder onTranscript={(text) => setForm((f) => ({ ...f, notes: f.notes ? `${f.notes}\n${text}` : text }))} />
                 <Segmented<"write" | "preview">
                   ariaLabel={t("form.modeAria")}
                   size="sm"

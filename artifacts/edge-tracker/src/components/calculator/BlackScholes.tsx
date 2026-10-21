@@ -169,7 +169,7 @@ export default function BlackScholesView({ s, onOpenInBuilder }: { s: BsInputs; 
                   onKeyDown={(e) => { if (e.key === "Enter") void loadTicker(); }}
                   className="h-9 uppercase" />
                 <Button type="button" variant="outline" className="shrink-0" onClick={() => void loadTicker()} disabled={tickerLoading || !s.ticker.trim()}>
-                  {tickerLoading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Search aria-hidden="true" />} {t("bs.priceButton")}
+                  {tickerLoading ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Search aria-hidden="true" />} {t("bs.priceButton")}
                 </Button>
               </div>
               {tickerInfo && <p role="status" className={cn("text-xs", tickerInfo.ok ? "text-up" : "text-down")}>{tickerInfo.text}</p>}

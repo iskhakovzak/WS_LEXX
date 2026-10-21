@@ -339,14 +339,14 @@ export function IdeaDetailSheet({
               <span className="text-foreground">{idea.trader ? personName(idea.trader) : t("sheet.noAuthor")}</span>
               <span>· {relTime(idea.publishedAt ?? idea.createdAt)}</span>
               {idea.setup && <span>· {idea.setup}</span>}
-              {idea.longName && <span className="truncate">· {idea.longName}</span>}
+              {idea.longName && <span className="min-w-0 max-w-full truncate" title={idea.longName}>· {idea.longName}</span>}
             </div>
           </SheetDescription>
           {/* 2.13: the author asks the curator to review this idea — it lands in the curator's «Запросы». */}
           {isOwner && canEdit && !isReviewer && <AskCuratorButton kind="review" link={reviewLink("idea", idea.id)} size="xs" className="min-h-10 w-fit sm:min-h-0" />}
           <div className="flex flex-wrap items-center gap-2">
-            {onPrev && <Button size="sm" variant="ghost" onClick={onPrev} aria-label={t("sheet.prevAria")} className="h-8 w-8 p-0"><ChevronUp className="h-4 w-4" /></Button>}
-            {onNext && <Button size="sm" variant="ghost" onClick={onNext} aria-label={t("sheet.nextAria")} className="h-8 w-8 p-0"><ChevronDown className="h-4 w-4" /></Button>}
+            {onPrev && <Button size="sm" variant="ghost" onClick={onPrev} aria-label={t("sheet.prevAria")} className="h-8 w-8 p-0"><ChevronUp className="h-4 w-4" aria-hidden="true" /></Button>}
+            {onNext && <Button size="sm" variant="ghost" onClick={onNext} aria-label={t("sheet.nextAria")} className="h-8 w-8 p-0"><ChevronDown className="h-4 w-4" aria-hidden="true" /></Button>}
             {sameTickerCount > 1 && onFilterTicker && (
               <button type="button" onClick={() => onFilterTicker(idea.ticker)} className="chip min-h-7 px-2.5 text-xs">
                 {t("sheet.allByTicker", { ticker: idea.ticker, count: sameTickerCount })}
@@ -358,7 +358,7 @@ export function IdeaDetailSheet({
         </div>
 
         {/* Body */}
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
           {nextAction}
 
           {showReview && (
@@ -447,7 +447,7 @@ export function IdeaDetailSheet({
         </div>
 
         {/* Footer actions */}
-        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--field-border)] px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-[var(--field-border)] px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
           <WriteOnly>
             {idea.convertedTradeId ? (
               <Button size="sm" variant="secondary" onClick={() => setLocation(links.trade(idea.convertedTradeId!))} className="gap-1.5">

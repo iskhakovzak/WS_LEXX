@@ -51,7 +51,7 @@ export function RichText({ text, query }: { text: string; query?: string }) {
 export function AuthorMarkdown({ text, query, className }: { text: string; query?: string; className?: string }) {
   const lines = text.split("\n");
   return (
-    <div className={cn("space-y-1 text-sm leading-relaxed", className)}>
+    <div className={cn("space-y-1 break-words text-sm leading-relaxed", className)}>
       {lines.map((line, i) => {
         const t = line.trim();
         if (t.startsWith("**") && t.endsWith("**") && t.length > 4 && !t.slice(2, -2).includes("**")) {
@@ -81,7 +81,7 @@ export function NoteReader({ raw, query, compact }: { raw: string; query?: strin
   const p = parseNote(raw);
   if (!p.structured) {
     return (
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
         <RichText text={p.free.trim() || "—"} query={query} />
       </p>
     );
@@ -89,7 +89,7 @@ export function NoteReader({ raw, query, compact }: { raw: string; query?: strin
   return (
     <div className={cn("flex flex-col", compact ? "gap-3" : "gap-4")}>
       {p.free.trim() && (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90"><RichText text={p.free.trim()} query={query} /></p>
+        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90"><RichText text={p.free.trim()} query={query} /></p>
       )}
       {SECTION_GROUPS.map((g) => {
         const defs = SECTIONS.filter((s) => s.group === g.id && p.sections[s.key].trim());
@@ -102,7 +102,7 @@ export function NoteReader({ raw, query, compact }: { raw: string; query?: strin
                 {defs.length > 1 || g.id === "trades" || g.id === "plan" ? (
                   <span className="text-xs font-medium text-muted-foreground">{s.label}</span>
                 ) : null}
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
                   <RichText text={p.sections[s.key].trim()} query={query} />
                 </p>
               </div>

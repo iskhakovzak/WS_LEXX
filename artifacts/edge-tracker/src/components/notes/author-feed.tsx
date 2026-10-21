@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CandlestickChart, Check, CheckCheck, ChevronDown, ListChecks, RefreshCw, Search, Sparkles, Users, X } from "lucide-react";
 import { EmptyState, FilterChip, Panel, Pill, Segmented, Toolbar, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ export function useAuthorFeed(from: string, to: string, enabled = true) {
     enabled,
     staleTime: 30_000,
     refetchInterval: 120_000,
+    // Switching day / week / month keeps the cards on screen (dimmed) instead of flashing back to skeletons.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -149,11 +151,11 @@ function FeedCard({
             aria-pressed={selected}
             aria-label={t("author.feed.selectAria", { name: personName(note.trader) })}
             className={cn(
-              "grid h-6 w-6 place-items-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "grid h-8 w-8 place-items-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               selected ? "border-primary bg-primary text-primary-foreground" : "border-[var(--field-border)]",
             )}
           >
-            {selected && <Check className="h-3.5 w-3.5" />}
+            {selected && <Check className="h-4 w-4" aria-hidden="true" />}
           </button>
         )}
         <Avatar name={note.trader} />
@@ -178,8 +180,8 @@ function FeedCard({
 
       {note.refined_text && (
         <div className="glass-field inline-flex self-start p-0.5" role="group" aria-label={t("author.feed.versionAria")}>
-          <button type="button" aria-pressed={!ai} onClick={() => setAi(false)} className={cn("min-h-7 rounded-full px-2.5 text-xs font-medium", !ai ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>{t("original")}</button>
-          <button type="button" aria-pressed={ai} onClick={() => setAi(true)} className={cn("inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium", ai ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>
+          <button type="button" aria-pressed={!ai} onClick={() => setAi(false)} className={cn("min-h-8 rounded-full px-3 text-xs font-medium", !ai ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>{t("original")}</button>
+          <button type="button" aria-pressed={ai} onClick={() => setAi(true)} className={cn("inline-flex min-h-8 items-center gap-1 rounded-full px-3 text-xs font-medium", ai ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>
             <Sparkles className="h-3 w-3" aria-hidden="true" />AI
           </button>
         </div>
@@ -192,8 +194,8 @@ function FeedCard({
         )}
       </div>
       {long && !query && (
-        <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
-          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
+        <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="inline-flex min-h-8 items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[var(--dur-2)] ease-[var(--ease)] motion-reduce:transition-none", expanded && "rotate-180")} aria-hidden="true" />
           {expanded ? commonI18n.t("actions.collapse") : t("author.feed.readMore")}
         </button>
       )}
@@ -348,7 +350,7 @@ export function AuthorFeed({
                 disabled={selected.size === 0 || teamSummary.isPending}
                 onClick={() => teamSummary.mutate(Array.from(selected))}
               >
-                {teamSummary.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
+                {teamSummary.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
                 {teamSummary.isPending ? t("analyzing") : t("author.feed.teamSummaryCount", { count: selected.size })}
               </Button>
             </>
@@ -368,7 +370,7 @@ export function AuthorFeed({
         <Panel
           title={t("author.feed.teamSummary")}
           icon={Sparkles}
-          actions={<Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("closeSummary")} onClick={() => setSummary(null)}><X className="h-4 w-4" /></Button>}
+          actions={<Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("closeSummary")} onClick={() => setSummary(null)}><X className="h-4 w-4" aria-hidden="true" /></Button>}
         >
           <AuthorMarkdown text={summary} />
         </Panel>
@@ -406,7 +408,7 @@ export function AuthorFeed({
           )}
         </Panel>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className={cn("flex flex-col gap-3 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "opacity-60")} aria-busy={q.isPlaceholderData || undefined}>
           {visible.map((n) => (
             <FeedCard
               key={n.id}

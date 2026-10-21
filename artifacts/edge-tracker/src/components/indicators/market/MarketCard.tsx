@@ -27,7 +27,7 @@ export function IndicatorExplain({ def }: { def: IndicatorDef }) {
           type="button"
           aria-label={t("mcard.whatIs", { label: def.label })}
           onClick={(e) => e.stopPropagation()}
-          className="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-1)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="-m-1.5 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-1)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Info className="h-3.5 w-3.5" aria-hidden="true" />
         </button>

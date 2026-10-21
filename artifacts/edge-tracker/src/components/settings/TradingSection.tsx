@@ -291,8 +291,8 @@ export function TradingSection() {
             <div>
               <div className="micro-label mb-2">{t("trading.leverage")}</div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <NumberField id="td-lev-intra" label={tc("trading.intraday")} suffix="×" value={draft.leverageIntraday} onChange={set("leverageIntraday")} error={errors.leverageIntraday ?? null} hint={`Buying power ${fmtUsd(buyingPower(candidate, "intraday"), { decimals: 0 })}`} />
-                <NumberField id="td-lev-on" label={t("trading.overnightSwing")} suffix="×" value={draft.leverageOvernight} onChange={set("leverageOvernight")} error={errors.leverageOvernight ?? null} hint={`Buying power ${fmtUsd(buyingPower(candidate, "overnight"), { decimals: 0 })}`} />
+                <NumberField id="td-lev-intra" label={tc("trading.intraday")} suffix="×" value={draft.leverageIntraday} onChange={set("leverageIntraday")} error={errors.leverageIntraday ?? null} hint={t("trading.bpHint", { amount: fmtUsd(buyingPower(candidate, "intraday"), { decimals: 0 }) })} />
+                <NumberField id="td-lev-on" label={t("trading.overnightSwing")} suffix="×" value={draft.leverageOvernight} onChange={set("leverageOvernight")} error={errors.leverageOvernight ?? null} hint={t("trading.bpHint", { amount: fmtUsd(buyingPower(candidate, "overnight"), { decimals: 0 }) })} />
               </div>
             </div>
 

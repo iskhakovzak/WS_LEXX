@@ -107,7 +107,7 @@ function FirmsOnTicker({ rows }: { rows: FirmOnTicker[] }) {
         </tbody>
       </table>
       {rows.length > FIRMS_COLLAPSED && (
-        <button type="button" className="mt-1 text-xs text-primary hover:underline" onClick={() => setAll((v) => !v)}>
+        <button type="button" className="mt-1 inline-flex min-h-8 items-center text-xs text-primary hover:underline" onClick={() => setAll((v) => !v)}>
           {all ? commonI18n.t("actions.collapse") : commonI18n.t("actions.showAllCount", { count: rows.length })}
         </button>
       )}

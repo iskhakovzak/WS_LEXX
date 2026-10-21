@@ -18,6 +18,7 @@ import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { useAuth } from "@/contexts/auth-context";
 import { links } from "@/lib/links";
 import { fmtDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { nyDate } from "@/lib/trading-date";
 import { deskDayI18n } from "@/i18n/ns/deskDay";
 import { useDayCandles, useDeskDay, type DeskDay } from "@/components/desk-day/api";
@@ -90,7 +91,9 @@ function DayView({ day, ticker, date, alias }: { day: DeskDay; ticker: string; d
           </p>
         )}
         {candles.isLoading ? (
-          <Skeleton className="h-[340px] rounded-xl sm:h-[460px]" />
+          <Skeleton className={cn("rounded-xl", showOffice && day.office ? "h-[400px] sm:h-[540px]" : "h-[340px] sm:h-[460px]")} />
+        ) : candles.isError && candles.error?.status !== 404 && !bars.length ? (
+          <div className="flex h-[340px] items-center sm:h-[460px]"><QueryError error={candles.error} onRetry={() => void candles.refetch()} className="w-full" /></div>
         ) : bars.length ? (
           <DeskDayChart day={day} bars={bars} baseSec={baseSec} colors={colors} focus={focus} onToggle={toggle} showOffice={showOffice} onShowOffice={setShowOffice} prevClose={candles.data?.prevClose ?? null} />
         ) : (
@@ -101,6 +104,22 @@ function DayView({ day, ticker, date, alias }: { day: DeskDay; ticker: string; d
       <Panel className="lg:col-span-4" padded={false} bodyClassName="p-2 sm:p-3">
         <DeskDayLegend day={day} colors={colors} focus={focus} onToggle={toggle} onClear={() => setFocus([])} />
       </Panel>
+    </div>
+  );
+}
+
+/** Same grid as DayView (chart 8/12 + legend 4/12) so nothing jumps when the day arrives. */
+function DayViewSkeleton({ label }: { label: string }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-12" aria-busy="true" aria-label={label}>
+      <div className="glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)] lg:col-span-8">
+        <Skeleton className="h-4 w-2/3 rounded-md" />
+        <Skeleton className="h-[340px] rounded-xl sm:h-[460px]" />
+        <Skeleton className="h-4 w-1/2 rounded-md" />
+      </div>
+      <div className="glass-panel flex flex-col gap-2 rounded-2xl p-3 lg:col-span-4">
+        {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+      </div>
     </div>
   );
 }
@@ -128,7 +147,7 @@ export default function DeskDayPage() {
   if (!member) body = <Panel><EmptyState icon={Lock} title={t("guest.title")} description={t("guest.desc")} /></Panel>;
   else if (!ticker || !date) body = <Panel><EmptyState icon={Search} title={t("title")} description={t("form.hint")} /></Panel>;
   else if (q.isError) body = <Panel><QueryError error={q.error} onRetry={() => q.refetch()} /></Panel>;
-  else if (!q.data) body = <Skeleton className="h-[480px] rounded-2xl" aria-label={t("loading")} />;
+  else if (!q.data) body = <DayViewSkeleton label={t("loading")} />;
   else if (!q.data.traders.length) body = <Panel><EmptyState icon={Users} title={t("empty.title", { ticker })} description={t("empty.desc")} /></Panel>;
   else body = <DayView day={q.data} ticker={ticker} date={date} alias={alias} />;
 

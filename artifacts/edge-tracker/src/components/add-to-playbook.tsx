@@ -350,7 +350,7 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
               <span className="min-w-0 flex-1">
                 {duplicateSource.folder ? t("add.duplicateIn", { name: duplicateSource.name, folder: duplicateSource.folder }) : t("add.duplicate", { name: duplicateSource.name })}
               </span>
-              <button type="button" onClick={() => openEntry(duplicateSource.id)} className="shrink-0 text-xs font-medium underline-offset-2 hover:underline">
+              <button type="button" onClick={() => openEntry(duplicateSource.id)} className="-my-1 inline-flex min-h-8 shrink-0 items-center rounded-full px-2 text-xs font-medium underline-offset-2 hover:underline">
                 {t("add.open")}
               </button>
             </div>

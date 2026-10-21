@@ -78,7 +78,7 @@ export type RowActionsProps = {
 export function RowActions({ o, watched, pending, onAddWatch, onAddPlan, planPending }: RowActionsProps) {
   const { t } = offeringsI18n.useT();
   const sec = safeHttpUrl(o.filingUrl ?? null);
-  const btn = "inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+  const btn = "inline-flex h-7 w-7 pointer-coarse:h-10 pointer-coarse:w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
   return (
     <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       <button type="button" className={cn(btn, watched && "text-primary")} disabled={watched || pending} onClick={() => onAddWatch(o)}
@@ -239,7 +239,7 @@ export function OfferingsList({
   );
   return (
     <>
-      <DataTable className="hidden md:block" ariaLabel={variant === "deals" ? t("list.dealsAria") : t("list.overhangAria")}>
+      <DataTable className="hidden md:block [&_thead_th]:py-0.5 [&_thead_th>button]:min-h-8" ariaLabel={variant === "deals" ? t("list.dealsAria") : t("list.overhangAria")}>
         <table className="min-w-[720px] [&_td]:!px-2 [&_th]:!px-2">
           <thead>
             <tr>

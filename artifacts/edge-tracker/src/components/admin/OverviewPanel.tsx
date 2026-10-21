@@ -292,7 +292,7 @@ function ReviewLoadPanel({ load, onGoNoCurator }: { load: ReviewLoad | null | un
               ) : t("reviewLoad.unassigned", { count: load.unassigned.traders })}
               value={<span className="inline-flex flex-wrap items-center justify-end gap-1.5 tabular-nums">
                 {load.unassigned.count ? t("reviewLoad.unassignedDays", { count: load.unassigned.count }) : null}
-                {onGoNoCurator && <Button variant="ghost" size="sm" className="h-7" onClick={onGoNoCurator}>{t("attention.action.assign")} <ArrowRight /></Button>}
+                {onGoNoCurator && <Button variant="ghost" size="sm" className="h-8" onClick={onGoNoCurator}>{t("attention.action.assign")} <ArrowRight /></Button>}
               </span>}
               tone="warn"
             />

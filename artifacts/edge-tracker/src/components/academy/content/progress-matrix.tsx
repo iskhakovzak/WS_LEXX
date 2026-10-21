@@ -8,8 +8,7 @@ import { Link } from "wouter";
 import { Download, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { downloadCsv } from "@/components/analytics-page/metrics";
-import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, useTableSort } from "@/components/ds";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DataTable, EmptyState, ErrorState, Panel, PanelSkeleton, Pill, SortableTh, StatCard, StatGrid, StatGridSkeleton, useTableSort } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { stageLabelOf, useProgressMatrix, type ProgressStudent } from "./api";
 import { PctBar } from "./bits";
@@ -44,13 +43,13 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
   }), []);
   const sort = useTableSort<ProgressStudent, SortKey>(rows, sorter, "pct");
 
-  if (q.isLoading) return <Skeleton className="h-64 rounded-2xl" />;
-  if (q.isError) return <Panel><p className="text-sm text-down">{t("matrix.loadFailed", { message: (q.error as Error).message })}</p></Panel>;
+  if (q.isLoading) return <div className="flex flex-col gap-4"><StatGridSkeleton count={4} /><PanelSkeleton height={260} /></div>;
+  if (q.isError) return <ErrorState error={q.error} onRetry={q.refetch} title={t("matrix.loadFailed")} />;
   if (!d?.program) return <Panel><EmptyState icon={Users} title={t("matrix.noPrograms")} description={t("matrix.noProgramsDesc")} /></Panel>;
 
   const s = d.summary;
   return (
-    <div className="flex flex-col gap-4">
+    <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
       {!d.enrollmentsAvailable && (
         <p className="text-xs text-muted-foreground">{t("matrix.noCohorts")}</p>
       )}

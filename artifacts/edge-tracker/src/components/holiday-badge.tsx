@@ -67,7 +67,7 @@ export function DateHolidayBadge({ events }: { events: HolidayEvent[] }) {
   const m = metaFor(top.type);
   const title = events.map((e) => `${e.name}${e.description ? " — " + e.description : ""}`).join("\n");
   return (
-    <span title={title} aria-label={events.map((e) => e.name).join(", ")} className="ml-1 inline-flex align-middle">
+    <span role="img" title={title} aria-label={events.map((e) => e.name).join(", ")} className="ml-1 inline-flex align-middle">
       <Pill tone={m.tone} className="px-1.5 py-0 text-2xs leading-4">
         {m.label}
         {events.length > 1 ? ` +${events.length - 1}` : ""}

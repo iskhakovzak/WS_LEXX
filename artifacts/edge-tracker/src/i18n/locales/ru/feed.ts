@@ -181,5 +181,6 @@ export default {
     legendNew: "новое",
     legendEvents: "события",
     legendTrading: "торговый день",
+    open: "Календарь",
   },
 } as const;

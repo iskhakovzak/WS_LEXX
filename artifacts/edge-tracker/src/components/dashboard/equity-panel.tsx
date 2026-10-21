@@ -154,8 +154,11 @@ export function EquityPanel({
               <div className="flex flex-1 flex-col gap-3">
                 <PeriodSwitch period={period} onChange={onPeriodChange} options={PERIOD_OPTIONS} />
                 <div className="flex flex-1 items-center justify-center">
+                  {/* flex-wrap + a text basis: on a phone the button drops under the text instead of squeezing it
+                      into a one-word column. */}
                   <EmptyState
                     compact
+                    className="flex-wrap [&>div:first-of-type]:basis-40"
                     icon={LineChartIcon}
                     title={td(`equity.empty.${period}`)}
                     description={td("equity.emptyHint")}

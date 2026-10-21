@@ -75,7 +75,7 @@ export function LessonStep({
           {otherTags.map((tag) =>
             editable ? (
               <button key={tag} type="button" onClick={() => toggleTag(tag)} aria-label={t("editor.removeTag", { tag: tagLabel(tag) })}
-                className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs font-medium !text-foreground">
+                className="chip inline-flex min-h-8 items-center gap-1 px-2.5 text-xs font-medium !text-foreground">
                 {tagLabel(tag)}<X className="h-3 w-3" aria-hidden="true" />
               </button>
             ) : (
@@ -176,7 +176,7 @@ export function ChipGroup({
             aria-pressed={on}
             onClick={() => onToggle(tag)}
             className={cn(
-              "chip min-h-7 px-2.5 text-xs font-medium disabled:cursor-default",
+              "chip min-h-8 px-2.5 text-xs font-medium disabled:cursor-default",
               on && (tone === "up" ? "!border-transparent !bg-up/15 !text-up" : tone === "down" ? "!border-transparent !bg-down/15 !text-down" : "!border-transparent !bg-warn/15 !text-warn"),
             )}
           >

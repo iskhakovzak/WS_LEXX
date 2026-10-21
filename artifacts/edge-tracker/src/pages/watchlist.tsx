@@ -139,7 +139,9 @@ export default function Watchlist() {
   const addRef = useRef<HTMLInputElement>(null);
 
   // ── data ────────────────────────────────────────────────────────────
-  const { data: rawItems, isLoading, isError, error, refetch, isFetching } = useQuery<WatchlistItem[]>({
+  // isPending (not isLoading): while the scope is still resolving the query is disabled, and isLoading would be false —
+  // the page flashed «список пуст» before the first fetch even started.
+  const { data: rawItems, isPending: isLoading, isError, error, refetch, isFetching } = useQuery<WatchlistItem[]>({
     queryKey: listKey,
     queryFn: ({ signal }) => http.get<WatchlistItem[]>("/api/watchlist", { query: { scope }, signal }),
     enabled: scopeReady,

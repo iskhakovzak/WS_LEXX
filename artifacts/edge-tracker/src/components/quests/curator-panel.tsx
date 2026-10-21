@@ -66,11 +66,11 @@ export function CuratorQuestsView({ data, onGive, onCancel, onComplete }: { data
           action={(q) => q.scope === "curator" && q.status === "active" ? (
             <span className="flex shrink-0 items-center gap-1">
               {q.template === MANUAL_TEMPLATE && (
-                <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => onComplete(q)} aria-label={t("curator.completeAria", { title: questTitle(q) })}>
+                <Button type="button" size="sm" variant="outline" className="h-8 px-2.5 text-xs" onClick={() => onComplete(q)} aria-label={t("curator.completeAria", { title: questTitle(q) })}>
                   <Check className="h-3.5 w-3.5" /> {t("curator.complete")}
                 </Button>
               )}
-              <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => onCancel(q)} aria-label={t("curator.cancelAria", { title: questTitle(q) })}>
+              <Button type="button" size="sm" variant="ghost" className="h-8 px-2.5 text-xs" onClick={() => onCancel(q)} aria-label={t("curator.cancelAria", { title: questTitle(q) })}>
                 <X className="h-3.5 w-3.5" /> {t("curator.cancel")}
               </Button>
             </span>

@@ -227,7 +227,7 @@ export function PlaybookRevisionsButton({
       </IconAction>
 
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setSelectedId(null); setMode("edit"); setShowAll(false); } }}>
-        <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col gap-4 p-4 sm:p-6">
+        <DialogContent className="flex max-h-[85dvh] max-w-4xl flex-col gap-4 p-4 sm:p-6">
           <DialogHeader className="pr-10">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
               <History className="h-4 w-4 text-primary" aria-hidden="true" /> {t("revisions.title")}

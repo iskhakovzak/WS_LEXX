@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import {
   AlertTriangle, CalendarPlus, Check, ExternalLink, FileText, History, Lightbulb, LineChart, Star, UserCheck, Wallet,
 } from "lucide-react";
-import { Pill, TermTooltip, toneText } from "@/components/ds";
+import { ErrorState, Pill, TermTooltip, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -390,7 +390,7 @@ export function OfferingDetailSheet({
 
           <Section title={t("sheet.myTrades")} icon={Wallet} aside={mine.rows.length ? t("sheet.lastN", { count: mine.rows.length }) : undefined}>
             {myTrades.isLoading ? <Skeleton className="h-16 w-full rounded-xl" /> : myTrades.error ? (
-              <p className="text-sm text-muted-foreground">{t("sheet.tradesFailed")}</p>
+              <ErrorState compact inset error={myTrades.error} message={t("sheet.tradesFailed")} onRetry={() => myTrades.refetch()} />
             ) : mine.rows.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("sheet.noTrades", { ticker: o.ticker })}</p>
             ) : (

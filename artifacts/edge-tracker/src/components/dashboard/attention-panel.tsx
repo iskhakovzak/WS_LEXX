@@ -91,7 +91,7 @@ function NextStep({ item }: { item: Item }) {
           </Button>
         )}
         {item.chips?.map((c) => (
-          <Link key={c.key} href={c.href} title={c.title} className="chip inline-flex min-h-7 items-center px-2.5 text-xs font-medium tabular-nums">
+          <Link key={c.key} href={c.href} title={c.title} className="chip inline-flex min-h-8 items-center px-2.5 text-xs font-medium tabular-nums">
             {c.label}
           </Link>
         ))}
@@ -414,7 +414,7 @@ export function AttentionPanel({
               type="button"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              className="inline-flex items-center gap-1 self-start rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-8 cursor-pointer items-center gap-1 self-start rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
               {expanded ? tc("actions.collapse") : t("attention.more", { count: hiddenCount })}

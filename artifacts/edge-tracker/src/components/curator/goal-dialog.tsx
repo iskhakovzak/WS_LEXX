@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { QueryState } from "@/components/ds";
+import { QueryState, SkeletonBlock } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { localeTag } from "@/lib/format";
@@ -64,7 +64,7 @@ export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: 
             <DialogTitle className="flex items-center gap-2"><Target className="h-4 w-4 text-primary" aria-hidden="true" />{t("goal.title", { name: personName(trader) })}</DialogTitle>
             <DialogDescription>{t("goal.hint")}</DialogDescription>
           </DialogHeader>
-          <QueryState query={q} skeleton={<div className="h-40" />}>
+          <QueryState query={q} skeleton={<SkeletonBlock className="h-40 rounded-xl" />}>
             {(data) => (
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 flex flex-col gap-1.5">

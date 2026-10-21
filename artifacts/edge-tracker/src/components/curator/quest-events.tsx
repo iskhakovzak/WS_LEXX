@@ -31,7 +31,7 @@ export function QuestEventChips({ events, onOpenTrader }: { events: readonly Que
         const note = e.note?.trim() || null;
         const full = [text, day, note].filter(Boolean).join(" · ");
         return (
-          <span key={e.questId} className="chip inline-flex min-h-7 max-w-full items-center gap-1 pl-2.5 pr-1 text-xs font-medium">
+          <span key={e.questId} className="chip inline-flex min-h-8 max-w-full items-center gap-1 pl-2.5 pr-1 text-xs font-medium">
             <button type="button" title={full} onClick={() => onOpenTrader(e.trader)} className="inline-flex min-w-0 items-center gap-1.5">
               {e.status === "done"
                 ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-up" aria-hidden="true" />
@@ -43,7 +43,7 @@ export function QuestEventChips({ events, onOpenTrader }: { events: readonly Que
             <button
               type="button"
               onClick={() => close(e.questId)}
-              className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
               aria-label={tc("questEvents.close", { text })}
               title={tc("questEvents.closeTitle")}
             >

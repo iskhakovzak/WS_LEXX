@@ -129,6 +129,7 @@ export default {
     commentPlaceholder: "Treyder nimani yaxshi qildi, ertaga nimani tuzatish kerak…",
     update: "Fikrni yangilash",
     saveNext: "Saqlash va keyingisi",
+    pickScoreFirst: "Avval bahoni tanlang",
   },
   checkin: {
     readinessAria: "Tayyorlik: 100 dan {score}",

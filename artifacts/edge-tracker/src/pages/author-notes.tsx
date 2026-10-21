@@ -76,7 +76,7 @@ function upsertHistory(list: AuthorNote[] | undefined, note: AuthorNote): Author
 function SaveIndicator({ status, savedAt, now, onRetry }: { status: SaveStatus; savedAt: number | null; now: number; onRetry: () => void }) {
   const { t } = notesI18n.useT();
   if (status === "saving") {
-    return <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />{t("savingNow")}</span>;
+    return <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("savingNow")}</span>;
   }
   if (status === "error") {
     return (
@@ -707,7 +707,7 @@ export default function AuthorNotesPage() {
                     {mode === "sections" ? `${t("author.blocksCount", { filled: filledCount, total: SECTIONS.length })} · ` : ""}{t("wordsShort", { count: words })}
                   </span>
                   <Button size="sm" className="gap-1.5" onClick={() => void improve()} disabled={improving || editorDisabled || !raw.trim()}>
-                    {improving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
+                    {improving ? <RefreshCw className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
                     {improving ? t("improving") : t("improve")}
                   </Button>
                 </div>
@@ -805,7 +805,8 @@ export default function AuthorNotesPage() {
               date={date}
               data={dayQ.data}
               loading={dayQ.isLoading}
-              unavailable={dayUnavailable || dayQ.isError}
+              unavailable={dayUnavailable} error={dayQ.isError && !dayUnavailable ? dayQ.error : undefined}
+              onRetry={() => void dayQ.refetch()}
               canInsert={!editorDisabled}
               onInsertTrades={insertTrades}
               onInsertHeld={insertHeld}

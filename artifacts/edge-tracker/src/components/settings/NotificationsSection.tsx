@@ -43,7 +43,7 @@ function DailyTelegramRow({ disabled }: { disabled: boolean }) {
     }
   }
 
-  if (on === null) return <Skeleton className="h-10 rounded-xl" />;
+  if (on === null) return <Skeleton className="h-14 rounded-xl" />;
   return (
     <SettingRow label={t("tgAlerts.daily")} htmlFor="tg-daily" hint={t("tgAlerts.dailyHint")}>
       <Switch id="tg-daily" checked={on && !disabled} disabled={saving || disabled} onCheckedChange={toggle} />
@@ -96,7 +96,10 @@ function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => vo
   return (
     <Panel title={t("tgAlerts.title")} description={t("tgAlerts.description")} icon={enabled === false ? BellOff : Bell}>
       {isLoading || enabled === null ? (
-        <Skeleton className="h-10 rounded-xl" />
+        <div className="flex flex-col gap-3" aria-busy="true">
+          <Skeleton className="h-14 rounded-xl" />
+          <Skeleton className="h-14 rounded-xl" />
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           <SettingRow label={t("tgAlerts.send")} htmlFor="tg-alerts"
@@ -153,7 +156,7 @@ function ShareAchievementsPanel() {
 
   return (
     <Panel title={t("recognition.panel")} icon={Medal}>
-      {on === null ? <Skeleton className="h-10 rounded-xl" /> : (
+      {on === null ? <Skeleton className="h-14 rounded-xl" /> : (
         <SettingRow label={t("recognition.setting")} htmlFor="share-achievements" hint={t("recognition.settingHint")}>
           <Switch id="share-achievements" checked={on} disabled={saving} onCheckedChange={toggle} />
         </SettingRow>

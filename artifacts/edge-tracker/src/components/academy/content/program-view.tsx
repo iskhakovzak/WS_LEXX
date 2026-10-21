@@ -9,6 +9,7 @@ import { KindIcon, PctBar, RuContentPill, StatusIcon, SubmissionPill } from "./b
 import { academyLinks } from "./links";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export function ProgramCard({ p, active, onSelect }: { p: CatalogProgram; active: boolean; onSelect: () => void }) {
   const { t } = academyI18n.useT();
@@ -68,7 +69,7 @@ export function ProgramOutline({ tree, user, viewingOther }: { tree: ProgramTree
             <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-foreground">{tree.program.title}<RuContentPill scope="course" /></h2>
             {tree.program.description && <p className="mt-0.5 text-sm text-muted-foreground">{tree.program.description}</p>}
             <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-              {viewingOther && <>{t("program.studentLabel")} <b className="text-foreground">{tree.user}</b> · </>}
+              {viewingOther && <>{t("program.studentLabel")} <b className="text-foreground">{personName(tree.user)}</b> · </>}
               {t("program.byKind", { lessons: `${bk.lesson.done}/${bk.lesson.total}`, quizzes: `${bk.quiz.done}/${bk.quiz.total}`, assignments: `${bk.assignment.done}/${bk.assignment.total}` })}
             </p>
           </div>

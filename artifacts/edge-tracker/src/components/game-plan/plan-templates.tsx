@@ -146,7 +146,7 @@ export function TemplateMenu({
               className="h-8"
             />
             <Button type="submit" size="sm" className="h-8 shrink-0" disabled={!name.trim() || save.isPending} aria-label={tr("templates.save")} title={tr("templates.save")}>
-              {save.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <BookmarkPlus aria-hidden="true" />}
+              {save.isPending ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <BookmarkPlus aria-hidden="true" />}
             </Button>
           </div>
           {kind === "personal" && canShare && (

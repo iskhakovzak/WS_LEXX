@@ -115,7 +115,7 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
     <div className="flex flex-col gap-[var(--grid-gap)] pb-2">
       <p className="text-sm text-muted-foreground">{t("description")}</p>
       {/* OWNER-12: a sticky menu of the groups + the pilot checklist shortcuts (PILOT.md §2.5). */}
-      <nav aria-label={t("jump.aria")} className="sticky top-0 z-sticky -mx-1 flex flex-col gap-1.5 rounded-2xl border border-[var(--glass-border)] bg-background/95 px-3 py-2 backdrop-blur">
+      <nav aria-label={t("jump.aria")} className="sticky top-[var(--sticky-top)] z-sticky -mx-1 flex flex-col gap-1.5 rounded-2xl border border-[var(--glass-border)] bg-background/95 px-3 py-2 backdrop-blur">
         <div className="flex gap-1.5 overflow-x-auto pb-0.5">
           {groups.map((g) => (
             <button key={g.group} type="button" className="chip min-h-7 shrink-0 rounded-full px-2.5 text-xs" onClick={() => jumpTo(groupId(g.group))}>
@@ -168,7 +168,8 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
         className={cn(
           "flex flex-wrap items-center justify-between gap-2 rounded-2xl px-[var(--panel-p)] py-2.5",
           // Unsaved edits: the bar sticks to the bottom on a solid background (the one next step); clean: a quiet footer.
-          pending ? "sticky bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-sticky border border-[var(--glass-border)] bg-background/95 shadow-lg backdrop-blur" : "glass-panel",
+          // Phones: above the fixed bottom nav (≈4.5rem + 0.5rem inset), else the bar hid under it.
+          pending ? "sticky bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-sticky md:bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] border border-[var(--glass-border)] bg-background/95 shadow-lg backdrop-blur" : "glass-panel",
         )}
         role="region"
         aria-label={t("title")}

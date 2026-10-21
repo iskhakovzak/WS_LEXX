@@ -288,7 +288,7 @@ export function WatchlistDetailSheet({
             <Section
               title={t("sheet.levels")}
               icon={Target}
-              actions={mayModify ? <button type="button" className="text-xs text-primary hover:underline" onClick={() => actions.edit(item)}>{plan.stop == null && plan.target == null ? t("sheet.setStopTarget") : t("sheet.editStopTarget")}</button> : undefined}
+              actions={mayModify ? <button type="button" className="inline-flex min-h-8 items-center text-xs text-primary hover:underline" onClick={() => actions.edit(item)}>{plan.stop == null && plan.target == null ? t("sheet.setStopTarget") : t("sheet.editStopTarget")}</button> : undefined}
             >
               {allLevels.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{row.levels === undefined ? t("sheet.levelsLoading") : t("sheet.noLevels")}</p>
@@ -350,7 +350,7 @@ export function WatchlistDetailSheet({
             <Section
               title={me ? t("sheet.myTrades") : t("sheet.trades")}
               icon={History}
-              actions={<Link href={links.trades({ ticker: item.ticker, trader: me ?? undefined })} className="text-xs text-primary hover:underline">{t("sheet.allTrades")}</Link>}
+              actions={<Link href={links.trades({ ticker: item.ticker, trader: me ?? undefined })} className="inline-flex min-h-8 items-center text-xs text-primary hover:underline">{t("sheet.allTrades")}</Link>}
             >
               {!me ? (
                 <p className="text-sm text-muted-foreground">{t("sheet.ownOnly")}</p>
@@ -395,7 +395,7 @@ export function WatchlistDetailSheet({
             <Section
               title={t("sheet.ideas")}
               icon={Link2}
-              actions={<Link href={links.newIdea(item.ticker)} className="text-xs text-primary hover:underline">{t("sheet.newIdea")}</Link>}
+              actions={<Link href={links.newIdea(item.ticker)} className="inline-flex min-h-8 items-center text-xs text-primary hover:underline">{t("sheet.newIdea")}</Link>}
             >
               {ideas.isLoading ? (
                 <div className="space-y-2"><Skeleton className="h-9 w-full rounded-xl" /><Skeleton className="h-9 w-full rounded-xl" /></div>

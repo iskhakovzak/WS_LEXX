@@ -47,6 +47,8 @@ export type ChartData = {
   loading: boolean;
   fetching: boolean;
   error: ChartError | null;
+  /** Re-request the bars (the error state's «Повторить»). */
+  retry: () => void;
   multiDay: boolean;
 };
 
@@ -96,6 +98,8 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
   }, [bars.data]);
   const executions = React.useMemo(() => opts.executions ?? execs.data?.executions ?? [], [opts.executions, execs.data]);
   const requestDaily = React.useCallback(() => setDailyRequested(true), []);
+  const refetchBars = bars.refetch;
+  const retryBars = React.useCallback(() => { void refetchBars(); }, [refetchBars]);
 
   return {
     dateKey, toKey, fromKey: bars.data?.from && bars.data.from > fromKey ? bars.data.from : fromKey,
@@ -109,6 +113,7 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
     loading: bars.isLoading || (opts.executions === undefined && execs.isLoading),
     fetching: bars.isFetching,
     error: bars.error ?? null,
+    retry: retryBars,
     multiDay,
   };
 }

@@ -260,7 +260,7 @@ export function DayBrief({
                     <span className="text-muted-foreground">{t("today.yourDayLabel")}</span>
                     <span className={cn("font-semibold tabular-nums", toneText(toneOf(result.net)))}>{fmtUsd(result.net, { signed: true })}</span>
                     <span className="tabular-nums text-muted-foreground">{t("today.dayStats", { count: result.n, wins: result.wins, losses: result.losses })}</span>
-                    <Link href={links.journalDay(day)} className="ml-auto inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                    <Link href={links.journalDay(day)} className="ml-auto inline-flex min-h-8 items-center gap-1 text-xs text-primary hover:underline">
                       <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> {t("today.journalDay")}
                     </Link>
                   </div>
@@ -405,7 +405,7 @@ export function MyTickerEarnings({ ticker, data }: { ticker: string; data: Catal
               {e.reactions.filter((r) => data.book.get(r.date)?.tickers.has(t)).map((r) => {
                 const s = data.book.get(r.date)!.tickers.get(t)!;
                 return (
-                  <Link key={r.date} href={links.journalDay(r.date)} className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--glass-hover-bg)] px-2 py-1 text-xs hover:underline">
+                  <Link key={r.date} href={links.journalDay(r.date)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-[var(--glass-hover-bg)] px-2 py-1 text-xs hover:underline">
                     <span className="tabular-nums text-muted-foreground">{fmtDay(r.date)}</span>
                     <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net, { signed: true })}</span>
                   </Link>

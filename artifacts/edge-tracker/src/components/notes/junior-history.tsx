@@ -182,8 +182,8 @@ export function JuniorHistory({
             className="pl-10 pr-10"
           />
           {q ? (
-            <button type="button" aria-label={tc("actions.clearSearch")} onClick={() => setQ("")} className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-              <X className="h-4 w-4" />
+            <button type="button" aria-label={tc("actions.clearSearch")} onClick={() => setQ("")} className="absolute right-1 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           ) : (
             <Kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>

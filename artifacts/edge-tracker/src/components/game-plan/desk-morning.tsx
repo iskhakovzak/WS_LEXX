@@ -10,7 +10,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ArrowRight, Megaphone, Newspaper } from "lucide-react";
 import { Panel } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { commonI18n } from "@/i18n/ns/common";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { StreamRow } from "@/components/shared/stream/StreamCard";
@@ -24,10 +26,20 @@ type FeedEntry = Parameters<typeof dayPosts>[0][number];
 
 function FullLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-primary hover:underline">
+    <Link href={href} className="inline-flex min-h-8 items-center gap-1 rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {label}
       <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
     </Link>
+  );
+}
+
+function LoadFailed({ onRetry, busy }: { onRetry: () => void; busy: boolean }) {
+  const { t } = gpI18n.useT();
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      {t("morning.loadFailed")}
+      <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={busy}>{commonI18n.t("actions.retry")}</Button>
+    </div>
   );
 }
 
@@ -74,7 +86,7 @@ export function TodayImportant({ date }: { date: string }) {
       {q.isLoading ? (
         <Skeleton className="h-16 w-full rounded-xl" />
       ) : q.isError ? (
-        <p className="text-xs text-muted-foreground">{t("morning.loadFailed")}</p>
+        <LoadFailed onRetry={() => void q.refetch()} busy={q.isFetching} />
       ) : posts.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("morning.importantEmpty")}</p>
       ) : (
@@ -105,7 +117,7 @@ export function DeskNews({ date }: { date: string }) {
           <Skeleton className="h-10 w-full rounded-xl" />
         </div>
       ) : failed ? (
-        <p className="text-xs text-muted-foreground">{t("morning.loadFailed")}</p>
+        <LoadFailed onRetry={() => { void dayQ.refetch(); void prevQ.refetch(); }} busy={dayQ.isFetching || prevQ.isFetching} />
       ) : items.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("morning.newsEmpty")}</p>
       ) : (

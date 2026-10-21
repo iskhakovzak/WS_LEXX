@@ -157,9 +157,9 @@ export function KpiGridSkeleton() {
     <StatGrid className="md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-5">
       {Array.from({ length: 10 }).map((_, i) => (
         <div key={i} className="glass-panel flex h-[104px] flex-col gap-2 rounded-2xl p-4">
-          <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--glass-hover-bg)]" />
-          <div className="h-7 w-24 animate-pulse rounded-lg bg-[var(--glass-hover-bg)]" />
-          <div className="h-4 w-16 animate-pulse rounded-full bg-[var(--glass-hover-bg)]" />
+          <div className="skeleton h-3 w-20 rounded-full" />
+          <div className="skeleton h-7 w-24" />
+          <div className="skeleton h-4 w-16 rounded-full" />
         </div>
       ))}
     </StatGrid>

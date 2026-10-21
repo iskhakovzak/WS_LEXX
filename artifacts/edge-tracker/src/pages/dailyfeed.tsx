@@ -30,7 +30,7 @@ import { links } from "@/lib/links";
 import { http, ApiError } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { FeedEntryCard } from "@/components/feed/FeedEntryCard";
-import { FeedCalendar } from "@/components/feed/FeedCalendar";
+import { FeedCalendar, FeedCalendarPopover } from "@/components/feed/FeedCalendar";
 import { FeedEditorDialog, blankForm, feedToForm, formToBody, type FeedForm } from "@/components/feed/FeedEditorDialog";
 import { StreamDayHeader, StreamGroup, StreamRow } from "@/components/shared/stream/StreamCard";
 import {
@@ -503,25 +503,27 @@ export default function DailyFeedPage() {
           className="pl-10 pr-9"
         />
         {query && (
-          <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+          <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-0.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
             <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
+      {/* The side column (calendar) is hidden below lg — phones / tablets pick a day from this popover. */}
+      <FeedCalendarPopover className="lg:hidden" anchor={today} counts={calCounts} unreadDays={calNewDays} tradeDays={calTradeDays} selected={selectedDay} onSelect={setSelectedDay} today={today} />
     </Toolbar>
   );
 
   const dayNav = selectedDay && (
     <div className="flex flex-wrap items-center gap-2" aria-label={t("page.selectedDay")}>
       <div className="glass-field inline-flex items-center gap-1 p-1">
-        <button type="button" aria-label={t("page.prevDay")} title={t("page.prevDayTitle")} onClick={() => stepDay(-1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+        <button type="button" aria-label={t("page.prevDay")} title={t("page.prevDayTitle")} onClick={() => stepDay(-1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
           <ChevronLeft className="h-4 w-4" />
         </button>
         <span className="px-1 text-sm font-medium text-foreground">{formatDayLong(selectedDay)}</span>
-        <button type="button" aria-label={t("page.nextDay")} title={t("page.nextDayTitle")} disabled={stepWeekday(selectedDay, 1) > today} onClick={() => stepDay(1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-40">
+        <button type="button" aria-label={t("page.nextDay")} title={t("page.nextDayTitle")} disabled={stepWeekday(selectedDay, 1) > today} onClick={() => stepDay(1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-40">
           <ChevronRight className="h-4 w-4" />
         </button>
-        <button type="button" aria-label={t("page.allDaysAria")} title={t("page.allDaysTitle")} onClick={() => setSelectedDay(null)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+        <button type="button" aria-label={t("page.allDaysAria")} title={t("page.allDaysTitle")} onClick={() => setSelectedDay(null)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -711,12 +713,12 @@ export default function DailyFeedPage() {
     <Page>
       {header}
       <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]">
-        <main className="flex min-w-0 flex-col gap-4" aria-label={t("page.title")}>
+        <section className="flex min-w-0 flex-col gap-4" aria-label={t("page.title")}>
           {toolbar}
           {dayNav}
           {banner}
           {body}
-        </main>
+        </section>
         <aside className="hidden lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:block" aria-label={t("page.asideAria")}>
           {aside}
         </aside>

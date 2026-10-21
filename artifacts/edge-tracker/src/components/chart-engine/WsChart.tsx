@@ -21,9 +21,7 @@ import {
   type IChartApi, type ISeriesApi, type UTCTimestamp, type MouseEventParams, type CandlestickData, type WhitespaceData,
   type HistogramData, type BaselineData, type AutoscaleInfo, type Time,
 } from "lightweight-charts";
-import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
 import type { Bar, ChartMode, Execution, Timeframe, TradeLike, TradeStructureDto } from "./types";
 import { TIMEFRAMES, TF_LABEL, TF_SECONDS } from "./types";
 import { aggregate, availableTimeframes, barSeconds, baseBarLabel } from "./lib/aggregate";
@@ -38,6 +36,7 @@ import { baseChartOptions, candleColors, priceFormatFor, refPrice, topMargin, wh
 import { chartI18n } from "@/i18n/ns/chart";
 import { readChartTheme, type ChartTheme } from "./theme";
 import { useChartData } from "./hooks/useChartData";
+import { ChartLoading, ChartNotice } from "./ui/ChartStates";
 import { useThemeVersion } from "./hooks/useThemeVersion";
 import { useStructureLayer } from "./hooks/useStructureLayer";
 import { useReplay } from "./hooks/useReplay";
@@ -608,15 +607,7 @@ export function WsChart({
     isWorkspace && "h-[58svh] min-h-[280px] shrink-0 lg:h-auto lg:min-h-[320px] lg:flex-1 lg:shrink",
   );
 
-  if (data.loading) {
-    return (
-      <div className={cn("flex w-full min-w-0 flex-col gap-2", isWorkspace && "h-full min-h-0", className)} aria-busy="true">
-        <Skeleton className="h-8 w-full max-w-[34rem] rounded-full" />
-        <Skeleton className={cn("rounded-2xl", isWorkspace && "min-h-[280px] flex-1")} style={isWorkspace ? undefined : { height }} />
-        <span className="sr-only" role="status">{tc("engine.loading")}</span>
-      </div>
-    );
-  }
+  if (data.loading) return <ChartLoading workspace={isWorkspace} height={height} label={tc("engine.loading")} className={className} />;
   if (data.error || !bars.length) {
     const err = data.error;
     const reason = err?.field<string>("reason");
@@ -626,11 +617,8 @@ export function WsChart({
       : err ? tc("engine.loadFailed", { message: err.message })
       : useDaily && data.daily.loading ? tc("engine.loadingDaily")
       : tc("engine.noCandles", { date: data.dateKey });
-    return (
-      <div className={cn("flex items-center gap-2 rounded-2xl bg-[var(--glass-bg)] px-4 py-6 text-sm text-muted-foreground", className)} role="status">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" /> {text}
-      </div>
-    );
+    const canRetry = !!err && !reason && err.status !== 404 && err.status !== 422 && err.status !== 400;
+    return <ChartNotice text={text} onRetry={canRetry ? data.retry : undefined} retrying={data.fetching} className={className} />;
   }
 
   // A multi-day trade (overnight / swing) spans several days: the replay labels carry the day too.

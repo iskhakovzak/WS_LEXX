@@ -75,7 +75,7 @@ export function ScenarioBar({
                   <button
                     type="button"
                     onClick={() => onRemove(r.type)}
-                    className="grid h-6 w-6 place-items-center rounded-full hover:bg-[hsl(var(--foreground)/0.08)]"
+                    className="grid h-7 w-7 place-items-center rounded-full hover:bg-[hsl(var(--foreground)/0.08)]"
                     aria-label={t("scenario.removeRule", { rule: chipLabel(r) })}
                   >
                     <X className="h-3.5 w-3.5" aria-hidden="true" />

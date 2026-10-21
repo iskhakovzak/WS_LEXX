@@ -114,6 +114,7 @@ export function SubSetupsSection({
                   title={c.reviewed ? t("variants.unmark", { name: c.name }) : t("variants.mark", { name: c.name })}
                   aria-pressed={c.reviewed}
                   onClick={() => reviewedMut.mutate({ id: c.id, reviewed: !c.reviewed })}
+                  disabled={reviewedMut.isPending}
                   className={c.reviewed ? "text-up hover:text-up" : undefined}
                 >
                   {c.reviewed ? <CheckCircle2 /> : <Circle />}

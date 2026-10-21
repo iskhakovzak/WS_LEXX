@@ -129,6 +129,7 @@ export default {
     commentPlaceholder: "What the trader did well, what to fix tomorrow…",
     update: "Update feedback",
     saveNext: "Save and next",
+    pickScoreFirst: "Pick a score first",
   },
   checkin: {
     readinessAria: "Readiness {score} of 100",

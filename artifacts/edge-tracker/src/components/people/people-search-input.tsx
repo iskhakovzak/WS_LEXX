@@ -36,7 +36,7 @@ export const PeopleSearchInput = React.forwardRef<HTMLInputElement, {
           type="button"
           onClick={() => onChange("")}
           aria-label={t("people.clear")}
-          className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>

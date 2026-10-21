@@ -146,6 +146,8 @@ export default function LoginPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   // The secret typed in step 1, kept in memory only, so step 2 doesn't ask for the current password again.
   const typedSecret = useRef<string | null>(null);
+  // Synchronous guard: a double Enter / double tap fires two submits before `submitting` re-renders.
+  const inFlight = useRef(false);
 
   // A lock is per account: it applies only while the same name is typed.
   const locked = !!lockout && lockout.until > now && nameKey(lockout.name) === nameKey(name);
@@ -187,9 +189,10 @@ export default function LoginPage() {
     const typedName = name.trim();
     if (!typedName) { nameRef.current?.focus(); return; }
     if (!password) { passwordRef.current?.focus(); return; }
-    if (submitting || locked) return;
+    if (inFlight.current || submitting || locked) return;
+    inFlight.current = true;
     setSubmitting(true);
-    const failure = await loginAsTrader(typedName, password);
+    const failure = await loginAsTrader(typedName, password).finally(() => { inFlight.current = false; });
     setSubmitting(false);
     if (!failure) {
       typedSecret.current = password;
@@ -211,7 +214,8 @@ export default function LoginPage() {
       setShake(true);
       setTimeout(() => setShake(false), 450);
     }
-    passwordRef.current?.focus();
+    // A lock disables the secret field, so focus would fall to <body>: keep it on the name instead.
+    (failure.error === "locked" || failure.error === "rate_limited" ? nameRef : passwordRef).current?.focus();
   }
 
   const [guestBusy, setGuestBusy] = useState(false);
@@ -241,7 +245,7 @@ export default function LoginPage() {
   const canSubmit = !!name.trim() && password.length > 0 && !submitting && !locked;
 
   return (
-    <div className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-background px-4 py-10">
+    <div className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-background px-4 pb-10 pt-[calc(3.75rem+env(safe-area-inset-top))]">
       {/* Ambient colour behind the glass */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0">
         <div className="absolute left-1/2 top-[-18%] h-[520px] w-[820px] max-w-[160vw] -translate-x-1/2 rounded-full bg-primary/15 blur-[120px]" />
@@ -304,14 +308,14 @@ export default function LoginPage() {
 
               {/* Secret: PIN (digits keyboard) or password */}
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-baseline justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <label htmlFor="login-password" className="text-xs text-muted-foreground">
                     {isPin ? t("secret.pin") : t("secret.password")}
                   </label>
                   <button
                     type="button"
                     onClick={switchKind}
-                    className="rounded text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="-my-1.5 -mr-1.5 inline-flex min-h-8 items-center rounded-md px-1.5 text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {isPin ? t("secret.usePassword") : t("secret.usePin")}
                   </button>
@@ -347,7 +351,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? t("secret.hide") : t("secret.show")}
-                    aria-pressed={showPassword}
+                    aria-controls="login-password"
                     className="absolute right-1 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
@@ -396,9 +400,9 @@ export default function LoginPage() {
             variant="ghost"
             size="sm"
             onClick={handleGuest}
-            disabled={guestBusy}
+            disabled={guestBusy || submitting}
             aria-busy={guestBusy}
-            className="text-muted-foreground"
+            className="min-h-10 text-muted-foreground sm:min-h-8"
           >
             {guestBusy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UserRound aria-hidden="true" />}
             {t("guest")}

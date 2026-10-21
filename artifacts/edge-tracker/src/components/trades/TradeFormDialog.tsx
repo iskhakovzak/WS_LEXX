@@ -153,7 +153,7 @@ export function TradeFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[92dvh] w-[calc(100vw-1.5rem)] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("form.title", { ticker: editing?.ticker ?? form.ticker })}</DialogTitle>
           <DialogDescription>{t("form.description")}</DialogDescription>

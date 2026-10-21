@@ -205,7 +205,7 @@ export default function Dashboard() {
         );
       case "desk":
         // Staff only; hidden when the risk desk is not deployed (null).
-        return staff && deskQ.data !== null ? <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} /> : null;
+        return staff && deskQ.data !== null ? <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} isError={deskQ.isError} onRetry={() => void deskQ.refetch()} /> : null;
       case "streaks":
         return <StreaksPanel fill data={today} isLoading={todayQ.isLoading} />;
       case "positions":

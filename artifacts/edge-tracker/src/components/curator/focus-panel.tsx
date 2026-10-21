@@ -51,7 +51,7 @@ export function FocusPanel({ trader, focus }: { trader: string; focus: CuratorFo
               <Pill tone={cur.source === "curator" ? "purple" : "neutral"}>{cur.source === "curator" ? t("focus.fromCurator") : t("focus.auto")}</Pill>
               {cur.costNet != null && cur.costNet < 0 && <span className="text-sm tabular-nums text-down">{t("focus.cost", { cost: fmtUsd(cur.costNet, { decimals: 0 }) })}</span>}
               {cur.source === "curator" && (
-                <Button type="button" size="sm" variant="ghost" className="h-7" onClick={resetAuto} disabled={reset.isPending} title={t("focus.resetAutoTitle")}>
+                <Button type="button" size="sm" variant="ghost" onClick={resetAuto} disabled={reset.isPending} title={t("focus.resetAutoTitle")}>
                   {t("focus.resetAuto")}
                 </Button>
               )}

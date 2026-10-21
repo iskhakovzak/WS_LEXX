@@ -206,6 +206,12 @@ export default function RulesTracker() {
         hasRules
           ? <RulesOverview report={report} trader={traderName} canMark={canMark} onOpenRule={openDetail} onAddRule={() => openRule()} onLogMistake={openMistake} />
           : <RulesOnboarding report={report} trader={traderName} days={days} onUseTemplate={(d) => openRule(d)} onCustom={() => openRule()} />
+      ) : tab === "mistakes" && mistakesQ.isLoading ? (
+        // The log would otherwise flash «no mistakes yet» before the list arrives.
+        <PanelSkeleton height={320} />
+      ) : tab === "mistakes" && mistakesQ.isError && !mistakesQ.data ? (
+        // A failed log must not read as «no mistakes yet».
+        <ErrorState error={mistakesQ.error} onRetry={() => mistakesQ.refetch()} />
       ) : tab === "mistakes" ? (
         <MistakesTab
           ref={searchRef}
@@ -220,6 +226,8 @@ export default function RulesTracker() {
         />
       ) : violationsQ.isLoading ? (
         <PanelSkeleton height={320} />
+      ) : violationsQ.isError && !violationsQ.data ? (
+        <ErrorState error={violationsQ.error} onRetry={() => violationsQ.refetch()} />
       ) : (
         <ViolationsList
           violations={violations}

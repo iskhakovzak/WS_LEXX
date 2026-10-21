@@ -20,7 +20,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-modal bg-[var(--overlay)] duration-[var(--dur-3)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-modal bg-[var(--overlay)] duration-[var(--dur-3)] data-[state=closed]:duration-[var(--dur-2)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -37,13 +37,13 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "glass-thick glass-solid fixed left-[50%] top-[50%] z-modal grid max-h-[calc(100dvh-2rem)] w-[calc(100%-1.5rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto overscroll-contain rounded-2xl bg-popover p-6 text-popover-foreground duration-[var(--dur-3)] ease-smooth data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
+        "glass-thick glass-solid fixed left-[50%] top-[50%] z-modal grid max-h-[calc(100dvh-2rem)] w-[calc(100%-1.5rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto overscroll-contain rounded-2xl bg-popover p-6 text-popover-foreground duration-[var(--dur-3)] data-[state=closed]:duration-[var(--dur-2)] ease-smooth data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
         className
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="chip absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none">
+      <DialogPrimitive.Close className="chip absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:right-3 pointer-coarse:top-3 pointer-coarse:h-10 pointer-coarse:w-10">
         <X className="h-4 w-4" />
         <span className="sr-only">{commonI18n.t("actions.close")}</span>
       </DialogPrimitive.Close>

@@ -245,8 +245,9 @@ function RuleRow({
     : r.violations === 0 ? t("row.clean", { days: r.days })
     : [t("preview.violations", { count: r.violations, violated: r.violatedDays, days: r.days }), r.lastViolation ? t("preview.last", { date: fmtDate(r.lastViolation, "dayMonth") }) : null].filter(Boolean).join(" · ");
   return (
-    <li className={cn("flex min-h-[60px] items-center gap-3 rounded-xl px-2 py-2 transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]", muted && "opacity-70")}>
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    // Phones: the «kept / broke» buttons wrap under the row instead of squeezing the rule name to a few letters.
+    <li className={cn("flex min-h-[60px] flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-2 py-2 transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]", muted && "opacity-70")}>
+      <button type="button" onClick={onOpen} className="flex min-w-[min(100%,15rem)] flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground" title={r.name}>{r.name}</span>
@@ -267,7 +268,7 @@ function RuleRow({
           </span>
         )}
 
-        <span className="w-[120px] shrink-0 text-right">
+        <span className="w-24 shrink-0 text-right sm:w-[120px]">
           {r.auto && r.status === "checked" && r.impact != null && r.impact !== 0 ? (
             <>
               <span className={cn("block text-sm font-semibold tabular-nums", r.impact < 0 ? "text-down" : "text-up")}>{fmtUsd(r.impact, { signed: true, decimals: "trim" })}</span>
@@ -284,19 +285,20 @@ function RuleRow({
         </span>
       </button>
 
-      {!r.auto && r.status !== "disabled" && canMark && <SelfMarkButtons ruleId={r.id} trader={trader} day={today} mark={mark} />}
+      {!r.auto && r.status !== "disabled" && canMark && <SelfMarkButtons ruleId={r.id} trader={trader} day={today} mark={mark} className="ml-auto" />}
     </li>
   );
 }
 
 /** Today's «соблюдал / нарушил» for a self-assessed rule (same data the journal checklist writes). */
-export function SelfMarkButtons({ ruleId, trader, day, mark, size = "sm" }: { ruleId: number; trader: string; day: string; mark: SelfMark | undefined; size?: "sm" | "md" }) {
+export function SelfMarkButtons({ ruleId, trader, day, mark, size = "sm", className }: { ruleId: number; trader: string; day: string; mark: SelfMark | undefined; size?: "sm" | "md"; className?: string }) {
   const { t } = rulesI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const ok = mark?.ok ?? null;
   async function set(v: boolean) {
+    if (busy) return;
     const next = ok === v ? null : v;
     setBusy(true);
     try {
@@ -310,7 +312,7 @@ export function SelfMarkButtons({ ruleId, trader, day, mark, size = "sm" }: { ru
   }
   const cls = size === "sm" ? "h-8 px-2 text-xs" : "h-9 px-3 text-sm";
   return (
-    <div role="group" aria-label={t("self.todayAria", { date: fmtDate(day, "dayMonth") })} className="flex shrink-0 items-center gap-1" title={t("self.title")}>
+    <div role="group" aria-label={t("self.todayAria", { date: fmtDate(day, "dayMonth") })} className={cn("flex shrink-0 items-center gap-1", className)} title={t("self.title")}>
       <button
         type="button"
         disabled={busy}
@@ -358,11 +360,11 @@ function DayDetail({ day, report, trader, onLogMistake }: { day: string | null; 
         <span className="text-xs text-muted-foreground">{t("day.allKept")}</span>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
-        <Link href={links.dayReport(day, trader)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+        <Link href={links.dayReport(day, trader)} className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-primary hover:underline">
           {t("day.dayReport")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
         {!c.clean && (
-          <button type="button" onClick={() => onLogMistake({ description: `${fmtDate(day, "dayMonth")}: ${names.join(", ")}` })} className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => onLogMistake({ description: `${fmtDate(day, "dayMonth")}: ${names.join(", ")}` })} className="inline-flex min-h-8 items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
             <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> {t("day.logLesson")}
           </button>
         )}

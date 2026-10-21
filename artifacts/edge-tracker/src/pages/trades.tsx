@@ -584,9 +584,11 @@ export default function Trades() {
         description={headerText}
         actions={
           <>
+            {/* Phones: no keyboard, and a CSV of the whole book is a desktop job (the bulk bar keeps CSV of a
+                selection) — fewer choices in the header. */}
             <Popover open={helpOpen} onOpenChange={setHelpOpen}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label={tt("page.shortcuts.aria")} title={tt("page.shortcuts.aria")}><Keyboard /></Button>
+                <Button variant="ghost" size="icon-sm" className="hidden md:inline-flex" aria-label={tt("page.shortcuts.aria")} title={tt("page.shortcuts.aria")}><Keyboard aria-hidden="true" /></Button>
               </PopoverTrigger>
               <PopoverContent align="end" side="bottom" collisionPadding={12} className="w-72 p-3">
                 <p className="pb-2 text-sm font-semibold">{tt("page.shortcuts.title")}</p>
@@ -601,8 +603,8 @@ export default function Trades() {
                 <p className="pt-2 text-xs text-muted-foreground">{tt("page.shortcuts.hint")}</p>
               </PopoverContent>
             </Popover>
-            <Button variant="outline" size="sm" className="gap-1.5" disabled={!total || exporting} onClick={() => void exportAll()} aria-label={tt("page.exportAria", { count: total })}>
-              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} CSV
+            <Button variant="outline" size="sm" className="hidden gap-1.5 md:inline-flex" disabled={!total || exporting} onClick={() => void exportAll()} aria-label={tt("page.exportAria", { count: total })}>
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />} CSV
             </Button>
           </>
         }
@@ -716,7 +718,7 @@ export default function Trades() {
           {D.hasMore && (
             <div className="flex justify-center pt-1">
               <Button variant="outline" onClick={D.loadMore} disabled={D.isFetching} className="gap-1.5">
-                {D.isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {tt("page.moreDays")}
+                {D.isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />} {tt("page.moreDays")}
                 <span className="text-muted-foreground">{tt("page.daysShown", { shown: D.days.length, total: D.totalDays })}</span>
               </Button>
             </div>

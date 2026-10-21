@@ -4,6 +4,7 @@ import { Check, ChevronDown, Plus, Receipt, Scissors, Target } from "lucide-reac
 import { DataTable, Panel, Pill, SortableTh, TermTooltip, toneOf, useTableSort } from "@/components/ds";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
@@ -43,10 +44,15 @@ export function FeesBlock({
   canApplyPlan,
   onApplyPlan,
   costsByGroup,
+  error,
+  onRetry,
 }: {
   trades: PreviewTrade[];
   data: FeesResponse | undefined;
   isLoading: boolean;
+  /** The /api/whatif/fees request failed (no data): the details show the error with Retry instead of a skeleton. */
+  error?: unknown;
+  onRetry?: () => void;
   presets: Preset[];
   rules: Rule[];
   canApplyPlan: boolean;
@@ -106,14 +112,14 @@ export function FeesBlock({
         <Fact
           icon={Scissors}
           title={t("fees.eatenTitle")}
-          value={isLoading || !data ? "…" : commonI18n.t("units.trades", { count: data.eatenCount })}
+          value={data ? commonI18n.t("units.trades", { count: data.eatenCount }) : error ? "—" : "…"}
           tone={data?.eatenCount ? "down" : undefined}
           text={data ? `${t("fees.eatenText")}${data.feesOverGrossCount ? ` ${t("fees.overGross", { count: data.feesOverGrossCount })}` : ""}` : t("fees.eatenTextBare")}
         />
         <Fact
           icon={Receipt}
           title={t("fees.composition")}
-          value={data?.byType[0] ? `${data.byType[0].label} ${fmtRate(data.byType[0].share)}` : "…"}
+          value={data?.byType[0] ? `${data.byType[0].label} ${fmtRate(data.byType[0].share)}` : data || error ? "—" : "…"}
           text={data?.byType.length ? data.byType.slice(1, 4).map((b) => `${b.label} ${fmtRate(b.share)}`).join(" · ") || t("fees.onlyItem") : t("fees.compositionBare")}
         />
       </div>
@@ -166,7 +172,7 @@ export function FeesBlock({
         </ul>
       ) : null}
 
-      <FeeDetails data={data} isLoading={isLoading} costsByGroup={costsByGroup} />
+      <FeeDetails data={data} isLoading={isLoading} costsByGroup={costsByGroup} error={error} onRetry={onRetry} />
     </div>
   );
 }
@@ -295,17 +301,19 @@ function GroupTable({ title, rows, description, keyLabel, defaultSort = "order",
   );
 }
 
-function FeeDetails({ data, isLoading, costsByGroup }: { data: FeesResponse | undefined; isLoading: boolean; costsByGroup?: React.ReactNode }) {
+function FeeDetails({ data, isLoading, costsByGroup, error, onRetry }: { data: FeesResponse | undefined; isLoading: boolean; costsByGroup?: React.ReactNode; error?: unknown; onRetry?: () => void }) {
   const { t } = whatIfI18n.useT();
   const [open, setOpen] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="inline-flex items-center gap-1.5 rounded-full px-1 text-sm font-medium text-primary hover:underline">
-        <ChevronDown className={cn("h-4 w-4 transition-transform duration-[var(--dur-1)]", open && "rotate-180")} aria-hidden="true" />
+      <CollapsibleTrigger className="inline-flex min-h-8 items-center gap-1.5 rounded-full px-1 text-sm font-medium text-primary hover:underline">
+        <ChevronDown className={cn("h-4 w-4 transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
         {open ? t("fees.hideDetails") : t("fees.showDetails")}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-3">
-        {isLoading || !data ? (
+        {!data && error ? (
+          <QueryError error={error} onRetry={onRetry} compact />
+        ) : isLoading || !data ? (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-64 rounded-2xl" />)}</div>
         ) : (
           <div className="flex flex-col gap-4">

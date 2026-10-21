@@ -107,7 +107,7 @@ export function AttentionPanel({ data, onOpenTrader, onTemplate, onReviewDay, ex
               : <NextRow key={r.key} row={r} onOpenTrader={onOpenTrader} onTemplate={onTemplate} />))}
           {rows.length > VISIBLE && (
             <li>
-              <button type="button" onClick={() => setAll((v) => !v)} className="px-1 text-xs text-primary hover:underline">
+              <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="inline-flex min-h-8 items-center px-1 text-xs text-primary hover:underline">
                 {all ? commonI18n.t("actions.collapse") : t("showMore", { count: rows.length - VISIBLE })}
               </button>
             </li>
@@ -203,7 +203,7 @@ function NextRow({ row, onOpenTrader, onTemplate }: {
   const a = row.next;
   return (
     <li className="tile flex min-w-0 items-center gap-3 px-3 py-2">
-      <button type="button" onClick={() => onOpenTrader(a.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
+      <button type="button" onClick={() => onOpenTrader(a.trader)} title={personName(a.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(a.trader)}
       </button>
       <StatusDot tone={actionTone(a.kind)} className="min-w-0 flex-1"><span className="text-sm text-foreground">{a.label}</span></StatusDot>
@@ -225,7 +225,7 @@ function OneOnOneRow({ row, onOpenTrader }: { row: Extract<AttentionRow, { type:
   const { t } = curatorI18n.useT();
   return (
     <li className="tile flex min-w-0 items-center gap-3 px-3 py-2">
-      <button type="button" onClick={() => onOpenTrader(row.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
+      <button type="button" onClick={() => onOpenTrader(row.trader)} title={personName(row.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(row.trader)}
       </button>
       <StatusDot tone="warn" className="min-w-0 flex-1">

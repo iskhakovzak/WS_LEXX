@@ -14,7 +14,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
-import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Loader2, Search } from "lucide-react";
+import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Loader2, RefreshCw, Search } from "lucide-react";
 import { EmptyState, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
@@ -28,6 +28,7 @@ import { fmtR, fmtUsd } from "@/lib/format";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { useAuth } from "@/contexts/auth-context";
 import { chartLabI18n } from "@/i18n/ns/chartLab";
+import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
 import { entryTimeOf, netOf, searchParams } from "@/components/chart-engine/lib/picker";
 import { usePlanOverlay } from "@/components/chart-engine/hooks/usePlanOverlay";
@@ -120,7 +121,7 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
       <PopoverContent align="start" className="w-[min(26rem,calc(100vw-1.5rem))] p-0">
         <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
           {searching && !list.isLoading
-            ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-label={tl("picker.searching")} />
+            ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label={tl("picker.searching")} />
             : <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
           <Input
             autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder={tl("picker.placeholder")}
@@ -137,11 +138,16 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
           {list.isLoading ? (
             <div className="flex flex-col gap-1.5 p-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}</div>
           ) : list.error ? (
-            <p className="px-3 py-4 text-sm text-muted-foreground">{tl("picker.loadFailed", { message: list.error.message })}</p>
+            <div className="flex flex-wrap items-center gap-2 px-3 py-4 text-sm text-muted-foreground" role="alert">
+              <span className="min-w-0 flex-1">{tl("picker.loadFailed", { message: list.error.message })}</span>
+              <Button variant="ghost" size="sm" onClick={() => void list.refetch()} disabled={list.isFetching}>
+                <RefreshCw className={list.isFetching ? "animate-spin motion-reduce:animate-none" : undefined} aria-hidden="true" /> {commonI18n.t("actions.retry")}
+              </Button>
+            </div>
           ) : !list.data?.length ? (
             <p className="px-3 py-4 text-sm text-muted-foreground">{text.trim() ? tl("picker.nothing") : tl("picker.noTrades")}</p>
           ) : (
-            <ul className={searching ? "opacity-60 transition-opacity" : "transition-opacity"} aria-busy={searching || undefined}>{list.data.map((t) => <li key={t.id}><TradeRowButton t={t} onPick={(x) => { onPick(x); setOpen(false); }} /></li>)}</ul>
+            <ul className={searching ? "opacity-60 transition-opacity duration-[var(--dur-1)]" : "transition-opacity duration-[var(--dur-1)]"} aria-busy={searching || undefined}>{list.data.map((t) => <li key={t.id}><TradeRowButton t={t} onPick={(x) => { onPick(x); setOpen(false); }} /></li>)}</ul>
           )}
         </div>
         <p className="border-t border-[var(--glass-border)] px-3 py-1.5 text-2xs text-muted-foreground">{tl("picker.othersInR")}</p>
@@ -262,10 +268,10 @@ export default function ChartLabPage() {
           // Back to where an own trade is reviewed: its row in «Сделки» and the report of that day.
           <span className="flex shrink-0 items-center">
             <Button variant="ghost" size="icon" className="h-9 w-9" asChild title={tl("openInTrades")}>
-              <Link href={links.trade(tradeId)} aria-label={tl("openInTradesAria")}><ListChecks className="h-4 w-4" /></Link>
+              <Link href={links.trade(tradeId)} aria-label={tl("openInTradesAria")}><ListChecks className="h-4 w-4" aria-hidden="true" /></Link>
             </Button>
             <Button variant="ghost" size="icon" className="h-9 w-9" asChild title={tl("dayReview")}>
-              <Link href={links.dayReport(current.date.slice(0, 10), current.trader && current.trader !== user?.traderName ? current.trader : undefined)} aria-label={tl("dayReview")}><CalendarDays className="h-4 w-4" /></Link>
+              <Link href={links.dayReport(current.date.slice(0, 10), current.trader && current.trader !== user?.traderName ? current.trader : undefined)} aria-label={tl("dayReview")}><CalendarDays className="h-4 w-4" aria-hidden="true" /></Link>
             </Button>
           </span>
         )}
@@ -281,7 +287,16 @@ export default function ChartLabPage() {
       ) : tradeId != null && trade.isLoading ? (
         <Skeleton className="min-h-[420px] flex-1 rounded-2xl" />
       ) : tradeId != null && (trade.error || !trade.data) ? (
-        <EmptyState icon={CandlestickChart} title={tl("unavailable", { id: tradeId })} description={trade.error?.message ?? tl("notFound")} />
+        <EmptyState
+          icon={CandlestickChart}
+          title={tl("unavailable", { id: tradeId })}
+          description={trade.error?.message ?? tl("notFound")}
+          action={(trade.error as { status?: number } | null)?.status === 404 ? undefined : (
+            <Button variant="outline" size="sm" onClick={() => void trade.refetch()} disabled={trade.isFetching}>
+              <RefreshCw className={trade.isFetching ? "animate-spin motion-reduce:animate-none" : undefined} aria-hidden="true" /> {commonI18n.t("actions.retry")}
+            </Button>
+          )}
+        />
       ) : current ? (
         <WsChart
           key={`${current.id}`}

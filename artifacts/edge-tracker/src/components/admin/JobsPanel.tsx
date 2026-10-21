@@ -126,9 +126,9 @@ export function JobsPanel({ isAdmin }: { isAdmin: boolean }) {
                 const state = jobState(j);
                 return (
                   <tr key={j.name} className="border-t border-[var(--glass-border)] align-top">
-                    <td className="px-2 py-2">
-                      <div className="font-medium">{label(j.name)}</div>
-                      <div className="text-2xs text-muted-foreground">{j.name}</div>
+                    <td className="max-w-[16rem] px-2 py-2">
+                      <div className="truncate font-medium" title={label(j.name)}>{label(j.name)}</div>
+                      <div className="truncate font-mono text-2xs text-muted-foreground" title={j.name}>{j.name}</div>
                     </td>
                     <td className="px-2 py-2 text-xs tabular-nums text-muted-foreground" title={j.cron ? t("schedule.rawTitle", { cron: j.cron }) : undefined}>{schedule(j)}</td>
                     <td className="px-2 py-2">
@@ -152,12 +152,14 @@ export function JobsPanel({ isAdmin }: { isAdmin: boolean }) {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7"
+                          className="h-8"
                           aria-label={t("runAria", { job: label(j.name) })}
                           disabled={j.running || (run.isPending && run.variables === j.name)}
                           onClick={() => (sendsMessages(j.name) ? setConfirm(j.name) : run.mutate(j.name))}
                         >
-                          <Play aria-hidden="true" /> {t("run")}
+                          {run.isPending && run.variables === j.name
+                            ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                            : <Play aria-hidden="true" />} {t("run")}
                         </Button>
                       </td>
                     )}

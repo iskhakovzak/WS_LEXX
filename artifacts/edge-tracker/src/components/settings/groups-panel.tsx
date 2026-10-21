@@ -106,7 +106,7 @@ function GroupCard({ state, edit, group }: { state: DeskGroupsState; edit: boole
       <header className="flex flex-wrap items-center gap-2">
         {renaming != null ? (
           <form className="flex min-w-0 flex-1 gap-1" onSubmit={(e) => { e.preventDefault(); if (!renameProblem) run({ op: "update", id: group.id, name: renaming.trim() }, () => setRenaming(null)); }}>
-            <Input className="h-8 min-w-0 flex-1" maxLength={60} value={renaming} onChange={(e) => setRenaming(e.target.value)} autoFocus aria-label={t("rename")} />
+            <Input className="h-8 min-w-0 flex-1" maxLength={60} value={renaming} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setRenaming(null); } }} autoFocus aria-label={t("rename")} aria-invalid={!!renameProblem || undefined} />
             <Button type="submit" size="sm" disabled={!!renameProblem || pending}>{t("save")}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setRenaming(null)}>{t("cancel")}</Button>
           </form>
@@ -116,9 +116,9 @@ function GroupCard({ state, edit, group }: { state: DeskGroupsState; edit: boole
             <Pill tone="neutral">{t("members", { count: group.members.length })}</Pill>
             {edit && (
               <span className="ml-auto flex gap-1">
-                <Button type="button" size="icon" variant="ghost" className="h-7 w-7" title={t("rename")} aria-label={t("rename")} onClick={() => setRenaming(group.name)}><Pencil className="h-3.5 w-3.5" aria-hidden="true" /></Button>
+                <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title={t("rename")} aria-label={t("rename")} onClick={() => setRenaming(group.name)}><Pencil className="h-3.5 w-3.5" aria-hidden="true" /></Button>
                 <Button
-                  type="button" size="sm" variant={confirmArchive ? "destructive" : "ghost"} className="h-7 px-2 text-xs" disabled={pending}
+                  type="button" size="sm" variant={confirmArchive ? "destructive" : "ghost"} className="h-8 px-2 text-xs" disabled={pending}
                   onClick={() => (confirmArchive ? run({ op: "update", id: group.id, archived: true }) : setConfirmArchive(true))}
                   onBlur={() => setConfirmArchive(false)}
                   title={t("archiveConfirm")}
@@ -155,7 +155,7 @@ function Members({ state, edit, members, groupId }: { state: DeskGroupsState; ed
           <span className="min-w-0 flex-1 truncate">{personName(m.name)}</span>
           {edit && (
             <Select value={groupId == null ? NONE : String(groupId)} disabled={pending} onValueChange={(v) => { const to = targets.find((x) => x.value === v); if (to && to.groupId !== groupId) run({ op: "move", userId: m.id, groupId: to.groupId }); }}>
-              <SelectTrigger className="h-7 w-40 text-xs" aria-label={t("moveTo", { name: personName(m.name) })}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-40 max-w-[50%] text-xs" aria-label={t("moveTo", { name: personName(m.name) })}><SelectValue /></SelectTrigger>
               <SelectContent>
                 {targets.map((x) => <SelectItem key={x.value} value={x.value}>{x.name ?? t("ungrouped")}</SelectItem>)}
               </SelectContent>

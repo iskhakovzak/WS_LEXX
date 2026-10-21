@@ -7,7 +7,7 @@ import * as React from "react";
 import { useSearch } from "wouter";
 import { Flag, Plus, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
+import { EmptyState, ErrorState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
@@ -18,6 +18,7 @@ import { type ChallengeStatus, useChallenges, usePathConfig } from "@/components
 import { ChallengeCard, ChallengeDetailView, CreateChallengeDialog } from "@/components/academy/path/challenge-views";
 import { defaultStageName } from "@/components/academy/path/labels";
 import { PersonSelect } from "@/components/people/person-select";
+import { cn } from "@/lib/utils";
 
 type Filter = "all" | "active" | "done" | "archived";
 const DONE: ChallengeStatus[] = ["passed", "failed", "expired"];
@@ -45,9 +46,10 @@ export default function AcademyChallengesPage() {
 
   const items = (list.data?.challenges ?? []).filter((c) =>
     filter === "active" ? c.result.status === "active" || c.result.status === "scheduled" : filter === "done" ? DONE.includes(c.result.status) : true);
+  // While a filter change still shows the previous list (placeholder), wait for the real one before auto-picking.
   React.useEffect(() => {
-    if (selected == null && items.length) setSelected(items[0].id);
-  }, [items, selected]);
+    if (selected == null && items.length && !list.isPlaceholderData) setSelected(items[0].id);
+  }, [items, selected, list.isPlaceholderData]);
 
   return (
     <Page>
@@ -88,7 +90,7 @@ export default function AcademyChallengesPage() {
       {list.isLoading ? (
         <div className="grid gap-4 lg:grid-cols-[340px_1fr]"><Skeleton className="h-72 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
       ) : list.isError ? (
-        <Panel><EmptyState icon={Flag} title={t("page.loadFailed")} description={(list.error as Error).message} /></Panel>
+        <ErrorState error={list.error} onRetry={list.refetch} title={t("page.loadFailed")} />
       ) : !items.length ? (
         <Panel>
           <EmptyState icon={Flag} title={filter === "archived" ? t("page.archiveEmpty") : t("page.noExams")}
@@ -97,7 +99,7 @@ export default function AcademyChallengesPage() {
         </Panel>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
-          <nav aria-label={t("page.listAria")} className="flex flex-col gap-2">
+          <nav aria-label={t("page.listAria")} aria-busy={list.isPlaceholderData || undefined} className={cn("flex flex-col gap-2 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", list.isPlaceholderData && "pointer-events-none opacity-60")}>
             {items.map((c) => <ChallengeCard key={c.id} c={c} active={c.id === selected} onOpen={() => setSelected(c.id)} showUser={isCurator} templates={config.data?.templates} />)}
           </nav>
           <div className="min-w-0">{selected != null && <ChallengeDetailView id={selected} onArchived={() => setSelected(null)} pathHref={pathHref} />}</div>

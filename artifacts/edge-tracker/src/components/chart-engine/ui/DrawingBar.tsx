@@ -40,11 +40,11 @@ export function DrawingBar({ hint, selectedRole, onRole, onDelete, local }: {
                 aria-label={t(`drawing.role.${r}`)}
                 title={t(`drawing.role.${r}`)}
                 onClick={() => onRole(r)}
-                className={cn("h-5 w-5 rounded-full ring-offset-2 ring-offset-background transition-shadow", SWATCH[r], selectedRole === r && "ring-2 ring-foreground/70")}
+                className={cn("h-6 w-6 rounded-full ring-offset-2 ring-offset-background transition-shadow duration-[var(--dur-1)]", SWATCH[r], selectedRole === r && "ring-2 ring-foreground/70")}
               />
             ))}
           </span>
-          <button type="button" onClick={onDelete} className="inline-flex h-7 items-center gap-1 rounded-full px-2 hover:bg-[var(--glass-hover-bg)] hover:text-foreground" title={t("engine.deleteDrawing")}>
+          <button type="button" onClick={onDelete} className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 hover:bg-[var(--glass-hover-bg)] hover:text-foreground" title={t("engine.deleteDrawing")}>
             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> {t("drawing.delete")}
           </button>
           {local && <span className="hidden sm:inline" title={t("drawing.localTitle")}>{t("drawing.local")}</span>}

@@ -131,13 +131,13 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
           ) : limitsLoading ? (
             <Skeleton className="h-6 w-40 rounded-full" />
           ) : usdLimits && (usdLimits.dailyLossLimit || usdLimits.weeklyLossLimit || usdLimits.maxDrawdown || usdLimits.accountSize) ? (
-            <Pill tone="accent">{t("mc.riskLimits", {
+            <Pill tone="accent" className="max-w-full whitespace-normal py-1 leading-snug">{t("mc.riskLimits", {
               day: usdLimits.dailyLossLimit ? fmtUsd(-usdLimits.dailyLossLimit, { signed: true, decimals: "auto" }) : "—",
               week: usdLimits.weeklyLossLimit ? fmtUsd(-usdLimits.weeklyLossLimit, { signed: true, decimals: "auto" }) : "—",
               dd: usdLimits.maxDrawdown ? fmtUsd(-usdLimits.maxDrawdown, { signed: true, decimals: "auto" }) : usdLimits.accountSize ? fmtUsd(-usdLimits.accountSize, { signed: true, decimals: "auto" }) : "—",
             })}</Pill>
           ) : (
-            <Pill tone="neutral">{t("mc.noLimits")}</Pill>
+            <Pill tone="neutral" className="max-w-full whitespace-normal py-1 leading-snug">{t("mc.noLimits")}</Pill>
           )}
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSeedBump((s) => s + 1)} aria-label={t("mc.reseedAria")}><RefreshCw aria-hidden="true" /> {t("mc.reseed")}</Button>
         </div>

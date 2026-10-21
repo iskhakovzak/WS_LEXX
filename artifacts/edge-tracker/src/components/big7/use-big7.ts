@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Candle } from "@/components/chart-engine/types";
 import { http } from "@/lib/api/http";
 import { isNotFound, nullIfMissing } from "@/lib/api/errors";
@@ -96,6 +96,8 @@ export function useMyStats(symbols: string[], days: number, trader: string | nul
     enabled: symbols.length > 0,
     staleTime: 10 * 60_000,
     refetchOnWindowFocus: false,
+    // Period / board change: keep the old numbers on screen while the new ones load (not across traders).
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[3] === (trader ?? "") ? prev : undefined),
     retry: 0,
   });
 }
@@ -117,6 +119,7 @@ export function useQuotes(symbols: string[], live = true) {
     refetchInterval: live ? 60_000 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: live,
+    placeholderData: keepPreviousData, // a ticker added to the board keeps the other tiles' quotes
     retry: 1,
   });
 }
@@ -132,6 +135,7 @@ export function useGapRisk(symbols: string[]) {
     staleTime: 20 * 60_000,
     gcTime: 60 * 60_000,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
     retry: 0,
   });
 }

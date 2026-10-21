@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { ArrowRight, Check, ExternalLink } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Loader2 } from "lucide-react";
 import { Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,7 @@ import { personName } from "@/i18n";
 import { useJournalRange } from "@/components/journal/use-journal-days";
 import { eodApi, hoursText, slaText, useBrokerDaily, useEodDay, useEodMutation, type QueueItem } from "./eod-api";
 import { EodDayReadOnly } from "./EodDayReadOnly";
+import { QueryError } from "@/components/query-error";
 
 const SCORE_KEYS = ["none", "formal", "ok", "good", "exemplary"] as const;
 
@@ -84,6 +85,8 @@ export function EodReviewSheet({ item: incoming, onClose, onNext }: { item: Queu
             <div className="space-y-2"><Skeleton className="h-24 w-full rounded-xl" /><Skeleton className="h-40 w-full rounded-xl" /></div>
           ) : dayQ.data ? (
             <EodDayReadOnly data={dayQ.data} broker={brokerQ.data ?? null} journal={journal} />
+          ) : dayQ.isError ? (
+            <QueryError compact error={dayQ.error} onRetry={() => void dayQ.refetch()} />
           ) : (
             <p className="text-sm text-muted-foreground">{t("sheet.notFound")}</p>
           )}
@@ -100,7 +103,7 @@ export function EodReviewSheet({ item: incoming, onClose, onNext }: { item: Queu
               const active = score === v;
               return (
                 <button key={l} type="button" aria-pressed={active} aria-label={`${v} — ${l}`} title={l} onClick={() => setScore(v)}
-                  className={cn("min-h-7 flex-1 rounded-full text-xs font-semibold tabular-nums transition-colors",
+                  className={cn("min-h-10 flex-1 cursor-pointer rounded-full text-xs font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8",
                     active ? v <= 2 ? "bg-down/20 text-down" : v === 3 ? "bg-primary/20 text-primary" : "bg-up/20 text-up" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground")}>
                   {v}
                 </button>
@@ -115,13 +118,13 @@ export function EodReviewSheet({ item: incoming, onClose, onNext }: { item: Queu
             onChange={(e) => setComment(e.target.value)}
             className="min-h-[90px] leading-relaxed"
           />
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2" title={score == null ? t("sheet.pickScoreFirst") : undefined}>
             <Button variant="outline" size="sm" disabled={score == null || review.isPending} onClick={() => submit(false)}>
-              <Check aria-hidden="true" />{reviewed ? t("sheet.update") : tc("actions.save")}
+              {review.isPending && !review.variables?.next ? <Loader2 className="animate-spin" /> : <Check />}{reviewed ? t("sheet.update") : tc("actions.save")}
             </Button>
             {!reviewed && (
               <Button size="sm" disabled={score == null || review.isPending} onClick={() => submit(true)}>
-                {t("sheet.saveNext")}<ArrowRight aria-hidden="true" />
+                {t("sheet.saveNext")}{review.isPending && review.variables?.next ? <Loader2 className="animate-spin" /> : <ArrowRight />}
               </Button>
             )}
           </div>

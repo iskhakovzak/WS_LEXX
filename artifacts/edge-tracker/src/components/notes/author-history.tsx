@@ -117,7 +117,8 @@ export function AuthorHistory({
       </div>
     );
   }
-  if (error) {
+  // A failed background refetch keeps the cached list on screen; the error block is only for «nothing to show».
+  if (error && notes.length === 0) {
     return (
       <Panel>
         <EmptyState icon={BookOpen} title={t("historyLoadFailed")} action={<Button variant="outline" onClick={onRetry}>{tc("actions.retry")}</Button>} />
@@ -200,7 +201,7 @@ export function AuthorHistory({
           />
           {query ? (
             <button type="button" onClick={() => setQuery("")} aria-label={tc("actions.clearSearch")} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           ) : (
             <Kbd className="absolute right-3 top-1/2 -translate-y-1/2">/</Kbd>

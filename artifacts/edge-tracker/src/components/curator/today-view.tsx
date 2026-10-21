@@ -219,10 +219,10 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
                       ? t("today.oldHiddenAllOverdue", { count: win.old, days: win.days })
                       : t("today.oldHiddenSomeOverdue", { count: win.old, days: win.days, overdue: win.oldOverdue })}
               </span>
-              <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setShowOld((v) => !v)} disabled={showOld && oldQ.isFetching}>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setShowOld((v) => !v)} disabled={showOld && oldQ.isFetching}>
                 {showOld ? (oldQ.isFetching ? tc("states.loading") : t("today.onlyFresh")) : t("today.showOld")}
               </Button>
-              <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setConfirmArchive(true)} disabled={archiveOld.isPending}>
+              <Button type="button" size="sm" variant="outline" onClick={() => setConfirmArchive(true)} disabled={archiveOld.isPending}>
                 <Archive className="h-3.5 w-3.5" /> {t("today.archiveOld")}
               </Button>
             </div>
@@ -253,15 +253,15 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
           ) : (
             <ul className="flex flex-col gap-1.5">
               {(showAll.queue ? queue : queue.slice(0, 12)).map((q) => (
-                <li key={q.id} className="tile grid min-w-0 grid-cols-[7rem_minmax(0,8rem)_minmax(0,1fr)_5rem_auto] items-center gap-x-3 px-3 py-1.5">
-                  <Pill tone={QUEUE_TONE[q.kind]} className="w-full min-w-0 justify-center" title={QUEUE_LABEL[q.kind]}><span className="truncate">{QUEUE_LABEL[q.kind]}</span></Pill>
-                  <span className="truncate text-sm font-medium text-foreground" title={personName(q.trader)}>{personName(q.trader)}</span>
-                  <span className="flex min-w-0 flex-col">
+                <li key={q.id} className="tile flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1.5 sm:grid sm:grid-cols-[7rem_minmax(0,8rem)_minmax(0,1fr)_5rem_auto]">
+                  <Pill tone={QUEUE_TONE[q.kind]} className="min-w-0 max-w-[7rem] justify-center sm:w-full" title={QUEUE_LABEL[q.kind]}><span className="truncate">{QUEUE_LABEL[q.kind]}</span></Pill>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground sm:flex-none" title={personName(q.trader)}>{personName(q.trader)}</span>
+                  <span className="order-last flex min-w-0 basis-full flex-col sm:order-none sm:basis-auto">
                     <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
                     {q.note && <span className="truncate text-xs text-muted-foreground/80" title={q.note}>«{q.note}»</span>}
                   </span>
                   <span
-                    className={cn("text-right text-xs tabular-nums", q.overdue ? "font-medium text-down" : "text-muted-foreground")}
+                    className={cn("shrink-0 text-right text-xs tabular-nums", q.overdue ? "font-medium text-down" : "text-muted-foreground")}
                     title={q.overdue ? t("today.overdueTitle", { hours: q.slaHours }) : t("today.waitingTitle", { hours: q.slaHours })}
                   >
                     {waitLabel(q.hoursWaiting)}{q.overdue && <span className="sr-only">{t("today.overdueSr")}</span>}
@@ -374,9 +374,9 @@ function GapList({ title, items, empty, onOpen }: {
         <div className="flex flex-wrap gap-1.5">
           {items.map((i) => {
             const body = <>{i.label}{i.meta && <span className="text-muted-foreground"> · {i.meta}</span>}</>;
-            if (i.href) return <Link key={i.key} href={i.href} className="chip inline-flex min-h-7 items-center px-2.5 text-xs font-medium">{body}</Link>;
+            if (i.href) return <Link key={i.key} href={i.href} className="chip inline-flex min-h-8 items-center px-2.5 text-xs font-medium">{body}</Link>;
             return (
-              <button key={i.key} type="button" onClick={() => onOpen?.(i.key)} className="chip inline-flex min-h-7 items-center px-2.5 text-xs font-medium">
+              <button key={i.key} type="button" onClick={() => onOpen?.(i.key)} className="chip inline-flex min-h-8 items-center px-2.5 text-xs font-medium">
                 {body}
               </button>
             );
@@ -391,7 +391,7 @@ export { profileHref };
 
 function ShowMore({ open, rest, onClick }: { open: boolean; rest: number; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="px-1 text-xs text-primary hover:underline">
+    <button type="button" aria-expanded={open} onClick={onClick} className="inline-flex min-h-8 items-center px-1 text-xs text-primary hover:underline">
       {open ? commonI18n.t("actions.collapse") : curatorI18n.t("showMore", { count: rest })}
     </button>
   );

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
 import { notConnectedText } from "@/lib/api/errors";
@@ -266,8 +266,9 @@ export const curatorApi = {
 
 const retryUnlessMissing = (count: number, err: unknown) => !(err instanceof NotAvailableError) && count < 2;
 
+/** «Мои / Весь деск» switch keeps the previous payload on screen until the new scope arrives (no skeleton flash). */
 export function useCuratorToday(scope: Scope | "auto") {
-  return useQuery({ queryKey: curatorKeys.today(scope), queryFn: () => curatorApi.today(scope), refetchInterval: POLL.minute, retry: retryUnlessMissing });
+  return useQuery({ queryKey: curatorKeys.today(scope), queryFn: () => curatorApi.today(scope), refetchInterval: POLL.minute, retry: retryUnlessMissing, placeholderData: keepPreviousData });
 }
 /** `enabled` — only the «Мои трейдеры» list needs it (the tab count comes from /today), so «Сегодня» doesn't pay for a second roster build. */
 export function useCuratorTraders(scope: Scope | "auto", enabled = true) {
@@ -305,6 +306,8 @@ export function useTopPatterns(traders: readonly string[], from: string, to: str
     enabled: enabled && list.length > 0,
     staleTime: STALE.long,
     retry: false,
+    // A filter / search change re-keys the request: keep the chips of traders still on screen instead of skeletons.
+    placeholderData: keepPreviousData,
   });
 }
 

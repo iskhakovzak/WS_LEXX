@@ -571,8 +571,10 @@ export default function GlobalSearch({ open, onOpenChange: setOpen, request, tri
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
-              <DialogPrimitive.Close className="chip hidden h-8 shrink-0 items-center px-2.5 text-2xs font-medium sm:inline-flex" aria-label={ts("palette.closeAria")}>
-                Esc
+              {/* Phones have no Esc key: a visible «Отмена» closes the palette (the overlay is not an obvious target). */}
+              <DialogPrimitive.Close className="chip inline-flex h-8 shrink-0 items-center px-2.5 text-xs font-medium sm:text-2xs" aria-label={ts("palette.closeAria")}>
+                <span className="sm:hidden">{commonI18n.t("actions.cancel")}</span>
+                <span className="hidden sm:inline">Esc</span>
               </DialogPrimitive.Close>
             </div>
 

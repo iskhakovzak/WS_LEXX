@@ -304,7 +304,7 @@ export function RatingDialog({
               />
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 {overallTouched ? (
-                  <button type="button" className="inline-flex items-center gap-1 rounded-full px-1 hover:text-foreground" onClick={() => setOverallTouched(false)}>
+                  <button type="button" className="inline-flex min-h-8 items-center gap-1 rounded-full px-2 hover:text-foreground" onClick={() => setOverallTouched(false)}>
                     <Wand2 className="h-3 w-3" aria-hidden="true" /> {t("dialog.resetAvg", { value: suggested })}
                   </button>
                 ) : (

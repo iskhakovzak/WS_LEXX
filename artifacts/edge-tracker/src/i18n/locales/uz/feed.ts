@@ -180,5 +180,6 @@ export default {
     legendNew: "yangi",
     legendEvents: "voqealar",
     legendTrading: "savdo kuni",
+    open: "Taqvim",
   },
 } satisfies Messages<typeof ru>;

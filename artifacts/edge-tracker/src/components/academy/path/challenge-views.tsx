@@ -1,8 +1,8 @@
 /** «Экзамены»: list cards, detail (rules progress + day-by-day timeline), create-from-template dialog. */
 import * as React from "react";
 import { Link } from "wouter";
-import { Archive, CalendarRange, Flag, ListChecks, Plus, Route as RouteIcon } from "lucide-react";
-import { EmptyState, Panel, StatCard, StatGrid } from "@/components/ds";
+import { Archive, CalendarRange, Flag, ListChecks, Loader2, Plus, Route as RouteIcon } from "lucide-react";
+import { EmptyState, ErrorState, Panel, StatCard, StatGrid } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,11 +68,12 @@ export function ChallengeDetailView({ id, onArchived, pathHref }: { id: number; 
   const { toast } = useToast();
   const archive = usePathMutation(() => http.post(`/api/academy/challenges/${id}/archive`, {}));
   if (q.isLoading) return <Skeleton className="h-96 rounded-2xl" />;
-  if (q.isError || !q.data) return <Panel><EmptyState icon={Flag} title={t("challenge.notFound")} description={(q.error as Error | null)?.message} /></Panel>;
+  if (q.isError) return <ErrorState error={q.error} onRetry={q.refetch} title={t("challenge.notFound")} />;
+  if (!q.data) return <Panel><EmptyState icon={Flag} title={t("challenge.notFound")} /></Panel>;
   const { challenge: c, result: r, canManage, template } = q.data;
   const mode = c.rules.drawdownMode;
   return (
-    <div className="flex flex-col gap-4">
+    <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
       <Panel
         title={challengeName(c, template ? [template] : null)}
         description={t("challenge.detailMeta", { user: personName(c.user), from: fmtDate(c.startsOn), to: fmtDate(c.endsOn), by: personName(c.createdBy) })}
@@ -91,7 +92,7 @@ export function ChallengeDetailView({ id, onArchived, pathHref }: { id: number; 
                   onSuccess: () => { toast({ title: t("challenge.archived") }); onArchived(); },
                   onError: (e) => toast({ title: t("challenge.failed"), description: (e as Error).message, variant: "destructive" }),
                 })}>
-                <Archive className="mr-1.5 h-4 w-4" aria-hidden="true" />{commonI18n.t("actions.archive")}
+                {archive.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" /> : <Archive className="mr-1.5 h-4 w-4" aria-hidden="true" />}{commonI18n.t("actions.archive")}
               </Button>
             )}
           </>
@@ -204,10 +205,10 @@ export function CreateChallengeDialog({ open, onOpenChange, templates, people, d
           {tpl && <p className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs text-muted-foreground">{templateDescription(tpl)}</p>}
           <div className="grid grid-cols-2 items-end gap-3">
             <Field label={t("create.start")} htmlFor="ch-start">
-              <input id="ch-start" type="date" className={selectCls} value={startsOn} onChange={(e) => setStartsOn(e.target.value)} required />
+              <input id="ch-start" type="date" className={cn(selectCls, "w-full")} value={startsOn} onChange={(e) => setStartsOn(e.target.value)} required />
             </Field>
             <Field label={t("create.end")} htmlFor="ch-end">
-              <input id="ch-end" type="date" className={selectCls} value={endsOn} min={startsOn} onChange={(e) => setEndsOn(e.target.value)} />
+              <input id="ch-end" type="date" className={cn(selectCls, "w-full")} value={endsOn} min={startsOn} onChange={(e) => setEndsOn(e.target.value)} />
             </Field>
           </div>
           <Field label={t("create.comment")} htmlFor="ch-comment">
@@ -216,7 +217,7 @@ export function CreateChallengeDialog({ open, onOpenChange, templates, people, d
         </form>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
-          <Button type="submit" form="create-challenge" disabled={create.isPending || !user || !tpl}><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />{commonI18n.t("actions.assign")}</Button>
+          <Button type="submit" form="create-challenge" disabled={create.isPending || !user || !tpl}>{create.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />}{commonI18n.t("actions.assign")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

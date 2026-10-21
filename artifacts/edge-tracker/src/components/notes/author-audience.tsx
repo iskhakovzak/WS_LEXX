@@ -120,7 +120,7 @@ export function AuthorAudience({
               aria-valuemax={data.total}
               aria-valuenow={data.read}
             >
-              <div className="h-full w-full origin-left rounded-full bg-up motion-safe:transition-transform" style={{ transform: `scaleX(${pct / 100})` }} />
+              <div className="h-full w-full origin-left rounded-full bg-up motion-safe:transition-transform motion-safe:duration-[var(--dur-3)] motion-safe:ease-[var(--ease)]" style={{ transform: `scaleX(${pct / 100})` }} />
             </div>
           </div>
 
@@ -141,9 +141,9 @@ export function AuthorAudience({
                 type="button"
                 onClick={() => setShowRead((v) => !v)}
                 aria-expanded={showRead}
-                className="inline-flex items-center gap-1 self-start text-xs font-medium text-muted-foreground hover:text-foreground"
+                className="inline-flex min-h-8 items-center gap-1 self-start text-xs font-medium text-muted-foreground hover:text-foreground"
               >
-                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showRead && "rotate-180")} aria-hidden="true" />
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[var(--dur-2)] ease-[var(--ease)] motion-reduce:transition-none", showRead && "rotate-180")} aria-hidden="true" />
                 {t("author.audience.readList", { count: read.length })}
               </button>
               {showRead && (

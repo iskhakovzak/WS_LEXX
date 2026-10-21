@@ -2,7 +2,7 @@
  * Analyst actions — data hooks (lib/api/http: auth + X-Lang are added globally, errors are ApiError).
  */
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http, isApiError } from "@/lib/api/http";
 import { nullIfMissing } from "@/lib/api/errors";
 import { KEYS, POLL, STALE } from "@/lib/api/keys";
@@ -82,6 +82,7 @@ export function useFirmStats(days = 180) {
     queryFn: ({ signal }) =>
       http.get<FirmStatsResponse>("/api/analyst-actions/firms", { query: { days, minActions: 3 }, signal }).catch(nullIfMissing),
     staleTime: 10 * 60_000,
+    placeholderData: keepPreviousData, // period switch: keep the table instead of flashing a skeleton
     retry: 1,
   });
 }
@@ -283,6 +284,7 @@ export function useFirmWeight(days = 730) {
     queryKey: ["analyst-actions", "firm-weight", days],
     queryFn: () => getOptional<FirmWeightResponse>("/api/analyst-actions/firm-weight", { days }),
     staleTime: 15 * 60_000,
+    placeholderData: keepPreviousData,
     refetchInterval: (q) => (candlesWarming(q.state.data?.coverage) ? 3 * 60_000 : false),
     refetchIntervalInBackground: false,
     retry: 0,
@@ -295,6 +297,7 @@ export function useMyDays(trader: string | null | undefined, days = 365) {
     queryKey: ["analyst-my-days", trader ?? "", days],
     queryFn: () => getOptional<MyDaysResponse>("/api/analyst-actions/my-days", trader ? { days, trader } : { days }),
     staleTime: 10 * 60_000,
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (trader ?? "") ? prev : undefined),
     retry: 0,
   });
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EmptyState, Panel, Pill, Segmented, toneOf } from "@/components/ds";
+import { EmptyState, ErrorState, Panel, Pill, Segmented, toneOf } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInsiders } from "./use-offerings-data";
 import { fmtDay, type InsiderSummary } from "./types";
@@ -108,7 +108,7 @@ export function InsiderPanel({
           <p className="px-2 text-xs text-muted-foreground">{t("insiders.loadingText")}</p>
         </div>
       ) : q.error ? (
-        <p role="alert" className="px-2 text-sm text-down">{t("insiders.loadFailed", { message: humanizeApiError(q.error) })}</p>
+        <ErrorState compact inset error={q.error} message={t("insiders.loadFailed", { message: humanizeApiError(q.error) })} onRetry={() => q.refetch()} />
       ) : (
         <>
           <div className="mb-2 flex items-baseline justify-between px-2">

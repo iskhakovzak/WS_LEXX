@@ -57,7 +57,7 @@ export function QueryError({ error, onRetry, message, title, compact, retryLabel
         <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="min-w-0 flex-1">{heading}</span>
         {onRetry && (
-          <Button type="button" variant="ghost" size="sm" onClick={retry} disabled={retrying} className="h-7 text-down hover:text-down">
+          <Button type="button" variant="ghost" size="sm" onClick={retry} disabled={retrying} className="min-h-8 text-down hover:text-down">
             <RefreshCw className={cn(retrying && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             {retryLabel}
           </Button>

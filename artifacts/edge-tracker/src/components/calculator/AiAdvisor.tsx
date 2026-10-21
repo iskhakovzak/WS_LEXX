@@ -105,7 +105,7 @@ export default function AiAdvisor({ chain, atmIv, onOpenInBuilder }: {
           />
         </div>
         <Button type="button" variant="outline" className="self-end" onClick={() => void analyzeWithAI()} disabled={!chain || !aiPrompt.trim() || aiLoading}>
-          {aiLoading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+          {aiLoading ? <RefreshCw className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Send aria-hidden="true" />}
           {aiLoading ? t("advisor.aiThinking") : t("advisor.aiAsk")}
         </Button>
 

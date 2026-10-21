@@ -5,7 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-[var(--dur-1)] ease-smooth active:scale-[0.98] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0" +
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-[var(--dur-1)] ease-smooth active:scale-[0.98] motion-reduce:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 disabled:[&:not([title])]:pointer-events-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0" +
 " hover-elevate active-elevate-2",
   {
     variants: {
@@ -13,9 +13,9 @@ const buttonVariants = cva(
         default:
            // @replit: no hover, and add primary border
            // Solid fill is a touch deeper than --primary so white text clears 4.5:1 (WCAG AA).
-           "bg-primary-solid text-primary-foreground font-semibold border border-[hsl(var(--primary-solid)/0.6)] shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_6px_18px_-8px_hsl(var(--primary)/0.6)] hover:brightness-110",
+           "bg-primary-solid text-primary-foreground font-semibold border border-[hsl(var(--primary-solid)/0.6)] shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_6px_18px_-8px_hsl(var(--primary)/0.6)] hover:not-disabled:brightness-110",
         destructive:
-          "border border-destructive/30 bg-destructive/12 text-destructive",
+          "border border-destructive/30 bg-destructive/12 text-destructive hover:not-disabled:bg-destructive/18",
         // Glass family: outline = hairline glass pill, secondary = thicker glass pill,
         // ghost = no chrome until hover, then the same glass surface + hairline.
         outline:
@@ -32,8 +32,10 @@ const buttonVariants = cva(
         default: "min-h-9 px-4 py-1.5",
         sm: "min-h-8 px-3 text-xs [&_svg]:size-3.5",
         lg: "min-h-10 px-6 py-2",
-        icon: "h-9 w-9",
-        "icon-sm": "h-8 w-8 [&_svg]:size-3.5",
+        // Touch screens: an invisible ::before grows the tap target to 40px without changing the layout
+        // (::after is taken by hover-elevate).
+        icon: "h-9 w-9 pointer-coarse:before:absolute pointer-coarse:before:-inset-0.5",
+        "icon-sm": "h-8 w-8 [&_svg]:size-3.5 pointer-coarse:before:absolute pointer-coarse:before:-inset-1",
       },
     },
     defaultVariants: {

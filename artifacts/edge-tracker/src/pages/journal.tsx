@@ -16,6 +16,7 @@ import { DayTrades, type RuleViolation } from "@/components/journal/DayTrades";
 import { DayJournalEditor } from "@/components/journal/DayJournalEditor";
 import { DaySummary } from "@/components/journal/DaySummary";
 import { TeamDay } from "@/components/journal/TeamDay";
+import { EmptyDayNote } from "@/components/journal/empty-day";
 import { WeekReview } from "@/components/journal/WeekReview";
 import {
   type JournalEntry, readLegacyNote, useJournalRange, useSyncLocalJournal,
@@ -291,14 +292,7 @@ export default function JournalPage() {
       </Button>
     ) : undefined;
 
-  const emptyDay = (
-    <p className="py-1 text-sm text-muted-foreground">
-      {isFuture ? t("page.futureDay")
-        : dayStats.opened ? t("page.openedPositions", { count: dayStats.opened })
-        : isToday ? t("page.noTradesToday")
-        : t("page.noTradesDay")}
-    </p>
-  );
+  const emptyDay = <EmptyDayNote date={activeDate} today={today} own={editable} opened={dayStats.opened} />;
 
   return (
     <Page>

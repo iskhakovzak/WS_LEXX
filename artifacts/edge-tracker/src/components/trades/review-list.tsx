@@ -207,7 +207,7 @@ export function PresetBar({
               title={t(sort.dir === "desc" ? "review.sort.desc" : "review.sort.asc")}
               onClick={() => onSort({ col: sort.col, dir: sort.dir === "desc" ? "asc" : "desc" })}
             >
-              {sort.dir === "desc" ? <ArrowDownWideNarrow className="h-4 w-4" /> : <ArrowUpNarrowWide className="h-4 w-4" />}
+              {sort.dir === "desc" ? <ArrowDownWideNarrow className="h-4 w-4" aria-hidden="true" /> : <ArrowUpNarrowWide className="h-4 w-4" aria-hidden="true" />}
             </Button>
           </div>
         )}
@@ -221,7 +221,7 @@ export function PresetBar({
               <> <Link href={behaviorHref(trader)} className="whitespace-nowrap text-primary hover:underline">{t("review.behaviorLink")}</Link></>
             )}
           </p>
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={t("review.closePreset")} onClick={() => onPreset(null)}><X className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label={t("review.closePreset")} onClick={() => onPreset(null)}><X className="h-4 w-4" aria-hidden="true" /></Button>
         </div>
       )}
     </div>
@@ -312,11 +312,14 @@ export function ReviewTradeRow({
         "group relative min-h-[52px] cursor-pointer border-t border-[var(--glass-border)] px-3 py-1.5 transition-colors first:border-t-0 hover:bg-[var(--glass-hover-bg)]",
         active && "bg-[var(--glass-hover-bg)] shadow-[inset_2px_0_0_hsl(var(--primary))]",
         selected && "bg-primary/[0.07]",
-        highlight && "animate-pulse",
+        // Deep-link target: a steady tint (fades with transition-colors when cleared), not an opacity pulse.
+        highlight && "bg-primary/[0.14] shadow-[inset_2px_0_0_hsl(var(--primary))]",
       )}
     >
       <span onClick={(e) => e.stopPropagation()} className={cn("flex items-center", CELL_PHONE.check)}>
+        {/* 16px box, ~40px hit area: on phones a near miss would open the trade sheet instead of selecting. */}
         <Checkbox
+          className="relative after:absolute after:-inset-3 after:content-['']"
           checked={selected}
           aria-label={tr("review.select", { ticker: t.ticker })}
           onClick={(e) => { e.stopPropagation(); onToggle(t.id, e.shiftKey); }}
@@ -446,7 +449,7 @@ export function DayCard({
           aria-expanded={expanded}
           className="flex min-w-0 flex-1 basis-full flex-wrap items-center gap-x-4 gap-y-1 text-left sm:basis-0"
         >
-          <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", !expanded && "-rotate-90")} aria-hidden="true" />
+          <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-[var(--dur-2)] ease-[var(--ease)]", !expanded && "-rotate-90")} aria-hidden="true" />
           <span className="w-[112px] shrink-0">
             <span className="block text-sm font-semibold text-foreground">{fmtDayLong(day.date)}</span>
             <span className="block text-xs tabular-nums text-muted-foreground">{day.firstAt && day.lastAt ? `${day.firstAt}–${day.lastAt}` : t("review.day.timeUnknown")}</span>
@@ -469,7 +472,7 @@ export function DayCard({
         </button>
         {day.untagged > 0 && <Pill tone="warn" title={t("review.day.untaggedTitle")} className="shrink-0 whitespace-nowrap">{t("review.day.untagged", { count: day.untagged })}</Pill>}
         <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1.5 text-muted-foreground">
-          <Link href={links.dayReport(day.date, trader ?? undefined)}><FileText className="h-3.5 w-3.5" /> {t("review.day.report")}</Link>
+          <Link href={links.dayReport(day.date, trader ?? undefined)}><FileText className="h-3.5 w-3.5" aria-hidden="true" /> {t("review.day.report")}</Link>
         </Button>
       </div>
       {expanded && <div className="border-t border-[var(--glass-border)]">{children}</div>}

@@ -96,7 +96,7 @@ export function Markdown({ source, blocks, className }: { source?: string; block
   const parsed = React.useMemo(() => blocks ?? parseMarkdown(source ?? ""), [source, blocks]);
   if (!parsed.length) return <p className={cn("text-sm text-muted-foreground", className)}>{t("markdown.empty")}</p>;
   return (
-    <div className={cn("max-w-[72ch] text-sm text-foreground/90", className)}>
+    <div className={cn("max-w-[72ch] text-sm text-foreground/90 [overflow-wrap:anywhere]", className)}>
       {parsed.map((b, i) => <BlockView key={i} b={b} />)}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -247,6 +247,9 @@ export function AiReviewPanel({
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // The panel is reused when the trade page switches trades: late answers for the previous trade are dropped.
+  const tradeRef = useRef(tradeId);
+  tradeRef.current = tradeId;
 
   const loadUsage = useCallback(async () => {
     try {
@@ -262,11 +265,12 @@ export function AiReviewPanel({
       setEmotionalState(null);
       return;
     }
+    const id = tradeRef.current;
     try {
       const row = await http.get<EmotionalState | null>("/api/emotional-state/by-date", { query: { userId: trader, date: tradeDate.slice(0, 10) } });
-      setEmotionalState(row ?? null);
+      if (tradeRef.current === id) setEmotionalState(row ?? null);
     } catch {
-      setEmotionalState(null);
+      if (tradeRef.current === id) setEmotionalState(null);
     }
   }, [trader, tradeDate]);
 
@@ -275,15 +279,17 @@ export function AiReviewPanel({
     setLoadErr(null);
     try {
       // null = no review yet (older API builds answered 404).
-      setReview((await http.get<Review | null>(`/api/trades/${tradeId}/ai-review`).catch(nullIfMissing)) ?? null);
+      const row = (await http.get<Review | null>(`/api/trades/${tradeId}/ai-review`).catch(nullIfMissing)) ?? null;
+      if (tradeRef.current === tradeId) setReview(row);
     } catch (e: unknown) {
-      setLoadErr(humanizeApiError(e, tradesI18n.t("ai.loadFailed")));
+      if (tradeRef.current === tradeId) setLoadErr(humanizeApiError(e, tradesI18n.t("ai.loadFailed")));
     } finally {
-      setLoading(false);
+      if (tradeRef.current === tradeId) setLoading(false);
     }
   }, [tradeId]);
 
-  useEffect(() => { load(); }, [load]);
+  // Another trade: drop the previous trade's review / error before loading (no stale card while it loads).
+  useEffect(() => { setReview(null); setErr(null); load(); }, [load]);
   useEffect(() => { loadUsage(); }, [loadUsage]);
   useEffect(() => { loadEmotionalState(); }, [loadEmotionalState]);
 
@@ -292,7 +298,7 @@ export function AiReviewPanel({
     setGenerating(true);
     try {
       const data = await http.post<Review>(`/api/trades/${tradeId}/ai-review`, { force }, { query: { force: force ? "true" : null } });
-      setReview(data);
+      if (tradeRef.current === tradeId) setReview(data);
       loadUsage();
     } catch (e: unknown) {
       if (e instanceof ApiError && e.status === 429) {
@@ -387,6 +393,7 @@ export function AiReviewPanel({
               size="sm"
               onClick={() => { setPendingForce(!!review); setConfirmOpen(true); }}
               disabled={busy || atLimit}
+              title={atLimit ? t("ai.hourLimitReached") : undefined}
               data-testid="button-ai-review"
             >
               {generating ? <Loader2 className="animate-spin" aria-hidden="true" /> : review ? <RefreshCw aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
@@ -401,7 +408,7 @@ export function AiReviewPanel({
         {loadErr && (
           <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl bg-down/10 px-3 py-2 text-xs text-down">
             {loadErr}
-            <button type="button" onClick={() => load()} className="font-medium text-primary hover:underline">{tc("actions.retry")}</button>
+            <button type="button" onClick={() => load()} className="inline-flex min-h-8 items-center rounded-full px-2 font-medium text-primary hover:underline">{tc("actions.retry")}</button>
           </div>
         )}
 
@@ -454,7 +461,7 @@ export function AiReviewPanel({
                   {t("ai.details")}
                   <span className="flex items-center gap-2 text-xs text-muted-foreground">
                     {s.details.length}
-                    <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", detailsOpen && "rotate-180")} aria-hidden="true" />
+                    <ChevronDown className={cn("h-4 w-4 transition-transform duration-[var(--dur-2)] ease-[var(--ease)] motion-reduce:transition-none", detailsOpen && "rotate-180")} aria-hidden="true" />
                   </span>
                 </button>
                 {detailsOpen && (

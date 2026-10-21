@@ -78,7 +78,7 @@ export default function AcademyMentorPage() {
         <Panel><EmptyState icon={Users} title={t("mentorPage.noCohorts")} description={t("mentorPage.noCohortsDesc")} action={<Button asChild><Link href="/academy/cohorts">{t("mentorPage.toCohorts")}</Link></Button>} /></Panel>
       )}
       {d && d.cohorts.length > 0 && (
-        <>
+        <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-4 sm:gap-[var(--page-gap)] transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
           {!d.hasOwnCohorts && <p className="text-xs text-muted-foreground">{t("mentorPage.notAssigned")}</p>}
           <Kpis d={d} />
           {/* Side-by-side only on wide screens: at 1280–1440 px the students table needs the full width («Почему отстаёт»). */}
@@ -95,7 +95,7 @@ export default function AcademyMentorPage() {
           </div>
           <MeetingDialog open={meetingFor !== undefined} onOpenChange={(v) => { if (!v) setMeetingFor(undefined); }}
             students={meetingStudents} defaultStudent={meetingFor ?? null} mentor={user?.traderName ?? null} />
-        </>
+        </div>
       )}
     </Page>
   );
@@ -302,6 +302,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
         <section aria-label={t("mentorPage.detail.idpAria")}>
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("mentorPage.detail.idp")}</h3>
           {idp.isLoading && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.recalculating")}</p>}
+          {idp.isError && <ErrorState error={idp.error} onRetry={idp.refetch} compact />}
           {idp.data && idp.data.goals.length === 0 && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.noGoals")}</p>}
           <div className="flex flex-col gap-2">
             {idp.data?.goals.map((g) => (
@@ -315,6 +316,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
         </section>
         <section aria-label={t("mentorPage.detail.meetings")}>
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("mentorPage.detail.meetings")}</h3>
+          {meetings.isError && <ErrorState error={meetings.error} onRetry={meetings.refetch} compact />}
           {meetings.data && meetings.data.meetings.length === 0 && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.noMeetings")}</p>}
           <ul className="flex flex-col gap-2">
             {meetings.data?.meetings.slice(0, allMeetings ? undefined : 6).map((m) => (

@@ -267,9 +267,9 @@ function TradesBlock({ event }: { event: MarketEvent }) {
       actions={
         <>
           {q.data?.scope && <Pill tone="neutral" className="text-2xs">{q.data.scope}</Pill>}
-          <Link href={links.trades({ ticker, date: day })} className="text-xs text-primary hover:underline">{tr("detail.allTrades")}</Link>
-          <Link href={links.journalDay(day)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><BookOpen className="h-3 w-3" aria-hidden="true" />{tr("detail.journal")}</Link>
-          <Link href={links.newThread({ ticker })} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><MessageSquare className="h-3 w-3" aria-hidden="true" />{tr("detail.discuss")}</Link>
+          <Link href={links.trades({ ticker, date: day })} className="inline-flex min-h-8 items-center text-xs text-primary hover:underline">{tr("detail.allTrades")}</Link>
+          <Link href={links.journalDay(day)} className="inline-flex min-h-8 items-center gap-1 text-xs text-primary hover:underline"><BookOpen className="h-3 w-3" aria-hidden="true" />{tr("detail.journal")}</Link>
+          <Link href={links.newThread({ ticker })} className="inline-flex min-h-8 items-center gap-1 text-xs text-primary hover:underline"><MessageSquare className="h-3 w-3" aria-hidden="true" />{tr("detail.discuss")}</Link>
         </>
       }
     >

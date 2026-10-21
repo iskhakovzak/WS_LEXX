@@ -134,6 +134,7 @@ export default {
     reset: "Сброс",
     accountSize: "Размер счёта",
     accountSizeHint: "База для расчёта риска и buying power",
+    bpHint: "Buying power {amount}",
     riskPerTrade: "Риск на сделку",
     riskUnit: "Единица риска",
     riskPct: "Риск на сделку, %",

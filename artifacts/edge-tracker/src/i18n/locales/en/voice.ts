@@ -27,6 +27,7 @@ export default {
     stop: "Stop",
     startAria: "Start voice recording",
     startTitle: "Voice recording — dictate and the text appears automatically",
+    starting: "Turning on the microphone…",
   },
   player: {
     pause: "Pause",

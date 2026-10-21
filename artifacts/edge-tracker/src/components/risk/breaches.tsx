@@ -10,6 +10,7 @@ import { AlertTriangle, OctagonX, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ds";
 import type { RiskAlertRecord, RiskBreachReview, RiskBreachesPayload, RiskLimits } from "./use-risk";
 import { useBreachReviews, useRiskAlerts, useRiskHistory } from "./use-risk";
 import { breachHistory } from "./risk-math";
@@ -77,7 +78,10 @@ export function useBreaches(trader: string | null, limits: RiskLimits | null | u
     return merged.sort((a, b) => b.date.localeCompare(a.date) || (a.level === b.level ? 0 : a.level === "breach" ? -1 : 1));
   }, [log.data, hist.data, limits, reviews.data]);
   const hasLimits = !!(limits ?? hist.data?.limits);
-  return { rows, labels, hasLimits, isLoading: hist.isLoading || log.isLoading, days: BREACH_DAYS };
+  // Both sources failed: say so (an empty list would read as «no breaches» — false reassurance).
+  const error = hist.isError && (log.isError || !trader) ? hist.error : null;
+  const retry = () => { void hist.refetch(); void log.refetch(); };
+  return { rows, labels, hasLimits, isLoading: hist.isLoading || log.isLoading, error, retry, days: BREACH_DAYS };
 }
 
 function reviewLabels(d: RiskBreachesPayload | undefined): ReviewLabels {
@@ -135,7 +139,9 @@ export function BreachList({ rows, trader, max, className, labels, focusAlert = 
   const shown = max != null && !all && !(max <= focusIdx) ? rows.slice(0, max) : rows;
   const focusRef = React.useRef<HTMLLIElement>(null);
   React.useEffect(() => {
-    if (focusIdx >= 0) focusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (focusIdx < 0) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    focusRef.current?.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
   }, [focusIdx]);
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
@@ -168,7 +174,7 @@ export function BreachList({ rows, trader, max, className, labels, focusAlert = 
         })}
       </ul>
       {max != null && rows.length > max && (
-        <button type="button" onClick={() => setAll((v) => !v)} className="self-start text-xs text-primary hover:underline">
+        <button type="button" onClick={() => setAll((v) => !v)} aria-expanded={all} className="-mx-1 inline-flex min-h-8 items-center self-start rounded-md px-1 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {all ? commonI18n.t("actions.collapse") : t("breach.showMore", { count: rows.length - max })}
         </button>
       )}
@@ -181,6 +187,7 @@ export function BreachHistory({ trader, limits, max, focusAlert = null }: { trad
   const { t } = riskI18n.useT();
   const b = useBreaches(trader, limits);
   if (b.isLoading) return <Skeleton className="h-24 rounded-xl" />;
+  if (b.error && !b.rows.length) return <ErrorState compact inset error={b.error} onRetry={b.retry} />;
   if (!b.rows.length) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -5,7 +5,7 @@
  */
 import * as React from "react";
 import { Download, Eye, FileSpreadsheet, Loader2, ScrollText } from "lucide-react";
-import { DataTable, EmptyState, ErrorState, Panel, Pill } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Panel, Pill, TableSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { localDateString } from "@/lib/local-date";
 import { propreportsI18n } from "@/i18n/ns/propreports";
+import { personName } from "@/i18n";
 import type { AccountMapping } from "./api";
 import { downloadReport, useLocates, useReportPreview, useReportTypes, type ReportQuery } from "./api-v2-api";
 
@@ -53,7 +54,7 @@ function AccountSelect({ id, accounts, value, onChange, allowAll }: { id: string
       <SelectTrigger id={id} className="h-9 w-56"><SelectValue placeholder={t("apiV2.reports.accountId")} /></SelectTrigger>
       <SelectContent>
         {allowAll && <SelectItem value={ALL}>{t("apiV2.reports.groupHint")}</SelectItem>}
-        {withId.map((a) => <SelectItem key={a.id} value={a.accountId!}>{a.account}{a.trader ? ` · ${a.trader}` : ""}</SelectItem>)}
+        {withId.map((a) => <SelectItem key={a.id} value={a.accountId!}>{a.account}{a.trader ? ` · ${personName(a.trader)}` : ""}</SelectItem>)}
       </SelectContent>
     </Select>
   );
@@ -62,7 +63,7 @@ function AccountSelect({ id, accounts, value, onChange, allowAll }: { id: string
 function ReportPreviewTable({ q }: { q: ReportQuery }) {
   const { t } = propreportsI18n.useT();
   const preview = useReportPreview(q);
-  if (preview.isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />;
+  if (preview.isLoading) return <TableSkeleton rows={6} cols={6} />;
   if (preview.error) return <ErrorState compact error={preview.error} title={t("apiV2.reports.failed")} onRetry={() => preview.refetch()} />;
   const d = preview.data;
   if (!d) return null;
@@ -200,7 +201,7 @@ export function LocatesPanel({ accounts }: { accounts: AccountMapping[] }) {
           </Button>
         </div>
         {!q ? null : locates.isLoading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
+          <TableSkeleton rows={6} cols={5} />
         ) : locates.error ? (
           <ErrorState compact error={locates.error} title={t("apiV2.locates.failed")} onRetry={() => locates.refetch()} />
         ) : !rows.length ? (

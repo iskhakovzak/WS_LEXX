@@ -73,7 +73,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
   const short = (v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 });
 
   return (
-    <DataTable ariaLabel={t("desk.tradersTitle")} density="comfortable">
+    <DataTable ariaLabel={t("desk.tradersTitle")} density="comfortable" className="[&_thead_th]:py-0.5 [&_thead_th>button]:min-h-8">
       <table>
         <thead>
           <tr>

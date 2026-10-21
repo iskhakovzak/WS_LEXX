@@ -291,7 +291,7 @@ function ErrorDetailSheet({ id, onClose }: { id: number | null; onClose: () => v
               <div className="flex flex-wrap items-center gap-2">
                 <SourcePill source={e.source} />
                 {e.resolvedAt ? (
-                  <span className="text-xs text-up">{t("detail.resolvedBy", { name: e.resolvedBy ?? "—", when: fmtRelative(e.resolvedAt) })}</span>
+                  <span className="text-xs text-up">{t("detail.resolvedBy", { name: e.resolvedBy ? personName(e.resolvedBy) : "—", when: fmtRelative(e.resolvedAt) })}</span>
                 ) : null}
                 {e.alertedAt && <span className="text-xs text-muted-foreground">{t("detail.alerted", { when: fmtRelative(e.alertedAt) })}</span>}
               </div>

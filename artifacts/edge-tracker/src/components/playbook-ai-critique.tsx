@@ -154,7 +154,7 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
       </IconAction>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-4 p-4 sm:p-6">
+        <DialogContent className="flex max-h-[85dvh] max-w-2xl flex-col gap-4 p-4 sm:p-6">
           <DialogHeader className="pr-10">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
               <Sparkles className="h-4 w-4 text-[hsl(var(--chart-5))]" aria-hidden="true" />

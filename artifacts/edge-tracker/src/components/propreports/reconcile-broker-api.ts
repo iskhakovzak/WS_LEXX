@@ -2,7 +2,7 @@
  * Client for the PropReports accuracy endpoints (types mirror artifacts/api-server/src/routes/propreports-accuracy.ts,
  * lib/propreports/adjustments.ts and lib/propreports/reconcile-broker-store.ts).
  */
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 
@@ -60,6 +60,8 @@ export function useReconcileBroker(view: ReconcileView, trader: string | null = 
     queryFn: ({ signal }) => http.get<ReconcileBrokerResponse>("/api/propreports/reconcile-broker", { query: { view, trader: trader || undefined }, signal }),
     enabled,
     staleTime: STALE.short,
+    // Switching «Открытые / Все» keeps the table on screen instead of flashing back to the skeleton.
+    placeholderData: keepPreviousData,
   });
 }
 

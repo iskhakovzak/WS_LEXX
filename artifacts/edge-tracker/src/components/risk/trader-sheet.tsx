@@ -4,7 +4,7 @@ import { AlertTriangle, History, Moon, OctagonX } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Pill, Segmented } from "@/components/ds";
+import { ErrorState, Pill, Segmented } from "@/components/ds";
 import { links } from "@/lib/links";
 import type { DeskRow, LimitEvent, RiskPosition } from "./use-risk";
 import { useLimitsHistory, useTraderDay } from "./use-risk";
@@ -83,7 +83,7 @@ function LimitsHistory({ trader }: { trader: string }) {
   const { t } = riskI18n.useT();
   const q = useLimitsHistory(trader);
   if (q.isLoading) return <Skeleton className="h-16 rounded-xl" />;
-  if (q.isError) return <p className="text-xs text-muted-foreground">{t("sheet.historyUnavailable")}</p>;
+  if (q.isError) return <ErrorState compact inset error={q.error} message={t("sheet.historyUnavailable")} onRetry={() => q.refetch()} />;
   const events = q.data ?? [];
   if (events.length === 0) return <p className="text-xs text-muted-foreground">{t("sheet.noChanges")}</p>;
   return (

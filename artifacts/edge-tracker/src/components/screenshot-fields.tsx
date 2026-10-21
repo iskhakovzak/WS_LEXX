@@ -12,6 +12,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { screenshotsI18n } from "@/i18n/ns/screenshots";
 
 const st = screenshotsI18n.t; // called at render / call time only
+const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const altOf = (n: number, note?: string) => (note ? st("altNote", { n, note }) : st("alt", { n }));
 
 interface ScreenshotFieldsProps {
@@ -100,7 +101,7 @@ function ShotTile({
           <button
             type="button"
             onClick={onOpen}
-            className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-muted-foreground"
+            className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
             aria-label={st("open", { n: index + 1 })}
           >
             <ImageOff className="h-5 w-5" aria-hidden="true" />
@@ -108,12 +109,13 @@ function ShotTile({
             <span className="max-w-full truncate text-2xs opacity-80">{hostOf(url)}</span>
           </button>
         ) : (
-          <button type="button" onClick={onOpen} className="block h-full w-full" aria-label={st("open", { n: index + 1 })}>
+          <button type="button" onClick={onOpen} className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset" aria-label={st("open", { n: index + 1 })}>
             <img
               src={url}
               alt={altOf(index + 1, note)}
               loading="lazy"
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transform-none"
+              width={320} height={180}
+              className="h-full w-full object-cover transition-transform duration-[var(--dur-2)] ease-[var(--ease)] group-hover:scale-[1.02] motion-reduce:transform-none"
               onError={() => setFailed(true)}
             />
           </button>
@@ -137,7 +139,7 @@ function ShotTile({
             </div>
           </div>
         ) : (
-          <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+          <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-100 transition-opacity duration-[var(--dur-1)] ease-[var(--ease)] md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
             {total > 1 && index > 0 && (
               <TileBtn label={st("moveLeft", { n: index + 1 })} onClick={() => onMove(-1)}><MoveLeft /></TileBtn>
             )}
@@ -150,7 +152,7 @@ function ShotTile({
               rel="noopener noreferrer"
               aria-label={st("openNewTab", { n: index + 1 })}
               title={st("openNewTab", { n: index + 1 })}
-              className="grid h-7 w-7 place-items-center rounded-full bg-background/80 text-foreground backdrop-blur hover:bg-background [&_svg]:h-3.5 [&_svg]:w-3.5"
+              className="grid h-8 w-8 place-items-center rounded-full bg-background/80 text-foreground backdrop-blur hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5"
             >
               <ExternalLink aria-hidden="true" />
             </a>
@@ -179,7 +181,7 @@ function TileBtn({ label, onClick, children, danger }: { label: string; onClick:
       title={label}
       onClick={onClick}
       className={cn(
-        "grid h-7 w-7 place-items-center rounded-full bg-background/80 backdrop-blur transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5",
+        "grid h-8 w-8 place-items-center rounded-full bg-background/80 backdrop-blur transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5",
         danger ? "text-down" : "text-foreground",
       )}
     >
@@ -390,6 +392,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const touchRef = useRef<{ x: number; y: number } | null>(null);
+  const [broken, setBroken] = useState<string | null>(null); // url whose full image failed to load
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -561,7 +564,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
             aria-label={st("prev")}
             title={st("prev")}
             onClick={(e) => { e.stopPropagation(); goPrev(); }}
-            className="glass-field absolute left-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground sm:grid"
+            className="glass-field absolute left-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid"
           >
             <ChevronLeft className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -570,7 +573,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
             aria-label={st("next")}
             title={st("next")}
             onClick={(e) => { e.stopPropagation(); goNext(); }}
-            className="glass-field absolute right-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground sm:grid"
+            className="glass-field absolute right-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid"
           >
             <ChevronRight className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -584,8 +587,13 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
         onMouseDown={onMouseDown}
         onClick={(e) => e.stopPropagation()}
       >
-        <img
+        {broken === urls[idx] ? (
+          <a href={urls[idx]} target="_blank" rel="noopener noreferrer" className={cn("glass-field flex flex-col items-center gap-1.5 !rounded-2xl px-6 py-5 text-sm text-muted-foreground hover:text-foreground", FOCUS)}>
+            <ImageOff className="h-6 w-6" aria-hidden="true" />{st("previewOpenLink")}<span className="max-w-[60vw] truncate text-2xs">{hostOf(urls[idx])}</span>
+          </a>
+        ) : <img
           key={urls[idx]}
+          onError={() => setBroken(urls[idx])}
           src={urls[idx]}
           alt={altOf(idx + 1, notes[idx])}
           className="rounded-xl shadow-2xl motion-reduce:!transition-none"
@@ -600,7 +608,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
           }}
           draggable={false}
           onDoubleClick={(e) => { e.stopPropagation(); if (zoom > 1) resetView(); else setZoom(2); }}
-        />
+        />}
       </div>
 
       {/* Note */}
@@ -629,7 +637,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
                   i === idx ? "opacity-100 ring-2 ring-primary" : "opacity-60 hover:opacity-90",
                 )}
               >
-                <img src={url} alt="" className="h-full w-full object-cover" />
+                <img src={url} alt="" width={64} height={40} loading="lazy" className="h-full w-full object-cover" />
               </button>
             ))}
           </div>
@@ -669,7 +677,7 @@ export function ScreenshotThumbs({ urls, notes, max = 3, thumbClass }: {
             title={st("openPreview")}
             aria-label={st("open", { n: i + 1 })}
           >
-            <img src={url} alt="" className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-100" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
+            <img src={url} alt="" width={56} height={40} loading="lazy" className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-100" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
             <span className="absolute inset-0 grid place-items-center bg-background/0 transition-colors group-hover:bg-background/30">
               <ZoomIn className="h-4 w-4 text-foreground opacity-0 transition-opacity group-hover:opacity-90" aria-hidden="true" />
             </span>
@@ -679,7 +687,7 @@ export function ScreenshotThumbs({ urls, notes, max = 3, thumbClass }: {
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setLightboxIdx(visible.length); }}
-            className="grid h-6 min-w-6 place-items-center self-end rounded-full bg-[var(--glass-bg)] px-1.5 text-2xs font-medium tabular-nums text-muted-foreground hover:text-primary"
+            className="grid h-6 min-w-6 place-items-center self-end rounded-full bg-[var(--glass-bg)] px-1.5 text-2xs font-medium tabular-nums text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={st("more", { count: extra })}
             title={st("more", { count: extra })}
           >
@@ -719,7 +727,7 @@ export function ScreenshotDisplay({ urls, notes, onNotesChange }: ScreenshotDisp
         <div className={cn("grid gap-3", list.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3")}>
           {list.map((url, i) => (
             <ScreenshotItem
-              key={i}
+              key={`${url}-${i}`}
               url={url}
               index={i}
               single={list.length === 1}
@@ -772,19 +780,20 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
             href={safeUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex aspect-video flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground"
+            className="flex aspect-video flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
           >
             <ImageOff className="h-5 w-5" aria-hidden="true" />
             <span className="text-xs">{st("previewOpenLink")}</span>
             <span className="max-w-[90%] truncate text-2xs">{hostOf(safeUrl)}</span>
           </a>
         ) : (
-          <button type="button" onClick={onZoom} className="block w-full" aria-label={st("zoomShot", { n: index + 1 })}>
+          <button type="button" onClick={onZoom} className="block w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset" aria-label={st("zoomShot", { n: index + 1 })}>
             <img
               src={safeUrl}
               alt={altOf(index + 1, note)}
               loading="lazy"
-              className={cn("w-full object-contain", single ? "max-h-[28rem]" : "max-h-64")}
+              width={1600} height={900}
+              className={cn("h-auto w-full object-contain", single ? "max-h-[28rem]" : "max-h-64")}
               onError={() => setFailed(true)}
             />
             <span className="absolute inset-0 grid place-items-center bg-background/0 transition-colors group-hover:bg-background/20">
@@ -801,7 +810,7 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
           rel="noopener noreferrer"
           aria-label={st("openNewTab", { n: index + 1 })}
           title={st("openNewTab", { n: index + 1 })}
-          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-background/80 text-foreground opacity-100 backdrop-blur transition-opacity hover:bg-background md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-background/80 text-foreground opacity-100 backdrop-blur transition-opacity hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
         </a>
@@ -821,10 +830,10 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
               if (e.key === "Escape") { e.stopPropagation(); setEditing(false); }
             }}
           />
-          <button type="button" aria-label={st("saveNoteAria")} title={st("saveNoteTitle")} onClick={save} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-up hover:bg-up/15">
+          <button type="button" aria-label={st("saveNoteAria")} title={st("saveNoteTitle")} onClick={save} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-up hover:bg-up/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Check className="h-4 w-4" aria-hidden="true" />
           </button>
-          <button type="button" aria-label={st("cancelEdit")} title={commonI18n.t("actions.cancel")} onClick={() => setEditing(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+          <button type="button" aria-label={st("cancelEdit")} title={commonI18n.t("actions.cancel")} onClick={() => setEditing(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
@@ -838,14 +847,14 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
               aria-label={st("editNote")}
               title={st("editNote")}
               onClick={startEdit}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground opacity-100 transition-opacity hover:text-primary focus-visible:opacity-100 md:opacity-0 md:group-hover/note:opacity-100"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground opacity-100 transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:opacity-100 md:opacity-0 md:group-hover/note:opacity-100"
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           )}
         </figcaption>
       ) : onNoteChange ? (
-        <button type="button" onClick={startEdit} className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-2 text-xs text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-primary">
+        <button type="button" onClick={startEdit} className="inline-flex min-h-8 items-center gap-1.5 self-start rounded-full px-2 text-xs text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <StickyNote className="h-3.5 w-3.5" aria-hidden="true" /> {st("addNote")}
         </button>
       ) : null}

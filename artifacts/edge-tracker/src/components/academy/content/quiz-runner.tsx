@@ -125,7 +125,7 @@ export function QuizRunner({ data, canAnswer }: { data: QuizResponse; canAnswer:
       </ol>
 
       {!reviewing && canAnswer && (
-        <div className="sticky bottom-3 z-sticky flex flex-wrap items-center justify-between gap-2 rounded-2xl glass-panel bg-[var(--sticky-bg)] p-3">
+        <div className="sticky bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-sticky flex md:bottom-3 flex-wrap items-center justify-between gap-2 rounded-2xl glass-panel bg-[var(--sticky-bg)] p-3">
           <span className="text-sm text-muted-foreground tabular-nums">{t("quiz.answered", { done: quiz.questions.length - unanswered, total: quiz.questions.length })}</span>
           <Button onClick={submit} disabled={busy || !state.canAttempt}>
             {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}

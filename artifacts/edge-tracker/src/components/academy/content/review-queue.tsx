@@ -2,13 +2,13 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { Inbox } from "lucide-react";
-import { EmptyState, Panel, Segmented } from "@/components/ds";
-import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, ErrorState, ListSkeleton, Panel, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useReviewQueue } from "./api";
 import { GradeForm, SubmissionCard } from "./assignment-panel";
 import { academyLinks } from "./links";
 import { daysSince } from "./time";
+import { cn } from "@/lib/utils";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
 
@@ -37,13 +37,13 @@ export function ReviewQueue({ cohortId }: { cohortId: number | null }) {
         ]}
       />
       {q.isLoading ? (
-        <Skeleton className="h-40 rounded-2xl" />
+        <Panel><ListSkeleton rows={3} /></Panel>
       ) : q.isError ? (
-        <Panel><p className="text-sm text-down">{t("review.loadFailed", { message: (q.error as Error).message })}</p></Panel>
+        <ErrorState error={q.error} onRetry={q.refetch} title={t("review.loadFailed")} />
       ) : !items.length ? (
         <Panel><EmptyState icon={Inbox} title={status === "submitted" ? t("review.emptyTitle") : t("review.nothing")} description={status === "submitted" ? t("review.emptyDesc") : undefined} /></Panel>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-3 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
           {items.map((s) => (
             <li key={s.id} className="flex flex-col gap-2">
               <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">

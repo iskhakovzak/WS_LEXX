@@ -227,7 +227,7 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
         const apply = () => seekTo(ratio * (audio.duration || duration));
         audio.addEventListener("loadedmetadata", apply, { once: true });
         audio.load();
-      });
+      }, () => setPlayError(true));
       return;
     }
     draggingRef.current = true;
@@ -294,7 +294,7 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           {loading && !playing ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
           ) : playing ? (
             <Pause className="h-4 w-4" aria-hidden="true" />
           ) : (
@@ -330,7 +330,7 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
                 <span
                   key={i}
                   aria-hidden="true"
-                  className={cn("min-w-[2px] flex-1 rounded-full transition-colors duration-150", played ? "bg-primary" : "bg-muted-foreground/30")}
+                  className={cn("min-w-[2px] flex-1 rounded-full transition-colors duration-[var(--dur-1)] ease-[var(--ease)] motion-reduce:transition-none", played ? "bg-primary" : "bg-muted-foreground/30")}
                   style={{ height: `${Math.round(h * 100)}%` }}
                 />
               );
@@ -347,20 +347,22 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
             type="button"
             onClick={cycleSpeed}
             aria-label={t("player.speed", { speed })}
-            className="chip min-h-8 min-w-[3.25rem] px-2 text-xs font-semibold tabular-nums"
+            className="chip min-h-8 min-w-[3.25rem] px-2 text-xs font-semibold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {speed}×
           </button>
-          {currentTime > 0 && (
-            <button
-              type="button"
-              onClick={() => seekTo(0)}
-              aria-label={t("player.toStart")}
-              className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => seekTo(0)}
+            aria-label={t("player.toStart")} title={t("player.toStart")}
+            // Always rendered (invisible at 0:00) so the card doesn't grow when playback starts.
+            className={cn(
+              "grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              currentTime > 0 ? "visible" : "invisible",
+            )}
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
@@ -392,9 +394,9 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
               type="button"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              className="mt-1 inline-flex min-h-7 items-center gap-1 rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-[var(--dur-2)] ease-[var(--ease)] motion-reduce:transition-none", expanded && "rotate-180")} aria-hidden="true" />
               {expanded ? commonI18n.t("actions.collapse") : t("player.showFull")}
             </button>
           )}
@@ -426,6 +428,10 @@ export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, classN
     },
     enabled: !!userId,
     staleTime: STALE.default,
+    // refreshKey bumps after a new recording: keep this trade's list on screen instead of flashing back to the skeleton
+    // (only for the same trade/user — another trade's notes must never show as a placeholder).
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === tradeId && prevQuery?.queryKey[2] === userId ? prev : undefined,
   });
 
   const totalSec = useMemo(() => notes.reduce((s, n) => s + (Number(n.durationSec) || 0), 0), [notes]);
@@ -442,7 +448,7 @@ export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, classN
       <div role="alert" className={cn("flex items-center gap-2 py-1 text-xs text-down", className)}>
         <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>{t("player.loadFailed")}</span>
-        <button type="button" onClick={() => refetch()} className="font-medium text-primary hover:underline">{commonI18n.t("actions.retry")}</button>
+        <button type="button" onClick={() => refetch()} className="inline-flex min-h-8 items-center rounded-md px-1 font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{commonI18n.t("actions.retry")}</button>
       </div>
     );
   }

@@ -133,6 +133,7 @@ export default {
     reset: "Qaytarish",
     accountSize: "Hisob hajmi",
     accountSizeHint: "Risk va buying power hisobi uchun asos",
+    bpHint: "Buying power {amount}",
     riskPerTrade: "Savdo uchun risk",
     riskUnit: "Risk birligi",
     riskPct: "Savdo uchun risk, %",

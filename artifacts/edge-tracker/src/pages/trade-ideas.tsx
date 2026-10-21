@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, FilterChip, Page, PageHeader, Panel, Segmented, StatCard, StatGrid, Toolbar } from "@/components/ds";
+import { EmptyState, ErrorState, FilterChip, Page, PageHeader, Panel, Segmented, StatCard, StatGrid, Toolbar } from "@/components/ds";
 import { useAuth, WriteOnly } from "@/contexts/auth-context";
 import { stringToScreenshotUrls } from "@/components/screenshot-fields";
 import { TradeIdeaForm, type TradeIdeaFormData } from "@/components/trade-idea-form";
@@ -22,7 +22,7 @@ import {
   HORIZONS, STAGES, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
   type Horizon, type IdeaTracking, type Stage, type TradeIdea,
 } from "@/components/ideas/model";
-import { fmtDate, fmtNum, fmtR } from "@/lib/format";
+import { fmtDate, fmtNum, fmtR, fmtRate } from "@/lib/format";
 import { nyDate, addDays } from "@/lib/trading-date";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
@@ -354,7 +354,7 @@ export default function TradeIdeas() {
         />
         <StatCard
           label={t("page.accuracy")}
-          value={kpi.hitRate != null ? `${Math.round(kpi.hitRate * 100)}%` : "—"}
+          value={fmtRate(kpi.hitRate)}
           icon={Target}
           tone={kpi.hitRate == null ? "neutral" : kpi.hitRate >= 0.5 ? "up" : "down"}
           hint={kpi.closed > 0
@@ -441,8 +441,8 @@ export default function TradeIdeas() {
             </>
           )}
           {tickerFilter && (
-            <FilterChip active onClick={() => setTickerFilter(null)}>
-              {tickerFilter} <X className="h-3 w-3" aria-label={t("page.resetTicker")} />
+            <FilterChip active onClick={() => setTickerFilter(null)} title={t("page.resetTicker")}>
+              {tickerFilter} <X className="h-3 w-3" aria-hidden="true" />
             </FilterChip>
           )}
           {filtersActive && (
@@ -456,15 +456,7 @@ export default function TradeIdeas() {
 
       {isLoading && <BoardSkeleton />}
 
-      {isError && (
-        <Panel>
-          <EmptyState
-            title={t("page.loadFailed")}
-            description={(error as Error)?.message}
-            action={<Button variant="outline" size="sm" onClick={() => refetch()} className="gap-1.5"><RotateCcw className="h-3.5 w-3.5" />{tc("actions.retry")}</Button>}
-          />
-        </Panel>
-      )}
+      {isError && <ErrorState title={t("page.loadFailed")} error={error} onRetry={refetch} />}
 
       {!isLoading && !isError && ideas.length === 0 && (
         <Panel>
@@ -534,7 +526,7 @@ export default function TradeIdeas() {
         <Button
           onClick={openCreate}
           aria-label={t("page.newIdea")}
-          className="fixed bottom-5 right-5 z-nav h-14 w-14 rounded-full p-0 shadow-lg sm:hidden"
+          className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-4 z-nav h-14 w-14 rounded-full p-0 shadow-lg sm:hidden"
         >
           <Plus className="h-6 w-6" aria-hidden="true" />
         </Button>
@@ -556,7 +548,7 @@ export default function TradeIdeas() {
 
       <Dialog open={formOpen} onOpenChange={(v) => { if (!v) closeForm(); }}>
         <DialogContent
-          className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl"
+          className="max-h-[92dvh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto overscroll-contain rounded-2xl"
           onCloseAutoFocus={() => { setEditing(null); setPrefillTicker(null); }}
         >
           <DialogHeader>

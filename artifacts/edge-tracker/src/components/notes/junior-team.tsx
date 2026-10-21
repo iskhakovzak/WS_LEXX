@@ -362,7 +362,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                 {selected.size === reviewable.length ? t("junior.team.unselectAll") : tc("actions.selectAll")}
               </Button>
               <Button size="sm" variant="outline" disabled={summarizing || selected.size === 0} onClick={() => void generateSummary()}>
-                {summarizing ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
+                {summarizing ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
                 {summarizing ? t("analyzing") : selected.size ? t("junior.team.aiSummaryCount", { count: selected.size }) : t("junior.team.aiSummary")}
               </Button>
             </div>
@@ -518,7 +518,7 @@ function RosterRow({
           </Button>
         ) : (
           <Button size="sm" variant="ghost" disabled={busy} onClick={onRemind} aria-label={t("junior.team.remindAria", { name: personName(r.trader) })}>
-            {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <BellRing aria-hidden="true" />}
+            {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <BellRing aria-hidden="true" />}
             {r.reminder ? t("junior.team.again") : t("junior.team.remind")}
           </Button>
         )}

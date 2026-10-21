@@ -24,7 +24,7 @@ export function TradeChips({ trades, max = 3, className }: { trades: TradeRef[];
           key={x.tradeId}
           href={links.trade(x.tradeId)}
           aria-label={t("focus.exampleAria", { ticker: x.ticker, date: dayShort(x.date) })}
-          className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs font-medium tabular-nums"
+          className="chip inline-flex min-h-8 items-center gap-1 px-2.5 text-xs font-medium tabular-nums"
         >
           {x.ticker}
           {x.net != null && <span className={x.net < 0 ? "text-down" : "text-up"}>{fmtUsd(x.net, { signed: true, decimals: 0 })}</span>}

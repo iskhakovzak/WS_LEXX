@@ -9,7 +9,7 @@ import { AlertTriangle, Briefcase, CalendarClock, Download, Layers, Moon, Printe
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { nyDate, addDays } from "@/lib/trading-date";
-import { EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, toneOf, useTableSort } from "@/components/ds";
+import { EmptyState, ErrorState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, toneOf, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -187,10 +187,10 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
   };
 
   if (book.isError) {
-    const notReady = isNotFound(book.error);
+    if (!isNotFound(book.error)) return <ErrorState title={t("overnight.loadFailed")} error={book.error} onRetry={() => book.refetch()} />;
     return (
       <Panel>
-        <EmptyState icon={Moon} title={notReady ? t("overnight.notReadyTitle") : t("overnight.loadFailed")} description={notReady ? t("overnight.notReadyDesc") : (book.error as Error).message} />
+        <EmptyState icon={Moon} title={t("overnight.notReadyTitle")} description={t("overnight.notReadyDesc")} />
       </Panel>
     );
   }
@@ -216,6 +216,9 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
     : null;
 
   const empty = !book.isLoading && !!data && rows.length === 0;
+  // Earnings / offerings lookups are slow (offerings watch takes seconds): the book renders right away and the
+  // catalyst chips fill in; only the catalyst KPI waits, so it never shows a premature «0».
+  const catalystsLoading = earnings.isLoading || offerings.isLoading;
 
   return (
     <div id="risk-overnight-print" className="flex flex-col gap-[var(--grid-gap)]">
@@ -249,7 +252,7 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
             />
             <StatCard label={t("overnight.kpiUnreal")} value={totals.unrealized != null ? fmtUsd(totals.unrealized, { signed: true, decimals: 0 }) : "—"} tone={toneOf(totals.unrealized)} hint={totals.unrealized == null ? t("overnight.noQuotes") : t("overnight.byLast")} />
             <StatCard label={t("overnight.kpiRisk")} icon={Briefcase} value={fmtUsd(totals.riskToStop, { decimals: 0, compact: 10_000 })} hint={t("overnight.kpiRiskHint")} tone={totals.riskToStop > 0 ? "down" : "neutral"} />
-            <StatCard label={t("overnight.kpiCatalyst")} icon={CalendarClock} value={totals.catalysts} tone={totals.catalysts ? "warn" : "neutral"} hint={t("overnight.kpiCatalystHint")} />
+            <StatCard loading={catalystsLoading} label={t("overnight.kpiCatalyst")} icon={CalendarClock} value={totals.catalysts} tone={totals.catalysts ? "warn" : "neutral"} hint={t("overnight.kpiCatalystHint")} />
           </>
         )}
       </StatGrid>}
@@ -332,7 +335,9 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
             </div>
           }
         >
-          {rows.length === 0 ? (
+          {book.isLoading ? (
+            <Skeleton className="h-40 rounded-xl" />
+          ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("overnight.scenEmpty")}</p>
           ) : (
             <ScenarioTable results={results} rooms={rooms} shockMode={shockMode} />
@@ -340,7 +345,9 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
         </Panel>
 
         <Panel className="xl:col-span-2" title={t("overnight.concTitle")} icon={Layers} description={t("overnight.concDesc")}>
-          {rows.length === 0 ? (
+          {book.isLoading ? (
+            <Skeleton className="h-40 rounded-xl" />
+          ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("overnight.concEmpty")}</p>
           ) : (
             <ConcentrationPanel c={conc} />

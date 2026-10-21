@@ -24,6 +24,23 @@ type StatusFilter = "all" | ViolationStatus;
 const NO_VIOLATIONS: Violation[] = [];
 
 const STATUS_FILTERS: StatusFilter[] = ["all", "open", "acknowledged", "resolved"];
+/** Up to 500 active + 500 archived rows: render a page of cards at a time (whole days, so a day is never split). */
+const PAGE = 60;
+
+function pageByDay<T>(groups: [string, T[]][], limit: number): { shown: [string, T[]][]; hidden: number } {
+  const shown: [string, T[]][] = [];
+  let n = 0, total = 0;
+  for (const g of groups) { total += g[1].length; if (n < limit || !shown.length) { shown.push(g); n += g[1].length; } }
+  return { shown, hidden: total - n };
+}
+
+function ShowMore({ hidden, onClick }: { hidden: number; onClick: () => void }) {
+  return (
+    <Button variant="outline" size="sm" className="self-center" onClick={onClick}>
+      {commonI18n.t("actions.showMore")} <span className="tabular-nums text-muted-foreground">+{hidden}</span>
+    </Button>
+  );
+}
 
 export function ViolationsList({
   violations: activeViolations,
@@ -65,6 +82,7 @@ export function ViolationsList({
   const [comment, setComment] = useState("");
   const [consequence, setConsequence] = useState("");
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [limit, setLimit] = useState(PAGE);
 
   const isOwner = !!viewerName && viewerName === trader;
   // The list is capped (500 rows): say how many there are in all instead of passing the cap off as the count.
@@ -100,6 +118,7 @@ export function ViolationsList({
     }
     return [...g.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }, [violations, ruleFilter, statusFilter]);
+  const paged = useMemo(() => pageByDay(groups, limit), [groups, limit]);
 
   function openActions(v: Violation) {
     if (activeId === v.id) { setActiveId(null); return; }
@@ -186,7 +205,7 @@ export function ViolationsList({
         </Panel>
       )}
 
-      {groups.map(([date, list]) => {
+      {paged.shown.map(([date, list]) => {
         const counted = countedViolations(list);
         const dayCost = counted.reduce((s, v) => s + (v.costNet ?? 0), 0);
         const hasCost = counted.some((v) => v.costNet != null);
@@ -370,6 +389,7 @@ export function ViolationsList({
           </section>
         );
       })}
+      {paged.hidden > 0 && <ShowMore hidden={paged.hidden} onClick={() => setLimit((n) => n + PAGE)} />}
     </div>
   );
 }

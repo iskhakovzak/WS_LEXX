@@ -12,7 +12,7 @@ export function PicksLine({ playbook }: { playbook: DayPlaybook }) {
   const { t } = playbookTodayI18n.useT();
   if (!playbook.picks.length) {
     return (
-      <Link href="/playbook" className="group inline-flex min-h-7 items-center gap-1.5 self-start rounded-lg text-xs text-muted-foreground hover:text-foreground">
+      <Link href="/playbook" className="group inline-flex min-h-8 items-center gap-1.5 self-start rounded-lg text-xs text-muted-foreground hover:text-foreground">
         <BookMarked className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         {t("dayRow.picks")} · {t("plan.edit")}
         <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -32,7 +32,7 @@ export function PicksLine({ playbook }: { playbook: DayPlaybook }) {
           onClick={() => openSetupSheet({ setupId: p.id })}
           title={t("dayRow.open", { name: p.name })}
           aria-haspopup="dialog"
-          className="chip min-h-7 max-w-[14rem] truncate px-2.5 text-xs font-medium text-foreground"
+          className="chip min-h-8 max-w-[14rem] truncate px-2.5 text-xs font-medium text-foreground"
         >
           {p.name}
         </button>

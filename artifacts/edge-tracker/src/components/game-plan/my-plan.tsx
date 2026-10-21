@@ -265,6 +265,8 @@ function MyPlanEditor({
           size="sm"
           className={cn(status !== "ready" && "bg-primary-solid")}
           variant={status === "ready" ? "outline" : "default"}
+          disabled={save.kind === "saving"}
+          aria-busy={save.kind === "saving" || undefined}
           onClick={() => void markReady(status === "ready" ? "draft" : "ready")}
         >
           {status === "ready" ? <CheckCircle2 aria-hidden="true" /> : <Check aria-hidden="true" />}
@@ -382,7 +384,7 @@ function SaveIndicator({ state, pending, onRetry }: { state: SaveState; pending:
     );
   else if (state.kind === "error")
     content = (
-      <button type="button" onClick={onRetry} className="inline-flex items-center gap-1.5 text-destructive hover:underline" title={state.message}>
+      <button type="button" onClick={onRetry} className="inline-flex min-h-8 items-center gap-1.5 rounded-md text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={state.message}>
         <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" /> {t("my.saveRetry")}
       </button>
     );
@@ -525,7 +527,7 @@ function MyPlanSkeleton() {
     <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]" aria-busy="true" aria-label={gpI18n.t("page.loadingPlan")}>
       <div className="glass-panel flex flex-col gap-4 rounded-2xl p-[var(--panel-p)]">
         <Skeleton className="h-5 w-48 rounded-full" />
-        <Skeleton className="h-9 w-80 rounded-full" />
+        <Skeleton className="h-9 w-full max-w-80 rounded-full" />
         <Skeleton className="h-24 w-full rounded-xl" />
         <Skeleton className="h-16 w-full rounded-xl" />
         <Skeleton className="h-16 w-full rounded-xl" />

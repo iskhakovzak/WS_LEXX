@@ -259,7 +259,7 @@ export function DeskDayChart({ day, bars: baseBars, baseSec, colors, focus, onTo
           aria-label={t("office.toggleAria")}
           onClick={() => onShowOffice(!showOffice)}
           className={cn(
-            "rounded-full border border-[var(--glass-border)] px-2.5 py-1 text-xs",
+            "inline-flex min-h-8 items-center rounded-full border border-[var(--glass-border)] px-3 text-xs transition-colors duration-[var(--dur-1)]",
             showOffice ? "bg-primary text-primary-foreground" : "bg-background/90 text-muted-foreground hover:text-foreground",
           )}
         >
@@ -274,7 +274,7 @@ export function DeskDayChart({ day, bars: baseBars, baseSec, colors, focus, onTo
               type="button"
               aria-pressed={tf === x}
               onClick={() => setTf(x)}
-              className={cn("rounded-full px-2.5 py-0.5 text-xs tabular-nums", tf === x ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+              className={cn("inline-flex min-h-7 items-center rounded-full px-2.5 text-xs tabular-nums transition-colors duration-[var(--dur-1)]", tf === x ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
             >
               {TF_LABEL[x]}
             </button>

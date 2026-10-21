@@ -435,7 +435,7 @@ export default function OfferingsPage() {
         </Panel>
       )}
 
-      {isList && !noData && !error && (
+      {isList && !noData && !(error && !data) && (
         <StatGrid min="11rem">
           <StatCard loading={listLoading} label={tab === "week" ? t("page.kpiWeek") : t("page.kpiInPlay")} value={kpi.n}
             hint={kpi.raised > 0 ? t("page.kpiRaising", { amount: fmtM(kpi.raised) }) : tab === "week" ? t("page.kpiWeekLoaded", { count: weekLoaded }) : t("page.kpiTradingNow")} />
@@ -450,8 +450,10 @@ export default function OfferingsPage() {
         </StatGrid>
       )}
 
-      {isList && data && !noData && (
+      {/* Shown while the day loads too (no jump when it arrives; search / filters can be set up meanwhile). */}
+      {isList && !noData && !(error && !data) && (
         <FilterBar
+          loading={listLoading}
           filters={filters}
           onChange={(f) => { setFilters(f); setActive(0); }}
           presets={presets}

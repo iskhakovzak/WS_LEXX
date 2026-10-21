@@ -29,7 +29,7 @@ function QuestionRow({ text, active, onAsk, onRemove, removeLabel }: { text: str
           type="button"
           onClick={onRemove}
           aria-label={removeLabel}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground opacity-0 transition-opacity duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-opacity duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 pointer-fine:opacity-0"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -70,7 +70,7 @@ export function AskSidebar({ memory, current, onAsk }: { memory: AskMemory; curr
         <Panel
           title={t("sidebar.recent")}
           icon={History}
-          actions={<button type="button" onClick={memory.clearHistory} className="text-xs text-muted-foreground hover:text-foreground">{t("sidebar.clear")}</button>}
+          actions={<button type="button" onClick={memory.clearHistory} className="inline-flex min-h-8 items-center rounded-full px-2 text-xs text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground">{t("sidebar.clear")}</button>}
         >
           <ul className="-mx-1 flex flex-col">
             {memory.history.slice(0, 10).map((q) => (

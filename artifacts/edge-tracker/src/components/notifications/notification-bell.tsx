@@ -71,13 +71,13 @@ export function NotificationBell({ className }: { className?: string }) {
                 type="button"
                 onClick={() => readAll.mutate(undefined)}
                 disabled={readAll.isPending}
-                className="chip inline-flex h-7 items-center gap-1 px-2.5 text-xs font-medium disabled:opacity-50"
+                className="chip inline-flex h-8 items-center gap-1 px-2.5 text-xs font-medium disabled:opacity-50"
               >
                 <Check className="h-3 w-3" aria-hidden="true" />
                 {readAll.isPending ? "…" : t("bell.readAll")}
               </button>
             )}
-            <button type="button" onClick={goToPage} className="chip grid h-7 w-7 place-items-center" title={t("bell.settingsTitle")} aria-label={t("bell.settingsAria")}>
+            <button type="button" onClick={goToPage} className="chip grid h-8 w-8 place-items-center" title={t("bell.settingsTitle")} aria-label={t("bell.settingsAria")}>
               <Settings2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>

@@ -9,6 +9,7 @@
  * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
  */
 import { useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronDown, Filter, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,7 +33,7 @@ type Props = {
 };
 
 const GRID = "grid gap-x-5 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr))]";
-const LINK = "rounded px-1 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const LINK = "inline-flex min-h-6 min-w-6 items-center justify-center rounded px-1.5 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** A column offers a choice only with 2+ values, or when something in it is already excluded (so it can come back). */
 function hasChoice(dim: FacetDim, buckets: FacetBucket[], view: FacetView): boolean {
@@ -86,7 +87,7 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
   const scale = buckets.reduce((m, b) => Math.max(m, money && b.net != null ? Math.abs(b.net) : b.count), 0);
   return (
     <section className="flex min-w-0 flex-col gap-1" aria-label={title}>
-      <header className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
+      <header className="flex items-center justify-between gap-2 border-b border-border pb-1">
         <h4 title={title} className="truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}{excluded > 0 && <span className="ml-1 text-primary">−{excluded}</span>}
         </h4>
@@ -162,7 +163,12 @@ function GroupTabs({ groups, active, onPick, view }: { groups: Group[]; active: 
 export function FacetPanel({ view, onChange, data, loading, error, className }: Props) {
   const t = tradeFacetsI18n.t;
   const hidden = activeCount(view);
-  const open = view.open;
+  // On a phone the panel starts folded each visit (open it pushes the trade list a screen down); the saved
+  // open/closed state is the desktop one.
+  const isMobile = !!useIsMobile();
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const open = isMobile ? phoneOpen : view.open;
+  const toggle = () => (isMobile ? setPhoneOpen((v) => !v) : onChange({ ...view, open: !view.open }));
   const money = data?.money !== false;
   const dims = FACET_DIMS.map((d) => ({ d, buckets: data?.dims[d] ?? [] }));
   const shown = dims.filter((x) => hasChoice(x.d, x.buckets, view));
@@ -179,7 +185,7 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
         <button
           type="button"
           aria-expanded={open}
-          onClick={() => onChange({ ...view, open: !open })}
+          onClick={toggle}
           title={open ? t("close") : t("open")}
           className="inline-flex min-h-9 items-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >

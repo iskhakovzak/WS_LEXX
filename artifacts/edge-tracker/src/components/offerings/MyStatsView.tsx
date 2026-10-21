@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { BarChart3, ServerCog } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, TermTooltip, UpdatedAgo, toneOf, usePersistentState, useTableSort } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, TermTooltip, UpdatedAgo, toneOf, usePersistentState, useTableSort } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { MiniBar } from "./bits";
@@ -40,7 +40,7 @@ function ByTickerTable({ rows, onOpenTicker }: { rows: TickerBucket[]; onOpenTic
   const { rows: sorted, thProps } = useTableSort(rows, TICKER_ACCESSORS, "net");
   const { t } = offeringsI18n.useT();
   return (
-    <DataTable maxHeight="70dvh" ariaLabel={t("stats.tableAria")}>
+    <DataTable maxHeight="70dvh" ariaLabel={t("stats.tableAria")} className="[&_thead_th]:py-0.5 [&_thead_th>button]:min-h-8">
       <table>
         <thead>
           <tr>
@@ -82,7 +82,7 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
     );
   }
   if (q.error) {
-    return <Panel><EmptyState icon={BarChart3} title={t("stats.failed")} description={humanizeApiError(q.error)} /></Panel>;
+    return <ErrorState title={t("stats.failed")} message={humanizeApiError(q.error)} error={q.error} onRetry={() => q.refetch()} />;
   }
 
   const off = s?.offering;

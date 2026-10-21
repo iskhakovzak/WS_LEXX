@@ -6,6 +6,7 @@
 import { useMemo, useState } from "react";
 import { FileText, History, ListChecks, Trophy } from "lucide-react";
 import { SectionTabs } from "@/components/ds";
+import { QueryError } from "@/components/query-error";
 import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import { usePlaybookEntries, usePlaybookSummary, usePlaybookViewer } from "../api";
 import { ExamplesBoard } from "../examples-board";
@@ -29,6 +30,7 @@ export function SetupDetails({ setupId }: { setupId: number }) {
   const entry = entries.find((e) => e.id === setupId) ?? null;
   const targets = useMemo(() => entries.filter((e) => accessOf(e, viewer).canAddExamples), [entries, viewer]);
   if (entriesQ.isLoading) return <div className="h-40 animate-pulse rounded-xl bg-[var(--glass-bg)] motion-reduce:animate-none" aria-busy="true" />;
+  if (entriesQ.isError && !entry) return <QueryError compact error={entriesQ.error} onRetry={() => void entriesQ.refetch()} />;
   if (!entry) return <p className="text-sm text-muted-foreground">{t("details.missing")}</p>;
   const access = accessOf(entry, viewer);
   const live = viewer.live || !!entry.access;

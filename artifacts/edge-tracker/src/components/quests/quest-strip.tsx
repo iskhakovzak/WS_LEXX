@@ -57,7 +57,7 @@ function Celebration({ quest, onDone }: { quest: Quest; onDone: () => void }) {
       </motion.span>
       <span className="min-w-0 truncate font-medium">{t("strip.celebrate", { title: questTitle(quest) })}</span>
       <span className="shrink-0 text-xs font-semibold tabular-nums text-up">{t("row.reward", { points: quest.rewardPoints })}</span>
-      <button type="button" onClick={onDone} aria-label={t("strip.close")} className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <button type="button" onClick={onDone} aria-label={t("strip.close")} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
     </motion.div>
@@ -93,7 +93,7 @@ function StripPanel({ id, view, today }: { id: string; view: StripView; today: s
                 {isOptionalStep(q) && <span className="ml-1.5 text-2xs font-normal text-muted-foreground">{t("strip.optional")}</span>}
               </span>
               {q.id === view.next?.id && q.href && !isHere(q.href) && (
-                <Link href={q.href} className="inline-flex min-h-7 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <Link href={q.href} className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-primary hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   {t("row.go")}
                   <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </Link>
@@ -118,7 +118,7 @@ function StripPanel({ id, view, today }: { id: string; view: StripView; today: s
         );
       })}
       {view.kind === "today" && view.done === view.total && <p className="text-xs text-up">{t("strip.allDone")}</p>}
-      <Link href={PROGRESS_HREF} className="inline-flex min-h-7 items-center gap-1 self-start rounded-lg px-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Link href={PROGRESS_HREF} className="inline-flex min-h-8 items-center gap-1 self-start rounded-lg px-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {t("strip.all")}
         <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
       </Link>

@@ -29,7 +29,7 @@ function AckChip({ kind, icon: Icon, label, acks, me, onAck }: {
       title={title}
       onClick={(e) => { e.stopPropagation(); onAck?.(kind); }}
       className={cn(
-        "chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs disabled:cursor-default disabled:opacity-70",
+        "chip inline-flex min-h-8 items-center gap-1 px-2.5 text-xs disabled:cursor-default disabled:opacity-70",
         on && "border-primary/50 text-primary",
       )}
     >
@@ -88,7 +88,7 @@ function Notes({ text, q }: { text: string; q: string }) {
         <Hl text={text} q={q} />
       </p>
       {long && (
-        <button type="button" onClick={() => setOpen((v) => !v)} className="mt-1 text-xs font-medium text-primary hover:underline">
+        <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="mt-1 inline-flex min-h-8 items-center text-xs font-medium text-primary hover:underline">
           {open ? commonI18n.t("actions.collapse") : feedI18n.t("card.readMore")}
         </button>
       )}
@@ -276,7 +276,7 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
                   aria-pressed={p.activeTags.includes(tag)}
                   onClick={() => p.onToggleTag(tag)}
                   aria-label={t("card.filterTag", { tag })}
-                  className="chip inline-flex min-h-7 items-center gap-0.5 px-2.5 text-xs"
+                  className="chip inline-flex min-h-8 items-center gap-0.5 px-2.5 text-xs"
                 >
                   <Hash className="h-3 w-3" aria-hidden="true" />
                   <Hl text={tag} q={q} />

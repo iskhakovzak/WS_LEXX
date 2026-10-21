@@ -1,8 +1,8 @@
 /** One trader's path: ladder, readiness report, promotion request, mentor decision, direct stage assignment, history. */
 import * as React from "react";
 import { Link } from "wouter";
-import { ArrowRight, Flag, History, Send, ShieldCheck, Target, Undo2, UserCog } from "lucide-react";
-import { EmptyState, Panel, Pill, ProgressRing, StatCard, StatGrid } from "@/components/ds";
+import { ArrowRight, Flag, History, Loader2, Send, ShieldCheck, Target, Undo2, UserCog } from "lucide-react";
+import { EmptyState, ErrorState, Panel, Pill, ProgressRing, StatCard, StatGrid } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,7 +51,7 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
   const r = data?.report ?? null;
 
   if (q.isLoading) return <div className="flex flex-col gap-3"><Skeleton className="h-28 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div>;
-  if (q.isError) return <Panel><EmptyState icon={Target} title={t("person.loadFailed")} description={(q.error as Error).message} /></Panel>;
+  if (q.isError) return <ErrorState error={q.error} onRetry={q.refetch} title={t("person.loadFailed")} />;
   if (!r) return <Panel><EmptyState icon={Target} title={t("person.guestTitle")} description={t("person.guestDescription")} /></Panel>;
 
   const isSelf = !!me && r.user === me;
@@ -79,7 +79,8 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
   const pctOrDash = (v: number | null) => (v == null ? "—" : `${Math.round(v)}%`);
 
   return (
-    <div className="flex flex-col gap-4">
+    // Switching the student keeps the previous report (dimmed, not clickable) until the new one arrives.
+    <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>
       <StageLadder stages={stages} current={stageKey} readyFor={r.ready ? r.nextStage?.key : null} />
 
       <Panel>
@@ -182,7 +183,7 @@ function RequestButton({ user, ready }: { user: string; ready: boolean }) {
       {!ready && <p className="text-xs text-[hsl(var(--chart-3))]">{t("request.notAllMet")}</p>}
       <Textarea aria-label={t("request.commentAria")} placeholder={t("request.commentPlaceholder")} value={comment} onChange={(e) => setComment(e.target.value)} rows={2} maxLength={2000} />
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={m.isPending}>{commonI18n.t("actions.send")}</Button>
+        <Button type="submit" size="sm" disabled={m.isPending}>{m.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}{commonI18n.t("actions.send")}</Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>{commonI18n.t("actions.cancel")}</Button>
       </div>
     </form>
@@ -210,8 +211,8 @@ export function PendingRequest({ req, canDecide, isSelf, stages }: { req: Promot
             <Textarea id={`dec-${req.id}`} value={comment} onChange={(e) => setComment(e.target.value)} rows={3} maxLength={2000} placeholder={t("request.decisionPlaceholder")} />
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => run("approve")} disabled={decide.isPending || (!req.ready && !comment.trim())}>{t("request.approve")}</Button>
-            <Button size="sm" variant="destructive" onClick={() => run("reject")} disabled={decide.isPending || !comment.trim()}>{commonI18n.t("actions.reject")}</Button>
+            <Button size="sm" onClick={() => run("approve")} disabled={decide.isPending || (!req.ready && !comment.trim())}>{decide.isPending && decide.variables?.action === "approve" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}{t("request.approve")}</Button>
+            <Button size="sm" variant="destructive" onClick={() => run("reject")} disabled={decide.isPending || !comment.trim()}>{decide.isPending && decide.variables?.action === "reject" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}{commonI18n.t("actions.reject")}</Button>
           </div>
         </div>
       ) : isSelf ? (
@@ -252,7 +253,7 @@ function AssignStage({ user, current, config }: { user: string; current: StageKe
             <input id="assign-comment" className={cn(selectCls, "w-full")} value={comment} onChange={(e) => setComment(e.target.value)} maxLength={2000} placeholder={t("assign.reasonPlaceholder")} />
           </Field>
         </div>
-        <Button type="submit" size="sm" disabled={m.isPending || stage === current || comment.trim().length < 3}>{commonI18n.t("actions.assign")}</Button>
+        <Button type="submit" size="sm" disabled={m.isPending || stage === current || comment.trim().length < 3}>{m.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}{commonI18n.t("actions.assign")}</Button>
       </form>
     </Panel>
   );

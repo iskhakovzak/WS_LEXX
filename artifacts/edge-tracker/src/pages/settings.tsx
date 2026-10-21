@@ -102,7 +102,7 @@ export default function Settings() {
   const badges: Partial<Record<SectionId, React.ReactNode>> = {
     ...(unassigned > 0 ? { team: <Pill tone="down" className="text-2xs">{unassigned}</Pill> } : {}),
     ...(profile && !profile.telegramLinked
-      ? { integrations: <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-3))]" aria-label={t("page.telegramNotLinked")} /> }
+      ? { integrations: <span role="img" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--chart-3))]" aria-label={t("page.telegramNotLinked")} title={t("page.telegramNotLinked")} /> }
       : {}),
   };
 

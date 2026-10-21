@@ -27,6 +27,7 @@ export default {
     stop: "Stop",
     startAria: "Ovozli yozishni boshlash",
     startTitle: "Ovozli yozuv — gapiring, matn avtomatik paydo boʻladi",
+    starting: "Mikrofon yoqilmoqda…",
   },
   player: {
     pause: "Pauza",

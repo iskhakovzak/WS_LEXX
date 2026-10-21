@@ -29,6 +29,8 @@ type Status = "open" | "resolved" | "dismissed" | "all";
 const presets = (k: "resolvePresets" | "dismissPresets" | "removePresets") => adminI18n.t(`moderation.${k}`).split("|");
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
+/** «Все» can hold hundreds of reports: render a page at a time. */
+const PAGE = 50;
 const removeKey = (type: string | null | undefined) => (type === "discussion" ? "removeDiscussion" : type === "trade_idea" ? "removeIdea" : "removeComment");
 
 export function ModerationQueue({ actor, openCount }: { actor: string; openCount?: number }) {
@@ -41,7 +43,10 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
   const [selected, setSelected] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
   const apiStatus = status === "all" ? "" : status;
-  const { data: reports = [], isLoading, isError, error, refetch } = useReports(actor, apiStatus);
+  const { data: allReports = [], isLoading, isError, error, refetch } = useReports(actor, apiStatus);
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => { setLimit(PAGE); }, [status]);
+  const reports = useMemo(() => allReports.slice(0, limit), [allReports, limit]);
   // Per-row layout/enter animation only on short lists (the «Все» filter can hold hundreds).
   const animateRows = !reduce && reports.length <= 30;
 
@@ -84,7 +89,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
     },
     onError,
   });
-  const openIds = reports.filter((r) => r.status === "open").map((r) => r.id);
+  const openIds = allReports.filter((r) => r.status === "open").map((r) => r.id);
   const bulk = (kind: "resolve" | "dismiss") => {
     const ids = [...checked];
     setDialog({
@@ -282,6 +287,13 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
             </AnimatePresence>
           </ul>
         )}
+        {!isError && !isLoading && allReports.length > reports.length && (
+          <div className="flex justify-center">
+            <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + PAGE)}>
+              {commonI18n.t("actions.showMore")} · {Math.min(PAGE, allReports.length - reports.length)}
+            </Button>
+          </div>
+        )}
       </div>
       <ReasonDialog state={dialog} onClose={() => setDialog(null)} busy={busy} />
     </Panel>
@@ -370,7 +382,7 @@ function ReportCard({
 
       {r.resolution && (
         <div className="text-xs text-muted-foreground">
-          {r.status === "dismissed" ? tr("moderation.dismissedBy") : tr("moderation.resolvedBy")}{r.resolvedBy ? ` · ${r.resolvedBy}` : ""}{r.resolvedAt ? ` · ${timeAgo(r.resolvedAt)}` : ""}: <span className="text-foreground/90">{r.resolution}</span>
+          {r.status === "dismissed" ? tr("moderation.dismissedBy") : tr("moderation.resolvedBy")}{r.resolvedBy ? ` · ${personName(r.resolvedBy)}` : ""}{r.resolvedAt ? ` · ${timeAgo(r.resolvedAt)}` : ""}: <span className="text-foreground/90">{r.resolution}</span>
         </div>
       )}
 
@@ -393,11 +405,13 @@ function ReportCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {threadHref && (
-                <DropdownMenuItem asChild>
-                  <Link href={threadHref}><ExternalLink /> {tr("moderation.openThread")}</Link>
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem asChild>
+                    <Link href={threadHref}><ExternalLink /> {tr("moderation.openThread")}</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
               )}
-              <DropdownMenuSeparator />
               <DropdownMenuItem disabled={!!t?.deleted} onSelect={() => act.remove(r)} className="text-down focus:text-down">
                 <Trash2 /> {tr("moderation.removeAndClose")}
               </DropdownMenuItem>

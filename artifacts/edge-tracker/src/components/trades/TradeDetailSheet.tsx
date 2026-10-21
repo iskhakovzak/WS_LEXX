@@ -331,7 +331,7 @@ export function TradeDetailSheet(p: Props) {
                     <section className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <p className="micro-label">{tt("sheet.chart")}</p>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setTab("chart")}>{tt("sheet.chartOpen")}</Button>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setTab("chart")}>{tt("sheet.chartOpen")}</Button>
                       </div>
                       {/* Mounted (bars + plan levels) only once scrolled near the viewport — opening a trade stays cheap. */}
                       <InViewSheetChart key={t.id} trade={t} ideaTarget={ideaTarget} height={300} showModes={false} fallbackClassName="h-[300px] rounded-2xl" />
