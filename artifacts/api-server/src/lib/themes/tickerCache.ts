@@ -106,18 +106,27 @@ export async function quotesFor(
   return new Map([...details].map(([t, d]) => [t, d.quote]));
 }
 
-/** Like quotesFor, with the gap / RVOL / float of each ticker (tickers boards). */
+/**
+ * Like quotesFor, with the gap / RVOL / float of each ticker (tickers boards). `staleOkMs` (stale-while-revalidate,
+ * default off): a ticker whose cached quote is of this session and younger than that is answered at once — its
+ * refresh still starts, but the caller does not wait for it.
+ */
 export async function detailsFor(
   tickers: readonly string[],
   session: ThemeSession,
   today: string,
   softWaitMs = 4_000,
+  staleOkMs = 0,
 ): Promise<Map<string, TickerDetail>> {
   const now = deps.now();
   const uniq = [...new Set(tickers.map((t) => t.toUpperCase()))];
   const need = uniq.filter((t) => !isFresh(t, session, now) && !inflight.has(t) && now - (failedAt.get(t) ?? -Infinity) >= FAIL_BACKOFF_MS);
   for (let i = 0; i < need.length; i += BATCH) void fetchBatch(need.slice(i, i + BATCH), session, today);
-  const waits = [...new Set(uniq.map((t) => inflight.get(t)).filter((p): p is Promise<void> => !!p))];
+  const usable = (t: string) => {
+    const e = entries.get(t);
+    return !!e && e.session === session && now - e.at < staleOkMs;
+  };
+  const waits = [...new Set(uniq.filter((t) => !usable(t)).map((t) => inflight.get(t)).filter((p): p is Promise<void> => !!p))];
   if (waits.length) await Promise.race([Promise.all(waits), sleep(softWaitMs)]);
   const out = new Map<string, TickerDetail>();
   const at = deps.now();

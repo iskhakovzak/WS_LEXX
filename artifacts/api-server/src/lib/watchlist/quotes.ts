@@ -5,7 +5,7 @@
  */
 import { sessionNow } from "../themes/service";
 import { detailsFor } from "../themes/tickerCache";
-import type { ThemeSession } from "../themes/logic";
+import { ttlMs, type ThemeSession } from "../themes/logic";
 
 /** Percent units (1.25 = 1.25 %); null = the provider had no value. */
 export type LayerQuote = {
@@ -26,10 +26,12 @@ export type LayerQuotesResponse = { session: ThemeSession; asOf: string; quotes:
 
 export const LAYER_MAX_TICKERS = 200;
 const SOFT_WAIT_MS = 3_000;
+/** Stale-while-revalidate window: a same-session quote up to 2 × the layer TTL (≤ 3 min) is answered at once. */
+export const layerStaleOkMs = (session: ThemeSession) => Math.min(2 * ttlMs(session), 3 * 60_000);
 
 export async function layerQuotes(tickers: readonly string[]): Promise<LayerQuotesResponse> {
   const { session, today, now } = await sessionNow();
-  const details = await detailsFor(tickers.slice(0, LAYER_MAX_TICKERS), session, today, SOFT_WAIT_MS);
+  const details = await detailsFor(tickers.slice(0, LAYER_MAX_TICKERS), session, today, SOFT_WAIT_MS, layerStaleOkMs(session));
   const quotes: Record<string, LayerQuote> = {};
   for (const [t, d] of details) {
     quotes[t] = {

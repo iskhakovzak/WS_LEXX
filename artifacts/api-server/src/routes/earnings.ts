@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { badRequest } from "../lib/http";
+import { limiter, singleFlight, swrState } from "../lib/swr";
 import {
   fetchYahooEpsHistory, historyUnavailable, readFinvizReportDates, surpriseRowsWithFallback, type HistorySource, type SurpriseRow,
 } from "../lib/earningsHistory";
@@ -205,34 +206,45 @@ export function etDate(offsetDays = 0): string {
   }).format(new Date(Date.now() + offsetDays * 86_400_000));
 }
 
-// ── Watch cache (calendar + prices, 15 min per date) ──
+// ── Watch cache (calendar + prices, 15 min per date; stale-while-revalidate up to 6 h) ──
 const cache = new Map<string, { ts: number; items: EarningsItem[] }>();
-const inflight = new Map<string, Promise<EarningsItem[]>>();
+const flight = singleFlight<string, EarningsItem[]>();
 const CACHE_TTL = 15 * 60 * 1000;
+/** An entry older than the TTL is still answered at once (the refresh runs in the background) up to this age. */
+const STALE_KEEP = 6 * 60 * 60 * 1000;
 /** A forced refresh is honoured at most once per this window (per date, and globally). */
 const REFRESH_MIN_INTERVAL = 60 * 1000;
 let lastForcedRefresh = 0;
+/** Yahoo chart calls in flight across all dates (was unbounded: 30 per date, several dates at once). */
+const quoteLimit = limiter(20);
 
-export async function getEarnings(date: string, force = false): Promise<EarningsItem[]> {
-  const now = Date.now();
-  const hit = cache.get(date);
-  if (!force && hit && now - hit.ts < CACHE_TTL) return hit.items;
-  const running = inflight.get(date);
-  if (running) return running;
+/** Price data only for the 30 largest names that have a market cap (keeps Yahoo calls bounded). */
+const notableOf = (raw: CalendarRow[]) =>
+  raw.filter((e) => e.marketCapNum != null && e.marketCapNum > 0).sort(byMarketCapDesc).slice(0, 30);
 
-  const p = (async () => {
+function refreshEarnings(date: string, force: boolean): Promise<EarningsItem[]> {
+  return flight.run(date, async () => {
     const raw = await getCalendar(date, force);
-    // Price data only for the 30 largest names that have a market cap (keeps Yahoo calls bounded).
-    const notable = raw.filter((e) => e.marketCapNum != null && e.marketCapNum > 0).sort(byMarketCapDesc).slice(0, 30);
+    const notable = notableOf(raw);
     const withReaction = await Promise.all(
-      notable.map(async (e) => ({ ...e, ...(await fetchQuoteReaction(e.ticker)) })),
+      notable.map((e) => quoteLimit(async () => ({ ...e, ...(await fetchQuoteReaction(e.ticker)) }))),
     );
+    const hit = cache.get(date);
     if (withReaction.length === 0 && hit) return hit.items;
     cache.set(date, { ts: Date.now(), items: withReaction });
     return withReaction;
-  })().finally(() => inflight.delete(date));
-  inflight.set(date, p);
-  return p;
+  });
+}
+
+export async function getEarnings(date: string, force = false): Promise<EarningsItem[]> {
+  const hit = cache.get(date);
+  const state = force ? "miss" : swrState(hit ? Date.now() - hit.ts : null, CACHE_TTL, STALE_KEEP);
+  if (hit && state === "fresh") return hit.items;
+  if (hit && state === "stale") {
+    void refreshEarnings(date, false).catch(() => undefined);
+    return hit.items;
+  }
+  return refreshEarnings(date, force);
 }
 
 function weekdayOf(isoDate: string) {
@@ -246,13 +258,13 @@ async function findRecentAmc(maxDaysBack: number, force: boolean): Promise<{ dat
     const wd = weekdayOf(etDate(-i));
     if (wd !== 0 && wd !== 6) offsets.push(-i);
   }
-  for (const offset of offsets) {
-    const date = etDate(offset);
-    const items = await getEarnings(date, force && offset === offsets[0]);
-    if (items.filter((e) => e.callType === "AMC").length >= 3) return { date, items };
-  }
-  const fallbackDate = etDate(offsets[0] ?? -1);
-  return { date: fallbackDate, items: await getEarnings(fallbackDate) };
+  // The calendars alone tell which day had ≥ 3 notable AMC reporters: read them in parallel (cached 30 min), then
+  // price only that day — the old loop priced up to three days one after another.
+  const dates = offsets.map((o) => etDate(o));
+  const calendars = await Promise.all(dates.map((d) => getCalendar(d)));
+  const idx = calendars.findIndex((rows) => notableOf(rows).filter((e) => e.callType === "AMC").length >= 3);
+  const date = idx >= 0 ? dates[idx] : dates[0] ?? etDate(-1);
+  return { date, items: await getEarnings(date, force && date === dates[0]) };
 }
 
 // GET /api/earnings/watch[?refresh=1]

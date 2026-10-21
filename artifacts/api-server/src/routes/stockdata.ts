@@ -3,6 +3,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { getTickerFundamentals } from "../lib/marketDataService";
 import { AppError, badRequest, sendError } from "../lib/http";
+import { limiter, singleFlight, swrState } from "../lib/swr";
 
 type YahooStockMeta = {
   regularMarketPrice?: number;
@@ -61,6 +62,12 @@ function cacheGet(key: string, ttl: number): any | undefined {
   cache.delete(key); cache.set(key, hit); // refresh recency
   return hit.data;
 }
+/** The entry whatever its age (callers apply their own fresh / stale windows); refreshes recency. */
+function cachePeek(key: string): { data: any; ts: number } | undefined {
+  const hit = cache.get(key);
+  if (hit) { cache.delete(key); cache.set(key, hit); }
+  return hit;
+}
 function cacheSet(key: string, data: any): void {
   if (cache.has(key)) cache.delete(key);
   cache.set(key, { data, ts: Date.now() });
@@ -94,103 +101,115 @@ router.get("/stockdata/quote", asyncHandler(async (req, res): Promise<void> => {
     res.json({ symbol: single, ...q });
   };
 
-  // Per-symbol cache: only the symbols missing from the cache are fetched upstream.
+  // Per-symbol cache (stale-while-revalidate): < 60 s → cached; 60 s – 3 min → cached now, refreshed in the
+  // background; older / missing → fetched (single-flight per symbol, ≤ 24 Yahoo calls in flight).
   const results: Record<string, any> = {};
   const missing: string[] = [];
   for (const sym of symbols) {
-    const hit = cacheGet(`q_${sym}`, CACHE_TTL);
-    if (hit) results[sym] = hit; else missing.push(sym);
+    const hit = cachePeek(`q_${sym}`);
+    const state = swrState(hit ? Date.now() - hit.ts : null, CACHE_TTL, QUOTE_STALE_MS);
+    if (hit && state !== "miss") results[sym] = hit.data;
+    if (state === "stale") void loadQuote(sym).catch(() => undefined);
+    if (state === "miss") missing.push(sym);
   }
   if (!missing.length) { respond(results); return; }
 
-  try {
-    await Promise.all(missing.map(async (sym) => {
-      try {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=1mo&interval=1d&includePrePost=true`;
-        const resp = await fetch(url, {
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-          signal: AbortSignal.timeout(8_000),
-        });
-        if (!resp.ok) return;
-        const data = (await resp.json()) as YahooStockResponse;
-        const chart = data?.chart?.result?.[0];
-        if (!chart) return;
-
-        const meta = chart.meta || {};
-        const quote = chart.indicators?.quote?.[0] || {};
-        const timestamps = chart.timestamp || [];
-        const closes = quote.close || [];
-        const volumes = quote.volume || [];
-        const highs = quote.high || [];
-        const lows = quote.low || [];
-        const opens = quote.open || [];
-
-        // chartPreviousClose is the close BEFORE the 1-month range, not yesterday's close.
-        // Derive the previous session close from the daily bars instead.
-        const lastIdx = timestamps.length - 1;
-        const lastIsToday = lastIdx >= 0 && meta.regularMarketTime != null
-          && nyDate(timestamps[lastIdx]) === nyDate(meta.regularMarketTime);
-        const prevIdx = lastIsToday ? lastIdx - 1 : lastIdx;
-        let prevClose: number | null = null;
-        for (let i = prevIdx; i >= 0; i--) {
-          const c = closes[i];
-          if (c != null && c > 0) { prevClose = c; break; }
-        }
-        if (prevClose == null) prevClose = meta.previousClose ?? null;
-        const open = lastIsToday ? opens[lastIdx] ?? null : null;
-        const gapPct = prevClose && open ? +(((open - prevClose) / prevClose) * 100).toFixed(2) : null;
-
-        const pastVols = (lastIsToday ? volumes.slice(0, -1) : volumes)
-          .filter((v): v is number => typeof v === "number" && v > 0);
-        const avgVol = pastVols.length
-          ? Math.round(pastVols.reduce((a, b) => a + b, 0) / pastVols.length)
-          : null;
-        const currentVol = lastIsToday ? volumes[lastIdx] ?? null : null;
-        const rvol = avgVol && currentVol ? +(currentVol / avgVol).toFixed(2) : null;
-
-        const candles = timestamps.map((_ts, i) => ({
-          h: highs[i] ?? 0, l: lows[i] ?? 0, c: closes[i] ?? 0
-        })).filter((c) => c.c > 0);
-        const atr = calcATR(candles);
-
-        results[sym] = {
-          price: meta.regularMarketPrice ?? null,
-          change: prevClose && meta.regularMarketPrice
-            ? +(((meta.regularMarketPrice - prevClose) / prevClose) * 100).toFixed(2) : null,
-          open,
-          high: meta.regularMarketDayHigh ?? null,
-          low: meta.regularMarketDayLow ?? null,
-          prevClose,
-          volume: meta.regularMarketVolume ?? currentVol,
-          avgVolume: avgVol,
-          relativeVolume: rvol,
-          preMarketPrice: null,
-          preMarketChange: null,
-          high52w: meta.fiftyTwoWeekHigh ?? null,
-          low52w: meta.fiftyTwoWeekLow ?? null,
-          marketCap: null,
-          name: meta.longName ?? meta.shortName ?? sym,
-          gapPct,
-          atr,
-          // Additive: last ~22 daily closes for list sparklines + quote timestamp (ms).
-          spark: closes.filter((c): c is number => typeof c === "number" && c > 0).slice(-22).map((c) => +c.toFixed(4)),
-          marketTime: meta.regularMarketTime != null ? meta.regularMarketTime * 1000 : null,
-          // NY session date of the quote — lets clients tell «today's bar» from a stale after-hours print.
-          marketDate: meta.regularMarketTime != null ? nyDate(meta.regularMarketTime) : null,
-        };
-        cacheSet(`q_${sym}`, results[sym]);
-      } catch (err: any) {
-        logger.warn({ symbol: sym, error: err.message }, "Failed to fetch single symbol");
-      }
-    }));
-
-    respond(results);
-  } catch (e: any) {
-    logger.warn({ error: e.message }, "Yahoo Finance quote error");
-    if (e instanceof AppError) throw e;
-    throw new AppError("UPSTREAM_FAILED");
-  }
+  const fetched = await Promise.all(missing.map((sym) => loadQuote(sym).catch((err: unknown) => {
+    logger.warn({ symbol: sym, error: err instanceof Error ? err.message : String(err) }, "Failed to fetch single symbol");
+    return null;
+  })));
+  missing.forEach((sym, i) => { if (fetched[i]) results[sym] = fetched[i]; });
+  respond(results);
 }));
+
+const QUOTE_STALE_MS = 3 * 60_000;
+const quoteFlight = singleFlight<string, any>();
+const yahooLimit = limiter(24);
+/** One Yahoo chart call per symbol at a time (concurrent pages share it); the result lands in the cache. */
+function loadQuote(sym: string): Promise<any> {
+  return quoteFlight.run(sym, () => yahooLimit(async () => {
+    const q = await fetchYahooQuote(sym);
+    if (q) cacheSet(`q_${sym}`, q);
+    return q;
+  }));
+}
+
+/** Daily bars of the last month → price, change vs the previous session, gap, RVOL, ATR, sparkline. null = no data. */
+async function fetchYahooQuote(sym: string): Promise<Record<string, unknown> | null> {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=1mo&interval=1d&includePrePost=true`;
+  const resp = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!resp.ok) return null;
+  const data = (await resp.json()) as YahooStockResponse;
+  const chart = data?.chart?.result?.[0];
+  if (!chart) return null;
+
+  const meta = chart.meta || {};
+  const quote = chart.indicators?.quote?.[0] || {};
+  const timestamps = chart.timestamp || [];
+  const closes = quote.close || [];
+  const volumes = quote.volume || [];
+  const highs = quote.high || [];
+  const lows = quote.low || [];
+  const opens = quote.open || [];
+
+  // chartPreviousClose is the close BEFORE the 1-month range, not yesterday's close.
+  // Derive the previous session close from the daily bars instead.
+  const lastIdx = timestamps.length - 1;
+  const lastIsToday = lastIdx >= 0 && meta.regularMarketTime != null
+    && nyDate(timestamps[lastIdx]) === nyDate(meta.regularMarketTime);
+  const prevIdx = lastIsToday ? lastIdx - 1 : lastIdx;
+  let prevClose: number | null = null;
+  for (let i = prevIdx; i >= 0; i--) {
+    const c = closes[i];
+    if (c != null && c > 0) { prevClose = c; break; }
+  }
+  if (prevClose == null) prevClose = meta.previousClose ?? null;
+  const open = lastIsToday ? opens[lastIdx] ?? null : null;
+  const gapPct = prevClose && open ? +(((open - prevClose) / prevClose) * 100).toFixed(2) : null;
+
+  const pastVols = (lastIsToday ? volumes.slice(0, -1) : volumes)
+    .filter((v): v is number => typeof v === "number" && v > 0);
+  const avgVol = pastVols.length
+    ? Math.round(pastVols.reduce((a, b) => a + b, 0) / pastVols.length)
+    : null;
+  const currentVol = lastIsToday ? volumes[lastIdx] ?? null : null;
+  const rvol = avgVol && currentVol ? +(currentVol / avgVol).toFixed(2) : null;
+
+  const candles = timestamps.map((_ts, i) => ({
+    h: highs[i] ?? 0, l: lows[i] ?? 0, c: closes[i] ?? 0
+  })).filter((c) => c.c > 0);
+  const atr = calcATR(candles);
+
+  const out = {
+    price: meta.regularMarketPrice ?? null,
+    change: prevClose && meta.regularMarketPrice
+      ? +(((meta.regularMarketPrice - prevClose) / prevClose) * 100).toFixed(2) : null,
+    open,
+    high: meta.regularMarketDayHigh ?? null,
+    low: meta.regularMarketDayLow ?? null,
+    prevClose,
+    volume: meta.regularMarketVolume ?? currentVol,
+    avgVolume: avgVol,
+    relativeVolume: rvol,
+    preMarketPrice: null,
+    preMarketChange: null,
+    high52w: meta.fiftyTwoWeekHigh ?? null,
+    low52w: meta.fiftyTwoWeekLow ?? null,
+    marketCap: null,
+    name: meta.longName ?? meta.shortName ?? sym,
+    gapPct,
+    atr,
+    // Additive: last ~22 daily closes for list sparklines + quote timestamp (ms).
+    spark: closes.filter((c): c is number => typeof c === "number" && c > 0).slice(-22).map((c) => +c.toFixed(4)),
+    marketTime: meta.regularMarketTime != null ? meta.regularMarketTime * 1000 : null,
+    // NY session date of the quote — lets clients tell «today's bar» from a stale after-hours print.
+    marketDate: meta.regularMarketTime != null ? nyDate(meta.regularMarketTime) : null,
+  };
+  return out;
+}
 
 router.get("/stockdata/chart", asyncHandler(async (req, res): Promise<void> => {
   const symbol = String(req.query.symbol || "").toUpperCase();

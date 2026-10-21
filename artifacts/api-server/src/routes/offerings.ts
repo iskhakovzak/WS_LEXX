@@ -14,7 +14,8 @@ import {
 } from "../lib/offeringReaction";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
-import { WATCH_DAY_KEEP_MS, WATCH_DAY_KIND, dbCacheRead, dbCacheWrite, watchCachePlan, watchStorePolicy } from "../lib/offeringsCache";
+import { WATCH_DAY_KEEP_MS, WATCH_DAY_KIND, WATCH_RETRY_TTL_MS, dbCacheRead, dbCacheWrite, watchCachePlan, watchStorePolicy } from "../lib/offeringsCache";
+import { singleFlight } from "../lib/swr";
 import type { FilingKind, IpoCalendarItem, Offering, OfferingBase, OfferingType, SellerType } from "../lib/offeringsTypes";
 import { applyOfferPriceCheck, byRiskThenRating, factorText, finalize } from "../lib/offeringsScore";
 import { overlaySnapshots } from "../lib/finviz/fundamentals";
@@ -226,16 +227,33 @@ async function fetchMarketQuotes(tickers: string[]): Promise<Map<string, MarketQ
 //   upcoming → expected pricing date == day; priced → priced on day or the prior session
 //   (an IPO priced last night trades today); withdrawn → withdrawn on day.
 // The rest of the month is returned separately as a compact calendar strip.
+/**
+ * The NASDAQ IPO month feed, raw: 5 min in memory + single-flight — the week view asks for five days of one month at
+ * once, the IPO calendar for the same months; one upstream call serves them all. null = NASDAQ answered non-OK.
+ */
+const NASDAQ_MONTH_RAW_TTL = 5 * 60_000;
+const nasdaqRawMem = new Map<string, { data: any; ts: number }>();
+const nasdaqRawFlight = singleFlight<string, any>();
+async function nasdaqMonthJson(ym: string): Promise<any> {
+  const hit = nasdaqRawMem.get(ym);
+  if (hit && Date.now() - hit.ts < NASDAQ_MONTH_RAW_TTL) return hit.data;
+  return nasdaqRawFlight.run(ym, async () => {
+    const resp = await fetch(`https://api.nasdaq.com/api/ipo/calendar?date=${ym}`, { headers: NASDAQ_HEADERS, signal: AbortSignal.timeout(15000) });
+    if (!resp.ok) return null;
+    const data = await resp.json() as any;
+    if (nasdaqRawMem.size > 36) nasdaqRawMem.clear();
+    nasdaqRawMem.set(ym, { data, ts: Date.now() });
+    return data;
+  });
+}
+
 async function fetchNasdaqIpo(day: string): Promise<{ offerings: Offering[]; ipoTickers: Set<string>; calendar: IpoCalendarItem[]; ok: boolean }> {
   const ipoTickers = new Set<string>();
   const calendar: IpoCalendarItem[] = [];
   try {
     const ym = day.slice(0, 7);
-    const url = `https://api.nasdaq.com/api/ipo/calendar?date=${ym}`;
-    const resp = await fetch(url, { headers: NASDAQ_HEADERS, signal: AbortSignal.timeout(15000) });
-    if (!resp.ok) return { offerings: [], ipoTickers, calendar, ok: false };
-
-    const data = await resp.json() as any;
+    const data = await nasdaqMonthJson(ym);
+    if (!data) return { offerings: [], ipoTickers, calendar, ok: false };
     const upcoming: any[] = data?.data?.upcoming?.upcomingTable?.rows ?? [];
     const priced: any[] = data?.data?.priced?.rows ?? [];
     const withdrawn: any[] = data?.data?.withdrawn?.rows ?? [];
@@ -1016,6 +1034,93 @@ function todayNy(): string {
 
 const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
+type WatchSourcesFlags = { nasdaq: boolean; edgar: boolean; market: boolean };
+type WatchPayload = {
+  day: string; fetchedAt: number; count: number; offerings: Offering[]; ipoCalendar: IpoCalendarItem[];
+  sources: WatchSourcesFlags; enrichment: { complete: boolean }; stale?: boolean;
+};
+/** A payload that outlived its TTL stays in memory this long: answered at once (stale) while a refresh runs. */
+const WATCH_MEM_KEEP_MS = 6 * 3600_000;
+/** One upstream build per day at a time: the page's widgets, the week view and `revalidate=1` share it. */
+const watchFlight = singleFlight<string, WatchPayload>();
+/** Last failed build per day: a background refresh is not retried sooner than the 60 s retry TTL. */
+const watchFailAt = new Map<string, number>();
+
+/** NASDAQ + EDGAR → quotes → augment (time-boxed); stores the result in memory (and the DB when the listing is whole). */
+async function buildWatchDay(day: string): Promise<WatchPayload> {
+  // NASDAQ (month feed, filtered to the day) and EDGAR (D-1..D) in parallel
+  const [nasdaqResult, edgarResult] = await Promise.all([
+    fetchNasdaqIpo(day),
+    fetchEdgarOfferings(day, new Set<string>()),
+  ]);
+
+  const { offerings: nasdaqOfferings, ipoTickers, calendar } = nasdaqResult;
+
+  // Re-classify EDGAR items that are actually IPOs
+  const edgarOfferings = edgarResult.offerings.map((o): OfferingBase =>
+    ipoTickers.has(o.ticker) && o.kind !== "S-3" ? { ...o, type: "IPO", kind: o.kind === "424B" ? "IPO" : o.kind } : o,
+  );
+
+  // Merge: NASDAQ takes priority, EDGAR adds missing (but keeps its SEC link on the NASDAQ row)
+  const edgarByTicker = new Map(edgarOfferings.map((o) => [o.ticker, o]));
+  const nasdaqWithLinks = nasdaqOfferings.map((o) => {
+    const e = edgarByTicker.get(o.ticker);
+    return e ? { ...o, filingUrl: e.filingUrl, cik: e.cik, form: e.form ?? o.form } : o;
+  });
+  const nasdaqTickers = new Set(nasdaqOfferings.map((o) => o.ticker));
+  const merged: Array<OfferingBase | Offering> = [...nasdaqWithLinks, ...edgarOfferings.filter((o) => !nasdaqTickers.has(o.ticker))];
+
+  const { offerings: enriched, ok: yahooOk } = await enrichWithMarketData(merged);
+
+  // Sort: highest dilution risk first, then rating
+  enriched.sort(byRiskThenRating);
+
+  // IPO calendar strip: a week back, three weeks ahead
+  const from = new Date(Date.parse(day + "T12:00:00Z") - 7 * 86400_000).toISOString().slice(0, 10);
+  const to = new Date(Date.parse(day + "T12:00:00Z") + 21 * 86400_000).toISOString().slice(0, 10);
+  const ipoCalendar = calendar.filter((c) => c.date >= from && c.date <= to).slice(0, 80);
+
+  // Timing / discount / reaction / cash (time-boxed; whatever misses the budget keeps warming the caches).
+  const complete = await augmentOfferings(enriched, day, AUGMENT_BUDGET_MS);
+  enriched.sort(byRiskThenRating); // a rejected offer price re-scored some rows
+
+  const payload: WatchPayload = {
+    day,
+    fetchedAt: Date.now(),
+    count: enriched.length,
+    offerings: enriched,
+    ipoCalendar,
+    sources: { nasdaq: nasdaqResult.ok, edgar: edgarResult.ok, market: yahooOk },
+    enrichment: { complete },
+  };
+  // A failed source / unfinished enrichment lives 60–90 s so the next poll retries; only a full listing is stored.
+  const policy = watchStorePolicy({ sources: payload.sources, complete, fullTtlMs: CACHE_TTL });
+  cache.set(`offerings_day_${day}`, { data: payload, ts: Date.now() - CACHE_TTL + policy.memTtlMs });
+  if (policy.storeInDb) void dbCacheWrite(WATCH_DAY_KIND, day, payload);
+  watchFailAt.delete(day);
+  return payload;
+}
+
+/** Single-flight upstream build of one day (callers that arrive while it runs get the same promise). */
+function refreshWatchDay(day: string): Promise<WatchPayload> {
+  return watchFlight.run(day, async () => {
+    try {
+      return await buildWatchDay(day);
+    } catch (e: unknown) {
+      watchFailAt.set(day, Date.now());
+      logger.warn({ day, error: e instanceof Error ? e.message : String(e) }, "Offerings watch error");
+      if (e instanceof AppError) throw e;
+      throw new AppError("UPSTREAM_FAILED");
+    }
+  });
+}
+
+/** Stale-while-revalidate: start (or join) the day's refresh without awaiting it. */
+function refreshWatchDayInBackground(day: string): void {
+  if (watchFlight.has(day) || Date.now() - (watchFailAt.get(day) ?? -Infinity) < WATCH_RETRY_TTL_MS) return;
+  void refreshWatchDay(day).catch(() => undefined);
+}
+
 router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
   const day = req.query.day
     ? String(req.query.day)
@@ -1025,93 +1130,47 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
 
   // Validate: the value is interpolated into upstream URLs and cache keys.
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || isNaN(Date.parse(day + "T00:00:00Z"))) throw new AppError("INVALID_DATE");
+  const lang = langOf(req);
 
-  // Drop expired entries so the per-day cache doesn't grow unbounded.
+  // Drop long-expired entries so the per-day cache doesn't grow unbounded (expired ones stay for stale answers).
   for (const [k, v] of cache) {
-    if (Date.now() - v.ts >= CACHE_TTL) cache.delete(k);
+    if (Date.now() - v.ts >= WATCH_MEM_KEEP_MS) cache.delete(k);
   }
 
   const cacheKey = `offerings_day_${day}`;
-  const cached = cache.get(cacheKey);
+  const cached = cache.get(cacheKey) as { data: WatchPayload; ts: number } | undefined;
   const force = req.query.force === "1" && (!cached || Date.now() - cached.ts > 60_000);
   if (!force && cached && Date.now() - cached.ts < CACHE_TTL) {
-    res.json(localizeOfferings(cached.data, langOf(req)));
+    res.json(localizeOfferings(cached.data, lang));
+    return;
+  }
+  if (force) {
+    res.json(localizeOfferings(await refreshWatchDay(day), lang));
     return;
   }
 
-  // Cache-first (ROMAN-04): the payload stored by the last upstream fetch of this day, whatever the API restarts.
-  const stored = force ? null : (await dbCacheRead<{ fetchedAt?: number; enrichment?: { complete?: boolean }; sources?: { nasdaq: boolean; edgar: boolean; market: boolean } }>(WATCH_DAY_KIND, [day], WATCH_DAY_KEEP_MS)).get(day) ?? null;
+  // Cache-first (ROMAN-04): the expired in-memory payload when its listing was whole (item 1.14: an outage page is
+  // never re-served), else the payload stored by the last upstream fetch of this day, whatever the API restarts.
+  const memStored = cached && watchStorePolicy({ sources: cached.data?.sources, complete: true, fullTtlMs: CACHE_TTL }).storeInDb
+    ? { data: cached.data, ts: Number(cached.data?.fetchedAt) || cached.ts }
+    : null;
+  const stored = memStored ?? (await dbCacheRead<WatchPayload>(WATCH_DAY_KIND, [day], WATCH_DAY_KEEP_MS)).get(day) ?? null;
   const storedAt = stored ? Number(stored.data?.fetchedAt) || stored.ts : null;
-  // An incomplete payload or one with a failed source is fresh briefly only (same rule as the in-memory cache below).
+  // An incomplete payload or one with a failed source is fresh briefly only (same rule as the in-memory cache).
   const ttlMs = watchStorePolicy({ sources: stored?.data?.sources, complete: stored?.data?.enrichment?.complete !== false, fullTtlMs: CACHE_TTL }).memTtlMs;
-  const plan = watchCachePlan({ storedAt, day, today: todayNy(), now: Date.now(), ttlMs, force, revalidate: req.query.revalidate === "1" });
+  const plan = watchCachePlan({ storedAt, day, today: todayNy(), now: Date.now(), ttlMs, force: false, revalidate: req.query.revalidate === "1" });
   if (stored && plan === "fresh") {
     cache.set(cacheKey, { data: stored.data, ts: (storedAt ?? Date.now()) - (CACHE_TTL - ttlMs) });
-    res.json(localizeOfferings(stored.data, langOf(req)));
+    res.json(localizeOfferings(stored.data, lang));
     return;
   }
   if (stored && plan === "stale") {
-    res.json(localizeOfferings({ ...stored.data, stale: true }, langOf(req)));
+    // Answer now; the refresh starts here, so the page's `revalidate=1` call joins it instead of starting over.
+    refreshWatchDayInBackground(day);
+    res.json(localizeOfferings({ ...stored.data, stale: true }, lang));
     return;
   }
-
-  try {
-    // NASDAQ (month feed, filtered to the day) and EDGAR (D-1..D) in parallel
-    const [nasdaqResult, edgarResult] = await Promise.all([
-      fetchNasdaqIpo(day),
-      fetchEdgarOfferings(day, new Set<string>()),
-    ]);
-
-    const { offerings: nasdaqOfferings, ipoTickers, calendar } = nasdaqResult;
-
-    // Re-classify EDGAR items that are actually IPOs
-    const edgarOfferings = edgarResult.offerings.map((o): OfferingBase =>
-      ipoTickers.has(o.ticker) && o.kind !== "S-3" ? { ...o, type: "IPO", kind: o.kind === "424B" ? "IPO" : o.kind } : o,
-    );
-
-    // Merge: NASDAQ takes priority, EDGAR adds missing (but keeps its SEC link on the NASDAQ row)
-    const edgarByTicker = new Map(edgarOfferings.map((o) => [o.ticker, o]));
-    const nasdaqWithLinks = nasdaqOfferings.map((o) => {
-      const e = edgarByTicker.get(o.ticker);
-      return e ? { ...o, filingUrl: e.filingUrl, cik: e.cik, form: e.form ?? o.form } : o;
-    });
-    const nasdaqTickers = new Set(nasdaqOfferings.map((o) => o.ticker));
-    const merged: Array<OfferingBase | Offering> = [...nasdaqWithLinks, ...edgarOfferings.filter((o) => !nasdaqTickers.has(o.ticker))];
-
-    const { offerings: enriched, ok: yahooOk } = await enrichWithMarketData(merged);
-
-    // Sort: highest dilution risk first, then rating
-    enriched.sort(byRiskThenRating);
-
-    // IPO calendar strip: a week back, three weeks ahead
-    const from = new Date(Date.parse(day + "T12:00:00Z") - 7 * 86400_000).toISOString().slice(0, 10);
-    const to = new Date(Date.parse(day + "T12:00:00Z") + 21 * 86400_000).toISOString().slice(0, 10);
-    const ipoCalendar = calendar.filter((c) => c.date >= from && c.date <= to).slice(0, 80);
-
-    // Timing / discount / reaction / cash (time-boxed; whatever misses the budget keeps warming the caches).
-    const complete = await augmentOfferings(enriched, day, AUGMENT_BUDGET_MS);
-    enriched.sort(byRiskThenRating); // a rejected offer price re-scored some rows
-
-    const payload = {
-      day,
-      fetchedAt: Date.now(),
-      count: enriched.length,
-      offerings: enriched,
-      ipoCalendar,
-      sources: { nasdaq: nasdaqResult.ok, edgar: edgarResult.ok, market: yahooOk },
-      enrichment: { complete },
-    };
-    // A failed source / unfinished enrichment lives 60–90 s so the next poll retries; only a full listing is stored.
-    const policy = watchStorePolicy({ sources: payload.sources, complete, fullTtlMs: CACHE_TTL });
-    cache.set(cacheKey, { data: payload, ts: Date.now() - CACHE_TTL + policy.memTtlMs });
-    if (policy.storeInDb) void dbCacheWrite(WATCH_DAY_KIND, day, payload);
-    res.json(localizeOfferings(payload, langOf(req)));
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    logger.warn({ day, error: msg }, "Offerings watch error");
-    if (e instanceof AppError) throw e;
-    throw new AppError("UPSTREAM_FAILED");
-  }
+  res.json(localizeOfferings(await refreshWatchDay(day), lang));
 }));
 
 /**
@@ -1679,9 +1738,8 @@ async function nasdaqMonth(ym: string): Promise<{ rows: IpoRow[]; ok: boolean }>
   const hit = ipoMonthMem.get(ym);
   if (hit && hit.ok && Date.now() - hit.ts < ttl) return hit;
   try {
-    const resp = await fetch(`https://api.nasdaq.com/api/ipo/calendar?date=${ym}`, { headers: NASDAQ_HEADERS, signal: AbortSignal.timeout(15000) });
-    if (!resp.ok) return hit ?? { rows: [], ok: false };
-    const data = await resp.json() as any;
+    const data = await nasdaqMonthJson(ym);
+    if (!data) return hit ?? { rows: [], ok: false };
     const rows: IpoRow[] = [];
     const push = (r: any, status: IpoRow["status"], dateRaw: unknown) => {
       const ticker = String(r.proposedTickerSymbol ?? r.symbol ?? "").trim().toUpperCase();
