@@ -25,6 +25,10 @@ export default {
   bucketAria: "{label}: {count} trades, {net}",
   activeAria: "Hidden filter values",
   restore: "Bring back «{label}» ({dim})",
+  exclude: "Exclude «{label}»",
+  include: "Bring back «{label}»",
+  clickHint: "Click a row to exclude the value, click again to bring it back",
+  single: "Single value:",
   imx: {
     toggle: "Exclude IMX",
     hint: "IMX are closing-auction trades (any fill 15:50–16:00 New York time, tag «IMX»). By default they stay in lists and totals.",

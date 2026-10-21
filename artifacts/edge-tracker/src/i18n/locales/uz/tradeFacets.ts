@@ -25,6 +25,10 @@ export default {
   bucketAria: "{label}: {count} ta savdo, {net}",
   activeAria: "Yashirilgan filtr qiymatlari",
   restore: "«{label}» ni qaytarish ({dim})",
+  exclude: "«{label}» ni chiqarib tashlash",
+  include: "«{label}» ni qaytarish",
+  clickHint: "Qatorni bosish qiymatni chiqarib tashlaydi, qayta bosish qaytaradi",
+  single: "Bitta qiymat:",
   imx: {
     toggle: "IMX ni chiqarib tashlash",
     hint: "IMX — yopilish auksioni savdolari (Nyu-York vaqti bilan 15:50–16:00 dagi istalgan ijro, «IMX» tegi). Odatda ular roʻyxat va jamilarda qoladi.",
