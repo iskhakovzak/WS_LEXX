@@ -39,12 +39,30 @@ export function ImxLine({ total, imx, excluded, className }: { total: number | n
 /** The hidden-value chips under the «Фильтры» panel (the IMX switch and line are in the panel header). */
 export function FacetSummary({ view, onChange, data, className }: { view: FacetView; onChange: (next: FacetView) => void; data: FacetsResponse | undefined; className?: string }) {
   const t = tradeFacetsI18n.t;
-  const chips = uncheckedChips(view, data);
-  if (chips.length === 0) return null;
+  const all = uncheckedChips(view, data);
+  if (all.length === 0) return null;
+  // More than 2 hidden values in one column fold into one chip «Месяцы: скрыто 10 ×» (× brings the column back).
+  const perDim = new Map<string, number>();
+  for (const c of all) perDim.set(c.dim, (perDim.get(c.dim) ?? 0) + 1);
+  const grouped = [...perDim].filter(([, n]) => n > 2).map(([dim, n]) => ({ dim: dim as (typeof all)[number]["dim"], n }));
+  const chips = all.filter((c) => (perDim.get(c.dim) ?? 0) <= 2);
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", className)}>
-      {chips.length > 0 && (
+      {(chips.length > 0 || grouped.length > 0) && (
         <ul className="flex flex-wrap items-center gap-1.5" aria-label={t("activeAria")}>
+          {grouped.map((g) => (
+            <li key={`g:${g.dim}`} className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5 pr-1 text-xs font-medium text-muted-foreground">
+              {t("chipGroup", { dim: t(`dims.${g.dim}`), count: g.n })}
+              <button
+                type="button"
+                onClick={() => onChange({ ...view, off: { ...view.off, [g.dim]: [] } })}
+                className="grid h-6 w-6 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={t("restoreDim", { dim: t(`dims.${g.dim}`) })}
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+              </button>
+            </li>
+          ))}
           {chips.map((c) => (
             <li key={`${c.dim}:${c.key}`} className="inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5 pr-1 text-xs font-medium text-muted-foreground line-through decoration-1">
               <span className="no-underline">{t(`dims.${c.dim}`)}:</span> {c.label}

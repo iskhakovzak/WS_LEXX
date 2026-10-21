@@ -8,7 +8,7 @@
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
  * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronDown, Filter, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -183,7 +183,18 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
   const open = isMobile ? phoneOpen : view.open;
   const toggle = () => (isMobile ? setPhoneOpen((v) => !v) : onChange({ ...view, open: !view.open }));
   const money = data?.money !== false;
-  const dims = FACET_DIMS.map((d) => ({ d, buckets: data?.dims[d] ?? [] }));
+  // Last non-empty values of every column: when the exclusions leave no trades, the other columns come back empty —
+  // keep showing their values (count 0) so the panel never collapses to one column and every choice stays reachable.
+  const memo = useRef<Partial<Record<FacetDim, FacetBucket[]>>>({});
+  for (const d of FACET_DIMS) { const b = data?.dims[d]; if (b && b.length) memo.current[d] = b; }
+  const nothingLeft = !!data && data.total.count === 0 && hidden > 0;
+  const dims = FACET_DIMS.map((d) => {
+    const live = data?.dims[d] ?? [];
+    const buckets = live.length || !nothingLeft ? live : (memo.current[d] ?? []).map((b) => ({ ...b, count: 0, net: null }));
+    return { d, buckets };
+  });
+  // Columns with every value excluded — the usual reason for «nothing left».
+  const emptied = dims.filter((x) => x.buckets.length > 0 && x.buckets.every((b) => !isChecked(view, x.d, b.key)));
   const shown = dims.filter((x) => hasChoice(x.d, x.buckets, view));
   const folded = dims.filter((x) => x.buckets.length === 1 && !hasChoice(x.d, x.buckets, view));
   // Groups «when / how / what / result and tags»; a group without a visible column is left out.
@@ -207,6 +218,11 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
           {hidden > 0 && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs font-semibold text-primary">{t("hidden", { count: hidden })}</span>}
           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
         </button>
+        {hidden > 0 && (
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => onChange(resetFacets(view))}>
+            <RotateCcw aria-hidden="true" />{t("reset")}
+          </Button>
+        )}
         {/* «Исключить IMX» lives in the header: visible with the panel folded, never pushed below a tall grid. */}
         <ImxToggle
           value={view.excludeImx}
@@ -215,11 +231,6 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
         />
         {data && money && <ImxLine total={data.total.net} imx={data.imx} excluded={view.excludeImx} />}
         {open && <span className="hidden text-2xs text-muted-foreground xl:inline">{t("clickHint")}</span>}
-        {hidden > 0 && (
-          <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground" onClick={() => onChange(resetFacets(view))}>
-            <RotateCcw aria-hidden="true" />{t("reset")}
-          </Button>
-        )}
       </div>
       {open && (
         <div className="border-t border-border px-3 pb-3 pt-3">
@@ -231,6 +242,20 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           ) : (
             <>
+              {nothingLeft && (
+                <div role="status" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
+                  <span className="min-w-0 flex-1">
+                    {t("emptyAll")}
+                    {emptied.length > 0 && <> {t("emptyFully", { dims: emptied.map((x) => t(`dims.${x.d}`)).join(", ") })}</>}
+                  </span>
+                  {emptied.slice(0, 3).map((x) => (
+                    <Button key={x.d} variant="outline" size="sm" onClick={() => onChange({ ...view, off: { ...view.off, [x.d]: [] } })}>
+                      {t("restoreDim", { dim: t(`dims.${x.d}`) })}
+                    </Button>
+                  ))}
+                  <Button variant="outline" size="sm" onClick={() => onChange(resetFacets(view))}><RotateCcw aria-hidden="true" />{t("resetAll")}</Button>
+                </div>
+              )}
               <GroupTabs groups={groups} active={current?.id ?? null} onPick={pickTab} view={view} />
               {current && (
                 <div
