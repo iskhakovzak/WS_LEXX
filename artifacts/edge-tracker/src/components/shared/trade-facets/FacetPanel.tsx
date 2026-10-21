@@ -6,7 +6,7 @@
  * length = |net| relative to the column's largest; trade count when money is hidden); a click excludes the value
  * (struck through, dimmed), a second click brings it back. Columns with a single value and nothing excluded carry no
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
- * user (useFacetView). Used by /trades and /stats; the chips of the hidden values and the IMX switch live in FacetSummary.
+ * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
  */
 import { ChevronDown, Filter, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { toneBg, toneOf, toneText } from "@/components/ds";
 import { fmtCount, fmtUsd } from "@/lib/format";
 import { tradeFacetsI18n } from "@/i18n/ns/tradeFacets";
+import { ImxLine, ImxToggle } from "./FacetSummary";
 import {
   FACET_DIMS, FACET_GROUPS, activeCount, isChecked, resetFacets, setColumn, toggleKey,
   type FacetBucket, type FacetDim, type FacetView, type FacetsResponse,
@@ -126,7 +127,14 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
           {hidden > 0 && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-2xs font-semibold text-primary">{t("hidden", { count: hidden })}</span>}
           <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden="true" />
         </button>
-        {open && <span className="hidden text-2xs text-muted-foreground sm:inline">{t("clickHint")}</span>}
+        {/* «Исключить IMX» lives in the header: visible with the panel folded, never pushed below a tall grid. */}
+        <ImxToggle
+          value={view.excludeImx}
+          onChange={(v) => onChange({ ...view, excludeImx: v })}
+          className={cn("rounded-xl border px-2.5", view.excludeImx ? "border-primary/40 bg-primary/10" : "border-border")}
+        />
+        {data && money && <ImxLine total={data.total.net} imx={data.imx} excluded={view.excludeImx} />}
+        {open && <span className="hidden text-2xs text-muted-foreground xl:inline">{t("clickHint")}</span>}
         {hidden > 0 && (
           <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground" onClick={() => onChange(resetFacets(view))}>
             <RotateCcw aria-hidden="true" />{t("reset")}

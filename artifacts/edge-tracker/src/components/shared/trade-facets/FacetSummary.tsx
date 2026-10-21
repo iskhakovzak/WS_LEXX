@@ -1,6 +1,6 @@
 /**
- * Above a trade list: the hidden values of the «Фильтры» panel as chips (× brings one back), the «Исключить IMX» switch
- * and the «Итог $X · из них IMX $Y» line. Also the switch + line alone (ImxToggle / ImxLine) for «Разбор дня» and
+ * Above a trade list: the hidden values of the «Фильтры» panel as chips (× brings one back). The «Исключить IMX» switch
+ * (ImxToggle) and the «Итог $X · из них IMX $Y» line (ImxLine) are used in the FacetPanel header, «Разбор дня» and
  * «Мой разбор». IMX = close-auction trades (strategy MOC, tag «IMX») — kept in every list and number by default.
  */
 import { useId } from "react";
@@ -36,13 +36,13 @@ export function ImxLine({ total, imx, excluded, className }: { total: number | n
   );
 }
 
+/** The hidden-value chips under the «Фильтры» panel (the IMX switch and line are in the panel header). */
 export function FacetSummary({ view, onChange, data, className }: { view: FacetView; onChange: (next: FacetView) => void; data: FacetsResponse | undefined; className?: string }) {
   const t = tradeFacetsI18n.t;
   const chips = uncheckedChips(view, data);
+  if (chips.length === 0) return null;
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", className)}>
-      <ImxToggle value={view.excludeImx} onChange={(v) => onChange({ ...view, excludeImx: v })} />
-      {data && data.money !== false && <ImxLine total={data.total.net} imx={data.imx} excluded={view.excludeImx} />}
       {chips.length > 0 && (
         <ul className="flex flex-wrap items-center gap-1.5" aria-label={t("activeAria")}>
           {chips.map((c) => (
