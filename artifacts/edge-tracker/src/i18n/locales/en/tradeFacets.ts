@@ -2,10 +2,10 @@ import type { Messages } from "../../core";
 import type ru from "../ru/tradeFacets";
 
 export default {
-  title: "Filters",
-  aria: "Trade filters by column",
-  open: "Show filters",
-  close: "Hide filters",
+  title: "Breakdown",
+  aria: "Trade breakdown: years, time, strategy, tags",
+  open: "Show breakdown",
+  close: "Hide breakdown",
   hidden: { one: "{count} value hidden", other: "{count} values hidden" },
   dims: {
     years: "Years",

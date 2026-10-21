@@ -2,10 +2,10 @@ import type { Messages } from "../../core";
 import type ru from "../ru/tradeFacets";
 
 export default {
-  title: "Filtrlar",
-  aria: "Savdolarni ustunlar boʻyicha filtrlash",
-  open: "Filtrlarni koʻrsatish",
-  close: "Filtrlarni yashirish",
+  title: "Kesimlar",
+  aria: "Savdo kesimlari: yillar, vaqt, strategiya, teglar",
+  open: "Kesimlarni koʻrsatish",
+  close: "Kesimlarni yashirish",
   hidden: { one: "{count} ta qiymat yashirilgan", other: "{count} ta qiymat yashirilgan" },
   dims: {
     years: "Yillar",
