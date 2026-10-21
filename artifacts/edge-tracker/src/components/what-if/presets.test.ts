@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PreviewTrade } from "./rules";
-import { buildQuestions, changedDays, cheapestTariff, presetsWithLimits, tariffOptions, typicalDayLoss, worstSetups, TARIFF_EXAMPLES } from "./presets";
+import { buildQuestions, changedDays, presetsWithLimits, typicalDayLoss, worstSetups } from "./presets";
 
 let id = 0;
 const mk = (day: string, gross: number, extra: Partial<PreviewTrade> = {}): PreviewTrade => {
@@ -28,21 +28,6 @@ describe("typicalDayLoss", () => {
     // nets −44, −62, −121 → median 62 → 60
     expect(typicalDayLoss(ts)).toBe(60);
     expect(typicalDayLoss([mk("2026-01-01", -10)])).toBeNull();
-  });
-});
-
-describe("cheapestTariff", () => {
-  it("picks the plan with the biggest saving, or null when nothing is cheaper", () => {
-    const expensive = [mk("2026-01-01", 10, { fees: 50 }), mk("2026-01-02", 10, { fees: 50 })];
-    const best = cheapestTariff(expensive, TARIFF_EXAMPLES);
-    expect(best).not.toBeNull();
-    expect(best!.saving).toBeGreaterThan(0);
-    expect(cheapestTariff([mk("2026-01-01", 10, { fees: 0 })], TARIFF_EXAMPLES)).toBeNull();
-  });
-  it("lists server commission presets before the examples", () => {
-    const opts = tariffOptions([{ id: "x", label: "Наш тариф", rules: [{ type: "commissionPlan", perShare: 0.001, minPerOrder: 0.1, ecnPerShare: 0 }] }, { id: "y", label: "Другое", rules: [{ type: "maxTradesPerDay", n: 3 }] }]);
-    expect(opts[0].label).toBe("Наш тариф");
-    expect(opts).toHaveLength(1 + TARIFF_EXAMPLES.length);
   });
 });
 

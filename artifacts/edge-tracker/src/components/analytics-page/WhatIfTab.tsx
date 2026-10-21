@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
-import { ArrowRight, Check, FlaskConical, Receipt } from "lucide-react";
+import { ArrowRight, Check, FlaskConical } from "lucide-react";
 import { Panel, EmptyState, Pill, toneOf } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,6 @@ import { analyticsI18n } from "@/i18n/ns/analytics";
 import { encodeRules, type Rule } from "@/components/shared/what-if-rules";
 import { toSimTrades } from "./edge-api";
 import { applyWhatIf, kpisOf, WHAT_IF_RULE_IDS, type WhatIfRuleId, type ValueKpis } from "./edge-stats";
-import { CostsSummary } from "./CostsTab";
 
 /**
  * Compact «Что если» tab of /analytics. The full simulator (server engine, own rules, suggestions, saved scenarios,
@@ -159,18 +158,6 @@ export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Un
         </p>
       </Panel>
 
-      <Panel
-        title={t("whatIf.feesTitle")}
-        description={t("whatIf.feesHint")}
-        icon={Receipt}
-        actions={
-          <Link href={whatIfHref(filters, [], "#fees")} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-            {t("whatIf.feesLink")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </Link>
-        }
-      >
-        <CostsSummary filters={filters} />
-      </Panel>
     </div>
   );
 }

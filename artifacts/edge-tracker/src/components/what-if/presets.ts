@@ -1,29 +1,15 @@
 /**
  * «Вопросы» of the simulator: one click = one ready rule («а если бы я не торговал после 3 убытков?»), plus the
- * pure helpers behind them (worst setups, cheapest tariff, the days a scenario changed). No React, no fetch.
+ * pure helpers behind them (worst setups, the days a scenario changed). No React, no fetch. Commission tariffs are
+ * not offered: the desk does not choose its broker fees (owner 2026-10-22).
  * A question that the data cannot answer (no setups / grades marked) is returned disabled with the reason.
  */
-import { type CommissionPlan, type PreviewTrade, type Rule, gradeRank, netOf, planSummary } from "./rules";
+import { type PreviewTrade, type Rule, gradeRank, netOf } from "./rules";
 import { fmtUsd } from "@/lib/format";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 
-export type PlanParams = Omit<CommissionPlan, "type">;
-export type TariffOption = { id: string; label: string; note?: string; plan: PlanParams };
-
-/** Generic example tariffs (regulatory fees kept, as the presets do). Labels are getters: they follow the UI language. */
-export const TARIFF_EXAMPLES: TariffOption[] = [
-  {
-    id: "ex-share", get label() { return whatIfI18n.t("tariffs.exShare.label"); }, get note() { return whatIfI18n.t("tariffs.exShare.note"); },
-    plan: { perShare: 0.002, minPerOrder: 0.25, ecnPerShare: 0.001, keepRegulatory: true },
-  },
-  {
-    id: "ex-flat", get label() { return whatIfI18n.t("tariffs.exFlat.label"); }, get note() { return whatIfI18n.t("tariffs.exFlat.note"); },
-    plan: { perShare: 0, minPerOrder: 1, ecnPerShare: 0, keepRegulatory: true },
-  },
-];
-
 export type Question = {
-  id: "after3" | "worstSetups" | "aplus" | "tariff" | "dayLimit";
+  id: "after3" | "worstSetups" | "aplus" | "dayLimit";
   label: string;
   /** Short explanation under the chip / in the tooltip. */
   hint: string;
@@ -48,28 +34,6 @@ export function worstSetups(trades: PreviewTrade[], minTrades = 5, limit = 2): {
   }
   return [...by.values()].filter((e) => e.n >= minTrades && e.net < 0).sort((a, b) => a.net - b.net).slice(0, limit)
     .map((e) => ({ ...e, net: Math.round(e.net * 100) / 100 }));
-}
-
-/** The tariff with the lowest total fees on these trades; null when none beats the actual fees (or no qty known). */
-export function cheapestTariff(trades: PreviewTrade[], options: TariffOption[]): { option: TariffOption; saving: number } | null {
-  const actual = planSummary(trades, null);
-  let best: { option: TariffOption; saving: number } | null = null;
-  for (const o of options) {
-    const s = planSummary(trades, o.plan);
-    const saving = Math.round((actual.fees - s.fees) * 100) / 100;
-    if (saving > 0 && (!best || saving > best.saving)) best = { option: o, saving };
-  }
-  return best;
-}
-
-/** Tariffs to try: commission presets from the server first, then the generic examples. */
-export function tariffOptions(presets: PresetLike[]): TariffOption[] {
-  const out: TariffOption[] = [];
-  for (const p of presets) {
-    const r = p.rules.length === 1 ? p.rules[0] : null;
-    if (r?.type === "commissionPlan") out.push({ id: `preset-${p.id}`, label: p.label, plan: { perShare: r.perShare, minPerOrder: r.minPerOrder, ecnPerShare: r.ecnPerShare, keepRegulatory: r.keepRegulatory } });
-  }
-  return [...out, ...TARIFF_EXAMPLES];
 }
 
 /** Median of the trader's losing days, rounded to a «nice» number (for «а если бы я стопил день на …»). */
@@ -114,13 +78,6 @@ export function buildQuestions(trades: PreviewTrade[], presets: PresetLike[], li
   const graded = trades.some((tr) => gradeRank(tr.grade) != null);
   qs.push({ id: "aplus", label: t("questions.aplus.label"), hint: t("questions.aplus.hint"), rule: graded ? { type: "minGrade", grade: "A+" } : null, disabled: graded ? null : t("questions.aplus.disabled") });
 
-  const best = cheapestTariff(trades, tariffOptions(presets));
-  qs.push({
-    id: "tariff", label: best ? t("questions.tariff.label", { name: best.option.label }) : t("questions.tariff.labelBare"),
-    hint: best ? t("questions.tariff.hint", { note: best.option.note ?? t("questions.tariff.presetNote"), amount: fmtUsd(best.saving, { decimals: 0 }) }) : "",
-    rule: best ? { type: "commissionPlan", ...best.option.plan } : null,
-    disabled: best ? null : trades.some((tr) => tr.qty != null) ? t("questions.tariff.noCheaper") : t("questions.tariff.noQty"),
-  });
   return qs;
 
 }

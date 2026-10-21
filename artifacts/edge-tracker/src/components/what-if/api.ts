@@ -120,22 +120,6 @@ export type SuggestionsResponse = {
   suggestions: Suggestion[]; generatedAt: string;
 };
 
-export type FeeGroupRow = {
-  key: string; trades: number; wins: number; losses: number;
-  gross: number; grossWins: number; fees: number; net: number; shares: number;
-  feePctOfGross: number | null; feePctOfGrossWins: number | null; feePerTrade: number | null; feePerShare: number | null;
-  breakEvenCents: number | null; eatenWinners: number;
-};
-export type FeesResponse = {
-  scope: string | null; period: PeriodMeta;
-  total: FeeGroupRow; byPrice: FeeGroupRow[]; bySize: FeeGroupRow[]; byHold: FeeGroupRow[]; byHour: FeeGroupRow[]; byTicker: FeeGroupRow[];
-  byType: { key: string; label: string; amount: number; share: number }[];
-  eaten: { id: number; day: string; ticker: string; qty: number | null; gross: number; fees: number; net: number; feePct: number }[];
-  eatenCount: number; feesOverGrossCount: number;
-  typicalQty: number | null; typicalFeePerTrade: number | null; breakEvenCents: number | null;
-  recommendations: string[]; generatedAt: string;
-};
-
 export type SavedScenario = { id: number; trader: string; name: string; rules: Rule[]; labels: string[]; createdBy: string | null; createdAt: string; updatedAt: string };
 
 export type Scope = { trader: string; from: string; to: string };
@@ -153,7 +137,6 @@ export const whatIfKeys = {
   base: (s: Scope) => ["whatif", "base", scopeParams(s)] as const,
   run: (s: Scope, rules: Rule[]) => ["whatif", "run", scopeParams(s), JSON.stringify(rules)] as const,
   suggestions: (s: Scope) => ["whatif", "suggestions", scopeParams(s)] as const,
-  fees: (s: Scope) => ["whatif", "fees", scopeParams(s)] as const,
   scenarios: (trader: string) => ["whatif", "scenarios", trader] as const,
 };
 
@@ -206,10 +189,6 @@ export function useWhatIfRun(scope: Scope, rules: Rule[], enabled = true) {
 
 export function useWhatIfSuggestions(scope: Scope, enabled = true) {
   return useQuery<SuggestionsResponse>({ queryKey: whatIfKeys.suggestions(scope), enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData, queryFn: () => http.get<SuggestionsResponse>(`/api/whatif/suggestions?${scopeParams(scope)}`) });
-}
-
-export function useWhatIfFees(scope: Scope, enabled = true) {
-  return useQuery<FeesResponse>({ queryKey: whatIfKeys.fees(scope), enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData, queryFn: () => http.get<FeesResponse>(`/api/whatif/fees?${scopeParams(scope)}`) });
 }
 
 export function useSavedScenarios(trader: string, enabled = true) {

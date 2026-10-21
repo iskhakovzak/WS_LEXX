@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { BarChart3, ChevronDown, FlaskConical, Lightbulb, ListX, Loader2, Receipt, RefreshCw, SearchX, SlidersHorizontal, TrendingUp } from "lucide-react";
+import { BarChart3, ChevronDown, FlaskConical, Lightbulb, ListX, Loader2, RefreshCw, SearchX, SlidersHorizontal, TrendingUp } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,8 @@ import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { comparePersonNames, personName } from "@/i18n";
-import { DEFAULT_FILTERS, type AnalyticsFilters } from "@/components/analytics-page/metrics";
 import {
-  type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfFees, useWhatIfRun, useWhatIfSuggestions,
+  type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfRun, useWhatIfSuggestions,
 } from "@/components/what-if/api";
 import { LEGACY_RULE_TYPES, type Rule, type RuleType, decodeRules, encodeRules, mergeRule, removeRule, subtractRule } from "@/components/what-if/rules";
 import { SuggestionCards } from "@/components/what-if/suggestions-panel";
@@ -21,8 +20,6 @@ import { ScenarioBar } from "@/components/what-if/scenario-bar";
 import { BootstrapDetails, DeltaHeadline, KeyMetrics, MetricsTable } from "@/components/what-if/compare-panel";
 import { ChartSkeleton, DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
 import { RuleBuilder } from "@/components/what-if/rule-builder";
-import { FeesBlock } from "@/components/what-if/fees-tab";
-import { CostsByGroup } from "@/components/analytics-page/CostsTab";
 import { ExcludedTable } from "@/components/what-if/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/what-if/questions-bar";
 import { type Question, buildQuestions, changedDays, presetsWithLimits } from "@/components/what-if/presets";
@@ -34,10 +31,10 @@ import { TEAM } from "@/components/people/staff-scope";
  * /what-if — «Что если» (was /simulator; old links with ?r= / ?p= / ?trader= redirect here): the trader's own closed trades re-run under other rules (server engine
  * api-server/src/lib/whatIf.ts). One page, top to bottom: questions («а что если бы я…», one click each) → the
  * result first (before → after in $ and R, the difference big, equity curves, the days that change most — each
- * opens /day-report) → suggestions found in the data → own rule builder → fees. The scenario, period and trader
+ * opens /day-report) → suggestions found in the data → own rule builder. The scenario, period and trader
  * live in the URL (?r=…&p=…&trader=…), so a link opens exactly the same view. Nothing is stored unless
- * a scenario is saved explicitly. This is the one place for rule and fee what-ifs: the analytics «Что если» tab
- * is a compact summary that links here (with #fees for the fee block).
+ * a scenario is saved explicitly. This is the one place for rule what-ifs: the analytics «Что если» tab is a compact
+ * summary that links here. Commission tariffs are not simulated (the desk does not choose its broker fees).
  */
 
 type PeriodKey = "30d" | "90d" | "ytd" | "all";
@@ -112,7 +109,6 @@ export default function WhatIf() {
   const periodPhrase = t(`period.${period}.phrase`);
   const periodOptions = PERIOD_KEYS.map((value) => ({ value, label: t(`period.${value}.label`) }));
   // Fee table by trader / account / month / setup / horizon (/api/edge/costs) — same trader and period as the page.
-  const costFilters = useMemo<AnalyticsFilters>(() => ({ ...DEFAULT_FILTERS, period, trader: scopeTrader }), [period, scopeTrader]);
 
   const traders = useMemo(
     () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames),
@@ -123,10 +119,17 @@ export default function WhatIf() {
   // Presets and the day-stop question follow the trader's own limits (DENIS-36); the whole team has none.
   const limitsOf = isCurator ? scopeTrader : me;
   const limits = useTraderLimits(limitsOf).data ?? null;
-  const presets = useMemo(() => presetsWithLimits(base.data?.presets ?? [], limits ?? {}), [base.data?.presets, limits]);
+  const presets = useMemo(
+    () => presetsWithLimits(base.data?.presets ?? [], limits ?? {})
+      .map((p) => ({ ...p, rules: p.rules.filter((r) => r.type !== "commissionPlan") }))
+      .filter((p) => p.rules.length > 0),
+    [base.data?.presets, limits],
+  );
   const hasTrades = (base.data?.trades.length ?? 0) > 0;
   // Older API builds do not list ruleTypes: then only the legacy rules are offered and sent.
-  const supported = useMemo(() => new Set<RuleType>(base.data?.ruleTypes ?? LEGACY_RULE_TYPES), [base.data?.ruleTypes]);
+  // Broker commissions are not the desk's choice (owner 2026-10-22): no tariff what-ifs — the commission-plan rule is
+  // never offered, applied from a preset or sent.
+  const supported = useMemo(() => new Set<RuleType>((base.data?.ruleTypes ?? LEGACY_RULE_TYPES).filter((x) => x !== "commissionPlan")), [base.data?.ruleTypes]);
   const sendable = useMemo(() => rules.filter((r) => supported.has(r.type)), [rules, supported]);
   const unsupported = useMemo(
     () => rules.filter((r) => !supported.has(r.type)).map((r) => ({ rule: r.type, reason: t("unsupportedRule") })),
@@ -141,7 +144,6 @@ export default function WhatIf() {
 
   const run = useWhatIfRun(scope, runRules, hasRules && hasTrades);
   const suggestions = useWhatIfSuggestions(scope, hasTrades);
-  const fees = useWhatIfFees(scope, hasTrades);
   const saved = useSavedScenarios(scenarioOwner, canEdit);
   const save = useSaveScenario(scenarioOwner);
   const del = useDeleteScenario();
@@ -158,13 +160,6 @@ export default function WhatIf() {
 
   // Also while a period / trader switch loads: the previous base stays on screen (placeholder), dimmed.
   const recalculating = (hasRules && (run.isFetching || pendingRecalc)) || base.isPlaceholderData;
-  // A link with #fees (e.g. from the analytics «Что если» tab) scrolls to the fee block once it is rendered.
-  const feesReady = !!base.data && (base.data.trades.length ?? 0) > 0;
-  useEffect(() => {
-    if (!feesReady || window.location.hash !== "#fees") return;
-    const id = window.setTimeout(() => document.getElementById("fees")?.scrollIntoView({ block: "start" }), 50);
-    return () => window.clearTimeout(id);
-  }, [feesReady]);
   const controls = (
     <>
       <Segmented<PeriodKey> ariaLabel={t("periodAria")} value={period} onChange={setPeriod} options={periodOptions} />
@@ -325,10 +320,6 @@ export default function WhatIf() {
 
       <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
         <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={presets} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
-      </Panel>
-
-      <Panel title={t("feesTitle")} icon={Receipt} id="fees" className="scroll-mt-[calc(var(--sticky-top,0px)+1rem)]">
-        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} error={fees.error} onRetry={() => void fees.refetch()} presets={presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} costsByGroup={<CostsByGroup filters={costFilters} isCurator={isCurator} />} />
       </Panel>
 
       {showScenario && (

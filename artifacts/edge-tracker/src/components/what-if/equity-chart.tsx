@@ -123,7 +123,7 @@ export function DailyHistogram({ base, scenario, hasScenario }: { base: DayResul
           </BarChart>
         </ResponsiveContainer>
       ) : (
-        <p className="grid h-full place-items-center text-sm text-muted-foreground">{t("fees.noData")}</p>
+        <p className="grid h-full place-items-center text-sm text-muted-foreground">{t("noData")}</p>
 
       )}
     </div>
