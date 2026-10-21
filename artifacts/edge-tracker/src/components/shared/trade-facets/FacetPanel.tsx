@@ -85,7 +85,7 @@ function Column({ dim, buckets, view, onChange, money }: { dim: FacetDim; bucket
   return (
     <section className="flex min-w-0 flex-col gap-1" aria-label={title}>
       <header className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
-        <h4 className="truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h4 title={title} className="truncate text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}{excluded > 0 && <span className="ml-1 text-primary">−{excluded}</span>}
         </h4>
         <span className="flex shrink-0 gap-0.5 text-2xs">
