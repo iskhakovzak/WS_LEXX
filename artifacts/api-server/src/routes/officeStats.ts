@@ -20,11 +20,12 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql, horizonSql } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
+import { knownMarketHolidays, marketHolidays } from "../lib/tradeStrategyStore";
 import { resolveActor, type Actor } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import {
-  CLOSE_CROSS_FROM_SEC, CLOSE_CROSS_TO_SEC, DEFAULT_GOAL_PCT, MOC_IMBALANCE_FROM_SEC, OPEN_AUCTION_GRACE_SEC, OPG_EXIT_BY_SEC,
-  RTH_OPEN_SEC, STRATEGIES, strategyRule,
+  CLOSE_CROSS_FROM_SEC, CLOSE_CROSS_TO_SEC, DEFAULT_GOAL_PCT, MOC_IMBALANCE_FROM_SEC, AFTER_CLOSE_EXIT_SEC, PRINT_CLUSTER_UNTIL_SEC,
+  PRINT_REPORT_LAG_SEC, RTH_OPEN_SEC, STRATEGIES, strategyRule,
   buildOfficeView, classifyStrategy, nyParts, parsePeriod, parseYears, shiftYear, toMemberView,
   type OfficeTrade, type Result, type YearSetting,
 } from "../lib/officeStats";
@@ -116,7 +117,7 @@ export function invalidateOfficeStatsCache(): void {
 type TradeRow = {
   id: number; trader: string; ticker: string; day: string; date: string | null; exit_date: string | null; session: string | null;
   horizon: string | null; net: number | null; result: string | null; r: number | null; qty: number | null;
-  first_entry: Date | null; last_exit: Date | null; fill_qty: number | null;
+  first_entry: Date | null; last_exit: Date | null; fill_qty: number | null; strategy: string | null;
 };
 
 /**
@@ -161,7 +162,7 @@ async function queryTrades(years: number[]): Promise<Map<number, OfficeTrade[]>>
     `SELECT t.id, t.trader, t.ticker, LEFT(${CLOSE}, 10) AS day, t.date, t.exit_date, t.session, ${horizonSql()} AS horizon,
             (CASE WHEN t.pnl IS NULL THEN NULL ELSE ${netPnlSql()} END)::float AS net, ${resultSql()} AS result,
             ${signedRSql()}::float AS r, ABS(t.qty)::float AS qty,
-            x.first_entry, x.last_exit, x.fill_qty::float AS fill_qty
+            x.first_entry, x.last_exit, x.fill_qty::float AS fill_qty, t.strategy
        FROM trades t
        LEFT JOIN (
          SELECT e.trade_id,
@@ -176,7 +177,8 @@ async function queryTrades(years: number[]): Promise<Map<number, OfficeTrade[]>>
     [years.map(String)],
   );
   const byYear = new Map<number, OfficeTrade[]>(years.map((y) => [y, []]));
-  for (const t of rows.map(toOfficeTrade)) byYear.get(Number(t.day.slice(0, 4)))?.push(t);
+  const closed = await marketHolidays().catch(() => knownMarketHolidays());
+  for (const t of rows.map((r) => toOfficeTrade(r, closed))) byYear.get(Number(t.day.slice(0, 4)))?.push(t);
   return byYear;
 }
 
@@ -197,7 +199,7 @@ async function loadDataYears(now = Date.now()): Promise<number[]> {
   return dataYearsCache.promise;
 }
 
-function toOfficeTrade(r: TradeRow): OfficeTrade {
+function toOfficeTrade(r: TradeRow, closed: ReadonlySet<string>): OfficeTrade {
   const res = r.result === "win" || r.result === "loss" || r.result === "be" ? (r.result as Result) : null;
   const en = nyParts(r.first_entry);
   return {
@@ -213,7 +215,9 @@ function toOfficeTrade(r: TradeRow): OfficeTrade {
     strategy: classifyStrategy({
       ticker: r.ticker, session: r.session, date: r.date, exitDate: r.exit_date, horizon: r.horizon,
       entryAt: r.first_entry, exitAt: r.last_exit,
-    }),
+      // The desk Print cluster needs the other traders' trades: the stored derivation (lib/tradeStrategyStore) knows it.
+      isOpenPrintCluster: r.strategy === "Print",
+    }, closed),
     entrySec: en ? en.sec : null,
     session: r.session,
   };
@@ -228,12 +232,14 @@ function rulesPayload(lang: Lang) {
     strategies: STRATEGIES.map((key) => ({ key, text: strategyRule(key, lang) })),
     order: t("order"),
     thresholds: {
-      openAuctionUntil: hhmm(RTH_OPEN_SEC + OPEN_AUCTION_GRACE_SEC),
-      opgExitBy: hhmm(OPG_EXIT_BY_SEC),
+      open: hhmm(RTH_OPEN_SEC),
+      printUntil: hhmm(RTH_OPEN_SEC + PRINT_REPORT_LAG_SEC),
+      printClusterUntil: hhmm(PRINT_CLUSTER_UNTIL_SEC),
+      afterCloseExit: hhmm(AFTER_CLOSE_EXIT_SEC),
       mocFrom: hhmm(MOC_IMBALANCE_FROM_SEC),
       closeCross: `${hhmm(CLOSE_CROSS_FROM_SEC)}–${hhmm(CLOSE_CROSS_TO_SEC)}`,
     },
-    notes: [t("note.time"), t("note.result"), t("note.pct"), t("note.volume")],
+    notes: [t("note.fold"), t("note.time"), t("note.result"), t("note.pct"), t("note.volume")],
   };
 }
 

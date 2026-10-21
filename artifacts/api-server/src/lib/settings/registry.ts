@@ -245,7 +245,8 @@ export const SETTINGS = {
   "newsChannel.moversCount": { group: "newsChannel", type: "number", default: 5, min: 3, max: 5, step: 1 },
 
   // IMX = close-auction (imbalance) trades (lib/imx, lib/tradeStrategy): a trade with any fill in this New York window
-  // is strategy MOC and carries the desk tag «IMX». The end minute is inclusive (16:00 covers the 16:00:xx cross print).
+  // is IMX (trades.is_imx, apart from the strategy: a regular-session entry is MOC, a pre-market one OPGtoDAY) and carries
+  // the desk tag «IMX». The end minute is inclusive (16:00 covers the 16:00:xx cross print).
   // A change re-derives every trade (job trades.strategy-backfill).
   "trades.imxWindowStart": { group: "trades", type: "time", default: "15:50" },
   "trades.imxWindowEnd": { group: "trades", type: "time", default: "16:00" },

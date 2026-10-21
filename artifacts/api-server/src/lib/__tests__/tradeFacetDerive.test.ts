@@ -86,6 +86,9 @@ describe("bucket order", () => {
     expect(orderBuckets("hold", ["unknown", "overnight", "gt4h", "lt1m", "5-15m"].map((k) => b(k)), []).map((x) => x.key))
       .toEqual(["lt1m", "5-15m", "gt4h", "overnight", "unknown"]);
     expect(orderBuckets("seq", ["6+", "1", "4-5"].map((k) => b(k)), []).map((x) => x.key)).toEqual(["1", "4-5", "6+"]);
+    // strategies by time of day (TRADE_STRATEGIES), an unknown code after them, «unknown» last
+    expect(orderBuckets("strategies", ["unknown", "Swing", "Day", "X", "OPG", "MOC", "Print", "OPGtoDAY"].map((k) => b(k)), []).map((x) => x.key))
+      .toEqual(["OPG", "Print", "OPGtoDAY", "Day", "MOC", "Swing", "X", "unknown"]);
     expect(orderBuckets("prev", ["after-be", "first", "after-loss", "after-win"].map((k) => b(k)), []).map((x) => x.key))
       .toEqual(["first", "after-win", "after-loss", "after-be"]);
     expect(orderBuckets("exit", ["stopped", "whole", "partials"].map((k) => b(k)), []).map((x) => x.key)).toEqual(["whole", "partials", "stopped"]);

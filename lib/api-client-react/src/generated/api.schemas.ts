@@ -156,11 +156,11 @@ export interface Trade {
      */
   syncedAt?: string | null;
   /**
-     * PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib/tradeStrategy
+     * PropReports-style strategy (OPG, Print, OPGtoDAY, Day, MOC, AfterMarket, Overnight, Swing, Adjust, OPT) — api lib/tradeStrategy
      * @nullable
      */
   strategy?: string | null;
-  /** Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY) */
+  /** Close-auction (imbalance) trade — any fill in the desk IMX window (default 15:50–16:00 NY), apart from the strategy (trades.is_imx) */
   isImx?: boolean;
   /**
      * New York seconds since midnight of the first entry (the «Время» facet)

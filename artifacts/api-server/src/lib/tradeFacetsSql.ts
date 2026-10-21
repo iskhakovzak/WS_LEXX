@@ -20,11 +20,12 @@
  *
  * Selection = what is UNCHECKED: `off[dim]` lists the excluded keys (absent / empty = everything checked; a new year or
  * tag is checked by default). A trade passes a scalar column when its key is not excluded, a tag column when one of its
- * tags (or «__none__» without tags) is not excluded. `excludeImx` drops strategy MOC (lib/imx) from everything.
+ * tags (or «__none__» without tags) is not excluded. `excludeImx` drops IMX trades (trades.is_imx, lib/imx) from everything.
  * Counts of one column are computed with that column's own exclusion removed (`skip`), like the PropReports panel.
  */
 
 import { holdSql, priceSql, resultSql, seqSql, sizeRelSql, sizeSql, stopSql } from "./tradeFacetBuckets";
+import { imxSql } from "./imx";
 
 /** Every column, in the panel's group order (when · how · what · result and tags). */
 export const FACET_DIMS = [
@@ -138,7 +139,7 @@ export function facetPredicates(f: FacetFilters | null | undefined, p: Adder, op
   if (!f) return [];
   const a = opts.a ?? "t";
   const out: string[] = [];
-  if (f.excludeImx && opts.imx !== false) out.push(`COALESCE(${a}.strategy, '') <> 'MOC'`);
+  if (f.excludeImx && opts.imx !== false) out.push(`NOT ${imxSql(a)}`);
   let desk: string | null = null;
   const deskP = () => (desk ??= p.add(f.deskTags.map((t) => t.toLowerCase())));
   for (const dim of FACET_DIMS) {

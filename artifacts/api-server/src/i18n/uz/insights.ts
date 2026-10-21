@@ -3,18 +3,20 @@ import type ru from "../ru/insights";
 
 export default {
   rule: {
-    OPG: "Premarketda yoki ochilish auksionida kirish (09:31 gacha), 10:00 gacha chiqish",
-    OPGtoDAY: "Ochilishda kirish (premarket / auksion 09:31 gacha), pozitsiya kun ichida ushlab turiladi — 10:00 dan keyin chiqish",
-    Day: "Kun ichidagi savdo: 09:31 dan keyin kirish, yopilish auksioni oynasida ijro yoʻq",
-    MOC: "Yopilish auksioni (IMX): disbalans oynasidagi istalgan ijro, odatda 15:50–16:00 (shu jumladan)",
-    Print: "Print: butun savdo premarketda (kirish va chiqish 09:30 gacha)",
+    OPG: "Premarketda kirish va chiqish — ochilish printigacha",
+    Print: "Premarketda kirish, ochilish printi bilan yopish: 9:30:00 (Nasdaq) yoki 9:45 gacha deskning 3+ treyderi bilan bir soniyada (NYSE auksioni)",
+    OPGtoDAY: "Premarketda kirish, kun davomida yopish — aftermarket oxirigacha, yopilish printi ham",
+    Day: "Asosiy sessiyada kirish va chiqish",
+    MOC: "Asosiy sessiyada kirish, yopilish auksionida yopish (IMX)",
+    AfterMarket: "Aftermarketda kirish yoki chiqish",
+    Overnight: "Keyingi savdo kuniga oʻtkazish",
+    Swing: "Bir savdo kunidan koʻproq ushlab turish",
     Adjust: "Broker tuzatishi: nol hajm yoki narx, bozor savdosi emas",
-    AfterMarket: "Postmarket: 16:00 dan keyin kirish yoki kun ichidagi pozitsiyadan 16:01 dan keyin chiqish",
-    Overnight: "Pozitsiya sessiya yopilishidan oʻtkazilgan (keyingi kuni yoki keyinroq chiqish)",
     OPT: "Opsionlar: OCC formatidagi kontrakt belgisi (masalan, AAPL261016C00230000)",
   },
-  order: "OPT → Adjust → Overnight → MOC (oynadagi istalgan ijro) → AfterMarket (kirish) → Print → OPG / OPGtoDAY → AfterMarket (chiqish) → Day",
+  order: "OPT → Adjust → Overnight / Swing (savdo kunlari) → premarket: OPG / Print / OPGtoDAY → asosiy sessiya: MOC / AfterMarket / Day → AfterMarket (16:00 dan keyin kirish)",
   facet: {
+    strategy: { Swing: "Sving" },
     time: { before: "8:30 gacha", after: "16:00 dan keyin" },
     type: { long: "Long", short: "Short" },
     none: "Teglarsiz",
@@ -33,6 +35,7 @@ export default {
     result: { win: "Foyda", loss: "Zarar", be: "Nol" },
   },
   note: {
+    fold: "Ofis statistikasida Print OPG, Swing Overnight, Adjust esa Day sifatida hisoblanadi.",
     time: "Vaqt — Nyu-York boʻyicha, savdoning birinchi kirishi va oxirgi chiqishi boʻyicha.",
     result: "Kun natijasi — savdo yopilgan sana boʻyicha sof (komissiyalardan keyin).",
     pct: "% — sof ÷ hamkorlar belgilagan ofisning yillik kapitali.",

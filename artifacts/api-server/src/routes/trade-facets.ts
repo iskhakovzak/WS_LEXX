@@ -71,6 +71,7 @@ export function facetLabeler(lang: Lang): (dim: FacetDim, key: string) => string
     // 2024-01-01 is a Monday: ISO weekday n → Jan n.
     if (dim === "days" && n >= 1 && n <= 7) return cap(weekday.format(new Date(Date.UTC(2024, 0, n))));
     if (dim === "times") return key === "before-8:30" ? t("facet.time.before") : key === "after-16:00" ? t("facet.time.after") : key.replace("-", "–");
+    if (dim === "strategies" && key === "Swing") return t("facet.strategy.Swing");
     if (dim === "types") return key === "long" ? t("facet.type.long") : key === "short" ? t("facet.type.short") : key;
     if (dim === "prev" && (PREV_KEYS as readonly string[]).includes(key)) return t(`facet.prev.${key as PrevKind}`);
     if (dim === "entry" && (ENTRY_KEYS as readonly string[]).includes(key)) return t(`facet.entry.${key as EntryKind}`);

@@ -68,11 +68,14 @@ export const tradesTable = pgTable("trades", {
   externalId: text("external_id"),
   brokerAccount: text("broker_account"),
   syncedAt: timestamp("synced_at", { withTimezone: true }),
-  // Derived (api lib/tradeStrategyStore, migration 0237): PropReports-style strategy (lib/tradeStrategy; MOC = IMX),
+  // Derived (api lib/tradeStrategyStore, migration 0237): PropReports-style strategy (lib/tradeStrategy),
   // NY seconds of the first entry (the «Время» facet) and the rule signature the row was derived with (NULL = re-derive).
   strategy: text("strategy"),
   entrySec: integer("entry_sec"),
   strategySig: text("strategy_sig"),
+  // IMX (migration 0243): any fill inside the desk IMX window — a close-auction trade, apart from the strategy (lib/imx).
+  // NULL until derived (readers fall back to strategy MOC).
+  isImx: boolean("is_imx"),
   // Derived with the strategy (api lib/tradeFacetDerive, migration 0241) — the «Фильтры» columns hold / entry / exit /
   // position / trade-of-the-day: seconds held, closed on a later NY date, single | scaled | reentry,
   // whole | partials | stopped, max position × avg entry ($), order in the trader's NY day, result of the previous one.

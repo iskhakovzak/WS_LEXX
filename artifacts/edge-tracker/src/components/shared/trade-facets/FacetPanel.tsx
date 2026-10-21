@@ -24,9 +24,10 @@ import {
   type FacetBucket, type FacetDim, type FacetView, type FacetsResponse,
 } from "@/lib/trade-facets";
 
-/** One sentence on how a derived bucket is decided (aggressive adds, pyramid / averaging, size vs usual), for the row tooltip. */
+/** One sentence on how a derived bucket is decided (strategy rules, aggressive adds, pyramid / averaging, size vs usual), for the row tooltip. */
 function facetHint(dim: FacetDim, key: string): string | null {
   const t = tradeFacetsI18n.t;
+  if (dim === "strategies" && (STRATEGY_HINT_KEYS as readonly string[]).includes(key)) return t(`hints.strategy.${key as StrategyHintKey}`);
   if (dim === "entry" && key === "aggressive") {
     return t("hints.aggressive", { adds: AGGRESSIVE_ADDS_MIN, min: AGGRESSIVE_WINDOW_SEC / 60, mult: AGGRESSIVE_SIZE_MULT, gap: AGGRESSIVE_GAP_SEC });
   }
@@ -34,6 +35,10 @@ function facetHint(dim: FacetDim, key: string): string | null {
   if (dim === "sizeRel" && key !== UNKNOWN_KEY) return t("hints.sizeRel", { days: SIZE_REL_DAYS, min: SIZE_REL_MIN_TRADES });
   return null;
 }
+
+/** Strategy codes with a rule hint (api lib/tradeStrategy TRADE_STRATEGIES). */
+const STRATEGY_HINT_KEYS = ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing", "Adjust", "OPT"] as const;
+type StrategyHintKey = (typeof STRATEGY_HINT_KEYS)[number];
 
 type Props = {
   view: FacetView;

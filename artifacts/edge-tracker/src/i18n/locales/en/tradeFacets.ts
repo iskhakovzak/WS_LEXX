@@ -54,6 +54,18 @@ export default {
   clickHint: "Click a row to exclude the value, click again to bring it back",
   single: "Single value:",
   hints: {
+    strategy: {
+      OPG: "Entry and exit in the premarket — before the opening print",
+      Print: "Premarket entry closed by the opening print: 9:30:00 (Nasdaq) or in the same second as 3+ desk traders before 9:45 (NYSE auction)",
+      OPGtoDAY: "Premarket entry closed during the day — up to the end of the after-market, the closing print included",
+      Day: "Entry and exit in the regular session",
+      MOC: "Regular-session entry closed in the closing auction (IMX)",
+      AfterMarket: "Entry or exit in the after-market",
+      Overnight: "Carried to the next trading day",
+      Swing: "Held for more than one trading day",
+      Adjust: "Broker adjustment: zero size or price, not a market trade",
+      OPT: "Options: contract symbol in OCC format (e.g. AAPL261016C00230000)",
+    },
     aggressive: "Aggressive adds: {adds}+ adds within {min} min of the first entry, or the position grew {mult}×+, or adds came less than {gap} s apart on average.",
     pyramid: "Into profit (pyramid): every add at a better price than the position's average at the time — higher for a long, lower for a short.",
     average: "Into a loss (averaging): every add at a worse price than the average — buying more of a losing position.",

@@ -3,18 +3,20 @@ import type ru from "../ru/insights";
 
 export default {
   rule: {
-    OPG: "Entry in the premarket or at the opening auction (before 09:31), exit before 10:00",
-    OPGtoDAY: "Entry at the open (premarket / auction before 09:31), position held into the day — exit after 10:00",
-    Day: "Intraday trade: entry after 09:31, no fill in the closing-auction window",
-    MOC: "Closing auction (IMX): any fill inside the imbalance window, 15:50–16:00 inclusive by default",
-    Print: "Print: the whole trade in the premarket (entry and exit before 09:30)",
+    OPG: "Entry and exit in the premarket — before the opening print",
+    Print: "Premarket entry closed by the opening print: 9:30:00 (Nasdaq) or in the same second as 3+ desk traders before 9:45 (NYSE auction)",
+    OPGtoDAY: "Premarket entry closed during the day — up to the end of the after-market, the closing print included",
+    Day: "Entry and exit in the regular session",
+    MOC: "Regular-session entry closed in the closing auction (IMX)",
+    AfterMarket: "Entry or exit in the after-market",
+    Overnight: "Carried to the next trading day",
+    Swing: "Held for more than one trading day",
     Adjust: "Broker adjustment: zero size or price, not a market trade",
-    AfterMarket: "After-hours: entry after 16:00 or exit of an intraday position after 16:01",
-    Overnight: "Position carried through the session close (exit the next day or later)",
     OPT: "Options: contract symbol in OCC format (e.g. AAPL261016C00230000)",
   },
-  order: "OPT → Adjust → Overnight → MOC (any fill in the window) → AfterMarket (entry) → Print → OPG / OPGtoDAY → AfterMarket (exit) → Day",
+  order: "OPT → Adjust → Overnight / Swing (trading days) → premarket: OPG / Print / OPGtoDAY → regular session: MOC / AfterMarket / Day → AfterMarket (entry after 16:00)",
   facet: {
+    strategy: { Swing: "Swing" },
     time: { before: "Before 8:30", after: "After 16:00" },
     type: { long: "Long", short: "Short" },
     none: "No tags",
@@ -33,6 +35,7 @@ export default {
     result: { win: "Win", loss: "Loss", be: "Breakeven" },
   },
   note: {
+    fold: "In the office statistics Print counts as OPG, Swing as Overnight, Adjust as Day.",
     time: "Time is New York time, by the trade's first entry and last exit.",
     result: "The day result is net (after fees) by the trade's close date.",
     pct: "% = net ÷ the office's yearly capital set by the partners.",

@@ -1,18 +1,20 @@
-/** Server `insights`: office statistics («Главное» insights, strategy rules, time buckets, weekdays, notes) — lib/officeStats.ts. Strategy codes (OPG, OPGtoDAY, Day, MOC, AfterMarket, Overnight, OPT) and money / % keep the trading format. Terms: edge-tracker/src/i18n/GLOSSARY.md. */
+/** Server `insights`: office statistics («Главное» insights, strategy rules, time buckets, weekdays, notes) — lib/officeStats.ts. Strategy codes (OPG, Print, OPGtoDAY, Day, MOC, AfterMarket, Overnight, Swing, Adjust, OPT; «Swing» has a facet label) and money / % keep the trading format. Terms: edge-tracker/src/i18n/GLOSSARY.md. */
 export default {
   rule: {
-    OPG: "Вход в премаркете или на открывающем аукционе (до 09:31), выход до 10:00",
-    OPGtoDAY: "Вход на открытии (премаркет / аукцион до 09:31), позиция удержана в день — выход после 10:00",
-    Day: "Внутридневная сделка: вход после 09:31, без исполнений в окне закрывающего аукциона",
-    MOC: "Закрывающий аукцион (IMX): любое исполнение в окне дисбалансов, по умолчанию 15:50–16:00 включительно",
-    Print: "Принт: вся сделка в премаркете (вход и выход до 09:30)",
+    OPG: "Вход и выход в премаркете — до принта открытия",
+    Print: "Вход в премаркете, закрытие принтом открытия: 9:30:00 (Nasdaq) или в одну секунду с 3+ трейдерами деска до 9:45 (аукцион NYSE)",
+    OPGtoDAY: "Вход в премаркете, закрытие в течение дня — до конца афтермаркета, включая принт закрытия",
+    Day: "Вход и выход в основную сессию",
+    MOC: "Вход в основную сессию, закрытие в аукцион закрытия (IMX)",
+    AfterMarket: "Вход или выход в афтермаркете",
+    Overnight: "Перенос на следующий торговый день",
+    Swing: "Удержание больше одного торгового дня",
     Adjust: "Корректировка брокера: нулевой объём или цена, не рыночная сделка",
-    AfterMarket: "Постмаркет: вход после 16:00 или выход внутридневной позиции после 16:01",
-    Overnight: "Позиция перенесена через закрытие сессии (выход на следующий день или позже)",
     OPT: "Опционы: символ контракта в формате OCC (например, AAPL261016C00230000)",
   },
-  order: "OPT → Adjust → Overnight → MOC (любое исполнение в окне) → AfterMarket (вход) → Print → OPG / OPGtoDAY → AfterMarket (выход) → Day",
+  order: "OPT → Adjust → Overnight / Swing (торговые дни) → премаркет: OPG / Print / OPGtoDAY → основная сессия: MOC / AfterMarket / Day → AfterMarket (вход после 16:00)",
   facet: {
+    strategy: { Swing: "Свинг" },
     time: { before: "До 8:30", after: "После 16:00" },
     type: { long: "Лонг", short: "Шорт" },
     none: "Без тегов",
@@ -31,6 +33,7 @@ export default {
     result: { win: "Прибыль", loss: "Убыток", be: "Ноль" },
   },
   note: {
+    fold: "В статистике офиса Print считается как OPG, Swing — как Overnight, Adjust — как Day.",
     time: "Время — по Нью-Йорку, по первому входу и последнему выходу сделки.",
     result: "Результат дня — нетто (после комиссий) по дате закрытия сделки.",
     pct: "% — нетто ÷ капитал офиса за год, который указывают партнёры.",

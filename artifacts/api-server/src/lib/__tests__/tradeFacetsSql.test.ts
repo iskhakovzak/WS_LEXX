@@ -52,7 +52,7 @@ describe("facet predicates", () => {
     expect(plain).not.toMatch(/strategy/);
     const p = new Params();
     const w = buildWhere({ scope: "Kirill", facets: f }, p, { quality: false });
-    expect(w).toMatch(/COALESCE\(t\.strategy, ''\) <> 'MOC'/);
+    expect(w).toContain("NOT COALESCE(t.is_imx, t.strategy = 'MOC', false)");
     expect(w).toMatch(/LEFT\(t\.date, 4\)/);
   });
   it("facetSqlTail continues an existing positional list", () => {
@@ -97,7 +97,7 @@ describe("IMX helpers", () => {
   });
   it("excludeImxSql adds the predicate after the live-trades one and refuses a query without it", () => {
     expect(excludeImxSql("SELECT 1 FROM trades t WHERE t.deleted_at IS NULL AND t.trader = $1"))
-      .toBe("SELECT 1 FROM trades t WHERE t.deleted_at IS NULL AND COALESCE(t.strategy, '') <> 'MOC' AND t.trader = $1");
+      .toBe("SELECT 1 FROM trades t WHERE t.deleted_at IS NULL AND NOT COALESCE(t.is_imx, t.strategy = 'MOC', false) AND t.trader = $1");
     expect(() => excludeImxSql("SELECT 1")).toThrow();
   });
   it("desk tags: IMX and the mistakes vocabulary", () => {
@@ -121,6 +121,9 @@ describe("bucket labels (routes/trade-facets facetLabeler)", () => {
     expect(en("gtags", "__none__")).toBe("No tags");
     expect(en("strategies", "unknown")).toBe("No data");
     expect(en("strategies", "OPGtoDAY")).toBe("OPGtoDAY");
+    expect(en("strategies", "Swing")).toBe("Swing");
+    expect(facetLabeler("ru")("strategies", "Swing")).toBe("\u0421\u0432\u0438\u043d\u0433"); // ru label
+    expect(facetLabeler("uz")("strategies", "Swing")).toBe("Sving");
     expect(facetLabeler("ru")("ptags", "__none__")).not.toBe("__none__");
   });
 });

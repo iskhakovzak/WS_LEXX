@@ -100,7 +100,7 @@ describe.skipIf(!available)("breakdown panel v3 on a scratch database", () => {
 
   it("the back-fill writes the v3 columns from fills + structure", async () => {
     await backfillTradeStrategies(db.pool, 1000, noReload);
-    expect(await row("agg")).toMatchObject({ entry_kind: "aggressive", adds_kind: "pyramid", exit_kind: "whole", has_stop: false, size_rel: 4.06, strategy_sig: "v3|15:50-16:00" });
+    expect(await row("agg")).toMatchObject({ entry_kind: "aggressive", adds_kind: "pyramid", exit_kind: "whole", has_stop: false, size_rel: 4.06, strategy_sig: "v4|15:50-16:00" });
     expect(await row("avg")).toMatchObject({ entry_kind: "scaled", adds_kind: "average", exit_kind: "stopped", has_stop: true, size_rel: 0.99 });
     expect(await row("flip")).toMatchObject({ entry_kind: "single", adds_kind: "none", exit_kind: "flip", has_stop: true, size_rel: 0.4 });
     expect(await row("plain")).toMatchObject({ entry_kind: null, adds_kind: null, exit_kind: null, has_stop: false, size_rel: null });

@@ -54,6 +54,18 @@ export default {
   clickHint: "Qatorni bosish qiymatni chiqarib tashlaydi, qayta bosish qaytaradi",
   single: "Bitta qiymat:",
   hints: {
+    strategy: {
+      OPG: "Premarketda kirish va chiqish — ochilish printigacha",
+      Print: "Premarketda kirish, ochilish printi bilan yopish: 9:30:00 (Nasdaq) yoki 9:45 gacha deskning 3+ treyderi bilan bir soniyada (NYSE auksioni)",
+      OPGtoDAY: "Premarketda kirish, kun davomida yopish — aftermarket oxirigacha, yopilish printi ham",
+      Day: "Asosiy sessiyada kirish va chiqish",
+      MOC: "Asosiy sessiyada kirish, yopilish auksionida yopish (IMX)",
+      AfterMarket: "Aftermarketda kirish yoki chiqish",
+      Overnight: "Keyingi savdo kuniga oʻtkazish",
+      Swing: "Bir savdo kunidan koʻproq ushlab turish",
+      Adjust: "Broker tuzatishi: nol hajm yoki narx, bozor savdosi emas",
+      OPT: "Opsionlar: OCC formatidagi kontrakt belgisi (masalan, AAPL261016C00230000)",
+    },
     aggressive: "Agressiv qoʻshimchalar: birinchi kirishdan keyin {min} daqiqada {adds}+ qoʻshimcha, yoki pozitsiya {mult}+ barobar oʻsdi, yoki qoʻshimchalar oʻrtacha {gap} soniyadan tezroq.",
     pyramid: "Foydaga (piramida): har bir qoʻshimcha oʻsha paytdagi oʻrtacha narxdan yaxshiroq — long uchun yuqori, short uchun past.",
     average: "Zararga (oʻrtachalash): har bir qoʻshimcha oʻrtacha narxdan yomonroq — zarardagi pozitsiyaga qoʻshish.",

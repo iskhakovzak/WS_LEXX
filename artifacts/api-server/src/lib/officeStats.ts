@@ -4,8 +4,10 @@
  *
  * ─── Strategy classification (classifyStrategy) ─────────────────────────────────────────────────────────────
  * One derivation for the whole site: lib/tradeStrategy deriveTradeStrategy (also stored as trades.strategy, migration
- * 0237). The office keeps its seven classes: a pre-market «Print» counts as OPG, a broker «Adjust» as Day. MOC = any
- * fill in the IMX window (desk setting, default 15:50–16:00 NY). See lib/tradeStrategy for the rule order.
+ * 0237 / 0243). The office keeps its seven classes: «Print» (a pre-market position closed by the opening print) counts
+ * as OPG — the pre-market class, «Swing» (2+ trading days) as Overnight — the multi-day class, and a broker «Adjust» as
+ * Day. MOC = a regular-session entry with a fill in the IMX window (desk setting, default 15:50–16:00 NY); a pre-market
+ * entry closed in the close auction is OPGtoDAY. See lib/tradeStrategy for the rules.
  *
  * ─── Units ──────────────────────────────────────────────────────────────────────────────────────────────────
  * Every aggregate is computed in one unit: "usd" (net P&L after fees) or "pct" (net ÷ that year's office capital
@@ -21,8 +23,8 @@
 import { insightsT } from "../i18n/ns";
 import { localeTagFor, type Lang } from "../i18n";
 import {
-  OPEN_AUCTION_GRACE_SEC, OPG_EXIT_BY_SEC, OPTION_SYMBOL_RE, RTH_CLOSE_SEC, RTH_OPEN_SEC, deriveTradeStrategy, isOptionSymbol, nyParts,
-  type StrategyInput,
+  AFTER_CLOSE_EXIT_SEC, OPTION_SYMBOL_RE, PRINT_CLUSTER_UNTIL_SEC, PRINT_REPORT_LAG_SEC, RTH_CLOSE_SEC, RTH_OPEN_SEC,
+  deriveTradeStrategy, isOptionSymbol, nyParts, type StrategyInput, type TradeStrategy,
 } from "./tradeStrategy";
 import { currentImxWindow } from "./imx";
 
@@ -32,7 +34,7 @@ export const STRATEGIES = ["OPG", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Over
 export type Strategy = (typeof STRATEGIES)[number];
 
 /** Strategy rule text in `lang` (insights namespace `rule.*`). */
-export function strategyRule(key: Strategy, lang: Lang = "ru"): string {
+export function strategyRule(key: TradeStrategy, lang: Lang = "ru"): string {
   return insightsT.tFor(lang)(`rule.${key}`);
 }
 /** RU rules (kept for older imports). */
@@ -41,7 +43,7 @@ export const STRATEGY_RULES_RU = Object.fromEntries(STRATEGIES.map((k) => [k, st
 const hms = (h: number, m: number, s = 0) => h * 3600 + m * 60 + s;
 
 // Time / symbol rules live in lib/tradeStrategy (one derivation for the whole site); re-exported for older imports.
-export { RTH_OPEN_SEC, RTH_CLOSE_SEC, OPEN_AUCTION_GRACE_SEC, OPG_EXIT_BY_SEC, OPTION_SYMBOL_RE, isOptionSymbol, nyParts };
+export { RTH_OPEN_SEC, RTH_CLOSE_SEC, AFTER_CLOSE_EXIT_SEC, PRINT_REPORT_LAG_SEC, PRINT_CLUSTER_UNTIL_SEC, OPTION_SYMBOL_RE, isOptionSymbol, nyParts };
 /** Default IMX window start (the desk setting trades.imxWindowStart moves it) — the «Как считается» popover. */
 export const MOC_IMBALANCE_FROM_SEC = hms(15, 50);
 /** Closing-cross print plus the report lag (the end minute of the IMX window is inclusive). */
@@ -51,13 +53,18 @@ export const CLOSE_CROSS_TO_SEC = hms(16, 1);
 /** lib/tradeStrategy input (kept under its old name). */
 export type ClassifyInput = StrategyInput;
 
+/** The office class of a site-wide strategy: Print → OPG, Swing → Overnight, Adjust → Day (see the header). */
+export function officeClassOf(s: TradeStrategy): Strategy {
+  return s === "Print" ? "OPG" : s === "Swing" ? "Overnight" : s === "Adjust" ? "Day" : s;
+}
+
 /**
- * The office's seven classes from the site-wide derivation (lib/tradeStrategy deriveTradeStrategy, current IMX window):
- * a pre-market «Print» counts as OPG (entered before the open) and a broker «Adjust» as Day.
+ * The office's seven classes from the site-wide derivation (lib/tradeStrategy deriveTradeStrategy, current IMX window,
+ * `closed` = full-day market holidays). The desk Print cluster needs the other traders' trades: the route passes
+ * `isOpenPrintCluster` from the stored strategy (trades.strategy = 'Print').
  */
-export function classifyStrategy(t: ClassifyInput): Strategy {
-  const s = deriveTradeStrategy(t, currentImxWindow());
-  return s === "Print" ? "OPG" : s === "Adjust" ? "Day" : s;
+export function classifyStrategy(t: ClassifyInput, closed?: ReadonlySet<string>): Strategy {
+  return officeClassOf(deriveTradeStrategy(t, currentImxWindow(), closed));
 }
 
 // ─── Inputs ─────────────────────────────────────────────────────────────────────────────────────────────────

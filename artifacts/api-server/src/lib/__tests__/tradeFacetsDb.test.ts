@@ -61,11 +61,11 @@ describe.skipIf(!available)("trade strategy + facets on a scratch database", () 
   it("the back-fill derives, tags and signs every trade; a re-run picks nothing", async () => {
     const r = await backfillTradeStrategies();
     expect(r.trades).toBe(4);
-    const { rows } = await q(`SELECT id, strategy, entry_sec, tags, strategy_sig FROM trades ORDER BY id`);
+    const { rows } = await q(`SELECT id, strategy, is_imx, entry_sec, tags, strategy_sig FROM trades ORDER BY id`);
     const by = Object.fromEntries(rows.map((x) => [x.id, x]));
-    expect(by[ids.imx!]).toMatchObject({ strategy: "MOC", entry_sec: 14 * 3600, tags: "ORB, IMX", strategy_sig: "v3|15:50-16:00" });
+    expect(by[ids.imx!]).toMatchObject({ strategy: "MOC", is_imx: true, entry_sec: 14 * 3600, tags: "ORB, IMX", strategy_sig: "v4|15:50-16:00" });
     expect(by[ids.day!]).toMatchObject({ strategy: "Day", entry_sec: 10 * 3600, tags: "FOMO, myTag" });
-    expect(by[ids.opg!]).toMatchObject({ strategy: "OPG", entry_sec: 9 * 3600 + 30 * 60 + 5, tags: null });
+    expect(by[ids.opg!]).toMatchObject({ strategy: "Day", is_imx: false, entry_sec: 9 * 3600 + 30 * 60 + 5, tags: null }); // an entry at the print is a regular-session entry (v4)
     expect((await backfillTradeStrategies()).trades).toBe(0);
   });
 
@@ -114,7 +114,7 @@ describe.skipIf(!available)("trade strategy + facets on a scratch database", () 
     expect(out.total).toEqual({ count: 3, net: 60 });
     expect(out.imx).toEqual({ count: 1, net: 50 });
     expect(out.dims.years).toEqual([{ key: "2026", label: "2026", count: 2, net: 30 }, { key: "2025", label: "2025", count: 1, net: 30 }]);
-    expect(out.dims.strategies.map((b) => [b.key, b.count])).toEqual(expect.arrayContaining([["MOC", 1], ["Day", 1], ["OPG", 1]]));
+    expect(out.dims.strategies.map((b) => [b.key, b.count])).toEqual([["Day", 2], ["MOC", 1]]); // by time of day
     expect(out.dims.types).toEqual([{ key: "long", label: "long", count: 2, net: 80 }, { key: "short", label: "short", count: 1, net: -20 }]);
     expect(out.dims.gtags.map((b) => [b.key, b.count])).toEqual([["FOMO", 1], ["IMX", 1], ["__none__", 1]]);
     expect(out.dims.ptags.map((b) => [b.key, b.count])).toEqual([["myTag", 1], ["ORB", 1], ["__none__", 1]]);

@@ -1,28 +1,43 @@
 /**
  * The strategy of a trade, PropReports style — ONE pure function (`deriveTradeStrategy`) for the whole site: the
- * stored column trades.strategy (lib/tradeStrategyStore, migration 0237), the /trades and /stats facets, the IMX mark
- * and «Статистика офиса» (lib/officeStats classifyStrategy folds Print / Adjust into its seven classes).
+ * stored column trades.strategy (lib/tradeStrategyStore, migrations 0237 / 0243), the /trades and /stats facets and
+ * «Статистика офиса» (lib/officeStats classifyStrategy folds Print / Swing / Adjust into its seven classes).
+ * Owner rules 2026-10-21: «OPG — открытие с начала премаркета до принта; OPGtoDAY — открытые на премаркете и закрытые в
+ * течение дня, даже если принтом закрытия; Overnight — закрыты на следующий торговый день; Swing — больше 1 дня».
  *
- * Inputs: the symbol, the stored session / dates / horizon / size, and the New York time of every fill (trade_executions,
- * else the broker's openedAt / closedAt). Rules, first match wins:
+ * Inputs: the symbol, the stored session / dates / horizon / size, the New York time of every fill (trade_executions,
+ * else the broker's openedAt / closedAt), the desk Print cluster flag (lib/tradeStrategyStore) and the full-day market
+ * holidays (holiday_calendar). A pre-market entry = first entry fill before 09:30:00 NY. Rules, first match wins:
  *
  *   1. OPT          the symbol is an option contract (OCC style «AAPL261016C00230000», also «AAPL 261016C230»).
  *   2. Adjust       a broker adjustment, not a market trade: zero size or a zero price on a stored trade.
- *   3. Overnight    held across a session close: horizon overnight / swing, an exit fill on a later NY date than the
- *                   entry fill, or exit_date > date.
- *   4. MOC          the close auction (imbalance): ANY fill inside the IMX window (desk setting trades.imxWindowStart /
- *                   End, default 15:50–16:00 NY; the end minute is inclusive — 16:00:00–16:00:59 is the closing cross
- *                   print and its report lag). Every MOC trade is an IMX trade (lib/imx).
- *   5. (no fill time) the session decides: premarket → OPG, postmarket → AfterMarket, else Day.
- *   6. AfterMarket  entered in the post-market (first entry ≥ 16:00:00).
- *   7. Print        the whole round trip in the pre-market (entry and exit before 09:30:00) — the news print.
- *   8. OPG          entered at the open — pre-market or the opening auction / first print (entry < 09:31:00) — and
- *                   flat by 10:00:00. OPGtoDAY: entered the same way, held into the day (exit after 10:00:00).
- *   9. AfterMarket  an intraday position closed in the post-market (exit ≥ 16:01:00).
- *  10. Day          everything else intraday.
+ *   3. Overnight    exit on the NEXT trading day (weekends and full-day holidays skipped: Friday → Monday), entry and
+ *                   exit in any session (pre-market … after-market). Swing: exit 2+ trading days after the entry.
+ *                   Dates from the fills, else date → exit_date; without a later date the stored horizon decides
+ *                   ('overnight' → Overnight, 'swing' → Swing).
+ *   4. (no entry time) the session decides: premarket → OPG, postmarket → AfterMarket, any fill in the IMX window →
+ *                   MOC, else Day.
+ *   5. Pre-market entry, same day:
+ *        OPG        exit before 09:30:00 (the pre-market round trip), or no exit time;
+ *        Print      closed by the opening print: exit in [09:30:00, 09:30:01] (the cross + PRINT_REPORT_LAG_SEC of
+ *                   report lag — any listing, the desk has no exchange data), or a desk cluster: exit before
+ *                   PRINT_CLUSTER_UNTIL_SEC (09:45:00) at the same second as the pre-market positions of ≥
+ *                   PRINT_CLUSTER_MIN_TRADERS distinct traders in the same ticker on the same NY day (this trade
+ *                   included; NYSE auctions open at a random time) — `isOpenPrintCluster`, computed desk-wide by the store;
+ *        OPGtoDAY   any later exit the same day — including the close auction (IMX window) and the after-market.
+ *   6. Regular-session entry (09:30:00–15:59:59), same day: any fill in the IMX window → MOC (desk setting
+ *      trades.imxWindowStart / End, default 15:50–16:00 NY, end minute inclusive); exit ≥ 16:01:00 → AfterMarket;
+ *      else Day.
+ *   7. AfterMarket  entered in the after-market (first entry ≥ 16:00:00).
+ *
+ * IMX (close-auction trade) is NOT a strategy: `isImxTrade` = any fill inside the IMX window, stored apart
+ * (trades.is_imx, migration 0243; lib/imx). A pre-market entry closed in the close auction is OPGtoDAY + IMX.
  */
 
-export const TRADE_STRATEGIES = ["Overnight", "OPG", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Print", "Adjust", "OPT"] as const;
+import { addDays, isWeekend } from "./tradingDate";
+
+/** Every strategy, in display order (by time of day, then the multi-day holds, then the non-market rows). */
+export const TRADE_STRATEGIES = ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing", "Adjust", "OPT"] as const;
 export type TradeStrategy = (typeof TRADE_STRATEGIES)[number];
 
 export function isTradeStrategy(v: unknown): v is TradeStrategy {
@@ -34,10 +49,12 @@ const hms = (h: number, m: number, s = 0) => h * 3600 + m * 60 + s;
 /** Regular session open / close (New York). */
 export const RTH_OPEN_SEC = hms(9, 30);
 export const RTH_CLOSE_SEC = hms(16, 0);
-/** An entry before 09:31:00 counts as «at the open»: the 09:30:00 auction print plus the fill-report lag. */
-export const OPEN_AUCTION_GRACE_SEC = 60;
-/** OPG is flat by 10:00:00; a later exit makes it OPGtoDAY. */
-export const OPG_EXIT_BY_SEC = hms(10, 0);
+/** Print (opening cross): a pre-market position flat by 09:30:00 + this lag (the cross print and its report, inclusive). */
+export const PRINT_REPORT_LAG_SEC = 1;
+/** Print (desk cluster): the same-second exit of ≥ this many distinct traders' pre-market positions marks an auction. */
+export const PRINT_CLUSTER_MIN_TRADERS = 3;
+/** Print (desk cluster): the auction exit must come before 09:45:00 (exclusive). */
+export const PRINT_CLUSTER_UNTIL_SEC = hms(9, 45);
 /** An intraday exit from 16:01:00 on is a post-market close. */
 export const AFTER_CLOSE_EXIT_SEC = hms(16, 1);
 /** OCC-style option symbols: root (1–6) + YYMMDD + C/P + strike, optional «.», «+» or «O:» prefix and spaces. */
@@ -120,6 +137,18 @@ export function nyParts(at: string | Date | null | undefined): { date: string; s
   return { date: local.toISOString().slice(0, 10), sec: local.getUTCHours() * 3600 + local.getUTCMinutes() * 60 + local.getUTCSeconds() };
 }
 
+// ─── Trading days ───────────────────────────────────────────────────────────────────────────────────────────
+
+const NO_HOLIDAYS: ReadonlySet<string> = new Set();
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Trading days d with from < d ≤ to (weekends and the full-day holidays in `closed` skipped): Friday → Monday = 1. */
+export function tradingDaysAfter(from: string, to: string, closed: ReadonlySet<string> = NO_HOLIDAYS): number {
+  if (!ISO_DAY_RE.test(from) || !ISO_DAY_RE.test(to) || to <= from) return 0;
+  let n = 0;
+  for (let d = addDays(from, 1), i = 0; d <= to && i < 4000; d = addDays(d, 1), i++) if (!isWeekend(d) && !closed.has(d)) n++;
+  return n;
+}
 // ─── Derivation ─────────────────────────────────────────────────────────────────────────────────────────────
 
 type When = string | Date | null | undefined;
@@ -143,36 +172,59 @@ export interface StrategyInput {
   exitAt?: When;
   /** Every fill time (the IMX window looks at all of them; entryAt / exitAt are added). */
   fills?: readonly When[] | null;
+  /**
+   * The last exit shares its second (same ticker, same NY day) with the pre-market positions of ≥
+   * PRINT_CLUSTER_MIN_TRADERS distinct desk traders — computed desk-wide by lib/tradeStrategyStore (rule 5, Print).
+   */
+  isOpenPrintCluster?: boolean | null;
+}
+
+/** IMX = a close-auction trade: any fill (first entry, last exit or any other) inside the IMX window. */
+export function isImxTrade(t: Pick<StrategyInput, "entryAt" | "exitAt" | "fills">, win: ImxWindow = DEFAULT_IMX_WINDOW): boolean {
+  for (const f of [t.entryAt, t.exitAt, ...(t.fills ?? [])]) {
+    const p = nyParts(f);
+    if (p && inImxWindow(p.sec, win)) return true;
+  }
+  return false;
+}
+
+/** Trading days held (≥ 1) when the trade crosses a session close — fills, else date → exit_date, else the horizon; null = same day. */
+function heldDaysOf(t: StrategyInput, en: { date: string } | null, ex: { date: string } | null, closed: ReadonlySet<string>): number | null {
+  if (en && ex && ex.date > en.date) return Math.max(1, tradingDaysAfter(en.date, ex.date, closed));
+  const d0 = (t.date ?? "").slice(0, 10);
+  const d1 = (t.exitDate ?? "").slice(0, 10);
+  if (d0 && d1 && d1 > d0) return Math.max(1, tradingDaysAfter(d0, d1, closed));
+  const h = (t.horizon ?? "").trim().toLowerCase();
+  if (h === "swing") return 2;
+  if (h === "overnight") return 1;
+  return null;
 }
 
 const isZero = (v: number | string | null | undefined) => v != null && v !== "" && Number(v) === 0;
 
-export function deriveTradeStrategy(t: StrategyInput, win: ImxWindow = DEFAULT_IMX_WINDOW): TradeStrategy {
+/** `closed` = the full-day market holidays (YYYY-MM-DD) for the trading-day distance of Overnight / Swing. */
+export function deriveTradeStrategy(t: StrategyInput, win: ImxWindow = DEFAULT_IMX_WINDOW, closed: ReadonlySet<string> = NO_HOLIDAYS): TradeStrategy {
   if (isOptionSymbol(t.ticker)) return "OPT";
   if (isZero(t.qty) || isZero(t.entry)) return "Adjust";
-  const h = (t.horizon ?? "").trim().toLowerCase();
-  if (h === "overnight" || h === "swing") return "Overnight";
   const en = nyParts(t.entryAt);
   const ex = nyParts(t.exitAt);
-  if (en && ex && ex.date > en.date) return "Overnight";
-  const d0 = (t.date ?? "").slice(0, 10);
-  const d1 = (t.exitDate ?? "").slice(0, 10);
-  if (d0 && d1 && d1 > d0) return "Overnight";
-
-  for (const f of [t.entryAt, t.exitAt, ...(t.fills ?? [])]) {
-    const p = nyParts(f);
-    if (p && inImxWindow(p.sec, win)) return "MOC";
-  }
+  const held = heldDaysOf(t, en, ex, closed);
+  if (held != null) return held >= 2 ? "Swing" : "Overnight";
 
   if (!en) {
     const s = (t.session ?? "").toLowerCase();
     if (s === "premarket") return "OPG";
     if (s === "postmarket") return "AfterMarket";
-    return "Day";
+    return isImxTrade(t, win) ? "MOC" : "Day";
+  }
+  if (en.sec < RTH_OPEN_SEC) {
+    if (!ex || ex.sec < RTH_OPEN_SEC) return "OPG";
+    if (ex.sec <= RTH_OPEN_SEC + PRINT_REPORT_LAG_SEC) return "Print";
+    if (t.isOpenPrintCluster === true && ex.sec < PRINT_CLUSTER_UNTIL_SEC) return "Print";
+    return "OPGtoDAY";
   }
   if (en.sec >= RTH_CLOSE_SEC) return "AfterMarket";
-  if (en.sec < RTH_OPEN_SEC && ex && ex.sec < RTH_OPEN_SEC) return "Print";
-  if (en.sec < RTH_OPEN_SEC + OPEN_AUCTION_GRACE_SEC) return !ex || ex.sec <= OPG_EXIT_BY_SEC ? "OPG" : "OPGtoDAY";
+  if (isImxTrade(t, win)) return "MOC";
   if (ex && ex.sec >= AFTER_CLOSE_EXIT_SEC) return "AfterMarket";
   return "Day";
 }
@@ -182,7 +234,3 @@ export function entrySecOf(t: Pick<StrategyInput, "entryAt">): number | null {
   return nyParts(t.entryAt)?.sec ?? null;
 }
 
-/** IMX = a close-auction trade: the strategy is MOC. */
-export function isImxStrategy(s: string | null | undefined): boolean {
-  return s === "MOC";
-}

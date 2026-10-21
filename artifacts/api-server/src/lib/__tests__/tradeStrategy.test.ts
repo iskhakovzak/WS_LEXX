@@ -1,10 +1,15 @@
 /**
- * lib/tradeStrategy — the one strategy derivation (PropReports style) + the IMX mark:
- * boundaries of the IMX window (15:50:00 / 16:00:59 / 16:01:00), OPG / OPGtoDAY / Print, Overnight before MOC, Adjust,
- * OPT, naive ET wall clocks, a custom window; lib/imx tag edits; lib/tradeStrategyStore row derivation from fills.
+ * lib/tradeStrategy — the one strategy derivation (owner set 2026-10-21) + the IMX mark:
+ * boundaries of the IMX window (15:50:00 / 16:00:59 / 16:01:00); pre-market entry 09:29:59 vs 09:30:00; OPG / Print /
+ * OPGtoDAY by the exit (09:29:59 / 09:30:00 / 09:30:01 / 09:30:02, the desk cluster before 09:45:00); regular entry MOC /
+ * AfterMarket / Day; IMX apart from the strategy; Overnight vs Swing by trading days (Friday → Monday / Tuesday,
+ * holidays); Adjust, OPT, naive ET wall clocks, a custom window; lib/imx tag edits; lib/tradeStrategyStore row derivation.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_IMX_WINDOW, deriveTradeStrategy, entrySecOf, imxWindowOf, inImxWindow, isImxStrategy, nyParts, type StrategyInput } from "../tradeStrategy";
+import {
+  DEFAULT_IMX_WINDOW, PRINT_CLUSTER_MIN_TRADERS, PRINT_CLUSTER_UNTIL_SEC, PRINT_REPORT_LAG_SEC, TRADE_STRATEGIES, deriveTradeStrategy,
+  entrySecOf, imxWindowOf, inImxWindow, isImxTrade, nyParts, tradingDaysAfter, type StrategyInput,
+} from "../tradeStrategy";
 import { withImxTag } from "../imx";
 import { deriveRow, strategySig, type StrategyTradeRow } from "../tradeStrategyStore";
 
@@ -32,15 +37,56 @@ describe("IMX window", () => {
 });
 
 describe("deriveTradeStrategy", () => {
-  it("MOC: any fill in 15:50:00–16:00:59 NY", () => {
+  it("constants and the display order", () => {
+    expect([PRINT_REPORT_LAG_SEC, PRINT_CLUSTER_MIN_TRADERS, PRINT_CLUSTER_UNTIL_SEC]).toEqual([1, 3, 9 * 3600 + 45 * 60]);
+    expect(TRADE_STRATEGIES).toEqual(["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing", "Adjust", "OPT"]);
+  });
+
+  it("pre-market entry (before 09:30:00) vs an entry at the print", () => {
+    expect(c("09:29:59", "09:30:00")).toBe("Print");
+    expect(c("09:30:00", "09:30:00")).toBe("Day");
+    expect(c("09:29:59", "11:00:00")).toBe("OPGtoDAY");
+    expect(c("09:30:00", "11:00:00")).toBe("Day");
+  });
+
+  it("OPG: the pre-market round trip (exit before 09:30:00), or no exit time", () => {
+    expect(c("08:15:00", "09:20:00")).toBe("OPG");
+    expect(c("04:00:00", "09:29:59")).toBe("OPG");
+    expect(c("08:15:00", null)).toBe("OPG");
+  });
+
+  it("Print: closed by the opening cross, exit in [09:30:00, 09:30:01]", () => {
+    expect(c("08:15:00", "09:30:00")).toBe("Print");
+    expect(c("08:15:00", "09:30:01")).toBe("Print");
+    expect(c("08:15:00", "09:30:02")).toBe("OPGtoDAY");
+  });
+
+  it("Print: the desk cluster (NYSE auction) counts only before 09:45:00", () => {
+    const cl = { isOpenPrintCluster: true };
+    expect(c("08:15:00", "09:30:02", cl)).toBe("Print");
+    expect(c("08:15:00", "09:44:59", cl)).toBe("Print");
+    expect(c("08:15:00", "09:45:00", cl)).toBe("OPGtoDAY");
+    expect(c("08:15:00", "09:31:10", { isOpenPrintCluster: false })).toBe("OPGtoDAY");
+    expect(c("09:30:00", "09:31:10", cl)).toBe("Day"); // the cluster needs a pre-market entry
+  });
+
+  it("OPGtoDAY: a pre-market entry closed later the same day — the close auction and the after-market too", () => {
+    expect(c("07:00:00", "13:00:00")).toBe("OPGtoDAY");
+    expect(c("07:00:00", "15:55:00")).toBe("OPGtoDAY");
+    expect(c("07:00:00", "16:00:30")).toBe("OPGtoDAY");
+    expect(c("07:00:00", "19:30:00")).toBe("OPGtoDAY");
+    expect(isImxTrade({ entryAt: at(D, "07:00:00"), exitAt: at(D, "15:55:00") })).toBe(true); // OPGtoDAY + IMX
+  });
+
+  it("regular-session entry: MOC on any fill in 15:50:00–16:00:59, AfterMarket from 16:01:00, else Day", () => {
     expect(c("15:50:00", "15:56:00")).toBe("MOC");
     expect(c("14:00:00", "15:50:00")).toBe("MOC");
     expect(c("14:00:00", "16:00:00")).toBe("MOC");
     expect(c("14:00:00", "16:00:59")).toBe("MOC");
-    expect(c("09:30:00", "15:59:58")).toBe("MOC"); // an open trade closed in the auction is an IMX trade too
-    expect(c("16:00:00", "17:00:00")).toBe("MOC"); // the closing cross print itself
+    expect(c("09:30:00", "15:59:58")).toBe("MOC");
     expect(c("14:00:00", "15:49:59")).toBe("Day");
     expect(c("14:00:00", "16:01:00")).toBe("AfterMarket");
+    expect(c("09:31:00", "09:45:00")).toBe("Day");
   });
 
   it("MOC by a middle fill (a trim inside the window)", () => {
@@ -48,30 +94,45 @@ describe("deriveTradeStrategy", () => {
     expect(c("14:00:00", "15:40:00", { fills: [at(D, "14:00:00"), at(D, "15:40:00")] })).toBe("Day");
   });
 
-  it("Overnight wins over MOC (held across the close)", () => {
-    expect(deriveTradeStrategy({ ticker: "X", entryAt: at(D, "15:55:00"), exitAt: at("2026-06-11", "09:31:00") })).toBe("Overnight");
-    expect(c("15:55:00", null, { horizon: "overnight" })).toBe("Overnight");
-    expect(c("10:00:00", "11:00:00", { exitDate: "2026-06-12" })).toBe("Overnight");
-  });
-
-  it("OPG / OPGtoDAY: entry in the opening auction (before 09:31:00)", () => {
-    expect(c("09:30:00", "09:45:00")).toBe("OPG");
-    expect(c("09:30:59", "10:00:00")).toBe("OPG");
-    expect(c("09:30:02", null)).toBe("OPG");
-    expect(c("09:30:01", "10:00:01")).toBe("OPGtoDAY");
-    expect(c("07:00:00", "13:00:00")).toBe("OPGtoDAY");
-    expect(c("09:31:00", "09:45:00")).toBe("Day");
-  });
-
-  it("Print: the whole round trip in the pre-market", () => {
-    expect(c("08:15:00", "09:20:00")).toBe("Print");
-    expect(c("08:15:00", "09:29:59")).toBe("Print");
-    expect(c("08:15:00", "09:30:00")).toBe("OPG");
-  });
-
-  it("AfterMarket: post-market entry", () => {
+  it("AfterMarket: after-market entry (≥ 16:00:00), IMX when a fill is in the window", () => {
     expect(c("16:01:00", "17:00:00")).toBe("AfterMarket");
     expect(c("18:30:00", "19:00:00")).toBe("AfterMarket");
+    expect(c("16:00:00", "17:00:00")).toBe("AfterMarket");
+    expect(isImxTrade({ entryAt: at(D, "16:00:00"), exitAt: at(D, "17:00:00") })).toBe(true);
+  });
+
+  it("IMX is apart from the strategy: any fill in the window", () => {
+    expect(isImxTrade({ entryAt: at(D, "14:00:00"), exitAt: at(D, "15:49:59") })).toBe(false);
+    expect(isImxTrade({ entryAt: at(D, "14:00:00"), exitAt: at(D, "16:01:00") })).toBe(false);
+    expect(isImxTrade({ entryAt: at(D, "14:00:00"), exitAt: at(D, "16:01:00"), fills: [at(D, "15:51:00")] })).toBe(true);
+    expect(isImxTrade({ entryAt: at(D, "15:55:00"), exitAt: at("2026-06-11", "09:31:00") })).toBe(true); // Overnight + IMX
+  });
+
+  it("Overnight: exit on the next trading day, any session; Swing: 2+ trading days", () => {
+    expect(deriveTradeStrategy({ ticker: "X", entryAt: at(D, "15:55:00"), exitAt: at("2026-06-11", "09:31:00") })).toBe("Overnight");
+    expect(deriveTradeStrategy({ ticker: "X", entryAt: at(D, "07:00:00"), exitAt: at("2026-06-11", "19:00:00") })).toBe("Overnight");
+    expect(deriveTradeStrategy({ ticker: "X", entryAt: at(D, "18:00:00"), exitAt: at("2026-06-11", "05:00:00") })).toBe("Overnight");
+    expect(deriveTradeStrategy({ ticker: "X", entryAt: at(D, "10:00:00"), exitAt: at("2026-06-12", "10:00:00") })).toBe("Swing");
+    // Friday → Monday = the next trading day; Friday → Tuesday = 2
+    expect(deriveTradeStrategy({ ticker: "X", entryAt: at("2026-06-12", "15:00:00"), exitAt: at("2026-06-15", "10:00:00") })).toBe("Overnight");
+    expect(deriveTradeStrategy({ ticker: "X", entryAt: at("2026-06-12", "15:00:00"), exitAt: at("2026-06-16", "10:00:00") })).toBe("Swing");
+  });
+
+  it("holidays come from the market calendar (Thursday → Monday over Friday 2026-07-03)", () => {
+    const t: StrategyInput = { ticker: "X", entryAt: at("2026-07-02", "15:00:00"), exitAt: at("2026-07-06", "10:00:00") };
+    expect(deriveTradeStrategy(t)).toBe("Swing");
+    expect(deriveTradeStrategy(t, DEFAULT_IMX_WINDOW, new Set(["2026-07-03"]))).toBe("Overnight");
+    expect(tradingDaysAfter("2026-07-02", "2026-07-06", new Set(["2026-07-03"]))).toBe(1);
+    expect(tradingDaysAfter("2026-06-12", "2026-06-15")).toBe(1);
+    expect(tradingDaysAfter("2026-06-12", "2026-06-12")).toBe(0);
+  });
+
+  it("stored dates and horizon without fill times", () => {
+    expect(deriveTradeStrategy({ ticker: "X", date: D, exitDate: "2026-06-11" })).toBe("Overnight");
+    expect(deriveTradeStrategy({ ticker: "X", date: D, exitDate: "2026-06-12" })).toBe("Swing");
+    expect(c("10:00:00", "11:00:00", { exitDate: "2026-06-12" })).toBe("Swing");
+    expect(c("15:55:00", null, { horizon: "overnight" })).toBe("Overnight");
+    expect(c("10:00:00", "11:00:00", { horizon: "swing" })).toBe("Swing");
   });
 
   it("OPT first, Adjust on a zero size / price", () => {
@@ -81,15 +142,17 @@ describe("deriveTradeStrategy", () => {
     expect(c("10:00:00", "11:00:00", { qty: null, entry: "" })).toBe("Day");
   });
 
-  it("session fallback without fill times", () => {
+  it("session fallback without an entry time", () => {
     expect(deriveTradeStrategy({ ticker: "X", session: "premarket" })).toBe("OPG");
     expect(deriveTradeStrategy({ ticker: "X", session: "postmarket" })).toBe("AfterMarket");
     expect(deriveTradeStrategy({ ticker: "X" })).toBe("Day");
+    expect(deriveTradeStrategy({ ticker: "X", exitAt: at(D, "15:55:00") })).toBe("MOC");
   });
 
   it("reads naive broker wall clocks as New York time (never through the server zone)", () => {
     expect(nyParts("2026-01-15 15:52:00")).toEqual({ date: "2026-01-15", sec: 15 * 3600 + 52 * 60 });
     expect(deriveTradeStrategy({ ticker: "X", entryAt: "2026-01-15T10:00:00", exitAt: "2026-01-15T15:50:00" })).toBe("MOC");
+    expect(deriveTradeStrategy({ ticker: "X", entryAt: "2026-10-16T09:27:41", exitAt: "2026-10-16T09:30:00" })).toBe("Print");
     expect(entrySecOf({ entryAt: "2026-01-15T09:45:30" })).toBe(9 * 3600 + 45 * 60 + 30);
   });
 
@@ -97,8 +160,6 @@ describe("deriveTradeStrategy", () => {
     const w = imxWindowOf("15:30", "15:45");
     expect(deriveTradeStrategy({ ticker: "X", entryAt: at(D, "14:00:00"), exitAt: at(D, "15:40:00") }, w)).toBe("MOC");
     expect(deriveTradeStrategy({ ticker: "X", entryAt: at(D, "14:00:00"), exitAt: at(D, "15:52:00") }, w)).toBe("Day");
-    expect(isImxStrategy("MOC")).toBe(true);
-    expect(isImxStrategy("Day")).toBe(false);
   });
 });
 
@@ -123,12 +184,24 @@ describe("tradeStrategyStore deriveRow", () => {
       { trade_id: 1, kind: "entry", executed_at: new Date(at(D, "13:00:00")) },
       { trade_id: 1, kind: "exit", executed_at: new Date(at(D, "15:59:59")) },
     ], DEFAULT_IMX_WINDOW);
-    expect(up).toEqual({ id: 1, strategy: "MOC", entrySec: 13 * 3600, tags: "ORB, IMX" });
+    expect(up).toEqual({ id: 1, strategy: "MOC", isImx: true, entrySec: 13 * 3600, tags: "ORB, IMX" });
+  });
+  it("a pre-market entry closed in the auction: OPGtoDAY + IMX", () => {
+    const up = deriveRow(row(), [
+      { trade_id: 1, kind: "entry", executed_at: new Date(at(D, "08:00:00")) },
+      { trade_id: 1, kind: "exit", executed_at: new Date(at(D, "16:00:02")) },
+    ], DEFAULT_IMX_WINDOW);
+    expect(up).toEqual({ id: 1, strategy: "OPGtoDAY", isImx: true, entrySec: 8 * 3600, tags: "ORB, IMX" });
+  });
+  it("the cluster flag reaches the derivation", () => {
+    const r = row({ opened_at: `${D}T09:10:00`, closed_at: `${D}T09:33:12` });
+    expect(deriveRow(r, [], DEFAULT_IMX_WINDOW).strategy).toBe("OPGtoDAY");
+    expect(deriveRow(r, [], DEFAULT_IMX_WINDOW, true).strategy).toBe("Print");
   });
   it("without fills the broker openedAt / closedAt decide; a non-IMX trade loses a stale IMX tag", () => {
-    expect(deriveRow(row({ tags: "ORB, IMX" }), [], DEFAULT_IMX_WINDOW)).toEqual({ id: 1, strategy: "Day", entrySec: 14 * 3600, tags: "ORB" });
+    expect(deriveRow(row({ tags: "ORB, IMX" }), [], DEFAULT_IMX_WINDOW)).toEqual({ id: 1, strategy: "Day", isImx: false, entrySec: 14 * 3600, tags: "ORB" });
   });
   it("the signature carries the rule version and the window", () => {
-    expect(strategySig(DEFAULT_IMX_WINDOW)).toBe("v3|15:50-16:00");
+    expect(strategySig(DEFAULT_IMX_WINDOW)).toBe("v4|15:50-16:00");
   });
 });

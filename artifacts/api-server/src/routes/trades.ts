@@ -25,6 +25,7 @@ import {
 } from "../lib/tradesPageQuery";
 import { TradesPageQuery, compactQuery, moneyBlindFilters, pageFiltersOf, ymd } from "../lib/tradesPageParams";
 import { tradesListWindow } from "../lib/tradesListWindow";
+import { rowIsImx } from "../lib/imx";
 import { selectTradesList } from "../lib/tradesListQuery";
 import { captureAndAttach } from "../lib/marketContext";
 import { maybeAutoGenerateReview } from "../lib/aiReview";
@@ -114,8 +115,8 @@ export function toTradeResponseShape(t: TradeRow) {
     externalId: t.externalId ?? null,
     brokerAccount: t.brokerAccount ?? null,
     syncedAt: t.syncedAt ? new Date(t.syncedAt).toISOString() : null,
-    // Derived (lib/tradeStrategy, migration 0237): strategy, the IMX mark (strategy MOC) and the NY entry second.
-    strategy: t.strategy ?? null, isImx: t.strategy === "MOC", entrySec: t.entrySec ?? null,
+    // Derived (lib/tradeStrategy, migrations 0237 / 0243): strategy, the IMX mark (any fill in the IMX window) and the NY entry second.
+    strategy: t.strategy ?? null, isImx: rowIsImx(t), entrySec: t.entrySec ?? null,
     // Derived with it (lib/tradeFacetDerive, migration 0241) — the «Фильтры» columns the web filters raw rows by.
     holdSec: t.holdSec ?? null, overnight: t.overnight ?? null, entryKind: t.entryKind ?? null, exitKind: t.exitKind ?? null,
     notional: numOrNull(t.notional), daySeq: t.daySeq ?? null, prevKind: t.prevKind ?? null,

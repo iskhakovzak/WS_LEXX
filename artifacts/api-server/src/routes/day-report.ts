@@ -21,6 +21,7 @@ import { buildDayReport, toDayTrade, type DailyNet } from "../lib/dayReport";
 import { badRequest, unauthorized } from "../lib/http";
 import { langOf } from "../i18n";
 import { NOT_IMX_SQL, splitImx } from "../lib/imxSummary";
+import { rowIsImx } from "../lib/imx";
 
 const router: IRouter = Router();
 
@@ -47,7 +48,7 @@ const CDATE = `substring(${closeDateSql("t")}, 1, 10)`;
 type Row = {
   id: number; ticker: string | null; side: string | null; setup: string | null; playbook_id: number | null;
   result: string | null; pnl: unknown; fees: unknown; qty: unknown; entry: unknown; exit: unknown;
-  opened_at: string | null; closed_at: string | null; first_entry: Date | null; last_exit: Date | null; strategy: string | null;
+  opened_at: string | null; closed_at: string | null; first_entry: Date | null; last_exit: Date | null; strategy: string | null; is_imx: boolean | null;
 };
 
 async function loadDayTrades(trader: string, date: string): Promise<Row[]> {
@@ -55,7 +56,7 @@ async function loadDayTrades(trader: string, date: string): Promise<Row[]> {
     `SELECT t.id, t.ticker, t.side, t.setup, t.playbook_id, ${resultSql("t")} AS result,
             t.pnl::float8 AS pnl, t.fees::float8 AS fees, t.qty::float8 AS qty, t.entry::float8 AS entry, t.exit::float8 AS exit,
             t.context_snapshot->>'openedAt' AS opened_at, t.context_snapshot->>'closedAt' AS closed_at,
-            e.first_entry, e.last_exit, t.strategy
+            e.first_entry, e.last_exit, t.strategy, t.is_imx
      FROM trades t ${execSpanJoin("lateral")}
      WHERE t.deleted_at IS NULL AND t.trader = $1 AND ${CDATE} = $2
      ORDER BY COALESCE(e.first_entry, e.last_exit) NULLS LAST, t.id`,
@@ -138,7 +139,7 @@ router.get("/day-report", asyncHandler(async (req, res) => {
     firstEntryAt: r.first_entry, lastExitAt: r.last_exit, openedAt: r.opened_at, closedAt: r.closed_at,
   }));
   // IMX (close-auction) trades: «из них IMX» line; «Исключить IMX» leaves them out of the report.
-  const { kept: trades, imx } = splitImx(all.map((t, i) => ({ imx: rows[i]!.strategy === "MOC", net: t.net, item: t })), noImx);
+  const { kept: trades, imx } = splitImx(all.map((t, i) => ({ imx: rowIsImx({ isImx: rows[i]!.is_imx, strategy: rows[i]!.strategy }), net: t.net, item: t })), noImx);
   const report = buildDayReport({
     trader: isGuestScope ? "" : trader,
     date,

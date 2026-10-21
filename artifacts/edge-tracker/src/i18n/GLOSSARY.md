@@ -18,7 +18,7 @@ Every agent follows this table: the same Russian term gets the same English and 
 | Category | Items |
 |---|---|
 | Market data | tickers, symbols, exchange codes (NASDAQ, NYSE, ARCA), prices, `$` amounts |
-| Strategy / session codes | OPG, MOC, OPGtoDAY, Day, Overnight (as a code), AfterMarket, OPT, premarket labels that are codes |
+| Strategy / session codes | OPG, Print, OPGtoDAY, Day, MOC, AfterMarket, Overnight (as a code), Swing (as a code; facet label Свинг / Swing / Sving), Adjust, OPT, premarket labels that are codes |
 | Metrics, abbreviations | P&L, R, R:R, MAE, MFE, WR, PF, EV, VWAP, ATR, SMA, EMA, RVOL, IV, float, short interest, gap, halt, SSR, ETF, IPO, SPAC, 8-K, S-1, 10-Q, CPI, FOMC, NFP, bid/ask, spread, A+ (setup grade) |
 | Earnings | «earnings» may stay as is in EN/UZ («Earnings») |
 | Long / Short | RU «Лонг / Шорт» · EN «Long / Short» · UZ «Long / Short» |
@@ -695,7 +695,7 @@ Namespaces: `notes` (Сводка автора / Сводка джунов), `id
 
 ## Game plan, weekly report, office stats (PLANS & REVIEWS agent)
 
-Namespaces: `gamePlan` (/game-plan: desk briefing, my plan, trader plans, templates, screenshots), `weeklyReview` (/weekly-review + lib/weeklyInsights + dashboard widget «Психология недели»), `officeStats` (/office-stats). Market view, scenarios, notes, template names, self-reviews, curator comments and goals are user content. Office «Главное» insights, strategy rules and notes, behavior pattern titles, leak titles, day-report plan lines and psychology «Ключевые выводы» come from the server. Strategy codes OPG / OPGtoDAY / Day / MOC / AfterMarket / Overnight / OPT are never translated.
+Namespaces: `gamePlan` (/game-plan: desk briefing, my plan, trader plans, templates, screenshots), `weeklyReview` (/weekly-review + lib/weeklyInsights + dashboard widget «Психология недели»), `officeStats` (/office-stats). Market view, scenarios, notes, template names, self-reviews, curator comments and goals are user content. Office «Главное» insights, strategy rules and notes, behavior pattern titles, leak titles, day-report plan lines and psychology «Ключевые выводы» come from the server. Strategy codes OPG / Print / OPGtoDAY / Day / MOC / AfterMarket / Overnight / Swing / Adjust / OPT are never translated (the «Фильтры» label of Swing is). The strategy rule hints of «Фильтры» (`tradeFacets` hints.strategy) mirror the server `insights` rule.*.
 
 | RU | EN | UZ | Note |
 |---|---|---|---|

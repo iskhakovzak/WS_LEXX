@@ -5,7 +5,8 @@
  *
  * Selection = what is UNCHECKED (`off[dim]`): every bucket is checked by default, a new year / tag too. A trade passes
  * a scalar column when its key is not unchecked, a tag column when one of its tags (or «__none__» without tags) is not.
- * «Исключить IMX» (`excludeImx`) drops close-auction trades (strategy MOC) from every list and number.
+ * «Исключить IMX» (`excludeImx`) drops close-auction trades (`isImx`: any fill in the IMX window — api trades.is_imx,
+ * apart from the strategy) from every list and number.
  * Mirrors api lib/tradeFacetsSql + lib/tradeFacetBuckets (the raw-trade filter below is what /stats applies to the
  * own book): the derived columns of a trade row (holdSec, overnight, entryKind, addsKind, exitKind, hasStop, notional,
  * sizeRel, daySeq, prevKind — api lib/tradeFacetDerive) are bucketed here exactly as in SQL
@@ -40,6 +41,7 @@ export const FACET_PARAMS: Record<FacetDim, string> = {
 export const NONE_KEY = "__none__";
 export const UNKNOWN_KEY = "unknown";
 export const MANUAL_ACCOUNT_KEY = "manual";
+/** A row without the `isImx` mark (an older payload) falls back to strategy MOC — api lib/imx rowIsImx. */
 export const IMX_STRATEGY = "MOC";
 
 export type FacetBucket = { key: string; label: string; count: number; net: number | null };
@@ -234,8 +236,9 @@ export function tradeFacetKeys(t: FacetTrade, deskTags: readonly string[]): Reco
   };
 }
 
+/** IMX = the row's `isImx` mark (any fill in the IMX window); a pre-market entry closed in the auction is OPGtoDAY + IMX. */
 export function isImxTrade(t: Pick<Trade, "strategy" | "isImx">): boolean {
-  return t.isImx === true || t.strategy === IMX_STRATEGY;
+  return t.isImx ?? t.strategy === IMX_STRATEGY;
 }
 
 /** The trade passes the selection (every column + «Исключить IMX»). */

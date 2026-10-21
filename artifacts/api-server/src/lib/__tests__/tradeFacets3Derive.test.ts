@@ -214,7 +214,7 @@ describe("refresh day ranges", () => {
     expect(shiftIsoDay("2026-03-01", -1)).toBe("2026-02-28");
   });
   it("signature v3 (every row re-derived once)", () => {
-    expect(strategySig(DEFAULT_IMX_WINDOW)).toBe("v3|15:50-16:00");
+    expect(strategySig(DEFAULT_IMX_WINDOW)).toBe("v4|15:50-16:00");
   });
 });
 

@@ -243,8 +243,8 @@ export function registerAllJobs(): void {
     },
   });
 
-  // Strategy + IMX tag of every trade (lib/tradeStrategyStore, migration 0237): the first run back-fills the book, later
-  // runs pick rows the triggers marked stale (manual edits, fills changed) and re-derive all after an IMX window change.
+  // Strategy + IMX mark / tag of every trade (lib/tradeStrategyStore, migrations 0237 / 0243): back-fills the book, then
+  // re-derives rows the triggers marked stale (edits, fills, a Print peer leaving) and all after a window / rule change.
   registerJob({
     name: "trades.strategy-backfill",
     cron: "*/5 * * * *",

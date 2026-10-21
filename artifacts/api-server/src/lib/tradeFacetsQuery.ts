@@ -8,6 +8,8 @@
  * With 19 scalar columns the per-column scans are folded into one GROUPING SETS pass (see buildFacetsQuery).
  */
 import { netPnlSql } from "./tradeMath";
+import { imxSql } from "./imx";
+import { TRADE_STRATEGIES } from "./tradeStrategy";
 import { FACET_DIMS, NONE_KEY, facetKeySql, tagsSql, type FacetDim, type FacetFilters } from "./tradeFacetsSql";
 import {
   ADDS_KEYS, ENTRY_KEYS, EXIT_KEYS, HOLD_ORDER, PREV_KEYS, PRICE_BUCKETS, RESULT_KEYS, SEQ_BUCKETS, SIZE_BUCKETS, SIZE_REL_BUCKETS,
@@ -74,7 +76,7 @@ export function buildFacetsQuery(f: TradesPageFilters, quality: boolean): { sql:
   parts.push(`SELECT '_total', '', COUNT(*)::int, SUM(z.net) FROM z WHERE z.nf = 0 ${imxOff}`);
   parts.push(`SELECT '_imx', '', COUNT(*)::int, SUM(z.net) FROM z WHERE z.nf = 0 AND z.imx`);
   const sql = `WITH x AS MATERIALIZED (
-      SELECT ${netPnlSql("t")} AS net, COALESCE(t.strategy, '') = 'MOC' AS imx, ${keyCols}, ${tagCols}
+      SELECT ${netPnlSql("t")} AS net, ${imxSql("t")} AS imx, ${keyCols}, ${tagCols}
       ${buildFrom(join)} WHERE ${where}
     ), y AS (SELECT x.*, ${passCols} FROM x),
     z AS MATERIALIZED (SELECT y.*, ${nf} AS nf FROM y)
@@ -94,11 +96,16 @@ const numOf = (v: unknown): number | null => (v == null ? null : Number.isFinite
 const keyOrder = (keys: readonly string[]) => (a: FacetBucket, b: FacetBucket) => keys.indexOf(a.key) - keys.indexOf(b.key);
 const byCount = (a: FacetBucket, b: FacetBucket) => b.count - a.count || a.key.localeCompare(b.key);
 const keysOf = (list: readonly Bucket[]) => list.map((x) => x.key);
+const strategyRank = (k: string) => {
+  const i = (TRADE_STRATEGIES as readonly string[]).indexOf(k);
+  return i < 0 ? TRADE_STRATEGIES.length : i;
+};
 
 /**
  * Bucket order inside a column: years newest first; months / days / times and the bucketed columns (seq, prev, hold,
- * price, size, sizeRel) in their natural order; entry / adds / exit / stop / result in a fixed order; strategies,
- * tickers, accounts and tags by count.
+ * price, size, sizeRel) in their natural order; entry / adds / exit / stop / result in a fixed order; strategies by time
+ * of day (TRADE_STRATEGIES: OPG, Print, OPGtoDAY, Day, MOC, AfterMarket, Overnight, Swing, Adjust, OPT); tickers, accounts
+ * and tags by count.
  */
 export function orderBuckets(dim: FacetDim, list: FacetBucket[], timeOrder: readonly string[]): FacetBucket[] {
   const last = (k: string) => (k === NONE_KEY || k === "unknown" ? 1 : 0);
@@ -107,7 +114,7 @@ export function orderBuckets(dim: FacetDim, list: FacetBucket[], timeOrder: read
     months: (a, b) => Number(a.key) - Number(b.key),
     days: (a, b) => Number(a.key) - Number(b.key),
     times: (a, b) => timeOrder.indexOf(a.key) - timeOrder.indexOf(b.key),
-    strategies: (a, b) => b.count - a.count,
+    strategies: (a, b) => strategyRank(a.key) - strategyRank(b.key) || b.count - a.count,
     types: (a, b) => a.key.localeCompare(b.key),
     gtags: byCount,
     ptags: byCount,

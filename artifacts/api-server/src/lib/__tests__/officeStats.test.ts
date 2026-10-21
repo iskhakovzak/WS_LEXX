@@ -30,24 +30,25 @@ describe("classifyStrategy", () => {
     expect(classifyStrategy({ ticker: "AAPL261016C00230000", horizon: "overnight" })).toBe("OPT");
   });
 
-  it("overnight by horizon, by fill dates or by exit_date", () => {
+  it("overnight by horizon, by fill dates or by exit_date; Swing folds into Overnight", () => {
     expect(c("10:00:00", "11:00:00", { horizon: "swing" })).toBe("Overnight");
     expect(classifyStrategy({ ticker: "X", entryAt: at(D, "15:55:00"), exitAt: at("2026-06-11", "09:31:00") })).toBe("Overnight");
-    expect(classifyStrategy({ ticker: "X", date: D, exitDate: "2026-06-12" })).toBe("Overnight");
+    expect(classifyStrategy({ ticker: "X", date: D, exitDate: "2026-06-12" })).toBe("Overnight"); // Swing (2 trading days)
   });
 
-  it("OPG: pre-market or opening-auction entry, flat by 10:00", () => {
-    expect(c("09:30:00", "09:45:00")).toBe("OPG");
-    expect(c("09:30:59", "10:00:00")).toBe("OPG");
-    expect(c("08:15:00", "09:20:00")).toBe("OPG"); // a pre-market «Print» counts as OPG in the office
-    expect(c("09:30:02", null)).toBe("OPG");
+  it("OPG: the pre-market class — a pre-market round trip, and Print (closed by the opening print)", () => {
+    expect(c("08:15:00", "09:20:00")).toBe("OPG");
+    expect(c("08:15:00", "09:30:01")).toBe("OPG"); // Print
+    expect(c("08:15:00", "09:30:05", { isOpenPrintCluster: true })).toBe("OPG"); // Print by the desk cluster
+    expect(c("09:30:00", "09:45:00")).toBe("Day"); // an entry at the print is a regular-session entry
   });
 
-  it("OPGtoDAY: opened at the open, held past 10:00", () => {
-    expect(c("09:30:01", "10:00:01")).toBe("OPGtoDAY");
+  it("OPGtoDAY: a pre-market entry closed later the same day, the close auction included", () => {
+    expect(c("09:29:59", "10:00:01")).toBe("OPGtoDAY");
     expect(c("07:00:00", "13:00:00")).toBe("OPGtoDAY");
-    expect(c("09:30:00", "15:49:00")).toBe("OPGtoDAY");
-    expect(c("09:30:00", "16:00:03")).toBe("MOC"); // any fill in the IMX window (lib/tradeStrategy)
+    expect(c("08:15:00", "09:30:05")).toBe("OPGtoDAY"); // no desk cluster
+    expect(c("07:00:00", "16:00:03")).toBe("OPGtoDAY"); // IMX, not MOC
+    expect(c("09:30:00", "16:00:03")).toBe("MOC");
   });
 
   it("MOC: any fill in the IMX window 15:50:00–16:00:59", () => {

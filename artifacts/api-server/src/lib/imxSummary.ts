@@ -1,6 +1,6 @@
 /**
  * The «из них IMX» line and the «Исключить IMX» switch outside the /trades facets: «Разбор дня» (routes/day-report.ts)
- * and «Мой разбор» (lib/myReview). IMX = strategy MOC (lib/tradeStrategy, lib/imx).
+ * and «Мой разбор» (lib/myReview). IMX = trades.is_imx: any fill in the IMX window (lib/imx imxSql).
  *
  *   splitImx(items, exclude)          pure: the items to keep + the IMX count / net among ALL of them
  *   excludeImxSql(sql)                pure: a trades query (WHERE t.deleted_at IS NULL …) without IMX trades
@@ -8,6 +8,7 @@
  */
 import { pool } from "@workspace/db";
 import { closeDateSql, closedSql, netPnlSql } from "./tradeMath";
+import { imxSql } from "./imx";
 
 export interface ImxLine { count: number; net: number }
 
@@ -25,7 +26,7 @@ export function splitImx<T>(items: readonly { imx: boolean; net: number | null; 
 
 /** The live-trades predicate every builder starts with (routes/edge buildWhere, routes/day-report): IMX added after it. */
 const LIVE = "WHERE t.deleted_at IS NULL";
-export const NOT_IMX_SQL = `COALESCE(t.strategy, '') <> 'MOC'`;
+export const NOT_IMX_SQL = `NOT ${imxSql("t")}`;
 
 export function excludeImxSql(sql: string): string {
   const i = sql.indexOf(LIVE);
@@ -37,7 +38,7 @@ export async function imxTotals(trader: string, from: string, to: string): Promi
   const day = `substring(${closeDateSql("t")} from 1 for 10)`;
   const { rows } = await pool.query<{ n: number; net: number | null }>(
     `SELECT COUNT(*)::int AS n, SUM(${netPnlSql("t")})::float8 AS net FROM trades t
-      WHERE t.deleted_at IS NULL AND t.trader = $1 AND t.strategy = 'MOC' AND ${closedSql("t")} AND ${day} >= $2 AND ${day} <= $3`,
+      WHERE t.deleted_at IS NULL AND t.trader = $1 AND ${imxSql("t")} AND ${closedSql("t")} AND ${day} >= $2 AND ${day} <= $3`,
     [trader, from, to],
   );
   return { count: Number(rows[0]?.n ?? 0), net: round2(Number(rows[0]?.net ?? 0)) };
