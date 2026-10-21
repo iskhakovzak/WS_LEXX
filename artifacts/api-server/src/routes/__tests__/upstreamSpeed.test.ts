@@ -27,7 +27,8 @@ vi.mock("../../lib/marketDataService", async (orig) => ({ ...(await orig<object>
 vi.mock("../../lib/candles/market", async (orig) => ({ ...(await orig<object>()), fetchDailyRange: vi.fn(async () => null) }));
 vi.mock("../../lib/finviz/fundamentals", async (orig) => ({ ...(await orig<object>()), overlaySnapshots: vi.fn(async () => new Set<string>()) }));
 
-const LAT = 120;
+// Mocked upstream latency. Large enough that an in-memory answer stays far below it even under a full parallel run.
+const LAT = 400;
 const NOW = Date.parse("2026-10-21T15:00:00Z"); // Wed 11:00 NY
 const realFetch = globalThis.fetch;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -39,10 +39,20 @@ export async function createScratchDb(tag: string): Promise<{ name: string; url:
     pool,
     drop: async () => {
       await pool.end().catch(() => undefined);
-      const a = new pg.Client({ connectionString: withDb(base, "postgres") });
-      await a.connect();
-      await a.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
-      await a.end();
+      // One retry: under a full parallel run the forced drop occasionally loses a race with a closing backend.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const a = new pg.Client({ connectionString: withDb(base, "postgres") });
+        try {
+          await a.connect();
+          await a.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+          return;
+        } catch (e) {
+          if (attempt === 1) throw e;
+          await new Promise((r) => setTimeout(r, 500));
+        } finally {
+          await a.end().catch(() => undefined);
+        }
+      }
     },
   };
 }

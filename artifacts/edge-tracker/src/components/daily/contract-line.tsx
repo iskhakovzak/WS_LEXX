@@ -59,7 +59,7 @@ export function ContractLine({ line, date, intraday, yesterday }: { line: Line; 
           )}
         </span>
       )}
-      <Link href={links.myPlan(date)} className="inline-flex items-center gap-0.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+      <Link href={links.myPlan(date)} className="-my-1.5 inline-flex min-h-7 items-center gap-0.5 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {line.empty || onlyPrefill ? t("contract.set") : t("contract.edit")}
         <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
       </Link>

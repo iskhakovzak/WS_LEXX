@@ -106,7 +106,7 @@ export function FocusLine({ focus, compact }: { focus: DailyFocus; compact?: boo
           {examples.length > 0 ? (
             <TradeChips trades={examples} />
           ) : (
-            <Link href={examplesHref(focus)} className="inline-flex items-center gap-0.5 font-medium text-foreground/80 hover:text-foreground">
+            <Link href={examplesHref(focus)} className="-my-1.5 inline-flex min-h-7 items-center gap-0.5 rounded-md font-medium text-foreground/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               {t("focus.examples")}
               <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>

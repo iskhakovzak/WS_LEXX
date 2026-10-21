@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Segmented } from "@/components/ds";
+import { useEdgeFade } from "@/components/ds/edge-fade";
 import { cn } from "@/lib/utils";
 import { IMPACT, MARKET_BIAS, RISK_MODE, type Impact, type MarketBias, type RiskMode } from "./types";
 import {
@@ -74,6 +75,8 @@ function EditorInner({
 }: Parameters<typeof PlanEditor>[0]) {
   const { t: tr } = gpI18n.useT();
   const uid = useId();
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEdgeFade(stripRef);
   const rootRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
   useEditorPaste(rootRef, "plan");
@@ -136,14 +139,14 @@ function EditorInner({
         aria-label={tr("editor.blocksAria")}
         className={cn("sticky-top z-sticky -mx-1 flex items-center gap-1.5 rounded-full px-1 py-1", stickyClassName)}
       >
-        {/* One row on a phone: the pills scroll sideways instead of wrapping over the labels (ILYA-13). */}
-        <div className="glass-field flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto p-1 [scrollbar-width:none] sm:flex-none">
+        {/* One row on a phone: the pills scroll sideways instead of wrapping over the labels (ILYA-13); the hidden edge fades. */}
+        <div ref={stripRef} className="glass-field edge-fade flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto p-1 [scrollbar-width:none] sm:flex-none">
           {blocks.map((b) => (
             <button
               key={b.id}
               type="button"
               onClick={() => goto(b.id)}
-              className="inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-xs font-medium text-muted-foreground transition-colors sm:px-3 hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className={cn("h-1.5 w-1.5 rounded-full", b.done ? "bg-primary" : "bg-muted-foreground/40")} aria-hidden="true" />
               {b.label}
