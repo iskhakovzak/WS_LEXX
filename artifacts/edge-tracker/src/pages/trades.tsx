@@ -26,6 +26,8 @@ import { ENTRY_DECISION_FIELDS, HORIZONS, HORIZON_LABEL, RESULT_LABEL, advancedF
 import { useTradeFilters } from "@/components/trades/use-trade-filters";
 import { useTradesPage, useTradeDays, dayTradesQuery, patchTradeInPages } from "@/hooks/use-trades-page";
 import { TradeFilterBar } from "@/components/trades/TradeFilterBar";
+import { TradesFacets, useFacetFilters } from "@/components/trades/TradesFacets";
+import { useFacetView } from "@/components/shared/trade-facets/api";
 import { TradePagination } from "@/components/trades/TradePagination";
 import { TradeDetailSheet, type TradePatch } from "@/components/trades/TradeDetailSheet";
 import { TradeFormDialog, formSaveError } from "@/components/trades/TradeFormDialog";
@@ -95,11 +97,13 @@ export default function Trades() {
     (t: Trade) => canEdit && (!t.trader || t.trader === me || can("trades.write.any", { trader: t.trader })),
     [canEdit, me, can],
   );
-  /** Broker numbers are read-only for traders: the full form / result / delete stay for manual trades or staff. */
-  const canEditForm = useCallback((t: Trade) => canEditTrade(t) && (isStaff || !isBrokerTrade(t)), [canEditTrade, isStaff]);
+  /** Broker numbers are read-only (API: lib/brokerTradeGuard): the full form / result / delete stay for manual trades or admins. */
+  const canEditForm = useCallback((t: Trade) => canEditTrade(t) && (can("settings.manage") || !isBrokerTrade(t)), [canEditTrade, can]);
 
   const F = useTradeFilters();
-  const { filters, sort, page, pageSize, preset, view } = F;
+  const { filters: pageFilters, sort, page, pageSize, preset, view } = F;
+  const FV = useFacetView();
+  const filters = useFacetFilters(pageFilters, FV.view); // + «Фильтры» panel / «Исключить IMX» (x* params)
   const listMode = !!preset || view === "list";
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -551,7 +555,7 @@ export default function Trades() {
   });
 
   const isPending = updateMut.isPending;
-  const noFilters = isDefaultFilters(filters);
+  const noFilters = isDefaultFilters(pageFilters) && !filters.facets;
   const isLoading = P.isLoading;
   const isError = P.isError || (!listMode && D.isError);
   const noTrades = !isLoading && !P.isError && total === 0 && noFilters && !preset;
@@ -606,13 +610,13 @@ export default function Trades() {
 
       {!noTrades && (
         <TradeFilterBar
-          filters={filters}
+          filters={pageFilters}
           patch={F.patch}
           reset={F.reset}
           outcomeCounts={facets?.outcomes ?? EMPTY_OUTCOMES}
           horizonCounts={facets?.horizons ?? {}}
           setups={facets?.setups ?? []}
-          traders={distinctTraders}
+          traders={isStaff ? distinctTraders : []}
           sectors={facets?.sectors ?? []}
           views={F.views}
           onSaveView={(n) => { F.saveView(n); toast({ title: tt("page.toast.viewSaved", { name: n }) }); }}
@@ -621,6 +625,7 @@ export default function Trades() {
           searchRef={searchRef}
         />
       )}
+      {!noTrades && <TradesFacets filters={pageFilters} fv={FV} />}
 
       {!noTrades && !P.isError && (
         <ReviewKpis summary={summary} loading={isLoading} dayCurve={preset ? [] : dayCurve} onPreset={(p) => F.setPreset(p)} />

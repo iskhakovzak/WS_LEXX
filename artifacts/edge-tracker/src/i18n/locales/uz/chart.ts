@@ -241,6 +241,7 @@ export default {
   canvas: {
     stop: "Stop {price}",
     target: "Maqsad {price}",
+    planShort: "Reja",
     stopShort: "Stop",
     targetShort: "Maqsad",
     avgEntry: "Oʻrt. kirish {price}",

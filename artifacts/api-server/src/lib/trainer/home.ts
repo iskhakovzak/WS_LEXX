@@ -7,11 +7,11 @@
 import { pool } from "@workspace/db";
 import { logger } from "../logger";
 import { addDays, nyDate } from "../tradingDate";
-import { horizonSql, netPnlSql } from "../tradeMath";
 import { computeMastery } from "../gamification/mastery";
 import type { SetupMastery } from "../gamification/types";
 import { setting } from "../settings/registry";
-import { lastPlayableDay, type Viewer } from "../sim/service";
+import type { Viewer } from "../sim/service";
+import { ownCandidateCount } from "../sim/ownService";
 import { HOME_TTL_MS, homeCache } from "./cache";
 import { dailyState } from "./daily";
 import { drillDays, drillsPerSetup } from "./drillStore";
@@ -20,11 +20,11 @@ import { splitSetupName } from "./drills";
 import type { TrainerHome } from "./types";
 
 type StatsRow = {
-  games30: number; avg_r: string | null; beat_real: number; drills30: number; acc: string | null; candidates: number;
+  games30: number; avg_r: string | null; beat_real: number; drills30: number; acc: string | null;
   own_active: { gameId: number; ticker: string } | null;
 };
 
-async function stats(viewer: Viewer, lastDay: string): Promise<StatsRow> {
+async function stats(viewer: Viewer): Promise<StatsRow> {
   const { rows } = await pool.query<StatsRow>(
     `SELECT
        (SELECT count(*)::int FROM sim_games WHERE user_id = $1 AND status = 'finished' AND finished_at >= now() - interval '30 days') AS games30,
@@ -34,14 +34,9 @@ async function stats(viewer: Viewer, lastDay: string): Promise<StatsRow> {
            AND result #>> '{own,verdict}' = 'better') AS beat_real,
        (SELECT count(*)::int FROM trainer_drill_attempts WHERE user_id = $1 AND created_at >= now() - interval '30 days') AS drills30,
        (SELECT avg(score) FROM trainer_drill_attempts WHERE user_id = $1 AND created_at >= now() - interval '30 days') AS acc,
-       (SELECT count(*)::int FROM trades t
-         WHERE t.deleted_at IS NULL AND t.trader = $2 AND ${netPnlSql("t")} < 0 AND ${horizonSql("t")} = 'intraday'
-           AND t.ticker ~ '^[A-Z]{1,5}$' AND t.date ~ '^\\d{4}-\\d{2}-\\d{2}' AND left(t.date, 10) <= $3
-           AND EXISTS (SELECT 1 FROM candle_archive a WHERE a.symbol = t.ticker AND a.day = left(t.date, 10)::date AND a.tf IN ('1m', '5m'))
-           AND EXISTS (SELECT 1 FROM trade_executions e WHERE e.trade_id = t.id AND e.executed_at IS NOT NULL)) AS candidates,
        (SELECT json_build_object('gameId', id, 'ticker', ticker) FROM sim_games
          WHERE user_id = $1 AND status = 'active' AND params ? 'own' ORDER BY id DESC LIMIT 1) AS own_active`,
-    [viewer.id, viewer.name, lastDay],
+    [viewer.id],
   );
   return rows[0];
 }
@@ -70,9 +65,10 @@ export async function trainerHome(viewer: Viewer, now = new Date()): Promise<Tra
   if (hit && Date.now() - hit.at < HOME_TTL_MS) return hit.value as TrainerHome;
   const today = nyDate(now);
   void ensureDrillsThrottled(); // first visit of the day builds new drills in the background
-  const [daily, s, setups, mastery, days] = await Promise.all([
+  const [daily, s, candidates, setups, mastery, days] = await Promise.all([
     dailyState(viewer, now),
-    stats(viewer, lastPlayableDay(now)),
+    stats(viewer),
+    ownCandidateCount(viewer), // the eligible list «Мои дни» offers (lib/trainer/eligibility), not a raw SQL count
     drillsPerSetup(viewer.name),
     levels(viewer.name),
     drillDays(viewer.id, addDays(today, -400)),
@@ -80,7 +76,7 @@ export async function trainerHome(viewer: Viewer, now = new Date()): Promise<Tra
   const num = (v: string | null) => (v == null ? null : Math.round(Number(v) * 100) / 100);
   const value: TrainerHome = {
     daily,
-    myDays: { candidates: Number(s.candidates) || 0, active: s.own_active ? { gameId: Number(s.own_active.gameId), ticker: String(s.own_active.ticker) } : null },
+    myDays: { candidates, active: s.own_active ? { gameId: Number(s.own_active.gameId), ticker: String(s.own_active.ticker) } : null },
     findEntry: {
       setups: setups.map((x) => {
         const { code, name } = splitSetupName(x.name);

@@ -20,8 +20,8 @@ import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql, horizonSql, 
 import { nyDate, nyMinutes } from "../lib/tradingDate";
 import { readScope, resolveActor } from "../lib/permissions";
 import { resolveWindow } from "./leaderboard";
-import {metricDefs, NEUTRAL_METRICS, MEDIAN_MIN_TRADERS, CONSISTENCY_WARN, CONSISTENCY_BREACH, FIRST_MINUTES,
-  badgesFor, computeTraderMetrics, deskMedian, parseHoldMinutes, percentiles, sameTickerCases, trendFor,
+import {metricDefs, NEUTRAL_METRICS, MEDIAN_MIN_TRADERS, CONSISTENCY_WARN, CONSISTENCY_BREACH, FIRST_MINUTES, BADGE_MIN_TRADES, BADGE_MIN_DAYS,
+  badgeSampleOk, badgesFor, computeTraderMetrics, deskMedian, parseHoldMinutes, percentiles, sameTickerCases, trendFor,
   type BenchTrade, type Result, type Side,
 } from "../lib/benchmark";
 import { AppError, sendError, unauthorized } from "../lib/http";
@@ -146,6 +146,7 @@ router.get("/benchmark", asyncHandler(async (req, res): Promise<void> => {
     .filter((r) => canSee(r.trader) && (viewer.staff || r.trader === viewer.name))
     .map((r) => ({
       ...r,
+      consistencyFlag: badgeSampleOk(r) ? r.consistencyFlag : null, // below the badge sample a best day is noise (2.7)
       qualified: r.trades >= minTrades,
       percentiles: pct[r.trader] ?? null,
       badges: badgesFor(r, pct[r.trader], qualified.length, 3, 10, langOf(req)),
@@ -163,7 +164,8 @@ router.get("/benchmark", asyncHandler(async (req, res): Promise<void> => {
     mode: viewer.staff ? "desk" : "self",
     minTrades,
     deskSize: qualified.length,
-    rules: { consistencyWarn: CONSISTENCY_WARN, consistencyBreach: CONSISTENCY_BREACH, firstMinutes: FIRST_MINUTES, medianMinTraders: MEDIAN_MIN_TRADERS },
+    // Badges (and the «one day makes the period» signal) only from a real sample: lib/benchmark badgeSampleOk.
+    rules: { consistencyWarn: CONSISTENCY_WARN, consistencyBreach: CONSISTENCY_BREACH, firstMinutes: FIRST_MINUTES, medianMinTraders: MEDIAN_MIN_TRADERS, badgeMinTrades: BADGE_MIN_TRADES, badgeMinDays: BADGE_MIN_DAYS },
     metrics: metricDefs(langOf(req)).map((d) => ({ ...d, neutral: NEUTRAL_METRICS.has(d.key) })),
     rows,
     // Percentiles of other traders are only exposed to staff (a trader gets their own via rows[0].percentiles).

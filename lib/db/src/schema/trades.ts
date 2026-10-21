@@ -67,6 +67,11 @@ export const tradesTable = pgTable("trades", {
   externalId: text("external_id"),
   brokerAccount: text("broker_account"),
   syncedAt: timestamp("synced_at", { withTimezone: true }),
+  // Derived (api lib/tradeStrategyStore, migration 0237): PropReports-style strategy (lib/tradeStrategy; MOC = IMX),
+  // NY seconds of the first entry (the «Время» facet) and the rule signature the row was derived with (NULL = re-derive).
+  strategy: text("strategy"),
+  entrySec: integer("entry_sec"),
+  strategySig: text("strategy_sig"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [

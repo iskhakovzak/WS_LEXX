@@ -29,6 +29,7 @@ import { curatorTemplate, fridayOf, MANUAL_TEMPLATE, monthOf, questWeekOf, type 
 import { onboardingFor, onboardingState, planQuests, questPoints, switches, toQuest, visibleQuests, weekSummary } from "./engine";
 import { loadTraderInputs } from "./load";
 import { afterEvaluation } from "../gamification/hooks";
+import { taskDoneBonuses } from "../gamification/taskDone";
 import { evaluationCache, forgetQuests, generationOf } from "./cache";
 import {
   achievementsOf, activeCuratorQuests, closeQuest, createQuests, fixAchievementDate, insertAchievement, insertCuratorQuest, legacyBadges, markAssignedNoticeRead, questsOf,
@@ -147,10 +148,12 @@ export async function evaluateTrader(trader: string, now = new Date()): Promise<
     achievements = achievementStates(results, awarded);
   }
   const windowDays = setting("discipline.pointsWindowDays");
-  const discipline = withQuestPoints(inputs.summary, questPoints(quests, windowStart(inputs.asOf, windowDays)), levelThresholds());
+  // «Выполнил задание куратора» (2.13): small per-day points, counted like a done quest's bonus.
+  const scored = [...quests, ...(await taskDoneBonuses(trader))];
+  const discipline = withQuestPoints(inputs.summary, questPoints(scored, windowStart(inputs.asOf, windowDays)), levelThresholds());
   // Season scores and recognition (lib/gamification/hooks; never throws).
   await afterEvaluation(trader, {
-    today: inputs.quests.today, asOf: inputs.asOf, ledger: inputs.ledger, quests, tradedDays: inputs.quests.reviews.map((r) => r.date), awarded: news,
+    today: inputs.quests.today, asOf: inputs.asOf, ledger: inputs.ledger, quests: scored, tradedDays: inputs.quests.reviews.map((r) => r.date), awarded: news,
   });
   return { today: inputs.quests.today, asOf: inputs.asOf, discipline, badges: badgesOf(achievements), achievements, quests, data: inputs.quests, onboarding };
 }

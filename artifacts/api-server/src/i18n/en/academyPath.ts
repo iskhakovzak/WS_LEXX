@@ -3,11 +3,9 @@ import type ru from "../ru/academyPath";
 
 export default {
   stages: {
-    trainee: { name: "Intern", description: "The desk's first stage: minimal size, strict limits, learning and exams" },
     junior: { name: "Junior", description: "Firm capital, small size, intraday only" },
     trader: { name: "Trader", description: "Full desk trader: intraday + overnight" },
     senior: { name: "Senior", description: "Full BP, swing, mentoring" },
-    legacyTraineeDescription: "After selection and bootcamp: minimal size, strict limits, learning and exams",
     none: "No stage assigned",
   },
   metrics: {
@@ -31,21 +29,6 @@ export default {
     challenges_passed: { label: "Exams passed", hint: "Challenges (exams) passed since the stage started" },
   },
   seedCriteria: {
-    trainee: {
-      trading_days: "At least 15 trading days out of 20",
-      net_pnl: "Net P&L ≥ $300 in 20 days",
-      max_dd_usd: "Drawdown no more than $500",
-      consistency: "Best day ≤ 40% of profit",
-      win_rate: "Win rate ≥ 45%",
-      profit_factor: "Profit factor ≥ 1.2",
-      fee_share: "Fees ≤ 50% of gross",
-      violations: "No more than 2 rule violations",
-      red_streak_max: "No more than 4 red days in a row",
-      discipline_index: "Discipline index ≥ 70",
-      lessons_pct: "≥ 80% of lessons completed",
-      quiz_avg: "Average quiz score ≥ 70%",
-      challenges_passed: "Passed the “Promotion Intern → Junior” exam",
-    },
     junior: {
       trading_days: "At least 30 trading days out of 40",
       net_pnl: "Net P&L ≥ $1,500 in 40 days",
@@ -86,6 +69,8 @@ export default {
     quizzes: { one: "{count} quiz", other: "{count} quizzes" },
     noQuizzes: "no quizzes taken",
     examsOff: "exams unavailable",
+    noRatings: "no curator scores",
+    ratings: { one: "{count} score", other: "{count} scores" },
   },
   advice: {
     netNoTrades: "No trades with P&L in the window. Trade: trades come in from PropReports automatically.",
@@ -168,8 +153,8 @@ export default {
     templates: {
       capitalName: "Promotion {from} → {to} (${k}k capital)",
       capitalLead: "Promotion exam {from} → {to}",
-      trainee_test_10d: { name: "Intern test, 10 days", lead: "A short intern check: daily-limit discipline and steady trading" },
-      sim_exam_20d: { name: "Sim exam, 20 days", lead: "Simulator exam for interns" },
+      trainee_test_10d: { name: "Intro test, 10 days", lead: "A short newcomer check: daily-limit discipline and steady trading" },
+      sim_exam_20d: { name: "Sim exam, 20 days", lead: "Simulator exam for newcomers" },
     },
     trade: "trade",
     failure: {

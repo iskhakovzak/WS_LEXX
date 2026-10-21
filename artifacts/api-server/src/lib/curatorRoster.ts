@@ -5,6 +5,7 @@
 import type { Request } from "express";
 import { pool } from "@workspace/db";
 import { readScope } from "./permissions";
+import { groupMembersOf } from "./people/deskGroups";
 import type { NextAction, WeekPoint } from "./curatorLogic";
 
 /** Read from an optional module's table: any SQL error (table not created yet) → no rows. */
@@ -21,22 +22,29 @@ export async function safe<T = any>(sql: string, params: unknown[] = []): Promis
 
 export type Roster = { traders: string[]; scope: "mine" | "desk"; wards: string[] };
 
+/**
+ * «Моя группа / Все» (Волна 1 п. 1.19): `wanted` = mine | group → my people (the traders of the desk groups I lead +
+ * the traders assigned to me), desk | all → the whole readable desk; nothing → my people when I have any.
+ */
 export async function loadRoster(req: Request, wanted: unknown): Promise<Roster> {
   const me = req.authUser!.name;
-  const [users, readable] = await Promise.all([
+  const [users, readable, group] = await Promise.all([
     safe<{ name: string; role: string; ac: string | null; am: string | null; ar: string | null }>(
       `SELECT name, role, assigned_curator AS ac, assigned_mentor AS am, assigned_risk_manager AS ar
          FROM users WHERE active = true AND COALESCE(banned, false) = false`,
     ),
     readScope(req, "journal.review"),
+    groupMembersOf(me).catch(() => [] as string[]),
   ]);
   let traders = users.filter((u) => u.role === "trader").map((u) => u.name);
   if (readable !== null) traders = traders.filter((t) => readable.includes(t));
+  const inGroup = new Set(group);
   const wards = traders.filter((t) => {
     const u = users.find((x) => x.name === t);
-    return !!u && (u.ac === me || u.am === me || u.ar === me);
+    return inGroup.has(t) || (!!u && (u.ac === me || u.am === me || u.ar === me));
   });
-  const scope: "mine" | "desk" = wanted === "desk" ? "desk" : wanted === "mine" ? "mine" : wards.length ? "mine" : "desk";
+  const want = wanted === "group" ? "mine" : wanted === "all" ? "desk" : wanted;
+  const scope: "mine" | "desk" = want === "desk" ? "desk" : want === "mine" ? "mine" : wards.length ? "mine" : "desk";
   const list = scope === "mine" && wards.length ? wards : scope === "mine" ? [] : traders;
   return { traders: list.sort((a, b) => a.localeCompare(b, "ru")), scope, wards };
 }

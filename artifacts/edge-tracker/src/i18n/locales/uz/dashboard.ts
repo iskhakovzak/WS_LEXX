@@ -92,6 +92,23 @@ export default {
     otherTasks: "Boshqa vazifalar",
     more: "Yana {count}",
   },
+  step: {
+    aria: "Keyingi qadam",
+    plan: {
+      titleToday: "Bugungi rejani yozing",
+      titleOn: "{date} uchun reja yozing",
+      hint: "Kun shartnomasi: stop, maks. savdolar va oʻz qoidangiz — ochilishdan oldin bir-ikki daqiqa.",
+      cta: "Reja yozish",
+    },
+    contract: { title: "Shartnoma boʻyicha savdo qiling", cta: "Mening rejam" },
+    close: {
+      title: "Kunni yoping · {date}",
+      hint: "Kun yakuni kundalikda — kurator navbatda javob beradi.",
+      cta: "Kunni yopish",
+    },
+    task: { title: "Kun yopildi — kun vazifasi kutmoqda", hint: "Butun desk uchun bitta kunga 10 daqiqa, reyting R boʻyicha.", cta: "Kun vazifasini oʻynash" },
+    done: { title: "Kun yopildi, {date} uchun reja tayyor", hint: "Bugunga shu. Dam oling." },
+  },
   hero: {
     greeting: { night: "Xayrli tun", morning: "Xayrli tong", day: "Xayrli kun", evening: "Xayrli kech" },
     weekend: "dam olish",
@@ -105,6 +122,7 @@ export default {
     dailyLimit: "Kunlik limit",
     notSet: "Belgilanmagan",
     setByCurator: "Limitlarni kurator belgilaydi",
+    buyingPower: "BP {amount}",
     remaining: "Kunlik limit qoldigʻi",
     usedOf: "{limit} dan · ishlatilgan {pct}",
     fees: "komissiyalar {amount}",

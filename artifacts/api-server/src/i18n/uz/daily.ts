@@ -126,6 +126,7 @@ export default {
     morning: {
       title: "☀️ <b>{date} uchun fokus</b>",
       noContract: "📜 Bugungi shartnoma belgilanmagan — rejada kunlik stop va savdolar limitini belgilang.",
+      unreviewed: "📝 {date} kuni tahlil qilinmagan — uni oching va «Tahlil qildim» tugmasini bosing.",
     },
     contract: {
       line: "📜 Shartnoma: {items}",

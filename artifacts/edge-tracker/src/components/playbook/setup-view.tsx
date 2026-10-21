@@ -35,6 +35,7 @@ import { RelatedSetupsSection, SetupHighlights } from "./highlights";
 import { MoveToFolderButton } from "./move-to-folder";
 import { MinTierSelect } from "./min-tier-select";
 import { SetupStatsPanel } from "./setup-stats";
+import { TickerContext } from "@/components/shared/finviz/ticker-context";
 import { StructuredDescription } from "./structured-editor";
 import {
   HORIZON_LABEL, SOURCE_LABELS, accessOf, timeOfDayLabel, folderSwatch, moneyTone, timeAgo,
@@ -83,7 +84,7 @@ export function SetupView({
   const { t } = playbookSetupI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { isCurator } = useAuth();
+  const { isCurator, can } = useAuth();
   const topRef = React.useRef<HTMLDivElement>(null);
   const access = accessOf(entry, viewer);
   const parent = React.useMemo(() => (entry.parentId ? allEntries.find((e) => e.id === entry.parentId) ?? null : null), [entry.parentId, allEntries]);
@@ -191,7 +192,7 @@ export function SetupView({
             </button>
           ) : entry.reviewed ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" /> {t("view.reviewed")}</Pill> : null)}
           <ConfidenceMeter level={entry.confidenceLevel} showLabel />
-          {live && access.space === "office" && isCurator && access.canEdit && <MinTierSelect entry={entry} />}
+          {live && access.space === "office" && can("settings.manage") && access.canEdit && <MinTierSelect entry={entry} />}
         </div>
         {entry.tags && <div className="mt-2"><TagChips tags={entry.tags} /></div>}
         {proposed && access.canPromote && entry.officeProposedNote && (
@@ -279,7 +280,10 @@ export function SetupView({
           </span>
         </div>
 
-        <StatusLine s={s} exampleCount={exampleCount} tier1={tier1} onStats={() => onTab("stats")} onExamples={() => onTab("examples")} />
+        <StatusLine
+          s={s} exampleCount={examplesQ.data ? examplesQ.data.length : exampleCount} tier1={tier1} onStats={() => onTab("stats")} onExamples={() => onTab("examples")}
+          onAdd={access.canAddExamples && live ? () => onAddExamples(entry) : undefined}
+        />
       </header>
 
       <SectionTabs<SetupTab>
@@ -362,11 +366,18 @@ function SpaceBadge({ access, author }: { access: SetupAccess; author: string | 
   return <span className="inline-flex items-center gap-1 font-medium text-foreground"><Users className="h-3.5 w-3.5" aria-hidden="true" /> {author ?? commonI18n.t("roles.trader")}</span>;
 }
 
-/** One line instead of a row of empty KPI tiles. */
+/**
+ * One line instead of a row of empty KPI tiles. A setup without examples says so and offers to add them from the
+ * viewer's own trades (Волна 2 п. 2.6 — the office examples are seeded from the desk's best trades, the rest is ours).
+ */
 function StatusLine({
-  s, exampleCount, tier1, onStats, onExamples,
-}: { s: SetupSummary | undefined; exampleCount?: number; tier1?: number; onStats: () => void; onExamples: () => void }) {
-  const ex = (
+  s, exampleCount, tier1, onStats, onExamples, onAdd,
+}: { s: SetupSummary | undefined; exampleCount?: number; tier1?: number; onStats: () => void; onExamples: () => void; onAdd?: () => void }) {
+  const ex = exampleCount === 0 ? (
+    onAdd
+      ? <button type="button" onClick={onAdd} className="font-medium text-primary hover:underline">{st("status.noExamplesAdd")}</button>
+      : <span>{st("status.noExamples")}</span>
+  ) : (
     <button type="button" onClick={onExamples} className="hover:text-foreground">
       {tier1 ? st("status.examplesT1", { count: exampleCount ?? 0, t1: tier1 }) : st("status.examples", { count: exampleCount ?? 0 })}
     </button>
@@ -448,6 +459,7 @@ function AboutAside({ entry, parent, access }: { entry: PlaybookEntry; parent: P
           <div className="divide-y divide-border/60">
             {fundamentals.filter(([, v]) => v != null && v !== "").map(([k, v]) => <StatRow key={k} label={<TermLabel text={k} />} value={String(v)} />)}
           </div>
+          {entry.ticker && !hasFundamentals && <TickerContext ticker={entry.ticker} className="mt-2" />}
         </DocSection>
       )}
     </>

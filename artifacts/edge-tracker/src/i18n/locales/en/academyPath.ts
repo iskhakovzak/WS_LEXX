@@ -28,7 +28,6 @@ export default {
     state: { done: "completed", current: "current stage", nextReady: "next, criteria met", next: "next", locked: "locked" },
     people: { one: "{count} person", other: "{count} people" },
     descriptions: {
-      trainee: "The desk's first stage: minimum size, strict limits, learning and exams",
       junior: "Firm capital, small size, intraday only",
       trader: "A full desk trader: intraday + overnight",
       senior: "Full BP, swing, mentoring",
@@ -179,21 +178,6 @@ export default {
     challenges_passed: { label: "Exams passed", hint: "Challenges (exams) passed since the stage started" },
   },
   seedCriteria: {
-    trainee: {
-      trading_days: "At least 15 trading days out of 20",
-      net_pnl: "Net P&L ≥ $300 in 20 days",
-      max_dd_usd: "Drawdown no more than $500",
-      consistency: "Best day ≤ 40% of profit",
-      win_rate: "Win rate ≥ 45%",
-      profit_factor: "Profit factor ≥ 1.2",
-      fee_share: "Fees ≤ 50% of gross",
-      violations: "No more than 2 rule violations",
-      red_streak_max: "No more than 4 red days in a row",
-      discipline_index: "Discipline index ≥ 70",
-      lessons_pct: "≥ 80% of lessons completed",
-      quiz_avg: "Average quiz score ≥ 70%",
-      challenges_passed: "Passed the “Promotion Intern → Junior” exam",
-    },
     junior: {
       trading_days: "At least 30 trading days out of 40",
       net_pnl: "Net P&L ≥ $1,500 in 40 days",
@@ -280,8 +264,8 @@ export default {
     templates: {
       capital: "Promotion {from} → {to} ({size} capital)",
       capitalLead: "Promotion exam {from} → {to}",
-      trainee_test_10d: { name: "Intern test, 10 days", lead: "A short intern check: daily-limit discipline and steady trading" },
-      sim_exam_20d: { name: "Sim exam, 20 days", lead: "Simulator exam for interns" },
+      trainee_test_10d: { name: "Intro test, 10 days", lead: "A short newcomer check: daily-limit discipline and steady trading" },
+      sim_exam_20d: { name: "Sim exam, 20 days", lead: "Simulator exam for newcomers" },
       description: "{lead}: {rules}",
     },
     card: {
@@ -347,7 +331,7 @@ export default {
     hintSuggested: "{user}'s stage: {stage}; recommended: “{template}”",
     hintNone: "{user}'s stage: {stage}; there is no higher promotion exam",
     groupCapital: "Promotion to capital",
-    groupTests: "Intern tests",
+    groupTests: "Intro tests",
     recommended: "{name} (recommended)",
     start: "Start (NY)",
     end: "End (empty = from template)",

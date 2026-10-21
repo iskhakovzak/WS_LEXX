@@ -9,13 +9,16 @@ import { commonI18n } from "@/i18n/ns/common";
 
 export type ItemKind = "lesson" | "quiz" | "assignment";
 export type ItemStatus = "not_started" | "in_progress" | "completed";
-export type Stage = "trainee" | "junior" | "trader" | "senior";
-export const STAGES: readonly Stage[] = ["trainee", "junior", "trader", "senior"];
-const STAGE_TIER = { trainee: "intern", junior: "junior", trader: "trader", senior: "senior" } as const;
-/** Ladder stage name in the UI language (stage key `trainee` = tier «Стажёр» / Intern). Call at render time. */
-export const stageLabel = (s: Stage): string => commonI18n.t(`tiers.${STAGE_TIER[s]}`);
-/** Same for a stage code that may come from the server as a plain string. */
-export const stageLabelOf = (s: string | null | undefined): string => (s && (STAGES as readonly string[]).includes(s) ? stageLabel(s as Stage) : s ?? "");
+export type Stage = "junior" | "trader" | "senior";
+export const STAGES: readonly Stage[] = ["junior", "trader", "senior"];
+const STAGE_TIER = { junior: "junior", trader: "trader", senior: "senior" } as const;
+/** Ladder stage name in the UI language. Call at render time. */
+export const stageLabel = (s: Stage): string => commonI18n.t(`tiers.${STAGE_TIER[s] ?? "junior"}`);
+/** Same for a stage code that may come from the server as a plain string (a legacy «trainee» reads as junior, wave 1 item 1.21). */
+export const stageLabelOf = (s: string | null | undefined): string => {
+  const k = s === "trainee" ? "junior" : s;
+  return k && (STAGES as readonly string[]).includes(k) ? stageLabel(k as Stage) : s ?? "";
+};
 
 export type Attachment = { title: string; url: string };
 export type VideoEmbed = { provider: "youtube" | "vimeo" | "loom"; id: string; embedUrl: string; watchUrl: string };

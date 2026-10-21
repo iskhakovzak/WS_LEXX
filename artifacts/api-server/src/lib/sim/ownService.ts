@@ -8,6 +8,9 @@
  *
  * Privacy: candidates and trades are read by the viewer's own trader name only (ownStore.ts); staff get no other
  * trader's days here.
+ *
+ * Trainer eligibility (lib/trainer/eligibility.ts): a trade with a fill at 15:50–16:00 NY, held < 25 min or with a
+ * fill without a time is never offered, nor is any trade on a ticker-day the desk traded in the closing auction.
  */
 import { notFound } from "../http";
 import { logger } from "../logger";
@@ -20,6 +23,8 @@ import {
 } from "./own";
 import * as store from "./store";
 import * as ownStore from "./ownStore";
+import { eligibleTrades } from "../trainer/eligibility";
+import { blockedTickerDays } from "../trainer/eligibilityStore";
 import { lastPlayableDay, newGameExtras, remember, settleActive, snapshotOf, type Snapshot, type Viewer } from "./service";
 
 /** Mistake ids lib/daily attributes to each trade (every hit of the window, not only the top examples of each mistake;
@@ -76,9 +81,16 @@ function viewOf(t: OwnTradeRow, mistakes: string[], played: boolean): OwnCandida
   return { tradeId: t.id, ticker: t.ticker, date: t.day, side, net, r: risk.source === "atr" ? null : Math.round((net / risk.usd) * 100) / 100, mistakes, played };
 }
 
+/** Own losses that pass the trainer eligibility rule (one filter for the list, the count and every pick). */
+async function eligibleOwn(rows: OwnTradeRow[]): Promise<OwnTradeRow[]> {
+  if (!rows.length) return rows;
+  const blocked = await blockedTickerDays();
+  return eligibleTrades(rows, (t) => ({ ticker: t.ticker, day: t.day, executions: t.execs.map((e) => ({ at: e.at })) }), blocked);
+}
+
 async function loadCandidates(viewer: Viewer) {
   const lastDay = lastPlayableDay();
-  const rows = await ownStore.ownCandidates(viewer.name, lastDay);
+  const rows = await eligibleOwn(await ownStore.ownCandidates(viewer.name, lastDay));
   const daily = rows.length ? await dailyMistakesByTrade(viewer.name, addDays(lastDay, -90), lastDay) : new Map<number, string[]>();
   const mistakes = new Map(rows.map((r) => [r.id, [...new Set([...realMistakes(r), ...(daily.get(r.id) ?? [])])]]));
   return { lastDay, rows, mistakes };
@@ -101,6 +113,11 @@ export async function ownCandidates(viewer: Viewer): Promise<OwnCandidatesView> 
   return { trades, worst: order[0]?.id ?? null, windowDays: OWN_WINDOW_DAYS, active };
 }
 
+/** How many replayable losses the viewer has (the trainer home «Мои дни» count) — the same eligible list. */
+export async function ownCandidateCount(viewer: Viewer): Promise<number> {
+  return (await eligibleOwn(await ownStore.ownCandidates(viewer.name, lastPlayableDay()))).length;
+}
+
 export async function createOwnGame(
   viewer: Viewer, pick: OwnPick, tradeId: number | null, rnd: () => number = Math.random, tf: IntradayTf | null = null,
 ): Promise<Snapshot> {
@@ -111,7 +128,8 @@ export async function createOwnGame(
   let chosen: { t: OwnTradeRow; built: OwnBuilt; mistakes: string[] } | null = null;
   if (pick === "trade") {
     const lastDay = lastPlayableDay();
-    const t = tradeId != null ? await ownStore.ownTrade(viewer.name, lastDay, tradeId) : null;
+    const found = tradeId != null ? await ownStore.ownTrade(viewer.name, lastDay, tradeId) : null;
+    const [t] = found ? await eligibleOwn([found]) : [];
     if (!t) throw notFound("TRADE_NOT_FOUND", { reason: "notReplayable" });
     const built = await build(t, tf);
     if (!built) throw notFound("NOT_FOUND", { reason: "noBars" });

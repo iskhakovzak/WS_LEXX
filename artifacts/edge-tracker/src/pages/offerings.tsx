@@ -5,7 +5,7 @@ import {
   AlertTriangle, BarChart3, CalendarDays, CalendarRange, ChevronDown, ChevronLeft, ChevronRight, Layers, RefreshCw, Sun, UserCheck,
 } from "lucide-react";
 import {
-  EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, Segmented, StatCard, StatGrid, TableSkeleton, TermTooltip, UpdatedAgo,
+  EmptyState, Page, PageHeader, Panel, SectionTabs, Segmented, StatCard, StatGrid, TableSkeleton, TermTooltip, UpdatedAgo,
   usePersistentState, type SortDir,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,8 @@ import { OfferingsList, sortValue, SORT_LABEL, type SortKey } from "@/components
 import {
   EMPTY_FILTERS, activeFilterCount, matchesFilters, normalizeFilters, type FilterPreset, type OfferingFilters,
 } from "@/components/offerings/filters";
-import { advMultiple, cleanUnderwriter, dealTypeOf, dilutionScore, discountOf, pctOfFloat } from "@/components/offerings/score";
+import { advMultiple, cleanUnderwriter, dealTypeOf, dilutionScore, discountOf, pctOfFloat, sourcesDown } from "@/components/offerings/score";
+import { SourceDownLine } from "@/components/offerings/bits";
 import {
   fetchOfferingsFresh, useAddToPlan, useAddToWatchlist, useExposure, useOfferings, useOfferingsDays,
 } from "@/components/offerings/use-offerings-data";
@@ -350,13 +351,13 @@ export default function OfferingsPage() {
     document.querySelector<HTMLElement>(`tr[data-row="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active, isList]);
 
-  const sourcesDown = data?.sources
-    ? (Object.entries(data.sources) as Array<[string, boolean]>).filter(([, ok]) => !ok).map(([k]) => (k === "market" ? offeringsI18n.t("page.sourceMarket") : ({ nasdaq: "NASDAQ", edgar: "SEC EDGAR" } as Record<string, string>)[k] ?? k))
-    : [];
   const busy = isFetching || refreshing;
   const enriching = data?.enrichment?.complete === false;
   const noData = !isLoading && !!data && offerings.length === 0;
   const listLoading = tab === "today" ? isLoading : weekLoaded === 0;
+  // NASDAQ / SEC did not answer and the day list is empty: an outage, not «no offerings» — one muted line in the list.
+  const down = sourcesDown(data?.sources);
+  const downInList = tab === "today" && down.listing && deals.length === 0 && !activeFilterCount(filters) && !q;
 
   return (
     <Page>
@@ -372,7 +373,7 @@ export default function OfferingsPage() {
               </span>
             ) : data?.fetchedAt ? <UpdatedAgo at={data.fetchedAt} prefix={t("page.dataPrefix")} /> : <span>{t("page.loadingData")}</span>}
             {enriching && <span title={t("page.enrichingTitle")}>{t("page.enriching")}</span>}
-            {sourcesDown.length > 0 && <Pill tone="warn" className="text-2xs">{t("page.unavailable", { list: sourcesDown.join(", ") })}</Pill>}
+            {down.names.length > 0 && !(isList && downInList) && <SourceDownLine at={data?.fetchedAt} names={down.names} className="text-2xs" />}
           </>
         }
         actions={
@@ -502,6 +503,8 @@ export default function OfferingsPage() {
                 {tab === "week" ? t("page.loadingWeek") : t("page.loadingDay")}
               </p>
             </div>
+          ) : downInList ? (
+            <p className="px-2 py-6"><SourceDownLine at={data?.fetchedAt} names={down.names} /></p>
           ) : noData && tab === "today" ? (
             <EmptyState icon={Layers} title={t("page.noDayTitle")}
               description={t("page.noDayText")}

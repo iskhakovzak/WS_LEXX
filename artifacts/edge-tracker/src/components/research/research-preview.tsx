@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { CalendarClock, ChevronDown, Link2, Pencil, Pin, PinOff, Repeat, Trash2, UserRound } from "lucide-react";
+import { CalendarClock, ChevronDown, Link2, Pin, Repeat, UserRound } from "lucide-react";
 import { Pill, StatRow, TermLabel } from "@/components/ds";
-import { Button } from "@/components/ui/button";
 import { WriteOnly } from "@/contexts/auth-context";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
@@ -51,22 +50,14 @@ export function ResearchPreview({
   pinned,
   related,
   upcoming,
-  onTogglePin,
-  onEdit,
-  onDelete,
   onSelect,
-  onSaveScreenshotNotes,
 }: {
   r: ResearchNote;
   terms: string[];
   pinned: boolean;
   related: ResearchNote[];
   upcoming: UpcomingByTicker;
-  onTogglePin: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
   onSelect: (id: number) => void;
-  onSaveScreenshotNotes: (notes: string) => void;
 }) {
   const { t } = researchI18n.useT();
   const tickers = splitTickers(r.ticker);
@@ -111,15 +102,9 @@ export function ResearchPreview({
             {r.longName && <span className="text-sm text-muted-foreground">{r.longName}</span>}
           </div>
         )}
+        {/* Read-only archive (Волна 2 п. 2.15): the one action left is moving the note into the Playbook. */}
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onTogglePin} aria-pressed={pinned}>
-            {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-            {pinned ? commonI18n.t("actions.unpin") : commonI18n.t("actions.pin")}
-          </Button>
           <WriteOnly>
-            <Button variant="outline" size="sm" onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5" /> {commonI18n.t("actions.edit")}
-            </Button>
             <AddToPlaybookButton
               payload={{
                 name: `${r.patternName} ${r.ticker ? `(${r.ticker})` : ""}`.trim(),
@@ -132,9 +117,6 @@ export function ResearchPreview({
                 sourceId: r.id,
               }}
             />
-            <Button variant="ghost" size="sm" onClick={onDelete} className="text-down">
-              <Trash2 className="h-3.5 w-3.5" /> {commonI18n.t("actions.delete")}
-            </Button>
           </WriteOnly>
         </div>
       </header>
@@ -191,7 +173,7 @@ export function ResearchPreview({
       )}
 
       {r.screenshotUrl && (
-        <ScreenshotDisplay urls={r.screenshotUrl} notes={r.screenshotNotes} onNotesChange={onSaveScreenshotNotes} />
+        <ScreenshotDisplay urls={r.screenshotUrl} notes={r.screenshotNotes} />
       )}
 
       {hasFund && (

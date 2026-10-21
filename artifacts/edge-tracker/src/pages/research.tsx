@@ -1,26 +1,17 @@
 // /research — archive of the former «Исследования» notes. The section was merged away (Wave I):
 // earnings and price reactions live in «Катализаторы» (/events), repeatable patterns in the Playbook.
-// Old notes stay readable and can be moved to the Playbook with «В плейбук»; nothing new is written here.
+// Old notes stay readable and can be moved to the Playbook with «В плейбук»; nothing is written here — the API is
+// read-only since Волна 2 п. 2.15 (no create / edit / delete / pin / trade links).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  useListResearch, useUpdateResearch, useDeleteResearch, getListResearchQueryKey,
-  type Research, type UpdateResearchBody,
-} from "@workspace/api-client-react";
+import { useListResearch } from "@workspace/api-client-react";
 import { AlertTriangle, Archive, ArrowRight, BookMarked, CalendarClock, Download, RefreshCw, Search, X } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useAuth } from "@/contexts/auth-context";
-import { useToast } from "@/hooks/use-toast";
-import { useUndoDelete } from "@/hooks/use-undo-delete";
-import { UndoToast } from "@/components/undo-toast";
-import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
-import { ResearchFormDialog, formToResearchBody, type ResearchFormData } from "@/components/research/research-form-dialog";
 import { ResearchPreview, type UpcomingByTicker } from "@/components/research/research-preview";
 import { ResearchRow } from "@/components/research/research-row";
 import {
@@ -61,9 +52,6 @@ function useIsDesktop() {
 }
 
 export default function ResearchArchivePage() {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const { canEdit } = useAuth();
   const { t } = researchI18n.useT();
   const isDesktop = useIsDesktop();
 
@@ -73,51 +61,6 @@ export default function ResearchArchivePage() {
   const [query, setQuery] = useState(() => readUrlParams().q);
   const [selectedId, setSelectedId] = useState<number | null>(() => readUrlParams().id);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [editing, setEditing] = useState<Research | null>(null);
-
-  const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: getListResearchQueryKey() }), [qc]);
-  const undo = useUndoDelete(invalidate);
-  const itemsRef = useRef<ResearchNote[]>([]);
-  itemsRef.current = items;
-  const onMutErr = (e: unknown) =>
-    toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e), variant: "destructive" });
-
-  const updateMut = useUpdateResearch({
-    mutation: { onSuccess: () => { invalidate(); setEditing(null); toast({ title: researchI18n.t("toast.updated") }); }, onError: onMutErr },
-  });
-  const deleteMut = useDeleteResearch({
-    mutation: {
-      onSuccess: (_d, vars) => {
-        const r = itemsRef.current.find((x) => x.id === vars.id);
-        invalidate();
-        setSelectedId((cur) => (cur === vars.id ? null : cur));
-        setMobileOpen(false);
-        undo.scheduleUndo(vars.id, "research", r?.patternName ? `«${r.patternName}»` : researchI18n.t("page.noteNumber", { id: vars.id }));
-      },
-      onError: onMutErr,
-    },
-  });
-
-  const togglePin = useCallback(async (id: number) => {
-    if (!canEdit) return;
-    const next = !itemsRef.current.find((x) => x.id === id)?.pinned;
-    qc.setQueriesData<ResearchNote[]>({ queryKey: getListResearchQueryKey() }, (old) => old?.map((x) => (x.id === id ? { ...x, pinned: next } : x)));
-    try {
-      await http.post(`/api/research/${id}/pin`, { pinned: next });
-    } catch (e) {
-      invalidate();
-      toast({ title: researchI18n.t("toast.pinFailed"), description: humanizeApiError(e), variant: "destructive" });
-    }
-  }, [canEdit, qc, invalidate, toast]);
-
-  async function saveScreenshotNotes(r: Research, notes: string) {
-    try {
-      await http.patch(`/api/research/${r.id}`, { screenshotNotes: notes });
-      invalidate();
-    } catch (err) {
-      toast({ title: researchI18n.t("toast.saveFailed"), description: humanizeApiError(err), variant: "destructive" });
-    }
-  }
 
   const parsed = useMemo(() => parseQuery(query), [query]);
   const searching = !isEmptyQuery(parsed);
@@ -193,12 +136,6 @@ export default function ResearchArchivePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [list, selectedId, isDesktop]);
 
-  function handleSubmit(f: ResearchFormData) {
-    const body = formToResearchBody(f);
-    if (!body.patternName || !editing) return;
-    updateMut.mutate({ id: editing.id, data: body as UpdateResearchBody });
-  }
-
   const previewProps = selected
     ? {
         r: selected,
@@ -206,11 +143,7 @@ export default function ResearchArchivePage() {
         pinned: !!selected.pinned,
         related,
         upcoming: NO_UPCOMING,
-        onTogglePin: () => togglePin(selected.id),
-        onEdit: () => (canEdit ? setEditing(selected) : undefined),
-        onDelete: () => deleteMut.mutate({ id: selected.id }),
         onSelect: select,
-        onSaveScreenshotNotes: (n: string) => saveScreenshotNotes(selected, n),
       }
     : null;
 
@@ -293,7 +226,6 @@ export default function ResearchArchivePage() {
                 upcoming={NO_UPCOMING}
                 showDate
                 onSelect={select}
-                onTogglePin={togglePin}
               />
             ))}
           </div>
@@ -325,19 +257,6 @@ export default function ResearchArchivePage() {
             {previewProps && <ResearchPreview key={previewProps.r.id} {...previewProps} />}
           </SheetContent>
         </Sheet>
-      )}
-
-      <ResearchFormDialog
-        open={!!editing}
-        editing={editing}
-        initial={null}
-        saving={updateMut.isPending}
-        onOpenChange={(v) => { if (!v) setEditing(null); }}
-        onSubmit={handleSubmit}
-      />
-
-      {undo.pending && (
-        <UndoToast key={undo.pending.id} label={undo.pending.label} onUndo={undo.restore} onDismiss={undo.dismiss} restoring={undo.restoring} actionText={t("page.deleted")} />
       )}
     </Page>
   );

@@ -10,10 +10,7 @@ import { execSpanJoin } from "../lib/execSpan";
 import { nyMinutes } from "../lib/tradingDate";
 import { sniffImageMime } from "../lib/planMedia";
 import { computeEdge, computeUsdStats, etWallMinutes, slotStats, bucketBy, type EdgeTrade } from "../lib/playbookEdge";
-import {
-  accessHints, canEditSetupRow, canReadPure, canSharePure, ensurePlaybookSpaces, loadSetupAccess, loadViewer,
-  loadMoneyViewer, mayShareAny, normSharedWith, spaceOf, spaceSql, visibleSql, type PlaybookViewer,
-} from "../lib/playbookAccess";
+import { accessHints, canEditSetupRow, canReadPure, canSharePure, loadSetupAccess, loadViewer, loadMoneyViewer, mayShareAny, normSharedWith, spaceOf, spaceSql, visibleSql, type PlaybookViewer } from "../lib/playbookAccess";
 import { inboxDays, inboxFrom, labelScore, rankInbox, suggestSetup, suggestTier, type InboxSetup } from "../lib/playbookInbox";
 import {
   canSeeAggregateMoney, canSeeTradeMoney, equityByR, redactEdgeStats, redactSlot, redactTradeRow, redactUsdStats,
@@ -23,8 +20,9 @@ import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/
 import { langOf } from "../i18n";
 import { playbookT } from "../i18n/ns";
 import { tradeTagged } from "../lib/playbookToday/service";
-import inboxRouter, { ensureInboxExtras } from "./playbook-inbox";
+import inboxRouter from "./playbook-inbox";
 import { suggestByTrade } from "../lib/playbookToday/suggest";
+import { assertSetupUnlocked, lockedSetupIds, setupLockGuard } from "../lib/playbookLock";
 
 /**
  * Playbook spaces, tiered examples, gallery, trade picker, sharing, copy / promote, $-stats and media (Wave J3).
@@ -61,6 +59,8 @@ import { suggestByTrade } from "../lib/playbookToday/suggest";
  *   GET    /playbook-media/:id   DELETE same            bytes (reader of the setup) / soft delete
  */
 const router: IRouter = Router();
+// Tier locks (lib/playbookLock): the same guard as routes/playbook.ts, in case this router is ever mounted first.
+router.use("/playbook/:id", setupLockGuard);
 
 const MEDIA_MAX_BYTES = 2_500_000;
 const MEDIA_DAILY_LIMIT = 150;
@@ -122,10 +122,10 @@ export function autoMatchesSetup(auto: string | null | undefined, setup: { name?
 
 async function setupForRead(req: Request, res: Response, id: number | null) {
   if (!id) { sendError(res, badRequest("INVALID_ID")); return null; }
-  await ensurePlaybookSpaces();
   const row = await loadSetupAccess(id);
   const v = await loadViewer(req);
   if (!row || !canReadPure(v, row)) throw new AppError("SETUP_NOT_FOUND");
+  await assertSetupUnlocked(req, id); // above the viewer's tier → 403 PLAYBOOK_SETUP_LOCKED (also covers /playbook-media)
   return { row, v };
 }
 
@@ -364,7 +364,6 @@ router.delete("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res)
 // ─── Gallery of Tier-1 examples ─────────────────────────────────────────────
 
 router.get("/playbook-tools/gallery", asyncHandler(async (req, res): Promise<void> => {
-  await ensurePlaybookSpaces();
   const v = await loadViewer(req);
   const params: unknown[] = [];
   const where: string[] = ["e.deleted_at IS NULL", "p.deleted_at IS NULL", "t.deleted_at IS NULL"];
@@ -401,7 +400,6 @@ router.get("/playbook-tools/gallery", asyncHandler(async (req, res): Promise<voi
 // ─── Trade picker («Добавить примеры») ───────────────────────────────────────
 
 router.get("/playbook-tools/trade-picker", asyncHandler(async (req, res): Promise<void> => {
-  await ensurePlaybookSpaces();
   const requested = typeof req.query.trader === "string" ? req.query.trader : null;
   const scope = await scopeTrader(req, requested, "trades.read.team");
   if (scope === undefined) throw unauthorized();
@@ -468,7 +466,6 @@ router.get("/playbook-tools/trade-picker", asyncHandler(async (req, res): Promis
 // ─── 1-click popover from a trade ────────────────────────────────────────────
 
 router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): Promise<void> => {
-  await ensurePlaybookSpaces();
   const tradeId = parseId(req.params.tradeId);
   if (!tradeId) throw badRequest("INVALID_ID");
   const access = await canAccessTrade(req, tradeId, "read");
@@ -488,12 +485,14 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
   const { rows: setups } = await pool.query<any>(
     `SELECT p.id, p.name, p.folder, p.trader, p.setup_type AS "setupType", p.tags, ${spaceSql("p")} AS space,
             COALESCE(p.visibility, 'private') AS visibility, p.shared_with AS "sharedWith", p.checklist_items AS "checklistItems", p.checklist,
-            p.time_of_day AS "timeOfDay"
+            p.time_of_day AS "timeOfDay", p.min_tier AS "minTier"
        FROM playbook p WHERE p.deleted_at IS NULL AND ${vis}
       ORDER BY p.name`,
     params,
   );
-  const light = setups.map((s) => {
+  // Setups above the viewer's tier are not offered (their checklist is part of the closed card).
+  const locked = await lockedSetupIds(req, setups);
+  const light = setups.filter((s) => !locked.has(s.id)).map((s) => {
     const a = accessHints(v, s);
     return { id: s.id, name: s.name, folder: s.folder, space: a.space, mine: a.mine, shared: a.shared, owner: s.trader, canAddExamples: a.canAddExamples, setupType: s.setupType, tags: s.tags, checklistItems: s.checklistItems, checklist: s.checklist };
   });
@@ -559,7 +558,6 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
  * Feeds «Разобрать сделки» on the playbook home. Trade $ go through redactTradeRow like everywhere else.
  */
 router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void> => {
-  await Promise.all([ensurePlaybookSpaces(), ensureInboxExtras()]);
   const requested = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim() : null;
   const scope = await scopeTrader(req, requested, "trades.read.team");
   if (scope === undefined) throw unauthorized();
@@ -633,7 +631,6 @@ router.use(inboxRouter);
 router.get("/playbook/:id/activity", asyncHandler(async (req, res): Promise<void> => {
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
-  await ensureInboxExtras();
   const { rows } = await pool.query<any>(
     `SELECT id, action, section, entity_id AS "entityId", entity_title AS "entityTitle", trader, details, params, created_at AS "createdAt"
        FROM activity_log
@@ -911,7 +908,6 @@ router.get("/playbook-media/:id", asyncHandler(async (req, res): Promise<void> =
   const id = parseId(req.params.id);
   if (!id) throw badRequest("INVALID_ID");
   if (!req.authUser) throw unauthorized();
-  await ensurePlaybookSpaces();
   const { rows } = await pool.query<any>(`SELECT playbook_id, mime, bytes, size_bytes FROM playbook_media WHERE id = $1 AND deleted_at IS NULL`, [id]);
   const m = rows[0];
   const setup = m ? await loadSetupAccess(m.playbook_id, true) : null;
@@ -927,7 +923,6 @@ router.get("/playbook-media/:id", asyncHandler(async (req, res): Promise<void> =
 router.delete("/playbook-media/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) throw badRequest("INVALID_ID");
-  await ensurePlaybookSpaces();
   const v = await loadViewer(req);
   const { rows } = await pool.query<any>(`SELECT playbook_id, owner FROM playbook_media WHERE id = $1 AND deleted_at IS NULL`, [id]);
   const m = rows[0];

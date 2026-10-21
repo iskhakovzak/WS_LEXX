@@ -16,6 +16,7 @@ import {
   type Actor, type Capability, type EffectiveMatrix, type Override, type Role, type Target,
 } from "./permissionsMatrix";
 import { AppError, errorMessage, forbidden, isErrorCode, sendError, unauthorized, type ErrorCode } from "./http/errors";
+import { groupMembersOf } from "./people/deskGroups";
 
 export type { Actor, Capability, EffectiveMatrix, Override, Role, Scope, Target } from "./permissionsMatrix";
 export {
@@ -37,31 +38,6 @@ const GUEST_ROLE = "guest";
 
 export const FORBIDDEN_CODE = "FORBIDDEN";
 
-// ─── role_permissions table (additive, idempotent) ──────────────────────────
-
-let ensured: Promise<void> | null = null;
-export function ensureRolePermissionsTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS role_permissions (
-           role TEXT NOT NULL,
-           capability TEXT NOT NULL,
-           allowed BOOLEAN NOT NULL DEFAULT true,
-           scope TEXT,
-           updated_by TEXT,
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (role, capability)
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 // ─── overrides cache ────────────────────────────────────────────────────────
 
@@ -77,7 +53,6 @@ type OverrideRow = { role: string; capability: string; allowed: boolean; scope: 
 export async function loadOverrides(): Promise<{ overrides: Override[]; updatedAt: string | null; updatedBy: string | null }> {
   let rows: OverrideRow[] = [];
   try {
-    await ensureRolePermissionsTable();
     rows = (await pool.query<OverrideRow>(`SELECT role, capability, allowed, scope, updated_by, updated_at FROM role_permissions ORDER BY role, capability`)).rows;
   } catch {
     rows = []; // table missing / DB hiccup → defaults (never fail open or closed differently from today)
@@ -136,14 +111,19 @@ export async function resolveActor(req: Request): Promise<Actor | null> {
   const role = normalizeRole(rows[0].role);
   let wards: string[] = [];
   if (hasAssignedScope(await getEffectiveMatrix(), role)) {
-    const { rows: w } = await pool.query<{ name: string }>(
-      `SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false
-         AND (assigned_curator = $1 OR assigned_risk_manager = $1 OR assigned_mentor = $1)`,
-      [u.name],
-    );
-    wards = w.map((r) => r.name);
+    // «assigned» = the traders assigned to me + the traders of the desk groups I lead (Волна 1 п. 1.19, migration 0231).
+    const [assigned, group] = await Promise.all([
+      pool.query<{ name: string }>(
+        `SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false
+           AND (assigned_curator = $1 OR assigned_risk_manager = $1 OR assigned_mentor = $1)`,
+        [rows[0].name],
+      ),
+      groupMembersOf(rows[0].name),
+    ]);
+    wards = [...new Set([...assigned.rows.map((r) => r.name), ...group])];
   }
-  return (req.permActor = { id: u.id, name: u.name, role, guest: false, wards });
+  // The name from the DB, not the token (a renamed member's old token must not act under the old name).
+  return (req.permActor = { id: u.id, name: rows[0].name, role, guest: false, wards });
 }
 
 // ─── checks ─────────────────────────────────────────────────────────────────

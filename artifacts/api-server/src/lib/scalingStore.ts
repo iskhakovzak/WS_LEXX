@@ -1,6 +1,6 @@
 /**
- * «План масштабирования» storage: tables (additive, created lazily on the first request — never at import time, so
- * tests and tools without a DB stay quiet), default seed, row mappers and loaders. Used by routes/scaling.ts.
+ * «План масштабирования» storage: default seed (on the first request, never at import time, so tests and tools
+ * without a DB stay quiet; the tables come from the migrations), row mappers and loaders. Used by routes/scaling.ts.
  */
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
@@ -12,80 +12,13 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(x) ? x : null;
 };
 
-// ─── tables ─────────────────────────────────────────────────────────────────
+// ─── default seed ─────────────────────────────────────────────────────────────────
 
 let ensured: Promise<void> | null = null;
-export function ensureTables(): Promise<void> {
+/** Default tiers and rules on empty tables (tables: migrations). Once per process; retried after a failure. */
+export function ensureScalingSeed(): Promise<void> {
   if (!ensured) {
     ensured = (async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS scaling_tiers (
-          key TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          account_size NUMERIC(14,2),
-          daily_loss_limit NUMERIC(12,2),
-          weekly_loss_limit NUMERIC(12,2),
-          max_drawdown NUMERIC(12,2),
-          max_risk_per_trade NUMERIC(12,2),
-          max_position_usd NUMERIC(14,2),
-          max_overnight_exposure NUMERIC(14,2),
-          max_open_positions INTEGER,
-          allow_overnight BOOLEAN NOT NULL DEFAULT FALSE,
-          allow_swing BOOLEAN NOT NULL DEFAULT FALSE,
-          description TEXT,
-          active BOOLEAN NOT NULL DEFAULT TRUE,
-          updated_by TEXT,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS scaling_rules (
-          id SERIAL PRIMARY KEY,
-          kind TEXT NOT NULL,
-          metric TEXT NOT NULL,
-          op TEXT NOT NULL,
-          value NUMERIC(14,4) NOT NULL,
-          unit TEXT NOT NULL DEFAULT 'abs',
-          window_days INTEGER NOT NULL DEFAULT 20,
-          tier_key TEXT,
-          label TEXT,
-          enabled BOOLEAN NOT NULL DEFAULT TRUE,
-          sort_order INTEGER NOT NULL DEFAULT 0,
-          updated_by TEXT,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE TABLE IF NOT EXISTS scaling_proposals (
-          id SERIAL PRIMARY KEY,
-          trader TEXT NOT NULL,
-          action TEXT NOT NULL,
-          from_tier TEXT,
-          to_tier TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'pending',
-          source TEXT NOT NULL DEFAULT 'auto',
-          reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
-          snapshot JSONB,
-          comment TEXT,
-          created_by TEXT NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          decided_by TEXT,
-          decided_at TIMESTAMPTZ,
-          decision_comment TEXT
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS scaling_proposals_pending_uniq ON scaling_proposals(trader) WHERE status = 'pending';
-        CREATE INDEX IF NOT EXISTS scaling_proposals_trader_idx ON scaling_proposals(trader, created_at DESC);
-        CREATE TABLE IF NOT EXISTS scaling_history (
-          id SERIAL PRIMARY KEY,
-          trader TEXT NOT NULL,
-          action TEXT NOT NULL,
-          from_tier TEXT,
-          to_tier TEXT NOT NULL,
-          proposal_id INTEGER,
-          actor TEXT NOT NULL,
-          comment TEXT,
-          limits JSONB,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS scaling_history_trader_idx ON scaling_history(trader, created_at DESC);
-      `);
       const { rows: tc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM scaling_tiers`);
       if (Number(tc[0]?.n ?? 0) === 0) {
         for (const t of DEFAULT_TIERS) await upsertTier(pool, t, "system");

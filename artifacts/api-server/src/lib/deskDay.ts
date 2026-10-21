@@ -11,18 +11,24 @@
  *   staff      curators / admins — names and every $ (as before).
  *   anonymous  a trader while names are hidden — every trader is a day alias («Трейдер 3», lib/deskAliases, numbered
  *              over the whole desk of that date so the same person has the same number on every ticker and on the top
- *              of the day); the viewer's own row is «я». Nobody is identifiable, so $ and share counts are shown (the
- *              owner wants «сколько заработали / потеряли»). No real name anywhere in the answer: trader keys are
+ *              of the day); the viewer's own row is «я». Money as in the named view (owner decision 9, 2026-10-20,
+ *              lib/moneyVisibility: other traders' $ only for staff, R and % stay). No real name anywhere: trader keys are
  *              "t<alias>", other traders' trade ids are replaced with negative sequence numbers (a real id could be
  *              looked up elsewhere), takeaways and office contributors carry keys only.
  *   named      a trader while the setting is off — names, and no other trader's $ or share counts (the old rule).
- * Plus the office position layer (lib/deskOffice.ts): shares only for staff; office $ for staff and the anonymous view,
- * and in the named view only with ≥ 3 traders on the ticker-day (a sum over three people does not reveal one of them,
- * even after the viewer subtracts their own result; with two it would).
+ * Plus the office position layer (lib/deskOffice.ts): shares only for staff; office $ for staff, and for traders only
+ * with ≥ 3 traders on the ticker-day (lib/moneyVisibility canSeeDeskAggregate: a sum over three people does not reveal
+ * one of them, even after the viewer subtracts their own result; with two it would).
+ *
+ * Own trades only (owner rule 2026-10-21): a trader's answer carries only their own row and trades — other traders'
+ * trades, rows and the «best trade» takeaway of somebody else are dropped (not just their money). What stays is the
+ * desk aggregate over >= 3 traders (office position walk, counts in the takeaways), the way /benchmark keeps a desk
+ * median; with fewer traders the aggregate would reveal the other one, so it is dropped too (ownOnly below).
  *
  * Unit-tested in __tests__/deskDay.test.ts.
  */
 import { officePosition, type OfficePosition } from "./deskOffice";
+import { canSeeDeskAggregate } from "./moneyVisibility";
 import { canSeeTradeMoney, type MoneyViewer } from "./playbookPrivacy";
 import { netPnl, normResult, signedR } from "./tradeMath";
 import { nyMinutes } from "./tradingDate";
@@ -137,8 +143,8 @@ export interface DeskDay {
   office: DeskOffice | null;
 }
 
-/** Fewest traders on a ticker-day for the office $ in the named view (see the header). */
-export const OFFICE_NET_MIN_TRADERS = 3;
+/** Fewest traders on a ticker-day for the office $ in a trader's view (see the header; lib/moneyVisibility). */
+export { DESK_AGGREGATE_MIN_TRADERS as OFFICE_NET_MIN_TRADERS } from "./moneyVisibility";
 
 const round = (n: number, d = 4) => Math.round(n * 10 ** d) / 10 ** d;
 const epoch = (iso: string | null): number | null => {
@@ -355,14 +361,27 @@ export function anonymize(day: DeskDay, aliases: ReadonlyMap<string, number>, vi
   };
 }
 
+/** A trader's answer: own row and trades only; desk aggregates only over >= 3 traders (see the header). */
+export function ownOnly(day: DeskDay, viewerName: string | null): DeskDay {
+  const mine = (n: string) => !!viewerName && n === viewerName;
+  const enough = canSeeDeskAggregate(false, day.traders.length);
+  return {
+    ...day,
+    traders: day.traders.filter((t) => mine(t.name)),
+    trades: day.trades.filter((t) => mine(t.trader)),
+    takeaways: enough ? day.takeaways.filter((tk) => tk.kind !== "best" || mine(tk.trader)) : [],
+    office: enough && day.office ? { ...day.office, contributors: day.office.contributors.filter((c) => mine(c.trader)) } : null,
+  };
+}
+
 /** The whole answer from rows + their structures (rows without a structure are skipped). */
 export function buildDeskDay(
   ticker: string, date: string, rows: readonly DeskTradeRow[], structures: ReadonlyMap<number, TradeStructure>, viewer: MoneyViewer,
   opts: DeskDayOpts = {},
 ): DeskDay {
   const view = viewOf(viewer, !!opts.hideNames);
-  // The anonymous view shows everyone's $ (nobody is identifiable); the named view keeps the per-trade money rule.
-  const moneyViewer: MoneyViewer = view === "anonymous" ? { name: viewer.name, staff: true } : viewer;
+  // Both trader views keep the per-trade money rule (own $ only, lib/moneyVisibility); staff see all.
+  const moneyViewer: MoneyViewer = viewer;
   const shaped = rows.filter((r) => structures.has(r.id));
   const trades = shaped
     .map((r) => shapeTrade(r, structures.get(r.id)!, moneyViewer))
@@ -374,9 +393,10 @@ export function buildDeskDay(
     ticker, date, view, me: viewer.name, traders, trades, takeaways: takeaways(traders, trades),
     office: office && {
       ...office,
-      net: view === "named" && traders.length < OFFICE_NET_MIN_TRADERS ? null : office.net,
+      net: canSeeDeskAggregate(view === "staff", traders.length) ? office.net : null,
       contributors: office.contributors.map((c) => ({ ...c, alias: aliases.get(c.trader) ?? null, me: !!viewer.name && viewer.name === c.trader })),
     },
   };
-  return view === "anonymous" ? anonymize(day, aliases, viewer.name) : day;
+  const visible = view === "staff" ? day : ownOnly(day, viewer.name);
+  return view === "anonymous" ? anonymize(visible, aliases, viewer.name) : visible;
 }

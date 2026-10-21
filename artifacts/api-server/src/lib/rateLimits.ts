@@ -38,3 +38,19 @@ export const voiceNoteLimiter = perUser(10 * 60 * 1000, 30);
 export const aiTextLimiter = perUser(10 * 60 * 1000, 20);
 /** POST /usage/batch — the web tracker flushes every ~15 s and on page hide; 30 a minute leaves room for tab hops. */
 export const usageLimiter = perUser(60 * 1000, 30);
+
+/**
+ * Does a /themes write (personal theme or board) change or revive a Finviz screener? Only those writes start a
+ * Finviz export; renames, columns, sort, pins and archiving do not and are never limited.
+ */
+export function changesScreener(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const b = body as Record<string, unknown>;
+  return b.kind === "screener" || b.screener !== undefined || b.order !== undefined || b.top !== undefined || b.active === true;
+}
+
+/**
+ * Screener-changing /themes writes (routes/themes.ts, routes/themes-boards.ts): each one queues a Finviz export in
+ * the one shared ≥ 3 s queue (lib/finviz/client), so one member may not flood it — 20 per 10 minutes.
+ */
+export const screenerWriteLimiter = perUser(10 * 60 * 1000, 20, { skip: (req) => !changesScreener(req.body) });

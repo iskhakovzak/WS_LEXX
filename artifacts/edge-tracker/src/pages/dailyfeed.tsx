@@ -5,7 +5,7 @@ import {
 } from "@workspace/api-client-react";
 import type { DailyFeed, UpdateDailyFeedBody } from "@workspace/api-client-react";
 import {
-  Newspaper, Bell, Bot, RefreshCw, Search, X, ChevronLeft, ChevronRight, CalendarDays, PenLine, Megaphone,
+  Newspaper, Bot, RefreshCw, Search, X, ChevronLeft, ChevronRight, CalendarDays, PenLine, Megaphone,
   MoreHorizontal, ClipboardCheck, AlertTriangle, CalendarRange, Sparkles, TrendingUp, Zap, NotebookPen,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -31,13 +31,12 @@ import { http, ApiError } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { FeedEntryCard } from "@/components/feed/FeedEntryCard";
 import { FeedCalendar } from "@/components/feed/FeedCalendar";
-import { DigestSheet } from "@/components/feed/DigestSheet";
 import { FeedEditorDialog, blankForm, feedToForm, formToBody, type FeedForm } from "@/components/feed/FeedEditorDialog";
-import { StreamDayHeader, StreamGroup, StreamRow } from "@/components/feed/StreamCard";
+import { StreamDayHeader, StreamGroup, StreamRow } from "@/components/shared/stream/StreamCard";
 import {
   STREAM_KEY, fmtValue, groupDay, isNewItem, useFeedStream, useFeedStreamDay, useSeenBaseline,
   type FeedCategory, type StreamItem,
-} from "@/components/feed/stream-api";
+} from "@/components/shared/stream/stream-api";
 import { dayOf, entryIsUnread, entryToText, formatDayLong, hasServerAcks, splitList, useFeedAck, useFeedViewerState, type AckKind, type FeedEntry } from "@/components/feed/feed-utils";
 import { fmtDate, fmtDeskDateTime } from "@/lib/format";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -153,7 +152,6 @@ export default function DailyFeedPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<DailyFeed | null>(null);
   const [form, setForm] = useState<FeedForm>(blankForm());
-  const [digestOpen, setDigestOpen] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [eodLoading, setEodLoading] = useState(false);
@@ -463,9 +461,6 @@ export default function DailyFeedPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuItem onSelect={() => setDigestOpen(true)}>
-                <Bell aria-hidden="true" /> {t("page.digest")}
-              </DropdownMenuItem>
               {isStaff && (
                 <DropdownMenuItem disabled={eodLoading} onSelect={() => closeDay(false)}>
                   <ClipboardCheck aria-hidden="true" /> {t("page.closeDay", { date: fmtDate(selectedDay ?? today, "dayMonth") })}
@@ -738,7 +733,6 @@ export default function DailyFeedPage() {
         userId={userId}
       />
 
-      <DigestSheet open={digestOpen} onOpenChange={setDigestOpen} />
 
       <AlertDialog open={!!eodPending} onOpenChange={(v) => { if (!v) setEodPending(null); }}>
         <AlertDialogContent>

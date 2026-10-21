@@ -32,9 +32,11 @@ const monthLabel = (m: string) => {
 type View = "equity" | "monthly";
 
 export function EquityPanel({
-  equity, monthly, metric, trades, trader,
+  equity, monthly, metric, trades, trader, daily = false,
 }: {
   equity: EquityPoint[];
+  /** The points are end-of-day closes (staff view, GET /api/stats/aggregate), not single trades. */
+  daily?: boolean;
   monthly: { month: string; value: number; count: number }[];
   metric: Metric;
   /** Trades of the period: when given, the curve is drawn on the equity engine (hover — day details, click — «Разбор дня»). */
@@ -57,7 +59,7 @@ export function EquityPanel({
         view === "equity"
           ? trades
             ? t("equity.hintDays", { unit })
-            : t("equity.hintCurve", { unit })
+            : daily ? t("equity.hintDaily", { unit }) : t("equity.hintCurve", { unit })
           : t("equity.hintMonthly", { unit })
       }
       actions={
@@ -85,7 +87,7 @@ export function EquityPanel({
               <span className={`text-lg font-semibold tabular-nums ${last != null && last < 0 ? "text-down" : "text-up"}`}>
                 {fmtValue(last, metric)}
               </span>
-              <span className="text-xs text-muted-foreground">{t("equity.overTrades", { count: equity.length, unit })}</span>
+              <span className="text-xs text-muted-foreground">{daily ? t("equity.overDays", { count: equity.length, unit }) : t("equity.overTrades", { count: equity.length, unit })}</span>
             </div>
             <div className="h-[240px]" role="img" aria-label={t("equity.aria", { value: fmtValue(last, metric) })}>
               <ResponsiveContainer width="100%" height="100%">

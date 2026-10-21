@@ -1,7 +1,10 @@
 import { Router, type IRouter } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
-import { AppError, badRequest, sendErrorWith } from "../lib/http";
+import { badRequest } from "../lib/http";
+import {
+  fetchYahooEpsHistory, historyUnavailable, readFinvizReportDates, surpriseRowsWithFallback, type HistorySource, type SurpriseRow,
+} from "../lib/earningsHistory";
 
 const router: IRouter = Router();
 
@@ -364,6 +367,11 @@ type HistoryPayload = {
   upReactions: number;
   downReactions: number;
   fetchedAt: string;
+  /** Which source gave the quarters (lib/earningsHistory fallback chain); null when none did. */
+  source: HistorySource | null;
+  /** No quarters although the ticker must have reported (or every source failed): «источник недоступен», not «нет отчётов». */
+  sourceUnavailable: boolean;
+  checkedAt: string;
 };
 
 const historyCache = new Map<string, { ts: number; data: HistoryPayload }>();
@@ -392,7 +400,7 @@ async function fetchDailyCandles(ticker: string): Promise<Candle[] | null> {
   }
 }
 
-async function fetchSurpriseHistory(ticker: string) {
+async function fetchSurpriseHistory(ticker: string): Promise<SurpriseRow[] | null> {
   try {
     const url = `https://api.nasdaq.com/api/company/${encodeURIComponent(ticker)}/earnings-surprise`;
     const resp = await fetch(url, { headers: NASDAQ_HEADERS, signal: AbortSignal.timeout(12000) });
@@ -428,11 +436,10 @@ function reactionAt(candles: Candle[], idx: number) {
   };
 }
 
-async function buildHistory(ticker: string, timing: CallType | null): Promise<HistoryPayload & { upstreamFailed: boolean }> {
-  const [rowsRaw, candlesRaw] = await Promise.all([fetchSurpriseHistory(ticker), fetchDailyCandles(ticker)]);
-  // null = upstream unreachable (503 + short negative cache), [] = genuinely nothing reported.
-  const upstreamFailed = rowsRaw === null;
-  const rows = rowsRaw ?? [];
+async function buildHistory(ticker: string, timing: CallType | null): Promise<HistoryPayload> {
+  const fetchers = { nasdaq: fetchSurpriseHistory, yahoo: fetchYahooEpsHistory, reportDates: readFinvizReportDates };
+  const [chain, candlesRaw] = await Promise.all([surpriseRowsWithFallback(ticker, fetchers, etDate(0)), fetchDailyCandles(ticker)]);
+  const { rows, source } = chain;
   const candles = candlesRaw ?? [];
   const quarters: HistoryQuarter[] = rows
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -495,12 +502,14 @@ async function buildHistory(ticker: string, timing: CallType | null): Promise<Hi
     upReactions: closes.filter((v) => v > 0).length,
     downReactions: closes.filter((v) => v < 0).length,
     fetchedAt: new Date().toISOString(),
-    upstreamFailed,
+    source,
+    sourceUnavailable: historyUnavailable({ rowsEmpty: quarters.length === 0, allFailed: chain.allFailed, sessions: candlesRaw ? candlesRaw.length : null }),
+    checkedAt: new Date().toISOString(),
   };
 }
 
-/** Upstream failures are remembered briefly so a dead calendar/quote host is not re-polled on every render. */
-const historyNegative = new Map<string, number>();
+/** «Source unavailable» answers are remembered briefly so a dead host is not re-polled on every render. */
+const historyNegative = new Map<string, { ts: number; data: HistoryPayload }>();
 const HISTORY_NEGATIVE_TTL = 5 * 60 * 1000;
 
 // GET /api/earnings/history/:ticker[?timing=BMO|AMC]
@@ -520,15 +529,16 @@ router.get(
       return;
     }
     const neg = historyNegative.get(key);
-    if (neg && Date.now() - neg < HISTORY_NEGATIVE_TTL) {
-      sendErrorWith(res, new AppError("UPSTREAM_UNAVAILABLE"), { retryAfterSec: Math.ceil((HISTORY_NEGATIVE_TTL - (Date.now() - neg)) / 1000) });
+    if (neg && Date.now() - neg.ts < HISTORY_NEGATIVE_TTL) {
+      res.json(neg.data);
       return;
     }
-    const { upstreamFailed, ...data } = await buildHistory(ticker, timing);
-    if (upstreamFailed && data.quarters.length === 0) {
+    const data = await buildHistory(ticker, timing);
+    if (data.sourceUnavailable) {
+      // 200 + flag (item 1.14): the page shows «источник недоступен · HH:MM» instead of «отчётов не было».
       if (historyNegative.size > HISTORY_CACHE_MAX) historyNegative.clear();
-      historyNegative.set(key, Date.now());
-      sendErrorWith(res, new AppError("UPSTREAM_UNAVAILABLE"), { retryAfterSec: Math.ceil(HISTORY_NEGATIVE_TTL / 1000) });
+      historyNegative.set(key, { ts: Date.now(), data });
+      res.json(data);
       return;
     }
     if (data.quarters.length > 0) {

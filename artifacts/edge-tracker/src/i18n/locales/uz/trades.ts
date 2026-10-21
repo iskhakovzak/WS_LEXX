@@ -56,7 +56,7 @@ export default {
   },
   tagging: {
     kind: {
-      setup: { label: "Setap", placeholder: "Setapni toping yoki yozing" },
+      setup: { label: "Setap", placeholder: "Setapni toping: raqam yoki nom" },
       mistake: { label: "Xato", placeholder: "Xatoni toping yoki yozing" },
       emotion: { label: "Hissiyot", placeholder: "Hissiyotni toping yoki yozing" },
     },
@@ -65,6 +65,14 @@ export default {
     clearSetup: "Setapni olib tashlash",
     addAria: "{kind}: qoʻshish ({key})",
     chipTitle: "{kind}: {value}",
+  },
+  /** Setup tag = an office playbook setup (components/shared/setup-picker.tsx; wave 1, 1.2). */
+  setupPicker: {
+    label: "Pleybuk setapi",
+    choose: "Setapni tanlash",
+    search: "Setap raqami yoki nomi",
+    empty: "Mos setaplar yoʻq",
+    acceptTitle: "Taklifni qabul qilish: {name} ({pct}%)",
   },
   bulk: {
     toolbar: "Tanlanganlar bilan amallar: {count}",
@@ -293,6 +301,10 @@ export default {
     next: "Keyingi savdo (J)",
     tabs: { overview: "Umumiy", chart: "Grafik", replay: "Replay", executions: "Ijrolar", ai: "AI tahlil", social: "Muhokama" },
     markup: "Belgilash",
+    markupParts: { setup: "Setap", mistakes: "Xatolar", grade: "Baho" },
+    gradeAria: "Savdo bahosi",
+    chart: "Grafik",
+    chartOpen: "Replay va asboblar",
     quality: "Ijro sifati",
     review: "Tahlil",
     noData: "Maʼlumot yoʻq",
@@ -379,9 +391,6 @@ export default {
   },
   related: {
     ideaStatus: { draft: "Qoralama", published: "Eʼlon qilingan", approved: "Maʼqullangan", needs_work: "Qayta ishlashda", rejected: "Rad etilgan", converted: "Savdo" },
-    checklistNone: "Chek-list biriktirilmagan",
-    checklistPassed: "Chek-list oʻtildi",
-    checklistFailed: "Chek-list oʻtilmadi",
     playbookNoSetup: "Bunday nomli setap yoʻq.",
     playbookSetSetup: "Setapni belgilang — pleybuk yozuvini ulaymiz.",
     openInPlaybook: "Pleybukda ochish: {name}",

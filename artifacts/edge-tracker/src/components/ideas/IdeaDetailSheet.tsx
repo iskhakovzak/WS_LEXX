@@ -11,6 +11,7 @@ import { Pill, StatRow, toneOf } from "@/components/ds";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
+import { AskCuratorButton, reviewLink } from "@/components/shared/ask-curator";
 import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -115,7 +116,7 @@ function Section({ title, children, className, action }: { title: string; childr
   );
 }
 
-function ReportIdea({ idea, currentUser }: { idea: TradeIdea; currentUser: string }) {
+function ReportIdea({ idea }: { idea: TradeIdea }) {
   const { toast } = useToast();
   const { t } = ideasI18n.useT();
   const [open, setOpen] = React.useState(false);
@@ -127,8 +128,8 @@ function ReportIdea({ idea, currentUser }: { idea: TradeIdea; currentUser: strin
     if (!reason.trim()) return;
     setSubmitting(true);
     try {
-      await http.post("/api/reports", { reporter: currentUser, targetType: "trade_idea", targetId: String(idea.id), reason: reason.trim() });
-      toast({ title: ideasI18n.t("sheet.reportSent") });
+      const r = await http.post<{ alreadyReported?: boolean }>("/api/reports", { targetType: "trade_idea", targetId: String(idea.id), reason: reason.trim() });
+      toast({ title: ideasI18n.t(r?.alreadyReported ? "sheet.reportAlready" : "sheet.reportSent") });
       setReason(""); setOpen(false);
     } catch (e) {
       toast({ title: humanizeApiError(e, ideasI18n.t("sheet.reportFailed")), variant: "destructive" });
@@ -341,6 +342,8 @@ export function IdeaDetailSheet({
               {idea.longName && <span className="truncate">· {idea.longName}</span>}
             </div>
           </SheetDescription>
+          {/* 2.13: the author asks the curator to review this idea — it lands in the curator's «Запросы». */}
+          {isOwner && canEdit && !isReviewer && <AskCuratorButton kind="review" link={reviewLink("idea", idea.id)} size="xs" className="min-h-10 w-fit sm:min-h-0" />}
           <div className="flex flex-wrap items-center gap-2">
             {onPrev && <Button size="sm" variant="ghost" onClick={onPrev} aria-label={t("sheet.prevAria")} className="h-8 w-8 p-0"><ChevronUp className="h-4 w-4" /></Button>}
             {onNext && <Button size="sm" variant="ghost" onClick={onNext} aria-label={t("sheet.nextAria")} className="h-8 w-8 p-0"><ChevronDown className="h-4 w-4" /></Button>}
@@ -471,7 +474,7 @@ export function IdeaDetailSheet({
             )}
           </WriteOnly>
           <div className="ml-auto flex items-center gap-1">
-            {me && <ReportIdea idea={idea} currentUser={me} />}
+            {me && <ReportIdea idea={idea} />}
             {canManage && (
               <Button size="sm" variant="ghost" onClick={() => onDelete(idea)} aria-label={t("sheet.deleteIdea")} className="h-8 w-8 p-0 text-down hover:bg-down/15">
                 <Trash2 className="h-4 w-4" aria-hidden="true" />

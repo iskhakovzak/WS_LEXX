@@ -21,8 +21,7 @@ import { netPnl, signedR } from "@/lib/trade-math";
 import { nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
-import { canModifyOwned } from "@/lib/ownership";
-import { LISTS, LIST_LABELS, SCORE_LABELS, copyText, inPlayReasons, keyLevels, parseBreakdown, splitTags, type ListName, type WatchlistItem } from "./lib";
+import { LISTS, LIST_LABELS, SCORE_LABELS, copyText, inPlayReasons, keyLevels, parseBreakdown, rowWritable, splitTags, type ListName, type WatchlistItem } from "./lib";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 import { commonI18n } from "@/i18n/ns/common";
 import { ScoreRing } from "./visuals";
@@ -129,7 +128,7 @@ export function WatchlistDetailSheet({
   const ticker = item?.ticker ?? "";
   const { isCurator } = useAuth();
   // Content (catalyst / levels / notes) and delete: the author or staff. List moves / archive stay with canEdit.
-  const mayModify = canEdit && canModifyOwned(item?.createdBy, me, isCurator);
+  const mayModify = !!item && rowWritable(item, canEdit, me, isCurator);
   const today = nyDate();
   const { toast } = useToast();
   const copy = React.useCallback(async (text: string, what: string) => {
@@ -145,7 +144,7 @@ export function WatchlistDetailSheet({
   const myPlan = useQuery({
     queryKey: gpKeys.my(planDay),
     queryFn: () => gpApi.my(planDay),
-    enabled: !!ticker && !!me && canEdit,
+    enabled: !!ticker && !!me,
     staleTime: 60_000,
     retry: 0,
   });
@@ -226,6 +225,7 @@ export function WatchlistDetailSheet({
             {/* Market strip */}
             <div className="grid grid-cols-3 gap-x-5 whitespace-nowrap rounded-2xl bg-[var(--glass-bg)] px-4 py-2 sm:grid-cols-[repeat(4,auto)_minmax(0,1fr)]">
               <StatRow label={t("sheet.gap")} value={fmtPct(q?.gapPct, 1)} tone={toneOf(q?.gapPct)} className="flex-col items-start gap-0.5" />
+              {q?.premarketPct != null && <StatRow label={t("sheet.premarket")} value={fmtPct(q.premarketPct, 1)} tone={toneOf(q.premarketPct)} className="flex-col items-start gap-0.5" />}
               <StatRow label="rVol" value={q?.relativeVolume != null ? `${q.relativeVolume.toFixed(2)}×` : "—"} tone={q?.relativeVolume != null && q.relativeVolume >= 1.5 ? "accent" : "neutral"} className="flex-col items-start gap-0.5" />
               <StatRow label={t("sheet.atr14")} value={q?.atr != null ? `${fmtPrice(q.atr)}${q.price ? ` · ${fmtPct((q.atr / q.price) * 100, { decimals: 1, signed: false })}` : ""}` : "—"} className="flex-col items-start gap-0.5" />
               <StatRow label={t("sheet.volume")} value={`${fmtCompact(q?.volume)} / ${fmtCompact(q?.avgVolume)}`} className="flex-col items-start gap-0.5" />
@@ -237,8 +237,8 @@ export function WatchlistDetailSheet({
               </div>
             )}
 
-            {/* Actions */}
-            {canEdit && (
+            {/* Actions («В план» / idea: anyone with an own plan, also on the desk list) */}
+            {(canEdit || !!me) && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button className="bg-primary-solid" onClick={() => actions.addToPlan(item)} disabled={planBusy || inPlan} title={inPlan
                   ? planDay === today ? t("sheet.inPlanToday") : t("sheet.inPlanOn", { date: fmtDate(planDay.slice(0, 10), "dayMonthNumeric") })
@@ -258,7 +258,7 @@ export function WatchlistDetailSheet({
                     sourceId: item.id,
                   }}
                 />
-                <div className="ml-auto flex items-center gap-1">
+                {canEdit && <div className="ml-auto flex items-center gap-1">
                   <Button variant="ghost" size="icon" className="h-9 w-9" aria-label={t("sheet.rescore")} title={t("sheet.rescore")} disabled={scoring} onClick={() => actions.rescore(item)}>
                     <RefreshCw className={cn("h-4 w-4", scoring && "animate-spin motion-reduce:animate-none")} />
                   </Button>
@@ -277,7 +277,7 @@ export function WatchlistDetailSheet({
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   )}
-                </div>
+                </div>}
               </div>
             )}
 

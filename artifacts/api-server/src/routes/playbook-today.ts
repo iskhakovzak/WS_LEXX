@@ -14,8 +14,10 @@ import { AppError, assertCap, notFound, route } from "../lib/http";
 import { checkPicks } from "../lib/playbookToday/build";
 import { savePicks } from "../lib/playbookToday/plan";
 import { playbookToday, rememberPicks } from "../lib/playbookToday/service";
+import examplesSeedRouter from "./playbook-examples-seed";
 
 const router: IRouter = Router();
+router.use(examplesSeedRouter); // POST /playbook/examples/seed (Волна 2 п. 2.6) — also before routes/playbook.ts
 
 const TodayQuery = z.object({ trader: z.string().trim().min(1).max(100).optional() });
 const PicksBody = z.object({ setupIds: z.array(z.number().int().positive()).max(50) });

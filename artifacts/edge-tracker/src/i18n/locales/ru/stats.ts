@@ -164,6 +164,8 @@ export default {
     viewCurve: "Кривая",
     viewMonthly: "По месяцам",
     overTrades: "за {count} сделок с {unit}",
+    overDays: "за {count} торг. дн. с {unit}",
+    hintDaily: "Накопленный {unit} на закрытие каждого дня и просадка от пика",
     aria: "Кривая результата: итог {value}",
     accumulated: "Накоплено",
     drawdown: "Просадка",

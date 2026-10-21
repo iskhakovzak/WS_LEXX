@@ -78,6 +78,20 @@ export function uniqueRecipients(
   return out;
 }
 
+// ─── Telegram mirror ────────────────────────────────────────────────────────
+
+/**
+ * Notification kinds that are mirrored to Telegram (notifyUser `telegram: true`: rendered in the recipient's
+ * language, sent only to a linked chat with the Telegram switch on). The daily loop (Волна 0, item 0.7): the curator's
+ * review of a day reaches the trader's phone, a closed day reaches the curator's.
+ */
+export const TELEGRAM_KINDS: ReadonlySet<string> = new Set(["eod_review_request", "eod_reviewed"]);
+
+/** Does a notification of `type` go to Telegram as well? */
+export function mirrorsToTelegram(type: string): boolean {
+  return TELEGRAM_KINDS.has(type);
+}
+
 // ─── dedup keys ─────────────────────────────────────────────────────────────
 
 /** At most one risk notification per type per trader per (NY) trading day. */
@@ -109,6 +123,8 @@ export type RiskSnapshot = {
   weeklyPct: number | null;
   drawdownPct: number | null;
   warnPct: number;
+  /** Live unrealized P&L counted in the numbers (PropReports positions tick); null/absent = realized only. */
+  unrealized?: number | null;
 };
 
 export type RiskNotice = {
@@ -129,6 +145,7 @@ export type RiskNoticeParams = {
   todayLoss: number; weekLoss: number; currentDd: number;
   dailyLimit?: number; weeklyLimit?: number; maxDrawdown?: number;
   dailyPct?: number; weeklyPct?: number; drawdownPct?: number; warnPct: number;
+  unrealized?: number;
 };
 
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -140,6 +157,7 @@ export function riskNoticeParams(s: RiskSnapshot): RiskNoticeParams {
     todayLoss: s.todayLoss, weekLoss: s.weekLoss, currentDd: s.currentDd,
     dailyLimit: opt(s.dailyLimit), weeklyLimit: opt(s.weeklyLimit), maxDrawdown: opt(s.maxDrawdown),
     dailyPct: opt(s.dailyPct), weeklyPct: opt(s.weeklyPct), drawdownPct: opt(s.drawdownPct), warnPct: s.warnPct,
+    ...(s.unrealized ? { unrealized: opt(s.unrealized) } : {}),
   };
 }
 
@@ -152,6 +170,7 @@ export function riskSnapshotFromParams(p: Record<string, unknown>): RiskSnapshot
     todayLoss: n("todayLoss") ?? 0, weekLoss: n("weekLoss") ?? 0, currentDd: n("currentDd") ?? 0,
     dailyLimit: n("dailyLimit"), weeklyLimit: n("weeklyLimit"), maxDrawdown: n("maxDrawdown"),
     dailyPct: n("dailyPct"), weeklyPct: n("weeklyPct"), drawdownPct: n("drawdownPct"), warnPct: n("warnPct") ?? 70,
+    unrealized: n("unrealized"),
   };
 }
 
@@ -180,6 +199,7 @@ export function riskNotice(s: RiskSnapshot, lang: Lang = "ru"): RiskNotice | nul
   } else {
     return null;
   }
+  if (s.unrealized) core = `${core}, ${t("notify.live", { amount: fmtMoney(s.unrealized, true) })}`;
   const type = s.halted ? "risk_breach" : "risk_warn";
   const label = t(type === "risk_breach" ? "notify.label.risk_breach" : "notify.label.risk_warn");
   return {

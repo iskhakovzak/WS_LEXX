@@ -10,7 +10,7 @@ import { links } from "@/lib/links";
 import { nyDate } from "@/lib/trading-date";
 import { putSelfCheck, useRulePreview, useSelfChecks } from "./api";
 import { DisciplineCalendar } from "./DisciplineCalendar";
-import { ORIGIN_LABEL, originOf } from "./constants";
+import { ORIGIN_LABEL, originOf, stageChip } from "./constants";
 import { fmtDate, fmtRate, fmtUsd, localeTag } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
@@ -251,6 +251,7 @@ function RuleRow({
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground" title={r.name}>{r.name}</span>
             {origin !== "personal" && <Pill tone={o.tone} title={o.hint}>{o.label}</Pill>}
+            {stageChip(r.stage) && <Pill tone="neutral" title={stageChip(r.stage)!.hint} className="hidden sm:inline-flex">{stageChip(r.stage)!.label}</Pill>}
           </span>
           <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={status}>
             {status}

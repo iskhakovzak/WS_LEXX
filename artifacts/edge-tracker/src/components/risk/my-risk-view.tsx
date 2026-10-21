@@ -22,6 +22,9 @@ import { riskI18n } from "@/i18n/ns/risk";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { stopMessage } from "./labels";
+import { LivePositionsList } from "./live";
+import { LiveBadge } from "@/components/shared/live-badge";
+import { AskCuratorButton } from "@/components/shared/ask-curator";
 
 function Allowed({ ok, label }: { ok: boolean; label: string }) {
   const { t } = riskI18n.useT();
@@ -121,16 +124,19 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAl
             {m.drawdown.since && (
               <p className="text-xs text-muted-foreground">{t("me.ddSince", { date: fmtDate(m.drawdown.since, "dayMonth") })}</p>
             )}
+            <LiveBadge live={m.live} className="mt-1 flex" />
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <Fact label={t("me.pnlToday")} value={pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : m.today.trades ? fmtR(m.today.r) : "—"} tone={(pnl ?? 0) > 0 ? "up" : (pnl ?? 0) < 0 ? "down" : undefined} />
             <Fact label={t("me.tradesToday")} value={m.today.trades} />
             {m.today.openPositions > 0 && <Fact label={t("me.openRisk")} value={fmtUsd(m.today.openRiskUsd, { decimals: 0 })} tone={afterOpen != null && afterOpen < 0 ? "down" : undefined} />}
           </div>
-          {stop.state === "no_limits" && canEditLimits && <Button size="sm" onClick={() => setLimitsOpen(true)}>{t("me.setLimits")}</Button>}
+          {stop.state === "no_limits" && (canEditLimits ? <Button size="sm" onClick={() => setLimitsOpen(true)}>{t("me.setLimits")}</Button> : <AskCuratorButton kind="limits" />)}
         </div>
 
         {L && <StopRemaining m={m} limits={L} big />}
+
+        {m.live?.counted && <LivePositionsList positions={m.livePositions} />}
 
         {L && m.today.openRiskUsd > 0 && afterOpen != null && (
           <p className={cn("flex items-start gap-1.5 text-xs tabular-nums", afterOpen < 0 ? "font-medium text-down" : "text-muted-foreground")}>

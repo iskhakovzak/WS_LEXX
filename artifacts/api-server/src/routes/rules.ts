@@ -1,14 +1,11 @@
 import { Router, type IRouter, type Request } from "express";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import {
-  scanRulesForTrader, scanRulesAll, ensureRulesSchema, fetchRulesFor, fetchTrades, fetchRiskLimits, fetchSelfMarks,
-  syncSelfCheckViolation, mapRuleRow, DESK_TRADER, type StoredRule,
-} from "../lib/rulesEngine";
+import { scanRulesForTrader, scanRulesAll, fetchRulesFor, fetchTrades, fetchRiskLimits, fetchSelfMarks, syncSelfCheckViolation, mapRuleRow, DESK_TRADER, evalRule, historyPreview, ruleSince, type StoredRule } from "../lib/rulesEngine";
 import { RULE_CATALOG, catalogFor, ruleGroupsFor, kindMeta, validateThreshold, describeThreshold, type ThresholdError } from "../lib/rulesCatalog";
-import { rulesT, violationMessage, violationMsgParams, type ViolationMsg } from "../lib/rulesI18n";
+import { rulesT, violationMsgParams, type ViolationMsg } from "../lib/rulesI18n";
 import { langOf, type Lang } from "../i18n";
-import { buildRulesReport, previewRule, type PersistedViolation } from "../lib/rulesReport";
+import { buildRulesReport, previewRule } from "../lib/rulesReport";
 import { GUEST_SCOPE, isGuest } from "../lib/auth";
 import { can, readScope } from "../lib/permissions";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
@@ -17,8 +14,10 @@ import { logActivity } from "../lib/activity";
 import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
 import { notifyUser } from "../lib/notifyUtils";
-import { activeViolationSql, archiveWhereSql, isArchiveReason, parseArchiveMode } from "../lib/violationArchive";
+import { activeViolationSql, archiveWhereSql, parseArchiveMode } from "../lib/violationArchive";
+import { VIOLATION_SELECT, archivedCounts, persistedMap, shapeViolation } from "../lib/rulesViolationStore";
 import { AppError, badRequest, forbidden, notFound, unauthorized, type ErrorCode } from "../lib/http";
+import { parseRuleStage, shownRuleName, stageRuleApplies, traderStage } from "../lib/rulesTemplates";
 
 const router: IRouter = Router();
 
@@ -28,7 +27,8 @@ const router: IRouter = Router();
 // Rule origin:
 //   personal — the trader's own rule (created by the trader, or by staff for themselves);
 //   office   — set by staff for a specific trader (trader can see it, can't edit/disable/delete it);
-//   desk     — trading_rules.trader = '*': applies to every trader (staff with unrestricted scope only).
+//   desk     — trading_rules.trader = '*': applies to every trader (staff with unrestricted scope only); with
+//              `stage` (junior | trader | senior) only to the traders on that ladder stage (lib/rulesTemplates, 2.6).
 // The client-supplied `trader` is never trusted for a trader-role user.
 
 type Scope =
@@ -79,15 +79,15 @@ const MAX_NAME = 120;
 const MAX_NOTE = 500;
 const MAX_COMMENT = 2000;
 
-const RULE_COLS = `id, trader, name, kind, threshold, enabled, created_at, origin, created_by, note`;
+const RULE_COLS = `id, trader, name, kind, threshold, enabled, created_at, origin, created_by, note, stage, template_key`;
 
 /** Public rule shape. Keeps the original fields (id, trader, name, kind, threshold, enabled, createdAt) — additive only. */
 function shapeRule(r: any, lang: Lang) {
   const s = mapRuleRow(r);
   const meta = kindMeta(s.kind, lang);
   return {
-    id: s.id, trader: s.trader, name: s.name, kind: s.kind, threshold: s.threshold, enabled: s.enabled, createdAt: s.createdAt,
-    origin: s.origin, desk: s.desk, createdBy: s.createdBy, note: s.note,
+    id: s.id, trader: s.trader, name: shownRuleName(s.name, s.templateKey, lang), kind: s.kind, threshold: s.threshold, enabled: s.enabled,
+    createdAt: s.createdAt, origin: s.origin, desk: s.desk, createdBy: s.createdBy, note: s.note, stage: s.stage, template: s.templateKey != null,
     auto: meta ? meta.auto : true, kindLabel: meta?.label ?? s.kind, summary: describeThreshold(s.kind, s.threshold, undefined, lang),
   };
 }
@@ -117,29 +117,33 @@ router.get("/rules/kinds", asyncHandler(async (req, res): Promise<void> => {
 // ─── Rules CRUD ───────────────────────────────────────────────────────────────
 
 router.get("/rules", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader, { allowAll: true });
   if (!scope.ok) throw scope.error;
   const params: unknown[] = [];
   let sql = `SELECT ${RULE_COLS} FROM trading_rules WHERE deleted_at IS NULL`;
   if (scope.trader) { sql += ` AND (trader = $1 OR trader = '${DESK_TRADER}')`; params.push(scope.trader); }
   sql += ` ORDER BY created_at DESC`;
-  const { rows } = await pool.query<any>(sql, params);
+  const [{ rows }, st] = await Promise.all([pool.query<any>(sql, params), scope.trader ? traderStage(scope.trader) : null]);
   const lang = langOf(req);
-  res.json(rows.map((r) => shapeRule(r, lang)));
+  // One trader's rules: desk rules of another ladder stage don't apply to them (2.6).
+  const applies = (r: any) => !st || r.trader !== DESK_TRADER || stageRuleApplies(r.stage, st.stage);
+  res.json(rows.filter(applies).map((r) => shapeRule(r, lang)));
 }));
 
 /**
  * Create a rule. Contract (backward compatible; used by «Сделать правилом» on /behavior):
  *   POST /api/rules { name, kind, threshold?, enabled?, trader?, note?, desk? }
- *   → 201 { id, trader, name, kind, threshold, enabled, createdAt, origin, desk, createdBy, note, auto, kindLabel, summary }
- * - trader: whose rule (staff only for others; default — the caller). desk: true → applies to every trader (staff).
+ *   → 201 { id, trader, name, kind, threshold, enabled, createdAt, origin, desk, createdBy, note, auto, kindLabel, summary,
+ *           history: { violations, from, to, costNet } | null }
+ * - violations are written only from the creation day on; `history` = what the rule would have caught before it
+ *   (preview, not written; null for a desk-wide or disabled rule).
+ * - trader: whose rule (staff only for others; default — the caller). desk: true → applies to every trader (staff);
+ *   with stage: "junior" | "trader" | "senior" only to the traders on that ladder stage (2.6).
  * - origin is derived: staff creating for another trader → "office", otherwise "personal".
  * - threshold is validated against the kind's fields (GET /rules/kinds); empty optional fields fall back to the risk desk.
  */
 router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
-  const { trader, name, kind, threshold, enabled, note, desk } = req.body as Record<string, unknown>;
+  const { trader, name, kind, threshold, enabled, note, desk, stage } = req.body as Record<string, unknown>;
   if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const deskWide = desk === true;
   let owner: string;
@@ -163,11 +167,25 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
   const th = validateThreshold(String(kind), threshold, lang);
   if (!th.ok) throw thresholdError(th);
   const cleanNote = typeof note === "string" && note.trim() ? note.trim().slice(0, MAX_NOTE) : null;
+  const ruleStage = deskWide ? parseRuleStage(stage) : undefined;
+  if (ruleStage === "invalid") throw badRequest("INVALID_FIELD", undefined, { field: "stage" });
   const { rows } = await pool.query<any>(
-    `INSERT INTO trading_rules (trader, name, kind, threshold, enabled, origin, created_by, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO trading_rules (trader, name, kind, threshold, enabled, origin, created_by, note, stage) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${RULE_COLS}`,
-    [owner, cleanName, String(kind), JSON.stringify(th.value), enabled === false ? false : true, origin, actor, cleanNote],
+    [owner, cleanName, String(kind), JSON.stringify(th.value), enabled === false ? false : true, origin, actor, cleanNote, ruleStage ?? null],
   );
+  // The rule counts violations from its creation day only (lib/rulesEngine ruleSince); its past is a preview here, never
+  // written to the queue. Desk-wide rules: no per-trader preview.
+  let history: ReturnType<typeof historyPreview> | null = null;
+  if (owner !== DESK_TRADER && rows[0].enabled !== false) {
+    try {
+      const [trades, limits] = await Promise.all([fetchTrades(owner), fetchRiskLimits(owner)]);
+      const stored = mapRuleRow(rows[0]);
+      history = historyPreview(trades.length ? evalRule({ ...stored, trader: owner }, trades, limits) : [], ruleSince(stored.createdAt));
+    } catch (e: any) {
+      req.log.warn({ err: e?.message }, "rule history preview failed");
+    }
+  }
   if (owner === DESK_TRADER) scanRulesAll().catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   else scanRulesForTrader(owner).catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   if (origin === "office") {
@@ -178,11 +196,10 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
       params: owner === DESK_TRADER ? { detailsKey: "rules.activity.deskRule" } : { detailsKey: "rules.activity.officeRule", trader: owner },
     }).catch(() => {});
   }
-  res.status(201).json(shapeRule(rows[0], lang));
+  res.status(201).json({ ...shapeRule(rows[0], lang), history });
 }));
 
 router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, kind, origin FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
@@ -190,10 +207,14 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   const access = await canTouchRule(req, existing[0]);
   if (!access.ok) throw new AppError(access.code, 403);
 
-  const { name, kind, threshold, enabled, note } = req.body as Record<string, unknown>;
+  const { name, kind, threshold, enabled, note, stage } = req.body as Record<string, unknown>;
   const lang = langOf(req);
   const sets: string[] = [];
   const params: unknown[] = [];
+  // Stage tag: desk rules only (a trader's own rule already belongs to one trader).
+  const ruleStage = existing[0].trader === DESK_TRADER ? parseRuleStage(stage) : undefined;
+  if (ruleStage === "invalid") throw badRequest("INVALID_FIELD", undefined, { field: "stage" });
+  if (ruleStage !== undefined) { sets.push(`stage = $${params.length + 1}`); params.push(ruleStage); }
   if (name !== undefined) {
     const n = String(name).trim();
     if (!n) throw badRequest("NAME_REQUIRED");
@@ -247,7 +268,6 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
  * comments — hidden from default lists, kept for the archive filter and past-period reports. Restore via POST /rules/:id/restore.
  */
 router.delete("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, origin, name FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
@@ -264,7 +284,6 @@ router.delete("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.post("/rules/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, origin FROM trading_rules WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
@@ -306,39 +325,12 @@ function maybeBackgroundScan(trader: string, log: Request["log"]) {
   scanRulesForTrader(trader).catch((e) => log.warn({ err: e.message }, "rule scan failed"));
 }
 
-async function persistedMap(trader: string): Promise<Map<string, PersistedViolation>> {
-  const { rows } = await pool.query<any>(
-    `SELECT id, rule_id, dedup_key, acknowledged_at, resolved_at, resolution FROM rule_violations
-      WHERE trader = $1 AND dedup_key IS NOT NULL AND ${activeViolationSql()}`,
-    [trader],
-  );
-  const m = new Map<string, PersistedViolation>();
-  for (const r of rows) {
-    m.set(`${r.rule_id}:${r.dedup_key}`, {
-      id: Number(r.id),
-      status: r.resolved_at ? "resolved" : r.acknowledged_at ? "acknowledged" : "open",
-      resolution: r.resolution ?? null,
-    });
-  }
-  return m;
-}
-
-/** Per rule: this trader's violations archived because the rule is disabled (they come back when it is re-enabled). */
-async function archivedCounts(trader: string): Promise<Map<number, number>> {
-  const { rows } = await pool.query<any>(
-    `SELECT rule_id, COUNT(*)::int AS n FROM rule_violations WHERE trader = $1 AND archived_reason = 'rule_disabled' GROUP BY rule_id`,
-    [trader],
-  );
-  return new Map(rows.map((r: any) => [Number(r.rule_id), Number(r.n)] as [number, number]));
-}
-
 /**
  * GET /rules/report?trader&days=90 | from&to
  * Per rule: compliance % (days / trades), weekly trend, $ impact of violations, violating vs clean trades, examples;
  * plus totals, discipline calendar and history-based defaults for templates (stats). See lib/rulesReport.
  */
 router.get("/rules/report", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader);
   if (!scope.ok) throw scope.error;
   const trader = scope.trader!;
@@ -347,6 +339,7 @@ router.get("/rules/report", asyncHandler(async (req, res): Promise<void> => {
     fetchRulesFor(trader), fetchTrades(trader), fetchRiskLimits(trader), fetchSelfMarks(trader), persistedMap(trader), archivedCounts(trader),
   ]);
   const lang = langOf(req);
+  for (const r of rules) r.name = shownRuleName(r.name, r.templateKey, lang); // seeded stage rules in the reader's language
   const report = buildRulesReport({ trader, rules, trades, limits, from, to, marks, persisted, lang });
   const auth = req.authUser!;
   const staffFor = await can(req, "rules.manage.team", { trader });
@@ -356,6 +349,7 @@ router.get("/rules/report", asyncHandler(async (req, res): Promise<void> => {
     canEdit: r.desk ? desk : staffFor || (r.trader === auth.name && r.origin !== "office"),
     // Violations kept while the rule is off (with comments) — rule history shows them with «правило выключено».
     archivedViolations: archivedByRule.get(r.id) ?? 0,
+    stage: rules.find((x) => x.id === r.id)?.stage ?? null, // desk rule of one ladder stage (2.6)
   }));
   if (rules.some((r) => r.enabled && r.kind !== "self_check")) maybeBackgroundScan(trader, req.log);
   res.json({ ...report, rules: rulesOut, days, canManageTeam: staffFor && trader !== auth.name, canManageDesk: desk });
@@ -377,7 +371,7 @@ router.get("/rules/preview", asyncHandler(async (req, res): Promise<void> => {
   if (!th.ok) throw thresholdError(th);
   const { from, to } = parseWindow(req.query as Record<string, unknown>);
   const [trades, limits] = await Promise.all([fetchTrades(trader), fetchRiskLimits(trader)]);
-  const rule: StoredRule = { id: 0, trader, name: "preview", kind, threshold: th.value, enabled: true, origin: "personal", desk: false, note: null, createdBy: null, createdAt: null };
+  const rule: StoredRule = { id: 0, trader, name: "preview", kind, threshold: th.value, enabled: true, origin: "personal", desk: false, note: null, createdBy: null, createdAt: null, stage: null, templateKey: null };
   res.json(previewRule(rule, { trader, trades, limits, from, to, marks: [], lang }));
 }));
 
@@ -389,7 +383,6 @@ router.get("/rules/preview", asyncHandler(async (req, res): Promise<void> => {
  * Rules of kind self_check that apply to the trader; the journal shows them as a daily checklist.
  */
 router.get("/rules/self-checks", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader);
   if (!scope.ok) throw scope.error;
   const trader = scope.trader!;
@@ -410,7 +403,6 @@ router.get("/rules/self-checks", asyncHandler(async (req, res): Promise<void> =>
  * ok = true «соблюдал», false «нарушил» (becomes a violation), null — clear the mark. Owner or staff only.
  */
 router.put("/rules/self-checks", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const body = req.body as Record<string, unknown>;
   if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const scope = await resolveScope(req, body.trader);
@@ -497,43 +489,6 @@ router.get("/rules/discipline", asyncHandler(async (req, res): Promise<void> => 
 
 // ─── Violations ───────────────────────────────────────────────────────────────
 
-const VIOLATION_SELECT = `
-  SELECT v.id, v.trader, v.rule_id AS "ruleId", v.trade_id AS "tradeId",
-         v.occurred_at AS "occurredAt", v.severity, v.message, v.details,
-         v.day, v.cost_net::float AS "costNet",
-         v.acknowledged_by AS "acknowledgedBy", v.acknowledged_at AS "acknowledgedAt", v.comment,
-         v.resolution, v.consequence, v.resolved_by AS "resolvedBy", v.resolved_at AS "resolvedAt",
-         v.archived_at AS "archivedAt", v.archived_reason AS "archivedReason",
-         r.enabled AS "ruleEnabled", (r.deleted_at IS NOT NULL) AS "ruleDeleted",
-         r.name AS "ruleName", r.kind AS "ruleKind", r.origin AS "ruleOrigin", (r.trader = '${DESK_TRADER}') AS "ruleDesk",
-         t.ticker, t.date AS "tradeDate", ${closeDateSql()} AS "tradeCloseDate", ${resultSql()} AS "tradeResult",
-         ${signedRSql()} AS "tradeR", t.pnl::float AS "tradePnl", ${netPnlSql()}::float AS "tradeNetPnl",
-         t.setup AS "tradeSetup", t.playbook_id AS "playbookId", p.name AS "playbookName", t.source AS "tradeSource"
-    FROM rule_violations v
-    LEFT JOIN trading_rules r ON v.rule_id = r.id
-    LEFT JOIN trades t ON v.trade_id = t.id
-    LEFT JOIN playbook p ON p.id = t.playbook_id
-`;
-
-function shapeViolation(r: any, lang: Lang) {
-  return {
-    ...r,
-    // Stored reason (Russian) → the reader's language when the row carries it as data (details.msg).
-    message: violationMessage(r.message, r.details, lang),
-    costNet: r.costNet == null ? null : Number(r.costNet),
-    tradeR: r.tradeR == null ? null : Number(r.tradeR),
-    tradePnl: r.tradePnl == null ? null : Number(r.tradePnl),
-    tradeNetPnl: r.tradeNetPnl == null ? null : Number(r.tradeNetPnl),
-    ruleOrigin: r.ruleDesk ? "office" : r.ruleOrigin ?? "personal",
-    ruleDesk: !!r.ruleDesk,
-    status: r.resolvedAt ? "resolved" : r.acknowledgedAt ? "acknowledged" : "open",
-    archived: r.archivedAt != null,
-    archivedReason: isArchiveReason(r.archivedReason) ? r.archivedReason : r.archivedAt != null ? "stale" : null,
-    ruleEnabled: r.ruleEnabled !== false,
-    ruleDeleted: !!r.ruleDeleted,
-  };
-}
-
 /**
  * GET /rule-violations?trader&status&from&to&tradeId&tradeIds&ruleId&limit&offset&paged
  *   tradeIds  comma-separated ids (≤ 500) — only the violations of these trades (e.g. the trades of one journal day).
@@ -546,7 +501,6 @@ function shapeViolation(r: any, lang: Lang) {
  * disabled rule. Each row carries archived / archivedReason for the badge.
  */
 router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const scope = await resolveScope(req, req.query.trader, { allowAll: true });
   if (!scope.ok) throw scope.error;
   const rawLimit = Number(req.query.limit);
@@ -596,7 +550,6 @@ router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
  * Violations are never deleted by traders; the scanner keeps these fields across re-scans.
  */
 router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const auth = req.authUser;
@@ -674,7 +627,6 @@ router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void
  * resolution = dismissed. Curator only (rules.violations.delete).
  */
 router.delete("/rule-violations/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   if (!req.authUser) throw unauthorized();

@@ -14,14 +14,14 @@ import type { LimitsInput, RiskLimits } from "./use-risk";
 import { ApiError } from "@/lib/api/http";
 import { useSaveLimits } from "./use-risk";
 import { TIERS, tierLabel } from "./primitives";
+import { buyingPowerError } from "./buying-power";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
-/** Scaling plan: default limits per tier (curator can override any field). */
-export const TIER_PRESETS: Record<string, Omit<LimitsInput, "tier" | "notes">> = {
-  trainee: { accountSize: 10_000, dailyLossLimit: 150, weeklyLossLimit: 400, maxDrawdown: 800, maxRiskPerTrade: 50, maxPositionUsd: 10_000, maxOvernightExposure: 0, maxOpenPositions: 2, allowOvernight: false, allowSwing: false },
+/** Scaling plan: default limits per tier (curator can override any field). Buying power is per trader, never a preset. */
+export const TIER_PRESETS: Record<string, Omit<LimitsInput, "tier" | "notes" | "buyingPower">> = {
   junior: { accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2_000, maxRiskPerTrade: 100, maxPositionUsd: 25_000, maxOvernightExposure: 5_000, maxOpenPositions: 3, allowOvernight: false, allowSwing: false },
   trader: { accountSize: 50_000, dailyLossLimit: 600, weeklyLossLimit: 1_800, maxDrawdown: 4_000, maxRiskPerTrade: 200, maxPositionUsd: 50_000, maxOvernightExposure: 20_000, maxOpenPositions: 5, allowOvernight: true, allowSwing: false },
   senior: { accountSize: 100_000, dailyLossLimit: 1_200, weeklyLossLimit: 3_500, maxDrawdown: 8_000, maxRiskPerTrade: 400, maxPositionUsd: 100_000, maxOvernightExposure: 50_000, maxOpenPositions: 8, allowOvernight: true, allowSwing: true },
@@ -49,6 +49,7 @@ function buildSchema() {
       maxPositionUsd: moneyStr,
       maxOvernightExposure: moneyStr,
       maxOpenPositions: intStr,
+      buyingPower: moneyStr,
       allowOvernight: z.boolean(),
       allowSwing: z.boolean(),
       notes: z.string().max(2000, t("form.errMax", { max: 2000 })),
@@ -60,6 +61,8 @@ function buildSchema() {
       if (d != null && w != null && w < d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["weeklyLossLimit"], message: t("form.errWeekly") });
       if (d != null && r != null && r > d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxRiskPerTrade"], message: t("form.errRisk") });
       if (d != null && dd != null && dd < d) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxDrawdown"], message: t("form.errDrawdown") });
+      const bp = buyingPowerError(v.buyingPower, v.tier);
+      if (bp) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["buyingPower"], message: t(`form.${bp}`) });
     });
 }
 
@@ -79,6 +82,7 @@ function toForm(l: RiskLimits | null): FormValues {
     maxPositionUsd: s(l?.maxPositionUsd),
     maxOvernightExposure: s(l?.maxOvernightExposure),
     maxOpenPositions: s(l?.maxOpenPositions),
+    buyingPower: s(l?.buyingPower),
     allowOvernight: l?.allowOvernight ?? true,
     allowSwing: l?.allowSwing ?? true,
     notes: l?.notes ?? "",
@@ -152,6 +156,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
       maxPositionUsd: toNum(v.maxPositionUsd),
       maxOvernightExposure: toNum(v.maxOvernightExposure),
       maxOpenPositions: toNum(v.maxOpenPositions),
+      buyingPower: toNum(v.buyingPower),
       allowOvernight: v.allowOvernight,
       allowSwing: v.allowSwing,
       notes: v.notes.trim() || null,
@@ -165,6 +170,10 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
       onError: (e) => {
         // Server-side validation: map each issue to its field; the rest goes to the toast.
         const issues = e instanceof ApiError ? e.field<{ path: string; message: string }[]>("issues") ?? [] : [];
+        if (e instanceof ApiError && (e.code === "BUYING_POWER_RANGE" || e.code === "BUYING_POWER_MIN")) {
+          form.setError("buyingPower", { type: "server", message: e.message });
+          return;
+        }
         let mapped = 0;
         for (const it of issues) {
           const path = String(it.path ?? "");
@@ -242,6 +251,20 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
                 <FormControl>
                   <Input inputMode="numeric" placeholder={placeholderFor("maxOpenPositions")} autoComplete="off" {...field} />
                 </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="buyingPower"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t("form.field.buyingPower")}</FormLabel>
+                <FormControl>
+                  <Input inputMode="decimal" placeholder={t("form.notSet")} autoComplete="off" {...field} />
+                </FormControl>
+                <FormDescription className="text-2xs">{t("form.hint.buyingPower")}</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

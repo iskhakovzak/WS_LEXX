@@ -4,13 +4,16 @@
  * - `visibleNav(isCurator)`: the full menu for a role (staff-only pages filtered, hidden ones dropped). The command
  *   palette always searches it, so every page stays reachable whatever the sidebar shows.
  * - Simple menu (owner UX law «fewer choices», keep new traders): a trader whose tier (GET /api/permissions/me → tier,
- *   the playbook-lock resolution) is within the desk setting (nav.simpleForTrainees / nav.simpleUntilTier) gets seven
- *   primary rows — Сегодня, План дня, Плейбук, Тренажёр, Дневник, Сделки, Мой прогресс — and everything else in one
- *   collapsed «Ещё» group. Nothing is removed: every page of the full menu is in the primary rows or in «Ещё».
- *   Staff, guests and higher tiers keep the full menu.
+ *   the ladder stage of lib/people/stage — «Джун» by default) is Джун or below gets the primary rows — Сегодня, План
+ *   дня, Плейбук, Тренажёр, Моё обучение, Дневник, Сделки, Мой прогресс — and everything else in one collapsed «Ещё»
+ *   group. Nothing is removed: every page of the full menu is in the primary rows or in «Ещё». Staff, guests and the
+ *   experienced tiers (Трейдер, Сеньор) keep the full menu. Волна 1, item 1.11: the ladder has no «Стажёр» any more, so
+ *   the desk setting nav.simpleUntilTier never goes below «junior» (an old «trainee» value means «newcomers» = juniors);
+ *   a trader without a resolved tier counts as a junior (the stage default).
+ * - Phone tab bar for juniors (item 1.3): Дашборд · План · Дневник (labelled «Вечер») · Сделки · Ещё.
  */
 import { shellI18n } from "@/i18n/ns/shell";
-import { NAV_GROUPS, type NavGroup, type NavItem } from "./nav";
+import { NAV_GROUPS, type NavFeature, type NavGroup, type NavItem } from "./nav";
 
 export type VisibleGroup = Omit<NavGroup, "items"> & {
   /** Sidebar rows with only the children this viewer may open. */
@@ -24,9 +27,15 @@ export function withGetters(i: NavItem): NavItem {
   return Object.create(Object.getPrototypeOf(i), Object.getOwnPropertyDescriptors(i));
 }
 
-/** Full nav for the role (staff-only pages filtered, hidden ones dropped). */
-export function visibleNav(isCurator: boolean): VisibleGroup[] {
-  const ok = (i: NavItem) => !i.hidden && (!i.staff || isCurator);
+/** A section behind a desk switch is shown only when GET /api/permissions/me → `nav.<feature>` is true. */
+export function navFeatureOn(feature: NavFeature | undefined, nav: unknown): boolean {
+  if (!feature) return true;
+  return !!nav && typeof nav === "object" && (nav as Record<string, unknown>)[feature] === true;
+}
+
+/** Full nav for the role (staff-only pages filtered, hidden ones and switched-off sections dropped). */
+export function visibleNav(isCurator: boolean, nav?: unknown): VisibleGroup[] {
+  const ok = (i: NavItem) => !i.hidden && (!i.staff || isCurator) && navFeatureOn(i.feature, nav);
   return NAV_GROUPS.map((g) => {
     const rows = g.items.filter(ok).map((r) => {
       if (!r.children) return r;
@@ -48,24 +57,29 @@ const isTier = (v: unknown): v is Tier => typeof v === "string" && (TIERS as rea
 
 /** Desk settings `nav.*` as GET /api/permissions/me sends them. */
 export type NavPrefs = { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior" };
-export const DEFAULT_NAV_PREFS: NavPrefs = { simpleForTrainees: true, simpleUntilTier: "trainee" };
+export const DEFAULT_NAV_PREFS: NavPrefs = { simpleForTrainees: true, simpleUntilTier: "junior" };
 
 /**
- * Simple menu for this viewer? Only traders; a trader without a resolved tier counts as a trainee (as the playbook locks
- * do). Staff, guests and tiers above `simpleUntilTier` → full menu.
+ * The highest tier that still gets the simple menu. Both values of nav.simpleUntilTier mean «newcomers» now: the
+ * ladder starts at Джун (item 1.11), so the old «trainee» (= the lowest tier) and «junior» both end at Джун.
+ */
+const SIMPLE_UNTIL: Tier = "junior";
+
+/**
+ * Simple menu for this viewer? Only traders; a trader without a resolved tier counts as a junior (the stage default,
+ * lib/people/stage DEFAULT_STAGE). Staff, guests, the desk setting off and tiers above Джун → full menu.
  */
 export function isSimpleNav(v: { role: string | null | undefined; tier: string | null | undefined; prefs?: Partial<NavPrefs> | null }): boolean {
   if (v.role !== "trader") return false;
   const prefs = { ...DEFAULT_NAV_PREFS, ...(v.prefs ?? {}) };
   if (!prefs.simpleForTrainees) return false;
-  const until: Tier = prefs.simpleUntilTier === "junior" ? "junior" : "trainee";
-  return rank(isTier(v.tier) ? v.tier : "trainee") <= rank(until);
+  return rank(isTier(v.tier) ? v.tier : "junior") <= rank(SIMPLE_UNTIL);
 }
 
 /** Primary rows of the simple menu, in order. `/ratings` opens on the quests tab as «Мой прогресс». */
 export const SIMPLE_PRIMARY = ["/", "/game-plan", "/playbook", "/trainer", "/academy/my", "/journal", "/trades", "/ratings"] as const;
-/** Phone tab bar in the simple menu (the 5th slot is «Ещё»). */
-export const SIMPLE_MOBILE_TABS = ["/", "/game-plan", "/playbook", "/trainer"] as const;
+/** Phone tab bar in the simple menu (the 5th slot is «Ещё»): the day's loop — morning plan, evening journal, trades. */
+export const SIMPLE_MOBILE_TABS = ["/", "/game-plan", "/journal", "/trades"] as const;
 /** Phone tab bar in the full menu. */
 export const MOBILE_TABS = ["/", "/game-plan", "/trades", "/journal"] as const;
 
@@ -87,8 +101,8 @@ function relabel(i: NavItem, label: () => string, extra: Partial<NavItem> = {}):
   return Object.assign(copy, extra);
 }
 
-/** Split the full menu into the primary rows and the «Ещё» group. */
-export function simpleNav(groups: VisibleGroup[], prefs?: Partial<NavPrefs> | null): SimpleNav {
+/** Split the full menu into the primary rows and the «Ещё» group (`_prefs`: kept for callers; the floor is fixed). */
+export function simpleNav(groups: VisibleGroup[], _prefs?: Partial<NavPrefs> | null): SimpleNav {
   const primarySet = new Set<string>(SIMPLE_PRIMARY);
   const all = groups.flatMap((g) => g.items);
   const primary = SIMPLE_PRIMARY.flatMap((href) => {
@@ -110,7 +124,7 @@ export function simpleNav(groups: VisibleGroup[], prefs?: Partial<NavPrefs> | nu
       more.push(copy);
     } else more.push(row);
   }
-  const until = prefs?.simpleUntilTier === "junior" ? "junior" : "trainee";
+  const until = SIMPLE_UNTIL;
   return {
     primary,
     more,
@@ -146,9 +160,22 @@ export function rowKidLists<T extends { href: string }>(kids: readonly T[], open
   return { list: kids.filter((k) => !isPinned(k.href)), pinned: kids.filter((k) => isPinned(k.href)) };
 }
 
-/** The phone tab bar: four sections (the 5th slot is «Ещё»). */
+/** A copy with another phone-tab label (the sidebar keeps the page's own name). */
+function withShort(i: NavItem, label: () => string): NavItem {
+  const copy = withGetters(i);
+  Object.defineProperty(copy, "short", { get: label, enumerable: true, configurable: true });
+  return copy;
+}
+
+/** The phone tab bar: four sections (the 5th slot is «Ещё»). Juniors see the journal as «Вечер» (the evening step). */
 export function mobileTabs(groups: VisibleGroup[], simple: SimpleNav | null): NavItem[] {
-  if (simple) return SIMPLE_MOBILE_TABS.flatMap((h) => simple.primary.find((i) => i.href === h) ?? []);
+  if (simple) {
+    return SIMPLE_MOBILE_TABS.flatMap((h) => {
+      const i = simple.primary.find((x) => x.href === h);
+      if (!i) return [];
+      return [h === "/journal" ? withShort(i, () => shellI18n.t("simple.evening")) : i];
+    });
+  }
   const all = groups.flatMap((g) => g.items);
   return MOBILE_TABS.flatMap((h) => all.find((i) => i.href === h) ?? []);
 }

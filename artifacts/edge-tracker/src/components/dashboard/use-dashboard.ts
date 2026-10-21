@@ -10,6 +10,7 @@ import { POLL, STALE } from "@/lib/api/keys";
 import { riskMeQuery } from "@/lib/api/queries";
 import { nyDate } from "@/lib/trading-date";
 import type { Horizon } from "@/lib/trade-math";
+import type { LiveInfo } from "@/components/shared/live-badge";
 
 export type Scope = "me" | "team";
 /** Server window of the dashboard equity curve (GET /api/dashboard/equity?period=). */
@@ -303,10 +304,12 @@ export type RiskMe = {
     allowOvernight: boolean;
     allowSwing: boolean;
     tier: string | null;
-    accountSize: number | null;
+    accountSize: number | null; buyingPower?: number | null; // BP by the curator (1.21), absent on older servers
   } | null;
   dailyLossLimit: number | null;
   todayPnl: number | null;
+  /** PropReports open-positions snapshot behind today.pnlNet (absent on older servers). */
+  live?: LiveInfo | null;
 };
 
 /** One cache entry with the risk page and the shell badge (riskMeQuery). The page passes `enabled` = has a risk account. */

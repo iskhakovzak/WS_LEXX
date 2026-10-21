@@ -6,7 +6,9 @@
  *   GET  /api/daily/trader/:name           the same for a trader (journal.review on that trader — like /curator/trader/:name)
  *   POST /api/daily/review                 {date, note?, dispute?} — the viewer marks a finished day reviewed;
  *                                          dispute = «the focus hit was not a mistake» (409 DAILY_NOTHING_TO_DISPUTE
- *                                          when the day's focus was not broken)
+ *                                          when the day's focus was not broken). Closes the day for the curator
+ *                                          too (eod_days.closed_at, curator queue + notice — routes/eod closeEodDay);
+ *                                          today before the market close → 422 EOD_TOO_EARLY { opensAt }
  *   PUT  /api/daily/focus/:trader/:date    {mistake: MistakeId | null} — curator override (journal.review on the trader);
  *                                          null = back to the engine's pick
  *
@@ -63,7 +65,7 @@ router.post("/daily/review", route({ body: ReviewBody }, async ({ req, body }) =
     if (card?.focus?.status !== "broken") throw new AppError("DAILY_NOTHING_TO_DISPUTE");
   }
   await markReviewed(actor.name, body.date, { note: body.note, dispute: body.dispute });
-  return { ok: true, date: body.date, reviewed: true, disputed: !!body.dispute };
+  return { ok: true, date: body.date, reviewed: true, closed: true, disputed: !!body.dispute };
 }));
 
 router.put("/daily/focus/:trader/:date", route({

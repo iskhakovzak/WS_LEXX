@@ -241,6 +241,7 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       return { label: L("moderation"), tone: "down", text };
     }
     case "comment.delete": return { label: L("moderation"), tone: "down", text: d.author ? t("text.commentDeleteAuthor", { author: pn(d.author) }) : t("text.commentDelete") };
+    case "trade_idea.delete": return { label: L("moderation"), tone: "down", text: d.author ? t("text.ideaDeleteAuthor", { author: pn(d.author) }) : t("text.ideaDelete") };
 
     case "propreports.sync": {
       const text = d.source === "file" ? (d.fileName ? t("text.syncFile", { file: s(d.fileName) }) : t("text.syncFileNoName"))
@@ -257,6 +258,9 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
     case "propreports.accounts.refresh": return { label: L("accounts"), tone: "neutral", text: t("text.accountsRefresh") };
     case "propreports.settings.update": return { label: "PropReports", tone: "neutral", text: t("text.settingsUpdate") };
     case "propreports.check": return { label: "PropReports", tone: "neutral", text: t("text.check") };
+    case "propreports.tick.run": return { label: "PropReports", tone: "neutral", text: t("text.tickRun") };
+    case "propreports.backfill.start": return { label: "PropReports", tone: "accent", text: t("text.backfillStart", { from: s(d.from), to: s(d.to) }) };
+    case "propreports.backfill.cancel": return { label: "PropReports", tone: "warn", text: t("text.backfillCancel") };
     case "propreports.merge": return { label: L("reconcile"), tone: "accent", text: t("text.merge") };
     case "propreports.keep_separate": return { label: L("reconcile"), tone: "neutral", text: t("text.keepSeparate") };
     case "propreports.dismiss": return { label: L("reconcile"), tone: "neutral", text: t("text.dismiss") };
@@ -404,6 +408,7 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
     }
     case "curator.queue.restore": return { label: L("queue"), tone: "neutral", text: t("text.queueRestore", { count: n(d.restored) }) };
     case "curator.note.restore": return { label: L("note"), tone: "neutral", text: d.trader ? t("text.noteRestoreFor", { trader: pn(d.trader) }) : t("text.noteRestore") };
+    case "auth.logout_others": return { label: L("login"), tone: "neutral", text: t("text.logoutOthers") };
     case "auth.lockout": return { label: L("login"), tone: "warn", text: t("text.lockout", { minutes: n(d.minutes) }), detail: e.targetType === "user" ? undefined : s(e.targetId) || undefined };
 
     case "daily_quote.regenerate": return { label: L("dailyQuote"), tone: "neutral", text: t("text.quoteRegenerate") };

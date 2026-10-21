@@ -10,6 +10,8 @@ import { notifyMentions, notifyUser } from "../lib/notifyUtils";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { preview as textPreview, uniqueRecipients } from "../lib/notifyEventsCore";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
+import { canSeeDeskAggregate } from "../lib/moneyVisibility";
+import { loadMoneyViewer } from "../lib/playbookAccess";
 import {
   AUDIENCE_LABELS, AUDIENCE_STAGES, STAFF_TOKEN, audienceOf, audienceRecipients, audienceSql, cohortOf, cohortToken,
   filterVisibleNames, isPublicAudience, loadAudienceViewer, loadProfiles, parseAudience, viewerTokens, type AudienceViewer,
@@ -50,38 +52,6 @@ import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/
  * replies, accepted answer) only reach people who may read the thread.
  */
 const router: IRouter = Router();
-
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE discussions ADD COLUMN IF NOT EXISTS trade_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS idea_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS playbook_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS event_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS journal_date TEXT;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS accepted_comment_id INTEGER;
-         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS audience TEXT[];
-         CREATE INDEX IF NOT EXISTS discussions_ticker_upper_idx ON discussions (UPPER(ticker));
-         CREATE INDEX IF NOT EXISTS discussions_trade_id_idx ON discussions (trade_id);
-         CREATE INDEX IF NOT EXISTS comments_discussion_id_idx ON comments (discussion_id);
-         CREATE TABLE IF NOT EXISTS discussion_reads (
-           user_name TEXT NOT NULL,
-           thread_id INTEGER NOT NULL REFERENCES discussions(id) ON DELETE CASCADE,
-           read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (user_name, thread_id)
-         );`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "discussions: ensure tables failed at init"));
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TOPIC_MAX = 300;
@@ -254,7 +224,6 @@ const ListQuery = z.object({
 });
 
 router.get("/discussions", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const viewer = req.authUser.name;
   const q = ListQuery.safeParse(Object.fromEntries(Object.entries(req.query).filter(([, v]) => v !== "" && v !== undefined)));
@@ -400,7 +369,6 @@ async function notifyNewThread(o: { author: string; id: number; topic: string; t
 }
 
 router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateDiscussionBody.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
@@ -459,7 +427,6 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
 // ─── Static paths (before /:id) ─────────────────────────────────────────────
 
 router.get("/discussions/tickers", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const av = await loadAudienceViewer(req);
   const params: unknown[] = [];
@@ -479,7 +446,6 @@ router.get("/discussions/tickers", asyncHandler(async (req, res): Promise<void> 
  *          (the nav badge). All within the viewer's audience.
  */
 router.get("/discussions/unread-count", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const viewer = req.authUser.name;
   const av = await loadAudienceViewer(req);
@@ -508,7 +474,6 @@ router.get("/discussions/unread-count", asyncHandler(async (req, res): Promise<v
 }));
 
 router.post("/discussions/read-all", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const viewer = req.authUser!.name;
   const av = await loadAudienceViewer(req);
@@ -529,7 +494,6 @@ router.post("/discussions/read-all", asyncHandler(async (req, res): Promise<void
  * `moderators` always see every thread (moderation); `viewer` drives the list tabs («Для меня»).
  */
 router.get("/discussions/audience", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const av = await loadAudienceViewer(req);
   const [people, names] = await Promise.all([loadProfiles(null), cohortNames()]);
@@ -555,7 +519,6 @@ router.get("/discussions/audience", asyncHandler(async (req, res): Promise<void>
 
 /** Questions / review requests nobody answered (for the curator digest and the "needs answer" filter). */
 router.get("/discussions/unanswered", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const hoursRaw = Number(req.query.hours);
   const hours = Number.isFinite(hoursRaw) && hoursRaw >= 0 ? Math.min(24 * 30, hoursRaw) : 2;
@@ -591,7 +554,6 @@ router.get("/discussions/unanswered", asyncHandler(async (req, res): Promise<voi
 const TickerParam = z.object({ ticker: z.string().trim().min(1).max(12).regex(/^[A-Za-z0-9.\-]+$/) });
 
 router.get("/discussions/ticker-context/:ticker", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const params = TickerParam.safeParse(req.params);
   if (!params.success) throw badRequest("INVALID_TICKER");
@@ -626,6 +588,8 @@ router.get("/discussions/ticker-context/:ticker", asyncHandler(async (req, res):
          ORDER BY date DESC LIMIT 5`, [ticker]),
   ]);
   const tr = trades.rows[0] ?? { count: 0, lastDate: null, traders: 0, wins: 0, losses: 0, be: 0, sumR: null, netPnl: null };
+  // Desk $ on the ticker: staff, or a sum over ≥ 3 traders (1.22, lib/moneyVisibility); R and win rate always.
+  if (!canSeeDeskAggregate((await loadMoneyViewer(req)).staff, Number(tr.traders))) tr.netPnl = null;
   const decided = Number(tr.wins) + Number(tr.losses);
   res.json({
     ticker,
@@ -666,7 +630,6 @@ router.get("/discussions/votes/all", asyncHandler(async (req, res): Promise<void
 // ─── Single thread ──────────────────────────────────────────────────────────
 
 router.get("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const params = GetDiscussionParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -677,7 +640,6 @@ router.get("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
 
 /** The entity a thread is about — for the header card (trade is scoped: own or staff). */
 router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const id = parseId(req, res); if (id == null) return;
   const d = await loadThread(id, req.authUser.name, await loadAudienceViewer(req));
@@ -685,21 +647,23 @@ router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<voi
   const out: Record<string, unknown> = { id, tradeId: d.trade_id, eventId: d.event_id, ideaId: d.idea_id, playbookId: d.playbook_id, journalDate: d.journal_date, ticker: d.ticker };
   if (d.trade_id) {
     const access = await canAccessTrade(req, d.trade_id, "read");
-    if (access) {
-      const { rows } = await pool.query<Record<string, unknown>>(
-        `SELECT t.id, t.ticker, t.date, t.exit_date, ${closeDateSql("t")} AS close_date, t.side, t.setup, t.result, ${resultSql("t")} AS res,
-                ${horizonSql("t")} AS horizon, t.entry, t.exit, t.stop, t.qty, t.pnl, t.fees, ${netPnlSql("t")} AS net_pnl, ${signedRSql("t")} AS signed_r,
-                t.trader, t.source, t.broker_account, t.playbook_id, t.screenshot_url
-           FROM trades t WHERE t.id = $1 AND t.deleted_at IS NULL`, [d.trade_id]);
-      const t = rows[0];
-      out.trade = t ? {
+    const { rows } = await pool.query<Record<string, unknown>>(
+      `SELECT t.id, t.ticker, t.date, t.exit_date, ${closeDateSql("t")} AS close_date, t.side, t.setup, t.result, ${resultSql("t")} AS res,
+              ${horizonSql("t")} AS horizon, t.entry, t.exit, t.stop, t.qty, t.pnl, t.fees, ${netPnlSql("t")} AS net_pnl, ${signedRSql("t")} AS signed_r,
+              t.trader, t.source, t.broker_account, t.playbook_id, t.screenshot_url
+         FROM trades t WHERE t.id = $1 AND t.deleted_at IS NULL`, [d.trade_id]);
+    const t = rows[0];
+    const mv = await loadMoneyViewer(req);
+    // Own trades only (owner rule 2026-10-21): another trader's trade is ticker / date / setup for a non-staff viewer.
+    if (t && access && (mv.staff || t.trader === mv.name)) {
+      out.trade = {
         id: Number(t.id), ticker: t.ticker, date: String(t.date ?? "").slice(0, 10), exitDate: t.exit_date ?? null, closeDate: String(t.close_date ?? "").slice(0, 10),
         side: t.side ?? null, setup: t.setup ?? null, result: t.result ?? null, res: t.res ?? null, horizon: t.horizon, entry: strToNum(t.entry), exit: strToNum(t.exit),
         stop: strToNum(t.stop), qty: strToNum(t.qty), pnl: strToNum(t.pnl), fees: strToNum(t.fees), netPnl: strToNum(t.net_pnl), signedR: strToNum(t.signed_r),
         trader: t.trader ?? null, source: t.source ?? null, brokerAccount: t.broker_account ?? null, playbookId: t.playbook_id ?? null, screenshotUrl: t.screenshot_url ?? null,
-      } : null;
+      };
     } else {
-      out.trade = { id: d.trade_id, restricted: true };
+      out.trade = t ? { id: d.trade_id, ticker: t.ticker, date: String(t.date ?? "").slice(0, 10), setup: t.setup ?? null, restricted: true } : null;
     }
   }
   if (d.event_id) {
@@ -727,7 +691,6 @@ router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<voi
 }));
 
 router.post("/discussions/:id/read", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const d = await loadThread(id, req.authUser!.name, await loadAudienceViewer(req));
@@ -737,7 +700,6 @@ router.post("/discussions/:id/read", asyncHandler(async (req, res): Promise<void
 }));
 
 router.delete("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteDiscussionParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -767,7 +729,6 @@ const PatchDiscussionBody = z.object({
 
 /** Edit a thread (author or curator/admin). Pin flag is curator/admin-only. */
 router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = PatchDiscussionBody.safeParse(req.body);
@@ -848,7 +809,6 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
 }));
 
 router.post("/discussions/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadThread(id, null, await loadAudienceViewer(req), true);
@@ -867,7 +827,6 @@ const COMMENT_PREFIX = /^(\[(?:Observing|In Position|Exited|Наблюдаю|В 
 const plainComment = (text: string) => text.replace(COMMENT_PREFIX, "").trim();
 
 router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = AddCommentParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -923,7 +882,6 @@ const CommentParams = z.object({ id: z.coerce.number().int().positive(), comment
 const PatchCommentBody = z.object({ text: z.string().min(1) });
 
 router.patch("/discussions/:id/comments/:commentId", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = CommentParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -942,7 +900,6 @@ router.patch("/discussions/:id/comments/:commentId", asyncHandler(async (req, re
 }));
 
 router.delete("/discussions/:id/comments/:commentId", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = CommentParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -959,7 +916,6 @@ router.delete("/discussions/:id/comments/:commentId", asyncHandler(async (req, r
 // ─── Votes ──────────────────────────────────────────────────────────────────
 
 router.post("/discussions/:id/vote", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const thread = await loadThread(id, null, await loadAudienceViewer(req));

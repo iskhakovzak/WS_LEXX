@@ -52,7 +52,10 @@ interface AuthContextType {
   passwordChangePending: boolean;
   /** Asks the API for a read-only guest token (12h). Resolves to null on success. */
   loginAsGuest: () => Promise<LoginError | null>;
+  /** «Выйти»: signs out this device only (the server revokes this session). */
   logout: () => void;
+  /** Settings «Выйти на других устройствах»: every other session ends, this device gets a fresh token. True on success. */
+  logoutOthers: () => Promise<boolean>;
   isAuthenticated: boolean;
   canEdit: boolean;
   isCurator: boolean;
@@ -91,6 +94,17 @@ function writeToken(token: string | null) {
 
 let _currentToken: string | null = null;
 setAuthTokenGetter(() => _currentToken);
+
+/** POST /auth/logout-all (every other session ends) → the fresh token for this device, or null on failure. */
+async function requestLogoutOthers(): Promise<string | null> {
+  try {
+    const r = await fetch(`${BASE}/api/auth/logout-all`, { method: "POST", headers: { "Content-Type": "application/json" } });
+    const body = (await r.json().catch(() => null)) as { token?: string } | null;
+    return r.ok && body?.token ? body.token : null;
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(() => {
@@ -344,6 +358,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const logoutOthers = useCallback(async (): Promise<boolean> => {
+    const token = await requestLogoutOthers();
+    if (!token) return false;
+    _currentToken = token;
+    writeToken(token);
+    setUser((u) => (u ? { ...u, token } : u));
+    return true;
+  }, []);
+
   const bannedNames = dbUsers.filter((u) => u.banned).map((u) => u.name);
   const me = (user?.role !== "guest" && user?.traderName) ? user.traderName : null;
 
@@ -363,6 +386,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         passwordChangePending: pendingChange,
         loginAsGuest,
         logout,
+        logoutOthers,
         isAuthenticated: user !== null && !pendingChange,
         canEdit: (user?.role === "trader" || user?.role === "admin" || user?.role === "curator") && !!me && !bannedNames.includes(me),
         isCurator: user?.role === "curator" || user?.role === "admin",

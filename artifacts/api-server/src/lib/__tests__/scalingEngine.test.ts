@@ -159,8 +159,9 @@ describe("scalingEngine.computeWindowMetrics", () => {
     expect(noTradesNow.green_weeks.value).toBe(2);
   });
 
-  it("ratings and violations are counted inside the window only", () => {
+  it("ratings, the discipline index and violations are counted inside the window only", () => {
     const m = computeWindowMetrics(input([trade("2026-10-13", 1, 1)], {
+      disciplineDays: [{ date: "2026-10-13", score: 90 }, { date: "2026-10-06", score: 70 }, { date: "2026-01-05", score: 0 }],
       ratings: [
         { week: "2026-10-12", discipline: 8, overall: 7 },
         { week: "2026-10-05", discipline: 6, overall: null },
@@ -168,7 +169,8 @@ describe("scalingEngine.computeWindowMetrics", () => {
       ],
       violationDates: ["2026-10-13", "2026-10-01", "2026-01-01", "nope"],
     }), null, 10).values;
-    expect(m.discipline.value).toBe(7);
+    expect(m.discipline.value).toBe(80); // the behaviour index (0–100), not the curators' 1–10 grade (2.7)
+    expect(m.discipline.note).toBe("за 2 дня");
     expect(m.rating_overall.value).toBe(7);
     expect(m.violations.value).toBe(2);
   });
@@ -178,8 +180,8 @@ describe("scalingEngine rules", () => {
   const limits = { accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2000 };
   it("resolveThreshold: abs / × daily limit / % of account, limits before tier", () => {
     expect(resolveThreshold({ value: 5, unit: "abs" }, null, null)).toBe(5);
-    expect(resolveThreshold({ value: 5, unit: "x_daily_limit" }, limits, DEFAULT_TIERS[2])).toBe(1500);
-    expect(resolveThreshold({ value: 5, unit: "x_daily_limit" }, null, DEFAULT_TIERS[2])).toBe(3000);
+    expect(resolveThreshold({ value: 5, unit: "x_daily_limit" }, limits, DEFAULT_TIERS[1])).toBe(1500);
+    expect(resolveThreshold({ value: 5, unit: "x_daily_limit" }, null, DEFAULT_TIERS[1])).toBe(3000);
     expect(resolveThreshold({ value: 5, unit: "x_daily_limit" }, null, null)).toBeNull();
     expect(resolveThreshold({ value: 2, unit: "pct_account" }, limits, null)).toBe(500);
     expect(resolveThreshold({ value: 2, unit: "pct_account" }, { ...limits, accountSize: 0 }, null)).toBeNull();
@@ -205,11 +207,12 @@ describe("scalingEngine.evaluateTrader", () => {
     }
     return out;
   };
+  const goodDiscipline = () => Array.from({ length: 20 }, (_, i) => ({ date: windowStart(TODAY, i + 1), score: 90 }));
 
   it("unknown tier ⇒ assign to the first tier", () => {
     const e = evaluateTrader(input([], { tierKey: "nope" }), DEFAULT_TIERS, rules);
     expect(e.recommendation.action).toBe("assign");
-    expect(e.recommendation.toTier?.key).toBe("trainee");
+    expect(e.recommendation.toTier?.key).toBe("junior");
     expect(e.tier).toBeNull();
   });
 
@@ -222,7 +225,7 @@ describe("scalingEngine.evaluateTrader", () => {
 
   it("all promote rules pass ⇒ promote to the next tier", () => {
     const e = evaluateTrader(
-      input(goodMonth(), { tierKey: "junior", ratings: [{ week: "2026-10-12", discipline: 9, overall: 8 }] }),
+      input(goodMonth(), { tierKey: "junior", disciplineDays: goodDiscipline() }),
       DEFAULT_TIERS,
       rules,
     );
@@ -234,7 +237,7 @@ describe("scalingEngine.evaluateTrader", () => {
   });
 
   it("top tier with everything passing ⇒ hold with explanation", () => {
-    const e = evaluateTrader(input(goodMonth(), { tierKey: "lead", limits: { accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2000 }, ratings: [{ week: "2026-10-12", discipline: 9, overall: 8 }] }), DEFAULT_TIERS, rules);
+    const e = evaluateTrader(input(goodMonth(), { tierKey: "lead", limits: { accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2000 }, disciplineDays: goodDiscipline() }), DEFAULT_TIERS, rules);
     expect(e.recommendation.action).toBe("hold");
     expect(e.nextTier).toBeNull();
     expect(e.recommendation.reasons[0]).toMatch(/верхний тир/);
@@ -253,7 +256,7 @@ describe("scalingEngine.evaluateTrader", () => {
   it("demotion at the lowest tier ⇒ hold + warning", () => {
     const red: TradeInput[] = [];
     for (let i = 0; i < 6; i++) red.push(trade(windowStart(TODAY, i + 1), -100, -1, "loss", "propreports"));
-    const e = evaluateTrader(input(red, { tierKey: "trainee" }), DEFAULT_TIERS, rules);
+    const e = evaluateTrader(input(red, { tierKey: "junior" }), DEFAULT_TIERS, rules);
     expect(e.recommendation.action).toBe("hold");
     expect(e.recommendation.warning).toBe(true);
   });
@@ -265,7 +268,7 @@ describe("scalingEngine.evaluateTrader", () => {
       { id: 3, kind: "promote", metric: "net_pnl", op: ">=", value: 2, unit: "x_daily_limit", windowDays: 5, tierKey: null, label: "x", enabled: true },
     ];
     const tiers: Tier[] = [{ ...DEFAULT_TIERS[0], dailyLossLimit: null }];
-    const e = evaluateTrader(input([trade("2026-10-13", 10, 1)], { tierKey: "trainee" }), tiers, scoped);
+    const e = evaluateTrader(input([trade("2026-10-13", 10, 1)], { tierKey: "junior" }), tiers, scoped);
     expect(e.rules.map((r) => r.ruleId)).toEqual([3]);
     expect(e.rules[0].status).toBe("na");
     expect(e.rules[0].text).toMatch(/нет дневного лимита/);

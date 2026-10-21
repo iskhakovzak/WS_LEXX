@@ -3,7 +3,8 @@
  * the month grid, the heat level of a day.
  */
 import { addDays, nyDate } from "@/lib/trading-date";
-import type { CalendarDay } from "./api";
+import { fmtPct, fmtR } from "@/lib/format";
+import type { CalendarDay, TopRow } from "./api";
 
 const NY_CLOSE_MIN = 16 * 60;
 
@@ -64,3 +65,15 @@ export function heatLevel(v: number | null, maxAbs: number): 0 | 1 | 2 | 3 {
 }
 
 export const maxAbsNet = (days: readonly CalendarDay[]): number => days.reduce((m, d) => Math.max(m, Math.abs(d.net ?? 0)), 0);
+
+/**
+ * The trader's own day for the «Ваш день» line (Волна 2 п. 2.14): R and the win share lead, the own $ follows; never a
+ * place by loss. Null parts are left out by the caller (R is often unknown on broker trades).
+ */
+export function myDayParts(me: Pick<TopRow, "r" | "winPct" | "net">): { r: string | null; win: string | null; net: number | null } {
+  return {
+    r: me.r != null ? fmtR(me.r, 1) : null,
+    win: me.winPct != null ? fmtPct(me.winPct, { decimals: 0, signed: false }) : null,
+    net: me.net,
+  };
+}

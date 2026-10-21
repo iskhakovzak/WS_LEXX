@@ -21,16 +21,6 @@ import {
 
 type Queryable = { query: (typeof pool)["query"] };
 
-export async function ensureTradeStructureSchema(q: Queryable = pool): Promise<void> {
-  await q.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS structure JSONB`);
-  await q.query(`ALTER TABLE trades ADD COLUMN IF NOT EXISTS reentry_of INTEGER`);
-  await q.query(`CREATE INDEX IF NOT EXISTS trades_chain_idx ON trades(trader, ticker, date)`);
-  await q.query(`ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS role TEXT`);
-  await q.query(`ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS role_inferred BOOLEAN NOT NULL DEFAULT FALSE`);
-  await q.query(`ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS leg_index INTEGER`);
-  await q.query(`ALTER TABLE trade_executions ADD COLUMN IF NOT EXISTS order_id TEXT`);
-}
-
 export interface TradeRowLite {
   id: number;
   trader: string | null;

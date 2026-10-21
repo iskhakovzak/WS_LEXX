@@ -8,7 +8,8 @@ import { nyDate } from "@/lib/trading-date";
 export type RuleKind = "promote" | "demote";
 export type Op = ">=" | ">" | "<=" | "<" | "=";
 export type Unit = "abs" | "x_daily_limit" | "pct_account";
-export type MetricUnit = "usd" | "r" | "pct" | "count" | "x" | "score" | "weeks" | "days";
+/** `index` = 0–100 (the discipline index, IMPROVEMENT_PLAN 2.7); `score` = a curator's 1–10 grade. */
+export type MetricUnit = "usd" | "r" | "pct" | "count" | "x" | "score" | "index" | "weeks" | "days";
 export type Action = "promote" | "hold" | "demote" | "assign";
 export type RuleStatus = "pass" | "fail" | "na";
 

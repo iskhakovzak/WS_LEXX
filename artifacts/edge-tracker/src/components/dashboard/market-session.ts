@@ -1,7 +1,9 @@
 /**
  * US equities session math in America/New_York wall time.
  * Pre-market 04:00–09:30, regular 09:30–16:00, after-hours 16:00–20:00 ET.
- * Weekends and full-day market holidays (from /api/dashboard/today) are closed.
+ * Weekends and full-day market holidays (from /api/holidays or /api/dashboard/today) are closed. An early-close day
+ * (`earlyClose` on the calendar row: day after Thanksgiving, Christmas Eve, July 3) trades 09:30–13:00, after-hours
+ * until 17:00 — the server's lib/marketDays sessionFor, same rule.
  */
 
 import { shellI18n } from "@/i18n/ns/shell";
@@ -28,13 +30,30 @@ export type SessionState = {
   /** Holiday name if today is a market holiday. */
   holiday: string | null;
   weekend: boolean;
+  /** Today is an early-close day: the regular session ends at 13:00 ET (`closeTime`). */
+  earlyClose: boolean;
+  /** Today's regular close, NY "HH:MM" ("16:00", "13:00" on an early close). */
+  closeTime: string;
 };
+
+/** A calendar row of type `holiday`: a full-day closure, or (`earlyClose`) a 13:00 half day that still trades. */
+export type MarketHoliday = { date: string; name: string; earlyClose?: boolean };
 
 export const PRE_OPEN_MIN = 4 * 60;
 export const OPEN_MIN = 9 * 60 + 30;
 export const CLOSE_MIN = 16 * 60;
+export const EARLY_CLOSE_MIN = 13 * 60;
 export const AFTER_END_MIN = 20 * 60;
-const EXT_DAY = AFTER_END_MIN - PRE_OPEN_MIN;
+/** After-hours last 4 h past the close (20:00, or 17:00 on an early close). */
+const POST_HOURS_MIN = AFTER_END_MIN - CLOSE_MIN;
+
+/** Today's close / after-hours end in NY minutes for a day that is (not) an early close. */
+export function sessionBounds(earlyClose: boolean): { closeMin: number; afterEndMin: number } {
+  const closeMin = earlyClose ? EARLY_CLOSE_MIN : CLOSE_MIN;
+  return { closeMin, afterEndMin: closeMin + POST_HOURS_MIN };
+}
+
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 const partsFmt = new Intl.DateTimeFormat("en-US", {
   timeZone: TZ,
@@ -105,20 +124,25 @@ function nextTradingDay(fromYmd: string, holidays: Set<string>) {
 
 const next = (nextKey: NextKey) => ({ nextKey, nextLabel: shellI18n.t(`clock.next.${nextKey}`) });
 
-export function getSessionState(now: Date, holidays: { date: string; name: string }[] = []): SessionState {
+export function getSessionState(now: Date, holidays: MarketHoliday[] = []): SessionState {
   const p = wallParts(now);
   const nyDate = ymdOf(p);
   const nyTime = `${String(p.h).padStart(2, "0")}:${String(p.mi).padStart(2, "0")}:${String(p.s).padStart(2, "0")}`;
-  const set = new Set(holidays.map((h) => h.date));
-  const holiday = holidays.find((h) => h.date === nyDate)?.name ?? null;
+  const closures = holidays.filter((h) => !h.earlyClose);
+  const set = new Set(closures.map((h) => h.date));
+  const holiday = closures.find((h) => h.date === nyDate)?.name ?? null;
   const weekend = p.wd === 0 || p.wd === 6;
+  const earlyClose = !weekend && !holiday && holidays.some((h) => h.earlyClose && h.date === nyDate);
+  const { closeMin: closeToday, afterEndMin: afterEndToday } = sessionBounds(earlyClose);
+  const extDay = afterEndToday - PRE_OPEN_MIN;
+  const day = { holiday, weekend, earlyClose, closeTime: hhmm(closeToday) };
   const mins = p.h * 60 + p.mi + p.s / 60;
   const t = now.getTime();
 
   const tradingToday = isTradingDay(nyDate, set);
   const nextOpen = () => {
-    const day = tradingToday && mins < OPEN_MIN ? nyDate : nextTradingDay(nyDate, set);
-    return nyWallToUtc(day, OPEN_MIN) - t;
+    const openDay = tradingToday && mins < OPEN_MIN ? nyDate : nextTradingDay(nyDate, set);
+    return nyWallToUtc(openDay, OPEN_MIN) - t;
   };
 
   if (!tradingToday) {
@@ -129,11 +153,10 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
       msToNext: nextOpen(),
       ...next("toOpen"),
       dayProgress: null,
-      holiday,
-      weekend,
+      ...day,
     };
   }
-  const progress = mins >= PRE_OPEN_MIN && mins < AFTER_END_MIN ? (mins - PRE_OPEN_MIN) / EXT_DAY : null;
+  const progress = mins >= PRE_OPEN_MIN && mins < afterEndToday ? (mins - PRE_OPEN_MIN) / extDay : null;
   if (mins >= PRE_OPEN_MIN && mins < OPEN_MIN) {
     return {
       phase: "pre",
@@ -142,32 +165,29 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
       msToNext: nyWallToUtc(nyDate, OPEN_MIN) - t,
       ...next("toOpen"),
       dayProgress: progress,
-      holiday,
-      weekend,
+      ...day,
     };
   }
-  if (mins >= OPEN_MIN && mins < CLOSE_MIN) {
+  if (mins >= OPEN_MIN && mins < closeToday) {
     return {
       phase: "regular",
       nyTime,
       nyDate,
-      msToNext: nyWallToUtc(nyDate, CLOSE_MIN) - t,
+      msToNext: nyWallToUtc(nyDate, closeToday) - t,
       ...next("toClose"),
       dayProgress: progress,
-      holiday,
-      weekend,
+      ...day,
     };
   }
-  if (mins >= CLOSE_MIN && mins < AFTER_END_MIN) {
+  if (mins >= closeToday && mins < afterEndToday) {
     return {
       phase: "after",
       nyTime,
       nyDate,
-      msToNext: nyWallToUtc(nyDate, AFTER_END_MIN) - t,
+      msToNext: nyWallToUtc(nyDate, afterEndToday) - t,
       ...next("toAfterEnd"),
       dayProgress: progress,
-      holiday,
-      weekend,
+      ...day,
     };
   }
   return {
@@ -177,8 +197,7 @@ export function getSessionState(now: Date, holidays: { date: string; name: strin
     msToNext: nextOpen(),
     ...next("toOpen"),
     dayProgress: progress,
-    holiday,
-    weekend,
+    ...day,
   };
 }
 

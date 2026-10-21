@@ -38,7 +38,6 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `IDEA_NOT_FOUND` | 404 | Trade idea. | — |
 | `COHORT_NOT_FOUND` | 404 | Academy cohort. | — |
 | `SESSION_NOT_FOUND` | 404 | Academy session (class). | — |
-| `CHECKLIST_ITEM_NOT_FOUND` | 404 | Pre-trade checklist template item. | — |
 | `CONFLICT` | 409 | Duplicate or conflicting write. pg `23505` (unique) and `23503` (foreign key) map here automatically. | sometimes `{ field }` |
 | `TOO_LARGE` | 413 | The body is over the JSON limit, or a file is over the multer limit. | — |
 | `RATE_LIMITED` | 429 | Too many requests. | — |
@@ -64,10 +63,6 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `VIOLATION_UNACK_STAFF_ONLY` | 403 | A trader un-acknowledges a violation. | — |
 | `VIOLATION_DECISION_STAFF_ONLY` | 403 | A trader sets resolution/consequence. | — |
 | `VIOLATION_DISMISS_STAFF_ONLY` | 403 | DELETE /rule-violations/:id without rules.violations.delete. | `{ capability }` |
-| `CHECKLIST_NOT_FOUND` | 404 | Pre-trade checklist response. | — |
-| `CHECKLIST_FORBIDDEN` | 403 | Linking someone else's checklist response. | — |
-| `CHECKLIST_ALREADY_LINKED` | 409 | Checklist response already linked to a different trade. | — |
-| `CHECKLIST_RESPONSES_REQUIRED` | 400 | POST /checklist-responses without responses. | — |
 | `SETUP_SUGGESTION_MISSING` | 409 | setups-auto accept/reject before a suggestion was computed. | — |
 | `DATE_RANGE_INVALID` | 400 | `from` > `to` (or weekEnd before weekStart). | — |
 | `TRIGGER_NOT_FOUND` | 404 | Personal behaviour trigger (/behavior/triggers). | — |
@@ -85,6 +80,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `PROMOTION_REQUEST_NOT_FOUND` | 404 | Promotion request. | — |
 | `PROMOTION_REQUEST_DECIDED` | 409 | Approve / reject of a request that is no longer pending. | — |
 | `PROMOTION_SELF_APPROVE` | 403 | A mentor approves their own request. | — |
+| `PROMOTION_OWN_REQUEST` | 403 | A curator approves a promotion request they filed themselves (four eyes; settings.manage may). | — |
 | `PROMOTION_COMMENT_REQUIRED` | 400 | Approving a not-ready report without a comment (params `passed`, `total`). | — |
 | `PROMOTION_STAGE_CHANGED` | 409 | Approving a request whose from-stage is outdated. | — |
 | `PROMOTION_REJECT_REASON` | 400 | Rejecting a promotion request without a comment. | — |
@@ -223,6 +219,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `EOD_DAY_CLOSED` | 409 | Editing a trade review / day summary of a closed day. | `{ date }` |
 | `EOD_ALREADY_CLOSED` | 409 | Closing a closed day. | `{ day }` |
 | `EOD_FUTURE_DAY` | 422 | Closing a day after today (NY). | — |
+| `EOD_TOO_EARLY` | 422 | Closing today before the market close (NY); `opensAt` = HH:MM. | `opensAt` |
 | `EOD_INCOMPLETE` | 422 | Closing a day with trades that lack setup / grade. | `{ missing: [{ tradeId, ticker, fields }] }` |
 | `EOD_DAY_NOT_FOUND` | 404 | End-of-day record. | — |
 | `EOD_NOT_CLOSED` | 409 | Curator review of an open day. | — |
@@ -313,12 +310,19 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `TRADE_OTHER_TRADER` | 409 | Reconcile merge across traders. | — |
 | `BROKER_TRADE_EXISTS` | 409 | Reconcile keep-separate of an already imported trade. | — |
 | `PROPREPORTS_NOT_CONFIGURED` | 503 | PropReports API endpoints without credentials. | — |
+| `CRON_NOT_CONFIGURED` | 503 | `/api/cron/tick` called while CRON_SECRET is unset. | — |
+| `FINVIZ_BUSY` | 503 | The Finviz export queue is full for interactive callers (scheduled jobs always get in). | — |
+| `FINVIZ_NOT_CONFIGURED` | 503 | `POST /api/finviz/refresh` without FINVIZ_AUTH or with the desk switch finviz.enabled off. | — |
+| `NEWS_CHANNEL_NOT_CONFIGURED` | 503 | `POST /api/news-channel/send-now` without NEWS_CHANNEL_BOT_TOKEN + NEWS_CHANNEL_CHAT_ID or with the desk switch newsChannel.enabled off. | — |
+| `BACKFILL_RUNNING` | 409 | A PropReports history backfill is already running. | `{ active }` |
+| `PROPREPORTS_FILE_TOO_LARGE` | 413 | PropReports import file over the 4 MB upload limit (Vercel body limit). | — |
+| `PROPREPORTS_REQUEST_INVALID` | 400 | PropReports v2 request parameter refused before sending (fills filter, report mode / baseCurrency, upload options). | — |
+| `PROPREPORTS_SUPERUSER_REQUIRED` | 403 | PropReports superuser-only action (instruments, profiles, upload*) with a token without the right (vendor 403). | — |
+| `PROPREPORTS_TOKEN_REJECTED` | 502 | PropReports answered 401 to the configured token. | — |
+| `PROPREPORTS_REJECTED` | 502 | PropReports answered 400 / 404 / 405 to a staff request. | — |
+| `PROPREPORTS_BUSY` | 503 | PropReports answered 429 / 503 after the client retries. | — |
 | `FILE_TYPE` | 400 | Upload of an unsupported file type. | — |
 | `TRADES_REPORT_EMPTY` | 400 | PropReports Trades file without recognizable rows. | — |
-| `CHECKLIST_REQUIRED` | 422 | Trade create / entry-field edit without a checklist response (skipChecklist: curator only). | — |
-| `CHECKLIST_NOT_PASSED` | 422 | The linked checklist response is recorded as failed. | `{ responseId }` |
-| `CHECKLIST_MISMATCH` | 422 | A checklist response of another ticker / date / trader. | `{ responseId }` |
-| `CHECKLIST_INVALID_ID` | 422 | An unknown checklist response id. | `{ responseId }` |
 | `PROMOTE_STAFF_ONLY` | 403 | POST /playbook/:id/promote without playbook.review. | — |
 | `DESK_TEMPLATES_STAFF_ONLY` | 403 | Game plan template create/edit of a shared or desk template without gameplan.publish. | — |
 | `DESK_PLAN_MEDIA_UPLOAD_STAFF_ONLY` | 403 | Plan media upload with context=desk without gameplan.publish. | — |
@@ -338,7 +342,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `QUEST_NOT_ACTIVE` | 409 | POST /quests/:id/cancel or /complete for a quest that is no longer active. | — |
 | `QUEST_NOT_MANUAL` | 409 | POST /quests/:id/complete for a quest other than the manual `curator_task`. | — |
 | `QUEST_NOT_YOURS` | 403 | POST /quests/:id/cancel by someone other than the assigner (admins may). | — |
-| `PLAYBOOK_SETUP_LOCKED` | 409 | PUT /playbook/today/picks with a setup above the trader's tier (`params.name`); locks never block trading. | — |
+| `PLAYBOOK_SETUP_LOCKED` | 409 | PUT /playbook/today/picks with a setup above the trader's tier (`params.name`); locks never block trading. Sent as 403 by every `/playbook/:id/*` route (and `POST /playbook-media`) when the setup is above the viewer's tier (`lib/playbookLock.ts`). | — |
 | `GAMIFICATION_DISABLED` | 409 | PUT /gamification/title or a reward request while `gamification.enabled` is off. | — |
 | `TITLE_NOT_EARNED` | 400 | PUT /gamification/title with a key the trader has not earned (GET /gamification/me lists `titles`). | — |
 | `REWARD_ITEM_NOT_FOUND` | 404 | Rewards catalog item (PUT /gamification/rewards/items/:id, POST …/:id/request; inactive items cannot be requested). | — |
@@ -348,6 +352,20 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `REWARD_GRANT_DECIDED` | 409 | Grant / decline of a grant that is already granted or declined. | — |
 | `REWARD_OUT_OF_STOCK` | 409 | Grant of an item whose stock is 0. | — |
 | `REWARD_NOT_YOUR_TRADER` | 403 | Grant / decline by a curator who is not the trader's assigned curator (admins may). | — |
+| `THEME_NOT_FOUND` | 404 | PUT /api/themes/:id or /api/themes/mine/:id (another user's or no such theme) (themes are archived, never deleted). | — |
+| `THEME_LIMIT` | 409 | POST /api/themes/mine (or a restore) over the 10 active personal themes per user. | `params.max` |
+| `BOARD_NOT_FOUND` | 404 | /api/themes/boards/:id (or POST /api/themes/mine boardId): not the caller's board, archived, or the wrong kind. | — |
+| `BOARD_LIMIT` | 409 | POST /api/themes/boards over the 8 active boards per user. | `params.max` |
+| `BROKER_TRADE_READ_ONLY` | 403 | Broker-sourced trade (PropReports): a non-admin (no `settings.manage`) changed a broker-owned field (pnl, fees, qty, entry/exit, dates, result…), deleted it (single / bulk), added or removed its fills, or created a trade marked as broker-sourced. Review fields (setup, tags, grade, notes) stay editable. | `{ capability, fields? }` |
+| `BUYING_POWER_RANGE` | 400 | PUT /api/risk/limits/:trader: `buyingPower` of a junior (the trader's stage, or `tier` in the body) outside 25 000 – 800 000 $. | `params.min`, `params.max` |
+| `BUYING_POWER_MIN` | 400 | PUT /api/risk/limits/:trader: `buyingPower` below 25 000 $ (Трейдер / Сеньор: no upper cap). | `params.min` |
+| `CURATOR_REQUEST_OPEN` | 409 | POST /api/curator-requests: the trader already has an open request of this kind (one open request per kind). | `details.id` |
+| `CURATOR_REQUEST_NOT_FOUND` | 404 | PATCH /api/curator-requests/:id: no such request, or it belongs to a trader outside the curator's scope. | — |
+| `CURATOR_REQUEST_CLOSED` | 409 | PATCH /api/curator-requests/:id on a request that is already done or dismissed. | — |
+| `DESK_GROUP_NOT_FOUND` | 404 | PUT /api/desk-groups (group id that does not exist or is archived when a trader is moved into it). | — |
+| `DESK_GROUP_NAME_TAKEN` | 409 | PUT /api/desk-groups: another active group has this name (case-insensitive). | `params.name` |
+| `DESK_GROUP_CURATOR_INVALID` | 400 | PUT /api/desk-groups: `curatorId` is not an active curator / admin. | — |
+| `JUNIOR_NOTES_RETIRED` | 410 | Any non-GET /api/junior-notes/*: the juniors' summary is read-only history now (the evening form in the journal replaced it). | — |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.
 
@@ -358,8 +376,6 @@ These are hand-written in route files, auth or the security module. They have st
 | Code | Status | Where / when |
 |---|---|---|
 | `INVALID_CREDENTIALS` 401, `BANNED` 403, `GUEST_DISABLED` 403, `PASSWORD_CHANGE_REQUIRED` 403, `LOGIN_LOCKED` 429, `WEAK_PASSWORD` / `WRONG_PASSWORD` / `SAME_PASSWORD` 400 | see code | auth / `lib/security/respond.ts` (owned by the security agent). Some carry extra top-level fields (`retryAfterSec`, `policy`). |
-| `CHECKLIST_REQUIRED`, `CHECKLIST_NOT_PASSED`, `CHECKLIST_MISMATCH` | 422 | trades: create without a valid pre-trade checklist |
-| `CHECKLIST_INVALID_ID` | 400 | trades: checklist id in the body does not exist (`CHECKLIST_ALREADY_LINKED` is in the registry) |
 | `FOLDER_EXISTS` | 409 | playbook folder rename |
 | `JOURNAL_CONFLICT` | 409 | journal: edited in another tab (`current` attached) |
 | `SYNC_RUNNING`, `SYNC_PENDING` | 409 | PropReports sync in progress or not yet run for the date |

@@ -376,6 +376,8 @@ export type TradeFilters = {
   leftMin: string;
   /** Explicit id list from a deep link (?ids=1,2,3). */
   ids: string;
+  /** «Фильтры» panel selection as x* query params (lib/trade-facets facetQuery); never stored with the filters. */
+  facets?: string;
 };
 
 export const DEFAULT_FILTERS: TradeFilters = {

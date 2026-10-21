@@ -5,6 +5,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuShortcut,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { LISTS, LIST_LABELS, type ListName, type WatchlistItem } from "./lib";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 import { commonI18n } from "@/i18n/ns/common";
@@ -25,12 +26,16 @@ export type RowActions = {
 
 /** Row «…» menu: move between lists (1/2/3), plan, idea, archive, edit, delete. */
 export function RowMenu({
-  item, list, canEdit, canModify = canEdit, actions, scoring,
+  item, list, canEdit, canModify = canEdit, canPlan = canEdit, actions, scoring, triggerClassName,
 }: {
   item: WatchlistItem; list: ListName | null; canEdit: boolean;
-  /** Content edit / delete: the row's author or staff (lib/ownership). Defaults to canEdit. */
+  /** Content edit / delete: the server's per-row right (lib.rowWritable). Defaults to canEdit. */
   canModify?: boolean;
+  /** «В план» / idea: anyone with an own plan, also on a list he can't edit (the desk list). Defaults to canEdit. */
+  canPlan?: boolean;
   actions: RowActions; scoring: boolean;
+  /** Bigger touch target (the phone card: h-10 w-10). */
+  triggerClassName?: string;
 }) {
   const { t } = watchlistI18n.useT();
   return (
@@ -40,7 +45,7 @@ export function RowMenu({
           type="button"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
-          className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn("grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", triggerClassName)}
           aria-label={t("row.actions", { ticker: item.ticker })}
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -51,6 +56,14 @@ export function RowMenu({
         <DropdownMenuItem onSelect={() => actions.open(item)}>
           <PanelRightOpen className="mr-2 h-4 w-4" />{t("row.open")}<DropdownMenuShortcut>Enter</DropdownMenuShortcut>
         </DropdownMenuItem>
+        {canPlan && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => actions.addToPlan(item)}><ClipboardList className="mr-2 h-4 w-4" />{t("row.toPlan")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.createIdea(item)}><Lightbulb className="mr-2 h-4 w-4" />{t("row.createIdea")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.createIdea(item, true)}><ArrowRightLeft className="mr-2 h-4 w-4" />{t("row.ideaToTrade")}</DropdownMenuItem>
+          </>
+        )}
         {canEdit && (
           <>
             <DropdownMenuSeparator />
@@ -67,10 +80,6 @@ export function RowMenu({
                 </DropdownMenuItem>
               ))
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => actions.addToPlan(item)}><ClipboardList className="mr-2 h-4 w-4" />{t("row.toPlan")}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.createIdea(item)}><Lightbulb className="mr-2 h-4 w-4" />{t("row.createIdea")}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.createIdea(item, true)}><ArrowRightLeft className="mr-2 h-4 w-4" />{t("row.ideaToTrade")}</DropdownMenuItem>
             <DropdownMenuSeparator />
             {canModify && (
               <DropdownMenuItem onSelect={() => actions.edit(item)}><Pencil className="mr-2 h-4 w-4" />{t("row.edit")}</DropdownMenuItem>

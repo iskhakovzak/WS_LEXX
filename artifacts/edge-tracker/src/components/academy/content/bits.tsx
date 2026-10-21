@@ -8,6 +8,21 @@ import { academyLinks } from "./links";
 import { PROVIDER_LABEL } from "./video";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
+import { useLang } from "@/i18n";
+import type { Lang } from "@/i18n/core";
+
+/**
+ * Academy content has no language field yet: every program / lesson is Russian (owner decision 8 — UZ after the pilot).
+ * The pill tells an EN / UZ reader so before they open it; nothing for a Russian UI. Pure part: needsRuBadge.
+ */
+export const needsRuBadge = (lang: Lang): boolean => lang !== "ru";
+
+export function RuContentPill({ scope = "lesson" }: { scope?: "lesson" | "course" }) {
+  const lang = useLang();
+  const { t } = academyI18n.useT();
+  if (!needsRuBadge(lang)) return null;
+  return <span title={t("bits.ruHint")}><Pill tone="neutral">{t(scope === "course" ? "bits.ruCourse" : "bits.ruLesson")}</Pill></span>;
+}
 
 export const KIND_ICON: Record<ItemKind, typeof BookOpen> = { lesson: BookOpen, quiz: ListChecks, assignment: ClipboardCheck };
 

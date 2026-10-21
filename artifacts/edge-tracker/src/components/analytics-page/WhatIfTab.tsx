@@ -52,12 +52,13 @@ export function WhatIfTab({ trades, unit, filters }: { trades: Trade[]; unit: Un
   const sim = useMemo(() => toSimTrades(trades), [trades]);
 
   const base = useMemo(() => {
-    const values = sim.map((s) => (u === "r" ? s.r : s.net)).filter((v): v is number => v != null);
-    return { values, kpis: kpisOf(values) };
+    const valued = sim.filter((s) => (u === "r" ? s.r : s.net) != null);
+    const values = valued.map((s) => (u === "r" ? s.r : s.net) as number);
+    return { values, kpis: kpisOf(values, valued.map((s) => s.day)) }; // drawdown by day, as on «Обзор»
   }, [sim, u]);
   const alt = useMemo(() => {
     const r = applyWhatIf(sim, rules, u);
-    return { ...r, kpis: kpisOf(r.values) };
+    return { ...r, kpis: kpisOf(r.values, r.days) };
   }, [sim, rules, u]);
   /** Each rule on its own: Δ total and why it could not apply. */
   const single = useMemo(() => {

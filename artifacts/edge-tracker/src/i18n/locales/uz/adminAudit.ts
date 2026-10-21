@@ -79,6 +79,8 @@ export default {
     discussionDeleteTopicAuthor: "«{topic}» muhokamasini oʻchirdi (muallif {author})",
     commentDelete: "izohni oʻchirdi",
     commentDeleteAuthor: "{author} izohini oʻchirdi",
+    ideaDelete: "gʻoyani oʻchirdi",
+    ideaDeleteAuthor: "{author} gʻoyasini oʻchirdi",
 
     sync: "PropReports maʼlumotlarini sinxronladi",
     syncFile: "PropReports maʼlumotlarini {file} faylidan sinxronladi",
@@ -91,6 +93,9 @@ export default {
     accountsRefresh: "PropReports hisoblari roʻyxatini yangiladi",
     settingsUpdate: "PropReports sozlamalarini oʻzgartirdi",
     check: "PropReports ulanishini tekshirdi",
+    tickRun: "PropReports fon sinxronizatsiyasini qoʻlda ishga tushirdi",
+    backfillStart: "PropReports tarixini yuklashni boshladi: {from} — {to}",
+    backfillCancel: "PropReports tarixini yuklashni toʻxtatdi",
     merge: "broker savdosini qoʻlda kiritilgan yozuv bilan birlashtirdi",
     keepSeparate: "broker savdosini alohida qoldirdi",
     dismiss: "savdoni solishtirishdan rad etdi",
@@ -156,6 +161,7 @@ export default {
     noteRestore: "qaydni tikladi",
     noteRestoreFor: "{trader} haqidagi qaydni tikladi",
     lockout: "kirish {minutes} daqiqaga bloklandi",
+    logoutOthers: "boshqa barcha qurilmalardan chiqdi",
 
     fallbackVerb: "{verb}: {subject}",
   },

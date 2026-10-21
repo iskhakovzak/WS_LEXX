@@ -121,6 +121,7 @@ export default {
     range: " · range {range}%",
     streak: " · {count} {kind} in a row",
     noHistory: "reaction history unavailable",
+    sourceDown: "source unavailable · {time}",
     youTraded: "you: {count} trades · {net}",
     watchNoTrades: "on watchlist, no trades",
     noTrades: "no trades",

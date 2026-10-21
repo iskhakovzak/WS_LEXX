@@ -6,13 +6,15 @@ import { logger } from "./logger";
 import { discussionsT } from "../i18n/ns";
 import type { Lang, Params } from "../i18n";
 import { errorMessage, type ErrorCode } from "./http/errors";
+import { pickStage as resolveStage } from "./people/stage";
 
 /**
  * Discussions audience («Кому видна тема»).
  *
  *   discussions.audience TEXT[]   NULL / {} = everyone (every pre-existing thread).
  *                                 Otherwise a union of tokens:
- *                                   trainee | junior | trader | senior   academy ladder stage (Стажёр → Сеньор)
+ *                                   junior | trader | senior             academy ladder stage (Джун → Сеньор); a stored legacy
+ *                                                                        «trainee» token (the removed first stage) reaches juniors
  *                                   staff                                role curator / admin («Кураторам»)
  *                                   cohort:<id>                          members of an active academy cohort
  *
@@ -20,13 +22,16 @@ import { errorMessage, type ErrorCode } from "./http/errors";
  * (capability discussions.moderate — curators/admins) who see every thread. Guests / anonymous see only public ones.
  *
  * Stage source — same order as routes/academy-path.ts loadStageInfo: academy_trader_stage (approved transfers) →
- * latest active/paused academy_enrollments.stage → trader_risk_limits.tier. Every academy table is optional.
+ * latest active/paused academy_enrollments.stage → trader_risk_limits.tier → DEFAULT_STAGE («Джун») for a trader without one
+ * (lib/people/stage.ts). Every academy table is optional.
  *
  * Every read path builds its WHERE through audienceSql (mirrors canSeeThread, unit-tested for parity), and every
  * notification fan-out goes through audienceRecipients / filterVisibleNames, so a thread never leaks outside it.
  */
 
-export const AUDIENCE_STAGES = ["trainee", "junior", "trader", "senior"] as const;
+export const AUDIENCE_STAGES = ["junior", "trader", "senior"] as const;
+/** The removed first stage (wave 1, item 1.21): old threads may still carry it; it reads as junior. */
+const LEGACY_STAGE_TOKEN = "trainee";
 export type AudienceStage = (typeof AUDIENCE_STAGES)[number];
 export const STAFF_TOKEN = "staff";
 const COHORT_RE = /^cohort:([1-9]\d{0,8})$/;
@@ -34,11 +39,12 @@ const MAX_TOKENS = 12;
 
 /** Audience token label in `lang` («тема — Джунам»), shown in the UI and notifications (discussions namespace). */
 export function audienceTokenLabel(token: string, lang: Lang = "ru"): string {
-  return discussionsT.tryFor(lang, `audience.${token}`) ?? token;
+  const key = token === LEGACY_STAGE_TOKEN ? "junior" : token;
+  return discussionsT.tryFor(lang, `audience.${key}`) ?? token;
 }
 /** RU labels (kept for older imports). */
 export const AUDIENCE_LABELS: Record<string, string> = Object.fromEntries(
-  ["trainee", "junior", "trader", "senior", "staff"].map((k) => [k, audienceTokenLabel(k)]),
+  ["junior", "trader", "senior", "staff"].map((k) => [k, audienceTokenLabel(k)]),
 );
 
 export interface AudienceViewer {
@@ -91,7 +97,8 @@ export function parseAudience(input: unknown): AudienceParse {
   if (!raw) return audienceFail("AUDIENCE_INVALID");
   const out = new Set<string>();
   for (const item of raw) {
-    const t = String(item ?? "").trim().toLowerCase();
+    const typed = String(item ?? "").trim().toLowerCase();
+    const t = typed === LEGACY_STAGE_TOKEN ? "junior" : typed; // an older web build may still send it
     if (!t) continue;
     if (t === "all") return { ok: true, audience: [] };
     if (!isStage(t) && t !== STAFF_TOKEN && cohortOf(t) == null) return audienceFail("AUDIENCE_UNKNOWN", { token: t.slice(0, 40) });
@@ -120,10 +127,16 @@ export function viewerTokens(v: Pick<AudienceViewer, "guest" | "staff" | "stage"
   return out;
 }
 
+/** Tokens a stored audience is matched against: a junior also matches the legacy «trainee» token of older threads. */
+function matchTokens(v: Pick<AudienceViewer, "guest" | "staff" | "stage" | "cohorts">): string[] {
+  const out = viewerTokens(v);
+  return v.stage === "junior" && !v.guest ? [...out, LEGACY_STAGE_TOKEN] : out;
+}
+
 /** Is the person part of the audience (public → yes)? Ignores authorship and moderation. */
 export function inAudience(v: Pick<AudienceViewer, "guest" | "staff" | "stage" | "cohorts">, audience: readonly string[] | null | undefined): boolean {
   if (isPublicAudience(audience)) return true;
-  const mine = viewerTokens(v);
+  const mine = matchTokens(v);
   return mine.some((t) => audience!.includes(t));
 }
 
@@ -145,18 +158,19 @@ export function audienceSql(v: AudienceViewer, p: (x: unknown) => string, a = "d
   const parts = [`(${a}.audience IS NULL OR cardinality(${a}.audience) = 0)`];
   if (!v.guest && v.name) {
     parts.push(`${a}.trader = ${p(v.name)}`);
-    const tokens = viewerTokens(v);
+    const tokens = matchTokens(v);
     if (tokens.length) parts.push(`${a}.audience && ${p(tokens)}::text[]`);
   }
   return `(${parts.join(" OR ")})`;
 }
 
-/** Stage precedence: approved transfer → active enrollment → scaling tier. */
-export function pickStage(own: unknown, enrollment: unknown, tier: unknown): AudienceStage | null {
-  if (isStage(own)) return own;
-  if (isStage(enrollment)) return enrollment;
-  if (isStage(tier)) return tier;
-  return null;
+/**
+ * Stage precedence: approved transfer → active enrollment → scaling tier → DEFAULT_STAGE («Джун») for a member with the role
+ * `trader` (lib/people/stage.ts — the one stage resolution for every screen).
+ */
+export function pickStage(own: unknown, enrollment: unknown, tier: unknown, role?: unknown): AudienceStage | null {
+  const s = resolveStage(own, enrollment, tier, role);
+  return isStage(s) ? s : null;
 }
 
 /** Human label for an audience («Джунам, Трейдерам», cohorts by name when known). */
@@ -218,7 +232,7 @@ export async function loadProfiles(names: string[] | null): Promise<AudienceProf
       role,
       staff: role === "curator" || role === "admin",
       moderator: evaluate(matrix, { id: 0, name: u.name, role, guest: false, wards: [] }, "discussions.moderate"),
-      stage: pickStage(ownBy.get(u.name), enrBy.get(u.name), tierBy.get(u.name)),
+      stage: pickStage(ownBy.get(u.name), enrBy.get(u.name), tierBy.get(u.name), role),
       cohorts: (cohortsBy.get(u.name) ?? []).sort((a, b) => a - b),
     };
   });

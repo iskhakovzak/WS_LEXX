@@ -11,6 +11,7 @@ import type { Row } from "./rows";
 import { dayTitle, gapOf, nyKey, nyTime, SESSION_LABEL, sessionOf, WEIGHT_MIN_N, type SortKey } from "./lib";
 import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
+import { ActionCards } from "./ActionCards";
 
 export const ROW_H = 52;
 const HEAD_H = 33;
@@ -45,7 +46,13 @@ export const ActionsTable = React.forwardRef<HTMLDivElement, ActionsTableProps>(
 ) {
   const th = (k: SortKey) => ({ active: sortKey === k, dir: sortDir, onSort: () => onSort(k) });
   return (
-    <DataTable ref={ref} maxHeight={maxHeight} ariaLabel={analystI18n.t("table.aria")} className="[&_tbody_td]:py-1.5">
+    <>
+    {/* 2.11: phones get cards (ActionCards); the virtualized table from `sm` up. */}
+    <ActionCards
+      className="sm:hidden" rows={rows} query={query} today={today} canEdit={canEdit} inPlan={inPlan} addingWatch={addingWatch} addingPlan={addingPlan}
+      onOpen={onOpen} onAddWatch={onAddWatch} onAddPlan={onAddPlan} onFilterFirm={onFilterFirm} onFilterTicker={onFilterTicker}
+    />
+    <DataTable ref={ref} maxHeight={maxHeight} ariaLabel={analystI18n.t("table.aria")} className="hidden sm:block [&_tbody_td]:py-1.5">
       {/* Fixed tracks sized to their content (sortable headers need label + sort icon); the firm column takes the rest.
           min-w keeps the firm column readable at ~1280 px — the table scrolls sideways instead of wrapping rows 5 lines tall. */}
       <table className="min-w-[1000px] table-fixed">
@@ -101,6 +108,7 @@ export const ActionsTable = React.forwardRef<HTMLDivElement, ActionsTableProps>(
         />
       </table>
     </DataTable>
+    </>
   );
 });
 

@@ -32,7 +32,6 @@ export default {
     state: { done: "пройдена", current: "текущая ступень", nextReady: "следующая, критерии выполнены", next: "следующая", locked: "закрыта" },
     people: { one: "{count} чел.", few: "{count} чел.", many: "{count} чел.", other: "{count} чел." },
     descriptions: {
-      trainee: "Первая ступень деска: минимальный размер, жёсткие лимиты, обучение и экзамены",
       junior: "Капитал фирмы, малый лот, только интрадей",
       trader: "Полноценный трейдер деска: интрадей + овернайт",
       senior: "Полный BP, свинг, наставничество",
@@ -207,21 +206,6 @@ export default {
   },
   /** Default criterion labels seeded by the server (DEFAULT_CRITERIA), by stage and metric. */
   seedCriteria: {
-    trainee: {
-      trading_days: "Минимум 15 торговых дней из 20",
-      net_pnl: "P&L нетто ≥ $300 за 20 дней",
-      max_dd_usd: "Просадка не больше $500",
-      consistency: "Лучший день ≤ 40% прибыли",
-      win_rate: "Win rate ≥ 45%",
-      profit_factor: "Profit factor ≥ 1.2",
-      fee_share: "Комиссии ≤ 50% брутто",
-      violations: "Не больше 2 нарушений правил",
-      red_streak_max: "Не больше 4 красных дней подряд",
-      discipline_index: "Индекс дисциплины ≥ 70",
-      lessons_pct: "Пройдено ≥ 80% уроков",
-      quiz_avg: "Средний балл тестов ≥ 70%",
-      challenges_passed: "Сдан экзамен «Перевод Стажёр → Джун»",
-    },
     junior: {
       trading_days: "Минимум 30 торговых дней из 40",
       net_pnl: "P&L нетто ≥ $1 500 за 40 дней",
@@ -309,8 +293,8 @@ export default {
     templates: {
       capital: "Перевод {from} → {to} (капитал {size})",
       capitalLead: "Экзамен на перевод {from} → {to}",
-      trainee_test_10d: { name: "Стажёрский тест 10 дней", lead: "Короткая проверка стажёра: дисциплина дневного лимита и ровная торговля" },
-      sim_exam_20d: { name: "Сим-экзамен 20 дней", lead: "Экзамен на симуляторе для стажёра" },
+      trainee_test_10d: { name: "Вводный тест 10 дней", lead: "Короткая проверка новичка: дисциплина дневного лимита и ровная торговля" },
+      sim_exam_20d: { name: "Сим-экзамен 20 дней", lead: "Экзамен на симуляторе для новичка" },
       description: "{lead}: {rules}",
     },
     card: {
@@ -388,7 +372,7 @@ export default {
     hintSuggested: "Ступень {user}: {stage} — рекомендован «{template}»",
     hintNone: "Ступень {user}: {stage} — экзамена на перевод выше нет",
     groupCapital: "Перевод на капитал",
-    groupTests: "Тесты стажёра",
+    groupTests: "Вводные тесты",
     recommended: "{name} — рекомендован",
     start: "Начало (NY)",
     end: "Конец (пусто — по шаблону)",

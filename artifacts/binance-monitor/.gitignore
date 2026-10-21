@@ -1,0 +1,6 @@
+storage.json
+storage.json.tmp
+.venv/
+__pycache__/
+filters.last-good.json
+filters.last-good.json.tmp

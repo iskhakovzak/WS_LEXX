@@ -14,6 +14,7 @@ export function fmtMetric(unit: MetricUnit, v: number | null | undefined): strin
     case "pct": return fmtPct(v, { decimals: 0, signed: false });
     case "x": return fmtNum(v, { suffix: "×" });
     case "score": return fmtNum(v, { decimals: 1, suffix: "/10" });
+    case "index": return fmtNum(v, { decimals: 0, suffix: "/100" });
     default: return fmtCount(Math.round(v));
   }
 }

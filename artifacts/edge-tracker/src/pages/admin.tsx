@@ -7,6 +7,7 @@ import { EmptyState, Kbd, Page, PageHeader, SectionTabs, UpdatedAgo } from "@/co
 import { cn } from "@/lib/utils";
 import { isTypingTarget, useAdminOverview, useDeskPulse, useRiskDesk } from "@/components/admin/api";
 import { KpiRow, OverviewPanel, type AdminTab } from "@/components/admin/OverviewPanel";
+import { LoopYesterdayPanel } from "@/components/admin/LoopYesterdayPanel";
 import { type RiskStatus, type TraderFilter } from "@/components/admin/TradersTable";
 import { PeoplePanel, type PeopleFilter, type PeopleView } from "@/components/admin/PeoplePanel";
 import { ModerationQueue } from "@/components/admin/ModerationQueue";
@@ -15,6 +16,7 @@ import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
+import { DeskGroupsPanel } from "@/components/settings/groups-panel";
 import { UsagePanel } from "@/components/admin/UsagePanel";
 import { ALL_NAV_ITEMS, routeTitle } from "@/components/shell/nav";
 import { usageI18n } from "@/i18n/ns/usage";
@@ -233,9 +235,11 @@ function AdminConsole() {
       </div>
 
       <div role="tabpanel" aria-label={t("page.panelAria")}>
-        {/* OWNER-22: the KPI strip belongs to «Обзор» only (it repeated above every tab). */}
+        {/* OWNER-22: the KPI strip belongs to «Обзор» only (it repeated above every tab). Волна 2 п. 2.4: «Петля вчера»
+            is the focal point on top (pilot verdict for admins); the KPI strip and the overview are secondary below. */}
         {tab === "overview" && (
           <div className="flex flex-col gap-[var(--grid-gap)]">
+            <LoopYesterdayPanel showPilot={showUsage} onOpenUsage={showUsage ? () => setTab("usage") : undefined} onOpenPeople={() => setTab("people")} />
             <KpiRow pulse={pulse.data} risk={risk.data} eod={eod.data} queue={queue.data} loading={pulse.isLoading} onGo={go} />
             <OverviewPanel
               pulse={pulse.data}
@@ -279,6 +283,7 @@ function AdminConsole() {
           <div className="flex flex-col gap-[var(--grid-gap)]">
             {/* The rewards catalog sits with the other desk settings (gamification numbers live in the registry form below). */}
             <RewardsEditorPanel enabled={showSettings} />
+            <DeskGroupsPanel enabled={showSettings} />
             <DeskSettingsPanel canManage={showSettings} />
           </div>
         )}

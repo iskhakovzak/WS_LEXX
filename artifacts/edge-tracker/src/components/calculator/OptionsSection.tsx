@@ -10,19 +10,10 @@ import { newLegId, usePersistedState } from "./lib";
 import BlackScholesView, { type BsInputs } from "./BlackScholes";
 import StrategyBuilder, { type BuilderState, type LegDraft } from "./StrategyBuilder";
 import ChainAdvisor from "./ChainAdvisor";
+import type { OpenInBuilderParams, PickContractParams, UseInBsParams } from "./handoff";
 import { calculatorI18n } from "@/i18n/ns/calculator";
 
 type Mode = "chain" | "bs" | "builder";
-
-export type UseInBsParams = { symbol: string; spot: number; strike: number; side: "call" | "put"; days: number; iv: number | null; premium: number; contracts: number };
-export type OpenInBuilderParams = {
-  symbol: string;
-  spot: number;
-  days: number;
-  iv: number | null;
-  legs: { side: "buy" | "sell"; kind: "call" | "put" | "stock"; strike: number; premium: number; qty: number }[];
-  append?: boolean;
-};
 
 function useBsInputs(): BsInputs {
   const [ticker, setTicker] = usePersistedState<string>("opt_ticker", "");
@@ -97,6 +88,34 @@ export default function OptionsSection({ initialTicker }: { initialTicker?: stri
     setMode("bs");
   }, [bs, setMode]);
 
+  /** "Pick" in the strike ladder: one tap fills the B-S form and appends a builder leg; the view stays on the chain. */
+  const pickContract = useCallback((p: PickContractParams) => {
+    bs.setTicker(p.symbol);
+    bs.setSpot(p.spot.toFixed(2));
+    bs.setStrike(String(p.strike));
+    bs.setSide(p.side);
+    bs.setAction("buy");
+    bs.setDays(String(p.days));
+    if (p.iv != null) bs.setIv(String(p.iv));
+    bs.setPremium(p.premium > 0 ? p.premium.toFixed(3) : "");
+    bs.setContracts(String(p.contracts));
+    builder.setSymbol(p.symbol);
+    builder.setSpot(p.spot.toFixed(2));
+    builder.setDays(String(p.days));
+    if (p.builderIv != null) builder.setIv(String(p.builderIv));
+    builder.setLegs((prev) => [...prev, {
+      id: newLegId(), kind: p.side, side: "buy", strike: String(+p.strike.toFixed(2)), premium: String(+p.premium.toFixed(3)), qty: String(p.contracts),
+    }]);
+  }, [bs, builder]);
+
+  /** A loaded chain's underlying price is the spot everywhere (B-S and the builder). */
+  const setUnderlying = useCallback((p: { symbol: string; spot: number }) => {
+    bs.setTicker(p.symbol);
+    bs.setSpot(p.spot.toFixed(2));
+    builder.setSymbol(p.symbol);
+    builder.setSpot(p.spot.toFixed(2));
+  }, [bs, builder]);
+
   const openInBuilder = useCallback((p: OpenInBuilderParams) => {
     const drafts: LegDraft[] = p.legs.map((l) => ({
       id: newLegId(),
@@ -133,7 +152,8 @@ export default function OptionsSection({ initialTicker }: { initialTicker?: stri
       <p className="max-w-3xl text-xs text-muted-foreground">{t(`modeHint.${current}`)}</p>
       </div>
       <div hidden={current !== "chain"}>
-        <ChainAdvisor initialTicker={initialTicker} onUseInBs={useInBs} onOpenInBuilder={openInBuilder} builderLegCount={builder.legs.length} onShowBuilder={() => setMode("builder")} />
+        <ChainAdvisor initialTicker={initialTicker} onUseInBs={useInBs} onOpenInBuilder={openInBuilder} onPickContract={pickContract}
+          onUnderlying={setUnderlying} builderLegCount={builder.legs.length} onShowBuilder={() => setMode("builder")} onShowBs={() => setMode("bs")} />
       </div>
       <div hidden={current !== "bs"}>
         <BlackScholesView s={bs} onOpenInBuilder={openInBuilder} />

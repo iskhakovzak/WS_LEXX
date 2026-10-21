@@ -51,7 +51,7 @@ export function FiltersBar({
   searchRef: React.RefObject<HTMLInputElement | null>;
   typeCounts: TypeCounts;
   sectors: string[];
-  capStats?: { known: number; unknown: number };
+  capStats?: { known: number; unknown: number; excludedUnknown?: number; excludedUnknownTickers?: number };
   mineCount: number;
   views: SavedView[];
   onSaveView: (name: string) => void;
@@ -174,7 +174,7 @@ export function FiltersBar({
                 {f.minCapB > 0 && (
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <Label htmlFor="aa-unknown-cap" className="text-xs font-normal text-muted-foreground">
-                      {t("filters.includeUnknown")}{capStats && capStats.unknown > 0 ? ` (${capStats.unknown})` : ""}
+                      {t("filters.includeUnknown")}{unknownCount(f.includeUnknownCap, capStats)}
                     </Label>
                     <Switch id="aa-unknown-cap" checked={f.includeUnknownCap} onCheckedChange={(v) => onChange({ includeUnknownCap: v })} />
                   </div>
@@ -288,3 +288,10 @@ function SavedViews({
     </Popover>
   );
 }
+
+/** « (N)» after «включая без данных»: actions shown with an unknown cap, or — switch off — excluded for it. */
+function unknownCount(include: boolean, s: FiltersBarCapStats | undefined): string {
+  const n = include ? s?.unknown ?? 0 : s?.excludedUnknown ?? 0;
+  return n > 0 ? ` (${n})` : "";
+}
+type FiltersBarCapStats = { unknown: number; excludedUnknown?: number };

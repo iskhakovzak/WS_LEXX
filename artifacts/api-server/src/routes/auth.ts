@@ -7,10 +7,10 @@ import { langOf, localeOfUser } from "../i18n";
 import { signToken, signGuestToken, verifyPassword, bumpTokenVersion, hashPassword, isGuest, isGuestModeEnabled, shouldRefreshToken, GUEST_NAME, GUEST_ROLE, GUEST_USER_ID } from "../lib/auth";
 import { logAudit } from "../lib/audit";
 import { logger } from "../lib/logger";
-import { ensureNameLatin } from "../lib/peopleDirectory";
 import { lockoutKey, lockoutStore, resolveLoginName } from "../lib/security/loginGuard";
 import { mustChangeSecret, secretPolicyFor, TRADER_MIN_SECRET } from "../lib/security/passwordPolicy";
 import { securityT } from "../lib/security/i18n";
+import { revokeSession } from "../lib/security/sessions";
 import { sendSecurityError } from "../lib/security/respond";
 import { AppError, unauthorized } from "../lib/http";
 import { config } from "../config";
@@ -38,11 +38,10 @@ const loginSchema = z.object({
 
 type LoginRow = { id: number; name: string; name_latin: string | null; password_hash: string | null; role: string; banned: boolean; must_change_secret: boolean };
 
-/** Active accounts the typed name may resolve to (name_latin is optional on older databases). */
+/** Active accounts the typed name may resolve to. */
 async function loginCandidates(): Promise<LoginRow[]> {
-  const latin = await ensureNameLatin().then(() => true, () => false);
   const { rows } = await pool.query<LoginRow>(
-    `SELECT id, name, ${latin ? "name_latin" : "NULL::text AS name_latin"}, password_hash, role, COALESCE(banned, false) AS banned, must_change_secret
+    `SELECT id, name, name_latin, password_hash, role, COALESCE(banned, false) AS banned, must_change_secret
        FROM users WHERE active = true`,
   );
   return rows;
@@ -143,7 +142,8 @@ router.get("/auth/me", asyncHandler(async (req, res): Promise<void> => {
   const locale = guest ? null : await localeOfUser(req.authUser.id);
   const pwc = !!req.authMeta?.pwc;
   const reason = pwc ? await mustChangeReasonOf(req.authUser.id) : null;
-  const token = !guest && shouldRefreshToken(req.authMeta?.iat) ? await signToken(req.authUser, { pwc }) : undefined;
+  // The refreshed token keeps the session id: «Выйти» on this device still signs out the same session.
+  const token = !guest && shouldRefreshToken(req.authMeta?.iat) ? await signToken(req.authUser, { pwc, sid: req.authMeta?.sid }) : undefined;
   if (token) res.setHeader("Cache-Control", "no-store");
   res.json({
     user: req.authUser,
@@ -156,11 +156,28 @@ router.get("/auth/me", asyncHandler(async (req, res): Promise<void> => {
   });
 }));
 
+/**
+ * POST /auth/logout — «Выйти»: signs out THIS device only (its session id, lib/security/sessions). Other devices of the
+ * same person stay signed in. Guest tokens have no users row — the client simply drops the token.
+ */
 router.post("/auth/logout", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
-  // Guest tokens have no users row / token_version — the client simply drops the token.
-  if (!isGuest(req)) await bumpTokenVersion(req.authUser.id);
+  if (!isGuest(req) && req.authMeta?.sid) await revokeSession(req.authMeta.sid, req.authUser.id, req.authMeta.exp);
   res.json({ ok: true });
+}));
+
+/**
+ * POST /auth/logout-all — settings «Выйти на других устройствах»: bumps users.token_version, so every token of the
+ * person dies, and answers with a fresh token (new session) for the calling device: { ok, token }. Members only (the
+ * global gate answers 403 to guests and to a pending password change).
+ */
+router.post("/auth/logout-all", asyncHandler(async (req, res): Promise<void> => {
+  if (!req.authUser || isGuest(req)) throw unauthorized();
+  await bumpTokenVersion(req.authUser.id);
+  const token = await signToken(req.authUser);
+  await logAudit({ actor: req.authUser.name, action: "auth.logout_others", targetType: "user", targetId: String(req.authUser.id), details: {} });
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, token });
 }));
 
 /**

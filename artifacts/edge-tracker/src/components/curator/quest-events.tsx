@@ -10,7 +10,7 @@ import type { QuestEvent } from "./api";
 const SEEN_MAX = 200;
 
 /**
- * «Сегодня» queue: one small chip per curator quest a trainee recently finished or failed (no separate list). Each chip
+ * «Сегодня» queue: one small chip per curator quest a newcomer recently finished or failed (no separate list). Each chip
  * carries the day it ended and the curator's note (OLGA-23), so two chips of the same quest type read apart; the name
  * opens the trader's profile (the quests block), «×» closes the chip in place.
  */

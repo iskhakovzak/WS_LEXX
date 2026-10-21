@@ -4,7 +4,6 @@ import type ru from "../ru/discussions";
 export default {
   audience: {
     all: "Hammaga",
-    trainee: "Stajyorlarga",
     junior: "Juniorlarga",
     trader: "Treyderlarga",
     senior: "Seniorlarga",

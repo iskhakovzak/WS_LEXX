@@ -9,7 +9,8 @@
  *   nyToTashkent           "16:30" NY → "01:30" Tashkent, +1 day (today's DST offsets)
  */
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
-type Base = { group: string; unit?: SettingUnit };
+/** `pilot`: one of the ~10 pilot settings (server registry flag) — shown by default, the rest under «Показать все». */
+type Base = { group: string; unit?: SettingUnit; pilot?: true };
 export type SettingDef =
   | (Base & { type: "number"; default: number; min: number; max: number; step?: number })
   | (Base & { type: "time"; default: string })
@@ -45,10 +46,34 @@ export const SHOW_AFTER: Readonly<Record<string, string>> = {
   "gamification.missedDayBreaksStreak": "discipline.streakOnBreak",
 };
 
-/** «Пилот: 5 пунктов» — the settings PILOT.md §2.5 asks to check before day one (shortcuts above the form). */
+/**
+ * The pilot settings (docs/PILOT.md §2.5 / §3) — the keys the server registry flags `pilot: true` (the agreement is
+ * tested in desk-settings-model.test.ts). The page reads the flag from GET /api/admin/settings; this list is only the
+ * fallback for an API build without the flag.
+ */
 export const PILOT_KEYS = [
-  "telegram.morningTime", "telegram.eveningTime", "nav.simpleForTrainees", "gamification.missedDayBreaksStreak", "usage.pilotUsers",
+  "daily.focusWindowDays", "daily.focusMinDays", "discipline.streakOnBreak", "telegram.morningTime", "telegram.eveningTime",
+  "gamification.missedDayBreaksStreak", "nav.simpleForTrainees", "trainer.dailyPlayMinutes", "usage.enabled", "usage.pilotUsers",
 ] as const;
+
+/** Pilot rows in registry order: by the server flag, or by PILOT_KEYS when no row carries the flag (older API). */
+export function pilotRowsOf<T extends Pick<SettingRow, "key" | "def">>(rows: readonly T[]): T[] {
+  const flagged = rows.filter((r) => r.def.pilot === true);
+  if (flagged.length) return flagged;
+  const keys = new Set<string>(PILOT_KEYS);
+  return rows.filter((r) => keys.has(r.key));
+}
+
+/**
+ * What the form shows: every row with «Показать все», else the pilot rows (everything when none is known) plus the
+ * rows in `keep` (unsaved edits / server problems never hide behind the filter).
+ */
+export function visibleRows<T extends Pick<SettingRow, "key" | "def">>(rows: readonly T[], showAll: boolean, keep: ReadonlySet<string> = new Set()): T[] {
+  if (showAll) return [...rows];
+  const pilot = new Set(pilotRowsOf(rows).map((r) => r.key));
+  if (!pilot.size) return [...rows];
+  return rows.filter((r) => pilot.has(r.key) || keep.has(r.key));
+}
 
 export function groupRows(rows: readonly SettingRow[]): { group: string; rows: SettingRow[] }[] {
   const by = new Map<string, SettingRow[]>();

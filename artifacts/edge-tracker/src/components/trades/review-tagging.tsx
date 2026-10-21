@@ -1,5 +1,9 @@
 // Quick review tagging: setup / mistake / emotion pickers (keyboard-first) and the chips shown on a trade row.
-// Setup goes to trades.setup (single value); mistakes and emotions live in trades.tags (vocabulary in review-presets).
+// Setup = one of the office playbook setups (wave 1, 1.2): the picker lists them by name (components/shared/setup-picker
+// useSetupNames) and the server links the name to trades.playbook_id; a trade without a setup shows the classifier's
+// suggestion as a one-tap chip. Mistakes and emotions live in trades.tags (vocabulary in review-presets); a mistake (key M)
+// is one code of the desk's one mistakes vocabulary (components/shared/error-vocab) — the server also writes it into the
+// one errors store (trading_errors, Волна 2 п. 2.8), so «Ошибки» and «Сколько стоили мои ошибки» see it.
 import * as React from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { Check, Plus } from "lucide-react";
@@ -9,6 +13,9 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { cn } from "@/lib/utils";
 import { tradesI18n } from "@/i18n/ns/trades";
 import { EMOTIONS, MISTAKES, classifyTags, tagLabel, tagMatches, type TagKind } from "./review-presets";
+import { SuggestionChip, useSetupNames } from "@/components/shared/setup-picker";
+import { errorCodeOf } from "@/components/shared/error-vocab";
+import { rulesI18n } from "@/i18n/ns/rules";
 
 const kindMeta = (kind: TagKind, key: string, tone: Tone) => ({
   key,
@@ -71,7 +78,8 @@ export function TagPicker({
   const query = q.trim().toLowerCase();
   const list = React.useMemo(() => (query ? options.filter((o) => (kind === "setup" ? o.toLowerCase().includes(query) : tagMatches(o, query))) : options), [options, query, kind]);
   const exact = list.some((o) => o.toLowerCase() === query || shown(kind, o).toLowerCase() === query);
-  const canAdd = query.length > 0 && !exact;
+  // A setup is one of the playbook's setups — no free text (mistakes / emotions still take a new word).
+  const canAdd = kind !== "setup" && query.length > 0 && !exact;
 
   const pick = (v: string) => {
     onPick(v);
@@ -192,8 +200,10 @@ export function ReviewChips({
   className?: string;
 }) {
   const { t } = tradesI18n.useT();
+  rulesI18n.useT(); // mistake labels (one vocabulary) live in the rules namespace
   const { mistakes, emotions, other } = classifyTags(trade.tags);
   const setup = trade.setup?.trim() || "";
+  const setupNames = useSetupNames(setupOptions);
   const isOpen = (k: TagKind) => picker?.id === trade.id && picker.kind === k;
   const openPicker = (k: TagKind) => (e: React.MouseEvent) => { e.stopPropagation(); setPicker(isOpen(k) ? null : { id: trade.id, kind: k }); };
   const addBtn = (k: TagKind) =>
@@ -214,16 +224,19 @@ export function ReviewChips({
   const group = (k: TagKind, chips: React.ReactNode, showAdd: boolean) => {
     const values = k === "setup" ? (setup ? [setup] : []) : k === "mistake" ? mistakes : emotions;
     const lower = new Set(values.map((v) => v.toLowerCase()));
-    const opts = pickerOptions(k, setupOptions);
-    // Values already on the trade that are not in the vocabulary stay pickable (to remove them).
-    const merged = [...values.filter((v) => !opts.some((o) => o.toLowerCase() === v.toLowerCase())), ...opts];
+    const codes = new Set(k === "mistake" ? values.map(errorCodeOf) : []);
+    const opts = pickerOptions(k, setupNames);
+    // Values already on the trade that are not in the vocabulary stay pickable (to remove them); a mistake's older
+    // spelling is the same option as its canonical word.
+    const isOpt = (v: string) => opts.some((o) => o.toLowerCase() === v.toLowerCase() || (k === "mistake" && errorCodeOf(o) === errorCodeOf(v)));
+    const merged = [...values.filter((v) => !isOpt(v)), ...opts];
     return (
       <TagPicker
         kind={k}
         open={isOpen(k)}
         onOpenChange={(o) => setPicker(o ? { id: trade.id, kind: k } : null)}
         options={merged}
-        stateOf={(v) => (lower.has(v.toLowerCase()) ? "all" : "none")}
+        stateOf={(v) => (lower.has(v.toLowerCase()) || (k === "mistake" && codes.has(errorCodeOf(v))) ? "all" : "none")}
         onPick={(v) => onPick(trade, k, v)}
         onClear={k === "setup" && setup ? () => onPick(trade, "setup", null) : undefined}
       >
@@ -243,6 +256,7 @@ export function ReviewChips({
 
   return (
     <div className={cn("flex min-w-0 flex-wrap items-center gap-1", className)} onClick={(e) => e.stopPropagation()}>
+      {!setup && canTag && <SuggestionChip trade={trade as typeof trade & { playbookId?: number | null }} />}
       {group("setup", setup ? chip("setup", setup) : null, !setup)}
       {group("mistake", mistakes.map((m) => chip("mistake", m)), true)}
       {group("emotion", emotions.map((m) => chip("emotion", m)), true)}

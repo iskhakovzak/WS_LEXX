@@ -12,7 +12,7 @@ import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
-const LADDER = ["trainee", "junior", "trader", "senior"];
+const LADDER = ["junior", "trader", "senior"]; // no «Стажёр» (Волна 1 п. 1.21)
 
 const fmt = (v: number | boolean | null | undefined, field: string) => {
   if (v == null) return "—";
@@ -43,9 +43,9 @@ export function TemplateDialog({
   const TEMPLATE_ROWS = templateRows();
   const q = useRiskTemplates(open);
   const tiers = React.useMemo(() => (q.data?.tiers ?? []).filter((t) => LADDER.includes(t.key) || t.key === defaultTier), [q.data, defaultTier]);
-  const [tierKey, setTierKey] = React.useState<string>(defaultTier ?? "trainee");
+  const [tierKey, setTierKey] = React.useState<string>(defaultTier ?? "junior");
   const [reason, setReason] = React.useState("");
-  React.useEffect(() => { if (open) { setTierKey(defaultTier && LADDER.includes(defaultTier) ? defaultTier : "trainee"); setReason(""); } }, [open, defaultTier]);
+  React.useEffect(() => { if (open) { setTierKey(defaultTier && LADDER.includes(defaultTier) ? defaultTier : "junior"); setReason(""); } }, [open, defaultTier]);
   const tier = tiers.find((t) => t.key === tierKey) ?? null;
   const rows = (q.data?.traders ?? []).filter((t) => traders.includes(t.trader));
   const apply = useCuratorMutation((v: { tierKey: string; reason: string }) =>

@@ -10,11 +10,12 @@ import { lockoutStore } from "../lib/security/loginGuard";
 import { securityT } from "../lib/security/i18n";
 import { can, requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
-import { ensureLocaleColumn, langOf, parseLang, rememberLocale } from "../i18n";
-import { cleanNameLatin, ensureNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
+import { langOf, parseLang, rememberLocale } from "../i18n";
+import { cleanNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
 import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 import { clearFeedStreamCache } from "../lib/feedStream";
+import { logAudit } from "../lib/audit";
 
 const router: IRouter = Router();
 
@@ -28,7 +29,6 @@ const USER_COLUMNS = `id, name, role, active,
 /** USER_COLUMNS + the optional Latin alias (users.name_latin) once the column is known to exist. */
 async function userColumns(): Promise<string> {
   try {
-    await ensureNameLatin();
     return `${USER_COLUMNS}, name_latin AS "nameLatin"`;
   } catch {
     return USER_COLUMNS; // never break the login screen over an optional column
@@ -127,6 +127,8 @@ router.patch("/users/tg-notifications", asyncHandler(async (req, res): Promise<v
 router.get("/users/tg-notifications", asyncHandler(async (req, res): Promise<void> => {
   const name = typeof req.query.name === "string" ? req.query.name : null;
   if (!name) throw new AppError("VALIDATION");
+  // Another member's setting: staff only (a trader reads their own, owner rule 2026-10-21).
+  if (!(await canActOnName(req, name)) && !(await can(req, "users.read.team"))) throw forbidden();
   const { rows } = await pool.query<any>(
     `SELECT COALESCE(tg_notifications_enabled, true) AS tg_notifications_enabled FROM users WHERE name = $1`, [name]
   );
@@ -140,10 +142,8 @@ router.get("/users/tg-notifications", asyncHandler(async (req, res): Promise<voi
 router.get("/users/me/profile", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
   if (!me) throw unauthorized();
-  await ensureLocaleColumn().catch(() => {});
-  const latinCol = await ensureNameLatin().then(() => `name_latin AS "nameLatin",`, () => "");
   const { rows } = await pool.query<any>(
-    `SELECT id, name, role, active, ${latinCol}
+    `SELECT id, name, role, active, name_latin AS "nameLatin",
             COALESCE(theme, 'dark') AS theme,
             COALESCE(locale, 'ru') AS locale,
             created_at AS "createdAt",
@@ -191,7 +191,6 @@ router.patch("/users/me/locale", asyncHandler(async (req, res): Promise<void> =>
   const raw = (req.body as { locale?: unknown } | undefined)?.locale;
   const locale = typeof raw === "string" && raw.length <= 10 ? parseLang(raw) : null;
   if (!locale) throw badRequest("INVALID_LOCALE", undefined, { value: String(raw ?? "").slice(0, 20) });
-  await ensureLocaleColumn();
   const me = req.authUser!;
   await pool.query(`UPDATE users SET locale = $1 WHERE id = $2`, [locale, me.id]);
   rememberLocale({ id: me.id, name: me.name }, locale);
@@ -205,7 +204,6 @@ router.patch("/users/me/name-latin", asyncHandler(async (req, res): Promise<void
   if (!requireMember(req, res)) return;
   const cleaned = cleanNameLatin((req.body as { nameLatin?: unknown } | undefined)?.nameLatin);
   if (!cleaned.ok) throw new AppError(cleaned.code, 400, cleaned.params);
-  await ensureNameLatin();
   const me = req.authUser!;
   const changed = await saveLatinNames([{ id: me.id, name: me.name, nameLatin: cleaned.value }], me.name, { bulk: false });
   if (changed.length) await reloadLatinNames();
@@ -215,22 +213,6 @@ router.patch("/users/me/name-latin", asyncHandler(async (req, res): Promise<void
 // ─── Personal settings (users.settings JSONB) — audit P1-7 ─────────────────────
 // GET /users/me/settings → { settings: { tradingDefaults?: {...}, ... } }   (guest/anonymous-safe: {} for a guest)
 // PUT /users/me/settings   { tradingDefaults?: {...} | null }  — top-level merge; null removes the key → { settings }
-// The column is added idempotently on first use (additive, no migrate.ts change).
-
-let settingsColumnEnsured: Promise<void> | null = null;
-function ensureSettingsColumn(): Promise<void> {
-  if (!settingsColumnEnsured) {
-    settingsColumnEnsured = pool
-      .query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb`)
-      .then(() => undefined)
-      .catch((err) => {
-        settingsColumnEnsured = null;
-        throw err;
-      });
-  }
-  return settingsColumnEnsured;
-}
-ensureSettingsColumn().catch((err) => logger.warn({ err }, "users: ensure settings column failed at init"));
 
 const boundedNum = (min: number, max: number) => z.coerce.number().finite().min(min).max(max);
 /** Mirrors edge-tracker components/settings/trading-defaults.ts (TRADING_DEFAULT_LIMITS). Unknown keys are dropped. */
@@ -258,7 +240,6 @@ router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   const me = req.authUser;
   if (!me) throw unauthorized();
   if (isGuestUser(me)) { res.json({ settings: {} }); return; }
-  await ensureSettingsColumn();
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `SELECT settings FROM users WHERE id = $1 LIMIT 1`,
     [me.id],
@@ -271,7 +252,6 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   if (!requireMember(req, res)) return;
   const body = SettingsPatch.safeParse(req.body ?? {});
   if (!body.success) throw body.error;
-  await ensureSettingsColumn();
   const set: Record<string, unknown> = {};
   const drop: string[] = [];
   if (body.data.tradingDefaults === null) drop.push("tradingDefaults");
@@ -419,6 +399,7 @@ router.post("/users", asyncHandler(async (req, res): Promise<void> => {
        RETURNING ${USER_COLUMNS}`,
       [cleanName, passwordHash, userRole]
     );
+    await logAudit({ actor: req.authUser?.name ?? "?", action: "user.create", targetType: "user", targetId: String(rows[0].id), details: { name: cleanName, role: userRole } });
     res.status(201).json(rows[0]);
   } catch (e: any) {
     if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
@@ -431,10 +412,12 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   if (id === null) throw badRequest("INVALID_ID");
   if (!(await requireCap(req, res, "users.manage", null, "STAFF_ONLY"))) return;
   const adminMgr = await can(req, "users.manage.admins");
-  const { rows: targetRows } = await pool.query<{ role: string }>(`SELECT role FROM users WHERE id = $1`, [id]);
+  const { rows: targetRows } = await pool.query<{ role: string; name: string; active: boolean }>(`SELECT role, name, active FROM users WHERE id = $1`, [id]);
   const target = targetRows[0];
   if (!target) throw notFound();
   if (target.role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
+  // Another curator (password, role, (de)activation, rename) is managed by an admin only — like freeze / ban.
+  if (target.role === "curator" && id !== req.authUser?.id && !adminMgr) throw new AppError("ADMIN_ONLY");
 
   const { name, password, role, active } = req.body as Record<string, unknown>;
   const fields: string[] = [];
@@ -481,10 +464,23 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
       vals
     );
     if (!rows[0]) throw notFound();
-    // Invalidate existing sessions so a reset password / new role takes effect immediately.
-    if (passwordChanged || roleChanged || activeChanged) await bumpTokenVersion(id);
+    const nameChanged = typeof name === "string" && rows[0].name !== target.name;
+    // Invalidate existing sessions so a reset password / new role / new name takes effect immediately (the name is
+    // signed into the token: an old token would keep acting under the old name).
+    if (passwordChanged || roleChanged || activeChanged || nameChanged) await bumpTokenVersion(id);
     // An admin reset of the secret also lifts a sign-in lock on that account.
     if (passwordChanged) await lockoutStore().clearUser(id).catch((err) => logger.warn({ err }, "users: clear login lock failed"));
+    // Audit: PIN / password reset, role, (de)activation, rename — never the secret itself.
+    await logAudit({
+      actor: req.authUser?.name ?? "?", action: "user.update", targetType: "user", targetId: String(id),
+      details: {
+        name: rows[0].name,
+        ...(passwordChanged ? { secretReset: true } : {}),
+        ...(roleChanged ? { role: { from: target.role, to: rows[0].role } } : {}),
+        ...(active !== undefined && active !== target.active ? { active: { from: target.active, to: active } } : {}),
+        ...(nameChanged ? { rename: { from: target.name, to: rows[0].name } } : {}),
+      },
+    });
     res.json(rows[0]);
   } catch (e: any) {
     if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
@@ -498,11 +494,13 @@ router.delete("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage", null, "STAFF_ONLY"))) return;
   const adminMgr = await can(req, "users.manage.admins");
   if (id === req.authUser?.id) throw new AppError("CANNOT_DEACTIVATE_SELF");
-  const { rows: targetRows } = await pool.query<{ role: string }>(`SELECT role FROM users WHERE id = $1`, [id]);
+  const { rows: targetRows } = await pool.query<{ role: string; name: string }>(`SELECT role, name FROM users WHERE id = $1`, [id]);
   if (!targetRows[0]) throw notFound();
   if (targetRows[0].role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
+  if (targetRows[0].role === "curator" && !adminMgr) throw new AppError("ADMIN_ONLY");
   await pool.query(`UPDATE users SET active = false WHERE id = $1`, [id]);
   await bumpTokenVersion(id);
+  await logAudit({ actor: req.authUser?.name ?? "?", action: "user.deactivate", targetType: "user", targetId: String(id), details: { name: targetRows[0].name } });
   res.json({ success: true });
 }));
 

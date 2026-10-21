@@ -69,6 +69,8 @@ export interface Offering {
   /** Close before the reaction session; discount = offer / prevClose − 1. */
   prevClose?: number | null;
   discountPct?: number | null;
+  /** Server rejected the offer price (outside −70 %…+25 % of the close): shown muted, left out of rating / risk. */
+  offerPriceSuspect?: boolean;
   reaction?: {
     gapPct: number; o2cPct: number; dayPct: number; lowFromOpenPct: number; highFromOpenPct: number;
     relVol: number | null; live: boolean;
@@ -433,6 +435,6 @@ export function watchCatalyst(o: Offering): string {
   const pct = pctOfMcap(o);
   if (pct != null) parts.push(t("watch.pctMcap", { pct: fmtPctCap(pct, 0) }));
   if (o.discountPct != null) parts.push(t("watch.discount", { pct: Math.abs(o.discountPct).toFixed(1) }));
-  if (o.offerPrice != null) parts.push(t("watch.offer", { price: fmtPrice(o.offerPrice, { dollar: true }) }));
+  if (o.offerPrice != null && !o.offerPriceSuspect) parts.push(t("watch.offer", { price: fmtPrice(o.offerPrice, { dollar: true }) }));
   return parts.join(" · ");
 }

@@ -52,8 +52,8 @@ export default {
       hint: "Zararli kunlarning joriy seriyasi",
     },
     discipline: {
-      label: "Intizom (baho)",
-      hint: "Oyna haftalari boʻyicha kuratorning oʻrtacha «intizom» bahosi (1–10)",
+      label: "Intizom indeksi (0–100)",
+      hint: "Oyna kunlari boʻyicha oʻrtacha kunlik intizom indeksi (0–100, «Treyder yoʻli» va «Xulq»dagidek)",
     },
     rating_overall: {
       label: "Umumiy baho",
@@ -81,6 +81,8 @@ export default {
     noDdLimit: "pasayish limiti belgilanmagan",
     noRatings: "kurator baholari yoʻq",
     ratings: { one: "{count} ta baho", other: "{count} ta baho" },
+    noBehavior: "intizom indeksi bor kunlar yoʻq",
+    behaviorDays: { one: "{count} kun boʻyicha", other: "{count} kun boʻyicha" },
     noData: "maʼlumot yoʻq",
   },
   rule: {

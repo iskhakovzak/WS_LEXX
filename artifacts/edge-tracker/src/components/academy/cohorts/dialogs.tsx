@@ -127,10 +127,10 @@ export function EnrollDialog({ open, onOpenChange, cohort, existing }: { open: b
   const enroll = useEnroll();
   const ok = useSuccess();
   const [user, setUser] = useState<string | null>(null);
-  const [stage, setStage] = useState<Stage>("trainee");
+  const [stage, setStage] = useState<Stage>("junior");
   const [joinedOn, setJoinedOn] = useState(nyDate());
   const [note, setNote] = useState("");
-  useEffect(() => { if (open) { enroll.reset(); setUser(null); setStage("trainee"); setJoinedOn(nyDate()); setNote(""); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
+  useEffect(() => { if (open) { enroll.reset(); setUser(null); setStage("junior"); setJoinedOn(nyDate()); setNote(""); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -169,7 +169,7 @@ export function EnrollmentEditDialog({ open, onOpenChange, enrollment }: { open:
   const { t: ct } = commonI18n.useT();
   const upd = useUpdateEnrollment();
   const ok = useSuccess();
-  const [stage, setStage] = useState<Stage>("trainee");
+  const [stage, setStage] = useState<Stage>("junior");
   const [status, setStatus] = useState<EnrollmentStatus>("active");
   const [reason, setReason] = useState("");
   useEffect(() => { if (open && enrollment) { upd.reset(); setStage(enrollment.stage); setStatus(enrollment.status); setReason(""); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open, enrollment?.id]);

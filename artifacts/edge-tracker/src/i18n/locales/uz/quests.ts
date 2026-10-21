@@ -141,6 +141,7 @@ export default {
     review_days: { title: "Kunlarni oʻz vaqtida tahlil qilish", desc: "Oʻsha yoki keyingi kuni tahlil qilingan savdo kunlari." },
     plan_days: { title: "Ochilishdan oldin rejalar", desc: "Shaxsiy reja 9:30 NY gacha toʻldirilgan kunlar." },
     beat_yourself: { title: "Oʻzingizdan yaxshiroq oʻynash", desc: "Simulyatordagi yangi qaror haqiqiy savdodan yaxshiroq boʻlgan oʻz kunlaringiz." },
+    daily_task_days: { title: "Kun vazifasi", desc: "Hafta davomida «Kun vazifasi» oʻynalgan kunlar: {target} dan {done}. Ballar mashq uchun, P&L uchun emas." },
     trainer_drills: { title: "«Kirishni top» trenajyori", desc: "Hafta davomida trenajyordagi javoblar: {target} dan {done}. Ballar mashq uchun, P&L uchun emas." },
     academy_lessons: { title: "Akademiya darslari", desc: "Hafta davomida oʻtilgan darslar: {target} dan {done}." },
     curator_task: { title: "Kurator topshirigʻi", desc: "Nima qilish kerakligi kurator izohida; bajarilganini kurator belgilaydi." },

@@ -131,47 +131,6 @@ export function sanitizeEvent(e: ErrorEvent): ErrorEvent {
 
 // ─── Storage ────────────────────────────────────────────────────────────────────────────────────────────
 
-let schemaReady: Promise<void> | null = null;
-export function ensureErrorTrackingSchema(): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = (async () => {
-      await pool.query(`CREATE TABLE IF NOT EXISTS app_errors (
-        id              BIGSERIAL PRIMARY KEY,
-        fingerprint     TEXT NOT NULL UNIQUE,
-        source          TEXT NOT NULL CHECK (source IN ('server', 'client', 'csp')),
-        kind            TEXT NOT NULL,
-        message         TEXT NOT NULL,
-        route           TEXT NULL,
-        status          INTEGER NULL,
-        stack           TEXT NULL,
-        count           INTEGER NOT NULL DEFAULT 1,
-        first_seen      TIMESTAMPTZ NOT NULL DEFAULT now(),
-        last_seen       TIMESTAMPTZ NOT NULL DEFAULT now(),
-        last_request_id TEXT NULL,
-        last_user_id    INTEGER NULL,
-        user_agent      TEXT NULL,
-        release         TEXT NULL,
-        resolved_at     TIMESTAMPTZ NULL,
-        resolved_by     TEXT NULL,
-        alerted_at      TIMESTAMPTZ NULL
-      )`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS app_errors_last_seen_idx ON app_errors (last_seen DESC)`);
-      await pool.query(`CREATE TABLE IF NOT EXISTS app_error_occurrences (
-        id          BIGSERIAL PRIMARY KEY,
-        error_id    BIGINT NOT NULL REFERENCES app_errors(id) ON DELETE CASCADE,
-        at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-        request_id  TEXT NULL,
-        user_id     INTEGER NULL,
-        route       TEXT NULL,
-        status      INTEGER NULL,
-        context     JSONB NULL
-      )`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS app_error_occurrences_error_idx ON app_error_occurrences (error_id, at DESC)`);
-    })().catch((e) => { schemaReady = null; throw e; });
-  }
-  return schemaReady;
-}
-
 export type RecordResult = { id: number; fingerprint: string; isNew: boolean; reopened: boolean; count: number };
 
 /** Upsert by fingerprint + one occurrence row. Returns null when the DB is unavailable (logged, never thrown). */
@@ -179,7 +138,6 @@ export async function recordError(raw: ErrorEvent): Promise<RecordResult | null>
   const e = sanitizeEvent(raw);
   const fingerprint = fingerprintOf(e);
   try {
-    await ensureErrorTrackingSchema();
     const { rows } = await pool.query<{ id: string; count: number; inserted: boolean; reopened: boolean }>(
       `WITH prev AS (SELECT resolved_at FROM app_errors WHERE fingerprint = $1)
        INSERT INTO app_errors AS a (fingerprint, source, kind, message, route, status, stack, last_request_id, last_user_id, user_agent, release)

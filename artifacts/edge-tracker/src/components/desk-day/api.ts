@@ -3,7 +3,8 @@
  * day (GET /api/candles/:ticker/day/:date). $ / sizes arrive as null for trades the viewer may not see money for.
  *
  * Views (server lib/deskDay.ts): "staff" — names + $; "anonymous" — a trader while names are hidden: trader keys are
- * "t<alias>" (rendered «Трейдер {n}», the viewer's own row «я») and $ is shown; "named" — names, others' $ hidden.
+ * "t<alias>" (rendered «Трейдер {n}», the viewer's own row «я»); "named" — names. In both trader views others' $ is
+ * hidden (owner decision 9, 2026-10-20); the office $ only with ≥ 3 traders on the ticker-day.
  */
 import { useQuery } from "@tanstack/react-query";
 import { http, type ApiError } from "@/lib/api/http";

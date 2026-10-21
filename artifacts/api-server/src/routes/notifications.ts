@@ -29,7 +29,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { isGuest, isStaffRole, viewerRole } from "../lib/auth";
-import { ensureNotificationSchema, loadNotificationPrefs, saveNotificationPrefs } from "../lib/notifyUtils";
+import { loadNotificationPrefs, saveNotificationPrefs } from "../lib/notifyUtils";
 import {
   ALL_TYPES_KEY, clampLimit, decodeCursor, deriveLink, encodeCursor,
   expandTypeFilter, groupLabels, isSeverity, normalizeType, notificationTypes, parseList, sanitizePrefs, stripInlineLink, typeMeta,
@@ -135,7 +135,6 @@ function parseId(raw: string): number | null {
 router.get("/notifications/count", asyncHandler(async (req, res): Promise<void> => {
   const trader = await resolveTarget(req);
   if (!trader) { res.json({ unread: 0, critical: 0, warn: 0 }); return; }
-  await ensureNotificationSchema();
   const { rows } = await pool.query<{ unread: string; critical: string; warn: string }>(
     `SELECT COUNT(*) AS unread,
             COUNT(*) FILTER (WHERE severity = 'critical') AS critical,
@@ -193,7 +192,6 @@ router.put("/notifications/prefs", asyncHandler(async (req, res): Promise<void> 
 router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
   const trader = await resolveTarget(req);
   if (!trader) { res.json({ items: [], nextCursor: null }); return; }
-  await ensureNotificationSchema();
 
   const limit = clampLimit(req.query["limit"], 30, 100);
   const where: string[] = [`user_name = $1`];
@@ -247,7 +245,6 @@ router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/notifications/read-all", asyncHandler(async (req, res): Promise<void> => {
   const name = me(req, res);
   if (!name) return;
-  await ensureNotificationSchema();
   const type = typeof (req.body as { type?: unknown } | null)?.type === "string" ? String((req.body as { type: string }).type) : "";
   const params: unknown[] = [name];
   let sql = `UPDATE notifications SET is_read = TRUE, read_at = COALESCE(read_at, NOW()) WHERE user_name = $1 AND (is_read = FALSE OR read_at IS NULL) AND archived_at IS NULL`;
@@ -262,7 +259,6 @@ router.patch("/notifications/read-idea/:ideaId", asyncHandler(async (req, res): 
   if (!ideaId) throw badRequest("INVALID_ID");
   const name = me(req, res);
   if (!name) return;
-  await ensureNotificationSchema();
   const { rowCount } = await pool.query(
     `UPDATE notifications SET is_read = TRUE, read_at = COALESCE(read_at, NOW())
       WHERE user_name = $1 AND idea_id = $2 AND (is_read = FALSE OR read_at IS NULL)`,
@@ -276,7 +272,6 @@ router.post("/notifications/read-many", asyncHandler(async (req, res): Promise<v
   if (!name) return;
   const ids = parseIds(req.body);
   if (!ids) throw badRequest("IDS_REQUIRED");
-  await ensureNotificationSchema();
   const { rowCount } = await pool.query(
     `UPDATE notifications SET is_read = TRUE, read_at = COALESCE(read_at, NOW()) WHERE user_name = $1 AND id = ANY($2::int[]) AND (is_read = FALSE OR read_at IS NULL)`,
     [name, ids],
@@ -289,7 +284,6 @@ router.post("/notifications/unread-many", asyncHandler(async (req, res): Promise
   if (!name) return;
   const ids = parseIds(req.body);
   if (!ids) throw badRequest("IDS_REQUIRED");
-  await ensureNotificationSchema();
   const { rowCount } = await pool.query(
     `UPDATE notifications SET is_read = FALSE, read_at = NULL WHERE user_name = $1 AND id = ANY($2::int[])`,
     [name, ids],
@@ -300,7 +294,6 @@ router.post("/notifications/unread-many", asyncHandler(async (req, res): Promise
 router.post("/notifications/archive", asyncHandler(async (req, res): Promise<void> => {
   const name = me(req, res);
   if (!name) return;
-  await ensureNotificationSchema();
   const body = (req.body ?? {}) as { ids?: unknown; read?: unknown };
   if (body.read === true) {
     const { rows } = await pool.query<{ id: number }>(
@@ -327,7 +320,6 @@ router.post("/notifications/unarchive", asyncHandler(async (req, res): Promise<v
   if (!name) return;
   const ids = parseIds(req.body);
   if (!ids) throw badRequest("IDS_REQUIRED");
-  await ensureNotificationSchema();
   const { rowCount } = await pool.query(
     `UPDATE notifications SET archived_at = NULL WHERE user_name = $1 AND id = ANY($2::int[]) AND archived_at IS NOT NULL`,
     [name, ids],
@@ -340,7 +332,6 @@ async function setOne(req: Request, res: Response, sql: string): Promise<void> {
   if (!id) throw badRequest("INVALID_ID");
   const name = me(req, res);
   if (!name) return;
-  await ensureNotificationSchema();
   const { rows } = await pool.query<Row>(`${sql} WHERE id = $1 AND user_name = $2 RETURNING ${COLS}`, [id, name]);
   if (!rows[0]) throw notFound("NOTIFICATION_NOT_FOUND");
   res.json({ ok: true, notification: presentNotification(rows[0], langOf(req)) });

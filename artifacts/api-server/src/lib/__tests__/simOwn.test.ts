@@ -5,6 +5,8 @@
  * out of the fair progress.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+// Trainer eligibility (lib/trainer/eligibility): no close-auction ticker-days in these fixtures.
+vi.mock("../trainer/eligibilityStore", () => ({ blockedTickerDays: vi.fn(async () => new Set<string>()), _resetEligibilityMemo: vi.fn() }));
 import type { SimBar } from "../sim/engine";
 import { buildOwn, compareOwn, pickOrder, realMistakes, type OwnTradeRow } from "../sim/own";
 
@@ -23,22 +25,23 @@ function minuteBars(date: string, fromMin: number, toMin: number, price: number)
 const DAY_BARS = [...minuteBars(DAY, 240, 570, 768), ...minuteBars(DAY, 570, 960, 769)];
 const PREV_BARS = minuteBars("2026-10-10", 570, 960, 760);
 
-/** A short at 9:57:58 with an add 14 s later, out through the stop at 9:58:37 (like a real −$64 trade). */
+/** A short at 9:57:58 with an add 14 s later, out through the stop at 10:28:37 (like a real −$64 trade; held ≥ 25 min
+ *  so it is trainer-eligible — lib/trainer/eligibility). */
 const TRADE: OwnTradeRow = {
   id: 501, ticker: "META", day: DAY, side: "Short", entry: "768.83", exit: "770.93", stop: "770.43", qty: "30", pnl: "-63", fees: "0.92", risk_usd: "40.5", tf: "1m",
   execs: [
     { id: 1, kind: "entry", price: "769.08", qty: "15", at: iso(ny(DAY, 9, 57, 58)) },
     { id: 2, kind: "add", price: "768.58", qty: "15", at: iso(ny(DAY, 9, 58, 12)) },
-    { id: 3, kind: "exit", price: "770.93", qty: "30", at: iso(ny(DAY, 9, 58, 37)) },
+    { id: 3, kind: "exit", price: "770.93", qty: "30", at: iso(ny(DAY, 10, 28, 37)) },
   ],
 };
-/** A long averaged down 5 minutes later, closed inside the stop. */
+/** A long averaged down 5 minutes later, closed inside the stop 29 minutes after the entry. */
 const AVG: OwnTradeRow = {
   id: 502, ticker: "INTC", day: DAY, side: "Long", entry: "122.67", exit: "122.54", stop: null, qty: "100", pnl: "-13.5", fees: "1.15", risk_usd: null, tf: "1m",
   execs: [
     { id: 4, kind: "entry", price: "122.74", qty: "75", at: iso(ny(DAY, 11, 22, 49)) },
     { id: 5, kind: "add", price: "122.48", qty: "25", at: iso(ny(DAY, 11, 27, 11)) },
-    { id: 6, kind: "exit", price: "122.54", qty: "100", at: iso(ny(DAY, 11, 41, 47)) },
+    { id: 6, kind: "exit", price: "122.54", qty: "100", at: iso(ny(DAY, 11, 51, 47)) },
   ],
 };
 
@@ -85,6 +88,22 @@ describe("own mode — pure", () => {
   });
 });
 
+/** Trainer-ineligible losses (lib/trainer/eligibility): a 3-minute scalp and a trade closed at 15:55 NY. */
+const SCALP: OwnTradeRow = {
+  ...AVG, id: 503, ticker: "AMD", pnl: "-80",
+  execs: [
+    { id: 7, kind: "entry", price: "150", qty: "100", at: iso(ny(DAY, 10, 0, 0)) },
+    { id: 8, kind: "exit", price: "149.2", qty: "100", at: iso(ny(DAY, 10, 3, 0)) },
+  ],
+};
+const AUCTION: OwnTradeRow = {
+  ...AVG, id: 504, ticker: "NVDA", pnl: "-500",
+  execs: [
+    { id: 9, kind: "entry", price: "180", qty: "100", at: iso(ny(DAY, 14, 0, 0)) },
+    { id: 10, kind: "exit", price: "175", qty: "100", at: iso(ny(DAY, 15, 55, 0)) },
+  ],
+};
+
 /* ─────────────────────────── Service flow ─────────────────────────── */
 
 type Row = import("../sim/store").GameRow;
@@ -128,8 +147,8 @@ vi.mock("../sim/store", async (orig) => {
 });
 
 vi.mock("../sim/ownStore", () => ({
-  ownCandidates: vi.fn(async (trader: string) => (trader === ME.name ? [structuredClone(TRADE), structuredClone(AVG)] : [])),
-  ownTrade: vi.fn(async (trader: string, _last: string, id: number) => (trader === ME.name ? [TRADE, AVG].find((t) => t.id === id) ?? null : null)),
+  ownCandidates: vi.fn(async (trader: string) => (trader === ME.name ? [TRADE, AVG, SCALP, AUCTION].map((t) => structuredClone(t)) : [])),
+  ownTrade: vi.fn(async (trader: string, _last: string, id: number) => (trader === ME.name ? [TRADE, AVG, SCALP, AUCTION].find((t) => t.id === id) ?? null : null)),
   playedOwnTrades: vi.fn(async (uid: number) => new Map([...games.values()].filter((g) => g.userId === uid && g.params.own && g.status !== "abandoned").map((g) => [g.params.own!.tradeId, g.id]))),
   activeOwnGame: vi.fn(async (uid: number) => {
     const g = [...games.values()].reverse().find((x) => x.userId === uid && x.params.own && x.status === "active");
@@ -151,6 +170,18 @@ describe("own mode — service", () => {
     expect(v.worst).toBe(501);
     expect(v.trades.find((t) => t.tradeId === 501)).toMatchObject({ net: -63.92, r: -1.58, mistakes: ["structure:held_past_stop", "behavior:revenge"], played: false });
     expect((await own.ownCandidates({ id: 9, name: "Ориф", staff: true })).trades).toEqual([]);
+  });
+
+  it("trainer eligibility: a scalp (< 25 min) and a close-auction trade are neither listed, counted, picked nor playable", async () => {
+    const v = await own.ownCandidates(ME);
+    expect(v.trades.map((t) => t.tradeId)).not.toContain(503);
+    expect(v.trades.map((t) => t.tradeId)).not.toContain(504);
+    expect(await own.ownCandidateCount(ME)).toBe(2);
+    await expect(own.createOwnGame(ME, "trade", 503)).rejects.toMatchObject({ code: "TRADE_NOT_FOUND" });
+    await expect(own.createOwnGame(ME, "trade", 504)).rejects.toMatchObject({ code: "TRADE_NOT_FOUND" });
+    const { blockedTickerDays } = await import("../trainer/eligibilityStore");
+    vi.mocked(blockedTickerDays).mockResolvedValueOnce(new Set([`META:${DAY}`]));
+    expect((await own.ownCandidates(ME)).trades.map((t) => t.tradeId)).toEqual([502]); // the desk traded META's close that day
   });
 
   it("plays to the real entry, then on; the reveal compares with the real trade and shows only own trades", async () => {

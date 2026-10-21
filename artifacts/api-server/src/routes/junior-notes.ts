@@ -1,3 +1,10 @@
+/**
+ * LEGACY (Волна 1, item 1.5 — one evening form): «Сводка джунов» merged into the journal's «Закрыть день»
+ * (eod_days.summary: what went well / what to fix / focus tomorrow; the curator answers in the one EOD queue, the
+ * trader gets eod_reviewed; the focus prefills tomorrow's plan — lib/planPrefill). The web page only reads the old
+ * notes (GET /junior-notes/history); the rows are kept. Every non-GET request answers JUNIOR_NOTES_RETIRED (410) — the
+ * guard right after the router; the write handlers below are unreachable and wait for removal.
+ */
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -19,6 +26,8 @@ import { aiAnswerLanguage } from "../i18n/ai";
 import { langOf } from "../i18n";
 
 const router: IRouter = Router();
+// Retired (wave 1): the history stays readable; every write answers 410 — the evening form in the journal replaced it.
+router.use("/junior-notes", (req, _res, next) => next(req.method === "GET" ? undefined : new AppError("JUNIOR_NOTES_RETIRED")));
 const AI_MODEL = "claude-sonnet-4-6";
 const AI_TIMEOUT_MS = 40_000;
 
@@ -27,40 +36,6 @@ const AI_TIMEOUT_MS = 40_000;
 const NOTE_COLS = `id, trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date, raw_text, refined_text, mood,
   sections, curator_feedback, curator_score, reviewed_by, reviewed_at, feedback_seen_at,
   created_at, updated_at`;
-
-/* ------------------------------------------------------------------ */
-/* Additive schema: structured sections, curator review, reminders.    */
-/* Guarded init promise — runs once per process, retried on failure.   */
-/* ------------------------------------------------------------------ */
-let ensured: Promise<void> | null = null;
-function ensureSchema(): Promise<void> {
-  if (!ensured) {
-    ensured = (async () => {
-      await pool.query(`ALTER TABLE junior_notes ADD COLUMN IF NOT EXISTS sections JSONB`);
-      await pool.query(`ALTER TABLE junior_notes ADD COLUMN IF NOT EXISTS curator_feedback TEXT`);
-      await pool.query(`ALTER TABLE junior_notes ADD COLUMN IF NOT EXISTS curator_score SMALLINT`);
-      await pool.query(`ALTER TABLE junior_notes ADD COLUMN IF NOT EXISTS reviewed_by TEXT`);
-      await pool.query(`ALTER TABLE junior_notes ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
-      await pool.query(`ALTER TABLE junior_notes ADD COLUMN IF NOT EXISTS feedback_seen_at TIMESTAMPTZ`);
-      await pool.query(
-        `CREATE TABLE IF NOT EXISTS junior_note_reminders (
-           id SERIAL PRIMARY KEY,
-           trader TEXT NOT NULL,
-           note_date DATE NOT NULL,
-           curator TEXT NOT NULL,
-           message TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           dismissed_at TIMESTAMPTZ,
-           UNIQUE (trader, note_date)
-         )`,
-      );
-    })().catch((e) => {
-      ensured = null;
-      throw e;
-    });
-  }
-  return ensured;
-}
 
 const SECTION_KEYS = ["free", "plan", "intraday", "overnight", "swing", "mistakes", "lessons", "focus"] as const;
 type SectionKey = (typeof SECTION_KEYS)[number];
@@ -145,7 +120,7 @@ async function menteesOf(me: string): Promise<string[]> {
     [me],
   );
   rows.forEach((r) => out.add(r.name));
-  // Academy tables are created lazily by routes/academy-cohorts.ts — absent on a fresh DB.
+  // Academy tables come from migration 0234; an older database may not have them yet.
   const t = await pool.query<{ ok: boolean }>(
     `SELECT to_regclass('academy_cohorts') IS NOT NULL AND to_regclass('academy_enrollments') IS NOT NULL AS ok`,
   );
@@ -251,7 +226,6 @@ function streakEndingAt(dates: Set<string>, date: string): number {
 }
 
 router.get("/junior-notes/team", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const date = (req.query["date"] as string | undefined) || todayNy();
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const ctx = await reviewCtx(req);
@@ -288,7 +262,6 @@ router.get("/junior-notes/reviewer", requireAuth, asyncHandler(async (req, res):
  * `?scope=mine` narrows a desk reviewer to their own juniors (assigned curator / mentor).
  */
 router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const ctx = await requireReviewer(req, res);
   if (!ctx) return;
   const date = (req.query["date"] as string | undefined) || todayNy();
@@ -388,7 +361,6 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
 
 /** Review queue: written notes without an answer over the last N days, oldest first (reviewer's scope). */
 router.get("/junior-notes/queue", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const ctx = await requireReviewer(req, res);
   if (!ctx) return;
   const days = parseLimit(req.query["days"], 14, 60);
@@ -412,7 +384,6 @@ router.get("/junior-notes/queue", requireAuth, asyncHandler(async (req, res): Pr
  * recent answers, score trend and repeated mistakes. Owner or a reviewer of that junior only.
  */
 router.get("/junior-notes/:id/context", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const ctx = await reviewCtx(req);
@@ -494,7 +465,6 @@ router.get("/junior-notes/:id/context", requireAuth, asyncHandler(async (req, re
 }));
 
 router.get("/junior-notes/history", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const limit = parseLimit(req.query["limit"], 30, 400);
   const q = typeof req.query["q"] === "string" ? req.query["q"].trim().slice(0, 100) : "";
@@ -516,7 +486,6 @@ router.get("/junior-notes/history", requireAuth, asyncHandler(async (req, res): 
 
 /** In-app reminders addressed to the current user that are still open (no note written yet). */
 router.get("/junior-notes/reminders/me", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const me = req.authUser!.name;
   const { rows } = await pool.query(
     `SELECT r.id, r.trader, TO_CHAR(r.note_date, 'YYYY-MM-DD') AS note_date, r.curator, r.message, r.created_at
@@ -533,7 +502,6 @@ router.get("/junior-notes/reminders/me", requireAuth, asyncHandler(async (req, r
 }));
 
 router.get("/junior-notes", requireAuth, asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const date = (req.query["date"] as string | undefined) || todayNy();
   if (!trader) throw badRequest("TRADER_REQUIRED");
@@ -548,7 +516,6 @@ router.get("/junior-notes", requireAuth, asyncHandler(async (req, res): Promise<
 }));
 
 router.put("/junior-notes", asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const trader = req.authUser!.name;
   const { raw_text, note_date, mood } = req.body as { raw_text?: string; note_date?: string; mood?: string };
   const sections = parseSections((req.body as { sections?: unknown }).sections);
@@ -571,7 +538,6 @@ router.put("/junior-notes", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.patch("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
@@ -598,7 +564,6 @@ router.patch("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> =
  * Curators/admins review anyone; a mentor (trader included) only their own mentees; nobody their own note.
  */
 router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const ctx = await requireReviewer(req, res, "RATE_REVIEWER_ONLY");
   if (!ctx) return;
   const curator = ctx.me;
@@ -636,7 +601,6 @@ router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<v
 
 /** Owner marks curator feedback as read (clears the unread marker). */
 router.post("/junior-notes/:id/seen", asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
@@ -652,7 +616,6 @@ router.post("/junior-notes/:id/seen", asyncHandler(async (req, res): Promise<voi
 
 /** Reviewer → junior in-app reminder for a missing summary (no external sends). Mentors: own mentees only. */
 router.post("/junior-notes/reminders", asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const ctx = await requireReviewer(req, res);
   if (!ctx) return;
   const curator = ctx.me;
@@ -679,7 +642,6 @@ router.post("/junior-notes/reminders", asyncHandler(async (req, res): Promise<vo
 }));
 
 router.post("/junior-notes/reminders/:id/dismiss", asyncHandler(async (req, res): Promise<void> => {
-  await ensureSchema();
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");

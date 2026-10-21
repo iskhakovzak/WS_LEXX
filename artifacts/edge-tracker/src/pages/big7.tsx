@@ -35,6 +35,7 @@ import {
 } from "@/components/big7/context";
 import { nextEarnings } from "@/components/big7/ui";
 import { fmtDate } from "@/lib/format";
+import { useTodayCloseMin } from "@/components/shell/market-clock";
 
 const BENCH = ["QQQ", "SPY"] as const;
 /** Max symbols that get intraday bars (board + hot); keeps the server/Yahoo load bounded. */
@@ -57,7 +58,8 @@ export default function Big7() {
   // Session the board describes and whether it is live.
   const nowDate = useMemo(() => new Date(now), [now]);
   const session = referenceSession(nowDate);
-  const sessionPhase = phaseOf(session, nowDate);
+  const closeMin = useTodayCloseMin(); // 13:00 on an early-close day (wave 1, 1.12)
+  const sessionPhase = phaseOf(session, nowDate, closeMin);
   const live = sessionPhase === "pre" || sessionPhase === "rth";
   const from = windowStart(session, 3);
 
@@ -120,7 +122,7 @@ export default function Big7() {
   }, [bars.version, barSymbols]);
 
   const effectiveDay = snaps.QQQ?.day ?? session;
-  const phase = phaseOf(effectiveDay, nowDate);
+  const phase = phaseOf(effectiveDay, nowDate, closeMin);
 
   const model = useMemo(() => {
     const bench = (s: "QQQ" | "SPY") => buildRow({ symbol: s, snap: snaps[s] ?? null, quote: quotes[s], stats: gap?.benchmarks[s] ?? undefined, phase, qqq: { snap: null, chg: null } });

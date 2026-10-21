@@ -1,4 +1,5 @@
 import { db, tradesTable, emotionalStateLogTable, weeklyPsychologyReportsTable } from "@workspace/db";
+import { extremeStates } from "../routes/psychologyanalytics";
 import { eq, and, gte, lte, isNull, desc } from "drizzle-orm";
 import { logger } from "./logger";
 import { psychologyT } from "./behaviorI18n";
@@ -270,12 +271,13 @@ export async function generateWeeklyReport(userId: string, weekStart?: string, w
     .map(([state, s]) => ({ state, ...s }))
     .sort((a, b) => b.winRate - a.winRate);
 
-  const bestState = stateEntries[0]?.state ?? null;
-  const worstState = stateEntries.length > 1 ? stateEntries[stateEntries.length - 1]?.state ?? null : null;
-
   const totalPnl = allTrades.reduce((s, t) => s + (t.pnl ? Number(t.pnl) : 0), 0);
   const wins = allTrades.filter((t) => isWin(t.result)).length;
   const winRate = allTrades.length > 0 ? wins / allTrades.length : 0;
+
+  // Same rule as the /psychology insights (routes/psychologyanalytics extremeStates): only marked states (never
+  // «normal»), >= 3 trades, a win rate at least MIN_WR_PP away from the week's — otherwise null.
+  const { best: bestState, worst: worstState } = extremeStates(stateEntries, allTrades.length > 0 ? winRate : null);
   const avgPnlPerTrade = allTrades.length > 0 ? totalPnl / allTrades.length : 0;
 
   const checkinCountByState: Record<string, number> = {

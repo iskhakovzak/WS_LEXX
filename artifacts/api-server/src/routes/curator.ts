@@ -1,14 +1,14 @@
 /**
  * «Кабинет куратора» — агрегирующие эндпоинты (только чтение чужих таблиц) + приватные заметки персонала.
  *
- *   GET  /curator/today                 ?scope=mine|desk&date=&old=1 — фаза дня, кто торгует, риск, нет плана / не закрыт день,
+ *   GET  /curator/today                 ?scope=group|all (старые mine|desk)&date=&old=1 — фаза дня, кто торгует, риск, нет плана / не закрыт день,
  *                                       общая очередь разборов (EOD + недельные + задания Академии + нарушения;
  *                                       по умолчанию за последние 14 дн., old=1 — со старыми; важное и свежее сверху),
  *                                       просроченные договорённости 1:1, приоритетные «следующие шаги», byCost (lib/daily/costQueue),
  *                                       oneOnOneDue (1:1 > 30 дн. или ни одной), counts.reviews/reviewsOverdue — «ждёт разбора»:
  *                                       закрытые и не разобранные дни ростера за 14 дн. (то же число, что /eod/queue/count)
  *                                       Часы ожидания очереди — торговые (выходные и праздники не идут в SLA, OLGA-07).
- *   GET  /curator/traders               ?scope=mine|desk — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
+ *   GET  /curator/traders               ?scope=group|all — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
  *                                       последний разбор, 1:1, нарушения, последняя заметка, следующий шаг
  *   GET  /curator/trader/:name          профиль: карточка + лимиты/метрики, нарушения с разбором, дни EOD, недели,
  *                                       Академия (договорённости, 1:1 без приватных заметок, цели ИПР), заметки, focus (lib/daily/curatorFocus)
@@ -22,7 +22,9 @@
  *   POST /curator/queue/restore         {ids} — вернуть элементы, убранные «архивировать старые»
  *   POST /curator/queue/archive-old     {scope?, olderThanDays?} — мягко скрыть из очереди элементы старше N дн. (curator_queue_acks)
  *
- * Доступ: journal.review (куратор / админ); ?scope=mine — подопечные (assigned_*), иначе весь деск в пределах readScope.
+ * Доступ: journal.review (куратор / админ); ?scope=group (= mine) — «Моя группа»: трейдеры групп деска, которые ведёт
+ * читатель (desk_groups, Волна 1 п. 1.19), и назначенные ему (assigned_*); all (= desk) — весь деск в пределах readScope.
+ * По умолчанию — своя группа, если она есть (lib/curatorRoster loadRoster). Запросы трейдеров — routes/curator-requests.ts.
  * Необязательные таблицы (планы, EOD, недельные, Академия) читаются с catch → пустые данные, если модуль ещё не создан.
  */
 import { Router, type IRouter, type Request } from "express";
@@ -32,7 +34,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { nyDate, nyMinutes, addDays } from "../lib/tradingDate";
 import { can, readScope, requireCap } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
-import { ensureCuratorTables, marketClosedDays, rowToBreachReview, rowToNote } from "../lib/curatorStore";
+import { marketClosedDays, rowToBreachReview, rowToNote } from "../lib/curatorStore";
 import { loadRoster, safe, type TraderSignal } from "../lib/curatorRoster";
 import { REVIEW_SLA_HOURS, tradingDaysAfter, tradingHoursBetween } from "../lib/eodLogic";
 import {
@@ -40,7 +42,6 @@ import {
   trendDirection, weeklyTrend, type QueueKind,
 } from "../lib/curatorLogic";
 import { alertMessage, breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
-import { ensureNameLatin } from "../lib/peopleDirectory";
 import { AppError, badRequest, forbidden, notFound } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
@@ -49,8 +50,11 @@ import { buildCostQueue } from "../lib/daily/costQueue";
 import { eveningFor } from "../lib/daily/service";
 import { curatorFocusFor } from "../lib/daily/curatorFocus";
 import { curatorQuestEvents } from "../lib/quests/store";
+import curatorTasks from "./curatorTasks";
 
 const router: IRouter = Router();
+// «Готово» on a curator task (2.13): POST /curator/tasks/:id/done — routes/curatorTasks.ts.
+router.use(curatorTasks);
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -72,19 +76,20 @@ type Bulk = Awaited<ReturnType<typeof loadBulk>>;
 
 /** `lang` = the reader's language of generated labels (stop texts, stage names, next steps, queue titles). */
 async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
-  await ensureCuratorTables();
   const prev = prevTradingDay(today);
   const from35 = addDays(today, -35);
   const from42 = addDays(today, -42);
   const from30 = addDays(today, -29);
-  await ensureNameLatin().catch(() => undefined);
   const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity, closed] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
     deskSnapshot(today, null, lang, traders),
     templateStatus(traders, lang),
     safe(`SELECT trader, status FROM trader_plans WHERE date = $1 AND deleted_at IS NULL AND trader = ANY($2)`, [today, traders]),
     safe(`SELECT id, trader, date, closed_at, reviewed_at, discipline, curator_score FROM eod_days WHERE date >= $1 AND trader = ANY($2)`, [from35, traders]),
-    safe(`SELECT id, trader, date, closed_at FROM eod_days WHERE closed_at IS NOT NULL AND reviewed_at IS NULL AND trader = ANY($1) ORDER BY closed_at DESC LIMIT 500`, [traders]),
+    // note = the trader's «Разобрал» note of the day (daily_reviews) — «Разобрал» closes the day too (Волна 0, item 0.4).
+    safe(`SELECT d.id, d.trader, d.date, d.closed_at, d.summary ->> 'via' AS via,
+                 (SELECT r.note FROM daily_reviews r WHERE r.trader = d.trader AND r.date = d.date) AS note
+            FROM eod_days d WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL AND d.trader = ANY($1) ORDER BY d.closed_at DESC LIMIT 500`, [traders]),
     safe(`SELECT id, trader, week, TO_CHAR(week_start, 'YYYY-MM-DD') AS week_start, status, submitted_at, reviewed_at FROM weekly_reviews
            WHERE trader = ANY($1) AND (week_start >= $2::date OR status = 'submitted') ORDER BY week_start DESC`, [traders, from42]),
     safe(`SELECT s.id, s.user_name, s.created_at, a.title FROM academy_submissions s JOIN academy_assignments a ON a.id = s.assignment_id
@@ -230,8 +235,13 @@ function maxIso(values: unknown[]): string | null {
 
 // ─── очередь разборов ───────────────────────────────────────────────────────
 
-/** `date` — торговый день / неделя элемента; `eodId` — id дня (eod_days) для разбора прямо в кабинете. */
-type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; ageHours?: number | null; href: string; date?: string | null; eodId?: number };
+/** `date` — торговый день / неделя элемента; `eodId` — id дня (eod_days) для разбора прямо в кабинете; `note` — заметка трейдера к «Разобрал». */
+type QueueRaw = {
+  kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; ageHours?: number | null; href: string;
+  date?: string | null; eodId?: number;
+  /** eod: the trader's «Разобрал» note (null: none) and how the day was closed. */
+  note?: string | null; via?: "daily" | "journal";
+};
 
 function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
   const t = riskT.tFor(b.lang);
@@ -242,6 +252,7 @@ function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
       since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now, b.closed), ageHours: ageOf(e.closed_at, now),
       href: `/journal?date=${encodeURIComponent(String(e.date))}&trader=${encodeURIComponent(String(e.trader))}`,
       date: String(e.date), eodId: Number(e.id),
+      note: e.note == null || e.note === "" ? null : String(e.note), via: e.via === "daily" ? ("daily" as const) : ("journal" as const),
     })),
     ...b.weekly.filter((w: any) => w.status === "submitted").map((w: any) => ({
       // A human week «12 окт. – 16 окт.», never the raw ISO key (OLGA-22).
@@ -358,7 +369,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 const archiveOldSchema = z.object({
-  scope: z.enum(["mine", "desk"]).optional(),
+  scope: z.enum(["mine", "desk", "group", "all"]).optional(),
   olderThanDays: z.number().int().min(1).max(365).optional(),
 });
 
@@ -394,7 +405,6 @@ router.post("/curator/queue/restore", asyncHandler(async (req, res): Promise<voi
   if (!(await requireCap(req, res, "journal.review"))) return;
   const parsed = restoreSchema.safeParse(req.body ?? {});
   if (!parsed.success) throw badRequest();
-  await ensureCuratorTables();
   const readable = await readScope(req, "journal.review");
   const { rowCount } = await pool.query(
     `UPDATE curator_queue_acks SET revoked_at = NOW()
@@ -491,7 +501,6 @@ router.get("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const trader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   if (!trader || trader.length > 100) throw badRequest("TRADER_REQUIRED");
   if (!(await requireCap(req, res, "journal.review", { trader }))) return;
-  await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE archived_at IS NULL AND trader = $1 ORDER BY pinned DESC, created_at DESC LIMIT 200`, [trader]);
   res.json({ trader, notes: rows.map(rowToNote) });
 }));
@@ -514,7 +523,6 @@ router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const b = parsed.data;
   const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!exists.length) throw notFound("TRADER_NOT_FOUND");
-  await ensureCuratorTables();
   const { rows } = await pool.query(
     `INSERT INTO curator_notes (trader, author, body, kind, pinned, day) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [b.trader, req.authUser!.name, b.body, b.kind, b.pinned, b.day ?? null],
@@ -530,7 +538,6 @@ const NotePatch = z.object({
 
 /** Throws 404 NOTE_NOT_FOUND / 403 FORBIDDEN. */
 async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any }> {
-  await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NULL`, [id]);
   const row = rows[0];
   if (!row) throw notFound("NOTE_NOT_FOUND");
@@ -567,7 +574,6 @@ router.post("/curator/notes/:id/archive", asyncHandler(async (req, res): Promise
 router.post("/curator/notes/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NOT NULL AND archived_at > NOW() - INTERVAL '1 day'`, [id]);
   const row = rows[0];
   if (!row) throw notFound("NOTE_NOT_FOUND");

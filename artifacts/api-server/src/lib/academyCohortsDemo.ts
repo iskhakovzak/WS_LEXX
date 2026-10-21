@@ -21,11 +21,11 @@ export const DEMO = {
     remote: { name: "Удалённо — осень 2026", format: "remote", room: null as string | null, url: DEMO_URL as string | null, description: "Удалённая группа (разные часовые пояса): все занятия онлайн, самоотметка в окне −10…+15 мин от начала." },
   },
   enrollments: [
-    { cohort: "office", user: "Закир", stage: "trainee", joinedOn: "2026-09-01" },
+    { cohort: "office", user: "Закир", stage: "junior", joinedOn: "2026-09-01" },
     { cohort: "office", user: "Артур", stage: "junior", joinedOn: "2026-09-01" },
-    { cohort: "office", user: "Рахматулло", stage: "trainee", joinedOn: "2026-09-15" },
+    { cohort: "office", user: "Рахматулло", stage: "junior", joinedOn: "2026-09-15" },
     { cohort: "office", user: "Ориф", stage: "trader", joinedOn: "2026-09-01" },
-    { cohort: "remote", user: "Умид", stage: "trainee", joinedOn: "2026-09-01" },
+    { cohort: "remote", user: "Умид", stage: "junior", joinedOn: "2026-09-01" },
     { cohort: "remote", user: "Максат", stage: "junior", joinedOn: "2026-09-08" },
   ] as { cohort: "office" | "remote"; user: string; stage: Stage; joinedOn: string }[],
   sessions: [

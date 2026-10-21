@@ -103,6 +103,21 @@ export default {
     ruleFallback: "rule",
     consequence: "Consequence: {consequence}",
   },
+  stageTemplates: {
+    junior: {
+      daily_stop: "Daily stop at the risk limit",
+      max_trades: "No more than 8 trades a day",
+      no_size_up: "No bigger size after a loss",
+      stop_after_losses: "2 losses in a row — done for the day",
+      no_overnight: "No overnight",
+    },
+    trader: {
+      daily_stop: "Daily stop at the risk limit",
+      max_trades: "No more than 15 trades a day",
+      no_size_up: "No bigger size after a loss",
+      stop_after_losses: "3 losses in a row — done for the day",
+    },
+  },
   activity: {
     deskRule: "Desk-wide rule",
     officeRule: "Office rule for {trader}",

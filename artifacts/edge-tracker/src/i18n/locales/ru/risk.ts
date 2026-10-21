@@ -64,7 +64,6 @@ export default {
   },
 
   tierHint: {
-    intern: "симулятор / минимальный размер",
     junior: "интрадей, малый лот",
     trader: "интрадей + овернайт",
     senior: "полный BP, свинг",
@@ -233,6 +232,8 @@ export default {
     errWeekly: "Недельный лимит не может быть меньше дневного",
     errRisk: "Риск на сделку больше дневного лимита",
     errDrawdown: "Макс. просадка меньше дневного лимита",
+    errBpJunior: "BP джуна — от $25 000 до $800 000",
+    errBpMin: "BP — не меньше $25 000",
     field: {
       accountSize: "Размер счёта, $",
       maxPositionUsd: "Buying power на позицию, $",
@@ -241,12 +242,14 @@ export default {
       maxDrawdown: "Макс. просадка от пика, $",
       maxRiskPerTrade: "Макс. риск на сделку, $",
       maxOvernightExposure: "Макс. овернайт-экспозиция, $",
+      buyingPower: "Buying power (BP) трейдера, $",
     },
     hint: {
       accountSize: "База для % просадки",
       dailyLossLimit: "Дневной стоп",
       maxRiskPerTrade: "1R",
       maxOvernightExposure: "Позиции через закрытие",
+      buyingPower: "Джун: от $25 000 до $800 000; выше Джуна — без верхней границы",
     },
     saved: "Лимиты сохранены",
     checkFields: "Проверьте поля: {list}",
@@ -557,5 +560,18 @@ export default {
       correlatedNone: "Нет сектора с двумя и более лонгами.",
       ofBook: "{pct} книги",
     },
+  },
+  /** PropReports open positions behind today's P&L (positions tick, every 5 min in the session): components/risk/live-badge. */
+  live: {
+    on: "Онлайн",
+    stale: "Позиции не обновляются",
+    open: "открытые {amount}",
+    closed: "закрытые {amount}",
+    hint: "P&L дня = закрытые сделки + нереализованный результат открытых позиций PropReports. Обновляется каждые 5 минут в торговую сессию.",
+    staleHint: "Снимок открытых позиций устарел — их нереализованный результат не учтён в стопе.",
+    desk: "Позиции PropReports: {open} · {amount}",
+    deskOpen: { one: "{count} открытая", few: "{count} открытые", many: "{count} открытых", other: "{count} открытые" },
+    staleCount: "устарело: {count}",
+    positionsTitle: "Открытые позиции (PropReports)",
   },
 } as const;

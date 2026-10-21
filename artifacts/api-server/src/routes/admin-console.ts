@@ -9,6 +9,7 @@
  */
 import { Router, type IRouter, type Request, } from "express";
 import { mountLatinNameRoutes } from "./adminConsoleLatin";
+import { mountLoopYesterdayRoutes } from "./admin-loop";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -17,7 +18,6 @@ import { bumpTokenVersion, hashPassword } from "../lib/auth";
 import { can, requireCap, resolveActor } from "../lib/permissions";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { getSettings, setSetting, schedulerStatus, statusConfig } from "../lib/propreports";
-import { ensureNameLatin } from "../lib/peopleDirectory";
 import { jobsStatus, listJobs, runJobNow } from "../jobs/registry";
 import { AppError, errorMessage, notFound, unauthorized, type ErrorCode } from "../lib/http";
 import { adminT } from "../i18n/ns";
@@ -162,7 +162,6 @@ router.get("/admin/console/review-load", asyncHandler(async (req, res): Promise<
 router.get("/admin/console/people", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.read.team"))) return;
   const since30 = addDays(nyDate(), -30);
-  await ensureNameLatin().catch(() => undefined);
   const [users, tiers, accounts, seen, trades, settings, latin] = await Promise.all([
     soft<UserRow>(`${USER_SELECT} ORDER BY u.active DESC, CASE u.role WHEN 'admin' THEN 0 WHEN 'curator' THEN 1 ELSE 2 END, u.name`),
     soft<{ trader: string; tier: string | null }>(`SELECT trader, tier FROM trader_risk_limits`),
@@ -221,7 +220,7 @@ type ActionResult = { ok: true; name: string } | { ok: false; code: ErrorCode; p
 /**
  * Applies one people action with the same safety rules as the legacy admin routes:
  * nobody acts on themselves (except a session reset), admins are touched only with users.manage.admins,
- * curators are frozen only by someone who may manage admins (mirrors POST /admin/users/:id/ban).
+ * another curator is acted on only by someone who may manage admins (mirrors POST /admin/users/:id/ban).
  */
 async function applyAction(
   req: Request,
@@ -237,6 +236,7 @@ async function applyAction(
   const self = u.id === actor.id;
   if (self && kind !== "sessions" && kind !== "curator") return { ok: false, code: "CANNOT_APPLY_TO_SELF", name: u.name };
   if (u.role === "admin" && !adminMgr) return { ok: false, code: "ADMIN_ONLY", name: u.name };
+  if (u.role === "curator" && !self && !adminMgr && kind !== "freeze" && kind !== "archive") return { ok: false, code: "ADMIN_ONLY", name: u.name };
   const base = { name: u.name, reason, ...(extra.bulk ? { bulk: true } : {}) };
 
   switch (kind) {
@@ -331,7 +331,7 @@ for (const kind of Object.keys(singleBodies) as (keyof typeof singleBodies)[]) {
 }
 
 router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "users.manage"))) return;
+  if (!(await requireCap(req, res, "settings.manage"))) return; // assignments decide whom an «assigned» curator sees
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const parsed = z.object({ curator: z.string().trim().max(120).nullable(), reason: reasonSchema }).safeParse(req.body ?? {});
@@ -345,6 +345,7 @@ router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): 
 
 // Latin display names (single + bulk): routes/adminConsoleLatin.ts
 mountLatinNameRoutes(router);
+mountLoopYesterdayRoutes(router);
 
 router.post("/admin/console/people/:id/role", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage"))) return;
@@ -368,6 +369,7 @@ router.post("/admin/console/people/bulk", asyncHandler(async (req, res): Promise
     reason: reasonSchema,
   }).safeParse(req.body ?? {});
   if (!parsed.success) throw invalidBody(parsed.error);
+  if (parsed.data.action === "curator" && !(await requireCap(req, res, "settings.manage"))) return;
   const actor = await actorOf(req);
   if (!actor) throw unauthorized();
   const adminMgr = await can(req, "users.manage.admins");

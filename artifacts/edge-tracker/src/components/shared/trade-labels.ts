@@ -4,6 +4,7 @@
  */
 import { liveLabels } from "@/i18n/live-labels";
 import { tradesI18n } from "@/i18n/ns/trades";
+import { errorWordLabel } from "./error-vocab";
 
 export const RESULTS = ["win", "loss", "breakeven", "open"] as const;
 export const HORIZONS = ["intraday", "overnight", "swing"] as const;
@@ -65,6 +66,8 @@ const TAG_KEY: Record<string, TagKey> = {
 
 /** A stored tag as shown: vocabulary words (mistakes, emotions, legacy good tags) in the UI language, anything else as typed. */
 export function tagLabel(tag: string): string {
+  const mistake = errorWordLabel(tag); // the one mistakes vocabulary (Волна 2 п. 2.8): any spelling, one label
+  if (mistake) return mistake;
   const k = TAG_KEY[tag.trim().toLowerCase()];
   return k ? tradesI18n.t(`tag.${k}`) : tag;
 }

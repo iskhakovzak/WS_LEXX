@@ -28,7 +28,6 @@ export const ResearchRow = memo(function ResearchRow({
   upcoming,
   showDate,
   onSelect,
-  onTogglePin,
 }: {
   r: ResearchNote;
   selected: boolean;
@@ -38,7 +37,6 @@ export const ResearchRow = memo(function ResearchRow({
   upcoming: UpcomingByTicker;
   showDate: boolean;
   onSelect: (id: number) => void;
-  onTogglePin: (id: number) => void;
 }) {
   const { t: tr } = researchI18n.useT();
   const tickers = splitTickers(r.ticker);
@@ -114,18 +112,11 @@ export const ResearchRow = memo(function ResearchRow({
           </span>
         </span>
       </button>
-      <button
-        type="button"
-        onClick={() => onTogglePin(r.id)}
-        aria-label={pinned ? tr("row.unpin", { name: r.patternName }) : tr("row.pin", { name: r.patternName })}
-        aria-pressed={pinned}
-        className={cn(
-          "m-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          pinned ? "text-primary opacity-100" : "opacity-100 lg:opacity-0 lg:group-hover:opacity-100",
-        )}
-      >
-        <Pin className={cn("h-4 w-4", pinned && "fill-current")} aria-hidden="true" />
-      </button>
+      {pinned && (
+        <span className="m-1 grid h-8 w-8 shrink-0 place-items-center text-primary" title={tr("preview.pinned")}>
+          <Pin className="h-4 w-4 fill-current" aria-hidden="true" />
+        </span>
+      )}
     </div>
   );
 });

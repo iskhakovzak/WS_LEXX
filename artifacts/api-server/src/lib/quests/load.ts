@@ -144,6 +144,19 @@ async function drillDays(trader: string, from: string): Promise<string[]> {
   return rows.map((r) => String(r.d));
 }
 
+/** Challenge dates of the finished «Задача дня» games since `from` (sim_games marked params.daily — lib/trainer/dailyStore). */
+async function dailyTaskDays(trader: string, from: string): Promise<string[]> {
+  const { rows } = await pool
+    .query<{ d: string }>(
+      `SELECT DISTINCT g.params #>> '{daily,date}' AS d
+         FROM sim_games g JOIN users u ON u.id = g.user_id
+        WHERE u.name = $1 AND g.params ? 'daily' AND g.status = 'finished' AND g.params #>> '{daily,date}' >= $2`,
+      [trader, from],
+    )
+    .catch(() => none<{ d: string }>());
+  return rows.map((r) => String(r.d)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+}
+
 async function academy(trader: string): Promise<{ lessons: string[]; exams: string[]; academy: boolean }> {
   const q = (sql: string) => pool.query<{ d: string }>(sql, [trader]).catch(() => none<{ d: string }>());
   const [lessons, exams, enrolled, anyChallenge] = await Promise.all([
@@ -226,11 +239,12 @@ async function userFlags(trader: string): Promise<{ mustChangeSecret: boolean; t
 }
 
 /**
- * A learner gets the practice quests: a Стажёр, or a trader without a higher tier who has not traded in the last
- * 30 days (a newcomer before the first trades). Джун and above are never learners.
+ * A learner gets the practice quests: a Джун — the entry stage since «Стажёр» left the ladder (Волна 1 п. 1.21; a stored
+ * legacy «trainee» counts too) — or a trader without a tier who has not traded in the last 30 days (a newcomer before
+ * the first trades). Трейдер and above are never learners.
  */
 export function isLearner(tier: string | null, reviews: readonly { date: string }[], today: string): boolean {
-  if (tier === "trainee") return true;
+  if (tier === "trainee" || tier === "junior") return true;
   if (tier && (TIER_RANK[tier] ?? 0) > 0) return false;
   return !reviews.some((r) => r.date >= addDays(today, -30));
 }
@@ -256,7 +270,7 @@ export async function loadTraderInputs(trader: string, now: Date, o: { fullStops
   const today = nyDate(now);
   const monthStart = `${today.slice(0, 7)}-01`;
   const stopsFrom = o.fullStops ? "2000-01-01" : (monthStart < asOf ? monthStart : asOf);
-  const [{ summary, ledger }, reviews, focus, stops, games, plans, user, promo, acad, gp, opens, prefill, holiday, tags, tier, drills] = await Promise.all([
+  const [{ summary, ledger }, reviews, focus, stops, games, plans, user, promo, acad, gp, opens, prefill, holiday, tags, tier, drills, dailyTasks] = await Promise.all([
     disciplineSummary(trader, { loadTrades: loadTradesOf(trader), now }),
     reviewDays(trader, today).catch(() => [] as ReviewDay[]),
     focusDays(trader, asOf).catch(() => [] as FocusDay[]),
@@ -273,6 +287,7 @@ export async function loadTraderInputs(trader: string, now: Date, o: { fullStops
     tagDays(trader, addDays(today, -14), today).catch(() => new Map<string, { trades: number; tagged: number }>()),
     viewerTier(trader).catch(() => null),
     drillDays(trader, addDays(today, -40)),
+    dailyTaskDays(trader, addDays(today, -40)),
   ]);
   const plansBeforeOpen = [...plans].filter(([d, p]) => p.beforeOpen && d <= today).map(([d]) => d);
   return {
@@ -287,7 +302,7 @@ export async function loadTraderInputs(trader: string, now: Date, o: { fullStops
       plans, ledger, reviews, focus, games, gamePlans: gp, deskDayOpens: opens,
       monthStops: stops.days.filter((s) => s.date >= monthStart), stopKnown: stops.stopKnown,
       ...prefill, tagDays: tags,
-      learner: isLearner(tier, reviews, today), academy: acad.academy, drillDays: drills, lessonDays: acad.lessons,
+      learner: isLearner(tier, reviews, today), academy: acad.academy, drillDays: drills, dailyTaskDays: dailyTasks, lessonDays: acad.lessons,
     },
   };
 }

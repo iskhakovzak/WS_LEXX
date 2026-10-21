@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { ArrowRight, BookOpenCheck, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, PlayCircle, ListChecks, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
+import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
 import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,13 +19,12 @@ import {
   dateTimeDesk, dayIn, durationShort, fmtYmd, relMinutes, useNow, withNodes,
 } from "@/components/academy/cohorts/shared";
 import { fmtRate } from "@/lib/format";
-import { usePrograms } from "@/components/academy/content/api";
-import { PctBar } from "@/components/academy/content/bits";
-import { academyLinks } from "@/components/academy/content/links";
+import { CoursesCard, NotEnrolledPanel } from "@/components/academy/cohorts/my-courses";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { personName } from "@/i18n";
+import { AskCuratorButton } from "@/components/shared/ask-curator";
 
 /**
  * /academy/my — «Моё обучение»: когорта и ступень, ближайшие занятия с самоотметкой (удалённо: окно −10…+15 мин,
@@ -58,11 +57,9 @@ export default function AcademyMyPage() {
       {q.isLoading && <><StatGridSkeleton count={4} /><PanelSkeleton height={220} /></>}
       {q.isError && <ErrorState error={q.error} onRetry={() => q.refetch()} title={t("myPage.loadFailed")} />}
       {d && !d.user && <EmptyState icon={GraduationCap} title={t("myPage.signIn")} description={t("myPage.guest")} />}
+      {/* Not in a cohort yet: the next lesson first, no dead end (wave 1, item 1.6). */}
       {d && d.user && d.enrollments.length === 0 && (
-        <Panel>
-          <EmptyState icon={Users} title={d.viewingOther ? t("myPage.notEnrolledOther", { name: personName(d.user) }) : t("myPage.notEnrolled")}
-            description={t("myPage.notEnrolledDesc")} />
-        </Panel>
+        <NotEnrolledPanel user={d.user} viewingOther={!!d.viewingOther}>{!d.viewingOther && <AskCuratorButton kind="group" className="mt-3" />}</NotEnrolledPanel>
       )}
       {d && d.user && d.enrollments.length > 0 && <Dashboard d={d} readOnly={!!d.viewingOther} />}
     </Page>
@@ -135,47 +132,6 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
         <History d={d} />
       </div>
     </>
-  );
-}
-
-/** Курсы рядом с когортой: прогресс программы и «Продолжить» — без похода в «Обучение» за следующим уроком. */
-function CoursesCard({ user }: { user?: string }) {
-  const { t } = academyCohortsI18n.useT();
-  const q = usePrograms(user);
-  const list = q.data?.programs ?? [];
-  const p = list.find((x) => x.progress.pct < 100 && x.progress.total > 0) ?? list[0];
-  return (
-    <Panel title={t("myPage.courses.title")} icon={BookOpenCheck}
-      actions={<Link href={academyLinks.learn({ program: p?.id, user })} className="text-xs font-medium text-primary hover:underline">{t("myPage.courses.all")}</Link>}>
-      {q.isLoading ? (
-        <div className="flex flex-col gap-2" aria-busy="true"><span className="skeleton block h-4 w-2/3" /><span className="skeleton block h-1.5 w-full" /><span className="skeleton block h-8 w-48" /></div>
-      ) : q.isError ? (
-        <p className="text-sm text-muted-foreground">{t("myPage.courses.failed")}</p>
-      ) : !p ? (
-        <p className="text-sm text-muted-foreground">{t("myPage.courses.empty")}</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-sm font-medium text-foreground" title={p.title}>{p.title}</span>
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{t("myPage.courses.progress", { done: p.progress.done, total: p.progress.total, pct: Math.round(p.progress.pct) })}</span>
-          </div>
-          <PctBar pct={p.progress.pct} label={t("myPage.courses.progressAria", { title: p.title })} />
-          {p.progress.next ? (
-            <Button size="sm" className="mt-1 self-start" asChild>
-              <Link href={academyLinks.item(p.progress.next.kind, p.progress.next.id, { user })}>
-                <PlayCircle className="mr-1 h-4 w-4" aria-hidden="true" />
-                {(() => {
-                  const label = p.progress.done ? t("myPage.courses.continue", { title: p.progress.next.title }) : t("myPage.courses.start", { title: p.progress.next.title });
-                  return <span className="max-w-[22rem] truncate" title={label}>{label}</span>;
-                })()}
-              </Link>
-            </Button>
-          ) : (
-            <Pill tone="up" dot>{t("myPage.courses.completed")}</Pill>
-          )}
-        </div>
-      )}
-    </Panel>
   );
 }
 

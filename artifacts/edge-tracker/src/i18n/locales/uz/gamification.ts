@@ -16,6 +16,7 @@ export default {
     description: "Mavsum ballari — oʻsha intizom ballari, faqat joriy oy uchun: har oyning 1-sanasida hamma noldan boshlaydi, daraja saqlanadi. Reytingda — birinchi oʻrinlar va sizning oʻrningiz.",
     me: "men",
     alias: "Ishtirokchi {n}",
+    rankHidden: "Oʻrinlar kamida besh kishida mavsum ballari boʻlganda koʻrinadi. Hozircha faqat sizning ballaringiz.",
     notRanked: "Bu oy hali ball yoʻq — birinchilari bajarilgan kontrakt, kun tahlili yoki kvest uchun beriladi.",
     empty: "Bu mavsumda hali hech kim ball toʻplamadi",
     loadFailed: "Mavsumni yuklab boʻlmadi",

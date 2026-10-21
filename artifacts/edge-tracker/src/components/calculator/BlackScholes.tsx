@@ -12,7 +12,7 @@ import {
 import { fmtNum, fmtPct, fmtUsd } from "@/lib/format";
 import { MetricTile, NumField, PresetChips, rich } from "./fields";
 import { PayoffChart } from "./PayoffChart";
-import type { OpenInBuilderParams } from "./OptionsSection";
+import type { OpenInBuilderParams } from "./handoff";
 import { OptTerm } from "./glossary";
 import { calculatorI18n } from "@/i18n/ns/calculator";
 

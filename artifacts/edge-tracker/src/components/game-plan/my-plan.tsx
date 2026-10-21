@@ -13,8 +13,9 @@ import { cn } from "@/lib/utils";
 import { MARKET_BIAS, TICKER_BIAS, gpApi, gpKeys, type GamePlan, type InPlayItem, type MyPlanResponse, type PlanStatus, type TraderPlan } from "./types";
 import { fmtDeskTime } from "@/lib/format";
 import {
-  applyTemplate, docToDraft, draftToDoc, isDraftEmpty, prefillFocus, prefillLimits, sameDoc, validateDraft, type DeskLimits, type DraftErrors, type PlanDraft,
+  MAX_TICKERS, applyTemplate, docToDraft, draftToDoc, isDraftEmpty, prefillFocus, prefillLimits, sameDoc, validateDraft, type DeskLimits, type DraftErrors, type PlanDraft,
 } from "./plan-draft";
+import { usePlanDraftSink } from "@/components/shared/add-to-plan";
 import { PlanEditor, type SetDraft, type TickerSuggestion } from "./plan-editor";
 import { PlanDocView } from "./plan-doc-view";
 import { PlanPicks } from "./plan-picks";
@@ -24,6 +25,8 @@ import { gpI18n } from "@/i18n/ns/gamePlan";
 import { personName } from "@/i18n";
 import { ApiError } from "@/lib/api/http";
 import { dailyMeQuery, riskMeQuery } from "@/lib/api/queries";
+import { usePlanPrefill } from "@/components/shared/plan-prefill";
+import { DeskMorning } from "./desk-morning";
 
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: string } | { kind: "error"; message: string } | { kind: "invalid" };
 
@@ -177,6 +180,8 @@ function MyPlanEditor({
   }, []);
 
   const setDraft: SetDraft = useCallback((fn) => setDraftState(fn), []);
+  // «В план» from other screens lands in the open editor (shared/add-to-plan) instead of a parallel server write.
+  usePlanDraftSink(date, draft, setDraft, (i) => docToDraft({ inPlay: [i] } as never).inPlay[0]!, MAX_TICKERS);
 
   // Prefill law: on the focus day a rule of the day that was never chosen starts as the focus. A plan without a row
   // keeps it as the baseline (saved with the first real edit, no «unsaved» warning); an existing plan saves it.
@@ -194,7 +199,9 @@ function MyPlanEditor({
   // journal pick for this day fills an empty «Фокус дня» (DENIS-03). Same baseline rule as the rule of the day above.
   const riskQ = useQuery({ ...riskMeQuery<{ limits: DeskLimits } | null>(), retry: false });
   const limits = riskQ.data?.limits ?? null;
-  const ownFocus = focus && focus.date === date && focus.source === "own" ? focus.ownText ?? null : null;
+  // Item 1.5: the evening's «Фокус на завтра» (journal pick or the close-day summary) when the focus line is not own.
+  const prefillQ = usePlanPrefill(date);
+  const ownFocus = (focus && focus.date === date && focus.source === "own" ? focus.ownText ?? null : null) ?? prefillQ.data?.focus?.text ?? null;
   useEffect(() => {
     if (!limits && !ownFocus) return;
     const fill = (d: PlanDraft): PlanDraft => prefillFocus(prefillLimits(d, limits), ownFocus);
@@ -298,6 +305,7 @@ function MyPlanEditor({
             setDraft={setDraft}
             errors={errors}
             focusMistake={focusMistake}
+            ruleSuggestion={prefillQ.data?.rule ?? null}
             tickerActions={deskTickers.length > 0 ? <DeskTickerPicker items={deskTickers} taken={taken} onPick={(l) => addTickers(setDraft, l)} /> : null}
             navSlot={
               <>
@@ -323,7 +331,11 @@ function MyPlanEditor({
         )}
       </Panel>
 
-      <DeskSummary plan={deskPlan} taken={taken} onAdd={(l) => { setEditing(true); addTickers(setDraft, l); }} />
+      <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
+        <DeskSummary plan={deskPlan} taken={taken} onAdd={(l) => { setEditing(true); addTickers(setDraft, l); }} />
+        {/* Item 1.20: the one morning summary sits next to the own plan too (traders open this tab first). */}
+        <DeskMorning date={date} />
+      </div>
     </div>
   );
 }

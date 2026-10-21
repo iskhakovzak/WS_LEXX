@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
+import { invalidateTradeDependents } from "@/lib/query-keys";
 import { fmtDate, fmtPrice as fmtPriceBase, fmtRelative } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 
@@ -104,13 +105,36 @@ export type Status = {
   connection: ConnectionState;
   settings: { groupId: string | null; effectiveGroupId: string; groupSource: "env" | "settings" | "default"; feesConfirmedAt: string | null; feeColumns: FeeColumnView[]; unmatched: string[] };
   wizard: Wizard;
-  config: { configured: boolean; domain: string | null; authMode: "token" | "login" | null; groupId: string | null; accountIds: string[]; syncMinutes: number | null; envVars: string[]; missing: string[] };
+  config: { configured: boolean; domain: string | null; authMode: "token" | "login" | null; groupId: string | null; accountIds: string[]; syncMinutes: number | null; envVars: string[]; missing: string[]; cronConfigured?: boolean };
   scheduler: { enabled: boolean; minutes: number | null; nextRunAt: string | null; running: boolean; lastError: string | null };
   accounts: { total: number; mapped: number; unmapped: string[]; lastSyncedAt: string | null };
   trades: { imported: number; lastSyncedAt: string | null; legacyWithoutId: number };
   pendingCount: number;
   lastRun: SyncRun | null;
+  /** Staff only: background tick (heartbeat) — last summary; null for traders / older API builds. */
+  tick?: { cronConfigured: boolean; last: TickSummary | null } | null;
 };
+
+// ─── background tick + history backfill (routes/propreports-tick.ts) ───
+export type TickSummary = {
+  ok: boolean; skipped?: "lease" | "not-configured"; startedAt: string; ms: number; trigger?: string;
+  steps: Array<{ name: string; ran: boolean; done?: boolean; note?: string; error?: string; ms?: number }>;
+  outbox: { processed: number; failed: number; remaining: number };
+};
+export type TickStepState = { name: string; lastRunAt: string | null; lastOkAt: string | null; lastDone: boolean | null; lastNote: string | null; lastError: string | null; lastMs: number | null; runs: number };
+export type TickView = {
+  cronConfigured: boolean; steps: TickStepState[]; last: TickSummary | null;
+  lease: { holder: string; acquiredAt: string; expiresAt: string; active: boolean } | null;
+  outbox: { pending: number; failed: number; oldestPendingAt: string | null };
+};
+export type Backfill = {
+  id: number; dateFrom: string; dateTo: string; cursor: string; status: "running" | "done" | "cancelled" | "error";
+  windowsTotal: number; windowsDone: number; percent: number; inserted: number; updated: number; conflicts: number; errors: number;
+  fills: number; attempts: number; lastError: string | null; actor: string | null; createdAt: string; updatedAt: string; finishedAt: string | null;
+};
+export type BackfillList = { active: Backfill | null; items: Backfill[]; maxRangeDays: number };
+/** Vercel rejects request bodies over 4.5 MB; the API accepts files up to 4 MB (413 PROPREPORTS_FILE_TOO_LARGE). */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 export type UserRow = { id: number; name: string; role: string; active: boolean };
 
@@ -139,7 +163,7 @@ export type PerformancePreview = {
   perTradeAverages: PerTradeAverage[]; symbols: number; note: string; reportId?: number; replaced?: boolean; uploadedAt?: string;
 };
 /** /integrations sections (`?tab=`). */
-export type IntegrationsTab = "setup" | "import" | "performance" | "accounts" | "reconcile" | "history";
+export type IntegrationsTab = "setup" | "import" | "performance" | "accounts" | "reconcile" | "history" | "api";
 export type ImportKind = "auto" | "fills" | "trades" | "performance";
 export type ImportResponse = Preview | ApplyResult | PerformancePreview;
 export function isPerformanceResponse(r: ImportResponse): r is PerformancePreview {
@@ -163,12 +187,28 @@ export const prKeys = {
   performance: ["propreports", "performance"] as const,
   settings: ["propreports", "settings"] as const,
   groups: ["propreports", "groups"] as const,
+  tick: ["propreports", "tick"] as const,
+  backfill: ["propreports", "backfill"] as const,
+  myFreshness: ["propreports", "my-freshness"] as const,
 };
 
 const retry = (count: number, err: unknown) => !(err instanceof ApiError && [401, 403, 404, 503].includes(err.status)) && count < 2;
 
 export function useStatus() {
   return useQuery({ queryKey: prKeys.status, queryFn: () => http.get<Status>("/api/propreports/status"), refetchInterval: 60_000, retry });
+}
+/** GET /api/propreports/my-freshness (lib/propreports/freshness.ts): the trader's last trading day line. */
+export type MyFreshness = {
+  day: string;
+  trades: number;
+  lastTradeDate: string | null;
+  lastSyncedAt: string | null;
+  accounts: number;
+  broker: { status: "ok" | "mismatch" | "missing_ours" | "missing_broker"; diff: number; checkedAt: string | null } | null;
+  state: "ok" | "mismatch" | "behind" | "no_account";
+};
+export function useMyFreshness(enabled = true) {
+  return useQuery({ queryKey: prKeys.myFreshness, queryFn: () => http.get<MyFreshness>("/api/propreports/my-freshness"), staleTime: 60_000, refetchInterval: 5 * 60_000, enabled, retry });
 }
 export function useAccounts() {
   return useQuery({ queryKey: prKeys.accounts, queryFn: () => http.get<AccountMapping[]>("/api/propreports/accounts"), retry });
@@ -216,14 +256,15 @@ export function useUsers(enabled: boolean) {
   return useQuery({ queryKey: prKeys.users, queryFn: () => http.get<UserRow[]>("/api/users"), enabled, staleTime: STALE.long, retry });
 }
 
-/** Invalidate everything that a write to the journal can change. */
+/**
+ * Invalidate everything that a write to the journal can change: the PropReports screens plus every trade-derived key
+ * (lib/query-keys — predicate-based, so ["/api/trades/facets", qs], ["stats-aggregate", …], risk and dashboard too).
+ */
 export function useInvalidateAll() {
   const qc = useQueryClient();
   return () => {
     qc.invalidateQueries({ queryKey: prKeys.all });
-    qc.invalidateQueries({ queryKey: ["/api/trades"] });
-    qc.invalidateQueries({ queryKey: ["risk"] });
-    qc.invalidateQueries({ queryKey: ["dashboard"] });
+    void invalidateTradeDependents(qc);
   };
 }
 
@@ -274,6 +315,33 @@ export function useKeepSeparate() {
 export function useDismissPending() {
   const invalidate = useInvalidateAll();
   return useMutation({ mutationFn: (pendingId: number) => http.del<{ ok: true }>(`/api/propreports/reconcile/pending/${pendingId}`), onSuccess: invalidate });
+}
+
+export function useTick(enabled = true) {
+  return useQuery({ queryKey: prKeys.tick, queryFn: () => http.get<TickView>("/api/propreports/tick"), enabled, refetchInterval: 30_000, retry });
+}
+/** Backfill list; polls every 10 s while one is running (progress bar). */
+export function useBackfills(enabled = true) {
+  return useQuery({
+    queryKey: prKeys.backfill, queryFn: () => http.get<BackfillList>("/api/propreports/backfill"), enabled, retry,
+    refetchInterval: (q) => (q.state.data?.active ? 10_000 : 60_000),
+  });
+}
+/** One tick now (≤ 45 s): fills of today, a backfill step, the outbox. */
+export function useRunTick() {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: () => http.post<TickSummary>("/api/propreports/tick/run", {}), onSuccess: invalidate });
+}
+export function useStartBackfill() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { from: string; to: string }) => http.post<Backfill>("/api/propreports/backfill", body),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: prKeys.backfill }); void qc.invalidateQueries({ queryKey: prKeys.tick }); },
+  });
+}
+export function useCancelBackfill() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: number) => http.post<Backfill>(`/api/propreports/backfill/${id}/cancel`, {}), onSuccess: () => qc.invalidateQueries({ queryKey: prKeys.backfill }) });
 }
 
 // ─── formatting helpers ───

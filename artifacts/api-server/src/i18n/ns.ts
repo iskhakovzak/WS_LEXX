@@ -45,9 +45,6 @@ import uzWhatif from "./uz/whatif";
 import ruDayReport from "./ru/dayReport";
 import enDayReport from "./en/dayReport";
 import uzDayReport from "./uz/dayReport";
-import ruDigest from "./ru/digest";
-import enDigest from "./en/digest";
-import uzDigest from "./uz/digest";
 import ruBenchmark from "./ru/benchmark";
 import enBenchmark from "./en/benchmark";
 import uzBenchmark from "./uz/benchmark";
@@ -84,6 +81,9 @@ import uzQuests from "./uz/quests";
 import ruGamification from "./ru/gamification";
 import enGamification from "./en/gamification";
 import uzGamification from "./uz/gamification";
+import ruNewsChannel from "./ru/newsChannel";
+import enNewsChannel from "./en/newsChannel";
+import uzNewsChannel from "./uz/newsChannel";
 
 export const commonT = defineNamespace(ruCommon, { en: enCommon, uz: uzCommon });
 
@@ -129,9 +129,6 @@ export const whatifT = defineNamespace(ruWhatif, { en: enWhatif, uz: uzWhatif })
 /** `dayReport` (server-b). */
 export const dayReportT = defineNamespace(ruDayReport, { en: enDayReport, uz: uzDayReport });
 
-/** `digest` (server-b). */
-export const digestT = defineNamespace(ruDigest, { en: enDigest, uz: uzDigest });
-
 /** `benchmark` (server-b). */
 export const benchmarkT = defineNamespace(ruBenchmark, { en: enBenchmark, uz: uzBenchmark });
 
@@ -167,3 +164,6 @@ export const questsT = defineNamespace(ruQuests, { en: enQuests, uz: uzQuests })
 
 /** `gamification`: recognition lines (desk feed, Telegram group), reward notifications (lib/gamification/*). */
 export const gamificationT = defineNamespace(ruGamification, { en: enGamification, uz: uzGamification });
+
+/** `newsChannel`: WS_NEWS Telegram channel briefs (lib/newsChannel/render.ts); the channel posts in `ru`. */
+export const newsChannelT = defineNamespace(ruNewsChannel, { en: enNewsChannel, uz: uzNewsChannel });

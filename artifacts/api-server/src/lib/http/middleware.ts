@@ -10,6 +10,7 @@
  *   multer LIMIT_FILE_SIZE       → 413 TOO_LARGE; other multer errors → 400 UPLOAD_ERROR
  *   body-parser                  → 400 INVALID_JSON / 413 TOO_LARGE / other 4xx kept with a generic code
  *   CORS rejection               → 403 CORS_REJECTED
+ *   Finviz queue full            → 503 FINVIZ_BUSY (lib/finviz/client FinvizQueueFullError)
  *   anything else                → 500 INTERNAL (no message or stack to the client; logged with { err } + request id)
  */
 import type { NextFunction, Request, Response } from "express";
@@ -50,6 +51,11 @@ function pgCode(err: unknown): string | null {
   return e.code;
 }
 
+/** lib/finviz/client FinvizQueueFullError (matched by name: lib/http does not import the client). */
+function isFinvizQueueFull(err: unknown): boolean {
+  return !!err && typeof err === "object" && (err as Loose).name === "FinvizQueueFullError";
+}
+
 function isMulterError(err: unknown): err is { code: string; field?: string } {
   return !!err && typeof err === "object" && (err as Loose).name === "MulterError" && typeof (err as Loose).code === "string";
 }
@@ -73,6 +79,7 @@ export function zodDetails(issues: Array<{ path: Array<string | number>; message
 export function toAppError(err: unknown): { appError: AppError; internal: boolean } {
   if (err instanceof AppError) return { appError: err, internal: err.status >= 500 && err.code === "INTERNAL" };
   if (isZodError(err)) return { appError: new AppError("VALIDATION", 400, undefined, zodDetails(err.issues)), internal: false };
+  if (isFinvizQueueFull(err)) return { appError: new AppError("FINVIZ_BUSY"), internal: false };
 
   const pg = pgCode(err);
   if (pg) {

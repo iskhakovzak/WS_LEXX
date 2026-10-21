@@ -82,7 +82,7 @@ export function withNodes(text: string, nodes: Record<string, ReactNode>): React
   });
 }
 
-const STAGE_TONE: Record<Stage, Tone> = { trainee: "neutral", junior: "accent", trader: "purple", senior: "up" };
+const STAGE_TONE: Record<Stage, Tone> = { junior: "accent", trader: "purple", senior: "up" };
 export function StagePill({ stage, title }: { stage: Stage; title?: string }) {
   return <Pill tone={STAGE_TONE[stage] ?? "neutral"} title={title}>{stageLabel(stage)}</Pill>;
 }

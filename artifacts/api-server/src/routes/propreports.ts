@@ -2,11 +2,15 @@
  * PropReports integration endpoints (all under /api/propreports, auth required).
  *
  *   GET  /status                       config state (env var NAMES only, never values), scheduler, accounts, last run, inbox size
+ *   GET  /my-freshness                 the signed-in trader's «trades of the last trading day» line (lib/propreports/freshness)
  *   GET  /accounts                     broker account → trader mapping (traders: own only)
  *   PUT  /accounts                     [curator] upsert mappings  body: { accounts: [{ account, trader, active, notes }] }
  *   POST /accounts/refresh             [curator] pull the account list from the API (503 when not configured)
- *   POST /import?dryRun=1              multipart "file" (Fills CSV or Trades report XLS/CSV), fields: kind=auto|fills|trades, account
- *                                      dryRun → preview only (no writes); traders may import only their own accounts
+ *   POST /import?dryRun=1              multipart "file" (Fills CSV or Trades report XLS/CSV), fields: kind=auto|fills|trades, account, trader
+ *                                      dryRun → preview only (no writes). Without propreports.sync a member previews and
+ *                                      applies only their OWN mapped accounts, new trades only (existing broker trades
+ *                                      keep their numbers: skip "broker_locked"); another trader / desk-wide → sync;
+ *                                      Trades report + trader (staff): account from the file name, linked to the trader
  *   POST /sync                         [curator] { from, to, dryRun }  pull fills over the API and apply (503 when not configured)
  *   GET  /runs?limit=                  sync history
  *   GET  /reconcile                    inbox: broker trips that collide with a manual trade (traders: own only)
@@ -17,12 +21,16 @@
  *   GET  /performance?trader=&account= aggregate "Trade Performance" reports (summary list + latest full report), traders: own only
  *   GET  /performance/:id              one stored report with full data
  *   DELETE /performance/:id            [curator] remove a stored report
- *   POST /import with a Trade Performance XLS → kind="performance": stored as broker statistics (no journal trades)
+ *   POST /import with a Trade Performance XLS → kind="performance": stored as broker statistics (no journal trades);
+ *                                      saved / replaced only by the account's mapped trader (never over another
+ *                                      trader's report) or by staff (propreports.read.team / sync)
  *   GET  /check                        [curator] read-only connection probe (action=version); records API v2 / legacy mode
  *   GET  /groups                       [curator] PropReports groups (API) — or group names derived from the accounts list
  *   GET  /settings                     fee columns (include/exclude/rename), chosen group, unmatched accounts, last check
  *   PUT  /settings                     [curator] { groupId?, fees?: { columns, confirm }, unmatched? }
  *   PUT  /accounts also accepts aliases: string[] — raw account names that map to this account
+ *   GET|POST /tick, /tick/run, /backfill, /backfill/:id/cancel — background tick + history backfill: routes/propreports-tick.ts
+ * Uploads are limited to 4 MB (Vercel request body limit 4.5 MB) → 413 PROPREPORTS_FILE_TOO_LARGE.
  */
 import { Router, type IRouter, type Request, type Response, type RequestHandler } from "express";
 import { z } from "zod";
@@ -36,20 +44,23 @@ import { closeDateSql, closedSql, netPnlSql, resultSql } from "../lib/tradeMath"
 import { addDays, nyDate } from "../lib/tradingDate";
 import {
   parseFillsCsv, isFillsCsv, parseTradesReportBuffer, reportTradesToRoundTrips,
-  buildRoundTrips, summarizeTrips, planSync, applySync, listPending, mergePending, keepPendingSeparate, dismissPending,
+  buildRoundTrips, planSync, applySync, listPending, mergePending, keepPendingSeparate, dismissPending,
   loadAccountMappings, getConfiguredClient, effectiveGroupId, isConfigured, statusConfig, schedulerStatus, PropReportsError,
-  getSettings, setSetting, feeLabel, orderedFeeKeys, type DetectedFeeColumn, type IntegrationSettings, type TradesReportDiagnostics, type ConnectionState,
+  getSettings, setSetting, type DetectedFeeColumn, type TradesReportDiagnostics,
   performanceSheetRows, isPerformanceReport, parsePerformanceRows, performanceFileMeta,
   savePerformanceReport, listPerformanceReports, getPerformanceReport, deletePerformanceReport, traderForAccount,
   type RoundTrip, type SyncPlan,
 } from "../lib/propreports";
-import { notifyUser, notifyUsers } from "../lib/notifyUtils";
-import { notifLinks } from "../lib/notificationCore";
-import { inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { syncNotice, unmatchedNotice, type SyncCounts } from "../lib/notifyEventsCore";
+import { canonicalizeFillIds } from "../lib/propreports/replacement";
+import { prepareTradesImport } from "../lib/propreports/import-target";
+import { getCursor } from "../lib/propreports/tick/cursor";
+import { myFreshness } from "../lib/propreports/freshness";
 import { AppError, errorMessage, notFound, sendErrorWith } from "../lib/http";
-import { langOf, type Lang } from "../i18n";
+import { langOf } from "../i18n";
 import { propreportsT } from "../i18n/ns";
+import { connectionView, feeColumnsView, lastRun, notifySyncOutcome, runView, serializePlan } from "./propreports-views";
+
+export type { FeeColumnView } from "./propreports-views";
 
 const router: IRouter = Router();
 
@@ -73,9 +84,11 @@ const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const notConfigured = () => new AppError("PROPREPORTS_NOT_CONFIGURED");
 
 const ALLOWED_EXT = new Set([".csv", ".txt", ".xls", ".xlsx"]);
+/** Vercel rejects request bodies over 4.5 MB before the function runs; 4 MB of file leaves room for the multipart frame. */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const uploader = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
     const ext = (file.originalname.match(/\.[a-z0-9]+$/i)?.[0] ?? "").toLowerCase();
     if (!ALLOWED_EXT.has(ext)) return cb(new AppError("FILE_TYPE", 400, { types: ".csv, .txt, .xls, .xlsx" }));
@@ -85,125 +98,10 @@ const uploader = multer({
 const uploadFile: RequestHandler = (req, res, next) => {
   uploader.single("file")(req, res, (err: unknown) => {
     if (!err) return next();
-    next(err); // AppError (file type) / multer errors → the error middleware
+    if ((err as { code?: string }).code === "LIMIT_FILE_SIZE") return next(new AppError("PROPREPORTS_FILE_TOO_LARGE", 413, { max: "4 MB" }));
+    next(err); // AppError (file type) / other multer errors → the error middleware
   });
 };
-
-/**
- * After a real (non-dry) import / API sync: `sync` summary to the actor who ran it (an explicit result receipt —
- * the inbox keeps it after the page is closed) and `sync_unmatched` when broker accounts are not mapped to a
- * trader — to the actor, plus the trader's staff when the actor is a trader importing their own file.
- * Background only: never delays or fails the import response.
- */
-function notifySyncOutcome(opts: { actor: string; actorIsStaff: boolean; kind: "import" | "sync"; context: string | null; result: SyncCounts & { runId: number }; unmapped: string[] }): void {
-  inBackground("propreports.sync", async () => {
-    const n = syncNotice(opts.result, opts.kind, opts.context);
-    await notifyUser({
-      userName: opts.actor, type: "sync", source: "propreports", severity: n.severity,
-      params: n.params, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
-    });
-    const u = unmatchedNotice(opts.unmapped);
-    if (u) {
-      const recipients = opts.actorIsStaff ? [opts.actor] : [opts.actor, ...(await staffOrFallback(opts.actor))];
-      await notifyUsers(recipients, {
-        type: "sync_unmatched", source: "propreports", actor: opts.actorIsStaff ? null : opts.actor,
-        params: u.params, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
-      });
-    }
-  });
-}
-
-/** Compact, JSON-safe preview of a plan (full trips are large; the UI shows executions on expand). */
-function serializePlan(plan: SyncPlan, extra: Record<string, unknown>) {
-  const trips = plan.items.map((i) => i.trip);
-  return {
-    ...extra,
-    counts: plan.counts,
-    unmappedAccounts: plan.unmappedAccounts,
-    inactiveAccounts: plan.inactiveAccounts,
-    dateFrom: plan.dateFrom,
-    dateTo: plan.dateTo,
-    feeColumns: plan.feeColumns,
-    resolvedAccounts: plan.resolvedAccounts,
-    summary: summarizeTrips(trips),
-    items: plan.items.slice(0, 3000).map((i) => ({
-      externalId: i.externalId,
-      action: i.action,
-      reason: i.reason ?? null,
-      trader: i.trader,
-      account: i.account,
-      tradeId: i.tradeId,
-      pendingId: i.pendingId,
-      changes: i.changes,
-      candidates: i.candidates,
-      trip: tripView(i.trip),
-    })),
-    truncated: plan.items.length > 3000,
-  };
-}
-
-function tripView(t: RoundTrip) {
-  return {
-    symbol: t.symbol, side: t.side, date: t.date, exitDate: t.exitDate, openedAt: t.openedAt, closedAt: t.closedAt,
-    horizon: t.horizon, session: t.session, qty: t.qty, openQty: t.openQty, avgEntry: t.avgEntry, avgExit: t.avgExit,
-    grossPnl: t.grossPnl, fees: t.fees, totalFees: t.totalFees, netPnl: t.netPnl, result: t.result, holdTime: t.holdTime,
-    fillCount: t.fillCount, open: t.open, fromReport: !!t.fromReport, executions: t.executions,
-  };
-}
-
-export interface FeeColumnView { key: string; header: string | null; label: string; known: boolean; heuristic: boolean; include: boolean; lastSeenAt: string | null; customLabel: string | null }
-
-/** Connection state with our own error text re-rendered in `lang` (upstream texts stay as received). */
-function connectionView<T extends ConnectionState>(conn: T, lang: Lang): T {
-  if (!conn.errorKey || lang === "ru") return conn;
-  return { ...conn, error: propreportsT.tryFor(lang, conn.errorKey, conn.errorParams) ?? conn.error };
-}
-
-/** Union of detected and configured fee columns, in canonical order, for the «Комиссии» block. */
-function feeColumnsView(settings: IntegrationSettings, lang: Lang = "ru"): FeeColumnView[] {
-  const keys = new Set<string>([...settings.fees.detected.map((c) => c.key), ...Object.keys(settings.fees.columns)]);
-  return orderedFeeKeys(keys).map((key) => {
-    const d = settings.fees.detected.find((c) => c.key === key);
-    const c = settings.fees.columns[key];
-    return {
-      key,
-      header: c?.header ?? d?.header ?? null,
-      label: c?.label || feeLabel(key, settings.fees, lang),
-      known: c?.known ?? d?.known ?? false,
-      heuristic: c?.heuristic ?? d?.heuristic ?? false,
-      include: c?.include !== false,
-      lastSeenAt: c?.lastSeenAt ?? null,
-      customLabel: c?.label ?? null,
-    };
-  });
-}
-
-async function lastRun() {
-  const { rows } = await pool.query(`SELECT * FROM propreports_sync_runs ORDER BY started_at DESC LIMIT 1`);
-  return rows[0] ? runView(rows[0]) : null;
-}
-
-function runView(r: any) {
-  return {
-    id: Number(r.id),
-    startedAt: new Date(r.started_at).toISOString(),
-    finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
-    source: r.source,
-    status: r.status,
-    fileName: r.file_name ?? null,
-    dateFrom: r.date_from ?? null,
-    dateTo: r.date_to ?? null,
-    inserted: Number(r.inserted ?? 0),
-    updated: Number(r.updated ?? 0),
-    unchanged: Number(r.unchanged ?? 0),
-    skipped: Number(r.skipped ?? 0),
-    conflicts: Number(r.conflicts ?? 0),
-    errors: Number(r.errors ?? 0),
-    errorText: r.error_text ?? null,
-    actor: r.actor ?? null,
-    details: r.details ?? null,
-  };
-}
 
 // ─── status ─────────────────────────────────────────────────────────────────
 
@@ -211,7 +109,7 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
   const v = await viewer(req);
   const lang = langOf(req);
   const tw = propreportsT.tFor(lang);
-  const cfg = statusConfig(lang);
+  const cfg = statusConfig();
   const accounts = (await loadAccountMappings()).filter((a) => v.staff || a.trader === v.name);
   const pendingCount = await pool.query(`SELECT COUNT(*)::int AS n FROM propreports_pending_trades WHERE $1::text IS NULL OR trader = $1`, [v.staff ? null : v.name]);
   const imported = await pool.query(
@@ -232,12 +130,12 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
   const wizard = {
     env: {
       ok: cfg.configured,
-      detail: cfg.configured ? tw("wizard.env.ok", { domain: String(cfg.domain), auth: tw(cfg.authMode === "token" ? "wizard.env.token" : "wizard.env.login") }) : tw("wizard.env.missing", { vars: cfg.missing.join(", ") }),
+      detail: cfg.configured ? tw("wizard.env.ok", { domain: String(cfg.domain), auth: tw("wizard.env.token") }) : tw("wizard.env.missing", { vars: cfg.missing.join(", ") }),
     },
     connection: {
       ok: conn.ok === true,
       detail: conn.ok === true
-        ? `${tw(conn.mode === "v2" ? "wizard.connection.v2" : "wizard.connection.legacy")}${conn.version ? tw("wizard.connection.version", { version: conn.version }) : ""}`
+        ? `${tw("wizard.connection.v2")}${conn.version ? tw("wizard.connection.version", { version: conn.version }) : ""}`
         : conn.ok === false ? tw("wizard.connection.error", { error: conn.error ?? tw("wizard.connection.unknown") }) : tw("wizard.connection.unchecked"),
     },
     accounts: {
@@ -275,7 +173,14 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
     trades: { imported: imported.rows[0].n, lastSyncedAt: imported.rows[0].last ? new Date(imported.rows[0].last).toISOString() : null, legacyWithoutId: legacy.rows[0].n },
     pendingCount: pendingCount.rows[0].n,
     lastRun: v.staff ? await lastRun() : null,
+    // background tick (heartbeat): last summary + whether CRON_SECRET is set; details at GET /propreports/tick
+    tick: v.staff ? { cronConfigured: cfg.cronConfigured, last: await getCursor("tick:last").catch(() => null) } : null,
   });
+}));
+
+/** Own data only (no `trader` parameter): the /integrations header for a trader (wave 1, 1.13). */
+router.get("/propreports/my-freshness", requireAuth, asyncHandler(async (req, res) => {
+  res.json(await myFreshness(req.authUser!.name));
 }));
 
 // ─── accounts ───────────────────────────────────────────────────────────────
@@ -383,6 +288,21 @@ router.post("/propreports/accounts/refresh", requireAuth, asyncHandler(async (re
 
 // ─── file import ────────────────────────────────────────────────────────────
 
+/**
+ * Without propreports.sync a file never rewrites an existing broker trade (0.1: its numbers are admin / sync data):
+ * update / adopt items become skip "broker_locked"; new trades still go in.
+ */
+function lockBrokerUpdates(plan: SyncPlan): void {
+  for (const it of plan.items) {
+    if (it.action !== "update" && it.action !== "adopt") continue;
+    plan.counts[it.action] = Math.max(0, (plan.counts[it.action] ?? 0) - 1);
+    plan.counts.skip = (plan.counts.skip ?? 0) + 1;
+    it.action = "skip";
+    it.reason = "broker_locked";
+    it.changes = [];
+  }
+}
+
 const importFields = z.object({
   kind: z.enum(["auto", "fills", "trades", "performance"]).default("auto"),
   account: z.string().trim().max(120).optional(),
@@ -395,7 +315,7 @@ const importFields = z.object({
  * Trade Performance (aggregate) report: no individual trades, so nothing goes to `trades`.
  * Dry run → parsed summary + suggested trader; apply → upsert into propreports_performance_reports.
  */
-async function handlePerformanceImport(req: Request, res: Response, v: { name: string; staff: boolean }, dryRun: boolean, fields: z.infer<typeof importFields>, rows: unknown[][]): Promise<void> {
+async function handlePerformanceImport(req: Request, res: Response, v: { name: string; staff: boolean }, dryRun: boolean, fields: z.infer<typeof importFields>, rows: unknown[][], canApply: boolean): Promise<void> {
   const file = req.file!;
   const report = parsePerformanceRows(rows, langOf(req));
   if (!report.totals) { sendErrorWith(res, new AppError("REPORT_PARSE_FAILED"), { issues: report.issues.slice(0, 20) }); return; }
@@ -406,8 +326,23 @@ async function handlePerformanceImport(req: Request, res: Response, v: { name: s
   const periodTo = fields.periodTo ?? meta.periodTo;
   if (!periodFrom || !periodTo) throw new AppError("REPORT_PERIOD_UNKNOWN");
   const mapped = await traderForAccount(account);
-  const trader = fields.trader?.trim() || mapped.trader || null;
-  if (!v.staff && trader !== v.name) throw new AppError("ACCOUNT_NOT_YOURS");
+  // The owner of a report is the account's mapped trader. Staff (read.team / sync) may pick the trader; a member
+  // previews / saves only an account mapped to them (a typed-in own name no longer passes for someone's account).
+  const staff = canApply || v.staff;
+  const ownAccount = !!mapped.trader && mapped.trader === v.name;
+  if (!staff && !ownAccount) throw new AppError("ACCOUNT_NOT_YOURS");
+  const trader = staff ? (fields.trader?.trim() || mapped.trader || null) : mapped.trader;
+  if (!dryRun && !staff) {
+    // A member saves only their own account's report, and never over a report stored for another trader.
+    if (!ownAccount || trader !== v.name) throw new AppError("ACCOUNT_NOT_YOURS");
+    const { rows: prev } = await pool
+      .query<{ trader_name: string | null }>(
+        `SELECT trader_name FROM propreports_performance_reports WHERE account = $1 AND period_from = $2 AND period_to = $3 LIMIT 1`,
+        [account, periodFrom, periodTo],
+      )
+      .catch(() => ({ rows: [] as { trader_name: string | null }[] })); // table not created yet → nothing to overwrite
+    if (prev[0]?.trader_name && prev[0].trader_name !== v.name) throw new AppError("ACCOUNT_NOT_YOURS");
+  }
   if (trader) {
     const { rows: u } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [trader]);
     if (!u.length) throw new AppError("TRADER_NOT_FOUND", 400);
@@ -432,19 +367,29 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
   const file = req.file;
   if (!file) throw new AppError("FILE_REQUIRED");
   const ext = (file.originalname.match(/\.[a-z0-9]+$/i)?.[0] ?? "").toLowerCase();
+  // Broker data (source='propreports') feeds ratings, risk and levels. Desk-wide (any account, a picked trader, updates
+  // of existing broker trades) needs propreports.sync; manual file import of one's OWN mapped account stays open
+  // (owner decision, until the desk is API-only) — new trades only, preview and apply alike.
+  const canApply = await can(req, "propreports.sync");
 
   let trips: RoundTrip[] = [];
   let kind: "fills" | "trades";
   const diagnostics: Record<string, unknown> = {};
   let feeColumns: DetectedFeeColumn[] = [];
+  const virtualMappings: Array<{ account: string; trader: string }> = [];
   const text = ext === ".xls" || ext === ".xlsx" ? null : file.buffer.toString("utf8");
   if (parsed.data.kind === "performance" || (parsed.data.kind === "auto" && (text == null || !isFillsCsv(text)))) {
     let rows: unknown[][] = [];
     try { rows = performanceSheetRows(file.buffer); } catch { rows = []; }
     if (parsed.data.kind === "performance" || isPerformanceReport(rows)) {
-      await handlePerformanceImport(req, res, v, dryRun, parsed.data, rows);
+      await handlePerformanceImport(req, res, v, dryRun, parsed.data, rows, canApply);
       return;
     }
+  }
+  // Importing into someone else's account: propreports.sync (checked before prepareTradesImport, which links accounts).
+  const pickedTrader = parsed.data.trader?.trim() || null;
+  if (!canApply && pickedTrader && pickedTrader !== v.name && !(dryRun && v.staff)) {
+    if (!(await requireCap(req, res, "propreports.sync"))) return;
   }
   const wantFills = parsed.data.kind === "fills" || (parsed.data.kind === "auto" && text != null && isFillsCsv(text));
   if (wantFills) {
@@ -462,9 +407,11 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     });
   } else {
     kind = "trades";
-    // The Trades export has no account column; PropReports names the file "<account>-<from>-to-<to>-trades.xls".
-    const account = parsed.data.account?.trim() || performanceFileMeta(file.originalname).account || "";
-    if (!account) throw new AppError("REPORT_ACCOUNT_UNKNOWN");
+    // The Trades export has no account column: staff pick the trader, the account comes from the file name
+    // ("<account>-<from>-to-<to>-trades.xls"). Traders import only accounts already mapped to them.
+    const target = await prepareTradesImport({ field: parsed.data.account, fileName: file.originalname, trader: canApply || (dryRun && v.staff) ? parsed.data.trader : null, actor: v.name, dryRun });
+    const account = target.account;
+    virtualMappings.push(...target.virtualMappings);
     let report;
     const diag: TradesReportDiagnostics = {};
     try { report = parseTradesReportBuffer(file.buffer, diag); } catch (e) { throw new AppError("REPORT_PARSE_FAILED", 400, undefined, e instanceof Error ? e.message : String(e)); }
@@ -474,7 +421,9 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     Object.assign(diagnostics, { reportRows: report.length, feesByType: report.some((r) => r.fees) });
   }
 
-  const plan = await planSync(trips, { onlyTrader: v.staff ? null : v.name });
+  // Without sync: one's own accounts only (a curator's read.team preview may look desk-wide, never apply it).
+  const plan = await planSync(trips, { onlyTrader: canApply || (dryRun && v.staff) ? null : v.name, virtualMappings });
+  if (!canApply) lockBrokerUpdates(plan);
   if (dryRun) {
     res.json(serializePlan(plan, { dryRun: true, kind, fileName: file.originalname, ...diagnostics }));
     return;
@@ -517,6 +466,8 @@ router.post("/propreports/sync", requireAuth, asyncHandler(async (req, res) => {
     req.log?.warn({ err: e }, "propreports fills failed");
     throw new AppError("UPSTREAM_FAILED");
   }
+  // a re-imported fill keeps its data but gets a new propReportsId: map it back to the id first seen (ACCURACY)
+  pulled.fills = (await canonicalizeFillIds(pulled.fills)).fills;
   const built = buildRoundTrips(pulled.fills);
   const plan = await planSync(built.trips);
   const diagnostics = { fills: pulled.fills.length, issueCount: pulled.issues.length, issues: pulled.issues.slice(0, 50), orphanCount: built.orphanFills.length };
@@ -753,6 +704,6 @@ router.delete("/propreports/performance/:id", requireAuth, asyncHandler(async (r
   res.json({ ok: true });
 }));
 
-// Scheduled sync: job "propreports.sync" (src/jobs/definitions.ts), opt-in via PROPREPORTS_SYNC_MINUTES + the API env vars.
+// Classic server: job "propreports.sync" (src/jobs/definitions.ts, PROPREPORTS_SYNC_MINUTES) runs the same tick.
 
 export default router;

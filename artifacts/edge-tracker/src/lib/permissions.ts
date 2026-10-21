@@ -87,7 +87,6 @@ export const CAPABILITIES = [
   { key: "ideas.review", group: G.content, team: true },
   { key: "discussions.moderate", group: G.content },
   { key: "discussions.edit.any", group: G.content, adminOnly: true },
-  { key: "checklist.template.edit", group: G.content },
   { key: "watchlist.manage", group: G.content },
 
   { key: "users.manage", group: G.admin, sensitive: true },
@@ -97,7 +96,6 @@ export const CAPABILITIES = [
   { key: "admin.backups.read", group: G.admin, sensitive: true },
   { key: "admin.backups.run", group: G.admin, adminOnly: true },
   { key: "telegram.broadcast", group: G.admin, sensitive: true },
-  { key: "digest.manage.any", group: G.admin, team: true },
   { key: "permissions.manage", group: G.admin, adminOnly: true },
   { key: "admin.errors", group: G.admin, adminOnly: true },
   { key: "settings.manage", group: G.admin, adminOnly: true },
@@ -129,8 +127,8 @@ const CURATOR_CAPS: readonly Capability[] = [
   "rules.manage.team",
   "propreports.read.team",
   "ratings.read.team", "ratings.write",
-  "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate", "checklist.template.edit",
-  "admin.reports", "digest.manage.any",
+  "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate",
+  "admin.reports",
 ];
 
 export const DEFAULT_MATRIX: Readonly<Record<Role, readonly Capability[]>> = {
@@ -163,7 +161,7 @@ export type PermissionsMe = {
   /** Ladder tier as the playbook locks resolve it (trainee … lead); null for staff / guests. Absent on older API builds. */
   tier?: "trainee" | "junior" | "trader" | "senior" | "lead" | null;
   /** Desk settings for the simple menu (components/shell/nav-model.ts). Absent on older API builds. */
-  nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior" };
+  nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior"; authorNotes?: boolean };
 };
 
 export type Target = { trader?: string | null };

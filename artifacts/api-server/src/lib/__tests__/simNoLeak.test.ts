@@ -4,6 +4,8 @@
  * ticker and the date. The reveal appears only once the game is over, and «undo» cannot rewind past a shown bar.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+// Trainer eligibility (lib/trainer/eligibility): no close-auction ticker-days in these fixtures.
+vi.mock("../trainer/eligibilityStore", () => ({ blockedTickerDays: vi.fn(async () => new Set<string>()), _resetEligibilityMemo: vi.fn() }));
 import type { SimBar } from "../sim/engine";
 
 const DAY = "2026-10-16";

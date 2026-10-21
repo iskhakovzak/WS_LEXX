@@ -4,7 +4,7 @@
  * a «sleep hurts» headline over «win rate is higher» text.
  */
 import { describe, expect, it } from "vitest";
-import { compareGroups, phraseOf, rankComparison } from "../psychologyanalytics";
+import { MIN_WR_PP, compareGroups, extremeStates, phraseOf, rankComparison } from "../psychologyanalytics";
 
 type Row = Parameters<typeof compareGroups>[2][number];
 let id = 0;
@@ -47,5 +47,41 @@ describe("psychology insights: headline by effect sign (MAKSIM-33)", () => {
     expect(down.title).not.toContain("−");
     const mixed = rankComparison(compareGroups("sleepWell", phraseOf("factors", "sleepWell", "ru"), withF, withoutF, "ru")!, "ru");
     expect(mixed.title).toContain("смешанный");
+  });
+});
+
+describe("psychology insights: no conclusions from noise (IMPROVEMENT_PLAN 2.7)", () => {
+  const book = (wins: number, losses: number, r = 0) => [
+    ...Array.from({ length: wins }, () => trade("win", r)), ...Array.from({ length: losses }, () => trade("loss", r)),
+  ];
+
+  it("a 3–4 pp win-rate gap with no R difference is no insight (audit: samples of 45 and 78 trades)", () => {
+    // 45 trades at 47 % vs 78 trades at 44 % (≈ 3 pp), equal R per trade.
+    expect(compareGroups("afterLoss", phraseOf("behavior", "afterLoss", "ru"), book(21, 24), book(34, 44), "ru")).toBeNull();
+    // 4 pp: still noise.
+    expect(compareGroups("overtrading", phraseOf("behavior", "overtrading", "en"), book(12, 13), book(11, 14), "en")).toBeNull();
+  });
+
+  it(`from ${MIN_WR_PP} pp it is an insight; a sub-threshold win-rate gap next to a real R effect is «about the same», not «mixed»`, () => {
+    expect(compareGroups("overtrading", phraseOf("behavior", "overtrading", "en"), book(11, 9), book(9, 11), "en")?.deltaWinRatePp).toBe(10);
+    const withF = book(13, 12).map((x, i) => ({ ...x, rMultiple: i < 13 ? "1" : "0.5" })); // +1R wins, −0.5R losses
+    const withoutF = book(12, 13, 0.4);
+    const c = compareGroups("focused", phraseOf("factors", "focused", "en"), withF, withoutF, "en")!;
+    expect(Math.abs(c.deltaWinRatePp!)).toBeLessThan(MIN_WR_PP);
+    expect(c.text).toContain("about the same");
+    expect(rankComparison(c, "en").title).not.toContain("mixed");
+  });
+
+  it("«best state» is never «normal» and needs a marked state ≥ 5 pp above the overall win rate", () => {
+    // The audit case: no check-in matched a trade — only «normal» (WR 45 %) has trades.
+    expect(extremeStates([{ state: "normal", count: 40, winRate: 0.45 }, { state: "focused", count: 0, winRate: null }], 0.45)).toEqual({ best: null, worst: null });
+    // A marked state 3 pp above the overall one is noise.
+    expect(extremeStates([{ state: "focused", count: 30, winRate: 0.48 }, { state: "stressed", count: 20, winRate: 0.42 }], 0.45)).toEqual({ best: null, worst: null });
+    // Real gaps: best / worst among marked states; sleepWell and too-small groups are skipped.
+    expect(extremeStates([
+      { state: "focused", count: 20, winRate: 0.6 }, { state: "tilted", count: 10, winRate: 0.3 },
+      { state: "sleepWell", count: 50, winRate: 0.9 }, { state: "anxious", count: 2, winRate: 1 }, { state: "normal", count: 50, winRate: 0.7 },
+    ], 0.45)).toEqual({ best: "focused", worst: "tilted" });
+    expect(extremeStates([{ state: "focused", count: 20, winRate: 0.6 }], null)).toEqual({ best: null, worst: null });
   });
 });

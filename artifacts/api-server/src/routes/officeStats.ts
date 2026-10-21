@@ -12,8 +12,8 @@
  *   PUT /office-stats/capital    { year, capital: number | null, goalPct? } — admin only.
  *
  * Maths and the strategy classifier live in lib/officeStats.ts (pure, unit-tested). Trades: closed, not deleted,
- * with a trader; day = close date (exit_date ?? date); net = pnl − |fees|. The office_capital table is created
- * lazily here (additive, idempotent) — no migration needed. Loaded trades are cached per close year (see loadTrades).
+ * with a trader; day = close date (exit_date ?? date); net = pnl − |fees|. The office_capital table comes from
+ * migration 0234. Loaded trades are cached per close year (see loadTrades).
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
@@ -34,35 +34,11 @@ import { insightsT } from "../i18n/ns";
 
 const router: IRouter = Router();
 
-// ─── office_capital (lazy, additive) ────────────────────────────────────────
-
-let ensured: Promise<void> | null = null;
-export function ensureOfficeCapitalTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS office_capital (
-           year INTEGER PRIMARY KEY,
-           capital NUMERIC(16, 2),
-           goal_pct NUMERIC(7, 2) NOT NULL DEFAULT ${DEFAULT_GOAL_PCT},
-           updated_by TEXT,
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 type CapitalRow = { year: number; capital: string | null; goal_pct: string; updated_by: string | null; updated_at: Date | null };
 type FullSetting = YearSetting & { updatedBy: string | null; updatedAt: string | null };
 
 async function loadSettings(): Promise<Map<number, FullSetting>> {
-  await ensureOfficeCapitalTable();
   const { rows } = await pool.query<CapitalRow>(`SELECT year, capital, goal_pct, updated_by, updated_at FROM office_capital ORDER BY year`);
   const m = new Map<number, FullSetting>();
   for (const r of rows) {
@@ -104,10 +80,37 @@ const STALE_MAX_MS = 30 * 60_000;
 type YearEntry = { at: number; promise: Promise<OfficeTrade[]>; refreshing?: boolean };
 const yearCache = new Map<number, YearEntry>();
 
+/*
+ * Built views are memoized per (years, period, today, lang, capital settings, role) for one GENERATION of the year
+ * cache: every time a year's trades are (re)loaded or the cache is dropped the generation moves and the memo empties.
+ * buildOfficeView over a 90k-trade desk is ~60 ms of event-loop CPU per view (x2 for partners) on every page visit.
+ */
+let generation = 0;
+const MEMO_MAX = 40;
+const viewMemo = new Map<string, unknown>();
+const tradesMemo = new Map<string, OfficeTrade[]>();
+function bumpGeneration(): void {
+  generation++;
+  viewMemo.clear();
+  tradesMemo.clear();
+}
+function setYear(y: number, entry: YearEntry): void {
+  yearCache.set(y, entry);
+  bumpGeneration();
+}
+function memo<T>(map: Map<string, T>, key: string, build: () => T): T {
+  if (map.has(key)) return map.get(key)!;
+  const v = build();
+  map.set(key, v);
+  while (map.size > MEMO_MAX) map.delete(map.keys().next().value!);
+  return v;
+}
+
 /** Drop cached trades (e.g. after a sync); the next request reloads. */
 export function invalidateOfficeStatsCache(): void {
   yearCache.clear();
   dataYearsCache = null;
+  bumpGeneration();
 }
 
 type TradeRow = {
@@ -116,8 +119,11 @@ type TradeRow = {
   first_entry: Date | null; last_exit: Date | null; fill_qty: number | null;
 };
 
-/** Cached trades of `years` (each year from its own entry), in close-date order. */
-async function loadTrades(years: number[], now = Date.now()): Promise<OfficeTrade[]> {
+/**
+ * Cached trades of `years` (each year from its own entry), in close-date order, and the cache generation they belong to
+ * (the memo key of the views built from them; -1 = reloaded meanwhile, do not memoize).
+ */
+async function loadTrades(years: number[], now = Date.now()): Promise<{ trades: OfficeTrade[]; gen: number }> {
   const thisYear = Number(nyDate().slice(0, 4));
   const missing: number[] = [];
   for (const y of years) {
@@ -127,16 +133,22 @@ async function loadTrades(years: number[], now = Date.now()): Promise<OfficeTrad
     if (now - e.at >= ttl && !e.refreshing) {
       e.refreshing = true;
       const fresh = queryTrades([y]);
-      fresh.then(() => { yearCache.set(y, { at: Date.now(), promise: fresh.then((m) => m.get(y) ?? []) }); })
+      fresh.then((m) => { setYear(y, { at: Date.now(), promise: Promise.resolve(m.get(y) ?? []) }); })
         .catch(() => { e.refreshing = false; });
     }
   }
   if (missing.length) {
     const all = queryTrades(missing);
-    for (const y of missing) yearCache.set(y, { at: now, promise: all.then((m) => m.get(y) ?? []) });
-    all.catch(() => { for (const y of missing) yearCache.delete(y); });
+    for (const y of missing) setYear(y, { at: now, promise: all.then((m) => m.get(y) ?? []) });
+    all.catch(() => { for (const y of missing) yearCache.delete(y); bumpGeneration(); });
   }
+  const gen = generation;
   const parts = await Promise.all(years.map((y) => yearCache.get(y)!.promise));
+  if (gen !== generation) return { trades: mergeYears(parts), gen: -1 };
+  return { trades: memo(tradesMemo, `${gen}|${years.join(",")}`, () => mergeYears(parts)), gen };
+}
+
+function mergeYears(parts: OfficeTrade[][]): OfficeTrade[] {
   const out = parts.flat();
   out.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.id - b.id));
   return out;
@@ -234,10 +246,14 @@ router.get("/office-stats", asyncHandler(async (req, res) => {
   const years = parseYears(req.query.years, today);
   const { from, to } = parsePeriod(req.query.from, req.query.to, years, today);
   const loadYears = [...new Set([...years, Number(from.slice(0, 4)), Number(to.slice(0, 4)), Number(shiftYear(from, -1).slice(0, 4)), Number(shiftYear(to, -1).slice(0, 4))])].sort();
-  const [settings, trades, dataYears] = await Promise.all([loadSettings(), loadTrades(loadYears), loadDataYears()]);
+  const [settings, { trades, gen }, dataYears] = await Promise.all([loadSettings(), loadTrades(loadYears), loadDataYears()]);
   const isAdmin = actor.role === "admin";
   const base = { years, period: { from, to }, today, dataYears, rules: rulesPayload(langOf(req)) };
   const viewOpts = { years, settings, from, to, today, lang: langOf(req) };
+  const settingsKey = [...settings.values()].map((s) => `${s.year}:${s.capital}:${s.goalPct}`).join(",");
+  const view = <T,>(kind: string, build: () => T): T => gen < 0
+    ? build()
+    : (memo(viewMemo, `${gen}|${kind}|${years.join(",")}|${loadYears.join(",")}|${from}|${to}|${today}|${viewOpts.lang}|${settingsKey}`, build) as T);
 
   res.setHeader("Cache-Control", "private, no-store");
   if (isAdmin) {
@@ -248,8 +264,8 @@ router.get("/office-stats", asyncHandler(async (req, res) => {
         const s = settings.get(y);
         return { year: y, capital: s?.capital ?? null, goalPct: s?.goalPct ?? DEFAULT_GOAL_PCT, updatedBy: s?.updatedBy ?? null, updatedAt: s?.updatedAt ?? null };
       }),
-      usd: buildOfficeView(trades, { ...viewOpts, unit: "usd", traders: true }),
-      pct: buildOfficeView(trades, { ...viewOpts, unit: "pct", traders: true }),
+      usd: view("usd", () => buildOfficeView(trades, { ...viewOpts, unit: "usd", traders: true })),
+      pct: view("pct", () => buildOfficeView(trades, { ...viewOpts, unit: "pct", traders: true })),
     });
     return;
   }
@@ -257,7 +273,7 @@ router.get("/office-stats", asyncHandler(async (req, res) => {
     role: "member" as const,
     ...base,
     settings: years.map((y) => ({ year: y, goalPct: settings.get(y)?.goalPct ?? DEFAULT_GOAL_PCT, hasCapital: !!settings.get(y)?.capital })),
-    pct: toMemberView(buildOfficeView(trades, { ...viewOpts, unit: "pct", traders: false })),
+    pct: view("member", () => toMemberView(buildOfficeView(trades, { ...viewOpts, unit: "pct", traders: false }))),
   });
 }));
 
@@ -293,7 +309,6 @@ router.put("/office-stats/capital", asyncHandler(async (req, res) => {
     if (!Number.isFinite(goalPct) || goalPct <= 0 || goalPct > 1000) throw new AppError("INVALID_FIELD", undefined, { field: "target" });
     goalPct = Math.round(goalPct * 100) / 100;
   }
-  await ensureOfficeCapitalTable();
   const { rows } = await pool.query<CapitalRow>(
     `INSERT INTO office_capital (year, capital, goal_pct, updated_by, updated_at)
           VALUES ($1, $2, COALESCE($3, ${DEFAULT_GOAL_PCT}), $4, NOW())

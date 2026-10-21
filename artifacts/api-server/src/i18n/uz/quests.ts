@@ -45,6 +45,10 @@ export default {
       title: { one: "Oʻzingizdan {count} marta yaxshiroq oʻynang", other: "Oʻzingizdan {count} marta yaxshiroq oʻynang" },
       desc: "Simulyatorda real savdodan yaxshiroq: {target} dan {done}.",
     },
+    daily_task_days: {
+      title: { one: "Hafta davomida «Kun vazifasi»ni {count} marta oʻynang", other: "Hafta davomida «Kun vazifasi»ni {count} marta oʻynang" },
+      desc: "«Kun vazifasi» oʻynalgan kunlar: {target} dan {done}.",
+    },
     trainer_drills: {
       title: { one: "«Kirishni top» trenajyorida {count} ta javob bering", other: "«Kirishni top» trenajyorida {count} ta javob bering" },
       desc: "Trenajyordagi javoblar: {target} dan {done}.",

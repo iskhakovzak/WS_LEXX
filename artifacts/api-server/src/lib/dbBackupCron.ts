@@ -3,7 +3,8 @@
  * src/jobs/definitions.ts): daily at a fixed New York hour (BACKUP_CRON, default 03:15), plus a catch-up run
  * after boot only when the newest stored backup is older than 20 h — a restart never forces a dump.
  *
- *   • `pg_dump -Fc` streamed straight into Object Storage (no in-memory buffer);
+ *   • `pg_dump -Fc` streamed straight into the store (no in-memory buffer): a local directory when BACKUP_DIR is set
+ *     (the owner's own server, docs/DEPLOY.md; lib/dbBackupLocal.ts), else Object Storage (DEFAULT_OBJECT_STORAGE_BUCKET_ID);
  *   • data of `*_cache` tables is excluded (re-fetchable, ~37% of the DB); their schema is kept;
  *   • pg_dump and server major versions are logged; an older pg_dump than the server fails loudly;
  *   • retention: newest backup of each of the last 14 days + newest of each of the last 8 weeks (NY calendar);
@@ -16,6 +17,8 @@ import { pipeline } from "node:stream/promises";
 import { pool } from "@workspace/db";
 import { config } from "../config";
 import { objectStorageClient } from "./objectStorage";
+import { deleteLocalFile, listLocalFiles, localBackupPath, writeLocalDump } from "./dbBackupLocal";
+import { AppError } from "./http";
 import { logger } from "./logger";
 import { logAudit } from "./audit";
 import { nyDate } from "./tradingDate";
@@ -37,6 +40,18 @@ export interface BackupMeta {
 }
 
 const bucketId = (): string => config.storage.bucketId;
+const localDir = (): string | null => config.backupDir;
+
+/** A store is configured: BACKUP_DIR (own server) or an Object Storage bucket. The "db.backup" job runs only then. */
+export function backupsConfigured(): boolean {
+  return !!localDir() || !!bucketId();
+}
+
+/** Path of a local backup for a download (null: no local store or not a stored file name). */
+export function localBackupFile(objectName: string): string | null {
+  const dir = localDir();
+  return dir ? localBackupPath(dir, objectName) : null;
+}
 
 function nowLabel(): string {
   return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + "Z";
@@ -112,16 +127,18 @@ function weekKey(ymd: string): string {
 async function pruneOldBackups(): Promise<number> {
   const all = await listBackups();
   const doomed = backupsToDelete(all);
-  const bucket = objectStorageClient.bucket(bucketId());
+  const dir = localDir();
   for (const b of doomed) {
-    await bucket.file(b.objectName).delete().catch((err: unknown) => logger.warn({ err, name: b.objectName }, "dbBackup: prune failed"));
+    const del = dir ? deleteLocalFile(dir, b.objectName) : objectStorageClient.bucket(bucketId()).file(b.objectName).delete();
+    await del.catch((err: unknown) => logger.warn({ err, name: b.objectName }, "dbBackup: prune failed"));
     logger.info({ name: b.objectName }, "dbBackup: pruned old backup");
   }
   return doomed.length;
 }
 
 export async function runDbBackup(): Promise<BackupMeta> {
-  if (!bucketId()) throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not configured — set up Object Storage first");
+  if (localDir()) return runLocalBackup(localDir()!);
+  if (!bucketId()) throw new Error("No backup store: set BACKUP_DIR (own server) or DEFAULT_OBJECT_STORAGE_BUCKET_ID");
   if (!config.databaseUrl) throw new Error("DATABASE_URL not set");
   const versions = await checkDumpVersions();
   const label = nowLabel();
@@ -129,8 +146,8 @@ export async function runDbBackup(): Promise<BackupMeta> {
   const file = objectStorageClient.bucket(bucketId()).file(objectName);
   logger.info({ label }, "dbBackup: starting pg_dump (custom format, streamed)");
 
-  const args = ["--format=custom", "--no-password", "--no-owner", "--no-privileges", "--exclude-table-data=public.*_cache", `--dbname=${config.databaseUrl}`];
-  const child = spawn("pg_dump", args, { stdio: ["ignore", "pipe", "pipe"] });
+  const dump = dumpInvocation(config.databaseUrl);
+  const child = spawn("pg_dump", dump.args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...dump.env } });
   let stderr = "";
   child.stderr.on("data", (d: Buffer) => { stderr = (stderr + d.toString()).slice(-4000); });
   const exited = new Promise<number>((resolve, reject) => {
@@ -155,7 +172,69 @@ export async function runDbBackup(): Promise<BackupMeta> {
   return { name: label, objectName, file: `${label}.dump`, format: "custom", createdAt: new Date().toISOString(), sizeKb };
 }
 
+/** pg_dump into BACKUP_DIR (lib/dbBackupLocal: `.partial` until pg_dump exits 0, then renamed). */
+async function runLocalBackup(dir: string): Promise<BackupMeta> {
+  if (!config.databaseUrl) throw new Error("DATABASE_URL not set");
+  const versions = await checkDumpVersions();
+  const label = nowLabel();
+  const file = `${label}.dump`;
+  logger.info({ label, dir }, "dbBackup: starting pg_dump to the local directory");
+  const dump = dumpInvocation(config.databaseUrl);
+  const child = spawn("pg_dump", dump.args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...dump.env } });
+  let stderr = "";
+  child.stderr.on("data", (d: Buffer) => { stderr = (stderr + d.toString()).slice(-4000); });
+  const exited = new Promise<number>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", (code) => resolve(code ?? -1));
+  });
+  let size: number;
+  try {
+    size = await writeLocalDump(dir, file, child.stdout, () => exited);
+  } catch (err) {
+    child.kill();
+    logger.error({ err, stderr: stderr.slice(-1000) }, "dbBackup: failed");
+    throw err;
+  }
+  const sizeKb = Math.round(size / 1024);
+  const pruned = await pruneOldBackups().catch((err) => { logger.warn({ err }, "dbBackup: prune failed"); return 0; });
+  logger.info({ file, dir, sizeKb, pruned }, "dbBackup: completed");
+  await logAudit({ actor: "system", action: "db.backup", targetType: "backup", targetId: label, details: { sizeKb, objectName: file, dir, pruned, ...versions } });
+  return { name: label, objectName: file, file, format: "custom", createdAt: new Date().toISOString(), sizeKb };
+}
+
+/**
+ * pg_dump arguments + extra environment for a DATABASE_URL. The password never goes on the command line (any local
+ * user can read another process's argv via ps / /proc): it is taken out of the URL and passed as PGPASSWORD.
+ * A URL that does not parse (a key=value conninfo) is passed as it is.
+ */
+export function dumpInvocation(databaseUrl: string): { args: string[]; env: Record<string, string> } {
+  const base = ["--format=custom", "--no-password", "--no-owner", "--no-privileges", "--exclude-table-data=public.*_cache"];
+  const env: Record<string, string> = {};
+  let dbname = databaseUrl;
+  try {
+    const u = new URL(databaseUrl);
+    if (u.password) {
+      env.PGPASSWORD = decodeURIComponent(u.password);
+      u.password = "";
+      dbname = u.toString();
+    }
+  } catch {
+    // not a URL: leave it to libpq
+  }
+  return { args: [...base, `--dbname=${dbname}`], env };
+}
+
 export async function listBackups(): Promise<BackupMeta[]> {
+  const dir = localDir();
+  if (dir) {
+    const result: BackupMeta[] = [];
+    for (const f of await listLocalFiles(dir)) {
+      const parts = splitName(f.file);
+      if (!parts) continue;
+      result.push({ name: parts.name, objectName: f.file, file: f.file, format: parts.ext === ".dump" ? "custom" : "plain-gzip", createdAt: f.createdAt, sizeKb: Math.round(f.size / 1024) });
+    }
+    return result.sort((a, b) => b.name.localeCompare(a.name));
+  }
   if (!bucketId()) return [];
   const bucket = objectStorageClient.bucket(bucketId());
   const [files] = await bucket.getFiles({ prefix: BACKUP_PREFIX });
@@ -190,6 +269,9 @@ export async function resolveBackupObjectName(name: string): Promise<string | nu
 }
 
 export async function getBackupDownloadUrl(objectName: string): Promise<string> {
+  // Local store: no signed URL — the file is on the server (docs/DEPLOY.md «Бэкапы»); routes/admin.ts may stream it
+  // with localBackupFile().
+  if (localDir()) throw new AppError("NOT_CONFIGURED");
   const req = {
     bucket_name: bucketId(),
     object_name: objectName,

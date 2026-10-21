@@ -232,19 +232,19 @@ describe("ordering", () => {
 describe("misc", () => {
   it("slugify", () => expect(slugify("Основы проп-трейдинга WS")).toBe("osnovy-prop-treydinga-ws"));
   it("stages: exactly 4", () => {
-    expect(STAGES).toEqual(["trainee", "junior", "trader", "senior"]);
+    expect(STAGES).toEqual(["junior", "trader", "senior"]); // no «Стажёр» (Волна 1 п. 1.21)
     expect(normalizeStage("student")).toBeNull();
   });
 });
 
 describe("demo course is internally consistent", () => {
   const items = DEMO_PROGRAM.modules.flatMap((m) => m.items);
-  it("6–8 lessons, 2 quizzes, 2 assignments, stage trainee", () => {
+  it("6–8 lessons, 2 quizzes, 2 assignments, stage junior (the entry stage)", () => {
     expect(items.filter((i) => i.kind === "lesson").length).toBeGreaterThanOrEqual(6);
     expect(items.filter((i) => i.kind === "lesson").length).toBeLessThanOrEqual(8);
     expect(items.filter((i) => i.kind === "quiz").length).toBe(2);
     expect(items.filter((i) => i.kind === "assignment").length).toBe(2);
-    expect(DEMO_PROGRAM.stage).toBe("trainee");
+    expect(DEMO_PROGRAM.stage).toBe("junior");
   });
   it("quiz questions pass validation and the answer key scores 100%", () => {
     for (const q of items.filter((i) => i.kind === "quiz")) {

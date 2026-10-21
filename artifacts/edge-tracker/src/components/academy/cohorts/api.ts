@@ -10,7 +10,7 @@ import { commonI18n } from "@/i18n/ns/common";
 /* ─── Справочники ─────────────────────────────────────────────────────────── */
 
 export type CohortFormat = "office" | "remote" | "hybrid";
-export type Stage = "trainee" | "junior" | "trader" | "senior";
+export type Stage = "junior" | "trader" | "senior";
 export type EnrollmentStatus = "active" | "paused" | "graduated" | "dropped";
 export type Recurrence = "none" | "daily" | "weekdays" | "weekly";
 export type SessionMode = "office" | "online" | "hybrid";
@@ -21,7 +21,7 @@ export type GoalStatus = "active" | "achieved" | "missed" | "cancelled";
 export type MetricKey = "fee_share" | "loss_streak" | "win_rate" | "journal_days" | "net_pnl" | "trading_days" | "manual";
 export type Comparator = "lt" | "lte" | "gte" | "gt";
 
-export const STAGES: Stage[] = ["trainee", "junior", "trader", "senior"];
+export const STAGES: Stage[] = ["junior", "trader", "senior"];
 export const COHORT_FORMATS: CohortFormat[] = ["office", "remote", "hybrid"];
 export const ENROLLMENT_STATUSES: EnrollmentStatus[] = ["active", "paused", "graduated", "dropped"];
 export const SESSION_MODES: SessionMode[] = ["office", "online", "hybrid"];
@@ -32,12 +32,15 @@ export const ATTENDANCE_STATUSES: AttendanceStatus[] = ["present", "late", "abse
 export const COMPARATOR_SIGNS: Record<Comparator, string> = { lt: "<", lte: "≤", gte: "≥", gt: ">" };
 
 /* Display labels: read the current language at call time (never at module scope). Unknown codes fall back to the code. */
-const STAGE_TIER = { trainee: "intern", junior: "junior", trader: "trader", senior: "senior" } as const;
+const STAGE_TIER = { junior: "junior", trader: "trader", senior: "senior" } as const;
 const has = <T extends string>(list: readonly T[], v: string): v is T => (list as readonly string[]).includes(v);
 const t = academyCohortsI18n.t;
 
-/** Стажёр / Джун / Трейдер / Сеньор → common `tiers.*` (trainee = Intern / Stajyor). */
-export const stageLabel = (s: Stage | string): string => (has(STAGES, s) ? commonI18n.t(`tiers.${STAGE_TIER[s]}`) : s);
+/** Джун / Трейдер / Сеньор → common `tiers.*`; a legacy «trainee» (the removed first stage, wave 1 item 1.21) reads as junior. */
+export const stageLabel = (s: Stage | string): string => {
+  const k = s === "trainee" ? "junior" : s;
+  return has(STAGES, k) ? commonI18n.t(`tiers.${STAGE_TIER[k]}`) : s;
+};
 export const statusLabel = (s: EnrollmentStatus | string): string => (has(ENROLLMENT_STATUSES, s) ? t(`enrollmentStatus.${s}`) : s);
 export const formatLabel = (f: CohortFormat | string): string => (has(COHORT_FORMATS, f) ? t(`format.${f}`) : f);
 export const modeLabel = (m: SessionMode | string): string => (has(SESSION_MODES, m) ? t(`mode.${m}`) : m);

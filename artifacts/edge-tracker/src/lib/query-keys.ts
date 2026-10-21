@@ -42,7 +42,6 @@ const TRADE_DEPENDENT_PREFIXES: readonly string[] = [
   "admin-desk-pulse",
   "admin-risk-desk-lite",
   "trades-related",
-  "trade-checklist-response",
   "trade-executions",
   "trade-quality",
   "trades-quality",
@@ -58,7 +57,15 @@ const TRADE_DEPENDENT_PREFIXES: readonly string[] = [
   "/api/events",
   // Daily loop (focus / evening card are decided from the trades).
   "daily",
+  // /stats: staff server aggregates (components/stats/aggregate STATS_AGGREGATE_KEY) and the «Фильтры» buckets
+  // (["/api/trades/facets", qs] — already covered by the "/api/trades" prefix, listed for clarity).
+  "stats-aggregate",
+  "/api/stats",
+  "/api/trades/facets",
 ];
+
+/** Trade-prefixed keys that do not depend on the book: the saved «Фильтры» view is a preference, not trade data. */
+const NOT_TRADE_DEPENDENT: readonly string[] = ["/api/trades/facets/view"];
 
 function firstSegment(key: QueryKey): string | null {
   const k = key[0];
@@ -68,7 +75,7 @@ function firstSegment(key: QueryKey): string | null {
 /** True when a query key belongs to a screen that shows trade-derived numbers. */
 export function isTradeDependentKey(key: QueryKey): boolean {
   const s = firstSegment(key);
-  if (!s) return false;
+  if (!s || NOT_TRADE_DEPENDENT.includes(s)) return false;
   // Orval-generated keys look like ["/api/trades", params] — match by prefix.
   return TRADE_DEPENDENT_PREFIXES.some((p) => s === p || s.startsWith(`${p}/`) || s.startsWith(`${p}-`) || (p.startsWith("/api/") && s.startsWith(p)));
 }
@@ -82,7 +89,6 @@ export function invalidateTradeDependents(qc: QueryClient, opts: { tradeId?: num
   if (opts.tradeId != null) {
     tasks.push(qc.invalidateQueries({ queryKey: ["trade-executions", opts.tradeId] }));
     tasks.push(qc.invalidateQueries({ queryKey: ["trade-quality", opts.tradeId] }));
-    tasks.push(qc.invalidateQueries({ queryKey: ["trade-checklist-response", opts.tradeId] }));
   }
   return Promise.all(tasks).then(() => undefined);
 }

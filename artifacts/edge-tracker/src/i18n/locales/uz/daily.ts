@@ -195,7 +195,7 @@ export default {
     levelTop: "eng yuqori daraja",
     window: "Soʻnggi {days} savdo kuni: {points}",
     total: "Jami: {points}",
-    hint: "Ballar bajarilgan kontrakt, ketma-ket seriya va bajarilgan kvestlar uchun beriladi — hech qachon foyda yoki savdolar soni uchun emas; buzilish ball oladi va seriyani uzadi. Kontraktsiz kunlar seriyani uzmaydi.",
+    hint: "Ballar bajarilgan kontrakt, ketma-ket seriya va bajarilgan kvestlar uchun beriladi — hech qachon foyda yoki savdolar soni uchun emas; buzilish ball oladi va seriyani uzadi. Kontraktsiz savdo kuni seriyani uzadi; oyiga bir marta muzlatish uni saqlab qoladi. Savdosiz kunlar seriyaga taʼsir qilmaydi.",
     allLink: "Kvestlar va yutuqlar",
     earnedOn: "{date} olingan",
     progress: "{progress} / {target}",

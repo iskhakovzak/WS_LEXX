@@ -77,9 +77,11 @@ function contractItems(lang: Lang, c: DayContract | null): string[] {
   return out;
 }
 
-export function morningMessage(o: { lang: Lang; date: string; focus: DailyFocus | null; contract: DayContract | null; siteUrl: string }): TgMessage {
+/** `unreviewed` = the previous trading day had trades and is still not reviewed / closed («вчера не разобран»). */
+export function morningMessage(o: { lang: Lang; date: string; focus: DailyFocus | null; contract: DayContract | null; siteUrl: string; unreviewed?: string | null }): TgMessage {
   const t = dailyT.tFor(o.lang);
   const lines = [t("tg.morning.title", { date: escHtml(fmtDateFor(o.lang, o.date, "weekdayDayMonth")) })];
+  if (o.unreviewed) lines.push("", t("tg.morning.unreviewed", { date: escHtml(fmtDateFor(o.lang, o.unreviewed, "weekdayDayMonth")) }));
   const focus = renderTextItem(o.lang, o.focus?.text);
   if (focus) lines.push("", `🎯 ${focus}`);
   const items = contractItems(o.lang, o.contract);

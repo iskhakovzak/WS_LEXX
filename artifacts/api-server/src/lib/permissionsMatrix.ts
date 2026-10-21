@@ -11,7 +11,8 @@
  *  - A capability is a string key like "trades.read.team". `*.own` capabilities act on the actor's own data
  *    (target.trader must equal the actor); `team` capabilities act on other members' data and carry a SCOPE:
  *      "desk"     — the whole desk (current behaviour for curators and admins everywhere);
- *      "assigned" — only traders whose assigned_curator / assigned_risk_manager / assigned_mentor is the actor.
+ *      "assigned" — only traders whose assigned_curator / assigned_risk_manager / assigned_mentor is the actor, or who
+ *                   are in a desk group the actor leads (lib/permissions resolveActor, Волна 1 п. 1.19).
  *  - DEFAULT_MATRIX: curators = admins on everything except the admin-only capabilities (`adminOnly`, never below
  *    admin) and the sensitive ones (`sensitive`, off by default, the owner may grant them per desk). Guests have no
  *    capabilities (read-only sentinel scope is handled by lib/auth scopeTrader).
@@ -94,7 +95,6 @@ export const CAPABILITIES = [
   { key: "ideas.review", group: "Контент", label: "Ревью идей", team: true, description: "Статус ревью идей, управление чужими идеями, черновики всех." },
   { key: "discussions.moderate", group: "Контент", label: "Модерация обсуждений", description: "Удалять чужие темы и комментарии, закрывать темы." },
   { key: "discussions.edit.any", group: "Контент", label: "Править чужие комментарии", adminOnly: true, description: "Редактировать чужие комментарии." },
-  { key: "checklist.template.edit", group: "Контент", label: "Чек-лист перед сделкой", description: "Менять пункты чек-листа для всего деска." },
   { key: "watchlist.manage", group: "Контент", label: "Вотчлист деска", description: "Править общий вотчлист (любой участник, не гость)." },
 
   // ── Users / admin ────────────────────────────────────────────────────────
@@ -105,7 +105,6 @@ export const CAPABILITIES = [
   { key: "admin.backups.read", group: "Администрирование", sensitive: true, label: "Выгрузка базы", description: "Полная выгрузка базы (все сделки всех трейдеров с суммами, пользователи) и список бэкапов." },
   { key: "admin.backups.run", group: "Администрирование", label: "Запуск и скачивание бэкапов", adminOnly: true, description: "Запустить бэкап базы и скачать его." },
   { key: "telegram.broadcast", group: "Администрирование", sensitive: true, label: "Telegram-рассылка", description: "Массовая рассылка всем и отвязка Telegram у пользователей." },
-  { key: "digest.manage.any", group: "Администрирование", label: "Дайджест за других", team: true, description: "Смотреть/менять подписку на дайджест другого участника." },
   { key: "permissions.manage", group: "Администрирование", label: "Менять права доступа", adminOnly: true, description: "PUT /permissions/matrix." },
   { key: "admin.errors", group: "Администрирование", label: "Ошибки приложения", adminOnly: true, description: "Пульт → Ошибки: ошибки сервера и браузера, пометка «исправлено»." },
   { key: "settings.manage", group: "Администрирование", label: "Настройки деска", adminOnly: true, description: "Пульт → Настройки деска: пороги дневного цикла, время Telegram-рассылок, приватность (GET/PUT /admin/settings)." },
@@ -145,8 +144,8 @@ const CURATOR_CAPS: readonly Capability[] = [
   "rules.manage.team",
   "propreports.read.team",
   "ratings.read.team", "ratings.write",
-  "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate", "checklist.template.edit",
-  "admin.reports", "digest.manage.any",
+  "playbook.edit.any", "playbook.review", "ideas.review", "discussions.moderate",
+  "admin.reports",
 ];
 
 export const DEFAULT_MATRIX: Readonly<Record<Role, readonly Capability[]>> = {
@@ -213,7 +212,7 @@ export type Actor = {
   name: string;
   role: Role;
   guest: boolean;
-  /** Traders whose assigned curator / risk manager / mentor is this actor (only needed for "assigned" scope). */
+  /** Traders whose assigned curator / risk manager / mentor is this actor, or in a desk group he leads (only needed for "assigned" scope). */
   wards: readonly string[];
 };
 

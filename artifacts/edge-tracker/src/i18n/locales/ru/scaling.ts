@@ -23,6 +23,13 @@ export default {
     signInTitle: "Войдите, чтобы увидеть план",
     signInHint: "План масштабирования доступен трейдерам и кураторам.",
   },
+  /** A trader on /scaling: the one progress answer is «Путь трейдера», not a second scorecard here. */
+  pathPointer: {
+    desc: "Ваш прогресс — на одной странице",
+    title: "Ваш прогресс — в «Пути трейдера»",
+    hint: "Там одна оценка готовности к следующей ступени: что уже выполнено и чего не хватает. Лимиты и тиры назначает куратор.",
+    cta: "Открыть «Путь трейдера»",
+  },
   action: {
     promote: "Повышение",
     demote: "Понижение",
@@ -184,7 +191,7 @@ export default {
     colProgress: "До след. тира",
     colProgressFull: "Прогресс до следующего тира",
     colDiscipline: "Дисц.",
-    colDisciplineFull: "Дисциплина",
+    colDisciplineFull: "Индекс дисциплины (0–100)",
     colBreaches: "Наруш.",
     colBreachesFull: "Нарушения лимитов",
     colActions: "Действия",

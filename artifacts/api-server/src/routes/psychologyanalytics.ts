@@ -109,6 +109,13 @@ const fmtR = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).to
 
 type Phrase = { label: string; withLabel: string; withoutLabel: string; lead: string; contrast: string };
 
+/**
+ * No conclusion from noise (IMPROVEMENT_PLAN 2.7): a win-rate gap under MIN_WR_PP percentage points and an R gap under
+ * MIN_R per trade are «no difference» — no insight, no «best state», no mixed-effect headline built on them.
+ */
+export const MIN_WR_PP = 5;
+export const MIN_R = 0.05;
+
 /** Compare two trade groups and describe the difference in plain words (in `lang`). Null if too small. */
 export function compareGroups(
   key: string,
@@ -126,8 +133,9 @@ export function compareGroups(
   const dR = w.avgR != null && wo.avgR != null && w.rCount >= 2 && wo.rCount >= 2
     ? Math.round((w.avgR - wo.avgR) * 100) / 100
     : null;
-  // Nothing comparable (no decided trades on one side and no R) — make no claim at all.
-  if (dWr == null && dR == null) return null;
+  // Nothing comparable, or both gaps are noise (< MIN_WR_PP / < MIN_R) — make no claim at all.
+  const wrClaim = dWr != null && Math.abs(dWr) >= MIN_WR_PP;
+  if (!wrClaim && !(dR != null && Math.abs(dR) >= MIN_R)) return null;
   // Effect in R units (50 п.п. винрейта ≈ 1R) scaled by the smaller sample.
   const effect = dR != null ? Math.abs(dR) : Math.abs(dWr!) / 50;
   const minN = Math.min(a.length, b.length);
@@ -141,7 +149,7 @@ export function compareGroups(
   }
   if (dWr != null) {
     const wr = { pp: Math.abs(dWr), a: Math.round(w.winRate! * 100), b: Math.round(wo.winRate! * 100), contrast: phrase.contrast };
-    parts.push(t(dWr > 0 ? "compare.wrHigher" : dWr < 0 ? "compare.wrLower" : "compare.wrSame", wr));
+    parts.push(t(!wrClaim ? (dWr === 0 ? "compare.wrSame" : "compare.wrClose") : dWr > 0 ? "compare.wrHigher" : "compare.wrLower", { ...wr, min: MIN_WR_PP }));
   }
   const text = t("compare.text", { lead: phrase.lead, parts: parts.join("; "), na: a.length, nb: b.length });
   return {
@@ -170,7 +178,7 @@ export function rankComparison(c: Comparison, lang: Lang): RankedInsight {
   const signed = c.deltaR ?? dWr / 50;
   const pp = (v: number) => t("compare.pp", { value: `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}` });
   const metric = c.deltaR != null ? fmtR(c.deltaR) : pp(dWr);
-  const mixed = c.deltaR != null && c.deltaWinRatePp != null && c.deltaR !== 0 && c.deltaWinRatePp !== 0
+  const mixed = c.deltaR != null && c.deltaWinRatePp != null && Math.abs(c.deltaR) >= MIN_R && Math.abs(c.deltaWinRatePp) >= MIN_WR_PP
     && Math.sign(c.deltaR) !== Math.sign(c.deltaWinRatePp);
   const unit = c.deltaR != null ? "R" : "Wr";
   const abs = c.deltaR != null ? `${Math.abs(c.deltaR).toFixed(2)}R` : t("compare.pp", { value: String(Math.abs(dWr)) });
@@ -188,6 +196,19 @@ export function rankComparison(c: Comparison, lang: Lang): RankedInsight {
     sample: Math.min(c.with.count, c.without.count),
     confidence: c.confidence,
   };
+}
+
+/**
+ * Best / worst emotional state for the insights: only marked states (a check-in flag, never «normal» or the no-check-in
+ * days), ≥ 3 trades, and a win rate at least MIN_WR_PP away from the overall one — otherwise null (no «best state: normal»).
+ */
+export function extremeStates(entries: readonly { state: string; count: number; winRate: number | null }[], overallWinRate: number | null): { best: string | null; worst: string | null } {
+  if (overallWinRate == null) return { best: null, worst: null };
+  const marked = entries.filter((s) => s.state !== "normal" && s.state !== "sleepWell" && s.count >= 3 && s.winRate != null);
+  const gap = (s: { winRate: number | null }) => Math.round(((s.winRate as number) - overallWinRate) * 100);
+  const best = marked.filter((s) => gap(s) >= MIN_WR_PP).sort((a, b) => b.winRate! - a.winRate!)[0]?.state ?? null;
+  const worst = marked.filter((s) => gap(s) <= -MIN_WR_PP).sort((a, b) => a.winRate! - b.winRate!)[0]?.state ?? null;
+  return { best, worst };
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -323,7 +344,7 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   const groupFor = (pred: (t: TradeRow) => boolean) => allTrades.filter(pred);
   const isNormalDay = (t: TradeRow) => {
     const s = stateOf(t);
-    return !s || (!s.stressed && !s.tilted && !s.focused && !s.revenge && !s.anxious);
+    return !!s && !s.stressed && !s.tilted && !s.focused && !s.revenge && !s.anxious; // a check-in without flags (2.7)
   };
 
   const summary = (group: TradeRow[]) => {
@@ -340,14 +361,9 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
     normal: summary(groupFor(isNormalDay)),
   };
 
-  // Best/worst emotional state (by win rate, ≥3 trades)
-  const stateEntries = Object.entries(emotionalImpact)
-    .filter(([state]) => state !== "sleepWell")
-    .map(([state, s]) => ({ state, ...s }))
-    .filter((s) => s.count >= 3 && s.winRate != null);
-  const sortedByWR = [...stateEntries].sort((a, b) => b.winRate! - a.winRate!);
-  const bestEmotionalState = sortedByWR[0]?.state ?? null;
-  const worstEmotionalState = sortedByWR[sortedByWR.length - 1]?.state ?? null;
+  // Best/worst emotional state: marked states only, ≥ 3 trades, ≥ MIN_WR_PP from the overall win rate (extremeStates).
+  const stateEntries = Object.entries(emotionalImpact).map(([state, s]) => ({ state, ...s }));
+  const { best: bestEmotionalState, worst: worstEmotionalState } = extremeStates(stateEntries, aggregate(allTrades).winRate);
 
   // Factor comparisons: among trades on days with a check-in, factor present vs absent.
   const factors: Comparison[] = [];

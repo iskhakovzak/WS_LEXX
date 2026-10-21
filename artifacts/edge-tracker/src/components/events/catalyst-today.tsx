@@ -16,11 +16,12 @@ import {
   catLabel, categoryOf, earningsEdge, isClosedRow, isShortDayRow, nextTradingDay,
   type CatalystEdge, type CategoryEdge, type MacroRow, type Verdict,
 } from "./catalyst-math";
-import { fmtUsd } from "@/lib/format";
+import { fmtDeskTime, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import type { CatalystData, MyEarnings } from "./use-catalysts";
 import { fmtDay, weekdayLabel, macroTime } from "./event-meta";
 import { MarketReporters } from "./catalyst-market";
+import { useFinvizStatus } from "@/components/shared/finviz/api";
 import { eventsI18n } from "@/i18n/ns/events";
 import { rich } from "./rich-text";
 
@@ -117,6 +118,8 @@ export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: Catalyst
               {tr("today.usually", { gap: h.data.avgAbsGap?.toFixed(1) ?? "—" })}{range != null && tr("today.range", { range: range.toFixed(1) })}
               {h.data.streak.kind && h.data.streak.count > 1 && tr("today.streak", { count: h.data.streak.count, kind: h.data.streak.kind === "beat" ? "beat" : "miss" })}
             </span>
+          ) : h.data?.sourceUnavailable ? (
+            <span className="tabular-nums">{tr("today.sourceDown", { time: fmtDeskTime(h.data.checkedAt ?? h.data.fetchedAt) })}</span>
           ) : (
             <span>{tr("today.noHistory")}</span>
           )}
@@ -155,6 +158,8 @@ export function DayBrief({
   onPickDay?: (d: string) => void;
 }) {
   const { t } = eventsI18n.useT();
+  // With Finviz on, the page's «Отчёты» block (Finviz calendar) replaces the older market reporters list.
+  const finvizOn = useFinvizStatus().state === "on";
   const { edge, rows, closed, book, today, reportersFor } = data;
   const dayRows = rows.filter((r) => r.date.slice(0, 10) === day);
   const closedRow = dayRows.find(isClosedRow);
@@ -246,7 +251,7 @@ export function DayBrief({
               </section>
             )}
 
-            {!past && <MarketReporters day={day} prev={rep.prev} data={data} onOpenTicker={onOpenTicker} />}
+            {!past && !finvizOn && <MarketReporters day={day} prev={rep.prev} data={data} onOpenTicker={onOpenTicker} />}
 
             {past && (
               <section aria-label={t("today.yourDay")} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">

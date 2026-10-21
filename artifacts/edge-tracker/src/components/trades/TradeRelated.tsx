@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { BookOpen, ChevronRight, Lightbulb, ShieldAlert, ShieldCheck, ShieldQuestion, History } from "lucide-react";
+import { BookOpen, ChevronRight, Lightbulb, History } from "lucide-react";
 import type { Trade } from "@workspace/api-client-react";
 import { Pill } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +21,6 @@ const shellPlaybook = () => shellI18n.t("nav.playbook");
 
 type PlaybookLite = { id: number; name: string; setupType: string | null; ticker: string | null; sourceType: string | null; sourceId: number | null; folder: string | null };
 type IdeaLite = { id: number; ticker: string; side: string | null; status: string | null; thesis: string | null; createdAt: string; convertedTradeId?: number | null; trader?: string | null; target?: string | null };
-type ChecklistResp = { id: number; passed: boolean; responses: string; createdAt: string };
 
 
 /** Idea status code → label (unknown codes as is). */
@@ -34,38 +33,6 @@ function Row({ icon: Icon, children, onClick, label }: { icon: React.ComponentTy
       <span className="min-w-0 flex-1">{children}</span>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
     </button>
-  );
-}
-
-/** Checklist gate result for the trade. */
-export function ChecklistStatus({ tradeId }: { tradeId: number }) {
-  const { t } = tradesI18n.useT();
-  const q = useQuery<ChecklistResp[]>({
-    queryKey: ["trade-checklist-response", tradeId],
-    queryFn: ({ signal }) => http.get<ChecklistResp[]>(`/api/checklist-responses?tradeId=${tradeId}`, { signal }),
-    staleTime: STALE.long,
-  });
-  if (q.isLoading) return <Skeleton className="h-7 w-40 rounded-full" />;
-  const r = q.data?.[0];
-  if (!r) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-        <ShieldQuestion className="h-4 w-4" aria-hidden="true" /> {t("related.checklistNone")}
-      </span>
-    );
-  }
-  let yes = 0, total = 0;
-  try {
-    const parsed = JSON.parse(r.responses) as Record<string, string>;
-    for (const v of Object.values(parsed)) { if (v === "na") continue; total++; if (v === "yes") yes++; }
-  } catch { /* legacy format */ }
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-sm ${r.passed ? "text-up" : "text-down"}`}>
-      {r.passed ? <ShieldCheck className="h-4 w-4" aria-hidden="true" /> : <ShieldAlert className="h-4 w-4" aria-hidden="true" />}
-      {r.passed ? t("related.checklistPassed") : t("related.checklistFailed")}
-      {total > 0 && <span className="tabular-nums text-muted-foreground">· {yes}/{total}</span>}
-      <span className="text-muted-foreground">· #{r.id}</span>
-    </span>
   );
 }
 

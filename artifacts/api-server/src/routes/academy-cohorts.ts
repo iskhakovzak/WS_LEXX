@@ -1,7 +1,7 @@
 /**
  * «Академия» → когорты и наставничество (агент F2). Экспорт по умолчанию — router (регистрирует лид в routes/index.ts).
  *
- * Таблицы (создаются лениво, идемпотентно, только CREATE/ALTER … IF NOT EXISTS; удаление — только archived_at):
+ * Таблицы (миграция 0234; удаление — только archived_at):
  *   academy_cohorts, academy_enrollments, academy_enrollment_history, academy_sessions, academy_attendance,
  *   academy_one_on_ones, academy_action_items, academy_idp_goals.
  *
@@ -27,19 +27,20 @@
  *   GET    /academy/attendance/stats              ?cohortId | ?user    статистика посещаемости
  *   GET    /academy/one-on-ones                   ?student&mentor      журнал 1:1 (студент — свои, без приватных заметок)
  *   POST   /academy/one-on-ones | PATCH /academy/one-on-ones/:id | POST /academy/one-on-ones/:id/archive   (staff)
- *   GET    /academy/action-items                  ?student&status      договорённости
- *   POST   /academy/action-items (staff) | PATCH /academy/action-items/:id (staff; студент — статус своих)
- *   GET    /academy/idp/metrics                                        каталог метрик ИПР
- *   GET    /academy/idp                           ?student             цели ИПР с прогрессом (пересчёт + уведомления)
+ *   GET    /academy/action-items ?student&status — договорённости;  POST (staff) | PATCH /:id (staff; студент — статус своих)
+ *   GET    /academy/idp/metrics — каталог метрик ИПР;  GET /academy/idp ?student — цели ИПР с прогрессом (пересчёт + уведомления)
  *   POST   /academy/idp (staff) | PATCH /academy/idp/:id | POST /academy/idp/:id/archive (staff)
  *   GET    /academy/my                            ?user (staff)        дашборд студента
- *   GET    /academy/mentor                        ?all=1               дашборд наставника (staff)
+ *   GET    /academy/mentor                        ?all=1 | scope=all   дашборд наставника (staff); без них — «Моя группа»
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { isGuest, isStaffRole, viewerRole } from "../lib/auth";
+import { academyMentorScope, academySubject, inAcademyScope, requireAcademyMentor } from "../lib/academyAccess"; // reads of another person: can(team.read, { trader }) — 1.6
+import { can } from "../lib/permissions";
+import { DEFAULT_STAGE, loadStageInfo } from "../lib/people/stage";
 import { notifyUser } from "../lib/notifyUtils";
 import { safeHttpUrl } from "../lib/safe-url";
 import { addDays, nyDate } from "../lib/tradingDate";
@@ -48,7 +49,7 @@ import { logger } from "../lib/logger";
 import {
   ACTION_STATUSES, ATTENDANCE_STATUSES, CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, COHORT_FORMATS, COMPARATORS, ENROLLMENT_STATUSES,
   GOAL_STATUSES, LATE_GRACE_MIN, METRICS, METRIC_KEYS, NY_TZ, RECURRENCES, SESSION_KINDS, SESSION_MODES,
-  STAGES, canManageCohort, enrollmentStatusLabelFor, metricsFor, stageLabelFor,
+  STAGES, canManageCohort, enrollmentStatusLabelFor, legacyStage, metricsFor, normalizeCohortStage, stageLabelFor,
   dateInTz, describeGoal, describeRule, evaluateCheckin, evaluateGoal, goalTransition, isOccurrence, isValidTimeZone, lagReasons,
   lagScore, mergeSummaries, nextOccurrence, occurrenceAt, occurrences, summarizeAttendance,
   type AttendanceStatus, type AttendanceSummary, type Comparator, type EnrollmentStatus, type GoalEval, type GoalStatus, type IdpTrade,
@@ -62,164 +63,6 @@ import { langOf, type Lang, type Params } from "../i18n";
 
 const router: IRouter = Router();
 
-/* ─── Схема ───────────────────────────────────────────────────────────────── */
-
-let ensured: Promise<void> | null = null;
-export function ensureAcademyCohortTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS academy_cohorts (
-           id SERIAL PRIMARY KEY,
-           name TEXT NOT NULL,
-           format TEXT NOT NULL DEFAULT 'office',
-           mentor TEXT,
-           starts_on DATE,
-           ends_on DATE,
-           timezone TEXT NOT NULL DEFAULT 'America/New_York',
-           description TEXT NOT NULL DEFAULT '',
-           room TEXT,
-           meeting_url TEXT,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE UNIQUE INDEX IF NOT EXISTS academy_cohorts_name_live_uq ON academy_cohorts (name) WHERE archived_at IS NULL;
-         CREATE TABLE IF NOT EXISTS academy_enrollments (
-           id SERIAL PRIMARY KEY,
-           cohort_id INTEGER NOT NULL REFERENCES academy_cohorts(id),
-           user_name TEXT NOT NULL,
-           stage TEXT NOT NULL DEFAULT 'trainee',
-           status TEXT NOT NULL DEFAULT 'active',
-           joined_on DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'America/New_York')::date),
-           note TEXT NOT NULL DEFAULT '',
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE UNIQUE INDEX IF NOT EXISTS academy_enrollments_live_uq ON academy_enrollments (cohort_id, user_name) WHERE archived_at IS NULL;
-         CREATE INDEX IF NOT EXISTS academy_enrollments_user_idx ON academy_enrollments (user_name);
-         CREATE TABLE IF NOT EXISTS academy_enrollment_history (
-           id SERIAL PRIMARY KEY,
-           enrollment_id INTEGER NOT NULL,
-           cohort_id INTEGER,
-           user_name TEXT NOT NULL,
-           from_stage TEXT,
-           to_stage TEXT,
-           from_status TEXT,
-           to_status TEXT,
-           changed_by TEXT,
-           note TEXT NOT NULL DEFAULT '',
-           changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         );
-         CREATE INDEX IF NOT EXISTS academy_enrollment_history_enr_idx ON academy_enrollment_history (enrollment_id, changed_at DESC);
-         CREATE INDEX IF NOT EXISTS academy_enrollment_history_user_idx ON academy_enrollment_history (user_name, changed_at DESC);
-         CREATE TABLE IF NOT EXISTS academy_sessions (
-           id SERIAL PRIMARY KEY,
-           cohort_id INTEGER NOT NULL REFERENCES academy_cohorts(id),
-           title TEXT NOT NULL,
-           kind TEXT NOT NULL DEFAULT 'lecture',
-           recurrence TEXT NOT NULL DEFAULT 'none',
-           weekdays SMALLINT[] NOT NULL DEFAULT '{}',
-           start_date DATE NOT NULL,
-           end_date DATE,
-           start_time TEXT NOT NULL,
-           duration_min INTEGER NOT NULL DEFAULT 60,
-           timezone TEXT NOT NULL DEFAULT 'America/New_York',
-           mode TEXT NOT NULL DEFAULT 'office',
-           room TEXT,
-           meeting_url TEXT,
-           host TEXT,
-           description TEXT NOT NULL DEFAULT '',
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_sessions_cohort_idx ON academy_sessions (cohort_id);
-         CREATE TABLE IF NOT EXISTS academy_attendance (
-           id SERIAL PRIMARY KEY,
-           session_id INTEGER NOT NULL REFERENCES academy_sessions(id),
-           occurrence_date DATE NOT NULL,
-           user_name TEXT NOT NULL,
-           status TEXT NOT NULL,
-           source TEXT NOT NULL DEFAULT 'mentor',
-           checked_in_at TIMESTAMPTZ,
-           marked_by TEXT,
-           note TEXT NOT NULL DEFAULT '',
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           UNIQUE (session_id, occurrence_date, user_name)
-         );
-         CREATE INDEX IF NOT EXISTS academy_attendance_user_idx ON academy_attendance (user_name, occurrence_date DESC);
-         CREATE TABLE IF NOT EXISTS academy_one_on_ones (
-           id SERIAL PRIMARY KEY,
-           student TEXT NOT NULL,
-           mentor TEXT NOT NULL,
-           cohort_id INTEGER,
-           met_at TIMESTAMPTZ NOT NULL,
-           duration_min INTEGER,
-           format TEXT NOT NULL DEFAULT 'office',
-           agenda TEXT NOT NULL DEFAULT '',
-           notes TEXT NOT NULL DEFAULT '',
-           private_notes TEXT NOT NULL DEFAULT '',
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_one_on_ones_student_idx ON academy_one_on_ones (student, met_at DESC);
-         CREATE TABLE IF NOT EXISTS academy_action_items (
-           id SERIAL PRIMARY KEY,
-           meeting_id INTEGER,
-           student TEXT NOT NULL,
-           owner TEXT NOT NULL DEFAULT 'student',
-           title TEXT NOT NULL,
-           due_on DATE,
-           status TEXT NOT NULL DEFAULT 'open',
-           done_at TIMESTAMPTZ,
-           overdue_notified_at TIMESTAMPTZ,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_action_items_student_idx ON academy_action_items (student, status);
-         CREATE TABLE IF NOT EXISTS academy_idp_goals (
-           id SERIAL PRIMARY KEY,
-           student TEXT NOT NULL,
-           title TEXT NOT NULL,
-           metric TEXT NOT NULL,
-           comparator TEXT NOT NULL,
-           target NUMERIC NOT NULL,
-           window_n INTEGER,
-           start_date DATE NOT NULL,
-           due_on DATE,
-           status TEXT NOT NULL DEFAULT 'active',
-           manual_progress NUMERIC,
-           note TEXT NOT NULL DEFAULT '',
-           last_value NUMERIC,
-           last_progress NUMERIC,
-           last_evaluated_at TIMESTAMPTZ,
-           achieved_at TIMESTAMPTZ,
-           missed_at TIMESTAMPTZ,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           archived_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS academy_idp_goals_student_idx ON academy_idp_goals (student, status);`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
 
 /* ─── Общие помощники ─────────────────────────────────────────────────────── */
 
@@ -242,7 +85,6 @@ async function needCohortOwner(v: Viewer, id: number, res: Response): Promise<bo
 
 /** Общий вход для всех маршрутов: схема + личность. Отвечает 401 сам. */
 async function enter(req: Request, res: Response): Promise<Viewer | null> {
-  await ensureAcademyCohortTables();
   const v = await viewer(req);
   if (!v.me && !v.guest) { sendError(res, unauthorized()); return null; }
   return v;
@@ -257,6 +99,36 @@ function needStaff(v: Viewer, res: Response): v is Viewer & { me: string } {
   if (!needMember(v, res)) return false;
   if (!v.staff) { sendError(res, new AppError("STAFF_ONLY")); return false; }
   return true;
+}
+
+/** The person a staff-written row is about (enrolment, 1:1, action item, goal). */
+const PERSON_OF = {
+  enrollment: `SELECT user_name AS p FROM academy_enrollments WHERE id = $1`,
+  meeting: `SELECT student AS p FROM academy_one_on_ones WHERE id = $1`,
+  action: `SELECT student AS p FROM academy_action_items WHERE id = $1`,
+  goal: `SELECT student AS p FROM academy_idp_goals WHERE id = $1`,
+} as const;
+
+/**
+ * Staff writes about one person also need the mentor capability on THAT person (lib/academyAccess, 1.6): a curator
+ * with the «assigned» scope reaches only their own people. Row routes: 404 when the row is missing.
+ */
+function needPerson(req: Request, res: Response, person: string): Promise<boolean> {
+  return requireAcademyMentor(req, res, person);
+}
+async function needRowPerson(req: Request, res: Response, kind: keyof typeof PERSON_OF, id: number, missing?: ErrorCode): Promise<boolean> {
+  const { rows } = await pool.query<{ p: string }>(PERSON_OF[kind], [id]);
+  if (!rows[0]) { sendError(res, notFound(missing)); return false; }
+  return needPerson(req, res, rows[0].p);
+}
+
+/**
+ * The ladder stage is admin-only (settings.manage, owner policy): lib/people/stage reads an active enrolment's stage
+ * when the person has no approved transfer, so a curator may not set or change it through an enrolment. A curator's
+ * new enrolment records the person's current stage.
+ */
+async function currentStage(user: string): Promise<Stage> {
+  return ((await loadStageInfo([user])).get(user)?.stage ?? DEFAULT_STAGE) as Stage;
 }
 
 /** 400 with an error code (text translated by the middleware), or VALIDATION with the zod issues in `details`. */
@@ -329,7 +201,7 @@ type EnrollmentRow = {
   created_at: Date; updated_at: Date; archived_at: Date | null;
 };
 function mapEnrollment(r: EnrollmentRow, lang: Lang = "ru") {
-  const stage = (STAGES as readonly string[]).includes(r.stage) ? (r.stage as Stage) : "trainee";
+  const stage: Stage = normalizeCohortStage(r.stage) ?? "junior";
   const status = (ENROLLMENT_STATUSES as readonly string[]).includes(r.status) ? (r.status as EnrollmentStatus) : "active";
   return {
     id: r.id, cohortId: r.cohort_id, userName: r.user_name, stage, stageLabel: stageLabelFor(stage, lang), status, statusLabel: enrollmentStatusLabelFor(status, lang),
@@ -648,7 +520,6 @@ export async function changeEnrollment(
   historyNote = "",
   lang: Lang = "ru",
 ): Promise<ReturnType<typeof mapEnrollment> | null> {
-  await ensureAcademyCohortTables();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -800,7 +671,11 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   res.json({
     cohort: mapCohort(c),
     canEdit: canManageCohort(v, c),
-    enrollments: enrollments.map((e) => ({ ...e, attendance: att.get(e.userName)?.all ?? null, attendance30: att.get(e.userName)?.last30 ?? null })),
+    // A student sees the classmates' names and stages; the curator's note on another student is staff-only.
+    enrollments: enrollments.map((e) => ({
+      ...e, note: v.staff || e.userName === v.me ? e.note : null,
+      attendance: att.get(e.userName)?.all ?? null, attendance30: att.get(e.userName)?.last30 ?? null,
+    })),
     attendance: mergeSummaries(summaries),
     sessions,
     history,
@@ -863,7 +738,7 @@ for (const [path, archive] of [["archive", true], ["restore", false]] as const) 
 const enrollBody = z.object({
   cohortId: z.number().int().positive(),
   userName: name,
-  stage: z.enum(STAGES).default("trainee"),
+  stage: z.preprocess(legacyStage, z.enum(STAGES).default("junior")), // an older web build still sends «trainee» (1.21)
   status: z.enum(ENROLLMENT_STATUSES).default("active"),
   joinedOn: ymd.optional(),
   note: z.string().max(2000).optional(),
@@ -875,6 +750,12 @@ router.post("/academy/enrollments", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
   if (!(await userExists(b.userName))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, b.userName))) return;
+  if (!(await can(req, "settings.manage"))) {
+    const stage = await currentStage(b.userName);
+    if ((req.body as { stage?: unknown }).stage !== undefined && b.stage !== stage) throw new AppError("ADMIN_ONLY");
+    b.stage = stage;
+  }
   const c = await pool.query<{ name: string }>(`SELECT name FROM academy_cohorts WHERE id = $1 AND archived_at IS NULL`, [b.cohortId]);
   if (!c.rows[0]) throw notFound("COHORT_NOT_FOUND");
   try {
@@ -904,7 +785,7 @@ router.post("/academy/enrollments", asyncHandler(async (req, res) => {
 }));
 
 const enrollPatch = z.object({
-  stage: z.enum(STAGES).optional(),
+  stage: z.preprocess(legacyStage, z.enum(STAGES).optional()),
   status: z.enum(ENROLLMENT_STATUSES).optional(),
   joinedOn: ymd.optional(),
   note: z.string().max(2000).optional(),
@@ -917,6 +798,10 @@ router.patch("/academy/enrollments/:id", asyncHandler(async (req, res) => {
   const p = enrollPatch.safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const { reason, ...patch } = p.data;
+  const cur = await pool.query<{ user_name: string; stage: string }>(`SELECT user_name, stage FROM academy_enrollments WHERE id = $1 AND archived_at IS NULL`, [id]);
+  if (!cur.rows[0]) throw notFound();
+  if (!(await needPerson(req, res, cur.rows[0].user_name))) return;
+  if (patch.stage !== undefined && patch.stage !== cur.rows[0].stage && !(await can(req, "settings.manage"))) throw new AppError("ADMIN_ONLY");
   const e = await changeEnrollment(id, patch, v.me, reason ?? "", langOf(req));
   if (!e) throw notFound();
   res.json(e);
@@ -925,6 +810,7 @@ router.patch("/academy/enrollments/:id", asyncHandler(async (req, res) => {
 router.post("/academy/enrollments/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "enrollment", id))) return;
   const { rows } = await pool.query<EnrollmentRow>(
     `UPDATE academy_enrollments e SET archived_at = NOW(), updated_at = NOW() WHERE e.id = $1 AND e.archived_at IS NULL RETURNING ${ENR_COLS}`, [id]);
   if (!rows[0]) throw notFound();
@@ -1116,7 +1002,8 @@ router.post("/academy/attendance", asyncHandler(async (req, res) => {
   const enrolled = await pool.query<{ user_name: string }>(
     `SELECT user_name FROM academy_enrollments WHERE cohort_id = $1 AND archived_at IS NULL AND user_name = ANY($2::text[])`,
     [s.cohort_id, b.marks.map((m) => m.userName)]);
-  const ok = new Set(enrolled.rows.map((r) => r.user_name));
+  const scope = await academyMentorScope(req); // «assigned» curators mark only their own people; the rest is skipped
+  const ok = new Set(enrolled.rows.map((r) => r.user_name).filter((n) => inAcademyScope(scope, n)));
   const skipped = b.marks.filter((m) => !ok.has(m.userName)).map((m) => m.userName);
   let saved = 0;
   for (const m of b.marks) {
@@ -1178,7 +1065,7 @@ router.get("/academy/attendance/stats", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v) return;
   if (!v.me) { res.json({ cohorts: [] }); return; }
   const user = qs(req, "user");
-  const target = v.staff ? user ?? null : v.me;
+  const target = v.staff && !user ? null : await academySubject(req, v.me, user);
   const cohortId = qs(req, "cohortId") ? Number(qs(req, "cohortId")) : null;
   const params: unknown[] = [];
   let where = "e.archived_at IS NULL AND c.archived_at IS NULL";
@@ -1241,7 +1128,7 @@ router.get("/academy/one-on-ones", asyncHandler(async (req, res) => {
   if (!v.me) { res.json({ meetings: [] }); return; }
   const params: unknown[] = [];
   let where = "m.archived_at IS NULL";
-  const student = v.staff ? qs(req, "student") : v.me;
+  const student = v.staff && !qs(req, "student") ? undefined : await academySubject(req, v.me, qs(req, "student"));
   if (student) { params.push(student); where += ` AND m.student = $${params.length}`; }
   const mentor = v.staff ? qs(req, "mentor") : undefined;
   if (mentor) { params.push(mentor); where += ` AND m.mentor = $${params.length}`; }
@@ -1260,6 +1147,7 @@ router.post("/academy/one-on-ones", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
   if (!(await userExists(b.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, b.student))) return;
   const mentor = b.mentor ?? v.me;
   if (mentor !== v.me && !(await userExists(mentor))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const { rows } = await pool.query<MeetRow>(
@@ -1277,6 +1165,7 @@ router.patch("/academy/one-on-ones/:id", asyncHandler(async (req, res) => {
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = meetingBody.omit({ student: true, actionItems: true }).partial().safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
+  if (!(await needRowPerson(req, res, "meeting", id, "MEETING_NOT_FOUND"))) return;
   const b = p.data;
   const sets: string[] = [];
   const params: unknown[] = [id];
@@ -1298,6 +1187,7 @@ router.patch("/academy/one-on-ones/:id", asyncHandler(async (req, res) => {
 router.post("/academy/one-on-ones/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "meeting", id, "MEETING_NOT_FOUND"))) return;
   const { rows } = await pool.query<MeetRow>(`UPDATE academy_one_on_ones m SET archived_at = NOW(), updated_at = NOW() WHERE m.id = $1 AND m.archived_at IS NULL RETURNING ${MEET_COLS}`, [id]);
   if (!rows[0]) throw notFound("MEETING_NOT_FOUND");
   res.json(mapMeeting(rows[0], true));
@@ -1309,7 +1199,7 @@ router.get("/academy/action-items", asyncHandler(async (req, res) => {
   let students: string[];
   if (v.staff) {
     const s = qs(req, "student");
-    students = s ? [s] : (await pool.query<{ student: string }>(`SELECT DISTINCT student FROM academy_action_items WHERE archived_at IS NULL`)).rows.map((r) => r.student);
+    students = s ? [await academySubject(req, v.me, s)] : (await pool.query<{ student: string }>(`SELECT DISTINCT student FROM academy_action_items WHERE archived_at IS NULL`)).rows.map((r) => r.student);
   } else students = [v.me];
   res.json({ items: await actionsFor(students, { status: qs(req, "status") }) });
 }));
@@ -1319,6 +1209,7 @@ router.post("/academy/action-items", asyncHandler(async (req, res) => {
   const p = actionInput.extend({ student: name, meetingId: z.number().int().positive().nullable().optional() }).safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   if (!(await userExists(p.data.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, p.data.student))) return;
   const row = await insertAction(p.data.student, p.data, p.data.meetingId ?? null, v.me);
   res.status(201).json(mapAction(row));
 }));
@@ -1334,6 +1225,7 @@ router.patch("/academy/action-items/:id", asyncHandler(async (req, res) => {
   const cur = await pool.query<ActionRow>(`SELECT ${ACT_COLS} FROM academy_action_items a WHERE a.id = $1 AND a.archived_at IS NULL`, [id]);
   const a = cur.rows[0];
   if (!a || (!v.staff && a.student !== v.me)) throw notFound("ACTION_NOT_FOUND");
+  if (v.staff && a.student !== v.me && !(await needPerson(req, res, a.student))) return;
   const b = p.data;
   // Студент может только отметить выполнение своей договорённости (open ⇄ done); правки — наставнику.
   if (!v.staff && (b.title !== undefined || b.dueOn !== undefined || b.owner !== undefined || b.status === "dropped")) {
@@ -1354,6 +1246,7 @@ router.patch("/academy/action-items/:id", asyncHandler(async (req, res) => {
 router.post("/academy/action-items/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "action", id, "ACTION_NOT_FOUND"))) return;
   const { rows } = await pool.query<ActionRow>(`UPDATE academy_action_items a SET archived_at = NOW(), updated_at = NOW() WHERE a.id = $1 AND a.archived_at IS NULL RETURNING ${ACT_COLS}`, [id]);
   if (!rows[0]) throw notFound("ACTION_NOT_FOUND");
   res.json(mapAction(rows[0]));
@@ -1369,7 +1262,7 @@ router.get("/academy/idp/metrics", asyncHandler(async (req, res) => {
 router.get("/academy/idp", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v) return;
   if (!v.me) { res.json({ goals: [] }); return; }
-  const student = v.staff ? qs(req, "student") ?? v.me : v.me;
+  const student = await academySubject(req, v.me, qs(req, "student"));
   res.json({ student, goals: await goalsFor(student, v.me, langOf(req)) });
 }));
 
@@ -1392,6 +1285,7 @@ router.post("/academy/idp", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
   if (!(await userExists(b.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, b.student))) return;
   const def = METRICS[b.metric];
   const start = b.startDate ?? nyDate();
   if (b.dueOn && b.dueOn < start) return badRequest(res, "DATE_RANGE_INVALID");
@@ -1421,6 +1315,7 @@ router.patch("/academy/idp/:id", asyncHandler(async (req, res) => {
   const cur = await pool.query<GoalRow>(`SELECT ${GOAL_COLS} FROM academy_idp_goals g WHERE g.id = $1 AND g.archived_at IS NULL`, [id]);
   const g = cur.rows[0];
   if (!g || (!v.staff && g.student !== v.me)) throw notFound("GOAL_NOT_FOUND");
+  if (v.staff && g.student !== v.me && !(await needPerson(req, res, g.student))) return;
   const b = p.data;
   if (!v.staff) {
     // Студент может отмечать прогресс только своих ручных целей.
@@ -1453,6 +1348,7 @@ router.patch("/academy/idp/:id", asyncHandler(async (req, res) => {
 router.post("/academy/idp/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "goal", id, "GOAL_NOT_FOUND"))) return;
   const { rows } = await pool.query<{ id: number }>(`UPDATE academy_idp_goals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND archived_at IS NULL RETURNING id`, [id]);
   if (!rows[0]) throw notFound("GOAL_NOT_FOUND");
   res.json({ id, archived: true });
@@ -1476,7 +1372,7 @@ router.get("/academy/my", asyncHandler(async (req, res) => {
   const nowMs = Date.now();
   const base = { serverNow: new Date(nowMs).toISOString(), checkin: { beforeMin: CHECKIN_BEFORE_MIN, afterMin: CHECKIN_AFTER_MIN, graceMin: LATE_GRACE_MIN } };
   if (!v.me) { res.json({ ...base, user: null, enrollments: [], upcoming: [], recent: [], goals: [], actionItems: [], meetings: [], attendance: null }); return; }
-  const user = v.staff ? qs(req, "user") ?? v.me : v.me;
+  const user = await academySubject(req, v.me, qs(req, "user"));
   const { rows: enrRows } = await pool.query<EnrollmentRow & { c_name: string; c_format: string; c_mentor: string | null; c_starts_on: string | null; c_ends_on: string | null; c_timezone: string; c_description: string; c_room: string | null; c_meeting_url: string | null }>(
     `SELECT ${ENR_COLS}, c.name AS c_name, c.format AS c_format, c.mentor AS c_mentor, c.starts_on::text AS c_starts_on, c.ends_on::text AS c_ends_on,
             c.timezone AS c_timezone, c.description AS c_description, c.room AS c_room, c.meeting_url AS c_meeting_url
@@ -1552,7 +1448,7 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const nowMs = Date.now();
   const today = nyDate(new Date(nowMs));
-  const all = qs(req, "all") === "1";
+  const all = qs(req, "all") === "1" || qs(req, "scope") === "all"; // «Моя группа / Все» (Волна 1 п. 1.19)
   const { rows: allCohorts } = await pool.query<CohortRow>(`SELECT ${COHORT_COLS} FROM academy_cohorts c WHERE c.archived_at IS NULL ORDER BY c.name`);
   const { enr, cohortIds: shownIds, scoped, ownCohorts } = await mentorPeople(v.me, allCohorts, all, async (ids, names) => (await pool.query<EnrollmentRow>(
     `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.archived_at IS NULL AND e.status IN ('active','paused')
@@ -1657,7 +1553,6 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
  *  Отметки за прошедшие брифинги последних 7 дней, 1:1 с договорённостями, цели ИПР.
  */
 export async function seedDemo(actor: string | null): Promise<Record<string, unknown>> {
-  await ensureAcademyCohortTables();
   const { rows: users } = await pool.query<{ name: string }>(`SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false`);
   const have = new Set(users.map((u) => u.name));
   const pick = (n: string) => (have.has(n) ? n : null);

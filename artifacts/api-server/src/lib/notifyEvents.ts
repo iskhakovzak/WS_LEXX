@@ -21,32 +21,12 @@ export function inBackground(label: string, fn: () => Promise<unknown>): void {
 
 // ─── once-only claims (dedup) ───────────────────────────────────────────────
 
-let dedupReady: Promise<void> | null = null;
-function ensureDedupTable(): Promise<void> {
-  if (!dedupReady) {
-    dedupReady = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS notification_dedup (
-           key TEXT PRIMARY KEY,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        dedupReady = null;
-        throw err;
-      });
-  }
-  return dedupReady;
-}
-
 /**
  * Atomically claims `key`: true for the first caller only (across processes / concurrent requests).
  * On a DB error returns false — better to miss one notification than to spam on every poll.
  */
 export async function claimOnce(key: string): Promise<boolean> {
   try {
-    await ensureDedupTable();
     const { rows } = await pool.query(
       `INSERT INTO notification_dedup (key) VALUES ($1) ON CONFLICT (key) DO NOTHING RETURNING key`,
       [key.slice(0, 300)],

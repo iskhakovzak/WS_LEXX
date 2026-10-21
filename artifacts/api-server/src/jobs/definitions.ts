@@ -5,23 +5,26 @@
  * Former timers (backend.md §1.9) → jobs:
  *   sector poller (boot + 15 min, weekdays 9–16 NY) → market.sectors
  *   analyst-actions poller (30 s after boot + 20 min) → market.analyst-actions
- *   digest 09:00 / 18:00 UTC (60 s tick)             → digest.morning 05:00 NY / digest.evening 14:00 NY (same instants in EDT)
+ *   digest 09:00 / 18:00 UTC                          → removed (wave 1, 1.16): the Telegram daily loop replaces it
  *   weekly psychology report (Fri ≥ 17:00 server-local) → psychology.weekly-report Fri 17:00 NY
  *   daily quote (15 s after boot + 06:00 MSK)          → quotes.daily 23:00 NY (≈ 06:00 MSK) + 15 s after boot
  *   DB backup (3 min after EVERY boot + 48 h)          → db.backup daily BACKUP_CRON (03:15 NY) + catch-up only if > 20 h old
  *   academy challenges (60 s after boot + 15 min)      → academy.challenges
  *   «готов к переводу» notices (were sent by GET)      → academy.readiness (15 min + after each PropReports sync)
- *   PropReports scheduled sync (module-level timer)    → propreports.sync (PROPREPORTS_SYNC_MINUTES → cron)
+ *   PropReports scheduled sync (module-level timer)    → propreports.sync (tick, 5 min NY RTH) + propreports.tick-hourly
+ *                                                        + propreports.outbox (side effects, every 2 min)
  *   trade-structure back-fill (once at boot)           → trades.structure-backfill
  *   (new) job_runs retention                           → jobs.prune daily
  */
 import { pool } from "@workspace/db";
 import { config } from "../config";
 import { registerJob, listJobs } from "./registry";
-import { syncCron } from "../lib/propreports/scheduler";
+import { DESK_TICK_CRON, OFF_HOURS_CRON, offHoursCron, syncCron } from "../lib/propreports/scheduler";
 import { dailyTelegramEnabled, intradayAlertsEnabled } from "../lib/daily/telegramGuard";
 import { contractAlertsEnabled, eveningCron, eveningEnabled, morningCron, morningEnabled } from "../lib/daily/telegramSchedule";
 import { dailyPickCron } from "../lib/trainer/schedule";
+import { registerFinvizJobs } from "../lib/finviz/jobDefs";
+import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -57,28 +60,6 @@ export function registerAllJobs(): void {
     },
   });
 
-  registerJob({
-    name: "digest.morning",
-    cron: "0 5 * * *",
-    timeoutMs: 10 * MIN,
-    async run() {
-      const { runDigestIfNeeded } = await import("../lib/digest");
-      await runDigestIfNeeded("morning");
-      return { period: "morning" };
-    },
-  });
-
-  registerJob({
-    name: "digest.evening",
-    cron: "0 14 * * *",
-    timeoutMs: 10 * MIN,
-    async run() {
-      const { runDigestIfNeeded } = await import("../lib/digest");
-      await runDigestIfNeeded("evening");
-      return { period: "evening" };
-    },
-  });
-
   // Daily loop in the Telegram bot (lib/daily/telegramJobs.ts): production + bot token only; every send once per
   // trader and day (notification_dedup). Time and on/off = desk settings (lib/daily/telegramSchedule: cron getters read
   // every tick). Default morning 08:45 NY = premarket, 45 min before the open, the previous day synced.
@@ -108,10 +89,12 @@ export function registerAllJobs(): void {
     },
   });
 
-  // Intraday own-contract alerts (daily stop / max trades): only with the scheduled PropReports sync, after each sync.
+  // Intraday own-contract alerts (daily stop / max trades): only with the scheduled PropReports sync, after each sync +
+  // every 5 min in the alert window as a fallback (the event is fire-and-forget; each alert is deduped per day).
   registerJob({
     name: "telegram.contract-alerts",
     on: ["propreports.synced"],
+    cron: "3-58/5 4-16 * * 1-5",
     timeoutMs: 5 * MIN,
     enabled: () => intradayAlertsEnabled() && contractAlertsEnabled(),
     async run({ signal }) {
@@ -183,7 +166,7 @@ export function registerAllJobs(): void {
     cron: config.backupCron,
     runOnStartMs: 5 * MIN,
     timeoutMs: 60 * MIN,
-    enabled: () => !!config.storage.bucketId,
+    enabled: () => !!config.storage.bucketId || !!config.backupDir,
     async run({ trigger }) {
       const { backupJob } = await import("../lib/dbBackupCron");
       return backupJob(trigger);
@@ -216,13 +199,37 @@ export function registerAllJobs(): void {
 
   registerJob({
     name: "propreports.sync",
-    cron: syncCron() ?? undefined,
+    cron: () => syncCron() ?? DESK_TICK_CRON, // getter: env read on every registry tick; off via enabled()
     timeoutMs: 15 * MIN,
     enabled: () => syncCron() != null,
     async run() {
+      // the same tick as POST /api/cron/tick (steps + outbox), with a classic-server budget; the DB lease keeps them apart
       const { runScheduledSync } = await import("../lib/propreports");
-      await runScheduledSync();
-      return {};
+      return runScheduledSync();
+    },
+  });
+
+  // Outside RTH: the same tick hourly (after-hours corrections, history backfill, nightly reconcile steps).
+  registerJob({
+    name: "propreports.tick-hourly",
+    cron: () => offHoursCron() ?? OFF_HOURS_CRON,
+    timeoutMs: 15 * MIN,
+    enabled: () => offHoursCron() != null,
+    async run() {
+      const { runScheduledSync } = await import("../lib/propreports");
+      return runScheduledSync();
+    },
+  });
+
+  // PropReports outbox (post-sync side effects): drained every 2 minutes on a classic server (on Vercel by the tick);
+  // a sync started from the UI also drains it right away (kickOutbox).
+  registerJob({
+    name: "propreports.outbox",
+    cron: "*/2 * * * *",
+    timeoutMs: 2 * MIN,
+    async run() {
+      const { drainOutbox } = await import("../lib/propreports/tick/outbox");
+      return drainOutbox(Date.now() + 50_000);
     },
   });
 
@@ -233,6 +240,21 @@ export function registerAllJobs(): void {
     async run() {
       const { backfillTradeStructures } = await import("../lib/tradeStructureStore");
       return backfillTradeStructures();
+    },
+  });
+
+  // Strategy + IMX tag of every trade (lib/tradeStrategyStore, migration 0237): the first run back-fills the book, later
+  // runs pick rows the triggers marked stale (manual edits, fills changed) and re-derive all after an IMX window change.
+  registerJob({
+    name: "trades.strategy-backfill",
+    cron: "*/5 * * * *",
+    runOnStartMs: 2 * MIN,
+    timeoutMs: 20 * MIN,
+    async run() {
+      const { backfillTradeStrategies } = await import("../lib/tradeStrategyStore");
+      const r = await backfillTradeStrategies();
+      if (r.changed) (await import("../lib/propreports/tradesVersion")).invalidateTradeCaches();
+      return r;
     },
   });
 
@@ -249,6 +271,8 @@ export function registerAllJobs(): void {
   // Permanent candle archive (lib/candleArchive): every finished symbol-day with trades / playbook examples / ideas /
   // simulator games, once for the whole desk. After each PropReports sync, nightly after the post-market (21:15 NY,
   // every day so weekends finish a backfill), and 2 min after boot. ≤ 400 provider calls per run; the next run resumes.
+  // Then the setup auto-classifier (wave 1, 1.2; lib/setupsAuto) suggests a setup for the new broker trades without a
+  // playbook link — on the bars just archived; suggestions only, accepting stays one tap (journal, /trades).
   registerJob({
     name: "candles.archive",
     cron: "15 21 * * *",
@@ -257,7 +281,10 @@ export function registerAllJobs(): void {
     timeoutMs: 30 * MIN,
     async run({ signal, logger }) {
       const { runArchiveFill } = await import("../lib/candleArchive");
-      return runArchiveFill({ signal, logger, budget: 400, gapMs: 400 });
+      const archive = await runArchiveFill({ signal, logger, budget: 400, gapMs: 400 });
+      const { runAutoClassify } = await import("../lib/setupsAuto");
+      const setups = signal.aborted ? null : await runAutoClassify({ signal }).catch((err: unknown) => ({ error: err instanceof Error ? err.message : String(err) }));
+      return { archive, setups };
     },
   });
 
@@ -300,4 +327,11 @@ export function registerAllJobs(): void {
     },
   });
 
+  registerModuleJobs();
+}
+
+/** Feature modules that declare their own jobs (kept out of registerAllJobs, which is at the function-size limit). */
+function registerModuleJobs(): void {
+  registerFinvizJobs(registerJob); // Finviz Elite screener / snapshot / earnings (lib/finviz/jobDefs.ts)
+  registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
 }

@@ -11,6 +11,8 @@ export type ChainOption = {
   bid: number; ask: number; last: number; mid: number;
   iv: number | null; volume: number; openInterest: number;
   inTheMoney: boolean; change: number; changePct: number;
+  /** Black-Scholes on the contract IV (server for Yahoo, chainApi.withDerivedGreeks otherwise). */
+  greeks?: { delta: number; gamma: number; theta: number; vega: number } | null;
 };
 export type Expiration = { timestamp: number; label: string; dte: number };
 export type ChainData = {

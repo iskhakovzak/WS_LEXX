@@ -1,12 +1,14 @@
 /**
  * Leadership table: who leads and who lags QQQ right now, with gap, RVOL, VWAP, nearest levels,
  * correlation/beta and the contribution to QQQ. Sortable; a row opens the detail sheet.
+ * Below `sm` (Волна 2 п. 2.11) the rows are cards in the same order (card-model.ts): no 10-column table at 375 px.
  */
 import { DataTable, Panel, SortableTh, TableSkeleton, useTableSort } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { Big7Row } from "./context";
 import { LevelChip, RsBar, Signed, fmtRvol } from "./ui";
 import { big7I18n } from "@/i18n/ns/big7";
+import { leadershipCard } from "./card-model";
 
 type Key = "symbol" | "chg" | "rs" | "rs30" | "gap" | "rvol" | "vwap" | "corr" | "contrib";
 
@@ -40,7 +42,11 @@ export function LeadershipTable({ rows, loading, onOpen, preOpen }: {
       {loading && !rows.length ? (
         <TableSkeleton rows={7} cols={9} />
       ) : (
-        <DataTable ariaLabel={t("leadership.aria")}>
+        <>
+        <ul className="flex flex-col gap-2 sm:hidden" aria-label={t("leadership.aria")}>
+          {sorted.map((r) => <LeadershipCardRow key={r.symbol} r={r} preOpen={preOpen} onOpen={onOpen} />)}
+        </ul>
+        <DataTable ariaLabel={t("leadership.aria")} className="hidden sm:block">
           <table>
             <thead>
               <tr>
@@ -97,7 +103,42 @@ export function LeadershipTable({ rows, loading, onOpen, preOpen }: {
             </tbody>
           </table>
         </DataTable>
+        </>
       )}
     </Panel>
+  );
+}
+
+/** One phone card: symbol + move, RS to QQQ as a bar, gap (premarket) / RVOL / from VWAP, nearest levels. */
+function LeadershipCardRow({ r, preOpen, onOpen }: { r: Big7Row; preOpen: boolean; onOpen: (symbol: string) => void }) {
+  const { t } = big7I18n.useT();
+  const c = leadershipCard(r, preOpen);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpen(r.symbol)}
+        aria-label={t("leadership.openRow", { symbol: r.symbol })}
+        className="tile flex min-h-11 w-full flex-col gap-2 p-3 text-left transition-colors hover:bg-[var(--tile-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="flex w-full items-center gap-2">
+          <span className="text-base font-semibold">{c.symbol}</span>
+          <Signed value={c.chg} className="text-sm" />
+          <span className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+            <RsBar value={c.rs} className="max-w-[120px] flex-1" />
+            <Signed value={c.rs} digits={2} suffix="" threshold={0.1} className="w-12 text-right text-xs" />
+          </span>
+        </span>
+        <span className="grid w-full grid-cols-3 gap-2 text-xs">
+          <span className="min-w-0"><span className="block text-2xs text-muted-foreground">{t(`leadership.${c.gapLabel}`)}</span><Signed value={c.gap} digits={2} threshold={0.05} /></span>
+          <span className="min-w-0"><span className="block text-2xs text-muted-foreground">RVOL</span><span className={cn("tabular-nums", c.rvolStrong ? "font-semibold text-primary" : "")}>{fmtRvol(c.rvol)}</span></span>
+          <span className="min-w-0"><span className="block text-2xs text-muted-foreground">{t("leadership.fromVwap")}</span>{c.vwap == null ? <span className="text-muted-foreground">—</span> : <Signed value={c.vwap} digits={2} />}</span>
+        </span>
+        <span className="flex w-full flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+          <LevelChip level={r.above} dir="up" />
+          <LevelChip level={r.below} dir="down" />
+        </span>
+      </button>
+    </li>
   );
 }

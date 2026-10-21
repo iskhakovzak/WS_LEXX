@@ -15,7 +15,7 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { can, requireCap, resolveActor } from "../lib/permissions";
-import { cleanNameLatin, ensureNameLatin, saveLatinNames, type LatinNameChange } from "../lib/peopleDirectory";
+import { cleanNameLatin, saveLatinNames, type LatinNameChange } from "../lib/peopleDirectory";
 import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, unauthorized } from "../lib/http";
 
@@ -30,7 +30,6 @@ async function loadTargets(ids: number[]): Promise<Map<number, Target>> {
 async function apply(req: Parameters<typeof can>[0], raw: { id: number; nameLatin?: unknown }[], bulk: boolean): Promise<{ items: LatinNameChange[]; changed: LatinNameChange[] }> {
   const actor = await resolveActor(req);
   if (!actor) throw unauthorized();
-  await ensureNameLatin();
   const byId = new Map<number, unknown>();
   for (const it of raw) byId.set(it.id, it.nameLatin); // last one wins on a repeated id
   const users = await loadTargets([...byId.keys()]);

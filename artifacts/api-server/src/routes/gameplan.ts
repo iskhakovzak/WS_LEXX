@@ -9,20 +9,8 @@ import { nyDate } from "../lib/tradingDate";
 import { collectPlanMediaIds, softDeleteDropped } from "../lib/planMedia";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { keepPlanPicks } from "../lib/playbookToday/plan";
-import {
-  PLAN_COLS,
-  PlanBody,
-  TemplateBody,
-  TraderPlanBody,
-  ensureGamePlanTables,
-  isIsoDate,
-  parsePlanId,
-  sanitizeMedia,
-  serializeTraderPlan,
-  type PlanDoc,
-  type PlanRow,
-  type TraderPlanRow,
-} from "../lib/gamePlan";
+import { planPrefill } from "../lib/planPrefill";
+import { PLAN_COLS, PlanBody, TemplateBody, TraderPlanBody, isIsoDate, parsePlanId, sanitizeMedia, serializeTraderPlan, type PlanDoc, type PlanRow, type TraderPlanRow } from "../lib/gamePlan";
 
 /**
  * «План дня».
@@ -39,7 +27,11 @@ import {
  * Personal plan — each member's own plan for the day (autosaved draft → «готов»).
  *   GET  /api/game-plan/my?date=          my plan (journal.write.own)
  *   PUT  /api/game-plan/my/:date          upsert my plan (autosave); body = plan doc + status
- *   GET  /api/game-plan/traders?date=     read view: plans of the traders the caller may read (journal.read.team scope)
+ *   GET  /api/game-plan/my/prefill?date=  journal.write.own — what the evening hands to this plan (lib/planPrefill):
+ *                                         { date, focus: { text, source, from } | null, rule: SuggestedRule | null } —
+ *                                         the own «Фокус на завтра» (item 1.5) and the costliest pattern of the last two
+ *                                         weeks as the suggested own rule of the contract (item 1.9)
+ *   GET  /api/game-plan/traders?date=    read view: plans of the traders the caller may read (journal.read.team scope)
  *
  * Templates — reusable plan skeletons.
  *   GET    /api/game-plan/templates?kind=desk|personal   mine + shared
@@ -48,12 +40,11 @@ import {
  *
  * Screenshots are stored by routes/plan-media.ts; plans reference them as { id, caption }. TradingView links are
  * validated (https, *.tradingview.com) and never fetched by the server.
- * Tables/columns are created idempotently (additive) once per process with a promise guard (lib/gamePlan.ts).
+ * Tables: src/db/migrations.
  */
 const router: IRouter = Router();
 
 // Kick off at module init; handlers still await it (and retry if it failed).
-ensureGamePlanTables().catch((err) => logger.warn({ err }, "game-plan: ensure tables failed at init"));
 
 // Publishing / editing the desk game plan = gameplan.publish (permissions matrix, DB role).
 
@@ -63,7 +54,6 @@ function zodError(err: z.ZodError): string {
 
 // ── Desk plan routes ──────────────────────────────────────────────────────────
 router.get("/game-plan/history", asyncHandler(async (req, res): Promise<void> => {
-  await ensureGamePlanTables();
   const limitRaw = Number(req.query.limit ?? 30);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 30;
   const qRaw = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 100) : "";
@@ -89,7 +79,6 @@ router.get("/game-plan/history", asyncHandler(async (req, res): Promise<void> =>
 }));
 
 router.get("/game-plan", asyncHandler(async (req, res): Promise<void> => {
-  await ensureGamePlanTables();
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
   if (!isIsoDate(date)) {
     throw badRequest("INVALID_DATE");
@@ -139,7 +128,6 @@ router.get("/game-plan/my", asyncHandler(async (req, res): Promise<void> => {
   if (!isIsoDate(date)) {
     throw badRequest("INVALID_DATE");
   }
-  await ensureGamePlanTables();
   const [{ rows }, { rows: prev }] = await Promise.all([
     pool.query<TraderPlanRow>(
       `SELECT id, trader, date, doc, status, created_at, updated_at
@@ -152,6 +140,19 @@ router.get("/game-plan/my", asyncHandler(async (req, res): Promise<void> => {
     ),
   ]);
   res.json({ date, plan: rows[0] ? serializeTraderPlan(rows[0]) : null, prevDate: prev[0]?.date ?? null });
+}));
+
+router.get("/game-plan/my/prefill", asyncHandler(async (req, res): Promise<void> => {
+  const me = req.authUser?.name;
+  if (!me) {
+    throw unauthorized();
+  }
+  if (!(await requireCap(req, res, "journal.write.own", { trader: me }))) return;
+  const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
+  if (!isIsoDate(date)) {
+    throw badRequest("INVALID_DATE");
+  }
+  res.json(await planPrefill(me, date));
 }));
 
 router.put("/game-plan/my/:date", asyncHandler(async (req, res): Promise<void> => {
@@ -168,7 +169,6 @@ router.put("/game-plan/my/:date", asyncHandler(async (req, res): Promise<void> =
   if (!parsed.success) {
     throw parsed.error;
   }
-  await ensureGamePlanTables();
   const { status, ...rawDoc } = parsed.data;
   const doc = await sanitizeMedia(rawDoc, "personal", me);
   const { rows: before } = await pool.query<{ doc: Partial<PlanDoc> }>(
@@ -198,7 +198,6 @@ router.get("/game-plan/traders", asyncHandler(async (req, res): Promise<void> =>
   if (!isIsoDate(date)) {
     throw badRequest("INVALID_DATE");
   }
-  await ensureGamePlanTables();
   // null → whole desk; string[] → own name + wards; [] → guest/anonymous (nothing).
   const scope = await readScope(req, "journal.read.team");
   const team = scope === null || scope.length > 1;
@@ -232,7 +231,6 @@ router.get("/game-plan/templates", asyncHandler(async (req, res): Promise<void> 
     throw unauthorized();
   }
   const kind = req.query.kind === "desk" ? "desk" : req.query.kind === "personal" ? "personal" : null;
-  await ensureGamePlanTables();
   const { rows } = await pool.query(
     `SELECT id, author, kind, name, doc, shared, created_at AS "createdAt"
        FROM plan_templates
@@ -261,7 +259,6 @@ router.post("/game-plan/templates", asyncHandler(async (req, res): Promise<void>
   if (!ok) return;
   // Templates are skeletons: never carry screenshots (they belong to a specific day).
   const doc: PlanDoc = { ...t.doc, media: [], inPlay: t.doc.inPlay.map((i) => ({ ...i, media: [] })) };
-  await ensureGamePlanTables();
   const { rows: count } = await pool.query<{ n: number }>(
     `SELECT COUNT(*)::int AS n FROM plan_templates WHERE author = $1 AND deleted_at IS NULL`,
     [me],
@@ -285,7 +282,6 @@ router.delete("/game-plan/templates/:id", asyncHandler(async (req, res): Promise
   if (!id) {
     throw badRequest("INVALID_ID");
   }
-  await ensureGamePlanTables();
   const { rows } = await pool.query<{ author: string; shared: boolean }>(
     `SELECT author, shared FROM plan_templates WHERE id = $1 AND deleted_at IS NULL`,
     [id],
@@ -311,7 +307,6 @@ router.put("/game-plan/:date", asyncHandler(async (req, res): Promise<void> => {
   if (!parsed.success) {
     throw parsed.error;
   }
-  await ensureGamePlanTables();
   const b = await sanitizeMedia(parsed.data, "desk", null);
   const actor = req.authUser.name;
   const { rows: before } = await pool.query<{ media: unknown; in_play: unknown }>(
@@ -376,7 +371,6 @@ router.delete("/game-plan/:date", asyncHandler(async (req, res): Promise<void> =
   if (!isIsoDate(date)) {
     throw badRequest("INVALID_DATE");
   }
-  await ensureGamePlanTables();
   const { rowCount } = await pool.query(
     `UPDATE game_plans SET deleted_at = NOW() WHERE date = $1 AND deleted_at IS NULL`,
     [date],
@@ -394,7 +388,6 @@ router.post("/game-plan/:id/read", asyncHandler(async (req, res): Promise<void> 
   if (!id) {
     throw badRequest("INVALID_ID");
   }
-  await ensureGamePlanTables();
   const { rows: exists } = await pool.query(`SELECT 1 FROM game_plans WHERE id = $1 AND deleted_at IS NULL`, [id]);
   if (!exists[0]) throw new AppError("PLAN_NOT_FOUND");
   // Re-reading after an update refreshes the timestamp (so "updated after read" clears).
@@ -416,7 +409,6 @@ router.get("/game-plan/:id/reads", asyncHandler(async (req, res): Promise<void> 
   if (!id) {
     throw badRequest("INVALID_ID");
   }
-  await ensureGamePlanTables();
   const { rows: planRows } = await pool.query<{ updated_at: Date }>(
     `SELECT updated_at FROM game_plans WHERE id = $1 AND deleted_at IS NULL`,
     [id],

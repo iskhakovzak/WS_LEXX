@@ -37,6 +37,7 @@ import { rankPeople, usePeopleAliases } from "@/components/people/search";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { AskCuratorButton, reviewLink } from "@/components/shared/ask-curator";
 
 type StatusChoice = PositionStatus | "none";
 
@@ -386,6 +387,8 @@ export function ThreadView({
               <span className="inline-flex items-center gap-1.5"><Avatar name={thread.trader} size="xs" />{thread.trader ? personName(thread.trader) : tc("roles.guest")}</span>
               <span title={absTime(thread.createdAt)}>{relTime(thread.createdAt)}</span>
               <span>· {t("thread.replies", { count: comments.length })}</span>
+              {/* 2.13: the author asks the curator to review this thread — it lands in the curator's «Запросы». */}
+              {isAuthor && canEdit && !isCurator && <AskCuratorButton kind="review" link={reviewLink("discussion", thread.id)} size="xs" className="min-h-10 sm:min-h-0" />}
             </div>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">

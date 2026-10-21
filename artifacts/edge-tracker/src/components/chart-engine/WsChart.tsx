@@ -60,6 +60,7 @@ import { FillLog, PositionCard, SummaryCard } from "./ui/TradePanels";
 import { FillsKey } from "./ui/FillsKey";
 import { DrawingBar } from "./ui/DrawingBar";
 import { robustPriceRange } from "./lib/autoscale";
+import { planRail, type PlanLevel } from "./lib/plan-levels";
 
 export type WsChartProps = {
   trade: TradeLike;
@@ -88,6 +89,8 @@ export type WsChartProps = {
   showModes?: boolean;
   /** Extra content at the bottom of the side column. */
   asideExtra?: React.ReactNode;
+  /** The morning plan's levels of this ticker-day (Волна 2 п. 2.12, hooks/usePlanOverlay) — dotted «План» lines. */
+  planLevels?: readonly PlanLevel[] | null;
 };
 
 type ChartRefs = {
@@ -147,7 +150,7 @@ function applyMargins(r: ChartRefs): void {
 
 export function WsChart({
   trade, executions, structure, target, initialTimeframe = "1m", mode: modeProp = "analysis", onModeChange, onTimeframeChange,
-  height = 520, className, contextDays = 2, startBarsBefore, layout = "inline", globalHotkeys, showModes = true, asideExtra,
+  height = 520, className, contextDays = 2, startBarsBefore, layout = "inline", globalHotkeys, showModes = true, asideExtra, planLevels,
 }: WsChartProps) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -424,6 +427,7 @@ export function WsChart({
       if (L.orb15) { lv.push({ key: "orb15h", price: L.orb15.h, text: "ORB15 H", color: th.c5(0.8), dash: [4, 3], fromIdx: geo.dayRange.from }); lv.push({ key: "orb15l", price: L.orb15.l, text: "ORB15 L", color: th.c5(0.8), dash: [4, 3], fromIdx: geo.dayRange.from }); }
     }
     if (ov.stopTarget) lv.push(...stopTargetRail(st, th));
+    if (ov.levels) lv.push(...planRail(planLevels, th, chartI18n.t("canvas.planShort")));
     prims.levels.set(lv);
     prims.levels.setDynamic(ov.vwap ? (rc) => {
       const v = prims.vwap.edgeValue(rc.range);
@@ -435,7 +439,7 @@ export function WsChart({
     prims.profile.set(geo.profile); prims.profile.setVisible(ov.profile);
     prims.events.set(geo.events); prims.events.setVisible(ov.events);
     prims.session.setEnabled(ov.session);
-  }, [geo, ov, chartGen]);
+  }, [geo, ov, chartGen, planLevels]);
 
   // ── Reveal (replay cursor) + the live P&L of the open position ──────────
   const liveMark = cursorIdx != null ? replayMark(bars, geo.fills, cursorIdx) : null;

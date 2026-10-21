@@ -100,10 +100,10 @@ function NextStep({ item }: { item: Item }) {
   );
 }
 
-function Row({ item }: { item: Item }) {
+function Row({ item, className }: { item: Item; className?: string }) {
   const Icon = item.icon;
   return (
-    <li>
+    <li className={className}>
       <ItemLink
         item={item}
         className="group flex w-full min-w-0 items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -144,6 +144,7 @@ export function AttentionPanel({
   onCheckin,
   dayCardDate,
   fill,
+  phoneStepAbove = false,
 }: {
   data: DashboardToday | undefined;
   risk: RiskMe | null | undefined;
@@ -165,6 +166,9 @@ export function AttentionPanel({
   /** The day the header's evening card covers: its review (with the journal link) replaces the «fill the day» task. */
   dayCardDate?: string | null;
   fill?: boolean;
+  /** Item 1.3: the phone already leads with the «Следующий шаг» card above — here the first task is an ordinary row
+   * on the phone (one focal point); the big tile stays from `md` up. */
+  phoneStepAbove?: boolean;
 }) {
   const { t } = dashboardI18n.useT();
   const { t: tc } = commonI18n.useT();
@@ -394,9 +398,12 @@ export function AttentionPanel({
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <NextStep item={next} />
-          {shown.length > 0 && (
+          <div className={phoneStepAbove ? "hidden md:block" : undefined}>
+            <NextStep item={next} />
+          </div>
+          {(shown.length > 0 || phoneStepAbove) && (
             <ul className="flex flex-col" aria-label={t("attention.otherTasks")}>
+              {phoneStepAbove && <Row item={next} className="md:hidden" />}
               {shown.map((i) => (
                 <Row key={i.key} item={i} />
               ))}

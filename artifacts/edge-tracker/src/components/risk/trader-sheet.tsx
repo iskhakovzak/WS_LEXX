@@ -25,6 +25,7 @@ import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { rich, slots } from "@/i18n/rich";
 import { positionsCount, stopMessage } from "./labels";
+import { LiveBadge } from "@/components/shared/live-badge";
 
 type Tab = "overview" | "trades" | "breaches" | "limits";
 
@@ -177,6 +178,7 @@ export function TraderSheet({
                   </span>
                 )}
               </SheetDescription>
+              <LiveBadge live={row.live} className="flex" />
               {row.stop.state !== "no_limits" && (row.halted || row.stop.state === "warn") && (
                 <p
                   role="status"

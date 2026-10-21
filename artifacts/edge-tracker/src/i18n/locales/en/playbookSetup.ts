@@ -59,6 +59,8 @@ export default {
   },
   status: {
     examples: "examples: {count}",
+    noExamplesAdd: "no examples yet — add from your trades",
+    noExamples: "no examples yet",
     examplesT1: "examples: {count} · T1 {t1}",
     noStatsYet: "No statistics yet: this setup’s trades aren’t closed or linked yet",
     noTrades: "No trades on this setup yet — the edge is unknown",

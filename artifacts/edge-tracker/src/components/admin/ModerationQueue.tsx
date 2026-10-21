@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  Ban, Check, ExternalLink, Flag, MessageCircle, MessagesSquare, MoreHorizontal, ShieldCheck, Trash2, X,
+  Ban, Check, ExternalLink, Flag, Lightbulb, MessageCircle, MessagesSquare, MoreHorizontal, ShieldCheck, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,6 +29,7 @@ type Status = "open" | "resolved" | "dismissed" | "all";
 const presets = (k: "resolvePresets" | "dismissPresets" | "removePresets") => adminI18n.t(`moderation.${k}`).split("|");
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
+const removeKey = (type: string | null | undefined) => (type === "discussion" ? "removeDiscussion" : type === "trade_idea" ? "removeIdea" : "removeComment");
 
 export function ModerationQueue({ actor, openCount }: { actor: string; openCount?: number }) {
   const { toast } = useToast();
@@ -108,7 +109,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
 
   const deleteMut = useMutation({
     mutationFn: async ({ report, reason }: { report: ContentReport; reason: string }) => {
-      const path = report.targetType === "discussion" ? "discussions" : "comments";
+      const path = report.targetType === "discussion" ? "discussions" : report.targetType === "trade_idea" ? "trade-ideas" : "comments";
       await http.del(`/api/admin/${path}/${encodeURIComponent(report.targetId)}`, undefined, { query: { actor } }).catch((e) => {
         if (!isNotFound(e)) throw e;
       });
@@ -149,8 +150,8 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
       });
     },
     remove: (r: ContentReport) => setDialog({
-      title: r.targetType === "discussion" ? t("moderation.removeDiscussion.title") : t("moderation.removeComment.title"),
-      description: r.targetType === "discussion" ? t("moderation.removeDiscussion.text") : t("moderation.removeComment.text"),
+      title: t(`moderation.${removeKey(r.targetType)}.title`),
+      description: t(`moderation.${removeKey(r.targetType)}.text`),
       confirmLabel: t("moderation.removeConfirm"),
       destructive: true,
       input: { label: t("moderation.removeReason"), required: true, presets: presets("removePresets") },
@@ -303,7 +304,8 @@ function ReportCard({
   const { t: tr } = adminI18n.useT();
   const t = r.target;
   const isDiscussion = r.targetType === "discussion";
-  const Icon = isDiscussion ? MessagesSquare : MessageCircle;
+  const isIdea = r.targetType === "trade_idea";
+  const Icon = isDiscussion ? MessagesSquare : isIdea ? Lightbulb : MessageCircle;
   const threadHref = t?.discussionId ? `/discussions?thread=${t.discussionId}` : null;
   const many = (r.openReportsOnTarget ?? 0) > 1;
   const canBan = !!t?.author && !t.authorBanned && t.authorRole !== "admin";
@@ -328,7 +330,7 @@ function ReportCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
-            {isDiscussion ? tr("moderation.discussion") : tr("moderation.comment")}
+            {isDiscussion ? tr("moderation.discussion") : isIdea ? tr("moderation.idea") : tr("moderation.comment")}
             {t?.title ? <span className="text-muted-foreground"> · «{t.title}»</span> : <span className="text-muted-foreground"> #{r.targetId}</span>}
           </div>
           <div className="text-xs text-muted-foreground">{tr("moderation.reportMeta", { id: r.id, ago: timeAgo(r.createdAt) })}</div>

@@ -50,8 +50,8 @@ export default {
       hint: "Текущая серия убыточных дней",
     },
     discipline: {
-      label: "Дисциплина (оценка)",
-      hint: "Средняя оценка «дисциплина» куратора за недели окна (1–10)",
+      label: "Индекс дисциплины (0–100)",
+      hint: "Средний дневной индекс дисциплины за дни окна (0–100, как в «Пути трейдера» и на «Поведении»)",
     },
     rating_overall: {
       label: "Общая оценка",
@@ -79,6 +79,8 @@ export default {
     noDdLimit: "лимит просадки не задан",
     noRatings: "нет оценок куратора",
     ratings: { one: "{count} оценка", few: "{count} оценки", many: "{count} оценок", other: "{count} оценки" },
+    noBehavior: "нет дней с индексом дисциплины",
+    behaviorDays: { one: "за {count} день", few: "за {count} дня", many: "за {count} дней", other: "за {count} дня" },
     noData: "нет данных",
   },
   rule: {

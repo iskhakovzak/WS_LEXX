@@ -3,12 +3,29 @@ import { eq } from "drizzle-orm";
 import { db, pool, tradingErrorsTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { can } from "../lib/permissions";
-import { ensureRulesSchema } from "../lib/rulesEngine";
 import { closeDateSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { addDays, nyDate } from "../lib/tradingDate";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
+import { archiveErrorRows, errorCodeOf, mirrorTradeMistake } from "../lib/tradingErrors";
 
 const router: IRouter = Router();
+
+// ─── One errors store (Волна 2 п. 2.8) ───────────────────────────────────────────
+// trading_errors is the single source of mistakes: key M on /trades and the journal's per-trade review write rows here
+// too (lib/tradingErrors). A vocabulary mistake logged / removed here for a trade is mirrored into the trade's tags and
+// journal review, so every screen shows the same set. «Сколько стоили мои ошибки» (/errors/summary) reads only this table.
+
+/** Insert one row (code = the vocabulary code of errorType, null for custom text); mirrors a trade's vocabulary mistake. */
+async function insertError(v: { trader: string; errorType: string; description: string; ticker: string | null; tradeId: number | null; severity: string; lesson: string | null }): Promise<number> {
+  const code = errorCodeOf(v.errorType);
+  const { rows } = await pool.query<{ id: number }>(
+    `INSERT INTO trading_errors (trader, error_type, description, ticker, trade_id, severity, lesson, code, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'manual') RETURNING id`,
+    [v.trader, v.errorType, v.description, v.ticker, v.tradeId, v.severity, v.lesson, code],
+  );
+  if (v.tradeId != null && code) await mirrorTradeMistake(v.tradeId, code, true);
+  return Number(rows[0].id);
+}
 
 // ─── Ownership ────────────────────────────────────────────────────────────────
 // The mistake log is personal. The trader is always taken from the logged-in user;
@@ -113,10 +130,8 @@ router.post("/errors", asyncHandler(async (req, res): Promise<void> => {
     ticker = ticker ?? trade.ticker;
   }
 
-  const [row] = await db.insert(tradingErrorsTable).values({
-    trader, errorType, description, ticker, tradeId, severity, lesson,
-  }).returning({ id: tradingErrorsTable.id });
-  res.status(201).json(await loadOne(row.id));
+  const id = await insertError({ trader, errorType, description, ticker, tradeId, severity, lesson });
+  res.status(201).json(await loadOne(id));
 }));
 
 router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
@@ -149,6 +164,7 @@ router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
     if (!t || t.length > MAX_TYPE) throw new AppError("INVALID_FIELD", undefined, { field: "errorType" });
     updates.errorType = t;
   }
+  const codeChanged = updates.errorType !== undefined;
   if (body.ticker !== undefined) updates.ticker = cleanTicker(body.ticker);
   if (body.tradeId !== undefined) {
     if (body.tradeId === null || body.tradeId === "") {
@@ -164,6 +180,7 @@ router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   if (Object.keys(updates).length === 0) throw badRequest("NO_FIELDS");
   await db.update(tradingErrorsTable).set(updates).where(eq(tradingErrorsTable.id, id));
+  if (codeChanged) await pool.query(`UPDATE trading_errors SET code = $2 WHERE id = $1`, [id, errorCodeOf(updates.errorType)]);
   res.json(await loadOne(id));
 }));
 
@@ -172,7 +189,6 @@ router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
  * so every other reader (dashboard, scaling, weekly review…) stops counting it. Undo: POST /errors/:id/restore.
  */
 router.delete("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT * FROM trading_errors WHERE id = $1`, [id]);
@@ -181,11 +197,7 @@ router.delete("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query(
-      `INSERT INTO trading_errors_archive (original_id, trader, payload, archived_by) VALUES ($1, $2, $3, $4)`,
-      [id, existing[0].trader, existing[0], req.authUser?.name ?? null],
-    );
-    await client.query(`DELETE FROM trading_errors WHERE id = $1`, [id]);
+    await archiveErrorRows(client, [id], req.authUser?.name ?? null);
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
@@ -193,12 +205,17 @@ router.delete("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
   } finally {
     client.release();
   }
+  // The trade's last row of this mistake went: the tag / journal mirror drops it too.
+  const { trade_id: tradeId, code } = existing[0];
+  if (tradeId != null && code) {
+    const { rowCount } = await pool.query(`SELECT 1 FROM trading_errors WHERE trade_id = $1 AND code = $2 LIMIT 1`, [tradeId, code]);
+    if (!rowCount) await mirrorTradeMistake(Number(tradeId), code, false);
+  }
   res.json({ ok: true, archived: true });
 }));
 
 /** Undo a removal: re-inserts the archived row with its original id. */
 router.post("/errors/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  await ensureRulesSchema();
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
@@ -210,11 +227,14 @@ router.post("/errors/:id/restore", asyncHandler(async (req, res): Promise<void> 
   if (!(await canTouch(req, a.trader))) throw forbidden();
   const p = a.payload ?? {};
   await pool.query(
-    `INSERT INTO trading_errors (id, trader, error_type, description, ticker, trade_id, severity, lesson, resolved, created_at)
-     VALUES ($1, $2, $3, $4, $5, (SELECT id FROM trades WHERE id = $6), $7, $8, $9, COALESCE($10::timestamptz, NOW()))
+    `INSERT INTO trading_errors (id, trader, error_type, description, ticker, trade_id, severity, lesson, resolved, created_at, code, source)
+     VALUES ($1, $2, $3, $4, $5, (SELECT id FROM trades WHERE id = $6), $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, COALESCE($12, 'manual'))
      ON CONFLICT (id) DO NOTHING`,
-    [id, a.trader, p.error_type, p.description ?? p.error_type, p.ticker ?? null, p.trade_id ?? null, p.severity ?? "medium", p.lesson ?? null, p.resolved ?? "no", p.created_at ?? null],
+    [id, a.trader, p.error_type, p.description ?? p.error_type, p.ticker ?? null, p.trade_id ?? null, p.severity ?? "medium", p.lesson ?? null, p.resolved ?? "no", p.created_at ?? null,
+      errorCodeOf(p.error_type), p.source ?? null],
   );
+  const restoredCode = errorCodeOf(p.error_type);
+  if (p.trade_id != null && restoredCode) await mirrorTradeMistake(Number(p.trade_id), restoredCode, true);
   await pool.query(`UPDATE trading_errors_archive SET restored_at = NOW() WHERE id = $1`, [a.id]);
   res.json(await loadOne(id));
 }));
@@ -235,18 +255,18 @@ router.post("/errors/bulk", asyncHandler(async (req, res): Promise<void> => {
   const lesson = typeof body.lesson === "string" && body.lesson.trim() ? body.lesson.trim().slice(0, MAX_TEXT) : null;
   const ids = Array.isArray(body.tradeIds) ? [...new Set(body.tradeIds.map(Number).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 200) : [];
   if (!ids.length) throw new AppError("TRADE_IDS_REQUIRED");
+  // One row per trade + mistake: a vocabulary mistake matches by code (any spelling, any source), custom text by text.
+  const code = errorCodeOf(errorType);
   const { rows: trades } = await pool.query<any>(
     `SELECT t.id, t.ticker FROM trades t
       WHERE t.id = ANY($1::int[]) AND t.trader = $2 AND t.deleted_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM trading_errors e WHERE e.trade_id = t.id AND e.error_type = $3)`,
-    [ids, trader, errorType],
+        AND NOT EXISTS (SELECT 1 FROM trading_errors e WHERE e.trade_id = t.id AND (e.error_type = $3 OR ($4::text IS NOT NULL AND e.code = $4)))`,
+    [ids, trader, errorType, code],
   );
   const created: unknown[] = [];
   for (const t of trades) {
-    const [row] = await db.insert(tradingErrorsTable).values({
-      trader, errorType, description: errorType, ticker: t.ticker ?? null, tradeId: Number(t.id), severity, lesson,
-    }).returning({ id: tradingErrorsTable.id });
-    created.push(await loadOne(row.id));
+    const id = await insertError({ trader, errorType, description: errorType, ticker: t.ticker ?? null, tradeId: Number(t.id), severity, lesson });
+    created.push(await loadOne(id));
   }
   const done = new Set(trades.map((t: any) => Number(t.id)));
   res.status(201).json({ created, skipped: ids.filter((x) => !done.has(x)) });

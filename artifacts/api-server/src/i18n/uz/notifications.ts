@@ -112,6 +112,8 @@ export default {
     reward_requested: { label: "Mukofot soʻrovi", description: "Treyder katalogdagi mukofotni topshirishni soʻramoqda (kuratorlar va adminlar uchun)" },
     reward_granted: { label: "Mukofot topshirildi", description: "Kurator sizga katalogdagi mukofotni topshirdi" },
     reward_declined: { label: "Mukofot rad etildi", description: "Mukofot soʻrovi rad etildi" },
+    curator_request: { label: "Kuratorga soʻrov", description: "Treyder kuratordan yordam soʻradi" },
+    curator_request_done: { label: "Kurator soʻrovga javob berdi", description: "Kurator soʻrovingizni yopdi" },
     system: { label: "Tizim", description: "Xizmat xabarlari" },
   },
   groups: {

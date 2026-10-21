@@ -5,6 +5,12 @@
  * Drawdown baseline: a curator's «Разбор нарушения» of a drawdown breach resets the peak — the drawdown is counted
  * from the trader's equity at the end of the review day (`ddSince`). Without a review the peak is lifetime, so a
  * drawdown halt stays until the curator decides.
+ *
+ * Intraday (PropReports positions tick, lib/livePositions): while the trader's open-positions snapshot of the trading
+ * day is fresh (≤ LIVE_MAX_AGE_MIN), its unrealized P&L is added to the realized net of the day — so today's P&L, the
+ * week, the drawdown and the stop state are «if I flatten now» numbers. The full unrealized (vs the average price) is
+ * used, not the day's delta: a trade's whole P&L lands on its close day here (realised on COALESCE(exit_date, date)),
+ * so the live number converges to the realized one when the position closes. A stale snapshot is shown, never counted.
  */
 import { addDays } from "./tradingDate";
 import { type Lang } from "../i18n";
@@ -39,6 +45,8 @@ export type Limits = {
   maxOpenPositions: number | null;
   allowOvernight: boolean;
   allowSwing: boolean;
+  /** Buying power set per trader by the curator (Волна 1 п. 1.21): junior 25 000 – 800 000 $, above junior no cap. */
+  buyingPower?: number | null;
   tier: string | null;
   notes: string | null;
   updatedBy: string | null;
@@ -46,6 +54,40 @@ export type Limits = {
 };
 
 export type PnlSource = "propreports" | "journal" | null;
+
+/** Snapshot age after which its unrealized P&L is no longer counted (the tick runs every 5 min during RTH). */
+export const LIVE_MAX_AGE_MIN = 20;
+
+/** A trader's open positions from the PropReports positions tick, judged for freshness (see liveRisk). */
+export type LiveRisk = {
+  /** Trading date (NY) of the snapshot. */
+  date: string;
+  unrealizedUsd: number;
+  openPositions: number;
+  /** ISO time of the oldest account snapshot of the trader. */
+  fetchedAt: string;
+  ageMin: number;
+  /** Fresh snapshot of `today`: its unrealized is part of today's P&L and of the stop state. */
+  counted: boolean;
+};
+
+export type LiveSnapshot = { date: string; unrealizedUsd: number; openPositions: number; fetchedAt: string };
+
+/** Pure: a stored snapshot → LiveRisk for `today` (null when there is none for that day). */
+export function liveRisk(snap: LiveSnapshot | null | undefined, today: string, now: Date = new Date()): LiveRisk | null {
+  if (!snap || snap.date !== today) return null;
+  const at = Date.parse(snap.fetchedAt);
+  if (!Number.isFinite(at)) return null;
+  const ageMin = Math.max(0, Math.floor((now.getTime() - at) / 60_000));
+  return {
+    date: snap.date,
+    unrealizedUsd: round2(snap.unrealizedUsd),
+    openPositions: snap.openPositions,
+    fetchedAt: new Date(at).toISOString(),
+    ageMin,
+    counted: ageMin <= LIVE_MAX_AGE_MIN,
+  };
+}
 export type DayRow = {
   trader: string;
   date: string;
@@ -199,7 +241,10 @@ export function nextPeak(peak: number, cum: number, date: string, since: string 
  * Pure (exported for the offline check). `ddSince` = drawdown baseline day (see drawdownSince): the peak resets to the
  * equity at the end of that day, so a reviewed drawdown halt lifts until a new drawdown ≥ the limit builds up.
  */
-export function computeMetrics(trader: string, days: DayRow[], positions: Position[], limits: Limits | null, today: string, lang: Lang = "ru", ddSince: string | null = null) {
+export function computeMetrics(
+  trader: string, days: DayRow[], positions: Position[], limits: Limits | null, today: string, lang: Lang = "ru", ddSince: string | null = null,
+  live: LiveRisk | null = null,
+) {
   const ws = weekStart(today);
   const todayRow = days.find((d) => d.date === today);
   const weekRows = days.filter((d) => d.date >= ws && d.date <= today);
@@ -222,13 +267,19 @@ export function computeMetrics(trader: string, days: DayRow[], positions: Positi
     if (cum > lifePeak) lifePeak = cum;
     if (lifePeak - cum > maxDd) maxDd = lifePeak - cum;
   }
-  const hasPnl = days.some((d) => d.pnl != null);
-  const currentDd = hasPnl ? round2(peak - cum) : 0;
+  // Live unrealized (fresh snapshot of today with something open or marked): added to today, the week and the equity.
+  const liveOn = !!live && live.counted && live.date === today && (live.openPositions > 0 || live.unrealizedUsd !== 0);
+  const u = liveOn ? live!.unrealizedUsd : 0;
+  const hasDayPnl = days.some((d) => d.pnl != null);
+  const hasPnl = hasDayPnl || liveOn;
+  const liveDd = round2(lifePeak - (cum + u));
+  if (liveOn && liveDd > maxDd) maxDd = liveDd;
+  const currentDd = hasPnl ? Math.max(0, round2(peak - (cum + u))) : 0;
 
   // red-day streak (most recent days with $ data; falls back to R when no $)
   let redStreak = 0;
   for (let i = days.length - 1; i >= 0; i--) {
-    const v = hasPnl ? days[i].pnl : days[i].r;
+    const v = hasDayPnl ? days[i].pnl : days[i].r;
     if (v == null) continue;
     if (v < 0) redStreak++;
     else break;
@@ -240,8 +291,10 @@ export function computeMetrics(trader: string, days: DayRow[], positions: Positi
   const overnightExposure = tonight.reduce((s, p) => s + (p.exposureUsd ?? 0), 0);
   const grossExposure = positions.reduce((s, p) => s + (p.exposureUsd ?? 0), 0);
 
-  const todayPnl = todayRow?.pnl ?? null;
-  const weekPnl = weekPnlRows.length ? round2(weekPnlRows.reduce((s, d) => s + (d.pnl ?? 0), 0)) : null;
+  const realizedToday = todayRow?.pnl ?? null;
+  const realizedWeek = weekPnlRows.length ? round2(weekPnlRows.reduce((s, d) => s + (d.pnl ?? 0), 0)) : null;
+  const todayPnl = liveOn ? round2((realizedToday ?? 0) + u) : realizedToday;
+  const weekPnl = liveOn ? round2((realizedWeek ?? 0) + u) : realizedWeek;
   const todayLoss = Math.max(0, -(todayPnl ?? 0));
   const weekLoss = Math.max(0, -(weekPnl ?? 0));
 
@@ -301,9 +354,14 @@ export function computeMetrics(trader: string, days: DayRow[], positions: Positi
       week: (weekSources.size === 0 ? null : weekSources.size === 1 ? [...weekSources][0] : "mixed") as PnlSource | "mixed",
       history: { propreports: histBroker, journal: histJournal },
     },
+    /** Intraday positions snapshot (null without one for today); `counted` = its unrealized is in the numbers below. */
+    live,
     today: {
       date: today,
       pnlNet: todayPnl == null ? null : round2(todayPnl),
+      /** Realized net of the day (closed trades) and the live unrealized added to it (null when not counted). */
+      realizedNet: realizedToday == null ? null : round2(realizedToday),
+      unrealizedUsd: liveOn ? u : null,
       source: (todayRow?.source ?? null) as PnlSource,
       fees: round2(todayRow?.fees ?? 0),
       r: round2(todayRow?.r ?? 0),
@@ -330,7 +388,7 @@ export function computeMetrics(trader: string, days: DayRow[], positions: Positi
     },
     drawdown: {
       hasPnl,
-      equityNet: hasPnl ? round2(cum) : null,
+      equityNet: hasPnl ? round2(cum + u) : null,
       peakNet: hasPnl ? round2(peak) : null,
       currentUsd: currentDd,
       maxUsd: round2(maxDd),

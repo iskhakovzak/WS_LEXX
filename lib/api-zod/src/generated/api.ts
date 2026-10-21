@@ -74,6 +74,9 @@ export const ListTradesResponseItem = zod.object({
   "externalId": zod.string().nullish().describe('Stable broker round-trip key (account|symbol|openedAt|side) for PropReports-sourced trades'),
   "brokerAccount": zod.string().nullish().describe('PropReports account display name the trade was synced from'),
   "syncedAt": zod.string().nullish().describe('Last time broker-owned fields were refreshed from PropReports (ISO datetime)'),
+  "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
+  "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
+  "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
   "createdAt": zod.string()
 })
 export const ListTradesResponse = zod.array(ListTradesResponseItem)
@@ -184,6 +187,9 @@ export const GetTradeResponse = zod.object({
   "externalId": zod.string().nullish().describe('Stable broker round-trip key (account|symbol|openedAt|side) for PropReports-sourced trades'),
   "brokerAccount": zod.string().nullish().describe('PropReports account display name the trade was synced from'),
   "syncedAt": zod.string().nullish().describe('Last time broker-owned fields were refreshed from PropReports (ISO datetime)'),
+  "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
+  "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
+  "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
   "createdAt": zod.string()
 })
 
@@ -289,6 +295,9 @@ export const UpdateTradeResponse = zod.object({
   "externalId": zod.string().nullish().describe('Stable broker round-trip key (account|symbol|openedAt|side) for PropReports-sourced trades'),
   "brokerAccount": zod.string().nullish().describe('PropReports account display name the trade was synced from'),
   "syncedAt": zod.string().nullish().describe('Last time broker-owned fields were refreshed from PropReports (ISO datetime)'),
+  "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
+  "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
+  "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
   "createdAt": zod.string()
 })
 
@@ -491,33 +500,6 @@ export const ListResearchResponse = zod.array(ListResearchResponseItem)
 
 
 /**
- * @summary Create a research entry
- */
-export const CreateResearchBody = zod.object({
-  "patternName": zod.string(),
-  "ticker": zod.string().nullish(),
-  "context": zod.string().nullish(),
-  "marketCondition": zod.string().nullish(),
-  "whatWorked": zod.string().nullish(),
-  "whatFailed": zod.string().nullish(),
-  "repeatCount": zod.number().nullish(),
-  "confidenceLevel": zod.number().nullish(),
-  "screenshotUrl": zod.string().nullish(),
-  "screenshotNotes": zod.string().nullish(),
-  "tags": zod.string().nullish(),
-  "marketCap": zod.string().nullish(),
-  "float": zod.string().nullish(),
-  "adv": zod.string().nullish(),
-  "atr": zod.number().nullish(),
-  "relativeVolume": zod.number().nullish(),
-  "beta": zod.number().nullish(),
-  "shortInterest": zod.number().nullish(),
-  "sector": zod.string().nullish(),
-  "longName": zod.string().nullish()
-})
-
-
-/**
  * @summary Get research by ID
  */
 export const GetResearchParams = zod.object({
@@ -547,70 +529,6 @@ export const GetResearchResponse = zod.object({
   "sector": zod.string().nullish(),
   "longName": zod.string().nullish(),
   "createdAt": zod.string()
-})
-
-
-/**
- * @summary Update a research entry
- */
-export const UpdateResearchParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const UpdateResearchBody = zod.object({
-  "patternName": zod.string().nullish(),
-  "ticker": zod.string().nullish(),
-  "context": zod.string().nullish(),
-  "marketCondition": zod.string().nullish(),
-  "whatWorked": zod.string().nullish(),
-  "whatFailed": zod.string().nullish(),
-  "repeatCount": zod.number().nullish(),
-  "confidenceLevel": zod.number().nullish(),
-  "screenshotUrl": zod.string().nullish(),
-  "screenshotNotes": zod.string().nullish(),
-  "tags": zod.string().nullish(),
-  "marketCap": zod.string().nullish(),
-  "float": zod.string().nullish(),
-  "adv": zod.string().nullish(),
-  "atr": zod.number().nullish(),
-  "relativeVolume": zod.number().nullish(),
-  "beta": zod.number().nullish(),
-  "shortInterest": zod.number().nullish(),
-  "sector": zod.string().nullish(),
-  "longName": zod.string().nullish()
-})
-
-export const UpdateResearchResponse = zod.object({
-  "id": zod.number(),
-  "patternName": zod.string(),
-  "ticker": zod.string().nullish(),
-  "context": zod.string().nullish(),
-  "marketCondition": zod.string().nullish(),
-  "whatWorked": zod.string().nullish(),
-  "whatFailed": zod.string().nullish(),
-  "repeatCount": zod.number().nullish(),
-  "confidenceLevel": zod.number().nullish(),
-  "screenshotUrl": zod.string().nullish(),
-  "screenshotNotes": zod.string().nullish(),
-  "tags": zod.string().nullish(),
-  "marketCap": zod.string().nullish(),
-  "float": zod.string().nullish(),
-  "adv": zod.string().nullish(),
-  "atr": zod.number().nullish(),
-  "relativeVolume": zod.number().nullish(),
-  "beta": zod.number().nullish(),
-  "shortInterest": zod.number().nullish(),
-  "sector": zod.string().nullish(),
-  "longName": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-
-/**
- * @summary Delete a research entry
- */
-export const DeleteResearchParams = zod.object({
-  "id": zod.coerce.number()
 })
 
 
@@ -911,6 +829,9 @@ export const GetRecentTradesResponseItem = zod.object({
   "externalId": zod.string().nullish().describe('Stable broker round-trip key (account|symbol|openedAt|side) for PropReports-sourced trades'),
   "brokerAccount": zod.string().nullish().describe('PropReports account display name the trade was synced from'),
   "syncedAt": zod.string().nullish().describe('Last time broker-owned fields were refreshed from PropReports (ISO datetime)'),
+  "strategy": zod.string().nullish().describe('PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib\/tradeStrategy'),
+  "isImx": zod.boolean().optional().describe('Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY)'),
+  "entrySec": zod.number().nullish().describe('New York seconds since midnight of the first entry (the «Время» facet)'),
   "createdAt": zod.string()
 })
 export const GetRecentTradesResponse = zod.array(GetRecentTradesResponseItem)
@@ -1249,7 +1170,7 @@ export const GetAiTradeReviewParams = zod.object({
   "id": zod.coerce.number()
 })
 
-export const GetAiTradeReviewResponse = zod.object({
+export const GetAiTradeReviewResponse = zod.union([zod.object({
   "reviewId": zod.number(),
   "tradeId": zod.number(),
   "model": zod.string(),
@@ -1259,7 +1180,7 @@ export const GetAiTradeReviewResponse = zod.object({
   "outputTokens": zod.number().nullish(),
   "costUsd": zod.number().nullish(),
   "generatedAt": zod.string()
-})
+}),zod.null()])
 
 
 /**

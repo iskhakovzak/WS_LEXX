@@ -31,8 +31,13 @@ export type FeedResponse = {
   items: FeedAction[];
   count: number;
   availableFirms: string[];
-  /** Added by the 2026 API pass; may be missing on older builds. */
-  capStats?: { known: number; unknown: number };
+  /** Added by the 2026 API pass; may be missing on older builds. excludedUnknown*: dropped by a min cap for an unknown cap. */
+  capStats?: { known: number; unknown: number; excludedUnknown?: number; excludedUnknownTickers?: number };
+  /** Last successful analyst scan (job_runs) — the «обновлено» time; item 1.14. */
+  scannedAt?: string | null;
+  /** The scan never succeeded, failed last or is stale: «источник недоступен · HH:MM» (checkedAt) instead of «пусто». */
+  sourceUnavailable?: boolean;
+  checkedAt?: string;
 };
 
 export type Quote = {
@@ -308,7 +313,8 @@ export const DEFAULT_FILTERS: Filters = {
   todayOnly: false,
   period: "5",
   minCapB: 0,
-  includeUnknownCap: true,
+  // A min cap really filters (item 1.14): a ticker whose cap no source knows is excluded unless switched on.
+  includeUnknownCap: false,
 };
 
 /** Stored value → valid Filters (older / partial objects from localStorage). */

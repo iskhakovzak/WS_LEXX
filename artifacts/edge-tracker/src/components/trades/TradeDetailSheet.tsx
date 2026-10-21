@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { EarningsBadge } from "@/components/shared/finviz/earnings";
+import { TickerContext } from "@/components/shared/finviz/ticker-context";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { ReplayOwnDayButton } from "@/components/shared/replay-own-day";
 import { RedactedHint, redactedHint } from "@/components/playbook/setup-bits";
@@ -24,9 +26,10 @@ import { eventLabel, sessionLabel, dayOf, tradePlaybookPayload, daysHeld, effect
 import { stopIsEstimate } from "./sheet-model";
 import { ConvictionDots, HorizonPill, ResultMenu, SidePill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
-import { ReviewChips, type PickerTarget } from "./review-tagging";
+import { TradeMarkup } from "./trade-markup";
 import { ExecutionsPanel } from "./ExecutionsPanel";
-import { ChecklistStatus, TradeRelated, useSourceIdeaTarget } from "./TradeRelated";
+import { TradeRelated, useSourceIdeaTarget } from "./TradeRelated";
+import { InViewSheetChart, SheetChart } from "./SheetChart";
 import { TradeSocial } from "./TradeSocial";
 import { QualityBlock, useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { ET_SESSION_LABEL, etWallToIso, fmtDuration, sessionOfEt, type EtSession } from "@/components/trade-chart-parts/chart-utils";
@@ -67,21 +70,12 @@ function tradeTiming(t: Trade): TradeTiming {
   };
 }
 
-const LazyReplayChart = React.lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
 const LazyAiReviewPanel = React.lazy(() => import("@/components/ai-review-panel").then((m) => ({ default: m.AiReviewPanel })));
 const LazyVoiceNotePlayer = React.lazy(() => import("@/components/voice-note-player").then((m) => ({ default: m.VoiceNotePlayer })));
 
-export type TradePatch = Partial<Pick<Trade, "result" | "notes" | "whatWorked" | "whatFailed" | "conclusion" | "tags" | "screenshotNotes" | "setup">>;
-
-/** Idea targets are free text («125 / 130», «$12.50») — the replay draws the first price it finds. */
-function parseTargetPrice(target: string | null): number | null {
-  if (!target) return null;
-  const m = /\d+(?:[.,]\d+)?/.exec(target);
-  if (!m) return null;
-  const n = Number(m[0].replace(",", "."));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
+export type TradePatch = Partial<Pick<Trade, "result" | "notes" | "whatWorked" | "whatFailed" | "conclusion" | "tags" | "screenshotNotes" | "setup">>
+  & { confidenceGrade?: "A+" | "A" | "B" | "C" };
 
 type Props = {
   trade: Trade | null;
@@ -233,13 +227,12 @@ export function TradeDetailSheet(p: Props) {
   const [afterExit, setAfterExit] = useAfterExitMinutes();
   const ideaTarget = useSourceIdeaTarget(t);
   const timing = React.useMemo(() => (t ? tradeTiming(t) : null), [t]);
-  const [picker, setPicker] = React.useState<PickerTarget>(null);
-  React.useEffect(() => { setReviewCount(null); setPicker(null); }, [t?.id]);
+  React.useEffect(() => { setReviewCount(null); }, [t?.id]);
   const canEditForm = p.canEditForm ?? p.canEdit;
   const canEditResult = p.canEditResult ?? p.canEdit;
   const canDelete = p.canDelete ?? p.canEdit;
   // Another trader's trade opened from the playbook: $ come back null, and the owner-only blocks (quality, AI
-  // review, checklist, voice notes, curator reviews) would only answer 403 — they are not shown at all.
+  // review, voice notes, curator reviews) would only answer 403 — they are not shown at all.
   const redacted = t ? isRedactedTrade(t) : false;
   // The viewer's own losing intraday trade: «Переиграть этот день» in the simulator (the button checks the bars).
   const ownLoss = !!t && !redacted && !!p.traderName && t.trader === p.traderName && (netPnl(t) ?? 0) < 0 && horizonOf(t) === "intraday";
@@ -263,6 +256,7 @@ export function TradeDetailSheet(p: Props) {
                     <SidePill side={t.side} />
                     <HorizonPill horizon={horizonOf(t)} showIntraday />
                     <ResultMenu result={t.result} ticker={t.ticker} disabled={!canEditResult} onChange={(r) => { void p.onPatch(t, { result: r }); }} />
+                    <EarningsBadge ticker={t.ticker} day={dayOf(t)} />
                   </div>
                   <SheetDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                     <span className="inline-flex items-center gap-1 tabular-nums">
@@ -320,40 +314,31 @@ export function TradeDetailSheet(p: Props) {
                 <TabsList className="w-full justify-start overflow-x-auto">
                   <TabsTrigger value="overview">{tt("sheet.tabs.overview")}</TabsTrigger>
                   <TabsTrigger value="chart">{tt("sheet.tabs.chart")}</TabsTrigger>
-                  <TabsTrigger value="replay">{tt("sheet.tabs.replay")}</TabsTrigger>
                   <TabsTrigger value="executions">{tt("sheet.tabs.executions")}</TabsTrigger>
                   {showAi && <TabsTrigger value="ai">{tt("sheet.tabs.ai")}</TabsTrigger>}
                   <TabsTrigger value="social">{tt("sheet.tabs.social")}{reviewCount ? ` · ${reviewCount}` : ""}</TabsTrigger>
                 </TabsList>
               </div>
               <div className="px-5 pb-8 pt-2 md:min-h-0 md:flex-1 md:overflow-y-auto">
+                {/* «Обзор» = разметка + разбор + график (Волна 2 п. 2.12); quality, replay and the news live in «График». */}
                 <TabsContent value="overview" className="space-y-5">
-                  <section className="space-y-2">
-                    <p className="micro-label">{tt("sheet.markup")}</p>
-                    {/* data-active keeps the "+" buttons visible here (they are hover-only in the list rows). */}
-                    <div className="group" data-active="true">
-                      <ReviewChips
-                        trade={t}
-                        canTag={p.canEdit && !!p.onTag}
-                        picker={picker}
-                        setPicker={setPicker}
-                        onPick={(tr, kind, value) => p.onTag?.(tr, kind, value)}
-                        setupOptions={p.setupOptions ?? []}
-                      />
-                    </div>
-                  </section>
-                  {!isBrokerTrade(t) && !redacted && <ChecklistStatus tradeId={t.id} />}
-                  {(t.entry != null || t.exit != null) && !redacted && (
-                    <section className="space-y-2">
-                      <p className="micro-label">{tt("sheet.quality")}</p>
-                      <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
-                    </section>
-                  )}
+                  <TradeMarkup trade={t} canEdit={p.canEdit} onTag={p.onTag} onPatch={p.onPatch} />
                   <section className="space-y-2">
                     <p className="micro-label">{tt("sheet.review")}</p>
                     <ReviewEditor trade={t} canEdit={p.canEdit} onPatch={p.onPatch} />
                   </section>
+                  {tab === "overview" && (
+                    <section className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="micro-label">{tt("sheet.chart")}</p>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setTab("chart")}>{tt("sheet.chartOpen")}</Button>
+                      </div>
+                      {/* Mounted (bars + plan levels) only once scrolled near the viewport — opening a trade stays cheap. */}
+                      <InViewSheetChart key={t.id} trade={t} ideaTarget={ideaTarget} height={300} showModes={false} fallbackClassName="h-[300px] rounded-2xl" />
+                    </section>
+                  )}
                   <ContextRow trade={t} timing={timing} />
+                  <TickerContext ticker={t.ticker} day={dayOf(t)} />
                   {t.screenshotUrl && (
                     <section className="space-y-2">
                       <p className="micro-label">{tc("fields.screenshots")}</p>
@@ -375,30 +360,22 @@ export function TradeDetailSheet(p: Props) {
                 </TabsContent>
                 <TabsContent value="chart" className="space-y-4">
                   {tab === "chart" && (
-                    // One chart engine for the sheet: «График» = the whole day with the trade, «Реплей» = bar by bar.
-                    <React.Suspense fallback={<Skeleton className="h-[468px] rounded-2xl" />}>
-                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={420} mode="analysis" showModes={false} />
-                    </React.Suspense>
+                    // One chart engine: analysis (the whole day with the trade) and replay (bar by bar) are a mode switch.
+                    <SheetChart key={t.id} trade={t} ideaTarget={ideaTarget} height={440} showModes fallbackClassName="h-[504px] rounded-2xl" />
+                  )}
+                  {(t.entry != null || t.exit != null) && !redacted && (
+                    <section className="space-y-2">
+                      <p className="micro-label">{tt("sheet.quality")}</p>
+                      <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
+                    </section>
                   )}
                   <React.Suspense fallback={<Skeleton className="h-32 rounded-2xl" />}>
                     <LazyNewsFeed ticker={t.ticker} limit={10} compact cutoffDate={t.createdAt ?? `${dayOf(t)}T23:59:59Z`} />
                   </React.Suspense>
                 </TabsContent>
-                <TabsContent value="replay" className="space-y-4">
-                  {tab === "replay" && (
-                    <React.Suspense fallback={<Skeleton className="h-[504px] rounded-2xl" />}>
-                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} mode="replay" showModes={false} />
-                    </React.Suspense>
-                  )}
-                  {!redacted && (
-                      <section className="space-y-2">
-                        <p className="micro-label">{tt("sheet.quality")}</p>
-                        <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
-                      </section>
-                    )}
-                  </TabsContent>
                   <TabsContent value="executions">
-                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} onOpenTradeId={(id) => { const x = p.allTrades.find((a) => a.id === id); if (x) p.onOpenTrade(x); }} />
+                    {/* Broker fills are the broker's record: no basket, no «Добавить» (read-only on the server too). */}
+                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit && canEditForm && !isBrokerTrade(t)} fees={t.fees} qty={t.qty} pnl={t.pnl} onOpenTradeId={(id) => { const x = p.allTrades.find((a) => a.id === id); if (x) p.onOpenTrade(x); }} />
                   </TabsContent>
                   {showAi && (
                   <TabsContent value="ai">

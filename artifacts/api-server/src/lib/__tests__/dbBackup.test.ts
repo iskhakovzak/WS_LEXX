@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backupsToDelete, parsePgDumpMajor } from "../dbBackupCron";
+import { backupsToDelete, dumpInvocation, parsePgDumpMajor } from "../dbBackupCron";
 
 describe("backup retention (14 daily + 8 weekly, NY calendar)", () => {
   it("keeps the newest backup per day for 14 days and per week for 8 weeks", () => {
@@ -25,5 +25,21 @@ describe("backup retention (14 daily + 8 weekly, NY calendar)", () => {
   it("parses pg_dump versions", () => {
     expect(parsePgDumpMajor("pg_dump (PostgreSQL) 16.4")).toBe(16);
     expect(parsePgDumpMajor("pg_dump (PostgreSQL) 17.2 (Debian 17.2-1.pgdg120+1)")).toBe(17);
+  });
+});
+
+describe("pg_dump invocation keeps the password off the command line", () => {
+  it("the password goes to PGPASSWORD (decoded) and is stripped from --dbname", () => {
+    const { args, env } = dumpInvocation("postgres://app:p%40ss%3Aword@db.internal:5432/desk?sslmode=require");
+    expect(env).toEqual({ PGPASSWORD: "p@ss:word" });
+    const dbname = args.find((a) => a.startsWith("--dbname="))!;
+    expect(dbname).toBe("--dbname=postgres://app@db.internal:5432/desk?sslmode=require");
+    expect(args.join(" ")).not.toContain("p%40ss");
+    expect(args).toContain("--no-password");
+  });
+
+  it("no password in the URL: nothing in env; a non-URL conninfo is passed as it is", () => {
+    expect(dumpInvocation("postgres://app@db.internal/desk").env).toEqual({});
+    expect(dumpInvocation("host=/tmp dbname=desk").args.at(-1)).toBe("--dbname=host=/tmp dbname=desk");
   });
 });

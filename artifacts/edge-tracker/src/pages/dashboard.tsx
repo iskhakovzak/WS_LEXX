@@ -1,4 +1,6 @@
-// Dashboard = the trader's command screen. Top to bottom: header (NY session, today / week net, risk limit + the day
+// Dashboard = the trader's command screen. Phone (Волна 1, item 1.3): ONE «Следующий шаг» card first (the day line and
+// «Что важно сейчас» merged by the phase of the day — components/daily/next-step-card), then the header with P&L and
+// the limit. Desktop, top to bottom: header (NY session, today / week net, risk limit + the day
 // line: focus / own contract / evening card / tier progress — the one focal point) →
 // «Что важно сейчас» + week/month equity → recent trades + desk (staff) or streaks → opt-in extras
 // (check-in, brief, sectors, macro, DNA, quote, psychology — off by default, switched on in «Настроить»).
@@ -21,6 +23,7 @@ import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { CustomizePopover } from "@/components/dashboard/customize-popover";
 import { DayLine } from "@/components/daily/day-line";
+import { NextStepCard } from "@/components/daily/next-step-card";
 import { QuestStrip } from "@/components/quests/quest-strip";
 import { dayView } from "@/components/daily/daily-model";
 import { useDailyMe } from "@/components/daily/use-daily";
@@ -172,6 +175,7 @@ export default function Dashboard() {
             updatedAt={todayQ.dataUpdatedAt || undefined}
             onCheckin={goToCheckin}
             dayCardDate={dayCardDate}
+            phoneStepAbove={dailyOn}
           />
         );
       case "equity":
@@ -239,6 +243,8 @@ export default function Dashboard() {
 
   return (
     <Page>
+      {/* Item 1.3 — phone: ONE «Следующий шаг» first (plan → contract → close → «Задача дня»), P&L and the limit below. */}
+      {dailyOn && <NextStepCard enabled={dailyOn} journalOpenDate={journalOpenDate} className="md:hidden" />}
       <DashboardHeader
         data={today}
         risk={riskQ.data}
@@ -251,7 +257,7 @@ export default function Dashboard() {
         onScopeChange={(s) => update({ scope: s })}
         canChooseScope={canChooseScope}
         userName={userName}
-        dayLine={<DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} quests={<QuestStrip enabled={dailyOn} />} />}
+        dayLine={<DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} quests={<QuestStrip enabled={dailyOn} />} phoneSplit />}
         customize={
           authed ? <CustomizePopover staff={staff} order={prefs.order} hidden={prefs.hidden} onChange={(patch) => update(patch)} onReset={reset} /> : null
         }

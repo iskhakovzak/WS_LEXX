@@ -18,13 +18,16 @@
 import { scalingT } from "../i18n/ns";
 import { formatCountFor, type Lang, } from "../i18n";
 import { DEFAULT_RULES } from "./scalingSeed";
+import { disciplineIndexOf, normalizeDisciplineRule, type DisciplineDay } from "./disciplineIndex";
 
 export { DEFAULT_RULES, DEFAULT_TIERS } from "./scalingSeed";
+/** The one discipline score (0–100) of the ladder — defined in lib/disciplineIndex.ts, shared with lib/promotionEngine. */
+export { disciplineIndexOf, normalizeDisciplineRule, rulesNeedDiscipline, type DisciplineDay } from "./disciplineIndex";
 
 export type RuleKind = "promote" | "demote";
 export type Op = ">=" | ">" | "<=" | "<" | "=";
 export type Unit = "abs" | "x_daily_limit" | "pct_account";
-export type MetricUnit = "usd" | "r" | "pct" | "count" | "x" | "score" | "weeks" | "days";
+export type MetricUnit = "usd" | "r" | "pct" | "count" | "x" | "score" | "index" | "weeks" | "days";
 
 export type MetricKey =
   | "trades"
@@ -65,7 +68,7 @@ const METRIC_DEFS: readonly Omit<MetricMeta, "label" | "hint">[] = [
   { key: "max_dd_pct", unit: "pct", higherIsBetter: false },
   { key: "limit_breaches", unit: "count", higherIsBetter: false },
   { key: "red_streak", unit: "days", higherIsBetter: false },
-  { key: "discipline", unit: "score", higherIsBetter: true },
+  { key: "discipline", unit: "index", higherIsBetter: true },
   { key: "rating_overall", unit: "score", higherIsBetter: true },
   { key: "violations", unit: "count", higherIsBetter: false },
 ];
@@ -160,6 +163,8 @@ export interface TraderInput {
    */
   currentDrawdownUsd?: number | null;
   drawdownBreachDates?: string[];
+  /** Behaviour engine daily discipline index (lib/disciplineDays); null / absent ⇒ not loaded → metric `discipline` n/a. */
+  disciplineDays?: DisciplineDay[] | null;
 }
 
 export interface MetricValue {
@@ -174,7 +179,7 @@ export interface MetricValue {
   noteCount?: number;
 }
 
-export type NoteCode = "noLimits" | "broker" | "journal" | "noMoney" | "noLosses" | "noTrades" | "byR" | "byUsd" | "noDdLimit" | "noRatings" | "ratings";
+export type NoteCode = "noLimits" | "broker" | "journal" | "noMoney" | "noLosses" | "noTrades" | "byR" | "byUsd" | "noDdLimit" | "noRatings" | "ratings" | "noBehavior" | "behaviorDays";
 
 export interface WindowMetrics {
   windowDays: number;
@@ -254,13 +259,8 @@ export interface Evaluation {
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-function parse(ymd: string): Date {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
-}
-function fmt(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+function parse(ymd: string): Date { const [y, m, d] = ymd.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); }
+const fmt = (d: Date): string => d.toISOString().slice(0, 10);
 export function addDays(ymd: string, n: number): string {
   const d = parse(ymd);
   d.setUTCDate(d.getUTCDate() + n);
@@ -303,13 +303,8 @@ export function maxDrawdownAbs(values: number[]): number {
   return dd;
 }
 
-function sumBy(map: Map<string, number>, key: string, v: number) {
-  map.set(key, (map.get(key) ?? 0) + v);
-}
-
-function avg(xs: number[]): number | null {
-  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
-}
+const sumBy = (map: Map<string, number>, key: string, v: number) => { map.set(key, (map.get(key) ?? 0) + v); };
+const avg = (xs: number[]): number | null => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 
 // ─── metrics ────────────────────────────────────────────────────────────────
 
@@ -404,7 +399,7 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
 
   const weekFrom = mondayOf(from);
   const ratingRows = input.ratings.filter((r) => YMD.test(r.week) && r.week >= weekFrom && r.week <= today);
-  const discipline = avg(ratingRows.map((r) => r.discipline).filter((v): v is number => v != null && Number.isFinite(v)));
+  const disc = disciplineIndexOf(input.disciplineDays, from, today); // the one discipline score (lib/disciplineIndex)
   const overall = avg(ratingRows.map((r) => r.overall).filter((v): v is number => v != null && Number.isFinite(v)));
   const violations = input.violationDates.filter((d) => YMD.test(d) && d >= from && d <= today).length;
 
@@ -418,7 +413,7 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
     const out: MetricValue = { key, value: value == null || !Number.isFinite(value) ? null : r2(value), ...rest };
     if (note) {
       out.noteCode = note;
-      out.note = note === "ratings" ? tn("note.ratings", { count: noteCount ?? 0 }) : tn(`note.${note}`);
+      out.note = noteCount != null ? tn(`note.${note}`, { count: noteCount }) : tn(`note.${note}`);
       if (noteCount != null) out.noteCount = noteCount;
     }
     return out;
@@ -437,7 +432,7 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
     max_dd_pct: v("max_dd_pct", ddPct, { basis: "usd", note: ddUsd == null ? "noMoney" : ddLimit == null || ddLimit <= 0 ? "noDdLimit" : undefined }),
     limit_breaches: v("limit_breaches", breaches, { basis: "usd", note: breaches == null ? "noMoney" : breachNote }),
     red_streak: v("red_streak", days.length ? redStreak : null, { basis }),
-    discipline: v("discipline", discipline, discipline == null ? { note: "noRatings" } : { note: "ratings", noteCount: ratingRows.length }),
+    discipline: v("discipline", disc.value, disc.value == null ? { note: "noBehavior" } : { note: "behaviorDays", noteCount: disc.days }),
     rating_overall: v("rating_overall", overall, { note: overall == null ? "noRatings" : undefined }),
     violations: v("violations", violations),
   };
@@ -493,6 +488,7 @@ export function formatMetric(key: MetricKey, value: number | null, lang: Lang = 
     case "pct": return key === "max_dd_pct" ? scalingT.tFor(lang)("pctOfLimit", { value: value.toFixed(0) }) : `${value.toFixed(0)}%`;
     case "x": return `${value.toFixed(2)}×`;
     case "score": return `${value.toFixed(1)}/10`;
+    case "index": return `${value.toFixed(0)}/100`;
     default: return formatCountFor(lang, Math.round(value));
   }
 }
@@ -516,7 +512,7 @@ export function ruleText(
   const label = ruleLabel({ label: r.customLabel, metric: r.metric }, lang);
   if (r.threshold == null) return t("rule.na", { label, why: t(r.naReason === "noAccount" ? "rule.noAccount" : "rule.noDailyLimit") });
   if (r.actual == null) {
-    const note = r.noteCode ? (r.noteCode === "ratings" ? t("note.ratings", { count: r.noteCount ?? 0 }) : t(`note.${r.noteCode}`)) : t("note.noData");
+    const note = r.noteCode ? (r.noteCount != null || r.noteCode === "ratings" ? t(`note.${r.noteCode}`, { count: r.noteCount ?? 0 }) : t(`note.${r.noteCode}`)) : t("note.noData");
     return t("rule.noValue", { label, note });
   }
   return t("rule.value", { label, actual: formatMetric(r.metric, r.actual, lang), op: r.op, threshold: formatMetric(r.metric, r.threshold, lang) });
@@ -578,7 +574,7 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
   const nextTier = idx >= 0 ? tiers[idx + 1] ?? null : tiers[0] ?? null;
   const prevTier = idx > 0 ? tiers[idx - 1] : null;
 
-  const applicable = rules.filter((r) => r.enabled && (r.tierKey == null || r.tierKey === input.tierKey));
+  const applicable = rules.filter((r) => r.enabled && (r.tierKey == null || r.tierKey === input.tierKey)).map(normalizeDisciplineRule);
   const windowsNeeded = new Set<number>([20, ...applicable.map((r) => Math.max(1, Math.round(r.windowDays)))]);
   const windows = [...windowsNeeded].sort((a, b) => a - b).map((n) => computeWindowMetrics(input, tier, n, lang));
   const byWindow = new Map(windows.map((w) => [w.windowDays, w]));
@@ -644,4 +640,3 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
     triggered,
   };
 }
-

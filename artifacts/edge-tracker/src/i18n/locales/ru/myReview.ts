@@ -1,0 +1,31 @@
+/** «Мой разбор» (pages/my-review.tsx, components/my-review/*) — Волна 2 п. 2.9. */
+export default {
+  title: "Мой разбор",
+  description: "Ваши сделки за {days} дней: где вы зарабатываете, где теряете и одно правило на завтра.",
+  period: { aria: "Период разбора", d30: "30 дней", d90: "90 дней" },
+  totals: "{trades} · {net} · {winRate} побед",
+  totalsR: "{trades} · {net} · {r} · {winRate} побед",
+  more: "Подробно",
+  moreHint: "Вся аналитика: графики, разрезы, психология",
+  rule: {
+    title: "Одно правило на завтра",
+    why: "Дороже всего за период: {mistake} — {cost}, {times} за {days}",
+    planSource: "Это правило предложит план на завтра — примите его одним касанием.",
+    toPlan: "Открыть план на завтра",
+    none: "Повторяющихся дорогих ошибок нет — держите то, что работает.",
+  },
+  earn: { title: "Где зарабатываю", empty: "Пока нет групп в плюсе — нужно хотя бы 2 сделки в группе." },
+  lose: { title: "Где теряю", empty: "Убыточных групп нет — хорошо.", patterns: "Поведение", patternLine: "{times} за {days}" },
+  dim: { setup: "Сетапы", ticker: "Тикеры", hour: "Время входа" },
+  hour: "{from}–{to}",
+  bucketAria: "{label}: {net}, {trades}",
+  openTrades: "Открыть сделки: {label}",
+  openBehavior: "Открыть поведение",
+  empty: {
+    title: "За {days} дней сделок нет",
+    description: "Разбор появится после первых сделок из PropReports.",
+  },
+  loadFailed: "Не удалось загрузить разбор",
+  times: { one: "{count} раз", few: "{count} раза", many: "{count} раз", other: "{count} раза" },
+  daysN: { one: "{count} день", few: "{count} дня", many: "{count} дней", other: "{count} дня" },
+} as const;

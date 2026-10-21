@@ -34,11 +34,12 @@ export function referenceSession(now: Date = new Date()): string {
   return prevWeekday(today);
 }
 
-export function phaseOf(day: string, now: Date = new Date()): Phase {
+/** The board's phase; `closeMin` = today's close (13:00 on an early-close day, see shell useTodayCloseMin). */
+export function phaseOf(day: string, now: Date = new Date(), closeMin: number = RTH_CLOSE_MIN): Phase {
   if (day !== nyDate(now)) return "closed";
   const m = nyMinutes(now);
   if (m < RTH_OPEN_MIN) return "pre";
-  if (m < RTH_CLOSE_MIN) return "rth";
+  if (m < closeMin) return "rth";
   return "post";
 }
 

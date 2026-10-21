@@ -59,6 +59,8 @@ export default {
   },
   status: {
     examples: "namunalar: {count}",
+    noExamplesAdd: "misollar yoʻq — oʻz savdolaringizdan qoʻshing",
+    noExamples: "misollar hali yoʻq",
     examplesT1: "namunalar: {count} · T1 {t1}",
     noStatsYet: "Hali statistika yoʻq: bu setap savdolari hali yopilmagan yoki bogʻlanmagan",
     noTrades: "Bu setap boʻyicha hali savdo yoʻq — edge nomaʼlum",

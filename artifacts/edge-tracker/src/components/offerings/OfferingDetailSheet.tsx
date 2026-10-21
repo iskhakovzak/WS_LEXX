@@ -286,7 +286,7 @@ export function OfferingDetailSheet({
                 <p className="font-medium text-foreground">{t("sheet.openPosition", { ticker: o.ticker })}</p>
                 <p className="text-muted-foreground">
                   {exposure.held.map((h) => [h.trader ? personName(h.trader) : null, h.side, HORIZON_LABEL[h.horizon ?? "intraday"], h.entry != null ? t("sheet.entry", { price: fmtPrice(h.entry, { dollar: true }) }) : null].filter(Boolean).join(" · ")).join("; ")}.
-                  {" "}{t("sheet.offerTarget", { price: o.offerPrice != null ? ` ${fmtPrice(o.offerPrice, { dollar: true })}` : "" })}
+                  {" "}{t("sheet.offerTarget", { price: o.offerPrice != null && !o.offerPriceSuspect ? ` ${fmtPrice(o.offerPrice, { dollar: true })}` : "" })}
                 </p>
               </div>
             </div>
@@ -299,7 +299,8 @@ export function OfferingDetailSheet({
                 title={pct != null && pct > 1000 ? t("sheet.staleShares") : undefined} />
               <Num label={fl != null ? t("sheet.pctFloat") : t("sheet.toAdv")} value={fl != null ? fmtPctCap(fl) : adv != null ? `${adv.toFixed(1)}×` : "—"} />
               <Num label={<TermTooltip term="offerDiscount" />} value={disc != null ? `${disc.toFixed(1)}%` : type === "atm" ? t("sheet.atMarket") : "—"} tone={disc != null && disc <= -15 ? "text-down" : undefined} />
-              <Num label={t("sheet.offer")} value={fmtPrice(o.offerPrice, { dollar: true })} />
+              <Num label={t("sheet.offer")} value={o.offerPriceSuspect ? <span className="text-muted-foreground line-through">{fmtPrice(o.offerPrice, { dollar: true })}</span> : fmtPrice(o.offerPrice, { dollar: true })}
+                title={o.offerPriceSuspect ? t("list.offerSuspect") : undefined} />
               <Num label={t("sheet.closeBefore")} value={fmtPrice(o.prevClose, { dollar: true })} />
               <Num label={t("sheet.mcap")} value={fmtM(o.marketCapM)} />
               <Num label={t("sheet.float")} value={fmtCompact(merged.floatShares)} />
@@ -322,7 +323,8 @@ export function OfferingDetailSheet({
             </Section>
           )}
 
-          {o.offerPrice != null && o.currentPrice != null && <OfferGauge o={o} />}
+          {o.offerPrice != null && o.currentPrice != null && !o.offerPriceSuspect && <OfferGauge o={o} />}
+          {o.offerPriceSuspect && <p className="text-xs text-muted-foreground">{t("list.offerSuspect")}</p>}
 
           {s && (
             <Section title={t("sheet.scoreParts")} icon={AlertTriangle} aside={<span className={toneText(SCORE_LEVEL_TONE[s.level])}>{s.score}/100</span>}>

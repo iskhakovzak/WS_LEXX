@@ -88,3 +88,17 @@ export function topFor(
       title: o.titles.get(r.trader) ?? null,
     }));
 }
+
+/** Fewer ranked participants (points > 0) than this → a trader sees no place in the season (Волна 2 п. 2.14). */
+export const SEASON_MIN_RANKED = 5;
+
+/**
+ * Less pressure on newcomers (2.14): while fewer than `min` traders have season points, a trader's view carries no place
+ * — myRank null, the top cut to the own row (points only), rankHidden set. Staff always see the ranking. Pure.
+ */
+export function withRankThreshold<S extends { myRank: number | null; top: { me: boolean }[] }>(
+  s: S, ranked: readonly { points: number }[], staff: boolean, min = SEASON_MIN_RANKED,
+): S & { rankHidden?: true } {
+  if (staff || ranked.filter((r) => r.points > 0).length >= min) return s;
+  return { ...s, myRank: null, top: s.top.filter((r) => r.me), rankHidden: true };
+}

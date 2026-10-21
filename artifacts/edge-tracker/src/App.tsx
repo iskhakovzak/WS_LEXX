@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { BASE } from "@/lib/api";
 import { routeTitle } from "@/components/shell/nav";
+import { navFeatureOn } from "@/components/shell/nav-model";
 import { ROUTE_LOADERS, preloadCommonRoutes } from "@/components/shell/route-loaders";
 import { I18nProvider, i18nReady } from "@/i18n";
 import { LocaleSync } from "@/i18n/locale-sync";
@@ -52,6 +53,7 @@ const Curator = lazy(L["/curator"]);
 const AuthorNotes = lazy(L["/author-notes"]);
 const JuniorNotes = lazy(L["/junior-notes"]);
 const Offerings = lazy(L["/offerings"]);
+const Themes = lazy(L["/themes"]);
 const RiskDesk = lazy(L["/risk"]);
 const GamePlan = lazy(L["/game-plan"]);
 const Integrations = lazy(L["/integrations"]);
@@ -63,6 +65,7 @@ const Trainer = lazy(L["/trainer"]);
 const WhatIf = lazy(L["/what-if"]);
 const Behavior = lazy(L["/behavior"]);
 const DayReport = lazy(L["/day-report"]);
+const MyReview = lazy(L["/my-review"]);
 const Benchmark = lazy(L["/benchmark"]);
 const OfficeStats = lazy(L["/office"]);
 const Ask = lazy(L["/ask"]);
@@ -142,6 +145,13 @@ function RouteTitle() {
   return null;
 }
 
+/** «Сводка автора» is behind the desk switch nav.authorNotes (Волна 2 п. 2.15, default off): off → the 404 page. */
+function AuthorNotesRoute() {
+  const { permissions, permissionsLoaded } = useAuth();
+  if (!permissionsLoaded) return <PageFallback />;
+  return navFeatureOn("authorNotes", permissions.nav) ? <AuthorNotes /> : <NotFound />;
+}
+
 function Router() {
   const [location] = useLocation();
   // Trades used to ship in the main bundle; warm its chunk once the first screen is idle so the most common
@@ -181,14 +191,16 @@ function Router() {
           <Route path="/settings" component={Settings} />
           <Route path="/admin" component={Admin} />
           <Route path="/curator" component={Curator} />
-          <Route path="/author-notes" component={AuthorNotes} />
+          <Route path="/author-notes" component={AuthorNotesRoute} />
           <Route path="/junior-notes" component={JuniorNotes} />
           <Route path="/offerings" component={Offerings} />
+          <Route path="/themes" component={Themes} />
           <Route path="/risk" component={RiskDesk} />
           <Route path="/game-plan" component={GamePlan} />
           <Route path="/integrations" component={Integrations} />
           <Route path="/scaling" component={Scaling} />
           <Route path="/weekly-review" component={WeeklyReview} />
+          <Route path="/my-review" component={MyReview} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/simulator" component={Simulator} />
           <Route path="/trainer" component={Trainer} />

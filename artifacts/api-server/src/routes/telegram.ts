@@ -22,13 +22,14 @@ import {
 } from "../lib/notifyUtils";
 import crypto from "crypto";
 import { config } from "../config";
-import { AppError, notFound, unauthorized } from "../lib/http";
+import { AppError, unauthorized } from "../lib/http";
 import { localeOfUser, parseLang, type Lang } from "../i18n";
 import { telegramT } from "../i18n/ns";
 import { personNameFor } from "../lib/people/latinNames";
 import { notifyUser } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { handleDailyCallback } from "../lib/daily/telegramCallback";
+import telegramAdminRouter from "./telegram-admin";
 
 const router: IRouter = Router();
 
@@ -578,88 +579,7 @@ async function handleMenuCallback(
   }
 }
 
-// ─── ADMIN: FORCE DISCONNECT + BROADCAST ─────────────────────────────────────
-
-router.delete("/telegram/admin/disconnect/:name", asyncHandler(async (req, res): Promise<void> => {
-  const viewer = req.authUser;
-  if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    throw new AppError("STAFF_ONLY");
-  }
-  const { name } = req.params;
-  const { rowCount } = await pool.query(
-    `UPDATE users SET telegram_chat_id = NULL, telegram_linked_at = NULL WHERE name = $1`,
-    [name],
-  );
-  if (!rowCount) throw notFound("USER_NOT_FOUND");
-  logger.info({ admin: viewer.name, target: name }, "Admin force-disconnected Telegram");
-  res.json({ ok: true, updated: rowCount ?? 0 });
-}));
-
-router.post("/telegram/broadcast", asyncHandler(async (req, res): Promise<void> => {
-  const viewer = req.authUser;
-  if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    throw new AppError("STAFF_ONLY");
-  }
-  const { message } = req.body as { message?: string };
-  if (!message || typeof message !== "string" || !message.trim()) {
-    throw new AppError("VALIDATION");
-  }
-  const text = message.trim().slice(0, 4000);
-  const { rows } = await pool.query<{ name: string; telegram_chat_id: string }>(
-    `SELECT name, telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND telegram_chat_id != ''`
-  );
-  let sent = 0;
-  let failed = 0;
-  for (const user of rows) {
-    try {
-      await sendMessage(user.telegram_chat_id, text);
-      sent++;
-    } catch (e: any) {
-      logger.warn({ trader: user.name, error: e.message }, "broadcast send failed");
-      failed++;
-    }
-  }
-  logger.info({ admin: viewer.name, sent, failed, total: rows.length }, "Telegram broadcast sent");
-  res.json({ ok: true, sent, failed, total: rows.length });
-}));
-
-// ─── ADMIN: USER ASSIGNMENTS ─────────────────────────────────────────────────
-
-router.get("/telegram/assignments", asyncHandler(async (req, res): Promise<void> => {
-  const viewer = req.authUser;
-  if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    throw new AppError("STAFF_ONLY");
-  }
-  const { rows } = await pool.query(
-    `SELECT name, role, active, telegram_chat_id, telegram_linked_at, assigned_curator, assigned_risk_manager, assigned_mentor
-     FROM users WHERE active = true ORDER BY role, name`,
-  );
-  res.json(rows);
-}));
-
-router.patch("/telegram/assignments/:name", asyncHandler(async (req, res): Promise<void> => {
-  const viewer = req.authUser;
-  if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    throw new AppError("STAFF_ONLY");
-  }
-  const { name } = req.params;
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const clean = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
-  const assigned = [clean(body.assigned_curator), clean(body.assigned_risk_manager), clean(body.assigned_mentor)];
-  const named = [...new Set(assigned.filter((v): v is string => !!v))];
-  if (named.length) {
-    const { rows: staff } = await pool.query<{ name: string }>(
-      `SELECT name FROM users WHERE name = ANY($1::text[]) AND role IN ('curator', 'admin') AND active = true`,
-      [named],
-    );
-    if (staff.length !== named.length) throw new AppError("ASSIGNEE_NOT_STAFF");
-  }
-  const { rowCount } = await pool.query(
-    `UPDATE users SET assigned_curator = $1, assigned_risk_manager = $2, assigned_mentor = $3 WHERE name = $4`,
-    [...assigned, name],
-  );
-  if (!rowCount) throw notFound("USER_NOT_FOUND");
-  res.json({ ok: true });
-}));
+// Admin: force disconnect + broadcast, user assignments (routes/telegram-admin.ts) — after every route above.
+router.use(telegramAdminRouter);
 
 export default router;

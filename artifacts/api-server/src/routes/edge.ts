@@ -19,7 +19,7 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
-import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql, resultSql, num } from "../lib/tradeMath";
+import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql, resultSql, num, maxDrawdownOfSeries } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
 import { badRequest, unauthorized } from "../lib/http";
 
@@ -219,6 +219,11 @@ export type EdgeCell = {
   sumR: number; rN: number; posR: number; negR: number;
   gross: number; net: number; fees: number; pnlN: number; posNet: number; negNet: number;
   rValues: number[]; netValues: number[];
+  /**
+   * Max drawdown (≤ 0) of the END-OF-DAY cumulative R / net $ of the cell over ALL its trades (not capped like the
+   * value arrays): the canonical maxDrawdownByDay, the number «Обзор» shows (Волна 2 п. 2.7). null without values.
+   */
+  maxDdR: number | null; maxDdNet: number | null;
 };
 
 export type MatrixQuery = z.infer<typeof matrixSchema>;
@@ -241,7 +246,19 @@ export function buildMatrixQuery(q: MatrixQuery, scope: string | null, hasJourna
            substring(${closeDateSql("t")} from 1 for 10) AS close_day, t.date AS entry_key, t.id
     ${fromClause(hasJournal, exec)}
     WHERE ${where}
-  )
+  ),
+  day_sums AS (
+    SELECT row_key, col_key, close_day,
+           SUM(r) AS day_r, SUM(net) FILTER (WHERE closed AND net IS NOT NULL) AS day_net
+      FROM base GROUP BY row_key, col_key, close_day
+  ),
+  day_arrays AS (
+    SELECT row_key, col_key,
+           ARRAY_AGG(day_r::float8 ORDER BY close_day) FILTER (WHERE day_r IS NOT NULL) AS day_r,
+           ARRAY_AGG(day_net::float8 ORDER BY close_day) FILTER (WHERE day_net IS NOT NULL) AS day_net
+      FROM day_sums GROUP BY row_key, col_key
+  ),
+  cells AS (
   SELECT row_key, col_key,
          COUNT(*)::int AS n,
          COUNT(*) FILTER (WHERE closed)::int AS closed,
@@ -262,8 +279,18 @@ export function buildMatrixQuery(q: MatrixQuery, scope: string | null, hasJourna
          (ARRAY_AGG(net ORDER BY close_day, entry_key, id) FILTER (WHERE closed AND net IS NOT NULL))[1:${VALUES_CAP}] AS net_values
   FROM base
   GROUP BY row_key, col_key
-  ORDER BY row_key, col_key`;
+  )
+  SELECT c.*, d.day_r, d.day_net
+    FROM cells c
+    LEFT JOIN day_arrays d ON d.row_key IS NOT DISTINCT FROM c.row_key AND d.col_key IS NOT DISTINCT FROM c.col_key
+   ORDER BY c.row_key, c.col_key`;
   return { sql, params };
+}
+
+/** Canonical end-of-day drawdown of a cell from its per-day sums (already in day order); null without days. */
+export function dayDrawdown(days: unknown): number | null {
+  const vals = Array.isArray(days) ? days.map((v) => num(v)).filter((v): v is number => v != null) : [];
+  return vals.length ? Math.round(maxDrawdownOfSeries(vals) * 1e6) / 1e6 : null;
 }
 
 export function parseMatrixQuery(query: Record<string, unknown>): { ok: true; q: MatrixQuery } | { ok: false; details: unknown } {
@@ -288,6 +315,8 @@ router.get("/edge/matrix", asyncHandler(async (req, res) => {
     gross: r.gross, net: r.net, fees: r.fees, pnlN: r.pnl_n, posNet: r.pos_net, negNet: r.neg_net,
     rValues: (r.r_values ?? []).map((v: unknown) => num(v) ?? 0),
     netValues: (r.net_values ?? []).map((v: unknown) => num(v) ?? 0),
+    maxDdR: dayDrawdown(r.day_r),
+    maxDdNet: dayDrawdown(r.day_net),
   }));
   const rowKeys = [...new Set(cells.map((c) => c.row))];
   const colKeys = [...new Set(cells.map((c) => c.col))];

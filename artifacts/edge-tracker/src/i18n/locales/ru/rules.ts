@@ -56,8 +56,25 @@ export default {
     earlyExit: { label: "Ранний выход из прибыли", hint: "Закрыл до цели без причины" },
     heldLoser: { label: "Пересидел убыток", hint: "Не вышел по стопу/плану" },
     ignoredNews: { label: "Проигнорировал новости", hint: "Отчёт, оффер, макро-событие" },
+    lateExit: { label: "Поздний выход", hint: "Держал после сигнала на выход" },
+    offSetup: { label: "Не по сетапу", hint: "Вход без сетапа из плейбука" },
   },
   /** Display of a stored «Правило: <name>» mistake category. */
+  /** Shared mistakes picker (components/shared/error-picker.tsx): trade card, journal review, «Ошибки». */
+  errorPicker: {
+    aria: "Ошибки сделки",
+    more: "Ещё {count}",
+    less: "Свернуть",
+  },
+  /** Desk rules for one ladder stage (Волна 2 п. 2.6). */
+  stage: {
+    all: "Все трейдеры",
+    junior: "Джуны",
+    trader: "Трейдеры",
+    senior: "Сеньоры",
+    chip: "Для: {stage}",
+    chipHint: "Правило офиса для этой ступени: действует, пока трейдер на ней, с дня назначения ступени",
+  },
   rulePrefixed: "Правило: {name}",
   preview: {
     unavailable: "Предпросмотр недоступен",
@@ -203,6 +220,8 @@ export default {
     forWhomAria: "Для кого правило",
     officeRuleFor: "{name} · правило офиса",
     wholeDesk: "Весь деск",
+    forStage: "Для ступени",
+    forStageHint: "Правило ступени действует только для трейдеров на ней — с дня, когда ступень назначена.",
     officeHint: "Трейдер увидит правило с пометкой «Офис» и не сможет его изменить или выключить.",
     active: "Правило активно",
     disableHint: "Правило перестанет проверяться. Найденные нарушения и комментарии к ним сохранятся в архиве и вернутся, если включить его снова.",

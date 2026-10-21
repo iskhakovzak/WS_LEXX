@@ -19,6 +19,7 @@ import {
 } from "./types";
 import { fmtDate, fmtPrice, fmtDeskTime } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { EarningsBadge } from "@/components/shared/finviz/earnings";
 import { personName } from "@/i18n";
 
 export function longDate(date: string) {
@@ -224,6 +225,7 @@ export function InPlayCard({ item, index }: { item: InPlayItem; index: number })
           {bias.label}
         </Pill>
         <Pill tone={hz.tone}>{hz.label}</Pill>
+        <EarningsBadge ticker={item.ticker} />
       </header>
 
       {item.catalyst && (

@@ -12,18 +12,23 @@ import { http } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
 import { InPlayCard, MacroStrip, PlanHero, longDate, shortDay, type DayEvent } from "@/components/game-plan/plan-briefing";
 import { MyPlan } from "@/components/game-plan/my-plan";
+import { MorningScreener } from "@/components/shared/finviz/screener-card";
 import { TraderPlans } from "@/components/game-plan/trader-plans";
 import { MarkReadButton, ReadStatusPanel } from "@/components/game-plan/read-status";
 import { HistoryPanel } from "@/components/game-plan/history-panel";
 import { PlanEditorSheet } from "@/components/game-plan/plan-editor-sheet";
 import { HORIZON, dateObj, gpApi, gpKeys, isIsoDate, nyToday, shiftTradingDay, type Horizon } from "@/components/game-plan/types";
-import { fmtDate, fmtRelative, fmtUsd } from "@/lib/format";
+import { fmtRelative, fmtUsd } from "@/lib/format";
+import { nyClock } from "@/components/shared/finviz/model";
+import { DeskMorning } from "@/components/game-plan/desk-morning";
+import { defaultPlanView, deskEmptyKind, deskEmptyTitle, type PlanView } from "@/components/game-plan/plan-defaults";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
+import { AskCuratorButton } from "@/components/shared/ask-curator";
 
 type HorizonFilter = "all" | Horizon;
-type View = "desk" | "my" | "traders";
+type View = PlanView;
 
 function readUrlView(): View | null {
   try {
@@ -68,7 +73,9 @@ export default function GamePlanPage() {
   const me = user && user.role !== "guest" ? user.traderName : null;
   const canMine = !!me && can("journal.write.own", { trader: me });
   const canTeam = can("journal.read.team");
-  const [viewRaw, setView] = useState<View>(() => readUrlView() ?? "desk");
+  // Item 1.4: a trader opens on «Мой план» (the desk plan is summarised next to it); ?view= and a picked tab win.
+  const [picked, setView] = useState<View | null>(readUrlView);
+  const viewRaw = picked ?? defaultPlanView({ url: null, isTrader, canMine });
   const view: View = viewRaw === "my" && !canMine ? "desk" : viewRaw === "traders" && !canTeam ? "desk" : viewRaw;
   // On Saturday / Sunday the plan that matters is Monday's: open the next session instead of an empty weekend day.
   const calToday = nyToday();
@@ -159,6 +166,8 @@ export default function GamePlanPage() {
 
   const isToday = date === today;
   const shortDate = shortDay(date);
+  const clock = nyClock(new Date());
+  const emptyKind = deskEmptyKind({ date, today, sessionAhead, nyDate: clock.date, nyMinutes: clock.minutes });
 
   return (
     <Page>
@@ -240,6 +249,7 @@ export default function GamePlanPage() {
         )}
       </PageHeader>
 
+      {view === "desk" && isToday && <MorningScreener planDate={date} />}
       {view === "my" ? (
         <MyPlan date={date} deskPlan={plan} />
       ) : view === "traders" ? (
@@ -255,13 +265,15 @@ export default function GamePlanPage() {
             <Panel>
               <EmptyState
                 icon={FileText}
-                title={isToday ? (sessionAhead ? t("page.notPublishedOn", { date: fmtDate(dateObj(date), "weekdayDayMonthLong") }) : t("page.notPublishedToday")) : date > today ? t("page.notPublishedOn", { date: fmtDate(dateObj(date), "dayMonthLong") }) : t("page.neverPublished", { date: fmtDate(dateObj(date), "dayMonthLong") })}
+                title={deskEmptyTitle(emptyKind, date)}
                 description={
                   isCurator
                     ? t("page.emptyCurator")
-                    : isToday
-                      ? t("page.emptyToday")
-                      : t("page.emptyOther")
+                    : emptyKind === "late"
+                      ? t("page.emptyTodayLate")
+                      : isToday
+                        ? t("page.emptyToday")
+                        : t("page.emptyOther")
                 }
                 action={
                   <div className="flex flex-wrap justify-center gap-2">
@@ -277,6 +289,7 @@ export default function GamePlanPage() {
                         {t("page.writeMine")}
                       </Button>
                     )}
+                    {!isCurator && isToday && <AskCuratorButton kind="plan" className="h-10" />}
                     {data?.prevDate && (
                       <Button variant="outline" onClick={() => go(data.prevDate!)}>
                         {t("page.lastPlan", { date: shortDay(data.prevDate) })}
@@ -366,6 +379,7 @@ export default function GamePlanPage() {
             </Panel>
           )}
           {plan && isCurator && <ReadStatusPanel planId={plan.id} />}
+          <DeskMorning date={date} />
           <HistoryPanel current={date} onPick={go} searchRef={searchRef} />
         </aside>
       </div>

@@ -9,14 +9,17 @@
  *   eveningFor(trader, date)  the evening card; once the day is finished its verdict snapshot is stored in
  *                             daily_reviews.verdict (the contract's disciplineDelta feeds next-day discipline)
  *   dailyMe(trader)           phase (lib/curatorLogic tradingPhase), focus, last finished day, tier progress, intraday
- *   markReviewed / setFocusOverride / mistakeCosts / costQueue / checkIntradayContracts
+ *   markReviewed              «Разобрал» (dashboard, Telegram): closes the day for the curator (routes/eod closeEodDay)
+ *                             and stores the evening review + note
+ *   setFocusOverride / mistakeCosts / costQueue / checkIntradayContracts
  *
  * Tables: migration 0202_daily_loop.sql. Money is net; dates are New York trading days.
  */
 import { pool } from "@workspace/db";
 import { addDays, isWeekend, nyDate, nyMinutes } from "../tradingDate";
 import { closeDateSql } from "../tradeMath";
-import { tradingPhase } from "../curatorLogic";
+import { CLOSE_MINUTES, tradingPhase } from "../curatorLogic";
+import { sessionFor } from "../marketDays";
 import { syncCron } from "../propreports/scheduler";
 import { loadBehaviorRows, rowToBehaviorTrade } from "../../routes/behavior";
 import {
@@ -330,7 +333,10 @@ export function dailyDates(today: string, minutes: number, closed: ReadonlySet<s
 export async function dailyMe(trader: string, lang: Lang = "ru"): Promise<DailyMe | null> {
   const now = new Date();
   const today = nyDate(now);
-  const { phase, focusDate, eveningDate } = dailyDates(today, nyMinutes(now), await closedDaysAround(today));
+  // Early-close days (13:00): past the close the clock jumps to the regular close so the evening card opens at 13:00.
+  const nowMin = nyMinutes(now);
+  const minutes = nowMin >= (await sessionFor(today)).closeMin ? Math.max(nowMin, CLOSE_MINUTES) : nowMin;
+  const { phase, focusDate, eveningDate } = dailyDates(today, minutes, await closedDaysAround(today));
   // The rewards evaluation (lib/quests, cached per trader) starts alongside the cards instead of after them; the evening
   // card's rewards line awaits the same run. When the card stores a changed snapshot it drops the cache, and the run
   // that started before is then neither reused nor cached (lib/quests/cache generations) — the answer stays the same.
@@ -345,8 +351,21 @@ export async function dailyMe(trader: string, lang: Lang = "ru"): Promise<DailyM
   return { today, phase, focus, evening, progress, intraday: syncCron() != null, discipline: rewards?.discipline ?? null, badges: rewards?.badges ?? [] };
 }
 
-/** Marks the day reviewed (optional one-line note); `dispute` = «the focus hit was not a mistake». */
+/**
+ * «Разобрал» closes the day (Волна 0, item 0.4; owner decision 1 — the plan's recommendation: the button closes the day,
+ * the journal form is its extension). The journal's own close (routes/eod.ts closeEodDay, via "daily") runs first — the
+ * same eod_days row the curator queue, the journal calendar and eod/status read, the same once-per-day curator notice —
+ * then the evening review is stored. Throws the close's AppError (422 EOD_TOO_EARLY today before the market close).
+ * Idempotent with the journal form both ways: a closed day is left as it is; quests / streaks read the day, not events.
+ */
+async function closeForCurator(trader: string, date: string): Promise<void> {
+  const { closeEodDay } = await import("../../routes/eod");
+  await closeEodDay(trader, date, {}, "daily");
+}
+
+/** Marks the day reviewed (optional one-line note); `dispute` = «the focus hit was not a mistake». Closes the day. */
 export async function markReviewed(trader: string, date: string, opts: { note?: string | null; dispute?: boolean } = {}): Promise<void> {
+  await closeForCurator(trader, date);
   let disputedMistake: string | null = null;
   if (opts.dispute) disputedMistake = (await storedFocus(trader, date))?.mistake ?? (await focusWith(trader, date))?.mistake ?? null;
   const hasNote = opts.note !== undefined;

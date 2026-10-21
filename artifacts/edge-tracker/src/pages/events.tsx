@@ -28,6 +28,7 @@ import { WeekGrid } from "@/components/events/catalyst-week";
 import { EdgeView } from "@/components/events/catalyst-edge";
 import { nextTradingDay, prevTradingDay } from "@/components/events/catalyst-math";
 import { PersonSelect } from "@/components/people/person-select";
+import { EarningsBlock } from "@/components/shared/finviz/earnings";
 import { humanizeApiError } from "@/lib/api/errors";
 import { eventsI18n } from "@/i18n/ns/events";
 import { commonI18n } from "@/i18n/ns/common";
@@ -280,6 +281,7 @@ export default function Events() {
       )}
 
       {view === "edge" && <EdgeView data={data} onOpenTicker={openTicker} />}
+      {view !== "edge" && <EarningsBlock mine={data.myTickers} onOpenTicker={(ticker) => openTicker({ ticker })} />}
 
       <EarningsHistorySheet
         target={sheet}

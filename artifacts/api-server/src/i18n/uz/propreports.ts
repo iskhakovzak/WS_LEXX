@@ -27,13 +27,10 @@ export default {
     env: {
       ok: "{domain} · {auth}",
       token: "API tokeni",
-      login: "login/parol",
-      missing: ".env.local da berilmagan: {vars}",
-      or: "{token} (yoki {user} + {password})",
+      missing: "Server muhitida (.env.local yoki Vercel) berilmagan: {vars}",
     },
     connection: {
       v2: "API v2 (token)",
-      legacy: "legacy login",
       version: " · versiya {version}",
       error: "Xato: {error}",
       unknown: "nomaʼlum",
@@ -64,9 +61,8 @@ export default {
   },
   conn: {
     domainInvalid: "{name} da yaroqsiz belgilar bor",
-    noCredentials: "PropReports tokeni ham, login/paroli ham yoʻq",
-    loginUnexpected: "PropReports login: kutilmagan javob",
-    tokenRejected: "Token rad etildi ({status}). Agar firma hali legacy API da boʻlsa — {user} va {password} ni qoʻshing.",
+    tokenRejected: "Token rad etildi ({status}). PropReports da yangi API v2 tokenini yarating (Profile → API Tokens) va uni {token} ga yozing.",
+    deadline: "Fon ishga tushirish vaqti tugadi — keyingi ishga tushirishda davom etadi",
     authRejected: "Avtorizatsiya rad etildi ({status}): {error}",
   },
   parse: {

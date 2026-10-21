@@ -12,6 +12,7 @@ export default {
     analytics: "Analytics",
     weeklyReview: "Weekly report",
     dayReport: "Day review",
+    myReview: "My review",
     behavior: "Behavior & setups",
     trainer: "Trainer",
     whatIf: "What if",
@@ -23,6 +24,7 @@ export default {
     watchlist: "Watchlist",
     big7: "Big 7",
     events: "Catalysts",
+    themes: "Market themes",
     dailyFeed: "Feed",
     analystActions: "Analyst ratings",
     offerings: "Offerings",
@@ -125,6 +127,7 @@ export default {
   /** Simple menu for new traders (components/shell/nav-model.ts): seven primary rows + one collapsed «More» group. */
   simple: {
     progress: "Quests and achievements",
+    evening: "Evening",
     more: "More",
     main: "Main",
     showMore: "Show the other sections",
@@ -176,6 +179,7 @@ export default {
       toPremarket: "to premarket",
     },
     weekend: "weekend",
+    earlyClose: "early close at {time}",
     holidayFallback: "Market holiday",
     daysPrefix: "{count}d",
     aria: "New York {time}. {phase}. {countdown} {next}",
@@ -183,6 +187,7 @@ export default {
     ny: "NY",
     tooltipTimes: "New York {ny} · your time {local}",
     tooltipSchedule: "Pre 4:00–9:30 · regular 9:30–16:00 · after-hours until 20:00 ET",
+    tooltipScheduleEarly: "Early close: pre 4:00–9:30 · regular 9:30–13:00 · after-hours until 17:00 ET",
   },
   palette: {
     title: "Search and commands",

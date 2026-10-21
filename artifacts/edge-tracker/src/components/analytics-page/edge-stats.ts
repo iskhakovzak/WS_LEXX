@@ -50,7 +50,7 @@ export function quantile(xs: number[], q: number): number {
   return quantileSorted([...xs].sort((a, b) => a - b), q);
 }
 
-/** Peak-to-trough drawdown (≤ 0) of a cumulative series built from per-trade values. */
+/** Peak-to-trough drawdown (≤ 0) of a cumulative series built from per-trade values (Monte Carlo paths). */
 export function maxDrawdownOf(values: number[]): number {
   let cum = 0, peak = 0, dd = 0;
   for (const v of values) {
@@ -59,6 +59,19 @@ export function maxDrawdownOf(values: number[]): number {
     if (cum - peak < dd) dd = cum - peak;
   }
   return dd;
+}
+
+/**
+ * «Макс. просадка» shown to people (≤ 0): values summed per trading day (close date), then the end-of-day curve vs
+ * its running peak — the same number as lib/trade-math maxDrawdownByDay («Обзор», /stats, /risk; IMPROVEMENT_PLAN 2.7).
+ * `days[i]` is the day of `values[i]`; without aligned days it falls back to the per-value path.
+ */
+export function maxDrawdownByDays(values: readonly number[], days?: readonly string[] | null): number {
+  if (!days || days.length !== values.length) return maxDrawdownOf([...values]);
+  const byDay = new Map<string, number>();
+  values.forEach((v, i) => byDay.set(days[i], (byDay.get(days[i]) ?? 0) + v));
+  const dd = maxDrawdownOf([...byDay.keys()].sort().map((d) => byDay.get(d) as number));
+  return Math.round(dd * 1e6) / 1e6;
 }
 
 export type ValueKpis = {
@@ -73,12 +86,13 @@ export type ValueKpis = {
   avgLoss: number | null;
   /** Σ⁺ / |Σ⁻|; null when there are no losses (never ∞). */
   profitFactor: number | null;
+  /** End-of-day drawdown (maxDrawdownByDays) when the days are given. */
   maxDrawdown: number;
   maxLossStreak: number;
 };
 
-/** KPIs of a value series (signed R or net $) in chronological order. */
-export function kpisOf(values: number[]): ValueKpis {
+/** KPIs of a value series (signed R or net $) in chronological order; `days` (aligned) ⇒ drawdown by day. */
+export function kpisOf(values: number[], days?: readonly string[] | null): ValueKpis {
   let total = 0, wins = 0, losses = 0, sumW = 0, sumL = 0, streak = 0, maxStreak = 0;
   for (const v of values) {
     total += v;
@@ -94,7 +108,7 @@ export function kpisOf(values: number[]): ValueKpis {
     avgWin: wins ? sumW / wins : null,
     avgLoss: losses ? sumL / losses : null,
     profitFactor: sumL < 0 ? sumW / Math.abs(sumL) : null,
-    maxDrawdown: maxDrawdownOf(values),
+    maxDrawdown: maxDrawdownByDays(values, days),
     maxLossStreak: maxStreak,
   };
 }
@@ -274,6 +288,8 @@ export type WhatIfSkip = "noLosingSetup" | "noGrades" | "noEntryTime" | "noMulti
 
 export type WhatIfResult = {
   values: number[];
+  /** Trading day of each value (aligned with `values`) — for the drawdown by day. */
+  days: string[];
   trades: SimTrade[];
   removed: number;
   modified: number;
@@ -353,8 +369,8 @@ export function applyWhatIf(input: SimTrade[], rules: ReadonlySet<WhatIfRuleId>,
       });
     }
   }
-  const values = trades.map(valueOf).filter((v): v is number => v != null);
-  return { values, trades, removed, modified, skipped, worstSetup };
+  const valued = trades.filter((t) => valueOf(t) != null);
+  return { values: valued.map((t) => valueOf(t) as number), days: valued.map((t) => t.day), trades, removed, modified, skipped, worstSetup };
 }
 
 /* ───────────────────────── Percentiles vs desk ───────────────────────── */

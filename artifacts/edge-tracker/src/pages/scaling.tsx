@@ -1,12 +1,13 @@
 /**
  * План масштабирования: rules-based tier ladder & buying power.
- * Curator desk (all traders, recommendations first, approval queue) and the trader's personal plan
- * («до следующего тира»: what is missing, what the next tier gives, history). Tiers & rules are edited in a Sheet.
+ * Curator desk (all traders, recommendations first, approval queue) and a staff member's own plan («Мой план»).
+ * A trader's one progress answer is «Путь трейдера» (/academy/path): here a trader gets only a pointer to it, not a
+ * second scorecard (IMPROVEMENT_PLAN 2.7). Tiers & rules are edited in a Sheet.
  */
 import * as React from "react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
-import { useSearch } from "wouter";
-import { RefreshCw, Settings2, Sparkles, TrendingUp } from "lucide-react";
+import { Link, useSearch } from "wouter";
+import { ArrowRight, RefreshCw, Route, Settings2, Sparkles, TrendingUp } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, Segmented, UpdatedAgo } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
@@ -78,9 +79,9 @@ export default function ScalingPage() {
     <Page>
       <PageHeader
         title={ts("nav.scaling")}
-        description={view === "desk" ? t("page.descDesk") : t("page.descMe")}
+        description={!isCurator ? t("pathPointer.desc") : view === "desk" ? t("page.descDesk") : t("page.descMe")}
         icon={TrendingUp}
-        actions={me ? (
+        actions={me && isCurator ? (
           <>
             <UpdatedAgo at={updatedAt} className="hidden 2xl:inline-flex" />
             <Button variant="outline" size="icon" onClick={refresh} aria-label={t("page.refresh")} title={t("page.refresh")} disabled={fetching}>
@@ -105,6 +106,15 @@ export default function ScalingPage() {
 
       {!me ? (
         <Panel><EmptyState icon={TrendingUp} title={t("page.signInTitle")} description={t("page.signInHint")} /></Panel>
+      ) : !isCurator ? (
+        <Panel>
+          <EmptyState
+            icon={Route}
+            title={t("pathPointer.title")}
+            description={t("pathPointer.hint")}
+            action={<Button asChild><Link href="/academy/path">{t("pathPointer.cta")} <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link></Button>}
+          />
+        </Panel>
       ) : view === "desk" ? (
         <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader && focusTrader !== me ? focusTrader : null} />
       ) : (

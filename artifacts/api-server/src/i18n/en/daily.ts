@@ -126,6 +126,7 @@ export default {
     morning: {
       title: "☀️ <b>Focus for {date}</b>",
       noContract: "📜 No contract for today yet — set a daily stop and a trade limit in your plan.",
+      unreviewed: "📝 {date} is not reviewed yet — open it and tap “Reviewed”.",
     },
     contract: {
       line: "📜 Contract: {items}",

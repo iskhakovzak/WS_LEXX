@@ -15,6 +15,7 @@ import {
 import { Pill, type Tone } from "@/components/ds";
 import { IconAction } from "@/components/playbook-sub/bits";
 import { TickerFundamentalsBar } from "@/components/ticker-fundamentals-bar";
+import { TickerContext } from "@/components/shared/finviz/ticker-context";
 import type { TickerFundamentals } from "@/lib/market-intel";
 import { localDateString } from "@/lib/local-date";
 import { useToast } from "@/hooks/use-toast";
@@ -252,6 +253,7 @@ export function ExamplesSection({ entryId, canEdit = true }: { entryId: number; 
                   </div>
                 )}
                 {i.notes && <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">{i.notes}</p>}
+                {!(i.sector || i.market_cap || i.float || i.short_interest) && <TickerContext ticker={i.ticker} day={i.date} max={4} className="mt-1.5" />}
                 {(i.sector || i.market_cap || i.float || i.short_interest) && (
                   <div className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
                     {i.sector && <span>{i.sector}</span>}

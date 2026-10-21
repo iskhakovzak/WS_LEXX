@@ -13,6 +13,8 @@ describe("trade-dependent keys (stop-gap until meta.deps)", () => {
       ["/api/events/today", { date: "2026-10-16" }],
       KEYS.openTrades(),
       KEYS.riskMe("2026-10-16"),
+      ["/api/trades/facets", "from=2026-10-01&excludeImx=1"],
+      ["stats-aggregate", { scope: "desk", from: "2026-07-23" }],
     ]) {
       expect(isTradeDependentKey(key), JSON.stringify(key)).toBe(true);
     }
@@ -22,6 +24,7 @@ describe("trade-dependent keys (stop-gap until meta.deps)", () => {
     expect(isTradeDependentKey(KEYS.watchlist())).toBe(false);
     expect(isTradeDependentKey(["offerings", "2026-10-16"])).toBe(false);
     expect(isTradeDependentKey(["discussions-tickers"])).toBe(false);
+    expect(isTradeDependentKey(["/api/trades/facets/view"])).toBe(false);
   });
 });
 

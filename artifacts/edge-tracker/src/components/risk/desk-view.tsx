@@ -18,6 +18,7 @@ import { riskI18n } from "@/i18n/ns/risk";
 import { personName } from "@/i18n";
 import { rich, slots } from "@/i18n/rich";
 import { alertLabel, positionsCount, stopMessage } from "./labels";
+import { DeskLiveLine } from "./live";
 
 type StatusFilter = "all" | "attention" | "no_limits";
 const STATUS_FILTERS: readonly StatusFilter[] = ["all", "attention", "no_limits"];
@@ -211,6 +212,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           />
         </StatGrid>
       )}
+      <DeskLiveLine live={desk.data?.live} className="-mt-2" />
 
       {!desk.isLoading && <ActionStrip rows={tableRows} onOpen={(t) => open(t)} />}
 

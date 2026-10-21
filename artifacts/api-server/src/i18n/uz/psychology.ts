@@ -29,6 +29,7 @@ export default {
     wrHigher: "win rate {pp} f.p. yuqori — {a}% va {b}% ({contrast})",
     wrLower: "win rate {pp} f.p. past — {a}% va {b}% ({contrast})",
     wrSame: "win rate bir xil — {a}% va {b}% ({contrast})",
+    wrClose: "win rate deyarli bir xil — {a}% va {b}% ({contrast}; farq {min} f.p.dan kam — bu shovqin)",
     r: "bir savdoga oʻrtacha natija {a} va {b}",
     rContrast: "bir savdoga oʻrtacha natija {a} va {b} ({contrast})",
     text: "{lead} {parts}. Tanlanma: {na} va {nb} ta savdo.",

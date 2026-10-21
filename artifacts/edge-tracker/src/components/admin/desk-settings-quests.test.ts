@@ -33,7 +33,7 @@ describe("simple-menu settings (group nav)", () => {
     const g = groupRows([row("nav.simpleForTrainees", "nav"), row("privacy.hideNamesFromTraders", "privacy")]);
     expect(g.map((x) => x.group)).toEqual(["privacy", "nav"]);
     expect(settingLabel("nav.simpleForTrainees")).toBe("Простое меню для новичков");
-    expect(deskSettingsI18n.tryT("settings.nav.simpleUntilTier.options.junior")).toBe("Стажёры и джуны");
+    expect(deskSettingsI18n.tryT("settings.nav.simpleUntilTier.options.junior")).toBe("Джуны (новички)");
     await setLang("uz", { source: "init" });
     expect(deskSettingsI18n.tryT("groups.nav.title")).toBe("Menyu");
     expect(settingLabel("nav.simpleUntilTier")).toBe("Oddiy menyuni kimlar oladi");

@@ -71,21 +71,6 @@ export function parseLang(v: unknown): Lang | null {
 
 // ─── users.locale ────────────────────────────────────────────────────────────────────────────────────────
 
-let localeColumnEnsured: Promise<void> | null = null;
-/** Idempotent safety net next to the migrate.ts step (a route may run before migrations on a fresh DB). */
-export function ensureLocaleColumn(): Promise<void> {
-  if (!localeColumnEnsured) {
-    localeColumnEnsured = pool
-      .query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locale TEXT NOT NULL DEFAULT 'ru'`)
-      .then(() => undefined)
-      .catch((err) => {
-        localeColumnEnsured = null;
-        throw err;
-      });
-  }
-  return localeColumnEnsured;
-}
-
 const CACHE_TTL_MS = 5 * 60_000;
 const byId = new Map<number, { lang: Lang; at: number }>();
 const byName = new Map<string, { lang: Lang; at: number }>();
@@ -104,7 +89,6 @@ export async function localeOfUser(who: number | string | null | undefined): Pro
   const hit = cache.get(who as never);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.lang;
   try {
-    await ensureLocaleColumn();
     const { rows } = await pool.query<{ id: number; name: string; locale: string | null }>(
       typeof who === "number" ? `SELECT id, name, locale FROM users WHERE id = $1 LIMIT 1` : `SELECT id, name, locale FROM users WHERE name = $1 LIMIT 1`,
       [who],

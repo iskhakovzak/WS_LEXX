@@ -1,7 +1,7 @@
 import { createNamespace } from "..";
 import ru from "../locales/ru/settings";
 
-/** /settings page: sections, profile, appearance, trading defaults, digest, data, integrations, permissions. */
+/** /settings page: sections, profile, appearance, trading defaults, alerts, data, integrations, permissions. */
 export const settingsI18n = createNamespace("settings", ru, {
   en: () => import("../locales/en/settings"),
   uz: () => import("../locales/uz/settings"),

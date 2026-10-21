@@ -15,6 +15,8 @@ import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
 import { dayHref } from "@/lib/period-links";
 import { rich as withNodes } from "@/i18n/rich";
+import { useFacetView } from "@/components/shared/trade-facets/api";
+import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
 
 const TOOLTIP_STYLE: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -61,7 +63,8 @@ export function DaySummary({
   const { t } = journalI18n.useT();
   const { t: tc } = commonI18n.useT();
   const hasTrades = stats.trades > 0;
-  const report = useDayReport(trader || null, date, !!trader && hasTrades);
+  const FV = useFacetView(); // «Исключить IMX» (the journal's day stats drop IMX trades too — pages/journal.tsx)
+  const report = useDayReport(trader || null, date, !!trader && hasTrades, FV.view.excludeImx);
   const doc = report.data && report.data.date === date ? report.data : null;
   const hints = dayHints(doc, { violations, untagged: untaggedIds.length });
   const decided = stats.wins + stats.losses;
@@ -76,6 +79,7 @@ export function DaySummary({
       actions={
         <div className="flex flex-wrap items-center gap-2">
           {status}
+          {hasTrades && <ImxToggle value={FV.view.excludeImx} onChange={(v) => FV.update((cur) => ({ ...cur, excludeImx: v }))} />}
           {trader && hasTrades && (
             <Button asChild variant="outline" size="sm">
               <Link href={dayReportHref(date, trader)}>
@@ -102,6 +106,7 @@ export function DaySummary({
                 <div className={cn("text-3xl font-semibold tabular-nums tracking-tight", toneText(toneOf(net)))}>
                   {net != null ? fmtUsd(net, { signed: true, decimals: "auto" }) : stats.r != null ? fmtR(stats.r) : "—"}
                 </div>
+                <ImxLine total={net} imx={doc?.imx} excluded={FV.view.excludeImx} />
                 {stats.gross != null && (
                   <div className="text-xs text-muted-foreground tabular-nums">
                     {t("summary.grossFees", { gross: fmtUsd(stats.gross, { signed: true, decimals: "auto" }), fees: stats.fees != null ? fmtUsd(-stats.fees, { signed: true, decimals: "auto" }) : "—" })}

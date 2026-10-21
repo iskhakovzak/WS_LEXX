@@ -1,11 +1,12 @@
 /** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section.
- * New traders (simple menu, nav-model.ts) get Сегодня, План, Плейбук, Тренажёр; the sheet lists the rest. */
+ * Juniors (simple menu, nav-model.ts) get the day's loop — Дашборд, План, Вечер (the journal), Сделки; the sheet lists
+ * the rest. */
 import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ALL_NAV_ITEMS, isNavActive, type NavItem } from "./nav";
-import { mobileTabs } from "./nav-model";
+import { mobileTabs, navFeatureOn } from "./nav-model";
 import { useNavModel } from "./use-nav-model";
 import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
 import { useShellBadges } from "./use-shell-badges";
@@ -25,15 +26,15 @@ export function MobileNav({ location }: { location: string }) {
   const { t } = shellI18n.useT();
   const { groups, simple } = useNavModel();
   const { pins } = usePinnedNav();
-  const { isCurator, user } = useAuth();
+  const { isCurator, user, permissions } = useAuth();
   const [moreGroupOpen, setMoreGroupOpen] = useMoreOpen(user?.traderName);
   const badges = useShellBadges();
-  // Simple menu (new traders): Сегодня, План, Плейбук, Тренажёр + «Ещё»; full menu: Дашборд, План, Сделки, Дневник + «Ещё».
+  // Simple menu (juniors): Дашборд, План, Вечер, Сделки + «Ещё»; full menu: Дашборд, План, Сделки, Дневник + «Ещё».
   const tabs = React.useMemo(() => mobileTabs(groups, simple), [groups, simple]);
   const tabHrefs = tabs.map((i) => i.href);
   const inTabs = tabs.some((t) => isNavActive(t, location));
   // Same rule as the sidebar: a staff-only section pinned while signed in as curator never shows for a trader.
-  const pinnedItems = pins.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i && !i.hidden && (!i.staff || isCurator));
+  const pinnedItems = pins.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i && !i.hidden && (!i.staff || isCurator) && navFeatureOn(i.feature, permissions.nav));
   const anyAlert = Object.entries(badges).some(([href, b]) => b && !tabHrefs.includes(href));
 
   useEffect(() => { setMoreOpen(false); }, [location]);

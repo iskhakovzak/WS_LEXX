@@ -74,20 +74,6 @@ export function assignIdeaTrades(cands: MatchCandidate[]): Map<number, number> {
 
 // ─── DB ─────────────────────────────────────────────────────────────────────
 
-let ensured: Promise<void> | null = null;
-export function ensureIdeaLinkColumns(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS trade_link_source TEXT;
-         ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS trade_linked_at TIMESTAMPTZ;`,
-      )
-      .then(() => undefined)
-      .catch((err) => { ensured = null; throw err; });
-  }
-  return ensured;
-}
-
 /** Candidate (idea, trade) pairs from the author's PropReports trades inside each idea's window. */
 async function loadCandidates(windows: IdeaWindow[], excludeTrades: number[]): Promise<MatchCandidate[]> {
   if (!windows.length) return [];
@@ -134,7 +120,6 @@ type IdeaLinkRow = {
 
 /** Read-only plan: the auto-managed ideas in scope and the trade each one should link to. */
 export async function planIdeaLinks(traders: string[] | null = null): Promise<{ ideas: IdeaLinkRow[]; desired: Map<number, number> }> {
-  await ensureIdeaLinkColumns();
   const { rows } = await pool.query<IdeaLinkRow>(
     `SELECT id, trader, ticker, side, status, published_at, created_at, idea_date, valid_until, horizon, converted_trade_id, trade_link_source
        FROM trade_ideas

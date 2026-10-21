@@ -3,11 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getListDailyFeedQueryKey, type DailyFeed } from "@workspace/api-client-react";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
-import { addDays, nyDate } from "@/lib/trading-date";
+import { addDays } from "@/lib/trading-date";
 import { safeHttpUrl } from "@/lib/url";
-import { fmtDate } from "@/lib/format";
-import { commonI18n } from "@/i18n/ns/common";
 import { feedI18n } from "@/i18n/ns/feed";
+import { daysBetween, formatDayLong, relativeDayLabel } from "@/components/shared/stream/day-label";
 
 /* ─────────────── server shape (additive fields on top of the generated DailyFeed) ─────────────── */
 
@@ -46,24 +45,8 @@ export function shiftDay(d: string, delta: number): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(d) ? addDays(d, delta) : d;
 }
 
-export function daysBetween(a: string, b: string): number {
-  return Math.round((parseDay(b).getTime() - parseDay(a).getTime()) / 86400000);
-}
-
-/** «Пятница, 17 октября» — day heading, first letter capitalised. */
-export function formatDayLong(d: string): string {
-  const s = fmtDate(d, "weekdayDayMonthLong");
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-export function relativeDayLabel(d: string, today = nyDate()): string | null {
-  const diff = daysBetween(d, today);
-  if (diff === 0) return commonI18n.t("time.today");
-  if (diff === 1) return commonI18n.t("time.yesterday");
-  if (diff === -1) return commonI18n.t("time.tomorrow");
-  if (diff > 1 && diff < 7) return feedI18n.t("day.daysAgo", { count: diff });
-  return null;
-}
+/** Day headings live with the shared stream rows (components/shared/stream/day-label). */
+export { daysBetween, formatDayLong, relativeDayLabel };
 
 /** Screenshot list with TradingView share links converted to their snapshot image. */
 export type Shot = { href: string; img: string; note: string };

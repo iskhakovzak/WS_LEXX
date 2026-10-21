@@ -7,12 +7,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EveningCard } from "../daily/types";
 
 const dedup = new Set<string>();
-const recipients = [{ name: "Кирилл Б.", chat_id: "111", locale: "ru" }, { name: "Ольга Н.", chat_id: "222", locale: "en" }];
+type Member = { name: string; chat_id: string; locale: string; role: string; last_trade: string | null; stage?: string };
+const BASE: Member[] = [
+  { name: "Кирилл Б.", chat_id: "111", locale: "ru", role: "trader", last_trade: "2026-10-15" },
+  { name: "Ольга Н.", chat_id: "222", locale: "en", role: "curator", last_trade: "2026-10-15" },
+];
+let recipients: Member[] = BASE;
+/** trader → NY dates with trades (the «вчера не разобран» read). */
+let tradedOn: Record<string, string[]> = {};
 
 vi.mock("@workspace/db", () => ({
   db: {},
   pool: {
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
+      if (/academy_trader_stage/.test(sql)) {
+        const rows = recipients.filter((r) => r.stage).map((r) => ({ user_name: r.name, stage: r.stage, since: "2026-09-01" }));
+        return { rows, rowCount: rows.length };
+      }
+      if (/SELECT DISTINCT t\.trader FROM trades t/.test(sql)) {
+        const [names, date] = params as [string[], string];
+        const rows = names.filter((n) => tradedOn[n]?.includes(date)).map((trader) => ({ trader }));
+        return { rows, rowCount: rows.length };
+      }
+      if (/last_trade/.test(sql)) return { rows: recipients, rowCount: recipients.length };
       if (/FROM users u/.test(sql)) {
         const names = params[0] as string[] | null;
         const rows = recipients.filter((r) => !names || names.includes(r.name));
@@ -44,6 +61,7 @@ const svc = vi.hoisted(() => ({
   focusFor: vi.fn(async (trader: string, date: string) => ({ trader, date, mistake: null, window: { from: date, to: date }, costNet: null, count: 0, source: "none" as const, text: { key: "focus.none", params: { days: 10 } } })),
   eveningFor: vi.fn(async (_t: string, _d: string): Promise<EveningCard | null> => null),
   markReviewed: vi.fn(async () => undefined),
+  isDayClosed: vi.fn(async (_t: string, _d: string) => false),
 }));
 vi.mock("../daily/service", () => svc);
 
@@ -60,6 +78,9 @@ beforeEach(() => {
   guard.sync = true;
   tg.sendMessage.mockImplementation(async () => true);
   svc.eveningFor.mockImplementation(async () => null);
+  svc.isDayClosed.mockImplementation(async () => false);
+  recipients = BASE;
+  tradedOn = {};
 });
 
 describe("guards", () => {
@@ -173,7 +194,50 @@ describe("registry", () => {
     expect(cronOf(byName.get("telegram.daily-evening")!)).toBe("30 16 * * 1-5");
     expect(byName.get("telegram.daily-evening")!.on).toContain("propreports.synced");
     expect(byName.get("telegram.contract-alerts")!.on).toContain("propreports.synced");
+    expect(cronOf(byName.get("telegram.contract-alerts")!)).toBe("3-58/5 4-16 * * 1-5"); // fallback for a lost event run
     expect(await byName.get("telegram.daily-morning")!.run({ signal: new AbortController().signal, trigger: "manual", logger: console, runId: null })).toMatchObject({ skipped: expect.any(String) });
     clearJobs();
+  });
+});
+
+describe("morning recipients (Волна 0, item 0.7)", () => {
+  const TODAY = "2026-10-16";
+  it("traded in 14 days → active; a Стажёр / Джун → learner; a trader idle > 3 days or never → idle; staff only when trading", () => {
+    expect(jobs.morningReason({ role: "trader", stage: "senior", lastTrade: "2026-10-15" }, TODAY)).toBe("active");
+    expect(jobs.morningReason({ role: "curator", stage: null, lastTrade: "2026-10-03" }, TODAY)).toBe("active");
+    expect(jobs.morningReason({ role: "trader", stage: "trainee", lastTrade: null }, TODAY)).toBe("learner");
+    expect(jobs.morningReason({ role: "trader", stage: "junior", lastTrade: "2026-09-01" }, TODAY)).toBe("learner");
+    expect(jobs.morningReason({ role: "trader", stage: "trader", lastTrade: "2026-09-20" }, TODAY)).toBe("idle");
+    expect(jobs.morningReason({ role: "trader", stage: "senior", lastTrade: null }, TODAY)).toBe("idle");
+    expect(jobs.morningReason({ role: "curator", stage: null, lastTrade: null }, TODAY)).toBeNull();
+    expect(jobs.morningReason({ role: "admin", stage: "trainee", lastTrade: "2026-09-01" }, TODAY)).toBeNull();
+    // A trade of today itself (premarket) is not «traded recently» — the window ends yesterday, as before.
+    expect(jobs.morningReason({ role: "curator", stage: null, lastTrade: TODAY }, TODAY)).toBeNull();
+  });
+
+  it("the job: the newcomer without trades and the trader who stopped trading get it, idle staff does not", async () => {
+    recipients = [
+      { name: "Новичок", chat_id: "301", locale: "uz", role: "trader", last_trade: null }, // no stage → DEFAULT_STAGE («Джун») → learner
+      { name: "Вернулся", chat_id: "302", locale: "ru", role: "trader", last_trade: "2026-09-25", stage: "trader" },
+      { name: "Сеньор", chat_id: "303", locale: "ru", role: "trader", last_trade: "2026-10-15", stage: "senior" },
+      { name: "Админ", chat_id: "304", locale: "ru", role: "admin", last_trade: null },
+    ];
+    const r = await jobs.runMorningFocus({ now: AT.morning });
+    expect(r).toMatchObject({ recipients: 3, sent: 3, reasons: { learner: 1, idle: 1, active: 1 } });
+    expect(tg.sendMessage.mock.calls.map((c) => (c as unknown[])[0]).sort()).toEqual(["301", "302", "303"]);
+  });
+
+  it("«вчера не разобран»: the previous trading day had trades and is not closed → one extra line", async () => {
+    tradedOn = { "Кирилл Б.": ["2026-10-15"], "Ольга Н.": ["2026-10-15"] };
+    svc.isDayClosed.mockImplementation(async (t: string) => t === "Ольга Н.");
+    expect(await jobs.runMorningFocus({ now: AT.morning })).toMatchObject({ sent: 2, unreviewed: 1 });
+    const text = (chat: string) => String((tg.sendMessage.mock.calls.find((c) => (c as unknown[])[0] === chat) as unknown[])[1]);
+    expect(text("111")).toContain("Не разобран день");
+    expect(text("222")).not.toMatch(/not reviewed yet/);
+    expect(svc.isDayClosed).toHaveBeenCalledWith("Кирилл Б.", "2026-10-15");
+  });
+
+  it("Monday morning looks at Friday", async () => {
+    expect(await jobs.prevOpenDay("2026-10-19")).toBe("2026-10-16");
   });
 });

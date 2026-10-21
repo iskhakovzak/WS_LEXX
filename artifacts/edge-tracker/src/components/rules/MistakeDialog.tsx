@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { MISTAKE_CATEGORIES, RULE_PREFIX, SEVERITY, SEVERITY_ORDER } from "./constants";
+import { ErrorPicker } from "@/components/shared/error-picker";
+import { canonicalOf, errorCodeOf, severityOf } from "@/components/shared/error-vocab";
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
@@ -61,8 +63,9 @@ export function MistakeDialog({
     setCatError(null);
     setSeverityTouched(!!editing);
     if (editing) {
-      const isPreset = presetLabels.has(editing.errorType);
-      setCategory(isPreset ? editing.errorType : "");
+      const code = errorCodeOf(editing.errorType);
+      const isPreset = !!code || presetLabels.has(editing.errorType);
+      setCategory(code ? canonicalOf(code) : isPreset ? editing.errorType : "");
       setCustom(isPreset ? "" : editing.errorType);
       setSeverity((SEVERITY_ORDER as readonly string[]).includes(editing.severity) ? (editing.severity as Severity) : "medium");
       setTradeId(editing.tradeId ? String(editing.tradeId) : NO_TRADE);
@@ -73,10 +76,11 @@ export function MistakeDialog({
     } else {
       const p = prefill ?? {};
       const cat = p.errorType ?? "";
-      const isPreset = !cat || presetLabels.has(cat);
-      setCategory(isPreset ? cat : "");
+      const code = errorCodeOf(cat);
+      const isPreset = !cat || !!code || presetLabels.has(cat);
+      setCategory(code ? canonicalOf(code) : isPreset ? cat : "");
       setCustom(isPreset ? "" : cat);
-      setSeverity(p.severity ?? (MISTAKE_CATEGORIES.find((c) => c.value === cat)?.severity ?? "medium"));
+      setSeverity(p.severity ?? (code ? severityOf(code) : "medium"));
       setSeverityTouched(!!p.severity);
       setTradeId(p.tradeId ? String(p.tradeId) : NO_TRADE);
       setTicker(p.ticker ?? "");
@@ -156,20 +160,12 @@ export function MistakeDialog({
         <div className="flex flex-col gap-4">
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 text-sm font-medium">{t("mistake.what")}</legend>
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("mistake.catsAria")}>
-              {MISTAKE_CATEGORIES.map((c) => (
-                <button
-                  key={c.code}
-                  type="button"
-                  title={c.hint}
-                  aria-pressed={category === c.value && !custom}
-                  onClick={() => pickCategory(c.value, c.severity)}
-                  className="chip min-h-8 px-3 text-xs font-medium"
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
+            {/* The desk's one mistakes picker (Волна 2 п. 2.8) — the same as the trade card and the journal. */}
+            <ErrorPicker
+              single
+              value={!custom && errorCodeOf(category) ? [errorCodeOf(category)!] : []}
+              onChange={(code) => pickCategory(canonicalOf(code), severityOf(code))}
+            />
             {ruleCats.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <span className="micro-label">{t("mistake.myRules")}</span>

@@ -1,7 +1,7 @@
 /**
  * «Топ дня» — month calendar: desk net per day as a green / red tint (strength against the month's largest day),
  * weekends and market holidays muted, today ringed, the chosen day solid; a dot marks the days the viewer traded.
- * In the named mode (names on, traders) desk $ is not sent — cells show the trader count only.
+ * For traders desk $ is not sent (staff only, owner decision 9) — cells show the trader count and the trader's own day.
  */
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";

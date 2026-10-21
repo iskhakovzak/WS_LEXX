@@ -2,6 +2,7 @@ import type { SeverityMeta } from "./types";
 import { pluralRu } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
+import { ERROR_VOCAB, errorCodeOf, errorHint, errorLabel } from "@/components/shared/error-vocab";
 
 // Labels are getters: read in render with the current language (never translate at module scope).
 export const SEVERITY: Record<string, SeverityMeta> = {
@@ -16,48 +17,27 @@ export function severityMeta(s: string | null | undefined): SeverityMeta {
   return SEVERITY[s ?? "medium"] ?? SEVERITY.medium;
 }
 
-type MistakeCode = "fomo" | "offPlan" | "earlyEntry" | "movedStop" | "noStop" | "averagingDown" | "oversize" | "overtrading" | "revenge" | "earlyExit" | "heldLoser" | "ignoredNews";
-type Sev = "low" | "medium" | "high" | "critical";
-
 /**
- * Common day-trading mistakes — one tap in the quick-log dialog. `value` is what gets stored (the original Russian
- * label: readable in CSV, matched by the server's junior review) — it is data, never shown; `label` / `hint` are the
- * display in the current language.
+ * Day-trading mistakes — one tap in the quick-log dialog: the desk's one mistakes vocabulary (components/shared/
+ * error-vocab, Волна 2 п. 2.8 — the same list as key M on /trades and the journal review). `value` is what gets stored
+ * (the canonical word: readable in CSV, matched by the server) — it is data, never shown; `label` / `hint` are the display
+ * in the current language.
  */
-function cat(code: MistakeCode, value: string, severity: Sev) {
-  return {
-    code,
-    value,
-    severity,
-    get label() { return rulesI18n.t(`mistakeCat.${code}.label`); },
-    get hint() { return rulesI18n.t(`mistakeCat.${code}.hint`); },
-  };
-}
-// Stored values below are data (see the doc comment above), hence the i18n-ignore marks.
-export const MISTAKE_CATEGORIES = [
-  cat("fomo", "FOMO / погоня", "medium"), // i18n-ignore
-  cat("offPlan", "Вход не по плану", "high"), // i18n-ignore
-  cat("earlyEntry", "Ранний вход", "medium"), // i18n-ignore
-  cat("movedStop", "Сдвинул стоп", "high"), // i18n-ignore
-  cat("noStop", "Без стопа", "critical"), // i18n-ignore
-  cat("averagingDown", "Усреднение убытка", "critical"), // i18n-ignore
-  cat("oversize", "Завышенный размер", "high"), // i18n-ignore
-  cat("overtrading", "Переторговка", "medium"), // i18n-ignore
-  cat("revenge", "Отыгрыш после убытка", "high"), // i18n-ignore
-  cat("earlyExit", "Ранний выход из прибыли", "low"), // i18n-ignore
-  cat("heldLoser", "Пересидел убыток", "high"), // i18n-ignore
-  cat("ignoredNews", "Проигнорировал новости", "medium"), // i18n-ignore
-];
+export const MISTAKE_CATEGORIES = ERROR_VOCAB.map((e) => ({
+  code: e.code,
+  value: e.canonical,
+  severity: e.severity,
+  get label() { return errorLabel(e.code); },
+  get hint() { return errorHint(e.code); },
+}));
 
 /** Stored prefix of a mistake logged from a rule violation («Правило: <rule name>») — data, see mistakeLabel(). */
 export const RULE_PREFIX = "Правило: "; // i18n-ignore
 
-const CAT_BY_VALUE = new Map(MISTAKE_CATEGORIES.map((c) => [c.value, c]));
-
-/** Display text of a stored mistake category: built-in ones are translated, a rule-based one keeps the rule name, custom text stays as typed. */
+/** Display text of a stored mistake category: built-in ones (any spelling) are translated, a rule-based one keeps the rule name, custom text stays as typed. */
 export function mistakeLabel(stored: string): string {
-  const c = CAT_BY_VALUE.get(stored);
-  if (c) return c.label;
+  const code = errorCodeOf(stored);
+  if (code) return errorLabel(code);
   if (stored.startsWith(RULE_PREFIX)) return rulesI18n.t("rulePrefixed", { name: stored.slice(RULE_PREFIX.length) });
   return stored;
 }
@@ -107,6 +87,12 @@ export const ORIGIN_LABEL = {
   office: origin("office", "accent" as const),
   personal: origin("personal", "neutral" as const),
 };
+
+/** «Для: Джуны» — the ladder stage of a desk rule (Волна 2 п. 2.6), or null for a rule of every trader. */
+export function stageChip(stage: string | null | undefined): { label: string; hint: string } | null {
+  if (stage !== "junior" && stage !== "trader" && stage !== "senior") return null;
+  return { label: rulesI18n.t("stage.chip", { stage: rulesI18n.t(`stage.${stage}`) }), hint: rulesI18n.t("stage.chipHint") };
+}
 
 export function originOf(r: { desk?: boolean; origin?: string | null }): keyof typeof ORIGIN_LABEL {
   return r.desk ? "desk" : r.origin === "office" ? "office" : "personal";

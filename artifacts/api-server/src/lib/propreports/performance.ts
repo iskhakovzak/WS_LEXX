@@ -24,28 +24,6 @@ export interface PerformanceReportRow {
 
 type Queryable = { query: (typeof pool)["query"] };
 
-let ensured = false;
-/** Idempotent; also appended to lib/migrate.ts — called here so a direct script works without the migration runner. */
-export async function ensurePerformanceTable(db: Queryable = pool): Promise<void> {
-  if (ensured && db === pool) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS "propreports_performance_reports" (
-      "id" SERIAL PRIMARY KEY,
-      "account" TEXT NOT NULL,
-      "trader_name" TEXT,
-      "period_from" TEXT NOT NULL,
-      "period_to" TEXT NOT NULL,
-      "file_name" TEXT,
-      "data" JSONB NOT NULL,
-      "uploaded_by" TEXT,
-      "uploaded_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE ("account", "period_from", "period_to")
-    )
-  `);
-  await db.query(`CREATE INDEX IF NOT EXISTS propreports_perf_trader_idx ON propreports_performance_reports(trader_name)`);
-  if (db === pool) ensured = true;
-}
-
 export interface SavePerformanceInput {
   account: string;
   trader: string | null;
@@ -58,7 +36,6 @@ export interface SavePerformanceInput {
 
 /** Upsert; returns the stored row (summary only) and whether an older row was replaced. */
 export async function savePerformanceReport(input: SavePerformanceInput, db: Queryable = pool): Promise<{ row: PerformanceReportRow; replaced: boolean }> {
-  await ensurePerformanceTable(db);
   const { rows: before } = await db.query(
     `SELECT id FROM propreports_performance_reports WHERE account = $1 AND period_from = $2 AND period_to = $3`,
     [input.account, input.periodFrom, input.periodTo],
@@ -93,7 +70,6 @@ export interface ListPerformanceOptions {
 }
 
 export async function listPerformanceReports(opts: ListPerformanceOptions = {}, db: Queryable = pool): Promise<PerformanceReportRow[]> {
-  await ensurePerformanceTable(db);
   const { rows } = await db.query(
     `SELECT * FROM propreports_performance_reports
       WHERE ($1::text IS NULL OR trader_name = $1)
@@ -106,7 +82,6 @@ export async function listPerformanceReports(opts: ListPerformanceOptions = {}, 
 }
 
 export async function getPerformanceReport(id: number, db: Queryable = pool): Promise<PerformanceReportRow | null> {
-  await ensurePerformanceTable(db);
   const { rows } = await db.query(`SELECT * FROM propreports_performance_reports WHERE id = $1`, [id]);
   return rows[0] ? rowView(rows[0], true) : null;
 }

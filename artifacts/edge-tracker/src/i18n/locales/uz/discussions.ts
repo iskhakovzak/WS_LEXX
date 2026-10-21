@@ -35,7 +35,7 @@ export default {
   audience: {
     everyone: "Hammaga",
     cohort: "Guruh #{id}",
-    token: { trainee: "Stajyorlarga", junior: "Juniorlarga", trader: "Treyderlarga", senior: "Seniorlarga", staff: "Kuratorlarga" },
+    token: { junior: "Juniorlarga", trader: "Treyderlarga", senior: "Seniorlarga", staff: "Kuratorlarga" },
     label: "Mavzuni kim koʻradi",
     counting: "Kim koʻrishini hisoblayapmiz…",
     onlyGroups: "Mavzuni faqat tanlangan guruhlar, siz va kuratorlar koʻradi.",

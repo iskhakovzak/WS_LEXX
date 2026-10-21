@@ -10,8 +10,8 @@ import {
 } from "../discussionAudience";
 
 const junior: AudienceViewer = { name: "Артур", guest: false, moderator: false, staff: false, stage: "junior", cohorts: [1] };
-const trainee: AudienceViewer = { name: "Закир", guest: false, moderator: false, staff: false, stage: "trainee", cohorts: [1] };
-const remoteTrainee: AudienceViewer = { name: "Умид", guest: false, moderator: false, staff: false, stage: "trainee", cohorts: [2] };
+const trader: AudienceViewer = { name: "Закир", guest: false, moderator: false, staff: false, stage: "trader", cohorts: [1] };
+const remoteTrader: AudienceViewer = { name: "Умид", guest: false, moderator: false, staff: false, stage: "trader", cohorts: [2] };
 const noStage: AudienceViewer = { name: "Новичок", guest: false, moderator: false, staff: false, stage: null, cohorts: [] };
 const curator: AudienceViewer = { name: "Антон", guest: false, moderator: true, staff: true, stage: null, cohorts: [] };
 /** Staff role without the moderation capability (desk override) — matches «Кураторам» only. */
@@ -20,19 +20,21 @@ const guest: AudienceViewer = { ...ANONYMOUS_VIEWER, name: "Гость", guest: 
 /** A guest token reusing a member's name must not pass the authorship rule. */
 const guestNamedLikeAuthor: AudienceViewer = { ...guest, name: "Закир" };
 
-const VIEWERS = { junior, trainee, remoteTrainee, noStage, curator, staffNoMod, guest, guestNamedLikeAuthor, anon: ANONYMOUS_VIEWER };
+const VIEWERS = { junior, trader, remoteTrader, noStage, curator, staffNoMod, guest, guestNamedLikeAuthor, anon: ANONYMOUS_VIEWER };
 
 type Row = { id: number; trader: string | null; audience: string[] | null };
 const ROWS: Row[] = [
   { id: 1, trader: "Ориф", audience: null },
   { id: 2, trader: "Ориф", audience: [] },
   { id: 3, trader: "Ориф", audience: ["junior"] },
-  { id: 4, trader: "Ориф", audience: ["trainee", "junior"] },
+  { id: 4, trader: "Ориф", audience: ["trader", "junior"] },
   { id: 5, trader: "Закир", audience: ["senior"] },
   { id: 6, trader: "Ориф", audience: ["staff"] },
   { id: 7, trader: "Антон", audience: ["cohort:2"] },
   { id: 8, trader: "Антон", audience: ["cohort:1", "senior"] },
-  { id: 9, trader: null, audience: ["trader"] },
+  { id: 9, trader: null, audience: ["junior"] },
+  /** An old thread addressed to the removed first stage (wave 1, item 1.21): it reaches juniors. */
+  { id: 10, trader: "Ориф", audience: ["trainee"] },
 ];
 
 describe("parseAudience", () => {
@@ -43,7 +45,9 @@ describe("parseAudience", () => {
   });
 
   it("canonical order, dedupe, case-insensitive, comma strings", () => {
-    expect(parseAudience(["cohort:2", "Staff", "senior", "trainee", "senior"])).toEqual({ ok: true, audience: ["trainee", "senior", "staff", "cohort:2"] });
+    expect(parseAudience(["cohort:2", "Staff", "senior", "junior", "senior"])).toEqual({ ok: true, audience: ["junior", "senior", "staff", "cohort:2"] });
+    // an older web build may still send the removed «trainee»: it is stored as junior
+    expect(parseAudience(["trainee", "trader"])).toEqual({ ok: true, audience: ["junior", "trader"] });
     expect(parseAudience("junior, trader")).toEqual({ ok: true, audience: ["junior", "trader"] });
     expect(parseAudience(["cohort:10", "cohort:2"])).toEqual({ ok: true, audience: ["cohort:2", "cohort:10"] });
   });
@@ -86,7 +90,7 @@ describe("tokens and labels", () => {
   it("stage precedence: approved transfer → enrollment → scaling tier", () => {
     expect(pickStage("trader", "junior", "trainee")).toBe("trader");
     expect(pickStage(null, "junior", "trainee")).toBe("junior");
-    expect(pickStage(undefined, "bogus", "trainee")).toBe("trainee");
+    expect(pickStage(undefined, "bogus", "trainee")).toBe("junior"); // legacy «trainee» = the entry stage (Волна 1 п. 1.21)
     expect(pickStage(null, null, "lead")).toBeNull();
   });
 });
@@ -101,13 +105,22 @@ describe("canSeeThread", () => {
 
   it("stage audience", () => {
     expect(canSeeThread(junior, ROWS[2])).toBe(true);
-    expect(canSeeThread(trainee, ROWS[2])).toBe(false);
-    expect(canSeeThread(trainee, ROWS[3])).toBe(true);
+    expect(canSeeThread(trader, ROWS[2])).toBe(false);
+    expect(canSeeThread(trader, ROWS[3])).toBe(true);
     expect(canSeeThread(noStage, ROWS[3])).toBe(false);
   });
 
+  it("a legacy «trainee» audience reaches juniors only", () => {
+    expect(canSeeThread(junior, ROWS[9])).toBe(true);
+    expect(canSeeThread(trader, ROWS[9])).toBe(false);
+    expect(canSeeThread(noStage, ROWS[9])).toBe(false);
+    expect(canSeeThread(guest, ROWS[9])).toBe(false);
+    expect(inAudience(junior, ["trainee"])).toBe(true);
+    expect(viewerTokens(junior)).not.toContain("trainee");
+  });
+
   it("the author always sees their own thread (even outside its audience)", () => {
-    expect(canSeeThread(trainee, ROWS[4])).toBe(true);
+    expect(canSeeThread(trader, ROWS[4])).toBe(true);
     expect(canSeeThread(junior, ROWS[4])).toBe(false);
   });
 
@@ -119,10 +132,10 @@ describe("canSeeThread", () => {
   });
 
   it("cohort audience", () => {
-    expect(canSeeThread(remoteTrainee, ROWS[6])).toBe(true);
-    expect(canSeeThread(trainee, ROWS[6])).toBe(false);
+    expect(canSeeThread(remoteTrader, ROWS[6])).toBe(true);
+    expect(canSeeThread(trader, ROWS[6])).toBe(false);
     expect(canSeeThread(junior, ROWS[7])).toBe(true);
-    expect(canSeeThread(remoteTrainee, ROWS[7])).toBe(false);
+    expect(canSeeThread(remoteTrader, ROWS[7])).toBe(false);
   });
 
   it("guests / anonymous never see restricted threads, even with an author's name", () => {

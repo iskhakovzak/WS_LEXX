@@ -120,6 +120,7 @@ export default {
     entryWorse: "Entry was worse than plan by a quarter of the risk or more — check entry discipline.",
     entryBetter: "Entry was better than plan — the idea triggered early or was taken more aggressively.",
     reportSent: "Report sent to the curator",
+    reportAlready: "You have already reported this idea — the curator sees it",
     reportFailed: "Sending failed",
     report: "Report",
     reportLabel: "Complaint or suggestion about idea #{id}",

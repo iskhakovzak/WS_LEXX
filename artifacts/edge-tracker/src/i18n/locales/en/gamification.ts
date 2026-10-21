@@ -16,6 +16,7 @@ export default {
     description: "Season points are the same discipline points, counted for the current month: everyone starts from zero on the 1st, your level stays. The ranking shows the top places and yours.",
     me: "me",
     alias: "Participant {n}",
+    rankHidden: "Places appear once at least five traders have season points. For now only your own points count.",
     notRanked: "No points this month yet — the first come from a kept contract, a day review or a quest.",
     empty: "Nobody has scored this season yet",
     loadFailed: "Couldn't load the season",

@@ -171,3 +171,16 @@ export function dilutionScore(o: Offering): DilutionScore {
     rough: max < 50,
   };
 }
+
+/**
+ * Upstreams that did not answer GET /offerings/watch (item 1.14). `listing`: NASDAQ or SEC EDGAR failed, so an empty
+ * or short list is not «no offerings» — the page shows «источник недоступен · HH:MM» instead of the empty state.
+ */
+export function sourcesDown(sources: { nasdaq: boolean; edgar: boolean; market: boolean } | null | undefined): { names: string[]; listing: boolean } {
+  if (!sources) return { names: [], listing: false };
+  const names: string[] = [];
+  if (!sources.nasdaq) names.push("NASDAQ");
+  if (!sources.edgar) names.push("SEC EDGAR");
+  if (!sources.market) names.push(offeringsI18n.t("page.sourceMarket"));
+  return { names, listing: !sources.nasdaq || !sources.edgar };
+}

@@ -35,7 +35,7 @@ export default {
   audience: {
     everyone: "Everyone",
     cohort: "Cohort #{id}",
-    token: { trainee: "Interns", junior: "Juniors", trader: "Traders", senior: "Seniors", staff: "Curators" },
+    token: { junior: "Juniors", trader: "Traders", senior: "Seniors", staff: "Curators" },
     label: "Who can see the thread",
     counting: "Counting who will see it…",
     onlyGroups: "Only the selected groups, you and the curators will see the thread.",

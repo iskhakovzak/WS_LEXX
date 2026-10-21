@@ -3,23 +3,9 @@
  * loads trades, classifies them and asks this module for a role-shaped view.
  *
  * ─── Strategy classification (classifyStrategy) ─────────────────────────────────────────────────────────────
- * Trades carry no strategy field. The class is inferred from the symbol, the hold and the New York time of the
- * first entry fill / last exit fill (trade_executions; PropReports «Trades» report rows carry one entry and one
- * exit timestamp). Rules, first match wins:
- *
- *   1. OPT          the symbol is an option contract (OCC style «AAPL261016C00230000», also «AAPL 261016C230»).
- *   2. Overnight    the position was held across a session close: horizon overnight / swing, or the exit fill is
- *                   on a later New York date than the entry fill, or exit_date > date.
- *   3. AfterMarket  entered in the post-market (first entry ≥ 16:00:00).
- *   4. OPG          entered at the open — in the pre-market or at the opening auction (first entry < 09:31:00,
- *                   OPEN_AUCTION_GRACE_SEC covers the 09:30:00 print and the reporting lag) — and flat by
- *                   10:00:00 (OPG_EXIT_BY_SEC).
- *      OPGtoDAY     entered at the open the same way, held into the day (exit after 10:00:00).
- *   5. MOC          the closing auction: entered in the imbalance window (first entry ≥ 15:50:00, when NYSE /
- *                   Nasdaq publish MOC imbalances) or exited in the closing cross (15:59:30 ≤ exit < 16:01:00).
- *   6. AfterMarket  an intraday position closed in the post-market (exit ≥ 16:01:00).
- *   7. Day          everything else intraday.
- *   Without fill timestamps the session column decides: premarket → OPG, postmarket → AfterMarket, else Day.
+ * One derivation for the whole site: lib/tradeStrategy deriveTradeStrategy (also stored as trades.strategy, migration
+ * 0237). The office keeps its seven classes: a pre-market «Print» counts as OPG, a broker «Adjust» as Day. MOC = any
+ * fill in the IMX window (desk setting, default 15:50–16:00 NY). See lib/tradeStrategy for the rule order.
  *
  * ─── Units ──────────────────────────────────────────────────────────────────────────────────────────────────
  * Every aggregate is computed in one unit: "usd" (net P&L after fees) or "pct" (net ÷ that year's office capital
@@ -34,6 +20,11 @@
 
 import { insightsT } from "../i18n/ns";
 import { localeTagFor, type Lang } from "../i18n";
+import {
+  OPEN_AUCTION_GRACE_SEC, OPG_EXIT_BY_SEC, OPTION_SYMBOL_RE, RTH_CLOSE_SEC, RTH_OPEN_SEC, deriveTradeStrategy, isOptionSymbol, nyParts,
+  type StrategyInput,
+} from "./tradeStrategy";
+import { currentImxWindow } from "./imx";
 
 // ─── Strategies ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -49,102 +40,24 @@ export const STRATEGY_RULES_RU = Object.fromEntries(STRATEGIES.map((k) => [k, st
 
 const hms = (h: number, m: number, s = 0) => h * 3600 + m * 60 + s;
 
-/** Regular session open (New York). */
-export const RTH_OPEN_SEC = hms(9, 30);
-/** An entry before 09:31:00 counts as «at the open»: the 09:30:00 auction print plus the fill-report lag. */
-export const OPEN_AUCTION_GRACE_SEC = 60;
-/** OPG is flat by 10:00:00; a later exit makes it OPGtoDAY. */
-export const OPG_EXIT_BY_SEC = hms(10, 0);
-/** MOC imbalance publication — entries from here on trade the close. */
+// Time / symbol rules live in lib/tradeStrategy (one derivation for the whole site); re-exported for older imports.
+export { RTH_OPEN_SEC, RTH_CLOSE_SEC, OPEN_AUCTION_GRACE_SEC, OPG_EXIT_BY_SEC, OPTION_SYMBOL_RE, isOptionSymbol, nyParts };
+/** Default IMX window start (the desk setting trades.imxWindowStart moves it) — the «Как считается» popover. */
 export const MOC_IMBALANCE_FROM_SEC = hms(15, 50);
-/** Closing-cross window for exits: 15:59:30 ≤ exit < 16:01:00 (the 16:00:00 print plus the report lag). */
-export const CLOSE_CROSS_FROM_SEC = hms(15, 59, 30);
+/** Closing-cross print plus the report lag (the end minute of the IMX window is inclusive). */
+export const CLOSE_CROSS_FROM_SEC = hms(16, 0);
 export const CLOSE_CROSS_TO_SEC = hms(16, 1);
-/** Regular session close. */
-export const RTH_CLOSE_SEC = hms(16, 0);
-/** OCC-style option symbols: root (1–6) + YYMMDD + C/P + strike, optional «.», «+» or «O:» prefix and spaces. */
-export const OPTION_SYMBOL_RE = /^[.+]?(?:O:)?[A-Z][A-Z0-9.]{0,5}\s*\d{6}\s*[CP]\s*\d{1,8}(?:\.\d+)?$/i;
 
-const NY_TZ = "America/New_York";
-const nyFmt = new Intl.DateTimeFormat("en-CA", {
-  timeZone: NY_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
-});
+/** lib/tradeStrategy input (kept under its old name). */
+export type ClassifyInput = StrategyInput;
 
 /**
- * NY UTC offset (ms) per UTC hour. US DST switches happen on a whole UTC hour, so one Intl call per hour is
- * exact — and the office endpoint classifies ~45k trades per load (formatToParts per trade cost ~0.4 s).
+ * The office's seven classes from the site-wide derivation (lib/tradeStrategy deriveTradeStrategy, current IMX window):
+ * a pre-market «Print» counts as OPG (entered before the open) and a broker «Adjust» as Day.
  */
-const HOUR_MS = 3_600_000;
-const nyOffsetByHour = new Map<number, number>();
-function nyOffsetMs(ms: number): number {
-  const hk = Math.floor(ms / HOUR_MS);
-  let off = nyOffsetByHour.get(hk);
-  if (off === undefined) {
-    const base = hk * HOUR_MS;
-    const p: Record<string, string> = {};
-    for (const x of nyFmt.formatToParts(new Date(base))) p[x.type] = x.value;
-    off = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute), Number(p.second)) - base;
-    if (nyOffsetByHour.size > 100_000) nyOffsetByHour.clear();
-    nyOffsetByHour.set(hk, off);
-  }
-  return off;
-}
-
-/** New York calendar date + seconds since NY midnight of an instant; null for a missing / invalid one. */
-export function nyParts(at: string | Date | null | undefined): { date: string; sec: number } | null {
-  if (at == null || at === "") return null;
-  const d = at instanceof Date ? at : new Date(at);
-  const ms = d.getTime();
-  if (Number.isNaN(ms)) return null;
-  const local = new Date(ms + nyOffsetMs(ms));
-  return { date: local.toISOString().slice(0, 10), sec: local.getUTCHours() * 3600 + local.getUTCMinutes() * 60 + local.getUTCSeconds() };
-}
-
-export interface ClassifyInput {
-  ticker: string | null;
-  /** trades.session: 'regular' | 'premarket' | 'postmarket' | null. */
-  session?: string | null;
-  /** trades.date (entry date, YYYY-MM-DD). */
-  date?: string | null;
-  /** trades.exit_date (multi-day holds). */
-  exitDate?: string | null;
-  /** trades.horizon: 'intraday' | 'overnight' | 'swing' | null. */
-  horizon?: string | null;
-  /** First entry fill (instant). */
-  entryAt?: string | Date | null;
-  /** Last exit fill (instant). */
-  exitAt?: string | Date | null;
-}
-
-export function isOptionSymbol(ticker: string | null | undefined): boolean {
-  return !!ticker && OPTION_SYMBOL_RE.test(ticker.trim());
-}
-
 export function classifyStrategy(t: ClassifyInput): Strategy {
-  if (isOptionSymbol(t.ticker)) return "OPT";
-  const h = (t.horizon ?? "").trim().toLowerCase();
-  if (h === "overnight" || h === "swing") return "Overnight";
-  const en = nyParts(t.entryAt);
-  const ex = nyParts(t.exitAt);
-  if (en && ex && ex.date > en.date) return "Overnight";
-  const d0 = (t.date ?? "").slice(0, 10);
-  const d1 = (t.exitDate ?? "").slice(0, 10);
-  if (d0 && d1 && d1 > d0) return "Overnight";
-
-  if (!en) {
-    const s = (t.session ?? "").toLowerCase();
-    if (s === "premarket") return "OPG";
-    if (s === "postmarket") return "AfterMarket";
-    return "Day";
-  }
-  if (en.sec >= RTH_CLOSE_SEC) return "AfterMarket";
-  if (en.sec < RTH_OPEN_SEC + OPEN_AUCTION_GRACE_SEC) {
-    return !ex || ex.sec <= OPG_EXIT_BY_SEC ? "OPG" : "OPGtoDAY";
-  }
-  if (en.sec >= MOC_IMBALANCE_FROM_SEC) return "MOC";
-  if (ex && ex.sec >= CLOSE_CROSS_FROM_SEC && ex.sec < CLOSE_CROSS_TO_SEC) return "MOC";
-  if (ex && ex.sec >= CLOSE_CROSS_TO_SEC) return "AfterMarket";
-  return "Day";
+  const s = deriveTradeStrategy(t, currentImxWindow());
+  return s === "Print" ? "OPG" : s === "Adjust" ? "Day" : s;
 }
 
 // ─── Inputs ─────────────────────────────────────────────────────────────────────────────────────────────────

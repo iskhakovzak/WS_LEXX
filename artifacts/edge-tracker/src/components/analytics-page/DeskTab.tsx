@@ -11,25 +11,31 @@ import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { personName } from "@/i18n";
 import { useEdgeMatrix, type EdgeCell } from "./edge-api";
-import { percentileRank, maxDrawdownOf, quantile } from "./edge-stats";
+import { percentileRank, maxDrawdownByDays, quantile } from "./edge-stats";
 
 type TraderRow = {
   trader: string; n: number; closed: number;
   winRate: number | null; expectancy: number | null; total: number; pf: number | null; maxDd: number | null; avgWin: number | null; avgLoss: number | null;
 };
 
-function rowOf(c: EdgeCell, u: Unit): TraderRow {
+/** Close day of each value (routes/edge `r_days` / `net_days`, aligned with rValues / netValues) — when the server sends them. */
+type DayCell = EdgeCell & { rDays?: string[]; netDays?: string[] };
+
+function rowOf(c: DayCell, u: Unit): TraderRow {
   const decided = c.wins + c.losses;
   const n = u === "r" ? c.rN : c.pnlN;
   const total = u === "r" ? c.sumR : c.net;
   const pos = u === "r" ? c.posR : c.posNet, neg = u === "r" ? c.negR : c.negNet;
   const values = u === "r" ? c.rValues : c.netValues;
+  const days = u === "r" ? c.rDays : c.netDays;
   return {
     trader: c.row, n: c.n, closed: c.closed,
     winRate: decided ? c.wins / decided : null,
     expectancy: n ? total / n : null, total,
     pf: neg < 0 ? pos / Math.abs(neg) : null,
-    maxDd: values.length ? maxDrawdownOf(values) : null,
+    // By day close, as on «Обзор» (IMPROVEMENT_PLAN 2.7): the server's figure over every trade of the cell; older API
+    // builds — from the (capped) value arrays.
+    maxDd: (u === "r" ? c.maxDdR : c.maxDdNet) ?? (values.length ? maxDrawdownByDays(values, days) : null),
     avgWin: c.wins ? pos / c.wins : null,
     avgLoss: c.losses ? neg / c.losses : null,
   };

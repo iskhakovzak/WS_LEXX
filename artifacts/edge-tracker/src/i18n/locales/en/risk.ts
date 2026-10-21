@@ -56,7 +56,6 @@ export default {
   },
 
   tierHint: {
-    intern: "simulator / minimum size",
     junior: "intraday, small size",
     trader: "intraday + overnight",
     senior: "full BP, swing",
@@ -222,6 +221,8 @@ export default {
     errWeekly: "The weekly limit can’t be lower than the daily limit",
     errRisk: "Risk per trade is above the daily limit",
     errDrawdown: "Max drawdown is below the daily limit",
+    errBpJunior: "A junior's BP must be $25,000 – $800,000",
+    errBpMin: "BP must be at least $25,000",
     field: {
       accountSize: "Account size, $",
       maxPositionUsd: "Buying power per position, $",
@@ -230,12 +231,14 @@ export default {
       maxDrawdown: "Max drawdown from peak, $",
       maxRiskPerTrade: "Max risk per trade, $",
       maxOvernightExposure: "Max overnight exposure, $",
+      buyingPower: "Trader's buying power (BP), $",
     },
     hint: {
       accountSize: "Base for drawdown %",
       dailyLossLimit: "Daily stop",
       maxRiskPerTrade: "1R",
       maxOvernightExposure: "Positions held through the close",
+      buyingPower: "Junior: $25,000 to $800,000; above Junior no upper cap",
     },
     saved: "Limits saved",
     checkFields: "Check the fields: {list}",
@@ -519,5 +522,17 @@ export default {
       correlatedNone: "No sector with two or more longs.",
       ofBook: "{pct} of the book",
     },
+  },
+  live: {
+    on: "Live",
+    stale: "Positions not updating",
+    open: "open {amount}",
+    closed: "closed {amount}",
+    hint: "Today's P&L = closed trades + unrealized P&L of open PropReports positions. Updated every 5 minutes during the session.",
+    staleHint: "The open-positions snapshot is stale — its unrealized P&L is not counted in the stop.",
+    desk: "PropReports positions: {open} · {amount}",
+    deskOpen: { one: "{count} open", other: "{count} open" },
+    staleCount: "stale: {count}",
+    positionsTitle: "Open positions (PropReports)",
   },
 } satisfies Messages<typeof ru>;

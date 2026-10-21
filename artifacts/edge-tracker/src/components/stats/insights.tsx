@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { EmptyState, Panel, type Tone, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { TradeLinkRow } from "./trade-link-row";
-import { dayKey, fmtValue, groupBy, isClosed, valueOf, weekdayIdx, weekdayLabel, type Kpis, type Metric } from "./metrics";
+import { dayKey, fmtValue, groupBy, isClosed, valueOf, weekdayIdx, weekdayLabel, type GroupStat, type Kpis, type Metric } from "./metrics";
 import { fmtNum, fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
@@ -13,6 +13,19 @@ import { statsI18n } from "@/i18n/ns/stats";
 export type Insight = { id: string; tone: Tone; icon: LucideIcon; text: string; href?: string; cta?: string };
 
 export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight[] {
+  const closed = trades.filter(isClosed);
+  return insightsFrom(
+    k, metric,
+    groupBy(closed, (tr) => weekdayLabel(weekdayIdx(dayKey(tr))), metric),
+    groupBy(closed, (tr) => tr.setup || tr.eventType, metric),
+  );
+}
+
+/**
+ * The insight lines from the KPI cards plus the weekday and setup cuts of the closed trades (`byWeekday` keys are
+ * weekday labels, `bySetup` keys setup names; "—" = no setup). The staff view feeds the server cuts here.
+ */
+export function insightsFrom(k: Kpis, metric: Metric, byWeekday: GroupStat[], bySetupAll: GroupStat[]): Insight[] {
   const t = statsI18n.t;
   const out: Insight[] = [];
   if (k.current.kind && k.current.len >= 2) {
@@ -35,8 +48,7 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
     });
   }
 
-  const closed = trades.filter(isClosed);
-  const byDay = groupBy(closed, (tr) => weekdayLabel(weekdayIdx(dayKey(tr))), metric).filter((g) => g.valued >= 2 && g.value != null);
+  const byDay = byWeekday.filter((g) => g.valued >= 2 && g.value != null);
   if (byDay.length >= 2) {
     const best = byDay.reduce((a, b) => ((b.value ?? 0) > (a.value ?? 0) ? b : a));
     const worst = byDay.reduce((a, b) => ((b.value ?? 0) < (a.value ?? 0) ? b : a));
@@ -44,7 +56,7 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
     if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstday", tone: "down", icon: TrendingDown, text: t("insights.worstDay", { day: worst.key, value: fmtValue(worst.value, metric) }) });
   }
 
-  const bySetup = groupBy(closed, (tr) => tr.setup || tr.eventType, metric).filter((g) => g.key !== "—" && g.valued >= 2 && g.value != null);
+  const bySetup = bySetupAll.filter((g) => g.key !== "—" && g.valued >= 2 && g.value != null);
   if (bySetup.length) {
     const best = bySetup.reduce((a, b) => ((b.value ?? 0) > (a.value ?? 0) ? b : a));
     const worst = bySetup.reduce((a, b) => ((b.value ?? 0) < (a.value ?? 0) ? b : a));
@@ -100,15 +112,18 @@ export function InsightsPanel({ insights }: { insights: Insight[] }) {
 }
 
 /** Best / worst trades of the period — each row opens the trade in the journal. */
-export function ExtremesPanel({ trades, metric, hideTrader }: {
-  trades: Trade[]; metric: Metric;
+export function ExtremesPanel({ trades, lists, metric, hideTrader }: {
+  trades?: Trade[];
+  /** Precomputed best / worst rows (staff view, GET /api/stats/aggregate) instead of the trades. */
+  lists?: { best: Trade[]; worst: Trade[] };
+  metric: Metric;
   /** The report is one person's (own book or a picked trader): rows don't repeat the name (MAKSIM-37). */
   hideTrader?: boolean;
 }) {
   const { t } = statsI18n.useT();
-  const valued = trades.filter((t) => isClosed(t) && valueOf(t, metric) != null);
-  const best = valued.filter((t) => valueOf(t, metric)! > 0).sort((a, b) => valueOf(b, metric)! - valueOf(a, metric)!).slice(0, 5);
-  const worst = valued.filter((t) => valueOf(t, metric)! < 0).sort((a, b) => valueOf(a, metric)! - valueOf(b, metric)!).slice(0, 5);
+  const valued = lists ? [...lists.best, ...lists.worst] : (trades ?? []).filter((t) => isClosed(t) && valueOf(t, metric) != null);
+  const best = lists ? lists.best : valued.filter((t) => valueOf(t, metric)! > 0).sort((a, b) => valueOf(b, metric)! - valueOf(a, metric)!).slice(0, 5);
+  const worst = lists ? lists.worst : valued.filter((t) => valueOf(t, metric)! < 0).sort((a, b) => valueOf(a, metric)! - valueOf(b, metric)!).slice(0, 5);
   const unit = metric === "r" ? "R" : "P&L";
 
   const List = ({ title, icon: Icon, tone, items, empty }: { title: string; icon: LucideIcon; tone: Tone; items: Trade[]; empty: string }) => (

@@ -503,4 +503,7 @@ export default {
     noTradesDay: "savdosiz",
     noMarks: "Belgilarsiz",
   },
+  deskAgg: {
+    edgeLink: "Har bir savdo boʻyicha kesimlar — «Edge» yorligʻida",
+  },
 } satisfies Messages<typeof ru>;

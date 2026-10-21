@@ -126,17 +126,17 @@ describe("UMID-04 / OWNER-25 scaling texts", () => {
   });
 
   it("the seed data is still exported from the engine (lib/scalingSeed)", () => {
-    expect(DEFAULT_TIERS.map((t) => t.key)).toEqual(["trainee", "junior", "trader", "senior", "lead"]);
+    expect(DEFAULT_TIERS.map((t) => t.key)).toEqual(["junior", "trader", "senior", "lead"]); // no «trainee» (wave 1, item 1.21)
     expect(DEFAULT_RULES.length).toBeGreaterThan(5);
   });
 });
 
 describe("risk notifications per reader", () => {
   it("UMID-21: a template notice renders the default tier in the reader's language (tierKey)", () => {
-    const p = { variant: "template", actor: "Ориф", tier: "Стажёр", tierKey: "trainee", resync: 0, a_dailyLossLimit: 150, a_tier: "trainee" };
+    const p = { variant: "template", actor: "Ориф", tier: "Джун", tierKey: "junior", resync: 0, a_dailyLossLimit: 300, a_tier: "junior" };
     const uz = renderNotification("limit_change", p, "uz")!;
-    expect(uz.title).toContain("Stajyor");
-    expect(uz.title + uz.body).not.toMatch(/trainee|Стажёр/);
+    expect(uz.title).toContain("Junior");
+    expect(uz.title + uz.body).not.toMatch(/junior|Джун/);
     // A tier the admin renamed is user content: shown as written.
     expect(renderNotification("limit_change", { ...p, tier: "Новичок" }, "en")!.title).toContain("Новичок");
   });

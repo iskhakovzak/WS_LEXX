@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { freshSnapshot } from "./finviz/fundamentals";
 
 type TickerCacheRow = {
   market_cap: string | number | null;
@@ -168,15 +169,22 @@ export async function calcWatchlistScore(opts: {
   const { ticker, catalyst, sector } = opts;
   const tickerUp = ticker.toUpperCase();
 
-  let cache: TickerCacheRow | null = null;
-  try {
-    const { rows } = await pool.query<TickerCacheRow>(
-      `SELECT market_cap, float, average_daily_volume, atr, relative_volume, sector, raw FROM ticker_data_cache WHERE ticker = $1`,
-      [tickerUp]
-    );
-    cache = rows[0] ?? null;
-  } catch (err) {
-    logger.warn({ err, ticker: tickerUp }, "scoreEngine: ticker_data_cache lookup failed (treating as no data)");
+  // Finviz snapshot first (lib/finviz/fundamentals); ticker_data_cache only when it is missing or stale.
+  const snap = await freshSnapshot(tickerUp);
+  let cache: TickerCacheRow | null = snap ? {
+    market_cap: snap.marketCap, float: snap.float ?? snap.sharesOutstanding, average_daily_volume: snap.avgVolume,
+    atr: snap.atr, relative_volume: snap.relVolume, sector: snap.sector, raw: snap.price != null ? { price: snap.price } : null,
+  } : null;
+  if (!snap) {
+    try {
+      const { rows } = await pool.query<TickerCacheRow>(
+        `SELECT market_cap, float, average_daily_volume, atr, relative_volume, sector, raw FROM ticker_data_cache WHERE ticker = $1`,
+        [tickerUp]
+      );
+      cache = rows[0] ?? null;
+    } catch (err) {
+      logger.warn({ err, ticker: tickerUp }, "scoreEngine: ticker_data_cache lookup failed (treating as no data)");
+    }
   }
 
   let recentNews = 0;

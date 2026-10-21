@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   changesOf, checkValue, groupRows, inputOf, nyToTashkent, parseInput, shownBounds, shownProblem, type SettingDef, type SettingRow,
 } from "./desk-settings-model";
+import { SETTINGS } from "../../../../api-server/src/lib/settings/registry";
 
 const ratio: SettingDef = { group: "daily", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" };
 const days: SettingDef = { group: "daily", type: "number", default: 10, min: 3, max: 30, step: 1, unit: "days" };
@@ -78,8 +79,10 @@ describe("desk settings: 24-hour times, the streak rules together, pilot shortcu
     // without its anchor the row stays in its own group
     expect(m.groupRows([b("gamification.missedDayBreaksStreak", "gamification")])[0]!.group).toBe("gamification");
   });
-  it("lists the five pilot settings", () => {
-    expect(m.PILOT_KEYS).toHaveLength(5);
+  it("lists the ten pilot settings — the same keys the server registry flags `pilot: true`", () => {
+    expect(m.PILOT_KEYS).toHaveLength(10);
     expect(m.PILOT_KEYS).toContain("usage.pilotUsers");
+    const flagged = Object.entries(SETTINGS as Record<string, { pilot?: true }>).filter(([, d]) => d.pilot === true).map(([k]) => k);
+    expect([...m.PILOT_KEYS].sort()).toEqual(flagged.sort());
   });
 });

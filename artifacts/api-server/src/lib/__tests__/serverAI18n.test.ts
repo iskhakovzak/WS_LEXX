@@ -93,7 +93,7 @@ describe("academy", () => {
     expect(describeGoal({ metric: "win_rate", target: 50, comparator: "gte", window: 100 })).toBe("Винрейт ≥ 50 % на 100 сделках");
     expect(describeGoal({ metric: "win_rate", target: 50, comparator: "gte", window: 100 }, "en")).toBe("Win rate ≥ 50 % over 100 trades");
     const att = summarizeAttendance(["absent", "absent", "present", "absent"]);
-    const reasons = lagReasons({ today: "2026-10-16", stage: "trainee", status: "active", joinedOn: null, attendance: att, overdueActions: 0, missedGoals: 0, atRiskGoals: 0, lastTradeDate: "2026-10-15", lastJournalDate: "2026-10-15" }, "en");
+    const reasons = lagReasons({ today: "2026-10-16", stage: "junior", status: "active", joinedOn: null, attendance: att, overdueActions: 0, missedGoals: 0, atRiskGoals: 0, lastTradeDate: "2026-10-15", lastJournalDate: "2026-10-15" }, "en");
     expect(reasons.find((x) => x.code === "attendance_low")?.text).toMatch(/^Attendance \d+ %$/);
   });
 });

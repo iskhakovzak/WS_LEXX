@@ -22,24 +22,9 @@ import {
 } from "../lib/analystReaction";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { guardAnalystRefresh } from "../lib/analystRefreshCooldown";
+import { CAP_JOINS_SQL, CAP_USD_SQL, canonicalFirm, capFilterSql, firmFilterSql, readScanStatus, rowCap } from "../lib/analystFeed";
 
 const router: IRouter = Router();
-
-function parseMarketCap(raw: string | null | undefined): number | null {
-  if (!raw) return null;
-  const m = String(raw).trim().match(/^([\d.,]+)\s*([TBMK])?$/i);
-  if (!m) return null;
-  const n = Number(m[1].replace(/,/g, ""));
-  if (!isFinite(n)) return null;
-  const suffix = (m[2] || "").toUpperCase();
-  switch (suffix) {
-    case "T": return n * 1e12;
-    case "B": return n * 1e9;
-    case "M": return n * 1e6;
-    case "K": return n * 1e3;
-    default:  return n;
-  }
-}
 
 // Map raw Yahoo action codes to UI-friendly category names.
 function actionLabel(action: string): "upgrade" | "downgrade" | "initiated" | "maintain" | "reiterated" | "other" {
@@ -104,34 +89,15 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
   if (before) { params.push(before.toISOString()); conds.push(`a.graded_at <= $${params.length}`); }
   if (after)  { params.push(after.toISOString());  conds.push(`a.graded_at >= $${params.length}`); }
   if (tickerParam) { params.push(tickerParam); conds.push(`a.ticker = $${params.length}`); }
-  if (firmParam)   { params.push(`%${firmParam}%`); conds.push(`a.firm ILIKE $${params.length}`); }
+  const next = (v: unknown) => { params.push(v); return `$${params.length}`; };
+  if (firmParam) conds.push(firmFilterSql(firmParam, next)); // every alias of the firm (lib/analystFeed)
+  const baseConds = [...conds], baseParams = [...params];
 
-  // SQL-side market cap filter: parse "3.50T" / "150B" / "200M" suffix from
-  // ticker_data_cache.market_cap and require >= threshold. Pushing this into
-  // SQL is critical because LIMIT is applied after — without it, a query like
-  // "give me ≥$10B actions, limit 500" could return 0 rows even when matches
-  // exist (if first 500 rows are all small-caps).
-  // includeUnknownCap=1 keeps tickers whose market cap is missing / unparseable
-  // (treated as "unknown" rather than "small"). Local/dev data often has no
-  // fundamentals at all, so a strict ≥$NB filter would hide everything.
+  // Min-cap filter in SQL (LIMIT applies after it). Cap: Finviz snapshot → Finviz earnings → Yahoo text (lib/analystFeed).
+  // An unknown cap is excluded unless includeUnknownCap=1; the excluded count is returned in capStats.
   const includeUnknownCap = req.query.includeUnknownCap === "1" || req.query.includeUnknownCap === "true";
-  if (minMarketCap > 0) {
-    params.push(minMarketCap);
-    const capExpr = `(
-      CASE
-        WHEN t.market_cap ~* '^[0-9.,]+\\s*T$' THEN (regexp_replace(t.market_cap, '[^0-9.]', '', 'g'))::numeric * 1e12
-        WHEN t.market_cap ~* '^[0-9.,]+\\s*B$' THEN (regexp_replace(t.market_cap, '[^0-9.]', '', 'g'))::numeric * 1e9
-        WHEN t.market_cap ~* '^[0-9.,]+\\s*M$' THEN (regexp_replace(t.market_cap, '[^0-9.]', '', 'g'))::numeric * 1e6
-        WHEN t.market_cap ~* '^[0-9.,]+\\s*K$' THEN (regexp_replace(t.market_cap, '[^0-9.]', '', 'g'))::numeric * 1e3
-        WHEN t.market_cap ~* '^[0-9.,]+$'      THEN (regexp_replace(t.market_cap, '[^0-9.]', '', 'g'))::numeric
-        ELSE NULL
-      END
-    )`;
-    // NULL >= x is NULL → COALESCE(..., TRUE) lets unknown caps through.
-    conds.push(includeUnknownCap
-      ? `COALESCE(${capExpr} >= $${params.length}, TRUE)`
-      : `${capExpr} >= $${params.length}`);
-  }
+  const capCond = capFilterSql(minMarketCap, includeUnknownCap, next);
+  if (capCond) conds.push(capCond.clause);
 
   params.push(limit);
   const limitParam = `$${params.length}`;
@@ -139,9 +105,8 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
   const sql = `
     SELECT a.id, a.ticker, a.graded_at, a.firm, a.action, a.to_grade, a.from_grade, a.source, a.source_url,
            a.price_target, a.price_target_from,
-           t.market_cap, t.sector, t.long_name
-    FROM analyst_actions_cache a
-    LEFT JOIN ticker_data_cache t ON t.ticker = a.ticker
+           t.market_cap, t.sector, t.long_name, ${CAP_USD_SQL} AS cap_usd
+    FROM analyst_actions_cache a${CAP_JOINS_SQL}
     WHERE ${conds.join(" AND ")}
     ORDER BY a.graded_at DESC
     LIMIT ${limitParam}
@@ -150,8 +115,13 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
   // Surface DB failures as 500 so the UI shows an error state instead of a
   // misleading "no data" empty state.
   let rows: any[];
+  const scan = readScanStatus(); // «обновлено» = last finished scan (job_runs), not the request time
+  const unknownSql = `SELECT COUNT(*)::int AS n, COUNT(DISTINCT a.ticker)::int AS tickers FROM analyst_actions_cache a${CAP_JOINS_SQL}
+    WHERE ${[...baseConds, `${CAP_USD_SQL} IS NULL`].join(" AND ")}`;
+  let excluded: { n: number; tickers: number } | null = null;
   try {
-    ({ rows } = await pool.query<any>(sql, params));
+    [{ rows }, excluded] = await Promise.all([pool.query<any>(sql, params),
+      capCond?.excludesUnknown ? pool.query<{ n: number; tickers: number }>(unknownSql, baseParams).then((r) => r.rows[0] ?? null) : null]);
   } catch (e: any) {
     req.log?.warn({ error: e?.message }, "analyst-actions query failed");
     throw new AppError("COMPUTE_FAILED");
@@ -159,11 +129,11 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
 
   // Market cap filtering already happened in SQL; here we just shape rows.
   const filtered = rows.map((r: any) => {
-    const marketCapNum = parseMarketCap(r.market_cap);
+    const cap = rowCap(r.cap_usd, r.market_cap);
     return {
       id: r.id as number,
       ticker: r.ticker as string,
-      firm: r.firm as string,
+      firm: canonicalFirm(r.firm),
       action: actionLabel(r.action),
       actionRaw: r.action as string,
       toGrade: r.to_grade as string | null,
@@ -178,8 +148,8 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
       gradedAt: r.graded_at ? new Date(r.graded_at).toISOString() : null,
       priceTarget: r.price_target as string | null,
       priceTargetFrom: r.price_target_from as string | null,
-      marketCap: r.market_cap as string | null,
-      marketCapNum,
+      marketCap: cap.marketCap,
+      marketCapNum: cap.marketCapNum,
       sector: r.sector as string | null,
       longName: r.long_name as string | null,
     };
@@ -190,7 +160,8 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
   filtered.forEach((it) => { if (it.firm) firmsSet.add(it.firm); });
   // Additive: how many returned rows have a known vs unknown market cap.
   const capKnown = filtered.reduce((n, it) => n + (it.marketCapNum != null ? 1 : 0), 0);
-  const capStats = { known: capKnown, unknown: filtered.length - capKnown };
+  const capStats = { known: capKnown, unknown: filtered.length - capKnown, excludedUnknown: excluded?.n ?? 0, excludedUnknownTickers: excluded?.tickers ?? 0 };
+  const scanStatus = await scan;
 
   if (groupBy === "ticker") {
     // Group by ticker; sort tickers by most-recent graded_at desc.
@@ -241,7 +212,7 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
       totalGroups: groups.length,
       totalActions: filtered.length,
       availableFirms: Array.from(firmsSet).sort(),
-      capStats,
+      capStats, ...scanStatus,
       filters: {
         minMarketCap, action, includeUnknownCap,
         before: before?.toISOString() ?? null,
@@ -257,7 +228,7 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
     items: filtered,
     count: filtered.length,
     availableFirms: Array.from(firmsSet).sort(),
-    capStats,
+    capStats, ...scanStatus,
     filters: {
       minMarketCap, action, includeUnknownCap,
       before: before?.toISOString() ?? null,
@@ -378,7 +349,7 @@ router.get("/analyst-actions/firms", asyncHandler(async (req, res): Promise<void
   const evs: Array<Ev & { ticker: string }> = [];
 
   for (const r of rows) {
-    const firm = String(r.firm || "").trim();
+    const firm = canonicalFirm(r.firm); // one firm under one name (lib/analystFeed)
     if (!firm) continue;
     const t = new Date(r.graded_at).getTime();
     if (!Number.isFinite(t)) continue;
@@ -480,7 +451,7 @@ router.get("/analyst-actions/watchlist",asyncHandler(async (_req, res): Promise<
 }));
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Market reaction to analyst calls (J8, additive).
+ * Market reaction to analyst calls (J8).
  *   GET /api/analyst-actions/reaction?ticker=X        one ticker: events + reaction, by kind, by firm, price series
  *   GET /api/analyst-actions/reactions?tickers=A,B    compact per-ticker summaries (cache only, warms the rest in background)
  *   GET /api/analyst-actions/firm-weight?days=730     firm «weight»: how strongly the market reacts to its rating calls
@@ -495,25 +466,6 @@ const SYMBOL_RE = /^[A-Z0-9.\-^=]{1,12}$/;
 const REACTION_LOOKBACK_DAYS = 730;
 const BARS_TTL_MS = 20 * 3600_000;
 const BARS_RETRY_MS = 60 * 60_000;
-
-let barsEnsured: Promise<void> | null = null;
-function ensureBarsTable(): Promise<void> {
-  if (!barsEnsured) {
-    barsEnsured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS analyst_bars_cache (
-           ticker TEXT PRIMARY KEY,
-           bars JSONB NOT NULL DEFAULT '[]'::jsonb,
-           from_date TEXT,
-           to_date TEXT,
-           fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         )`,
-      )
-      .then(() => undefined)
-      .catch((err) => { barsEnsured = null; throw err; });
-  }
-  return barsEnsured;
-}
 
 /* ── Yahoo gate: one call at a time, spaced, with an hourly budget ─────────── */
 const YAHOO_GAP_MS = 700;
@@ -544,7 +496,6 @@ type CachedBars = { bars: Bar[]; fetchedAt: number };
 async function readBars(tickers: string[]): Promise<Map<string, CachedBars>> {
   const out = new Map<string, CachedBars>();
   if (!tickers.length) return out;
-  await ensureBarsTable();
   const { rows } = await pool.query<{ ticker: string; bars: Bar[]; fetched_at: Date }>(
     `SELECT ticker, bars, fetched_at FROM analyst_bars_cache WHERE ticker = ANY($1::text[])`,
     [tickers],
@@ -623,7 +574,7 @@ function buildEvents(rows: ActionRow[], bars: Bar[] | null): ReactionEvent[] {
     if (!Number.isFinite(at.getTime())) continue;
     const rd = reactionDay(at);
     out.push({
-      id: r.id, at: at.toISOString(), firm: String(r.firm || "").trim(), kind: c.kind, dir: c.dir, rating: c.rating,
+      id: r.id, at: at.toISOString(), firm: canonicalFirm(r.firm), kind: c.kind, dir: c.dir, rating: c.rating,
       ptChg: c.ptChg == null ? null : +c.ptChg.toFixed(2), reactionDay: rd,
       reaction: bars && bars.length ? reactionOn(bars, rd) : null,
     });
@@ -791,7 +742,6 @@ router.get("/analyst-actions/firm-weight", asyncHandler(async (req, res): Promis
   let cachedTickers: { ticker: string; fetched_at: Date }[];
   let rated: { ticker: string; n: number }[];
   try {
-    await ensureBarsTable();
     ({ rows: cachedTickers } = await pool.query(`SELECT ticker, fetched_at FROM analyst_bars_cache WHERE jsonb_array_length(bars) > 0`));
     ({ rows: rated } = await pool.query(
       `SELECT ticker, COUNT(*)::int AS n FROM analyst_actions_cache

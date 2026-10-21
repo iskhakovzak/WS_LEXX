@@ -14,29 +14,6 @@ import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { reviewT } from "../i18n/ns";
 
-// ─── Additive schema (gameplan pattern) ─────────────────────────────────────
-// trader_ratings is created by migrate.ts; here we only add the rubric/feedback-loop columns.
-let ensured: Promise<void> | null = null;
-function ensureColumns(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE trader_ratings ADD COLUMN IF NOT EXISTS focus TEXT;
-         ALTER TABLE trader_ratings ADD COLUMN IF NOT EXISTS evidence JSONB;
-         ALTER TABLE trader_ratings ADD COLUMN IF NOT EXISTS tier TEXT;
-         ALTER TABLE trader_ratings ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ;
-         ALTER TABLE trader_ratings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureColumns().catch((err) => logger.warn({ err }, "ratings: ensureColumns failed at init"));
-
 /** Strict rubric score: integer 1..10, or null when the value is invalid/absent (never silently coerced). */
 function parseScore(v: unknown): number | null {
   if (v === undefined || v === null || v === "") return null;
@@ -116,7 +93,6 @@ function notifyRating(r: { id: number; trader: string; week: string; overall: nu
 }
 
 router.get("/ratings", asyncHandler(async (req, res): Promise<void> => {
-  await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
   if (scope === undefined) throw unauthorized();
   const curator = req.query.curator as string | undefined;
@@ -144,7 +120,6 @@ router.get("/ratings/rubric", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.get("/ratings/summary", asyncHandler(async (req, res): Promise<void> => {
-  await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
   if (scope === undefined) throw unauthorized();
   const params: unknown[] = [];
@@ -183,7 +158,6 @@ router.get("/ratings/summary", asyncHandler(async (req, res): Promise<void> => {
  * Trader sees own, staff anyone. Week = Monday..Sunday on the NY trading calendar (close date).
  */
 router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => {
-  await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
   if (scope === undefined) throw unauthorized();
   if (!scope) throw badRequest("TRADER_REQUIRED");
@@ -333,7 +307,6 @@ router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => 
  * All six scores are required integers 1..10 (no silent defaults).
  */
 router.post("/ratings", asyncHandler(async (req, res): Promise<void> => {
-  await ensureColumns();
   const curator = req.authUser?.name ?? "";
   const b = (req.body ?? {}) as Record<string, unknown>;
   const { trader, week } = b;
@@ -390,7 +363,6 @@ router.post("/ratings", asyncHandler(async (req, res): Promise<void> => {
 
 /** PATCH /ratings/:id — edit scores/comment/focus of an existing rating (author curator or admin). */
 router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureColumns();
   if (!(await requireCap(req, res, "ratings.write"))) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
@@ -430,7 +402,6 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
 
 /** POST /ratings/:id/ack — the rated trader confirms they read the feedback (closes the loop). */
 router.post("/ratings/:id/ack", asyncHandler(async (req, res): Promise<void> => {
-  await ensureColumns();
   if (!req.authUser) throw unauthorized();
   if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const id = Number(req.params.id);

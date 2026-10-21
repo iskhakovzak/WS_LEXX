@@ -11,6 +11,7 @@ import { riskI18n } from "@/i18n/ns/risk";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { alertLabel, stopMessage, stopStateLabel } from "./labels";
+import { LiveOpenNote } from "./live";
 
 export type DeskTableRow = {
   row: DeskRow;
@@ -136,6 +137,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                   <div className="text-xs text-muted-foreground">
                     {r.today.trades ? c("units.tradesShort", { count: r.today.trades }) : r.lastTradeDate ? t("table.lastTrade", { date: ddmm(r.lastTradeDate) }) : t("table.noTrades")}
                   </div>
+                  <LiveOpenNote live={r.live} />
                 </td>
                 <td className="text-right">
                   {e && e.count > 0 ? (

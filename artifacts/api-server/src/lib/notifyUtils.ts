@@ -13,53 +13,6 @@ export function getSiteUrl(): string {
   return config.siteUrl;
 }
 
-// ─── schema (additive, idempotent; run once per process, retried on failure) ───
-// `notifications` was created by migrate.ts with (user_name, type, idea_id, message, is_read, source, created_at).
-// Everything below is CREATE/ALTER … IF NOT EXISTS, so it is safe on every start and on older databases.
-
-let schemaReady: Promise<void> | null = null;
-export function ensureNotificationSchema(): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS notifications (
-           id SERIAL PRIMARY KEY,
-           user_name TEXT NOT NULL,
-           type TEXT NOT NULL,
-           idea_id INTEGER,
-           message TEXT NOT NULL,
-           is_read BOOLEAN NOT NULL DEFAULT FALSE,
-           source TEXT NOT NULL DEFAULT 'system',
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-         );
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'info';
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title TEXT;
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS link TEXT;
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_type TEXT;
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS entity_id TEXT;
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actor TEXT;
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
-         ALTER TABLE notifications ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
-         CREATE INDEX IF NOT EXISTS notifications_user_created_idx ON notifications (user_name, created_at DESC, id DESC);
-         CREATE INDEX IF NOT EXISTS notifications_user_unread_idx ON notifications (user_name, is_read);
-         CREATE TABLE IF NOT EXISTS notification_prefs (
-           user_name TEXT NOT NULL,
-           type TEXT NOT NULL,
-           in_app BOOLEAN NOT NULL DEFAULT TRUE,
-           mute_until TIMESTAMPTZ,
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (user_name, type)
-         );`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        schemaReady = null;
-        throw err;
-      });
-  }
-  return schemaReady;
-}
-ensureNotificationSchema().catch((err) => logger.warn({ err }, "notifications: ensure schema failed at init"));
 
 // ─── per-user preferences (in-app on/off + mute until, per type or "*") ──────
 
@@ -70,7 +23,6 @@ export async function loadNotificationPrefs(userName: string): Promise<PrefRow[]
   const now = Date.now();
   const hit = prefsCache.get(userName);
   if (hit && hit.exp > now) return hit.rows;
-  await ensureNotificationSchema();
   const { rows } = await pool.query<{ type: string; in_app: boolean; mute_until: Date | null }>(
     `SELECT type, in_app, mute_until FROM notification_prefs WHERE user_name = $1`,
     [userName],
@@ -86,7 +38,6 @@ export function invalidateNotificationPrefs(userName: string): void {
 
 /** Replaces the user's preference rows. Default rows (on, no mute) are not stored: absence == default. */
 export async function saveNotificationPrefs(userName: string, prefs: readonly PrefRow[]): Promise<void> {
-  await ensureNotificationSchema();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

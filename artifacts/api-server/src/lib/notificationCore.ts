@@ -3,7 +3,7 @@
  * routes/notifications.ts (inbox API). Kept dependency-free so it can be exercised by an offline
  * node script (scratchpad check) and by unit tests.
  *
- * Normalized notification (DB `notifications` after ensureNotificationSchema):
+ * Normalized notification (DB `notifications`, columns from src/db/migrations):
  *   type        canonical type key (see NOTIFICATION_TYPES; legacy values are mapped on read via LEGACY_TYPE_ALIASES)
  *   severity    "info" | "warn" | "critical"
  *   title       short headline (nullable for legacy rows → derived from the type label)
@@ -64,6 +64,8 @@ const TYPE_DEFS: readonly NotificationTypeDef[] = [
   { type: "reward_requested", group: "review", severity: "info" },
   { type: "reward_granted", group: "review", severity: "info" },
   { type: "reward_declined", group: "review", severity: "info" },
+  { type: "curator_request", group: "review", severity: "info" },
+  { type: "curator_request_done", group: "review", severity: "info" },
   // risk
   { type: "risk_warn", group: "risk", severity: "warn" },
   { type: "risk_breach", group: "risk", severity: "critical" },

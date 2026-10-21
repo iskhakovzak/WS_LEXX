@@ -2,11 +2,17 @@
  * «Задача дня» service: the pick of a NY challenge date (job trainer.daily-pick at trainer.dailyPickTime, 08:30 NY by
  * default, or lazily on the first read), the viewer's state (DailyChallengeState) and starting / resuming the game.
  *
- *   current challenge  today from the pick time on a trading day; before it (and on weekends / holidays) the previous
- *                      trading day's challenge — then already closed.
- *   open               new games only on the challenge date before 16:00 NY; a game started before the close can be
- *                      finished later (its reveal waits until it is finished).
- *   reveal / ranking   after the viewer finished, or for everyone after the close (not while the viewer is mid-game).
+ *   ranked window      Волна 1, item 1.8 — «Задача дня» is an evening task: the challenge of trading day D is ranked
+ *                      from D's market close (16:00 NY, 13:00 on an early close) until the pick time of the next trading day (08:30 NY by
+ *                      default, trainer.dailyPickTime), so the window runs over the weekend / a holiday. During the
+ *                      session nothing ranked is open (traders trade), the closed challenge can be practised.
+ *   current challenge  today from the close on a trading day; before it (and on weekends / holidays) the previous
+ *                      trading day's challenge — open until the next trading day's pick time, closed after it.
+ *   open               new games only inside the ranked window; a game started inside it can be finished later (its
+ *                      reveal waits until it is finished).
+ *   reveal / ranking   after the viewer finished, or for everyone once the window closed (not while mid-game).
+ *   eligibility        a ticker-day with any desk fill at 15:50–16:00 NY is never picked (lib/trainer/eligibility);
+ *                      existing picks stay as they are.
  *   game               an ordinary sim game (mode 'intraday', 1-minute bars, trainer.dailyPlayMinutes from the open)
  *                      marked by params.daily; one per user and date — an abandoned one is re-activated, never
  *                      replaced (its bars were seen). Played through POST /api/sim/games/:id/step like any game.
@@ -14,7 +20,7 @@
 import { conflict, notFound } from "../http";
 import { logger } from "../logger";
 import { addDays, nyDate, nyMinutes } from "../tradingDate";
-import { isMarketClosed } from "../marketDays";
+import { isMarketClosed, sessionFor } from "../marketDays";
 import { setting } from "../settings/registry";
 import { pickMinutes } from "./schedule";
 import { deskAliases } from "../deskAliases";
@@ -24,9 +30,13 @@ import { gameSnapshot, newGameExtras, remember, settleActive, snapshotOf, type S
 import { forgetAllTrainerHomes, forgetTrainerHome } from "./cache";
 import { buildRanking, dailyStreak, pickOrder, type PickRules } from "./dailyPick";
 import * as ds from "./dailyStore";
+import { withoutBlockedDays } from "./eligibility";
+import { blockedTickerDays } from "./eligibilityStore";
 import type { DailyChallengeState } from "./types";
 
+/** The regular close; an early-close day (13:00) opens its challenge at its own close (lib/marketDays sessionFor). */
 export const CLOSE_MIN = 16 * 60;
+const closeMinOf = async (date: string): Promise<number> => (await sessionFor(date)).closeMin;
 
 async function prevTradingDay(date: string): Promise<string> {
   let d = addDays(date, -1);
@@ -34,15 +44,37 @@ async function prevTradingDay(date: string): Promise<string> {
   return d;
 }
 
+async function nextTradingDay(date: string): Promise<string> {
+  let d = addDays(date, 1);
+  for (let i = 0; i < 10 && (await isMarketClosed(d)); i++) d = addDays(d, 1);
+  return d;
+}
+
+const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+/** The challenge of the last trading day whose close has passed: today after its close (16:00 NY, 13:00 on an early close), else the previous trading day. */
 export async function currentChallengeDate(now = new Date()): Promise<string> {
   const today = nyDate(now);
-  if (!(await isMarketClosed(today)) && nyMinutes(now) >= pickMinutes()) return today;
+  if (!(await isMarketClosed(today)) && nyMinutes(now) >= (await closeMinOf(today))) return today;
   return prevTradingDay(today);
 }
 
-/** New games may start: the challenge date is today and the session has not closed. */
-export function isOpen(date: string, now = new Date()): boolean {
-  return date === nyDate(now) && nyMinutes(now) < CLOSE_MIN;
+export type ChallengeWindow = NonNullable<DailyChallengeState["window"]>;
+
+/** The ranked window of the challenge `date` (NY dates + times): D's close (16:00, 13:00 early) → next trading day at the pick time. */
+export async function challengeWindow(date: string, now = new Date()): Promise<ChallengeWindow> {
+  const until = await nextTradingDay(date);
+  const pick = pickMinutes();
+  const close = await closeMinOf(date);
+  const today = nyDate(now), min = nyMinutes(now);
+  const started = today > date || (today === date && min >= close);
+  const ended = today > until || (today === until && min >= pick);
+  return { from: { date, time: hhmm(close) }, until: { date: until, time: hhmm(pick) }, open: started && !ended };
+}
+
+/** New games may start: `now` is inside the challenge's ranked window. */
+export async function isOpen(date: string, now = new Date()): Promise<boolean> {
+  return (await challengeWindow(date, now)).open;
 }
 
 const rules = (): PickRules => ({
@@ -80,7 +112,9 @@ async function pickNow(date: string): Promise<ds.ChallengeRow | null> {
   const recent = await ds.recentChallenges(date, 400);
   const used = new Set(recent.filter((r) => r.date >= addDays(date, -noRepeat)).map((r) => `${r.ticker}:${r.barsDay}`));
   const recentTickers = new Set(recent.slice(0, 5).map((r) => r.ticker));
-  const order = pickOrder(date, await ds.dailyCandidates(date), rules(), used, recentTickers);
+  // Trainer eligibility: no ticker-day the desk traded in the closing auction (15:50–16:00 NY) — lib/trainer/eligibility.
+  const [cands, blocked] = await Promise.all([ds.dailyCandidates(date), blockedTickerDays()]);
+  const order = pickOrder(date, withoutBlockedDays(cands, (c) => c, blocked), rules(), used, recentTickers);
   for (const c of order.slice(0, 8)) {
     if (!(await buildDay(c.ticker, c.day))) continue;
     const row = await ds.savePick({
@@ -126,9 +160,11 @@ export async function dailyState(viewer: Viewer, now = new Date()): Promise<Dail
   const [mine, dates, played] = await Promise.all([ds.myDailyGame(viewer.id, date), ds.challengeDates(date), ds.playedDates(viewer.id)]);
   const finished = mine?.status === "finished";
   const activeGameId = mine?.status === "active" ? mine.id : null;
-  const show = pick != null && (finished || (!isOpen(date, now) && activeGameId == null));
+  const win = await challengeWindow(date, now);
+  const show = pick != null && (finished || (!win.open && activeGameId == null));
   const base: DailyChallengeState = {
     date, revealed: null, played: finished, activeGameId, gameId: mine?.id ?? null, my: null, ranking: [], streak: dailyStreak(dates, played, date),
+    window: win,
   };
   if (!show || !pick) return base;
   const [rows, participants, excluded] = await Promise.all([
@@ -151,7 +187,7 @@ export async function startDaily(viewer: Viewer, now = new Date()): Promise<Snap
   const mine = await ds.myDailyGame(viewer.id, date);
   forgetTrainerHome(viewer.id);
   if (mine?.status === "finished" || mine?.status === "active") return gameSnapshot(viewer, mine.id);
-  if (!isOpen(date, now)) throw conflict("CONFLICT", { reason: "dailyClosed" });
+  if (!(await isOpen(date, now))) throw conflict("CONFLICT", { reason: "dailyClosed" });
   await settleActive(viewer);
   if (mine) {
     await simStore.reactivate(mine.id);
@@ -188,14 +224,14 @@ export async function startDaily(viewer: Viewer, now = new Date()): Promise<Snap
 }
 
 /**
- * POST /api/trainer/daily/practice — once the challenge is closed (weekend, holiday, after 16:00) and the viewer did not
+ * POST /api/trainer/daily/practice — once the challenge's ranked window closed (the next session's morning) and the viewer did not
  * play it: the same ticker-day as an ordinary, unranked game (no `params.daily`, so it is in no ranking, streak or
  * quest of the challenge). UMID-07: «Задача дня» on a weekend used to be a dead end. Resumes an active game first.
  */
 export async function startDailyPractice(viewer: Viewer, now = new Date()): Promise<Snapshot> {
   if (!setting("trainer.dailyEnabled")) throw notFound("NOT_FOUND", { reason: "dailyDisabled" });
   const date = await currentChallengeDate(now);
-  if (isOpen(date, now)) throw conflict("CONFLICT", { reason: "dailyOpen" });
+  if (await isOpen(date, now)) throw conflict("CONFLICT", { reason: "dailyOpen" });
   const pick = await ensurePick(date);
   if (!pick) throw notFound("NOT_FOUND", { reason: "noChallenge" });
   const mine = await ds.myDailyGame(viewer.id, date);

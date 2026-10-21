@@ -1,7 +1,8 @@
 /**
  * Discussions audience («Кому видна тема») — client mirror of api-server lib/discussionAudience.ts.
  *
- * A thread's `audience` is [] (everyone) or a union of tokens: trainee | junior | trader | senior (academy stage),
+ * A thread's `audience` is [] (everyone) or a union of tokens: junior | trader | senior (academy stage; an old thread's
+ * «trainee» token reads as junior),
  * "staff" (curators/admins), "cohort:<id>". The server decides who reads what; this file only labels, counts and
  * filters what the server already returned.
  */
@@ -21,7 +22,7 @@ export type AudienceOptions = {
   viewer: AudienceViewerInfo;
 };
 
-export const STAGE_TOKENS = ["trainee", "junior", "trader", "senior"] as const;
+export const STAGE_TOKENS = ["junior", "trader", "senior"] as const;
 
 export const AUDIENCE_QUERY_KEY = ["discussions-audience"] as const;
 
@@ -42,7 +43,7 @@ export function isRestricted(audience: readonly string[] | null | undefined): bo
 export function tokenLabel(token: string, opts?: AudienceOptions | null): string {
   const m = /^cohort:(\d+)$/.exec(token);
   if (m) return opts?.cohortLabels?.[m[1]] ?? discussionsI18n.t("audience.cohort", { id: m[1] });
-  return discussionsI18n.tryT(`audience.token.${token}`) ?? token;
+  return discussionsI18n.tryT(`audience.token.${token === "trainee" ? "junior" : token}`) ?? token;
 }
 
 export function audienceText(audience: readonly string[] | null | undefined, opts?: AudienceOptions | null): string {

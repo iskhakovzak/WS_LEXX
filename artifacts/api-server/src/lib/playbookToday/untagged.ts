@@ -38,7 +38,7 @@ function tagSql(withDismissed: boolean): string {
 /** Per close day of [from, to]: own closed trades and how many are tagged. */
 export async function tagDays(trader: string, from: string, to: string): Promise<Map<string, TagDay>> {
   const run = (withDismissed: boolean) => pool.query<{ d: string; trades: number; tagged: number }>(tagSql(withDismissed), [trader, from, to]);
-  // playbook_inbox_dismissed is created lazily by the playbook routes; without it nothing is dismissed.
+  // playbook_inbox_dismissed comes from migration 0234; an older database without it dismisses nothing.
   const { rows } = await run(true).catch((err: { code?: string }) => {
     if (err?.code === "42P01") return run(false);
     throw err;

@@ -1,14 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { getListResearchQueryKey } from "@workspace/api-client-react";
-import { BookOpen, ExternalLink, Link2, LineChart, Unlink } from "lucide-react";
+import { BookOpen, ExternalLink, LineChart } from "lucide-react";
 import { Pill, toneOf, toneText, type Tone } from "@/components/ds";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/contexts/auth-context";
-import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { isNotFound, nullIfMissing } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
@@ -16,14 +11,14 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { splitTickers, type ResearchNote } from "./research-utils";
 import { fmtR, fmtUsd } from "@/lib/format";
-import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { researchI18n } from "@/i18n/ns/research";
-
 import { personName } from "@/i18n";
+
 /* Evidence for a research note: trades linked through `trades.pattern_id`
  * (`GET /api/research/:id/trades`, scoped to the viewer) and the playbook setups promoted from it.
- * All numbers come from the shared API math — WR excludes BE, net = gross − |fees|. */
+ * All numbers come from the shared API math — WR excludes BE, net = gross − |fees|. Read-only: the archive no longer
+ * links or unlinks trades (Волна 2 п. 2.15). */
 
 type LinkedTrade = {
   id: number; ticker: string; date: string; exitDate: string | null; closeDate: string; side: string | null; setup: string | null;
@@ -33,11 +28,6 @@ type LinkedTrade = {
 type TradeStats = { n: number; wins: number; losses: number; be: number; open: number; winRate: number | null; sumR: number | null; grossPnl: number | null; fees: number | null; netPnl: number | null };
 type TradesPayload = { scope: string | null; trades: LinkedTrade[]; stats: TradeStats };
 type PlaybookLite = { id: number; name: string; folder?: string | null; sourceType: string | null; sourceId: number | null };
-type Candidate = {
-  id: number; ticker: string; date: string; side: string | null; setup: string | null; result: string | null;
-  netPnl: number | null; signedR: number | null; trader: string | null; patternId: number | null;
-};
-
 const MIN_EVIDENCE = 5;
 
 function Stat({ label, value, sub, tone, title }: { label: string; value: ReactNode; sub?: ReactNode; tone?: Tone; title?: string }) {
@@ -51,11 +41,7 @@ function Stat({ label, value, sub, tone, title }: { label: string; value: ReactN
 }
 
 export function ResearchEvidence({ r }: { r: ResearchNote }) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const { canEdit } = useAuth();
   const { t: tr } = researchI18n.useT();
-  const [tradeId, setTradeId] = useState("");
   const ticker = splitTickers(r.ticker)[0];
 
   const q = useQuery({
@@ -86,46 +72,6 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
   const promoted = (lineage.data ?? []).filter((p) => p.sourceType === "research" && p.sourceId === r.id);
   const playbookIds = new Set<number>(promoted.map((p) => p.id));
   if (r.playbookId != null) playbookIds.add(r.playbookId);
-
-  // Self-heal lineage: the note remembers the first setup promoted from it (PATCH {playbookId}).
-  const healTarget = r.playbookId == null && promoted[0]?.id;
-  useEffect(() => {
-    if (!canEdit || !healTarget) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        await http.patch(`/api/research/${r.id}`, { playbookId: healTarget });
-        if (!cancelled) void qc.invalidateQueries({ queryKey: getListResearchQueryKey() });
-      } catch { /* lineage is best-effort */ }
-    })();
-    return () => { cancelled = true; };
-  }, [canEdit, healTarget, r.id, qc]);
-
-  const link = useMutation({
-    mutationFn: async ({ id, unlink }: { id: number; unlink: boolean }) => {
-      await http.post(`/api/research/${r.id}/link-trade`, { tradeId: id, unlink });
-    },
-    onSuccess: (_d, v) => {
-      setTradeId("");
-      void qc.invalidateQueries({ queryKey: ["research-trades", r.id] });
-      void qc.invalidateQueries({ queryKey: ["research-candidates", r.id] });
-      void qc.invalidateQueries({ queryKey: getListResearchQueryKey() });
-      toast({ title: v.unlink ? researchI18n.t("toast.unlinked") : researchI18n.t("toast.linked") });
-    },
-    onError: (e) => toast({ title: researchI18n.t("toast.linkFailed"), description: humanizeApiError(e), variant: "destructive" }),
-  });
-
-  // Trades in the note's ticker(s) that can be linked in one click (no trade-ID lookup in the journal).
-  const candidates = useQuery({
-    queryKey: ["research-candidates", r.id],
-    queryFn: async ({ signal }): Promise<Candidate[]> => {
-      return http.get<Candidate[]>(`/api/research/${r.id}/candidates`, { signal }).catch(() => []);
-    },
-    enabled: canEdit && !!ticker,
-    staleTime: STALE.short,
-    retry: false,
-  });
-  const cands = candidates.data ?? [];
 
   if (q.data === null) return null; // endpoint not deployed
   // Live payload when available, else the evidence summary that rides along with the list.
@@ -196,69 +142,10 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
                       <Pill tone={tone} className="text-2xs">{t.result ?? "open"}</Pill>
                       <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                     </Link>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        aria-label={tr("evidence.unlinkAria")}
-                        title={tr("evidence.unlink")}
-                        disabled={link.isPending}
-                        onClick={() => link.mutate({ id: t.id, unlink: true })}
-                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground"
-                      >
-                        <Unlink className="h-3.5 w-3.5" />
-                      </button>
-                    )}
                   </li>
                 );
               })}
             </ul>
-          )}
-
-          {canEdit && cands.length > 0 && (
-            <div className="mt-3 border-t border-border/60 pt-3">
-              <div className="micro-label mb-1">{tr("evidence.candidates", { tickers: splitTickers(r.ticker).join(", ") })}</div>
-              <ul className="flex flex-col">
-                {cands.slice(0, 6).map((c) => {
-                  const rr = c.signedR;
-                  return (
-                    <li key={c.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-[var(--glass-hover-bg)]">
-                      <Link href={links.trade(c.id)} className="flex min-w-0 flex-1 items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        <span className="font-semibold text-foreground">{c.ticker}</span>
-                        <span className="text-xs tabular-nums text-muted-foreground">{c.date}</span>
-                        {c.side && <span className="text-xs text-muted-foreground">{c.side}</span>}
-                        {c.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={c.setup}>{c.setup}</span> : <span className="flex-1" />}
-                        {c.trader && <span className="hidden text-xs text-muted-foreground xl:inline">{personName(c.trader)}</span>}
-                        {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{fmtR(rr, 1)}</span>}
-                        {c.netPnl != null && <span className={cn("w-16 text-right text-xs tabular-nums", toneText(toneOf(c.netPnl)))}>{fmtUsd(c.netPnl, { decimals: 0 })}</span>}
-                      </Link>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 min-h-7 shrink-0 px-2.5"
-                        disabled={link.isPending}
-                        onClick={() => link.mutate({ id: c.id, unlink: false })}
-                        title={c.patternId != null ? tr("evidence.relinkTitle") : tr("evidence.linkTitle")}
-                      >
-                        <Link2 className="h-3.5 w-3.5" aria-hidden="true" /> {c.patternId != null ? tr("evidence.here") : tr("evidence.link")}
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {canEdit && (
-            <form
-              className="mt-3 flex items-center gap-2"
-              onSubmit={(e) => { e.preventDefault(); const id = Number(tradeId); if (Number.isInteger(id) && id > 0) link.mutate({ id, unlink: false }); }}
-            >
-              <label htmlFor={`rs-link-${r.id}`} className="sr-only">{tr("evidence.tradeId")}</label>
-              <Input id={`rs-link-${r.id}`} value={tradeId} onChange={(e) => setTradeId(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={tr("evidence.tradeId")} className="h-8 w-28 text-sm" />
-              <Button type="submit" variant="outline" size="sm" disabled={!tradeId || link.isPending}><Link2 className="h-3.5 w-3.5" /> {tr("evidence.link")}</Button>
-              <span className="text-2xs text-muted-foreground">{tr("evidence.orById")}</span>
-            </form>
           )}
         </>
       )}

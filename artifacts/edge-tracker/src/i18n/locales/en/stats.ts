@@ -162,6 +162,8 @@ export default {
     viewCurve: "Curve",
     viewMonthly: "By month",
     overTrades: "over {count} trades with {unit}",
+    overDays: "over {count} trading days with {unit}",
+    hintDaily: "Cumulative {unit} at each day's close and the drawdown from the peak",
     aria: "Equity curve: total {value}",
     accumulated: "Cumulative",
     drawdown: "Drawdown",

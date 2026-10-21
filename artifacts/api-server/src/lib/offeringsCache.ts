@@ -26,27 +26,29 @@ export function watchCachePlan(o: { storedAt: number | null; day: string; today:
   return o.revalidate ? "fetch" : "stale";
 }
 
-// ── DB cache (survives API restarts): offering_ticker_cache(ticker, kind) ──
-let ensureCachePromise: Promise<void> | null = null;
-function ensureOfferingCache(): Promise<void> {
-  if (!ensureCachePromise) {
-    ensureCachePromise = pool.query(
-      `CREATE TABLE IF NOT EXISTS offering_ticker_cache (
-         ticker TEXT NOT NULL,
-         kind TEXT NOT NULL,
-         payload JSONB NOT NULL,
-         fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-         PRIMARY KEY (ticker, kind)
-       )`,
-    ).then(() => undefined).catch((e) => { ensureCachePromise = null; throw e; });
-  }
-  return ensureCachePromise;
+export type WatchSources = { nasdaq: boolean; edgar: boolean; market: boolean };
+/** In-memory life of a payload with a failed source: the next poll (60 s) retries upstream. */
+export const WATCH_RETRY_TTL_MS = 60_000;
+/** In-memory life of a payload whose enrichment missed the budget: the next poll picks up the warmed caches. */
+export const WATCH_ENRICH_TTL_MS = 90_000;
+/**
+ * How long a freshly fetched GET /offerings/watch payload is trusted (item 1.14: an outage must not look like «сегодня
+ * размещений нет» for 10 minutes). memTtlMs: any failed source → 60 s, unfinished enrichment → 90 s, else fullTtlMs.
+ * storeInDb: only a payload whose listing sources (NASDAQ and EDGAR) both answered — a partial outage page must not
+ * become the cache-first answer after a restart. Missing `sources` (payloads stored before the flags) count as ok.
+ */
+export function watchStorePolicy(o: { sources: WatchSources | null | undefined; complete: boolean; fullTtlMs: number }): { memTtlMs: number; storeInDb: boolean } {
+  const s = o.sources ?? { nasdaq: true, edgar: true, market: true };
+  const listing = s.nasdaq !== false && s.edgar !== false;
+  const memTtlMs = !listing || s.market === false ? WATCH_RETRY_TTL_MS : !o.complete ? WATCH_ENRICH_TTL_MS : o.fullTtlMs;
+  return { memTtlMs: Math.min(memTtlMs, o.fullTtlMs), storeInDb: listing };
 }
+
+// ── DB cache (survives API restarts): offering_ticker_cache(ticker, kind) ──
 export async function dbCacheRead<T>(kind: string, tickers: string[], ttlMs: number): Promise<Map<string, { data: T; ts: number }>> {
   const out = new Map<string, { data: T; ts: number }>();
   if (!tickers.length) return out;
   try {
-    await ensureOfferingCache();
     const { rows } = await pool.query<{ ticker: string; payload: T; fetched_at: Date }>(
       `SELECT ticker, payload, fetched_at FROM offering_ticker_cache WHERE kind = $1 AND ticker = ANY($2::text[])`,
       [kind, tickers],
@@ -62,7 +64,6 @@ export async function dbCacheRead<T>(kind: string, tickers: string[], ttlMs: num
 }
 export async function dbCacheWrite(kind: string, ticker: string, data: unknown): Promise<void> {
   try {
-    await ensureOfferingCache();
     await pool.query(
       `INSERT INTO offering_ticker_cache (ticker, kind, payload, fetched_at) VALUES ($1, $2, $3::jsonb, NOW())
        ON CONFLICT (ticker, kind) DO UPDATE SET payload = EXCLUDED.payload, fetched_at = NOW()`,

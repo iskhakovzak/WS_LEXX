@@ -18,6 +18,13 @@ export default {
     searching: "Qidirilmoqda…",
     pick: "Savdoni tanlash",
   },
+  overlay: {
+    setup: "Setap: {name}",
+    setupTitle: "Belgilashdagi savdo setapi",
+    plan: { one: "Reja: {count} daraja", other: "Reja: {count} daraja" },
+    planOwn: "Shu kun uchun ertalabki rejangizdagi darajalar — grafikda «Reja» punktiri",
+    planDesk: "Shu kun uchun desk rejasidagi darajalar — grafikda «Reja» punktiri",
+  },
   openInTrades: "«Savdolar»da ochish",
   openInTradesAria: "Savdoni «Savdolar»da ochish",
   dayReview: "Shu kun tahlili",

@@ -1,7 +1,8 @@
 /**
  * Simulator scenario picking (moved out of service.ts for «Тренажёр 2»): a fair ticker-day / daily window the player
  * has not seen, with the level's filters. Free intraday games are stored on 1-minute base bars whenever the day has
- * them (the client aggregates into the display tf), 5-minute otherwise; 1-minute days are preferred.
+ * them (the client aggregates into the display tf), 5-minute otherwise; 1-minute days are preferred. Intraday days the
+ * desk traded in the closing auction (15:50–16:00 NY) are out of the pool (lib/trainer/eligibility).
  */
 import { nyDate, nyMinutes, addDays } from "../tradingDate";
 import {
@@ -9,6 +10,8 @@ import {
   type BuiltScenario, type Difficulty, type IntradayTf, type SimMode, type SimTf,
 } from "./scenario";
 import * as store from "./store";
+import { withoutBlockedDays } from "../trainer/eligibility";
+import { blockedTickerDays } from "../trainer/eligibilityStore";
 
 type PickViewer = { id: number };
 
@@ -46,8 +49,9 @@ export async function pickIntraday(viewer: PickViewer, d: Difficulty, rnd: () =>
   const need1m = spec.tf !== "5m";
   const cands = await store.intradayCandidates(lastPlayableDay(), need1m);
   if (!cands.length) return null;
-  const [recent, daily] = await Promise.all([store.recentScenarioKeys(viewer.id, "intraday"), store.recentDailyKeys()]);
-  const open = cands.filter((c) => !daily.has(`${c.ticker}:${c.day}`));
+  const [recent, daily, blocked] = await Promise.all([store.recentScenarioKeys(viewer.id, "intraday"), store.recentDailyKeys(), blockedTickerDays()]);
+  // Trainer eligibility: never a ticker-day the desk traded in the closing auction (lib/trainer/eligibility).
+  const open = withoutBlockedDays(cands, (c) => c, blocked).filter((c) => !daily.has(`${c.ticker}:${c.day}`));
   const fresh = open.filter((c) => !recent.has(`${c.ticker}:${c.day}`));
   const base = fresh.length ? fresh : open;
   // The archive already knows each day's gap and range: filter before reading any bars.

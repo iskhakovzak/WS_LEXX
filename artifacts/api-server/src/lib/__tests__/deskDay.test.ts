@@ -52,26 +52,31 @@ describe("deskDay — privacy", () => {
     expect(me.net).toBe(48);
   });
 
-  it("another trader's trade has no $, no sizes — only prices, times, roles, side, result, R", () => {
-    for (const t of day.trades.filter((x) => x.trader !== "Kirill")) {
-      expect(t.redacted).toBe(true);
-      expect(t.net).toBeNull();
-      expect(t.qty).toBeNull();
-      for (const l of t.legs) { expect(l.qty).toBeNull(); expect(l.realized).toBeNull(); }
+  it("own trades only (owner rule 2026-10-21): other traders' rows and trades are not in a trader's answer", () => {
+    expect(day.trades.map((t) => t.trader)).toEqual(["Kirill"]);
+    expect(day.traders.map((t) => t.name)).toEqual(["Kirill"]);
+    expect(day.takeaways.some((t) => t.kind === "best" && t.trader !== "Kirill")).toBe(false);
+    expect(day.office?.contributors.every((c) => c.trader === "Kirill")).toBe(true);
+    expect(JSON.stringify(day)).not.toMatch(/Roman|Gleb|Pavel/);
+  });
+
+  it("desk aggregates need >= 3 traders: with two, a trader gets no office walk and no takeaways", () => {
+    const two = rows.slice(0, 2);
+    const d = buildDeskDay("META", DATE, two, computeStructures(two, execs.filter((e) => e.trade_id <= 2)), asTrader);
+    expect(d.office).toBeNull();
+    expect(d.takeaways).toEqual([]);
+  });
+
+  it("staff: another trader's trade keeps prices, times, roles, side, result, R (and $)", () => {
+    const s = buildDeskDay("META", DATE, rows, structures, asStaff);
+    for (const t of s.trades.filter((x) => x.trader !== "Kirill")) {
       expect(t.legs.length).toBeGreaterThan(0);
       expect(t.legs.every((l) => l.price > 0 && !!l.at && !!l.role)).toBe(true);
     }
-    for (const tr of day.traders.filter((x) => x.name !== "Kirill")) { expect(tr.net).toBeNull(); expect(tr.redacted).toBe(true); }
-    const roman = day.trades.find((t) => t.trader === "Roman")!;
+    const roman = s.trades.find((t) => t.trader === "Roman")!;
     expect(roman.r).toBe(3);
     expect(roman.side).toBe("short");
     expect(roman.result).toBe("win");
-  });
-
-  it("no $ or share count anywhere in the JSON for another trader (no price × qty oracle)", () => {
-    const json = JSON.stringify(day.trades.filter((t) => t.trader !== "Kirill"));
-    expect(json).not.toMatch(/"(qty|realized|net)":\s*[-\d]/);
-    expect(json).not.toMatch(/positionBefore|positionAfter|maxPosition|riskUsd|risk_usd|pnl|fees/);
   });
 
   it("staff see everyone's money", () => {
@@ -84,12 +89,13 @@ describe("deskDay — privacy", () => {
 
   it("guest / anonymous viewer sees no money at all", () => {
     const g = buildDeskDay("META", DATE, rows, structures, { name: null, staff: false });
-    expect(g.trades.every((t) => t.redacted && t.net == null)).toBe(true);
+    expect(g.trades).toEqual([]);
+    expect(g.traders).toEqual([]);
   });
 });
 
 describe("deskDay — shape", () => {
-  const day = buildDeskDay("META", DATE, rows, structures, asTrader);
+  const day = buildDeskDay("META", DATE, rows, structures, asStaff);
 
   it("legs carry roles, direction and times", () => {
     const roman = day.trades.find((t) => t.trader === "Roman")!;
@@ -114,7 +120,7 @@ describe("deskDay — shape", () => {
 });
 
 describe("deskDay — takeaways", () => {
-  const day = buildDeskDay("META", DATE, rows, structures, asTrader);
+  const day = buildDeskDay("META", DATE, rows, structures, asStaff);
 
   it("best trade with its entry time from the open", () => {
     const best = day.takeaways.find((t) => t.kind === "best");
@@ -136,7 +142,7 @@ describe("deskDay — takeaways", () => {
   });
 
   it("deterministic and empty for a single trader", () => {
-    expect(buildDeskDay("META", DATE, rows, structures, asTrader).takeaways).toEqual(day.takeaways);
+    expect(buildDeskDay("META", DATE, rows, structures, asStaff).takeaways).toEqual(day.takeaways);
     const one = day.traders.slice(0, 1) as DeskTrader[];
     expect(takeaways(one, day.trades as DeskTrade[])).toEqual([]);
   });

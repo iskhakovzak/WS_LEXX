@@ -19,6 +19,7 @@ import { LeaderboardTab } from "@/components/ratings/leaderboard-tab";
 import { ScorecardsTab } from "@/components/ratings/scorecards-tab";
 import { MyProgressTab } from "@/components/ratings/my-progress-tab";
 import { QuestsProgressTab } from "@/components/quests/progress-tab";
+import { useQuestsMe } from "@/components/quests/api";
 import { SeasonTab } from "@/components/gamification/season-tab";
 import { QuestsGamificationExtras, QuestsGamificationHeader } from "@/components/gamification/quests-blocks";
 import { gamificationI18n } from "@/i18n/ns/gamification";
@@ -42,8 +43,10 @@ export default function RatingsPage() {
   const { t: tq } = questsI18n.useT();
   const { t: tg } = gamificationI18n.useT();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
-  // Quests are a trader's own loop: staff see a trader's quests in the curator profile, not an empty personal tab.
-  const questsOn = !!me && !isCurator;
+  // Quests are a trader's own loop: staff see a trader's quests in the curator profile. Staff who trade themselves (the
+  // server gives them their own quests) get the personal tab too.
+  const staffQuests = useQuestsMe(!!me && isCurator);
+  const questsOn = !!me && (!isCurator || (staffQuests.data?.quests?.length ?? 0) > 0);
 
   const [tab, setTab] = useStoredState<Tab>("ratings.tab", isCurator ? "curator" : me ? "me" : "leaderboard", TABS);
   // ?tab=quests (dashboard quest strip, rewards block, quest / achievement notifications) wins over the stored tab.

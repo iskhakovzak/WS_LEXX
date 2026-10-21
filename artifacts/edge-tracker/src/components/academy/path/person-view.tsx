@@ -224,7 +224,7 @@ export function PendingRequest({ req, canDecide, isSelf, stages }: { req: Promot
 function AssignStage({ user, current, config }: { user: string; current: StageKey | null; config: PathConfig | undefined }) {
   const { t } = academyPathI18n.useT();
   const { toast } = useToast();
-  const [stage, setStage] = React.useState<StageKey>(current ?? "trainee");
+  const [stage, setStage] = React.useState<StageKey>(current ?? "junior");
   const [comment, setComment] = React.useState("");
   const m = usePathMutation((v: { user: string; stage: StageKey; comment: string }) => http.post("/api/academy/path/assign", v));
   return (

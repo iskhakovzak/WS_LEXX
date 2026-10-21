@@ -392,7 +392,7 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
        FROM trades t WHERE t.deleted_at IS NULL AND ${SCOPE} AND ${CLOSED} GROUP BY 1 ORDER BY 1 DESC LIMIT 120`,
       [traderParam],
     ),
-    pool.query(`SELECT date::text AS date, name FROM holiday_calendar WHERE type = 'holiday' AND date::text >= $1 AND date::text <= $2 ORDER BY 1`, [nyToday, addDays(nyToday, 30)]).catch(quiet),
+    pool.query(`SELECT date::text AS date, name, description FROM holiday_calendar WHERE type = 'holiday' AND date::text >= $1 AND date::text <= $2 ORDER BY 1`, [nyToday, addDays(nyToday, 30)]).catch(quiet),
     pool.query(
       `SELECT t.id, t.ticker, LEFT(t.date, 10) AS date, t.side, t.setup, t.trader, ${HORIZON} AS horizon,
               t.qty::float AS qty, t.risk_usd::float AS "riskUsd", t.entry::float AS entry, t.stop::float AS stop, t.source,
@@ -437,7 +437,7 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
        GROUP BY 1 ORDER BY 2 DESC LIMIT 40`,
       [traderParam, addDays(today, -14)],
     ).catch(() => null),
-    pool.query(`SELECT DISTINCT UPPER(TRIM(w.ticker)) AS ticker FROM watchlist w WHERE w.deleted_at IS NULL AND w.in_play = TRUE LIMIT 40`).catch(() => null),
+    pool.query(`SELECT DISTINCT UPPER(TRIM(w.ticker)) AS ticker FROM watchlist w WHERE w.deleted_at IS NULL AND w.owner IS NULL AND w.in_play = TRUE LIMIT 40`).catch(() => null),
   ]);
 
   const vw = recentViolationWindow(today);
@@ -497,7 +497,7 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
     : null;
 
   const plan = gamePlan?.rows[0];
-  const holidays = holidayRows.rows.map((x: any) => ({ date: String(x.date), name: calendarName(String(x.name), langOf(req)) ?? String(x.name) }));
+  const holidays = holidayRows.rows.map((x: any) => ({ date: String(x.date), name: calendarName(String(x.name), langOf(req)) ?? String(x.name), earlyClose: /^early close/i.test(String(x.description ?? "")) }));
   const journalTraders = journalRows ? journalRows.rows.map((x: any) => String(x.trader)) : null;
 
   const first = <T,>(q: { rows: any[] }, f: (r: any) => T): T | null => (q.rows[0] ? f(q.rows[0]) : null);
@@ -573,7 +573,7 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
       nyMinutes: nyMinutes(),
       session: nySession(),
       weekend: isWeekend(nyToday),
-      holidayToday: holidays.find((h) => h.date === nyToday)?.name ?? null,
+      holidayToday: holidays.find((h) => h.date === nyToday && !h.earlyClose)?.name ?? null,
       holidays,
     },
   });

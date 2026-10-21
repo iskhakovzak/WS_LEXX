@@ -195,7 +195,11 @@ const Row = memo(function Row({
       <td className={numCell}>
         <div className="leading-tight">
           <div className="text-foreground">{fmtPrice(price ?? o.offerPrice, { dollar: true })}</div>
-          {o.offerPrice != null && price != null && <div className="text-2xs text-muted-foreground">{t("list.offerShort", { price: fmtPrice(o.offerPrice, { dollar: true }) })}</div>}
+          {o.offerPrice != null && price != null && (
+            <div className={cn("text-2xs text-muted-foreground", o.offerPriceSuspect && "line-through opacity-60")} title={o.offerPriceSuspect ? t("list.offerSuspect") : undefined}>
+              {t("list.offerShort", { price: fmtPrice(o.offerPrice, { dollar: true }) })}{o.offerPriceSuspect && <span className="sr-only"> {t("list.offerSuspect")}</span>}
+            </div>
+          )}
           {o.offerPrice == null && o.priceRange && <div className="text-2xs text-muted-foreground">${o.priceRange}</div>}
         </div>
       </td>

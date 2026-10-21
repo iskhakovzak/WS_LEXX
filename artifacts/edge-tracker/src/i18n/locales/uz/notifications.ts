@@ -42,6 +42,8 @@ export default {
     reward_requested: { label: "Mukofot soʻrovi", description: "Treyder mukofot soʻradi — topshiring yoki rad eting" },
     reward_granted: { label: "Mukofot topshirildi", description: "Kurator mukofotingizni topshirilgan deb belgiladi" },
     reward_declined: { label: "Mukofot soʻrovi rad etildi", description: "Kurator mukofot soʻrovini rad etdi" },
+    curator_request: { label: "Kuratorga soʻrov", description: "Treyder kuratordan yordam soʻradi" },
+    curator_request_done: { label: "Kurator soʻrovga javob berdi", description: "Kurator soʻrovingizni yopdi" },
     risk_warn: { label: "Limitga yaqin", description: "Kunlik / haftalik limit yoki pasayishning ≥ 70% qismi ishlatildi" },
     risk_breach: { label: "Limit oshib ketdi", description: "Kunlik / haftalik limit yoki maks. pasayish buzildi — savdo toʻxtatiladi" },
     risk_repeat_breach: { label: "Takroriy buzilish", description: "Treyder shu haftada ikkinchi marta limitni buzdi — kurator tahlili kerak" },

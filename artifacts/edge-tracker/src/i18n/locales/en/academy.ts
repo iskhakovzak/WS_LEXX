@@ -19,6 +19,9 @@ export default {
     attachmentsAria: "Lesson materials",
     setupLessons: "How to trade this setup",
     progress: "Progress",
+    ruLesson: "lesson in Russian",
+    ruCourse: "course in Russian",
+    ruHint: "Academy materials are in Russian only for now",
   },
   time: {
     yourTime: "New York time. Yours: {local}",

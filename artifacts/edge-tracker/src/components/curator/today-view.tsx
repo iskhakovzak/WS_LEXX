@@ -20,6 +20,7 @@ import { fmtDate, fmtUsd } from "@/lib/format";
 import { TemplateDialog } from "./template-dialog";
 import { AttentionPanel } from "./attention-panel";
 import { QuestEventChips } from "./quest-events";
+import { CuratorRequestsPanel } from "./requests-panel";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -139,7 +140,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
           hint={[c.overdueActions ? t("today.agreements") : t("today.noOverdue"), c.oneOnOneDue ? t("today.oneOnOneDue", { count: c.oneOnOneDue }) : null].filter(Boolean).join(" · ")}
         />
       </StatGrid>
-
+      <CuratorRequestsPanel scope={scope} onOpenTrader={onOpenTrader} />
       <BentoGrid>
         <AttentionPanel data={data} onOpenTrader={onOpenTrader} onTemplate={setTemplateFor} onReviewDay={review.open} extra={attentionExtra} />
 
@@ -255,7 +256,10 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
                 <li key={q.id} className="tile grid min-w-0 grid-cols-[7rem_minmax(0,8rem)_minmax(0,1fr)_5rem_auto] items-center gap-x-3 px-3 py-1.5">
                   <Pill tone={QUEUE_TONE[q.kind]} className="w-full min-w-0 justify-center" title={QUEUE_LABEL[q.kind]}><span className="truncate">{QUEUE_LABEL[q.kind]}</span></Pill>
                   <span className="truncate text-sm font-medium text-foreground" title={personName(q.trader)}>{personName(q.trader)}</span>
-                  <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
+                    {q.note && <span className="truncate text-xs text-muted-foreground/80" title={q.note}>«{q.note}»</span>}
+                  </span>
                   <span
                     className={cn("text-right text-xs tabular-nums", q.overdue ? "font-medium text-down" : "text-muted-foreground")}
                     title={q.overdue ? t("today.overdueTitle", { hours: q.slaHours }) : t("today.waitingTitle", { hours: q.slaHours })}

@@ -249,6 +249,7 @@ export default {
   canvas: {
     stop: "Стоп {price}",
     target: "Цель {price}",
+    planShort: "План",
     stopShort: "Стоп",
     targetShort: "Цель",
     avgEntry: "Ср. вход {price}",

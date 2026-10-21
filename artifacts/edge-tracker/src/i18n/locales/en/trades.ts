@@ -56,7 +56,7 @@ export default {
   },
   tagging: {
     kind: {
-      setup: { label: "Setup", placeholder: "Find or type a setup" },
+      setup: { label: "Setup", placeholder: "Find a setup: number or name" },
       mistake: { label: "Mistake", placeholder: "Find or type a mistake" },
       emotion: { label: "Emotion", placeholder: "Find or type an emotion" },
     },
@@ -65,6 +65,14 @@ export default {
     clearSetup: "Remove setup",
     addAria: "{kind}: add ({key})",
     chipTitle: "{kind}: {value}",
+  },
+  /** Setup tag = an office playbook setup (components/shared/setup-picker.tsx; wave 1, 1.2). */
+  setupPicker: {
+    label: "Playbook setup",
+    choose: "Choose a setup",
+    search: "Setup number or name",
+    empty: "No matching setups",
+    acceptTitle: "Accept the suggestion: {name} ({pct}%)",
   },
   bulk: {
     toolbar: "Actions for selected: {count}",
@@ -293,6 +301,10 @@ export default {
     next: "Next trade (J)",
     tabs: { overview: "Overview", chart: "Chart", replay: "Replay", executions: "Fills", ai: "AI review", social: "Discussion" },
     markup: "Tags",
+    markupParts: { setup: "Setup", mistakes: "Mistakes", grade: "Grade" },
+    gradeAria: "Trade grade",
+    chart: "Chart",
+    chartOpen: "Replay and tools",
     quality: "Execution quality",
     review: "Review",
     noData: "No data",
@@ -379,9 +391,6 @@ export default {
   },
   related: {
     ideaStatus: { draft: "Draft", published: "Published", approved: "Approved", needs_work: "Needs work", rejected: "Rejected", converted: "Trade" },
-    checklistNone: "No checklist attached",
-    checklistPassed: "Checklist passed",
-    checklistFailed: "Checklist failed",
     playbookNoSetup: "No setup with this name.",
     playbookSetSetup: "Set a setup — we’ll pull in the playbook entry.",
     openInPlaybook: "Open in playbook: {name}",

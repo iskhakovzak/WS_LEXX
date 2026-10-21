@@ -103,6 +103,21 @@ export default {
     ruleFallback: "qoida",
     consequence: "Oqibat: {consequence}",
   },
+  stageTemplates: {
+    junior: {
+      daily_stop: "Risk limiti boʻyicha kunlik stop",
+      max_trades: "Kuniga 8 tadan ortiq savdo yoʻq",
+      no_size_up: "Zarardan keyin hajmni oshirmaslik",
+      stop_after_losses: "Ketma-ket 2 ta zarar — kun tugadi",
+      no_overnight: "Overnaytsiz",
+    },
+    trader: {
+      daily_stop: "Risk limiti boʻyicha kunlik stop",
+      max_trades: "Kuniga 15 tadan ortiq savdo yoʻq",
+      no_size_up: "Zarardan keyin hajmni oshirmaslik",
+      stop_after_losses: "Ketma-ket 3 ta zarar — kun tugadi",
+    },
+  },
   activity: {
     deskRule: "Butun desk uchun qoida",
     officeRule: "{trader} uchun ofis qoidasi",

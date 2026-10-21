@@ -21,6 +21,12 @@ export default {
     signInTitle: "Rejani koʻrish uchun kiring",
     signInHint: "Masshtablash rejasi treyderlar va kuratorlar uchun ochiq.",
   },
+  pathPointer: {
+    desc: "Sizning rivojingiz bitta sahifada",
+    title: "Sizning rivojingiz «Treyder yoʻli»da",
+    hint: "U yerda keyingi bosqichga tayyorlikning bitta bahosi bor: nima bajarilgan va nima yetishmayapti. Limit va darajalarni kurator belgilaydi.",
+    cta: "«Treyder yoʻli»ni ochish",
+  },
   action: {
     promote: "Koʻtarilish",
     demote: "Tushirilish",
@@ -182,7 +188,7 @@ export default {
     colProgress: "Keyingi darajagacha",
     colProgressFull: "Keyingi darajagacha progress",
     colDiscipline: "Intizom",
-    colDisciplineFull: "Intizom",
+    colDisciplineFull: "Intizom indeksi (0–100)",
     colBreaches: "Buzilishlar",
     colBreachesFull: "Limit buzilishlari",
     colActions: "Amallar",

@@ -44,30 +44,9 @@ import { langOf } from "../i18n";
  *   GET    /events/:id/trades            scoped trades + net stats (one math: lib/tradeMath)
  *   POST   /events/:id/link-trade        {tradeId, unlink?} — set/clear trades.event_id (own trade or staff)
  *
- * Additive columns (created_by, session, pattern_id) are ensured here, never in migrate.ts.
+ * Columns created_by, session, pattern_id: src/db/migrations.
  */
 const router: IRouter = Router();
-
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE market_events ADD COLUMN IF NOT EXISTS created_by TEXT;
-         ALTER TABLE market_events ADD COLUMN IF NOT EXISTS session TEXT;
-         ALTER TABLE market_events ADD COLUMN IF NOT EXISTS pattern_id INTEGER;
-         CREATE INDEX IF NOT EXISTS market_events_date_idx ON market_events (date);
-         CREATE INDEX IF NOT EXISTS market_events_ticker_upper_idx ON market_events (UPPER(ticker));`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "events: ensure columns failed at init"));
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SESSIONS = ["BMO", "RTH", "AMC"] as const;
@@ -234,7 +213,6 @@ const ListExtra = z.object({
 });
 
 router.get("/events", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const query = ListEventsQueryParams.safeParse(req.query);
   if (!query.success) throw query.error;
@@ -295,7 +273,6 @@ async function findDuplicate(ticker: string, date: string, eventType: string, ex
 }
 
 router.post("/events", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateEventBody.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
@@ -367,7 +344,6 @@ async function upcomingEarnings(days: number): Promise<EarningsLite[]> {
 }
 
 router.get("/events/today", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
   if (scope === undefined) throw unauthorized();
   const date = typeof req.query.date === "string" && ISO_DATE.test(req.query.date) ? req.query.date : nyDate();
@@ -406,7 +382,6 @@ router.get("/events/today", asyncHandler(async (req, res): Promise<void> => {
  */
 router.get("/events/holding", asyncHandler(async (req, res): Promise<void> => {
   const evT = eventsT.tFor(langOf(req));
-  await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
   if (scope === undefined) throw unauthorized();
   const daysRaw = Number(req.query.days);
@@ -449,7 +424,6 @@ router.get("/events/holding", asyncHandler(async (req, res): Promise<void> => {
 
 /** Post-event edge table: per event type — reaction stats and the (scoped) trade stats around those events. */
 router.get("/events/stats", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
   if (scope === undefined) throw unauthorized();
   const ticker = typeof req.query.ticker === "string" ? req.query.ticker.trim().toUpperCase() : "";
@@ -498,7 +472,6 @@ router.get("/events/day-book", asyncHandler(async (req, res): Promise<void> => {
 
 /** Staff: upsert earnings events from the calendar for the next N weekdays (session BMO/AMC, EPS estimate in summary). */
 router.post("/events/import-earnings", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const evT = eventsT.tFor(langOf(req));
   if (!(await requireStaff(req, res))) return;
   const daysRaw = Number(req.query.days ?? req.body?.days);
@@ -525,7 +498,6 @@ router.post("/events/import-earnings", asyncHandler(async (req, res): Promise<vo
 // ─── Single event ──────────────────────────────────────────────────────────
 
 router.get("/events/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const params = GetEventParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -564,7 +536,6 @@ async function applyPatch(id: number, patch: Record<string, unknown>): Promise<E
 }
 
 router.patch("/events/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = UpdateEventParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -602,7 +573,7 @@ router.patch("/events/:id", asyncHandler(async (req, res): Promise<void> => {
   res.json(out);
 }));
 
-/** Outcome after the fact (reaction / move / volume / summary): any member may fill it in. */
+/** Outcome after the fact (reaction / move / volume / summary): the event's author or staff, like any other edit. */
 const OutcomeBody = z.object({
   reaction: z.string().trim().max(60).nullish(),
   percentMove: z.coerce.number().min(-1000).max(10000).nullish(),
@@ -611,13 +582,13 @@ const OutcomeBody = z.object({
 }).strict();
 
 router.post("/events/:id/outcome", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = OutcomeBody.safeParse(req.body);
   if (!body.success) throw body.error;
   const existing = await loadEvent(id);
   if (!existing) throw notFound("EVENT_NOT_FOUND");
+  if (!(await canModifyEvent(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   const b = body.data;
   const event = await applyPatch(id, {
     reaction: b.reaction, percentMove: b.percentMove !== undefined ? numToStr(b.percentMove) : undefined, volume: b.volume, summary: b.summary,
@@ -628,7 +599,6 @@ router.post("/events/:id/outcome", asyncHandler(async (req, res): Promise<void> 
 }));
 
 router.delete("/events/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteEventParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -641,7 +611,6 @@ router.delete("/events/:id", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.post("/events/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadEvent(id, true);
@@ -657,7 +626,6 @@ router.post("/events/:id/restore", asyncHandler(async (req, res): Promise<void> 
  * Scoped by role (trader → own trades) and aggregated with the shared math (net P&L, signed R, W/(W+L)).
  */
 router.get("/events/:id/trades", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
   if (scope === undefined) throw unauthorized();
@@ -680,7 +648,6 @@ router.get("/events/:id/trades", asyncHandler(async (req, res): Promise<void> =>
 const LinkBody = z.object({ tradeId: z.coerce.number().int().positive(), unlink: z.coerce.boolean().optional() });
 
 router.post("/events/:id/link-trade", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = LinkBody.safeParse(req.body);

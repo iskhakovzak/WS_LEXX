@@ -9,12 +9,18 @@
  *          Сетап группы: принятый в сделку (accepted), иначе предложенный.
  *   POST /api/setups-auto/accept-bulk {tradeIds[≤500], minConfidence?} — принять пачку актуальных предложений одним UPDATE
  *          (доступ проверяется по каждому трейдеру; устаревшие/отклонённые/ниже порога — пропускаются).
- *   POST /api/setups-auto/:tradeId/accept {setup?}       — записать сетап в сделку (тот же механизм, что у правки сделки:
- *          drizzle update trades.setup + logActivity + invalidateDashboardCache), пометить предложение принятым.
+ *   POST /api/setups-auto/:tradeId/accept {setup?, playbookId?} — записать сетап в сделку: playbook_id сетапа офиса, в
+ *          который отображается класс (lib/tradesSetupLink CLASS_TO_OFFICE), и его имя в trades.setup (wave 1, 1.2);
+ *          класс без сетапа (время / удержание) пишется только текстом. Пометить предложение принятым.
+ *   GET  /api/setups-auto/setups                         — сетапы офиса для выбора (S на /trades, дневник): id, номер,
+ *          имя, папка, locked (замок уровня зрителя).
+ *   GET  /api/setups-auto/for-trades?ids=1,2             — предложения для видимых сделок без сетапа, уже с сетапом офиса
+ *          (принять = один тап).
  *   POST /api/setups-auto/:tradeId/reject                — пометить предложение отклонённым (в сделку ничего не пишется).
  *   POST /api/setups-auto/:tradeId/recompute             — пересчитать предложение (свечи заново не качаются, если есть в кэше).
  *
- * В таблицу trades автоматически ничего не пишется — только по явному accept. Предложения хранятся в
+ * В таблицу trades автоматически ничего не пишется — только по явному accept. Предложения для новых сделок считает
+ * задача candles.archive после каждой синхронизации (lib/setupsAuto runAutoClassify). Предложения хранятся в
  * trade_setup_suggestions (создаётся идемпотентно), ключ trade_id + inputs_hash (меняется при правке сделки/версии правил).
  * Свечи — только через функции routes/candles.ts (кэш candles_cache; Yahoo не дёргается повторно).
  */
@@ -25,58 +31,21 @@ import { db, pool, tradesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, canAccessTrade, isGuestUser } from "../lib/auth";
 import { logActivity } from "../lib/activity";
-import { logger } from "../lib/logger";
 import { invalidateDashboardCache } from "../lib/hotCache";
 import { invalidateTradesPageCache } from "../lib/tradesPageCache";
-import { addDays } from "../lib/tradingDate";
-import {
-  parseDateStrict, pickIntervalForAge, ageDaysOf, fetchSingleDayWithCache, fetchDailyRange, getPrevDailyCloseCached,
-  type Candle, type Interval,
-} from "../lib/candles/market";
 import { loadBehaviorRows, rowToBehaviorTrade } from "./behavior";
-import { classifySetup, classifyFromFeatures, inputsHash, setupLabelOf, CLASSIFIER_VERSION, type ClassifierTrade, type MarketInputs, type SetupFeatures, type SetupSuggestion } from "../lib/setupClassifier";
+import { classifyFromFeatures, inputsHash, setupLabelOf, CLASSIFIER_VERSION, type SetupFeatures } from "../lib/setupClassifier";
+import { computeBatch, inFlight, loadSuggestions, suggestionLink, toClassifierTrade, type SuggestionRow } from "../lib/setupsAuto";
+import { loadOfficeSetups, resolveSetupLink, setupTagged, type OfficeSetup } from "../lib/tradesSetupLink";
 import { setupsT } from "../lib/setupsI18n";
 import { langOf, type Lang } from "../i18n";
 import { hourBucketsFor, hourBucket, type BehaviorTrade } from "../lib/behaviorEngine";
 import { bootstrapMean, wilson, round2, SMALL_SAMPLE } from "../lib/behaviorStats";
 import { can } from "../lib/permissions";
+import { lockedSetupIds } from "../lib/playbookLock";
 import { AppError, badRequest, conflict, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
-
-/* ─── Таблица ─────────────────────────────────────────────────────────────── */
-
-let ensured: Promise<void> | null = null;
-function ensureTable(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS trade_setup_suggestions (
-           id SERIAL PRIMARY KEY,
-           trade_id INTEGER NOT NULL,
-           inputs_hash TEXT NOT NULL,
-           setup TEXT NOT NULL,
-           confidence NUMERIC(4,2) NOT NULL DEFAULT 0,
-           explanation JSONB NOT NULL DEFAULT '{}'::jsonb,
-           features JSONB NOT NULL DEFAULT '{}'::jsonb,
-           candles_available BOOLEAN NOT NULL DEFAULT FALSE,
-           interval TEXT,
-           version TEXT NOT NULL DEFAULT '',
-           status TEXT NOT NULL DEFAULT 'suggested',
-           decided_by TEXT,
-           decided_at TIMESTAMPTZ,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           UNIQUE (trade_id, inputs_hash)
-         );
-         CREATE INDEX IF NOT EXISTS trade_setup_suggestions_trade_idx ON trade_setup_suggestions (trade_id);`,
-      )
-      .then(() => undefined)
-      .catch((err) => { ensured = null; throw err; });
-  }
-  return ensured;
-}
-ensureTable().catch((err) => logger.warn({ err }, "setups-auto: ensure table failed at init"));
 
 /* ─── Вспомогательное ─────────────────────────────────────────────────────── */
 
@@ -112,136 +81,6 @@ const aggSchema = z.object({
   withSetup: z.enum(["0", "1"]).default("1"),
 });
 
-type SuggestionRow = {
-  id: number;
-  trade_id: number;
-  inputs_hash: string;
-  setup: string;
-  confidence: unknown;
-  explanation: { reasons?: string[]; alternatives?: { setup: string; score: number }[]; tags?: string[]; note?: string | null } | null;
-  features: Record<string, unknown> | null;
-  candles_available: boolean;
-  interval: string | null;
-  version: string;
-  status: string;
-  decided_by: string | null;
-  decided_at: Date | null;
-  updated_at: Date | null;
-};
-
-function toClassifierTrade(t: BehaviorTrade, exit: number | null): ClassifierTrade {
-  return {
-    id: t.id, ticker: t.ticker, date: t.date, side: t.side, entry: t.entry, exit, qty: t.qty,
-    entryMin: t.entryMin, holdMin: t.holdMin, horizon: t.horizon, entryAt: t.entryAt, exitAt: t.exitAt,
-  };
-}
-
-/* ─── Рыночные данные: кэш на запрос + очередь с задержкой ───────────────── */
-
-type MarketCacheEntry = { inputs: MarketInputs; interval: Interval | null };
-
-const inFlight = new Set<number>(); // сделки, которые считаются прямо сейчас (защита от параллельных запросов)
-const CONCURRENCY = 2;
-const DELAY_MS = 120;
-const TIME_BUDGET_MS = 12_000;
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-async function loadMarket(ticker: string, date: string, cache: Map<string, Promise<MarketCacheEntry>>): Promise<MarketCacheEntry> {
-  const key = `${ticker}:${date}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const p = (async (): Promise<MarketCacheEntry> => {
-    const parsed = parseDateStrict(date);
-    if (!parsed) return { inputs: { candles: null, interval: null, prevClose: null, daily: null }, interval: null };
-    const interval = pickIntervalForAge(ageDaysOf(parsed));
-    let candles: Candle[] | null = null;
-    let daily: Candle[] | null = null;
-    let prevClose: number | null = null;
-    if (interval !== "1d") {
-      try {
-        const r = await fetchSingleDayWithCache(ticker, parsed, date, interval, true, false, logger);
-        candles = r?.candles ?? null;
-        if (r && !r.cached) await sleep(DELAY_MS);
-      } catch (err) {
-        logger.warn({ err, ticker, date }, "setups-auto: intraday candles failed");
-      }
-    }
-    try {
-      daily = await fetchDailyRange(ticker, addDays(date, -35), date);
-    } catch (err) {
-      logger.warn({ err, ticker, date }, "setups-auto: daily range failed");
-    }
-    try {
-      prevClose = await getPrevDailyCloseCached(ticker, parsed, date);
-    } catch {
-      prevClose = null;
-    }
-    return { inputs: { candles, interval: candles ? interval : null, prevClose, daily }, interval: candles ? interval : null };
-  })();
-  cache.set(key, p);
-  return p;
-}
-
-async function upsertSuggestion(tradeId: number, hash: string, s: SetupSuggestion): Promise<void> {
-  await pool.query(
-    `INSERT INTO trade_setup_suggestions (trade_id, inputs_hash, setup, confidence, explanation, features, candles_available, interval, version)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
-     ON CONFLICT (trade_id, inputs_hash) DO UPDATE SET
-       setup = EXCLUDED.setup, confidence = EXCLUDED.confidence, explanation = EXCLUDED.explanation,
-       features = EXCLUDED.features, candles_available = EXCLUDED.candles_available, interval = EXCLUDED.interval,
-       version = EXCLUDED.version, updated_at = NOW()`,
-    [
-      tradeId, hash, s.setup, s.confidence,
-      JSON.stringify({ reasons: s.reasons, alternatives: s.alternatives, tags: s.tags, note: s.note }),
-      JSON.stringify(s.features), s.candlesAvailable, s.features.interval, s.version,
-    ],
-  );
-}
-
-/** Посчитать предложения для списка сделок (не больше budget, с лимитом параллельности и временем). */
-async function computeBatch(items: { trade: BehaviorTrade; exit: number | null; hash: string }[], budget: number): Promise<number> {
-  const queue = items.filter((i) => !inFlight.has(i.trade.id)).slice(0, budget);
-  if (!queue.length) return 0;
-  const cache = new Map<string, Promise<MarketCacheEntry>>();
-  const deadline = Date.now() + TIME_BUDGET_MS;
-  let done = 0;
-  for (const i of queue) inFlight.add(i.trade.id);
-  try {
-    const worker = async () => {
-      while (queue.length && Date.now() < deadline) {
-        const item = queue.shift()!;
-        try {
-          const market = await loadMarket(item.trade.ticker, item.trade.date, cache);
-          const suggestion = classifySetup(toClassifierTrade(item.trade, item.exit), market.inputs);
-          await upsertSuggestion(item.trade.id, item.hash, suggestion);
-          done++;
-        } catch (err) {
-          logger.warn({ err, tradeId: item.trade.id }, "setups-auto: classify failed");
-        } finally {
-          inFlight.delete(item.trade.id);
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  } finally {
-    for (const i of queue) inFlight.delete(i.trade.id);
-  }
-  return done;
-}
-
-async function loadSuggestions(ids: number[]): Promise<Map<number, SuggestionRow>> {
-  const out = new Map<number, SuggestionRow>();
-  if (!ids.length) return out;
-  const { rows } = await pool.query<SuggestionRow>(
-    `SELECT DISTINCT ON (trade_id) * FROM trade_setup_suggestions WHERE trade_id = ANY($1::int[])
-     ORDER BY trade_id, updated_at DESC, id DESC`,
-    [ids],
-  );
-  for (const r of rows) out.set(Number(r.trade_id), r);
-  return out;
-}
-
 /**
  * Reasons / tags / note of a stored suggestion in the reader's language: re-derived from the stored features (pure, no
  * market data) when the classifier version and the result match; otherwise the stored Russian texts.
@@ -263,9 +102,10 @@ function localizedExplanation(trade: BehaviorTrade, exit: number | null, s: Sugg
   }
 }
 
-function serialize(trade: BehaviorTrade, exit: number | null, s: SuggestionRow | null, hash: string, lang: Lang) {
+function serialize(trade: BehaviorTrade, exit: number | null, s: SuggestionRow | null, hash: string, lang: Lang, office: readonly OfficeSetup[] = []) {
   const fresh = s != null && s.inputs_hash === hash;
   const ex = s ? localizedExplanation(trade, exit, s, lang) : null;
+  const link = suggestionLink(s, office);
   return {
     tradeId: trade.id,
     ticker: trade.ticker,
@@ -283,6 +123,9 @@ function serialize(trade: BehaviorTrade, exit: number | null, s: SuggestionRow |
       ? {
           setup: s.setup,
           setupLabel: setupLabelOf(s.setup, lang),
+          /** The office setup accepting writes (null: a time-only class — accepting keeps it as text only). */
+          playbookId: link?.id ?? null,
+          playbookName: link?.name ?? null,
           confidence: Number(s.confidence),
           reasons: ex!.reasons,
           alternatives: ex!.alternatives,
@@ -307,7 +150,6 @@ router.get("/setups-auto", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  await ensureTable();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
   const all = rows
@@ -328,7 +170,8 @@ router.get("/setups-auto", asyncHandler(async (req, res) => {
   const pending = withHash.filter((x) => { const s = existing.get(x.trade.id); return !s || s.inputs_hash !== x.hash; }).length;
 
   const lang = langOf(req);
-  let items = withHash.map((x) => serialize(x.trade, x.exit, existing.get(x.trade.id) ?? null, x.hash, lang));
+  const office = await loadOfficeSetups().catch(() => [] as OfficeSetup[]);
+  let items = withHash.map((x) => serialize(x.trade, x.exit, existing.get(x.trade.id) ?? null, x.hash, lang, office));
   if (q.status === "pending") items = items.filter((i) => !i.suggestion || i.suggestion.status === "stale");
   else if (q.status) items = items.filter((i) => i.suggestion?.status === q.status);
   // Новые сверху.
@@ -353,7 +196,6 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  await ensureTable();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
   const trades = rows
@@ -450,6 +292,47 @@ function holdBucket(t: BehaviorTrade, lang: Lang): string | null {
   return holdLabel(code, lang);
 }
 
+/* ─── Setup tag = playbook setup (wave 1, 1.2): the picker list and one-tap suggestions ─── */
+
+/** The office setups for the S picker / the journal: number, name, folder, and whether the viewer's tier locks it. */
+router.get("/setups-auto/setups", asyncHandler(async (req, res) => {
+  if (!req.authUser) throw unauthorized();
+  const setups = await loadOfficeSetups();
+  const locked = await lockedSetupIds(req, setups);
+  res.json({ setups: setups.map((x) => ({ id: x.id, code: x.code, name: x.name, folder: x.folder, locked: locked.has(x.id) })) });
+}));
+
+const idsQuery = z.string().regex(/^\d+(,\d+){0,199}$/);
+
+/**
+ * Pending suggestions that map to an office setup, for trades the viewer may read (own; staff via trades.read.team):
+ * { items: { [tradeId]: { playbookId, name, confidence } } } — the one-tap «принять» chip on /trades and in the journal.
+ */
+router.get("/setups-auto/for-trades", asyncHandler(async (req, res) => {
+  const me = req.authUser;
+  if (!me) throw unauthorized();
+  const q = idsQuery.safeParse(String(req.query.ids ?? ""));
+  if (!q.success) throw badRequest("INVALID_ID");
+  const ids = [...new Set(q.data.split(",").map(Number))];
+  const { rows } = await pool.query<{ id: number; trader: string | null }>(
+    `SELECT id, trader FROM trades WHERE id = ANY($1::int[]) AND deleted_at IS NULL AND playbook_id IS NULL`,
+    [ids],
+  );
+  const readable = new Map<string | null, boolean>();
+  for (const t of new Set(rows.map((r) => r.trader ?? null))) {
+    readable.set(t, t === me.name || (await can(req, "trades.read.team", { trader: t })));
+  }
+  const open = rows.filter((r) => readable.get(r.trader ?? null)).map((r) => Number(r.id));
+  const [sugg, office] = await Promise.all([loadSuggestions(open), loadOfficeSetups()]);
+  const items: Record<number, { playbookId: number; name: string; confidence: number }> = {};
+  for (const [tradeId, s] of sugg) {
+    if (s.status !== "suggested") continue;
+    const link = suggestionLink(s, office);
+    if (link) items[tradeId] = { playbookId: link.id, name: link.name, confidence: Number(s.confidence) };
+  }
+  res.json({ items });
+}));
+
 /* ─── POST /setups-auto/accept-bulk ───────────────────────────────────────── */
 
 const bulkBody = z.object({
@@ -462,7 +345,6 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
   if (!body.success) throw badRequest("VALIDATION", body.error.flatten());
   const me = req.authUser;
   if (!me || isGuestUser(me)) throw new AppError("GUEST_READ_ONLY");
-  await ensureTable();
   const ids = [...new Set(body.data.tradeIds)];
   const minConf = body.data.minConfidence ?? 0;
 
@@ -475,8 +357,9 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
     allowed.set(trader, ok);
   }
   const existing = await loadSuggestions(rows.map((r) => Number(r.id)));
+  const office = await loadOfficeSetups();
   const skipped = { forbidden: 0, missing: ids.length - rows.length, stale: 0, lowConfidence: 0, decided: 0 };
-  const apply: { id: number; setup: string }[] = [];
+  const apply: { id: number; setup: string; playbookId: number | null; trader: string | null }[] = [];
   for (const r of rows) {
     if (!allowed.get(r.trader ?? "")) { skipped.forbidden++; continue; }
     const trade = rowToBehaviorTrade(r);
@@ -485,16 +368,18 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
     if (!s || s.inputs_hash !== inputsHash(toClassifierTrade(trade, exit))) { skipped.stale++; continue; }
     if (s.status !== "suggested") { skipped.decided++; continue; }
     if (Number(s.confidence) < minConf) { skipped.lowConfidence++; continue; }
-    apply.push({ id: trade.id, setup: s.setup });
+    const link = suggestionLink(s, office);
+    apply.push({ id: trade.id, setup: link?.name ?? s.setup, playbookId: link?.id ?? null, trader: r.trader ?? null });
   }
   if (!apply.length) { res.json({ ok: true, accepted: 0, skipped }); return; }
 
-  // Тот же эффект, что у одиночного accept (trades.setup), одним запросом.
+  // Тот же эффект, что у одиночного accept (playbook_id + имя сетапа), одним запросом.
   await pool.query(
-    `UPDATE trades t SET setup = u.setup FROM unnest($1::int[], $2::text[]) AS u(id, setup)
+    `UPDATE trades t SET setup = u.setup, playbook_id = u.pid FROM unnest($1::int[], $2::text[], $3::int[]) AS u(id, setup, pid)
       WHERE t.id = u.id AND t.deleted_at IS NULL`,
-    [apply.map((a) => a.id), apply.map((a) => a.setup)],
+    [apply.map((a) => a.id), apply.map((a) => a.setup), apply.map((a) => a.playbookId)],
   );
+  for (const trader of new Set(apply.map((a) => a.trader))) await setupTagged(apply.find((a) => a.trader === trader)!.id);
   await pool.query(
     `UPDATE trade_setup_suggestions SET status = 'accepted', decided_by = $2, decided_at = NOW(), updated_at = NOW()
       WHERE trade_id = ANY($1::int[]) AND status = 'suggested'`,
@@ -515,7 +400,11 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
 /* ─── POST accept / reject / recompute ───────────────────────────────────── */
 
 const idParam = z.coerce.number().int().positive();
-const acceptBody = z.object({ setup: z.string().trim().min(1).max(200).optional() });
+const acceptBody = z.object({
+  setup: z.string().trim().min(1).max(200).optional(),
+  /** An office (or own) setup chosen instead of the suggestion. */
+  playbookId: z.coerce.number().int().positive().optional(),
+});
 
 router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   const id = idParam.safeParse(req.params.tradeId);
@@ -525,15 +414,20 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   const access = await canAccessTrade(req, id.data, "write");
   if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) throw new AppError("TRADE_FORBIDDEN");
-  await ensureTable();
 
   const current = (await loadSuggestions([id.data])).get(id.data) ?? null;
-  const setup = body.data.setup ?? current?.setup ?? null;
-  if (!setup) throw conflict("SETUP_SUGGESTION_MISSING");
+  if (!body.data.setup && body.data.playbookId == null && !current?.setup) throw conflict("SETUP_SUGGESTION_MISSING");
+  const { rows: own } = await pool.query<{ trader: string | null }>(`SELECT trader FROM trades WHERE id = $1`, [id.data]);
+  // Wave 1, 1.2: the playbook setup (chosen, named, or the class's office setup) + its name; a time-only class stays text.
+  const mapped = suggestionLink(current, await loadOfficeSetups());
+  const link = body.data.playbookId != null || body.data.setup
+    ? await resolveSetupLink(body.data.playbookId != null ? { playbookId: body.data.playbookId } : { setup: body.data.setup }, own[0]?.trader ?? null)
+    : mapped ? { playbookId: mapped.id, setup: mapped.name } : { playbookId: null, setup: current!.setup };
+  const setup = link.setup ?? current?.setup ?? "";
 
   // Тот же механизм, что у PATCH /trades/:id для поля setup (drizzle update + активность + сброс кэша дашборда),
   // без чеклиста перед сделкой — сделки исторические.
-  const [updated] = await db.update(tradesTable).set({ setup }).where(eq(tradesTable.id, id.data)).returning({ id: tradesTable.id, ticker: tradesTable.ticker, trader: tradesTable.trader });
+  const [updated] = await db.update(tradesTable).set({ setup, playbookId: link.playbookId }).where(eq(tradesTable.id, id.data)).returning({ id: tradesTable.id, ticker: tradesTable.ticker, trader: tradesTable.trader });
   if (!updated) throw notFound("TRADE_NOT_FOUND");
   await pool.query(
     `UPDATE trade_setup_suggestions SET status = 'accepted', decided_by = $2, decided_at = NOW(), updated_at = NOW()
@@ -543,16 +437,17 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   logActivity({
     action: "updated", section: "trades", entityId: String(updated.id), entityTitle: updated.ticker ?? undefined,
     trader: req.authUser?.name,
-    details: current && current.setup !== setup
+    details: (body.data.playbookId != null || body.data.setup) && current && current.setup !== setup
       ? setupsT.tFor("ru")("activity.acceptedChanged", { setup, suggested: current.setup })
       : setupsT.tFor("ru")("activity.accepted", { setup }),
-    params: current && current.setup !== setup
+    params: (body.data.playbookId != null || body.data.setup) && current && current.setup !== setup
       ? { detailsKey: "setups.activity.acceptedChanged", setup, suggested: current.setup }
       : { detailsKey: "setups.activity.accepted", setup },
   });
   invalidateDashboardCache();
   invalidateTradesPageCache();
-  res.json({ ok: true, tradeId: id.data, setup, status: "accepted" });
+  await setupTagged(id.data);
+  res.json({ ok: true, tradeId: id.data, setup, playbookId: link.playbookId, status: "accepted" });
 }));
 
 router.post("/setups-auto/:tradeId/reject", asyncHandler(async (req, res) => {
@@ -561,7 +456,6 @@ router.post("/setups-auto/:tradeId/reject", asyncHandler(async (req, res) => {
   const access = await canAccessTrade(req, id.data, "write");
   if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) throw new AppError("TRADE_FORBIDDEN");
-  await ensureTable();
   const { rowCount } = await pool.query(
     `UPDATE trade_setup_suggestions SET status = 'rejected', decided_by = $2, decided_at = NOW(), updated_at = NOW() WHERE trade_id = $1`,
     [id.data, req.authUser?.name ?? null],
@@ -576,7 +470,6 @@ router.post("/setups-auto/:tradeId/recompute", asyncHandler(async (req, res) => 
   const access = await canAccessTrade(req, id.data, "write");
   if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) throw new AppError("TRADE_FORBIDDEN");
-  await ensureTable();
   const rows = await loadBehaviorRows(null, undefined, undefined, [id.data]);
   if (!rows[0]) throw notFound("TRADE_NOT_FOUND");
   const trade = rowToBehaviorTrade(rows[0]);
@@ -585,7 +478,7 @@ router.post("/setups-auto/:tradeId/recompute", asyncHandler(async (req, res) => 
   await pool.query(`DELETE FROM trade_setup_suggestions WHERE trade_id = $1 AND status = 'suggested'`, [id.data]);
   const done = await computeBatch([{ trade, exit, hash }], 1);
   const s = (await loadSuggestions([id.data])).get(id.data) ?? null;
-  res.json({ ok: done > 0, item: serialize(trade, exit, s, hash, langOf(req)) });
+  res.json({ ok: done > 0, item: serialize(trade, exit, s, hash, langOf(req), await loadOfficeSetups().catch(() => [])) });
 }));
 
 export default router;

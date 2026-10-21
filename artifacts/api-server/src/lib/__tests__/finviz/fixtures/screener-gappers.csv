@@ -1,0 +1,7 @@
+"No.","Ticker","Company","Sector","Industry","Country","Market Cap","Shares Outstanding","Shares Float","Short Float","Short Ratio","Beta","Average True Range","Gap","Average Volume","Relative Volume","Price","Change","Volume","Earnings Date"
+"1","SMCI","Super Micro Computer, Inc.","Technology","Computer Hardware","USA","25.80B","593.50M","540.10M","18.40%","1.25","1.45","3.12","12.35%","38.50M","4.21","48.75","15.20%","61234567","11/04/2026 4:30:00 PM"
+"2","ABCD","Abcd Therapeutics Inc","Healthcare","Biotechnology","USA","45.30M","12.10M","9.80M","","","","0.42","35.10%","1.20M","22.50","3.85","41.00%","8,456,123","10/19/2026 8:30:00 AM"
+"3","XYZW","Xyzw Holdings Ltd","Industrials","Marine Shipping","Greece","-","-","-","-","-","-","-","8.05%","-","3.10","1.02","6.25%","2100000",""
+"4","TINY","Tiny Corp","Technology","Software - Application","USA","812.55","40.2","31.7","7.10%","3.40","2.10","0.55","5.00%","245.6","2.80","4.10","-2.40%","690000","Oct 21/a"
+"5","","Broken Row","","","","","","","","","","","","","","","","",""
+"6","SMCI","Super Micro Computer, Inc. (dup)","Technology","Computer Hardware","USA","1B","","","","","","","1%","","","","","",""

@@ -4,6 +4,7 @@
  */
 import { pool } from "@workspace/db";
 import { STAGES, stageLabelFor, type Stage } from "./academyCohorts";
+import { myPeople } from "./people/deskGroups";
 import type { Lang } from "../i18n";
 
 /** The cohort's mentor (null = none); undefined when the cohort does not exist. */
@@ -12,17 +13,12 @@ export async function cohortMentor(id: number): Promise<string | null | undefine
   return rows[0] ? rows[0].mentor : undefined;
 }
 
-/** Active traders assigned to `me` as curator / mentor / risk manager — the /curator group. */
+/**
+ * «Моя группа» — active traders of the desk groups `me` leads plus those assigned to `me` as curator / mentor / risk
+ * manager (lib/people/deskGroups myPeople — the same people as the /curator group, Волна 1 п. 1.19).
+ */
 export async function wardsOf(me: string | null): Promise<Set<string>> {
-  if (!me) return new Set();
-  const { rows } = await pool
-    .query<{ name: string }>(
-      `SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false AND role = 'trader'
-          AND (assigned_curator = $1 OR assigned_mentor = $1 OR assigned_risk_manager = $1)`,
-      [me],
-    )
-    .catch(() => ({ rows: [] as { name: string }[] }));
-  return new Set(rows.map((r) => r.name));
+  return new Set(await myPeople(me).catch(() => [] as string[]));
 }
 
 /** The risk-desk tier (trader_risk_limits.tier) per trader; traders without limits are absent. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { heatLevel, lastFinishedDay, latestDay, maxAbsNet, monthGrid, shiftMonth } from "../model";
+import { heatLevel, lastFinishedDay, latestDay, maxAbsNet, monthGrid, myDayParts, shiftMonth } from "../model";
 import type { CalendarDay } from "../api";
 
 const day = (date: string, trades: number, net: number | null = 0): CalendarDay => ({ date, net, trades, traders: 1, best: null, worst: null, mine: null });
@@ -36,5 +36,10 @@ describe("top-day model", () => {
     expect(heatLevel(50, 400)).toBe(1);
     expect(heatLevel(null, 400)).toBe(0);
     expect(heatLevel(0, 400)).toBe(0);
+  });
+  it("myDayParts: the own day in R and win % (2.14); unknown R is left out", () => {
+    expect(myDayParts({ r: -1.46, winPct: 33.3, net: -90 })).toEqual({ r: "−1.5R", win: "33%", net: -90 });
+    expect(myDayParts({ r: null, winPct: null, net: 12 })).toEqual({ r: null, win: null, net: 12 });
+    expect(myDayParts({ net: null })).toEqual({ r: null, win: null, net: null });
   });
 });

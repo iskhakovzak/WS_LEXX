@@ -8,6 +8,8 @@ import { closeDateSql, horizonSql, netPnlSql, num, resultSql, signedRSql } from 
 import { addDays, nyDate } from "./tradingDate";
 import { isNotifiableViolationDay, preview, uniqueRecipients, violationDedupKey, violationNotice, type ViolationItem } from "./notifyEventsCore";
 import { planStaleViolations, STALE_PLAN_COLUMNS } from "./violationArchive";
+import { ruleStageOf, ruleStartFor, stageRuleApplies, traderStage } from "./rulesTemplates";
+import { inScanWindow, resolveRecentWindow, STREAK_KINDS, upsertViolationDrafts } from "./rulesScanWindow";
 
 /**
  * Discipline rules engine — DB layer.
@@ -22,6 +24,11 @@ import { planStaleViolations, STALE_PLAN_COLUMNS } from "./violationArchive";
  *   them; otherwise they are archived as `stale` (lib/violationArchive). Scoped to the trader — desk rules share one
  *   rule_id across traders. A re-produced key un-archives its row (re-enabled rule, trade edited back).
  * - Disabling / deleting a rule archives its violations (routes/rules.ts) — they are never dropped with their comments.
+ * - A rule produces violations only from the NY day it was created (ruleSince): its past is never written to the
+ *   queue (audit 2026-10-20: a rule created today raised 60 open violations from 04.05–24.09). The create response
+ *   counts that past as a preview only (historyPreview). Rows already stored before this rule (older scans) are kept.
+ * - A desk rule tagged with a ladder stage (trading_rules.stage, Волна 2 п. 2.6) applies only to traders on that stage
+ *   and counts from the day the trader got the stage (lib/rulesTemplates).
  * - Newly found violations of today / yesterday notify the trader and their staff (rule_violation) through
  *   lib/notifyEvents: in the background, once per violation key.
  */
@@ -83,8 +90,24 @@ export async function fetchRiskLimits(trader: string): Promise<RiskLimits> {
  * the same rows as filtering the full list by `date.slice(0, 10)` afterwards, without reading the whole history.
  */
 export async function fetchTrades(trader: string, range?: { from: string; to: string }): Promise<TradeForRule[]> {
-  const params: string[] = range ? [trader, range.from, range.to] : [trader];
-  const days = (a: string) => (range ? ` AND substring(${a}.date, 1, 10) >= $2 AND substring(${a}.date, 1, 10) <= $3` : "");
+  if (!range) return loadRuleTrades(() => "", [trader]);
+  return loadRuleTrades((a) => ` AND substring(${a}.date, 1, 10) >= $2 AND substring(${a}.date, 1, 10) <= $3`, [trader, range.from, range.to]);
+}
+
+/**
+ * The trades a recent scan needs (lib/rulesScanWindow): opened on / after `loadFrom` (null = the whole history) or
+ * closed on / after `closeFrom` — every trade a violation dated ≥ closeFrom can come from, plus the streak lead-in.
+ */
+export function fetchTradesForWindow(trader: string, loadFrom: string | null, closeFrom: string): Promise<TradeForRule[]> {
+  if (loadFrom === null) return loadRuleTrades(() => "", [trader]);
+  return loadRuleTrades(
+    (a) => ` AND (substring(${a}.date, 1, 10) >= $2 OR LEFT(${closeDateSql(a)}, 10) >= $3)`,
+    [trader, loadFrom, closeFrom],
+  );
+}
+
+/** `days(alias)` = the extra AND-filter on the trades of that alias (params from $2 on). */
+async function loadRuleTrades(days: (a: string) => string, params: string[]): Promise<TradeForRule[]> {
   const { rows } = await pool.query<any>(
     `SELECT t.id, t.trader, t.date, t.ticker, t.side, t.hold_time, t.context_snapshot,
             ${closeDateSql()} AS close_date,
@@ -139,6 +162,10 @@ export interface StoredRule extends RuleRow {
   note: string | null;
   createdBy: string | null;
   createdAt: string | null;
+  /** Desk rule for one ladder stage only (null = every trader). */
+  stage: string | null;
+  /** Seeded office rule (migration 0235), e.g. "junior.daily_stop". */
+  templateKey: string | null;
 }
 
 export function mapRuleRow(r: any): StoredRule {
@@ -154,24 +181,30 @@ export function mapRuleRow(r: any): StoredRule {
     note: r.note ?? null,
     createdBy: r.created_by ?? null,
     createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
+    stage: ruleStageOf(r.stage),
+    templateKey: r.template_key ?? null,
   };
 }
 
-/** Rules that apply to a trader: own (personal + office) and desk-wide; soft-deleted excluded. */
+/**
+ * Rules that apply to a trader: own (personal + office) and desk-wide — a desk rule tagged with a ladder stage only for
+ * a trader on that stage; soft-deleted excluded.
+ */
 export async function fetchRulesFor(trader: string, opts: { enabledOnly?: boolean } = {}): Promise<StoredRule[]> {
-  await ensureRulesSchema();
-  const { rows } = await pool.query<any>(
-    `SELECT id, trader, name, kind, threshold, enabled, created_at, origin, created_by, note
-       FROM trading_rules
-      WHERE (trader = $1 OR trader = '${DESK_TRADER}') AND deleted_at IS NULL ${opts.enabledOnly ? "AND enabled = true" : ""}
-      ORDER BY (trader = '${DESK_TRADER}') DESC, created_at ASC, id ASC`,
-    [trader],
-  );
-  return rows.map(mapRuleRow);
+  const [{ rows }, st] = await Promise.all([
+    pool.query<any>(
+      `SELECT id, trader, name, kind, threshold, enabled, created_at, origin, created_by, note, stage, template_key
+         FROM trading_rules
+        WHERE (trader = $1 OR trader = '${DESK_TRADER}') AND deleted_at IS NULL ${opts.enabledOnly ? "AND enabled = true" : ""}
+        ORDER BY (trader = '${DESK_TRADER}') DESC, created_at ASC, id ASC`,
+      [trader],
+    ),
+    traderStage(trader),
+  ]);
+  return rows.filter((r) => r.trader !== DESK_TRADER || stageRuleApplies(r.stage, st.stage)).map(mapRuleRow);
 }
 
 export async function fetchSelfMarks(trader: string, from?: string, to?: string): Promise<SelfMark[]> {
-  await ensureRulesSchema();
   const { rows } = await pool.query<any>(
     `SELECT rule_id, day, ok, note FROM rule_self_checks
       WHERE trader = $1 AND ok IS NOT NULL ${from ? "AND day >= $2" : ""} ${to ? `AND day <= $${from ? 3 : 2}` : ""}`,
@@ -180,110 +213,74 @@ export async function fetchSelfMarks(trader: string, from?: string, to?: string)
   return rows.map((r: any) => ({ ruleId: Number(r.rule_id), day: String(r.day), ok: r.ok == null ? null : r.ok === true, note: r.note ?? null }));
 }
 
-// ─── Schema (additive; idempotent) ───────────────────────────────────────────
-// rule_violations gains: a stable key for incremental scans, the trading day, net $ cost, the acknowledge (trader) /
+// ─── Schema (src/db/migrations) ──────────────────────────────────────────────
+// rule_violations has: a stable key for incremental scans, the trading day, net $ cost, the acknowledge (trader) /
 // resolve (curator) workflow columns, and the archive marker (archived_at + archived_reason: rule_disabled | rule_deleted
-// | stale — see lib/violationArchive). trading_rules gains: origin (personal|office), author, note, soft delete.
+// | stale — see lib/violationArchive). trading_rules has: origin (personal|office), author, note, soft delete.
 // rule_self_checks: daily «соблюдал / нарушил» marks for rules that can't be checked from trades (journal integration).
 // trading_errors_archive: removed mistakes are archived here (restore via POST /errors/:id/restore) — never lost.
 
-let ensured: Promise<void> | null = null;
-export function ensureRulesSchema(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE rule_violations
-           ADD COLUMN IF NOT EXISTS dedup_key TEXT,
-           ADD COLUMN IF NOT EXISTS day TEXT,
-           ADD COLUMN IF NOT EXISTS cost_net NUMERIC(12,2),
-           ADD COLUMN IF NOT EXISTS acknowledged_by TEXT,
-           ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ,
-           ADD COLUMN IF NOT EXISTS comment TEXT,
-           ADD COLUMN IF NOT EXISTS resolution TEXT,
-           ADD COLUMN IF NOT EXISTS consequence TEXT,
-           ADD COLUMN IF NOT EXISTS resolved_by TEXT,
-           ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ,
-           ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ,
-           ADD COLUMN IF NOT EXISTS archived_reason TEXT;
-         CREATE INDEX IF NOT EXISTS rule_violations_active_trader_idx ON rule_violations (trader) WHERE archived_at IS NULL;
-         CREATE UNIQUE INDEX IF NOT EXISTS rule_violations_rule_key_uidx ON rule_violations (rule_id, dedup_key);
-         CREATE INDEX IF NOT EXISTS rule_violations_trade_idx ON rule_violations (trade_id);
-         ALTER TABLE trading_rules
-           ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'personal',
-           ADD COLUMN IF NOT EXISTS created_by TEXT,
-           ADD COLUMN IF NOT EXISTS note TEXT,
-           ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
-         CREATE TABLE IF NOT EXISTS rule_self_checks (
-           id SERIAL PRIMARY KEY,
-           rule_id INTEGER NOT NULL REFERENCES trading_rules(id) ON DELETE CASCADE,
-           trader TEXT NOT NULL,
-           day TEXT NOT NULL,
-           ok BOOLEAN,
-           note TEXT,
-           updated_by TEXT,
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-           UNIQUE (rule_id, trader, day)
-         );
-         CREATE INDEX IF NOT EXISTS rule_self_checks_trader_day_idx ON rule_self_checks (trader, day);
-         CREATE TABLE IF NOT EXISTS trading_errors_archive (
-           id SERIAL PRIMARY KEY,
-           original_id INTEGER NOT NULL,
-           trader TEXT NOT NULL,
-           payload JSONB NOT NULL,
-           archived_by TEXT,
-           archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-           restored_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS trading_errors_archive_trader_idx ON trading_errors_archive (trader);`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureRulesSchema().catch((err) => logger.warn({ err }, "rules: ensure schema failed at init"));
-
 type FreshViolation = ViolationItem & { ruleId: number; key: string; msg?: ViolationMsg };
+
+/** The NY day a rule starts producing violations: the day it was created (null = unknown, legacy → the whole history). */
+export function ruleSince(createdAt: string | Date | null | undefined): string | null {
+  if (createdAt == null) return null;
+  const d = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  return Number.isFinite(d.getTime()) ? nyDate(d) : null;
+}
+
+/** Drafts of the rule's own time (day ≥ since) and its history before it (never written; preview only). Pure. */
+export function splitBySince<T extends { day: string }>(drafts: readonly T[], since: string | null): { live: T[]; history: T[] } {
+  if (!since) return { live: [...drafts], history: [] };
+  const live: T[] = [];
+  const history: T[] = [];
+  for (const d of drafts) (String(d.day).slice(0, 10) >= since ? live : history).push(d);
+  return { live, history };
+}
+
+/**
+ * Preview for a just-created rule: the violations its threshold would have had before `since` (not written).
+ * `from` / `to` = the first / last such day.
+ */
+export function historyPreview(drafts: readonly { day: string; costNet?: number | null }[], since: string | null): { violations: number; from: string | null; to: string | null; costNet: number } {
+  const { history } = splitBySince(drafts, since);
+  const days = history.map((d) => d.day).sort();
+  const cost = history.reduce((a, d) => a + (typeof d.costNet === "number" && Number.isFinite(d.costNet) ? d.costNet : 0), 0);
+  return { violations: history.length, from: days[0] ?? null, to: days[days.length - 1] ?? null, costNet: Math.round(cost * 100) / 100 };
+}
 
 async function upsertDrafts(
   rule: RuleRow,
   trader: string,
-  drafts: ReturnType<typeof evalRule>,
+  all: ReturnType<typeof evalRule>,
+  ruleStart: string | null,
+  windowFrom: string | null = null,
 ): Promise<{ written: number; removed: number; fresh: FreshViolation[] }> {
-  let written = 0;
   const keys: string[] = [];
   const fresh: FreshViolation[] = [];
   const since = addDays(nyDate(), -1);
-  for (const d of drafts) {
+  // Before the rule existed: nothing is written; the keys still count as produced, so a row an older scan stored is
+  // neither deleted nor archived here. Same for days before a recent scan's window (lib/rulesScanWindow).
+  const { live, history } = splitBySince(all, ruleStart);
+  for (const d of history) keys.push(d.key);
+  const drafts: typeof live = [];
+  for (const d of live) {
     keys.push(d.key);
-    try {
-      const { rows } = await pool.query<{ inserted: boolean }>(
-        `INSERT INTO rule_violations (trader, rule_id, trade_id, severity, message, details, dedup_key, day, cost_net)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (rule_id, dedup_key) DO UPDATE
-           SET trade_id = EXCLUDED.trade_id, severity = EXCLUDED.severity, message = EXCLUDED.message,
-               details = EXCLUDED.details, day = EXCLUDED.day, cost_net = EXCLUDED.cost_net,
-               archived_at = NULL, archived_reason = NULL
-         RETURNING (xmax = 0) AS inserted`,
-        [trader, rule.id, d.tradeId, d.severity, d.message, { ...d.details, msg: d.msg }, d.key, d.day, d.costNet],
-      );
-      written++;
-      if (rows[0]?.inserted && isNotifiableViolationDay(d.day, since)) {
-        fresh.push({ ruleId: rule.id, key: d.key, ruleName: rule.name, message: d.message, msg: d.msg, severity: d.severity });
-      }
-    } catch (e: any) {
-      logger.warn({ error: e.message, ruleId: rule.id }, "rule_violations upsert failed");
-    }
+    if (inScanWindow(d.day, windowFrom)) drafts.push(d);
+  }
+  const { written, inserted } = await upsertViolationDrafts(rule.id, trader, drafts);
+  const told = new Set<string>();
+  for (const d of drafts) {
+    if (!inserted.has(d.key) || told.has(d.key) || !isNotifiableViolationDay(d.day, since)) continue;
+    told.add(d.key);
+    fresh.push({ ruleId: rule.id, key: d.key, ruleName: rule.name, message: d.message, msg: d.msg, severity: d.severity });
   }
   // This trader's violations of the rule that no longer apply (and legacy rows without a key): delete the purely derived
-  // ones, archive (stale) the ones with a comment / acknowledgement / review.
+  // ones, archive (stale) the ones with a comment / acknowledgement / review. A recent scan judges only its window.
   const { rows: gone } = await pool.query<any>(
     `SELECT ${STALE_PLAN_COLUMNS} FROM rule_violations
-      WHERE rule_id = $1 AND trader = $2 AND (dedup_key IS NULL OR NOT (dedup_key = ANY($3::text[])))`,
-    [rule.id, trader, keys],
+      WHERE rule_id = $1 AND trader = $2 AND (dedup_key IS NULL OR NOT (dedup_key = ANY($3::text[])))${windowFrom ? " AND day >= $4" : ""}`,
+    windowFrom ? [rule.id, trader, keys, windowFrom] : [rule.id, trader, keys],
   );
   const removed = await applyStalePlan(gone);
   return { written, removed, fresh };
@@ -353,11 +350,20 @@ function notifyNewViolations(trader: string, fresh: readonly FreshViolation[]): 
   );
 }
 
-export async function scanRulesForTrader(trader: string): Promise<{ violationsWritten: number; violationsRemoved: number }> {
-  await ensureRulesSchema();
+/**
+ * Re-scan a trader's enabled rules and persist the violations. Default: the whole history. `recent: true` (a broker sync
+ * of the last days): only violations dated in the recent window are judged, from the trades that window needs
+ * (lib/rulesScanWindow) — the same rows as a full scan for those days, without reading and re-upserting the whole book.
+ */
+export async function scanRulesForTrader(trader: string, opts: { recent?: boolean } = {}): Promise<{ violationsWritten: number; violationsRemoved: number }> {
   const rules = (await fetchRulesFor(trader, { enabledOnly: true })).filter((r) => r.kind !== "self_check");
   if (rules.length === 0) return { violationsWritten: 0, violationsRemoved: 0 };
-  const [trades, limits] = await Promise.all([fetchTrades(trader), fetchRiskLimits(trader)]);
+  const win = opts.recent ? await resolveRecentWindow(trader, rules.some((r) => STREAK_KINDS.includes(r.kind))) : null;
+  const [trades, limits, st] = await Promise.all([
+    win ? fetchTradesForWindow(trader, win.loadFrom, win.from) : fetchTrades(trader),
+    fetchRiskLimits(trader),
+    traderStage(trader),
+  ]);
 
   let written = 0;
   let removed = 0;
@@ -365,7 +371,7 @@ export async function scanRulesForTrader(trader: string): Promise<{ violationsWr
   for (const r of rules) {
     const scoped: RuleRow = { ...r, trader };
     const drafts = trades.length ? evalRule(scoped, trades, limits) : [];
-    const res = await upsertDrafts(scoped, trader, drafts);
+    const res = await upsertDrafts(scoped, trader, drafts, ruleStartFor(ruleSince(r.createdAt), r.stage, st.since), win?.from ?? null);
     written += res.written;
     removed += res.removed;
     fresh.push(...res.fresh);
@@ -376,7 +382,6 @@ export async function scanRulesForTrader(trader: string): Promise<{ violationsWr
 
 /** Persist one self-check mark as a violation row (ok = false) or remove it (ok = true / null; archived as stale when commented). */
 export async function syncSelfCheckViolation(ruleId: number, trader: string, day: string, ok: boolean | null, note: string | null): Promise<void> {
-  await ensureRulesSchema();
   const key = `d:${trader}:${day}`;
   if (ok === false) {
     const selfReason = selfCheckReason(note);
@@ -394,7 +399,6 @@ export async function syncSelfCheckViolation(ruleId: number, trader: string, day
 }
 
 export async function scanRulesAll(): Promise<{ tradersScanned: number; violationsWritten: number }> {
-  await ensureRulesSchema();
   const { rows: desk } = await pool.query<any>(
     `SELECT 1 FROM trading_rules WHERE trader = '${DESK_TRADER}' AND enabled = true AND deleted_at IS NULL LIMIT 1`,
   );

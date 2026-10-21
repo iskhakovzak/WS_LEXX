@@ -85,6 +85,8 @@ export type SeasonRow = SeasonState["top"][number] & { rank: number };
  * the top. No other rows — rankings never show the bottom of the desk.
  */
 export function seasonRows(s: SeasonState): { rows: SeasonRow[]; own: SeasonRow | null } {
+  // 2.14: below 5 ranked participants a trader gets the own row only — shown without a place (rank 0).
+  if (s.rankHidden) return { rows: s.top.map((r) => ({ ...r, rank: 0 })), own: null };
   const rows = s.top.map((r, i) => ({ ...r, rank: i + 1 }));
   const inTop = rows.some((r) => r.me);
   const own = !inTop && s.myRank != null ? { label: "", me: true, points: s.myPoints, title: null, rank: s.myRank } : null;

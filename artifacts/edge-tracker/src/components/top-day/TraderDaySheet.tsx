@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { fmtDate, fmtTimeNY, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtR, fmtTimeNY, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { topDayI18n } from "@/i18n/ns/topDay";
 import { useTraderDay, type TraderDay, type TraderDayTicker } from "./api";
@@ -21,7 +21,7 @@ import { displayTicker, isOptionSymbol } from "@/lib/option-symbol";
 function placeText(d: TraderDay): string {
   const t = topDayI18n.t;
   if (d.list === "profit") return t("sheet.placeProfit", { place: d.place });
-  if (d.list === "loss") return t("sheet.placeLoss", { place: d.place });
+  if (d.list === "loss") return d.place > 0 ? t("sheet.placeLoss", { place: d.place }) : t("sheet.lossDay");
   return t("sheet.flat");
 }
 
@@ -81,6 +81,7 @@ export function TraderDaySheet({ date, alias, staff, onClose }: { date: string |
                     {d.net != null ? fmtUsd(d.net, { signed: true, decimals: "auto" }) : t("sheet.hidden")}
                   </span>
                   <span>{placeText(d)}</span>
+                  {d.me && d.r != null && <span className="tabular-nums font-medium text-foreground">{fmtR(d.r, 1)}</span>}
                   <span className="tabular-nums">{commonI18n.t("units.trades", { count: d.trades })} · {t("day.wl", { wins: d.wins, losses: d.losses })}</span>
                 </>
               ) : <span>{t("loading")}</span>}

@@ -57,6 +57,7 @@ export function DayLineView({
   journalOpenDate,
   quests,
   playbook,
+  phoneSplit = false,
 }: {
   me: DailyMe;
   plan: PlanContract | null | undefined;
@@ -66,8 +67,12 @@ export function DayLineView({
   quests?: ReactNode;
   /** Today's playbook picks + untagged trades (GET /api/playbook/today), when the playbook answers. */
   playbook?: DayPlaybook | null;
+  /** Волна 1, item 1.3: on the phone the dashboard's «Следующий шаг» card carries the focus / contract / evening, so
+   * this line keeps only the progress there (tier, rewards, quests); from `md` up it shows everything as before. */
+  phoneSplit?: boolean;
 }) {
   const { t } = dailyI18n.useT();
+  const deskOnly = phoneSplit ? "hidden md:block" : undefined;
   const [openPending, setOpenPending] = useState(false);
   const view = dayView(me);
   // Progress where the trader looks every day: the tier ladder and the discipline rewards (streak, points, badges).
@@ -86,7 +91,9 @@ export function DayLineView({
   if (view.primary === "evening" && card) {
     return (
       <section aria-label={t("aria")} className="mt-4 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
-        <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} untagged={playbook?.untagged ?? 0} />
+        <div className={deskOnly}>
+          <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} untagged={playbook?.untagged ?? 0} />
+        </div>
         {tier}
       </section>
     );
@@ -94,15 +101,19 @@ export function DayLineView({
   const line = contractLine(plan, view.focus);
   return (
     <section aria-label={t("aria")} className="mt-4 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
-      {view.pendingEvening && card && (openPending ? (
-        <div className="border-b border-[var(--glass-border)] pb-3">
-          <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} onHide={() => setOpenPending(false)} untagged={playbook?.untagged ?? 0} />
+      {view.pendingEvening && card && (
+        <div className={deskOnly}>
+          {openPending ? (
+            <div className="border-b border-[var(--glass-border)] pb-3">
+              <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} onHide={() => setOpenPending(false)} untagged={playbook?.untagged ?? 0} />
+            </div>
+          ) : (
+            <PendingRow date={card.date} onOpen={() => setOpenPending(true)} />
+          )}
         </div>
-      ) : (
-        <PendingRow date={card.date} onOpen={() => setOpenPending(true)} />
-      ))}
+      )}
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start lg:gap-6">
-        <div className="flex min-w-0 flex-col gap-2.5">
+        <div className={phoneSplit ? "hidden min-w-0 flex-col gap-2.5 md:flex" : "flex min-w-0 flex-col gap-2.5"}>
           {view.focus && <FocusLine focus={view.focus} />}
           <ContractLine line={line} date={contractDate(me)} intraday={me.intraday} yesterday={view.pendingEvening ? null : card?.contract} />
           {playbook && <PicksLine playbook={playbook} />}
@@ -114,7 +125,7 @@ export function DayLineView({
 }
 
 /** Dashboard slot: loads the trader's daily loop and today's plan; renders nothing for a role without one. */
-export function DayLine({ enabled, journalOpenDate, quests }: { enabled: boolean; journalOpenDate?: string | null; quests?: ReactNode }) {
+export function DayLine({ enabled, journalOpenDate, quests, phoneSplit }: { enabled: boolean; journalOpenDate?: string | null; quests?: ReactNode; phoneSplit?: boolean }) {
   const meQ = useDailyMe(enabled);
   const me = meQ.data ?? null;
   const planQ = useTodayContract(me ? contractDate(me) : null, enabled && !!me);
@@ -140,5 +151,5 @@ export function DayLine({ enabled, journalOpenDate, quests }: { enabled: boolean
     );
   }
   if (!me) return null;
-  return <DayLineView me={me} plan={planQ.data} journalOpenDate={journalOpenDate} quests={quests} playbook={playbook} />;
+  return <DayLineView me={me} plan={planQ.data} journalOpenDate={journalOpenDate} quests={quests} playbook={playbook} phoneSplit={phoneSplit} />;
 }

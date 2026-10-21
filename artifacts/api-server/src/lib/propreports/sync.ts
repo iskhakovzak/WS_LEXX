@@ -2,7 +2,8 @@
  * Sync engine: round trips → journal trades (idempotent, trader-notes-safe).
  *
  *   planSync(trips)      read-only diff: insert / update / unchanged / adopt / conflict / skip
- *   applySync(plan)      writes inside one transaction + a propreports_sync_runs row
+ *   applySync(plan)      writes inside one transaction (a savepoint per trade: a failing trade is rolled back and
+ *                        reported, the others commit) + a propreports_sync_runs row
  *   mergePending(...)    reconcile inbox: broker numbers into a manual trade
  *   keepPending(...)     reconcile inbox: insert the broker trip as its own trade
  *
@@ -23,23 +24,19 @@ import { pool } from "@workspace/db";
 type PoolClient = { query: (typeof pool)["query"]; release: (err?: Error | boolean) => void };
 import { logger } from "../logger";
 import { logAudit } from "../audit";
-import { invalidateDashboardCache } from "../hotCache";
-import { invalidateTradesPageCache } from "../tradesPageCache";
-import { invalidateOfficeStatsCache } from "../../routes/officeStats";
-import { refreshTradeStructures } from "../tradeStructureStore";
+import { invalidateTradeCaches } from "./tradesVersion";
 import { round2 } from "./csv";
 import { applyFeeSettings, type DetectedFeeColumn } from "./fees";
 import { getSettings, setSetting } from "./settings";
 import type { RoundTrip } from "./types";
 import { normResult } from "../tradeMath";
-import { emitJobEvent } from "../../jobs/registry";
+import { kickOutbox } from "./tick/outbox";
+import { changedTraders, enqueueStructures, enqueueSyncEffects } from "./syncEffects";
+import { refreshTradeStrategies } from "../tradeStrategyStore";
 
-/** The broker book changed: drop every trade-derived cache (dashboard, /trades/page summaries, office stats). */
-function invalidateTradeCaches(): void {
-  invalidateDashboardCache();
-  invalidateTradesPageCache();
-  invalidateOfficeStatsCache();
-}
+/** The broker book changed: drop every trade-derived cache on every instance (tradesVersion.ts — DB stamp). */
+export { invalidateTradeCaches };
+export { changedTraders, enqueueStructures };
 
 export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict" | "skip";
 
@@ -70,8 +67,7 @@ export interface PlanItem {
   reason?: string;
   trader: string | null;
   account: string;
-  tradeId: number | null;
-  pendingId: number | null;
+  tradeId: number | null; pendingId: number | null;
   changes: FieldChange[];
   candidates: ManualCandidate[];
   trip: RoundTrip;
@@ -80,10 +76,8 @@ export interface PlanItem {
 export interface SyncPlan {
   items: PlanItem[];
   counts: Record<PlanAction, number>;
-  unmappedAccounts: string[];
-  inactiveAccounts: string[];
-  dateFrom: string | null;
-  dateTo: string | null;
+  unmappedAccounts: string[]; inactiveAccounts: string[];
+  dateFrom: string | null; dateTo: string | null;
   /** Fee column keys present in the trips (after settings were applied). */
   feeColumns: string[];
   /** raw account name → canonical mapping account, for names that matched only via alias / fuzzy rules. */
@@ -227,16 +221,16 @@ function contextPatch(t: RoundTrip) {
 export interface PlanOptions {
   /** Restrict to one trader's accounts (everything else → skip/forbidden). */
   onlyTrader?: string | null;
-  /** Mappings that do not exist in the DB yet (admin XLS import dry run) — never persisted here. */
+  /** Mappings (or traders of trader-less mappings) not in the DB yet (XLS import dry run) — never persisted here. */
   virtualMappings?: Array<{ account: string; trader: string }>;
 }
 
 export async function planSync(tripsIn: RoundTrip[], opts: PlanOptions = {}): Promise<SyncPlan> {
   const [mappings, settings] = await Promise.all([loadAccountMappings(), getSettings()]);
   for (const v of opts.virtualMappings ?? []) {
-    if (!mappings.some((m) => m.account === v.account)) {
-      mappings.push({ id: 0, account: v.account, accountId: null, accountName: null, trader: v.trader, active: true, notes: null, aliases: [], lastSyncedAt: null, lastFillAt: null });
-    }
+    const have = mappings.find((m) => m.account === v.account);
+    if (!have) mappings.push({ id: 0, account: v.account, accountId: null, accountName: null, trader: v.trader, active: true, notes: null, aliases: [], lastSyncedAt: null, lastFillAt: null });
+    else if (!have.trader) have.trader = v.trader;
   }
   // owner's fee include/exclude settings decide how totalFees / net / result are computed
   const trips = applyFeeSettings(tripsIn, settings.fees);
@@ -380,6 +374,10 @@ export interface ApplyOptions {
   details?: Record<string, unknown>;
   /** Fee columns detected in the parsed file (recorded in settings so the UI can list them). */
   feeColumns?: DetectedFeeColumn[];
+  /** Start draining the enqueued side effects right away (default true; the tick drains at its end itself). */
+  kick?: boolean;
+  /** Called for each item whose writes failed (rolled back to its savepoint; the rest of the run still commits). */
+  onItemError?: (it: PlanItem, err: unknown) => void;
 }
 
 export interface SyncRunResult {
@@ -418,38 +416,49 @@ async function insertTrade(client: PoolClient, t: RoundTrip, trader: string): Pr
   return Number(rows[0].id);
 }
 
-/** Roles of the fills (Вход / Добор / Частичный фикс / …) and re-entry links; a failure never fails the sync. */
-/**
- * Recompute the structure (roles, re-entry links) of the written trades in the background: the sync never waits for
- * it and never fails because of it (the trade sheet computes the structure live anyway). Chunked, one chunk at a time,
- * so a big first import of the whole desk does not hold many pool connections at once.
- */
-function refreshStructures(tradeIds: number[]): void {
-  if (!tradeIds.length) return;
-  const ids = [...new Set(tradeIds)];
-  void (async () => {
-    for (let i = 0; i < ids.length; i += STRUCTURE_CHUNK) {
-      try {
-        await refreshTradeStructures(ids.slice(i, i + STRUCTURE_CHUNK));
-      } catch (e) {
-        logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: trade structure refresh failed");
-      }
-    }
-  })();
-}
-const STRUCTURE_CHUNK = 300;
-
-/** Replace the broker-sourced executions of a trade (manual ones — note not starting with "PropReports" — are kept). */
+/** Replace the broker-sourced executions of a trade (manual ones — note not starting with "PropReports" — are kept).
+ *  All fills go in ONE statement (unnest of parallel arrays, ordinality = sort_order): one round trip and one firing of
+ *  the statement-level strategy trigger (0237) per trade instead of one per fill. */
 async function writeExecutions(client: PoolClient, tradeId: number, t: RoundTrip): Promise<void> {
   await client.query(`DELETE FROM trade_executions WHERE trade_id = $1 AND note LIKE 'PropReports%'`, [tradeId]);
-  let i = 0;
-  for (const e of t.executions) {
+  if (!t.executions.length) return;
+  const ex = t.executions;
+  await client.query(
+    `INSERT INTO trade_executions (trade_id, kind, price, qty, executed_at, note, sort_order, order_id)
+     SELECT $1, f.kind, f.price, f.qty, (f.at || ' America/New_York')::timestamptz, f.note, (f.ord - 1)::int, f.order_id
+       FROM unnest($2::text[], $3::numeric[], $4::numeric[], $5::text[], $6::text[], $7::text[])
+            WITH ORDINALITY AS f(kind, price, qty, at, note, order_id, ord)
+      ORDER BY f.ord`,
+    [
+      tradeId,
+      ex.map((e) => e.kind),
+      ex.map((e) => e.price),
+      ex.map((e) => e.qty),
+      ex.map((e) => e.at.replace("T", " ")),
+      ex.map((e) => `PropReports ${e.side}${e.fillId ? ` #${e.fillId}` : ""}${e.fees ? ` · fees ${round2(e.fees)}` : ""}`),
+      ex.map((e) => e.orderId ?? null),
+    ],
+  );
+}
+
+const WRITE_ACTIONS = new Set<PlanAction>(["insert", "update", "adopt", "conflict"]);
+
+/** The writes of one plan item (inside the caller's savepoint). Returns the written trade id (null for a conflict). */
+async function writeItem(client: PoolClient, it: PlanItem): Promise<number | null> {
+  if (it.action === "conflict") {
     await client.query(
-      `INSERT INTO trade_executions (trade_id, kind, price, qty, executed_at, note, sort_order, order_id)
-       VALUES ($1, $2, $3, $4, ($5::text || ' America/New_York')::timestamptz, $6, $7, $8)`,
-      [tradeId, e.kind, e.price, e.qty, e.at.replace("T", " "), `PropReports ${e.side}${e.fillId ? ` #${e.fillId}` : ""}${e.fees ? ` · fees ${round2(e.fees)}` : ""}`, i++, e.orderId ?? null],
+      `INSERT INTO propreports_pending_trades (external_id, account, trader, ticker, date, side, payload, candidate_ids)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::int[])
+       ON CONFLICT (external_id) DO UPDATE SET payload = EXCLUDED.payload, candidate_ids = EXCLUDED.candidate_ids, updated_at = NOW()`,
+      [it.externalId, it.account, it.trader, it.trip.symbol, it.trip.date, it.trip.side, JSON.stringify(it.trip), it.candidates.map((c) => c.id)],
     );
+    return null;
   }
+  const id = it.action === "insert" ? await insertTrade(client, it.trip, it.trader!) : it.tradeId!;
+  if (it.action !== "insert") await client.query(TRADE_UPDATE_SQL, updateParams(id, it.trip));
+  await writeExecutions(client, id, it.trip);
+  if (it.action === "insert" && it.pendingId) await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [it.pendingId]);
+  return id;
 }
 
 export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<SyncRunResult> {
@@ -470,46 +479,28 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
     const touchedAccounts = new Map<string, string>(); // account → max fill datetime
     const writtenTrades: number[] = [];
     for (const it of plan.items) {
-      try {
-        switch (it.action) {
-          case "insert": {
-            const id = await insertTrade(client, it.trip, it.trader!);
-            await writeExecutions(client, id, it.trip);
-            writtenTrades.push(id);
-            if (it.pendingId) await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [it.pendingId]);
-            res.inserted++;
-            break;
-          }
-          case "update":
-          case "adopt": {
-            await client.query(TRADE_UPDATE_SQL, updateParams(it.tradeId!, it.trip));
-            await writeExecutions(client, it.tradeId!, it.trip);
-            writtenTrades.push(it.tradeId!);
-            res.updated++;
-            break;
-          }
-          case "conflict": {
-            await client.query(
-              `INSERT INTO propreports_pending_trades (external_id, account, trader, ticker, date, side, payload, candidate_ids)
-               VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::int[])
-               ON CONFLICT (external_id) DO UPDATE SET payload = EXCLUDED.payload, candidate_ids = EXCLUDED.candidate_ids, updated_at = NOW()`,
-              [it.externalId, it.account, it.trader, it.trip.symbol, it.trip.date, it.trip.side, JSON.stringify(it.trip), it.candidates.map((c) => c.id)],
-            );
-            res.conflicts++;
-            break;
-          }
-          default:
-            break;
+      if (WRITE_ACTIONS.has(it.action)) {
+        // one savepoint per trade: a failed statement undoes this trade only (without it the whole transaction is
+        // aborted and every later statement fails) — the rest of the run commits, the failed trip is retried later
+        await client.query("SAVEPOINT sync_item");
+        try {
+          const id = await writeItem(client, it);
+          await client.query("RELEASE SAVEPOINT sync_item");
+          if (id != null) writtenTrades.push(id);
+          if (it.action === "insert") res.inserted++; else if (it.action === "conflict") res.conflicts++; else res.updated++;
+        } catch (e) {
+          await client.query("ROLLBACK TO SAVEPOINT sync_item");
+          opts.onItemError?.(it, e);
+          res.errors++;
+          errors.push(`${it.externalId}: ${e instanceof Error ? e.message : String(e)}`);
+          if (errors.length > 50) throw new Error("Too many errors (> 50), import cancelled");
+          continue;
         }
-        if (it.trader) {
-          const last = it.trip.closedAt ?? it.trip.openedAt;
-          const prev = touchedAccounts.get(it.account);
-          if (!prev || last > prev) touchedAccounts.set(it.account, last);
-        }
-      } catch (e) {
-        res.errors++;
-        errors.push(`${it.externalId}: ${e instanceof Error ? e.message : String(e)}`);
-        if (errors.length > 50) throw new Error("Too many errors (> 50), import cancelled");
+      }
+      if (it.trader) {
+        const last = it.trip.closedAt ?? it.trip.openedAt;
+        const prev = touchedAccounts.get(it.account);
+        if (!prev || last > prev) touchedAccounts.set(it.account, last);
       }
     }
     for (const [account, last] of touchedAccounts) {
@@ -518,8 +509,15 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
         [account, last],
       );
     }
+    if (writtenTrades.length) await refreshTradeStrategies(writtenTrades, client); // strategy + IMX tag, with the fills
+    if (res.inserted || res.updated) {
+      // atomic with the trades: a committed sync never loses its rule scan / structures / "synced" listeners
+      await enqueueSyncEffects(client, plan, writtenTrades, {
+        runId, source: opts.source, dateFrom: opts.dateFrom ?? plan.dateFrom ?? null, dateTo: opts.dateTo ?? plan.dateTo ?? null,
+        inserted: res.inserted, updated: res.updated, changed: true,
+      });
+    }
     await client.query("COMMIT");
-    refreshStructures(writtenTrades);
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     res.errors++;
@@ -537,50 +535,37 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
     ).catch(() => {});
   }
   // remember what was seen, for the «Комиссии» / «Несопоставленные счета» settings blocks (never during dry runs)
+  await rememberSeen(plan.unmappedAccounts, opts.feeColumns);
+  await logAudit({ actor: opts.actor, action: "propreports.sync", targetType: "propreports_sync_runs", targetId: String(runId), details: { ...res, source: opts.source, fileName: opts.fileName ?? null } });
+  if (res.inserted || res.updated) {
+    invalidateTradeCaches();
+    // The side effects were enqueued with the trades (rule scan, idea relink, challenges, structures, "synced"
+    // listeners); start them now — the tick runs whatever a frozen function leaves behind.
+    if (opts.kick !== false) kickOutbox();
+  }
+  return res;
+}
+
+/** Fee columns + unmatched account names seen by a real (non-dry) sync, for the settings blocks. Never throws. */
+export async function rememberSeen(unmappedAccounts: string[], feeColumns?: DetectedFeeColumn[]): Promise<void> {
   try {
     const s = await getSettings();
-    if (opts.feeColumns?.length) {
+    if (feeColumns?.length) {
       const now = new Date().toISOString();
       const detected = new Map(s.fees.detected.map((d) => [d.key, d]));
-      for (const c of opts.feeColumns) detected.set(c.key, c);
+      for (const c of feeColumns) detected.set(c.key, c);
       const columns = { ...s.fees.columns };
-      for (const c of opts.feeColumns) columns[c.key] = { ...columns[c.key], include: columns[c.key]?.include ?? true, header: c.header, known: c.known, heuristic: c.heuristic, lastSeenAt: now };
+      for (const c of feeColumns) columns[c.key] = { ...columns[c.key], include: columns[c.key]?.include ?? true, header: c.header, known: c.known, heuristic: c.heuristic, lastSeenAt: now };
       await setSetting("fees", { ...s.fees, detected: [...detected.values()], columns });
     }
     const unmatched = new Set(s.unmatched);
-    for (const a of plan.unmappedAccounts) unmatched.add(a);
+    for (const a of unmappedAccounts) unmatched.add(a);
     const known = new Set((await loadAccountMappings()).flatMap((m) => [m.account, ...m.aliases]));
     const next = [...unmatched].filter((a) => !known.has(a)).sort();
     if (next.join("|") !== s.unmatched.join("|")) await setSetting("unmatched", next);
   } catch (e) {
     logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: settings bookkeeping failed");
   }
-  await logAudit({ actor: opts.actor, action: "propreports.sync", targetType: "propreports_sync_runs", targetId: String(runId), details: { ...res, source: opts.source, fileName: opts.fileName ?? null } });
-  if (res.inserted || res.updated) {
-    invalidateTradeCaches();
-    // Re-check trading rules for every trader whose book changed, so violations exist right after the sync.
-    const traders = new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string));
-    if (traders.size) {
-      void import("../rulesEngine").then(async ({ scanRulesForTrader }) => {
-        for (const t of traders) await scanRulesForTrader(t).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e), trader: t }, "propreports: rule scan failed"));
-      });
-      // Ideas of these traders: link them to the new broker trades (ticker + side + entry in the idea window).
-      void import("../ideaTradeMatch").then(({ relinkIdeasForTraders }) => relinkIdeasForTraders([...traders]))
-        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: idea relink failed"));
-      // Academy challenges of these traders: status + pass/fail notices move here (write path), not on GET.
-      void import("../../routes/academy-path").then(({ refreshChallenges }) => refreshChallenges([...traders]))
-        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: challenge refresh failed"));
-    }
-  }
-  // Jobs listening to "propreports.synced" (src/jobs/registry.ts) run after every recorded sync that did not fail outright.
-  if (runId && (!res.errors || res.inserted + res.updated > 0)) {
-    const changedTraders = [...new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string))];
-    emitJobEvent("propreports.synced", {
-      runId, source: opts.source, dateFrom: opts.dateFrom ?? plan.dateFrom ?? null, dateTo: opts.dateTo ?? plan.dateTo ?? null,
-      traders: changedTraders, inserted: res.inserted, updated: res.updated, changed: res.inserted + res.updated > 0,
-    });
-  }
-  return res;
 }
 
 // ─── reconcile inbox ────────────────────────────────────────────────────────
@@ -657,8 +642,10 @@ export async function mergePending(pendingId: number, tradeId: number, actor: st
     await client.query(TRADE_UPDATE_SQL, updateParams(tradeId, trip));
     await writeExecutions(client, tradeId, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
+    await refreshTradeStrategies([tradeId], client);
+    await enqueueStructures(client, [tradeId]);
     await client.query("COMMIT");
-    refreshStructures([tradeId]);
+    kickOutbox();
     await logAudit({ actor, action: "propreports.merge", targetType: "trades", targetId: String(tradeId), details: { externalId: trip.externalId } });
     invalidateTradeCaches();
     return { ok: true, tradeId };
@@ -684,8 +671,10 @@ export async function keepPendingSeparate(pendingId: number, actor: string): Pro
     const id = await insertTrade(client, trip, String(pending.trader));
     await writeExecutions(client, id, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
+    await refreshTradeStrategies([id], client);
+    await enqueueStructures(client, [id]);
     await client.query("COMMIT");
-    refreshStructures([id]);
+    kickOutbox();
     await logAudit({ actor, action: "propreports.keep_separate", targetType: "trades", targetId: String(id), details: { externalId: trip.externalId } });
     invalidateTradeCaches();
     return { ok: true, tradeId: id };

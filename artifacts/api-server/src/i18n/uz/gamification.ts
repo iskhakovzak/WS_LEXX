@@ -13,6 +13,11 @@ export default {
     telegram: "🏆 {text}",
   },
   masteryLevel: { l0: "Yangi boshlovchi", l1: "Shogird", l2: "Amaliyotchi", l3: "Ekspert", l4: "Usta" },
+  taskDone: {
+    title: "{trader}: kurator topshirigʻi bajarildi — tasdiqlang",
+    body: "Topshiriq: {note}",
+    bodyNoNote: "Topshiriqni kurator kabinetida bajarilgan deb belgilang",
+  },
   notify: {
     eligibleTitle: "«{title}» mukofoti mavjud",
     eligibleBody: "Uni «Kvestlar» boʻlimida soʻrang — kurator topshiradi.",

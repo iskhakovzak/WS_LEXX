@@ -23,6 +23,8 @@ export type RiskLimits = {
   maxOpenPositions: number | null;
   allowOvernight: boolean;
   allowSwing: boolean;
+  /** Buying power set per trader (Волна 1 п. 1.21); absent on older API builds. */
+  buyingPower?: number | null;
   tier: string | null;
   notes: string | null;
   updatedBy: string | null;
@@ -53,6 +55,9 @@ export type RiskStop = {
   drawdownPct: number | null;
 };
 
+import type { DeskLive, LivePosition, RiskLive } from "./live-types";
+export type { DeskLive, LivePosition, RiskLive } from "./live-types";
+
 export type RiskMetrics = {
   trader: string;
   status: RiskStatus;
@@ -61,9 +66,11 @@ export type RiskMetrics = {
   alerts: RiskAlert[];
   breaches: RiskAlert[];
   sources: { today: PnlSource; week: PnlSource | "mixed"; history: { propreports: number; journal: number } };
+  live?: RiskLive | null;
   today: {
     date: string;
-    pnlNet: number | null;
+    pnlNet: number | null; // realized net + the live unrealized when `live.counted`
+    realizedNet?: number | null; unrealizedUsd?: number | null;
     source: PnlSource;
     fees: number;
     r: number;
@@ -97,7 +104,7 @@ export type RiskMetrics = {
   };
 };
 
-export type RiskMe = RiskMetrics & { limits: RiskLimits | null; afterClose: boolean };
+export type RiskMe = RiskMetrics & { limits: RiskLimits | null; afterClose: boolean; livePositions?: LivePosition[] };
 
 export type DeskRow = RiskMetrics & {
   role: string | null;
@@ -139,6 +146,7 @@ export type RiskDesk = {
   };
   banner: DeskBanner[];
   traders: DeskRow[];
+  live?: DeskLive | null;
 };
 
 export type RiskPosition = {
@@ -527,58 +535,7 @@ export function useTraderDay(trader: string | null, enabled = true) {
   });
 }
 
-export type BehaviorFlags = {
-  date: string;
-  trades: number;
-  /** Typical trades per day (median + k·MAD over 60 days), null when unknown. */
-  norm: number | null;
-  revenge: number;
-  revengeCost: number | null;
-  tilt: number;
-  martingale: number;
-  overtrading: boolean;
-};
-
-type BehaviorResp = {
-  summary?: { trades?: number; tradesPerDayNorm?: number | null };
-  patterns?: { key: string; n: number; net: number | null }[];
-};
-
-/**
- * Optional behaviour flags for one trading day from /api/behavior (raw fetch): revenge trades, tilt clusters,
- * size-up after loss, and trade count vs the trader's 60-day norm. Resolves to null when the API is unavailable.
- */
-export function useBehaviorDay(trader: string | null, date: string | null, enabled = true) {
-  return useQuery({
-    queryKey: ["risk", "behavior", trader ?? "", date ?? ""] as const,
-    enabled: enabled && !!trader && !!date,
-    queryFn: async (): Promise<BehaviorFlags | null> => {
-      const t = encodeURIComponent(trader ?? "");
-      const d = date as string;
-      const [day, hist] = await Promise.all([
-        http.get<BehaviorResp>(`/api/behavior?trader=${t}&from=${d}&to=${d}`).catch(() => null),
-        http.get<BehaviorResp>(`/api/behavior?trader=${t}&from=${addDays(d, -60)}&to=${d}`).catch(() => null),
-      ]);
-      if (!day) return null;
-      const pat = (k: string) => day.patterns?.find((p) => p.key === k);
-      const trades = day.summary?.trades ?? 0;
-      const norm = hist?.summary?.tradesPerDayNorm ?? null;
-      return {
-        date: d,
-        trades,
-        norm,
-        revenge: pat("revenge")?.n ?? 0,
-        revengeCost: pat("revenge")?.net ?? null,
-        tilt: pat("tilt")?.n ?? 0,
-        martingale: pat("martingale")?.n ?? 0,
-        overtrading: norm != null && trades > norm,
-      };
-    },
-    staleTime: STALE.short,
-    refetchInterval: REFRESH_MS,
-    retry: 0,
-  });
-}
+export { useBehaviorDay, type BehaviorFlags } from "./use-behavior-day";
 
 export type LimitsInput =Omit<RiskLimits, "trader" | "updatedBy" | "updatedAt"> & { reason?: string | null };
 

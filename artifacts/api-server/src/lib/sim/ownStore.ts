@@ -23,8 +23,9 @@ const SELECT = `
 type DbRow = Omit<OwnTradeRow, "id" | "execs"> & { id: number | string; execs: OwnTradeRow["execs"] };
 const fromDb = (r: DbRow): OwnTradeRow => ({ ...r, id: Number(r.id), execs: r.execs ?? [] });
 
-/** The trader's losing intraday trades that can be replayed (archived 1-minute / 5-minute bars, timed fills). */
-export async function ownCandidates(trader: string, lastDay: string, limit = 300): Promise<OwnTradeRow[]> {
+/** The trader's losing intraday trades that can be replayed (archived 1-minute / 5-minute bars, timed fills); the
+ *  trainer eligibility rule (lib/trainer/eligibility) is applied by ownService on top. */
+export async function ownCandidates(trader: string, lastDay: string, limit = 1000): Promise<OwnTradeRow[]> {
   const { rows } = await pool.query<DbRow>(`${SELECT} ORDER BY ${netPnlSql("t")} ASC, t.id DESC LIMIT $3`, [trader, lastDay, limit]);
   return rows.map(fromDb);
 }

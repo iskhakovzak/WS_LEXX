@@ -1,9 +1,10 @@
 /**
  * «Путь трейдера» — promotion engine (pure, no I/O).
  *
- * Ladder (user decision): Стажёр (trainee) → Джун (junior) → Трейдер (trader) → Сеньор (senior).
- * The pre-trainee selection / bootcamp is a separate funnel (agent F4), not a stage here.
- * Stage keys deliberately equal the scaling tiers of lib/scalingEngine.ts (DEFAULT_TIERS: trainee/junior/trader/senior),
+ * Ladder (owner decision 2026-10-20, Волна 1 п. 1.21): Джун (junior) → Трейдер (trader) → Сеньор (senior). The former
+ * first stage «trainee» is gone: stored rows were moved to junior by migration 0229 and a stray legacy value still reads
+ * as junior (lib/people/stage.ts normalizeStageKey). The selection / bootcamp is a separate funnel, not a stage here.
+ * Stage keys deliberately equal the scaling tiers of lib/scalingEngine.ts (DEFAULT_TIERS: junior/trader/senior),
  * so a stage borrows its tier's limits (daily loss, max drawdown, account size) for limit-based criteria.
  *
  * The window metrics that already exist in the scaling engine (net $, trades, PF, win rate, max DD, % of DD limit,
@@ -17,17 +18,20 @@
  * PF = Σ⁺/|Σ⁻|, null (never ∞) when there are no losses; dates are NY trading dates (YYYY-MM-DD).
  */
 import {
-  addDays, compare, computeWindowMetrics, isWeekend, progressOf, windowStart,
+  addDays, compare, computeWindowMetrics, disciplineIndexOf, isWeekend, progressOf, windowStart,
   type LimitsInput, type Op, type RatingInput, type Tier, type TradeInput, type TraderInput,
 } from "./scalingEngine";
+import { curatorDisciplineGradeOf } from "./disciplineIndex";
 import { academyPathT, criterionLabelFor, ruPath, stageNameFor } from "./academyI18n";
 import { DEFAULT_LANG, formatCountFor, type Lang } from "../i18n";
 import { fmtDateFor } from "../i18n/format";
 
 // ─── stages ─────────────────────────────────────────────────────────────────
 
-export type StageKey = "trainee" | "junior" | "trader" | "senior";
-export const STAGE_KEYS: readonly StageKey[] = ["trainee", "junior", "trader", "senior"];
+export type StageKey = "junior" | "trader" | "senior";
+export const STAGE_KEYS: readonly StageKey[] = ["junior", "trader", "senior"];
+/** The removed first stage: a stored value of it means the entry stage (junior). */
+export const LEGACY_STAGE_KEYS: Readonly<Record<string, StageKey>> = { trainee: "junior" };
 
 export interface StageMeta {
   key: StageKey;
@@ -38,12 +42,8 @@ export interface StageMeta {
   scalingTier: string | null;
 }
 
-/** Old seeded text (mentioned the pre-trainee selection, which is not part of the ladder) — replaced on startup if untouched. */
-export const LEGACY_TRAINEE_DESCRIPTION: string = ruPath.stages.legacyTraineeDescription;
-export const TRAINEE_DESCRIPTION: string = ruPath.stages.trainee.description;
-
 /** Seeded stages (Russian seed rows; display names per language: academyI18n stageNameFor). */
-export const DEFAULT_STAGES: StageMeta[] = (["trainee", "junior", "trader", "senior"] as const).map((key, i) => ({
+export const DEFAULT_STAGES: StageMeta[] = (["junior", "trader", "senior"] as const).map((key, i) => ({
   key, name: ruPath.stages[key].name, order: i + 1, scalingTier: key, description: ruPath.stages[key].description,
 }));
 
@@ -140,20 +140,6 @@ const c = (fromStage: StageKey, metric: PromoMetricKey, op: Op, value: number, w
 
 /** Seeded on first run into academy_stage_criteria, staff-editable afterwards. */
 export const DEFAULT_CRITERIA: Omit<Criterion, "id">[] = [
-  // Стажёр → Джун (20 торговых дней)
-  c("trainee", "trading_days", ">=", 15, 20),
-  c("trainee", "net_pnl", ">=", 300, 20),
-  c("trainee", "max_dd_usd", "<=", 500, 20),
-  c("trainee", "consistency", "<=", 40, 20),
-  c("trainee", "win_rate", ">=", 45, 20),
-  c("trainee", "profit_factor", ">=", 1.2, 20),
-  c("trainee", "fee_share", "<=", 50, 20),
-  c("trainee", "violations", "<=", 2, 20),
-  c("trainee", "red_streak_max", "<=", 4, 20),
-  c("trainee", "discipline_index", ">=", 70, 20),
-  c("trainee", "lessons_pct", ">=", 80, null),
-  c("trainee", "quiz_avg", ">=", 70, null),
-  c("trainee", "challenges_passed", ">=", 1, null),
   // Джун → Трейдер (40 торговых дней)
   c("junior", "trading_days", ">=", 30, 40),
   c("junior", "net_pnl", ">=", 1500, 40),
@@ -302,8 +288,9 @@ export function computePromoMetrics(input: PromotionInput, tier: Tier | null, wi
   const val = (k: keyof typeof w.values): MetricOut => ({ value: w.values[k].value, note: w.values[k].note });
 
   const disc = input.disciplineDays;
-  const discWin = disc ? disc.filter((d) => inWin(d.date)) : null;
-  const discAvg = discWin && discWin.length ? discWin.reduce((s, d) => s + d.score, 0) / discWin.length : null;
+  const discOne = disciplineIndexOf(disc, from, today); // the one discipline score (lib/disciplineIndex)
+  const discAvg = discOne.value;
+  const grade = curatorDisciplineGradeOf(input.ratings, from, today); // curators' weekly 1-10 grade, a separate input
 
   const L = input.learning;
   const since = input.stageSince && YMD.test(input.stageSince) ? input.stageSince : null;
@@ -331,8 +318,11 @@ export function computePromoMetrics(input: PromotionInput, tier: Tier | null, wi
     green_days_pct: val("green_days_pct"),
     discipline_index: disc == null
       ? { value: null, unavailable: true, note: t("notes.behaviorOff") }
-      : { value: discAvg == null ? null : r2(discAvg), note: discAvg == null ? t("notes.noEntryTimes") : t("notes.behaviorDays", { n: discWin!.length }) },
-    rating_discipline: { value: w.values.discipline.value, note: w.values.discipline.note },
+      : { value: discAvg == null ? null : r2(discAvg), note: discAvg == null ? t("notes.noEntryTimes") : t("notes.behaviorDays", { n: discOne.days }) },
+    rating_discipline: {
+      value: grade.value == null ? null : r2(grade.value),
+      note: grade.value == null ? t("notes.noRatings") : t("notes.ratings", { count: grade.weeks }),
+    },
     lessons_pct: L == null
       ? { value: null, unavailable: true, note: t("notes.learningOff") }
       : { value: L.lessonsTotal > 0 ? r2((L.lessonsDone / L.lessonsTotal) * 100) : null, note: L.lessonsTotal > 0 ? t("notes.lessonsOf", { done: L.lessonsDone, total: L.lessonsTotal }) : t("notes.noLessons") },

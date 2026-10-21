@@ -3,12 +3,14 @@
  * server registry (GET /api/admin/settings → lib/settings/registry.ts): one section per group, one row per key
  * (DeskSettingField). Edits stay a draft until the one «Сохранить» (PUT, the whole batch; SETTINGS_INVALID problems land
  * next to their fields); a value equal to the default is sent as «по умолчанию» (null). Admins only (settings.manage).
+ * By default only the ~10 pilot settings (registry flag `pilot`, PILOT.md) are shown; «Показать все (N)» opens the rest
+ * (remembered per browser). Rows with unsaved edits or server problems stay visible either way.
  */
 import { useMemo, useState } from "react";
 import { Save, SlidersHorizontal, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QueryError } from "@/components/query-error";
-import { EmptyState, ListSkeleton, Panel } from "@/components/ds";
+import { EmptyState, ListSkeleton, Panel, usePersistentState } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { isApiError } from "@/lib/api/http";
@@ -17,7 +19,7 @@ import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { useDeskSettings, useSaveDeskSettings } from "./desk-settings-api";
 import { DeskSettingField } from "./DeskSettingField";
 import {
-  PILOT_KEYS, changesOf, checkValue, groupRows, normalize, parseInput, shownProblem, type Problem, type SettingRow, type SettingValue,
+  changesOf, checkValue, groupRows, normalize, parseInput, pilotRowsOf, shownProblem, visibleRows, type Problem, type SettingRow, type SettingValue,
 } from "./desk-settings-model";
 import { settingLabel } from "./desk-settings-text";
 
@@ -49,8 +51,10 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [serverProblems, setServerProblems] = useState<Record<string, Problem>>({});
 
+  const [showAll, setShowAll] = usePersistentState<boolean>("admin.settings.showAll", false);
+
   const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
-  const groups = useMemo(() => groupRows(rows), [rows]);
+  const pilotRows = useMemo(() => pilotRowsOf(rows), [rows]);
   const changes = useMemo(() => changesOf(rows, draft), [rows, draft]);
 
   const shown = (r: SettingRow): SettingValue => (r.key in draft ? (draft[r.key] ?? r.default) : r.effective);
@@ -64,6 +68,10 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
   };
   const problems = rows.map(localProblem).filter((p): p is Problem => !!p);
   const dirtyKeys = new Set([...changes.map((c) => c.key), ...problems.map((p) => p.key)]);
+  const keep = new Set([...dirtyKeys, ...Object.keys(serverProblems), ...Object.keys(draft)]);
+  const shownRows = visibleRows(rows, showAll === true, keep);
+  const groups = groupRows(shownRows);
+  const pilotOnly = shownRows.length < rows.length;
 
   const onValue = (r: SettingRow, v: SettingValue | null, text?: string) => {
     setServerProblems(({ [r.key]: _gone, ...rest }) => rest);
@@ -98,7 +106,11 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
   };
 
   const pending = dirtyKeys.size;
-  const pilotRows = PILOT_KEYS.map((k) => byKey.get(k)).filter((r): r is SettingRow => !!r);
+  const toggle = pilotRows.length > 0 && pilotRows.length < rows.length && (
+    <button type="button" className="chip min-h-7 shrink-0 rounded-full px-2.5 text-xs font-medium" aria-pressed={showAll === true} onClick={() => setShowAll(!showAll)}>
+      {showAll ? t("jump.onlyPilot", { count: pilotRows.length }) : t("jump.showAll", { count: rows.length })}
+    </button>
+  );
   return (
     <div className="flex flex-col gap-[var(--grid-gap)] pb-2">
       <p className="text-sm text-muted-foreground">{t("description")}</p>
@@ -111,7 +123,12 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
             </button>
           ))}
         </div>
-        {pilotRows.length > 0 && (
+        {pilotOnly ? (
+          <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
+            <span className="font-medium text-foreground">{t("jump.pilotShown", { count: pilotRows.length, total: rows.length })}</span>
+            {toggle}
+          </div>
+        ) : pilotRows.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs" aria-label={t("jump.pilotAria")}>
             <span className="font-medium text-foreground">{t("jump.pilot", { count: pilotRows.length })}</span>
             {pilotRows.map((r) => (
@@ -119,6 +136,7 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
                 {settingLabel(r.key)}
               </button>
             ))}
+            <span className="ml-auto">{toggle}</span>
           </div>
         )}
       </nav>

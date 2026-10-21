@@ -3,7 +3,6 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
-import { logger } from "../lib/logger";
 import { logActivity } from "../lib/activity";
 import { activityDetails, activityTitle } from "../lib/activityText";
 import { requireMember, scopeTrader } from "../lib/auth";
@@ -25,6 +24,7 @@ import {
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 import { langOf, localeTagFor } from "../i18n";
 import { feedT } from "../i18n/ns";
+import { loadMoneyViewer } from "../lib/playbookAccess";
 
 /**
  * Daily feed ("Дейли-фид") — the desk's briefing per trading date.
@@ -43,32 +43,8 @@ import { feedT } from "../i18n/ns";
  */
 const router: IRouter = Router();
 
-let ensured: Promise<void> | null = null;
-function ensureTables(): Promise<void> {
-  if (!ensured) {
-    ensured = pool
-      .query(
-        `ALTER TABLE daily_feed ADD COLUMN IF NOT EXISTS created_by TEXT;
-         CREATE INDEX IF NOT EXISTS daily_feed_date_idx ON daily_feed (date);
-         CREATE TABLE IF NOT EXISTS feed_acks (
-           entry_id INTEGER NOT NULL REFERENCES daily_feed(id) ON DELETE CASCADE,
-           user_name TEXT NOT NULL,
-           kind TEXT NOT NULL,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           PRIMARY KEY (entry_id, user_name, kind)
-         );`,
-      )
-      .then(() => undefined)
-      .catch((err) => {
-        ensured = null;
-        throw err;
-      });
-  }
-  return ensured;
-}
-ensureTables().catch((err) => logger.warn({ err }, "dailyfeed: ensure tables failed at init"));
-
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const EOD_TAG = "eod";
 const ACK_KINDS = ["read", "ack", "trading_this"] as const;
 type AckKind = (typeof ACK_KINDS)[number];
 
@@ -111,10 +87,15 @@ async function acksFor(ids: number[], viewer: string | null): Promise<Map<number
   return out;
 }
 
-function serializeFeed(r: FeedRow, acks?: AckSummary) {
+/**
+ * `staff` false: the EOD recap's notes (one line per trader with W/L and $, the carried positions) are dropped — a
+ * member sees only own results (owner rule 2026-10-21); the desk totals in the theme / setups / tickers stay.
+ */
+function serializeFeed(r: FeedRow, acks?: AckSummary, staff = true) {
+  const eod = (r.tags ?? "").split(",").some((t) => t.trim().toLowerCase() === EOD_TAG);
   const base = {
     id: r.id, date: r.date, whatWorksNow: r.what_works_now, whatDoesntWork: r.what_doesnt_work, bestTickers: r.best_tickers,
-    marketTheme: r.market_theme, notes: r.notes, tags: r.tags, screenshotUrl: r.screenshot_url, screenshotNotes: r.screenshot_notes,
+    marketTheme: r.market_theme, notes: eod && !staff ? null : r.notes, tags: r.tags, screenshotUrl: r.screenshot_url, screenshotNotes: r.screenshot_notes,
     createdAt: r.created_at.toISOString(),
   };
   return { ...GetDailyFeedResponse.parse(base), createdBy: r.created_by, acks: acks ?? emptyAcks() };
@@ -146,7 +127,6 @@ const ListQuery = z.object({
 });
 
 router.get("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const q = ListQuery.safeParse({ from: req.query.from || undefined, to: req.query.to || undefined, limit: req.query.limit, offset: req.query.offset });
   if (!q.success) throw new AppError("INVALID_RANGE", undefined, { max: 2000 });
@@ -161,7 +141,8 @@ router.get("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
     params,
   );
   const acks = await acksFor(rows.map((r) => r.id), req.authUser.name);
-  const items = rows.map((r) => serializeFeed(r, acks.get(r.id)));
+  const { staff } = await loadMoneyViewer(req);
+  const items = rows.map((r) => serializeFeed(r, acks.get(r.id), staff));
   ListDailyFeedResponse.parse(items);
   res.json(items);
 }));
@@ -187,7 +168,6 @@ type DayContext = {
 };
 
 router.get("/dailyfeed/context", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
   if (scope === undefined) throw unauthorized();
   const parsed = ContextQuery.safeParse(req.query);
@@ -314,7 +294,6 @@ router.post("/dailyfeed/stream/seen", asyncHandler(async (req, res): Promise<voi
 }));
 
 router.post("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateDailyFeedBody.safeParse(req.body);
   if (!parsed.success) throw parsed.error;
@@ -336,7 +315,6 @@ router.post("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
 
 // ─── EOD recap (staff) ──────────────────────────────────────────────────────
 
-const EOD_TAG = "eod";
 
 type EodTrader = { trader: string; n: number; wins: number; losses: number; be: number; open: number; sumR: number | null; gross: number | null; fees: number | null; net: number | null; synced: boolean };
 
@@ -345,7 +323,6 @@ type EodTrader = { trader: string; n: number; wins: number; losses: number; be: 
  * Returns 409 while the PropReports sync for that day is still pending (configured + nothing synced for the date), unless ?force=1.
  */
 router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!(await requireCap(req, res, "dailyfeed.manage"))) return;
   const date = typeof req.query.date === "string" && ISO_DATE.test(req.query.date) ? req.query.date : nyDate();
   const force = req.query.force === "1" || req.query.force === "true" || req.body?.force === true;
@@ -466,14 +443,13 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
 // ─── Single entry ──────────────────────────────────────────────────────────
 
 router.get("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const params = GetDailyFeedParams.safeParse(req.params);
   if (!params.success) throw params.error;
   const entry = await loadFeed(params.data.id);
   if (!entry) throw notFound("FEED_ENTRY_NOT_FOUND");
   const acks = await acksFor([entry.id], req.authUser.name);
-  res.json(serializeFeed(entry, acks.get(entry.id)));
+  res.json(serializeFeed(entry, acks.get(entry.id), (await loadMoneyViewer(req)).staff));
 }));
 
 const COL: Record<string, string> = {
@@ -482,7 +458,6 @@ const COL: Record<string, string> = {
 };
 
 router.patch("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = UpdateDailyFeedParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -515,7 +490,6 @@ router.patch("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.delete("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteDailyFeedParams.safeParse(req.params);
   if (!params.success) throw params.error;
@@ -528,7 +502,6 @@ router.delete("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => 
 }));
 
 router.post("/dailyfeed/:id/restore", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadFeed(id, true);
@@ -544,7 +517,6 @@ router.post("/dailyfeed/:id/restore", asyncHandler(async (req, res): Promise<voi
 const AckBody = z.object({ kind: z.enum(ACK_KINDS), on: z.coerce.boolean().optional() });
 
 router.post("/dailyfeed/:id/ack", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = AckBody.safeParse(req.body);
@@ -566,7 +538,6 @@ router.post("/dailyfeed/:id/ack", asyncHandler(async (req, res): Promise<void> =
 }));
 
 router.get("/dailyfeed/:id/acks", asyncHandler(async (req, res): Promise<void> => {
-  await ensureTables();
   if (!req.authUser) throw unauthorized();
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadFeed(id);

@@ -7,7 +7,7 @@ import {
   dealTypeOf, dilutionScore, type DilutionScore,
 } from "./score";
 import { HORIZON_LABEL, type Exposure, type Offering } from "./types";
-import { fmtPct, fmtPrice } from "@/lib/format";
+import { fmtDeskTime, fmtPct, fmtPrice } from "@/lib/format";
 import { offeringsI18n } from "@/i18n/ns/offerings";
 
 export const BAR_FILL: Record<Tone, string> = {
@@ -159,6 +159,19 @@ export function ExposureBadge({ e, className, compact }: { e: Exposure | undefin
         <Eye className="h-3 w-3" aria-hidden="true" />
         {compact ? <span className="sr-only">{t("bits.inWatchlist")}</span> : t("bits.watchlist")}
       </Pill>
+    </span>
+  );
+}
+
+/**
+ * One muted line «источник недоступен · HH:MM NY» (item 1.14): stands in for the empty state — and is the only outage
+ * mark on the page — when NASDAQ / SEC EDGAR / quotes did not answer. `at` = when the server checked.
+ */
+export function SourceDownLine({ at, names, className }: { at: number | string | null | undefined; names: string[]; className?: string }) {
+  const { t } = offeringsI18n.useT();
+  return (
+    <span role="status" className={cn("text-xs text-muted-foreground tabular-nums", className)} title={t("page.sourceDownTitle", { list: names.join(", ") })}>
+      {t("page.sourceDown", { time: fmtDeskTime(at ?? Date.now()) })}
     </span>
   );
 }

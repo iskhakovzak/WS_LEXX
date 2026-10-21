@@ -162,6 +162,8 @@ export default {
     viewCurve: "Egri chiziq",
     viewMonthly: "Oylar boʻyicha",
     overTrades: "{unit} li {count} ta savdo boʻyicha",
+    overDays: "{unit} li {count} ta savdo kuni boʻyicha",
+    hintDaily: "Har kun yopilishidagi jamlangan {unit} va choʻqqidan pasayish",
     aria: "Natija egri chizigʻi: jami {value}",
     accumulated: "Jamlangan",
     drawdown: "Pasayish",

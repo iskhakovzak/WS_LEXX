@@ -141,6 +141,7 @@ export default {
     review_days: { title: "Review days on time", desc: "Trading days reviewed the same or the next day." },
     plan_days: { title: "Plans before the open", desc: "Days with a personal plan filled in before 9:30 NY." },
     beat_yourself: { title: "Play better than yourself", desc: "Own days in the simulator where the new decision beats the real trade." },
+    daily_task_days: { title: "Daily challenge", desc: "Days you played the «Daily challenge» this week: {done} of {target}. Points are for practice, never for P&L." },
     trainer_drills: { title: "«Find the entry» trainer", desc: "Trainer answers this week: {done} of {target}. Points are for practice, never for P&L." },
     academy_lessons: { title: "Academy lessons", desc: "Lessons completed this week: {done} of {target}." },
     curator_task: { title: "Curator's task", desc: "What to do is in the curator's note; the curator marks it done." },

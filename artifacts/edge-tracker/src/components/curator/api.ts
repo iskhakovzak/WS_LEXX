@@ -80,6 +80,8 @@ export type QueueKind = "eod" | "weekly" | "academy" | "breach";
 export type QueueItem = {
   kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string;
   overdue: boolean; slaHours: number; old?: boolean; date?: string | null; eodId?: number;
+  /** The trader's own note from «Разобрал» / the journal (eod items only). */
+  note?: string | null; via?: "journal" | "daily" | null;
 };
 
 export type TodayPayload = {

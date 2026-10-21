@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Panel, Pill, ProgressRing } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { kindLabel, stageLabel, type CatalogProgram, type ProgramTree, type TreeItem } from "./api";
-import { KindIcon, PctBar, StatusIcon, SubmissionPill } from "./bits";
+import { KindIcon, PctBar, RuContentPill, StatusIcon, SubmissionPill } from "./bits";
 import { academyLinks } from "./links";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
@@ -28,6 +28,7 @@ export function ProgramCard({ p, active, onSelect }: { p: CatalogProgram; active
           <span className="font-semibold text-foreground">{p.title}</span>
           {p.stage && <Pill tone="purple">{stageLabel(p.stage)}</Pill>}
           {!p.published && <Pill tone="warn">{commonI18n.t("states.draft")}</Pill>}
+          <RuContentPill scope="course" />
         </span>
         {p.description && <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">{p.description}</span>}
         <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
@@ -64,7 +65,7 @@ export function ProgramOutline({ tree, user, viewingOther }: { tree: ProgramTree
           <ProgressRing value={tree.progress.pct} size={64} stroke={6} tone={tree.progress.pct >= 100 ? "up" : "accent"} ariaLabel={t("program.progressProgram")} />
           {/* Keeps the text readable: the «Начать: …» button wraps under it instead of squeezing it into a narrow column. */}
           <div className="min-w-[min(100%,20rem)] flex-1">
-            <h2 className="text-lg font-semibold text-foreground">{tree.program.title}</h2>
+            <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-foreground">{tree.program.title}<RuContentPill scope="course" /></h2>
             {tree.program.description && <p className="mt-0.5 text-sm text-muted-foreground">{tree.program.description}</p>}
             <p className="mt-1 text-xs text-muted-foreground tabular-nums">
               {viewingOther && <>{t("program.studentLabel")} <b className="text-foreground">{tree.user}</b> · </>}

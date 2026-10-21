@@ -39,7 +39,7 @@ export const SECTIONS: SectionMeta[] = [
   section("trading", SlidersHorizontal, {
     keywords: "счёт счет риск комиссия плечо leverage горизонт интрадей овернайт свинг чек-лист checklist покупательная buying power размер позиции account risk fees horizon hisob komissiya leverej savdo" }),
   section("notifications", Bell, {
-    keywords: "уведомления дайджест digest email почта утро вечер расписание оповещения notifications alerts bildirishnoma dayjest xabarnoma" }),
+    keywords: "уведомления оповещения telegram бот утро вечер notifications alerts bot bildirishnoma xabarnoma" }),
   section("team", Users, {
     keywords: "команда пользователи роли пригласить добавить деактивировать куратор ментор риск-менеджер назначения users team invite roles jamoa foydalanuvchi",
     requiresAny: ["users.read.team"], href: "/admin?tab=people" }),

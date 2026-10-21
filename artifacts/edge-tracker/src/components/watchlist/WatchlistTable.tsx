@@ -2,34 +2,20 @@ import * as React from "react";
 import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
-import { canModifyOwned } from "@/lib/ownership";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LIST_LABELS, type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem } from "./lib";
-import type { DayLevelSet, UpcomingEarnings } from "./use-market";
-import type { TickerHistory } from "./use-history";
+import { LIST_LABELS, rowWritable, type Plan } from "./lib";
 import { EventMarks, HistoryCell, InlineNote, LevelCell } from "./bits";
 import { RowMenu, type RowActions } from "./WatchlistRow";
 import { Sparkline } from "./visuals";
+import { WatchlistCards } from "./WatchlistCards";
+import type { WlRow } from "./card-model";
 import { fmtPct, fmtPrice } from "@/lib/format";
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 
-/** One prepared row: the watchlist item plus everything the table shows next to it. */
-export type WlRow = {
-  item: WatchlistItem;
-  /** Working list; null = archived. */
-  list: ListName | null;
-  quote?: Quote;
-  plan: Plan;
-  levels: DayLevelSet | null | undefined;
-  keys: KeyLevel[];
-  history?: TickerHistory;
-  earnings?: EarningsHit;
-  upcoming?: UpcomingEarnings;
-  news?: NewsDigest;
-  /** Temporary optimistic row (being created). */
-  pending?: boolean;
-};
+/** One prepared row (card-model.ts — shared with the phone cards). */
+export type { WlRow };
 
 export type SortKey = "ticker" | "change" | "gap" | "rvol" | "atr" | "level" | "hist" | "added" | "score";
 export const SORT_DEFAULT_DIR: Record<SortKey, SortDir> = {
@@ -86,6 +72,12 @@ export function WatchlistTable({
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.item.id));
   const someSelected = !allSelected && rows.some((r) => selected.has(r.item.id));
   const th = (k: SortKey) => ({ active: sort.key === k, dir: sort.dir, onSort: () => onSort(k) });
+  const isMobile = useIsMobile();
+
+  // 2.11: phones get cards (no 1000 px table), wider screens the table — only one of them is mounted.
+  if (isMobile) {
+    return <WatchlistCards rows={rows} showList={showList} canEdit={canEdit} me={me} actions={actions} scoringIds={scoringIds} levelsLoading={levelsLoading} today={today} />;
+  }
 
   return (
     <DataTable density={density} className="[&_tbody_td]:py-0 [&_thead_th]:py-1.5">
@@ -187,7 +179,7 @@ const Row = React.memo(function Row({
 }: RowProps) {
   const { item, quote: q, plan } = r;
   const { isCurator } = useAuth();
-  const mayModify = canEdit && canModifyOwned(item.createdBy, me, isCurator);
+  const mayModify = rowWritable(item, canEdit, me, isCurator);
   const ref = React.useRef<HTMLTableRowElement>(null);
   React.useEffect(() => {
     if (focused && ref.current && document.activeElement !== ref.current && !ref.current.contains(document.activeElement)) {
@@ -298,7 +290,7 @@ const Row = React.memo(function Row({
         />
       </td>
       <td className={cn("!pl-0 !pr-2 text-right", cellY)}>
-        {!r.pending && <RowMenu item={item} list={r.list} canEdit={canEdit} canModify={mayModify} actions={actions} scoring={scoring} />}
+        {!r.pending && <RowMenu item={item} list={r.list} canEdit={canEdit} canModify={mayModify} canPlan={!!me} actions={actions} scoring={scoring} />}
       </td>
     </tr>
   );

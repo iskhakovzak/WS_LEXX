@@ -1,7 +1,8 @@
 /**
  * Header market clock pill: NY time, US equities session state with a coloured dot, and a live
  * countdown to the next transition (premarket 4:00 → regular 9:30 → after-hours 16:00 → closed 20:00).
- * Weekends and full-day US market holidays (from /api/holidays) count as closed.
+ * Weekends and full-day US market holidays (from /api/holidays) count as closed; an early-close day (`earlyClose` on
+ * the calendar row) trades until 13:00 with after-hours until 17:00 and says so («сокращённый день, до 13:00»).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -9,14 +10,26 @@ import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatCountdown, getSessionState, type NextKey, type SessionPhase } from "@/components/dashboard/market-session";
+import { formatCountdown, getSessionState, sessionBounds, type MarketHoliday, type NextKey, type SessionPhase } from "@/components/dashboard/market-session";
 import { shellI18n } from "@/i18n/ns/shell";
 import { shellExtrasI18n } from "@/i18n/ns/shellExtras";
 import { fmtDate } from "@/i18n/format";
+import { nyDate } from "@/lib/trading-date";
 
 const PREMARKET_TO_OPEN_MS = 5.5 * 3600 * 1000;
 
-type Holiday = { date: string; name: string };
+type Holiday = MarketHoliday;
+
+/** /api/holidays rows → clock holidays: full-day closures and early-close days (`earlyClose`, language-neutral). */
+export function holidaysFromEvents(rows: unknown[]): Holiday[] {
+  return rows
+    .filter((e: any) => String(e?.type ?? "").toLowerCase() === "holiday")
+    .map((e: any) => ({
+      date: String(e.date).slice(0, 10),
+      name: String(e.name ?? shellI18n.t("clock.holidayFallback")),
+      earlyClose: e.earlyClose === true,
+    }));
+}
 
 function isoPlus(days: number) {
   const d = new Date();
@@ -24,23 +37,27 @@ function isoPlus(days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-/** Full-day market holidays for the next few weeks. Cheap, cached for hours, silent on failure. */
+/** Market holidays and early-close days for the next few weeks. Cheap, cached for hours, silent on failure. */
 export function useMarketHolidays(): Holiday[] {
   const from = isoPlus(-1);
   const { data } = useQuery<Holiday[]>({
-    queryKey: ["market-holidays", from],
+    queryKey: ["market-holidays", "v2", from],
     queryFn: async ({ signal }) => {
       const j = await http.get<{ events?: unknown } | null>("/api/holidays", { query: { from, to: isoPlus(30), types: "holiday" }, signal }).catch(() => null);
-      const rows: any[] = Array.isArray(j?.events) ? j.events : [];
-      return rows
-        .filter((e) => String(e?.type ?? "").toLowerCase() === "holiday")
-        .map((e) => ({ date: String(e.date).slice(0, 10), name: String(e.name ?? shellI18n.t("clock.holidayFallback")) }));
+      return holidaysFromEvents(Array.isArray(j?.events) ? j.events : []);
     },
     staleTime: STALE.day,
     gcTime: 12 * 3600_000,
     retry: false,
   });
   return data ?? [];
+}
+
+/** Today's regular close in NY minutes (16:00, 13:00 on an early-close day) — for pages that do not tick every second. */
+export function useTodayCloseMin(): number {
+  const holidays = useMarketHolidays();
+  const today = nyDate();
+  return sessionBounds(holidays.some((h) => h.earlyClose && h.date === today)).closeMin;
 }
 
 const PHASE: Record<SessionPhase, { dot: string; text: string }> = {
@@ -87,7 +104,9 @@ export function MarketClock({ className, fit = "viewport" }: { className?: strin
   const { t: tx } = shellExtrasI18n.useT();
   const ph = { ...PHASE[s.phase], label: t(`clock.phase.${s.phase}`), short: t(`clock.phaseShort.${s.phase}`) };
   const next = t(`clock.next.${s.nextKey}`);
-  const reason = s.phase === "closed" ? (s.holiday ? s.holiday : s.weekend ? t("clock.weekend") : null) : null;
+  const reason = s.phase === "closed"
+    ? (s.holiday ? s.holiday : s.weekend ? t("clock.weekend") : null)
+    : s.earlyClose ? t("clock.earlyClose", { time: s.closeTime }) : null;
   const hm = s.nyTime.slice(0, 5);
   const countdown = formatCountdown(s.msToNext);
   const local = fmtDate(new Date(), "time");
@@ -140,7 +159,7 @@ export function MarketClock({ className, fit = "viewport" }: { className?: strin
         <div className="text-muted-foreground">
           {t("clock.tooltipTimes", { ny: s.nyTime, local })}
         </div>
-        <div className="mt-1 text-muted-foreground">{t("clock.tooltipSchedule")}</div>
+        <div className="mt-1 text-muted-foreground">{t(s.earlyClose ? "clock.tooltipScheduleEarly" : "clock.tooltipSchedule")}</div>
       </TooltipContent>
     </Tooltip>
   );

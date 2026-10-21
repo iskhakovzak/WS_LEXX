@@ -155,6 +155,18 @@ export interface Trade {
      * @nullable
      */
   syncedAt?: string | null;
+  /**
+     * PropReports-style strategy (Overnight, OPG, OPGtoDAY, Day, MOC, AfterMarket, Print, Adjust, OPT) — api lib/tradeStrategy
+     * @nullable
+     */
+  strategy?: string | null;
+  /** Close-auction (imbalance) trade — strategy MOC, any fill in the desk IMX window (default 15:50–16:00 NY) */
+  isImx?: boolean;
+  /**
+     * New York seconds since midnight of the first entry (the «Время» facet)
+     * @nullable
+     */
+  entrySec?: number | null;
   createdAt: string;
 }
 
@@ -576,91 +588,6 @@ export interface Research {
   /** @nullable */
   longName?: string | null;
   createdAt: string;
-}
-
-export interface CreateResearchBody {
-  patternName: string;
-  /** @nullable */
-  ticker?: string | null;
-  /** @nullable */
-  context?: string | null;
-  /** @nullable */
-  marketCondition?: string | null;
-  /** @nullable */
-  whatWorked?: string | null;
-  /** @nullable */
-  whatFailed?: string | null;
-  /** @nullable */
-  repeatCount?: number | null;
-  /** @nullable */
-  confidenceLevel?: number | null;
-  /** @nullable */
-  screenshotUrl?: string | null;
-  /** @nullable */
-  screenshotNotes?: string | null;
-  /** @nullable */
-  tags?: string | null;
-  /** @nullable */
-  marketCap?: string | null;
-  /** @nullable */
-  float?: string | null;
-  /** @nullable */
-  adv?: string | null;
-  /** @nullable */
-  atr?: number | null;
-  /** @nullable */
-  relativeVolume?: number | null;
-  /** @nullable */
-  beta?: number | null;
-  /** @nullable */
-  shortInterest?: number | null;
-  /** @nullable */
-  sector?: string | null;
-  /** @nullable */
-  longName?: string | null;
-}
-
-export interface UpdateResearchBody {
-  /** @nullable */
-  patternName?: string | null;
-  /** @nullable */
-  ticker?: string | null;
-  /** @nullable */
-  context?: string | null;
-  /** @nullable */
-  marketCondition?: string | null;
-  /** @nullable */
-  whatWorked?: string | null;
-  /** @nullable */
-  whatFailed?: string | null;
-  /** @nullable */
-  repeatCount?: number | null;
-  /** @nullable */
-  confidenceLevel?: number | null;
-  /** @nullable */
-  screenshotUrl?: string | null;
-  /** @nullable */
-  screenshotNotes?: string | null;
-  /** @nullable */
-  tags?: string | null;
-  /** @nullable */
-  marketCap?: string | null;
-  /** @nullable */
-  float?: string | null;
-  /** @nullable */
-  adv?: string | null;
-  /** @nullable */
-  atr?: number | null;
-  /** @nullable */
-  relativeVolume?: number | null;
-  /** @nullable */
-  beta?: number | null;
-  /** @nullable */
-  shortInterest?: number | null;
-  /** @nullable */
-  sector?: string | null;
-  /** @nullable */
-  longName?: string | null;
 }
 
 export interface DailyFeed {

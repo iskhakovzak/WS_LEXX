@@ -38,7 +38,7 @@ const STEP_TAB: Partial<Record<keyof Status["wizard"], IntegrationsTab>> = { acc
 export function SetupWizard({ status, onGoTab }: { status: Status; onGoTab?: (tab: IntegrationsTab) => void }) {
   const { toast } = useToast();
   const { t } = propreportsI18n.useT();
-  const modeLabel = (mode: string | null) => (mode === "v2" ? t("hero.modeV2") : t("hero.modeLegacy"));
+  const modeLabel = (_mode: string | null) => t("hero.modeV2"); // API v2 token only (v1 login removed)
   const check = useCheckConnection();
   const done = STEPS.filter((s) => status.wizard[s.key].ok).length;
   const onCheck = async () => {

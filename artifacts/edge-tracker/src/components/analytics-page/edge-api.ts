@@ -31,6 +31,8 @@ export type EdgeCell = {
   sumR: number; rN: number; posR: number; negR: number;
   gross: number; net: number; fees: number; pnlN: number; posNet: number; negNet: number;
   rValues: number[]; netValues: number[];
+  /** End-of-day max drawdown of the cell over all its trades (routes/edge; absent on older API builds). */
+  maxDdR?: number | null; maxDdNet?: number | null;
 };
 
 export type EdgeMatrix = {

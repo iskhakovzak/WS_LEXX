@@ -8,6 +8,7 @@ import type { DailyMe } from "@/lib/daily/types";
 import type { PlaybookToday } from "@/lib/playbook-today/types";
 import type { GamificationMe } from "@/lib/gamification/types";
 import type { QuestsMe } from "@/lib/quests/types";
+import type { DailyChallengeState } from "@/lib/trainer/types";
 import { apiErrorStatus } from "./errors";
 import { http } from "./http";
 import { KEYS, STALE } from "./keys";
@@ -129,5 +130,15 @@ export const gamificationTitlesQuery = () =>
     queryFn: async ({ signal }) => (await nullOn403or404(http.get<{ titles: Record<string, string> }>("/api/gamification/titles", { signal })))?.titles ?? {},
     staleTime: STALE.long,
     retry: false,
+    meta: { i18n: false },
+  });
+
+/** «Задача дня» state (GET /api/trainer/daily): the trainer, the journal's evening card and the dashboard's next step.
+ *  The key is trainerKeys.daily() of components/sim/trainer-api (its invalidations keep working). */
+export const trainerDailyQuery = () =>
+  queryOptions({
+    queryKey: ["trainer", "daily"] as const,
+    queryFn: () => http.get<DailyChallengeState>("/api/trainer/daily"),
+    staleTime: STALE.short,
     meta: { i18n: false },
   });

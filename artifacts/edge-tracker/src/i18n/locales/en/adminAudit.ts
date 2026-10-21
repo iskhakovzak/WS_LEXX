@@ -79,6 +79,8 @@ export default {
     discussionDeleteTopicAuthor: "deleted discussion «{topic}» (author {author})",
     commentDelete: "deleted a comment",
     commentDeleteAuthor: "deleted a comment by {author}",
+    ideaDelete: "deleted an idea",
+    ideaDeleteAuthor: "deleted an idea by {author}",
 
     sync: "synced PropReports",
     syncFile: "synced PropReports from file {file}",
@@ -91,6 +93,9 @@ export default {
     accountsRefresh: "refreshed the PropReports account list",
     settingsUpdate: "changed PropReports settings",
     check: "checked the PropReports connection",
+    tickRun: "ran the PropReports background sync manually",
+    backfillStart: "started a PropReports history load: {from} — {to}",
+    backfillCancel: "stopped the PropReports history load",
     merge: "merged a broker trade with a manual entry",
     keepSeparate: "kept a broker trade separate",
     dismiss: "dismissed a trade from reconciliation",
@@ -156,6 +161,7 @@ export default {
     noteRestore: "restored a note",
     noteRestoreFor: "restored a note about {trader}",
     lockout: "sign-in locked for {minutes} min",
+    logoutOthers: "signed out on all other devices",
 
     fallbackVerb: "{verb}: {subject}",
   },

@@ -12,7 +12,7 @@ type Who = { id: number; name: string; role: "trader" | "curator" | "admin" };
 let who: Who = { id: 134, name: "Владислав Е.", role: "trader" };
 
 const stages: Record<string, { own?: string; enr?: string; tier?: string; role?: string }> = {
-  "Владислав Е.": { own: "trainee", enr: "junior", tier: "junior" },
+  "Владислав Е.": { own: "senior", enr: "junior", tier: "junior" },
   "Кирилл Б.": { tier: "junior" },
   "Пётр Н.": {},
 };
@@ -68,18 +68,18 @@ const stageQueries = () => query.mock.calls.filter(([sql]) => /academy_trader_st
 describe("GET /permissions/me tier", () => {
   it("own academy stage wins over enrolment and scaling tier (playbook-lock order); cached per name", async () => {
     const a = await me();
-    expect(a.tier).toBe("trainee");
+    expect(a.tier).toBe("senior");
     expect(a.capabilities.length).toBeGreaterThan(0);
     expect(stageQueries()).toBe(3);
     await me();
     expect(stageQueries()).toBe(3); // second read served from the cache
   });
 
-  it("falls back to the scaling tier, and to null when nothing names a stage", async () => {
+  it("falls back to the scaling tier, and to the default stage («Джун», lib/people/stage) when nothing names one", async () => {
     who = { id: 130, name: "Кирилл Б.", role: "trader" };
     expect((await me()).tier).toBe("junior");
     who = { id: 140, name: "Пётр Н.", role: "trader" };
-    expect((await me()).tier).toBeNull();
+    expect((await me()).tier).toBe("junior");
   });
 
   it("staff get null without reading the stage tables", async () => {
@@ -90,9 +90,10 @@ describe("GET /permissions/me tier", () => {
     expect(stageQueries()).toBe(0);
   });
 
-  it("nav carries the simple-menu settings (defaults, then a saved value)", async () => {
-    expect((await me()).nav).toEqual({ simpleForTrainees: true, simpleUntilTier: "trainee" });
-    __loadSettingsCache({ "nav.simpleForTrainees": false, "nav.simpleUntilTier": "junior" });
-    expect((await me()).nav).toEqual({ simpleForTrainees: false, simpleUntilTier: "junior" });
+  it("nav carries the simple-menu settings and the «Сводка автора» switch (defaults, then a saved value)", async () => {
+    // no «Стажёр» (Волна 1 п. 1.21); «Сводка автора» off by default (Волна 2 п. 2.15)
+    expect((await me()).nav).toEqual({ simpleForTrainees: true, simpleUntilTier: "junior", authorNotes: false });
+    __loadSettingsCache({ "nav.simpleForTrainees": false, "nav.simpleUntilTier": "junior", "nav.authorNotes": true });
+    expect((await me()).nav).toEqual({ simpleForTrainees: false, simpleUntilTier: "junior", authorNotes: true });
   });
 });

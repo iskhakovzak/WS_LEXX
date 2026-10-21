@@ -283,34 +283,6 @@ router.get("/behavior/day", asyncHandler(async (req, res) => {
 
 /* ─── «Мои триггеры» ──────────────────────────────────────────────────────── */
 
-let triggersEnsured: Promise<void> | null = null;
-/** Идемпотентно; вызывается лениво из маршрутов триггеров. */
-function ensureTriggersTable(): Promise<void> {
-  if (!triggersEnsured) {
-    triggersEnsured = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS behavior_triggers (
-           id SERIAL PRIMARY KEY,
-           trader TEXT NOT NULL,
-           kind TEXT NOT NULL,
-           name TEXT NOT NULL,
-           params JSONB NOT NULL DEFAULT '{}'::jsonb,
-           note TEXT,
-           source_pattern TEXT,
-           enabled BOOLEAN NOT NULL DEFAULT TRUE,
-           created_by TEXT,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-           deleted_at TIMESTAMPTZ
-         );
-         CREATE INDEX IF NOT EXISTS behavior_triggers_trader_idx ON behavior_triggers (trader) WHERE deleted_at IS NULL;`,
-      )
-      .then(() => undefined)
-      .catch((err) => { triggersEnsured = null; throw err; });
-  }
-  return triggersEnsured;
-}
-
 type TriggerRow = {
   id: number; trader: string; kind: string; name: string; params: Record<string, number> | null; note: string | null;
   source_pattern: string | null; enabled: boolean; created_by: string | null; created_at: Date; updated_at: Date;
@@ -353,7 +325,6 @@ router.get("/behavior/triggers", asyncHandler(async (req, res) => {
     return;
   }
   const trader = scoped ?? req.authUser!.name;
-  await ensureTriggersTable();
   const { rows } = await pool.query<TriggerRow>(
     `SELECT * FROM behavior_triggers WHERE trader = $1 AND deleted_at IS NULL ORDER BY enabled DESC, created_at DESC, id DESC`,
     [trader],
@@ -398,7 +369,6 @@ router.post("/behavior/triggers", asyncHandler(async (req, res) => {
   if (b.kind === "custom" && !b.name && !b.note) throw badRequest("TRIGGER_TEXT_REQUIRED");
   // Default name in the author's language; once saved it is user content.
   const name = b.name || describeTrigger(b.kind, params.value, lang);
-  await ensureTriggersTable();
   // Повторное «Сделать правилом» не плодит дубли: тот же вид + параметры (+ название для напоминаний).
   const dup = await pool.query<TriggerRow>(
     `SELECT * FROM behavior_triggers
@@ -435,7 +405,6 @@ async function loadWritableTrigger(req: Request, res: import("express").Response
   const id = idParam.safeParse(req.params.id);
   if (!id.success) { sendError(res, badRequest("INVALID_ID")); return null; }
   if (!req.authUser || isGuestUser(req.authUser)) { sendError(res, new AppError("GUEST_READ_ONLY")); return null; }
-  await ensureTriggersTable();
   const { rows } = await pool.query<TriggerRow>(`SELECT * FROM behavior_triggers WHERE id = $1 AND deleted_at IS NULL`, [id.data]);
   if (!rows[0]) { sendError(res, notFound("TRIGGER_NOT_FOUND")); return null; }
   if (!(await canWriteTriggers(req, rows[0].trader))) { sendError(res, new AppError("TRIGGERS_OWN_ONLY", 403)); return null; }

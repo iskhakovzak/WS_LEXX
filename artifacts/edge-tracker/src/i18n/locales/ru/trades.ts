@@ -55,7 +55,7 @@ export default {
   },
   tagging: {
     kind: {
-      setup: { label: "Сетап", placeholder: "Найти или ввести сетап" },
+      setup: { label: "Сетап", placeholder: "Найти сетап: номер или название" },
       mistake: { label: "Ошибка", placeholder: "Найти или ввести ошибку" },
       emotion: { label: "Эмоция", placeholder: "Найти или ввести эмоцию" },
     },
@@ -64,6 +64,14 @@ export default {
     clearSetup: "Убрать сетап",
     addAria: "{kind}: добавить ({key})",
     chipTitle: "{kind}: {value}",
+  },
+  /** Setup tag = an office playbook setup (components/shared/setup-picker.tsx; wave 1, 1.2). */
+  setupPicker: {
+    label: "Сетап из плейбука",
+    choose: "Выбрать сетап",
+    search: "Номер или название сетапа",
+    empty: "Нет подходящих сетапов",
+    acceptTitle: "Принять предложение: {name} ({pct}%)",
   },
   bulk: {
     toolbar: "Действия с выбранными: {count}",
@@ -293,6 +301,10 @@ export default {
     next: "Следующая сделка (J)",
     tabs: { overview: "Обзор", chart: "График", replay: "Реплей", executions: "Исполнения", ai: "AI-разбор", social: "Обсуждение" },
     markup: "Разметка",
+    markupParts: { setup: "Сетап", mistakes: "Ошибки", grade: "Оценка" },
+    gradeAria: "Оценка сделки",
+    chart: "График",
+    chartOpen: "Реплей и инструменты",
     quality: "Качество исполнения",
     review: "Разбор",
     noData: "Нет данных",
@@ -379,9 +391,6 @@ export default {
   },
   related: {
     ideaStatus: { draft: "Черновик", published: "Опубликована", approved: "Одобрена", needs_work: "На доработке", rejected: "Отклонена", converted: "Сделка" },
-    checklistNone: "Чек-лист не привязан",
-    checklistPassed: "Чек-лист пройден",
-    checklistFailed: "Чек-лист не пройден",
     playbookNoSetup: "Нет сетапа с таким названием.",
     playbookSetSetup: "Укажите сетап — подтянем запись плейбука.",
     openInPlaybook: "Открыть в плейбуке: {name}",

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { UsageMark } from "@/components/shared/usage-tracker";
+import { MorningScreener } from "@/components/shared/finviz/screener-card";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import type { PlaybookToday } from "@/lib/playbook-today/types";
@@ -116,6 +117,7 @@ export function TodayView({
     } else {
       body = (
         <div className="flex min-w-0 flex-col gap-[calc(var(--page-gap)+0.5rem)]">
+          <MorningScreener planDate={today.date} />
           {canPick && (
             <PlanToday
               today={today}
