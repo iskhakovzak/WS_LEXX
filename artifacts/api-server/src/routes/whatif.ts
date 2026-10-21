@@ -27,8 +27,14 @@ import { nyMinutes } from "../lib/tradingDate";
 import { execSpanJoin } from "../lib/execSpan";
 import {
   type SimTrade, type Rule, type Side, type Horizon,
-  computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, presets, RULE_TYPES, GRADES,
+  computeMetrics, dailyResults, equityByDay, runScenario, feeReport, describeRule, presets, RULE_TYPES, GRADES,
 } from "../lib/whatIf";
+import { MAX_SETUP_LEN, MAX_TAG_LEN } from "../lib/whatIfTypes";
+import { findSuggestions } from "../lib/whatIfSuggest";
+import { currentImxWindow, imxSql } from "../lib/imx";
+import { inImxWindow, type ImxWindow } from "../lib/tradeStrategy";
+import { isDeskTag } from "../lib/deskTags";
+import { ERROR_VOCAB, codesOf, type ErrorVocabCode } from "../lib/tradingErrors";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { acceptsGzip } from "../lib/jsonCompression";
@@ -46,7 +52,9 @@ const rangeSchema = z.object({
   to: z.string().regex(YMD_RE).optional(),
 });
 
-const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
+const ERROR_CODES = ERROR_VOCAB.map((v) => v.code) as [ErrorVocabCode, ...ErrorVocabCode[]];
+
+export const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("dailyLossLimit"), usd: z.coerce.number().positive().max(1e7) }),
   z.object({ type: z.literal("maxTradesPerDay"), n: z.coerce.number().int().min(1).max(1000) }),
   z.object({ type: z.literal("stopAfterLosses"), n: z.coerce.number().int().min(1).max(100) }),
@@ -63,8 +71,17 @@ const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("capLoss"), usd: z.coerce.number().positive().max(1e7) }),
   z.object({ type: z.literal("sizeRange"), min: z.coerce.number().nonnegative().max(1e7).nullish(), max: z.coerce.number().positive().max(1e7).nullish() }),
   z.object({ type: z.literal("afterLoss"), minutes: z.coerce.number().positive().max(24 * 60) }),
-  z.object({ type: z.literal("excludeSetups"), setups: z.array(z.string().trim().min(1).max(80)).max(50) }),
+  z.object({ type: z.literal("excludeSetups"), setups: z.array(z.string().trim().min(1).max(MAX_SETUP_LEN)).max(50) }),
   z.object({ type: z.literal("minGrade"), grade: z.enum(GRADES) }),
+  z.object({ type: z.literal("excludeImx") }),
+  z.object({ type: z.literal("noReentry") }),
+  z.object({ type: z.literal("requireStop") }),
+  z.object({ type: z.literal("maxSizeRel"), x: z.coerce.number().min(0.5).max(10) }),
+  z.object({ type: z.literal("excludeMistakes"), codes: z.array(z.enum(ERROR_CODES)).min(1).max(14).refine((a) => new Set(a).size === a.length) }),
+  // Personal tags only: IMX and the mistakes vocabulary have their own rules.
+  z.object({ type: z.literal("excludeTags"), tags: z.array(z.string().trim().min(1).max(MAX_TAG_LEN)).min(1).max(20).refine((a) => !a.some(isDeskTag)) }),
+  z.object({ type: z.literal("profitGiveback"), peak: z.coerce.number().positive().max(1e7), pct: z.coerce.number().int().min(10).max(90) }),
+  z.object({ type: z.literal("dailyProfitTarget"), usd: z.coerce.number().positive().max(1e7) }),
 ]);
 
 const runSchema = rangeSchema.extend({
@@ -89,11 +106,12 @@ function normQuery(q: Request["query"]): Record<string, string> {
 
 /* ─── Loading trades ─────────────────────────────────────────────────────── */
 
-type Row = {
+export type SimRow = {
   id: number; ticker: string; date: string; exit_date?: string | null; side: string | null; qty: unknown; entry: unknown; exit: unknown; stop: unknown;
   result: string; pnl: unknown; fees: unknown; r_multiple: unknown; risk_usd: unknown; hold_time: string | null; setup: string | null; confidence_grade: string | null;
   tags: string | null; horizon: string | null; context_snapshot: Record<string, unknown> | null;
   first_entry: Date | string | null; last_exit: Date | string | null;
+  trader?: string | null; is_imx?: boolean | null; reentry_of?: number | null; size_rel?: unknown; has_stop?: boolean | null;
 };
 
 /** "5m", "2h 29m", "17s", "1:30", "45 мин", "3 д" → seconds; null when unparsable. */
@@ -141,7 +159,12 @@ function toDate(v: Date | string | null): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export function rowToSim(r: Row, seq: number): SimTrade {
+/**
+ * `imxWin` = the desk IMX window. For the what-if a trade is IMX only when it was ENTERED inside the window (the stored
+ * mark is set by any fill there, an exit too): «не торгуй IMX» must be a choice made before the entry, not one that
+ * takes the credit for a morning trade held into the close auction.
+ */
+export function rowToSim(r: SimRow, seq: number, imxWin: ImxWindow = currentImxWindow()): SimTrade {
   const snap = r.context_snapshot ?? {};
   const first = toDate(r.first_entry), last = toDate(r.last_exit);
   let entryMin: number | null = first ? nyMinutes(first) + first.getUTCSeconds() / 60 : null;
@@ -160,6 +183,8 @@ export function rowToSim(r: Row, seq: number): SimTrade {
   const horizon: Horizon = h === "overnight" || h === "swing" ? h : "intraday";
   const breakdown = snap.feesByType && typeof snap.feesByType === "object" ? (snap.feesByType as Record<string, number>) : null;
   const fills = num(snap.fillCount);
+  const tags = String(r.tags ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const sizeRel = num(r.size_rel);
   return {
     id: r.id,
     day: r.date.slice(0, 10),
@@ -175,13 +200,21 @@ export function rowToSim(r: Row, seq: number): SimTrade {
     r: signedR({ result: r.result, side: r.side, entry: r.entry, exit: r.exit, stop: r.stop, r_multiple: r.r_multiple, pnl: r.pnl, risk_usd: r.risk_usd }),
     stop: num(r.stop),
     setup: r.setup?.trim() || null,
-    tags: String(r.tags ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    tags,
     horizon,
     result: res === "win" || res === "loss" || res === "be" ? res : null,
     feeBreakdown: breakdown,
     fills,
     seq,
     grade: r.confidence_grade?.trim() || null,
+    trader: r.trader ?? null,
+    imx: r.is_imx === true && entryMin != null && inImxWindow(Math.floor(entryMin * 60 + 1e-6), imxWin),
+    reentry: r.reentry_of != null,
+    sizeRel: sizeRel != null && sizeRel > 0 ? sizeRel : null,
+    hasStop: r.has_stop ?? null,
+    // Mistakes by code (any spelling: «Реванш» → revenge); personal tags = the rest without the desk tags.
+    mistakes: [...codesOf(tags)],
+    ptags: tags.filter((t) => !isDeskTag(t)),
   };
 }
 
@@ -209,7 +242,8 @@ export async function loadSimTrades(scope: string | null, from?: string, to?: st
   return (await promise).slice();
 }
 
-async function querySimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
+/** SQL of the loader (exported for tests): IMX by the stored mark with the strategy MOC fallback (lib/imx imxSql). */
+export function simTradesQuery(scope: string | null, from?: string, to?: string): { sql: string; params: unknown[] } {
   const params: unknown[] = [];
   const cond: string[] = [`t.deleted_at IS NULL`, `t.pnl IS NOT NULL`, `LOWER(TRIM(t.result)) <> 'open'`];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
@@ -219,12 +253,19 @@ async function querySimTrades(scope: string | null, from?: string, to?: string):
   // One trader → per-trade index probe; desk-wide → one hash aggregate (lib/execSpan).
   const sql = `
     SELECT t.id, t.ticker, t.date, t.exit_date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
-           t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit
+           t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit,
+           t.trader, ${imxSql("t")} AS is_imx, t.reentry_of, t.size_rel, t.has_stop
     FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
     WHERE ${cond.join(" AND ")}
     ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;
-  const { rows } = await pool.query<Row>(sql, params);
-  return rows.map((r, i) => rowToSim(r, i));
+  return { sql, params };
+}
+
+async function querySimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
+  const { sql, params } = simTradesQuery(scope, from, to);
+  const { rows } = await pool.query<SimRow>(sql, params);
+  const imxWin = currentImxWindow();
+  return rows.map((r, i) => rowToSim(r, i, imxWin));
 }
 
 async function resolveScope(req: Request, requested?: string): Promise<string | null | undefined> {
@@ -251,6 +292,8 @@ function previewOf(t: SimTrade) {
     id: t.id, day: t.day, entryMin: t.entryMin == null ? null : Math.round(t.entryMin * 100) / 100, ticker: t.ticker, side: t.side,
     qty: t.qty, entry: t.entry, gross: t.gross, fees: t.fees, holdSec: t.holdSec, seq: t.seq,
     fills: t.fills ?? null, feeBreakdown: t.feeBreakdown ?? null, setup: t.setup, grade: t.grade ?? null,
+    trader: t.trader ?? null, imx: t.imx === true, reentry: t.reentry === true, sizeRel: t.sizeRel ?? null, hasStop: t.hasStop ?? null,
+    mistakes: t.mistakes ?? [], ptags: t.ptags ?? [],
   };
 }
 
@@ -260,8 +303,11 @@ function previewOf(t: SimTrade) {
  * ticker, side, setup, grade) as indexes into `dicts`, and only the regulatory-fee sum (`reg`) instead of the
  * breakdown — the client's tariff preview reads nothing else (edge-tracker components/what-if/api.ts decodeTrades).
  * Plain `trades` stays the default so an older bundle keeps working against a newer API. */
-export const WHATIF_COLS = ["id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade"] as const;
-export const WHATIF_DICT_COLS = ["day", "ticker", "side", "setup", "grade"] as const;
+export const WHATIF_COLS = [
+  "id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade",
+  "trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes",
+] as const;
+export const WHATIF_DICT_COLS = ["day", "ticker", "side", "setup", "grade", "trader", "ptags", "mistakes"] as const;
 const REG_KEYS = ["sec", "taf", "cat", "orf", "nfa"];
 type Cell = string | number | null;
 
@@ -285,12 +331,15 @@ export function compactTrades(trades: SimTrade[]): { cols: typeof WHATIF_COLS; r
   const rows = trades.map((t): Cell[] => [
     t.id, code("day", t.day), t.entryMin == null ? null : Math.round(t.entryMin * 100) / 100, code("ticker", t.ticker), code("side", t.side),
     t.qty, t.entry, t.gross, t.fees, t.holdSec, t.seq, t.fills ?? null, regulatoryFees(t.feeBreakdown), code("setup", t.setup), code("grade", t.grade ?? null),
+    // 1/0 flags (hasStop null = unknown); tag lists joined with "," (tags never contain one), null when empty.
+    code("trader", t.trader ?? null), t.imx ? 1 : 0, t.reentry ? 1 : 0, t.sizeRel ?? null, t.hasStop == null ? null : t.hasStop ? 1 : 0,
+    code("ptags", t.ptags?.length ? t.ptags.join(",") : null), code("mistakes", t.mistakes?.length ? t.mistakes.join(",") : null),
   ]);
   return { cols: WHATIF_COLS, rows, dicts };
 }
 
 /*
- * Suggestions (~40 scenario runs with a bootstrap each: 1.8–2.7 s desk-wide) and the fee report are cached per viewer
+ * Suggestions (~70 candidates on the fast path + one family-wise bootstrap) and the fee report are cached per viewer
  * kind + scope + period + language for RESULT_TTL_MS (DEV-10). Staff and members never share an entry, even for the
  * same trader. A PropReports sync shows up after at most that long.
  */
@@ -370,12 +419,15 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   if (hit) { res.json(hit); return; }
   const trades = await loadSimTrades(scope, q.from, q.to);
   const baseline = computeMetrics(trades);
-  const suggestions = findSuggestions(trades, { lang: langOf(req) });
+  // Whole desk: day rules run per trader, no share-size or personal-tag candidates.
+  const found = findSuggestions(trades, { lang: langOf(req), team: scope == null });
   const body = {
     scope, period: periodMeta(trades, q.from, q.to),
     baselineNet: baseline.net, trades: baseline.trades, days: baseline.days,
-    smallSample: baseline.trades < 30 || baseline.days < 30,
-    suggestions,
+    // Too little to call anything robust: every card is a «ориентир».
+    smallSample: baseline.days < 30 || baseline.trades < 60,
+    suggestions: found.suggestions,
+    tested: found.tested,
     generatedAt: new Date().toISOString(),
   };
   suggestionsCache.set(key, body);

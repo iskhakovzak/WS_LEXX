@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeMetrics, describeRule, gradeRank, runScenario, suggestionGrid, worstSetups, type SimTrade } from "../whatIf";
+import { computeMetrics, describeRule, gradeRank, runScenario, type SimTrade } from "../whatIf";
+import { suggestionGrid, worstSetups } from "../whatIfGrid";
 
 let seq = 0;
 function t(p: Partial<SimTrade> & { gross: number }): SimTrade {
@@ -70,7 +71,7 @@ describe("worstSetups", () => {
     for (let i = 0; i < 10; i++) trades.push(t({ gross: -10, setup: "Fade" }), t({ gross: -3, setup: "Chase" }), t({ gross: 5, setup: "ORB" }));
     trades.push(t({ gross: -500, setup: "Rare" }));
     expect(worstSetups(trades)).toEqual([["Fade"], ["Fade", "Chase"]]);
-    expect(suggestionGrid(trades).filter((r) => r.type === "excludeSetups")).toHaveLength(2);
+    expect(suggestionGrid(trades).filter((c) => c.rule.type === "excludeSetups")).toHaveLength(2);
     expect(worstSetups([t({ gross: -1 })])).toEqual([]);
   });
 });

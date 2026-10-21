@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
+import { type ErrorCode, isErrorCode } from "@/components/shared/error-vocab";
 import type { Rule, RuleType } from "./rules";
 
 export type Side = "long" | "short";
@@ -36,6 +37,14 @@ export type SimTrade = {
   seq: number;
   /** Own grade A+…C; absent on older API builds. */
   grade?: string | null;
+  /** Fields of the newer rules (absent on older API builds): owner, IMX, re-entry, size to the usual, stop, marks. */
+  trader?: string | null;
+  imx?: boolean;
+  reentry?: boolean;
+  sizeRel?: number | null;
+  hasStop?: boolean | null;
+  mistakes?: ErrorCode[];
+  ptags?: string[];
 };
 
 export type DayResult = { day: string; net: number; gross: number; fees: number; trades: number };
@@ -111,13 +120,30 @@ export type RunResponse = {
 export type Suggestion = {
   rule: Rule; label: string; improvement: number; ci: { lo: number; hi: number };
   tradesLeft: number; excluded: number; scenarioNet: number; scenarioWinRate: number | null; scenarioProfitFactor: number | null;
-  /** CI of the improvement above zero (absent on an older API build, where every suggestion is robust). */
+  /** Above zero after the correction for the rules tried (absent on an older API build, where every suggestion is robust). */
   robust?: boolean;
   removedNet?: number;
+  /** "exante" = known before the entry; "label" = depends on the trader's own marks (absent on older builds). */
+  kind?: "exante" | "label";
+  /** Chosen by its own past result (worst tickers / setups / tags). */
+  picked?: boolean;
+  /** Picked and checked on the same days (too few days for a holdout). */
+  sameData?: boolean;
+  /** Result on the last third of the days; null without a holdout. */
+  holdout?: { delta: number; days: number; affected: number } | null;
+  /** Trades removed or changed / changed (scale rules); estimate = a scale rule. */
+  affected?: number;
+  changed?: number;
+  estimate?: boolean;
 };
 export type SuggestionsResponse = {
-  scope: string | null; period: PeriodMeta; baselineNet: number; trades: number; days: number; smallSample: boolean;
-  suggestions: Suggestion[]; generatedAt: string;
+  scope: string | null; period: PeriodMeta; baselineNet: number; trades: number; days: number;
+  /** < 30 days or < 60 trades: every card is a guide, none robust. */
+  smallSample: boolean;
+  suggestions: Suggestion[];
+  /** Rules tried (the family-wise correction); absent on older builds. */
+  tested?: number;
+  generatedAt: string;
 };
 
 export type SavedScenario = { id: number; trader: string; name: string; rules: Rule[]; labels: string[]; createdBy: string | null; createdAt: string; updatedAt: string };
@@ -140,10 +166,18 @@ export const whatIfKeys = {
   scenarios: (trader: string) => ["whatif", "scenarios", trader] as const,
 };
 
-/** Trades of the compact table (dictionary columns restored; unknown columns ignored, missing ones → null). */
+const TABLE_COLS = [
+  "id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade",
+  "trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes",
+];
+
+/**
+ * Trades of the compact table (dictionary columns restored; unknown columns ignored, missing ones → null). The newer
+ * columns are read by name, so an older API table simply leaves them out of the trades.
+ */
 export function decodeTrades(t: TradeTable): SimTrade[] {
   const at = (k: string) => t.cols.indexOf(k);
-  const ix = Object.fromEntries(["id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade"].map((k) => [k, at(k)])) as Record<string, number>;
+  const ix = Object.fromEntries(TABLE_COLS.map((k) => [k, at(k)])) as Record<string, number>;
   const cell = (r: (string | number | null)[], k: string) => (ix[k] >= 0 ? r[ix[k]] ?? null : null);
   const num = (r: (string | number | null)[], k: string) => { const v = cell(r, k); return typeof v === "number" ? v : null; };
   const str = (r: (string | number | null)[], k: string) => {
@@ -152,12 +186,24 @@ export function decodeTrades(t: TradeTable): SimTrade[] {
     const d = t.dicts[k];
     return d && typeof v === "number" ? d[v] ?? null : String(v);
   };
-  return t.rows.map((r, i) => ({
-    id: num(r, "id") ?? 0, day: str(r, "day") ?? "", entryMin: num(r, "entryMin"), ticker: str(r, "ticker") ?? "",
-    side: (str(r, "side") as Side | null) ?? null, qty: num(r, "qty"), entry: num(r, "entry"), gross: num(r, "gross"),
-    fees: num(r, "fees") ?? 0, holdSec: num(r, "holdSec"), seq: num(r, "seq") ?? i, fills: num(r, "fills"), regFees: num(r, "reg"),
-    setup: str(r, "setup"), grade: str(r, "grade"),
-  }));
+  const list = (r: (string | number | null)[], k: string) => str(r, k)?.split(",").filter(Boolean) ?? [];
+  const has = (k: string) => ix[k] >= 0;
+  return t.rows.map((r, i) => {
+    const out: SimTrade = {
+      id: num(r, "id") ?? 0, day: str(r, "day") ?? "", entryMin: num(r, "entryMin"), ticker: str(r, "ticker") ?? "",
+      side: (str(r, "side") as Side | null) ?? null, qty: num(r, "qty"), entry: num(r, "entry"), gross: num(r, "gross"),
+      fees: num(r, "fees") ?? 0, holdSec: num(r, "holdSec"), seq: num(r, "seq") ?? i, fills: num(r, "fills"), regFees: num(r, "reg"),
+      setup: str(r, "setup"), grade: str(r, "grade"),
+    };
+    if (has("trader")) out.trader = str(r, "trader");
+    if (has("imx")) out.imx = num(r, "imx") === 1;
+    if (has("reentry")) out.reentry = num(r, "reentry") === 1;
+    if (has("sizeRel")) out.sizeRel = num(r, "sizeRel");
+    if (has("hasStop")) { const v = num(r, "hasStop"); out.hasStop = v === 1 ? true : v === 0 ? false : null; }
+    if (has("ptags")) out.ptags = list(r, "ptags");
+    if (has("mistakes")) out.mistakes = list(r, "mistakes").filter(isErrorCode);
+    return out;
+  });
 }
 
 type BaseWire = Omit<BaseResponse, "trades"> & { trades?: SimTrade[]; enc?: number; tradeTable?: TradeTable };

@@ -319,7 +319,7 @@ export default function WhatIf() {
       </section>
 
       <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
-        <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={presets} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
+        <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={presets} team={b.scope == null} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
       </Panel>
 
       {showScenario && (

@@ -8,8 +8,7 @@
 import { fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
-
-
+import { type ErrorCode, errorCodeOf, errorLabel, isErrorCode } from "@/components/shared/error-vocab";
 import { GRADES, type CommissionPlan, type Grade, type Rule, type Side } from "@/components/shared/what-if-rules";
 export { GRADES, encodeRules, type CommissionPlan, type Grade, type Rule, type Side } from "@/components/shared/what-if-rules";
 
@@ -20,6 +19,15 @@ export function gradeRank(g: string | null | undefined): number | null {
 }
 
 export type RuleType = Rule["type"];
+
+/**
+ * Mistakes known at the entry (the API grid's GRID_MISTAKES, plus «Завышенный размер»): the builder offers only these,
+ * and «ошибки входа» is said only of them. Exit / outcome marks are set because the trade went wrong.
+ */
+export const ENTRY_MISTAKES: ReadonlySet<ErrorCode> = new Set<ErrorCode>(["fomo", "offPlan", "earlyEntry", "revenge", "offSetup", "overtrading", "noStop", "oversize"]);
+
+/** Longest personal tag a rule takes (the API's ruleSchema). */
+export const MAX_TAG_LEN = 60;
 
 /** Rule types the server shipped before sizeRange / afterLoss (used when /whatif/base has no `ruleTypes`). */
 export const LEGACY_RULE_TYPES: RuleType[] = [
@@ -45,6 +53,20 @@ export type PreviewTrade = {
   regFees?: number | null;
   setup?: string | null;
   grade?: string | null;
+  /** Owner: day rules run per trader-day (the whole team); absent ⇒ one trader. */
+  trader?: string | null;
+  /** Close-auction (IMX) trade. */
+  imx?: boolean;
+  /** Re-entry into the same ticker. */
+  reentry?: boolean;
+  /** Position / the trader's usual (60-day median) size; null when unknown. */
+  sizeRel?: number | null;
+  /** Entry with a stop: true / false, null = unknown. */
+  hasStop?: boolean | null;
+  /** Marked mistakes (vocabulary codes). */
+  mistakes?: ErrorCode[];
+  /** Personal tags (no IMX, no mistakes). */
+  ptags?: string[];
 };
 
 /* ─── Formatting helpers ─────────────────────────────────────────────────── */
@@ -70,9 +92,22 @@ export function mergeRule(rules: Rule[], r: Rule): Rule[] {
   else if (r.type === "priceRange" && prev.type === "priceRange") next = { type: "priceRange", min: r.min ?? prev.min ?? null, max: r.max ?? prev.max ?? null };
   else if (r.type === "sizeRange" && prev.type === "sizeRange") next = { type: "sizeRange", min: r.min ?? prev.min ?? null, max: r.max ?? prev.max ?? null };
   else if (r.type === "excludeTickers" && prev.type === "excludeTickers") next = { type: "excludeTickers", tickers: [...new Set([...prev.tickers, ...r.tickers].map((t) => t.toUpperCase()))] };
+  else if (r.type === "excludeMistakes" && prev.type === "excludeMistakes") next = { type: "excludeMistakes", codes: [...new Set([...prev.codes, ...r.codes])] };
+  else if (r.type === "excludeTags" && prev.type === "excludeTags") next = { type: "excludeTags", tags: uniqTags([...prev.tags, ...r.tags]) };
   const out = [...rules];
   out[i] = next;
   return out;
+}
+
+/** Tags without case-insensitive repeats (the first spelling stays). */
+function uniqTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  return tags.filter((t) => {
+    const k = t.trim().toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 export function removeRule(rules: Rule[], type: RuleType): Rule[] {
@@ -100,6 +135,13 @@ export function subtractRule(rules: Rule[], r: Rule): Rule[] {
     const drop = new Set(r.tickers.map((t) => t.toUpperCase()));
     const tickers = cur.tickers.filter((t) => !drop.has(t.toUpperCase()));
     next = tickers.length ? { type: "excludeTickers", tickers } : null;
+  } else if (cur.type === "excludeMistakes" && r.type === "excludeMistakes") {
+    const codes = cur.codes.filter((c) => !r.codes.includes(c));
+    next = codes.length ? { type: "excludeMistakes", codes } : null;
+  } else if (cur.type === "excludeTags" && r.type === "excludeTags") {
+    const drop = new Set(r.tags.map((t) => t.trim().toLowerCase()));
+    const tags = cur.tags.filter((t) => !drop.has(t.trim().toLowerCase()));
+    next = tags.length ? { type: "excludeTags", tags } : null;
   }
   const out = [...rules];
   if (next) out[i] = next;
@@ -126,6 +168,8 @@ function normalise(r: Rule): Rule {
     case "sizeRange": return { type: r.type, min: r.min ?? null, max: r.max ?? null };
     case "excludeTickers": return { type: r.type, tickers: [...r.tickers].map((t) => t.toUpperCase()).sort() };
     case "commissionPlan": return { ...r, keepRegulatory: r.keepRegulatory ?? true };
+    case "excludeMistakes": return { type: r.type, codes: [...r.codes].sort() };
+    case "excludeTags": return { type: r.type, tags: r.tags.map((t) => t.trim().toLowerCase()).sort() };
     default: return r;
   }
 }
@@ -141,7 +185,11 @@ export function chipLabel(r: Rule): string {
     case "dailyLossLimit": return t("rules.chip.dailyLossLimit", { amount: usd(r.usd) });
     case "maxTradesPerDay": return t("rules.chip.maxTradesPerDay", { count: r.n });
     case "stopAfterLosses": return t("rules.chip.stopAfterLosses", { count: r.n });
-    case "timeWindow": return r.from && r.to ? t("rules.chip.windowBoth", { from: r.from, to: r.to }) : r.from ? t("rules.chip.windowFrom", { from: r.from }) : r.to ? t("rules.chip.windowTo", { to: r.to }) : t("rules.chip.window");
+    case "timeWindow":
+      if (r.from && r.to) return t("rules.chip.windowBoth", { from: r.from, to: r.to });
+      if (r.from === "09:30") return t("rules.chip.noPremarket");
+      if (r.to === "16:00" && !r.from) return t("rules.chip.noAfterHours");
+      return r.from ? t("rules.chip.windowFrom", { from: r.from }) : r.to ? t("rules.chip.windowTo", { to: r.to }) : t("rules.chip.window");
     case "priceRange": return r.min != null && r.max != null ? t("rules.chip.priceBoth", { min: r.min, max: r.max }) : r.min != null ? t("rules.chip.priceMin", { min: r.min }) : r.max != null ? t("rules.chip.priceMax", { max: r.max }) : t("rules.chip.price");
     case "minHold": return t("rules.chip.minHold", { hold: fmtHold(r.seconds) });
     case "excludeTickers": return t("rules.chip.excludeTickers", { tickers: r.tickers.join(", ") });
@@ -152,6 +200,17 @@ export function chipLabel(r: Rule): string {
     case "afterLoss": return t("rules.chip.afterLoss", { minutes: r.minutes });
     case "excludeSetups": return t("rules.chip.excludeSetups", { setups: r.setups.join(", ") });
     case "minGrade": return r.grade === "A+" ? t("rules.chip.onlyAPlus") : t("rules.chip.minGrade", { grade: r.grade });
+    case "excludeImx": return t("rules.chip.excludeImx");
+    case "noReentry": return t("rules.chip.noReentry");
+    case "requireStop": return t("rules.chip.requireStop");
+    case "maxSizeRel": return t("rules.chip.maxSizeRel", { x: r.x });
+    case "excludeMistakes":
+      if (r.codes.length === 1) return t("rules.chip.excludeMistake", { name: errorLabel(r.codes[0]) });
+      if (r.codes.length === 2) return t("rules.chip.excludeMistakes", { names: r.codes.map(errorLabel).join(", ") });
+      return r.codes.every((c) => ENTRY_MISTAKES.has(c)) ? t("rules.chip.excludeMistakesMany", { count: r.codes.length }) : t("rules.chip.excludeMistakesAny", { count: r.codes.length });
+    case "excludeTags": return r.tags.length === 1 ? t("rules.chip.excludeTag", { tags: r.tags[0] }) : t("rules.chip.excludeTags", { tags: r.tags.join(", ") });
+    case "profitGiveback": return t("rules.chip.profitGiveback", { pct: r.pct, amount: usd(r.peak) });
+    case "dailyProfitTarget": return t("rules.chip.dailyProfitTarget", { amount: usd(r.usd) });
   }
 }
 
@@ -164,6 +223,8 @@ export function ifNotPhrase(r: Rule): string {
     case "stopAfterLosses": return t("rules.ifNot.stopAfterLosses", { count: r.n });
     case "timeWindow":
       if (r.from && r.to) return t("rules.ifNot.windowBoth", { from: r.from, to: r.to });
+      if (r.from === "09:30") return t("rules.ifNot.noPremarket");
+      if (r.to === "16:00" && !r.from) return t("rules.ifNot.noAfterHours");
       if (r.from) return t("rules.ifNot.windowFrom", { from: r.from });
       if (r.to) return t("rules.ifNot.windowTo", { to: r.to });
       return t("rules.ifNot.window");
@@ -184,6 +245,17 @@ export function ifNotPhrase(r: Rule): string {
     case "afterLoss": return t("rules.ifNot.afterLoss", { minutes: r.minutes });
     case "excludeSetups": return r.setups.length > 1 ? t("rules.ifNot.excludeSetups", { setups: r.setups.join(", ") }) : t("rules.ifNot.excludeSetup", { setups: r.setups.join(", ") });
     case "minGrade": return r.grade === "A+" ? t("rules.ifNot.onlyAPlus") : t("rules.ifNot.minGrade", { grade: r.grade });
+    case "excludeImx": return t("rules.ifNot.excludeImx");
+    case "noReentry": return t("rules.ifNot.noReentry");
+    case "requireStop": return t("rules.ifNot.requireStop");
+    case "maxSizeRel": return t("rules.ifNot.maxSizeRel", { x: r.x });
+    case "excludeMistakes":
+      if (r.codes.length === 1) return t("rules.ifNot.excludeMistake", { name: errorLabel(r.codes[0]) });
+      if (r.codes.length === 2) return t("rules.ifNot.excludeMistakes", { names: r.codes.map(errorLabel).join(", ") });
+      return r.codes.every((c) => ENTRY_MISTAKES.has(c)) ? t("rules.ifNot.excludeMistakesMany") : t("rules.ifNot.excludeMistakesAny");
+    case "excludeTags": return r.tags.length === 1 ? t("rules.ifNot.excludeTag", { tags: r.tags[0] }) : t("rules.ifNot.excludeTags", { tags: r.tags.join(", ") });
+    case "profitGiveback": return t("rules.ifNot.profitGiveback", { pct: r.pct, amount: usd(r.peak) });
+    case "dailyProfitTarget": return t("rules.ifNot.dailyProfitTarget", { amount: usd(r.usd) });
   }
 }
 
@@ -198,6 +270,8 @@ const RULE_KEYS: Record<RuleType, string[]> = {
   dailyLossLimit: ["usd"], maxTradesPerDay: ["n"], stopAfterLosses: ["n"], timeWindow: ["from", "to"], priceRange: ["min", "max"],
   minHold: ["seconds"], excludeTickers: ["tickers"], excludeSide: ["side"], commissionPlan: ["perShare", "minPerOrder", "ecnPerShare", "keepRegulatory"],
   capLoss: ["usd"], sizeRange: ["min", "max"], afterLoss: ["minutes"], excludeSetups: ["setups"], minGrade: ["grade"],
+  excludeImx: [], noReentry: [], requireStop: [], maxSizeRel: ["x"], excludeMistakes: ["codes"], excludeTags: ["tags"],
+  profitGiveback: ["peak", "pct"], dailyProfitTarget: ["usd"],
 };
 
 /** Inverse of encodeRules; drops anything that does not look like a valid rule. Never throws. */
@@ -229,7 +303,23 @@ function sanitize(x: unknown): Rule | null {
   const type = o.type as RuleType;
   if (!(type in RULE_KEYS)) return null;
   switch (type) {
-    case "dailyLossLimit": case "capLoss": { const usd = posNum(o.usd); return usd ? { type, usd } : null; }
+    case "dailyLossLimit": case "capLoss": case "dailyProfitTarget": { const usd = posNum(o.usd); return usd ? { type, usd } : null; }
+    case "excludeImx": case "noReentry": case "requireStop": return { type };
+    case "maxSizeRel": { const x = posNum(o.x); return x != null && x >= 0.5 && x <= 10 ? { type, x } : null; }
+    case "profitGiveback": {
+      const peak = posNum(o.peak), pct = o.pct;
+      return peak && typeof pct === "number" && Number.isInteger(pct) && pct >= 10 && pct <= 90 ? { type, peak, pct } : null;
+    }
+    case "excludeMistakes": {
+      const codes = Array.isArray(o.codes) ? [...new Set(o.codes.filter(isErrorCode))] : [];
+      return codes.length ? { type, codes } : null;
+    }
+    case "excludeTags": {
+      // Personal tags only: IMX and the mistakes vocabulary have their own rules (the server refuses them here).
+      const raw = Array.isArray(o.tags) ? o.tags.filter((v): v is string => typeof v === "string").map((v) => v.trim()) : [];
+      const tags = uniqTags(raw.filter((v) => v.length > 0 && v.length <= MAX_TAG_LEN && v.toUpperCase() !== "IMX" && !errorCodeOf(v))).slice(0, 20);
+      return tags.length ? { type, tags } : null;
+    }
     case "maxTradesPerDay": case "stopAfterLosses": { const n = posNum(o.n); return n ? { type, n: Math.max(1, Math.round(n)) } : null; }
     case "timeWindow": {
       const from = typeof o.from === "string" && HM.test(o.from) ? o.from : null;
@@ -263,6 +353,9 @@ function sanitize(x: unknown): Rule | null {
 
 /* ─── Client preview (mirror of the engine, one rule at a time) ──────────── */
 
+/** Tolerance of the profit-side day stops (same as the engine). */
+const EPS = 1e-9;
+
 export function netOf(t: PreviewTrade): number | null {
   return t.gross == null ? null : t.gross - Math.abs(t.fees);
 }
@@ -275,6 +368,14 @@ function parseHm(s: string | null | undefined): number | null {
 
 function sortTrades<T extends PreviewTrade>(trades: T[]): T[] {
   return [...trades].sort((a, b) => a.day.localeCompare(b.day) || (a.entryMin ?? 1e9) - (b.entryMin ?? 1e9) || a.seq - b.seq || a.id - b.id);
+}
+
+/** requireStop: share of the trades that must have a recorded stop (engine whatIfPasses STOP_COVERAGE). */
+export const STOP_COVERAGE = 0.15;
+
+/** Stops are recorded on a real share of the trades (hasStop false means «none recorded», not «entered without one»). */
+export function stopsRecorded(trades: PreviewTrade[]): boolean {
+  return trades.length > 0 && trades.filter((t) => t.hasStop === true).length >= STOP_COVERAGE * trades.length;
 }
 
 /** Does a static (per-trade) rule exclude this trade? null for sequential / money rules. */
@@ -292,6 +393,12 @@ export function staticExcludes(r: Rule, t: PreviewTrade): boolean | null {
     case "sizeRange": return t.qty != null && ((r.min != null && t.qty < r.min) || (r.max != null && t.qty > r.max));
     case "excludeSetups": return !!t.setup && r.setups.some((x) => x.trim().toLowerCase() === t.setup!.trim().toLowerCase());
     case "minGrade": { const g = gradeRank(t.grade); return g == null || g > (gradeRank(r.grade) ?? 0); }
+    case "excludeImx": return t.imx === true;
+    case "noReentry": return t.reentry === true;
+    // No stop recorded goes; unknown (null) is kept, like the engine.
+    case "requireStop": return t.hasStop === false;
+    case "excludeMistakes": return !!t.mistakes?.some((c) => r.codes.includes(c));
+    case "excludeTags": return !!t.ptags?.some((p) => r.tags.some((x) => x.trim().toLowerCase() === p.trim().toLowerCase()));
     default: return null;
   }
 }
@@ -313,6 +420,7 @@ export function previewRule(trades: PreviewTrade[], r: Rule): Preview {
   let affected = 0, net = 0;
   // Like the engine: «only graded …» does nothing when no trade is graded.
   if (r.type === "minGrade" && !list.some((t) => gradeRank(t.grade) != null)) return { affected: 0, net: 0, effect: 0, total };
+  if (r.type === "requireStop" && !stopsRecorded(list)) return { affected: 0, net: 0, effect: 0, total };
   const stat = list.length ? staticExcludes(r, list[0]) : null;
   if (stat !== null) {
     for (const t of list) if (staticExcludes(r, t)) { affected++; net += netOf(t)!; }
@@ -333,25 +441,67 @@ export function previewRule(trades: PreviewTrade[], r: Rule): Preview {
       for (const t of list) { const n = netOf(t)!; if (n < -r.usd) { affected++; delta += -r.usd - n; } }
       return { affected, net: round2(delta), effect: round2(delta), total };
     }
-    default: {
-      // Sequential day rules (dailyLossLimit / maxTradesPerDay / stopAfterLosses / afterLoss).
-      let day = "", dayNet = 0, count = 0, lossRun = 0, stopped = false, lastLossClose: number | null = null;
+    case "maxSizeRel": {
+      // Scale (estimate): gross and fees shrink alike to x× the usual size (the engine's rounding).
+      let delta = 0;
       for (const t of list) {
-        if (t.day !== day) { day = t.day; dayNet = 0; count = 0; lossRun = 0; stopped = false; lastLossClose = null; }
-        const n = netOf(t)!;
-        if (stopped) { affected++; net += n; continue; }
-        if (r.type === "maxTradesPerDay" && count >= r.n) { stopped = true; affected++; net += n; continue; }
-        if (r.type === "afterLoss" && lastLossClose != null && t.entryMin != null && t.entryMin >= lastLossClose && t.entryMin < lastLossClose + r.minutes) { affected++; net += n; continue; }
-        count++;
-        dayNet += n;
-        if (n < 0) lossRun++; else if (n > 0) lossRun = 0;
-        if (n < 0 && t.entryMin != null) lastLossClose = t.entryMin + (t.holdSec ?? 0) / 60;
-        if (r.type === "dailyLossLimit" && dayNet <= -r.usd) stopped = true;
-        else if (r.type === "stopAfterLosses" && lossRun >= r.n) stopped = true;
+        if (t.sizeRel == null || !(t.sizeRel > r.x)) continue;
+        const f = r.x / t.sizeRel;
+        affected++;
+        delta += round2(t.gross! * f) - round2(Math.abs(t.fees) * f) - netOf(t)!;
       }
-      return { affected, net: round2(net), effect: round2(-net), total };
+      return { affected, net: round2(delta), effect: round2(delta), total };
     }
+    default: return sequentialPreview(list, r, total);
   }
+}
+
+type DayState = {
+  dayNet: number; count: number; lossRun: number; peak: number; stopped: boolean; lastLossClose: number | null;
+  /** Kept trades still open, by close time. */
+  open: { close: number; net: number }[];
+};
+
+/**
+ * Sequential day rules, per trader-day like the engine (the whole team: every trader's day on its own). A kept trade
+ * counts only from its close (engine whatIfPasses: no look-ahead into trades still open at a later entry); without an
+ * entry time or hold it counts at once.
+ */
+function sequentialPreview(list: PreviewTrade[], r: Rule, total: number): Preview {
+  let affected = 0, net = 0, day = "";
+  const states = new Map<string, DayState>();
+  const realise = (s: DayState, n: number, close: number | null) => {
+    s.dayNet += n;
+    if (s.dayNet > s.peak) s.peak = s.dayNet;
+    if (n < 0) s.lossRun++; else if (n > 0) s.lossRun = 0;
+    if (n < 0 && close != null) s.lastLossClose = Math.max(s.lastLossClose ?? close, close);
+    if (s.stopped) return;
+    if (r.type === "dailyLossLimit" && s.dayNet <= -r.usd) s.stopped = true;
+    else if (r.type === "stopAfterLosses" && s.lossRun >= r.n) s.stopped = true;
+    else if (r.type === "dailyProfitTarget" && s.dayNet >= r.usd - EPS) s.stopped = true;
+    else if (r.type === "profitGiveback" && s.peak >= r.peak - EPS && s.dayNet <= s.peak * (1 - r.pct / 100) + EPS) s.stopped = true;
+  };
+  for (const t of list) {
+    if (t.day !== day) { day = t.day; states.clear(); }
+    const key = t.trader ?? "";
+    let s = states.get(key);
+    if (!s) { s = { dayNet: 0, count: 0, lossRun: 0, peak: 0, stopped: false, lastLossClose: null, open: [] }; states.set(key, s); }
+    const at = t.entryMin ?? Infinity;
+    while (s.open.length && s.open[0].close <= at) { const o = s.open.shift()!; realise(s, o.net, o.close); }
+    const n = netOf(t)!;
+    if (s.stopped) { affected++; net += n; continue; }
+    if (r.type === "maxTradesPerDay" && s.count >= r.n) { s.stopped = true; affected++; net += n; continue; }
+    const llc = s.lastLossClose;
+    if (r.type === "afterLoss" && llc != null && t.entryMin != null && t.entryMin >= llc && t.entryMin < llc + r.minutes) { affected++; net += n; continue; }
+    s.count++;
+    if (t.entryMin != null && t.holdSec != null) {
+      const close = t.entryMin + t.holdSec / 60;
+      let i = s.open.length;
+      while (i > 0 && s.open[i - 1].close > close) i--;
+      s.open.splice(i, 0, { close, net: n });
+    } else realise(s, n, t.entryMin);
+  }
+  return { affected, net: round2(net), effect: round2(-net), total };
 }
 
 /* ─── Fees (mirror of whatIf.recomputeFees) ──────────────────────────────── */

@@ -3,6 +3,8 @@
  * URL encoding used by «Открыть Что если» links (?rules=…). The rule engine and editors live in components/what-if.
  */
 
+import type { ErrorCode } from "./error-vocab";
+
 export type Side = "long" | "short";
 
 export type CommissionPlan = { type: "commissionPlan"; perShare: number; minPerOrder: number; ecnPerShare: number; keepRegulatory?: boolean };
@@ -21,7 +23,18 @@ export type Rule =
   | { type: "sizeRange"; min?: number | null; max?: number | null }
   | { type: "afterLoss"; minutes: number }
   | { type: "excludeSetups"; setups: string[] }
-  | { type: "minGrade"; grade: Grade };
+  | { type: "minGrade"; grade: Grade }
+  | { type: "excludeImx" }
+  | { type: "noReentry" }
+  | { type: "requireStop" }
+  /** Scale (estimate): a position above x × the usual size is counted at x×. */
+  | { type: "maxSizeRel"; x: number }
+  | { type: "excludeMistakes"; codes: ErrorCode[] }
+  /** Personal tags only (IMX and the mistakes vocabulary have their own rules). */
+  | { type: "excludeTags"; tags: string[] }
+  /** Stop the day after giving back `pct`% of a day profit that reached +peak. */
+  | { type: "profitGiveback"; peak: number; pct: number }
+  | { type: "dailyProfitTarget"; usd: number };
 
 export const GRADES = ["A+", "A", "B", "C"] as const;
 export type Grade = (typeof GRADES)[number];
