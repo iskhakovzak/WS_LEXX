@@ -119,6 +119,8 @@ export function toTradeResponseShape(t: TradeRow) {
     // Derived with it (lib/tradeFacetDerive, migration 0241) — the «Фильтры» columns the web filters raw rows by.
     holdSec: t.holdSec ?? null, overnight: t.overnight ?? null, entryKind: t.entryKind ?? null, exitKind: t.exitKind ?? null,
     notional: numOrNull(t.notional), daySeq: t.daySeq ?? null, prevKind: t.prevKind ?? null,
+    // Breakdown v3 (migration 0242): adds kind, size vs the trader's usual (a ratio, not $), a stop price is known.
+    addsKind: t.addsKind ?? null, sizeRel: numOrNull(t.sizeRel), hasStop: t.hasStop ?? null,
     createdAt: t.createdAt.toISOString(),
     // Playbook setup the trade is linked to (ILYA-16). Not in the generated zod shape: withPlaybookId() re-adds it after parse.
     playbookId: t.playbookId ?? null,

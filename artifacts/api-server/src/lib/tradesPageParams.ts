@@ -22,6 +22,7 @@ export const FACET_QUERY = {
   xGtags: str(20000), xPtags: str(20000),
   xSeq: str(4000), xPrev: str(4000), xEntry: str(4000), xExit: str(4000), xHold: str(4000),
   xTickers: str(20000), xPrice: str(4000), xSize: str(4000), xAccounts: str(20000), xResult: str(4000),
+  xAdds: str(4000), xStop: str(4000), xSizeRel: str(4000),
   excludeImx: z.enum(["1", "true", "0", "false"]).optional(),
 };
 export type FacetQueryT = { [K in keyof typeof FACET_QUERY]?: string };

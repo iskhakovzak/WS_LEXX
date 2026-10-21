@@ -20,8 +20,11 @@ export default {
     none: "Teglarsiz",
     unknown: "Maʼlumot yoʻq",
     prev: { first: "Kundagi birinchi", "after-win": "Foydadan keyin", "after-loss": "Zarardan keyin", "after-be": "Noldan keyin" },
-    entry: { single: "Bitta kirish", scaled: "Qoʻshimchalar bilan", reentry: "Qayta kirish" },
-    exit: { whole: "Toʻliq", partials: "Qismlab", stopped: "Stop boʻyicha" },
+    entry: { single: "Bitta kirish", scaled: "Qoʻshimchalar bilan", aggressive: "Agressiv qoʻshimchalar", reentry: "Qayta kirish" },
+    adds: { none: "Qoʻshimchasiz", pyramid: "Foydaga (piramida)", average: "Zararga (oʻrtachalash)", mixed: "Ikki tomonga" },
+    exit: { whole: "Toʻliq", partials: "Qismlab", stopped: "Stop boʻyicha", flip: "Teskarisiga oʻtish" },
+    sizeRel: { lt05: "< 0,5×", normal: "Odatiy", x2: "×2", x3: "×3 va undan koʻp" },
+    stop: { with: "Stop bilan", none: "Stopsiz" },
     hold: {
       lt1m: "< 1 daq", "1-5m": "1–5 daq", "5-15m": "5–15 daq", "15-60m": "15–60 daq", "1-4h": "1–4 soat", gt4h: "> 4 soat",
       overnight: "Overnayt",

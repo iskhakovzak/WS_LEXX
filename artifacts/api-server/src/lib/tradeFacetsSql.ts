@@ -13,6 +13,9 @@
  *   hold        trades.hold_sec / overnight: lt1m … gt4h | overnight  tickers  UPPER(ticker)
  *   price       entry price: lt5 … gt200                              size   trades.notional: lt2k … gt100k
  *   accounts    broker_account, «manual» without one                  result win | loss | be by the net (pnl − |fees|)
+ * Breakdown v3 (migration 0242): entry also «aggressive», exit also «flip», and
+ *   adds        trades.adds_kind: none | pyramid | average | mixed    stop   trades.has_stop: with | none
+ *   sizeRel     trades.size_rel (× the trader's usual size): lt05 | normal | x2 | x3
  * Missing values fall in «unknown»; a trade without tags of a kind is in «__none__» — so «all checked» shows every trade.
  *
  * Selection = what is UNCHECKED: `off[dim]` lists the excluded keys (absent / empty = everything checked; a new year or
@@ -21,13 +24,13 @@
  * Counts of one column are computed with that column's own exclusion removed (`skip`), like the PropReports panel.
  */
 
-import { holdSql, priceSql, resultSql, seqSql, sizeSql } from "./tradeFacetBuckets";
+import { holdSql, priceSql, resultSql, seqSql, sizeRelSql, sizeSql, stopSql } from "./tradeFacetBuckets";
 
 /** Every column, in the panel's group order (when · how · what · result and tags). */
 export const FACET_DIMS = [
   "years", "months", "days", "times", "seq", "prev",
-  "strategies", "types", "entry", "exit", "hold",
-  "tickers", "price", "size", "accounts",
+  "strategies", "types", "entry", "adds", "exit", "stop", "hold",
+  "tickers", "price", "size", "sizeRel", "accounts",
   "result", "gtags", "ptags",
 ] as const;
 export type FacetDim = (typeof FACET_DIMS)[number];
@@ -38,6 +41,7 @@ export const FACET_PARAMS: Record<FacetDim, string> = {
   strategies: "xStrategies", types: "xTypes", gtags: "xGtags", ptags: "xPtags",
   seq: "xSeq", prev: "xPrev", entry: "xEntry", exit: "xExit", hold: "xHold",
   tickers: "xTickers", price: "xPrice", size: "xSize", accounts: "xAccounts", result: "xResult",
+  adds: "xAdds", stop: "xStop", sizeRel: "xSizeRel",
 };
 export const EXCLUDE_IMX_PARAM = "excludeImx";
 
@@ -95,11 +99,14 @@ export function facetKeySql(dim: Exclude<FacetDim, "gtags" | "ptags">, a = "t"):
     case "seq": return seqSql(a);
     case "prev": return `COALESCE(${a}.prev_kind, '${UNKNOWN_KEY}')`;
     case "entry": return `COALESCE(${a}.entry_kind, '${UNKNOWN_KEY}')`;
+    case "adds": return `COALESCE(${a}.adds_kind, '${UNKNOWN_KEY}')`;
     case "exit": return `COALESCE(${a}.exit_kind, '${UNKNOWN_KEY}')`;
+    case "stop": return stopSql(a);
     case "hold": return holdSql(a);
     case "tickers": return `COALESCE(NULLIF(UPPER(TRIM(${a}.ticker)), ''), '${UNKNOWN_KEY}')`;
     case "price": return priceSql(a);
     case "size": return sizeSql(a);
+    case "sizeRel": return sizeRelSql(a);
     case "accounts": return `COALESCE(NULLIF(TRIM(${a}.broker_account), ''), '${MANUAL_ACCOUNT_KEY}')`;
     case "result": return resultSql(a);
   }

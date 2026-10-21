@@ -13,22 +13,31 @@
  * Inputs per trade: ticker, session, date, exit_date, horizon, qty, entry, the fills (trade_executions.executed_at; the
  * first entry / last exit by kind) and, without fills, the broker's openedAt / closedAt (ET wall clock) or a timed `date`.
  *
- * The same pass writes the filter panel's derived columns (migration 0241, lib/tradeFacetDerive): hold_sec, overnight,
- * entry_kind, exit_kind, notional, day_seq, prev_kind. day_seq / prev_kind depend on the other trades of the trader's
- * NY day, so a refresh always loads and re-derives WHOLE trader-days (COALESCE(trader, '') + LEFT(date, 10), index
- * trades_trader_day_idx): the neighbours of a new / edited / deleted trade are rewritten when their values changed.
+ * The same pass writes the filter panel's derived columns (migrations 0241, 0242, lib/tradeFacetDerive): hold_sec,
+ * overnight, entry_kind, adds_kind, exit_kind, has_stop, notional, size_rel, day_seq, prev_kind. day_seq / prev_kind
+ * depend on the other trades of the trader's NY day, so a refresh always loads and re-derives WHOLE trader-days
+ * (COALESCE(trader, '') + LEFT(date, 10), index trades_trader_day_idx): the neighbours of a new / edited / deleted trade
+ * are rewritten when their values changed. size_rel depends on the trader's earlier trades (SIZE_REL_DAYS back), so a
+ * refresh also re-derives the trader's FOLLOWING SIZE_REL_DAYS days of every day it touches (their «usual size» may
+ * have moved) and reads the SIZE_REL_DAYS before them as history (not written). The 0242 triggers do the same for a
+ * trade that leaves a day (trader / date changed, hard delete): that trader's day and the following SIZE_REL_DAYS days
+ * go stale.
  */
 import { pool } from "@workspace/db";
 import { currentImxWindow, withImxTag } from "./imx";
 import { deriveTradeStrategy, entrySecOf, isImxStrategy, type ImxWindow, type StrategyInput, type TradeStrategy } from "./tradeStrategy";
-import { deriveFacetValues, type FacetDerived, type FacetDeriveInput, type StructureLite } from "./tradeFacetDerive";
+import {
+  deriveFacetValues, isoDayOf, legsOf, notionalOf, shiftIsoDay,
+  type FacetDerived, type FacetDeriveInput, type FacetFill, type SizeRow, type StructureLite,
+} from "./tradeFacetDerive";
+import { SIZE_REL_DAYS } from "./tradeFacetBuckets";
 
 type Queryable = { query: (typeof pool)["query"] };
 
 const reloadSettings = async (): Promise<void> => (await import("./settings/store")).warmSettings();
 
 /** Bump when the rules of lib/tradeStrategy or lib/tradeFacetDerive change: the backfill then re-derives every trade. */
-export const STRATEGY_VERSION = 2; // 2: + hold / entry / exit kind / notional / day sequence (migration 0241)
+export const STRATEGY_VERSION = 3; // 2: + hold / entry / exit kind / notional / day sequence (0241); 3: + adds / stop / size vs usual, aggressive entry, flip exit (0242)
 
 export function strategySig(win: ImxWindow): string {
   return `v${STRATEGY_VERSION}|${win.start}-${win.end}`;
@@ -57,6 +66,7 @@ export interface StrategyTradeRow {
   reentry_of?: number | null;
   deleted?: boolean;
   structure?: StructureLite | null;
+  stop?: string | number | null;
   // Stored facet values (compared, and guarded on write).
   hold_sec?: number | null;
   overnight?: boolean | null;
@@ -65,9 +75,13 @@ export interface StrategyTradeRow {
   notional?: string | number | null;
   day_seq?: number | null;
   prev_kind?: string | null;
+  adds_kind?: string | null;
+  size_rel?: string | number | null;
+  has_stop?: boolean | null;
 }
 
-export interface StrategyFillRow { trade_id: number; kind: string; executed_at: Date | string | null }
+/** A fill (trade_executions); price / qty / role / leg_index feed the legs of the facet kinds (lib/tradeFacetDerive). */
+export interface StrategyFillRow extends FacetFill { trade_id: number }
 
 const ENTRY_KINDS = new Set(["entry", "add"]);
 const EXIT_KINDS = new Set(["exit", "trim", "stop"]);
@@ -103,19 +117,32 @@ function strategyOf(r: StrategyTradeRow, input: StrategyInput, win: ImxWindow): 
   return { id: r.id, strategy, entrySec: entrySecOf(input), tags: withImxTag(r.tags, isImxStrategy(strategy)) };
 }
 
-const facetInputOf = (r: StrategyTradeRow, input: StrategyInput, entrySec: number | null): FacetDeriveInput => ({
+const facetInputOf = (r: StrategyTradeRow, input: StrategyInput, entrySec: number | null, fills: readonly StrategyFillRow[]): FacetDeriveInput => ({
   id: r.id, trader: r.trader ?? null, date: r.date, exitDate: r.exit_date, deleted: r.deleted === true, result: r.result ?? null,
   pnl: r.pnl, fees: r.fees, qty: r.qty, entry: r.entry, holdTime: r.hold_time ?? null, openedAt: r.opened_at, closedAt: r.closed_at,
   entryAt: input.entryAt ?? null, exitAt: input.exitAt ?? null, structure: r.structure ?? null, reentryOf: r.reentry_of ?? null, entrySec,
+  legs: legsOf(fills), stop: r.stop ?? null,
 });
 
-/** Every derived value of a set of rows (pass whole trader-days — day_seq / prev_kind look at the neighbours). */
-export function deriveRows(rows: readonly StrategyTradeRow[], fillsOf: (id: number) => readonly StrategyFillRow[], win: ImxWindow): StrategyRowUpdate[] {
-  const inputs = rows.map((r) => strategyInputOf(r, fillsOf(Number(r.id))));
+/**
+ * Every derived value of a set of rows (pass whole trader-days — day_seq / prev_kind look at the neighbours);
+ * `history` = the same traders' trades of the SIZE_REL_DAYS before them (read only, for size_rel).
+ */
+export function deriveRows(
+  rows: readonly StrategyTradeRow[], fillsOf: (id: number) => readonly StrategyFillRow[], win: ImxWindow, history: readonly StrategyTradeRow[] = [],
+): StrategyRowUpdate[] {
+  const fills = rows.map((r) => fillsOf(Number(r.id)));
+  const inputs = rows.map((r, i) => strategyInputOf(r, fills[i]!));
   const base = rows.map((r, i) => strategyOf(r, inputs[i]!, win));
-  const facets = deriveFacetValues(rows.map((r, i) => facetInputOf(r, inputs[i]!, base[i]!.entrySec)));
+  const facets = deriveFacetValues(rows.map((r, i) => facetInputOf(r, inputs[i]!, base[i]!.entrySec, fills[i]!)), history.map(sizeRowOf));
   return base.map((b) => ({ ...b, ...facets.get(b.id)! }));
 }
+
+/** A history row's place in the size history (its stored entry second: only its day matters to the targets). */
+const sizeRowOf = (r: StrategyTradeRow): SizeRow => ({
+  id: Number(r.id), trader: r.trader ?? null, date: r.date, entrySec: r.entry_sec ?? null, deleted: r.deleted === true,
+  notional: notionalOf(r.structure ?? null, r.qty, r.entry),
+});
 
 const numOrNull = (v: unknown): number | null => (v == null || v === "" ? null : Number(v));
 
@@ -127,16 +154,21 @@ function storedOf(r: StrategyTradeRow): Values {
     strategy: (r.strategy ?? null) as TradeStrategy, entrySec: r.entry_sec ?? null, tags: r.tags ?? null,
     holdSec: r.hold_sec ?? null, overnight: r.overnight ?? null, entryKind: (r.entry_kind ?? null) as FacetDerived["entryKind"],
     exitKind: (r.exit_kind ?? null) as FacetDerived["exitKind"], notional: numOrNull(r.notional), daySeq: r.day_seq ?? null,
-    prevKind: (r.prev_kind ?? null) as FacetDerived["prevKind"],
+    prevKind: (r.prev_kind ?? null) as FacetDerived["prevKind"], addsKind: (r.adds_kind ?? null) as FacetDerived["addsKind"],
+    sizeRel: numOrNull(r.size_rel), hasStop: (r.has_stop ?? null) as boolean,
   };
 }
 
-const FIELDS = ["strategy", "entrySec", "tags", "holdSec", "overnight", "entryKind", "exitKind", "notional", "daySeq", "prevKind"] as const;
+const FIELDS = [
+  "strategy", "entrySec", "tags", "holdSec", "overnight", "entryKind", "exitKind", "notional", "daySeq", "prevKind",
+  "addsKind", "sizeRel", "hasStop",
+] as const;
 /** Column + record type of each field (jsonb_to_recordset). */
 const COLS: Record<(typeof FIELDS)[number], [string, string]> = {
   strategy: ["strategy", "text"], entrySec: ["entry_sec", "int"], tags: ["tags", "text"], holdSec: ["hold_sec", "int"],
   overnight: ["overnight", "bool"], entryKind: ["entry_kind", "text"], exitKind: ["exit_kind", "text"], notional: ["notional", "numeric"],
-  daySeq: ["day_seq", "int"], prevKind: ["prev_kind", "text"],
+  daySeq: ["day_seq", "int"], prevKind: ["prev_kind", "text"], addsKind: ["adds_kind", "text"], sizeRel: ["size_rel", "numeric"],
+  hasStop: ["has_stop", "bool"],
 };
 
 const sameValues = (a: Values, b: Values) => FIELDS.every((f) => (a[f] ?? null) === (b[f] ?? null));
@@ -158,33 +190,77 @@ const ROW_COLS = `t.id, t.ticker, t.session, t.date, t.exit_date, t.horizon, t.q
          'adds', t.structure -> 'adds', 'partials', t.structure -> 'partials', 'stopHit', t.structure -> 'stopHit',
          'scaledEntryLikely', t.structure -> 'scaledEntryLikely', 'scaledExitLikely', t.structure -> 'scaledExitLikely',
          'maxPosition', t.structure -> 'maxPosition', 'avgEntry', t.structure -> 'avgEntry',
-         'firstAt', t.structure -> 'firstAt', 'lastAt', t.structure -> 'lastAt') END AS structure,
-       t.hold_sec, t.overnight, t.entry_kind, t.exit_kind, t.notional, t.day_seq, t.prev_kind,
+         'firstAt', t.structure -> 'firstAt', 'lastAt', t.structure -> 'lastAt', 'side', t.structure -> 'side',
+         'stopPrice', t.structure -> 'stopPrice', 'flipOut', t.structure -> 'flipOut', 'carriedIn', t.structure -> 'carriedIn') END AS structure,
+       t.stop, t.hold_sec, t.overnight, t.entry_kind, t.exit_kind, t.notional, t.day_seq, t.prev_kind, t.adds_kind, t.size_rel, t.has_stop,
        t.context_snapshot ->> 'openedAt' AS opened_at, t.context_snapshot ->> 'closedAt' AS closed_at`;
 
 export interface StrategyRefreshResult { trades: number; changed: number }
 
-/** Derive + write the given trades and every other trade of their trader-days (see the header). */
+/** Per trader, the day ranges [from, to] (inclusive, "YYYY-MM-DD") to load, merged; an invalid seed day is its own range. */
+export function dayRanges(seeds: readonly { tr: string; d: string }[], back: number, ahead: number): { tr: string[]; from: string[]; to: string[] } {
+  const by = new Map<string, [string, string][]>();
+  for (const { tr, d } of seeds) {
+    const iso = isoDayOf(d);
+    const r: [string, string] = iso ? [shiftIsoDay(iso, back), shiftIsoDay(iso, ahead)] : [d, d];
+    const l = by.get(tr);
+    if (l) l.push(r); else by.set(tr, [r]);
+  }
+  const out = { tr: [] as string[], from: [] as string[], to: [] as string[] };
+  for (const [tr, list] of by) {
+    list.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    let cur: [string, string] | null = null;
+    const flush = () => { if (cur) { out.tr.push(tr); out.from.push(cur[0]); out.to.push(cur[1]); } };
+    for (const r of list) {
+      const next = cur && isoDayOf(cur[1]) && isoDayOf(r[0]) ? shiftIsoDay(cur[1], 1) : null;
+      if (cur && next != null && r[0] <= next) { if (r[1] > cur[1]) cur[1] = r[1]; continue; }
+      flush();
+      cur = [r[0], r[1]];
+    }
+    flush();
+  }
+  return out;
+}
+
+/** Trades of the given trader day ranges (index trades_trader_day_idx), plus the given ids. */
+const RANGE_IDS = `SELECT x.id FROM unnest($2::text[], $3::text[], $4::text[]) AS r(tr, d0, d1)
+  JOIN trades x ON COALESCE(x.trader, '') = r.tr AND LEFT(x.date, 10) >= r.d0 AND LEFT(x.date, 10) <= r.d1`;
+
+/** Derive + write the given trades, every other trade of their trader-days and the following SIZE_REL_DAYS days (see the header). */
 export async function refreshTradeStrategies(ids: readonly number[], q: Queryable = pool, win: ImxWindow = currentImxWindow()): Promise<StrategyRefreshResult> {
   const uniq = [...new Set(ids.filter((n) => Number.isInteger(n) && n > 0))];
   if (!uniq.length) return { trades: 0, changed: 0 };
+  const seeds = (await q.query<{ tr: string; d: string }>(
+    `SELECT DISTINCT COALESCE(trader, '') AS tr, COALESCE(LEFT(date, 10), '') AS d FROM trades WHERE id = ANY($1::int[])`, [uniq],
+  )).rows;
+  const ahead = dayRanges(seeds, 0, SIZE_REL_DAYS);
   const tradesRes = await q.query<StrategyTradeRow>(
-    `SELECT ${ROW_COLS} FROM trades t
-      WHERE t.id IN (
-        SELECT unnest($1::int[])
-        UNION
-        SELECT x.id FROM trades x WHERE (COALESCE(x.trader, ''), LEFT(x.date, 10)) IN (
-          SELECT COALESCE(s.trader, ''), LEFT(s.date, 10) FROM trades s WHERE s.id = ANY($1::int[])))`,
-    [uniq],
+    `SELECT ${ROW_COLS} FROM trades t WHERE t.id IN (SELECT unnest($1::int[]) UNION ${RANGE_IDS})`,
+    [uniq, ahead.tr, ahead.from, ahead.to],
   );
   const all = tradesRes.rows.map((r) => Number(r.id));
-  const fillsRes = await q.query<StrategyFillRow>(`SELECT trade_id, kind, executed_at FROM trade_executions WHERE trade_id = ANY($1::int[])`, [all]);
+  // size_rel history: the SIZE_REL_DAYS before every loaded day (the loaded rows themselves are skipped).
+  const valid = seeds.filter((x) => isoDayOf(x.d) != null);
+  const back = dayRanges(valid, -SIZE_REL_DAYS, -1);
+  const historyRes = back.tr.length
+    ? await q.query<StrategyTradeRow>(
+      `SELECT t.id, t.trader, t.date, t.qty, t.entry, t.entry_sec, (t.deleted_at IS NOT NULL) AS deleted,
+              CASE WHEN t.structure IS NULL THEN NULL ELSE jsonb_build_object(
+                'maxPosition', t.structure -> 'maxPosition', 'avgEntry', t.structure -> 'avgEntry') END AS structure
+         FROM trades t WHERE t.id IN (${RANGE_IDS}) AND NOT (t.id = ANY($1::int[]))`,
+      [all, back.tr, back.from, back.to],
+    )
+    : { rows: [] as StrategyTradeRow[] };
+  const fillsRes = await q.query<StrategyFillRow>(
+    `SELECT id, trade_id, kind, role, leg_index, price, qty, executed_at, sort_order FROM trade_executions WHERE trade_id = ANY($1::int[])`,
+    [all],
+  );
   const byTrade = new Map<number, StrategyFillRow[]>();
   for (const f of fillsRes.rows) {
     const list = byTrade.get(Number(f.trade_id));
     if (list) list.push(f); else byTrade.set(Number(f.trade_id), [f]);
   }
-  const derived = deriveRows(tradesRes.rows, (id) => byTrade.get(id) ?? [], win);
+  const derived = deriveRows(tradesRes.rows, (id) => byTrade.get(id) ?? [], win, historyRes.rows);
   const ups = tradesRes.rows.map((row, i) => ({ row, old: storedOf(row), up: derived[i]! }));
   const changed = ups.filter(({ old, up }) => !sameValues(old, up));
   const sig = strategySig(win);

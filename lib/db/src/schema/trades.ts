@@ -83,6 +83,11 @@ export const tradesTable = pgTable("trades", {
   notional: numeric("notional", { precision: 14, scale: 2 }),
   daySeq: integer("day_seq"),
   prevKind: text("prev_kind"),
+  // Breakdown v3 (migration 0242): adds none | pyramid | average | mixed; size vs the trader's usual (notional ÷ the
+  // median of the previous 60 days, a ratio); a stop price is known. entry_kind also «aggressive», exit_kind «flip».
+  addsKind: text("adds_kind"),
+  sizeRel: numeric("size_rel", { precision: 12, scale: 4 }),
+  hasStop: boolean("has_stop"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [

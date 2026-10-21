@@ -63,7 +63,7 @@ describe.skipIf(!available)("trade strategy + facets on a scratch database", () 
     expect(r.trades).toBe(4);
     const { rows } = await q(`SELECT id, strategy, entry_sec, tags, strategy_sig FROM trades ORDER BY id`);
     const by = Object.fromEntries(rows.map((x) => [x.id, x]));
-    expect(by[ids.imx!]).toMatchObject({ strategy: "MOC", entry_sec: 14 * 3600, tags: "ORB, IMX", strategy_sig: "v2|15:50-16:00" });
+    expect(by[ids.imx!]).toMatchObject({ strategy: "MOC", entry_sec: 14 * 3600, tags: "ORB, IMX", strategy_sig: "v3|15:50-16:00" });
     expect(by[ids.day!]).toMatchObject({ strategy: "Day", entry_sec: 10 * 3600, tags: "FOMO, myTag" });
     expect(by[ids.opg!]).toMatchObject({ strategy: "OPG", entry_sec: 9 * 3600 + 30 * 60 + 5, tags: null });
     expect((await backfillTradeStrategies()).trades).toBe(0);

@@ -5,11 +5,14 @@
  * computed once, then per column the buckets {key, count, net} over the trades that pass every OTHER column (the
  * column's own exclusion is ignored, so an unchecked bucket keeps its numbers), plus the totals of the full selection
  * and the IMX part of it (strategy MOC — computed even when «Исключить IMX» is on, for the «из них IMX» line).
- * With 16 scalar columns the per-column scans are folded into one GROUPING SETS pass (see buildFacetsQuery).
+ * With 19 scalar columns the per-column scans are folded into one GROUPING SETS pass (see buildFacetsQuery).
  */
 import { netPnlSql } from "./tradeMath";
 import { FACET_DIMS, NONE_KEY, facetKeySql, tagsSql, type FacetDim, type FacetFilters } from "./tradeFacetsSql";
-import { ENTRY_KEYS, EXIT_KEYS, HOLD_ORDER, PREV_KEYS, PRICE_BUCKETS, RESULT_KEYS, SEQ_BUCKETS, SIZE_BUCKETS, type Bucket } from "./tradeFacetBuckets";
+import {
+  ADDS_KEYS, ENTRY_KEYS, EXIT_KEYS, HOLD_ORDER, PREV_KEYS, PRICE_BUCKETS, RESULT_KEYS, SEQ_BUCKETS, SIZE_BUCKETS, SIZE_REL_BUCKETS,
+  STOP_KEYS, type Bucket,
+} from "./tradeFacetBuckets";
 import { Params, buildFrom, buildWhere, hasQualityFilters, type TradesPageFilters } from "./tradesPageQuery";
 
 export interface FacetBucketRow { dim: string; key: string; n: number | string; net: number | string | null }
@@ -94,8 +97,8 @@ const keysOf = (list: readonly Bucket[]) => list.map((x) => x.key);
 
 /**
  * Bucket order inside a column: years newest first; months / days / times and the bucketed columns (seq, prev, hold,
- * price, size) in their natural order; entry / exit / result in a fixed order; strategies, tickers, accounts and tags
- * by count.
+ * price, size, sizeRel) in their natural order; entry / adds / exit / stop / result in a fixed order; strategies,
+ * tickers, accounts and tags by count.
  */
 export function orderBuckets(dim: FacetDim, list: FacetBucket[], timeOrder: readonly string[]): FacetBucket[] {
   const last = (k: string) => (k === NONE_KEY || k === "unknown" ? 1 : 0);
@@ -111,11 +114,14 @@ export function orderBuckets(dim: FacetDim, list: FacetBucket[], timeOrder: read
     seq: keyOrder(keysOf(SEQ_BUCKETS)),
     prev: keyOrder(PREV_KEYS),
     entry: keyOrder(ENTRY_KEYS),
+    adds: keyOrder(ADDS_KEYS),
     exit: keyOrder(EXIT_KEYS),
+    stop: keyOrder(STOP_KEYS),
     hold: keyOrder(HOLD_ORDER),
     tickers: byCount,
     price: keyOrder(keysOf(PRICE_BUCKETS)),
     size: keyOrder(keysOf(SIZE_BUCKETS)),
+    sizeRel: keyOrder(keysOf(SIZE_REL_BUCKETS)),
     accounts: byCount,
     result: keyOrder(RESULT_KEYS),
   };

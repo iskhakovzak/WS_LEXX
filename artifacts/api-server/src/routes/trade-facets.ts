@@ -3,7 +3,8 @@
  *
  *   GET /trades/facets       the same query as /trades/page (from, to, trader, outcome, setup… + xYears / xMonths / xDays /
  *                            xTimes / xSeq / xPrev / xStrategies / xTypes / xEntry / xExit / xHold / xTickers / xPrice /
- *                            xSize / xAccounts / xResult / xGtags / xPtags = excluded keys, excludeImx=1)
+ *                            xSize / xAccounts / xResult / xGtags / xPtags / xAdds / xStop / xSizeRel = excluded keys,
+ *                            excludeImx=1)
  *     → { dims: { <every FACET_DIMS column>: [{ key, label, count, net }] },
  *         total: { count, net }, imx: { count, net }, excludeImx, money, deskTags }
  *       Without `money` the size column («Позиция», $) comes back empty and its exclusions are ignored.
@@ -28,7 +29,8 @@ import { DESK_TAGS } from "../lib/deskTags";
 import { tradesPageAggregatesCache } from "../lib/tradesPageCache";
 import { FACET_DIMS, FACET_MAX_KEYS, FACET_MAX_KEY_LEN, MANUAL_ACCOUNT_KEY, NONE_KEY, TIME_BUCKETS, UNKNOWN_KEY, type FacetDim } from "../lib/tradeFacetsSql";
 import {
-  ENTRY_KEYS, EXIT_KEYS, HOLD_ORDER, PREV_KEYS, RESULT_KEYS, type EntryKind, type ExitKind, type PrevKind, type ResultKey,
+  ADDS_KEYS, ENTRY_KEYS, EXIT_KEYS, HOLD_ORDER, PREV_KEYS, RESULT_KEYS, SIZE_REL_BUCKETS, STOP_KEYS,
+  type AddsKind, type EntryKind, type ExitKind, type PrevKind, type ResultKey, type StopKey,
 } from "../lib/tradeFacetBuckets";
 import { buildFacetsQuery, foldFacets, type FacetBucketRow } from "../lib/tradeFacetsQuery";
 import { DEFAULT_FACET_VIEW, normalizeFacetView, readFacetView, writeFacetView } from "../lib/tradeFacetsView";
@@ -72,7 +74,10 @@ export function facetLabeler(lang: Lang): (dim: FacetDim, key: string) => string
     if (dim === "types") return key === "long" ? t("facet.type.long") : key === "short" ? t("facet.type.short") : key;
     if (dim === "prev" && (PREV_KEYS as readonly string[]).includes(key)) return t(`facet.prev.${key as PrevKind}`);
     if (dim === "entry" && (ENTRY_KEYS as readonly string[]).includes(key)) return t(`facet.entry.${key as EntryKind}`);
+    if (dim === "adds" && (ADDS_KEYS as readonly string[]).includes(key)) return t(`facet.adds.${key as AddsKind}`);
     if (dim === "exit" && (EXIT_KEYS as readonly string[]).includes(key)) return t(`facet.exit.${key as ExitKind}`);
+    if (dim === "stop" && (STOP_KEYS as readonly string[]).includes(key)) return t(`facet.stop.${key as StopKey}`);
+    if (dim === "sizeRel" && SIZE_REL_KEYS.includes(key)) return t(`facet.sizeRel.${key as SizeRelKey}`);
     if (dim === "result" && (RESULT_KEYS as readonly string[]).includes(key)) return t(`facet.result.${key as ResultKey}`);
     if (dim === "hold" && HOLD_ORDER.includes(key)) return t(`facet.hold.${key as HoldKey}`);
     if (dim === "accounts" && key === MANUAL_ACCOUNT_KEY) return t("facet.manual");
@@ -84,6 +89,8 @@ export function facetLabeler(lang: Lang): (dim: FacetDim, key: string) => string
 }
 
 type HoldKey = "lt1m" | "1-5m" | "5-15m" | "15-60m" | "1-4h" | "gt4h" | "overnight";
+type SizeRelKey = "lt05" | "normal" | "x2" | "x3";
+const SIZE_REL_KEYS: readonly string[] = SIZE_REL_BUCKETS.map((b) => b.key);
 
 /** «< $5», «$5–10», «> $200» (price) / «< $2k», «$2–5k», «> $100k» (size) — the same in every language. */
 function moneyRangeLabel(key: string, unit: string): string {

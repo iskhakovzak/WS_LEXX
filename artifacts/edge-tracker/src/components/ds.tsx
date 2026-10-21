@@ -872,7 +872,7 @@ export function Delta({
 /** Keyboard hint pill: `<Kbd>N</Kbd>` or `<Kbd keys={["Ctrl", "K"]} />`. */
 export function Kbd({ children, keys, className }: { children?: React.ReactNode; keys?: string[]; className?: string }) {
   const cls =
-    "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[var(--field-border)] bg-[var(--glass-bg)] px-1.5 font-sans text-2xs font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_var(--glass-hi)]";
+    "inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-[var(--field-border)] bg-[var(--glass-bg)] px-1.5 font-sans text-2xs font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_var(--glass-hi)] [.bg-primary-solid_&]:border-white/30 [.bg-primary-solid_&]:bg-white/15 [.bg-primary-solid_&]:text-primary-foreground";
   if (keys && keys.length) {
     return (
       <span className={cn("inline-flex items-center gap-0.5", className)}>

@@ -2,7 +2,9 @@
  * Heat-table pieces shared by every table of the page: a tinted % cell, plain RVOL / float cells, a sortable column
  * header, and the narrow «rail» a column collapses to while it has no values (an abbreviated label, «appears at …» as
  * its tooltip). Cell tint: the up / down token at an opacity scaled to |value| / column max, plus a 2 px diverging
- * mini-bar along the bottom (from the centre: right for up, left for down). Unknown = a muted «—».
+ * mini-bar along the bottom (from the centre: right for up, left for down). On a strong tint the text switches to the
+ * foreground colour (green on green fails contrast in the light theme); the sign and the bar still carry the direction.
+ * Unknown = a muted «—».
  */
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { toneOf, toneText } from "@/components/ds";
@@ -17,7 +19,7 @@ export function HeatCell({ value, max, className }: { value: number | null; max:
   const token = value > 0 ? "--up" : "--down";
   return (
     <span
-      className={cn("relative block overflow-hidden rounded-[4px] px-1.5 text-right text-xs font-medium leading-5 tabular-nums", toneText(toneOf(value)), className)}
+      className={cn("relative block overflow-hidden rounded-[4px] px-1.5 text-right text-xs font-medium leading-5 tabular-nums", k > 0.12 ? "text-foreground" : toneText(toneOf(value)), className)}
       style={{ backgroundColor: k > 0 ? `hsl(var(${token}) / ${(0.06 + 0.34 * k).toFixed(3)})` : undefined }}
     >
       {fmtPct(value)}

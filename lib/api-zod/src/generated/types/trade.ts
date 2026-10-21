@@ -148,15 +148,30 @@ export interface Trade {
      */
   overnight?: boolean | null;
   /**
-     * How the position was opened — single | scaled (adds) | reentry
+     * How the position was opened — single | scaled (adds) | aggressive (fast / big adds) | reentry
      * @nullable
      */
   entryKind?: string | null;
   /**
-     * How the position was closed — whole | partials | stopped
+     * Adds against the average so far — none | pyramid (better price) | average (worse price) | mixed
+     * @nullable
+     */
+  addsKind?: string | null;
+  /**
+     * How the position was closed — whole | partials | stopped | flip (reversed)
      * @nullable
      */
   exitKind?: string | null;
+  /**
+     * A stop price is known for the trade (trades.stop, or the structure's stop price)
+     * @nullable
+     */
+  hasStop?: boolean | null;
+  /**
+     * Notional ÷ the trader's median notional of the previous 60 days (a ratio, not $; null under 10 trades)
+     * @nullable
+     */
+  sizeRel?: number | null;
   /**
      * Max position × average entry ($)
      * @nullable

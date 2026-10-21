@@ -244,7 +244,7 @@ export function MonthCalendar({
                           {v != null ? fmtMetric(v, metric, true) : "·"}
                         </span>
                         {metric !== "count" && (
-                          <span className="hidden truncate text-2xs text-muted-foreground tabular-nums sm:block">
+                          <span className="hidden truncate text-2xs text-foreground/70 tabular-nums sm:block">
                             {t("calendar.tradesShort", { count: s.trades })}
                           </span>
                         )}

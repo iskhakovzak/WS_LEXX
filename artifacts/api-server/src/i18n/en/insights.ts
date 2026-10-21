@@ -20,8 +20,11 @@ export default {
     none: "No tags",
     unknown: "No data",
     prev: { first: "First of the day", "after-win": "After a win", "after-loss": "After a loss", "after-be": "After breakeven" },
-    entry: { single: "Single entry", scaled: "Scaled in", reentry: "Re-entry" },
-    exit: { whole: "All at once", partials: "In parts", stopped: "Stopped out" },
+    entry: { single: "Single entry", scaled: "Scaled in", aggressive: "Aggressive adds", reentry: "Re-entry" },
+    adds: { none: "No adds", pyramid: "Into profit (pyramid)", average: "Into a loss (averaging)", mixed: "Both ways" },
+    exit: { whole: "All at once", partials: "In parts", stopped: "Stopped out", flip: "Reversal" },
+    sizeRel: { lt05: "< 0.5×", normal: "Usual", x2: "×2", x3: "×3 or more" },
+    stop: { with: "With a stop", none: "No stop" },
     hold: {
       lt1m: "< 1 min", "1-5m": "1–5 min", "5-15m": "5–15 min", "15-60m": "15–60 min", "1-4h": "1–4 h", gt4h: "> 4 h",
       overnight: "Overnight",

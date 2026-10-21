@@ -92,7 +92,7 @@ describe.skipIf(!available)("filters panel v2 on a scratch database", () => {
     expect(r.changed).toBe(4);
     const { rows } = await q(`SELECT id, hold_sec, overnight, notional, day_seq, prev_kind, strategy_sig FROM trades ORDER BY id`);
     const by = Object.fromEntries(rows.map((x) => [x.id, x]));
-    expect(by[ids.a!]).toMatchObject({ hold_sec: 30, overnight: false, notional: 400, day_seq: 1, prev_kind: "first", strategy_sig: "v2|15:50-16:00" });
+    expect(by[ids.a!]).toMatchObject({ hold_sec: 30, overnight: false, notional: 400, day_seq: 1, prev_kind: "first", strategy_sig: "v3|15:50-16:00" });
     expect(by[ids.b!]).toMatchObject({ hold_sec: 1200, notional: 125000, day_seq: 2, prev_kind: "after-win" });
     expect(by[ids.c!]).toMatchObject({ hold_sec: 9000, day_seq: 3, prev_kind: "after-loss" });
     expect(by[ids.d!]).toMatchObject({ day_seq: 1, prev_kind: "first" });

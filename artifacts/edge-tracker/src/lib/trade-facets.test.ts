@@ -52,7 +52,7 @@ describe("raw trades (the own /stats book)", () => {
       years: ["2026"], months: ["6"], days: ["3"], times: ["13:30-15:30"], strategies: ["MOC"], types: ["long"],
       gtags: ["IMX"], ptags: ["ORB"],
       seq: ["unknown"], prev: ["unknown"], entry: ["unknown"], exit: ["unknown"], hold: ["unknown"], tickers: ["AAPL"],
-      price: ["unknown"], size: ["unknown"], accounts: ["manual"], result: ["win"],
+      price: ["unknown"], size: ["unknown"], accounts: ["manual"], result: ["win"], adds: ["unknown"], stop: ["unknown"], sizeRel: ["unknown"],
     });
     const k = tradeFacetKeys(trade({ date: "2026-06-14", tags: null, strategy: null, side: null, entrySec: null }), DESK);
     expect(k).toMatchObject({ days: ["7"], gtags: ["__none__"], ptags: ["__none__"], strategies: ["unknown"], types: ["unknown"], times: ["unknown"] });
@@ -103,6 +103,26 @@ describe("raw trades (the own /stats book)", () => {
     expect(tradePassesFacets(t, off({ result: ["win"] }), DESK)).toBe(false);
     expect(tradePassesFacets(t, off({ result: ["loss", "be"], hold: ["gt4h"], size: ["gt100k"] }), DESK)).toBe(true);
     expect(facetQuery(off({ tickers: ["TSLA", "AAPL"], hold: ["overnight"] }))).toBe("xHold=overnight&xTickers=AAPL%2CTSLA");
+  });
+
+  it("v3 columns: entry aggressive / adds / exit flip / stop / size vs usual, from full and lite rows alike", () => {
+    const t = trade({ entryKind: "aggressive", addsKind: "pyramid", exitKind: "flip", hasStop: true, sizeRel: 3 });
+    expect(tradeFacetKeys(t, DESK)).toMatchObject({ entry: ["aggressive"], adds: ["pyramid"], exit: ["flip"], stop: ["with"], sizeRel: ["x3"] });
+    expect(tradeFacetKeys(trade({ hasStop: false, sizeRel: 0.4999, addsKind: null }), DESK)).toMatchObject({ stop: ["none"], sizeRel: ["lt05"], adds: ["unknown"] });
+    expect(tradeFacetKeys(trade({ sizeRel: 1.5 }), DESK).sizeRel).toEqual(["x2"]);
+    expect(tradeFacetKeys(trade({ sizeRel: 0.5 }), DESK).sizeRel).toEqual(["normal"]);
+    expect(tradeFacetKeys(trade(), DESK)).toMatchObject({ stop: ["unknown"], sizeRel: ["unknown"] });
+    // a lite row (snapshot cut to openedAt / closedAt) carries the same derived columns
+    const lite = trade({ contextSnapshot: { openedAt: "2026-06-10T10:00:00" }, addsKind: "average", hasStop: false, sizeRel: 2 });
+    expect(tradeFacetKeys(lite, DESK)).toMatchObject({ adds: ["average"], stop: ["none"], sizeRel: ["x2"] });
+    const off = (o: FacetView["off"]) => ({ off: o, excludeImx: false, open: false });
+    expect(tradePassesFacets(t, off({ adds: ["pyramid"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ stop: ["with"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ sizeRel: ["x3"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ entry: ["aggressive"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ exit: ["flip"] }), DESK)).toBe(false);
+    expect(tradePassesFacets(t, off({ adds: ["average"], stop: ["none"], sizeRel: ["lt05"] }), DESK)).toBe(true);
+    expect(facetQuery(off({ adds: ["mixed"], sizeRel: ["x2"], stop: ["none"] }))).toBe("xAdds=mixed&xStop=none&xSizeRel=x2");
   });
 
   it("groups cover every column once, in FACET_DIMS order", () => {

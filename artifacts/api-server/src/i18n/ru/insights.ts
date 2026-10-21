@@ -18,8 +18,11 @@ export default {
     none: "Без тегов",
     unknown: "Нет данных",
     prev: { first: "Первая в дне", "after-win": "После прибыли", "after-loss": "После убытка", "after-be": "После нуля" },
-    entry: { single: "Один вход", scaled: "С доборами", reentry: "Повторный вход" },
-    exit: { whole: "Целиком", partials: "Частями", stopped: "По стопу" },
+    entry: { single: "Один вход", scaled: "С доборами", aggressive: "Агрессивные доборы", reentry: "Повторный вход" },
+    adds: { none: "Без доборов", pyramid: "В плюс (пирамида)", average: "В минус (усреднение)", mixed: "В обе стороны" },
+    exit: { whole: "Целиком", partials: "Частями", stopped: "По стопу", flip: "Переворот" },
+    sizeRel: { lt05: "< 0,5×", normal: "Обычный", x2: "×2", x3: "×3 и больше" },
+    stop: { with: "Со стопом", none: "Без стопа" },
     hold: {
       lt1m: "< 1 мин", "1-5m": "1–5 мин", "5-15m": "5–15 мин", "15-60m": "15–60 мин", "1-4h": "1–4 ч", gt4h: "> 4 ч",
       overnight: "Овернайт",

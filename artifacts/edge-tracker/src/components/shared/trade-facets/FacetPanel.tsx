@@ -19,9 +19,21 @@ import { fmtCount, fmtUsd } from "@/lib/format";
 import { tradeFacetsI18n } from "@/i18n/ns/tradeFacets";
 import { ImxLine, ImxToggle } from "./FacetSummary";
 import {
-  FACET_DIMS, FACET_GROUPS, activeCount, isChecked, resetFacets, setColumn, toggleKey,
+  AGGRESSIVE_ADDS_MIN, AGGRESSIVE_GAP_SEC, AGGRESSIVE_SIZE_MULT, AGGRESSIVE_WINDOW_SEC, FACET_DIMS, FACET_GROUPS,
+  SIZE_REL_DAYS, SIZE_REL_MIN_TRADES, UNKNOWN_KEY, activeCount, isChecked, resetFacets, setColumn, toggleKey,
   type FacetBucket, type FacetDim, type FacetView, type FacetsResponse,
 } from "@/lib/trade-facets";
+
+/** One sentence on how a derived bucket is decided (aggressive adds, pyramid / averaging, size vs usual), for the row tooltip. */
+function facetHint(dim: FacetDim, key: string): string | null {
+  const t = tradeFacetsI18n.t;
+  if (dim === "entry" && key === "aggressive") {
+    return t("hints.aggressive", { adds: AGGRESSIVE_ADDS_MIN, min: AGGRESSIVE_WINDOW_SEC / 60, mult: AGGRESSIVE_SIZE_MULT, gap: AGGRESSIVE_GAP_SEC });
+  }
+  if (dim === "adds" && (key === "pyramid" || key === "average")) return t(`hints.${key}`);
+  if (dim === "sizeRel" && key !== UNKNOWN_KEY) return t("hints.sizeRel", { days: SIZE_REL_DAYS, min: SIZE_REL_MIN_TRADES });
+  return null;
+}
 
 type Props = {
   view: FacetView;
@@ -52,13 +64,14 @@ function Row({ dim, b, scale, money, view, onChange }: {
   // Whole dollars in the row (fits the column); the exact amount is in the tooltip.
   const net = showNet ? fmtUsd(b.net as number, { signed: true, compact: 10_000, decimals: 0 }) : "";
   const exact = showNet ? fmtUsd(b.net as number, { signed: true }) : "";
+  const hint = facetHint(dim, b.key);
   return (
     <li>
       <button
         type="button"
         aria-pressed={on}
         onClick={() => onChange(toggleKey(view, dim, b.key))}
-        title={`${b.label} · ${fmtCount(b.count)}${exact ? ` · ${exact}` : ""}\n${on ? t("exclude", { label: b.label }) : t("include", { label: b.label })}`}
+        title={`${b.label} · ${fmtCount(b.count)}${exact ? ` · ${exact}` : ""}${hint ? `\n${hint}` : ""}\n${on ? t("exclude", { label: b.label }) : t("include", { label: b.label })}`}
         aria-label={t("bucketAria", { label: b.label, count: b.count, net: exact || fmtCount(b.count) })}
         className={cn(
           "group relative flex h-7 w-full items-center gap-2 overflow-hidden rounded-md px-1.5 text-left text-xs transition-colors",
@@ -147,11 +160,11 @@ function GroupTabs({ groups, active, onPick, view }: { groups: Group[]; active: 
             className={cn(
               "inline-flex min-h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors duration-150",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              on ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              on ? "bg-background text-foreground shadow-sm" : "text-foreground/75 hover:text-foreground",
             )}
           >
             {t(`groups.${g.id}`)}
-            <span className="tabular-nums text-muted-foreground">{g.cols.length}</span>
+            <span className={cn("tabular-nums", on ? "text-muted-foreground" : "text-foreground/75")}>{g.cols.length}</span>
             {off > 0 && <span className="rounded-full bg-primary/15 px-1.5 text-2xs text-primary">−{off}</span>}
           </button>
         );
