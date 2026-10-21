@@ -2,15 +2,13 @@
  * Black-Scholes greeks for chain contracts + expiry-date helpers. The formulas are the ones of the web calculator
  * (edge-tracker components/calculator/lib.ts `blackScholes`), so the chain's Δ matches what the B-S form shows.
  */
-import { nyDate } from "../tradingDate";
+import { nyDate, nyMinutes, REGULAR_CLOSE_MIN } from "../tradingDate";
 import type { ContractGreeks } from "./types";
 
 /** Default risk-free rate for chain greeks (the calculator's default field value). */
 export const CHAIN_RATE = 0.045;
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365 * DAY_MS;
-/** US options stop trading at 16:00 New York = 20:00 UTC (EDT); close enough for T in years. */
-const CLOSE_UTC_MS = 20 * 3_600_000;
 
 function normCdf(x: number): number {
   const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
@@ -58,9 +56,18 @@ export function signedDte(label: string, now: Date): number {
   return Math.round((labelMs(label) - labelMs(nyDate(now))) / DAY_MS);
 }
 
+/**
+ * Epoch ms of the 16:00 New York close on a YYYY-MM-DD date — 20:00 UTC under EDT, 21:00 UTC under EST (the NY offset
+ * of that day, read at 12:00 UTC: the same rule as lib/propreports/freshness nyInstant).
+ */
+export function expiryCloseMs(label: string): number {
+  const offsetMin = 12 * 60 - nyMinutes(new Date(labelMs(label) + 12 * 3_600_000));
+  return labelMs(label) + (REGULAR_CLOSE_MIN + offsetMin) * 60_000;
+}
+
 /** Years until the 16:00 New York close of the expiration day (0 once it passed). */
 export function yearsToExpiry(label: string, now: Date): number {
-  return Math.max(0, (labelMs(label) + CLOSE_UTC_MS - now.getTime()) / YEAR_MS);
+  return Math.max(0, (expiryCloseMs(label) - now.getTime()) / YEAR_MS);
 }
 
 /** YYYY-MM-DD of a unix timestamp (UTC calendar date: providers stamp expirations at 00:00 UTC). */

@@ -97,6 +97,8 @@ export async function getThemes(): Promise<ThemesResponse> {
   }
   const c = cache as Cache | null;
   const t = deps.now();
-  const stale = !!c && (t - c.asOf > 2 * ttl || lastFailAt > c.asOf);
-  return buildResponse(themes, c, session, stale);
+  // Cached numbers keep the session they were fetched in (a board of the regular session is never labelled
+  // post-market), and numbers of another session than the current one are stale until the refresh lands.
+  const stale = !!c && (c.session !== session || t - c.asOf > 2 * ttl || lastFailAt > c.asOf);
+  return buildResponse(themes, c, c?.session ?? session, stale);
 }

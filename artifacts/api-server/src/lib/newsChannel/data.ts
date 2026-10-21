@@ -19,7 +19,8 @@
  * The selection helpers are pure (unit-tested with fixtures); `gatherPost` takes injectable readers.
  */
 import { pool } from "@workspace/db";
-import { nyDate, nyMinutes } from "../tradingDate";
+import { nyDate, nyMinutes, REGULAR_CLOSE_MIN } from "../tradingDate";
+import { sessionFor } from "../marketDays";
 import { readEarnings, readScreener } from "../finviz/read";
 import type { EarningsRow, ScreenerPreset, ScreenerResponse, ScreenerRow } from "../finviz/types";
 import { getThemes } from "../themes/service";
@@ -200,24 +201,25 @@ const realSleep = (ms: number, signal?: AbortSignal) =>
 export const POST_THEME_SESSION = { open: "rth", close: "post" } as const satisfies Record<"open" | "close", ThemeSession>;
 export type ThemesPost = keyof typeof POST_THEME_SESSION;
 export const isThemesPost = (post: NewsPost): post is ThemesPost => post in POST_THEME_SESSION;
-/** NY minute each session begins; numbers stamped before start + SESSION_SETTLE_MIN may come from a refresh that
- *  started in the previous session (getThemes stamps a refresh when it ends). */
-const SESSION_START_MIN: Record<ThemeSession, number> = { pre: 4 * 60, rth: 9 * 60 + 30, post: 16 * 60, closed: 0 };
+/** NY minute each session begins on a day closing at `closeMin` (post-market starts at the close: 13:00 on an early
+ *  close); numbers stamped before start + SESSION_SETTLE_MIN may come from a refresh that started in the previous
+ *  session (getThemes stamps a refresh when it ends). */
+const sessionStartMin = (s: ThemeSession, closeMin: number): number => ({ pre: 4 * 60, rth: 9 * 60 + 30, post: closeMin, closed: 0 })[s];
 export const SESSION_SETTLE_MIN = 2;
 export const THEMES_WAIT_MS = 60_000;
 export const THEMES_POLL_MS = 5_000;
 /** A «gappers» run older than this before the premarket post triggers one screener refresh. */
 export const GAPPERS_MAX_AGE_MS = 20 * 60_000;
 
-/** Why `board` must not feed `post` at `now` (null: fresh numbers of the right session). */
-export function themesProblem(post: ThemesPost, board: ThemesResponse, now: number): string | null {
+/** Why `board` must not feed `post` at `now` (null: fresh numbers of the right session) on a day closing at `closeMin`. */
+export function themesProblem(post: ThemesPost, board: ThemesResponse, now: number, closeMin: number = REGULAR_CLOSE_MIN): string | null {
   const want = POST_THEME_SESSION[post];
   if (board.session !== want) return `session mismatch: ${board.session}, need ${want}`;
   const asOf = board.asOf ? Date.parse(board.asOf) : NaN;
   if (!Number.isFinite(asOf)) return "no themes data yet";
   if (board.stale) return "stale: the themes refresh failed or is still running";
   const at = new Date(asOf);
-  if (nyDate(at) !== nyDate(new Date(now)) || nyMinutes(at) < SESSION_START_MIN[want] + SESSION_SETTLE_MIN) {
+  if (nyDate(at) !== nyDate(new Date(now)) || nyMinutes(at) < sessionStartMin(want, closeMin) + SESSION_SETTLE_MIN) {
     return `session mismatch: numbers from before the ${want} session`;
   }
   if (now - asOf > 2 * ttlMs(want)) return "stale: themes older than 2 × TTL";
@@ -231,9 +233,10 @@ export function themesProblem(post: ThemesPost, board: ThemesResponse, now: numb
 export async function awaitThemes(
   post: ThemesPost,
   deps: NewsDataDeps,
-  o: { waitMs?: number; pollMs?: number; signal?: AbortSignal } = {},
+  o: { waitMs?: number; pollMs?: number; signal?: AbortSignal; closeMin?: number } = {},
 ): Promise<{ board: ThemesResponse; problem: string | null; waitedMs: number }> {
   const now = deps.now ?? Date.now;
+  const closeMin = o.closeMin ?? (await soft(async () => (await sessionFor(nyDate(new Date(now())))).closeMin, REGULAR_CLOSE_MIN));
   const sleep = deps.sleep ?? realSleep;
   const waitMs = o.waitMs ?? THEMES_WAIT_MS;
   const pollMs = o.pollMs ?? THEMES_POLL_MS;
@@ -241,7 +244,7 @@ export async function awaitThemes(
   const t0 = now();
   for (let i = 1; ; i++) {
     const board = await soft(deps.themes, NO_THEMES);
-    const problem = themesProblem(post, board, now());
+    const problem = themesProblem(post, board, now(), closeMin);
     const waitedMs = now() - t0;
     if (!problem || waitedMs >= waitMs || i >= maxPolls || o.signal?.aborted) return { board, problem, waitedMs };
     await sleep(Math.min(pollMs, waitMs - waitedMs), o.signal);

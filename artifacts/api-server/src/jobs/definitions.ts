@@ -89,10 +89,12 @@ export function registerAllJobs(): void {
     },
   });
 
-  // Intraday own-contract alerts (daily stop / max trades): only with the scheduled PropReports sync, after each sync.
+  // Intraday own-contract alerts (daily stop / max trades): only with the scheduled PropReports sync, after each sync +
+  // every 5 min in the alert window as a fallback (the event is fire-and-forget; each alert is deduped per day).
   registerJob({
     name: "telegram.contract-alerts",
     on: ["propreports.synced"],
+    cron: "3-58/5 4-16 * * 1-5",
     timeoutMs: 5 * MIN,
     enabled: () => intradayAlertsEnabled() && contractAlertsEnabled(),
     async run({ signal }) {

@@ -11,7 +11,7 @@
 import { isMarketClosed } from "../marketDays";
 import { nyDate, nyMinutes } from "../tradingDate";
 import { setting } from "../settings/registry";
-import { fetchExport, fetchTickers, MAX_TICKERS_PER_CALL } from "./client";
+import { fetchExport, fetchTickers, MAX_TICKERS_PER_CALL, type ExportOptions } from "./client";
 import { finvizEnabled, presetFilters, PRESETS, rankRows } from "./presets";
 import {
   deskTickers, finishRun, markNotFound, pendingTickers, saveScreenerRows, startRun, supersedeMissing, upsertEarnings,
@@ -19,6 +19,9 @@ import {
 } from "./store";
 import { SCREENER_PRESETS, type ScreenerPreset } from "./types";
 import type { FinvizRow } from "./csv";
+
+/** The jobs here are the scheduled Finviz work: never refused by the client's queue cap. */
+const SCHEDULED: ExportOptions = { scheduled: true };
 
 type Ctx = { trigger?: string; signal?: AbortSignal; now?: Date };
 
@@ -46,7 +49,7 @@ const errText = (err: unknown) => (err instanceof Error ? err.message : String(e
 async function runPreset(preset: ScreenerPreset, trigger: string, day: string, signal?: AbortSignal) {
   const runId = await startRun("screener", preset, trigger, day);
   try {
-    const rows = await fetchExport({ filters: presetFilters(preset), order: PRESETS[preset].order }, day, signal);
+    const rows = await fetchExport({ filters: presetFilters(preset), order: PRESETS[preset].order }, day, signal, SCHEDULED);
     const ranked = rankRows(preset, rows, setting("finviz.maxRows"));
     await saveScreenerRows(runId, preset, day, ranked);
     await upsertSnapshots(ranked, "screener");
@@ -79,7 +82,7 @@ export async function runScreener(ctx: Ctx = {}): Promise<Record<string, unknown
 /** Fetch a ticker list, store it, mark the ones Finviz did not return (only when every batch succeeded). */
 async function snapshotTickers(tickers: string[], trigger: string, day: string, signal?: AbortSignal) {
   const runId = await startRun("snapshot", null, trigger, day);
-  const r = await fetchTickers(tickers, day, signal);
+  const r = await fetchTickers(tickers, day, signal, SCHEDULED);
   try {
     const n = await upsertSnapshots(r.rows, "snapshot");
     if (r.failed === 0) {
@@ -128,7 +131,7 @@ export async function runEarnings(ctx: Ctx = {}): Promise<Record<string, unknown
   const errors: string[] = [];
   for (const week of WEEKS) {
     try {
-      all.push(...(await fetchExport({ filters: [...EARNINGS_CAL_FILTERS, week], order: "-marketcap" }, day, ctx.signal)));
+      all.push(...(await fetchExport({ filters: [...EARNINGS_CAL_FILTERS, week], order: "-marketcap" }, day, ctx.signal, SCHEDULED)));
     } catch (err) {
       errors.push(errText(err));
     }

@@ -416,6 +416,8 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   const target = targetRows[0];
   if (!target) throw notFound();
   if (target.role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
+  // Another curator (password, role, (de)activation, rename) is managed by an admin only — like freeze / ban.
+  if (target.role === "curator" && id !== req.authUser?.id && !adminMgr) throw new AppError("ADMIN_ONLY");
 
   const { name, password, role, active } = req.body as Record<string, unknown>;
   const fields: string[] = [];
@@ -462,12 +464,13 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
       vals
     );
     if (!rows[0]) throw notFound();
-    // Invalidate existing sessions so a reset password / new role takes effect immediately.
-    if (passwordChanged || roleChanged || activeChanged) await bumpTokenVersion(id);
+    const nameChanged = typeof name === "string" && rows[0].name !== target.name;
+    // Invalidate existing sessions so a reset password / new role / new name takes effect immediately (the name is
+    // signed into the token: an old token would keep acting under the old name).
+    if (passwordChanged || roleChanged || activeChanged || nameChanged) await bumpTokenVersion(id);
     // An admin reset of the secret also lifts a sign-in lock on that account.
     if (passwordChanged) await lockoutStore().clearUser(id).catch((err) => logger.warn({ err }, "users: clear login lock failed"));
     // Audit: PIN / password reset, role, (de)activation, rename — never the secret itself.
-    const nameChanged = typeof name === "string" && rows[0].name !== target.name;
     await logAudit({
       actor: req.authUser?.name ?? "?", action: "user.update", targetType: "user", targetId: String(id),
       details: {
@@ -494,6 +497,7 @@ router.delete("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   const { rows: targetRows } = await pool.query<{ role: string; name: string }>(`SELECT role, name FROM users WHERE id = $1`, [id]);
   if (!targetRows[0]) throw notFound();
   if (targetRows[0].role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
+  if (targetRows[0].role === "curator" && !adminMgr) throw new AppError("ADMIN_ONLY");
   await pool.query(`UPDATE users SET active = false WHERE id = $1`, [id]);
   await bumpTokenVersion(id);
   await logAudit({ actor: req.authUser?.name ?? "?", action: "user.deactivate", targetType: "user", targetId: String(id), details: { name: targetRows[0].name } });

@@ -15,10 +15,10 @@ describe("tradesListWindow", () => {
     expect(tradesListWindow({ limit: 99_999 }, TODAY)).toEqual({ ok: true, limit: TRADES_LIST_MAX_LIMIT });
   });
 
-  it("a date window up to 400 days has no row cap; wider → refused", () => {
-    expect(tradesListWindow({ from: "2026-01-01", to: "2026-10-20" }, TODAY)).toEqual({ ok: true, limit: null });
-    expect(tradesListWindow({ from: "2025-09-15", to: "2026-10-19" }, TODAY)).toEqual({ ok: true, limit: null }); // 399 days
-    expect(tradesListWindow({ from: "2025-09-15", to: "2026-10-20" }, TODAY)).toEqual({ ok: true, limit: null }); // 400 days
+  it("a date window up to 400 days is still capped at 5000 rows; wider → refused", () => {
+    expect(tradesListWindow({ from: "2026-01-01", to: "2026-10-20" }, TODAY)).toEqual({ ok: true, limit: TRADES_LIST_MAX_LIMIT });
+    expect(tradesListWindow({ from: "2025-09-15", to: "2026-10-19" }, TODAY)).toEqual({ ok: true, limit: TRADES_LIST_MAX_LIMIT }); // 399 days
+    expect(tradesListWindow({ from: "2025-09-15", to: "2026-10-20" }, TODAY)).toEqual({ ok: true, limit: TRADES_LIST_MAX_LIMIT }); // 400 days
     expect(tradesListWindow({ from: "2025-09-14", to: "2026-10-20" }, TODAY)).toEqual({ ok: false, tooLong: true, max: 400 });
   });
 

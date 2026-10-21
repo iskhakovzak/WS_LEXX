@@ -220,7 +220,7 @@ type ActionResult = { ok: true; name: string } | { ok: false; code: ErrorCode; p
 /**
  * Applies one people action with the same safety rules as the legacy admin routes:
  * nobody acts on themselves (except a session reset), admins are touched only with users.manage.admins,
- * curators are frozen only by someone who may manage admins (mirrors POST /admin/users/:id/ban).
+ * another curator is acted on only by someone who may manage admins (mirrors POST /admin/users/:id/ban).
  */
 async function applyAction(
   req: Request,
@@ -236,6 +236,7 @@ async function applyAction(
   const self = u.id === actor.id;
   if (self && kind !== "sessions" && kind !== "curator") return { ok: false, code: "CANNOT_APPLY_TO_SELF", name: u.name };
   if (u.role === "admin" && !adminMgr) return { ok: false, code: "ADMIN_ONLY", name: u.name };
+  if (u.role === "curator" && !self && !adminMgr && kind !== "freeze" && kind !== "archive") return { ok: false, code: "ADMIN_ONLY", name: u.name };
   const base = { name: u.name, reason, ...(extra.bulk ? { bulk: true } : {}) };
 
   switch (kind) {
@@ -330,7 +331,7 @@ for (const kind of Object.keys(singleBodies) as (keyof typeof singleBodies)[]) {
 }
 
 router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "users.manage"))) return;
+  if (!(await requireCap(req, res, "settings.manage"))) return; // assignments decide whom an «assigned» curator sees
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const parsed = z.object({ curator: z.string().trim().max(120).nullable(), reason: reasonSchema }).safeParse(req.body ?? {});
@@ -368,6 +369,7 @@ router.post("/admin/console/people/bulk", asyncHandler(async (req, res): Promise
     reason: reasonSchema,
   }).safeParse(req.body ?? {});
   if (!parsed.success) throw invalidBody(parsed.error);
+  if (parsed.data.action === "curator" && !(await requireCap(req, res, "settings.manage"))) return;
   const actor = await actorOf(req);
   if (!actor) throw unauthorized();
   const adminMgr = await can(req, "users.manage.admins");

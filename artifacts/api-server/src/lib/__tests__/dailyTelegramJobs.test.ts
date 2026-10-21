@@ -194,6 +194,7 @@ describe("registry", () => {
     expect(cronOf(byName.get("telegram.daily-evening")!)).toBe("30 16 * * 1-5");
     expect(byName.get("telegram.daily-evening")!.on).toContain("propreports.synced");
     expect(byName.get("telegram.contract-alerts")!.on).toContain("propreports.synced");
+    expect(cronOf(byName.get("telegram.contract-alerts")!)).toBe("3-58/5 4-16 * * 1-5"); // fallback for a lost event run
     expect(await byName.get("telegram.daily-morning")!.run({ signal: new AbortController().signal, trigger: "manual", logger: console, runId: null })).toMatchObject({ skipped: expect.any(String) });
     clearJobs();
   });

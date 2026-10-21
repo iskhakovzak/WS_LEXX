@@ -3,6 +3,7 @@
  * AND the traders of the groups he leads; a trader outside both is forbidden under «assigned», allowed under «desk».
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { pool } from "@workspace/db";
 
 let scope: "assigned" | "desk" = "assigned";
 vi.mock("@workspace/db", () => ({
@@ -42,5 +43,21 @@ describe("«assigned» = assignments + my desk groups", () => {
     groups.groupMembersOf.mockClear();
     expect(await perms.can(reqOf(), "journal.review", { trader: "C (other)" })).toBe(true);
     expect(groups.groupMembersOf).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveActor: the name comes from the DB, not the token", () => {
+  it("a token signed before a rename acts under the current name; the wards are looked up by it", async () => {
+    scope = "assigned";
+    groups.groupMembersOf.mockClear();
+    const query = vi.mocked(pool.query);
+    query.mockClear();
+    const actor = await perms.resolveActor({ authUser: { id: 3, name: "Old Name", role: "curator" } } as never);
+    expect(actor!.name).not.toBe("Old Name");
+    const dbName = actor!.name;
+    expect(dbName.length).toBeGreaterThan(0);
+    expect(groups.groupMembersOf).toHaveBeenCalledWith(dbName);
+    const assigned = query.mock.calls.find(([sql]) => /assigned_curator = \$1/.test(String(sql)));
+    expect(assigned?.[1]).toEqual([dbName]);
   });
 });

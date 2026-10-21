@@ -33,6 +33,7 @@ import {
 } from "../lib/themes/boardsStore";
 import { MAX_PERSONAL_THEMES } from "../lib/themes/personal";
 import { boardMeta, getBoardData, refreshBoardScreener } from "../lib/themes/board";
+import { screenerWriteLimiter } from "../lib/rateLimits";
 
 const router: IRouter = Router();
 
@@ -98,7 +99,7 @@ router.get("/themes/boards/:id", route({ params: z.object({ id: idParam }) }, as
   return data;
 }));
 
-router.post("/themes/boards", route({ body: CreateBody }, async ({ req, body }) => {
+router.post("/themes/boards", screenerWriteLimiter, route({ body: CreateBody }, async ({ req, body }) => {
   const me = member(req);
   if ((await countBoards(me.id)) >= MAX_BOARDS) throw new AppError("BOARD_LIMIT", undefined, { max: MAX_BOARDS });
   const kind: BoardKind = body.kind;
@@ -112,7 +113,7 @@ router.post("/themes/boards", route({ body: CreateBody }, async ({ req, body }) 
   return boardMeta(created);
 }));
 
-router.put("/themes/boards/:id", route({ params: z.object({ id: idParam }), body: UpdateBody }, async ({ req, params, body }) => {
+router.put("/themes/boards/:id", screenerWriteLimiter, route({ params: z.object({ id: idParam }), body: UpdateBody }, async ({ req, params, body }) => {
   const me = member(req);
   const current = await boardById(me.id, params.id);
   if (!current) throw notFound("BOARD_NOT_FOUND");

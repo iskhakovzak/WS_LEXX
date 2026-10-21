@@ -23,39 +23,61 @@ const LIVE: ScreenerDeps = {
   run: async (spec) => (await fetchExport({ filters: spec.filters, order: spec.order ?? SCREENER_DEFAULT_ORDER }, nyDate())).map((r) => r.ticker),
 };
 
+/** After a failed export the key is not retried for this long (a Finviz outage must not cost one export per GET). */
+export const RESOLVE_FAIL_BACKOFF_MS = 60_000;
+const MAX_KEYS = 500;
+
 let deps: ScreenerDeps = LIVE;
 const cache = new Map<string, { tickers: string[]; at: number }>();
+const failedAt = new Map<string, number>();
 const inflight = new Map<string, Promise<{ tickers: string[]; at: number } | null>>();
+
+function reset(): void {
+  cache.clear();
+  failedAt.clear();
+  inflight.clear();
+}
 
 export function setScreenerDeps(d: Partial<ScreenerDeps>): () => void {
   deps = { ...LIVE, ...d };
-  cache.clear();
-  inflight.clear();
+  reset();
   return () => {
     deps = LIVE;
-    cache.clear();
-    inflight.clear();
+    reset();
   };
+}
+
+/** Insert keeping the map bounded (oldest insertion dropped). */
+function remember<V>(m: Map<string, V>, key: string, v: V): void {
+  m.delete(key);
+  m.set(key, v);
+  if (m.size > MAX_KEYS) m.delete(m.keys().next().value!);
 }
 
 export const screenerEnabled = (): boolean => deps.enabled();
 
-/** Top tickers of a screener (cached ≤ 1 h per key). null = Finviz off or the export failed. */
+/**
+ * Top tickers of a screener (cached ≤ 1 h per key). null = Finviz off or the export failed (that key is then not
+ * tried again for RESOLVE_FAIL_BACKOFF_MS — callers fall back to the tickers stored on the theme).
+ */
 export function resolveScreener(spec: ScreenerSpec): Promise<{ tickers: string[]; at: number } | null> {
   if (!deps.enabled()) return Promise.resolve(null);
   const key = screenerKey(spec);
   const hit = cache.get(key);
   if (hit && deps.now() - hit.at < RESOLVE_TTL_MS) return Promise.resolve(hit);
+  const failed = failedAt.get(key);
+  if (failed != null && deps.now() - failed < RESOLVE_FAIL_BACKOFF_MS) return Promise.resolve(null);
   const running = inflight.get(key);
   if (running) return running;
   const job = (async () => {
     try {
       const tickers = [...new Set(await deps.run(spec))].slice(0, SCREENER_MAX);
       const out = { tickers, at: deps.now() };
-      cache.set(key, out);
-      if (cache.size > 500) cache.delete(cache.keys().next().value!);
+      remember(cache, key, out);
+      failedAt.delete(key);
       return out;
     } catch (err) {
+      remember(failedAt, key, deps.now());
       logger.warn({ error: err instanceof Error ? err.message : String(err), key }, "themes: screener resolve failed");
       return null;
     } finally {

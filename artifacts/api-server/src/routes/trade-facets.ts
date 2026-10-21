@@ -23,6 +23,7 @@ import { loadMoneyViewer } from "../lib/playbookAccess";
 import { canSeeBookMoney } from "../lib/playbookPrivacy";
 import { compactQuery, moneyBlindFilters, pageFiltersOf, TradesPageQuery } from "../lib/tradesPageParams";
 import { DESK_TAGS } from "../lib/deskTags";
+import { tradesPageAggregatesCache } from "../lib/tradesPageCache";
 import { FACET_DIMS, NONE_KEY, TIME_BUCKETS, UNKNOWN_KEY, type FacetDim } from "../lib/tradeFacetsSql";
 import { buildFacetsQuery, foldFacets, type FacetBucketRow } from "../lib/tradeFacetsQuery";
 import { DEFAULT_FACET_VIEW, normalizeFacetView, readFacetView, writeFacetView } from "../lib/tradeFacetsView";
@@ -78,8 +79,13 @@ router.get("/trades/facets", asyncHandler(async (req, res): Promise<void> => {
   const filters = moneyBlindFilters(pageFiltersOf(q, scope), showMoney);
   filters.facets ??= { off: {}, excludeImx: false, deskTags: DESK_TAGS };
   const quality = await qualityTableExists();
-  const { sql, params } = buildFacetsQuery(filters, quality);
-  const { rows } = await pool.query<FacetBucketRow>(sql, params);
+  // Same 60 s per-filter-set cache as the /trades/page aggregates (scope + money-blind filters are in the key;
+  // every trade write clears it — lib/tradesPageCache). The labels are applied per request (reader's language).
+  const key = JSON.stringify({ k: "facets", filters, quality });
+  const rows = (await tradesPageAggregatesCache.getOrLoad(key, async () => {
+    const { sql, params } = buildFacetsQuery(filters, quality);
+    return (await pool.query<FacetBucketRow>(sql, params)).rows;
+  })) as FacetBucketRow[];
   res.setHeader("Cache-Control", "private, no-cache");
   res.json({
     ...foldFacets(rows, facetLabeler(langOf(req)), showMoney, TIME_ORDER),

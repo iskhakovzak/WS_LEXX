@@ -3,7 +3,10 @@
  *   • every request in this process waits for the previous one + MIN_GAP_MS (3 s) — a single queue, so concurrent
  *     jobs / a staff refresh never burst;
  *   • one call covers many tickers (≤ 100 per `t=` list — the caller batches);
- *   • 20 s timeout, no automatic retry (the next scheduled run is the retry); a 429 pauses the queue for 60 s.
+ *   • 20 s timeout, no automatic retry (the next scheduled run is the retry); a 429 pauses the queue for 60 s;
+ *   • the queue is capped for interactive callers (member screener themes / boards, quotes): with MAX_QUEUED requests
+ *     already waiting a new one is refused at once with FinvizQueueFullError (→ 503 FINVIZ_BUSY), so the scheduled
+ *     jobs (lib/finviz/jobs, `{ scheduled: true }`) always get in and are never starved behind user traffic.
  * The token (config.finvizAuth ← env FINVIZ_AUTH) is added here only and never logged, thrown or returned: error
  * messages carry the HTTP status, not the URL.
  */
@@ -15,6 +18,8 @@ export const MIN_GAP_MS = 3_000;
 export const RATE_LIMIT_PAUSE_MS = 60_000;
 const TIMEOUT_MS = 20_000;
 export const MAX_TICKERS_PER_CALL = 100;
+/** Requests (waiting + running) beyond which an interactive caller is refused; scheduled jobs are always queued. */
+export const MAX_QUEUED = 6;
 
 /**
  * Custom view (v=152) columns: Ticker, Company, Sector, Industry, Country, Market Cap, Shares Outstanding, Float,
@@ -31,6 +36,9 @@ export type ExportParams = {
   /** Ticker list (≤ MAX_TICKERS_PER_CALL). */
   tickers?: readonly string[];
 };
+
+/** `scheduled`: a job of lib/finviz/jobs — never refused by the queue cap. */
+export type ExportOptions = { scheduled?: boolean };
 
 type FetchLike = (url: string, init?: { signal?: AbortSignal; headers?: Record<string, string> }) => Promise<{
   ok: boolean;
@@ -52,10 +60,12 @@ export function setFinvizClientDeps(d: Partial<typeof deps>): () => void {
   deps = { ...deps, ...d };
   queue = Promise.resolve();
   nextAt = 0;
+  pending = 0;
   return () => {
     deps = prev;
     queue = Promise.resolve();
     nextAt = 0;
+    pending = 0;
   };
 }
 
@@ -63,6 +73,15 @@ export class FinvizError extends Error {
   constructor(message: string, readonly status: number | null = null) {
     super(message);
     this.name = "FinvizError";
+  }
+}
+
+/** The queue already holds MAX_QUEUED requests: an interactive caller is refused (the error middleware: 503 FINVIZ_BUSY). */
+export class FinvizQueueFullError extends FinvizError {
+  readonly code = "FINVIZ_BUSY" as const;
+  constructor() {
+    super("finviz: queue full", 503);
+    this.name = "FinvizQueueFullError";
   }
 }
 
@@ -91,9 +110,21 @@ export function buildExportUrl(p: ExportParams, token?: string): string {
 
 let queue: Promise<unknown> = Promise.resolve();
 let nextAt = 0;
+/** Requests waiting or running in the queue. */
+let pending = 0;
 
-/** Serialises calls with ≥ gapMs between request starts (and a pause after a 429). */
-function throttled<T>(fn: () => Promise<T>): Promise<T> {
+/** Requests waiting or running right now (tests / status). */
+export function finvizQueueLength(): number {
+  return pending;
+}
+
+/**
+ * Serialises calls with ≥ gapMs between request starts (and a pause after a 429). An interactive call (not
+ * `scheduled`) is refused with FinvizQueueFullError when MAX_QUEUED requests are already in the queue.
+ */
+function throttled<T>(fn: () => Promise<T>, opts: ExportOptions = {}): Promise<T> {
+  if (!opts.scheduled && pending >= MAX_QUEUED) return Promise.reject(new FinvizQueueFullError());
+  pending++;
   const run = async () => {
     const wait = nextAt - deps.now();
     if (wait > 0) await deps.sleep(wait);
@@ -103,13 +134,13 @@ function throttled<T>(fn: () => Promise<T>): Promise<T> {
       nextAt = Math.max(nextAt, deps.now() + deps.gapMs);
     }
   };
-  const p = queue.then(run, run);
+  const p = queue.then(run, run).finally(() => { pending = Math.max(0, pending - 1); });
   queue = p.catch(() => undefined);
   return p;
 }
 
 /** One export request → rows. Throws FinvizError (no token, HTTP error, HTML instead of CSV, timeout). */
-export function fetchExport(p: ExportParams, today: string, signal?: AbortSignal): Promise<FinvizRow[]> {
+export function fetchExport(p: ExportParams, today: string, signal?: AbortSignal, opts: ExportOptions = {}): Promise<FinvizRow[]> {
   const token = deps.token();
   if (!token) return Promise.reject(new FinvizError("finviz: FINVIZ_AUTH is not set"));
   const url = buildExportUrl(p, token);
@@ -135,7 +166,7 @@ export function fetchExport(p: ExportParams, today: string, signal?: AbortSignal
     } catch (err) {
       throw new FinvizError(err instanceof Error ? err.message : "finviz: bad CSV");
     }
-  });
+  }, opts);
 }
 
 /** Many tickers → batched calls (≤ 100 each), sequential through the throttle. Failed batches are reported, not thrown. */
@@ -143,6 +174,7 @@ export async function fetchTickers(
   tickers: readonly string[],
   today: string,
   signal?: AbortSignal,
+  opts: ExportOptions = {},
 ): Promise<{ rows: FinvizRow[]; batches: number; failed: number; errors: string[] }> {
   const uniq = [...new Set(tickers.map((t) => t.toUpperCase()).filter((t) => TICKER_RE.test(t)))];
   const rows: FinvizRow[] = [];
@@ -153,11 +185,11 @@ export async function fetchTickers(
     if (signal?.aborted) break;
     batches++;
     try {
-      rows.push(...(await fetchExport({ tickers: uniq.slice(i, i + MAX_TICKERS_PER_CALL) }, today, signal)));
+      rows.push(...(await fetchExport({ tickers: uniq.slice(i, i + MAX_TICKERS_PER_CALL) }, today, signal, opts)));
     } catch (err) {
       failed++;
       errors.push(err instanceof Error ? err.message : String(err));
-      if (err instanceof FinvizError && err.status === 429) break;
+      if (err instanceof FinvizError && (err.status === 429 || err instanceof FinvizQueueFullError)) break;
     }
   }
   return { rows, batches, failed, errors };

@@ -36,6 +36,11 @@ export const OUTBOX_HANDLERS: Record<string, OutboxHandler> = {
 export const MAX_ATTEMPTS = 5;
 /** A claimed row is invisible to other drainers for this long (a crashed drainer's claim expires). */
 const CLAIM_SECONDS = 120;
+/**
+ * While a batch runs, its unfinished claims are pushed CLAIM_SECONDS ahead this often: a handler slower than the claim
+ * window (a long rule scan) is never re-claimed and run twice by another drainer; a crashed drainer stops beating.
+ */
+export const HEARTBEAT_MS = 30_000;
 
 type Queryable = { query: (typeof pool)["query"] };
 
@@ -81,32 +86,51 @@ export async function drainOutbox(deadline: number, opts: { batch?: number; hand
       [batch, CLAIM_SECONDS],
     );
     if (!rows.length) break;
-    for (const r of rows as Array<{ id: number | string; kind: string; payload: unknown; attempts: number }>) {
-      const id = Number(r.id);
-      if (Date.now() >= deadline - 500) {
-        // out of time: give the claim back untouched (the attempt is not counted)
-        await pool.query(`UPDATE propreports_outbox SET locked_until = NULL, attempts = GREATEST(attempts - 1, 0) WHERE id = $1`, [id]).catch(() => {});
-        continue;
+    const claimed = rows as Array<{ id: number | string; kind: string; payload: unknown; attempts: number }>;
+    const held = new Set(claimed.map((r) => Number(r.id)));
+    const beat = setInterval(() => {
+      if (!held.size) return;
+      // only rows still claimed and not finished (a row is dropped from `held` before its final update)
+      void pool.query(
+        `UPDATE propreports_outbox SET locked_until = NOW() + make_interval(secs => $2)
+          WHERE id = ANY($1::bigint[]) AND done_at IS NULL AND locked_until IS NOT NULL`,
+        [[...held], CLAIM_SECONDS],
+      ).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports outbox: heartbeat failed"));
+    }, HEARTBEAT_MS);
+    beat.unref?.();
+    try {
+      for (const r of claimed) {
+        const id = Number(r.id);
+        if (Date.now() >= deadline - 500) {
+          // out of time: give the claim back untouched (the attempt is not counted)
+          held.delete(id);
+          await pool.query(`UPDATE propreports_outbox SET locked_until = NULL, attempts = GREATEST(attempts - 1, 0) WHERE id = $1`, [id]).catch(() => {});
+          continue;
+        }
+        const handler = handlers[r.kind];
+        try {
+          if (!handler) throw new Error(`no handler for kind "${r.kind}"`);
+          await handler(r.payload);
+          held.delete(id);
+          await pool.query(`UPDATE propreports_outbox SET done_at = NOW(), locked_until = NULL, last_error = NULL WHERE id = $1`, [id]);
+          processed++;
+        } catch (e) {
+          held.delete(id);
+          failed++;
+          const msg = (e instanceof Error ? e.message : String(e)).slice(0, 1000);
+          const attempts = Number(r.attempts);
+          const giveUp = !handler || attempts >= MAX_ATTEMPTS;
+          logger.warn({ kind: r.kind, id, attempts, err: msg }, "propreports outbox: handler failed");
+          await pool.query(
+            `UPDATE propreports_outbox SET last_error = $2, locked_until = NULL,
+                    run_after = NOW() + make_interval(secs => $3), failed_at = CASE WHEN $4 THEN NOW() ELSE NULL END
+              WHERE id = $1`,
+            [id, msg, backoffSeconds(attempts), giveUp],
+          ).catch(() => {});
+        }
       }
-      const handler = handlers[r.kind];
-      try {
-        if (!handler) throw new Error(`no handler for kind "${r.kind}"`);
-        await handler(r.payload);
-        await pool.query(`UPDATE propreports_outbox SET done_at = NOW(), locked_until = NULL, last_error = NULL WHERE id = $1`, [id]);
-        processed++;
-      } catch (e) {
-        failed++;
-        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 1000);
-        const attempts = Number(r.attempts);
-        const giveUp = !handler || attempts >= MAX_ATTEMPTS;
-        logger.warn({ kind: r.kind, id, attempts, err: msg }, "propreports outbox: handler failed");
-        await pool.query(
-          `UPDATE propreports_outbox SET last_error = $2, locked_until = NULL,
-                  run_after = NOW() + make_interval(secs => $3), failed_at = CASE WHEN $4 THEN NOW() ELSE NULL END
-            WHERE id = $1`,
-          [id, msg, backoffSeconds(attempts), giveUp],
-        ).catch(() => {});
-      }
+    } finally {
+      clearInterval(beat);
     }
   }
   const rem = await pool.query(`SELECT COUNT(*)::int AS n FROM propreports_outbox WHERE done_at IS NULL AND failed_at IS NULL`).catch(() => ({ rows: [{ n: -1 }] }));

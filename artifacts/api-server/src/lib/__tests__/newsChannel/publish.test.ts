@@ -214,8 +214,9 @@ describe("retry scheduling", () => {
     expect(schedule.planRetry("open", true, at(10, 55), at(10, 56))).toBe("11:00"); // cutoff inclusive
     expect(schedule.planRetry("open", true, at(11, 0), at(11, 1))).toBeNull(); // 11:05 is past 11:00
     expect(cron()).toBe("0 10 * * 1-5"); // back to the post's time
-    expect(schedule.planRetry("close", true, at(18, 55), at(18, 56))).toBe("19:00");
-    expect(schedule.planRetry("close", true, at(19, 0), at(19, 0))).toBeNull();
+    // the close post: until 3 h after its send time (16:15 by default → 19:15)
+    expect(schedule.planRetry("close", true, at(19, 10), at(19, 11))).toBe("19:15");
+    expect(schedule.planRetry("close", true, at(19, 15), at(19, 15))).toBeNull();
     expect(schedule.planRetry("premarket", true, at(8, 30), at(8, 31))).toBeNull(); // not retried
   });
 

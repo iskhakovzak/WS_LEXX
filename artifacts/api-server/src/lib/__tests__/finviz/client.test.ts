@@ -7,8 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  buildExportUrl, fetchExport, fetchTickers, FinvizError, MIN_GAP_MS, RATE_LIMIT_PAUSE_MS, setFinvizClientDeps,
+  buildExportUrl, fetchExport, fetchTickers, FinvizError, FinvizQueueFullError, finvizQueueLength, MAX_QUEUED, MIN_GAP_MS,
+  RATE_LIMIT_PAUSE_MS, setFinvizClientDeps,
 } from "../../finviz/client";
+import { toAppError } from "../../http/middleware";
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 const CSV = readFileSync(path.join(dir, "screener-gappers.csv"), "utf8");
@@ -135,5 +137,40 @@ describe("fetchTickers", () => {
     restore = h2.restore;
     const r2 = await fetchTickers(Array.from({ length: 250 }, (_, i) => `B${i}`), TODAY);
     expect(r2).toMatchObject({ batches: 1, failed: 1 });
+  });
+});
+
+describe("queue cap (interactive callers never starve the scheduled jobs)", () => {
+  it("with MAX_QUEUED requests waiting an interactive call is refused at once; a scheduled one still queues", async () => {
+    const h = harness(() => ({ status: 200, body: CSV }));
+    restore = h.restore;
+    const queued = Array.from({ length: MAX_QUEUED }, () => fetchExport({}, TODAY));
+    expect(finvizQueueLength()).toBe(MAX_QUEUED);
+    const refused = await fetchExport({}, TODAY).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(FinvizQueueFullError);
+    expect(refused).toBeInstanceOf(FinvizError);
+    const job = fetchExport({}, TODAY, undefined, { scheduled: true });
+    await Promise.all([...queued, job]);
+    expect(h.calls).toHaveLength(MAX_QUEUED + 1);
+    expect(finvizQueueLength()).toBe(0);
+    await expect(fetchExport({}, TODAY)).resolves.toBeInstanceOf(Array);
+  });
+
+  it("a failing request leaves the queue too (the counter never leaks)", async () => {
+    const h = harness(() => ({ status: 500, body: "" }));
+    restore = h.restore;
+    await Promise.allSettled(Array.from({ length: MAX_QUEUED }, () => fetchExport({}, TODAY)));
+    expect(finvizQueueLength()).toBe(0);
+  });
+
+  it("fetchTickers stops at a full queue; the API answers 503 FINVIZ_BUSY", async () => {
+    const h = harness(() => ({ status: 200, body: CSV }));
+    restore = h.restore;
+    const queued = Array.from({ length: MAX_QUEUED }, () => fetchExport({}, TODAY));
+    const r = await fetchTickers(Array.from({ length: 250 }, (_, i) => `C${i}`), TODAY);
+    expect(r).toMatchObject({ batches: 1, failed: 1 });
+    await Promise.all(queued);
+    const { appError } = toAppError(new FinvizQueueFullError());
+    expect([appError.status, appError.code]).toEqual([503, "FINVIZ_BUSY"]);
   });
 });

@@ -211,3 +211,22 @@ describe("restore a personal theme", () => {
     expect(logAudit).toHaveBeenLastCalledWith(expect.objectContaining({ action: "themes.mine.restore" }));
   });
 });
+
+describe("per-user limit on screener-changing writes (each one queues a Finviz export)", () => {
+  it("20 screener writes per 10 minutes, then 429 RATE_LIMITED; renames are never limited; other members unaffected", async () => {
+    who = { id: 77, name: "Busy B.", role: "trader" };
+    boards.boardById.mockImplementation(async (_u: number, id: number) => (id === 4 ? { id: 4, userId: 77, kind: "themes", active: true } : null));
+    mine.personalById.mockResolvedValue(rec({ userId: 77, kind: "screener", screener: { filters: ["sec_technology"], order: null } }));
+    for (let i = 0; i < 20; i++) {
+      const r = await call("PUT", "/api/themes/mine/9", { screener: `sec_technology,ta_gap_u${(i % 5) + 1}` });
+      expect(r.status).toBe(200);
+    }
+    const limited = await call("PUT", "/api/themes/mine/9", { screener: "sec_energy" });
+    expect([limited.status, limited.json?.code]).toEqual([429, "RATE_LIMITED"]);
+    expect((await call("POST", "/api/themes/mine", { boardId: 4, name: "S", kind: "screener", screener: "sec_energy" })).status).toBe(429);
+    expect((await call("PUT", "/api/themes/mine/9", { name: "Renamed" })).status).toBe(200);
+    who = { id: 78, name: "Calm C.", role: "trader" };
+    mine.personalById.mockResolvedValue(rec({ userId: 78 }));
+    expect((await call("PUT", "/api/themes/mine/9", { kind: "screener", screener: "sec_energy" })).status).toBe(200);
+  });
+});

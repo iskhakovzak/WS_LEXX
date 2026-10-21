@@ -127,3 +127,22 @@ describe("buildAggregate — size of a desk answer", () => {
     expect(JSON.parse(json).groups.ticker.length).toBeLessThanOrEqual(TICKERS_MAX);
   });
 });
+
+describe("buildAggregate — 200 000 closed trades", () => {
+  it("best / worst without spreading the values into Math.max (call stack overflow past ~125k)", () => {
+    const many: AggTradeRow[] = [];
+    for (let id = 1; id <= 200_000; id++) {
+      const pnl = ((id * 7919) % 20_001) - 10_000; // −10 000 … +10 000, both ends hit
+      many.push({
+        id, trader: "T", ticker: "AAA", date: "2026-07-01T10:00:00", exit_date: null, result: pnl > 0 ? "win" : "loss", side: "long",
+        entry: 10, exit: 11, stop: 9, r_multiple: null, pnl, fees: 0, risk_usd: null, horizon: "intraday", setup: null, event_type: null,
+        sector: null, session: null, conviction: null, broker_account: null, source: "propreports", created_at: "2026-07-01T20:00:00.000Z", opened_at: null,
+      });
+    }
+    const a = buildAggregate(many, {}, { lite: true });
+    expect(get(a.total, "closed")).toBe(200_000);
+    expect(a.best.net).toBe(10_000);
+    expect(a.worst.net).toBe(-10_000);
+    expect(a.best.usd).toBe(10_000);
+  });
+});

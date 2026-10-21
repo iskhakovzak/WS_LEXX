@@ -71,6 +71,20 @@ export async function saveScreenerRows(runId: number, preset: ScreenerPreset, ny
  */
 export async function upsertSnapshots(rows: readonly FinvizRow[], source: "snapshot" | "screener"): Promise<number> {
   if (!rows.length) return 0;
+  // One row per ticker (the last wins: ON CONFLICT cannot touch a row twice in one statement), ≤ SNAPSHOT_CHUNK rows
+  // per INSERT (19 parameters each — far below Postgres' 65 535 even for a full-market export).
+  const unique = [...new Map(rows.map((r) => [r.ticker, r])).values()];
+  for (let i = 0; i < unique.length; i += SNAPSHOT_CHUNK) await upsertSnapshotChunk(unique.slice(i, i + SNAPSHOT_CHUNK), source);
+  const dated = rows.filter((r) => r.earningsDate).map((r) => ({
+    ticker: r.ticker, date: r.earningsDate!, timing: r.earningsTiming, company: r.company, marketCap: r.marketCap,
+  }));
+  await upsertEarnings(dated);
+  return rows.length;
+}
+
+export const SNAPSHOT_CHUNK = 1000;
+
+async function upsertSnapshotChunk(rows: readonly FinvizRow[], source: "snapshot" | "screener"): Promise<void> {
   const cols = 19;
   const values: unknown[] = [];
   const tuples = rows.map((r, i) => {
@@ -106,11 +120,6 @@ export async function upsertSnapshots(rows: readonly FinvizRow[], source: "snaps
        source = EXCLUDED.source, not_found_at = NULL, as_of = now()`,
     values,
   );
-  const dated = rows.filter((r) => r.earningsDate).map((r) => ({
-    ticker: r.ticker, date: r.earningsDate!, timing: r.earningsTiming, company: r.company, marketCap: r.marketCap,
-  }));
-  await upsertEarnings(dated);
-  return rows.length;
 }
 
 /** GET /ticker miss → a placeholder row the snapshot-pending job fills (only tickers never fetched or not-found long ago). */

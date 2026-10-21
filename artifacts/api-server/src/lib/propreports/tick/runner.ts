@@ -27,6 +27,8 @@ export type RunTickOptions = {
   /** Tests: inject steps / client / outbox drain. */
   steps?: TickStep[];
   client?: PropReportsClient | null;
+  /** Tests: build the client (default createTickClient) — used when `client` is not given. */
+  makeClient?: (deadline: number) => Promise<PropReportsClient | null>;
   drain?: (deadline: number) => Promise<DrainResult>;
 };
 
@@ -93,11 +95,23 @@ export async function runTick(opts: RunTickOptions): Promise<TickSummary> {
   }
   const log = logger.child({ tick: holder });
   try {
-    const client = opts.client !== undefined ? opts.client : await createTickClient({ deadline });
-    if (!client) {
+    // undefined = the client could not be built (bad settings, DB hiccup): steps skipped, the outbox is still drained
+    let client: PropReportsClient | null | undefined;
+    try {
+      client = opts.client !== undefined ? opts.client : await (opts.makeClient ?? ((d) => createTickClient({ deadline: d })))(deadline);
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      summary.ok = false;
+      summary.steps.push({ name: "client", ran: false, error });
+      log.warn({ err: error }, "tick: could not create the PropReports client");
+    }
+    if (client === null) {
       summary.skipped = "not-configured";
-    } else {
-      const states = await loadStepStates().catch(() => new Map<string, TickStepState>());
+    } else if (client) {
+      const states = await loadStepStates().catch((e) => {
+        log.warn({ err: e instanceof Error ? e.message : String(e) }, "tick: could not load step states");
+        return new Map<string, TickStepState>();
+      });
       for (const step of opts.steps ?? TICK_STEPS) {
         const now = new Date();
         if (Date.now() > deadline - STEP_MIN_MS) { summary.steps.push({ name: step.name, ran: false, note: "budget" }); continue; }

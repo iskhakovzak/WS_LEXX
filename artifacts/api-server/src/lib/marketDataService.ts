@@ -2,6 +2,7 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import { freshSnapshot, fundamentalsFromSnapshot } from "./finviz/fundamentals";
 import { parseAnalystSignalFromHeadline } from "./analystHeadline";
+import { analystUpdateGuard, upsertYahooAnalystRows } from "./analystActionsStore";
 
 export { parseAnalystSignalFromHeadline, type ParsedAnalystSignal } from "./analystHeadline";
 
@@ -893,6 +894,14 @@ export type AnalystActionRow = {
   priceTargetFrom: string | null;
 };
 
+// DO UPDATE ... WHERE guards of the analyst upserts below: a conflicting row is rewritten only when it would change.
+const KEEP_URL_GUARD = analystUpdateGuard({ sourceUrl: "COALESCE(analyst_actions_cache.source_url, EXCLUDED.source_url)" });
+const URL_ONLY_GUARD = analystUpdateGuard({ sourceUrl: "COALESCE(analyst_actions_cache.source_url, EXCLUDED.source_url)", priceTargets: false });
+const NEWS_GUARD = analystUpdateGuard({
+  sourceUrl: "COALESCE(EXCLUDED.source_url, analyst_actions_cache.source_url)",
+  source: "CASE WHEN EXCLUDED.source_url IS NOT NULL THEN 'news' ELSE analyst_actions_cache.source END",
+});
+
 export async function fetchYahooUpgradeDowngrade(rawTicker: string): Promise<AnalystActionRow[]> {
   const ticker = rawTicker.toUpperCase().trim();
   if (!ticker) return [];
@@ -1015,22 +1024,8 @@ export async function scanWatchlistAnalystActions(opts: { concurrency?: number; 
           // no per-action URL in upgradeDowngradeHistory, so we link the whole
           // analysis page (firm/action are visible there).
           const yahooUrl = `https://finance.yahoo.com/quote/${encodeURIComponent(ticker)}/analysis`;
-          for (const r of rows) {
-            try {
-              const ins = await pool.query(
-                `INSERT INTO analyst_actions_cache (ticker, graded_at, firm, action, to_grade, from_grade, source, source_url, price_target, price_target_from)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'yahoo', $7, $8, $9)
-                 ON CONFLICT (ticker, graded_at, firm, action) DO UPDATE
-                   SET source_url = COALESCE(analyst_actions_cache.source_url, EXCLUDED.source_url),
-                       price_target = COALESCE(EXCLUDED.price_target, analyst_actions_cache.price_target),
-                       price_target_from = COALESCE(EXCLUDED.price_target_from, analyst_actions_cache.price_target_from)`,
-                [ticker, r.gradedAt.toISOString(), r.firm, r.action, r.toGrade, r.fromGrade, yahooUrl, r.priceTarget, r.priceTargetFrom]
-              );
-              rowsInserted += ins.rowCount || 0;
-            } catch (e: any) {
-              logger.warn({ error: e.message, ticker, firm: r.firm }, "analyst action insert failed");
-            }
-          }
+          // One statement per ticker; unchanged rows are not rewritten (lib/analystActionsStore).
+          rowsInserted += await upsertYahooAnalystRows(ticker, yahooUrl, rows);
           if (fetchFundamentals) {
             // Best-effort: backfill marketCap/sector for new tickers (cheap if cached).
             await getTickerFundamentals(ticker, { skipSnapshot: true }).catch(() => null);
@@ -1140,7 +1135,8 @@ export async function scanNewsForAnalystActions(opts: { sinceDays?: number } = {
              SET source_url = COALESCE(EXCLUDED.source_url, analyst_actions_cache.source_url),
                  source = CASE WHEN EXCLUDED.source_url IS NOT NULL THEN 'news' ELSE analyst_actions_cache.source END,
                  price_target = COALESCE(EXCLUDED.price_target, analyst_actions_cache.price_target),
-                 price_target_from = COALESCE(EXCLUDED.price_target_from, analyst_actions_cache.price_target_from)`,
+                 price_target_from = COALESCE(EXCLUDED.price_target_from, analyst_actions_cache.price_target_from)
+             ${NEWS_GUARD}`,
           [r.ticker.toUpperCase().trim(), gradedAt.toISOString(), sig.firm, sig.action, sig.toGrade, sig.fromGrade, safeUrl, sig.priceTarget, sig.priceTargetFrom],
         );
         inserted += ins.rowCount || 0;
@@ -1231,7 +1227,8 @@ export async function scanSeekingAlphaForAnalystActions(opts: { concurrency?: nu
                ON CONFLICT (ticker, graded_at, firm, action) DO UPDATE
                  SET source_url = COALESCE(analyst_actions_cache.source_url, EXCLUDED.source_url),
                      price_target = COALESCE(EXCLUDED.price_target, analyst_actions_cache.price_target),
-                     price_target_from = COALESCE(EXCLUDED.price_target_from, analyst_actions_cache.price_target_from)`,
+                     price_target_from = COALESCE(EXCLUDED.price_target_from, analyst_actions_cache.price_target_from)
+                 ${KEEP_URL_GUARD}`,
               [ticker, gradedAt.toISOString(), sig.firm, sig.action, sig.toGrade, sig.fromGrade, safeUrl, sig.priceTarget, sig.priceTargetFrom],
             );
             inserted += ins.rowCount || 0;
@@ -1319,7 +1316,8 @@ export async function scanNasdaqAnalystActions(opts: { concurrency?: number; tic
               `INSERT INTO analyst_actions_cache (ticker, graded_at, firm, action, to_grade, from_grade, source, source_url)
                VALUES ($1, $2, $3, $4, $5, $6, 'nasdaq', $7)
                ON CONFLICT (ticker, graded_at, firm, action) DO UPDATE
-                 SET source_url = COALESCE(analyst_actions_cache.source_url, EXCLUDED.source_url)`,
+                 SET source_url = COALESCE(analyst_actions_cache.source_url, EXCLUDED.source_url)
+                 ${URL_ONLY_GUARD}`,
               [ticker, gradedAt.toISOString(), firm, action, (r.newGrade || "").trim() || null, (r.oldGrade || "").trim() || null, sourceUrl],
             );
             inserted += ins.rowCount || 0;
@@ -1415,7 +1413,8 @@ export async function scanGeneralFinanceFeedsForAnalystActions(opts: { tickers?:
              ON CONFLICT (ticker, graded_at, firm, action) DO UPDATE
                SET source_url = COALESCE(analyst_actions_cache.source_url, EXCLUDED.source_url),
                    price_target = COALESCE(EXCLUDED.price_target, analyst_actions_cache.price_target),
-                   price_target_from = COALESCE(EXCLUDED.price_target_from, analyst_actions_cache.price_target_from)`,
+                   price_target_from = COALESCE(EXCLUDED.price_target_from, analyst_actions_cache.price_target_from)
+               ${KEEP_URL_GUARD}`,
             [ticker, gradedAt.toISOString(), sig.firm, sig.action, sig.toGrade, sig.fromGrade, safeUrl, sig.priceTarget, sig.priceTargetFrom],
           );
           inserted += ins.rowCount || 0;

@@ -80,6 +80,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `PROMOTION_REQUEST_NOT_FOUND` | 404 | Promotion request. | — |
 | `PROMOTION_REQUEST_DECIDED` | 409 | Approve / reject of a request that is no longer pending. | — |
 | `PROMOTION_SELF_APPROVE` | 403 | A mentor approves their own request. | — |
+| `PROMOTION_OWN_REQUEST` | 403 | A curator approves a promotion request they filed themselves (four eyes; settings.manage may). | — |
 | `PROMOTION_COMMENT_REQUIRED` | 400 | Approving a not-ready report without a comment (params `passed`, `total`). | — |
 | `PROMOTION_STAGE_CHANGED` | 409 | Approving a request whose from-stage is outdated. | — |
 | `PROMOTION_REJECT_REASON` | 400 | Rejecting a promotion request without a comment. | — |
@@ -310,6 +311,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `BROKER_TRADE_EXISTS` | 409 | Reconcile keep-separate of an already imported trade. | — |
 | `PROPREPORTS_NOT_CONFIGURED` | 503 | PropReports API endpoints without credentials. | — |
 | `CRON_NOT_CONFIGURED` | 503 | `/api/cron/tick` called while CRON_SECRET is unset. | — |
+| `FINVIZ_BUSY` | 503 | The Finviz export queue is full for interactive callers (scheduled jobs always get in). | — |
 | `FINVIZ_NOT_CONFIGURED` | 503 | `POST /api/finviz/refresh` without FINVIZ_AUTH or with the desk switch finviz.enabled off. | — |
 | `NEWS_CHANNEL_NOT_CONFIGURED` | 503 | `POST /api/news-channel/send-now` without NEWS_CHANNEL_BOT_TOKEN + NEWS_CHANNEL_CHAT_ID or with the desk switch newsChannel.enabled off. | — |
 | `BACKFILL_RUNNING` | 409 | A PropReports history backfill is already running. | `{ active }` |

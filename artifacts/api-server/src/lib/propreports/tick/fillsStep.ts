@@ -92,28 +92,35 @@ export async function syncRecentFills(ctx: TickCtx): Promise<TickStepResult> {
   const plan = await planSync(trips);
   const writes = plan.counts.insert + plan.counts.update + plan.counts.adopt + plan.counts.conflict;
   let result: SyncRunResult | null = null;
+  const failedAccounts = new Set<string>();
+  let itemErrors = 0;
   if (writes > 0) {
     result = await applySync(plan, {
       actor: "tick", source: "api", dateFrom: from, dateTo: today, feeColumns: fetched.feeColumns, kick: false,
       details: { tick: true, fills: fills.length, accounts: changed.length, orphanCount: orphanFills.length },
+      onItemError: (it) => { itemErrors++; failedAccounts.add(it.trip.account); }, // the raw fill account (cursor key)
     });
-    if (result.errors && !result.inserted && !result.updated) throw new Error(`apply failed: ${(result.errorText ?? "").slice(0, 300)}`);
+    // The run as a whole failed (rolled back): an error beyond the per-trade ones. The runner records it, the next tick retries.
+    if (result.errors > itemErrors) throw new Error(`apply failed: ${(result.errorText ?? "").slice(0, 300)}`);
+    // Only some trades failed: they were rolled back alone, the rest is committed. Their accounts get no cursor, so
+    // they are re-planned next tick (the committed trades are "unchanged" by then) — no throw, no endless step error.
+    if (itemErrors) ctx.log.warn({ errors: itemErrors, accounts: [...failedAccounts], err: (result.errorText ?? "").slice(0, 500) }, "fills.recent: some trades failed");
   } else {
     await rememberSeen(plan.unmappedAccounts, fetched.feeColumns);
   }
 
-  // Cursors only for accounts that were really applied (mapped + active, no errors): the rest is re-planned next tick.
+  // Cursors only for accounts that were really applied (mapped + active, no failed trade): the rest is re-planned next tick.
   const notApplied = new Set([...plan.unmappedAccounts, ...plan.inactiveAccounts]);
+  const unmapped = notApplied.size;
+  for (const a of failedAccounts) notApplied.add(a);
   const syncedAt = ctx.now.toISOString();
-  if (!result || !result.errors) {
-    for (const c of changed) {
-      if (notApplied.has(c.account)) continue;
-      const lastFillAt = c.fills.reduce<string | null>((m, f) => (m == null || f.dateTime > m ? f.dateTime : m), null);
-      await setCursor(CURSOR_PREFIX + c.account, { fp: c.fp, from, fills: c.fills.length, lastFillAt, syncedAt } satisfies AccountCursor);
-    }
+  for (const c of changed) {
+    if (notApplied.has(c.account)) continue;
+    const lastFillAt = c.fills.reduce<string | null>((m, f) => (m == null || f.dateTime > m ? f.dateTime : m), null);
+    await setCursor(CURSOR_PREFIX + c.account, { fp: c.fp, from, fills: c.fills.length, lastFillAt, syncedAt } satisfies AccountCursor);
   }
-  const counts = result ? `+${result.inserted} ~${result.updated} ?${result.conflicts}` : "no writes";
-  return { done: true, note: `${from}…${today}: ${fills.length} fills, ${changed.length} account(s) changed, ${counts}${notApplied.size ? `, unmapped ${notApplied.size}` : ""}` };
+  const counts = result ? `+${result.inserted} ~${result.updated} ?${result.conflicts}${itemErrors ? ` !${itemErrors} failed` : ""}` : "no writes";
+  return { done: true, note: `${from}…${today}: ${fills.length} fills, ${changed.length} account(s) changed, ${counts}${unmapped ? `, unmapped ${unmapped}` : ""}` };
 }
 
 export const fillsRecentStep: TickStep = {

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
-import { eq, desc, isNull, and, sql, inArray } from "drizzle-orm";
+import { eq, isNull, and, sql, inArray } from "drizzle-orm";
 import { db, pool, tradesTable } from "@workspace/db";
 import { logActivity } from "../lib/activity";
 import { activityTitle } from "../lib/activityText";
@@ -25,6 +25,7 @@ import {
 } from "../lib/tradesPageQuery";
 import { TradesPageQuery, compactQuery, moneyBlindFilters, pageFiltersOf, ymd } from "../lib/tradesPageParams";
 import { tradesListWindow } from "../lib/tradesListWindow";
+import { selectTradesList } from "../lib/tradesListQuery";
 import { captureAndAttach } from "../lib/marketContext";
 import { maybeAutoGenerateReview } from "../lib/aiReview";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
@@ -48,7 +49,7 @@ import {
 } from "@workspace/api-zod";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { resolveSetupLink, setupTagged, touchesSetup } from "../lib/tradesSetupLink";
-import { bulkTags, syncMarkerErrors } from "../lib/tradingErrors";
+import { bulkTags, syncMarkerErrors, syncTagMarkersBulk } from "../lib/tradingErrors";
 import tradeFacetsRouter from "./trade-facets";
 
 const router: IRouter = Router();
@@ -138,11 +139,13 @@ async function forbiddenFor(req: Parameters<typeof can>[0], cap: "trades.read.te
 //            entry date) on/after `from`, plus still-open positions entered on/before `to` (carried positions).
 //            A superset of "closeDate in [from,to]" and of "entry date in [from,to]" — callers refine client-side.
 //            At most 400 days (`to` defaults to today) → otherwise 400 RANGE_TOO_LONG.
-//   limit    ≥1 (clamped to 5000) — newest by trade date first (date desc, id desc). Without `from` the list is always
-//            capped: `limit`, else the newest 500. Everything else (CSV, the book) walks GET /trades/page by cursor.
+//   limit    ≥1 (clamped to 5000) — newest by trade date first (date desc, id desc). Every list is capped: `limit`,
+//            else 5000 with `from` / the newest 500 without. Everything else (CSV, the book) walks GET /trades/page.
 //   tagged   1|true — only trades with a non-empty setup or tags (the indicators page needs nothing else).
-//   lite     1|true — omit the bulky `contextSnapshot` (raw broker snapshot, ~35% of the payload) — calendar /
-//            journal views that never read it. Field stays in the shape as null.
+//   lite     1|true — `contextSnapshot` (raw broker snapshot, ~35% of the payload) is cut to the two keys the web
+//            reads from a list row, { openedAt, closedAt } (null when neither is there). 0|false — the full snapshot.
+//            Default: lite for a desk-wide list (no trader in scope), full for one trader's book.
+
 const LEGACY_YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional();
 const LegacyWindowQuery = z.object({
   from: LEGACY_YMD,
@@ -173,8 +176,10 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
   if (result) conditions.push(eq(tradesTable.result, result));
   if (to) conditions.push(sql`${tradesTable.date} <= ${to}` as unknown as ReturnType<typeof eq>);
   if (from) {
-    conditions.push(sql`(COALESCE(NULLIF(${tradesTable.exitDate}, ''), ${tradesTable.date}) >= ${from}
-      OR LOWER(TRIM(COALESCE(${tradesTable.result}, ''))) = 'open')` as unknown as ReturnType<typeof eq>);
+    // Spelled as trades_live_close_day_idx / trades_live_open_idx (0209) index it → BitmapOr instead of a full scan.
+    // Same rows as before: `from` is 10 chars (LEFT(x,10) >= from ⇔ x >= from) and a NULL result is "not open" either way.
+    conditions.push(sql`(LEFT(COALESCE(NULLIF(${tradesTable.exitDate}, ''), ${tradesTable.date}), 10) >= ${from}
+      OR LOWER(TRIM(${tradesTable.result})) = 'open')` as unknown as ReturnType<typeof eq>);
   }
   if (tagged) {
     conditions.push(sql`(NULLIF(TRIM(COALESCE(${tradesTable.setup}, '')), '') IS NOT NULL
@@ -187,14 +192,11 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
   if (scope === undefined) throw unauthorized();
   if (scope !== null) conditions.push(eq(tradesTable.trader, scope));
 
-  const base = db.select().from(tradesTable).where(and(...conditions));
-  const ordered = base.orderBy(desc(tradesTable.date), desc(tradesTable.id));
-  const rows = listWin.limit != null ? await ordered.limit(listWin.limit) : await ordered;
+  const lite = win.data.lite === "1" || win.data.lite === "true" || (win.data.lite === undefined && scope === null);
+  const rows = await selectTradesList(and(...conditions), listWin.limit, lite);
 
   // $ privacy (lib/playbookPrivacy): a trader only ever lists their own book; anyone else's $ is nulled for non-staff.
-  const lite = win.data.lite === "1" || win.data.lite === "true";
   const shaped = rows.map(toTradeResponseShape);
-  if (lite) for (const t of shaped) t.contextSnapshot = null;
   res.json(redactTradeRows(ListTradesResponse.parse(shaped).map((t, i) => withPlaybookId(t, shaped[i])), await loadMoneyViewer(req)));
 }));
 
@@ -580,8 +582,13 @@ router.delete("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
 router.post("/trades/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  const [owner] = await db.select({ trader: tradesTable.trader }).from(tradesTable).where(eq(tradesTable.id, id));
+  const [owner] = await db
+    .select({ trader: tradesTable.trader, source: tradesTable.source, contextSnapshot: tradesTable.contextSnapshot })
+    .from(tradesTable)
+    .where(eq(tradesTable.id, id));
   if (owner && (await forbiddenFor(req, "trades.write.any", owner.trader))) throw new AppError("OWN_TRADES_ONLY");
+  // Same rule as delete: bringing a broker trade back puts its P&L into every rating again — admin-only.
+  if (owner && isBrokerTrade(owner) && !(await canEditBrokerTrades(req))) throw brokerReadOnly();
   const [trade] = await db
     .update(tradesTable)
     .set({ deletedAt: null })
@@ -646,8 +653,8 @@ router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
   const forbidden = rows.length - allowed.length;
   const targets = action === "restore" ? allowed.filter((r) => r.deletedAt) : allowed.filter((r) => !r.deletedAt);
   const targetIds = targets.map((r) => r.id);
-  // delete / setResult touch broker-owned state: refused as a whole when the selection holds a broker trade.
-  if ((action === "delete" || action === "setResult") && targets.some((r) => isBrokerTrade(r)) && !(await canEditBrokerTrades(req))) {
+  // delete / restore / setResult touch broker-owned state: refused as a whole when the selection holds a broker trade.
+  if ((action === "delete" || action === "restore" || action === "setResult") && targets.some((r) => isBrokerTrade(r)) && !(await canEditBrokerTrades(req))) {
     throw brokerReadOnly(action === "setResult" ? ["result"] : undefined);
   }
 
@@ -666,12 +673,22 @@ router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
       await db.update(tradesTable).set({ setup: link.setup, playbookId: link.playbookId }).where(inArray(tradesTable.id, targetIds));
       for (const owner of owners) await setupTagged(targets.find((r) => (r.trader ?? null) === owner)!.id);
     } else {
-      for (const r of targets) {
-        const cur = splitTags(r.tags);
-        const next = bulkTags(cur, tags, action === "addTags" ? "addTags" : "removeTags"); // a mistake: any spelling (2.8)
-        if (next.join(", ") === cur.join(", ")) continue;
-        await db.update(tradesTable).set({ tags: next.length ? next.join(", ") : null }).where(eq(tradesTable.id, r.id));
-        if (r.trader) await syncMarkerErrors({ trader: r.trader, tradeId: r.id, ticker: null, source: "tag", actor: req.authUser?.name ?? null }, cur, next);
+      // One UPDATE for every changed trade, then the key-M sync of all of them (set-based, lib/tradingErrors).
+      const changed = targets
+        .map((r) => {
+          const cur = splitTags(r.tags);
+          return { r, cur, next: bulkTags(cur, tags, action === "addTags" ? "addTags" : "removeTags") }; // a mistake: any spelling (2.8)
+        })
+        .filter((x) => x.next.join(", ") !== x.cur.join(", "));
+      if (changed.length) {
+        await pool.query(
+          `UPDATE trades t SET tags = u.tags FROM unnest($1::int[], $2::text[]) AS u(id, tags) WHERE t.id = u.id`,
+          [changed.map((x) => x.r.id), changed.map((x) => (x.next.length ? x.next.join(", ") : null))],
+        );
+        await syncTagMarkersBulk(
+          changed.filter((x) => x.r.trader).map((x) => ({ trader: x.r.trader!, tradeId: x.r.id, before: x.cur, after: x.next })),
+          req.authUser?.name ?? null,
+        );
       }
     }
     logActivity({

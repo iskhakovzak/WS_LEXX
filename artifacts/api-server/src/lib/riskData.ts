@@ -10,6 +10,7 @@ import { pool } from "@workspace/db";
 import { nyDate, nyMinutes } from "./tradingDate";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql } from "./tradeMath";
 import { num, round2, type DayRow, type Horizon, type Limits, type LiveSnapshot, type Position } from "./riskMetrics";
+import { BoundedPromiseCache, onTradesPageInvalidate } from "./tradesPageCache";
 
 // ─── constants / helpers ────────────────────────────────────────────────────
 
@@ -91,27 +92,45 @@ export async function loadLimits(trader: string | null): Promise<Map<string, Lim
  * Daily aggregates per trader, realised on close date. Broker rows win over journal rows for a day
  * (PropReports is the source of truth); journal numbers are used only on days with no broker data.
  * `only` = just these traders (index trades_live_trader_close_day_idx instead of a pass over the whole table).
+ * Cached RISK_DAILY_TTL_MS per (trader, upTo, only) and cleared on every trade write (lib/tradesPageCache): the desk
+ * page, the tick's live alerts and /risk/me ask for the same book several times a minute.
  */
-export async function loadDaily(trader: string | null, upTo: string, only?: readonly string[]): Promise<DayRow[]> {
+export function loadDaily(trader: string | null, upTo: string, only?: readonly string[]): Promise<DayRow[]> {
+  const key = JSON.stringify([trader, upTo, only ? [...only].sort() : null]);
+  return riskDailyCache.getOrLoad(key, () => queryDaily(trader, upTo, only));
+}
+
+export const RISK_DAILY_TTL_MS = 30_000;
+const riskDailyCache = new BoundedPromiseCache<DayRow[]>(RISK_DAILY_TTL_MS, 100);
+onTradesPageInvalidate(() => riskDailyCache.clear());
+
+async function queryDaily(trader: string | null, upTo: string, only?: readonly string[]): Promise<DayRow[]> {
   const broker = await brokerSql();
-  const net = netPnlSql("t");
+  // The broker test, net and close day are computed once per row in the subquery (they used to be repeated in every
+  // FILTER). `is_broker` keeps its SQL NULL: NOT NULL is NULL, so such a row stays out of both sides, as before.
+  const close = `LEFT(${closeDateSql("t")}, 10)`;
   const { rows } = await pool.query(
-    `SELECT t.trader, LEFT(${closeDateSql("t")}, 10) AS d,
-            SUM(${net}) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND NOT ${broker})::float AS journal_net,
-            COUNT(*) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND NOT ${broker})::int AS journal_pnl_rows,
-            SUM(${net}) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND ${broker})::float AS broker_net,
-            COUNT(*) FILTER (WHERE t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open' AND ${broker})::int AS broker_pnl_rows,
-            COUNT(*) FILTER (WHERE ${broker})::int AS broker_trades,
-            COALESCE(SUM(ABS(t.fees)) FILTER (WHERE ${broker}), 0)::float AS broker_fees,
-            COALESCE(SUM(ABS(t.fees)) FILTER (WHERE NOT ${broker}), 0)::float AS journal_fees,
+    `SELECT x.trader, x.d,
+            SUM(x.net) FILTER (WHERE x.closed AND NOT x.is_broker)::float AS journal_net,
+            COUNT(*) FILTER (WHERE x.closed AND NOT x.is_broker)::int AS journal_pnl_rows,
+            SUM(x.net) FILTER (WHERE x.closed AND x.is_broker)::float AS broker_net,
+            COUNT(*) FILTER (WHERE x.closed AND x.is_broker)::int AS broker_pnl_rows,
+            COUNT(*) FILTER (WHERE x.is_broker)::int AS broker_trades,
+            COALESCE(SUM(x.fee) FILTER (WHERE x.is_broker), 0)::float AS broker_fees,
+            COALESCE(SUM(x.fee) FILTER (WHERE NOT x.is_broker), 0)::float AS journal_fees,
             COUNT(*)::int AS trades,
-            COALESCE(SUM(${signedRSql("t")}), 0)::float AS r
-     FROM trades t
-     WHERE t.deleted_at IS NULL AND t.trader IS NOT NULL AND t.trader <> ''
-       AND ($1::text IS NULL OR t.trader = $1)${only ? " AND t.trader = ANY($3::text[])" : ""}
-       AND LEFT(${closeDateSql("t")}, 10) <= $2
-     GROUP BY t.trader, LEFT(${closeDateSql("t")}, 10)
-     ORDER BY d ASC`,
+            COALESCE(SUM(x.r), 0)::float AS r
+       FROM (
+         SELECT t.trader, ${close} AS d, ${netPnlSql("t")} AS net, ABS(t.fees) AS fee, ${signedRSql("t")} AS r,
+                (t.pnl IS NOT NULL AND LOWER(TRIM(t.result)) IS DISTINCT FROM 'open') AS closed,
+                ${broker} AS is_broker
+           FROM trades t
+          WHERE t.deleted_at IS NULL AND t.trader IS NOT NULL AND t.trader <> ''
+            AND ($1::text IS NULL OR t.trader = $1)${only ? " AND t.trader = ANY($3::text[])" : ""}
+            AND ${close} <= $2
+       ) x
+      GROUP BY x.trader, x.d
+      ORDER BY x.d ASC`,
     only ? [trader, upTo, [...only]] : [trader, upTo],
   );
   return rows.map((r: any) => resolveDay(r));
@@ -129,7 +148,11 @@ export async function loadDdResets(trader: string | null, only?: readonly string
     only ? [trader, [...only]] : [trader],
   ).catch(() => ({ rows: [] as { trader: string; d: string }[] }));
   const out = new Map<string, string[]>();
-  for (const r of rows) out.set(String(r.trader), [...(out.get(String(r.trader)) ?? []), String(r.d)]);
+  for (const r of rows) {
+    const list = out.get(String(r.trader));
+    if (list) list.push(String(r.d));
+    else out.set(String(r.trader), [String(r.d)]);
+  }
   return out;
 }
 

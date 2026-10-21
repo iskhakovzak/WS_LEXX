@@ -158,4 +158,13 @@ describe("themesProblem", () => {
     const y = new Date(F.ny(16, 15).getTime() - 86_400_000);
     expect(themesProblem("close", F.boardAt(y), F.ny(16, 15).getTime())).toBe("session mismatch: numbers from before the post session");
   });
+
+  it("early close (13:00): post-market numbers from 13:05 are fresh for the close post, not only from 16:02", () => {
+    const at = F.ny(13, 10);
+    const board = { ...F.boardAt(at), session: "post" as const, asOf: F.ny(13, 5).toISOString() };
+    expect(themesProblem("close", board, at.getTime(), 13 * 60)).toBeNull();
+    expect(themesProblem("close", board, at.getTime())).toBe("session mismatch: numbers from before the post session"); // a regular day
+    // a refresh that started in the regular session (stamped right at 13:00) is still refused
+    expect(themesProblem("close", { ...board, asOf: F.ny(13, 1).toISOString() }, at.getTime(), 13 * 60)).toMatch(/^session mismatch/);
+  });
 });

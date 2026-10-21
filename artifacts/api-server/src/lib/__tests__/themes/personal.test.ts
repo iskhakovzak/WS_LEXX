@@ -142,4 +142,21 @@ describe("screener resolution", () => {
     restores.push(setScreenerDeps({ enabled: () => false }));
     expect(await resolveScreener({ filters: ["sec_energy"], order: null })).toBeNull();
   });
+
+  it("a failed export backs the key off for a minute (no Finviz export on every GET), then tries again", async () => {
+    let now = 0;
+    let runs = 0;
+    let fail = true;
+    restores.push(setScreenerDeps({ enabled: () => true, now: () => now, run: async () => { runs++; if (fail) throw new Error("finviz down"); return ["AAA"]; } }));
+    const spec = { filters: ["sec_energy"], order: null };
+    expect(await resolveScreener(spec)).toBeNull();
+    now += 30_000;
+    expect(await resolveScreener(spec)).toBeNull();
+    expect(await resolveScreener({ filters: ["sec_utilities"], order: null })).toBeNull(); // another key: its own try
+    expect(runs).toBe(2);
+    fail = false;
+    now += 31_000;
+    expect((await resolveScreener(spec))!.tickers).toEqual(["AAA"]);
+    expect(runs).toBe(3);
+  });
 });

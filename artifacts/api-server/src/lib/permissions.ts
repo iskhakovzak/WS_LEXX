@@ -116,13 +116,14 @@ export async function resolveActor(req: Request): Promise<Actor | null> {
       pool.query<{ name: string }>(
         `SELECT name FROM users WHERE active = true AND COALESCE(banned, false) = false
            AND (assigned_curator = $1 OR assigned_risk_manager = $1 OR assigned_mentor = $1)`,
-        [u.name],
+        [rows[0].name],
       ),
-      groupMembersOf(u.name),
+      groupMembersOf(rows[0].name),
     ]);
     wards = [...new Set([...assigned.rows.map((r) => r.name), ...group])];
   }
-  return (req.permActor = { id: u.id, name: u.name, role, guest: false, wards });
+  // The name from the DB, not the token (a renamed member's old token must not act under the old name).
+  return (req.permActor = { id: u.id, name: rows[0].name, role, guest: false, wards });
 }
 
 // ─── checks ─────────────────────────────────────────────────────────────────

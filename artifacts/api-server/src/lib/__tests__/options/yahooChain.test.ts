@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import fixture from "../fixtures/yahoo-options-aapl.json";
-import { bsGreeks, dteFor, labelOfTs, tsOfLabel, yearsToExpiry } from "../../options/greeks";
+import { bsGreeks, dteFor, expiryCloseMs, labelOfTs, tsOfLabel, yearsToExpiry } from "../../options/greeks";
 import { makeYahooChainProvider, parseYahooChain, yahooIvPct, type YahooOptionsResponse } from "../../options/yahooChain";
 
 /** 2026-10-21 11:00 New York. */
@@ -129,6 +129,15 @@ describe("greeks helpers", () => {
     expect(yearsToExpiry("2026-10-21", NOW) * 365 * 24).toBeCloseTo(5, 5);
     expect(yearsToExpiry("2026-10-20", NOW)).toBe(0);
     expect(labelOfTs(tsOfLabel("2026-12-18"))).toBe("2026-12-18");
+  });
+
+  it("the expiry close is 16:00 New York in summer (EDT, 20:00 UTC) and in winter (EST, 21:00 UTC)", () => {
+    expect(new Date(expiryCloseMs("2026-07-17")).toISOString()).toBe("2026-07-17T20:00:00.000Z");
+    expect(new Date(expiryCloseMs("2026-12-18")).toISOString()).toBe("2026-12-18T21:00:00.000Z");
+    expect(new Date(expiryCloseMs("2027-01-15")).toISOString()).toBe("2027-01-15T21:00:00.000Z");
+    // winter: 15:30 New York (20:30 UTC) is still 30 min before the close, not past it
+    const winterLate = new Date(Date.UTC(2026, 11, 18, 20, 30));
+    expect(yearsToExpiry("2026-12-18", winterLate) * 365 * 24 * 60).toBeCloseTo(30, 5);
   });
 
   it("bsGreeks: ATM call Δ ≈ 0.5+, put Δ = call Δ − 1, expired → intrinsic Δ", () => {

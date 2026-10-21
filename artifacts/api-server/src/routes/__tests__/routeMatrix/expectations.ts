@@ -159,7 +159,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /errors/bulk": owner("own mistakes; others need errors.manage.team (checked on the trader / row)"),
   "POST /events": member("any member posts to the shared desk list"),
   "POST /events/:id/link-trade": member("any member records an event outcome or links the own trade"),
-  "POST /events/:id/outcome": member("any member records an event outcome or links the own trade"),
+  "POST /events/:id/outcome": owner("the event's author or staff records its outcome (checked after the row is loaded)"),
   "POST /events/:id/restore": owner("own row; others need the author or staff (checked after the row is loaded)"),
   "POST /events/import-earnings": staff("earnings import into the desk calendar: requireStaff role check, not on the matrix"),
   "POST /game-plan/:id/read": member("marks a desk plan as read by the caller"),

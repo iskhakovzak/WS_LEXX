@@ -20,7 +20,7 @@ vi.mock("@workspace/integrations-anthropic-ai", () => ({ anthropic: {}, getAnthr
 
 const { isDeskHours, everyMinutes, deskCadence } = await import("../../propreports/tick/due");
 const { runTick, shouldRun } = await import("../../propreports/tick/runner");
-const { drainOutbox, backoffSeconds, MAX_ATTEMPTS } = await import("../../propreports/tick/outbox");
+const { drainOutbox, backoffSeconds, HEARTBEAT_MS, MAX_ATTEMPTS } = await import("../../propreports/tick/outbox");
 const { accountFingerprint, changedAccounts, groupByAccount, fetchFillsBounded } = await import("../../propreports/tick/fillsStep");
 const { windowsFor, nextWindow } = await import("../../propreports/tick/backfill");
 const { checkTradesVersion, __resetTradesVersionForTests } = await import("../../propreports/tradesVersion");
@@ -104,6 +104,19 @@ describe("runner", () => {
     expect(d).toHaveBeenCalled();
   });
 
+  it("the client cannot be built → ok:false, steps skipped, outbox still drained, lease released", async () => {
+    handler = (sql, params) => (/INSERT INTO propreports_tick_lease/.test(sql) ? { rows: [{ holder: params[1] }] } : { rows: [] });
+    const run = vi.fn(async () => ({ done: true }));
+    const d = vi.fn(async () => ({ processed: 1, failed: 0, remaining: 0 }));
+    const s = await runTick({ trigger: "cron", steps: [step("a", run)], makeClient: async () => { throw new Error("settings unreadable"); }, drain: d });
+    expect(s.ok).toBe(false);
+    expect(s.steps).toEqual([{ name: "client", ran: false, error: "settings unreadable" }]);
+    expect(run).not.toHaveBeenCalled();
+    expect(d).toHaveBeenCalled();
+    expect(s.outbox.processed).toBe(1);
+    expect(calls.some((c) => /UPDATE propreports_tick_lease SET expires_at = NOW\(\)/.test(c.sql))).toBe(true);
+  });
+
   it("stops starting steps when the budget is spent", async () => {
     handler = (sql, params) => (/INSERT INTO propreports_tick_lease/.test(sql) ? { rows: [{ holder: params[1] }] } : { rows: [] });
     const run = vi.fn(async () => ({ done: true }));
@@ -140,6 +153,36 @@ describe("outbox drain", () => {
     const fails = calls.filter((c) => /SET last_error = \$2/.test(c.sql));
     expect(fails.map((c) => [c.params[0], c.params[3]])).toEqual([[2, false], [3, true], [4, true]]);
     expect(fails[0].params[2]).toBe(backoffSeconds(1));
+  });
+  it("heartbeat: a handler slower than the claim window keeps its batch claimed (never re-claimed and run twice)", async () => {
+    vi.useFakeTimers();
+    try {
+      let claimed = false;
+      handler = (sql) => {
+        if (/UPDATE propreports_outbox o SET locked_until/.test(sql)) {
+          if (claimed) return { rows: [] };
+          claimed = true;
+          return { rows: [{ id: 7, kind: "slow.kind", payload: null, attempts: 1 }, { id: 8, kind: "slow.kind", payload: null, attempts: 1 }] };
+        }
+        if (/SELECT COUNT/.test(sql)) return { rows: [{ n: 0 }] };
+        return { rows: [] };
+      };
+      const slow = vi.fn(() => new Promise<void>((r) => setTimeout(r, 150_000))); // > CLAIM_SECONDS (120 s)
+      const drained = drainOutbox(Date.now() + 600_000, { handlers: { "slow.kind": slow } });
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS * 4 + 1_000); // 121 s: row 7 still running, past its 120 s claim
+      const beats = () => calls.filter((c) => /WHERE id = ANY\(\$1::bigint\[\]\) AND done_at IS NULL AND locked_until IS NOT NULL/.test(c.sql));
+      expect(beats()).toHaveLength(4);
+      expect(beats()[0]!.params).toEqual([[7, 8], 120]); // the waiting row 8 is held too
+      await vi.advanceTimersByTimeAsync(150_000); // row 7 done (dropped from the beat), row 8 running
+      expect(beats().at(-1)!.params[0]).toEqual([8]);
+      await vi.advanceTimersByTimeAsync(150_000);
+      expect(await drained).toEqual({ processed: 2, failed: 0, remaining: 0 });
+      const n = beats().length;
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS * 3);
+      expect(beats()).toHaveLength(n); // the interval is cleared when the batch ends
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("backoff grows 30 s × 4^(n−1)", () => {
     expect([1, 2, 3].map(backoffSeconds)).toEqual([30, 120, 480]);

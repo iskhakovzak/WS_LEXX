@@ -3,7 +3,7 @@
  * default, or lazily on the first read), the viewer's state (DailyChallengeState) and starting / resuming the game.
  *
  *   ranked window      Волна 1, item 1.8 — «Задача дня» is an evening task: the challenge of trading day D is ranked
- *                      from D's market close (16:00 NY) until the pick time of the next trading day (08:30 NY by
+ *                      from D's market close (16:00 NY, 13:00 on an early close) until the pick time of the next trading day (08:30 NY by
  *                      default, trainer.dailyPickTime), so the window runs over the weekend / a holiday. During the
  *                      session nothing ranked is open (traders trade), the closed challenge can be practised.
  *   current challenge  today from the close on a trading day; before it (and on weekends / holidays) the previous
@@ -20,7 +20,7 @@
 import { conflict, notFound } from "../http";
 import { logger } from "../logger";
 import { addDays, nyDate, nyMinutes } from "../tradingDate";
-import { isMarketClosed } from "../marketDays";
+import { isMarketClosed, sessionFor } from "../marketDays";
 import { setting } from "../settings/registry";
 import { pickMinutes } from "./schedule";
 import { deskAliases } from "../deskAliases";
@@ -34,7 +34,9 @@ import { withoutBlockedDays } from "./eligibility";
 import { blockedTickerDays } from "./eligibilityStore";
 import type { DailyChallengeState } from "./types";
 
+/** The regular close; an early-close day (13:00) opens its challenge at its own close (lib/marketDays sessionFor). */
 export const CLOSE_MIN = 16 * 60;
+const closeMinOf = async (date: string): Promise<number> => (await sessionFor(date)).closeMin;
 
 async function prevTradingDay(date: string): Promise<string> {
   let d = addDays(date, -1);
@@ -50,23 +52,24 @@ async function nextTradingDay(date: string): Promise<string> {
 
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 
-/** The challenge of the last trading day whose close has passed: today after 16:00 NY, else the previous trading day. */
+/** The challenge of the last trading day whose close has passed: today after its close (16:00 NY, 13:00 on an early close), else the previous trading day. */
 export async function currentChallengeDate(now = new Date()): Promise<string> {
   const today = nyDate(now);
-  if (!(await isMarketClosed(today)) && nyMinutes(now) >= CLOSE_MIN) return today;
+  if (!(await isMarketClosed(today)) && nyMinutes(now) >= (await closeMinOf(today))) return today;
   return prevTradingDay(today);
 }
 
 export type ChallengeWindow = NonNullable<DailyChallengeState["window"]>;
 
-/** The ranked window of the challenge `date` (NY dates + times): D 16:00 → next trading day at the pick time. */
+/** The ranked window of the challenge `date` (NY dates + times): D's close (16:00, 13:00 early) → next trading day at the pick time. */
 export async function challengeWindow(date: string, now = new Date()): Promise<ChallengeWindow> {
   const until = await nextTradingDay(date);
   const pick = pickMinutes();
+  const close = await closeMinOf(date);
   const today = nyDate(now), min = nyMinutes(now);
-  const started = today > date || (today === date && min >= CLOSE_MIN);
+  const started = today > date || (today === date && min >= close);
   const ended = today > until || (today === until && min >= pick);
-  return { from: { date, time: hhmm(CLOSE_MIN) }, until: { date: until, time: hhmm(pick) }, open: started && !ended };
+  return { from: { date, time: hhmm(close) }, until: { date: until, time: hhmm(pick) }, open: started && !ended };
 }
 
 /** New games may start: `now` is inside the challenge's ranked window. */

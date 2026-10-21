@@ -38,7 +38,9 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { isGuest, isStaffRole, viewerRole } from "../lib/auth";
-import { academySubject } from "../lib/academyAccess"; // reads of another person: can(team.read, { trader }) — 1.6
+import { academyMentorScope, academySubject, inAcademyScope, requireAcademyMentor } from "../lib/academyAccess"; // reads of another person: can(team.read, { trader }) — 1.6
+import { can } from "../lib/permissions";
+import { DEFAULT_STAGE, loadStageInfo } from "../lib/people/stage";
 import { notifyUser } from "../lib/notifyUtils";
 import { safeHttpUrl } from "../lib/safe-url";
 import { addDays, nyDate } from "../lib/tradingDate";
@@ -97,6 +99,36 @@ function needStaff(v: Viewer, res: Response): v is Viewer & { me: string } {
   if (!needMember(v, res)) return false;
   if (!v.staff) { sendError(res, new AppError("STAFF_ONLY")); return false; }
   return true;
+}
+
+/** The person a staff-written row is about (enrolment, 1:1, action item, goal). */
+const PERSON_OF = {
+  enrollment: `SELECT user_name AS p FROM academy_enrollments WHERE id = $1`,
+  meeting: `SELECT student AS p FROM academy_one_on_ones WHERE id = $1`,
+  action: `SELECT student AS p FROM academy_action_items WHERE id = $1`,
+  goal: `SELECT student AS p FROM academy_idp_goals WHERE id = $1`,
+} as const;
+
+/**
+ * Staff writes about one person also need the mentor capability on THAT person (lib/academyAccess, 1.6): a curator
+ * with the «assigned» scope reaches only their own people. Row routes: 404 when the row is missing.
+ */
+function needPerson(req: Request, res: Response, person: string): Promise<boolean> {
+  return requireAcademyMentor(req, res, person);
+}
+async function needRowPerson(req: Request, res: Response, kind: keyof typeof PERSON_OF, id: number, missing?: ErrorCode): Promise<boolean> {
+  const { rows } = await pool.query<{ p: string }>(PERSON_OF[kind], [id]);
+  if (!rows[0]) { sendError(res, notFound(missing)); return false; }
+  return needPerson(req, res, rows[0].p);
+}
+
+/**
+ * The ladder stage is admin-only (settings.manage, owner policy): lib/people/stage reads an active enrolment's stage
+ * when the person has no approved transfer, so a curator may not set or change it through an enrolment. A curator's
+ * new enrolment records the person's current stage.
+ */
+async function currentStage(user: string): Promise<Stage> {
+  return ((await loadStageInfo([user])).get(user)?.stage ?? DEFAULT_STAGE) as Stage;
 }
 
 /** 400 with an error code (text translated by the middleware), or VALIDATION with the zod issues in `details`. */
@@ -718,6 +750,12 @@ router.post("/academy/enrollments", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
   if (!(await userExists(b.userName))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, b.userName))) return;
+  if (!(await can(req, "settings.manage"))) {
+    const stage = await currentStage(b.userName);
+    if ((req.body as { stage?: unknown }).stage !== undefined && b.stage !== stage) throw new AppError("ADMIN_ONLY");
+    b.stage = stage;
+  }
   const c = await pool.query<{ name: string }>(`SELECT name FROM academy_cohorts WHERE id = $1 AND archived_at IS NULL`, [b.cohortId]);
   if (!c.rows[0]) throw notFound("COHORT_NOT_FOUND");
   try {
@@ -760,6 +798,10 @@ router.patch("/academy/enrollments/:id", asyncHandler(async (req, res) => {
   const p = enrollPatch.safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const { reason, ...patch } = p.data;
+  const cur = await pool.query<{ user_name: string; stage: string }>(`SELECT user_name, stage FROM academy_enrollments WHERE id = $1 AND archived_at IS NULL`, [id]);
+  if (!cur.rows[0]) throw notFound();
+  if (!(await needPerson(req, res, cur.rows[0].user_name))) return;
+  if (patch.stage !== undefined && patch.stage !== cur.rows[0].stage && !(await can(req, "settings.manage"))) throw new AppError("ADMIN_ONLY");
   const e = await changeEnrollment(id, patch, v.me, reason ?? "", langOf(req));
   if (!e) throw notFound();
   res.json(e);
@@ -768,6 +810,7 @@ router.patch("/academy/enrollments/:id", asyncHandler(async (req, res) => {
 router.post("/academy/enrollments/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "enrollment", id))) return;
   const { rows } = await pool.query<EnrollmentRow>(
     `UPDATE academy_enrollments e SET archived_at = NOW(), updated_at = NOW() WHERE e.id = $1 AND e.archived_at IS NULL RETURNING ${ENR_COLS}`, [id]);
   if (!rows[0]) throw notFound();
@@ -959,7 +1002,8 @@ router.post("/academy/attendance", asyncHandler(async (req, res) => {
   const enrolled = await pool.query<{ user_name: string }>(
     `SELECT user_name FROM academy_enrollments WHERE cohort_id = $1 AND archived_at IS NULL AND user_name = ANY($2::text[])`,
     [s.cohort_id, b.marks.map((m) => m.userName)]);
-  const ok = new Set(enrolled.rows.map((r) => r.user_name));
+  const scope = await academyMentorScope(req); // «assigned» curators mark only their own people; the rest is skipped
+  const ok = new Set(enrolled.rows.map((r) => r.user_name).filter((n) => inAcademyScope(scope, n)));
   const skipped = b.marks.filter((m) => !ok.has(m.userName)).map((m) => m.userName);
   let saved = 0;
   for (const m of b.marks) {
@@ -1103,6 +1147,7 @@ router.post("/academy/one-on-ones", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
   if (!(await userExists(b.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, b.student))) return;
   const mentor = b.mentor ?? v.me;
   if (mentor !== v.me && !(await userExists(mentor))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const { rows } = await pool.query<MeetRow>(
@@ -1120,6 +1165,7 @@ router.patch("/academy/one-on-ones/:id", asyncHandler(async (req, res) => {
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = meetingBody.omit({ student: true, actionItems: true }).partial().safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
+  if (!(await needRowPerson(req, res, "meeting", id, "MEETING_NOT_FOUND"))) return;
   const b = p.data;
   const sets: string[] = [];
   const params: unknown[] = [id];
@@ -1141,6 +1187,7 @@ router.patch("/academy/one-on-ones/:id", asyncHandler(async (req, res) => {
 router.post("/academy/one-on-ones/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "meeting", id, "MEETING_NOT_FOUND"))) return;
   const { rows } = await pool.query<MeetRow>(`UPDATE academy_one_on_ones m SET archived_at = NOW(), updated_at = NOW() WHERE m.id = $1 AND m.archived_at IS NULL RETURNING ${MEET_COLS}`, [id]);
   if (!rows[0]) throw notFound("MEETING_NOT_FOUND");
   res.json(mapMeeting(rows[0], true));
@@ -1162,6 +1209,7 @@ router.post("/academy/action-items", asyncHandler(async (req, res) => {
   const p = actionInput.extend({ student: name, meetingId: z.number().int().positive().nullable().optional() }).safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   if (!(await userExists(p.data.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, p.data.student))) return;
   const row = await insertAction(p.data.student, p.data, p.data.meetingId ?? null, v.me);
   res.status(201).json(mapAction(row));
 }));
@@ -1177,6 +1225,7 @@ router.patch("/academy/action-items/:id", asyncHandler(async (req, res) => {
   const cur = await pool.query<ActionRow>(`SELECT ${ACT_COLS} FROM academy_action_items a WHERE a.id = $1 AND a.archived_at IS NULL`, [id]);
   const a = cur.rows[0];
   if (!a || (!v.staff && a.student !== v.me)) throw notFound("ACTION_NOT_FOUND");
+  if (v.staff && a.student !== v.me && !(await needPerson(req, res, a.student))) return;
   const b = p.data;
   // Студент может только отметить выполнение своей договорённости (open ⇄ done); правки — наставнику.
   if (!v.staff && (b.title !== undefined || b.dueOn !== undefined || b.owner !== undefined || b.status === "dropped")) {
@@ -1197,6 +1246,7 @@ router.patch("/academy/action-items/:id", asyncHandler(async (req, res) => {
 router.post("/academy/action-items/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "action", id, "ACTION_NOT_FOUND"))) return;
   const { rows } = await pool.query<ActionRow>(`UPDATE academy_action_items a SET archived_at = NOW(), updated_at = NOW() WHERE a.id = $1 AND a.archived_at IS NULL RETURNING ${ACT_COLS}`, [id]);
   if (!rows[0]) throw notFound("ACTION_NOT_FOUND");
   res.json(mapAction(rows[0]));
@@ -1235,6 +1285,7 @@ router.post("/academy/idp", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
   if (!(await userExists(b.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
+  if (!(await needPerson(req, res, b.student))) return;
   const def = METRICS[b.metric];
   const start = b.startDate ?? nyDate();
   if (b.dueOn && b.dueOn < start) return badRequest(res, "DATE_RANGE_INVALID");
@@ -1264,6 +1315,7 @@ router.patch("/academy/idp/:id", asyncHandler(async (req, res) => {
   const cur = await pool.query<GoalRow>(`SELECT ${GOAL_COLS} FROM academy_idp_goals g WHERE g.id = $1 AND g.archived_at IS NULL`, [id]);
   const g = cur.rows[0];
   if (!g || (!v.staff && g.student !== v.me)) throw notFound("GOAL_NOT_FOUND");
+  if (v.staff && g.student !== v.me && !(await needPerson(req, res, g.student))) return;
   const b = p.data;
   if (!v.staff) {
     // Студент может отмечать прогресс только своих ручных целей.
@@ -1296,6 +1348,7 @@ router.patch("/academy/idp/:id", asyncHandler(async (req, res) => {
 router.post("/academy/idp/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
+  if (!(await needRowPerson(req, res, "goal", id, "GOAL_NOT_FOUND"))) return;
   const { rows } = await pool.query<{ id: number }>(`UPDATE academy_idp_goals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND archived_at IS NULL RETURNING id`, [id]);
   if (!rows[0]) throw notFound("GOAL_NOT_FOUND");
   res.json({ id, archived: true });

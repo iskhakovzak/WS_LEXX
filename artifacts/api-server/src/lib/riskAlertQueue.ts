@@ -96,7 +96,11 @@ export async function scanLiveAlerts(date: string, now: Date): Promise<{ checked
   if (!names.length) return { checked: 0, queued: 0 };
   const [limitsMap, days, resets] = await Promise.all([loadLimits(null), loadDaily(null, date, names), loadDdResets(null, names)]);
   const daysBy = new Map<string, DayRow[]>();
-  for (const d of days) daysBy.set(d.trader, [...(daysBy.get(d.trader) ?? []), d]);
+  for (const d of days) {
+    const list = daysBy.get(d.trader);
+    if (list) list.push(d);
+    else daysBy.set(d.trader, [d]);
+  }
   let checked = 0;
   let queued = 0;
   for (const name of names) {

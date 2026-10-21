@@ -53,6 +53,7 @@ process.env.JWT_SECRET ??= "vitest-only-secret";
 const { default: router } = await import("../stats-aggregate");
 const { errorMiddleware } = await import("../../lib/http");
 const { bucketIndex: F } = await import("../../lib/stats/aggregate");
+const { invalidateTradesPageCache } = await import("../../lib/tradesPageCache");
 
 let server: http.Server;
 let base = "";
@@ -71,7 +72,8 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
-beforeEach(() => { who = TRADER; overrides = []; calls.length = 0; });
+// The route caches the aggregate 60 s per key (lib/tradesPageCache); each test sets its own rows.
+beforeEach(() => { who = TRADER; overrides = []; calls.length = 0; invalidateTradesPageCache(); });
 
 async function get(path: string): Promise<{ status: number; json: any }> {
   const r = await fetch(base + path);
@@ -138,5 +140,17 @@ describe("GET /stats/aggregate", () => {
     expect(r.json.groups).toBeUndefined();
     expect(r.json.days).toBeDefined();
     expect(calls[0]![2]).toBe("2026-09-30");
+  });
+});
+
+describe("GET /stats/aggregate cache", () => {
+  it("the same key is computed once until a trade write clears the cache", async () => {
+    who = ADMIN;
+    expect((await get("/api/stats/aggregate?from=2026-07-01&to=2026-09-30")).status).toBe(200);
+    expect((await get("/api/stats/aggregate?from=2026-07-01&to=2026-09-30")).status).toBe(200);
+    expect(calls).toHaveLength(1);
+    invalidateTradesPageCache();
+    expect((await get("/api/stats/aggregate?from=2026-07-01&to=2026-09-30")).status).toBe(200);
+    expect(calls).toHaveLength(2);
   });
 });

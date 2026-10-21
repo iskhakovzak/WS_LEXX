@@ -23,15 +23,18 @@ const st = vi.hoisted(() => ({
   inserts: [] as Record<string, unknown>[],
   sql: [] as string[],
   limits: [] as number[],
+  selects: [] as (Record<string, unknown> | undefined)[],
 }));
 
 vi.mock("@workspace/db", async () => {
   const schema = await import("@workspace/db/schema");
   const rows = () => (st.trade ? [{ ...st.trade }] : []);
-  const select = () => {
+  const select = (fields?: Record<string, unknown>) => {
+    st.selects.push(fields);
     const c: Record<string, unknown> = {};
     for (const k of ["from", "where", "orderBy"]) c[k] = () => c;
     c.limit = (n: number) => { st.limits.push(n); return c; };
+    c.as = () => new Proxy({}, { get: (_t, k) => String(k) }); // a subquery (lib/tradesListQuery lite)
     c.then = (ok: (v: unknown) => unknown, ko: (e: unknown) => unknown) => Promise.resolve(rows()).then(ok, ko);
     return c;
   };
@@ -80,6 +83,7 @@ vi.mock("../../lib/permissions", async (orig) => {
     resolveActor: vi.fn(async () => actor()),
     getEffectiveMatrix: vi.fn(async () => matrix),
     can: vi.fn(can),
+    readScope: vi.fn(async (_req: unknown, cap: Parameters<typeof actual.can>[1]) => actual.readableTraders(matrix, actor(), cap)),
     requireCap: vi.fn(async (req: unknown, res: express.Response, cap: Parameters<typeof actual.can>[1], target?: { trader?: string | null } | null) => {
       if (await can(req, cap, target)) return true;
       sendError(res, actual.forbiddenError(cap));
@@ -132,6 +136,7 @@ beforeEach(() => {
   st.inserts.length = 0;
   st.sql.length = 0;
   st.limits.length = 0;
+  st.selects.length = 0;
 });
 
 async function call(method: string, path: string, body?: unknown): Promise<{ status: number; json: any }> {
@@ -214,6 +219,42 @@ describe("DELETE /trades/:id and POST /trades/bulk", () => {
   });
 });
 
+describe("restore of a broker trade (same rule as delete)", () => {
+  it("POST /trades/:id/restore: trader 403, curator 403, admin 200", async () => {
+    st.trade = brokerTrade({ deletedAt: new Date("2026-10-17T12:00:00Z") });
+    expect((await asRole(TRADER, "POST", "/api/trades/236675/restore")).json.code).toBe("BROKER_TRADE_READ_ONLY");
+    expect((await asRole(CURATOR, "POST", "/api/trades/236675/restore")).status).toBe(403);
+    expect(st.updates).toHaveLength(0);
+    expect((await asRole(ADMIN, "POST", "/api/trades/236675/restore")).status).toBe(200);
+    expect(st.updates[0]).toMatchObject({ deletedAt: null });
+  });
+
+  it("bulk restore with a broker trade: trader 403, curator 403, admin 200", async () => {
+    st.trade = brokerTrade({ deletedAt: new Date("2026-10-17T12:00:00Z") });
+    const body = { action: "restore", ids: [236675] };
+    expect((await asRole(TRADER, "POST", "/api/trades/bulk", body)).json.code).toBe("BROKER_TRADE_READ_ONLY");
+    expect((await asRole(CURATOR, "POST", "/api/trades/bulk", body)).status).toBe(403);
+    expect(st.updates).toHaveLength(0);
+    expect((await asRole(ADMIN, "POST", "/api/trades/bulk", body)).json.updated).toEqual([236675]);
+  });
+
+  it("a manual trade: the owner may still restore it", async () => {
+    st.trade = { ...manualTrade(), deletedAt: new Date("2026-10-17T12:00:00Z") };
+    expect((await asRole(TRADER, "POST", "/api/trades/236675/restore")).status).toBe(200);
+    expect((await asRole(TRADER, "POST", "/api/trades/bulk", { action: "restore", ids: [236675] })).json.updated).toEqual([236675]);
+  });
+});
+
+describe("rMultiple of a broker trade is broker-owned", () => {
+  it("changing the stored R: trader 403 naming the field, admin 200; an unchanged R is not a change", async () => {
+    st.trade = brokerTrade({ rMultiple: "1.5" });
+    const t = await asRole(TRADER, "PATCH", "/api/trades/236675", { rMultiple: 9 });
+    expect([t.status, t.json.code, t.json.details?.fields]).toEqual([403, "BROKER_TRADE_READ_ONLY", ["rMultiple"]]);
+    expect((await asRole(TRADER, "PATCH", "/api/trades/236675", { rMultiple: 1.5, notes: "x" })).status).toBe(200);
+    expect((await asRole(ADMIN, "PATCH", "/api/trades/236675", { rMultiple: 9 })).status).toBe(200);
+  });
+});
+
 describe("POST /trades marked as broker-sourced", () => {
   const body = { ticker: "AAPL", date: "2026-10-16", result: "win", pnl: 4998, conviction: 3, confidenceGrade: "A", source: "propreports", externalId: "x" };
   it("trader 403, curator 403, admin passes (the marker is stripped: booked as a manual trade)", async () => {
@@ -258,11 +299,30 @@ describe("GET /trades never returns the whole book (Волна 2 п. 2.15)", () 
     expect(st.limits).toEqual([500]);
   });
 
-  it("a date window of up to 400 days has no row cap; a wider one → 400 RANGE_TOO_LONG", async () => {
+  it("a date window of up to 400 days is still capped at 5000 rows; a wider one → 400 RANGE_TOO_LONG", async () => {
     expect((await asRole(TRADER, "GET", "/api/trades?from=2026-01-01&to=2026-10-20")).status).toBe(200);
-    expect(st.limits).toEqual([]);
+    expect(st.limits).toEqual([5000]);
+    expect((await asRole(TRADER, "GET", "/api/trades?from=2026-01-01&limit=50")).status).toBe(200);
+    expect(st.limits).toEqual([5000, 50]);
     const wide = await asRole(ADMIN, "GET", "/api/trades?from=2024-01-01&to=2026-10-20");
     expect([wide.status, wide.json.code, wide.json.details]).toEqual([400, "RANGE_TOO_LONG", undefined]);
+  });
+
+  it("desk-wide lists default to the slim snapshot; one trader's book (or lite=0) reads the full one", async () => {
+    const { tradesTable } = await import("@workspace/db/schema");
+    const list = () => st.selects.filter((f) => f && "contextSnapshot" in f).at(-1);
+    const full = () => list()?.contextSnapshot === tradesTable.contextSnapshot;
+    await asRole(ADMIN, "GET", "/api/trades?from=2026-10-01");
+    expect(full()).toBe(false);
+    expect(list()).toHaveProperty("ticker");
+    await asRole(ADMIN, "GET", "/api/trades?from=2026-10-01&lite=0");
+    expect(full()).toBe(true);
+    await asRole(ADMIN, "GET", "/api/trades?from=2026-10-01&trader=Trader%20T.");
+    expect(full()).toBe(true);
+    await asRole(TRADER, "GET", "/api/trades?from=2026-10-01");
+    expect(full()).toBe(true);
+    await asRole(TRADER, "GET", "/api/trades?from=2026-10-01&lite=1");
+    expect(full()).toBe(false);
   });
 
   it("an explicit limit wins (clamped to 5000)", async () => {

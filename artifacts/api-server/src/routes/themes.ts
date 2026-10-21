@@ -27,6 +27,7 @@ import { MAX_THEME_TICKERS, THEME_METRICS, THEME_TICKER_RE } from "../lib/themes
 import { getBoard, refreshScreener } from "../lib/themes/board";
 import { MAX_HIDDEN, MAX_PERSONAL_THEMES, normalizeView, parseScreenerInput, type ScreenerSpec } from "../lib/themes/personal";
 import { boardById } from "../lib/themes/boardsStore";
+import { screenerWriteLimiter } from "../lib/rateLimits";
 import { countPersonal, insertPersonal, personalById, readView, updatePersonal, writeView, type PersonalRecord } from "../lib/themes/personalStore";
 import { insertTheme, listThemes, themeById, updateTheme, type ThemePatch } from "../lib/themes/store";
 
@@ -122,7 +123,7 @@ async function resolveSoon(r: PersonalRecord): Promise<PersonalRecord> {
   return r;
 }
 
-router.post("/themes/mine", route({ body: MineFields }, async ({ req, body }) => {
+router.post("/themes/mine", screenerWriteLimiter, route({ body: MineFields }, async ({ req, body }) => {
   const me = member(req);
   const board = await boardById(me.id, body.boardId);
   if (!board || !board.active || board.kind !== "themes") throw notFound("BOARD_NOT_FOUND");
@@ -152,7 +153,7 @@ router.post("/themes/mine/:id/restore", route({ params: z.object({ id: idParam }
   return mineOut(updated);
 }));
 
-router.put("/themes/mine/:id", route({ params: z.object({ id: idParam }), body: MineUpdate }, async ({ req, params, body }) => {
+router.put("/themes/mine/:id", screenerWriteLimiter, route({ params: z.object({ id: idParam }), body: MineUpdate }, async ({ req, params, body }) => {
   const me = member(req);
   const current = await personalById(me.id, params.id);
   if (!current) throw notFound("THEME_NOT_FOUND");

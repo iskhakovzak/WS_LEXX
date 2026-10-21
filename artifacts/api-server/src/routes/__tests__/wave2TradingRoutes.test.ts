@@ -24,6 +24,7 @@ const st = vi.hoisted(() => ({
   rules: [] as Record<string, unknown>[],
   trade: null as Record<string, unknown> | null,
   sync: [] as unknown[][],
+  bulk: [] as unknown[][],
   seed: [] as unknown[],
 }));
 
@@ -91,6 +92,7 @@ vi.mock("../../lib/rulesTemplates", async (orig) => ({
 vi.mock("../../lib/tradingErrors", async (orig) => ({
   ...(await orig<typeof import("../../lib/tradingErrors")>()),
   syncMarkerErrors: vi.fn(async (...a: unknown[]) => { st.sync.push(a); }),
+  syncTagMarkersBulk: vi.fn(async (...a: unknown[]) => { st.bulk.push(a); }),
 }));
 vi.mock("../../lib/playbook/examplesSeed", () => ({
   seedPlaybookExamples: vi.fn(async (opts: unknown) => { st.seed.push(opts); return { perSetup: 3, dryRun: false, added: 0, setups: [] }; }),
@@ -137,6 +139,7 @@ beforeEach(() => {
   st.rules = [];
   st.trade = brokerTrade();
   st.sync.length = 0;
+  st.bulk.length = 0;
   st.seed.length = 0;
 });
 
@@ -199,8 +202,15 @@ describe("2.8 key M writes the one errors store", () => {
     expect(st.sync).toHaveLength(0);
     const r = await call("POST", "/api/trades/bulk", { action: "addTags", ids: [236675], tags: ["Большой размер"] });
     expect(r.status).toBe(200);
-    expect(st.sync).toHaveLength(1);
-    expect(st.sync[0]!.slice(1)).toEqual([["FOMO"], ["FOMO", "Большой размер"]]);
+    expect(st.sync).toHaveLength(0); // bulk: one set-based sync for every changed trade
+    expect(st.bulk).toEqual([[[{ trader: TRADER.name, tradeId: 236675, before: ["FOMO"], after: ["FOMO", "Большой размер"] }], TRADER.name]]);
+    expect(st.sql.filter((x) => /UPDATE trades t SET tags/.test(x.sql)).map((x) => x.params)).toEqual([[[236675], ["FOMO, Большой размер"]]]);
+    // nothing changes → no write, no sync
+    st.sql.length = 0;
+    st.bulk.length = 0;
+    await call("POST", "/api/trades/bulk", { action: "addTags", ids: [236675], tags: ["fomo"] });
+    expect(st.bulk).toHaveLength(0);
+    expect(st.sql.some((x) => /UPDATE trades t SET tags/.test(x.sql))).toBe(false);
   });
 });
 

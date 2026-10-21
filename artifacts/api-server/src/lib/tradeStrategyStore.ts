@@ -5,7 +5,9 @@
  *                                    desk tag «IMX», a trade that is no longer IMX loses it. Called by the PropReports
  *                                    sync inside its transaction (lib/propreports/sync writeExecutions).
  *   backfillTradeStrategies(q)       every row whose signature is NULL (new, edited — the 0237 triggers) or stale (rule
- *                                    version / IMX window changed) — job trades.strategy-backfill.
+ *                                    version / IMX window changed, re-read from the settings table first) — job
+ *                                    trades.strategy-backfill. Writes only rows whose values changed and still hold what
+ *                                    was read (a concurrent tag edit wins).
  *
  * Inputs per trade: ticker, session, date, exit_date, horizon, qty, entry, the fills (trade_executions.executed_at; the
  * first entry / last exit by kind) and, without fills, the broker's openedAt / closedAt (ET wall clock) or a timed `date`.
@@ -15,6 +17,8 @@ import { currentImxWindow, withImxTag } from "./imx";
 import { deriveTradeStrategy, entrySecOf, isImxStrategy, type ImxWindow, type StrategyInput, type TradeStrategy } from "./tradeStrategy";
 
 type Queryable = { query: (typeof pool)["query"] };
+
+const reloadSettings = async (): Promise<void> => (await import("./settings/store")).warmSettings();
 
 /** Bump when the rules of lib/tradeStrategy change: the backfill then re-derives every trade. */
 export const STRATEGY_VERSION = 1;
@@ -94,20 +98,47 @@ export async function refreshTradeStrategies(ids: readonly number[], q: Queryabl
   const ups = tradesRes.rows.map((r) => ({ row: r, up: deriveRow(r, byTrade.get(Number(r.id)) ?? [], win) }));
   const changed = ups.filter(({ row, up }) => row.strategy !== up.strategy || (row.entry_sec ?? null) !== up.entrySec || (row.tags ?? null) !== up.tags);
   const sig = strategySig(win);
-  // Every row gets the signature (also the unchanged ones), so the backfill does not pick them again.
-  await q.query(
-    `UPDATE trades t SET strategy = u.strategy, entry_sec = u.entry_sec, tags = u.tags, strategy_sig = $5
-       FROM unnest($1::int[], $2::text[], $3::int[], $4::text[]) AS u(id, strategy, entry_sec, tags)
-      WHERE t.id = u.id`,
-    [ups.map((x) => x.up.id), ups.map((x) => x.up.strategy), ups.map((x) => x.up.entrySec), ups.map((x) => x.up.tags), sig],
-  );
+  // Only the rows whose derived values changed are rewritten, and only while they still hold what was read: a trader
+  // editing tags (or anything written here) meanwhile wins — the row is left for the next run instead of overwritten.
+  if (changed.length) {
+    await q.query(
+      `UPDATE trades t SET strategy = u.strategy, entry_sec = u.entry_sec, tags = u.tags, strategy_sig = $8
+         FROM unnest($1::int[], $2::text[], $3::int[], $4::text[], $5::text[], $6::int[], $7::text[])
+              AS u(id, strategy, entry_sec, tags, old_strategy, old_entry_sec, old_tags)
+        WHERE t.id = u.id AND t.tags IS NOT DISTINCT FROM u.old_tags
+          AND t.strategy IS NOT DISTINCT FROM u.old_strategy AND t.entry_sec IS NOT DISTINCT FROM u.old_entry_sec`,
+      [
+        changed.map((x) => x.up.id), changed.map((x) => x.up.strategy), changed.map((x) => x.up.entrySec), changed.map((x) => x.up.tags),
+        changed.map((x) => x.row.strategy ?? null), changed.map((x) => x.row.entry_sec ?? null), changed.map((x) => x.row.tags ?? null), sig,
+      ],
+    );
+  }
+  // The unchanged rows only get the signature (so the backfill does not pick them again) — same guard.
+  const changedSet = new Set(changed);
+  const same = ups.filter((x) => !changedSet.has(x));
+  if (same.length) {
+    await q.query(
+      `UPDATE trades t SET strategy_sig = $5
+         FROM unnest($1::int[], $2::text[], $3::int[], $4::text[]) AS u(id, strategy, entry_sec, tags)
+        WHERE t.id = u.id AND t.strategy_sig IS DISTINCT FROM $5 AND t.tags IS NOT DISTINCT FROM u.tags
+          AND t.strategy IS NOT DISTINCT FROM u.strategy AND t.entry_sec IS NOT DISTINCT FROM u.entry_sec`,
+      [same.map((x) => x.up.id), same.map((x) => x.up.strategy), same.map((x) => x.up.entrySec), same.map((x) => x.up.tags), sig],
+    );
+  }
   return { trades: ups.length, changed: changed.length };
 }
 
-export async function backfillTradeStrategies(q: Queryable = pool, chunk = 1000): Promise<StrategyRefreshResult & { sig: string }> {
+/** Re-reads the desk settings first: this process's cache may predate an IMX window saved by another instance. */
+export async function backfillTradeStrategies(q: Queryable = pool, chunk = 1000, reload: () => Promise<void> = reloadSettings): Promise<StrategyRefreshResult & { sig: string }> {
+  await reload();
   const win = currentImxWindow();
   const sig = strategySig(win);
-  const { rows } = await q.query<{ id: number }>(`SELECT id FROM trades WHERE strategy_sig IS DISTINCT FROM $1 ORDER BY id`, [sig]);
+  // = `strategy_sig IS DISTINCT FROM $1` (sig is never NULL), spelled so trades_strategy_sig_idx (0238) answers it with
+  // a BitmapOr instead of a full scan every 5 minutes.
+  const { rows } = await q.query<{ id: number }>(
+    `SELECT id FROM trades WHERE strategy_sig IS NULL OR strategy_sig < $1 OR strategy_sig > $1 ORDER BY id`,
+    [sig],
+  );
   const ids = rows.map((r) => Number(r.id));
   const total = { trades: 0, changed: 0, sig };
   for (let i = 0; i < ids.length; i += chunk) {

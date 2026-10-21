@@ -11,8 +11,9 @@
  *                early-close day (lib/marketDays, 13:00) «от открытия» ends 12:55 and «итоги дня» runs 13:05–16:55
  *
  *   retry        a scheduled «open» / «close» run that ends `retryable` (stale / another session's themes, nothing to
- *                say yet, Telegram failed) is run again 5 min later, then every 5 min, until the cutoff (11:00 /
- *                19:00 NY; on an early close 11:00 / 16:00): planRetry keeps the next retry minute per post (in memory, today only) and the cron
+ *                say yet, Telegram failed) is run again 5 min later, then every 5 min, until the cutoff («open» 11:00 NY;
+ *                «close» 3 h after its clamped send time, within its window — 19:15 by default, 16:55 on an early
+ *                close): planRetry keeps the next retry minute per post (in memory, today only) and the cron
  *                getter answers it instead of the post's time while it is pending. The dedup key is still written
  *                only by a delivered post (./publish.ts), so a retry after a success ends as "dup".
  *
@@ -83,16 +84,21 @@ export function postSendMinutes(post: NewsPost, closeMin: number = REGULAR_CLOSE
   return Math.min(Math.max(m, lo), hi);
 }
 
-/** Retry spacing and the last NY minute a retry may run (inclusive) on a regular day; premarket is not retried. */
+/** Retry spacing and the last NY minute an «open» retry may run (inclusive); premarket is not retried. */
 export const RETRY_EVERY_MIN = 5;
-export const RETRY_CUTOFF: Partial<Record<NewsPost, number>> = { open: 11 * 60, close: 19 * 60 };
+export const RETRY_CUTOFF: Partial<Record<NewsPost, number>> = { open: 11 * 60 };
+/** The close post is retried for this long after its own (clamped) send time. */
+export const CLOSE_RETRY_SPAN_MIN = 3 * 60;
 
-/** The retry cutoff on a day closing at `closeMin`: «от открытия» before the close, «итоги дня» 3 h after it. */
+/**
+ * The retry cutoff on a day closing at `closeMin`: the open post 11:00 (never after the close); the close post 3 h after
+ * its clamped send time, within its post-market window — so an early close (13:00, the post at 16:15) still retries.
+ */
 export function retryCutoff(post: NewsPost, closeMin: number = REGULAR_CLOSE_MIN): number | null {
+  if (post === "close") return Math.min(postSendMinutes("close", closeMin) + CLOSE_RETRY_SPAN_MIN, postWindow("close", closeMin)[1]);
   const base = RETRY_CUTOFF[post];
   if (base == null) return null;
-  if (post === "open") return Math.min(base, closeMin - 5);
-  return Math.min(base, closeMin + 3 * 60);
+  return Math.min(base, closeMin - 5);
 }
 
 /**

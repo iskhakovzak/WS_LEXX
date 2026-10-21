@@ -9,6 +9,7 @@ import { addDays, nyDate } from "./tradingDate";
 import { isNotifiableViolationDay, preview, uniqueRecipients, violationDedupKey, violationNotice, type ViolationItem } from "./notifyEventsCore";
 import { planStaleViolations, STALE_PLAN_COLUMNS } from "./violationArchive";
 import { ruleStageOf, ruleStartFor, stageRuleApplies, traderStage } from "./rulesTemplates";
+import { inScanWindow, resolveRecentWindow, STREAK_KINDS, upsertViolationDrafts } from "./rulesScanWindow";
 
 /**
  * Discipline rules engine — DB layer.
@@ -89,8 +90,24 @@ export async function fetchRiskLimits(trader: string): Promise<RiskLimits> {
  * the same rows as filtering the full list by `date.slice(0, 10)` afterwards, without reading the whole history.
  */
 export async function fetchTrades(trader: string, range?: { from: string; to: string }): Promise<TradeForRule[]> {
-  const params: string[] = range ? [trader, range.from, range.to] : [trader];
-  const days = (a: string) => (range ? ` AND substring(${a}.date, 1, 10) >= $2 AND substring(${a}.date, 1, 10) <= $3` : "");
+  if (!range) return loadRuleTrades(() => "", [trader]);
+  return loadRuleTrades((a) => ` AND substring(${a}.date, 1, 10) >= $2 AND substring(${a}.date, 1, 10) <= $3`, [trader, range.from, range.to]);
+}
+
+/**
+ * The trades a recent scan needs (lib/rulesScanWindow): opened on / after `loadFrom` (null = the whole history) or
+ * closed on / after `closeFrom` — every trade a violation dated ≥ closeFrom can come from, plus the streak lead-in.
+ */
+export function fetchTradesForWindow(trader: string, loadFrom: string | null, closeFrom: string): Promise<TradeForRule[]> {
+  if (loadFrom === null) return loadRuleTrades(() => "", [trader]);
+  return loadRuleTrades(
+    (a) => ` AND (substring(${a}.date, 1, 10) >= $2 OR LEFT(${closeDateSql(a)}, 10) >= $3)`,
+    [trader, loadFrom, closeFrom],
+  );
+}
+
+/** `days(alias)` = the extra AND-filter on the trades of that alias (params from $2 on). */
+async function loadRuleTrades(days: (a: string) => string, params: string[]): Promise<TradeForRule[]> {
   const { rows } = await pool.query<any>(
     `SELECT t.id, t.trader, t.date, t.ticker, t.side, t.hold_time, t.context_snapshot,
             ${closeDateSql()} AS close_date,
@@ -237,42 +254,33 @@ async function upsertDrafts(
   trader: string,
   all: ReturnType<typeof evalRule>,
   ruleStart: string | null,
+  windowFrom: string | null = null,
 ): Promise<{ written: number; removed: number; fresh: FreshViolation[] }> {
-  let written = 0;
   const keys: string[] = [];
   const fresh: FreshViolation[] = [];
   const since = addDays(nyDate(), -1);
   // Before the rule existed: nothing is written; the keys still count as produced, so a row an older scan stored is
-  // neither deleted nor archived here.
-  const { live: drafts, history } = splitBySince(all, ruleStart);
+  // neither deleted nor archived here. Same for days before a recent scan's window (lib/rulesScanWindow).
+  const { live, history } = splitBySince(all, ruleStart);
   for (const d of history) keys.push(d.key);
-  for (const d of drafts) {
+  const drafts: typeof live = [];
+  for (const d of live) {
     keys.push(d.key);
-    try {
-      const { rows } = await pool.query<{ inserted: boolean }>(
-        `INSERT INTO rule_violations (trader, rule_id, trade_id, severity, message, details, dedup_key, day, cost_net)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (rule_id, dedup_key) DO UPDATE
-           SET trade_id = EXCLUDED.trade_id, severity = EXCLUDED.severity, message = EXCLUDED.message,
-               details = EXCLUDED.details, day = EXCLUDED.day, cost_net = EXCLUDED.cost_net,
-               archived_at = NULL, archived_reason = NULL
-         RETURNING (xmax = 0) AS inserted`,
-        [trader, rule.id, d.tradeId, d.severity, d.message, { ...d.details, msg: d.msg }, d.key, d.day, d.costNet],
-      );
-      written++;
-      if (rows[0]?.inserted && isNotifiableViolationDay(d.day, since)) {
-        fresh.push({ ruleId: rule.id, key: d.key, ruleName: rule.name, message: d.message, msg: d.msg, severity: d.severity });
-      }
-    } catch (e: any) {
-      logger.warn({ error: e.message, ruleId: rule.id }, "rule_violations upsert failed");
-    }
+    if (inScanWindow(d.day, windowFrom)) drafts.push(d);
+  }
+  const { written, inserted } = await upsertViolationDrafts(rule.id, trader, drafts);
+  const told = new Set<string>();
+  for (const d of drafts) {
+    if (!inserted.has(d.key) || told.has(d.key) || !isNotifiableViolationDay(d.day, since)) continue;
+    told.add(d.key);
+    fresh.push({ ruleId: rule.id, key: d.key, ruleName: rule.name, message: d.message, msg: d.msg, severity: d.severity });
   }
   // This trader's violations of the rule that no longer apply (and legacy rows without a key): delete the purely derived
-  // ones, archive (stale) the ones with a comment / acknowledgement / review.
+  // ones, archive (stale) the ones with a comment / acknowledgement / review. A recent scan judges only its window.
   const { rows: gone } = await pool.query<any>(
     `SELECT ${STALE_PLAN_COLUMNS} FROM rule_violations
-      WHERE rule_id = $1 AND trader = $2 AND (dedup_key IS NULL OR NOT (dedup_key = ANY($3::text[])))`,
-    [rule.id, trader, keys],
+      WHERE rule_id = $1 AND trader = $2 AND (dedup_key IS NULL OR NOT (dedup_key = ANY($3::text[])))${windowFrom ? " AND day >= $4" : ""}`,
+    windowFrom ? [rule.id, trader, keys, windowFrom] : [rule.id, trader, keys],
   );
   const removed = await applyStalePlan(gone);
   return { written, removed, fresh };
@@ -342,10 +350,20 @@ function notifyNewViolations(trader: string, fresh: readonly FreshViolation[]): 
   );
 }
 
-export async function scanRulesForTrader(trader: string): Promise<{ violationsWritten: number; violationsRemoved: number }> {
+/**
+ * Re-scan a trader's enabled rules and persist the violations. Default: the whole history. `recent: true` (a broker sync
+ * of the last days): only violations dated in the recent window are judged, from the trades that window needs
+ * (lib/rulesScanWindow) — the same rows as a full scan for those days, without reading and re-upserting the whole book.
+ */
+export async function scanRulesForTrader(trader: string, opts: { recent?: boolean } = {}): Promise<{ violationsWritten: number; violationsRemoved: number }> {
   const rules = (await fetchRulesFor(trader, { enabledOnly: true })).filter((r) => r.kind !== "self_check");
   if (rules.length === 0) return { violationsWritten: 0, violationsRemoved: 0 };
-  const [trades, limits, st] = await Promise.all([fetchTrades(trader), fetchRiskLimits(trader), traderStage(trader)]);
+  const win = opts.recent ? await resolveRecentWindow(trader, rules.some((r) => STREAK_KINDS.includes(r.kind))) : null;
+  const [trades, limits, st] = await Promise.all([
+    win ? fetchTradesForWindow(trader, win.loadFrom, win.from) : fetchTrades(trader),
+    fetchRiskLimits(trader),
+    traderStage(trader),
+  ]);
 
   let written = 0;
   let removed = 0;
@@ -353,7 +371,7 @@ export async function scanRulesForTrader(trader: string): Promise<{ violationsWr
   for (const r of rules) {
     const scoped: RuleRow = { ...r, trader };
     const drafts = trades.length ? evalRule(scoped, trades, limits) : [];
-    const res = await upsertDrafts(scoped, trader, drafts, ruleStartFor(ruleSince(r.createdAt), r.stage, st.since));
+    const res = await upsertDrafts(scoped, trader, drafts, ruleStartFor(ruleSince(r.createdAt), r.stage, st.since), win?.from ?? null);
     written += res.written;
     removed += res.removed;
     fresh.push(...res.fresh);

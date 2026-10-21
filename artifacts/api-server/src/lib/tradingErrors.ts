@@ -114,9 +114,13 @@ type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ rows: a
 export async function archiveErrorRows(q: Queryable, ids: readonly number[], actor: string | null): Promise<number> {
   if (!ids.length) return 0;
   const { rows } = await q.query(`SELECT * FROM trading_errors WHERE id = ANY($1::int[])`, [ids]);
-  for (const r of rows) {
-    await q.query(`INSERT INTO trading_errors_archive (original_id, trader, payload, archived_by) VALUES ($1, $2, $3, $4)`, [r.id, r.trader, r, actor]);
-  }
+  if (!rows.length) return 0;
+  // One statement for every row; the payload is the row as node-postgres serialises an object parameter (JSON.stringify).
+  await q.query(
+    `INSERT INTO trading_errors_archive (original_id, trader, payload, archived_by)
+     SELECT u.id, u.trader, u.payload, $4 FROM unnest($1::int[], $2::text[], $3::jsonb[]) WITH ORDINALITY AS u(id, trader, payload, ord) ORDER BY u.ord`,
+    [rows.map((r) => r.id), rows.map((r) => r.trader), rows.map((r) => JSON.stringify(r)), actor],
+  );
   const del = await q.query(`DELETE FROM trading_errors WHERE id = ANY($1::int[])`, [rows.map((r) => r.id)]);
   return del.rowCount ?? rows.length;
 }
@@ -203,4 +207,67 @@ export function syncMarkerErrors(
     () => undefined,
     (err) => logger.warn({ err, tradeId: args.tradeId }, "trading errors: sync from a marker failed"),
   );
+}
+
+export type TagMarkerChange = { trader: string; tradeId: number; before: readonly string[]; after: readonly string[] };
+
+/**
+ * POST /trades/bulk add / removeTags: the key-M sync of many trades in a constant number of statements — the same end
+ * state as `syncMarkerErrors(source "tag")` trade by trade (rows for the added codes unless the trade has one with that
+ * code, the removed codes archived, the journal review mirrored; ticker NULL as the bulk route always passed).
+ * Never throws: a failed sync is logged, the tag write stands.
+ */
+export async function syncTagMarkersBulk(changes: readonly TagMarkerChange[], actor: string | null): Promise<void> {
+  const diffs = changes
+    .map((c) => ({ ...c, ...diffCodes(codesOf(c.before), codesOf(c.after)) }))
+    .filter((d) => d.added.length || d.removed.length);
+  if (!diffs.length) return;
+  try {
+    const adds = diffs.flatMap((d) => d.added.map((code) => ({ d, code, v: vocabEntry(code) })));
+    if (adds.length) {
+      await pool.query(
+        `INSERT INTO trading_errors (trader, error_type, description, ticker, trade_id, severity, code, source)
+         SELECT u.trader, u.word, u.word, NULL, u.trade_id, u.severity, u.code, 'tag'
+           FROM unnest($1::text[], $2::text[], $3::int[], $4::text[], $5::text[]) WITH ORDINALITY AS u(trader, word, trade_id, severity, code, ord)
+          WHERE NOT EXISTS (SELECT 1 FROM trading_errors e WHERE e.trade_id = u.trade_id AND e.code = u.code)
+          ORDER BY u.ord`,
+        [adds.map((a) => a.d.trader), adds.map((a) => a.v.canonical), adds.map((a) => a.d.tradeId), adds.map((a) => a.v.severity), adds.map((a) => a.code)],
+      );
+    }
+    const removes = diffs.flatMap((d) => d.removed.map((code) => ({ tradeId: d.tradeId, code })));
+    if (removes.length) {
+      const { rows } = await pool.query(
+        `SELECT e.id FROM trading_errors e JOIN unnest($1::int[], $2::text[]) AS u(trade_id, code) ON e.trade_id = u.trade_id AND e.code = u.code`,
+        [removes.map((r) => r.tradeId), removes.map((r) => r.code)],
+      );
+      await archiveErrorRows(pool, rows.map((r) => Number(r.id)), actor);
+    }
+  } catch (err) {
+    logger.warn({ err, trades: diffs.map((d) => d.tradeId) }, "trading errors: bulk sync from tags failed");
+    return;
+  }
+  // The other marker: the journal review of each trade that has one (mirrorTradeMistake(…, "journal") per code).
+  try {
+    const { rows } = await pool.query(`SELECT trade_id, mistakes FROM eod_trade_reviews WHERE trade_id = ANY($1::int[])`, [diffs.map((d) => d.tradeId)]);
+    const byTrade = new Map(diffs.map((d) => [d.tradeId, d]));
+    const ups: { tradeId: number; next: string[] }[] = [];
+    for (const r of rows) {
+      const d = byTrade.get(Number(r.trade_id));
+      if (!d) continue;
+      const cur: string[] = Array.isArray(r.mistakes) ? r.mistakes : [];
+      let next = cur;
+      for (const code of d.added) next = withCode(next, code, true);
+      for (const code of d.removed) next = withCode(next, code, false);
+      if (next.join("") !== cur.join("")) ups.push({ tradeId: d.tradeId, next });
+    }
+    if (ups.length) {
+      await pool.query(
+        `UPDATE eod_trade_reviews r SET mistakes = ARRAY(SELECT jsonb_array_elements_text(u.m)), updated_at = NOW()
+           FROM unnest($1::int[], $2::jsonb[]) AS u(trade_id, m) WHERE r.trade_id = u.trade_id`,
+        [ups.map((u) => u.tradeId), ups.map((u) => JSON.stringify(u.next))],
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "trading errors: bulk journal mirror failed");
+  }
 }

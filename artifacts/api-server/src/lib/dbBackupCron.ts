@@ -146,7 +146,8 @@ export async function runDbBackup(): Promise<BackupMeta> {
   const file = objectStorageClient.bucket(bucketId()).file(objectName);
   logger.info({ label }, "dbBackup: starting pg_dump (custom format, streamed)");
 
-  const child = spawn("pg_dump", dumpArgs(), { stdio: ["ignore", "pipe", "pipe"] });
+  const dump = dumpInvocation(config.databaseUrl);
+  const child = spawn("pg_dump", dump.args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...dump.env } });
   let stderr = "";
   child.stderr.on("data", (d: Buffer) => { stderr = (stderr + d.toString()).slice(-4000); });
   const exited = new Promise<number>((resolve, reject) => {
@@ -178,7 +179,8 @@ async function runLocalBackup(dir: string): Promise<BackupMeta> {
   const label = nowLabel();
   const file = `${label}.dump`;
   logger.info({ label, dir }, "dbBackup: starting pg_dump to the local directory");
-  const child = spawn("pg_dump", dumpArgs(), { stdio: ["ignore", "pipe", "pipe"] });
+  const dump = dumpInvocation(config.databaseUrl);
+  const child = spawn("pg_dump", dump.args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...dump.env } });
   let stderr = "";
   child.stderr.on("data", (d: Buffer) => { stderr = (stderr + d.toString()).slice(-4000); });
   const exited = new Promise<number>((resolve, reject) => {
@@ -200,8 +202,26 @@ async function runLocalBackup(dir: string): Promise<BackupMeta> {
   return { name: label, objectName: file, file, format: "custom", createdAt: new Date().toISOString(), sizeKb };
 }
 
-function dumpArgs(): string[] {
-  return ["--format=custom", "--no-password", "--no-owner", "--no-privileges", "--exclude-table-data=public.*_cache", `--dbname=${config.databaseUrl}`];
+/**
+ * pg_dump arguments + extra environment for a DATABASE_URL. The password never goes on the command line (any local
+ * user can read another process's argv via ps / /proc): it is taken out of the URL and passed as PGPASSWORD.
+ * A URL that does not parse (a key=value conninfo) is passed as it is.
+ */
+export function dumpInvocation(databaseUrl: string): { args: string[]; env: Record<string, string> } {
+  const base = ["--format=custom", "--no-password", "--no-owner", "--no-privileges", "--exclude-table-data=public.*_cache"];
+  const env: Record<string, string> = {};
+  let dbname = databaseUrl;
+  try {
+    const u = new URL(databaseUrl);
+    if (u.password) {
+      env.PGPASSWORD = decodeURIComponent(u.password);
+      u.password = "";
+      dbname = u.toString();
+    }
+  } catch {
+    // not a URL: leave it to libpq
+  }
+  return { args: [...base, `--dbname=${dbname}`], env };
 }
 
 export async function listBackups(): Promise<BackupMeta[]> {

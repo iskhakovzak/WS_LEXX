@@ -82,6 +82,26 @@ describe.skipIf(!available)("trade strategy + facets on a scratch database", () 
     expect((await q(`SELECT strategy, tags FROM trades WHERE id = $1`, [ids.day])).rows[0]).toEqual({ strategy: "Day", tags: "FOMO, myTag" });
   });
 
+  it("a tag edit between the read and the write wins (guarded update); the next run derives from the edited tags", async () => {
+    const exitAt = (ts: string) => q(`UPDATE trade_executions SET executed_at = ($2::text || ' America/New_York')::timestamptz WHERE trade_id = $1 AND kind = 'exit'`, [ids.day, ts]);
+    await exitAt("2026-06-11 15:55:00"); // an IMX trade again: the refresh wants to add the IMX tag
+    const racing = {
+      query: async (sql: string, params?: unknown[]) => {
+        if (/UPDATE trades t SET strategy =/.test(sql)) await q(`UPDATE trades SET tags = 'edited' WHERE id = $1`, [ids.day]);
+        return db.pool.query(sql, params);
+      },
+    };
+    expect((await refreshTradeStrategies([ids.day!], racing as never)).changed).toBe(1);
+    expect((await q(`SELECT strategy, tags, strategy_sig FROM trades WHERE id = $1`, [ids.day])).rows[0]).toEqual({ strategy: "Day", tags: "edited", strategy_sig: null });
+    expect((await backfillTradeStrategies()).trades).toBe(1);
+    expect((await q(`SELECT strategy, tags FROM trades WHERE id = $1`, [ids.day])).rows[0]).toEqual({ strategy: "MOC", tags: "edited, IMX" });
+    // back to the fixture (the facet tests below count it as a Day trade tagged «FOMO, myTag»)
+    await exitAt("2026-06-11 11:00:00");
+    await q(`UPDATE trades SET tags = 'FOMO, myTag' WHERE id = $1`, [ids.day]);
+    await refreshTradeStrategies([ids.day!]);
+    expect((await q(`SELECT strategy, tags FROM trades WHERE id = $1`, [ids.day])).rows[0]).toEqual({ strategy: "Day", tags: "FOMO, myTag" });
+  });
+
   const facets = async (scope: string | null, raw: Record<string, string> = {}) => {
     const f = parseFacetQuery(raw, DESK_TAGS);
     const { sql, params } = buildFacetsQuery({ scope, facets: f }, false);

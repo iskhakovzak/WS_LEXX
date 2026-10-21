@@ -87,11 +87,14 @@ describe("users of the session", () => {
     expect(schedule.postWindow("close")).toEqual(schedule.POST_WINDOW.close);
     expect(schedule.postWindow("open")).toEqual(schedule.POST_WINDOW.open);
     expect(schedule.retryCutoff("open", EARLY_CLOSE_MIN)).toBe(11 * 60);
-    expect(schedule.retryCutoff("close", EARLY_CLOSE_MIN)).toBe(16 * 60);
-    expect(schedule.retryCutoff("close")).toBe(19 * 60);
+    // the close post: 3 h after its clamped send time (default 16:15), within its window (16:55 on an early close)
+    expect(schedule.retryCutoff("close", EARLY_CLOSE_MIN)).toBe(16 * 60 + 55);
+    expect(schedule.retryCutoff("close")).toBe(19 * 60 + 15);
     expect(schedule.retryCutoff("premarket")).toBeNull();
-    expect(schedule.planRetry("close", true, nyAt("2026-11-27", 15, 55), nyAt("2026-11-27", 15, 56), EARLY_CLOSE_MIN)).toBe("16:00");
-    expect(schedule.planRetry("close", true, nyAt("2026-11-27", 16, 0), nyAt("2026-11-27", 16, 1), EARLY_CLOSE_MIN)).toBeNull();
+    // the early-close post at 16:15 is retried (the old 16:00 cutoff came before its own send time)
+    expect(schedule.planRetry("close", true, nyAt("2026-11-27", 16, 15), nyAt("2026-11-27", 16, 16), EARLY_CLOSE_MIN)).toBe("16:20");
+    expect(schedule.planRetry("close", true, nyAt("2026-11-27", 16, 50), nyAt("2026-11-27", 16, 51), EARLY_CLOSE_MIN)).toBe("16:55");
+    expect(schedule.planRetry("close", true, nyAt("2026-11-27", 16, 55), nyAt("2026-11-27", 16, 56), EARLY_CLOSE_MIN)).toBeNull();
   });
 
   it("WS_NEWS cron getter: today's close from the cached session (regular until it is read)", async () => {

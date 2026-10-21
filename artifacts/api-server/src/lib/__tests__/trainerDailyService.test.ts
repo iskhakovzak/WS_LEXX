@@ -12,9 +12,16 @@ let challenges = new Map<string, ChallengeRow>();
 let games: { userId: number; id: number; status: string; name: string; r: number; trades: number }[] = [];
 const saved: string[] = [];
 
-vi.mock("../marketDays", () => ({
-  isMarketClosed: vi.fn(async (d: string) => { const wd = new Date(`${d}T00:00:00Z`).getUTCDay(); return wd === 0 || wd === 6; }),
-}));
+/** 2026-11-27 (the day after Thanksgiving) closes early, 13:00 NY. */
+const EARLY_DAY = "2026-11-27";
+vi.mock("../marketDays", async () => {
+  const { daySession } = await import("../tradingDate");
+  const weekend = (d: string) => { const wd = new Date(`${d}T00:00:00Z`).getUTCDay(); return wd === 0 || wd === 6; };
+  return {
+    isMarketClosed: vi.fn(async (d: string) => weekend(d)),
+    sessionFor: vi.fn(async (d: string) => daySession(d, { closed: weekend(d), earlyClose: d === "2026-11-27" })),
+  };
+});
 vi.mock("../trainer/dailyStore", () => ({
   challengeOf: vi.fn(async (d: string) => challenges.get(d) ?? null),
   savePick: vi.fn(async (p: ChallengeRow) => { saved.push(p.date); if (!challenges.has(p.date)) challenges.set(p.date, p); return challenges.get(p.date)!; }),
@@ -82,6 +89,16 @@ describe("ranked window: after the close → 08:30 NY of the next trading day (1
     expect(await isOpen("2026-10-15", at("2026-10-16", 2))).toBe(true); // Tashkent morning = NY night
     expect(await isOpen("2026-10-15", at("2026-10-16", 8, 29))).toBe(true);
     expect(await isOpen("2026-10-15", at("2026-10-16", 8, 30))).toBe(false);
+  });
+
+  it("an early close (13:00) opens the challenge at 13:00, not 16:00", async () => {
+    const { challengeWindow, currentChallengeDate } = await import("../trainer/daily");
+    const est = (hh: number, mm = 0) => new Date(`${EARLY_DAY}T${String(hh + 5).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00Z`); // EST in November
+    expect(await currentChallengeDate(est(13, 30))).toBe(EARLY_DAY);
+    expect(await currentChallengeDate(est(12, 59))).toBe("2026-11-26");
+    const w = await challengeWindow(EARLY_DAY, est(13, 30));
+    expect(w.from).toEqual({ date: EARLY_DAY, time: "13:00" });
+    expect(w.open).toBe(true);
   });
 
   it("the Friday challenge runs over the weekend until Monday 08:30", async () => {

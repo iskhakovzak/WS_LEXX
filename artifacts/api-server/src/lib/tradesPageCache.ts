@@ -48,7 +48,18 @@ export const TRADES_SUMMARY_MAX_ENTRIES = 200;
 /** The process-wide /trades/page aggregates cache (routes/trades.ts reads it; every trade write clears it). */
 export const tradesPageAggregatesCache = new BoundedPromiseCache<unknown>(TRADES_SUMMARY_TTL_MS, TRADES_SUMMARY_MAX_ENTRIES);
 
+/** GET /stats/aggregate: the built aggregate per (traders, window, facets, page filters, lite) — same TTL / invalidation. */
+export const statsAggregateCache = new BoundedPromiseCache<unknown>(TRADES_SUMMARY_TTL_MS, TRADES_SUMMARY_MAX_ENTRIES);
+
+/** Other trade-derived caches (lib/riskData daily P&L…) cleared together with these; registered at module load. */
+const dependents: (() => void)[] = [];
+export function onTradesPageInvalidate(clear: () => void): void {
+  dependents.push(clear);
+}
+
 /** Called next to invalidateDashboardCache() by every trade write (routes/trades.ts, routes/setups-auto.ts). */
 export function invalidateTradesPageCache(): void {
   tradesPageAggregatesCache.clear();
+  statsAggregateCache.clear();
+  for (const clear of dependents) clear();
 }

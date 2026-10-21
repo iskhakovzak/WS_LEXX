@@ -573,7 +573,7 @@ router.patch("/events/:id", asyncHandler(async (req, res): Promise<void> => {
   res.json(out);
 }));
 
-/** Outcome after the fact (reaction / move / volume / summary): any member may fill it in. */
+/** Outcome after the fact (reaction / move / volume / summary): the event's author or staff, like any other edit. */
 const OutcomeBody = z.object({
   reaction: z.string().trim().max(60).nullish(),
   percentMove: z.coerce.number().min(-1000).max(10000).nullish(),
@@ -588,6 +588,7 @@ router.post("/events/:id/outcome", asyncHandler(async (req, res): Promise<void> 
   if (!body.success) throw body.error;
   const existing = await loadEvent(id);
   if (!existing) throw notFound("EVENT_NOT_FOUND");
+  if (!(await canModifyEvent(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   const b = body.data;
   const event = await applyPatch(id, {
     reaction: b.reaction, percentMove: b.percentMove !== undefined ? numToStr(b.percentMove) : undefined, volume: b.volume, summary: b.summary,

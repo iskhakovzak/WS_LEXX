@@ -6,7 +6,9 @@
 -- The curator is stored by id (a rename keeps the link). Moving a trader into a group with a curator also sets
 -- users.assigned_curator, so notifications keep reaching the right person.
 -- Seed: one group per curator who already has assigned traders («Группа <имя куратора>»), its traders moved in —
--- only on a database without any group yet, so a re-run never duplicates.
+-- only on a database without any group yet, so a re-run never duplicates. Two curators whose names differ only in
+-- case (or after the 60-char cut) would clash on the case-insensitive unique name: those get « #<user id>» appended
+-- (names without a clash are unchanged), and ON CONFLICT DO NOTHING keeps the seed from ever failing the migration.
 
 CREATE TABLE IF NOT EXISTS desk_groups (
   id serial PRIMARY KEY,
@@ -28,11 +30,16 @@ DECLARE n integer := 0;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM desk_groups) THEN
     INSERT INTO desk_groups (name, curator_id, sort_order)
-    SELECT left(CASE c.locale WHEN 'en' THEN 'Group ' WHEN 'uz' THEN 'Guruh ' ELSE 'Группа ' END || c.name, 60),
-           c.id, (row_number() OVER (ORDER BY c.name))::int
-      FROM users c
-     WHERE c.role IN ('curator', 'admin') AND c.active
-       AND EXISTS (SELECT 1 FROM users t WHERE t.assigned_curator = c.name AND t.role = 'trader');
+    SELECT CASE WHEN count(*) OVER (PARTITION BY lower(s.name)) > 1
+                THEN left(s.name, 60 - char_length(' #' || s.id)) || ' #' || s.id
+                ELSE s.name END,
+           s.id, s.sort_order
+      FROM (SELECT left(CASE c.locale WHEN 'en' THEN 'Group ' WHEN 'uz' THEN 'Guruh ' ELSE 'Группа ' END || c.name, 60) AS name,
+                   c.id, (row_number() OVER (ORDER BY c.name))::int AS sort_order
+              FROM users c
+             WHERE c.role IN ('curator', 'admin') AND c.active
+               AND EXISTS (SELECT 1 FROM users t WHERE t.assigned_curator = c.name AND t.role = 'trader')) s
+    ON CONFLICT DO NOTHING;
     GET DIAGNOSTICS n = ROW_COUNT;
     UPDATE users t SET group_id = g.id
       FROM desk_groups g JOIN users c ON c.id = g.curator_id

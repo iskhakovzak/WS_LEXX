@@ -244,6 +244,19 @@ describe("getThemes cache", () => {
     expect(h.calls()).toBe(2);
   });
 
+  it("numbers of another session keep their own label and read as stale until the refresh lands", async () => {
+    let v = 1;
+    const h = setup(async () => ({ source: "yahoo", quotes: quotes(v) }));
+    expect(await getThemes()).toMatchObject({ session: "rth", stale: false });
+    v = 2;
+    h.advance(5.5 * 3_600_000); // 11:00 → 16:30 NY: the post-market session
+    const r = await getThemes(); // the regular-session numbers at once, the refresh in the background
+    expect(r).toMatchObject({ session: "rth", stale: true, asOf: new Date(RTH_NOON).toISOString() });
+    expect(r.themes[0]!.today).toBe(1);
+    await flush();
+    expect(await getThemes()).toMatchObject({ session: "post", stale: false });
+  });
+
   it("nothing ever fetched → source null, every ticker missing", async () => {
     setup(async () => { throw new Error("down"); });
     const r = await getThemes();

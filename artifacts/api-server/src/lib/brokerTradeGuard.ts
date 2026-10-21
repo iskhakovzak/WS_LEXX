@@ -16,11 +16,12 @@ export const BROKER_EDIT_CAP = "settings.manage" as const;
 
 /**
  * Body keys of PATCH /trades/:id that the PropReports sync owns (overwritten on every sync), plus the owner.
- * `trader` stays here too: reassigning a broker trade moves its P&L between books.
+ * `trader` stays here too: reassigning a broker trade moves its P&L between books. `rMultiple` is not written by the
+ * sync, but a stored R wins over the price-derived one in every rating (lib/tradeMath signedRSql), so it is money too.
  */
 export const BROKER_OWNED_FIELDS = [
   "ticker", "date", "side", "entry", "exit", "qty", "fees", "pnl", "result",
-  "session", "horizon", "exitDate", "holdTime", "trader",
+  "session", "horizon", "exitDate", "holdTime", "trader", "rMultiple",
 ] as const;
 
 /** Raw-body keys that would mark a new trade as broker-sourced. */

@@ -644,13 +644,9 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   if (!existing || existing.deletedAt) throw notFound();
   const staff = await can(req, "ideas.review", existing.trader ? { trader: existing.trader } : undefined);
   const manager = staff || (!!existing.trader && existing.trader === req.authUser!.name);
-  if (!manager) {
-    // Non-authors may only link a published idea to the trade they opened from it (trades page "fromIdea" flow).
-    const keys = Object.keys(b);
-    const linkOnly = keys.length > 0 && keys.every((k) => k === "status" || k === "convertedTradeId")
-      && (b.status === undefined || b.status === "converted") && existing.status !== "draft";
-    if (!linkOnly) throw new AppError("AUTHOR_OR_STAFF_ONLY");
-  }
+  // Only the author or a reviewer edits an idea — its trade link (convertedTradeId, also null = unlink) included: a
+  // member could otherwise unlink or re-link someone else's idea.
+  if (!manager) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   if (b.status !== undefined && !["draft", "published", "converted"].includes(String(b.status))) throw new AppError("INVALID_FIELD", undefined, { field: "status" });
   if (b.score !== undefined && b.score !== null && (typeof b.score !== "number" || b.score < 0 || b.score > 100)) throw new AppError("INVALID_FIELD", undefined, { field: "score" });
   if (b.trader !== undefined && !staff) throw new AppError("STAFF_ONLY");
@@ -663,7 +659,8 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
     const tid = Number(b.convertedTradeId);
     const { rows: tr } = await pool.query<{ trader: string | null }>(`SELECT trader FROM trades WHERE id = $1 AND deleted_at IS NULL`, [tid]);
     if (!tr[0]) throw new AppError("TRADE_NOT_FOUND", 400);
-    if (!staff && tr[0].trader !== req.authUser!.name) throw new AppError("OWN_TRADES_ONLY");
+    // The caller's own trade; a reviewer may also link the idea's author's trade.
+    if (tr[0].trader !== req.authUser!.name && !(staff && tr[0].trader === existing.trader)) throw new AppError("OWN_TRADES_ONLY");
   }
   const update: Record<string, unknown> = {};
   if (b.ticker !== undefined) update.ticker = String(b.ticker).trim().toUpperCase();

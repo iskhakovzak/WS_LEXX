@@ -16,7 +16,7 @@ const router: IRouter = Router();
 // ─── ADMIN: FORCE DISCONNECT + BROADCAST ─────────────────────────────────────
 // On the permissions matrix (lib/permissions; role from the DB, not the token): unlink + broadcast need
 // telegram.broadcast (admin by default, sensitive), assignments are read with users.read.team and changed with
-// users.manage. Every change is written to the audit log; chat ids never leave the server.
+// settings.manage (admin-only: assignments decide whom an «assigned» curator sees). Every change is written to the audit log; chat ids never leave the server.
 
 router.delete("/telegram/admin/disconnect/:name", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "telegram.broadcast"))) return;
@@ -75,7 +75,7 @@ router.get("/telegram/assignments", asyncHandler(async (req, res): Promise<void>
 }));
 
 router.patch("/telegram/assignments/:name", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "users.manage"))) return;
+  if (!(await requireCap(req, res, "settings.manage"))) return;
   const viewer = req.authUser!;
   const { name } = req.params;
   const body = (req.body ?? {}) as Record<string, unknown>;

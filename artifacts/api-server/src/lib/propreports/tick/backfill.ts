@@ -153,7 +153,7 @@ export async function runBackfillWindow(b: Backfill, client: PropReportsClient, 
   }
   const next = addDays(w.end, 1);
   const finished = next > b.dateTo;
-  await pool.query(
+  const upd = await pool.query(
     `UPDATE propreports_backfills
         SET cursor = $2, windows_done = windows_done + 1, inserted = inserted + $3, updated = updated + $4, conflicts = conflicts + $5,
             errors = errors + $6, fills = fills + $7, attempts = 0, last_error = NULL, updated_at = NOW(),
@@ -161,6 +161,11 @@ export async function runBackfillWindow(b: Backfill, client: PropReportsClient, 
       WHERE id = $1 AND status = 'running'`,
     [b.id, next, inserted, updated, conflicts, errors, fills.length, finished],
   );
+  // 0 rows: the backfill stopped meanwhile (cancelled by a curator) — the window's data stays, the loop ends here
+  if (!upd.rowCount) {
+    b.status = "cancelled";
+    return true;
+  }
   Object.assign(b, { cursor: next, windowsDone: b.windowsDone + 1, status: finished ? "done" : b.status });
   return true;
 }
@@ -192,7 +197,7 @@ export async function runBackfill(ctx: TickCtx): Promise<TickStepResult> {
     }
   }
   const finished = b.status !== "running";
-  return { done: finished, note: `#${b.id}: ${windows} window(s) this tick, ${b.windowsDone}/${b.windowsTotal}${finished ? " — done" : `, next ${b.cursor}`}` };
+  return { done: finished, note: `#${b.id}: ${windows} window(s) this tick, ${b.windowsDone}/${b.windowsTotal}${finished ? ` — ${b.status}` : `, next ${b.cursor}`}` };
 }
 
 export const backfillStep: TickStep = {

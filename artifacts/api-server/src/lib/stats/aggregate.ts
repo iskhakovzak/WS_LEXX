@@ -308,9 +308,17 @@ export function buildAggregate(rows: readonly AggTradeRow[], filters: AggFilters
   const best = {} as Record<Metric, number | null>;
   const worst = {} as Record<Metric, number | null>;
   for (const m of METRICS) {
-    const vals = closed.map((x) => valueOf(x, m)).filter((v): v is number => v != null);
-    best[m] = vals.length ? Math.max(...vals) : null;
-    worst[m] = vals.length ? Math.min(...vals) : null;
+    // A loop, not Math.max(...vals): spreading ~125k+ values overflows the call stack (RangeError).
+    let hi: number | null = null;
+    let lo: number | null = null;
+    for (const x of closed) {
+      const v = valueOf(x, m);
+      if (v == null) continue;
+      if (hi === null || v > hi) hi = v;
+      if (lo === null || v < lo) lo = v;
+    }
+    best[m] = hi;
+    worst[m] = lo;
   }
   const out: Aggregate = {
     fields: BUCKET_FIELDS,

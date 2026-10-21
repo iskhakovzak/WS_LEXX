@@ -291,10 +291,16 @@ router.get("/activity", asyncHandler(async (req, res): Promise<void> => {
   res.json(logs.map((l) => ({ ...l, ...localizeActivity({ entityTitle: l.entityTitle, details: l.details, params: (l as { params?: Record<string, string | number | boolean | null> | null }).params ?? null }, lang), createdAt: l.createdAt.toISOString() })));
 }));
 
+/** 404 unless the caller may read the trade (a trade they cannot see does not exist for them). */
+async function needVisibleTrade(req: Parameters<typeof canAccessTrade>[0], id: number): Promise<void> {
+  if (!(await canAccessTrade(req, id, "read"))) throw notFound("TRADE_NOT_FOUND");
+}
+
 router.get("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeIdParams.safeParse(req.params);
   if (!params.success) throw params.error;
   if (!req.authUser) throw unauthorized();
+  await needVisibleTrade(req, params.data.id);
   const reactions = await db.select().from(tradeReactionsTable).where(eq(tradeReactionsTable.tradeId, params.data.id));
   res.json(reactions.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
 }));
@@ -305,6 +311,7 @@ router.post("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void
   const body = PostReactionBody.safeParse(req.body);
   if (!body.success) throw body.error;
   if (!requireMember(req, res)) return;
+  await needVisibleTrade(req, params.data.id);
   const trader = req.authUser!.name;
   const { reactionType } = body.data;
   const existing = await db.select().from(tradeReactionsTable)
@@ -338,7 +345,11 @@ router.post("/trades/:id/reviews", asyncHandler(async (req, res): Promise<void> 
   if (!params.success) throw params.error;
   const body = PostReviewBody.safeParse(req.body);
   if (!body.success) throw body.error;
-  if (!(await requireCap(req, res, "trades.review"))) return;
+  if (!req.authUser) throw unauthorized();
+  // The trade's owner is the target: a curator with the «assigned» scope reviews only their own people.
+  const { rows } = await pool.query<{ trader: string | null }>(`SELECT trader FROM trades WHERE id = $1 AND deleted_at IS NULL`, [params.data.id]);
+  if (!rows[0]) throw notFound("TRADE_NOT_FOUND");
+  if (!(await requireCap(req, res, "trades.review", { trader: rows[0].trader }))) return;
   const curator = req.authUser!.name;
   const { comment, rating } = body.data;
   const [review] = await db.insert(tradeReviewsTable).values({ tradeId: params.data.id, curator, comment, rating: rating ?? null }).returning();

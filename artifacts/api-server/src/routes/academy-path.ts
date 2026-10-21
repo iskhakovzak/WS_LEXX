@@ -443,6 +443,8 @@ router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res):
   if (!r) throw notFound("PROMOTION_REQUEST_NOT_FOUND");
   if (r.status !== "pending") throw conflict("PROMOTION_REQUEST_DECIDED");
   if (r.user_name === v.name) throw new AppError("PROMOTION_SELF_APPROVE");
+  // Four eyes: a curator does not approve a request they filed themselves; an admin (settings.manage) may.
+  if (r.requested_by === v.name && !(await can(req, "settings.manage"))) throw new AppError("PROMOTION_OWN_REQUEST");
   const report = await buildReport(String(r.user_name), nyDate());
   const comment = parsed.data.comment?.trim() || null;
   if (!report.ready && !comment) throw badRequest("PROMOTION_COMMENT_REQUIRED", undefined, { passed: report.passed, total: report.total });

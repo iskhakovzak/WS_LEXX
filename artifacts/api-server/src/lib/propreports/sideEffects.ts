@@ -25,7 +25,7 @@ async function perTrader(list: string[], label: string, fn: (t: string) => Promi
 export async function rulesScanHandler(payload: unknown): Promise<void> {
   const { traders: list } = traders.parse(payload);
   const { scanRulesForTrader } = await import("../rulesEngine");
-  await perTrader(list, "rule scan", (t) => scanRulesForTrader(t));
+  await perTrader(list, "rule scan", (t) => scanRulesForTrader(t, { recent: true }));
 }
 
 export async function ideasRelinkHandler(payload: unknown): Promise<void> {
@@ -90,6 +90,9 @@ const syncedPayload = z.object({ traders: z.array(z.string()).default([]) }).pas
  * "propreports.synced": with the job scheduler registered, the registry's listeners run (evening cards, contract
  * alerts, readiness, candle archive). Without it (a process that never
  * registered the jobs, e.g. a one-off script) the light, per-trader listeners run here directly.
+ * The registry runs are not awaited (candles.archive alone may take 30 min, far past a claim / the tick budget): a run
+ * lost to a restart or a busy job is covered by each listener's own cron — telegram.contract-alerts every 5 min in
+ * its window (deduped per alert), the evening cards / readiness / archive on their schedules.
  */
 export async function syncedEventHandler(payload: unknown): Promise<void> {
   const p = syncedPayload.parse(payload ?? {});

@@ -24,7 +24,8 @@ import { forbiddenError, readScope, resolveActor } from "../lib/permissions";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { canSeeBookMoney } from "../lib/playbookPrivacy";
 import { closeDateSql } from "../lib/tradeMath";
-import { buildAggregate, redactAggregateMoney, type AggTradeRow } from "../lib/stats/aggregate";
+import { buildAggregate, redactAggregateMoney, type AggTradeRow, type Aggregate } from "../lib/stats/aggregate";
+import { statsAggregateCache } from "../lib/tradesPageCache";
 import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
 import { facetSqlTail, type FacetFilters } from "../lib/tradeFacetsSql";
 
@@ -81,11 +82,17 @@ router.get("/stats/aggregate", route({ query: Query }, async ({ req, query: q })
   } else {
     traders = readable === null ? null : [...new Set([...readable, actor.name])];
   }
-  const rows = await loadAggregateRows(traders, q.from ?? null, q.to ?? null, facetFiltersOf(q));
-  const agg = buildAggregate(rows, {
+  const facets = facetFiltersOf(q);
+  const filters = {
     horizon: q.horizon, side: q.side, ticker: q.ticker || undefined, setup: q.setup || undefined,
     account: q.account || undefined, source: q.source,
-  }, { lite: q.lite === "1" || q.lite === "true" });
+  };
+  const lite = q.lite === "1" || q.lite === "true";
+  // 60 s per (traders, window, facets, filters, lite), cleared on every trade write (lib/tradesPageCache). The money
+  // redaction below depends on the viewer and is applied to the shared (never mutated) aggregate per request.
+  const key = JSON.stringify({ traders: traders ? [...traders].sort() : null, from: q.from ?? null, to: q.to ?? null, facets, filters, lite });
+  const agg = (await statsAggregateCache.getOrLoad(key, async () =>
+    buildAggregate(await loadAggregateRows(traders, q.from ?? null, q.to ?? null, facets), filters, { lite }))) as Aggregate;
   const money = canSeeBookMoney(await loadMoneyViewer(req), trader ?? (traders?.length === 1 ? traders[0]! : null));
   return {
     scope: trader ? "trader" : "desk",

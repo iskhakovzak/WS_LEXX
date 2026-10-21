@@ -2,7 +2,8 @@
  * Sync engine: round trips → journal trades (idempotent, trader-notes-safe).
  *
  *   planSync(trips)      read-only diff: insert / update / unchanged / adopt / conflict / skip
- *   applySync(plan)      writes inside one transaction + a propreports_sync_runs row
+ *   applySync(plan)      writes inside one transaction (a savepoint per trade: a failing trade is rolled back and
+ *                        reported, the others commit) + a propreports_sync_runs row
  *   mergePending(...)    reconcile inbox: broker numbers into a manual trade
  *   keepPending(...)     reconcile inbox: insert the broker trip as its own trade
  *
@@ -29,11 +30,13 @@ import { applyFeeSettings, type DetectedFeeColumn } from "./fees";
 import { getSettings, setSetting } from "./settings";
 import type { RoundTrip } from "./types";
 import { normResult } from "../tradeMath";
-import { enqueueOutbox, kickOutbox } from "./tick/outbox";
+import { kickOutbox } from "./tick/outbox";
+import { changedTraders, enqueueStructures, enqueueSyncEffects } from "./syncEffects";
 import { refreshTradeStrategies } from "../tradeStrategyStore";
 
 /** The broker book changed: drop every trade-derived cache on every instance (tradesVersion.ts — DB stamp). */
 export { invalidateTradeCaches };
+export { changedTraders, enqueueStructures };
 
 export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict" | "skip";
 
@@ -373,6 +376,8 @@ export interface ApplyOptions {
   feeColumns?: DetectedFeeColumn[];
   /** Start draining the enqueued side effects right away (default true; the tick drains at its end itself). */
   kick?: boolean;
+  /** Called for each item whose writes failed (rolled back to its savepoint; the rest of the run still commits). */
+  onItemError?: (it: PlanItem, err: unknown) => void;
 }
 
 export interface SyncRunResult {
@@ -411,48 +416,49 @@ async function insertTrade(client: PoolClient, t: RoundTrip, trader: string): Pr
   return Number(rows[0].id);
 }
 
-/**
- * Recompute the structure (roles, re-entry links) of the written trades — as outbox rows of ≤ STRUCTURE_CHUNK ids,
- * enqueued in the caller's transaction (the sync never waits for it and never fails because of it; the trade sheet
- * computes the structure live anyway). Chunks keep one handler run short and bounded.
- */
-export async function enqueueStructures(db: Pick<PoolClient, "query">, tradeIds: number[]): Promise<void> {
-  const ids = [...new Set(tradeIds)];
-  for (let i = 0; i < ids.length; i += STRUCTURE_CHUNK) await enqueueOutbox("structures.refresh", { tradeIds: ids.slice(i, i + STRUCTURE_CHUNK) }, db);
-}
-const STRUCTURE_CHUNK = 300;
-
-/** Traders whose book an applied plan changed (insert / update / adopt), sorted. */
-export function changedTraders(plan: SyncPlan): string[] {
-  return [...new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string))].sort();
-}
-
-/**
- * Side effects of a sync, enqueued in its transaction: rule scan, idea relink, challenge refresh (per changed trader),
- * trade structures, and the "propreports.synced" event. Drained by the tick / kickOutbox (tick/outbox.ts).
- */
-async function enqueueSyncEffects(db: Pick<PoolClient, "query">, plan: SyncPlan, writtenTrades: number[], event: Record<string, unknown>): Promise<void> {
-  const traders = changedTraders(plan);
-  if (traders.length) {
-    await enqueueOutbox("rules.scan", { traders }, db);
-    await enqueueOutbox("ideas.relink", { traders }, db);
-    await enqueueOutbox("challenges.refresh", { traders }, db);
-  }
-  await enqueueStructures(db, writtenTrades);
-  await enqueueOutbox("propreports.synced", { ...event, traders }, db);
-}
-
-/** Replace the broker-sourced executions of a trade (manual ones — note not starting with "PropReports" — are kept). */
+/** Replace the broker-sourced executions of a trade (manual ones — note not starting with "PropReports" — are kept).
+ *  All fills go in ONE statement (unnest of parallel arrays, ordinality = sort_order): one round trip and one firing of
+ *  the statement-level strategy trigger (0237) per trade instead of one per fill. */
 async function writeExecutions(client: PoolClient, tradeId: number, t: RoundTrip): Promise<void> {
   await client.query(`DELETE FROM trade_executions WHERE trade_id = $1 AND note LIKE 'PropReports%'`, [tradeId]);
-  let i = 0;
-  for (const e of t.executions) {
+  if (!t.executions.length) return;
+  const ex = t.executions;
+  await client.query(
+    `INSERT INTO trade_executions (trade_id, kind, price, qty, executed_at, note, sort_order, order_id)
+     SELECT $1, f.kind, f.price, f.qty, (f.at || ' America/New_York')::timestamptz, f.note, (f.ord - 1)::int, f.order_id
+       FROM unnest($2::text[], $3::numeric[], $4::numeric[], $5::text[], $6::text[], $7::text[])
+            WITH ORDINALITY AS f(kind, price, qty, at, note, order_id, ord)
+      ORDER BY f.ord`,
+    [
+      tradeId,
+      ex.map((e) => e.kind),
+      ex.map((e) => e.price),
+      ex.map((e) => e.qty),
+      ex.map((e) => e.at.replace("T", " ")),
+      ex.map((e) => `PropReports ${e.side}${e.fillId ? ` #${e.fillId}` : ""}${e.fees ? ` · fees ${round2(e.fees)}` : ""}`),
+      ex.map((e) => e.orderId ?? null),
+    ],
+  );
+}
+
+const WRITE_ACTIONS = new Set<PlanAction>(["insert", "update", "adopt", "conflict"]);
+
+/** The writes of one plan item (inside the caller's savepoint). Returns the written trade id (null for a conflict). */
+async function writeItem(client: PoolClient, it: PlanItem): Promise<number | null> {
+  if (it.action === "conflict") {
     await client.query(
-      `INSERT INTO trade_executions (trade_id, kind, price, qty, executed_at, note, sort_order, order_id)
-       VALUES ($1, $2, $3, $4, ($5::text || ' America/New_York')::timestamptz, $6, $7, $8)`,
-      [tradeId, e.kind, e.price, e.qty, e.at.replace("T", " "), `PropReports ${e.side}${e.fillId ? ` #${e.fillId}` : ""}${e.fees ? ` · fees ${round2(e.fees)}` : ""}`, i++, e.orderId ?? null],
+      `INSERT INTO propreports_pending_trades (external_id, account, trader, ticker, date, side, payload, candidate_ids)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::int[])
+       ON CONFLICT (external_id) DO UPDATE SET payload = EXCLUDED.payload, candidate_ids = EXCLUDED.candidate_ids, updated_at = NOW()`,
+      [it.externalId, it.account, it.trader, it.trip.symbol, it.trip.date, it.trip.side, JSON.stringify(it.trip), it.candidates.map((c) => c.id)],
     );
+    return null;
   }
+  const id = it.action === "insert" ? await insertTrade(client, it.trip, it.trader!) : it.tradeId!;
+  if (it.action !== "insert") await client.query(TRADE_UPDATE_SQL, updateParams(id, it.trip));
+  await writeExecutions(client, id, it.trip);
+  if (it.action === "insert" && it.pendingId) await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [it.pendingId]);
+  return id;
 }
 
 export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<SyncRunResult> {
@@ -473,46 +479,28 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
     const touchedAccounts = new Map<string, string>(); // account → max fill datetime
     const writtenTrades: number[] = [];
     for (const it of plan.items) {
-      try {
-        switch (it.action) {
-          case "insert": {
-            const id = await insertTrade(client, it.trip, it.trader!);
-            await writeExecutions(client, id, it.trip);
-            writtenTrades.push(id);
-            if (it.pendingId) await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [it.pendingId]);
-            res.inserted++;
-            break;
-          }
-          case "update":
-          case "adopt": {
-            await client.query(TRADE_UPDATE_SQL, updateParams(it.tradeId!, it.trip));
-            await writeExecutions(client, it.tradeId!, it.trip);
-            writtenTrades.push(it.tradeId!);
-            res.updated++;
-            break;
-          }
-          case "conflict": {
-            await client.query(
-              `INSERT INTO propreports_pending_trades (external_id, account, trader, ticker, date, side, payload, candidate_ids)
-               VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::int[])
-               ON CONFLICT (external_id) DO UPDATE SET payload = EXCLUDED.payload, candidate_ids = EXCLUDED.candidate_ids, updated_at = NOW()`,
-              [it.externalId, it.account, it.trader, it.trip.symbol, it.trip.date, it.trip.side, JSON.stringify(it.trip), it.candidates.map((c) => c.id)],
-            );
-            res.conflicts++;
-            break;
-          }
-          default:
-            break;
+      if (WRITE_ACTIONS.has(it.action)) {
+        // one savepoint per trade: a failed statement undoes this trade only (without it the whole transaction is
+        // aborted and every later statement fails) — the rest of the run commits, the failed trip is retried later
+        await client.query("SAVEPOINT sync_item");
+        try {
+          const id = await writeItem(client, it);
+          await client.query("RELEASE SAVEPOINT sync_item");
+          if (id != null) writtenTrades.push(id);
+          if (it.action === "insert") res.inserted++; else if (it.action === "conflict") res.conflicts++; else res.updated++;
+        } catch (e) {
+          await client.query("ROLLBACK TO SAVEPOINT sync_item");
+          opts.onItemError?.(it, e);
+          res.errors++;
+          errors.push(`${it.externalId}: ${e instanceof Error ? e.message : String(e)}`);
+          if (errors.length > 50) throw new Error("Too many errors (> 50), import cancelled");
+          continue;
         }
-        if (it.trader) {
-          const last = it.trip.closedAt ?? it.trip.openedAt;
-          const prev = touchedAccounts.get(it.account);
-          if (!prev || last > prev) touchedAccounts.set(it.account, last);
-        }
-      } catch (e) {
-        res.errors++;
-        errors.push(`${it.externalId}: ${e instanceof Error ? e.message : String(e)}`);
-        if (errors.length > 50) throw new Error("Too many errors (> 50), import cancelled");
+      }
+      if (it.trader) {
+        const last = it.trip.closedAt ?? it.trip.openedAt;
+        const prev = touchedAccounts.get(it.account);
+        if (!prev || last > prev) touchedAccounts.set(it.account, last);
       }
     }
     for (const [account, last] of touchedAccounts) {

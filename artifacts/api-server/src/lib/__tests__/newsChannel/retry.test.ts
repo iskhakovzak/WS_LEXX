@@ -44,10 +44,10 @@ describe("news-channel job retries", () => {
   });
 
   it("no retry past the cutoff, none for a manual run; a run that throws is retried", async () => {
-    vi.useFakeTimers({ now: F.ny(18, 58), toFake: ["Date"] });
+    vi.useFakeTimers({ now: F.ny(19, 13), toFake: ["Date"] });
     const close = jobs().get(schedule.NEWS_JOBS.close)!;
     publishNewsPost.mockResolvedValue({ post: "close", date: F.DAY, status: "failed", reason: "status 502", retryable: true });
-    expect(await close.run(ctx("schedule"))).not.toHaveProperty("retryAt"); // 19:03 > 19:00
+    expect(await close.run(ctx("schedule"))).not.toHaveProperty("retryAt"); // 19:18 > 19:15 (3 h after the 16:15 post)
     vi.setSystemTime(F.ny(16, 15));
     expect(await close.run(ctx("manual"))).not.toHaveProperty("retryAt");
     expect(schedule.retryMinutes("close", F.ny(16, 15))).toBeNull();
