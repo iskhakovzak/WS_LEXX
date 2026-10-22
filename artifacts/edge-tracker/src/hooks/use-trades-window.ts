@@ -106,6 +106,8 @@ export function mergeTradeLists(a: Trade[] | undefined, b: Trade[] | undefined):
 export type PeriodTradesWindow = {
   /** YYYY-MM-DD start of the current period; null = «Всё время» (the whole scoped book). */
   from: string | null;
+  /** YYYY-MM-DD end of the current period («Свой период»); null = up to today. */
+  to?: string | null;
   /** The equally long previous period (comparison only); both or neither. */
   prevFrom?: string | null;
   prevTo?: string | null;
@@ -120,7 +122,7 @@ export type PeriodTradesWindow = {
  * `enabled: false` (the staff view of /stats and /analytics reads server aggregates) fetches nothing.
  */
 export function usePeriodTrades(w: PeriodTradesWindow, enabled = true) {
-  const cur = useTradesWindow({ from: w.from, trader: w.trader }, { enabled });
+  const cur = useTradesWindow({ from: w.from, to: w.to ?? null, trader: w.trader }, { enabled });
   const hasPrev = !!(w.from && w.prevFrom && w.prevTo);
   const prev = useTradesWindow(
     { from: hasPrev ? w.prevFrom : null, to: hasPrev ? w.prevTo : null, trader: w.trader },

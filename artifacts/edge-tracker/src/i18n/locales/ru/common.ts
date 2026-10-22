@@ -417,4 +417,17 @@ export default {
     toggleAria: "Сменить тему: сейчас {current}, следующая {next}",
     currentHint: "сейчас: {name}",
   },
+  /** «Свой период» of every period selector (components/shared/period/PeriodPicker). */
+  periodPicker: {
+    custom: "Период…",
+    customAria: "Свой период: выбрать даты",
+    title: "Свой период",
+    from: "С",
+    to: "По",
+    apply: "Показать",
+    cancel: "Отмена",
+    missing: "Укажите обе даты",
+    order: "Дата «с» позже даты «по»",
+    prevNote: "Сравнение — с таким же отрезком до него: {range}",
+  },
 } as const;

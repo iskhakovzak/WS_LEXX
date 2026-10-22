@@ -407,4 +407,16 @@ export default {
     toggleAria: "Mavzuni oʻzgartirish: hozir {current}, keyingisi {next}",
     currentHint: "hozir: {name}",
   },
+  periodPicker: {
+    custom: "Davr…",
+    customAria: "Oʻz davringiz: sanalarni tanlang",
+    title: "Oʻz davringiz",
+    from: "Dan",
+    to: "Gacha",
+    apply: "Koʻrsatish",
+    cancel: "Bekor qilish",
+    missing: "Ikkala sanani kiriting",
+    order: "Boshlanish sanasi tugash sanasidan keyin",
+    prevNote: "Undan oldingi xuddi shunday oraliq bilan solishtiriladi: {range}",
+  },
 } satisfies Messages<typeof ru>;

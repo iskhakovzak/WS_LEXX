@@ -405,4 +405,16 @@ export default {
     toggleAria: "Change theme: now {current}, next {next}",
     currentHint: "now: {name}",
   },
+  periodPicker: {
+    custom: "Period…",
+    customAria: "Custom period: pick dates",
+    title: "Custom period",
+    from: "From",
+    to: "To",
+    apply: "Show",
+    cancel: "Cancel",
+    missing: "Enter both dates",
+    order: "The start date is after the end date",
+    prevNote: "Compared with the same span right before it: {range}",
+  },
 } satisfies Messages<typeof ru>;
