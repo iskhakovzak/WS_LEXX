@@ -100,7 +100,7 @@ describe("GET /whatif/suggestions — honest path", () => {
   it("a member asking for another trader gets their own key; the verdict is queued once and the job woken", async () => {
     const r = await get("trader=Other&from=2026-01-01");
     expect(r.status).toBe(200);
-    expect(loadSimTrades).toHaveBeenCalledWith("T0", "2026-01-01", undefined);
+    expect(loadSimTrades).toHaveBeenCalledWith("T0", "2026-01-01", undefined, undefined); // no «Разрезы» selection
     expect(store.get.mock.calls[0][1]).toEqual({ trader: "T0", from: "2026-01-01", to: "", sig: SIG, version: HONESTY.version });
     expect(store.enqueue.mock.calls[0][1]).toEqual({ trader: "T0", from: "2026-01-01", to: "", sig: SIG, version: HONESTY.version });
     expect(emitJobEvent).toHaveBeenCalledWith("whatif.honesty.requested", { trader: "T0" });
@@ -178,7 +178,7 @@ describe("GET /whatif/suggestions — honest path", () => {
   it("team scope (staff, no trader): the fast path only, the store is never read", async () => {
     who = CURATOR;
     const r = await get("from=2018-01-01");
-    expect(loadSimTrades).toHaveBeenCalledWith(null, "2018-01-01", undefined);
+    expect(loadSimTrades).toHaveBeenCalledWith(null, "2018-01-01", undefined, undefined);
     expect(r.json.scope).toBeNull();
     expect(r.json.honesty).toMatchObject({ state: "team" });
     expect(r.json.suggestions.every((s: { status?: string; timing: string }) => s.status === undefined && !!s.timing)).toBe(true);

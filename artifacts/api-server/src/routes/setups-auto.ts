@@ -44,6 +44,7 @@ import { bootstrapMean, wilson, round2, SMALL_SAMPLE } from "../lib/behaviorStat
 import { can } from "../lib/permissions";
 import { lockedSetupIds } from "../lib/playbookLock";
 import { AppError, badRequest, conflict, notFound, unauthorized } from "../lib/http";
+import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
 
 const router: IRouter = Router();
 
@@ -72,6 +73,7 @@ export const listSchema = z.object({
   withSetup: z.enum(["0", "1"]).default("0"),
   limit: z.coerce.number().int().min(1).max(1000).default(300),
   offset: z.coerce.number().int().min(0).default(0),
+  ...FACET_QUERY, // «Разрезы» of /behavior (lib/tradeFacetsSql)
 });
 
 const aggSchema = z.object({
@@ -79,6 +81,7 @@ const aggSchema = z.object({
   from: z.string().regex(YMD_RE).optional(),
   to: z.string().regex(YMD_RE).optional(),
   withSetup: z.enum(["0", "1"]).default("1"),
+  ...FACET_QUERY,
 });
 
 /**
@@ -151,7 +154,7 @@ router.get("/setups-auto", asyncHandler(async (req, res) => {
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) throw unauthorized();
 
-  const rows = await loadBehaviorRows(scope, q.from, q.to);
+  const rows = await loadBehaviorRows(scope, q.from, q.to, undefined, undefined, facetFiltersOf(q));
   const all = rows
     .map((r) => ({ trade: rowToBehaviorTrade(r), exit: r.exit == null ? null : Number(r.exit) }))
     .filter((x) => x.trade.result !== "open")
@@ -197,7 +200,7 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) throw unauthorized();
 
-  const rows = await loadBehaviorRows(scope, q.from, q.to);
+  const rows = await loadBehaviorRows(scope, q.from, q.to, undefined, undefined, facetFiltersOf(q));
   const trades = rows
     .map((r) => ({ trade: rowToBehaviorTrade(r), exit: r.exit == null ? null : Number(r.exit) }))
     .filter((x) => x.trade.result !== "open")
@@ -205,7 +208,7 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
   const existing = await loadSuggestions(trades.map((x) => x.trade.id));
   const lang = langOf(req);
 
-  type Agg = { setup: string; n: number; wins: number; losses: number; be: number; net: number; nets: number[]; posNet: number; negNet: number; confSum: number; accepted: number };
+  type Agg = { setup: string; n: number; wins: number; losses: number; be: number; net: number; nets: number[]; posNet: number; negNet: number; confSum: number; accepted: number; items: BehaviorTrade[] };
   type Cell = { n: number; wins: number; losses: number; net: number };
   const groups = new Map<string, Agg>();
   const hourCells = new Map<string, Cell>();
@@ -225,8 +228,9 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
     covered++;
     // Принятый сетап живёт в сделке (его могли поправить при принятии) — он и есть сетап группы.
     const setup = s.status === "accepted" && x.trade.setup ? x.trade.setup : s.setup;
-    const g = groups.get(setup) ?? { setup, n: 0, wins: 0, losses: 0, be: 0, net: 0, nets: [], posNet: 0, negNet: 0, confSum: 0, accepted: 0 };
+    const g = groups.get(setup) ?? { setup, n: 0, wins: 0, losses: 0, be: 0, net: 0, nets: [], posNet: 0, negNet: 0, confSum: 0, accepted: 0, items: [] };
     g.n++;
+    g.items.push(x.trade);
     g.confSum += Number(s.confidence);
     if (s.status === "accepted") g.accepted++;
     const t = x.trade;
@@ -254,6 +258,8 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
       avgConfidence: g.n ? round2(g.confSum / g.n) : null,
       accepted: g.accepted,
       small: g.n < SMALL_SAMPLE,
+      // Exactly the trades counted in the row (the drill-down list of the table), newest first.
+      trades: tradeRefs(g.items),
     };
   }).sort((a, b) => b.net - a.net);
 
@@ -278,6 +284,13 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
     generatedAt: new Date().toISOString(),
   });
 }));
+
+/** Compact rows of a setup's trades (id → the trade card; date, ticker, side, net, result), newest first. */
+function tradeRefs(items: readonly BehaviorTrade[]) {
+  return [...items]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
+    .map((t) => ({ id: t.id, date: t.date, ticker: t.ticker, side: t.side, net: t.net == null ? null : round2(t.net), result: t.result }));
+}
 
 /** Hold-time buckets (codes → labels of the `setups.hold` dictionary; one response uses the labels as keys). */
 const HOLD_CODES = ["lt1m", "m1to2", "m2to5", "m5to15", "m15to60", "h1to4", "h4plus", "carried"] as const;

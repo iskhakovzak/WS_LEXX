@@ -46,6 +46,8 @@ import { ERROR_VOCAB, type ErrorVocabCode } from "../lib/tradingErrors";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { acceptsGzip } from "../lib/jsonCompression";
+import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
+import { facetCacheKey } from "../lib/tradeFacetsFilter";
 
 const router: IRouter = Router();
 
@@ -60,6 +62,7 @@ const rangeSchema = z.object({
   to: z.string().regex(YMD_RE).optional(),
   // /whatif/suggestions: the page's 30 / 90-day periods move `from` every day (no honest verdict can resolve there).
   window: z.enum(["rolling"]).optional(),
+  ...FACET_QUERY, // the page's «Разрезы» (lib/tradeFacetsSql): excluded trades never reach the engine
 });
 
 const ERROR_CODES = ERROR_VOCAB.map((v) => v.code) as [ErrorVocabCode, ...ErrorVocabCode[]];
@@ -199,8 +202,8 @@ const RESULT_TTL_MS = 120_000;
 const suggestionsCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
 const feesCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
 
-export function resultKey(req: Request, scope: string | null, from: string | undefined, to: string | undefined): string {
-  return `${isStaffRole(req.authUser?.role) ? "staff" : "member"}|${scope ?? "*"}|${from ?? ""}|${to ?? ""}|${langOf(req)}`;
+export function resultKey(req: Request, scope: string | null, from: string | undefined, to: string | undefined, facets = ""): string {
+  return `${isStaffRole(req.authUser?.role) ? "staff" : "member"}|${scope ?? "*"}|${from ?? ""}|${to ?? ""}|${langOf(req)}${facets ? `|${facets}` : ""}`;
 }
 
 /** The cached value of `key` when it was computed for this data signature. */
@@ -301,7 +304,7 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  const trades = await loadSimTrades(scope, q.from, q.to);
+  const trades = await loadSimTrades(scope, q.from, q.to, facetFiltersOf(q));
   const daily = dailyResults(trades);
   const compact = req.query.enc === "2";
   await sendJsonGz(req, res, {
@@ -322,7 +325,7 @@ router.post("/whatif/run", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  const trades = await loadSimTrades(scope, q.from, q.to);
+  const trades = await loadSimTrades(scope, q.from, q.to, facetFiltersOf(q));
   const result = runScenario(trades, q.rules, { iters: q.iters ?? 1000, lang: langOf(req) });
   res.json({
     scope, period: periodMeta(trades, q.from, q.to),
@@ -339,26 +342,28 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
   const lang = langOf(req);
-  const key = resultKey(req, scope, q.from, q.to);
+  const facets = facetFiltersOf(q);
+  const key = resultKey(req, scope, q.from, q.to, facetCacheKey(facets));
   if (scope == null) {
     // Whole desk: the fast path only (day rules per trader, no share-size or personal-tag candidates).
     const hit = suggestionsCache.get(key);
     if (hit) { res.json(hit); return; }
-    const trades = await loadSimTrades(scope, q.from, q.to);
+    const trades = await loadSimTrades(scope, q.from, q.to, facets);
     const body = suggestionsBody({ head: suggestionsHead(scope, trades, q), lang, team: true, fast: findSuggestions(trades, { lang, team: true }), row: null, available: false });
     suggestionsCache.set(key, body);
     res.json(body);
     return;
   }
-  let trades = await loadSimTrades(scope, q.from, q.to);
+  let trades = await loadSimTrades(scope, q.from, q.to, facets);
   // The honest verdict of exactly these trades (a sync or an edited mark gives a new signature, so a new key).
   let sig = tradesSignature(trades);
   const win = honestWindow(q.from, q.to, q.window === "rolling", nyDate());
   const fastKey = `${key}|${q.window ?? ""}|fast`;
-  if (!trades.length || isGuest(req) || !win.honest) {
+  // The honest verdict is kept per whole book (job whatif.honesty): a «Разрезы» selection takes the fast path.
+  if (!trades.length || isGuest(req) || !win.honest || facets) {
     const found = fastSuggestions(fastKey, sig, trades, lang);
     const head = suggestionsHead(scope, trades, q);
-    res.json(trades.length && !isGuest(req) ? suggestionsBody({ head, lang, team: false, window: true, fast: found, row: null, available: false })
+    res.json(trades.length && !isGuest(req) ? suggestionsBody({ head, lang, team: false, window: !facets, filtered: !!facets, fast: found, row: null, available: false })
       : { ...head, suggestions: found.suggestions, tested: found.tested });
     return;
   }
@@ -400,10 +405,11 @@ router.get("/whatif/fees", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
-  const key = resultKey(req, scope, q.from, q.to);
+  const facets = facetFiltersOf(q);
+  const key = resultKey(req, scope, q.from, q.to, facetCacheKey(facets));
   const hit = feesCache.get(key);
   if (hit) { res.json(hit); return; }
-  const trades = await loadSimTrades(scope, q.from, q.to);
+  const trades = await loadSimTrades(scope, q.from, q.to, facets);
   const body = { scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades, langOf(req)), generatedAt: new Date().toISOString() };
   feesCache.set(key, body);
   res.json(body);

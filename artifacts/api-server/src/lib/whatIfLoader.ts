@@ -14,6 +14,8 @@ import { currentImxWindow, imxSql } from "./imx";
 import { inImxWindow, type ImxWindow } from "./tradeStrategy";
 import { isDeskTag } from "./deskTags";
 import { codesOf } from "./tradingErrors";
+import { facetSqlTail, type FacetFilters } from "./tradeFacetsSql";
+import { facetCacheKey } from "./tradeFacetsFilter";
 
 export type SimRow = {
   id: number; ticker: string; date: string; exit_date?: string | null; side: string | null; qty: unknown; entry: unknown; exit: unknown; stop: unknown;
@@ -137,12 +139,16 @@ const SIM_CACHE_TTL_MS = 60_000;
 const SIM_CACHE_MAX = 24;
 const simCache = new Map<string, { at: number; promise: Promise<SimTrade[]> }>();
 
-export async function loadSimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
-  const key = `${scope ?? "*"}|${from ?? ""}|${to ?? ""}`;
+const simKey = (scope: string | null, from?: string, to?: string, facets?: FacetFilters) =>
+  `${scope ?? "*"}|${from ?? ""}|${to ?? ""}|${facetCacheKey(facets)}`;
+
+/** `facets` = the page's «Разрезы» (lib/tradeFacetsSql): excluded trades never reach the engine. */
+export async function loadSimTrades(scope: string | null, from?: string, to?: string, facets?: FacetFilters): Promise<SimTrade[]> {
+  const key = simKey(scope, from, to, facets);
   const now = Date.now();
   const hit = simCache.get(key);
   if (hit && now - hit.at < SIM_CACHE_TTL_MS) return (await hit.promise).slice();
-  const promise = querySimTrades(scope, from, to);
+  const promise = querySimTrades(scope, from, to, facets);
   simCache.set(key, { at: now, promise });
   promise.catch(() => simCache.delete(key));
   if (simCache.size > SIM_CACHE_MAX) {
@@ -157,7 +163,7 @@ export async function loadSimTrades(scope: string | null, from?: string, to?: st
  * since, and the job (which loads uncached) may already have moved the row to the new signature.
  */
 export async function freshSimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
-  const key = `${scope ?? "*"}|${from ?? ""}|${to ?? ""}`;
+  const key = simKey(scope, from, to);
   const promise = querySimTrades(scope, from, to);
   simCache.set(key, { at: Date.now(), promise });
   promise.catch(() => simCache.delete(key));
@@ -165,27 +171,28 @@ export async function freshSimTrades(scope: string | null, from?: string, to?: s
 }
 
 /** SQL of the loader (exported for tests): IMX by the stored mark with the strategy MOC fallback (lib/imx imxSql). */
-export function simTradesQuery(scope: string | null, from?: string, to?: string): { sql: string; params: unknown[] } {
+export function simTradesQuery(scope: string | null, from?: string, to?: string, facets?: FacetFilters): { sql: string; params: unknown[] } {
   const params: unknown[] = [];
   const cond: string[] = [`t.deleted_at IS NULL`, `t.pnl IS NOT NULL`, `LOWER(TRIM(t.result)) <> 'open'`];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   if (scope != null) cond.push(`t.trader = ${p(scope)}`);
   if (from) cond.push(`substring(t.date from 1 for 10) >= ${p(from)}`);
   if (to) cond.push(`substring(t.date from 1 for 10) <= ${p(to)}`);
+  const tail = facetSqlTail(facets, params);
   // One trader → per-trade index probe; desk-wide → one hash aggregate (lib/execSpan).
   const sql = `
     SELECT t.id, t.ticker, t.date, t.exit_date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
            t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit,
            t.trader, ${imxSql("t")} AS is_imx, t.reentry_of, t.size_rel, t.has_stop
     FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
-    WHERE ${cond.join(" AND ")}
+    WHERE ${cond.join(" AND ")}${tail}
     ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;
   return { sql, params };
 }
 
 /** Uncached load (the background job: a signature must see the trades as they are now, not a 60 s old copy). */
-export async function querySimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
-  const { sql, params } = simTradesQuery(scope, from, to);
+export async function querySimTrades(scope: string | null, from?: string, to?: string, facets?: FacetFilters): Promise<SimTrade[]> {
+  const { sql, params } = simTradesQuery(scope, from, to, facets);
   const { rows } = await pool.query<SimRow>(sql, params);
   const imxWin = currentImxWindow();
   return rows.map((r, i) => rowToSim(r, i, imxWin));

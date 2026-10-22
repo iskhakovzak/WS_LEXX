@@ -21,7 +21,7 @@ import { type HonestCard, type HonestyResult, HONESTY } from "./whatIfHonesty";
 import type { HonestyKey, HonestyState } from "./whatIfHonestyStore";
 import type { Suggestion } from "./whatIfSuggest";
 
-export type HonestyWireState = HonestyState | "team" | "unavailable" | "window";
+export type HonestyWireState = HonestyState | "team" | "unavailable" | "window" | "facets";
 export type CardStatus = "confirmed" | "hypothesis" | "preliminary";
 
 export interface HonestyInfo {
@@ -133,6 +133,8 @@ export function suggestionsBody(x: {
   team: boolean;
   /** A period that can never resolve a verdict (honestWindow): the fast path only. */
   window?: boolean;
+  /** The page's «Разрезы» exclude trades: the honest verdict is kept per whole book, so the fast path only. */
+  filtered?: boolean;
   /** Trading days the period can still gather (honestWindow; null = unbounded). */
   reachDays?: number | null;
   /** The fast search (team, window, or the «предварительно» fallback); null only when a ready verdict is served. */
@@ -144,7 +146,7 @@ export function suggestionsBody(x: {
   /** The request time (pendingMs). */
   now?: Date;
 }): SuggestionsBody {
-  if (!x.team && !x.window && x.row?.state === "ready" && x.row.result) {
+  if (!x.team && !x.window && !x.filtered && x.row?.state === "ready" && x.row.result) {
     const result = x.row.result;
     return {
       ...x.head, suggestions: result.cards.map((c) => honestSuggestion(c, x.lang, x.reachDays ?? null)), tested: result.tested,
@@ -152,8 +154,8 @@ export function suggestionsBody(x: {
     };
   }
   const fast = x.fast ?? { suggestions: [], tested: 0 };
-  if (x.team || x.window) {
-    return { ...x.head, suggestions: fast.suggestions, tested: fast.tested, honesty: info(x.team ? "team" : "window") };
+  if (x.team || x.window || x.filtered) {
+    return { ...x.head, suggestions: fast.suggestions, tested: fast.tested, honesty: info(x.team ? "team" : x.filtered ? "facets" : "window") };
   }
   const state: HonestyWireState = !x.available ? "unavailable" : x.row?.state ?? "queued";
   const since = x.row?.requestedAt;

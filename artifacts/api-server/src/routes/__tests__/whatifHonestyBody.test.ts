@@ -117,6 +117,12 @@ describe("periods that can never resolve a verdict", () => {
     expect(body.honesty).toMatchObject({ state: "window", pollMs: null, pendingMs: null });
   });
 
+  it("«Разрезы» on: the fast cards (the honest verdict is per whole book), even with a ready row", () => {
+    const body = suggestionsBody({ head, lang: "ru", team: false, filtered: true, fast, row: { state: "ready", result: honest, finishedAt }, available: true });
+    expect(body.suggestions.map((s) => s.rule)).toEqual(fast.suggestions.map((s) => s.rule));
+    expect(body.honesty).toMatchObject({ state: "facets", pollMs: null, pendingMs: null });
+  });
+
   it("«с начала года»: a card whose days outrun the year says «на всём периоде» instead of a number", () => {
     const hyp = { ...honest.cards[0], status: "hypothesis" as const, needDays: 60, needDaysAtLeast: true };
     expect(honestSuggestion(hyp, "ru", 50)).toMatchObject({ needDays: null, needDaysAtLeast: false, needAllTime: true });

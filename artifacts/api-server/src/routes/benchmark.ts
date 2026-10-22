@@ -26,6 +26,11 @@ import {metricDefs, NEUTRAL_METRICS, MEDIAN_MIN_TRADERS, CONSISTENCY_WARN, CONSI
 } from "../lib/benchmark";
 import { AppError, sendError, unauthorized } from "../lib/http";
 import { langOf } from "../i18n";
+import { facetSqlTail, type FacetFilters } from "../lib/tradeFacetsSql";
+import { facetsOfQuery } from "../lib/tradeFacetsFilter";
+
+/** The page's «Разрезы» (lib/tradeFacetsSql), applied to every trader alike (rows, desk median, percentiles, trend). */
+const facetsOf = (req: Request): FacetFilters | undefined => facetsOfQuery(req.query as Record<string, unknown>);
 
 const router: IRouter = Router();
 
@@ -50,8 +55,10 @@ type Row = {
   first_entry: Date | null; last_exit: Date | null; avg_entry: number | null; avg_exit: number | null; fill_qty: number | null;
 };
 
-async function loadTrades(from: string, to: string): Promise<BenchTrade[]> {
+async function loadTrades(from: string, to: string, facets?: FacetFilters): Promise<BenchTrade[]> {
   const CLOSE = closeDateSql();
+  const params: unknown[] = [from, to];
+  const tail = facetSqlTail(facets, params);
   const { rows } = await pool.query<Row>(
     `SELECT t.id, t.trader, t.ticker, LEFT(${CLOSE}, 10) AS day, t.side, ${resultSql()} AS result,
             t.pnl::float AS gross, ABS(COALESCE(t.fees, 0))::float AS fees,
@@ -69,9 +76,9 @@ async function loadTrades(from: string, to: string): Promise<BenchTrade[]> {
            FROM trade_executions e WHERE e.trade_id = t.id
        ) x ON TRUE
       WHERE t.trader IS NOT NULL AND TRIM(t.trader) <> '' AND t.deleted_at IS NULL AND ${closedSql()}
-        AND LEFT(${CLOSE}, 10) BETWEEN $1 AND $2
+        AND LEFT(${CLOSE}, 10) BETWEEN $1 AND $2${tail}
       ORDER BY LEFT(${CLOSE}, 10) ASC, COALESCE(x.first_entry, t.created_at) ASC, t.id ASC`,
-    [from, to],
+    params,
   );
   return rows.map((r): BenchTrade => {
     const side = String(r.side ?? "").trim().toLowerCase();
@@ -125,7 +132,7 @@ router.get("/benchmark", asyncHandler(async (req, res): Promise<void> => {
   const minTrades = Number.isFinite(minRaw) && minRaw >= 0 ? Math.min(minRaw, 10_000) : 1;
   const trendFrom = addDays(p.to, -55);
   const dataFrom = p.from < trendFrom ? p.from : trendFrom;
-  const all = await loadTrades(dataFrom, p.to);
+  const all = await loadTrades(dataFrom, p.to, facetsOf(req));
   const inPeriod = all.filter((t) => t.day >= p.from);
   const firstDay = inPeriod[0]?.day ?? null;
 
@@ -182,7 +189,7 @@ router.get("/benchmark/same-ticker", asyncHandler(async (req, res): Promise<void
   const p = periodOf(req);
   const limRaw = Math.floor(Number(req.query.limit ?? 200));
   const limit = Number.isFinite(limRaw) && limRaw > 0 ? Math.min(limRaw, 1000) : 200;
-  const trades = (await loadTrades(p.from, p.to)).filter((t) => viewer.visible === null || viewer.visible.includes(t.trader));
+  const trades = (await loadTrades(p.from, p.to, facetsOf(req))).filter((t) => viewer.visible === null || viewer.visible.includes(t.trader));
   const cases = sameTickerCases(trades);
   const pairs = new Map<string, number>();
   for (const c of cases) {

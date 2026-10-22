@@ -22,6 +22,8 @@ import { scopeTrader } from "../lib/auth";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql, resultSql, num, maxDrawdownOfSeries } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
 import { badRequest, unauthorized } from "../lib/http";
+import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
+import { facetSqlTail } from "../lib/tradeFacetsSql";
 
 const router: IRouter = Router();
 
@@ -47,6 +49,7 @@ const filterSchema = z.object({
   setup: z.string().trim().max(200).optional(),
   ticker: z.string().trim().max(20).optional(),
   tod: z.coerce.number().int().refine((v) => v === 15 || v === 30, "tod must be 15 or 30").optional(),
+  ...FACET_QUERY, // /analytics «Разрезы» (lib/tradeFacetsSql)
 });
 type Filters = z.infer<typeof filterSchema>;
 
@@ -190,7 +193,7 @@ function buildWhere(f: Filters, scope: string | null): { where: string; params: 
   if (f.source === "manual") cond.push(`COALESCE(t.source, '') <> 'propreports'`);
   if (f.setup) cond.push(`t.setup = ${p(f.setup)}`);
   if (f.ticker) cond.push(`upper(t.ticker) = ${p(f.ticker.toUpperCase())}`);
-  return { where: cond.join(" AND "), params };
+  return { where: cond.join(" AND ") + facetSqlTail(facetFiltersOf(f), params), params };
 }
 
 let journalProbe: Promise<boolean> | null = null;
