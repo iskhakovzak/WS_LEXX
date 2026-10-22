@@ -51,6 +51,13 @@ export default {
   restore: "Bring back «{label}» ({dim})",
   exclude: "Exclude «{label}»",
   include: "Bring back «{label}»",
+  tickerSearch: "Find a ticker",
+  tickerSearchPlaceholder: "Ticker, e.g. NVDA",
+  tickerFound: "Tickers found: {n}",
+  tickerNotFound: "No trades in «{q}» here",
+  tickerOnly: "Only these",
+  tickerOnlyHint: "Keep only the tickers found in the report, exclude the rest",
+  tickerClear: "Clear search",
   clickHint: "Click a row to exclude the value, click again to bring it back",
   single: "Single value:",
   hints: {

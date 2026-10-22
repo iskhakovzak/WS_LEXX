@@ -49,6 +49,13 @@ export default {
   restore: "Вернуть «{label}» ({dim})",
   exclude: "Исключить «{label}»",
   include: "Вернуть «{label}»",
+  tickerSearch: "Найти тикер",
+  tickerSearchPlaceholder: "Тикер, напр. NVDA",
+  tickerFound: "Найдено тикеров: {n}",
+  tickerNotFound: "Тикер «{q}» в этих сделках не встречается",
+  tickerOnly: "Только найденные",
+  tickerOnlyHint: "Оставить в отчёте только найденные тикеры, остальные исключить",
+  tickerClear: "Очистить поиск",
   clickHint: "Клик по строке исключает значение, повторный клик возвращает",
   single: "Одно значение:",
   hints: {

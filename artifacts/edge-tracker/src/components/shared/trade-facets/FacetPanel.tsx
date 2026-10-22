@@ -7,10 +7,12 @@
  * (struck through, dimmed), a second click brings it back. Columns with a single value and nothing excluded carry no
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
  * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
+ * «Найти тикер» next to the tabs: while it holds text, the matching tickers (from any tab) replace the tab's columns,
+ * with «Только найденные» to keep just them.
  */
 import { useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronDown, Filter, RotateCcw } from "lucide-react";
+import { ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -178,6 +180,60 @@ function GroupTabs({ groups, active, onPick, view }: { groups: Group[]; active: 
   );
 }
 
+/** «Найти тикер» next to the tabs; Escape clears. */
+function TickerSearch({ q, onQ }: { q: string; onQ: (v: string) => void }) {
+  const t = tradeFacetsI18n.t;
+  return (
+    <div className="relative w-full sm:w-56">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <input
+        type="search"
+        value={q}
+        onChange={(e) => onQ(e.target.value.toUpperCase().replace(/[^A-Z0-9.\-]/g, ""))}
+        onKeyDown={(e) => { if (e.key === "Escape" && q) { e.preventDefault(); onQ(""); } }}
+        placeholder={t("tickerSearchPlaceholder")}
+        aria-label={t("tickerSearch")}
+        autoComplete="off"
+        spellCheck={false}
+        className="h-9 w-full rounded-xl border border-border bg-background/60 pl-8 pr-8 text-sm uppercase placeholder:normal-case placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-search-cancel-button]:hidden"
+      />
+      {q && (
+        <button
+          type="button"
+          onClick={() => onQ("")}
+          aria-label={t("tickerClear")}
+          title={t("tickerClear")}
+          className="absolute right-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Tickers matching the search (prefix first, then the rest containing it) as an ordinary column, plus «Только найденные». */
+function TickerResults({ q, buckets, view, onChange, money }: { q: string; buckets: FacetBucket[]; view: FacetView; onChange: (v: FacetView) => void; money: boolean }) {
+  const t = tradeFacetsI18n.t;
+  const hits = buckets
+    .filter((b) => b.key !== UNKNOWN_KEY && b.label.toUpperCase().includes(q))
+    .sort((a, b) => Number(!a.label.toUpperCase().startsWith(q)) - Number(!b.label.toUpperCase().startsWith(q)));
+  if (hits.length === 0) return <p role="status" className="mt-3 text-sm text-muted-foreground">{t("tickerNotFound", { q })}</p>;
+  const hitKeys = new Set(hits.map((b) => b.key));
+  const onlyThese = () => onChange({ ...view, off: { ...view.off, tickers: buckets.filter((b) => !hitKeys.has(b.key)).map((b) => b.key) } });
+  return (
+    <div className="mt-3 animate-in fade-in-0 duration-150 motion-reduce:animate-none">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span role="status">{t("tickerFound", { n: hits.length })}</span>
+        <Button variant="outline" size="sm" onClick={onlyThese} title={t("tickerOnlyHint")}>{t("tickerOnly")}</Button>
+      </div>
+      <div className={GRID}>
+        <Column dim="tickers" buckets={hits} view={view} onChange={onChange} money={money} />
+      </div>
+    </div>
+  );
+}
+
 export function FacetPanel({ view, onChange, data, loading, error, className }: Props) {
   const t = tradeFacetsI18n.t;
   const hidden = activeCount(view);
@@ -208,6 +264,9 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
   const [tab, setTab] = useState<GroupId>(readTab);
   const pickTab = (id: GroupId) => { setTab(id); writeTab(id); };
   const current = groups.find((g) => g.id === tab) ?? groups[0];
+  // Ticker search across the whole panel: the matching tickers replace the tab's columns while the box is not empty.
+  const [q, setQ] = useState("");
+  const tickerBuckets = dims.find((x) => x.d === "tickers")?.buckets ?? [];
   return (
     <div className={cn("glass-panel rounded-2xl", className)} role="region" aria-label={t("aria")}>
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -261,8 +320,13 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
                   <Button variant="outline" size="sm" onClick={() => onChange(resetFacets(view))}><RotateCcw aria-hidden="true" />{t("resetAll")}</Button>
                 </div>
               )}
-              <GroupTabs groups={groups} active={current?.id ?? null} onPick={pickTab} view={view} />
-              {current && (
+              <div className="flex flex-wrap items-center gap-2">
+                <GroupTabs groups={groups} active={current?.id ?? null} onPick={pickTab} view={view} />
+                <TickerSearch q={q} onQ={setQ} />
+              </div>
+              {q.trim() ? (
+                <TickerResults q={q.trim()} buckets={tickerBuckets} view={view} onChange={onChange} money={money} />
+              ) : current && (
                 <div
                   key={current.id}
                   role="tabpanel"

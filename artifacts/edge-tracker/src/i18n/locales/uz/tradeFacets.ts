@@ -51,6 +51,13 @@ export default {
   restore: "«{label}» ni qaytarish ({dim})",
   exclude: "«{label}» ni chiqarib tashlash",
   include: "«{label}» ni qaytarish",
+  tickerSearch: "Tikerni topish",
+  tickerSearchPlaceholder: "Tiker, masalan NVDA",
+  tickerFound: "Topilgan tikerlar: {n}",
+  tickerNotFound: "«{q}» bo'yicha bu yerda bitimlar yo'q",
+  tickerOnly: "Faqat topilganlar",
+  tickerOnlyHint: "Hisobotda faqat topilgan tikerlarni qoldirish, qolganlarini chiqarib tashlash",
+  tickerClear: "Qidiruvni tozalash",
   clickHint: "Qatorni bosish qiymatni chiqarib tashlaydi, qayta bosish qaytaradi",
   single: "Bitta qiymat:",
   hints: {
