@@ -7,8 +7,8 @@
  * (struck through, dimmed), a second click brings it back. Columns with a single value and nothing excluded carry no
  * choice, so they fold into one short line under the grid. Every value is in by default; the selection is saved per
  * user (useFacetView). Used by /trades and /stats; the «Исключить IMX» switch sits in the header; the chips of the hidden values are in FacetSummary.
- * «Найти тикер» next to the tabs: while it holds text, the matching tickers (from any tab) replace the tab's columns,
- * with «Только найденные» to keep just them.
+ * «Найти тикер» next to the tabs: while it holds text, the matching tickers (from any tab) show above the tab's columns,
+ * which stay visible, with «Только найденные» to keep just them.
  */
 import { useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -264,7 +264,7 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
   const [tab, setTab] = useState<GroupId>(readTab);
   const pickTab = (id: GroupId) => { setTab(id); writeTab(id); };
   const current = groups.find((g) => g.id === tab) ?? groups[0];
-  // Ticker search across the whole panel: the matching tickers replace the tab's columns while the box is not empty.
+  // Ticker search across the whole panel: the matching tickers show above the tab's columns while the box is not empty.
   const [q, setQ] = useState("");
   const tickerBuckets = dims.find((x) => x.d === "tickers")?.buckets ?? [];
   return (
@@ -324,9 +324,8 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
                 <GroupTabs groups={groups} active={current?.id ?? null} onPick={pickTab} view={view} />
                 <TickerSearch q={q} onQ={setQ} />
               </div>
-              {q.trim() ? (
-                <TickerResults q={q.trim()} buckets={tickerBuckets} view={view} onChange={onChange} money={money} />
-              ) : current && (
+              {q.trim() && <TickerResults q={q.trim()} buckets={tickerBuckets} view={view} onChange={onChange} money={money} />}
+              {current && (
                 <div
                   key={current.id}
                   role="tabpanel"
