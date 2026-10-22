@@ -28,8 +28,10 @@ import { PsychologyTab } from "@/components/analytics-page/PsychologyTab";
 import {
   type AnalyticsFilters, type DimensionKey, type Unit,
   DEFAULT_FILTERS, DIMENSIONS, applyAnalyticsFilters, applyNonPeriodFilters, activeFilterCount, horizonLabel,
-  realizedR, pnlValue, accountOf, sourceOf, periodRange, withHotkeys,
+  realizedR, pnlValue, accountOf, sourceOf, customRangeOf, filtersRange, withHotkeys,
 } from "@/components/analytics-page/metrics";
+import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 
@@ -73,9 +75,10 @@ function loadSaved(): Saved {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return fromUrl ? { ...fallback, tab: fromUrl } : fallback;
     const s = JSON.parse(raw) as Partial<Saved>;
-    const filters = { ...DEFAULT_FILTERS, ...(s.filters ?? {}) };
-    // «Всё время» is never restored (DEV-01): every visit starts on the cheap default window.
-    if (filters.period === "all") filters.period = DEFAULT_FILTERS.period;
+    const { facets: _facets, ...stored } = s.filters ?? {};
+    const filters: AnalyticsFilters = { ...DEFAULT_FILTERS, ...stored };
+    // «Всё время» is never restored (DEV-01): every visit starts on the cheap default window. «Свой период» is (valid).
+    if (filters.period === "all" || (filters.period === "custom" && !customRangeOf(filters))) filters.period = DEFAULT_FILTERS.period;
     return {
       tab: fromUrl ?? asTab(s.tab) ?? fallback.tab,
       filters,
@@ -109,11 +112,14 @@ export default function Analytics() {
   const plan = analyticsDataPlan({ staff: staffView, me, picked: filters.trader, team: teamPick, tab });
   const { scope, needRaw } = plan;
   const scopeTrader = scope.trader ?? "";
-  /** The filters every tab sees: for staff on one person they carry that name (the own one by default). */
-  const view = useMemo(() => (staffView && filters.trader !== scopeTrader ? { ...filters, trader: scopeTrader } : filters), [staffView, filters, scopeTrader]);
-  const periodWin = useMemo(() => periodRange(filters.period), [filters.period]);
+  const periodWin = useMemo(() => filtersRange(filters), [filters.period, filters.from, filters.to]); // eslint-disable-line react-hooks/exhaustive-deps
+  // «Разрезы»: raw trades are filtered here; the server-computed tabs (team overview, matrix, desk, psychology) get x*.
+  const rf = useRangeFacets({ from: periodWin?.from, to: periodWin?.to, trader: scope.trader });
+  /** The filters every tab sees: for staff on one person they carry that name (the own one by default), + «Разрезы». */
+  const view = useMemo(() => ({ ...filters, trader: staffView ? scopeTrader : filters.trader, facets: rf.query || undefined }), [staffView, filters, scopeTrader, rf.query]);
   const rawQ = usePeriodTrades({
     from: periodWin?.from ?? null,
+    to: filters.period === "custom" ? periodWin?.to ?? null : null,
     prevFrom: periodWin?.prevFrom ?? null,
     prevTo: periodWin?.prevTo ?? null,
     trader: scope.trader,
@@ -121,6 +127,7 @@ export default function Analytics() {
   const aggBase = {
     scope: "desk" as const, trader: null, side: filters.side || null, horizon: filters.horizon || null,
     ticker: filters.ticker || null, setup: filters.setup || null, account: filters.account || null, source: filters.source || null,
+    facets: rf.query,
   };
   const aggQ = useStatsAggregate({ ...aggBase, from: periodWin?.from ?? null, to: periodWin?.to ?? null }, plan.aggregate);
   const aggPrevQ = useStatsAggregate(
@@ -128,7 +135,8 @@ export default function Analytics() {
     plan.aggregate && !!periodWin && tab === "overview" && aggQ.isSuccess,
   );
   const agg = plan.aggregate ? aggQ.data : undefined;
-  const trades = useMemo(() => rawQ.data ?? [], [rawQ.data]);
+  const facetFilter = rf.filter;
+  const trades = useMemo(() => facetFilter(rawQ.data), [rawQ.data, facetFilter]);
   // Only the source the visible tab reads: a failed desk aggregate never blanks a per-trade tab, and vice versa.
   const isLoading = needRaw ? rawQ.isLoading : aggQ.isLoading;
   const isError = needRaw ? rawQ.isError : aggQ.isError;
@@ -145,7 +153,7 @@ export default function Analytics() {
     setFilters((f) => ({ ...f, trader: v === TEAM || v === me ? "" : v }));
   }, [me]);
   /** Tabs hand back `view`: the implicit own name is not a filter. */
-  const changeFilters = useCallback((f: AnalyticsFilters) => setFilters(staffView && me && f.trader === me ? { ...f, trader: "" } : f), [staffView, me]);
+  const changeFilters = useCallback(({ facets: _f, ...f }: AnalyticsFilters) => setFilters(staffView && me && f.trader === me ? { ...f, trader: "" } : f), [staffView, me]);
   const [statsDim, setStatsDim] = useState<StatsDimension>("trader");
   const [unitPref, setUnitPref] = useState<Unit>(saved.unit);
   const [dimension, setDimension] = useState<DimensionKey>(saved.dimension);
@@ -235,7 +243,9 @@ export default function Analytics() {
   const summary = useMemo(() => {
     const parts = [commonI18n.t("units.trades", { count })];
     parts.push(scope.self ? t("summary.mine") : scope.team ? t("summary.team") : personName(scope.trader));
-    parts.push(t(`period.${filters.period}`).toLowerCase());
+    const custom = filters.period === "custom" ? customRangeOf(filters) : null;
+    const preset = filters.period === "custom" ? DEFAULT_FILTERS.period : filters.period;
+    parts.push(custom ? fmtDayRange(custom) : t(`period.${preset as Exclude<typeof preset, "custom">}`).toLowerCase());
     if (filters.horizon) parts.push(horizonLabel(filters.horizon).toLowerCase());
     if (!hasPnl && hasR) parts.push(t("summary.rOnly"));
     return parts.filter(Boolean).join(" · ");
@@ -278,6 +288,7 @@ export default function Analytics() {
           className="lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:bg-[var(--sticky-bg)]"
         />
       )}
+      {!isLoading && (staffView || (!isError && !bookEmpty)) && <RangeFacetsPanel rf={rf} />}
 
       {!isError && (tab === "overview" || bookEmpty) && (
         <BrokerStatsCard trader={(isCurator && scopeTrader) || user?.traderName} />

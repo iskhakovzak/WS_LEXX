@@ -318,6 +318,7 @@ export default {
       noConfirmed: "Tasdiqlangan qoidalar hali yoʻq — mana eng kuchli gipotezalar",
       team: "Jamoa koʻrinishi — tezkor tanlov. Halol tekshiruv har bir treyder uchun alohida hisoblanadi",
       window: "Qisqa davrda — tezkor tanlov: oyna har kuni siljiydi, halol tekshiruvga maʼlumot toʻplashga imkon yoʻq. U «Butun davr» davrida ishlaydi",
+      facets: "Kesimlar yoqilgan — tezkor tanlov: halol tekshiruv davrning barcha savdolari boʻyicha, istisnolarsiz",
       unavailable: "Halol tekshiruv hozir mavjud emas — tezkor tanlov koʻrsatilgan",
     },
     noteLine: "{note}. Bu tarix, vaʼda emas.",

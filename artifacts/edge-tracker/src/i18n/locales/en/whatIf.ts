@@ -318,6 +318,7 @@ export default {
       noConfirmed: "No confirmed rules yet — here are the strongest hypotheses",
       team: "Team view — a quick pick. The honest check runs for each trader separately",
       window: "A short period gets a quick pick: the window moves every day, so the honest check has nothing to build on. It runs on the “All time” period",
+      facets: "With Breakdown exclusions — the quick pick: the honest check runs on every trade of the period, without exclusions",
       unavailable: "The honest check is unavailable right now — a quick pick is shown",
     },
     noteLine: "{note}. This is history, not a promise.",

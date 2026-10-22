@@ -34,37 +34,46 @@ import { ComputeAllBar } from "@/components/behavior/setups-compute";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { fallbackBehaviorTrader, initialBehaviorTrader } from "@/components/behavior/behavior-trader";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { parseDayRange, type DayRange } from "@/lib/period-range";
 
 type Tab = "behavior" | "setups";
-type Period = "30d" | "90d" | "ytd" | "all";
-const PERIOD_KEYS: Period[] = ["30d", "90d", "ytd", "all"];
+type Preset = "30d" | "90d" | "ytd" | "all";
+/** A preset or «Свой период» (?period=custom&from=&to=). */
+type Period = Preset | "custom";
+const PERIOD_KEYS: Preset[] = ["30d", "90d", "ytd", "all"];
 const periodOptions = () => PERIOD_KEYS.map((value) => ({ value, label: tb(`period.${value}`) }));
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-function rangeOf(p: Period): Range {
+function rangeOf(p: Period, custom: DayRange | null): Range {
   const today = nyDate();
+  if (p === "custom" && custom) return { from: custom.from, to: custom.to };
   if (p === "all") return { from: null, to: null };
   if (p === "ytd") return { from: `${today.slice(0, 4)}-01-01`, to: null };
   return { from: addDays(today, -(p === "30d" ? 29 : 89)), to: null };
 }
 
-function readParams(): { trader: string | null; period: Period; tab: Tab; day: string | null } {
+function readParams(): { trader: string | null; period: Period; custom: DayRange | null; tab: Tab; day: string | null } {
   const p = new URLSearchParams(window.location.search);
   const period = p.get("period");
+  const custom = parseDayRange(p.get("from"), p.get("to"));
   const tab = p.get("tab");
   const day = p.get("day");
   return {
     trader: p.get("trader"),
-    period: period === "30d" || period === "90d" || period === "ytd" || period === "all" ? period : "90d",
+    period: period === "30d" || period === "90d" || period === "ytd" || period === "all" || (period === "custom" && custom) ? period : "90d",
+    custom,
     tab: tab === "setups" ? "setups" : "behavior",
     day: day && YMD.test(day) ? day : null,
   };
 }
 
-function writeParams(trader: string | null, period: Period, tab: Tab, day: string | null) {
+function writeParams(trader: string | null, period: Period, custom: DayRange | null, tab: Tab, day: string | null) {
   const p = new URLSearchParams(window.location.search);
   if (trader) p.set("trader", trader); else p.delete("trader");
   if (period !== "90d") p.set("period", period); else p.delete("period");
+  if (period === "custom" && custom) { p.set("from", custom.from); p.set("to", custom.to); } else { p.delete("from"); p.delete("to"); }
   if (tab !== "behavior") p.set("tab", tab); else p.delete("tab");
   if (day && tab === "behavior") p.set("day", day); else p.delete("day");
   const qs = p.toString();
@@ -86,6 +95,7 @@ export default function BehaviorPage() {
   const initial = React.useMemo(readParams, []);
   const [tab, setTab] = React.useState<Tab>(initial.tab);
   const [period, setPeriod] = React.useState<Period>(initial.period);
+  const [custom, setCustom] = React.useState<DayRange | null>(initial.custom);
   // Staff: an explicit ?trader= wins, then the person picked by hand last time, then their own name.
   const [trader, setTrader] = React.useState<string | null>(() =>
     initialBehaviorTrader({ staff: isCurator, me, urlTrader: initial.trader, stored: isCurator ? readStoredTrader() : null }));
@@ -99,12 +109,15 @@ export default function BehaviorPage() {
     const first = fallbackBehaviorTrader({ staff: isCurator, me, trader, names: names ?? [] });
     if (first) setTrader(first);
   }, [isCurator, me, trader, names]);
-  React.useEffect(() => { writeParams(isCurator ? trader : null, period, tab, day); }, [trader, period, tab, day, isCurator]);
+  React.useEffect(() => { writeParams(isCurator ? trader : null, period, custom, tab, day); }, [trader, period, custom, tab, day, isCurator]);
   const pickTrader = (v: string) => { setTrader(v); setDay(null); storeTrader(v); };
 
-  const range = React.useMemo(() => rangeOf(period), [period]);
   // Сервер сам ограничивает scope: трейдер всегда видит только себя, staff — выбранного.
   const scopeTrader = isCurator ? trader : null;
+  const win = React.useMemo(() => rangeOf(period, custom), [period, custom]);
+  // «Разрезы»: every block of both tabs reads the same selection (x* params on /behavior* and /setups-auto*).
+  const rf = useRangeFacets({ from: win.from, to: win.to, trader: scopeTrader }, user?.role !== "guest");
+  const range = React.useMemo<Range>(() => ({ ...win, facets: rf.query || undefined }), [win, rf.query]);
   const isGuest = user?.role === "guest";
   const openSetups = React.useCallback(() => setTab("setups"), []);
 
@@ -119,7 +132,10 @@ export default function BehaviorPage() {
             {isCurator && (
               <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="w-52" ariaLabel={tb("traderAria")} />
             )}
-            <Segmented ariaLabel={tb("periodAria")} value={period} onChange={setPeriod} options={periodOptions()} />
+            <PeriodPicker<Preset>
+              ariaLabel={tb("periodAria")} value={period} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()}
+              onPreset={setPeriod} onCustom={(r) => { setCustom(r); setPeriod("custom"); }}
+            />
           </>
         }
       >
@@ -133,6 +149,8 @@ export default function BehaviorPage() {
           ]}
         />
       </PageHeader>
+
+      {!isGuest && <RangeFacetsPanel rf={rf} />}
 
       {isGuest ? (
         <Panel><EmptyState icon={Brain} title={tb("guest")} description={tb("guestHint")} /></Panel>
@@ -313,7 +331,7 @@ function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: R
         {agg.data === undefined ? (
           agg.isError ? <ErrorState error={agg.error} onRetry={agg.refetch} compact /> : <TableSkeleton rows={5} cols={7} />
         ) : (
-          <SetupsAggregates groups={agg.data.groups} covered={agg.data.covered} pending={agg.data.pending} smallSample={agg.data.smallSample} />
+          <SetupsAggregates groups={agg.data.groups} covered={agg.data.covered} pending={agg.data.pending} smallSample={agg.data.smallSample} trader={trader} />
         )}
       </Panel>
 

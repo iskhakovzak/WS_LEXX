@@ -155,7 +155,7 @@ export type Suggestion = {
 
 export type Timing = "exante" | "inTrade" | "review";
 /** «window»: a rolling 30 / 90-day period or a closed range — it never grows, so no honest verdict can resolve there. */
-export type HonestyState = "ready" | "queued" | "running" | "failed" | "team" | "unavailable" | "window";
+export type HonestyState = "ready" | "queued" | "running" | "failed" | "team" | "unavailable" | "window" | "facets";
 export type HonestyInfo = {
   state: HonestyState;
   version: number;
@@ -208,13 +208,15 @@ export function suggestionsPollMs(data: SuggestionsResponse | undefined): number
 export type SavedScenario = { id: number; trader: string; name: string; rules: Rule[]; labels: string[]; createdBy: string | null; createdAt: string; updatedAt: string };
 
 /** `rolling`: the page's 30 / 90-day periods, whose start moves every day (the suggestions take the fast path there). */
-export type Scope = { trader: string; from: string; to: string; rolling?: boolean };
+/** `facets`: the page's «Разрезы» as x* params (components/shared/trade-facets) — excluded trades never reach the engine. */
+export type Scope = { trader: string; from: string; to: string; rolling?: boolean; facets?: string };
 
 function scopeParams(s: Scope): string {
   const sp = new URLSearchParams();
   if (s.trader) sp.set("trader", s.trader);
   if (s.from) sp.set("from", s.from);
   if (s.to) sp.set("to", s.to);
+  if (s.facets) new URLSearchParams(s.facets).forEach((v, k) => sp.set(k, v));
   return sp.toString();
 }
 
@@ -295,7 +297,9 @@ export function useWhatIfRun(scope: Scope, rules: Rule[], enabled = true) {
     enabled,
     staleTime: 60_000,
     placeholderData: (prev) => prev,
-    queryFn: () => http.post<RunResponse>("/api/whatif/run", { trader: scope.trader || undefined, from: scope.from || undefined, to: scope.to || undefined, rules }),
+    queryFn: () => http.post<RunResponse>("/api/whatif/run", {
+      trader: scope.trader || undefined, from: scope.from || undefined, to: scope.to || undefined, ...Object.fromEntries(new URLSearchParams(scope.facets ?? "")), rules,
+    }),
   });
 }
 

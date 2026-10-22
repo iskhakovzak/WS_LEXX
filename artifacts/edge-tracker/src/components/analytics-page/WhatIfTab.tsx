@@ -5,7 +5,7 @@ import { ArrowRight, Check, FlaskConical } from "lucide-react";
 import { Panel, EmptyState, Pill, toneOf } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type AnalyticsFilters, type Unit, NONE } from "./metrics";
+import { type AnalyticsFilters, type Unit, NONE, customRangeOf } from "./metrics";
 import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
@@ -38,6 +38,8 @@ export function whatIfHref(filters: AnalyticsFilters, rules: Rule[] = [], hash =
   if (r) sp.set("r", r);
   const p = filters.period === "7d" ? "30d" : filters.period;
   if (p !== "all") sp.set("p", p);
+  const custom = p === "custom" ? customRangeOf(filters) : null;
+  if (custom) { sp.set("from", custom.from); sp.set("to", custom.to); }
   // No trader picked here = the whole scope; /what-if reads "__all__" as «Вся команда» (ignored for traders).
   sp.set("trader", filters.trader || "__all__");
   const q = sp.toString();

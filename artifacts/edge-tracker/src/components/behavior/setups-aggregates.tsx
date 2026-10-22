@@ -4,12 +4,12 @@
  */
 import * as React from "react";
 import { Link } from "wouter";
-import { Layers } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Layers } from "lucide-react";
 import { DataTable, EmptyState, Pill, SortableTh, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { winRateTone, type SetupAggregate } from "./api";
-import { fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
+import { winRateTone, type SetupAggregate, type SetupTradeRef } from "./api";
+import { fmtDate, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { behaviorI18n } from "@/i18n/ns/behavior";
 
@@ -49,8 +49,51 @@ function CiBar({ value, ci, lo, hi }: { value: number | null; ci: { low: number;
   );
 }
 
-export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }: { groups: SetupAggregate[]; covered: number; pending: number; smallSample?: number }) {
+/** /trades with exactly these trades (the server caps ?ids= at 4000 characters: no link past it). */
+function allTradesHref(trades: readonly SetupTradeRef[], trader: string | null | undefined): string | null {
+  const ids = trades.map((x) => x.id);
+  return ids.length && ids.join(",").length <= 4000 ? links.trades({ ids, trader: trader || undefined }) : null;
+}
+
+/** The drill-down of a setup row: exactly the trades counted in it (date, ticker, side, net → the trade card). */
+function SetupTrades({ g, trader }: { g: SetupAggregate; trader?: string | null }) {
+  const t = behaviorI18n.t;
+  const list = g.trades ?? [];
+  const all = allTradesHref(list, trader);
+  return (
+    <div className="flex flex-col gap-2 py-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">{t("aggregates.drillTitle", { setup: g.setup, trades: commonI18n.t("units.trades", { count: list.length }) })}</p>
+        {all && (
+          <Link href={all} className="inline-flex min-h-8 items-center gap-1 rounded-full px-2 text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {t("aggregates.drillAll")} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
+      <ul className="grid max-h-72 grid-cols-1 gap-0.5 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3" aria-label={t("aggregates.drillAria", { setup: g.setup })}>
+        {list.map((x) => (
+          <li key={x.id}>
+            <Link
+              href={links.trade(x.id)}
+              aria-label={t("aggregates.drillOpen", { ticker: x.ticker, date: fmtDate(x.date, "medium") })}
+              className="flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="w-12 shrink-0 tabular-nums text-muted-foreground">{fmtDate(x.date, "dayMonthNumeric")}</span>
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground">{x.ticker}</span>
+              <span className="w-12 shrink-0 text-muted-foreground">{x.side === "short" ? commonI18n.t("trading.short") : x.side === "long" ? commonI18n.t("trading.long") : ""}</span>
+              <span className={cn("w-20 shrink-0 text-right tabular-nums", toneText(toneOf(x.net)))}>{fmtUsd(x.net, { signed: true, decimals: "auto" })}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function SetupsAggregates({ groups, covered, pending, smallSample = 20, trader }: { groups: SetupAggregate[]; covered: number; pending: number; smallSample?: number; trader?: string | null }) {
   const { rows, thProps } = useTableSort(groups, ACCESSORS, "net");
+  const [open, setOpen] = React.useState<string | null>(null);
+  const toggle = (setup: string) => setOpen((cur) => (cur === setup ? null : setup));
   const [lo, hi] = React.useMemo(() => {
     const xs = groups.flatMap((g) => (g.expectancyCI ? [g.expectancyCI.low, g.expectancyCI.high] : g.expectancy != null ? [g.expectancy] : []));
     const m = Math.max(1, ...xs.map(Math.abs));
@@ -81,9 +124,20 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
               const v = verdict(g, smallSample);
               const small = g.small ?? g.n < smallSample;
               const decided = g.wins + g.losses;
+              const drill = !!g.trades?.length;
+              const isOpen = drill && open === g.setup;
               return (
-                <tr key={g.setup}>
+                <React.Fragment key={g.setup}>
+                <tr
+                  tabIndex={drill ? 0 : undefined}
+                  aria-expanded={drill ? isOpen : undefined}
+                  title={drill ? behaviorI18n.t("aggregates.rowToggle", { setup: g.setup }) : undefined}
+                  onClick={drill ? (e) => { if (!(e.target as HTMLElement).closest("a")) toggle(g.setup); } : undefined}
+                  onKeyDown={drill ? (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(g.setup); } } : undefined}
+                  className={cn(drill && "cursor-pointer transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", isOpen && "bg-[var(--glass-hover-bg)]")}
+                >
                   <td className="font-medium">
+                    {drill && (isOpen ? <ChevronDown className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-muted-foreground" aria-hidden="true" /> : <ChevronRight className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-muted-foreground" aria-hidden="true" />)}
                     {g.accepted > 0 ? (
                       <Link href={links.trades({ setup: g.setup })} className="underline-offset-2 hover:underline" title={behaviorI18n.t("aggregates.acceptedTitle", { trades: commonI18n.t("units.trades", { count: g.accepted }) })}>{g.setup}</Link>
                     ) : g.setup}
@@ -108,13 +162,21 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
                   <td className="text-right tabular-nums">{g.avgConfidence == null ? "—" : `${Math.round(g.avgConfidence * 100)}%`}</td>
                   <td><Pill tone={v.tone} dot title={v.title}>{v.label}</Pill></td>
                 </tr>
+                {isOpen && (
+                  <tr>
+                    <td colSpan={8} className="bg-muted/10">
+                      <SetupTrades g={g} trader={trader} />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
           </tbody>
         </table>
       </DataTable>
       <p className="text-xs text-muted-foreground">
-        {behaviorI18n.t("aggregates.covered", { trades: commonI18n.t("units.trades", { count: covered }) })}{pending > 0 ? behaviorI18n.t("aggregates.notCovered", { count: pending }) : ""}{behaviorI18n.t("aggregates.footnote")}
+        {behaviorI18n.t("aggregates.covered", { trades: commonI18n.t("units.trades", { count: covered }) })}{pending > 0 ? behaviorI18n.t("aggregates.notCovered", { count: pending }) : ""}{behaviorI18n.t("aggregates.footnote")}{groups.some((g) => g.trades?.length) ? ` ${behaviorI18n.t("aggregates.drillHint")}.` : ""}
 
       </p>
     </div>

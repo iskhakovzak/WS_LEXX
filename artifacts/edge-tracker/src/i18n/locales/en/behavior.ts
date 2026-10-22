@@ -199,6 +199,12 @@ export default {
   },
 
   aggregates: {
+    rowToggle: "Trades of the «{setup}» setup: show or hide",
+    drillTitle: "Trades of the «{setup}» setup: {trades}",
+    drillAria: "Trades of the «{setup}» setup",
+    drillOpen: "Open the {ticker} trade of {date}",
+    drillAll: "All in Trades",
+    drillHint: "A table row opens its trades",
     few: "too little data",
     fewTitle: "Fewer than 5 trades",
     edge: "edge",

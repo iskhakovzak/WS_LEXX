@@ -5,6 +5,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Page, PageHeader, Panel, Segmented, Toolbar } from "@/components/ds";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { parseDayRange, type DayRange } from "@/lib/period-range";
 import { KpiGridSkeleton } from "@/components/stats/kpi-grid";
 import { type Dimension } from "@/components/stats/breakdown-panel";
 import { ReportPanels, useReportData, useWindowExport } from "@/components/stats/report";
@@ -19,8 +21,8 @@ import { useFacetView } from "@/components/shared/trade-facets/api";
 import { facetQuery } from "@/lib/trade-facets";
 import {
   horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, horizonOf, inRange,
-  fmtDayKey, periodRanges, preferredMetric, spansYears, toKey,
-  type HorizonFilter, type Metric, type PeriodKey, type Range,
+  fmtDayKey, periodTexts, preferredMetric, spansYears, statsRanges, toKey,
+  type HorizonFilter, type Metric, type PeriodKey, type Range, type StatsPeriod,
 } from "@/components/stats/metrics";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
@@ -39,7 +41,8 @@ import { statsI18n } from "@/i18n/ns/stats";
  */
 
 const PREFS_KEY = "ws.stats.prefs.v2";
-type Prefs = { period: PeriodKey; metric: Metric | null; trader: string; dim: Dimension; horizon: HorizonFilter };
+/** `from` / `to`: the «Свой период» range (kept while a preset is picked, so «Период…» reopens on it). */
+type Prefs = { period: StatsPeriod; from?: string; to?: string; metric: Metric | null; trader: string; dim: Dimension; horizon: HorizonFilter };
 /**
  * DEV-01: the page opens on 90 days; «Всё время» (the whole book, tens of MB for staff) is on demand only.
  * `trader`: a picked person, or "all" = the default (the own book; «Вся команда» is a per-visit pick, never stored).
@@ -51,9 +54,12 @@ function loadPrefs(): Prefs {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return DEFAULT_PREFS;
     const p = JSON.parse(raw) as Partial<Prefs>;
+    const custom = parseDayRange(p.from, p.to);
     return {
-      // «Всё время» is never restored: every visit starts on the cheap default window.
-      period: p.period !== "all" && PERIOD_OPTIONS.some((o) => o.value === p.period) ? (p.period as PeriodKey) : DEFAULT_PREFS.period,
+      // «Всё время» is never restored: every visit starts on the cheap default window. A custom range is (when valid).
+      period: p.period === "custom" ? (custom ? "custom" : DEFAULT_PREFS.period)
+        : p.period !== "all" && PERIOD_OPTIONS.some((o) => o.value === p.period) ? (p.period as PeriodKey) : DEFAULT_PREFS.period,
+      ...(custom ?? {}),
       metric: p.metric === "r" || p.metric === "usd" || p.metric === "net" ? p.metric : null,
       horizon: HORIZON_OPTIONS.some((o) => o.value === p.horizon) ? (p.horizon as HorizonFilter) : "all",
       trader: typeof p.trader === "string" && p.trader ? p.trader : "all",
@@ -102,7 +108,8 @@ export default function Stats() {
   const [team, setTeam] = useState(() => new URLSearchParams(window.location.search).get("trader") === "all");
   // Server-side window (DEV-01): the selected period first, the equally long previous one after it (deltas only),
   // only the picked trader. "Всё время" (on demand) still needs the whole (scoped) book.
-  const ranges = useMemo(() => periodRanges(prefs.period), [prefs.period]);
+  const custom = useMemo<DayRange | null>(() => parseDayRange(prefs.from, prefs.to), [prefs.from, prefs.to]);
+  const ranges = useMemo(() => statsRanges(prefs.period, custom), [prefs.period, custom]);
   // Own trades only (owner rule 2026-10-21): a member never gets the trader picker or «the whole team», and a saved
   // prefs.trader / ?trader= is ignored for them (like /analytics) — their scope is the own book, or their own name
   // for the PropReports-only switch below.
@@ -115,7 +122,7 @@ export default function Stats() {
   const staff = scope.team;
   const pickTrader = (v: string) => { setTeam(v === TEAM); set("trader", v === TEAM ? "all" : v); };
   const raw = usePeriodTrades(
-    { from: ranges.cur.from, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
+    { from: ranges.cur.from, to: ranges.cur.to, prevFrom: ranges.prev?.from ?? null, prevTo: ranges.prev?.to ?? null, trader: windowTrader },
     !staff,
   );
   const FV = useFacetView(); // «Фильтры» + «Исключить IMX»: x* params for staff aggregates, a filter over the own book
@@ -183,7 +190,7 @@ export default function Stats() {
     staff, trades, range: ranges.cur, trader: windowTrader, horizon: prefs.horizon, facets: FV.view, deskTags: FQ.data?.deskTags,
   });
 
-  const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
+  const periodOpt = periodTexts(prefs.period, custom);
   // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
   // One person's report: trade rows don't repeat the name (MAKSIM-37).
   const oneTrader = solo || trader !== "all";
@@ -283,10 +290,9 @@ export default function Stats() {
 
       <Toolbar className="justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Segmented<PeriodKey>
-            ariaLabel={t("periodAria")}
-            value={prefs.period}
-            onChange={(v) => set("period", v)}
+          <PeriodPicker<PeriodKey>
+            ariaLabel={t("periodAria")} value={prefs.period} custom={custom} presetRange={ranges.cur} today={toKey(new Date())} comparePrev
+            onPreset={(v) => set("period", v)} onCustom={(r) => setPrefs((p) => ({ ...p, period: "custom", ...r }))}
             options={PERIOD_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
           <Segmented<Metric>

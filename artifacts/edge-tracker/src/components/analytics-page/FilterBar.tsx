@@ -4,10 +4,11 @@ import { Segmented, Toolbar } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import {
-  type AnalyticsFilters, type Period, type SideFilter, type Unit, type Horizon, type HorizonFilter,
-  DEFAULT_FILTERS, HORIZONS, activeFilterCount, horizonLabel, periodOptions,
+  type AnalyticsFilters, type PresetPeriod, type SideFilter, type Unit, type Horizon, type HorizonFilter,
+  DEFAULT_FILTERS, HORIZONS, activeFilterCount, customRangeOf, filtersRange, horizonLabel, isoDay, periodOptions,
 } from "./metrics";
 
 const ALL = "__all__";
@@ -63,12 +64,10 @@ export function FilterBar({
     <Toolbar className={cn("gap-2 p-2 sm:p-2.5", className)}>
       {traderPicker}
 
-      <Segmented<Period>
-        ariaLabel={t("filters.period")}
-        size="sm"
-        options={periodOptions()}
-        value={filters.period}
-        onChange={(v) => set("period", v)}
+      <PeriodPicker<PresetPeriod>
+        ariaLabel={t("filters.period")} size="sm" options={periodOptions()} value={filters.period}
+        custom={customRangeOf(filters)} presetRange={filtersRange(filters)} today={isoDay(new Date())} comparePrev
+        onPreset={(v) => set("period", v)} onCustom={(r) => onChange({ ...filters, period: "custom", ...r })}
       />
 
       <Segmented<"all" | "long" | "short">

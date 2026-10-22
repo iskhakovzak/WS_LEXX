@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, Page, PageHeader, Panel, Pill, Segmented } from "@/components/ds";
+import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
@@ -26,6 +26,9 @@ import { type Question, buildQuestions, changedDays, presetsWithLimits } from "@
 import { useLocation } from "wouter";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM } from "@/components/people/staff-scope";
+import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { parseDayRange, type DayRange } from "@/lib/period-range";
 
 /**
  * /what-if — «Что если» (was /simulator; old links with ?r= / ?p= / ?trader= redirect here): the trader's own closed trades re-run under other rules (server engine
@@ -37,8 +40,10 @@ import { TEAM } from "@/components/people/staff-scope";
  * summary that links here. Commission tariffs are not simulated (the desk does not choose its broker fees).
  */
 
-type PeriodKey = "30d" | "90d" | "ytd" | "all";
-const PERIOD_KEYS: PeriodKey[] = ["30d", "90d", "ytd", "all"];
+type Preset = "30d" | "90d" | "ytd" | "all";
+/** A preset or «Свой период» (?p=custom&from=&to=; the range is remembered with the prefs). */
+type PeriodKey = Preset | "custom";
+const PERIOD_KEYS: Preset[] = ["30d", "90d", "ytd", "all"];
 const ALL = "__all__";
 const PREFS_KEY = "ws.simulator.prefs.v1";
 
@@ -51,14 +56,15 @@ function periodFrom(p: PeriodKey, today: string): string {
   }
 }
 
-const isPeriod = (v: unknown): v is PeriodKey => PERIOD_KEYS.includes(v as PeriodKey);
+const isPeriod = (v: unknown, custom: DayRange | null): v is PeriodKey => PERIOD_KEYS.includes(v as Preset) || (v === "custom" && !!custom);
 
-function loadPrefs(): { period: PeriodKey; trader: string } {
+function loadPrefs(): { period: PeriodKey; trader: string; custom: DayRange | null } {
   try {
-    const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<{ period: PeriodKey; trader: string }>;
-    return { period: isPeriod(p.period) ? p.period : "all", trader: typeof p.trader === "string" ? p.trader : "" };
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") as Partial<{ period: PeriodKey; trader: string; from: string; to: string }>;
+    const custom = parseDayRange(p.from, p.to);
+    return { period: isPeriod(p.period, custom) ? p.period : "all", trader: typeof p.trader === "string" ? p.trader : "", custom };
   } catch {
-    return { period: "all", trader: "" };
+    return { period: "all", trader: "", custom: null };
   }
 }
 
@@ -67,8 +73,11 @@ function initialState(me: string) {
   const sp = new URLSearchParams(window.location.search);
   const prefs = loadPrefs();
   const p = sp.get("p");
+  const linked = parseDayRange(sp.get("from"), sp.get("to"));
+  const custom = p === "custom" ? linked : prefs.custom;
   return {
-    period: isPeriod(p) ? p : prefs.period,
+    custom,
+    period: isPeriod(p, custom) ? p : prefs.period,
     trader: sp.get("trader") ?? (prefs.trader || me),
     rules: decodeRules(sp.get("r")),
   };
@@ -83,36 +92,41 @@ export default function WhatIf() {
 
   const [init] = useState(() => initialState(me));
   const [period, setPeriod] = useState<PeriodKey>(init.period);
+  const [custom, setCustom] = useState<DayRange | null>(init.custom);
   const [trader, setTrader] = useState<string>(init.trader);
   const [rules, setRules] = useState<Rule[]>(init.rules);
 
   // Persist the viewer's period/trader; mirror everything into the URL (replaceState: no history spam).
   useEffect(() => {
-    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ period, trader })); } catch { /* storage unavailable */ }
-  }, [period, trader]);
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ period, trader, ...(custom ?? {}) })); } catch { /* storage unavailable */ }
+  }, [period, trader, custom]);
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const r = encodeRules(rules);
     if (r) sp.set("r", r); else sp.delete("r");
     if (period !== "all") sp.set("p", period); else sp.delete("p");
+    if (period === "custom" && custom) { sp.set("from", custom.from); sp.set("to", custom.to); } else { sp.delete("from"); sp.delete("to"); }
     if (isCurator && trader) sp.set("trader", trader); else sp.delete("trader");
     const q = sp.toString();
     const next = `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash}`;
     if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, "", next);
-  }, [rules, period, trader, isCurator]);
+  }, [rules, period, custom, trader, isCurator]);
 
   const today = nyDate();
   // Traders see only themselves (the server enforces it anyway); staff pick a trader or the whole team.
   const scopeTrader = isCurator ? (trader === ALL ? "" : trader) : "";
   // 30 / 90 days move their start every day: the suggestions take the fast path there (no honest verdict can resolve).
+  const win = period === "custom" && custom ? custom : { from: period === "custom" ? "" : periodFrom(period, today), to: "" };
+  // «Разрезы»: x* params on every engine request (base, run, suggestions) — the engine only sees the trades that pass.
+  const rf = useRangeFacets({ from: win.from || null, to: win.to || null, trader: scopeTrader || null }, user?.role !== "guest");
   const scope = useMemo<Scope>(
-    () => ({ trader: scopeTrader, from: periodFrom(period, today), to: "", rolling: period === "30d" || period === "90d" }),
-    [scopeTrader, period, today],
+    () => ({ trader: scopeTrader, from: win.from, to: win.to, rolling: period === "30d" || period === "90d", facets: rf.query || undefined }),
+    [scopeTrader, win.from, win.to, period, rf.query],
   );
   // The honest check runs on «всё время»: a short period's note and a card that outruns the year offer the switch.
   const showAllTime = period === "all" ? undefined : () => setPeriod("all");
   const scenarioOwner = isCurator ? (trader === ALL ? "" : trader) : me;
-  const periodPhrase = t(`period.${period}.phrase`);
+  const periodPhrase = period === "custom" && custom ? fmtDayRange(custom) : t(`period.${period === "custom" ? "all" : period}.phrase`);
   const periodOptions = PERIOD_KEYS.map((value) => ({ value, label: t(`period.${value}.label`) }));
   // Fee table by trader / account / month / setup / horizon (/api/edge/costs) — same trader and period as the page.
 
@@ -168,7 +182,10 @@ export default function WhatIf() {
   const recalculating = (hasRules && (run.isFetching || pendingRecalc)) || base.isPlaceholderData;
   const controls = (
     <>
-      <Segmented<PeriodKey> ariaLabel={t("periodAria")} value={period} onChange={setPeriod} options={periodOptions} />
+      <PeriodPicker<Preset>
+        ariaLabel={t("periodAria")} value={period} custom={custom} presetRange={win.from ? { from: win.from, to: today } : null} today={today} options={periodOptions}
+        onPreset={setPeriod} onCustom={(r) => { setCustom(r); setPeriod("custom"); }}
+      />
       {isCurator && (
         <StaffTraderPicker
           value={!trader || trader === ALL ? TEAM : trader}
@@ -237,6 +254,7 @@ export default function WhatIf() {
     return (
       <Page>
         {header}
+        <RangeFacetsPanel rf={rf} />
         <Panel>
           <EmptyState
             icon={SearchX}
@@ -259,6 +277,7 @@ export default function WhatIf() {
   return (
     <Page>
       {header}
+      <RangeFacetsPanel rf={rf} />
 
       <QuestionsBar questions={questions} rules={rules} onToggle={toggleQuestion} />
 

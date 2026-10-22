@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
-import { type AnalyticsFilters, periodRange, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { type AnalyticsFilters, filtersRange, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { personName } from "@/i18n";
@@ -84,12 +84,13 @@ export function PsychologyTab({
   const { t } = analyticsI18n.useT();
   const params = useMemo(() => {
     const sp = new URLSearchParams({ userId });
-    const r = periodRange(filters.period);
+    const r = filtersRange(filters);
     if (r) { sp.set("from", r.from); sp.set("to", r.to); }
     if (filters.side) sp.set("side", filters.side);
     if (filters.ticker) sp.set("ticker", filters.ticker);
     if (filters.setup) sp.set("setup", filters.setup);
     if (filters.horizon) sp.set("horizon", filters.horizon);
+    if (filters.facets) new URLSearchParams(filters.facets).forEach((v, k) => sp.set(k, v)); // «Разрезы»
     return sp.toString();
   }, [userId, filters]);
 

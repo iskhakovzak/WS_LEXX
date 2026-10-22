@@ -78,7 +78,7 @@ export function needLine(s: Pick<Suggestion, "status" | "needDays" | "needDaysAt
   return { kind: "days", days: s.needDays, atLeast: s.needDaysAtLeast === true };
 }
 
-export type SectionNote = "computing" | "slow" | "noConfirmed" | "team" | "window" | "unavailable";
+export type SectionNote = "computing" | "slow" | "noConfirmed" | "team" | "window" | "facets" | "unavailable";
 
 /** What the section says before «это история, а не обещание»; null = the plain hint (which already says it). */
 export function sectionNote(data: SuggestionsResponse | undefined): SectionNote | null {
@@ -95,6 +95,8 @@ export function sectionNote(data: SuggestionsResponse | undefined): SectionNote 
       return "team";
     case "window":
       return "window";
+    case "facets":
+      return "facets";
     case "ready":
       return h.confirmed === 0 && data.suggestions.length > 0 ? "noConfirmed" : null;
   }

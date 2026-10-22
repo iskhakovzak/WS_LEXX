@@ -9,10 +9,9 @@ import * as React from "react";
 import { AlertTriangle, Building2, CalendarDays, Clock, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
 import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/http";
-import { fmtDay, monthLong, useOfficeStats, type Unit } from "@/components/office-stats/api";
+import { monthLong, useOfficeStats, type Unit } from "@/components/office-stats/api";
 import { nyDate } from "@/lib/trading-date";
 import {
   CalendarHeatmap, DayDetail, GeneralChart, InsightsStrip, KpiRow, PacePanel, type Ctx,
@@ -24,8 +23,13 @@ import { MonthlyPanel } from "@/components/office-stats/monthly";
 import { officeI18n } from "@/i18n/ns/officeStats";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
+import { useAuth } from "@/contexts/auth-context";
+import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { parseDayRange, type DayRange } from "@/lib/period-range";
 
-type PeriodMode = "ytd" | "quarter" | "month" | "custom";
+type Preset = "ytd" | "quarter" | "month";
+type PeriodMode = Preset | "custom";
 
 const nyToday = (): string => nyDate();
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -88,7 +92,8 @@ export default function OfficeStatsPage() {
   const curQ = Math.floor((Number(today.slice(5, 7)) - 1) / 3) + 1;
   const [quarter, setQuarter] = React.useState<number>(focusYear === ty ? curQ : 4);
   const [month, setMonth] = React.useState<number>(focusYear === ty ? Number(today.slice(5, 7)) : 12);
-  const [custom, setCustom] = React.useState<{ from: string; to: string }>({ from: `${focusYear}-01-01`, to: minYmd(`${focusYear}-12-31`, today) });
+  const [storedCustom, setCustom] = usePersistentState<DayRange | null>("office-stats.custom", null);
+  const custom = parseDayRange(storedCustom?.from, storedCustom?.to);
 
   // A month / quarter picked for an earlier year can lie in the future of the current one (December → 2026 in
   // October): clamp it to today, otherwise the period would start after it ends.
@@ -103,19 +108,22 @@ export default function OfficeStatsPage() {
     const cap = (ymd: string) => minYmd(ymd, today);
     if (mode === "quarter") { const m0 = (quarter - 1) * 3 + 1; return { from: `${y}-${pad2(m0)}-01`, to: cap(`${y}-${pad2(m0 + 2)}-${lastDay(y, m0 + 2)}`) }; }
     if (mode === "month") return { from: `${y}-${pad2(month)}-01`, to: cap(`${y}-${pad2(month)}-${lastDay(y, month)}`) };
-    if (mode === "custom" && custom.from && custom.to) return custom.from <= custom.to ? custom : { from: custom.to, to: custom.from };
+    if (mode === "custom" && custom) return custom;
     return { from: `${y}-01-01`, to: cap(`${y}-12-31`) };
-  }, [mode, effQuarter, effMonth, custom, focusYear, today]);
+  }, [mode, effQuarter, effMonth, custom?.from, custom?.to, focusYear, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const periodLabel = mode === "quarter"
     ? t("period.quarterOfYear", { q: effQuarter, year: focusYear })
     : mode === "month"
       ? t("period.monthOfYear", { month: monthLong(effMonth - 1), year: focusYear })
-      : mode === "custom"
-        ? commonI18n.t("time.range", { from: fmtDay(period.from), to: fmtDay(period.to) })
+      : mode === "custom" && custom
+        ? fmtDayRange(custom)
         : t("period.ytdOf", { year: focusYear });
 
-  const q = useOfficeStats({ years: selYears, from: period.from, to: period.to });
+  // «Разрезы» for partners only: a member's facet buckets would be the own book, not the office the numbers are about.
+  const partner = useAuth().user?.role === "admin";
+  const rf = useRangeFacets({ from: period.from, to: period.to }, partner);
+  const q = useOfficeStats({ years: selYears, from: period.from, to: period.to, facets: rf.query || undefined });
   const data = q.data;
   const answerYears = data?.dataYears;
   React.useEffect(() => { if (answerYears) setDataYears((cur) => (cur && cur.join() === answerYears.join() ? cur : answerYears)); }, [answerYears]);
@@ -202,12 +210,10 @@ export default function OfficeStatsPage() {
           })}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Segmented<PeriodMode>
-            ariaLabel={t("period.label")}
-            value={mode}
-            onChange={setMode}
-            size="sm"
-            options={[{ value: "ytd", label: t("period.ytd") }, { value: "quarter", label: t("period.quarter") }, { value: "month", label: t("period.month") }, { value: "custom", label: t("period.custom") }]}
+          <PeriodPicker<Preset>
+            ariaLabel={t("period.label")} value={mode} custom={custom} presetRange={period} today={today} size="sm"
+            onPreset={setMode} onCustom={(r) => { setCustom(r); setMode("custom"); }}
+            options={[{ value: "ytd", label: t("period.ytd") }, { value: "quarter", label: t("period.quarter") }, { value: "month", label: t("period.month") }]}
           />
           {mode === "quarter" && (
             <Segmented<string> ariaLabel={t("period.quarter")} size="sm" value={String(effQuarter)} onChange={(v) => setQuarter(Number(v))}
@@ -225,13 +231,6 @@ export default function OfficeStatsPage() {
               ))}
             </select>
           )}
-          {mode === "custom" && (
-            <span className="flex flex-wrap items-center gap-1.5">
-              <Input type="date" aria-label={t("period.from")} value={custom.from} max={today} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} className="h-8 w-[9.5rem]" />
-              <span className="text-muted-foreground">—</span>
-              <Input type="date" aria-label={t("period.to")} value={custom.to} max={today} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} className="h-8 w-[9.5rem]" />
-            </span>
-          )}
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2 lg:ml-auto">
@@ -246,6 +245,8 @@ export default function OfficeStatsPage() {
           </div>
         )}
       </div>
+
+      <RangeFacetsPanel rf={rf} />
 
       {/* Section anchors (sticky). */}
       {ctx && !memberNoCapital && (

@@ -25,13 +25,10 @@ export default {
     ytd: "Year to date",
     quarter: "Quarter",
     month: "Month",
-    custom: "Custom",
     quarterShort: "Q{q}",
     quarterOfYear: "Q{q} {year}",
     monthOfYear: "{month} {year}",
     ytdOf: "{year} YTD",
-    from: "From",
-    to: "To",
   },
   filters: {
     years: "Years",

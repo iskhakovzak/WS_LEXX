@@ -202,6 +202,12 @@ export default {
   },
 
   aggregates: {
+    rowToggle: "Сделки сетапа «{setup}»: показать или скрыть",
+    drillTitle: "Сделки сетапа «{setup}»: {trades}",
+    drillAria: "Сделки сетапа «{setup}»",
+    drillOpen: "Открыть сделку {ticker} от {date}",
+    drillAll: "Все в Сделках",
+    drillHint: "Строка таблицы открывает свои сделки",
     few: "мало данных",
     fewTitle: "Меньше 5 сделок",
     edge: "edge",

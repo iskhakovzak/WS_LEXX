@@ -57,6 +57,8 @@ export type TrendResult = {
 };
 
 export type BenchPeriod = "week" | "month" | "quarter" | "all";
+/** A preset or «Свой период» (BenchParams from / to). */
+export type BenchPeriodKey = BenchPeriod | "custom";
 
 export type BenchmarkResponse = {
   period: { kind: string; from: string; to: string; today: string };
@@ -92,16 +94,20 @@ export type SameTickerResponse = {
   pairs: { a: string; b: string; cases: number }[];
 };
 
-export type BenchParams = { period: BenchPeriod; minTrades: number };
+/** `from` / `to`: «Свой период» (the server's window then ignores `period`); `facets`: «Разрезы» as x* params. */
+export type BenchParams = { period: BenchPeriod; minTrades: number; from?: string; to?: string; facets?: string };
 
 function qs(p: BenchParams): string {
-  return new URLSearchParams({ period: p.period, minTrades: String(p.minTrades) }).toString();
+  const sp = new URLSearchParams({ period: p.period, minTrades: String(p.minTrades) });
+  if (p.from && p.to) { sp.set("from", p.from); sp.set("to", p.to); }
+  if (p.facets) new URLSearchParams(p.facets).forEach((v, k) => sp.set(k, v));
+  return sp.toString();
 }
 
 export const benchmarkKeys = {
   all: ["benchmark"] as const,
-  summary: (p: BenchParams) => ["benchmark", "summary", p.period, p.minTrades] as const,
-  sameTicker: (p: BenchParams) => ["benchmark", "same-ticker", p.period] as const,
+  summary: (p: BenchParams) => ["benchmark", "summary", p.period, p.minTrades, p.from ?? "", p.to ?? "", p.facets ?? ""] as const,
+  sameTicker: (p: BenchParams) => ["benchmark", "same-ticker", p.period, p.from ?? "", p.to ?? "", p.facets ?? ""] as const,
 };
 
 export function useBenchmark(p: BenchParams) {

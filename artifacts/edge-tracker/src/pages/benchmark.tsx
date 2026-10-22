@@ -7,13 +7,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { BarChart3, Download, Flame, GitCompare, Gauge, Table2, TrendingUp, Users } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, Segmented, StatCard, StatGrid, Toolbar, toneOf, type SectionTab, type SegmentOption } from "@/components/ds";
+import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, StatCard, StatGrid, Toolbar, toneOf, type SectionTab, type SegmentOption } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { downloadCsv } from "@/components/analytics-page/metrics";
 import { QueryError } from "@/components/query-error";
-import { useBenchmark, useSameTicker, type BenchPeriod, type BenchmarkResponse } from "@/components/benchmark/api";
+import { useBenchmark, useSameTicker, type BenchPeriod, type BenchPeriodKey, type BenchmarkResponse } from "@/components/benchmark/api";
+import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
+import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { parseDayRange } from "@/lib/period-range";
+import { nyDate } from "@/lib/trading-date";
 import { BenchmarkTable } from "@/components/benchmark/benchmark-table";
 import { BenchmarkHeatmap } from "@/components/benchmark/heatmap";
 import { SameTickerView } from "@/components/benchmark/same-ticker";
@@ -76,7 +80,10 @@ export default function BenchmarkPage() {
   const { t } = benchmarkI18n.useT();
   const { q, set } = useUrlState();
   const tab: Tab = TABS.includes(q.get("tab") as Tab) ? (q.get("tab") as Tab) : "table";
-  const period: BenchPeriod = PERIODS.includes(q.get("period") as BenchPeriod) ? (q.get("period") as BenchPeriod) : "quarter";
+  // ?period=custom&from=&to= — «Свой период»; an invalid range falls back to the quarter.
+  const custom = parseDayRange(q.get("from"), q.get("to"));
+  const periodKey: BenchPeriodKey = q.get("period") === "custom" && custom ? "custom" : PERIODS.includes(q.get("period") as BenchPeriod) ? (q.get("period") as BenchPeriod) : "quarter";
+  const period: BenchPeriod = periodKey === "custom" ? "quarter" : periodKey;
   // The field may be cleared while typing; the query follows the last valid number, 400 ms after typing stops.
   const [minTrades, setMinTrades] = useState(loadMinTrades);
   const [minText, setMinText] = useState(() => String(minTrades));
@@ -91,9 +98,14 @@ export default function BenchmarkPage() {
   const a = q.get("a");
   const b = q.get("b");
 
-  const params = { period, minTrades };
+  const [win, setWin] = useState<{ from: string; to: string } | null>(null);
+  // «Разрезы» over the benchmark window (the server's answer; the custom range before it arrives), applied to everyone.
+  const rf = useRangeFacets(periodKey === "custom" && custom ? custom : { from: win?.from, to: win?.to });
+  const params = { period, minTrades, ...(periodKey === "custom" && custom ? custom : {}), facets: rf.query || undefined };
   const summary = useBenchmark(params);
   const data = summary.data;
+  const dataFrom = data?.period.from, dataTo = data?.period.to;
+  useEffect(() => { if (dataFrom && dataTo) setWin((w) => (w?.from === dataFrom && w.to === dataTo ? w : { from: dataFrom, to: dataTo })); }, [dataFrom, dataTo]);
   const staff = data?.mode === "desk";
   const same = useSameTicker(params, staff === true && tab === "same");
 
@@ -144,7 +156,10 @@ export default function BenchmarkPage() {
       />
 
       <Toolbar>
-        <Segmented<BenchPeriod> ariaLabel={t("periodAria")} value={period} onChange={(v) => set({ period: v })} options={periodOptions()} />
+        <PeriodPicker<BenchPeriod>
+          ariaLabel={t("periodAria")} value={periodKey} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()}
+          onPreset={(v) => set({ period: v, from: null, to: null })} onCustom={(r) => set({ period: "custom", from: r.from, to: r.to })}
+        />
         <label className="ml-2 flex items-center gap-2 text-sm text-muted-foreground">
           {t("minTrades")}
           <Input
@@ -168,6 +183,8 @@ export default function BenchmarkPage() {
           )}
         </span>
       </Toolbar>
+
+      <RangeFacetsPanel rf={rf} />
 
       {summary.isLoading ? (
         <PageSkeleton />

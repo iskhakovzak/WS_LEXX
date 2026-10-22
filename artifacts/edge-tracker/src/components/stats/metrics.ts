@@ -8,8 +8,10 @@ import {
   horizonOf as horizonOfTrade, maxDrawdownByDay, payoffOf, winRateOf, entryMinutes,
 } from "@/lib/trade-math";
 import { personName } from "@/i18n";
-import { fmtDateCustom, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
+import { fmtDateCustom, fmtDateRange, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
 import { statsI18n } from "@/i18n/ns/stats";
+import { commonI18n } from "@/i18n/ns/common";
+import { prevDayRange, type DayRange } from "@/lib/period-range";
 
 /*
  * R / P&L / result buckets come from @/lib/trade-math — the single desk definition shared with /analytics,
@@ -99,6 +101,22 @@ export function periodRanges(period: PeriodKey, now = new Date()): { cur: Range;
     cur: { from: toKey(from), to: null },
     prev: { from: toKey(shift(from, -n)), to: toKey(shift(from, -1)) },
   };
+}
+
+/** A preset or «Свой период» (the custom range is stored next to it). */
+export type StatsPeriod = PeriodKey | "custom";
+
+/** periodRanges plus «Свой период»: the range itself and the equally long window right before it. */
+export function statsRanges(period: StatsPeriod, custom: DayRange | null, now = new Date()): { cur: Range; prev: Range | null } {
+  if (period === "custom" && custom) return { cur: { from: custom.from, to: custom.to }, prev: prevDayRange(custom) };
+  return periodRanges(period === "custom" ? "90d" : period, now);
+}
+
+/** Label / phrase of the period («90 дней» / «последние 90 дней»; «Свой период» / «3–21 окт. 2026 г.»). */
+export function periodTexts(period: StatsPeriod, custom: DayRange | null): { label: string; long: string } {
+  if (period === "custom" && custom) return { label: commonI18n.t("periodPicker.title"), long: fmtDateRange(custom.from, custom.to, "short") };
+  const o = PERIOD_OPTIONS.find((x) => x.value === period) ?? PERIOD_OPTIONS[2];
+  return { label: o.label, long: o.long };
 }
 
 /**

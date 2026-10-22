@@ -25,13 +25,10 @@ export default {
     ytd: "Yil boshidan",
     quarter: "Chorak",
     month: "Oy",
-    custom: "Boshqa",
     quarterShort: "{q}-chorak",
     quarterOfYear: "{year}, {q}-chorak",
     monthOfYear: "{month} {year}",
     ytdOf: "{year}-yil boshidan",
-    from: "Dan",
-    to: "Gacha",
   },
   filters: {
     years: "Yillar",

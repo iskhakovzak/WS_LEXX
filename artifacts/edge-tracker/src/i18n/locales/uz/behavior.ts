@@ -199,6 +199,12 @@ export default {
   },
 
   aggregates: {
+    rowToggle: "«{setup}» setap savdolari: koʻrsatish yoki yashirish",
+    drillTitle: "«{setup}» setap savdolari: {trades}",
+    drillAria: "«{setup}» setap savdolari",
+    drillOpen: "{ticker} savdosini ochish ({date})",
+    drillAll: "Hammasi Savdolarda",
+    drillHint: "Jadval qatori oʻz savdolarini ochadi",
     few: "maʼlumot kam",
     fewTitle: "5 tadan kam savdo",
     edge: "edge",

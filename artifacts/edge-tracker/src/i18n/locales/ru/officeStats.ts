@@ -28,13 +28,10 @@ export default {
     ytd: "С начала года",
     quarter: "Квартал",
     month: "Месяц",
-    custom: "Свой",
     quarterShort: "{q} кв.",
     quarterOfYear: "{q} кв. {year}",
     monthOfYear: "{month} {year}",
     ytdOf: "С начала {year}",
-    from: "С",
-    to: "По",
   },
   filters: {
     years: "Годы",
