@@ -60,6 +60,7 @@ export default {
     trainer: { "daily-pick": "Тренажёр: выбор задачи дня" },
     finviz: { screener: "Finviz: скринер", snapshot: "Finviz: данные тикеров", "snapshot-pending": "Finviz: запрошенные тикеры", earnings: "Finviz: календарь отчётов" },
     "news-channel": { premarket: "Канал WS_NEWS: премаркет", open: "Канал WS_NEWS: от открытия", close: "Канал WS_NEWS: итоги дня" },
+    whatif: { honesty: "Честная проверка подсказок «Что если»" },
   },
   backups: {
     description: "pg_dump каждый день в 03:15 по Нью-Йорку (кэш-таблицы без данных). Хранятся 14 дневных и 8 недельных копий.",

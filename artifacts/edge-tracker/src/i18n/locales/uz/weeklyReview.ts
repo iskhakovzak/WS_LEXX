@@ -400,6 +400,7 @@ export default {
     simRange: "diapazon {lo}…{hi}",
     simExcluded: "{trades} olib tashlab",
     simAction: "Hafta qoidasi: «{label}».",
+    simActionCheck: "«{label}»ni «Agar shunday boʻlsa» boʻlimida «Butun davr» boʻyicha tekshiring — bu hali isbotlanmagan.",
     pos: {
       netVsAvg: "Sof natija 4 haftalik oʻrtachadan {amount} yaxshi",
       wr: "Win rate {wr} — oʻrtachadan {pp} f.p. yuqori",

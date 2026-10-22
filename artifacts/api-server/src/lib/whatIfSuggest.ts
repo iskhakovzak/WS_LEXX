@@ -15,6 +15,7 @@ import type { Lang } from "../i18n";
 import { describeRule, runScenario } from "./whatIf";
 import { buildPasses } from "./whatIfPasses";
 import { type CandidateKind, suggestionGrid, trainDays } from "./whatIfGrid";
+import { type Timing, timingOf } from "./whatIfRecipes";
 import { type Rule, type RuleType, type SimTrade, mulberry32, netOf, quantileSorted, round2, sortSim, traderDayKey } from "./whatIfTypes";
 
 export interface Suggestion {
@@ -47,6 +48,8 @@ export interface Suggestion {
   changed: number;
   /** A scale rule: the number is an estimate. */
   estimate: boolean;
+  /** «до входа» / «в сделке» / «разбор» (Ф2): when the rule can be followed. */
+  timing: Timing;
 }
 
 export interface SuggestionsResult {
@@ -73,7 +76,8 @@ export interface Prep {
   testDays: number;
 }
 
-export function prepare(trades: SimTrade[], opts: { iters?: number; seed?: number } = {}): Prep {
+/** `holdout: false` (the honest path, lib/whatIfHonesty) = no TRAIN/TEST split; the count matrix is the same. */
+export function prepare(trades: SimTrade[], opts: { iters?: number; seed?: number; holdout?: boolean } = {}): Prep {
   const iters = opts.iters ?? 600;
   const base = sortSim(trades).filter((t) => t.gross != null);
   const days = [...new Set(base.map((t) => t.day))].sort((a, b) => a.localeCompare(b));
@@ -89,7 +93,7 @@ export function prepare(trades: SimTrade[], opts: { iters?: number; seed?: numbe
       for (let i = 0; i < D; i++) counts[row + ((rnd() * D) | 0)]++;
     }
   }
-  const train = trainDays(base);
+  const train = opts.holdout === false ? null : trainDays(base);
   const isTest = train ? Uint8Array.from(days, (d) => (train.has(d) ? 0 : 1)) : null;
   return { base, n: base.length, days, dayIdx, baseDay, iters, counts, train, isTest, testDays: train ? D - train.size : 0 };
 }
@@ -99,6 +103,12 @@ export interface Effect {
   skipped: boolean;
   /** Net difference by calendar day: −net of every removed trade, after − before of every changed one. */
   dayDiff: Float64Array;
+  /**
+   * Share of a trade the rule takes away, summed by calendar day: 1 per removed trade, 1 − x / sizeRel per trade a size
+   * cap scales down (0 for a money change that removes no size). «Trade less» at random would give Δ = −mean · Σ this
+   * (lib/whatIfRepick: the excess over the trader's average trade).
+   */
+  dayRemoved: Float64Array;
   affectedIds: Set<number>;
   excluded: number;
   changed: number;
@@ -115,6 +125,7 @@ export interface Effect {
 export function candidateEffect(prep: Prep, rule: Rule): Effect {
   const passes = buildPasses([rule], prep.base, null);
   const dayDiff = new Float64Array(prep.days.length);
+  const dayRemoved = new Float64Array(prep.days.length);
   const ids = new Set<number>();
   const tdays = new Set<string>();
   let excluded = 0, changed = 0, removed = 0, imx = 0, testAffected = 0;
@@ -129,6 +140,7 @@ export function candidateEffect(prep: Prep, rule: Rule): Effect {
     const d = prep.dayIdx.get(t.day) as number;
     const net = netOf(t) ?? 0;
     dayDiff[d] -= net;
+    dayRemoved[d] += 1;
     excluded++;
     removed += round2(net);
     touch(t, d);
@@ -136,6 +148,7 @@ export function candidateEffect(prep: Prep, rule: Rule): Effect {
   const onChange = (_c: unknown, delta: number, t: SimTrade) => {
     const d = prep.dayIdx.get(t.day) as number;
     dayDiff[d] += delta;
+    if (rule.type === "maxSizeRel" && t.sizeRel != null && t.sizeRel > 0) dayRemoved[d] += Math.max(0, 1 - rule.x / t.sizeRel);
     changed++;
     touch(t, d);
   };
@@ -159,11 +172,32 @@ export function candidateEffect(prep: Prep, rule: Rule): Effect {
     if (prep.isTest?.[d]) testDelta += dayDiff[d];
   }
   return {
-    rule, skipped: passes.skipped.length > 0, dayDiff, affectedIds: ids, excluded, changed, removedNet: round2(removed),
+    rule, skipped: passes.skipped.length > 0, dayDiff, dayRemoved, affectedIds: ids, excluded, changed, removedNet: round2(removed),
     delta: round2(delta), tradesLeft: prep.n - excluded, affectedTraderDays: tdays.size,
     holdout: prep.isTest ? { delta: round2(testDelta), days: prep.testDays, affected: testAffected } : null,
     imxShare: ids.size ? imx / ids.size : 0,
   };
+}
+
+/**
+ * Only the total net difference of one rule on `base` (sorted, with gross) — candidateEffect without the per-day,
+ * per-trade bookkeeping, for the within-day permutation test (lib/whatIfRepick), where it runs thousands of times.
+ */
+export function effectDelta(base: SimTrade[], rule: Rule): number {
+  const passes = buildPasses([rule], base, null);
+  let delta = 0;
+  const onExclude = (t: SimTrade) => { delta -= netOf(t) ?? 0; };
+  let kept = base;
+  if (passes.staticExclusion) {
+    kept = [];
+    for (const t of base) {
+      if (passes.staticExclusion(t)) onExclude(t);
+      else kept.push(t);
+    }
+  }
+  if (passes.money) kept = passes.money(kept, (_c, d) => { delta += d; });
+  if (passes.sequential) passes.sequential(kept, onExclude);
+  return round2(delta);
 }
 
 export interface FamilyBoot {
@@ -243,13 +277,14 @@ const isImxCard = (s: Scored) => s.e.rule.type === "excludeImx";
 
 /**
  * Order (robust ex-ante → robust label → weak ex-ante → weak label; then the effect, then the rule text so ties sort
- * the same way every time), the caps (one card per rule type, ≤ 1 label card, ≤ 2 picked cards, no card whose affected
+ * the same way every time — or the caller's `order`, the honest path's), the caps (one card per rule type, ≤ 1 label card, ≤ 2 picked cards, no card whose affected
  * trades are ≥ 70% those of a card above) and the IMX guard: only when «без IMX» is actually SHOWN, the cards that are
  * mostly IMX make way for the next ones. When «без IMX» does not make the list (limit, overlap), they stay.
  */
-export function selectCards(input: Scored[], limit = 8): Scored[] {
+export function selectCards(input: Scored[], limit = 8, order?: (a: Scored, b: Scored) => number): Scored[] {
   const tier = (s: Scored) => (s.robust ? 0 : 2) + (s.kind === "label" ? 1 : 0);
-  const sorted = [...input].sort((a, b) => tier(a) - tier(b) || b.e.delta - a.e.delta || JSON.stringify(a.e.rule).localeCompare(JSON.stringify(b.e.rule)));
+  const byTier = (a: Scored, b: Scored) => tier(a) - tier(b) || b.e.delta - a.e.delta || JSON.stringify(a.e.rule).localeCompare(JSON.stringify(b.e.rule));
+  const sorted = [...input].sort(order ?? byTier);
   const unmasked = (s: Scored) => isImxCard(s) || s.e.imxShare < IMX_MASK_SHARE;
   if (!sorted.some(isImxCard) || sorted.every(unmasked)) return pickCards(sorted, limit);
   const guarded = pickCards(sorted.filter(unmasked), limit);
@@ -318,6 +353,7 @@ export function findSuggestions(
       robust, removedNet: e.removedNet,
       kind, picked: wasPicked, sameData: wasPicked && e.holdout == null, holdout: e.holdout,
       affected: e.excluded + e.changed, changed: e.changed, estimate: e.rule.type === "maxSizeRel" || e.rule.type === "capLoss",
+      timing: timingOf(e.rule, kind),
     };
   });
   return { suggestions, tested, smallSample };

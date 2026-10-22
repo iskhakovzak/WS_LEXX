@@ -41,7 +41,7 @@ describe("fast path parity with runScenario", () => {
 /** A synthetic scored candidate for the selection rules. */
 function sc(rule: Rule, delta: number, ids: number[], o: Partial<Pick<Scored, "kind" | "picked" | "robust">> & { imxShare?: number } = {}): Scored {
   const e: Effect = {
-    rule, skipped: false, dayDiff: new Float64Array(0), affectedIds: new Set(ids), excluded: ids.length, changed: 0, removedNet: -delta,
+    rule, skipped: false, dayDiff: new Float64Array(0), dayRemoved: new Float64Array(0), affectedIds: new Set(ids), excluded: ids.length, changed: 0, removedNet: -delta,
     delta, tradesLeft: 100, affectedTraderDays: 5, holdout: null, imxShare: o.imxShare ?? 0,
   };
   return { kind: o.kind ?? "exante", picked: o.picked ?? false, robust: o.robust ?? false, e, b: { ci: { lo: 0, hi: 0 }, se: 1, center: delta } };

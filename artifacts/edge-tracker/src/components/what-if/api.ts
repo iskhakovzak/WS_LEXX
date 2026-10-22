@@ -135,7 +135,42 @@ export type Suggestion = {
   affected?: number;
   changed?: number;
   estimate?: boolean;
+  /**
+   * The honest path (api lib/whatIfHonesty): «Подтверждено» / «Гипотеза» once the verdict is ready, «предварительно»
+   * for the fast cards shown meanwhile; absent in team scope and on older builds.
+   */
+  status?: "confirmed" | "hypothesis" | "preliminary";
+  /** «до входа» / «в сделке» / «разбор»; absent on older builds (then derived from `kind`). */
+  timing?: Timing;
+  /** Out of sample: Σ over the later months and in how many it helped (null without a walk-forward). */
+  oos?: { sum: number; months: number; positive: number; testDays: number } | null;
+  /** A hypothesis: trading days still needed to tell an effect this size from chance; `needDaysAtLeast` = a lower bound. */
+  needDays?: number | null;
+  needDaysAtLeast?: boolean;
+  /** The days needed outrun what this period can still gather («с начала года» near the year's end): check on «всё время». */
+  needAllTime?: boolean;
+  /** Most of the effect comes from a few days. */
+  fragile?: { reason: "fewDays" | "topDays"; days: number } | null;
 };
+
+export type Timing = "exante" | "inTrade" | "review";
+/** «window»: a rolling 30 / 90-day period or a closed range — it never grows, so no honest verdict can resolve there. */
+export type HonestyState = "ready" | "queued" | "running" | "failed" | "team" | "unavailable" | "window";
+export type HonestyInfo = {
+  state: HonestyState;
+  version: number;
+  computedAt: string | null;
+  wfAvailable: boolean | null;
+  months: number | null;
+  testDays: number | null;
+  confirmed: number;
+  hypotheses: number;
+  /** Poll interval while the honest check is queued or running (the server backs off after 3 min), else null. */
+  pollMs: number | null;
+  /** How long the honest check has been queued or running, else null (absent on older builds). */
+  pendingMs?: number | null;
+};
+
 export type SuggestionsResponse = {
   scope: string | null; period: PeriodMeta; baselineNet: number; trades: number; days: number;
   /** < 30 days or < 60 trades: every card is a guide, none robust. */
@@ -143,12 +178,37 @@ export type SuggestionsResponse = {
   suggestions: Suggestion[];
   /** Rules tried (the family-wise correction); absent on older builds. */
   tested?: number;
+  /** The honest check of this trader's cards; absent on older builds and without trades. */
+  honesty?: HonestyInfo;
   generatedAt: string;
 };
 
+/** The honest check is still being computed (the page polls until it is ready). */
+export function honestyPending(data: SuggestionsResponse | undefined): boolean {
+  const st = data?.honesty?.state;
+  return st === "queued" || st === "running";
+}
+
+/** Pending longer than this: the check is taking longer than usual (the server polls slower then, never stops). */
+export const HONESTY_SLOW_MS = 3 * 60_000;
+
+/** The honest check has been pending for HONESTY_SLOW_MS or more (a restart, a long queue): no «до минуты» promise. */
+export function honestySlow(data: SuggestionsResponse | undefined): boolean {
+  return honestyPending(data) && (data?.honesty?.pendingMs ?? 0) >= HONESTY_SLOW_MS;
+}
+
+/**
+ * refetchInterval of the suggestions query: the server's interval while the check is pending (4 s, 30 s once it has
+ * been pending for 3 min — so every pending episode, after any sync, is followed to the end), else none.
+ */
+export function suggestionsPollMs(data: SuggestionsResponse | undefined): number | false {
+  return honestyPending(data) ? data?.honesty?.pollMs ?? 4000 : false;
+}
+
 export type SavedScenario = { id: number; trader: string; name: string; rules: Rule[]; labels: string[]; createdBy: string | null; createdAt: string; updatedAt: string };
 
-export type Scope = { trader: string; from: string; to: string };
+/** `rolling`: the page's 30 / 90-day periods, whose start moves every day (the suggestions take the fast path there). */
+export type Scope = { trader: string; from: string; to: string; rolling?: boolean };
 
 function scopeParams(s: Scope): string {
   const sp = new URLSearchParams();
@@ -158,11 +218,17 @@ function scopeParams(s: Scope): string {
   return sp.toString();
 }
 
+function suggestionsParams(s: Scope): string {
+  const sp = new URLSearchParams(scopeParams(s));
+  if (s.rolling) sp.set("window", "rolling");
+  return sp.toString();
+}
+
 export const whatIfKeys = {
   all: ["whatif"] as const,
   base: (s: Scope) => ["whatif", "base", scopeParams(s)] as const,
   run: (s: Scope, rules: Rule[]) => ["whatif", "run", scopeParams(s), JSON.stringify(rules)] as const,
-  suggestions: (s: Scope) => ["whatif", "suggestions", scopeParams(s)] as const,
+  suggestions: (s: Scope) => ["whatif", "suggestions", suggestionsParams(s)] as const,
   scenarios: (trader: string) => ["whatif", "scenarios", trader] as const,
 };
 
@@ -234,7 +300,12 @@ export function useWhatIfRun(scope: Scope, rules: Rule[], enabled = true) {
 }
 
 export function useWhatIfSuggestions(scope: Scope, enabled = true) {
-  return useQuery<SuggestionsResponse>({ queryKey: whatIfKeys.suggestions(scope), enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData, queryFn: () => http.get<SuggestionsResponse>(`/api/whatif/suggestions?${scopeParams(scope)}`) });
+  return useQuery<SuggestionsResponse>({
+    queryKey: whatIfKeys.suggestions(scope), enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData,
+    // While the honest check runs on the server the fast cards are shown, and the query polls until it is ready.
+    refetchInterval: (q) => suggestionsPollMs(q.state.data),
+    queryFn: () => http.get<SuggestionsResponse>(`/api/whatif/suggestions?${suggestionsParams(scope)}`),
+  });
 }
 
 export function useSavedScenarios(trader: string, enabled = true) {

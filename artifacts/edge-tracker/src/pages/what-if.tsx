@@ -15,7 +15,7 @@ import {
   type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfRun, useWhatIfSuggestions,
 } from "@/components/what-if/api";
 import { LEGACY_RULE_TYPES, type Rule, type RuleType, decodeRules, encodeRules, mergeRule, removeRule, subtractRule } from "@/components/what-if/rules";
-import { SuggestionCards } from "@/components/what-if/suggestions-panel";
+import { SuggestionCards, SuggestionsNote } from "@/components/what-if/suggestions-panel";
 import { ScenarioBar } from "@/components/what-if/scenario-bar";
 import { BootstrapDetails, DeltaHeadline, KeyMetrics, MetricsTable } from "@/components/what-if/compare-panel";
 import { ChartSkeleton, DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
@@ -104,7 +104,13 @@ export default function WhatIf() {
   const today = nyDate();
   // Traders see only themselves (the server enforces it anyway); staff pick a trader or the whole team.
   const scopeTrader = isCurator ? (trader === ALL ? "" : trader) : "";
-  const scope = useMemo<Scope>(() => ({ trader: scopeTrader, from: periodFrom(period, today), to: "" }), [scopeTrader, period, today]);
+  // 30 / 90 days move their start every day: the suggestions take the fast path there (no honest verdict can resolve).
+  const scope = useMemo<Scope>(
+    () => ({ trader: scopeTrader, from: periodFrom(period, today), to: "", rolling: period === "30d" || period === "90d" }),
+    [scopeTrader, period, today],
+  );
+  // The honest check runs on «всё время»: a short period's note and a card that outruns the year offer the switch.
+  const showAllTime = period === "all" ? undefined : () => setPeriod("all");
   const scenarioOwner = isCurator ? (trader === ALL ? "" : trader) : me;
   const periodPhrase = t(`period.${period}.phrase`);
   const periodOptions = PERIOD_KEYS.map((value) => ({ value, label: t(`period.${value}.label`) }));
@@ -305,9 +311,9 @@ export default function WhatIf() {
           <h2 id="sim-suggestions" className="flex items-center gap-2 text-sm font-semibold">
             <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("suggestionsTitle")}
           </h2>
-          <p className="text-xs text-muted-foreground">{t("suggestionsHint", { period: periodPhrase })}</p>
+          <SuggestionsNote data={suggestions.data} periodPhrase={periodPhrase} onAllTime={showAllTime} />
         </div>
-        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} />
+        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} onAllTime={showAllTime} />
         {suggestions.isError && (
           <p className="flex flex-wrap items-center gap-2 text-xs text-down" role="alert">
             {t("suggestionsError")}

@@ -59,6 +59,7 @@ export default {
     trainer: { "daily-pick": "Trainer: task of the day pick" },
     finviz: { screener: "Finviz: screener", snapshot: "Finviz: ticker data", "snapshot-pending": "Finviz: requested tickers", earnings: "Finviz: earnings calendar" },
     "news-channel": { premarket: "WS_NEWS channel: premarket", open: "WS_NEWS channel: from the open", close: "WS_NEWS channel: day recap" },
+    whatif: { honesty: "Honest check of the “What if” suggestions" },
   },
   backups: {
     description: "pg_dump daily at 03:15 New York time (cache tables without data). 14 daily and 8 weekly copies are kept.",

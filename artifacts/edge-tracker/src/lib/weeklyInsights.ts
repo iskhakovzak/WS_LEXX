@@ -70,7 +70,30 @@ export type SimSuggestion = {
   ci?: { lo: number; hi: number } | null;
   excluded?: number;
   tradesLeft?: number;
+  /** The what-if API's honest status («Подтверждено» / «Гипотеза» / «предварительно»); absent on fast-path-only answers. */
+  status?: "confirmed" | "hypothesis" | "preliminary";
+  /** Fast path: above zero after the correction for the rules tried. */
+  robust?: boolean;
+  /** «до входа» / «в сделке» / «разбор»; absent on older builds (then `kind`). */
+  timing?: "exante" | "inTrade" | "review";
+  kind?: "exante" | "label";
 };
+
+/**
+ * Which simulator card may become a weekly tip, and how strongly it may be worded. Only a «Подтверждено» rule is
+ * recommended («Правило на неделю»). A fast-path card (the 8-week window never gets the honest check: it is too short
+ * for the walk-forward) may be shown when it is robust and ex-ante, worded as something to check, not a rule. A
+ * hypothesis, a «предварительно» card and a «разбор» card (marks set after the trade) never become a tip.
+ */
+export function simTipStrength(s: SimSuggestion): "rule" | "check" | null {
+  if (!(s.improvement > 0)) return null;
+  const review = (s.timing ?? (s.kind === "label" ? "review" : "exante")) !== "exante";
+  if (review) return null;
+  if (s.status === "confirmed") return "rule";
+  // An older API sends no `robust` either: every card it returned was robust.
+  if (s.status == null && s.robust !== false) return "check";
+  return null;
+}
 
 export type DayLeak = { kind: string; title: string; count: number; costUsd: number | null; netUsd?: number | null; tradeIds?: number[] };
 export type DayPlanItem = { id: string; source?: string; costUsd: number | null; text: string };
@@ -301,8 +324,8 @@ export function tipCandidates(input: TipInput): Tip[] {
     });
   }
 
-  // 6) Simulator — a statistically confirmed rule (positive = what it would have added).
-  const best = (suggestions ?? []).filter((s) => s.improvement > 0).sort((a, b) => b.improvement - a.improvement)[0];
+  // 6) Simulator — a confirmed rule («Правило на неделю»), or a robust ex-ante fast card worded as a check (simTipStrength).
+  const best = (suggestions ?? []).filter((s) => simTipStrength(s) != null).sort((a, b) => b.improvement - a.improvement)[0];
   if (best) {
     const weeks = input.suggestionsWeeks ?? 8;
     out.push({
@@ -311,7 +334,7 @@ export function tipCandidates(input: TipInput): Tip[] {
       evidence: `${t("insights.simEvidence", { weeks: commonI18n.t("units.weeks", { count: weeks }), amount: usd(best.improvement) })}${
         best.ci ? ` (${t("insights.simRange", { lo: usd(best.ci.lo), hi: usd(best.ci.hi) })})` : ""}${
         best.excluded ? `, ${t("insights.simExcluded", { trades: trades(best.excluded) })}` : ""}.`,
-      action: t("insights.simAction", { label: best.label }),
+      action: t(simTipStrength(best) === "rule" ? "insights.simAction" : "insights.simActionCheck", { label: best.label }),
       href: `/what-if${q({ trader })}`,
     });
   }

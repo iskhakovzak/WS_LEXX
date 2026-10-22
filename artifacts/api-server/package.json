@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "i18n:report": "node scripts/i18n-report.mjs",
     "db:snapshot": "node scripts/run-ts.mjs src/db/tools/snapshot.ts",
-    "db:snapshot:check": "node scripts/run-ts.mjs src/db/tools/snapshot.ts --check"
+    "db:snapshot:check": "node scripts/run-ts.mjs src/db/tools/snapshot.ts --check",
+    "whatif:calibrate": "node scripts/run-ts.mjs scripts/whatif-calibrate.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "7.22.0",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronDown, Info, Lightbulb, Plus } from "lucide-react";
+import { Check, ChevronDown, Crosshair, Info, Lightbulb, Loader2, type LucideIcon, NotebookPen, Plus, ShieldCheck, Timer } from "lucide-react";
 import { EmptyState, Pill, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -7,15 +7,21 @@ import { fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { cn } from "@/lib/utils";
-import type { Suggestion, SuggestionsResponse } from "./api";
+import type { Suggestion, SuggestionsResponse, Timing } from "./api";
 import { type Rule, chipLabel, ifNotPhrase, isApplied } from "./rules";
-import { type BadgeId, VISIBLE_CARDS, holdoutNote, removalLine, suggestionBadges, visibleCards } from "./suggestion-badges";
+import {
+  type BadgeId, type NeedLine, VISIBLE_CARDS, cardLine, holdoutNote, needLine, preliminaryHintKey, removalLine, sectionNote, suggestionBadges, timingOf,
+  visibleCards,
+} from "./suggestion-badges";
 
 /**
  * «Что ещё дало бы больше всего»: the best single rules found by the server search, as cards
- * «Если бы ты не … → +$Y за период [интервал]» — the first 5, the rest behind «Ещё N». Each card carries at most two
- * pills (how much to trust it, and one qualifier). «Применить» adds the rule to the scenario, a second click (or ✕ on
- * its chip) takes it back out.
+ * «Если бы ты не … → +$Y за период [интервал]» — the first 5, the rest behind «Ещё N». Each card carries its timing
+ * eyebrow («до входа» / «в сделке» / «разбор») and at most two pills (how much to trust it, and one qualifier). Once the
+ * server's honest check is ready the cards are «Подтверждено» or «Гипотеза» with their next step (days still needed,
+ * the «всё время» period, or a review on the day report); until then the fast cards are «предварительно». «Применить»
+ * adds the rule to the scenario, a second click (or ✕ on its chip) takes it back. `onAllTime` switches the page to
+ * «всё время» (where the honest check runs).
  */
 export function SuggestionCards({
   data,
@@ -23,12 +29,14 @@ export function SuggestionCards({
   rules,
   periodLabel,
   onToggle,
+  onAllTime,
 }: {
   data: SuggestionsResponse | undefined;
   isLoading: boolean;
   rules: Rule[];
   periodLabel: string;
   onToggle: (s: Suggestion, applied: boolean) => void;
+  onAllTime?: () => void;
 }) {
   const { t } = whatIfI18n.useT();
   const [expanded, setExpanded] = useState(false);
@@ -41,13 +49,14 @@ export function SuggestionCards({
     );
   }
   if (!data.suggestions.length) {
+    const honest = data.honesty?.state === "ready";
     return (
       <div className="glass-panel rounded-2xl">
         <EmptyState
           compact
-          icon={Lightbulb}
-          title={t("suggestions.emptyTitle")}
-          description={t("suggestions.emptyHint")}
+          icon={honest ? ShieldCheck : Lightbulb}
+          title={honest ? t("suggestions.honestEmptyTitle") : t("suggestions.emptyTitle")}
+          description={honest ? t("suggestions.honestEmptyHint") : t("suggestions.emptyHint")}
         />
       </div>
     );
@@ -58,7 +67,7 @@ export function SuggestionCards({
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]">
         {shown.map((s) => (
-          <SuggestionCard key={JSON.stringify(s.rule)} s={s} data={data} rules={rules} periodLabel={periodLabel} onToggle={onToggle} />
+          <SuggestionCard key={JSON.stringify(s.rule)} s={s} data={data} rules={rules} periodLabel={periodLabel} onToggle={onToggle} onAllTime={onAllTime} />
         ))}
       </div>
       {canToggle && (
@@ -76,24 +85,48 @@ export function SuggestionCards({
   );
 }
 
-function SuggestionCard({ s, data, rules, periodLabel, onToggle }: { s: Suggestion; data: SuggestionsResponse; rules: Rule[]; periodLabel: string; onToggle: (s: Suggestion, applied: boolean) => void }) {
+/**
+ * The line under the section title: today's «Подбираем по твоим сделкам … Это история, а не обещание.», or what the
+ * honest check says — still computing (with a spinner), taking longer than usual (no spinner, no «до минуты»), no
+ * confirmed rule yet, team view, a period without the honest check (with the switch to «всё время»), unavailable —
+ * always followed by «Это история, а не обещание», whatever the cards are.
+ */
+export function SuggestionsNote({ data, periodPhrase, onAllTime }: { data: SuggestionsResponse | undefined; periodPhrase: string; onAllTime?: () => void }) {
+  const { t } = whatIfI18n.useT();
+  const note = sectionNote(data);
+  if (!note) return <p className="text-xs text-muted-foreground">{t("suggestionsHint", { period: periodPhrase })}</p>;
+  const pending = note === "computing" || note === "slow";
+  return (
+    <p className="text-xs text-muted-foreground" role={pending ? "status" : undefined}>
+      {note === "computing" && <Loader2 className="mr-1.5 inline h-3 w-3 shrink-0 animate-spin align-[-2px] motion-reduce:animate-none" aria-hidden="true" />}
+      {t("suggestions.noteLine", { note: t(`suggestions.note.${note}`) })}
+      {note === "window" && onAllTime && (
+        <>
+          {" "}
+          <button type="button" onClick={onAllTime} className="font-medium text-primary underline-offset-2 hover:underline">
+            {t("suggestions.allTime")}
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
+const TIMING_ICON: Record<Timing, LucideIcon> = { exante: Crosshair, inTrade: Timer, review: NotebookPen };
+
+function SuggestionCard({ s, data, rules, periodLabel, onToggle, onAllTime }: {
+  s: Suggestion; data: SuggestionsResponse; rules: Rule[]; periodLabel: string; onToggle: (s: Suggestion, applied: boolean) => void; onAllTime?: () => void;
+}) {
   const { t } = whatIfI18n.useT();
   const applied = isApplied(rules, s.rule);
   const name = chipLabel(s.rule);
   const line = removalLine(s);
   const trades = commonI18n.t("units.trades", { count: line.count });
-  const badges = suggestionBadges(s, { smallSample: data.smallSample, team: data.scope == null });
-  const tested = data.tested ?? data.suggestions.length;
-  const note = holdoutNote(s);
-  const robustHint = t("suggestions.robustHint", { count: tested }) + (note ? ` ${t(`suggestions.${note.key}`, { days: note.days })}` : "");
-  const pill: Record<BadgeId, { tone: Tone; label: string; hint: string }> = {
-    smallSample: { tone: "neutral", label: t("suggestions.smallSample"), hint: t("suggestions.smallSampleHint") },
-    robust: { tone: "up", label: t("suggestions.robust"), hint: robustHint },
-    weak: { tone: "warn", label: t("suggestions.weak"), hint: t("suggestions.weakHint", { count: tested }) },
-    sameData: { tone: "neutral", label: t("suggestions.sameData"), hint: t("suggestions.sameDataHint") },
-    label: { tone: "neutral", label: t("suggestions.label"), hint: t("suggestions.labelHint") },
-    perTrader: { tone: "neutral", label: t("suggestions.perTrader"), hint: t("suggestions.perTraderHint") },
-  };
+  const badges = suggestionBadges(s, { smallSample: data.smallSample, team: data.scope == null, honesty: data.honesty });
+  const timing = timingOf(s);
+  const TimingIcon = TIMING_ICON[timing];
+  const need = needLine(s);
+  const pill = usePills(s, data);
   return (
     <article
       className={cn(
@@ -101,23 +134,25 @@ function SuggestionCard({ s, data, rules, periodLabel, onToggle }: { s: Suggesti
         applied && "ring-2 ring-[hsl(var(--primary)/0.55)]",
       )}
     >
-      <p className="text-sm font-medium leading-snug text-foreground">{ifNotPhrase(s.rule)}</p>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-2xl font-semibold tabular-nums tracking-tight text-up">{fmtUsd(s.improvement, { signed: true, decimals: "auto" })}</span>
-        <span className="text-xs text-muted-foreground">{periodLabel}</span>
+      <div className="flex flex-col gap-0.5">
+        <p className="inline-flex items-center gap-1 self-start text-[11px] text-muted-foreground" title={t(`suggestions.timing.${timing}Hint`)}>
+          <TimingIcon className="h-3 w-3" aria-hidden="true" />
+          {t(`suggestions.timing.${timing}`)}
+        </p>
+        <p className="text-sm font-medium leading-snug text-foreground">{ifNotPhrase(s.rule)}</p>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-baseline gap-1.5">
+          {/* «разбор» does not promise «+$»: its amount is muted, not green. */}
+          <span className={cn("text-2xl font-semibold tabular-nums tracking-tight", timing === "review" ? "text-muted-foreground" : "text-up")}>
+            {fmtUsd(s.improvement, { signed: true, decimals: "auto" })}
+          </span>
+          <span className="text-xs text-muted-foreground">{periodLabel}</span>
+        </div>
+        {need && <NextStep need={need} onAllTime={onAllTime} />}
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground">
-              {t("suggestions.range", { lo: fmtUsd(s.ci.lo, { signed: true, decimals: "auto" }), hi: fmtUsd(s.ci.hi, { signed: true, decimals: "auto" }) })}
-              <Info className="h-3 w-3" aria-hidden="true" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="max-w-xs text-xs">
-            {t("suggestions.rangeHint")}
-          </TooltipContent>
-        </Tooltip>
+        <CardLine s={s} />
         <span aria-hidden="true">·</span>
         <span>{line.kind === "changes" ? t("suggestions.changes", { trades }) : t("suggestions.removes", { trades })}</span>
       </div>
@@ -143,4 +178,66 @@ function SuggestionCard({ s, data, rules, periodLabel, onToggle }: { s: Suggesti
       </div>
     </article>
   );
+}
+
+/** A hypothesis's next step: the days still needed, the «всё время» period (a switch when the page offers one), or a review. */
+function NextStep({ need, onAllTime }: { need: NeedLine; onAllTime?: () => void }) {
+  const { t } = whatIfI18n.useT();
+  if (need.kind === "allTime" && onAllTime) {
+    return (
+      <button type="button" onClick={onAllTime} title={t("suggestions.needAllTimeHint")} className="self-start text-xs font-medium text-primary underline-offset-2 hover:underline">
+        {t("suggestions.needAllTime")}
+      </button>
+    );
+  }
+  const [text, hint] = need.kind === "days"
+    ? [t(need.atLeast ? "suggestions.needDaysAtLeast" : "suggestions.needDays", { days: commonI18n.t("units.tradingDays", { count: need.days }) }), t("suggestions.needDaysHint")]
+    : need.kind === "allTime" ? [t("suggestions.needAllTime"), t("suggestions.needAllTimeHint")] : [t("suggestions.reviewNext"), t("suggestions.reviewNextHint")];
+  return <p className="self-start text-xs text-muted-foreground" title={hint}>{text}</p>;
+}
+
+/**
+ * Out of sample for an honest card («на следующих месяцах … · помогло в k из m»); else the per-rule range — with its
+ * 95% bootstrap reading on the fast / team cards, with no probability on an honest-era card (picked on these days).
+ */
+function CardLine({ s }: { s: Suggestion }) {
+  const { t } = whatIfI18n.useT();
+  const signed = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
+  const kind = cardLine(s);
+  const oos = kind === "oos" ? s.oos : null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground">
+          {oos
+            ? t("suggestions.oos", { sum: signed(oos.sum), positive: oos.positive, months: oos.months })
+            : t("suggestions.range", { lo: signed(s.ci.lo), hi: signed(s.ci.hi) })}
+          <Info className="h-3 w-3" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs text-xs">
+        {oos ? t("suggestions.oosHint") : t(kind === "rangeInSample" ? "suggestions.rangeHintInSample" : "suggestions.rangeHint")}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Label, tone and tooltip of every pill a card may carry (suggestion-badges picks at most two). */
+function usePills(s: Suggestion, data: SuggestionsResponse): Record<BadgeId, { tone: Tone; label: string; hint: string }> {
+  const { t } = whatIfI18n.useT();
+  const tested = data.tested ?? data.suggestions.length;
+  const note = holdoutNote(s);
+  const robustHint = t("suggestions.robustHint", { count: tested }) + (note ? ` ${t(`suggestions.${note.key}`, { days: note.days })}` : "");
+  const fragileDays = s.fragile?.days ?? 0;
+  return {
+    confirmed: { tone: "up", label: t("suggestions.status.confirmed"), hint: t("suggestions.status.confirmedHint", { count: tested }) },
+    hypothesis: { tone: "warn", label: t("suggestions.status.hypothesis"), hint: t("suggestions.status.hypothesisHint") },
+    preliminary: { tone: "neutral", label: t("suggestions.status.preliminary"), hint: t(`suggestions.status.${preliminaryHintKey(data.honesty?.state)}`) },
+    smallSample: { tone: "neutral", label: t("suggestions.smallSample"), hint: t("suggestions.smallSampleHint") },
+    robust: { tone: "up", label: t("suggestions.robust"), hint: robustHint },
+    weak: { tone: "warn", label: t("suggestions.weak"), hint: t("suggestions.weakHint", { count: tested }) },
+    fragile: { tone: "neutral", label: t("suggestions.fragile", { count: fragileDays }), hint: t("suggestions.fragileHint") },
+    sameData: { tone: "neutral", label: t("suggestions.sameData"), hint: t("suggestions.sameDataHint") },
+    perTrader: { tone: "neutral", label: t("suggestions.perTrader"), hint: t("suggestions.perTraderHint") },
+  };
 }

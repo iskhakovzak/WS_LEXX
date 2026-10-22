@@ -15,6 +15,8 @@
  *                                                        + propreports.outbox (side effects, every 2 min)
  *   trade-structure back-fill (once at boot)           → trades.structure-backfill
  *   (new) job_runs retention                           → jobs.prune daily
+ *   (new) honest what-if verdicts per trader           → whatif.honesty (on request + after each sync + every 2 min;
+ *                                                        lib/whatIfHonestyJobDefs.ts via registerModuleJobs)
  */
 import { pool } from "@workspace/db";
 import { config } from "../config";
@@ -25,6 +27,7 @@ import { contractAlertsEnabled, eveningCron, eveningEnabled, morningCron, mornin
 import { dailyPickCron } from "../lib/trainer/schedule";
 import { registerFinvizJobs } from "../lib/finviz/jobDefs";
 import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
+import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -334,4 +337,5 @@ export function registerAllJobs(): void {
 function registerModuleJobs(): void {
   registerFinvizJobs(registerJob); // Finviz Elite screener / snapshot / earnings (lib/finviz/jobDefs.ts)
   registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
+  registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
 }

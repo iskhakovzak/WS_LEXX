@@ -400,6 +400,7 @@ export default {
     simRange: "range {lo}…{hi}",
     simExcluded: "by removing {trades}",
     simAction: "Rule for the week: “{label}”.",
+    simActionCheck: "Check “{label}” in What if over “All time” — it is not proven yet.",
     pos: {
       netVsAvg: "Net beat the 4-week average by {amount}",
       wr: "Win rate {wr} — {pp} pp above average",

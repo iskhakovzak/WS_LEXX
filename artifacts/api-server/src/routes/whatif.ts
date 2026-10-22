@@ -4,15 +4,19 @@
  *   GET  /whatif/base?trader=&from=&to=[&enc=2]  input trades + baseline metrics/equity + presets (enc=2: compact
  *                                                trade table, see compactTrades)
  *   POST /whatif/run   {trader, from, to, rules[]} scenario vs baseline (read-only computation, nothing stored)
- *   GET  /whatif/suggestions?trader=&from=&to=   best single rules by net improvement beyond bootstrap noise
+ *   GET  /whatif/suggestions?trader=&from=&to=[&window=rolling]   best single rules: for one trader on a growing
+ *                                                period («всё время», «с начала года») the honest verdict (walk-forward
+ *                                                + Romano–Wolf, job whatif.honesty, cached per data signature in
+ *                                                whatif_honesty_cache) once ready, the fast search marked
+ *                                                «предварительно» until then; the whole desk, a rolling window or a
+ *                                                closed range (lib/whatIfHonestyBody honestWindow): the fast search
  *   GET  /whatif/fees?trader=&from=&to=          fee breakdown by price/size/hold/hour/ticker, break-even, advice
  *   GET  /whatif/scenarios?trader=               saved rule sets (table whatif_scenarios)
  *   POST /whatif/scenarios {trader?, name, rules[]}
  *   DELETE /whatif/scenarios/:id                 soft delete (archived_at)
  *
  * Scope: lib/auth scopeTrader — a trader always sees their own trades, staff may pick any trader, guests get nothing.
- * Trading day = the NY date stored in trades.date; entry time / hold come from trade_executions, else the
- * PropReports snapshot (openedAt/closedAt in ET), else the hold_time text.
+ * Trades come from lib/whatIfLoader (trading day = the NY date stored in trades.date).
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { gzip } from "node:zlib";
@@ -22,19 +26,23 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, isGuest, isStaffRole } from "../lib/auth";
 import { TtlCache } from "../lib/hotCache";
-import { num, normResult, signedR } from "../lib/tradeMath";
-import { nyMinutes } from "../lib/tradingDate";
-import { execSpanJoin } from "../lib/execSpan";
 import {
-  type SimTrade, type Rule, type Side, type Horizon,
+  type SimTrade, type Rule,
   computeMetrics, dailyResults, equityByDay, runScenario, feeReport, describeRule, presets, RULE_TYPES, GRADES,
 } from "../lib/whatIf";
 import { MAX_SETUP_LEN, MAX_TAG_LEN } from "../lib/whatIfTypes";
-import { findSuggestions } from "../lib/whatIfSuggest";
-import { currentImxWindow, imxSql } from "../lib/imx";
-import { inImxWindow, type ImxWindow } from "../lib/tradeStrategy";
+import { findSuggestions, type SuggestionsResult } from "../lib/whatIfSuggest";
+import { freshSimTrades, loadSimTrades } from "../lib/whatIfLoader";
+import { tradesSignature } from "../lib/whatIfSignature";
+import * as honestyStore from "../lib/whatIfHonestyStore";
+import { type SuggestionsHead, honestWindow, honestyKey, suggestionsBody } from "../lib/whatIfHonestyBody";
+import { WHATIF_HONESTY_JOB, WHATIF_HONESTY_REQUESTED } from "../lib/whatIfHonestyJobDefs";
+import { emitJobEvent, listJobs } from "../jobs/registry";
+import { config } from "../config";
+import { logger } from "../lib/logger";
+import { nyDate } from "../lib/tradingDate";
 import { isDeskTag } from "../lib/deskTags";
-import { ERROR_VOCAB, codesOf, type ErrorVocabCode } from "../lib/tradingErrors";
+import { ERROR_VOCAB, type ErrorVocabCode } from "../lib/tradingErrors";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { acceptsGzip } from "../lib/jsonCompression";
@@ -50,6 +58,8 @@ const rangeSchema = z.object({
   trader: z.string().trim().max(120).optional(),
   from: z.string().regex(YMD_RE).optional(),
   to: z.string().regex(YMD_RE).optional(),
+  // /whatif/suggestions: the page's 30 / 90-day periods move `from` every day (no honest verdict can resolve there).
+  window: z.enum(["rolling"]).optional(),
 });
 
 const ERROR_CODES = ERROR_VOCAB.map((v) => v.code) as [ErrorVocabCode, ...ErrorVocabCode[]];
@@ -104,169 +114,9 @@ function normQuery(q: Request["query"]): Record<string, string> {
   return out;
 }
 
-/* ─── Loading trades ─────────────────────────────────────────────────────── */
+/* ─── Loading trades (lib/whatIfLoader; re-exported for existing imports and tests) ─────────────────────── */
 
-export type SimRow = {
-  id: number; ticker: string; date: string; exit_date?: string | null; side: string | null; qty: unknown; entry: unknown; exit: unknown; stop: unknown;
-  result: string; pnl: unknown; fees: unknown; r_multiple: unknown; risk_usd: unknown; hold_time: string | null; setup: string | null; confidence_grade: string | null;
-  tags: string | null; horizon: string | null; context_snapshot: Record<string, unknown> | null;
-  first_entry: Date | string | null; last_exit: Date | string | null;
-  trader?: string | null; is_imx?: boolean | null; reentry_of?: number | null; size_rel?: unknown; has_stop?: boolean | null;
-};
-
-/** "5m", "2h 29m", "17s", "1:30", "45 мин", "3 д" → seconds; null when unparsable. */
-export function parseHoldSeconds(raw: string | null | undefined): number | null {
-  if (!raw) return null;
-  const s = raw.trim().toLowerCase().replace(",", ".");
-  if (!s) return null;
-  const hm = /^(\d{1,3}):(\d{2})(?::(\d{2}))?$/.exec(s);
-  if (hm) return Number(hm[1]) * 3600 + Number(hm[2]) * 60 + Number(hm[3] ?? 0);
-  let total = 0, matched = false;
-  const re = /(\d+(?:\.\d+)?)\s*(d|д|дн|h|ч|m|min|мин|м|s|sec|с|сек)\b/g; // i18n-ignore (parses RU / EN duration input)
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s))) {
-    matched = true;
-    const v = Number(m[1]);
-    const u = m[2];
-    if (u.startsWith("d") || u.startsWith("д")) total += v * 86400; // i18n-ignore (input parsing)
-    else if (u.startsWith("h") || u.startsWith("ч")) total += v * 3600; // i18n-ignore (input parsing)
-    else if (u.startsWith("s") || u === "с" || u === "сек") total += v; // i18n-ignore (input parsing)
-    else total += v * 60;
-  }
-  if (matched) return total;
-  const bare = /^(\d+(?:\.\d+)?)$/.exec(s);
-  return bare ? Number(bare[1]) * 60 : null;
-}
-
-/** "2026-10-15T15:59:16" (ET, no zone) → minutes since midnight; null when malformed. */
-function etMinutesOf(v: unknown): number | null {
-  if (typeof v !== "string") return null;
-  const m = /T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(v);
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]) + Number(m[3] ?? 0) / 60;
-}
-
-function secondsBetweenEt(a: unknown, b: unknown): number | null {
-  if (typeof a !== "string" || typeof b !== "string") return null;
-  const ta = Date.parse(a.length <= 19 ? `${a}Z` : a), tb = Date.parse(b.length <= 19 ? `${b}Z` : b);
-  if (!Number.isFinite(ta) || !Number.isFinite(tb) || tb < ta) return null;
-  return (tb - ta) / 1000;
-}
-
-function toDate(v: Date | string | null): Date | null {
-  if (!v) return null;
-  const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/**
- * `imxWin` = the desk IMX window. For the what-if a trade is IMX only when it was ENTERED inside the window (the stored
- * mark is set by any fill there, an exit too): «не торгуй IMX» must be a choice made before the entry, not one that
- * takes the credit for a morning trade held into the close auction.
- */
-export function rowToSim(r: SimRow, seq: number, imxWin: ImxWindow = currentImxWindow()): SimTrade {
-  const snap = r.context_snapshot ?? {};
-  const first = toDate(r.first_entry), last = toDate(r.last_exit);
-  let entryMin: number | null = first ? nyMinutes(first) + first.getUTCSeconds() / 60 : null;
-  if (entryMin == null) entryMin = etMinutesOf(snap.openedAt);
-  if (entryMin == null) {
-    const m = /^\d{4}-\d{2}-\d{2}[T ](\d{2}):(\d{2})/.exec(r.date);
-    if (m) entryMin = Number(m[1]) * 60 + Number(m[2]);
-  }
-  let holdSec: number | null = first && last && last.getTime() >= first.getTime() ? (last.getTime() - first.getTime()) / 1000 : null;
-  if (holdSec == null) holdSec = secondsBetweenEt(snap.openedAt, snap.closedAt);
-  if (holdSec == null) holdSec = parseHoldSeconds(r.hold_time);
-  const sideRaw = String(r.side ?? "").trim().toLowerCase();
-  const side: Side | null = sideRaw.startsWith("s") ? "short" : sideRaw.startsWith("l") || sideRaw.startsWith("b") ? "long" : null;
-  const res = normResult(r.result);
-  const h = String(r.horizon ?? "").trim();
-  const horizon: Horizon = h === "overnight" || h === "swing" ? h : "intraday";
-  const breakdown = snap.feesByType && typeof snap.feesByType === "object" ? (snap.feesByType as Record<string, number>) : null;
-  const fills = num(snap.fillCount);
-  const tags = String(r.tags ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  const sizeRel = num(r.size_rel);
-  return {
-    id: r.id,
-    day: r.date.slice(0, 10),
-    ...(r.exit_date && r.exit_date.slice(0, 10) !== r.date.slice(0, 10) ? { closeDay: r.exit_date.slice(0, 10) } : {}),
-    entryMin,
-    ticker: String(r.ticker ?? "").toUpperCase(),
-    side,
-    qty: num(r.qty) != null ? Math.abs(num(r.qty)!) : null,
-    entry: num(r.entry), exit: num(r.exit),
-    gross: num(r.pnl),
-    fees: Math.abs(num(r.fees) ?? 0),
-    holdSec,
-    r: signedR({ result: r.result, side: r.side, entry: r.entry, exit: r.exit, stop: r.stop, r_multiple: r.r_multiple, pnl: r.pnl, risk_usd: r.risk_usd }),
-    stop: num(r.stop),
-    setup: r.setup?.trim() || null,
-    tags,
-    horizon,
-    result: res === "win" || res === "loss" || res === "be" ? res : null,
-    feeBreakdown: breakdown,
-    fills,
-    seq,
-    grade: r.confidence_grade?.trim() || null,
-    trader: r.trader ?? null,
-    imx: r.is_imx === true && entryMin != null && inImxWindow(Math.floor(entryMin * 60 + 1e-6), imxWin),
-    reentry: r.reentry_of != null,
-    sizeRel: sizeRel != null && sizeRel > 0 ? sizeRel : null,
-    hasStop: r.has_stop ?? null,
-    // Mistakes by code (any spelling: «Реванш» → revenge); personal tags = the rest without the desk tags.
-    mistakes: [...codesOf(tags)],
-    ptags: tags.filter((t) => !isDeskTag(t)),
-  };
-}
-
-/** Closed trades with a money result for the scope/period, in simulation order. */
-/*
- * The page fires /base, /suggestions, /fees (and /run) at once for the same scope: one SQL load serves them all.
- * Short TTL — trades only change on a PropReports sync, and a 20 s old snapshot is fine for a what-if.
- * The engine never mutates trade objects (it sorts copies), so callers share them; each gets its own array.
- */
-const SIM_CACHE_TTL_MS = 60_000;
-const SIM_CACHE_MAX = 24;
-const simCache = new Map<string, { at: number; promise: Promise<SimTrade[]> }>();
-
-export async function loadSimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
-  const key = `${scope ?? "*"}|${from ?? ""}|${to ?? ""}`;
-  const now = Date.now();
-  const hit = simCache.get(key);
-  if (hit && now - hit.at < SIM_CACHE_TTL_MS) return (await hit.promise).slice();
-  const promise = querySimTrades(scope, from, to);
-  simCache.set(key, { at: now, promise });
-  promise.catch(() => simCache.delete(key));
-  if (simCache.size > SIM_CACHE_MAX) {
-    for (const [k, v] of simCache) if (now - v.at >= SIM_CACHE_TTL_MS || simCache.size > SIM_CACHE_MAX) simCache.delete(k);
-  }
-  return (await promise).slice();
-}
-
-/** SQL of the loader (exported for tests): IMX by the stored mark with the strategy MOC fallback (lib/imx imxSql). */
-export function simTradesQuery(scope: string | null, from?: string, to?: string): { sql: string; params: unknown[] } {
-  const params: unknown[] = [];
-  const cond: string[] = [`t.deleted_at IS NULL`, `t.pnl IS NOT NULL`, `LOWER(TRIM(t.result)) <> 'open'`];
-  const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
-  if (scope != null) cond.push(`t.trader = ${p(scope)}`);
-  if (from) cond.push(`substring(t.date from 1 for 10) >= ${p(from)}`);
-  if (to) cond.push(`substring(t.date from 1 for 10) <= ${p(to)}`);
-  // One trader → per-trade index probe; desk-wide → one hash aggregate (lib/execSpan).
-  const sql = `
-    SELECT t.id, t.ticker, t.date, t.exit_date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
-           t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit,
-           t.trader, ${imxSql("t")} AS is_imx, t.reentry_of, t.size_rel, t.has_stop
-    FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
-    WHERE ${cond.join(" AND ")}
-    ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;
-  return { sql, params };
-}
-
-async function querySimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
-  const { sql, params } = simTradesQuery(scope, from, to);
-  const { rows } = await pool.query<SimRow>(sql, params);
-  const imxWin = currentImxWindow();
-  return rows.map((r, i) => rowToSim(r, i, imxWin));
-}
+export { type SimRow, parseHoldSeconds, rowToSim, loadSimTrades, simTradesQuery } from "../lib/whatIfLoader";
 
 async function resolveScope(req: Request, requested?: string): Promise<string | null | undefined> {
   return scopeTrader(req, requested);
@@ -341,7 +191,9 @@ export function compactTrades(trades: SimTrade[]): { cols: typeof WHATIF_COLS; r
 /*
  * Suggestions (~70 candidates on the fast path + one family-wise bootstrap) and the fee report are cached per viewer
  * kind + scope + period + language for RESULT_TTL_MS (DEV-10). Staff and members never share an entry, even for the
- * same trader. A PropReports sync shows up after at most that long.
+ * same trader. A PropReports sync shows up after at most that long. A trader's suggestions also depend on the data
+ * signature: the entry stores it next to the body and a hit must match it — keyed by the signature, every sync would
+ * leave entries behind that are never read (and so never expire) again.
  */
 const RESULT_TTL_MS = 120_000;
 const suggestionsCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
@@ -350,6 +202,16 @@ const feesCache = new TtlCache<string, unknown>(RESULT_TTL_MS);
 export function resultKey(req: Request, scope: string | null, from: string | undefined, to: string | undefined): string {
   return `${isStaffRole(req.authUser?.role) ? "staff" : "member"}|${scope ?? "*"}|${from ?? ""}|${to ?? ""}|${langOf(req)}`;
 }
+
+/** The cached value of `key` when it was computed for this data signature. */
+function cachedFor<T>(key: string, sig: string): T | undefined {
+  const hit = suggestionsCache.get(key) as { sig: string; value: T } | undefined;
+  return hit && hit.sig === sig ? hit.value : undefined;
+}
+const cacheFor = (key: string, sig: string, value: unknown) => suggestionsCache.set(key, { sig, value });
+
+/** Tests: entries held by the suggestions cache (bounded by viewer kind × scope × period × language). */
+export const suggestionsCacheSize = (): number => suggestionsCache.size;
 
 const gzipAsync = promisify(gzip);
 
@@ -367,6 +229,68 @@ export async function sendJsonGz(req: Request, res: Response, body: unknown): Pr
   res.setHeader("Content-Encoding", "gzip");
   res.setHeader("Vary", "Accept-Encoding");
   res.type("application/json").send(buf);
+}
+
+/* ─── Suggestions: the honest verdict (lib/whatIfHonesty, job whatif.honesty) or the fast path ─────────────── */
+
+function suggestionsHead(scope: string | null, trades: SimTrade[], q: { from?: string; to?: string }): SuggestionsHead {
+  const baseline = computeMetrics(trades);
+  return {
+    scope, period: periodMeta(trades, q.from, q.to),
+    baselineNet: baseline.net, trades: baseline.trades, days: baseline.days,
+    // Too little to call anything robust: every card is a guide («ориентир»).
+    smallSample: baseline.days < 30 || baseline.trades < 60,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/** The fast search, cached like the old body (the polls while the honest run is queued stay cheap). */
+function fastSuggestions(cacheKey: string, sig: string, trades: SimTrade[], lang: Lang): SuggestionsResult {
+  const hit = cachedFor<SuggestionsResult>(cacheKey, sig);
+  if (hit) return hit;
+  const found = findSuggestions(trades, { lang, team: false });
+  cacheFor(cacheKey, sig, found);
+  return found;
+}
+
+let honestyStoreWarned = false;
+
+/** The cache row; ok = false when the store is unreachable (no table before 0244): the fast path only. */
+async function honestyRow(k: honestyStore.HonestyKey): Promise<{ row: honestyStore.HonestyRow | null; ok: boolean }> {
+  try {
+    return { row: await honestyStore.get(pool, k), ok: true };
+  } catch (err) {
+    if (!honestyStoreWarned) {
+      honestyStoreWarned = true;
+      logger.warn({ err }, "whatif: honesty cache unavailable, suggestions use the fast path only");
+    }
+    return { row: null, ok: false };
+  }
+}
+
+const honestyJobOn = () => config.jobsEnabled && listJobs().some((j) => j.name === WHATIF_HONESTY_JOB);
+
+/**
+ * Queue the key (or retry a failed row when allowed); the state the client should see and since when it is pending,
+ * null = unavailable. A viewer asking for an existing row marks the key as used (the evening precompute warms only keys
+ * viewers asked for).
+ */
+async function queueHonesty(k: honestyStore.HonestyKey, row: honestyStore.HonestyRow | null): Promise<{ state: honestyStore.HonestyState; since: Date } | null> {
+  try {
+    if (!row) {
+      if (await honestyStore.enqueue(pool, k)) emitJobEvent(WHATIF_HONESTY_REQUESTED, { trader: k.trader });
+      return { state: "queued", since: new Date() };
+    }
+    void honestyStore.touch(pool, row.id).catch(() => undefined);
+    if (row.state === "failed" && (await honestyStore.retryFailed(pool, row.id))) {
+      emitJobEvent(WHATIF_HONESTY_REQUESTED, { trader: k.trader });
+      return { state: "queued", since: new Date() };
+    }
+    return { state: row.state, since: row.requestedAt };
+  } catch (err) {
+    logger.warn({ err }, "whatif: could not queue the honest verdict");
+    return null;
+  }
 }
 
 /* ─── Routes ─────────────────────────────────────────────────────────────── */
@@ -414,24 +338,60 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
+  const lang = langOf(req);
   const key = resultKey(req, scope, q.from, q.to);
-  const hit = suggestionsCache.get(key);
+  if (scope == null) {
+    // Whole desk: the fast path only (day rules per trader, no share-size or personal-tag candidates).
+    const hit = suggestionsCache.get(key);
+    if (hit) { res.json(hit); return; }
+    const trades = await loadSimTrades(scope, q.from, q.to);
+    const body = suggestionsBody({ head: suggestionsHead(scope, trades, q), lang, team: true, fast: findSuggestions(trades, { lang, team: true }), row: null, available: false });
+    suggestionsCache.set(key, body);
+    res.json(body);
+    return;
+  }
+  let trades = await loadSimTrades(scope, q.from, q.to);
+  // The honest verdict of exactly these trades (a sync or an edited mark gives a new signature, so a new key).
+  let sig = tradesSignature(trades);
+  const win = honestWindow(q.from, q.to, q.window === "rolling", nyDate());
+  const fastKey = `${key}|${q.window ?? ""}|fast`;
+  if (!trades.length || isGuest(req) || !win.honest) {
+    const found = fastSuggestions(fastKey, sig, trades, lang);
+    const head = suggestionsHead(scope, trades, q);
+    res.json(trades.length && !isGuest(req) ? suggestionsBody({ head, lang, team: false, window: true, fast: found, row: null, available: false })
+      : { ...head, suggestions: found.suggestions, tested: found.tested });
+    return;
+  }
+  const readyKey = `${key}|ready`;
+  const hit = cachedFor(readyKey, sig);
   if (hit) { res.json(hit); return; }
-  const trades = await loadSimTrades(scope, q.from, q.to);
-  const baseline = computeMetrics(trades);
-  // Whole desk: day rules run per trader, no share-size or personal-tag candidates.
-  const found = findSuggestions(trades, { lang: langOf(req), team: scope == null });
-  const body = {
-    scope, period: periodMeta(trades, q.from, q.to),
-    baselineNet: baseline.net, trades: baseline.trades, days: baseline.days,
-    // Too little to call anything robust: every card is a «ориентир».
-    smallSample: baseline.days < 30 || baseline.trades < 60,
-    suggestions: found.suggestions,
-    tested: found.tested,
-    generatedAt: new Date().toISOString(),
-  };
-  suggestionsCache.set(key, body);
-  res.json(body);
+  let hk = honestyKey(scope, q.from, q.to, sig);
+  let { row, ok } = await honestyRow(hk);
+  if (ok && !row && honestyJobOn()) {
+    // No row for the cached snapshot's signature: a sync may have landed since (the job loads uncached and may have
+    // moved the row to the new signature already). Look again with the trades as they are now before queueing.
+    const fresh = await freshSimTrades(scope, q.from, q.to);
+    const freshSig = tradesSignature(fresh);
+    if (freshSig !== sig) {
+      trades = fresh;
+      sig = freshSig;
+      hk = honestyKey(scope, q.from, q.to, sig);
+      ({ row, ok } = await honestyRow(hk));
+    }
+  }
+  const head = suggestionsHead(scope, trades, q);
+  if (row?.state === "ready") {
+    const body = suggestionsBody({ head, lang, team: false, reachDays: win.reachDays, fast: null, row, available: true });
+    cacheFor(readyKey, sig, body);
+    void honestyStore.touch(pool, row.id).catch(() => undefined);
+    res.json(body);
+    return;
+  }
+  const queued = ok && honestyJobOn() ? await queueHonesty(hk, row) : null;
+  res.json(suggestionsBody({
+    head, lang, team: false, fast: fastSuggestions(fastKey, sig, trades, lang), now: new Date(),
+    row: queued ? { state: queued.state, result: null, finishedAt: null, requestedAt: queued.since } : null, available: queued != null,
+  }));
 }));
 
 router.get("/whatif/fees", asyncHandler(async (req, res) => {

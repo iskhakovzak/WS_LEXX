@@ -24,6 +24,12 @@ describe("job definitions", () => {
     expect(names).toContain("telegram.daily-morning"); // the daily loop that replaced it stays
   });
 
+  it("whatif.honesty is registered through registerModuleJobs: on request and after every sync", () => {
+    const job = listJobs().find((j) => j.name === "whatif.honesty");
+    expect(job?.on).toEqual(["whatif.honesty.requested", "propreports.synced"]);
+    expect(job?.cron).toBe("*/2 * * * *");
+  });
+
   it("candles.archive runs on every PropReports sync and then classifies setups of the new trades", async () => {
     const job = listJobs().find((j) => j.name === "candles.archive")!;
     expect(job.on).toContain("propreports.synced");

@@ -286,3 +286,27 @@ export function quantileSorted(sorted: ArrayLike<number>, q: number): number {
   if (lo === hi) return sorted[lo];
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
+
+/**
+ * quantileSorted over the multiset where value i appears weights[i] times (integer weights: day counts of a bootstrap
+ * draw, 0/1 of a fold): pos = (W − 1)·q, linear between the elements at ⌊pos⌋ and ⌈pos⌉, found by cumulative weight.
+ * Equals quantileSorted when every weight is 1; NaN when the total weight is 0.
+ */
+export function weightedQuantileSorted(sorted: ArrayLike<number>, weights: ArrayLike<number>, q: number): number {
+  let W = 0;
+  for (let i = 0; i < sorted.length; i++) W += weights[i];
+  if (!(W > 0)) return NaN;
+  const pos = Math.max(0, W - 1) * Math.min(1, Math.max(0, q));
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  // The element at 0-based position k of the expanded multiset: the first i whose cumulative weight exceeds k.
+  let vLo = NaN, vHi = NaN, cum = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const w = weights[i];
+    if (!(w > 0)) continue;
+    cum += w;
+    if (Number.isNaN(vLo) && cum > lo) vLo = sorted[i];
+    if (cum > hi) { vHi = sorted[i]; break; }
+  }
+  if (lo === hi) return vLo;
+  return vLo + (vHi - vLo) * (pos - lo);
+}

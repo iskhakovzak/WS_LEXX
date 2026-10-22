@@ -402,6 +402,7 @@ export default {
     simRange: "диапазон {lo}…{hi}",
     simExcluded: "убрав {trades}",
     simAction: "Правило на неделю: «{label}».",
+    simActionCheck: "Проверь «{label}» в «Что если» на периоде «Всё время» — пока это не доказано.",
     pos: {
       netVsAvg: "Нетто лучше среднего за 4 недели на {amount}",
       wr: "Win rate {wr} — на {pp} п.п. выше среднего",
