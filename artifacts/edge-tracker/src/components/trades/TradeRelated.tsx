@@ -15,6 +15,7 @@ import { fmtDate, fmtR, fmtRate } from "@/lib/format";
 import { tradesI18n } from "@/i18n/ns/trades";
 import { commonI18n } from "@/i18n/ns/common";
 import { withNodes } from "./rich-text";
+import { cn } from "@/lib/utils";
 import { shellI18n } from "@/i18n/ns/shell";
 
 const shellPlaybook = () => shellI18n.t("nav.playbook");
@@ -54,14 +55,24 @@ export function useSourceIdeaTarget(trade: Trade | null): string | null {
   return src?.target?.trim() || null;
 }
 
-/** Cross-links: playbook setups, ideas and history for the same ticker. */
-export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; allTrades: Trade[]; onOpenTrade: (t: Trade) => void }) {
+export type RelatedPart = "playbook" | "ideas" | "history";
+const ALL_PARTS: readonly RelatedPart[] = ["playbook", "ideas", "history"];
+
+/**
+ * Cross-links: playbook setups, ideas and history for the same ticker. `parts` picks the blocks (the sheet shows
+ * ideas + history under «Контекст» and the playbook under «Связанное»); a block left out requests nothing.
+ */
+export function TradeRelated({ trade, allTrades, onOpenTrade, parts = ALL_PARTS }: {
+  trade: Trade; allTrades: Trade[]; onOpenTrade: (t: Trade) => void; parts?: readonly RelatedPart[];
+}) {
   const { t: tt } = tradesI18n.useT();
   const [, setLocation] = useLocation();
+  const show = (p: RelatedPart) => parts.includes(p);
   const playbook = useQuery<PlaybookLite[]>({
     queryKey: ["trades-related-playbook"],
     queryFn: ({ signal }) => http.get<PlaybookLite[]>("/api/playbook", { signal }),
     staleTime: STALE.long,
+    enabled: show("playbook"),
   });
   const ideas = useTickerIdeas(trade.ticker);
 
@@ -93,6 +104,7 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
     },
     staleTime: 60_000,
     retry: false,
+    enabled: show("history"),
   });
   const history = React.useMemo(() => {
     const src = historyQ.data ?? allTrades;
@@ -101,9 +113,10 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
   const hStats = React.useMemo(() => computeStats(history), [history]);
   const ideaList = (ideas.data ?? []).slice(0, 4);
 
+  const twoCols = show("playbook") && show("ideas");
   return (
-    <div className="grid gap-4 md:grid-cols-2 [&>*]:min-w-0">
-      <div className="space-y-1">
+    <div className={cn("grid gap-4 [&>*]:min-w-0", twoCols && "md:grid-cols-2")}>
+      {show("playbook") && <div className="space-y-1">
         <p className="micro-label px-2.5">{shellPlaybook()}</p>
         {playbook.isLoading ? <Skeleton className="h-9 rounded-xl" /> : pbMatches.length === 0 ? (
           <p className="px-2.5 text-sm text-muted-foreground">{setup || linkedId != null ? tt("related.playbookNoSetup") : tt("related.playbookSetSetup")}</p>
@@ -113,9 +126,9 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
             <span className="text-xs text-muted-foreground">{score >= 20 ? tt("related.linkedSetup") : score >= 10 ? tt("related.fromThisTrade") : e.setupType ?? e.folder ?? tt("related.byTicker")}</span>
           </Row>
         ))}
-      </div>
+      </div>}
 
-      <div className="space-y-1">
+      {show("ideas") && <div className="space-y-1">
         <p className="micro-label px-2.5">{tt("related.ideasFor", { ticker: trade.ticker })}</p>
         {ideas.isLoading ? <Skeleton className="h-9 rounded-xl" /> : ideaList.length === 0 ? (
           <p className="px-2.5 text-sm text-muted-foreground">{tt("related.noIdeas")}</p>
@@ -128,9 +141,9 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
             <span className="text-xs text-muted-foreground">{fmtDate(i.createdAt.substring(0, 10), "shortYY")} · {ideaStatus(i.status)}</span>
           </Row>
         ))}
-      </div>
+      </div>}
 
-      <div className="space-y-1 md:col-span-2">
+      {show("history") && <div className={cn("space-y-1", twoCols && "md:col-span-2")}>
         <p className="micro-label px-2.5">{tt("related.historyFor", { ticker: trade.ticker })}</p>
         {history.length === 0 ? (
           <p className="px-2.5 text-sm text-muted-foreground">{tt("related.firstTrade")}</p>
@@ -154,7 +167,7 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
             ))}
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
