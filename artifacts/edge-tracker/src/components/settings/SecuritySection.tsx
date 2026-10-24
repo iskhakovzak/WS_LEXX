@@ -1,6 +1,7 @@
 /**
  * Settings → Безопасность: the screen lock «Заблокировать». Quick-unlock code (set / change / remove; stored hashed on
- * the server, never shown back), auto-lock after N idle minutes (this browser) and the shortcut.
+ * the server, never shown back), auto-lock after N idle minutes (this browser), the lock-screen quote interval (this
+ * browser; lib/quotes) and the shortcut.
  */
 import { useState } from "react";
 import { KeyRound, Loader2, LockKeyhole, ShieldCheck } from "lucide-react";
@@ -15,7 +16,10 @@ import { fmtDate } from "@/lib/format";
 import { AUTO_LOCK_OPTIONS, LOCK_KEYS, type AutoLockMinutes } from "@/lib/lock/lock-model";
 import { requestLock, useAutoLock, writeAutoLock } from "@/lib/lock/lock-store";
 import { useQuickCode, useRemoveQuickCode, useSaveQuickCode } from "@/lib/lock/quick-code-api";
+import { LOCK_QUOTE_INTERVALS, type LockQuoteInterval } from "@/lib/quotes/lock-timer";
+import { useLockQuoteInterval, writeLockQuoteInterval } from "@/lib/quotes/store";
 import { lockI18n } from "@/i18n/ns/lock";
+import { quotesI18n } from "@/i18n/ns/quotes";
 import { commonI18n } from "@/i18n/ns/common";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { Callout, InlineError, SettingRow } from "./shared";
@@ -92,7 +96,9 @@ function QuickCodePanel() {
 
 function LockPanel() {
   const { t } = lockI18n.useT();
+  const { t: tq } = quotesI18n.useT();
   const auto = useAutoLock();
+  const quoteEvery = useLockQuoteInterval();
   const minutes = (m: number) => commonI18n.t("units.minutes", { count: m });
   return (
     <Panel title={t("button")} description={t("how")} icon={LockKeyhole} actions={
@@ -107,6 +113,16 @@ function LockPanel() {
             <SelectContent>
               {AUTO_LOCK_OPTIONS.map((m) => (
                 <SelectItem key={m} value={String(m)}>{m === 0 ? t("autoLock.off") : minutes(m)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingRow>
+        <SettingRow label={tq("settings.title")} hint={tq("settings.hint")} htmlFor="lock-quote">
+          <Select value={String(quoteEvery)} onValueChange={(v) => writeLockQuoteInterval(Number(v) as LockQuoteInterval)}>
+            <SelectTrigger id="lock-quote" className="w-44" data-testid="select-lock-quote"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LOCK_QUOTE_INTERVALS.map((m) => (
+                <SelectItem key={m} value={String(m)}>{m === 0 ? tq("settings.off") : m === 1 ? tq("settings.everyMinute") : tq("settings.everyN", { n: m })}</SelectItem>
               ))}
             </SelectContent>
           </Select>
