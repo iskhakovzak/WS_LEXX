@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 /**
@@ -42,8 +42,18 @@ export const SETTINGS = {
   "daily.feesShare": { group: "daily", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
   "daily.feesHealthyShare": { group: "daily", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
   "daily.feesMinUsd": { group: "daily", type: "number", default: 5, min: 0, max: 500, step: 1, unit: "usd" },
+  // Fees judged per NY week (roadmap R2): Σ fees ≥ max(feesWeeklyMinUsd, feesShare × max(Σ gross, 0)), one hit per week;
+  // off = per day against feesMinUsd. A week / day with gross ≤ 0 counts (the fees were paid for nothing).
+  "daily.feesWeekly": { group: "daily", type: "boolean", default: true },
+  "daily.feesWeeklyMinUsd": { group: "daily", type: "number", default: 25, min: 0, max: 5000, step: 5, unit: "usd" },
   "daily.givebackMinPeakUsd": { group: "daily", type: "number", default: 50, min: 0, max: 5000, step: 10, unit: "usd" },
   "daily.givebackKeepShare": { group: "daily", type: "number", default: 0.2, min: 0, max: 1, step: 0.05, unit: "ratio" },
+
+  // Coaching (roadmap R2): the per-trader fee model by price band (lib/feeModel) — rolling window, trades a band needs,
+  // and the gross-per-share ÷ fees-per-share ratio below which a band is flagged.
+  "coach.feeWindowDays": { group: "coach", type: "number", default: 60, min: 20, max: 250, step: 5, unit: "days" },
+  "coach.feeBandMinTrades": { group: "coach", type: "number", default: 30, min: 5, max: 500, step: 5, unit: "trades" },
+  "coach.feeBandRatioMin": { group: "coach", type: "number", default: 1.5, min: 1, max: 5, step: 0.1, unit: "times" },
 
   // Own contract → discipline (lib/daily/discipline)
   "discipline.contractKeptPoints": { group: "discipline", type: "number", default: 5, min: 0, max: 50, step: 1, unit: "points" },

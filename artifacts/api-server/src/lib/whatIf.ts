@@ -14,6 +14,7 @@
  * Everything here is deterministic and synchronous so it can be unit-tested with synthetic arrays
  * (no DB, no Date.now(), no Math.random()).
  */
+import { buildFeeModel, type FeeBandRow } from "./feeModel";
 import { whatifT } from "../i18n/ns";
 import { maxDrawdownByDay, winRateOf } from "./tradeMath";
 import type { Lang } from "../i18n";
@@ -327,6 +328,8 @@ export interface FeeReport {
   typicalFeePerTrade: number | null;
   breakEvenCents: number | null;
   recommendations: string[];
+  /** Per entry-price band (trade-facet bands): fees / gross per share, their ratio and the flag (lib/feeModel, R2). */
+  bands: FeeBandRow[];
 }
 
 const NO_PRICE = "без цены"; // i18n-ignore (stable bucket key)
@@ -477,6 +480,7 @@ export function feeReport(input: SimTrade[], lang: Lang = "ru"): FeeReport {
     total, byPrice, bySize, byHold, byHour, byTicker, byType,
     eaten: eatenAll.slice(0, 50), eatenCount: eatenAll.length, feesOverGrossCount,
     typicalQty, typicalFeePerTrade, breakEvenCents, recommendations,
+    bands: buildFeeModel(trades.map((t) => ({ day: t.day, entry: t.entry, qty: t.qty, gross: t.gross, fees: t.fees }))).bands,
   };
 }
 

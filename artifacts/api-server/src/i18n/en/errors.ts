@@ -207,6 +207,7 @@ export default {
   EOD_OWN_ONLY: "You can only view your own day",
   INVALID_RANGE: "Invalid range: from ≤ to as YYYY-MM-DD, at most {max} days",
   TRADE_REVIEW_OWN_ONLY: "You can only review your own trades",
+  WHATIF_FEE_PLAN_STAFF_ONLY: "Commission plan comparisons are for curators and admins only",
   EOD_DAY_CLOSED: "Day {date} is closed — reopen it to edit the review",
   EOD_ALREADY_CLOSED: "The day is already closed",
   EOD_FUTURE_DAY: "A future day can't be closed",

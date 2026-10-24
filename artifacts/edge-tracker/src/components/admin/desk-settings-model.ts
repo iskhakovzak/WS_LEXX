@@ -66,7 +66,7 @@ export interface Problem { key: string; kind: ProblemKind; min?: number; max?: n
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Groups in display order; a group the page does not know goes last, in registry order. */
-export const GROUP_ORDER = ["daily", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "curator", "privacy", "nav", "usage"] as const;
+export const GROUP_ORDER = ["daily", "coach", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "alerts", "curator", "privacy", "nav", "usage"] as const;
 
 /**
  * Rows shown next to another row (OWNER-12: the two streak rules stay together): key → the row it follows. Display

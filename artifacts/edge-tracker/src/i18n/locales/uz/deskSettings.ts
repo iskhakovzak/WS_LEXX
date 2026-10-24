@@ -7,6 +7,8 @@ export default {
   description: "Kunlik sikl chegaralari, intizom ochkolari, Telegram yuborish vaqti va maxfiylik. Saqlangan zahoti butun deskka amal qiladi.",
   groups: {
     daily: { title: "Kun fokusi", description: "Treyderning eng qimmat takrorlanuvchi xatosini qanday topamiz." },
+    coach: { title: "Kouching: komissiyalar", description: "Treyderning narx diapazonlari boʻyicha komissiya modeli: oyna, diapazonga kerakli savdolar va «bir aksiyaga gross ÷ bir aksiyaga komissiya» chegarasi." },
+    alerts: { title: "Bildirishnomalar byudjeti", description: "Bir kishi kuniga nechta Telegram xabar oladi va kuratorga kechki xulosa. Risk-alertlar cheklanmaydi, faqat takrorlanmaydi." },
     discipline: { title: "Kontrakt va intizom", description: "Oʻz kontrakti va seriyalar uchun kun intizomiga ochkolar." },
     rewards: { title: "Darajalar", description: "Intizom ochkolari boʻyicha darajalar (mukofotlar katalogi — yuqorida)." },
     quests: { title: "Kvestlar", description: "Ilk qadamlar, kunlik, haftalik, oylik va kurator kvestlari: yoqish, maqsadlar va intizom ochkolaridagi mukofotlar." },
@@ -90,11 +92,18 @@ export default {
       focusWindowDays: { label: "Fokus oynasi", help: "Eng qimmat takrorlanuvchi xatoni topish uchun oxirgi nechta savdo kuniga qaraymiz." },
       focusMinDays: { label: "Xato takrori", help: "Xato oynaning kamida shuncha kunida boʻlsagina fokusga aylanadi." },
       focusMinCostUsd: { label: "Xatoning eng kam narxi", help: "Arzonroq xatolar — shovqin: fokus «hech narsa takrorlanmayapti» deydi." },
-      feesShare: { label: "Komissiyalar: xato chegarasi", help: "Komissiyalar yalpi foydaning shu ulushiga yetgan kun — «komissiyalar foydani yedi» xatosi." },
+      feesShare: { label: "Komissiyalar: xato chegarasi", help: "Yalpi foydaning shu ulushiga yetgan komissiyalar — «komissiyalar foydani yedi» xatosi; yalpi natija nol yoki manfiy boʻlsa, eng kamidan ortiq har qanday komissiya hisoblanadi." },
       feesHealthyShare: { label: "Komissiyalar: meʼyor", help: "Xato narxi — yalpi foydaning shu meʼyoriy ulushidan ortiq komissiyalar." },
       feesMinUsd: { label: "Komissiyalar: eng kami", help: "Kunlik komissiyalarning kichikroq summasi xato hisoblanmaydi." },
+      feesWeekly: { label: "Komissiyalar: haftalik baholash", help: "Komissiyalar har kuni emas, savdo haftasi boʻyicha jamlanadi (haftasiga bitta xato) — kunlik shovqin kamroq." },
+      feesWeeklyMinUsd: { label: "Komissiyalar: haftalik eng kami", help: "Haftalik komissiyalarning kichikroq summasi xato hisoblanmaydi (haftalik baholashda)." },
       givebackMinPeakUsd: { label: "Foydani qaytarish: kun choʻqqisi", help: "Qaytarish hisoblanadigan kunlik foyda choʻqqisi (yoki treyderning median yashil kuni, agar kattaroq boʻlsa)." },
       givebackKeepShare: { label: "Foydani qaytarish: qolgani", help: "Kun choʻqqining shu ulushi yoki undan kam bilan yopilsa — qaytarish." },
+    },
+    coach: {
+      feeWindowDays: { label: "Komissiya modeli oynasi", help: "Narx diapazonlari boʻyicha komissiya modeli uchun savdo boʻlgan oxirgi nechta kun olinadi." },
+      feeBandMinTrades: { label: "Diapazondagi savdolar", help: "Narx diapazoni oynada kamida shuncha savdo boʻlsagina belgilanadi." },
+      feeBandRatioMin: { label: "Gross ÷ komissiya chegarasi", help: "Diapazon bir aksiyaga gross bir aksiyaga komissiyaning shuncha baravaridan kam boʻlsa belgilanadi — intervalning yuqori chegarasi ham yetmasa." },
     },
     discipline: {
       contractKeptPoints: { label: "Kontrakt bandi bajarildi", help: "Oʻz kontraktining har bir bajarilgan bandi (stop, savdolar limiti, qoida) uchun kun intizomiga ochkolar." },

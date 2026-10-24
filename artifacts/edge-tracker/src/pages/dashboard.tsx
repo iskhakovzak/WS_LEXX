@@ -223,6 +223,7 @@ export default function Dashboard() {
             onPeriodChange={(period) => update({ period })}
             metric={prefs.metric}
             onMetricChange={(metric) => update({ metric })}
+            showBreakeven={scope === "me"}
           />
         );
       case "recent":

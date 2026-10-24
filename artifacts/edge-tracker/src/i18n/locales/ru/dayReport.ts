@@ -2,7 +2,7 @@
 export default {
   hold: { s: "{n} с", m: "{n} мин", hm: "{h} ч {m} мин", h: "{h} ч" },
   leakShort: {
-    fee_over_gross: "комиссия > брутто",
+    fee_over_gross: "комиссии съели брутто",
     after_peak: "после пика",
     revenge: "быстрый перезаход",
     size_up: "размер ↑",

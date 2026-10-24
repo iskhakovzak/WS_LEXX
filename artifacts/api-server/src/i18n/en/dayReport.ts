@@ -13,8 +13,8 @@ export default {
     z: " · z = {z}",
   },
   leak: {
-    feeTitle: "Fees above the result",
-    feeDetail: "{n} trades with fees above |gross|: fees {fees}, net {net}",
+    feeTitle: "Fees ate the result",
+    feeDetail: "{n} trades whose gross did not cover the fees: fees {fees}, net {net}",
     peakTitle: "Giveback after the day's peak",
     peakDetail: "Peak {peak} at {time}, close {final}: {giveback} given back over {n} trades",
     revengeTitle: "Entry < {min} min after a loss",

@@ -8,6 +8,7 @@ import { EquityChart, fromDashboardDays } from "@/components/equity-chart";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { cn } from "@/lib/utils";
 import { shortDate } from "./fmt";
+import { OwnBreakevenLine } from "@/components/shared/coach/fee-coaching";
 import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import type { DashboardEquity, EquityMetric, EquityPeriod } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
@@ -48,6 +49,7 @@ export function EquityPanel({
   metric,
   onMetricChange,
   fill,
+  showBreakeven,
 }: {
   data: DashboardEquity | undefined;
   isLoading: boolean;
@@ -58,6 +60,8 @@ export function EquityPanel({
   metric: EquityMetric;
   onMetricChange: (m: EquityMetric) => void;
   fill?: boolean;
+  /** «Мои» view: the win rate vs the breakeven win rate line (roadmap R2). */
+  showBreakeven?: boolean;
 }) {
   const { t: td } = dashboardI18n.useT();
   const PERIOD_OPTIONS = periodOptions();
@@ -191,6 +195,7 @@ export function EquityPanel({
               </Stat>
             </div>
           )}
+          {showBreakeven && <OwnBreakevenLine />}
         </div>
       )}
     </Panel>

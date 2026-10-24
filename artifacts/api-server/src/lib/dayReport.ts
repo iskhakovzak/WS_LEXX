@@ -7,7 +7,7 @@
  *   2. внутридневная кривая эквити по фактическому времени закрытия (exit-исполнение), пик и max DD;
  *   3. таймлайн сделок по ET-времени: тикер, удержание, результат, пауза между сделками;
  *   4. разрезы: тикер / час входа (ET) / сторона;
- *   5. «утечки» (правила с суммами в $): комиссия > |брутто|, сделки после пика дня (отдача), вход < N мин
+ *   5. «утечки» (правила с суммами в $): комиссии по правилу lib/feeRule, сделки после пика дня (отдача), вход < N мин
  *      после убытка, рост размера после убытка, торговля после дневного лимита;
  *   6. «что получилось»: топ-3 сделки, тикеры/сетапы с преимуществом в этот день;
  *   7. «план на завтра»: 3–5 рекомендаций по шаблонам из флагов.
@@ -15,6 +15,7 @@
  */
 import { isOpeningDay } from "./dayReportRules";
 import { DEFAULTS as BEHAVIOR } from "./behaviorEngine";
+import { feeCost, feeMinUsd, feeShares } from "./feeRule";
 import { netPnl, num, normResult } from "./tradeMath";
 import { dayReportT } from "../i18n/ns";
 import { localeTagFor, type Lang } from "../i18n";
@@ -76,8 +77,7 @@ export interface DayReportOptions {
   sizeUpFactor?: number;
   /** Окно сравнения, торговых дней. По умолчанию 20. */
   lookbackDays?: number;
-  /** Language of the texts (default RU). */
-  lang?: Lang;
+  lang?: Lang; // language of the texts (default RU)
 }
 
 export interface TradeRef {
@@ -488,13 +488,12 @@ export function computeLeaks(trades: DayTrade[], equity: Equity, dailyLossLimit:
   const closed = trades.filter((t) => t.net != null);
   const out: Leak[] = [];
 
-  // 1. Комиссия больше |брутто| — сделка заведомо не окупила издержки.
-  const feeHeavy = closed.filter((t) => t.fees > 0 && t.fees > Math.abs(t.gross ?? 0));
-  if (feeHeavy.length) {
-    const fees = sum(feeHeavy.map((t) => t.fees));
+  const k = feeShares(), dayFeeCost = feeCost(sum(closed.map((t) => t.gross ?? 0)), sum(closed.map((t) => t.fees)), feeMinUsd(), k);
+  const feeHeavy = closed.filter((t) => t.fees > 0 && t.fees >= k.feesShare * Math.max(t.gross ?? 0, 0));
+  if (dayFeeCost != null && feeHeavy.length) {
     out.push(leak("fee_over_gross", L("leak.feeTitle"),
-      L("leak.feeDetail", { n: feeHeavy.length, fees: usd(fees), net: usd(sum(feeHeavy.map((t) => t.net!)), true) }),
-      feeHeavy, fees));
+      L("leak.feeDetail", { n: feeHeavy.length, fees: usd(sum(feeHeavy.map((t) => t.fees))), net: usd(sum(feeHeavy.map((t) => t.net!)), true) }),
+      feeHeavy, -dayFeeCost));
   }
 
   // 2. Сделки, закрытые после пика дня (отдача): берём только реально закрытые позже пика.

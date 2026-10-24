@@ -7,6 +7,8 @@ export default {
   description: "Daily-loop thresholds, discipline points, Telegram send times and privacy. They apply to the whole desk as soon as you save.",
   groups: {
     daily: { title: "Focus of the day", description: "How we find a trader's costliest repeating mistake." },
+    coach: { title: "Coaching: fees", description: "The trader's fee model by price band: window, trades a band needs and the gross-per-share ÷ fees-per-share threshold." },
+    alerts: { title: "Notification budget", description: "How many Telegram messages a person gets a day, and the curator's evening digest. Risk alerts are never capped, only deduplicated." },
     discipline: { title: "Contract and discipline", description: "Points to the day's discipline for the own contract and streaks." },
     rewards: { title: "Levels", description: "Levels by discipline points (the rewards catalog is above)." },
     quests: { title: "Quests", description: "First steps, daily, weekly, monthly and curator quests: switches, targets and rewards in discipline points." },
@@ -90,11 +92,18 @@ export default {
       focusWindowDays: { label: "Focus window", help: "How many recent trading days we look at to find the costliest repeating mistake." },
       focusMinDays: { label: "Mistake repeats", help: "A mistake becomes the focus only if it happened on at least this many days of the window." },
       focusMinCostUsd: { label: "Minimum mistake cost", help: "Cheaper mistakes are noise: the focus then says “nothing repeating”." },
-      feesShare: { label: "Fees: mistake threshold", help: "A day whose fees reach this share of the gross profit is the “fees ate the profit” mistake." },
+      feesShare: { label: "Fees: mistake threshold", help: "Fees reaching this share of the gross profit are the “fees ate the profit” mistake; with a gross at or below zero any fees above the minimum count." },
       feesHealthyShare: { label: "Fees: healthy share", help: "The mistake costs the fees above this healthy share of the gross profit." },
       feesMinUsd: { label: "Fees: minimum", help: "A smaller daily fee total is not a mistake." },
+      feesWeekly: { label: "Fees: judge per week", help: "Fees are summed over the trading week (one mistake per week) instead of each day — less daily noise." },
+      feesWeeklyMinUsd: { label: "Fees: weekly minimum", help: "A smaller weekly fee total is not a mistake (when fees are judged per week)." },
       givebackMinPeakUsd: { label: "Giveback: day peak", help: "The day's profit peak from which a giveback counts (or the trader's median green day, if larger)." },
       givebackKeepShare: { label: "Giveback: kept", help: "A giveback is a day closed at this share of the peak or less." },
+    },
+    coach: {
+      feeWindowDays: { label: "Fee model window", help: "How many recent days with trades the fee model by price band uses." },
+      feeBandMinTrades: { label: "Trades in a band", help: "A price band is flagged only with at least this many trades in the window." },
+      feeBandRatioMin: { label: "Gross ÷ fees threshold", help: "A band is flagged when its gross per share is below this many times its fees per share — and even the interval's upper bound falls short." },
     },
     discipline: {
       contractKeptPoints: { label: "Contract item kept", help: "Points to the day's discipline for every kept item of the own contract (stop, trade limit, rule)." },
