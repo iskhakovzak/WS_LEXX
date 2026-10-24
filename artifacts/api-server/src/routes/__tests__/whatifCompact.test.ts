@@ -35,7 +35,8 @@ describe("/whatif/base?enc=2 — compact trade table (DEV-10)", () => {
       trade({ id: 3, trader: "A", hasStop: null, ptags: ["news", "halt"] }),
     ];
     const c = compactTrades(rows);
-    expect(WHATIF_COLS.slice(-7)).toEqual(["trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes"]);
+    expect(WHATIF_COLS.slice(-9, -2)).toEqual(["trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes"]);
+    expect(WHATIF_COLS.slice(-2)).toEqual(["strategy", "earnings"]);
     const col = (r: (string | number | null)[], k: (typeof WHATIF_COLS)[number]) => r[WHATIF_COLS.indexOf(k)];
     expect(c.dicts.trader).toEqual(["A", "B"]);
     expect(c.dicts.ptags).toEqual(["news,halt"]);

@@ -30,7 +30,7 @@ import {
   type SimTrade, type Rule,
   computeMetrics, dailyResults, equityByDay, runScenario, feeReport, describeRule, presets, RULE_TYPES, GRADES,
 } from "../lib/whatIf";
-import { MAX_SETUP_LEN, MAX_TAG_LEN } from "../lib/whatIfTypes";
+import { MAX_SETUP_LEN, MAX_TAG_LEN, WHATIF_STRATEGIES } from "../lib/whatIfTypes";
 import { findSuggestions, type SuggestionsResult } from "../lib/whatIfSuggest";
 import { freshSimTrades, loadSimTrades } from "../lib/whatIfLoader";
 import { tradesSignature } from "../lib/whatIfSignature";
@@ -95,6 +95,16 @@ export const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("excludeTags"), tags: z.array(z.string().trim().min(1).max(MAX_TAG_LEN)).min(1).max(20).refine((a) => !a.some(isDeskTag)) }),
   z.object({ type: z.literal("profitGiveback"), peak: z.coerce.number().positive().max(1e7), pct: z.coerce.number().int().min(10).max(90) }),
   z.object({ type: z.literal("dailyProfitTarget"), usd: z.coerce.number().positive().max(1e7) }),
+  z.object({ type: z.literal("afterWin"), minutes: z.coerce.number().positive().max(24 * 60) }),
+  z.object({
+    type: z.literal("redZone"), usd: z.coerce.number().positive().max(1e7), k: z.coerce.number().int().min(0).max(100),
+    floor: z.coerce.number().positive().max(1e7).nullish(),
+  }),
+  z.object({ type: z.literal("blockWindow"), from: z.string().regex(HM_RE), to: z.string().regex(HM_RE) }),
+  z.object({ type: z.literal("maxTradesPerTicker"), n: z.coerce.number().int().min(1).max(100) }),
+  z.object({ type: z.literal("noReentryAfterLoss"), minutes: z.coerce.number().positive().max(24 * 60) }),
+  z.object({ type: z.literal("excludeStrategies"), strategies: z.array(z.enum(WHATIF_STRATEGIES)).min(1).max(WHATIF_STRATEGIES.length) }),
+  z.object({ type: z.literal("excludeEarnings") }),
 ]);
 
 const runSchema = rangeSchema.extend({
@@ -146,7 +156,7 @@ function previewOf(t: SimTrade) {
     qty: t.qty, entry: t.entry, gross: t.gross, fees: t.fees, holdSec: t.holdSec, seq: t.seq,
     fills: t.fills ?? null, feeBreakdown: t.feeBreakdown ?? null, setup: t.setup, grade: t.grade ?? null,
     trader: t.trader ?? null, imx: t.imx === true, reentry: t.reentry === true, sizeRel: t.sizeRel ?? null, hasStop: t.hasStop ?? null,
-    mistakes: t.mistakes ?? [], ptags: t.ptags ?? [],
+    mistakes: t.mistakes ?? [], ptags: t.ptags ?? [], strategy: t.strategy ?? null, earnings: t.earnings ?? null,
   };
 }
 
@@ -158,9 +168,9 @@ function previewOf(t: SimTrade) {
  * Plain `trades` stays the default so an older bundle keeps working against a newer API. */
 export const WHATIF_COLS = [
   "id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade",
-  "trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes",
+  "trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes", "strategy", "earnings",
 ] as const;
-export const WHATIF_DICT_COLS = ["day", "ticker", "side", "setup", "grade", "trader", "ptags", "mistakes"] as const;
+export const WHATIF_DICT_COLS = ["day", "ticker", "side", "setup", "grade", "trader", "ptags", "mistakes", "strategy"] as const;
 const REG_KEYS = ["sec", "taf", "cat", "orf", "nfa"];
 type Cell = string | number | null;
 
@@ -187,6 +197,7 @@ export function compactTrades(trades: SimTrade[]): { cols: typeof WHATIF_COLS; r
     // 1/0 flags (hasStop null = unknown); tag lists joined with "," (tags never contain one), null when empty.
     code("trader", t.trader ?? null), t.imx ? 1 : 0, t.reentry ? 1 : 0, t.sizeRel ?? null, t.hasStop == null ? null : t.hasStop ? 1 : 0,
     code("ptags", t.ptags?.length ? t.ptags.join(",") : null), code("mistakes", t.mistakes?.length ? t.mistakes.join(",") : null),
+    code("strategy", t.strategy ?? null), t.earnings == null ? null : t.earnings ? 1 : 0,
   ]);
   return { cols: WHATIF_COLS, rows, dicts };
 }

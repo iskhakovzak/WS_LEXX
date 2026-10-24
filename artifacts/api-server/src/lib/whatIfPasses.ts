@@ -60,11 +60,23 @@ export function recomputeFees(t: SimTrade, plan: Extract<Rule, { type: "commissi
 type DayState = {
   dayNet: number; count: number; lossRun: number; peakNet: number;
   stoppedBy: ExclusionReason | null; stopDetail: string;
-  /** Close time (minutes since NY midnight) of the trader's last realised losing trade of the day. */
+  /** Close time (minutes since NY midnight) of the trader's last realised losing / winning trade of the day. */
   lastLossClose: number | null;
+  lastWinClose: number | null;
+  /** redZone: entries still allowed since the realised day first reached −usd (null = not in the zone yet). */
+  zoneLeft: number | null;
+  /** Kept entries per ticker today (maxTradesPerTicker). */
+  perTicker: Map<string, number>;
+  /** Close of the last realised losing trade per ticker today (noReentryAfterLoss). */
+  tickerLossClose: Map<string, number>;
   /** Kept trades still open at the current entry, by close time: their result is not known yet. */
-  open: { close: number; net: number }[];
+  open: { close: number; net: number; ticker: string }[];
 };
+
+const newDayState = (): DayState => ({
+  dayNet: 0, count: 0, lossRun: 0, peakNet: 0, stoppedBy: null, stopDetail: "", lastLossClose: null, lastWinClose: null,
+  zoneLeft: null, perTicker: new Map(), tickerLossClose: new Map(), open: [],
+});
 
 /** Close (minutes since NY midnight) of a trade with a known entry and hold; null ⇒ realised at once (old order). */
 export function closeMinOf(t: { entryMin: number | null; holdSec: number | null }): number | null {
@@ -131,8 +143,23 @@ export function buildPasses(input: Rule[], base: SimTrade[], T: WhatifT | null):
   const xtSet = new Set((xt?.tags ?? []).map((v) => v.trim().toLowerCase()).filter(Boolean));
   if (xt && !xtSet.size) sk("excludeTags", "noTags");
   else if (xt && !base.some((t) => t.ptags?.length)) sk("excludeTags", "noTagLabels");
+  const bw = get("blockWindow");
+  const bwFrom = bw ? parseHm(bw.from) : null;
+  const bwTo = bw ? parseHm(bw.to) : null;
+  const bwActive = bw != null && bwFrom != null && bwTo != null && bwTo > bwFrom && base.some((t) => t.entryMin != null);
+  if (bw && (bwFrom == null || bwTo == null || bwTo <= bwFrom)) sk("blockWindow", "noWindow");
+  else if (bw && !bwActive) sk("blockWindow", "noEntryTime");
+  const xst = get("excludeStrategies");
+  const xstSet = new Set((xst?.strategies ?? []).map((v) => v.trim().toLowerCase()).filter(Boolean));
+  if (xst && !xstSet.size) sk("excludeStrategies", "noStrategies");
+  else if (xst && !base.some((t) => t.strategy)) sk("excludeStrategies", "noStrategyLabels");
+  const xe = get("excludeEarnings");
+  // The calendar is read from the archive: without a single marked trade there is nothing to say (not «no reports»).
+  const xeActive = xe != null && base.some((t) => t.earnings === true);
+  if (xe && !xeActive) sk("excludeEarnings", "noEarnings");
 
-  const anyStatic = tw || pr || mh || etSet.size || es || sr || xsSet.size || mgActive || imx || nre || rsActive || xmSet.size || xtSet.size;
+  const anyStatic = tw || pr || mh || etSet.size || es || sr || xsSet.size || mgActive || imx || nre || rsActive || xmSet.size || xtSet.size
+    || bwActive || xstSet.size || xeActive;
   const staticExclusion = anyStatic ? (t: SimTrade): Hit | null => {
     const em = t.entryMin;
     if (tw && em != null) {
@@ -170,6 +197,12 @@ export function buildPasses(input: Rule[], base: SimTrade[], T: WhatifT | null):
       const tag = t.ptags.find((p) => xtSet.has(p.trim().toLowerCase()));
       if (tag) return hit("excludeTags", (T) => T("excl.tag", { tag }));
     }
+    if (bwActive && em != null && em >= (bwFrom as number) && em < (bwTo as number)) {
+      return hit("blockWindow", (T) => T("excl.blocked", { entry: fmtHm(em), from: fmtHm(bwFrom as number), to: fmtHm(bwTo as number) }));
+    }
+    const st = t.strategy;
+    if (xstSet.size && st && xstSet.has(st.trim().toLowerCase())) return hit("excludeStrategies", (T) => T("excl.strategy", { strategy: st }));
+    if (xeActive && t.earnings === true) return hit("excludeEarnings", (T) => T("excl.earnings"));
     return null;
   } : null;
 
@@ -229,20 +262,36 @@ export function buildPasses(input: Rule[], base: SimTrade[], T: WhatifT | null):
   const al = get("afterLoss");
   const dpt = get("dailyProfitTarget");
   const pg = get("profitGiveback");
-  if (al && !base.some((t) => t.entryMin != null)) sk("afterLoss", "noEntryTime");
+  const aw = get("afterWin");
+  const rzIn = get("redZone");
+  const rz = rzIn && !(rzIn.floor != null && rzIn.floor <= rzIn.usd) ? rzIn : undefined;
+  if (rzIn && !rz) sk("redZone", "badZone");
+  const mtt = get("maxTradesPerTicker");
+  const rel = get("noReentryAfterLoss");
+  const hasTimes = base.some((t) => t.entryMin != null);
+  if (al && !hasTimes) sk("afterLoss", "noEntryTime");
+  if (aw && !hasTimes) sk("afterWin", "noEntryTime");
+  if (rel && !hasTimes) sk("noReentryAfterLoss", "noEntryTime");
   /*
    * A kept trade counts for the day (net, loss run, peak, the stops) only once it has CLOSED: before deciding an entry,
    * the trader's kept trades that closed at or before it are realised, in close order. So a stop excludes only the
    * entries taken at or after the close that triggered it — never a trade entered while the trigger was still open
    * (that would be hindsight). A trade without an entry time or hold is realised at once (the old entry order).
    */
-  const realise = (s: DayState, net: number, close: number | null) => {
+  const realise = (s: DayState, net: number, close: number | null, ticker: string) => {
     s.dayNet += net;
     if (s.dayNet > s.peakNet) s.peakNet = s.dayNet;
     if (net < 0) s.lossRun++; else if (net > 0) s.lossRun = 0;
-    if (net < 0 && close != null) s.lastLossClose = Math.max(s.lastLossClose ?? close, close);
+    if (net < 0 && close != null) {
+      s.lastLossClose = Math.max(s.lastLossClose ?? close, close);
+      s.tickerLossClose.set(ticker, Math.max(s.tickerLossClose.get(ticker) ?? close, close));
+    }
+    if (net > 0 && close != null) s.lastWinClose = Math.max(s.lastWinClose ?? close, close);
+    // The zone is sticky: once the realised day touched −usd, the k entries left do not come back with a recovery.
+    if (rz && s.zoneLeft == null && s.dayNet <= -rz.usd + EPS) s.zoneLeft = rz.k;
     if (s.stoppedBy) return;
-    if (dll && s.dayNet <= -dll.usd) { s.stoppedBy = "dailyLossLimit"; s.stopDetail = T ? T("excl.dayLimit", { day: round2(Math.abs(s.dayNet)), limit: dll.usd }) : ""; }
+    if (rz?.floor != null && s.dayNet <= -rz.floor + EPS) { s.stoppedBy = "redZone"; s.stopDetail = T ? T("excl.redFloor", { floor: rz.floor }) : ""; }
+    else if (dll && s.dayNet <= -dll.usd) { s.stoppedBy = "dailyLossLimit"; s.stopDetail = T ? T("excl.dayLimit", { day: round2(Math.abs(s.dayNet)), limit: dll.usd }) : ""; }
     else if (sal && s.lossRun >= sal.n) { s.stoppedBy = "stopAfterLosses"; s.stopDetail = T ? T("excl.lossRun", { n: sal.n }) : ""; }
     else if (dpt && s.dayNet >= dpt.usd - EPS) { s.stoppedBy = "dailyProfitTarget"; s.stopDetail = T ? T("excl.profitTarget", { usd: dpt.usd }) : ""; }
     else if (pg && s.peakNet >= pg.peak - EPS && s.dayNet <= s.peakNet * (1 - pg.pct / 100) + EPS) {
@@ -250,7 +299,9 @@ export function buildPasses(input: Rule[], base: SimTrade[], T: WhatifT | null):
       s.stopDetail = T ? T("excl.profitGiveback", { pct: pg.pct, peak: round2(s.peakNet) }) : "";
     }
   };
-  const sequential = dll || mtd || sal || al || dpt || pg ? (kept: SimTrade[], onExclude: OnExclude): SimTrade[] => {
+  /** Entry `em` falls inside [close, close + minutes) of a realised close. */
+  const within = (em: number | null, close: number | null | undefined, minutes: number) => em != null && close != null && em >= close && em < close + minutes;
+  const sequential = dll || mtd || sal || al || dpt || pg || aw || rz || mtt || rel ? (kept: SimTrade[], onExclude: OnExclude): SimTrade[] => {
     const out: SimTrade[] = [];
     const states = new Map<string, DayState>();
     let day = "";
@@ -258,10 +309,10 @@ export function buildPasses(input: Rule[], base: SimTrade[], T: WhatifT | null):
       if (t.day !== day) { day = t.day; states.clear(); }
       const key = t.trader ?? "";
       let s = states.get(key);
-      if (!s) { s = { dayNet: 0, count: 0, lossRun: 0, peakNet: 0, stoppedBy: null, stopDetail: "", lastLossClose: null, open: [] }; states.set(key, s); }
+      if (!s) { s = newDayState(); states.set(key, s); }
       // Unknown entry time (sorted last in the day): everything before it counts as closed.
       const at = t.entryMin ?? Infinity;
-      while (s.open.length && s.open[0].close <= at) { const o = s.open.shift()!; realise(s, o.net, o.close); }
+      while (s.open.length && s.open[0].close <= at) { const o = s.open.shift()!; realise(s, o.net, o.close, o.ticker); }
       if (s.stoppedBy) { onExclude(t, s.stoppedBy, s.stopDetail); continue; }
       if (mtd && s.count >= mtd.n) {
         s.stoppedBy = "maxTradesPerDay";
@@ -269,17 +320,36 @@ export function buildPasses(input: Rule[], base: SimTrade[], T: WhatifT | null):
         onExclude(t, s.stoppedBy, s.stopDetail);
         continue;
       }
-      const llc = s.lastLossClose;
-      if (al && llc != null && t.entryMin != null && t.entryMin >= llc && t.entryMin < llc + al.minutes) {
-        onExclude(t, "afterLoss", T ? T("excl.afterLoss", { n: Math.max(0, Math.round(t.entryMin - llc)) }) : "");
+      if (rz && s.zoneLeft != null && s.zoneLeft <= 0) {
+        onExclude(t, "redZone", T ? T("excl.redZone", { usd: rz.usd, k: rz.k }) : "");
+        continue;
+      }
+      const em = t.entryMin;
+      if (al && within(em, s.lastLossClose, al.minutes)) {
+        onExclude(t, "afterLoss", T ? T("excl.afterLoss", { n: Math.max(0, Math.round((em as number) - (s.lastLossClose as number))) }) : "");
+        continue;
+      }
+      if (aw && within(em, s.lastWinClose, aw.minutes)) {
+        onExclude(t, "afterWin", T ? T("excl.afterWin", { n: Math.max(0, Math.round((em as number) - (s.lastWinClose as number))) }) : "");
+        continue;
+      }
+      const tk = t.ticker.toUpperCase();
+      if (mtt && (s.perTicker.get(tk) ?? 0) >= mtt.n) {
+        onExclude(t, "maxTradesPerTicker", T ? T("excl.tickerCount", { n: mtt.n, ticker: t.ticker }) : "");
+        continue;
+      }
+      if (rel && within(em, s.tickerLossClose.get(tk), rel.minutes)) {
+        onExclude(t, "noReentryAfterLoss", T ? T("excl.reentryLoss", { n: Math.max(0, Math.round((em as number) - (s.tickerLossClose.get(tk) as number))), ticker: t.ticker }) : "");
         continue;
       }
       out.push(t);
       s.count++;
+      s.perTicker.set(tk, (s.perTicker.get(tk) ?? 0) + 1);
+      if (s.zoneLeft != null) s.zoneLeft--;
       const net = netOf(t) ?? 0;
       const close = closeMinOf(t);
-      if (close != null) pushOpen(s.open, { close, net });
-      else realise(s, net, t.entryMin);
+      if (close != null) pushOpen(s.open, { close, net, ticker: tk });
+      else realise(s, net, t.entryMin, tk);
     }
     return out;
   } : null;

@@ -59,6 +59,10 @@ export interface SimTrade {
   mistakes?: ErrorVocabCode[];
   /** Personal tags (desk tags — IMX and the mistakes vocabulary — removed). */
   ptags?: string[];
+  /** PropReports-style strategy (trades.strategy, lib/tradeStrategy): OPG, Print, OPGtoDAY, Day, MOC, …; null = unknown. */
+  strategy?: string | null;
+  /** The ticker reports earnings for this trading day (before the open, or after the previous close); null = no calendar. */
+  earnings?: boolean | null;
 }
 
 export type Rule =
@@ -99,11 +103,36 @@ export type Rule =
   /** Stop the trader's day once it gave back `pct`% of a day profit that had reached +peak. */
   | { type: "profitGiveback"; peak: number; pct: number }
   /** Stop the trader's day once it is up +usd. */
-  | { type: "dailyProfitTarget"; usd: number };
+  | { type: "dailyProfitTarget"; usd: number }
+  /** Skip entries taken within `minutes` after a WINNING trade of the same trader closed the same day (euphoria trades). */
+  | { type: "afterWin"; minutes: number }
+  /**
+   * «Красная зона»: once the trader's realised day is at −usd or worse, at most `k` more entries that day; with `floor`,
+   * none at all once it is at −floor or worse (floor > usd).
+   */
+  | { type: "redZone"; usd: number; k: number; floor?: number | null }
+  /** Skip entries inside [from, to) ET ("HH:MM"): the opposite of timeWindow. */
+  | { type: "blockWindow"; from: string; to: string }
+  /** At most `n` entries per ticker per trader-day. */
+  | { type: "maxTradesPerTicker"; n: number }
+  /** No re-entry into the SAME ticker within `minutes` after a losing trade in it closed (same trader-day). */
+  | { type: "noReentryAfterLoss"; minutes: number }
+  /** Skip trades of these strategies (OPG, Print, OPGtoDAY, Day, MOC, AfterMarket, Overnight, Swing). */
+  | { type: "excludeStrategies"; strategies: string[] }
+  /** Skip trades in a ticker that reports earnings that trading day (needs the earnings calendar). */
+  | { type: "excludeEarnings" };
 
 /** Longest personal tag / setup name a rule takes (routes/whatif ruleSchema; the grid never emits a longer one). */
 export const MAX_TAG_LEN = 60;
 export const MAX_SETUP_LEN = 80;
+
+/** Strategies a rule may skip (lib/tradeStrategy TRADE_STRATEGIES without the non-market Adjust / OPT rows). */
+export const WHATIF_STRATEGIES = ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing"] as const;
+/**
+ * Pre-market entries (OPG, Print, OPGtoDAY): the family is known at the entry (the first fill before 09:30), while the
+ * split between its three members depends on the exit — so the suggestion grid only ever skips the whole family.
+ */
+export const PREMARKET_STRATEGIES: readonly string[] = ["OPG", "Print", "OPGtoDAY"];
 
 export const GRADES = ["A+", "A", "B", "C"] as const;
 export type Grade = (typeof GRADES)[number];
@@ -118,7 +147,8 @@ export type RuleType = Rule["type"];
 export type ExclusionReason =
   | "dailyLossLimit" | "maxTradesPerDay" | "stopAfterLosses" | "timeWindow" | "priceRange" | "minHold" | "excludeTickers" | "excludeSide"
   | "sizeRange" | "afterLoss" | "excludeSetups" | "minGrade"
-  | "excludeImx" | "noReentry" | "requireStop" | "excludeMistakes" | "excludeTags" | "profitGiveback" | "dailyProfitTarget";
+  | "excludeImx" | "noReentry" | "requireStop" | "excludeMistakes" | "excludeTags" | "profitGiveback" | "dailyProfitTarget"
+  | "afterWin" | "redZone" | "blockWindow" | "maxTradesPerTicker" | "noReentryAfterLoss" | "excludeStrategies" | "excludeEarnings";
 export type ChangeReason = "commissionPlan" | "capLoss" | "maxSizeRel";
 
 export interface ExcludedTrade {

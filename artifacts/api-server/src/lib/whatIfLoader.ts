@@ -23,6 +23,7 @@ export type SimRow = {
   tags: string | null; horizon: string | null; context_snapshot: Record<string, unknown> | null;
   first_entry: Date | string | null; last_exit: Date | string | null;
   trader?: string | null; is_imx?: boolean | null; reentry_of?: number | null; size_rel?: unknown; has_stop?: boolean | null;
+  strategy?: string | null; earnings?: boolean | null;
 };
 
 /** "5m", "2h 29m", "17s", "1:30", "45 мин", "3 д" → seconds; null when unparsable. */
@@ -126,8 +127,22 @@ export function rowToSim(r: SimRow, seq: number, imxWin: ImxWindow = currentImxW
     // Mistakes by code (any spelling: «Реванш» → revenge); personal tags = the rest without the desk tags.
     mistakes: [...codesOf(tags)],
     ptags: tags.filter((t) => !isDeskTag(t)),
+    strategy: r.strategy?.trim() || null,
+    earnings: r.earnings ?? null,
   };
 }
+
+/**
+ * «Отчёт сегодня» for the what-if (rule excludeEarnings): the ticker is in the Finviz earnings calendar
+ * (finviz_earnings, DB only) for the trading day itself before the open (bmo / unknown timing), or for the previous
+ * weekday after the close (amc) — the reaction day. Known before the entry: the calendar is published in advance.
+ */
+export const EARNINGS_SQL = `EXISTS (
+      SELECT 1 FROM finviz_earnings fe
+       WHERE fe.ticker = UPPER(t.ticker) AND fe.superseded_at IS NULL
+         AND ((fe.date = substring(t.date from 1 for 10) AND fe.timing IS DISTINCT FROM 'amc')
+           OR (fe.timing = 'amc' AND fe.date = to_char(substring(t.date from 1 for 10)::date
+                 - CASE extract(isodow FROM substring(t.date from 1 for 10)::date) WHEN 1 THEN 3 WHEN 7 THEN 2 ELSE 1 END, 'YYYY-MM-DD'))))`;
 
 /** Closed trades with a money result for the scope/period, in simulation order. */
 /*
@@ -183,7 +198,7 @@ export function simTradesQuery(scope: string | null, from?: string, to?: string,
   const sql = `
     SELECT t.id, t.ticker, t.date, t.exit_date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
            t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit,
-           t.trader, ${imxSql("t")} AS is_imx, t.reentry_of, t.size_rel, t.has_stop
+           t.trader, ${imxSql("t")} AS is_imx, t.reentry_of, t.size_rel, t.has_stop, t.strategy, ${EARNINGS_SQL} AS earnings
     FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
     WHERE ${cond.join(" AND ")}${tail}
     ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;

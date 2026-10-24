@@ -114,7 +114,7 @@ describe("never in the grid", () => {
   it("commission plans, loss caps and minimum holds", () => {
     const grid = suggestionGrid(mixedTrades({ traders: 1, days: 60, perDay: 6 }));
     expect(grid.length).toBeGreaterThan(50);
-    expect(grid.length).toBeLessThanOrEqual(80);
+    expect(grid.length).toBeLessThanOrEqual(100); // 72 committed slots + 23 of wave 2, minus the gated / deduplicated ones
     for (const type of ["commissionPlan", "capLoss", "minHold"] as RuleType[]) expect(of(grid, type)).toHaveLength(0);
   });
 });

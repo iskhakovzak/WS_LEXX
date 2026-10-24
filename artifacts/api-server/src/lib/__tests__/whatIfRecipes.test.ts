@@ -23,14 +23,14 @@ const keyOf = (rules: unknown[]) => rules.map((r) => JSON.stringify(r));
 const dataDependent = (rs: Recipe[]) => rs.filter((r) => !r.fixed);
 
 describe("recipes: stable slots", () => {
-  it("72 unique ids on the mixed fixture, the same for another seed; team drops the size and tag slots", () => {
+  it("95 unique ids on the mixed fixture (72 committed + 23 wave 2), the same for another seed; team drops the size and tag slots", () => {
     const a = gridRecipes(prepare(mixedTrades({ traders: 1, days: 60, perDay: 6, seed: 3 })).base).recipes.map((r) => r.id);
     const b = gridRecipes(prepare(rich(9)).base).recipes.map((r) => r.id);
-    expect(a).toHaveLength(72);
-    expect(new Set(a).size).toBe(72);
+    expect(a).toHaveLength(95);
+    expect(new Set(a).size).toBe(95);
     expect(b).toEqual(a);
     const team = gridRecipes(mixedTrades({ traders: 2, days: 30, perDay: 4 }), { team: true }).recipes.map((r) => r.id);
-    expect(team).toHaveLength(67);
+    expect(team).toHaveLength(90);
     expect(team.some((id) => id.startsWith("size.") || id.startsWith("tags."))).toBe(false);
   });
 
@@ -52,7 +52,12 @@ describe("recipes: stable slots", () => {
   });
 });
 
-describe("parity: suggestionGrid over recipes = the committed grid", () => {
+/** Wave-2 candidates (appended after the committed grid): new rule types and the two-sided price bands. */
+const WAVE2 = new Set(["afterWin", "redZone", "blockWindow", "maxTradesPerTicker", "noReentryAfterLoss", "excludeStrategies", "excludeEarnings"]);
+const isWave2 = (c: { rule: { type: string; min?: number | null; max?: number | null } }) =>
+  WAVE2.has(c.rule.type) || (c.rule.type === "priceRange" && c.rule.min != null && c.rule.max != null);
+
+describe("parity: suggestionGrid over recipes = the committed grid (wave-2 slots aside)", () => {
   const fixtures: [string, SimTrade[]][] = [
     ["mixed 1×60×6", mixedTrades({ traders: 1, days: 60, perDay: 6, seed: 21 })],
     ["mixed 2×40×5", mixedTrades({ traders: 2, days: 40, perDay: 5, seed: 22 })],
@@ -69,8 +74,12 @@ describe("parity: suggestionGrid over recipes = the committed grid", () => {
       for (const team of [false, true]) {
         for (const input of [trades, prep.base, shuffled]) {
           for (const train of [undefined, null, prep.train] as const) {
-            const now = suggestionGrid(input, { team, train });
-            expect(now, `${name} team=${team} train=${train === undefined ? "default" : train ? "set" : "null"}`).toEqual(legacySuggestionGrid(input, { team, train }));
+            const all = suggestionGrid(input, { team, train });
+            // Wave 2 only appends: the committed candidates keep their order, and the new ones all come after them.
+            const firstNew = all.findIndex(isWave2);
+            expect(firstNew < 0 || all.slice(firstNew).every(isWave2)).toBe(true);
+            const now = all.filter((c) => !isWave2(c));
+            expect(now,`${name} team=${team} train=${train === undefined ? "default" : train ? "set" : "null"}`).toEqual(legacySuggestionGrid(input, { team, train }));
             picked += now.filter((c) => c.picked).length;
           }
         }

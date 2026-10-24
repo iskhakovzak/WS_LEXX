@@ -32,6 +32,8 @@ describe("trades signature", () => {
       (t) => ({ ...t, hasStop: t.hasStop === true ? false : true }),
       (t) => ({ ...t, mistakes: ["revenge", ...(t.mistakes ?? [])] }),
       (t) => ({ ...t, ptags: ["brand-new", ...(t.ptags ?? [])] }),
+      (t) => ({ ...t, strategy: t.strategy === "MOC" ? "Day" : "MOC" }),
+      (t) => ({ ...t, earnings: t.earnings !== true }),
     ];
     for (const [i, edit] of edits.entries()) {
       expect(tradesSignature(trades.map((t, k) => (k === 7 ? edit(t) : t))), `edit ${i}`).not.toBe(sig);
