@@ -2,6 +2,7 @@ import * as React from "react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BookOpen, Flame, MoreHorizontal, PenLine, Search, Sparkles, Trash2, X } from "lucide-react";
 import { EmptyState, FilterChip, Panel, Pill, StatCard, StatGrid } from "@/components/ds";
+import { ACTIVE_DOT, CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, areaGradient, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
@@ -13,7 +14,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { cn } from "@/lib/utils";
 import { AuthorMarkdown, Highlight, NoteReader } from "./author-reader";
 import {
-  CHART_TOOLTIP, MOODS, SECTIONS, filledSections, localToday,
+  MOODS, SECTIONS, filledSections, localToday,
   moodOf, notePreview, writingStreak, type AuthorNote,
 } from "./author-model";
 import { fmtDate, fmtWeekday } from "@/lib/format";
@@ -43,6 +44,7 @@ export function AuthorHistory({
 }) {
   const { t } = notesI18n.useT();
   const { t: tc } = commonI18n.useT();
+  const motion = useChartMotion();
   const [query, setQuery] = React.useState("");
   const [moodFilter, setMoodFilter] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<AuthorNote | null>(null);
@@ -161,26 +163,22 @@ export function AuthorHistory({
         <Panel title={t("author.history.moodTrend")} description={t("author.history.moodTrendDescription")}>
           <div className="h-40 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chart} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
-                <defs>
-                  <linearGradient id="authorMoodFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d, "dayMonth")} stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} minTickGap={24} />
-                <YAxis domain={[-2, 2]} ticks={[-2, 0, 2]} tickFormatter={(v: number) => (v === 2 ? "💪" : v === 0 ? "😐" : "😤")} stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <ReferenceLine y={0} stroke="hsl(var(--border))" />
+              <AreaChart data={chart} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                {areaGradient("authorMoodFill", CHART.series[0])}
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d, "dayMonth")} {...X_AXIS} minTickGap={24} />
+                <YAxis {...Y_AXIS} width={28} domain={[-2, 2]} ticks={[-2, 0, 2]} tickFormatter={(v: number) => (v === 2 ? "💪" : v === 0 ? "😐" : "😤")} />
+                <ReferenceLine {...ZERO_LINE} />
                 <Tooltip
-                  contentStyle={CHART_TOOLTIP}
+                  {...tooltipProps("line")}
+                  content={<GlassTooltip />}
                   formatter={(_v: number, _n: string, item: { payload?: { score: number } }) => {
                     const m = MOODS.find((x) => x.score === item.payload?.score);
                     return [m ? `${m.emoji} ${m.label}` : "—", t("author.history.mood")];
                   }}
                   labelFormatter={(d: string) => fmtDate(d, "weekdayDayMonthLong")}
                 />
-                <Area type="monotone" dataKey="score" stroke="hsl(var(--chart-1))" strokeWidth={2} fill="url(#authorMoodFill)" dot={{ r: 2.5, fill: "hsl(var(--chart-1))" }} isAnimationActive={false} />
+                <Area {...motion} type="monotone" dataKey="score" stroke={CHART.series[0]} strokeWidth={STROKE} fill="url(#authorMoodFill)" dot={{ r: 2.5, strokeWidth: 0, fill: CHART.series[0] }} activeDot={{ ...ACTIVE_DOT, fill: CHART.series[0] }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

@@ -10,6 +10,7 @@ import {
 import {
   CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis, Cell,
 } from "recharts";
+import { ACTIVE_DOT, CHART, GRID, GlassTooltip, REF_LINE, STROKE_THIN, X_AXIS, Y_AXIS, tooltipProps } from "@/components/shared/charts";
 import { Delta, EmptyState, Pill, SortableTh, Sparkline, StatRow, TermTooltip, useTableSort } from "@/components/ds";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -115,15 +116,6 @@ function FirmsOnTicker({ rows }: { rows: FirmOnTicker[] }) {
   );
 }
 
-const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
-const TOOLTIP_STYLE: React.CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.95)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  fontVariantNumeric: "tabular-nums",
-};
 const KIND_FILL: Record<string, string> = {
   upgrade: "hsl(var(--up))",
   downgrade: "hsl(var(--down))",
@@ -361,11 +353,12 @@ export function TickerSheet({
                 <div className="h-48 w-full" role="img" aria-label={tf("sheet.chartAria", { ticker: ticker ?? "" })}>
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chart} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="d" {...AXIS} minTickGap={48} tickFormatter={(d: string) => fmtDate(d, "dayMonthNumeric")} />
-                      <YAxis {...AXIS} width={48} domain={["auto", "auto"]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0 })} />
+                      <CartesianGrid {...GRID} />
+                      <XAxis dataKey="d" {...X_AXIS} minTickGap={48} tickFormatter={(d: string) => fmtDate(d, "dayMonthNumeric")} />
+                      <YAxis {...Y_AXIS} width={48} domain={["auto", "auto"]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0 })} />
                       <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
+                        {...tooltipProps("line")}
+                        content={<GlassTooltip />}
                         labelFormatter={(d) => fmtDate(String(d), "short")}
                         formatter={(v: number, name: string, p: { payload?: ChartRow }) =>
                           name === "pt" ? [fmtUsd(v, { decimals: "trim" }), `PT · ${p.payload?.ptFirm ?? ""}`] : [fmtUsd(v, { decimals: "trim" }), tf("sheet.price")]}
@@ -373,12 +366,12 @@ export function TickerSheet({
                       {c.avg != null && (
                         <ReferenceLine
                           y={c.avg}
-                          stroke="hsl(var(--primary))"
-                          strokeDasharray="4 4"
-                          label={{ value: tf("sheet.consensus", { value: fmtUsd(c.avg, { decimals: "trim" }) }), position: "insideTopRight", fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                          {...REF_LINE}
+                          stroke={CHART.accent}
+                          label={{ value: tf("sheet.consensus", { value: fmtUsd(c.avg, { decimals: "trim" }) }), position: "insideTopRight", fill: CHART.axis, fontSize: 11 }}
                         />
                       )}
-                      <Line type="monotone" dataKey="c" name="c" stroke="hsl(var(--foreground))" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="c" name="c" stroke={CHART.fg} strokeWidth={STROKE_THIN} dot={false} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} isAnimationActive={false} />
                       <Scatter dataKey="pt" name="pt" isAnimationActive={false}>
                         {chart.map((r, i) => (
                           <Cell key={i} fill={r.pt == null ? "transparent" : KIND_FILL[r.ptKind ?? ""] ?? "hsl(var(--muted-foreground))"} />

@@ -12,6 +12,7 @@ import { fmtDateCustom, fmtDateRange, fmtR, fmtUsd, fmtWeekday } from "@/lib/for
 import { statsI18n } from "@/i18n/ns/stats";
 import { commonI18n } from "@/i18n/ns/common";
 import { prevDayRange, type DayRange } from "@/lib/period-range";
+import { heatFill } from "@/components/shared/charts/heat";
 
 /*
  * R / P&L / result buckets come from @/lib/trade-math — the single desk definition shared with /analytics,
@@ -425,11 +426,9 @@ export function fmtMetricCompact(v: number | null | undefined, metric: Metric): 
   return fmtUsd(v, { signed: true, compact: true, fallback: "" });
 }
 
-/** Background colour for a heat cell: intensity ∝ |v| / max. Uses theme tokens only. */
+/** Background colour for a heat cell: the shared heat scale (intensity ∝ √(|v| / max)), theme tokens only. */
 export function heatBg(v: number | null | undefined, max: number): string | undefined {
-  if (v == null || !Number.isFinite(v) || v === 0 || max <= 0) return undefined;
-  const a = 0.12 + 0.48 * Math.min(1, Math.abs(v) / max);
-  return v > 0 ? `hsl(var(--up) / ${a.toFixed(2)})` : `hsl(var(--down) / ${a.toFixed(2)})`;
+  return heatFill(v, max);
 }
 
 /* ───────────── entry hour · bases · names ───────────── */

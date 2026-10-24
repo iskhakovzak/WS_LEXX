@@ -388,6 +388,7 @@ export default {
   chart: {
     base: "Как было",
     scenario: "Как стало",
+    delta: "Разница",
     clickDay: "Клик — отчёт за день",
     ariaBoth: "Кривая капитала: как было и как стало",
     ariaFact: "Кривая капитала по факту",

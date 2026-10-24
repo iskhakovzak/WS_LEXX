@@ -4,12 +4,13 @@ import {
   CartesianGrid, ComposedChart, Bar, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { EmptyState, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
+import { ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, tint, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  SECTION_META, TOOLTIP_STYLE, previewSections, filledKeys, isUnread, moodLabelByScore, moodMeta,
+  SECTION_META, previewSections, filledKeys, isUnread, moodLabelByScore, moodMeta,
   sectionsOf, type JuniorNote,
 } from "./junior-lib";
 import { fmtDate, fmtWeekday } from "@/lib/format";
@@ -56,6 +57,7 @@ export function JuniorHistory({
 }) {
   const { t } = notesI18n.useT();
   const { t: tc } = commonI18n.useT();
+  const motion = useChartMotion();
   const [q, setQ] = React.useState("");
   const [filter, setFilterState] = React.useState<Filter>(readFilter);
   const [openId, setOpenId] = React.useState<number | null>(null);
@@ -146,20 +148,20 @@ export function JuniorHistory({
         {hasTrend ? (
           <div className="h-44 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={trend} margin={{ top: 8, right: 8, left: -24, bottom: 0 }}>
-                <CartesianGrid stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} minTickGap={16} />
-                <YAxis domain={[0, 5]} ticks={[1, 3, 5]} stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
+              <ComposedChart data={trend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid {...GRID} />
+                <XAxis dataKey="label" {...X_AXIS} />
+                <YAxis {...Y_AXIS} width={24} domain={[0, 5]} ticks={[1, 3, 5]} />
                 <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }}
+                  {...tooltipProps("bar")}
+                  content={<GlassTooltip />}
                   formatter={(v: number, name: string) => {
                     if (name === "mood") return [moodLabelByScore(v), t("stateLabel")];
                     return [t("junior.score.ofFive", { score: v }), t("junior.history.curatorScore")];
                   }}
                 />
-                <Bar isAnimationActive={false} dataKey="score" name="score" fill="hsl(var(--chart-3) / 0.55)" radius={[6, 6, 0, 0]} maxBarSize={18} />
-                <Line dataKey="mood" name="mood" type="monotone" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 2.5 }} connectNulls isAnimationActive={false} />
+                <Bar {...motion} dataKey="score" name="score" fill={tint("chart-3", 0.55)} radius={BAR_RADIUS} maxBarSize={18} />
+                <Line {...motion} dataKey="mood" name="mood" type="monotone" stroke={CHART.series[0]} strokeWidth={STROKE} dot={{ r: 2.5, strokeWidth: 0, fill: CHART.series[0] }} activeDot={{ ...ACTIVE_DOT, fill: CHART.series[0] }} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

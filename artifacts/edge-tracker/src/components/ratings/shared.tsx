@@ -8,18 +8,6 @@ import { personInitials } from "@/i18n";
 
 // Money / R / percent / signed numbers: @/lib/format (fmtUsd, fmtR, fmtPct, fmtNum).
 
-/** Glass tooltip style for recharts. */
-export const CHART_TOOLTIP: React.CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-};
-export const CHART_CURSOR = { fill: "hsl(var(--muted-foreground) / 0.1)" };
-
 /** localStorage-backed state (never throws). */
 export function useStoredState<T extends string>(key: string, initial: T, allowed?: readonly T[]): [T, (v: T) => void] {
   const [v, setV] = React.useState<T>(() => {

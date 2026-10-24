@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { TIME_BUCKETS, timeBucketFor, dayOfWeek, tagsOf } from "@/lib/analytics-pro";
 import {
@@ -641,16 +640,3 @@ export function downloadCsv(filename: string, header: string[], rows: (string | 
 
 /* ───────────────────────── Chart styling ───────────────────────── */
 
-export const CHART_TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
-export const CHART_CURSOR = { fill: "hsl(var(--muted-foreground) / 0.08)" };
-export const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
-export const GRID = "hsl(var(--border))";

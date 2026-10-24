@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { fmtRelative } from "@/lib/format";
 import { notesI18n } from "@/i18n/ns/notes";
 import { comparePersonNames } from "@/i18n";
@@ -505,15 +504,3 @@ export function daysSince(iso: string, today = localToday()): number {
   return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, Math.round((b - a) / 86_400_000)) : 0;
 }
 
-/* ───────────────────────── Chart styling ───────────────────────── */
-
-export const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};

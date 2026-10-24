@@ -386,6 +386,7 @@ export default {
   chart: {
     base: "Actual",
     scenario: "Scenario",
+    delta: "Difference",
     clickDay: "Click for the day report",
     ariaBoth: "Equity curve: actual and scenario",
     ariaFact: "Actual equity curve",

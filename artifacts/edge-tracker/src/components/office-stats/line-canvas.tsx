@@ -11,6 +11,8 @@ import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion
 import { niceTicks } from "@/components/equity-chart/scale";
 import { cn } from "@/lib/utils";
 import { fmtMonth, localeTag } from "@/lib/format";
+import { CANVAS, DRAW_MS, prefersReducedMotion } from "@/components/shared/charts/theme";
+import { TOOLTIP_SURFACE } from "@/components/shared/charts/tooltip";
 
 export type LinePoint = { x: number; y: number; date: string };
 export type LineSeries = {
@@ -70,6 +72,21 @@ export function LineCanvas({
   const [width, setWidth] = React.useState(0);
   const [hoverX, setHoverX] = React.useState<number | null>(null);
   const themeV = useThemeVersion();
+  // Draw-in: the series reveal left → right once on mount (skipped under prefers-reduced-motion).
+  const [reveal, setReveal] = React.useState(() => (prefersReducedMotion() ? 1 : 0));
+  React.useEffect(() => {
+    if (reveal >= 1) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - t0) / DRAW_MS);
+      setReveal(1 - (1 - k) ** 3);
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -119,7 +136,7 @@ export function LineCanvas({
     const th = readChartTheme();
     draw(ctx, th);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width, height, series, goal, geo, themeV, rows, compact, endLabels]);
+  }, [width, height, series, goal, geo, themeV, rows, compact, endLabels, reveal]);
 
   function draw(ctx: CanvasRenderingContext2D, th: ChartTheme) {
     const { pad, ticks } = geo;
@@ -129,7 +146,8 @@ export function LineCanvas({
     ctx.lineWidth = 1;
     for (const t of ticks) {
       const y = Math.round(sy(t)) + 0.5;
-      ctx.strokeStyle = Math.abs(t) < 1e-9 ? th.fg(th.dark ? 0.28 : 0.3) : th.border(compact ? 0.35 : 0.5);
+      // Faint horizontal guides; the zero rule is the emphasised one.
+      ctx.strokeStyle = Math.abs(t) < 1e-9 ? th.fg(CANVAS.zeroAlpha(th.dark)) : th.border(CANVAS.gridAlpha(th.dark) * (compact ? 0.7 : 1));
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
       if (!compact) {
         ctx.fillStyle = th.muted(0.95);
@@ -139,7 +157,7 @@ export function LineCanvas({
     }
     if (!ticks.some((t) => Math.abs(t) < 1e-9) && geo.min < 0 && geo.max > 0) {
       const y = Math.round(sy(0)) + 0.5;
-      ctx.strokeStyle = th.fg(0.28);
+      ctx.strokeStyle = th.fg(CANVAS.zeroAlpha(th.dark));
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
     }
     // x ticks
@@ -150,8 +168,6 @@ export function LineCanvas({
       for (const t of xTicks) {
         const x = sx(t.x);
         if (x < x0 - 1 || x > x1 + 1) continue;
-        ctx.strokeStyle = th.border(0.25);
-        ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, yTop); ctx.lineTo(Math.round(x) + 0.5, yBot); ctx.stroke();
         const w = ctx.measureText(t.label).width;
         if (x - w / 2 > lastRight + 6) { ctx.fillText(t.label, x + (w / 2 < 14 ? 8 : 0), yBot + 6); lastRight = x + w / 2; }
       }
@@ -183,7 +199,7 @@ export function LineCanvas({
     }
     // series (context first, focus last)
     ctx.save();
-    ctx.beginPath(); ctx.rect(x0 - 2, yTop - 2, x1 - x0 + 4, yBot - yTop + 4); ctx.clip();
+    ctx.beginPath(); ctx.rect(x0 - 2, yTop - 2, (x1 - x0) * reveal + 4, yBot - yTop + 4); ctx.clip();
     for (let si = series.length - 1; si >= 0; si--) {
       const s = series[si];
       if (!s.points.length) continue;
@@ -194,13 +210,19 @@ export function LineCanvas({
         for (const p of pts) ctx.lineTo(sx(p.x), sy(p.y));
         ctx.lineTo(sx(pts[pts.length - 1].x), sy(0));
         ctx.closePath();
-        ctx.fillStyle = withAlpha(s.color, 0.22);
+        // Soft fade: strongest at the curve's far edge, transparent at the zero line.
+        let far = sy(0);
+        for (const p of pts) far = Math.abs(sy(p.y) - sy(0)) > Math.abs(far - sy(0)) ? sy(p.y) : far;
+        const g = ctx.createLinearGradient(0, sy(0), 0, far === sy(0) ? sy(0) + 1 : far);
+        g.addColorStop(0, withAlpha(s.color, 0));
+        g.addColorStop(1, withAlpha(s.color, CANVAS.fillTop(th.dark) + 0.06));
+        ctx.fillStyle = g;
         ctx.fill();
       }
       ctx.beginPath();
       pts.forEach((p, i) => (i ? ctx.lineTo(sx(p.x), sy(p.y)) : ctx.moveTo(sx(p.x), sy(p.y))));
       ctx.strokeStyle = s.color;
-      ctx.lineWidth = s.width ?? (compact ? 1.5 : 2);
+      ctx.lineWidth = s.width ?? (compact ? CANVAS.lineDense : CANVAS.line);
       ctx.lineJoin = "round"; ctx.lineCap = "round";
       ctx.stroke();
     }
@@ -268,7 +290,7 @@ export function LineCanvas({
       {visibleRows.length > 0 && hoverX != null && (
         <div
           className={cn(
-            "pointer-events-none absolute top-1 z-raised min-w-[9rem] max-w-[16rem] rounded-xl border border-[var(--glass-border)] bg-popover/95 px-3 py-2 text-xs shadow-lg",
+            TOOLTIP_SURFACE, "absolute top-1 z-raised min-w-[9rem] max-w-[16rem]",
             compact && "px-2 py-1.5 text-2xs",
           )}
           style={tipLeft ? { right: Math.max(4, width - tipX + 12) } : { left: Math.min(width - 150, tipX + 12) }}

@@ -165,7 +165,7 @@ export function useYearSeries(view: OfficeView, focusYear: number, pick: (y: Yea
   return React.useMemo(() => {
     const ys = [...view.years].filter((y) => y.year <= focusYear && y.hasData).sort((a, b) => b.year - a.year);
     return ys.map((y, rank) => ({
-      key: String(y.year), label: String(y.year), color: yearColor(rank, dark), width: rank === 0 ? 2.25 : 1.75, fromZero: true, points: pick(y),
+      key: String(y.year), label: String(y.year), color: yearColor(rank, dark), width: rank === 0 ? 2 : 1.5, fromZero: true, points: pick(y),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, focusYear, dark]);

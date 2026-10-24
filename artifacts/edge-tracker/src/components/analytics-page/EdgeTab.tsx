@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import type { Trade, PatternStat } from "@workspace/api-client-react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import {
+  BAR_RADIUS_H, CHART, GlassTooltip, REF_LINE, X_AXIS, Y_AXIS, ZERO_LINE_X, tooltipProps, useChartMotion,
+} from "@/components/shared/charts";
+
+/** Horizontal bars: faint vertical guides along the value axis only. */
+const GRID_V = { horizontal: false, vertical: true, stroke: "hsl(var(--border))", strokeOpacity: 0.45 } as const;
 import { ArrowDown, ArrowUp, ChevronsUpDown, Download, Filter, Layers, Sparkles } from "lucide-react";
 import { Panel, Segmented, FilterChip, EmptyState, Pill, TableScroll, toneOf } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -9,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import {
   type AnalyticsFilters, type DimensionKey, type GroupRow, DIMENSIONS, breakdown, dimensionOf, drillValue, isEmptyKey, reliability,
-  scopedTrades, downloadCsv, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID,
+  scopedTrades, downloadCsv,
 } from "./metrics";
 import { fmtPct, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -44,6 +50,7 @@ export function EdgeTab({
   isStaff?: boolean;
 }) {
   const { t } = analyticsI18n.useT();
+  const motion = useChartMotion();
   const hasFees = useMemo(() => trades.some((tr) => tr.fees != null && Number(tr.fees) !== 0), [trades]);
   const [metric, setMetric] = useState<MetricKey>(hasR ? "avgR" : "winRate");
   const effMetric: MetricKey = (metric === "totalPnl" && !hasPnl) || ((metric === "avgR" || metric === "totalR") && !hasR) ? "winRate" : metric;
@@ -169,34 +176,37 @@ export function EdgeTab({
             <div style={{ height: Math.max(120, chartData.length * 30 + 30) }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+                  <CartesianGrid {...GRID_V} />
                   <XAxis
                     type="number"
-                    {...AXIS}
+                    {...X_AXIS}
                     domain={effMetric === "winRate" ? [0, 100] : ["auto", "auto"]}
                     tickFormatter={(v: number) => fmtMetric(v)}
                   />
                   <YAxis
                     type="category"
                     dataKey="label"
-                    {...AXIS}
+                    {...Y_AXIS}
                     width={118}
                     tickFormatter={(v: string) => (v.length > 17 ? `${v.slice(0, 16)}…` : v)}
                   />
-                  <ReferenceLine x={effMetric === "winRate" ? 50 : 0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
+                  {effMetric === "winRate" ? <ReferenceLine x={50} {...REF_LINE} /> : <ReferenceLine {...ZERO_LINE_X} />}
                   <Tooltip
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                    cursor={CHART_CURSOR}
+                    {...tooltipProps("bar")}
+                    content={<GlassTooltip tone={effMetric === "winRate" ? "plain" : "pnl"} footer={(r) => {
+                      const d = r as { n: number; wr: number; has: boolean };
+                      return d.has ? `${commonI18n.t("units.trades", { count: d.n })} · WR ${fmtRate(d.wr)}` : commonI18n.t("units.trades", { count: d.n });
+                    }} />}
                     formatter={(v: number, _n, item) => {
-                      const d = item.payload as { n: number; wr: number; has: boolean };
-                      return [d.has ? `${fmtMetric(v)} · ${commonI18n.t("units.trades", { count: d.n })} · WR ${fmtRate(d.wr)}` : `${t("edge.noData")} · ${commonI18n.t("units.trades", { count: d.n })}`, t(`edge.metric.${effMetric}`)];
+                      const d = item.payload as { has: boolean };
+                      return [d.has ? fmtMetric(v) : t("edge.noData"), t(`edge.metric.${effMetric}`)];
                     }}
                   />
-                  <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={16} isAnimationActive={false}>
+                  <Bar dataKey="value" radius={BAR_RADIUS_H} barSize={16} {...motion}>
                     {chartData.map((d) => (
                       <Cell
                         key={d.key}
-                        fill={positive(d.value) ? "hsl(var(--up))" : "hsl(var(--down))"}
+                        fill={positive(d.value) ? CHART.up : CHART.down}
                         fillOpacity={d.n < 3 ? 0.4 : d.n < 20 ? 0.7 : 0.95}
                       />
                     ))}
