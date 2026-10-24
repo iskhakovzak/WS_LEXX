@@ -383,6 +383,7 @@ function IndicatorLibrary() {
                 <Segmented
                   ariaLabel={t("library.viewAria")}
                   size="sm"
+                  className="min-w-0 shrink"
                   value={view}
                   onChange={setView}
                   options={[

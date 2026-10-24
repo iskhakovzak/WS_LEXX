@@ -192,7 +192,7 @@ export default function DayReportPage() {
         {date !== today && <Button type="button" variant="ghost" size="sm" onClick={() => go(today)}>{t("page.latest")}</Button>}
         {nonTrading && <Pill tone="warn">{t("page.nonTrading")}</Pill>}
         {!nonTrading && (
-          <Link href={links.topDay(date)} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-primary hover:bg-primary/10">
+          <Link href={links.topDay(date)} data-slot="button" className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-primary hover:bg-primary/10">
             <Crown className="h-4 w-4" aria-hidden="true" /> {topDayI18n.t("link")}
           </Link>
         )}
