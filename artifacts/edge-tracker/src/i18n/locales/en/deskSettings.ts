@@ -13,6 +13,7 @@ export default {
     achievements: { title: "Achievements", description: "Tier thresholds: 1 — bronze, 2 — silver, 3 — gold, 4 — platinum." },
     telegram: { title: "Telegram", description: "Bot sends on weekdays. Times are New York time, Tashkent time next to them." },
     curator: { title: "Curator queue", description: "What stays in the queue of problems by money." },
+    coach: { title: "Evidence-based coaching", description: "The «where I earn / lose» map adjusted to the desk, and the thresholds of its verdicts." },
     privacy: { title: "Privacy", description: "What traders see about colleagues and what they may show outside the desk." },
     trainer: { title: "Trainer", description: "Simulator fills (spread, slippage, 1R), «Daily challenge» and «Find the entry»." },
     gamification: { title: "Gamification", description: "Seasons, the curator league, recognition, setup mastery and streak freezes." },
@@ -188,6 +189,10 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Queue carry-over", help: "How many past trading days unresolved problems stay in the curator queue." },
+    },
+    coach: {
+      tauDefaultBps: { label: "Default spread", help: "How far a trader may differ from the desk in a slice while fewer than 5 traders have 30+ trades in it (bp of trade notional)." },
+      leakMinUsdPerDay: { label: "Minimum for a verdict", help: "A slice is shown as «earn» or «lose» only when it is worth at least this much per trading day." },
     },
     nav: {
       simpleForTrainees: { label: "Simple menu for newcomers", help: "Traders up to the chosen tier see the 7 main sections; the rest sits in a collapsed «More» group. Curators and admins always get the full menu." },

@@ -17,6 +17,7 @@ import { NotesPanel } from "./notes-panel";
 import { FocusPanel } from "./focus-panel";
 import { TemplateDialog } from "./template-dialog";
 import { InterventionsPanel } from "./coach-interventions";
+import { EdgeMapPanel } from "@/components/shared/edge-map/edge-verdicts";
 import { fmtDate, fmtDeskDateTime, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
@@ -199,6 +200,7 @@ function OverviewTab({ p, onTab, onGoal, quests }: { p: ProfilePayload; onTab: (
           >
             <GoalsList goals={activeGoals.length ? activeGoals : p.goals.slice(0, 3)} />
           </Panel>
+          <EdgeMapPanel trader={p.trader} />
           <InterventionsPanel trader={p.trader} />
         </div>
         <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-5">

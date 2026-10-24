@@ -76,6 +76,7 @@ const TEXT: Record<string, readonly string[]> = {
   discussions: ["trader"],
   emotional_state_log: ["user_id"],
   eod_days: ["reviewed_by", "trader"],
+  edge_map: ["trader"],
   eod_trade_reviews: ["trader"],
   feed_acks: ["user_name"],
   feed_visits: ["user_name"],

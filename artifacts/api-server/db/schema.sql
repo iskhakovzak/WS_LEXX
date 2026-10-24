@@ -190,6 +190,7 @@ CREATE SEQUENCE public.desk_groups_id_seq AS integer START WITH 1 INCREMENT BY 1
 CREATE SEQUENCE public.digest_subscriptions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.discussion_votes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.discussions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.edge_map_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.emotional_state_log_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.eod_days_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.finviz_runs_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
@@ -1141,6 +1142,34 @@ CREATE TABLE public.discussions (
   journal_date text,
   accepted_comment_id integer,
   CONSTRAINT discussions_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.edge_map (
+  id bigint DEFAULT nextval('public.edge_map_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  as_of date NOT NULL,
+  slice_key text NOT NULL,
+  family text NOT NULL,
+  n integer NOT NULL,
+  days integer NOT NULL,
+  net numeric(14,2) NOT NULL,
+  xbar_bps numeric(12,4) NOT NULL,
+  se_bps numeric(12,4) NOT NULL,
+  theta_bps numeric(12,4) NOT NULL,
+  lo80 numeric(12,4) NOT NULL,
+  hi80 numeric(12,4) NOT NULL,
+  q numeric(10,6),
+  persist_blocks smallint DEFAULT 0 NOT NULL,
+  verdict text NOT NULL,
+  cost_per_day numeric(12,2) NOT NULL,
+  cost_lo numeric(12,2) NOT NULL,
+  cost_hi numeric(12,2) NOT NULL,
+  prior_mu numeric(12,4) NOT NULL,
+  prior_tau numeric(12,4) NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT edge_map_pkey PRIMARY KEY (id),
+  CONSTRAINT edge_map_key UNIQUE (trader, as_of, slice_key),
+  CONSTRAINT edge_map_verdict_check CHECK (verdict = ANY (ARRAY['LEAK'::text, 'STRENGTH'::text, 'NONE'::text]))
 );
 
 CREATE TABLE public.emotional_state_log (
@@ -3047,6 +3076,7 @@ ALTER SEQUENCE public.desk_groups_id_seq OWNED BY public.desk_groups.id;
 ALTER SEQUENCE public.digest_subscriptions_id_seq OWNED BY public.digest_subscriptions.id;
 ALTER SEQUENCE public.discussion_votes_id_seq OWNED BY public.discussion_votes.id;
 ALTER SEQUENCE public.discussions_id_seq OWNED BY public.discussions.id;
+ALTER SEQUENCE public.edge_map_id_seq OWNED BY public.edge_map.id;
 ALTER SEQUENCE public.emotional_state_log_id_seq OWNED BY public.emotional_state_log.id;
 ALTER SEQUENCE public.eod_days_id_seq OWNED BY public.eod_days.id;
 ALTER SEQUENCE public.finviz_runs_id_seq OWNED BY public.finviz_runs.id;
@@ -3192,6 +3222,8 @@ CREATE UNIQUE INDEX discussion_votes_unique ON public.discussion_votes USING btr
 CREATE INDEX discussions_ticker_idx ON public.discussions USING btree (ticker);
 CREATE INDEX discussions_ticker_upper_idx ON public.discussions USING btree (upper(ticker));
 CREATE INDEX discussions_trade_id_idx ON public.discussions USING btree (trade_id);
+CREATE INDEX edge_map_latest_idx ON public.edge_map USING btree (trader, as_of DESC);
+CREATE INDEX edge_map_verdict_idx ON public.edge_map USING btree (as_of, verdict) WHERE (verdict <> 'NONE'::text);
 CREATE INDEX emotional_state_log_date_idx ON public.emotional_state_log USING btree (date);
 CREATE INDEX emotional_state_log_user_date_idx ON public.emotional_state_log USING btree (user_id, date);
 CREATE INDEX emotional_state_log_user_id_idx ON public.emotional_state_log USING btree (user_id);

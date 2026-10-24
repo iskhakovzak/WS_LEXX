@@ -59,6 +59,7 @@ export default {
     trainer: { "daily-pick": "Trenajyor: kun vazifasini tanlash" },
     finviz: { screener: "Finviz: skriner", snapshot: "Finviz: tiker maʼlumotlari", "snapshot-pending": "Finviz: soʻralgan tikerlar", earnings: "Finviz: hisobotlar taqvimi" },
     "news-channel": { premarket: "WS_NEWS kanali: premarket", open: "WS_NEWS kanali: ochilishdan beri", close: "WS_NEWS kanali: kun yakuni" },
+    edgemap: { nightly: "«Qayerda topaman / yoʻqotaman» xaritasi: tungi hisob" },
     whatif: { honesty: "«Agar shunday boʻlsa» maslahatlarini halol tekshirish" },
   },
   backups: {

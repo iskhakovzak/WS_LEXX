@@ -30,6 +30,13 @@ describe("job definitions", () => {
     expect(job?.cron).toBe("*/2 * * * *");
   });
 
+  it("coaching jobs (lib/coachJobDefs): the edge map nightly at 18:40 NY on weekdays, lock + history by the registry", () => {
+    const job = listJobs().find((j) => j.name === "edgemap.nightly");
+    expect(job?.cron).toBe("40 18 * * 1-5");
+    expect(job?.on).toBeUndefined();
+    expect(job?.enabled).toBeUndefined(); // follows the scheduler switch (JOBS_ENABLED) like every job
+  });
+
   it("candles.archive runs on every PropReports sync and then classifies setups of the new trades", async () => {
     const job = listJobs().find((j) => j.name === "candles.archive")!;
     expect(job.on).toContain("propreports.synced");

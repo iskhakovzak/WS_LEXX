@@ -13,6 +13,7 @@ export default {
     achievements: { title: "Yutuqlar", description: "Bosqich chegaralari: 1 — bronza, 2 — kumush, 3 — oltin, 4 — platina." },
     telegram: { title: "Telegram", description: "Bot ish kunlari yuboradi. Vaqt — Nyu-York vaqti, yonida — Toshkent vaqti." },
     curator: { title: "Kurator navbati", description: "Pul boʻyicha muammolar navbatida nima qoladi." },
+    coach: { title: "Dalilga asoslangan kouching", description: "Desk boʻyicha tuzatilgan «qayerda topaman / yoʻqotaman» xaritasi va uning xulosalari chegaralari." },
     privacy: { title: "Maxfiylik", description: "Treyderlar hamkasblari haqida nimani koʻradi va desk tashqarisida nimani koʻrsata oladi." },
     trainer: { title: "Trenajyor", description: "Simulyatorda ijro (spred, sirpanish, 1R), «Kun vazifasi» va «Kirishni top»." },
     gamification: { title: "Geymifikatsiya", description: "Mavsumlar, kuratorlar ligasi, eʼtirof, setap mahorati va seriyani muzlatish." },
@@ -188,6 +189,10 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Navbat dumi", help: "Hal qilinmagan muammolar kurator navbatida oʻtgan nechta savdo kuni qoladi." },
+    },
+    coach: {
+      tauDefaultBps: { label: "Standart tarqoqlik", help: "Kesimda 30+ savdoli treyderlar 5 tadan kam boʻlganda treyder deskdan qanchalik farq qilishi mumkin (savdo hajmidan b.p.)." },
+      leakMinUsdPerDay: { label: "Xulosa uchun minimum", help: "Kesim «topaman» yoki «yoʻqotaman» deb faqat savdo kuniga shu summadan kam boʻlmasa koʻrsatiladi." },
     },
     nav: {
       simpleForTrainees: { label: "Yangilar uchun oddiy menyu", help: "Tanlangan darajagacha boʻlgan treyderlar 7 ta asosiy boʻlimni koʻradi, qolganlari yigʻilgan «Yana» guruhida. Kuratorlar va adminlar doim toʻliq menyuni koʻradi." },
