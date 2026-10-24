@@ -18,23 +18,15 @@ import { canvasPng, drawShareCard, loadCardFonts } from "./render";
 import { artOf } from "./themes";
 import { loadArt, loadPhoto, useCardSeries, type LoadedImage } from "./use-card-data";
 import { ArtPicker, PhotoPicker, ResultSwitch, ThemePicker, ToggleRow } from "./ShareCardControls";
-
-/** Can this browser hand a PNG file to the system share sheet? */
-function canShareFiles(): boolean {
-  try {
-    if (typeof navigator === "undefined" || typeof navigator.canShare !== "function") return false;
-    return navigator.canShare({ files: [new File([new Uint8Array([0])], "probe.png", { type: "image/png" })] });
-  } catch {
-    return false;
-  }
-}
+import { canShareFiles, copyPng, downloadBlob, sharePng } from "@/components/shared/share-canvas/export";
+import { sharePrefsKey } from "@/components/shared/share-canvas/policy";
 
 export default function ShareCardDialog({ trade, open, onOpenChange }: { trade: Trade; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { t } = shareCardI18n.useT();
   const { toast } = useToast();
   const { user, permissions } = useAuth();
   const policy = sharePolicy(permissions);
-  const [rawPrefs, setRawPrefs] = usePersistentState<SharePrefs>(`shareCard.prefs.${user?.traderName ?? "me"}`, DEFAULT_PREFS);
+  const [rawPrefs, setRawPrefs] = usePersistentState<SharePrefs>(sharePrefsKey(user?.traderName), DEFAULT_PREFS);
   const prefs = parsePrefs(rawPrefs);
   const [theme, setTheme] = React.useState(prefs.theme);
   const set = (patch: Partial<SharePrefs>) => setRawPrefs({ ...prefs, ...patch });
@@ -103,39 +95,21 @@ export default function ShareCardDialog({ trade, open, onOpenChange }: { trade: 
   async function download() {
     const blob = await pngNow();
     if (!blob) { toast({ title: t("toast.renderFailed"), variant: "destructive" }); return; }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    downloadBlob(blob, fileName);
     toast({ title: t("toast.downloaded"), description: fileName });
   }
 
   async function copy() {
-    const Item = (window as Window & { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
-    if (!Item || !navigator.clipboard?.write) { toast({ title: t("toast.copyUnsupported") }); return; }
-    try {
-      // A promise inside the item keeps Safari's user-activation rule happy.
-      const png = pngNow().then((b) => b ?? Promise.reject(new Error("no image")));
-      await navigator.clipboard.write([new Item({ "image/png": png })]);
-      toast({ title: t("toast.copied") });
-    } catch {
-      toast({ title: t("toast.copyFailed"), description: t("toast.copyUnsupported"), variant: "destructive" });
-    }
+    const outcome = await copyPng(pngNow());
+    if (outcome === "copied") toast({ title: t("toast.copied") });
+    else if (outcome === "unsupported") toast({ title: t("toast.copyUnsupported") });
+    else toast({ title: t("toast.copyFailed"), description: t("toast.copyUnsupported"), variant: "destructive" });
   }
 
   async function share() {
     const blob = blobRef.current ?? (await pngNow());
     if (!blob) { toast({ title: t("toast.renderFailed"), variant: "destructive" }); return; }
-    const file = new File([blob], fileName, { type: "image/png" });
-    try {
-      await navigator.share({ files: [file], title: `${st.ticker} · WS_LEXX` });
-    } catch (e) {
-      if ((e as Error)?.name !== "AbortError") toast({ title: t("toast.shareFailed"), variant: "destructive" });
-    }
+    if ((await sharePng(blob, fileName, `${st.ticker} · WS_LEXX`)) === "failed") toast({ title: t("toast.shareFailed"), variant: "destructive" });
   }
 
   async function onPhoto(file: File) {
