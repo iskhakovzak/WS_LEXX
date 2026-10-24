@@ -41,6 +41,7 @@ import { AppError, errorMessage, badRequest, conflict, notFound, sendError, unau
 import { langOf, type Lang } from "../i18n";
 import { scalingT } from "../i18n/ns";
 import { ensureScalingSeed, insertRule, loadLimits, loadRules, loadTiers, upsertTier, type LimitsRow, type Queryable } from "../lib/scalingStore";
+import { logInterventionSafe } from "../lib/interventions/log";
 
 const router: IRouter = Router();
 
@@ -588,6 +589,7 @@ router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Pro
     details: { trader: result.proposal.trader, action: result.proposal.action, fromTier: result.proposal.fromTier, toTier: result.tier.key, historyId: result.historyId, comment },
   });
   notifyDecision(result.proposal, true, v.name, comment, result.tier);
+  await logInterventionSafe({ trader: result.proposal.trader, kind: "scaling_decision", author: v.name, params: { action: result.proposal.action, fromTier: result.proposal.fromTier, toTier: result.tier.key, proposalId: id }, sourceTable: "scaling_history", sourceId: result.historyId });
   res.json(result);
 }));
 
@@ -659,6 +661,7 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
     client.release();
   }
   await logAudit({ actor: v.name, action: "scaling.assign", targetType: "trader_risk_limits", targetId: b.trader, details: { fromTier: out.fromTier, toTier: tier.key, historyId: out.historyId, comment: b.comment ?? null } });
+  await logInterventionSafe({ trader: b.trader, kind: "scaling_decision", author: v.name, params: { action: "assign", fromTier: out.fromTier, toTier: tier.key }, sourceTable: "scaling_history", sourceId: out.historyId });
   if (b.trader !== v.name) {
     const fromName = tierName(tiers, out.fromTier);
     const actor = v.name;

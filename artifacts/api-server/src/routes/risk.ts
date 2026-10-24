@@ -62,6 +62,7 @@ import { loadLivePositions } from "../lib/livePositions";
 import { recordStopAlerts } from "../lib/riskAlertQueue";
 import { buyingPowerProblem } from "../lib/people/stageLimits";
 import { normalizeStageKey, stageOf } from "../lib/people/stage";
+import { logInterventionSafe } from "../lib/interventions/log";
 
 export { WARN_PCT, computeMetrics, computeStop, pctOf, round2, weekStart } from "../lib/riskMetrics";
 export type { Alert, DayRow, Horizon, Limits, LiveRisk, Metrics, PnlSource, Position, Stop, StopState } from "../lib/riskMetrics";
@@ -355,10 +356,11 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
       delete copy.updatedAt;
       return copy;
     };
-    await pool.query(
-      `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5)`,
+    const ev = await pool.query(
+      `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [trader, before ? JSON.stringify(strip(before)) : null, JSON.stringify(strip(after)), b.reason ?? null, req.authUser!.name],
     );
+    await logInterventionSafe({ trader, kind: "limit_change", author: req.authUser!.name, params: { variant: "manual" }, sourceTable: "trader_risk_limit_events", sourceId: ev.rows[0].id });
   } catch { /* ignore */ }
   const actor = req.authUser!.name;
   if (actor !== trader) {
@@ -706,10 +708,11 @@ router.post("/risk/templates/apply", asyncHandler(async (req, res): Promise<void
     const logHead = `${tl("template.logReason", { tier: applied.tier.name })}${applied.resync ? tl("template.logResync") : ""}`;
     const logReason = reason ? tl("template.logWithReason", { text: logHead, reason }) : logHead;
     try {
-      await pool.query(
-        `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5)`,
+      const ev = await pool.query(
+        `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [it.trader, before ? JSON.stringify(stripMeta(before)) : null, JSON.stringify(stripMeta(after)), logReason, actor],
       );
+      await logInterventionSafe({ trader: it.trader, kind: "limit_change", author: actor, params: { variant: "template", tier: applied.tier.key }, sourceTable: "trader_risk_limit_events", sourceId: ev.rows[0].id });
     } catch { /* change log is best-effort */ }
     await logAudit({
       actor, action: "risk.limits.template", targetType: "trader_risk_limits", targetId: it.trader,

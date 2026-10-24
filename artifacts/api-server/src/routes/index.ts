@@ -95,6 +95,7 @@ import topRouter from "./top";
 import questsRouter from "./quests";
 import gamificationRouter from "./gamification";
 import myReviewRouter from "./my-review";
+import coachRouter from "./coach";
 import usageRouter from "./usage";
 import finvizRouter from "./finviz";
 import themesRouter from "./themes";
@@ -200,6 +201,7 @@ router.use(topRouter);
 router.use(questsRouter);
 router.use(gamificationRouter);
 router.use(myReviewRouter); // GET /my-review — the trader's own review digest
+router.use(coachRouter); // coaching evidence: interventions log (R9a), edge map (R4), plateau (R6)
 router.use(usageRouter);
 router.use(finvizRouter); // Finviz Elite: screener, ticker snapshot, earnings calendar (lib/finviz)
 router.use(themesRouter); // «Темы рынка»: theme tracker (lib/themes)

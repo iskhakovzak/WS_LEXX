@@ -36,6 +36,7 @@ import {
   updateQuests, type StoredAchievement,
 } from "./store";
 import type { Achievement, AssignQuestBody, Quest, QuestsMe } from "./types";
+import { logInterventionSafe } from "../interventions/log";
 
 export const CACHE_MS = 5 * 60_000;
 export const NOTIFY_DAYS = 7;
@@ -241,6 +242,10 @@ export async function assignQuest(body: AssignQuestBody, by: string, today = nyD
     rewardPoints: body.rewardPoints ?? setting("quests.curatorDefaultPoints"), note: body.note?.trim() || null,
   });
   forgetQuests(body.trader);
+  await logInterventionSafe({
+    trader: body.trader, kind: "quest", author: by, params: { template: q.template, target: q.target }, targetSlice: `quest:${q.template}`,
+    startedOn: today, endsOn: body.endsOn, sourceTable: "quest_instances", sourceId: q.id,
+  });
   await notifyUser({
     userName: body.trader, type: "quest_assigned", actor: by, link: questLink(q.id), entityType: "quest", entityId: String(q.id), source: "quests",
     params: { template: q.template, target: q.target, points: q.rewardPoints, curator: by, endsDate: body.endsOn, note: q.note, questId: q.id },

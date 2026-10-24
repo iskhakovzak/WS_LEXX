@@ -1,5 +1,26 @@
 -- Schema built from src/db/migrations (db:snapshot). Do not edit: change a migration and re-run the script.
 
+CREATE OR REPLACE FUNCTION public.curator_intervention_trigger(who text, day date)
+ RETURNS text
+ LANGUAGE sql
+ STABLE
+AS $function$
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM risk_alert_log a
+       WHERE a.trader = who AND a.level = 'breach'
+         AND a.date >= to_char(day - 5, 'YYYY-MM-DD') AND a.date <= to_char(day, 'YYYY-MM-DD')
+    ) THEN 'breach'
+    WHEN (
+      SELECT SUM(t.pnl - ABS(COALESCE(t.fees, 0))) FROM trades t
+       WHERE t.trader = who AND t.deleted_at IS NULL AND t.pnl IS NOT NULL AND t.result <> 'open'
+         AND LEFT(COALESCE(t.exit_date, t.date), 10) >= to_char(day - 28, 'YYYY-MM-DD')
+         AND LEFT(COALESCE(t.exit_date, t.date), 10) < to_char(day, 'YYYY-MM-DD')
+    ) < 0 THEN 'after_bad_period'
+    ELSE 'scheduled'
+  END
+$function$;
+
 CREATE OR REPLACE FUNCTION public.trade_executions_strategy_stale()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -160,6 +181,7 @@ CREATE SEQUENCE public.big7_tickers_id_seq AS integer START WITH 1 INCREMENT BY 
 CREATE SEQUENCE public.candles_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.comments_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.content_reports_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.curator_interventions_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.curator_notes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.curator_requests_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.daily_feed_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -925,6 +947,26 @@ CREATE TABLE public.content_reports (
   resolution text,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT content_reports_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.curator_interventions (
+  id bigint DEFAULT nextval('public.curator_interventions_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  kind text NOT NULL,
+  params jsonb DEFAULT '{}'::jsonb NOT NULL,
+  target_metric text,
+  target_slice text,
+  trigger text DEFAULT 'scheduled'::text NOT NULL,
+  started_on date NOT NULL,
+  ends_on date,
+  author text,
+  source_table text,
+  source_id text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT curator_interventions_pkey PRIMARY KEY (id),
+  CONSTRAINT curator_interventions_source_key UNIQUE (source_table, source_id),
+  CONSTRAINT curator_interventions_kind_check CHECK (kind = ANY (ARRAY['limit_change'::text, 'size_change'::text, 'rule_added'::text, 'rule_removed'::text, 'rule_trial'::text, 'focus_set'::text, 'one_on_one'::text, 'pause'::text, 'quest'::text, 'fee_plan'::text, 'concern_note'::text, 'plateau_review'::text, 'scaling_decision'::text])),
+  CONSTRAINT curator_interventions_trigger_check CHECK (trigger = ANY (ARRAY['scheduled'::text, 'after_bad_period'::text, 'plateau'::text, 'breach'::text, 'random'::text, 'trader_request'::text]))
 );
 
 CREATE TABLE public.curator_notes (
@@ -2996,6 +3038,7 @@ ALTER SEQUENCE public.big7_tickers_id_seq OWNED BY public.big7_tickers.id;
 ALTER SEQUENCE public.candles_cache_id_seq OWNED BY public.candles_cache.id;
 ALTER SEQUENCE public.comments_id_seq OWNED BY public.comments.id;
 ALTER SEQUENCE public.content_reports_id_seq OWNED BY public.content_reports.id;
+ALTER SEQUENCE public.curator_interventions_id_seq OWNED BY public.curator_interventions.id;
 ALTER SEQUENCE public.curator_notes_id_seq OWNED BY public.curator_notes.id;
 ALTER SEQUENCE public.curator_requests_id_seq OWNED BY public.curator_requests.id;
 ALTER SEQUENCE public.daily_feed_id_seq OWNED BY public.daily_feed.id;
@@ -3131,6 +3174,8 @@ CREATE INDEX comments_discussion_id_idx ON public.comments USING btree (discussi
 CREATE INDEX content_reports_created_at_idx ON public.content_reports USING btree (created_at);
 CREATE INDEX content_reports_status_idx ON public.content_reports USING btree (status);
 CREATE INDEX content_reports_target_idx ON public.content_reports USING btree (target_type, target_id);
+CREATE INDEX curator_interventions_kind_idx ON public.curator_interventions USING btree (kind, started_on);
+CREATE INDEX curator_interventions_trader_idx ON public.curator_interventions USING btree (trader, started_on DESC, id DESC);
 CREATE INDEX curator_notes_trader_idx ON public.curator_notes USING btree (trader, created_at DESC) WHERE (archived_at IS NULL);
 CREATE UNIQUE INDEX curator_requests_open_link_uniq ON public.curator_requests USING btree (trader_id, kind, COALESCE(link, ''::text)) WHERE (status = 'open'::text);
 CREATE INDEX curator_requests_status_idx ON public.curator_requests USING btree (status, created_at DESC);

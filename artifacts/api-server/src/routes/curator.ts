@@ -51,6 +51,7 @@ import { eveningFor } from "../lib/daily/service";
 import { curatorFocusFor } from "../lib/daily/curatorFocus";
 import { curatorQuestEvents } from "../lib/quests/store";
 import curatorTasks from "./curatorTasks";
+import { logInterventionSafe } from "../lib/interventions/log";
 
 const router: IRouter = Router();
 // «Готово» on a curator task (2.13): POST /curator/tasks/:id/done — routes/curatorTasks.ts.
@@ -527,6 +528,7 @@ router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
     `INSERT INTO curator_notes (trader, author, body, kind, pinned, day) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [b.trader, req.authUser!.name, b.body, b.kind, b.pinned, b.day ?? null],
   );
+  if (b.kind === "concern") await logConcern(rows[0]);
   res.status(201).json(rowToNote(rows[0]));
 }));
 
@@ -535,6 +537,9 @@ const NotePatch = z.object({
   kind: z.enum(NOTE_KINDS).optional(),
   pinned: z.boolean().optional(),
 }).strict();
+
+/** R9a: a «concern» note is an intervention (one row per note, lib/interventions/log). */
+const logConcern = (n: any) => logInterventionSafe({ trader: String(n.trader), kind: "concern_note", author: String(n.author), sourceTable: "curator_notes", sourceId: n.id });
 
 /** Throws 404 NOTE_NOT_FOUND / 403 FORBIDDEN. */
 async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any }> {
@@ -558,6 +563,7 @@ router.patch("/curator/notes/:id", asyncHandler(async (req, res): Promise<void> 
     `UPDATE curator_notes SET body = COALESCE($2, body), kind = COALESCE($3, kind), pinned = COALESCE($4, pinned), updated_at = NOW() WHERE id = $1 RETURNING *`,
     [id, p.body ?? null, p.kind ?? null, p.pinned ?? null],
   );
+  if (p.kind === "concern" && found.row.kind !== "concern") await logConcern(rows[0]);
   res.json(rowToNote(rows[0]));
 }));
 

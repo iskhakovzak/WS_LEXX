@@ -64,6 +64,7 @@ const TEXT: Record<string, readonly string[]> = {
   big7_tickers: ["created_by"],
   comments: ["trader"],
   content_reports: ["reporter", "resolved_by"],
+  curator_interventions: ["author", "trader"],
   curator_notes: ["archived_by", "author", "trader"],
   curator_queue_acks: ["acked_by", "trader"],
   daily_feed: ["created_by"],
@@ -234,6 +235,7 @@ export const KEPT: Readonly<Record<string, string>> = {
   // json: operational logs / snapshots of what happened
   "app_error_occurrences.context": "error log",
   "job_runs.details": "job run log",
+  "curator_interventions.params": "intervention parameters: codes and numbers (rule kind, tier, mistake), no names",
   "usage_events.meta": "no names by design (lib/usage/keys.ts)",
   "app_settings.value": "typed settings; the one name list (usage.pilotUsers) is renamed as nameList",
   // json: market data, caches, content without people
