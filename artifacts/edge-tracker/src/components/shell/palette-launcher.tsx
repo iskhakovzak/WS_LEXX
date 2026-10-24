@@ -102,6 +102,7 @@ export function PaletteLauncher() {
         aria-haspopup="dialog"
         aria-expanded={open}
         data-state={open ? "open" : "closed"}
+        data-tour="palette"
         onClick={() => setOpen(true)}
         onPointerEnter={() => { void loadPalette().catch(() => {}); }}
         // Fixed width + short label: never clipped to «Поиск или к…» next to the logo and the market clock.

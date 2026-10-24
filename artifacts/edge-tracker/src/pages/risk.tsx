@@ -19,6 +19,7 @@ import { useAgo, useStoredState } from "@/components/risk/primitives";
 import { useHasRiskAccount } from "@/components/shell/use-shell-badges";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 type View = "desk" | "overnight" | "me";
 const VIEWS: readonly View[] = ["desk", "overnight", "me"];
@@ -83,10 +84,12 @@ export default function RiskPage() {
                   ...(me ? [{ value: "me", label: t("page.title.me") }] : []),
                 ]}
               />
+              <HelpButton id={view === "desk" ? "riskDesk" : "risk"} />
             </>
           ) : undefined
         }
       />
+      {signedIn && <PageHint key={view === "desk" ? "riskDesk" : "risk"} id={view === "desk" ? "riskDesk" : "risk"} />}
 
       {!signedIn ? (
         <Panel>

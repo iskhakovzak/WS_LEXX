@@ -18,6 +18,7 @@ import { ladderText } from "@/components/academy/path/labels";
 import { PersonView } from "@/components/academy/path/person-view";
 import { CriteriaEditor, FunnelView, RequestsView } from "@/components/academy/path/staff-views";
 import { PersonSelect } from "@/components/people/person-select";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 type View = "person" | "funnel" | "requests" | "criteria";
 
@@ -46,11 +47,12 @@ export default function AcademyPathPage() {
         title={shellI18n.t("nav.academyPath")}
         icon={RouteIcon}
         description={t("page.pathDescription", { ladder: ladderText() })}
-        actions={
+        actions={<>
           <Button variant="ghost" size="sm" onClick={() => void qc.invalidateQueries({ queryKey: pathKeys.all })} aria-label={t("page.refreshData")} title={t("page.refreshData")}>
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </Button>
-        }
+          <HelpButton id="academy" />
+        </>}
       >
         {isCurator && (
           <div className="flex flex-wrap items-center gap-2">
@@ -75,6 +77,7 @@ export default function AcademyPathPage() {
           </div>
         )}
       </PageHeader>
+      <PageHint id="academy" />
 
       {view === "person" && <PersonView user={isCurator ? target ?? me : null} config={config.data} isStaff={isCurator} me={me} />}
       {view === "funnel" && isCurator && <FunnelView onOpen={open} />}

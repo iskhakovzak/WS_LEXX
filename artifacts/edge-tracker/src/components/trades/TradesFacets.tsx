@@ -9,6 +9,7 @@ import { FacetPanel } from "@/components/shared/trade-facets/FacetPanel";
 import { FacetSummary } from "@/components/shared/trade-facets/FacetSummary";
 import { useTradeFacets, type useFacetView } from "@/components/shared/trade-facets/api";
 import { facetQuery, type FacetView } from "@/lib/trade-facets";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 import type { TradeFilters } from "./trade-utils";
 
 /** The page filters with the facet selection attached (what the book queries are built from). */
@@ -29,7 +30,8 @@ export function TradesFacets({ filters, fv }: { filters: TradeFilters; fv: Retur
   const q = useTradeFacets(base, fv.view, fv.ready);
   return (
     <div className="flex flex-col gap-2">
-      <FacetPanel view={fv.view} onChange={fv.update} data={q.data} loading={q.isFetching} error={q.isError} />
+      <PageHint id="facets" />
+      <FacetPanel view={fv.view} onChange={fv.update} data={q.data} loading={q.isFetching} error={q.isError} help={<HelpButton id="facets" />} />
       <FacetSummary view={fv.view} onChange={fv.update} data={q.data} />
     </div>
   );

@@ -356,7 +356,7 @@ export function DashboardHeader({
               tone={toneOf(w?.pnlNet ?? (w && w.rCount > 0 ? w.r : null))}
               hint={weekHint}
             />
-            <RiskCell risk={risk} desk={desk} team={team} loading={loading} />
+            <div data-tour="risk" className="min-w-0"><RiskCell risk={risk} desk={desk} team={team} loading={loading} /></div>
           </>
         )}
       </div>

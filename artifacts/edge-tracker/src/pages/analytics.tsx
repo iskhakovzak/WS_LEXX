@@ -34,6 +34,7 @@ import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-face
 import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 type TabKey = AnalyticsTabKey;
 
@@ -259,14 +260,16 @@ export default function Analytics() {
         title={t("title")}
         icon={BarChart3}
         description={isLoading ? t("loadingTrades") : summary}
-        actions={
+        actions={<>
           <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex">
             {hotBefore}<Kbd>1</Kbd>–<Kbd>{lastKey}</Kbd>{hotAfter}
           </span>
-        }
+          <HelpButton id="analytics" />
+        </>}
       >
         <Segmented<TabKey> ariaLabel={t("tabsAria")} options={visibleTabs} value={tab} onChange={setTab} className="self-start" />
       </PageHeader>
+      <PageHint id="analytics" />
 
       {/* Staff keep the trader picker on an empty / failed book too — the way to another person or the team. */}
       {!isLoading && (staffView || (!isError && !bookEmpty)) && (
