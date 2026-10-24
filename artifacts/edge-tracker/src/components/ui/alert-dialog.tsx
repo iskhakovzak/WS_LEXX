@@ -65,7 +65,7 @@ const AlertDialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "overlay-bar overlay-bar-bottom flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end",
+      "overlay-bar overlay-bar-bottom flex flex-col-reverse gap-inline sm:flex-row sm:flex-wrap sm:items-center sm:justify-end",
       className
     )}
     {...props}

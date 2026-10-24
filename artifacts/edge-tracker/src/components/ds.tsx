@@ -211,7 +211,7 @@ export function Panel({
   return (
     <As className={cn("glass-panel min-w-0 rounded-2xl", fill && "flex h-full flex-col", className)} {...rest}>
       {hasHeader && (
-        <div className="flex min-h-[calc(var(--panel-p)+2rem)] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-[var(--panel-p)] pt-[var(--panel-p)]">
+        <div className="flex min-h-[calc(var(--panel-p)+2rem)] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-panel pt-panel">
           <div className="flex min-w-[min(100%,12rem)] flex-1 items-center gap-2">
             {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
             <div className="min-w-0">
@@ -225,8 +225,8 @@ export function Panel({
       <div
         className={cn(
           "min-w-0",
-          padded && "p-[var(--panel-p)]",
-          hasHeader && padded && "pt-3",
+          padded && "p-panel",
+          hasHeader && padded && "pt-head",
           fill && "flex min-h-0 flex-1 flex-col",
           bodyClassName,
         )}
@@ -234,7 +234,7 @@ export function Panel({
         {children}
       </div>
       {footer && (
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--glass-border)] px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-inline border-t border-[var(--glass-border)] px-panel py-2.5 text-xs text-muted-foreground">
           {footer}
         </div>
       )}
@@ -375,7 +375,7 @@ export function StatGrid({
     : undefined;
   return (
     <div
-      className={cn("grid grid-cols-[repeat(auto-fit,minmax(min(var(--stat-min),100%),1fr))] gap-[var(--grid-gap)]", fixed, className)}
+      className={cn("grid grid-cols-[repeat(auto-fit,minmax(min(var(--stat-min),100%),1fr))] gap-grid", fixed, className)}
       style={{ "--stat-min": min } as React.CSSProperties}
     >
       {children}
@@ -465,7 +465,9 @@ export function Segmented<T extends string>({
       ref={ref}
       role="group"
       aria-label={ariaLabel}
-      className={cn("glass-field edge-fade scrollbar-none relative inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto", size === "sm" ? "h-8 p-0.5" : "h-9 p-[3px]", className)}
+      // Touch: the track grows to 40 / 44 px so each segment's 44 px hit area (index.css ::before) fits inside it;
+      // overflow-y-hidden keeps that extender from making the sideways scroller wobble vertically.
+      className={cn("glass-field edge-fade scrollbar-none relative inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden", size === "sm" ? "h-8 p-0.5 pointer-coarse:h-10" : "h-9 p-[3px] pointer-coarse:h-11", className)}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -479,7 +481,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value as T)}
             className={cn(
               "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-smooth disabled:opacity-50",
-              size === "sm" ? "h-6.5 px-2.5 text-xs [&_svg]:size-3.5" : "h-7 px-3 text-sm [&_svg]:size-4",
+              size === "sm" ? "h-6.5 px-2.5 text-xs [&_svg]:size-3.5 pointer-coarse:h-8.5" : "h-7 px-3 text-sm [&_svg]:size-4 pointer-coarse:h-9",
               active
                 ? "bg-primary-solid text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]"
                 : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
@@ -537,7 +539,7 @@ export function FilterChip({
 
 /** Filter/action bar above lists. */
 export function Toolbar({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("glass-panel flex flex-wrap items-center gap-2 rounded-2xl p-2", className)}>{children}</div>;
+  return <div className={cn("glass-panel flex flex-wrap items-center gap-inline rounded-2xl p-2", className)}>{children}</div>;
 }
 
 /** Horizontal scroll wrapper for wide tables on mobile. */
@@ -546,7 +548,7 @@ export function TableScroll({ children, className }: { children: React.ReactNode
 }
 
 /**
- * Page container: centred, max 1600 px (`--page-max`), 20 px between sections (`--page-gap`).
+ * Page container: centred, max 1600 px (`--page-max`), `gap-section` between sections (16 px phones, 20 px from sm).
  * Side gutters come from the app shell. `width="narrow"` (960 px) for forms/settings/reading pages,
  * `"full"` for wide editors.
  */
@@ -563,7 +565,7 @@ export function Page({
   return (
     <div
       className={cn(
-        "mx-auto flex w-full min-w-0 flex-col gap-4 sm:gap-[var(--page-gap)]",
+        "mx-auto flex w-full min-w-0 flex-col gap-section",
         width === "default" && "max-w-[var(--page-max)]",
         width === "narrow" && "max-w-[960px]",
         className,
@@ -576,7 +578,7 @@ export function Page({
 
 /** Bento grid for panels: 1 column, 12 columns from lg, equal-height rows. Children set `lg:col-span-*`. */
 export function BentoGrid({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("grid grid-cols-1 items-stretch gap-[var(--grid-gap)] lg:grid-cols-12", className)}>{children}</div>;
+  return <div className={cn("grid grid-cols-1 items-stretch gap-grid lg:grid-cols-12", className)}>{children}</div>;
 }
 
 /** Inner tile inside a Panel (second elevation step). Clickable when `onClick` is given. */
@@ -593,13 +595,13 @@ export function Tile({
 }) {
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} title={title} className={cn("tile tile-interactive press min-w-0 p-3 text-left", className)}>
+      <button type="button" onClick={onClick} title={title} className={cn("tile tile-interactive press min-w-0 p-tile text-left", className)}>
         {children}
       </button>
     );
   }
   return (
-    <div title={title} className={cn("tile min-w-0 p-3", className)}>
+    <div title={title} className={cn("tile min-w-0 p-tile", className)}>
       {children}
     </div>
   );
@@ -897,7 +899,7 @@ export function SectionTabs<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={cn("edge-fade scrollbar-none flex max-w-full items-center gap-1 overflow-x-auto border-b border-[var(--glass-border)]", className)}
+      className={cn("edge-fade scrollbar-none flex max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-[var(--glass-border)]", className)}
     >
       {list.map((t) => {
         const active = t.value === value;
@@ -913,7 +915,7 @@ export function SectionTabs<T extends string>({
             disabled={t.disabled}
             onClick={() => onChange(t.value as T)}
             className={cn(
-              "relative inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium transition-colors disabled:opacity-50",
+              "relative inline-flex min-h-10 shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-medium transition-colors disabled:opacity-50 pointer-coarse:min-h-11",
               active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
