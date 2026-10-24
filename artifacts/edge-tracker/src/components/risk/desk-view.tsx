@@ -175,7 +175,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
         <StatGridSkeleton count={4} />
       ) : quiet ? (
         <p role="status" className="glass-panel flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl px-[var(--panel-p)] py-3 text-sm text-muted-foreground tabular-nums">
-          <span className="inline-flex items-center gap-2 font-medium text-foreground"><Wallet className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{t("desk.quietDay", { date: fmtDate(desk.data!.date, "dayMonthNumeric") })}</span>
+          <span className="inline-flex items-center gap-2 font-medium text-foreground"><Wallet className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{t("desk.quietDay", { date: fmtDate(desk.data!.date, "dayMonth") })}</span>
           <span>{t("desk.quietBook")}</span>
           <span>{t("desk.allOk")}</span>
         </p>

@@ -91,7 +91,7 @@ export function DaySummary({
       ) : (
         <div className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-            <div className="min-w-0 space-y-3">
+            <div className="@container min-w-0 space-y-3">
               <div>
                 <div className="text-xs text-muted-foreground">{tc("trading.netPnl")}</div>
                 <div className={cn("text-3xl font-semibold tabular-nums tracking-tight", toneText(toneOf(net)))}>
@@ -104,7 +104,8 @@ export function DaySummary({
                   </div>
                 )}
               </div>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+              {/* 4 columns only when the column is wide enough (was 4 × ~50px at 1440: «+$2…», «5 green…») */}
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 @md:grid-cols-4">
                 <Mini label={tc("trading.trades")} value={stats.trades} hint={stats.open ? t("summary.winsLossesOpen", { wins: stats.wins, losses: stats.losses, open: stats.open }) : t("summary.winsLosses", { wins: stats.wins, losses: stats.losses })} />
                 <Mini label={tc("trading.winRate")} value={decided ? fmtRate(stats.wins / decided) : "—"} hint={decided ? t("summary.winsOf", { wins: stats.wins, decided }) : undefined} />
                 <Mini
