@@ -13,7 +13,7 @@ import {
   type PeriodView, type PrevPeriod, type Strategy, type Unit, type YearView,
 } from "./api";
 import { LineCanvas, monthTicks, type LineSeries } from "./line-canvas";
-import { divergingCell, strategyColor, useDark, yearColor } from "./palette";
+import { divergingCell, labelOn, strategyColor, useDark, yearColor } from "./palette";
 import type { Ctx } from "./overview";
 import { fmtCount } from "@/lib/format";
 import { nyDate } from "@/lib/trading-date";
@@ -210,10 +210,10 @@ export function VolumeShare({ years }: { years: YearView[] }) {
                         onMouseEnter={() => setHover(id)}
                         onMouseLeave={() => setHover(null)}
                         title={t("strategies.volumeTip", { strategy: p.key, share: fmtShare(p.volumeShare, 1), trades: commonI18n.t("units.trades", { count: p.trades }) })}
-                        className={cn("relative grid min-w-[3px] place-items-center overflow-hidden text-2xs font-semibold text-white transition-opacity first:rounded-l-md last:rounded-r-md", hover && hover !== id && "opacity-50")}
-                        style={{ width: `${w}%`, background: strategyColor(p.key, dark) }}
+                        className={cn("relative grid min-w-[3px] place-items-center overflow-hidden text-2xs font-semibold transition-opacity first:rounded-l-md last:rounded-r-md", hover && hover !== id && "opacity-50")}
+                        style={{ width: `${w}%`, background: strategyColor(p.key, dark), color: labelOn(strategyColor(p.key, dark)) }}
                       >
-                        {w >= 9 ? <span className="truncate px-1 [text-shadow:0_1px_2px_rgb(0_0_0/0.35)]">{fmtShare(p.volumeShare)}</span> : null}
+                        {w >= 9 ? <span className="truncate px-1">{fmtShare(p.volumeShare)}</span> : null}
                       </span>
                     );
                   })}

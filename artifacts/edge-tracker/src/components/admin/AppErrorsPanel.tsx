@@ -184,6 +184,11 @@ export function AppErrorsPanel() {
   );
 }
 
+/** Percent-encoded paths read as text in the list (a Cyrillic name, not «%D0%97…»); the title keeps the raw one. */
+function readablePath(s: string): string {
+  try { return decodeURI(s); } catch { return s; }
+}
+
 function SourcePill({ source }: { source: Source }) {
   const { t } = appErrorsI18n.useT();
   const Icon = SOURCE_ICON[source];
@@ -218,8 +223,8 @@ function ErrorRow({ row, onOpen }: { row: AppErrorRow; onOpen: () => void }) {
             <span className="truncate font-mono text-xs text-muted-foreground" title={row.kind}>{row.kind}</span>
             {row.resolvedAt && <Pill tone="up">{t("status.resolved")}</Pill>}
           </div>
-          <p className="mt-1 line-clamp-2 break-words text-sm text-foreground" title={row.message}>{row.message}</p>
-          {row.route && <p className="mt-0.5 truncate font-mono text-2xs text-muted-foreground" title={row.route}>{row.route}</p>}
+          <p className="mt-1 line-clamp-2 break-words text-sm text-foreground" title={row.message}>{readablePath(row.message)}</p>
+          {row.route && <p className="mt-0.5 truncate font-mono text-2xs text-muted-foreground" title={row.route}>{readablePath(row.route)}</p>}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 text-xs tabular-nums text-muted-foreground">
           <span className={cn("font-semibold", row.count > 1 ? "text-foreground" : "")}>{t("times", { count: row.count })}</span>
