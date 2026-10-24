@@ -201,7 +201,7 @@ export function ScorecardsTab({
 
   function showHistory(trader: string) {
     setFilter(trader);
-    requestAnimationFrame(() => journalRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    requestAnimationFrame(() => journalRef.current?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }));
   }
 
   if (isLoading) {

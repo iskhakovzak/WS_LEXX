@@ -96,7 +96,7 @@ export function Sparkline({
     return [x, y] as const;
   });
   const t = tone ?? toneOf(values[values.length - 1] - values[0]);
-  const color = t === "up" ? "hsl(var(--up))" : t === "down" ? "hsl(var(--down))" : "hsl(var(--chart-1))";
+  const color = t === "up" ? "hsl(var(--up))" : t === "down" ? "hsl(var(--down))" : "hsl(var(--muted-foreground))"; // neutral = muted, like ds Sparkline (was the old blue)
   const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const area = `${d} L${pts[pts.length - 1][0].toFixed(1)},${height} L${pts[0][0].toFixed(1)},${height} Z`;
   const [lx, ly] = pts[pts.length - 1];
@@ -201,7 +201,7 @@ export function OutcomeBar({ wins, losses, be, open = 0, className }: { wins: nu
       <div className="bg-up" style={{ width: seg(wins) }} />
       <div className="bg-[hsl(var(--chart-3))]" style={{ width: seg(be) }} />
       <div className="bg-down" style={{ width: seg(losses) }} />
-      <div className="bg-[hsl(var(--chart-1)/0.5)]" style={{ width: seg(open) }} />
+      <div className="bg-muted-foreground/50" style={{ width: seg(open) }} />
     </div>
   );
 }

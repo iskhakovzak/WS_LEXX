@@ -26,9 +26,22 @@ export function strategyColor(s: Strategy, dark = isDarkTheme()): string {
   return dark ? SLOTS[s].dark : SLOTS[s].light;
 }
 
-/** Year line colour: rank 0 = the latest (accent), 1 = previous, 2+ = older. */
+/** Text colour for a label sitting on a solid #rrggbb fill: white or near-black, whichever contrasts more. */
+export function labelOn(hex: string): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return "#fff";
+  const lin = (c: string) => { const v = parseInt(c, 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(m[1]) + 0.7152 * lin(m[2]) + 0.0722 * lin(m[3]);
+  // contrast vs white = 1.05 / (L + 0.05); vs #111 (L ≈ 0.0056) = (L + 0.05) / 0.0556
+  return 1.05 / (L + 0.05) >= (L + 0.05) / 0.0556 ? "#fff" : "#111";
+}
+
+/**
+ * Year line colour: rank 0 = the latest (the monochrome primary — it was the old blue accent), 1 = previous,
+ * 2+ = older. Resolved to a concrete colour, so canvas charts can use it too.
+ */
 export function yearColor(rank: number, dark = isDarkTheme()): string {
-  if (rank <= 0) return dark ? "#3987e5" : "#2a78d6";
+  if (rank <= 0) return tokenColor("--primary", dark ? "hsl(0 0% 95%)" : "hsl(0 0% 9%)");
   if (rank === 1) return dark ? "rgba(200, 202, 208, 0.62)" : "rgba(82, 81, 78, 0.55)";
   return dark ? "rgba(200, 202, 208, 0.32)" : "rgba(82, 81, 78, 0.3)";
 }

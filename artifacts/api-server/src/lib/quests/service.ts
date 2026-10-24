@@ -9,15 +9,18 @@
  *   assignQuest / cancelQuest / completeQuest   curator quests (permissions are checked by the route)
  *
  * Notifications (type + params, rendered per reader — lib/notificationRenderers/quests.ts):
- *   quest_done           → the trader; for curator quests also the assigner (variant «staff»)
+ *   quest_done           → the trader IN THE NIGHTLY BATCH (lib/notificationBatch, roadmap R3: one in-app notice a day,
+ *                          not a ping per quest); for curator quests also the assigner (variant «staff», at once). A
+ *                          manual task the curator marks done reaches the trader at once (a person's answer).
  *   quest_failed         → the assigner when a curator quest failed or expired
  *   quest_assigned       → the trader
  *   quest_cancelled      → the trader when the curator cancels an active curator quest (the «assigned» one is marked read)
- *   achievement_earned   → the trader (the highest new tier per line; only tiers earned in the last NOTIFY_DAYS days, so
- *                          the first run after the rollout awards history quietly)
+ *   achievement_earned   → the trader in the nightly batch (the highest new tier per line; only tiers earned in the last
+ *                          NOTIFY_DAYS days, so the first run after the rollout awards history quietly)
  */
 import { logger } from "../logger";
 import { notifyUser } from "../notifyUtils";
+import { enqueueBatch } from "../notificationBatch";
 import { setting } from "../settings/registry";
 import { addDays, nyDate } from "../tradingDate";
 import { lastFinishedDay, levelThresholds, windowStart, withQuestPoints } from "../daily/discipline";
@@ -54,7 +57,6 @@ export type Evaluation = {
 };
 
 const questLink = (id: number) => `/ratings?tab=quests&quest=${id}`;
-const achLink = (line: string) => `/ratings?tab=quests&ach=${encodeURIComponent(line)}`;
 const curatorLink = (trader: string) => `/curator?trader=${encodeURIComponent(trader)}`;
 
 // ─── notifications ──────────────────────────────────────────────────────────
@@ -62,7 +64,7 @@ const curatorLink = (trader: string) => `/curator?trader=${encodeURIComponent(tr
 async function notifyFinished(q: StoredQuest): Promise<void> {
   const base = { template: q.template, scope: q.scope, target: q.target, points: q.rewardPoints, questId: q.id, note: q.template === MANUAL_TEMPLATE ? q.note : null };
   if (q.status === "done") {
-    await notifyUser({ userName: q.trader, type: "quest_done", params: base, link: questLink(q.id), entityType: "quest", entityId: String(q.id), source: "quests" });
+    await enqueueBatch(q.trader, "quest_done", base, String(q.id));
   }
   if (q.scope !== "curator" || !q.assignedBy || q.assignedBy === q.trader) return;
   const staff = { ...base, trader: q.trader, variant: "staff", statusCode: q.status };
@@ -87,10 +89,7 @@ async function awardAchievements(trader: string, news: readonly NewAward[], asOf
     if (!prev || TIERS.indexOf(a.tier) > TIERS.indexOf(prev.tier)) best.set(a.line, a);
   }
   for (const a of best.values()) {
-    await notifyUser({
-      userName: trader, type: "achievement_earned", params: { line: a.line, tier: a.tier, target: a.target }, link: achLink(a.line),
-      entityType: "achievement", entityId: `${a.line}:${a.tier}`, source: "quests",
-    });
+    await enqueueBatch(trader, "achievement_earned", { line: a.line, tier: a.tier, target: a.target }, `${a.line}:${a.tier}`);
   }
   return all;
 }

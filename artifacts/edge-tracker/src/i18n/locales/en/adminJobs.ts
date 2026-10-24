@@ -54,6 +54,8 @@ export default {
     telegram: { "daily-morning": "Telegram: morning focus", "daily-evening": "Telegram: day card", "contract-alerts": "Telegram: contract stop alerts" },
     rewards: { nightly: "Rewards: nightly recount" },
     quests: { nightly: "Quests: nightly recount" },
+    notifications: { "rewards-batch": "Notifications: the day's quests and achievements in one notice" },
+    curator: { digest: "Curator: evening digest" },
     gamification: { nightly: "Gamification: nightly recount" },
     usage: { prune: "Usage log cleanup" },
     trainer: { "daily-pick": "Trainer: task of the day pick" },

@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "coach" | "academy";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 /**
@@ -42,8 +42,18 @@ export const SETTINGS = {
   "daily.feesShare": { group: "daily", type: "number", default: 0.5, min: 0.1, max: 1, step: 0.05, unit: "ratio" },
   "daily.feesHealthyShare": { group: "daily", type: "number", default: 0.25, min: 0, max: 1, step: 0.05, unit: "ratio" },
   "daily.feesMinUsd": { group: "daily", type: "number", default: 5, min: 0, max: 500, step: 1, unit: "usd" },
+  // Fees judged per NY week (roadmap R2): Σ fees ≥ max(feesWeeklyMinUsd, feesShare × max(Σ gross, 0)), one hit per week;
+  // off = per day against feesMinUsd. A week / day with gross ≤ 0 counts (the fees were paid for nothing).
+  "daily.feesWeekly": { group: "daily", type: "boolean", default: true },
+  "daily.feesWeeklyMinUsd": { group: "daily", type: "number", default: 25, min: 0, max: 5000, step: 5, unit: "usd" },
   "daily.givebackMinPeakUsd": { group: "daily", type: "number", default: 50, min: 0, max: 5000, step: 10, unit: "usd" },
   "daily.givebackKeepShare": { group: "daily", type: "number", default: 0.2, min: 0, max: 1, step: 0.05, unit: "ratio" },
+
+  // Coaching (roadmap R2): the per-trader fee model by price band (lib/feeModel) — rolling window, trades a band needs,
+  // and the gross-per-share ÷ fees-per-share ratio below which a band is flagged.
+  "coach.feeWindowDays": { group: "coach", type: "number", default: 60, min: 20, max: 250, step: 5, unit: "days" },
+  "coach.feeBandMinTrades": { group: "coach", type: "number", default: 30, min: 5, max: 500, step: 5, unit: "trades" },
+  "coach.feeBandRatioMin": { group: "coach", type: "number", default: 1.5, min: 1, max: 5, step: 0.1, unit: "times" },
 
   // Own contract → discipline (lib/daily/discipline)
   "discipline.contractKeptPoints": { group: "discipline", type: "number", default: 5, min: 0, max: 50, step: 1, unit: "points" },
@@ -54,6 +64,11 @@ export const SETTINGS = {
   // A broken day: «reset» = the streak starts again from 0; «halve» = it keeps half (rounded down).
   "discipline.streakOnBreak": { group: "discipline", type: "select", default: "reset", options: ["reset", "halve"], pilot: true },
   "discipline.pointsWindowDays": { group: "discipline", type: "number", default: 30, min: 5, max: 120, step: 1, unit: "days" },
+  // Discipline index thresholds of the ladder seeds (roadmap R3): one key per place, current values kept — promotion
+  // (academy criteria, lib/promotionEngine) 75, scaling plan (lib/scalingSeed) 70. Choosing one number is an owner
+  // decision; stored criteria / rules stay authoritative once seeded (editable on their own screens).
+  "discipline.promotionMinIndex": { group: "discipline", type: "number", default: 75, min: 0, max: 100, step: 1, unit: "points" },
+  "discipline.scalingMinIndex": { group: "discipline", type: "number", default: 70, min: 0, max: 100, step: 1, unit: "points" },
 
   // Rewards: levels by all-time discipline points (contract + quest points); traded days a clean month needs
   "rewards.level1Points": { group: "rewards", type: "number", default: 50, min: 1, max: 100000, step: 10, unit: "points" },
@@ -145,8 +160,20 @@ export const SETTINGS = {
   // Plateau detector (roadmap R6, lib/plateau.ts): active days at a stage before «not at the pace yet» is judged.
   "academy.plateau.minTenure": { group: "academy", type: "number", default: 120, min: 40, max: 500, step: 10, unit: "days" },
 
+  // Telegram push budget per person and New York day (roadmap R3; lib/notificationCore pushVerdict, lib/pushBudget):
+  // all non-risk pushes, of them coaching nudges; a contract alert waits while a risk alert is this fresh. Risk alerts
+  // are never capped, only deduplicated.
+  "alerts.budget.dailyPush": { group: "alerts", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "count" },
+  "alerts.budget.coachingPush": { group: "alerts", type: "number", default: 1, min: 0, max: 10, step: 1, unit: "count" },
+  "alerts.budget.riskQuietMinutes": { group: "alerts", type: "number", default: 30, min: 0, max: 240, step: 5, unit: "minutes" },
+
   // Curator queue (lib/daily/costQueue)
   "curator.queueCarryDays": { group: "curator", type: "number", default: 2, min: 0, max: 10, step: 1, unit: "days" },
+  // Curator evening digest (roadmap R3; lib/curatorDigest, job curator.digest): one Telegram + one in-app notice per
+  // curator, weekdays at this New York time — closed days to review and the top items of the queue.
+  "curator.digestEnabled": { group: "curator", type: "boolean", default: true },
+  "curator.digestTime": { group: "curator", type: "time", default: "17:30" },
+  "curator.digestTopN": { group: "curator", type: "number", default: 3, min: 1, max: 10, step: 1, unit: "count" },
   // R11: «Следующие шаги» keep this many steps (urgent ones ≥ 80 always); the rest waits for the 17:30 digest.
   "curator.capacity": { group: "curator", type: "number", default: 6, min: 1, max: 30, step: 1, unit: "count" },
 

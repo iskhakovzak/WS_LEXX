@@ -14,6 +14,7 @@ import { useMarketClock } from "@/components/shell/market-clock";
 import { LockClock } from "@/components/lock/lock-clock";
 import { UnlockForm } from "@/components/lock/unlock-form";
 import { useAmbientDrift } from "@/components/lock/ambient";
+import { LockEggs } from "@/components/lock/eggs/lock-eggs";
 import { WsMark } from "@/components/ds/brand";
 import { useAppearance } from "@/contexts/appearance-context";
 import { useTheme } from "@/contexts/theme-context";
@@ -123,6 +124,8 @@ export default function LockScreen() {
           {name && <span className="text-[0.7rem] font-medium uppercase tracking-[0.28em]">{name}</span>}
         </div>
       </div>
+
+      <LockEggs owner={user?.role !== "guest" ? user?.traderName ?? null : null} dim={typing} />
     </div>
   );
 }

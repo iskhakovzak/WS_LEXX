@@ -183,7 +183,7 @@ export function AttentionPanel({
 
   if (!data ? isLoading : isLoading && !waited) {
     return (
-      <Panel title={t("attention.title")} icon={Compass} fill={fill}>
+      <Panel title={t("attention.title")} icon={Compass} fill={fill} data-tour="attention">
         <div className="flex flex-col gap-3" role="status" aria-label={tc("states.loading")}>
           <Skeleton className="h-[104px] w-full rounded-xl" />
           {Array.from({ length: 4 }).map((_, i) => (
@@ -377,6 +377,7 @@ export function AttentionPanel({
       title={t("attention.title")}
       icon={Compass}
       fill={fill}
+      data-tour="attention"
       actions={
         pending > 0 ? (
           <Pill tone="warn">

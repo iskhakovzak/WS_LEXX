@@ -302,7 +302,7 @@ export function SetupFormDialog({
   return (
     <Dialog open={!!mode} onOpenChange={(v) => { if (!v) closeKeepingDraft(); }}>
       <DialogContent
-        className="flex max-h-[min(92dvh,960px)] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0"
+        className="flex max-h-[min(92dvh,960px)] max-w-4xl flex-col gap-0 overflow-hidden p-0"
         onKeyDown={(e) => {
           if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
           const k = e.key.toLowerCase();
@@ -377,7 +377,7 @@ export function SetupFormDialog({
                 <div className="flex gap-2">
                   <Select value={form.folder || "__none"} onValueChange={(v) => set("folder", v === "__none" ? "" : v)}>
                     <SelectTrigger id="pb-folder" className="min-w-0 flex-1"><SelectValue placeholder={commonI18n.t("fields.noFolder")} /></SelectTrigger>
-                    <SelectContent className="max-h-[min(60dvh,420px)]">
+                    <SelectContent className="max-h-[min(60dvh,420px,var(--radix-select-content-available-height))]">
                       <SelectItem value="__none">{commonI18n.t("fields.noFolder")}</SelectItem>
                       {folderGroups.primary.length > 0 && (
                         <SelectGroup>

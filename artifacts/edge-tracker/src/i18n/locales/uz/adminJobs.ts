@@ -54,6 +54,8 @@ export default {
     telegram: { "daily-morning": "Telegram: ertalabki fokus", "daily-evening": "Telegram: kun kartasi", "contract-alerts": "Telegram: shartnoma stopi" },
     rewards: { nightly: "Mukofotlar: tungi qayta hisob" },
     quests: { nightly: "Kvestlar: tungi qayta hisob" },
+    notifications: { "rewards-batch": "Bildirishnomalar: kunlik kvest va yutuqlar bitta xabarda" },
+    curator: { digest: "Kurator: kechki xulosa" },
     gamification: { nightly: "Geymifikatsiya: tungi qayta hisob" },
     usage: { prune: "Foydalanish hisobini tozalash" },
     trainer: { "daily-pick": "Trenajyor: kun vazifasini tanlash" },

@@ -37,6 +37,7 @@ import { fallbackBehaviorTrader, initialBehaviorTrader } from "@/components/beha
 import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
 import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 type Tab = "behavior" | "setups";
 type Preset = "30d" | "90d" | "ytd" | "all";
@@ -130,12 +131,13 @@ export default function BehaviorPage() {
         actions={
           <>
             {isCurator && (
-              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="w-52" ariaLabel={tb("traderAria")} />
+              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="w-auto min-w-[13rem] max-w-[18rem]" ariaLabel={tb("traderAria")} />
             )}
             <PeriodPicker<Preset>
               ariaLabel={tb("periodAria")} value={period} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()}
               onPreset={setPeriod} onCustom={(r) => { setCustom(r); setPeriod("custom"); }}
             />
+            <HelpButton id="behavior" />
           </>
         }
       >
@@ -149,6 +151,7 @@ export default function BehaviorPage() {
           ]}
         />
       </PageHeader>
+      <PageHint id="behavior" />
 
       {!isGuest && <RangeFacetsPanel rf={rf} />}
 

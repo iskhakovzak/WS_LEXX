@@ -10,6 +10,11 @@ import type { StoredQuest } from "../quests/catalog";
 vi.mock("@workspace/db", () => ({ db: {}, pool: { query: vi.fn(async () => ({ rows: [{ name: "Кирилл Б." }], rowCount: 1 })) } }));
 const notify = vi.hoisted(() => ({ notifyUser: vi.fn(async () => 1) }));
 vi.mock("../notifyUtils", () => notify);
+// Roadmap R3: the trader's quest_done / achievement_earned go to the nightly batch (lib/notificationBatch) — recorded on
+// the same spy, marked `batched`.
+vi.mock("../notificationBatch", () => ({
+  enqueueBatch: vi.fn(async (userName: string, type: string, params: Record<string, unknown>) => { await (notify.notifyUser as unknown as (n: unknown) => Promise<unknown>)({ userName, type, params, batched: true }); }),
+}));
 
 const mem = vi.hoisted(() => ({
   quests: [] as StoredQuest[],
@@ -104,7 +109,7 @@ describe("evaluation", () => {
     expect([...mem.ach.keys()].sort()).toEqual(["contract_streak|bronze", "contract_streak|silver", "own_replays|bronze"]);
     const ach = sent("achievement_earned");
     expect(ach).toHaveLength(1); // contract streak silver (10th day = 2026-10-09 is within 7 days of 10-16); replay from March: quiet
-    expect(ach[0]).toMatchObject({ userName: "Кирилл Б.", params: { line: "contract_streak", tier: "silver", target: 10 }, link: "/ratings?tab=quests&ach=contract_streak" });
+    expect(ach[0]).toMatchObject({ userName: "Кирилл Б.", params: { line: "contract_streak", tier: "silver", target: 10 }, batched: true });
     expect(e.achievements.find((a) => a.id === "contract_streak")!.tier).toBe("silver");
     expect(e.badges.find((b) => b.id === "streak_2")!.earnedOn).toBe("2026-10-09");
     await service.evaluateTrader("Кирилл Б.", NOW);

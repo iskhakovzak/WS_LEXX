@@ -31,7 +31,7 @@ import { statsScope } from "@/components/stats/staff-data";
 import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
-import { StatsInsights } from "@/components/insight-cards/stats-insights";
+import { InsightBento } from "@/components/insight-tiles/bento";
 
 /**
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
@@ -43,6 +43,8 @@ import { StatsInsights } from "@/components/insight-cards/stats-insights";
  */
 
 const PREFS_KEY = "ws.stats.prefs.v2";
+/** The insight tiles of the period (no «Сегодня»: a period page has no live day). */
+const STATS_TILES = ["streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "fees"] as const;
 /** `from` / `to`: the «Свой период» range (kept while a preset is picked, so «Период…» reopens on it). */
 type Prefs = { period: StatsPeriod; from?: string; to?: string; metric: Metric | null; trader: string; dim: Dimension; horizon: HorizonFilter };
 /**
@@ -316,7 +318,7 @@ export default function Stats() {
         {!solo && (
           <StaffTraderPicker
             value={scopePickerValue(scope)} onChange={pickTrader} me={me} names={[...traders, ...reportTraders]} teamLabel={t("wholeTeam")}
-            className="h-9 w-full sm:w-[220px]" ariaLabel={t("traderAria")}
+            className="h-9 w-full sm:w-auto sm:min-w-[13rem] sm:max-w-[18rem]" ariaLabel={t("traderAria")}
           />
         )}
       </Toolbar>
@@ -375,9 +377,11 @@ export default function Stats() {
             onHorizon={(h) => set("horizon", h)} onDim={(x) => set("dim", x)}
             onPickTrader={!solo && trader === "all" ? pickTrader : undefined}
             insights={staff ? undefined : (
-              <StatsInsights
+              <InsightBento
+                ids={STATS_TILES}
                 trades={trades}
-                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, ownerName: trader !== "all" && trader !== me ? trader : null }}
+                prev={prevTrades}
+                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, periodLong: periodOpt.long }}
               />
             )}
           />

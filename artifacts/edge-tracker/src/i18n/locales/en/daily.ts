@@ -137,7 +137,7 @@ export default {
     unknown: "Mistake “{id}”",
     ruleUnknown: "Rule “{kind}”",
     behavior: {
-      revenge: "Revenge trade after a loss",
+      revenge: "Quick re-entry after a loss",
       martingale: "Sizing up after a loss",
       overtrading: "Overtrading",
       fatigue: "Trading while tired",

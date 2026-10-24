@@ -13,8 +13,8 @@ export default {
     z: " · z = {z}",
   },
   leak: {
-    feeTitle: "Komissiya natijadan katta",
-    feeDetail: "Komissiyasi |yalpi| dan yuqori {n} ta savdo: komissiyalar {fees}, sof {net}",
+    feeTitle: "Komissiyalar natijani yedi",
+    feeDetail: "Yalpisi komissiyani qoplamagan {n} ta savdo: komissiyalar {fees}, sof {net}",
     peakTitle: "Kun choʻqqisidan keyin qaytarish",
     peakDetail: "Choʻqqi {peak} ({time}), yopilish {final}: {n} ta savdoda {giveback} qaytarildi",
     revengeTitle: "Zarardan keyin < {min} daqiqada kirish",

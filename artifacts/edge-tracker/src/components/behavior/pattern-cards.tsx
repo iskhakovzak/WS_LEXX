@@ -133,7 +133,7 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
             <li key={e.id} className="group flex min-h-9 items-center gap-1 rounded-lg transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]">
               <Link
                 href={links.trade(e.id)}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg px-2 py-1 text-xs sm:flex-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={tb("card.openTrade", { ticker: e.ticker, date: fmtDate(e.date, "medium") })}
                 title={`${fmtDate(e.date, "medium")}${e.entryMin != null ? " " + fmtClock(e.entryMin) : ""} · ${e.note}`}
               >
@@ -141,11 +141,12 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
                 <span className="w-10 shrink-0 tabular-nums text-muted-foreground">{e.entryMin != null ? fmtClock(e.entryMin) : ""}</span>
                 <span className="w-12 shrink-0 truncate font-medium text-foreground">{e.ticker}</span>
                 <span className={cn("w-14 shrink-0 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsd(e.net, { signed: true, compact: true })}</span>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">{e.note}</span>
+                {/* Phones: the reason goes to its own line (it was squeezed to ~26px: «5 …», «<…»). */}
+                <span className="min-w-0 flex-1 truncate text-muted-foreground max-sm:basis-full">{e.note}</span>
               </Link>
               <Link
                 href={dayReportHref(e.date, trader)}
-                className="mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="mr-1 inline-flex h-7 w-7 shrink-0 pointer-coarse:h-9 pointer-coarse:w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={tb("card.dayReview", { date: fmtDate(e.date, "medium") })}
                 title={tb("card.dayReviewTitle")}
               >

@@ -217,6 +217,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `EOD_OWN_ONLY` | 403 | End of day: another trader's day without journal.read.team. | — |
 | `INVALID_RANGE` | 400 | A from/to range that is malformed, reversed or too long. | — |
 | `TRADE_REVIEW_OWN_ONLY` | 403 | End of day: reviewing someone else's trade. | — |
+| `WHATIF_FEE_PLAN_STAFF_ONLY` | 403 | What-if: a commission-plan (tariff) rule from a non-staff viewer (roadmap R2: staff only). | — |
 | `EOD_DAY_CLOSED` | 409 | Editing a trade review / day summary of a closed day. | `{ date }` |
 | `EOD_ALREADY_CLOSED` | 409 | Closing a closed day. | `{ day }` |
 | `EOD_FUTURE_DAY` | 422 | Closing a day after today (NY). | — |

@@ -320,7 +320,7 @@ export default function JournalPage() {
                   teamLabel={t("page.wholeTeam")}
                   icon={Users}
                   ariaLabel={tc("fields.trader")}
-                  className="w-full sm:w-[220px]"
+                  className="w-full sm:w-auto sm:min-w-[13rem] sm:max-w-[18rem]"
                 />
               )}
             </div>

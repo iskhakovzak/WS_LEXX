@@ -92,7 +92,7 @@ export function Gallery({
           </Select>
           <Select value={setupId ? String(setupId) : "__all"} onValueChange={(v) => set({ gs: v === "__all" ? null : v })}>
             <SelectTrigger className="h-9 w-full min-w-0 sm:w-72" aria-label={t("gallery.setupAria")}><SelectValue /></SelectTrigger>
-            <SelectContent className="max-h-[min(60dvh,480px)]">
+            <SelectContent className="max-h-[min(60dvh,480px,var(--radix-select-content-available-height))]">
               <SelectItem value="__all">{t("gallery.allSetups")}</SelectItem>
               {setups.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
             </SelectContent>

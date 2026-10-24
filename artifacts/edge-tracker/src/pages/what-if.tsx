@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { FeePlanBox } from "@/components/what-if/fee-plan-box";
+import type { CommissionPlan } from "@/components/shared/what-if-rules";
 import { BarChart3, ChevronDown, FlaskConical, Lightbulb, ListX, Loader2, RefreshCw, SearchX, SlidersHorizontal, TrendingUp } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -30,6 +32,7 @@ import { TEAM } from "@/components/people/staff-scope";
 import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
 import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 /**
  * /what-if — «Что если» (was /simulator; old links with ?r= / ?p= / ?trader= redirect here): the trader's own closed trades re-run under other rules (server engine
@@ -38,7 +41,8 @@ import { parseDayRange, type DayRange } from "@/lib/period-range";
  * opens /day-report) → suggestions found in the data → own rule builder. The scenario, period and trader
  * live in the URL (?r=…&p=…&trader=…), so a link opens exactly the same view. Nothing is stored unless
  * a scenario is saved explicitly. This is the one place for rule what-ifs: the analytics «Что если» tab is a compact
- * summary that links here. Commission tariffs are not simulated (the desk does not choose its broker fees).
+ * summary that links here. Commission tariffs are not simulated for traders (the desk does not choose its broker fees);
+ * staff get one plan what-if box (components/what-if/fee-plan-box, roadmap R2.4 — the API refuses it to non-staff).
  */
 
 type Preset = "30d" | "90d" | "ytd" | "all";
@@ -225,13 +229,13 @@ export default function WhatIf() {
           me={me}
           names={traders}
           teamLabel={t("wholeTeam")}
-          className="h-10 w-[220px]"
+          className="h-10 w-auto min-w-[13rem] max-w-[18rem]"
           ariaLabel={t("traderAria")}
         />
       )}
     </>
   );
-  const header = (
+  const header = (<>
     <PageHeader
       title={t("title")}
       icon={FlaskConical}
@@ -243,9 +247,10 @@ export default function WhatIf() {
           <span className="tabular-nums">{t("meta", { trades: commonI18n.t("units.trades", { count: base.data.trades.length }), days: t("tradingDays", { count: base.data.baseline.days }), period: periodPhrase })}</span>
         ) : null
       }
-      actions={controls}
+      actions={<>{controls}<HelpButton id="whatIf" /></>}
     />
-  );
+    <PageHint id="whatIf" />
+  </>);
 
   if (base.isError) {
     return (
@@ -376,6 +381,7 @@ export default function WhatIf() {
           <ExcludedTable excluded={r!.excluded} changed={r!.changed} />
         </Fold>
       )}
+      {isCurator && hasTrades && <FeePlanBox scope={scope} preset={tariffPreset(base.data?.presets)} />}
       <Fold title={t("allTitle")} icon={BarChart3} hint={t("allHint")}>
         <div className="flex flex-col gap-5">
           <MetricsTable baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} />
@@ -394,6 +400,12 @@ export default function WhatIf() {
       </Fold>
     </Page>
   );
+}
+
+/** The server's «tariff» preset plan (staff box default). */
+function tariffPreset(presets: { id: string; rules: Rule[] }[] | undefined): CommissionPlan | null {
+  const r = presets?.find((p) => p.id === "tariff")?.rules.find((x) => x.type === "commissionPlan");
+  return r && r.type === "commissionPlan" ? r : null;
 }
 
 /** Collapsed-by-default section in a glass panel. */

@@ -65,7 +65,7 @@ const SheetContent = React.forwardRef<
       className={cn(sheetVariants({ side }), className)}
       {...props}
     >
-      <SheetPrimitive.Close className="chip absolute right-4 top-[max(1rem,env(safe-area-inset-top))] inline-flex h-8 w-8 items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:right-3 pointer-coarse:h-10 pointer-coarse:w-10">
+      <SheetPrimitive.Close className="chip absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-sticky inline-flex h-8 w-8 items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none pointer-coarse:right-3 pointer-coarse:h-10 pointer-coarse:w-10">
         <X className="h-4 w-4" />
         <span className="sr-only">{commonI18n.t("actions.close")}</span>
       </SheetPrimitive.Close>
@@ -81,7 +81,7 @@ const SheetHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col gap-1.5 pr-10 text-left",
+      "overlay-bar overlay-bar-top flex flex-col gap-1.5 pr-10 text-left",
       className
     )}
     {...props}
@@ -95,7 +95,7 @@ const SheetFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end",
+      "overlay-bar overlay-bar-bottom flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end",
       className
     )}
     {...props}

@@ -7,6 +7,7 @@ export default {
   tabs: {
     overview: "Umumiy koʻrinish",
     edge: "Ustunlik",
+    myedge: "Ustunligim va bozor",
     matrix: "Matritsa",
     whatif: "Agar shunday boʻlsa",
     montecarlo: "Monte-Karlo",

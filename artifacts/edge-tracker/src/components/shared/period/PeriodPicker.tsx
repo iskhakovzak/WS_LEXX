@@ -91,7 +91,7 @@ export function PeriodPicker<P extends string>({
           />
         </span>
       </PopoverAnchor>
-      <PopoverContent align="start" className="w-80">
+      <PopoverContent align="start" className="w-[22rem]">
         <form onSubmit={apply} className="flex flex-col gap-3" aria-label={t("periodPicker.title")}>
           <p className="text-sm font-semibold">{t("periodPicker.title")}</p>
           <div className="grid grid-cols-2 gap-2">

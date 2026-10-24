@@ -13,3 +13,6 @@ process.env.DATABASE_URL = TEST_DB_URL;
 process.env.NODE_ENV ??= "test";
 // lib/auth.ts refuses to load without a secret; config.ts caches the environment on first use.
 process.env.JWT_SECRET ??= "vitest-only-secret";
+// Tests never talk to Telegram: without a bot token lib/telegramBot sends nothing (a token in the shell is ignored).
+process.env.TELEGRAM_BOT_TOKEN = "";
+process.env.NEWS_CHANNEL_BOT_TOKEN = "";

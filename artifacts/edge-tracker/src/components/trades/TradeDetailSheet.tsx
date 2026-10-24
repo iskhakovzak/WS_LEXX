@@ -147,9 +147,10 @@ export function TradeDetailSheet(p: Props) {
       {/* Phones: a bottom sheet. Everywhere the header stays and the body scrolls (the chart and the review are reachable, ILYA-01). */}
       <SheetContent
         side={mobile ? "bottom" : "right"}
+        data-onboarding-seen="trade"
         className={mobile
           ? "flex h-[92dvh] flex-col gap-0 overflow-hidden rounded-t-2xl p-0"
-          : "flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl"}
+          : "flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl"}
       >
         {t ? <SheetBody key={t.id} {...p} trade={t} mobile={mobile} /> : (
           <SheetHeader className="sr-only"><SheetTitle>{tc("trading.trade")}</SheetTitle><SheetDescription>{tt("sheet.noData")}</SheetDescription></SheetHeader>

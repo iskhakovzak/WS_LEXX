@@ -10,7 +10,7 @@
  * «Найти тикер» next to the tabs: while it holds text, the matching tickers (from any tab) show above the tab's columns,
  * which stay visible, with «Только найденные» to keep just them.
  */
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronDown, Filter, RotateCcw, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -49,9 +49,14 @@ type Props = {
   loading: boolean;
   error: boolean;
   className?: string;
+  /** End of the header row: the page's «?» (components/shared/page-hint HelpButton). */
+  help?: ReactNode;
 };
 
-const GRID = "grid gap-x-5 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr))]";
+// Wrapping columns that share the free width (≥ 10.5rem each, at most 18rem from md): a tab with fewer dimensions
+// widens its columns instead of leaving empty tracks on the right while long headings («Trade of the day», «Before
+// the trade») and labels ellipsize; a 2-dimension tab stays packed on the left. Phones: full-width columns.
+const GRID = "flex flex-wrap gap-x-5 gap-y-4 [&>*]:min-w-0 [&>*]:flex-[1_1_10.5rem] md:[&>*]:max-w-[18rem]";
 const LINK = "inline-flex min-h-6 min-w-6 items-center justify-center rounded px-1.5 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** A column offers a choice only with 2+ values, or when something in it is already excluded (so it can come back). */
@@ -234,7 +239,7 @@ function TickerResults({ q, buckets, view, onChange, money }: { q: string; bucke
   );
 }
 
-export function FacetPanel({ view, onChange, data, loading, error, className }: Props) {
+export function FacetPanel({ view, onChange, data, loading, error, className, help }: Props) {
   const t = tradeFacetsI18n.t;
   const hidden = activeCount(view);
   // On a phone the panel starts folded each visit (open it pushes the trade list a screen down); the saved
@@ -295,6 +300,7 @@ export function FacetPanel({ view, onChange, data, loading, error, className }: 
         />
         {data && money && <ImxLine total={data.total.net} imx={data.imx} excluded={view.excludeImx} />}
         {open && <span className="hidden text-2xs text-muted-foreground xl:inline">{t("clickHint")}</span>}
+        {help && <span className="ml-auto">{help}</span>}
       </div>
       {open && (
         <div className="border-t border-border px-3 pb-3 pt-3">

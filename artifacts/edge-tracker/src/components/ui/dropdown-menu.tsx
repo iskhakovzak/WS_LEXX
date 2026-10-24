@@ -45,16 +45,20 @@ const DropdownMenuSubContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
 >(({ className, collisionPadding = POPPER_COLLISION_PADDING, hideWhenDetached = true, ...props }, ref) => (
+  // Portaled like the root menu: rendered inside it, the submenu would be clipped by the parent's scroll box.
+  // On a phone neither side of the parent may hold 10rem: the submenu then narrows to the room it has (items wrap).
+  <DropdownMenuPrimitive.Portal>
   <DropdownMenuPrimitive.SubContent
     ref={ref}
     collisionPadding={collisionPadding}
     hideWhenDetached={hideWhenDetached}
     className={cn(
-      "z-popover min-w-[10rem] overflow-hidden glass-thick glass-solid rounded-xl bg-popover duration-[var(--dur-2)] data-[state=closed]:duration-[var(--dur-1)] p-1 text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[var(--radix-dropdown-menu-content-transform-origin)]",
+      "z-popover max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[min(10rem,var(--radix-dropdown-menu-content-available-width))] max-w-[min(24rem,var(--radix-dropdown-menu-content-available-width))] overflow-y-auto overflow-x-hidden overscroll-contain glass-thick glass-solid rounded-xl bg-popover duration-[var(--dur-2)] data-[state=closed]:duration-[var(--dur-1)] p-1 text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[var(--radix-dropdown-menu-content-transform-origin)]",
       className
     )}
     {...props}
   />
+  </DropdownMenuPrimitive.Portal>
 ))
 DropdownMenuSubContent.displayName =
   DropdownMenuPrimitive.SubContent.displayName
@@ -70,7 +74,7 @@ const DropdownMenuContent = React.forwardRef<
       collisionPadding={collisionPadding}
       hideWhenDetached={hideWhenDetached}
       className={cn(
-        "z-popover max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[10rem] overflow-y-auto overflow-x-hidden glass-thick glass-solid rounded-xl bg-popover duration-[var(--dur-2)] data-[state=closed]:duration-[var(--dur-1)] p-1 text-popover-foreground",
+        "z-popover max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[max(10rem,var(--radix-dropdown-menu-trigger-width))] max-w-[min(24rem,calc(100vw-1rem))] overflow-y-auto overflow-x-hidden overscroll-contain glass-thick glass-solid rounded-xl bg-popover duration-[var(--dur-2)] data-[state=closed]:duration-[var(--dur-1)] p-1 text-popover-foreground",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[var(--radix-dropdown-menu-content-transform-origin)]",
         className
       )}

@@ -19,7 +19,8 @@ const STATUS_TONE: Record<RiskDeskRow["status"], Tone> = { breach: "down", warn:
 const statusLabel = (s: RiskDeskRow["status"]) => dashboardI18n.t(`desk.status.${s}`);
 const RANK: Record<RiskDeskRow["status"], number> = { breach: 0, warn: 1, ok: 2, no_limits: 3 };
 
-const COLS = "grid grid-cols-[minmax(0,1fr)_84px_84px_108px] items-center gap-x-3";
+// Phones get narrower number columns, so the trader name is a name, not «c…» (was 20px wide at 390px).
+const COLS = "grid grid-cols-[minmax(0,1fr)_72px_76px_84px] items-center gap-x-2 sm:grid-cols-[minmax(0,1fr)_84px_84px_108px] sm:gap-x-3";
 
 /** Daily-limit use 0…1+ (null without a limit); halted traders sort as fully used. */
 function limitUse(r: RiskDeskRow): number | null {

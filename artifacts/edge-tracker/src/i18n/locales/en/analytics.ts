@@ -7,6 +7,7 @@ export default {
   tabs: {
     overview: "Overview",
     edge: "Edge",
+    myedge: "My edge & market",
     matrix: "Matrix",
     whatif: "What if",
     montecarlo: "Monte Carlo",

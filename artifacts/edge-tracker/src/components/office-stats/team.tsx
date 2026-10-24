@@ -194,7 +194,7 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
           <span className="text-destructive">{t("capital.capitalInvalid")}</span>
         ) : null}
         {!goalValid && <span className="text-destructive">{t("capital.goalInvalid")}</span>}
-        {s.updatedBy && <span>{t("capital.changedBy", { name: personName(s.updatedBy) })}{s.updatedAt ? ` · ${fmtDate(s.updatedAt, "short")}` : ""}</span>}
+        {s.updatedBy && <span>{t("capital.changedBy", { name: personName(s.updatedBy) })}{s.updatedAt ? ` · ${fmtDate(s.updatedAt, "medium")}` : ""}</span>}
       </p>
     </form>
   );
@@ -264,7 +264,7 @@ export function RulesPopover({ rules, isAdmin }: { rules: Rules; isAdmin: boolea
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm"><HelpCircle className="h-4 w-4" /> {t("rules.button")}</Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(92vw,30rem)] max-h-[70vh] overflow-y-auto text-sm">
+      <PopoverContent align="end" className="w-[min(92vw,30rem)] max-h-[min(70dvh,var(--radix-popover-content-available-height))] overflow-y-auto text-sm">
         <p className="font-semibold text-foreground">{t("rules.button")}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {t("rules.intro")}

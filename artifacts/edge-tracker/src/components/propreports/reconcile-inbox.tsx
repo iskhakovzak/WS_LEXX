@@ -71,7 +71,7 @@ function PendingCard({ p, staff }: { p: PendingTrade; staff: boolean }) {
           {p.account && <Pill tone="neutral">{p.account}</Pill>}
           <Pill tone={resultTone(t.result)}>{fmtUsd(t.netPnl, { signed: true })} net</Pill>
         </div>
-        <span className="text-2xs text-muted-foreground">{tt("inbox.queuedSince", { date: fmtDate(p.createdAt, "short") })}</span>
+        <span className="text-2xs text-muted-foreground">{tt("inbox.queuedSince", { date: fmtDate(p.createdAt, "medium") })}</span>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">

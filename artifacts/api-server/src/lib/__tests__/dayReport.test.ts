@@ -33,8 +33,9 @@ describe("day report — size-up after a loss", () => {
 describe("day report — one leak, one number", () => {
   it("size-up cost = losses of the flagged trades = the header total; net is shown separately", () => {
     const r = report([
-      dt(1, "MARA", 100, 10, -14, 0), dt(2, "OKLO", 250, 10, -43, 10),
-      dt(3, "MARA", 450, 10, -8, 20), dt(4, "MARA", 750, 10, 43, 30),
+      // 15 min apart: past the shared 10-min quick re-entry window (lib/behaviorEngine DEFAULTS), so size-up is the only leak.
+      dt(1, "MARA", 100, 10, -14, 0), dt(2, "OKLO", 250, 10, -43, 15),
+      dt(3, "MARA", 450, 10, -8, 30), dt(4, "MARA", 750, 10, 43, 45),
     ]);
     const leak = r.leaks.find((l) => l.kind === "size_up")!;
     expect(leak.tradeIds).toEqual([2, 3, 4]);

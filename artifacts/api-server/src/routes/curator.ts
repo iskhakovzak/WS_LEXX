@@ -58,6 +58,7 @@ import { plateauSignals } from "../lib/plateauStore";
 import { loadPriorityInputs } from "../lib/curatorPriority";
 import { setting } from "../lib/settings/registry";
 import { wardsOf } from "../lib/curatorRoster";
+import type { DigestRanker } from "../lib/curatorDigest";
 
 const router: IRouter = Router();
 // «Готово» on a curator task (2.13): POST /curator/tasks/:id/done — routes/curatorTasks.ts.
@@ -526,10 +527,21 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
  * labels' language. Empty when the curator has no wards.
  */
 export async function curatorDigestTop(curator: string, date: string = nyDate(), n = 3, lang: Lang = "ru"): Promise<(NextAction & { trader: string })[]> {
-  const traders = await wardsOf(curator);
+  return rankedSteps(await wardsOf(curator), date, n, lang);
+}
+
+async function rankedSteps(traders: readonly string[], date: string, n: number, lang: Lang = "ru"): Promise<(NextAction & { trader: string })[]> {
   if (!traders.length) return [];
-  const b = await loadBulk(traders, date, lang);
+  const b = await loadBulk([...traders], date, lang);
   return digestTopItems(traders.map((t) => ({ trader: t, ...buildSignal(t, b).nextAction })), n);
 }
+
+/**
+ * R11 ranking for the 17:30 digest (lib/curatorDigest DigestRanker; the job curator.digest passes it as `rank`): the
+ * wards' top steps by the score, one per trader; `reason` = the step kind (curator_digest.reason.*), no $ (the score
+ * is a priority, not money).
+ */
+export const r11DigestRanker: DigestRanker = async (_curator, traders, today) =>
+  (await rankedSteps(traders, today, traders.length)).map((a) => ({ trader: a.trader, date: today, reason: a.kind, costNet: null }));
 
 export default router;

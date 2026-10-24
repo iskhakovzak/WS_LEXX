@@ -16,6 +16,12 @@ import {
 import { BestWorstPanel, HorizonPanel, MistakesPanel, OpenBookPanel, SetupPanel } from "./sections";
 import { useWeekInsights } from "./use-week-insights";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { BreakevenLine, FeeCoachingCard } from "@/components/shared/coach/fee-coaching";
+
+/** Win rate vs breakeven under the KPI strip (rolling window, not just the week). */
+function Breakeven({ doc }: { doc: WeeklyReview }) {
+  return doc.feeCoaching ? <BreakevenLine breakeven={doc.feeCoaching.breakeven} days={doc.feeCoaching.window.days} /> : null;
+}
 
 /** Setup / horizon / weekend-book panels only when they carry information. */
 function OptionalBreakdowns({ doc }: { doc: WeeklyReview }) {
@@ -68,6 +74,8 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <p className="text-sm text-muted-foreground">{weekHeadline(doc)}</p>
       <WeekKpiStrip doc={doc} ins={ins} />
+      <Breakeven doc={doc} />
+      <FeeCoachingCard data={doc.feeCoaching} />
       <BentoGrid>
         <TipsPanel tips={ins.tips} loading={ins.tipsLoading} onMakeGoal={makeGoal} className="lg:col-span-7" />
         <div className="flex min-w-0 flex-col gap-[var(--grid-gap)] lg:col-span-5">
@@ -107,6 +115,8 @@ export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: s
         {fails === 0 && warns === 0 && <Pill tone="up" dot>{t("audience.clean")}</Pill>}
       </div>
       {k.trades > 0 ? <WeekKpiStrip doc={doc} ins={ins} /> : <NoTradesWeek doc={doc} />}
+      <Breakeven doc={doc} />
+      <FeeCoachingCard data={doc.feeCoaching} trader={doc.trader} />
       <BentoGrid>
         <ChecklistPanel items={ins.checklist} className="lg:col-span-7" />
         <DeskComparePanel bench={ins.bench} row={ins.benchRow} trend={ins.trend} loading={ins.benchLoading} className="lg:col-span-5" />

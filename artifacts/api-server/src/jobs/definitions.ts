@@ -24,11 +24,11 @@ import { registerJob, listJobs } from "./registry";
 import { DESK_TICK_CRON, OFF_HOURS_CRON, offHoursCron, syncCron } from "../lib/propreports/scheduler";
 import { dailyTelegramEnabled, intradayAlertsEnabled } from "../lib/daily/telegramGuard";
 import { contractAlertsEnabled, eveningCron, eveningEnabled, morningCron, morningEnabled } from "../lib/daily/telegramSchedule";
+import { registerCoachJobs } from "../lib/coachJobDefs";
 import { dailyPickCron } from "../lib/trainer/schedule";
 import { registerFinvizJobs } from "../lib/finviz/jobDefs";
 import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
-import { registerCoachJobs } from "../lib/coachJobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -337,7 +337,7 @@ export function registerAllJobs(): void {
 /** Feature modules that declare their own jobs (kept out of registerAllJobs, which is at the function-size limit). */
 function registerModuleJobs(): void {
   registerFinvizJobs(registerJob); // Finviz Elite screener / snapshot / earnings (lib/finviz/jobDefs.ts)
+  registerCoachJobs(registerJob); // coaching: reward-ping batch, curator digest (R3), edge map (R4), plateau (R6) — lib/coachJobDefs.ts
   registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
   registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
-  registerCoachJobs(registerJob); // coaching evidence: edge map, plateau detector (lib/coachJobDefs.ts)
 }

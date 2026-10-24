@@ -27,6 +27,11 @@ import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 /** Which limit the risk tile should show: the one that triggered the state (drawdown / week), otherwise the daily one. */
+/** Queue item title with its ISO dates as «Oct 19» (shown and in the tooltip; the tooltip used to keep raw ISO). */
+function queueTitle(title: string): string {
+  return title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"));
+}
+
 function riskBar(r: TodayPayload["risk"]["halted"][number]): { label: string; pct: number | null } {
   const t = curatorI18n.t;
   if (r.state === "drawdown") return { label: t("today.bar.drawdown"), pct: r.drawdownPct };
@@ -258,7 +263,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
                   <Pill tone={QUEUE_TONE[q.kind]} className="min-w-0 max-w-[7rem] justify-center sm:w-full" title={QUEUE_LABEL[q.kind]}><span className="truncate">{QUEUE_LABEL[q.kind]}</span></Pill>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground sm:flex-none" title={personName(q.trader)}>{personName(q.trader)}</span>
                   <span className="order-last flex min-w-0 basis-full flex-col sm:order-none sm:basis-auto">
-                    <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
+                    <span className="line-clamp-2 text-sm leading-snug text-muted-foreground" title={queueTitle(q.title)}>{queueTitle(q.title)}</span>
                     {q.note && <span className="truncate text-xs text-muted-foreground/80" title={q.note}>«{q.note}»</span>}
                   </span>
                   <span

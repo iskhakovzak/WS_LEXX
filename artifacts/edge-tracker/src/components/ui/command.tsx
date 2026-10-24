@@ -62,7 +62,9 @@ const CommandList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={cn("max-h-[min(24rem,60dvh)] overflow-y-auto overflow-x-hidden overscroll-contain", className)}
+    // In a popover the list also leaves room for the search field (~3.5rem) within the space Radix measured, so a
+    // combobox near the screen edge scrolls its list instead of cutting it off.
+    className={cn("max-h-[min(24rem,60dvh,calc(var(--radix-popover-content-available-height,100dvh)-3.5rem))] overflow-y-auto overflow-x-hidden overscroll-contain", className)}
     {...props}
   />
 ))

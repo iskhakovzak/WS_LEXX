@@ -1,4 +1,5 @@
 /** Mentor views of «Путь трейдера»: funnel by stage, request queue, criteria editor. */
+import { StageDays } from "./realism";
 import * as React from "react";
 import { Filter, Inbox, Loader2, Plus, Save, Settings2, Trash2 } from "lucide-react";
 import { EmptyState, ErrorState, Panel, Pill } from "@/components/ds";
@@ -82,6 +83,13 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
                         </span>
                       )}
                     </>
+                  )}
+                  {p.stage && <StageDays days={p.stageDays} signal={p.stageSignal} />}
+                  {p.binding && (
+                    <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                      {t("realism.binding", { label: p.binding.label })}
+                      {p.binding.kind === "infeasible_style" && <Pill tone="warn">{t("realism.neverMetBadge")}</Pill>}
+                    </span>
                   )}
                   {!p.stage && <span className="text-xs text-muted-foreground">{t("funnel.assignStage")}</span>}
                 </button>

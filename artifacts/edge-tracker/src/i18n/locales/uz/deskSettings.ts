@@ -7,13 +7,14 @@ export default {
   description: "Kunlik sikl chegaralari, intizom ochkolari, Telegram yuborish vaqti va maxfiylik. Saqlangan zahoti butun deskka amal qiladi.",
   groups: {
     daily: { title: "Kun fokusi", description: "Treyderning eng qimmat takrorlanuvchi xatosini qanday topamiz." },
+    coach: { title: "Kouching", description: "Narx diapazonlari boʻyicha komissiya modeli va desk boʻyicha tuzatilgan «qayerda topaman / yoʻqotaman» xaritasi: oynalar, chegaralar va xulosa minimumlari." },
+    alerts: { title: "Bildirishnomalar byudjeti", description: "Bir kishi kuniga nechta Telegram xabar oladi va kuratorga kechki xulosa. Risk-alertlar cheklanmaydi, faqat takrorlanmaydi." },
     discipline: { title: "Kontrakt va intizom", description: "Oʻz kontrakti va seriyalar uchun kun intizomiga ochkolar." },
     rewards: { title: "Darajalar", description: "Intizom ochkolari boʻyicha darajalar (mukofotlar katalogi — yuqorida)." },
     quests: { title: "Kvestlar", description: "Ilk qadamlar, kunlik, haftalik, oylik va kurator kvestlari: yoqish, maqsadlar va intizom ochkolaridagi mukofotlar." },
     achievements: { title: "Yutuqlar", description: "Bosqich chegaralari: 1 — bronza, 2 — kumush, 3 — oltin, 4 — platina." },
     telegram: { title: "Telegram", description: "Bot ish kunlari yuboradi. Vaqt — Nyu-York vaqti, yonida — Toshkent vaqti." },
     curator: { title: "Kurator navbati", description: "Pul boʻyicha muammolar navbatida nima qoladi." },
-    coach: { title: "Dalilga asoslangan kouching", description: "Desk boʻyicha tuzatilgan «qayerda topaman / yoʻqotaman» xaritasi va uning xulosalari chegaralari." },
     academy: { title: "Akademiya: surʼat", description: "Treyder bosqich surʼatiga hali chiqmagan deb qachon hisoblanadi (faqat kuratorlar koʻradi)." },
     privacy: { title: "Maxfiylik", description: "Treyderlar hamkasblari haqida nimani koʻradi va desk tashqarisida nimani koʻrsata oladi." },
     trainer: { title: "Trenajyor", description: "Simulyatorda ijro (spred, sirpanish, 1R), «Kun vazifasi» va «Kirishni top»." },
@@ -92,11 +93,27 @@ export default {
       focusWindowDays: { label: "Fokus oynasi", help: "Eng qimmat takrorlanuvchi xatoni topish uchun oxirgi nechta savdo kuniga qaraymiz." },
       focusMinDays: { label: "Xato takrori", help: "Xato oynaning kamida shuncha kunida boʻlsagina fokusga aylanadi." },
       focusMinCostUsd: { label: "Xatoning eng kam narxi", help: "Arzonroq xatolar — shovqin: fokus «hech narsa takrorlanmayapti» deydi." },
-      feesShare: { label: "Komissiyalar: xato chegarasi", help: "Komissiyalar yalpi foydaning shu ulushiga yetgan kun — «komissiyalar foydani yedi» xatosi." },
+      feesShare: { label: "Komissiyalar: xato chegarasi", help: "Yalpi foydaning shu ulushiga yetgan komissiyalar — «komissiyalar foydani yedi» xatosi; yalpi natija nol yoki manfiy boʻlsa, eng kamidan ortiq har qanday komissiya hisoblanadi." },
       feesHealthyShare: { label: "Komissiyalar: meʼyor", help: "Xato narxi — yalpi foydaning shu meʼyoriy ulushidan ortiq komissiyalar." },
       feesMinUsd: { label: "Komissiyalar: eng kami", help: "Kunlik komissiyalarning kichikroq summasi xato hisoblanmaydi." },
+      feesWeekly: { label: "Komissiyalar: haftalik baholash", help: "Komissiyalar har kuni emas, savdo haftasi boʻyicha jamlanadi (haftasiga bitta xato) — kunlik shovqin kamroq." },
+      feesWeeklyMinUsd: { label: "Komissiyalar: haftalik eng kami", help: "Haftalik komissiyalarning kichikroq summasi xato hisoblanmaydi (haftalik baholashda)." },
       givebackMinPeakUsd: { label: "Foydani qaytarish: kun choʻqqisi", help: "Qaytarish hisoblanadigan kunlik foyda choʻqqisi (yoki treyderning median yashil kuni, agar kattaroq boʻlsa)." },
       givebackKeepShare: { label: "Foydani qaytarish: qolgani", help: "Kun choʻqqining shu ulushi yoki undan kam bilan yopilsa — qaytarish." },
+    },
+    coach: {
+      feeWindowDays: { label: "Komissiya modeli oynasi", help: "Narx diapazonlari boʻyicha komissiya modeli uchun savdo boʻlgan oxirgi nechta kun olinadi." },
+      feeBandMinTrades: { label: "Diapazondagi savdolar", help: "Narx diapazoni oynada kamida shuncha savdo boʻlsagina belgilanadi." },
+      feeBandRatioMin: { label: "Gross ÷ komissiya chegarasi", help: "Diapazon bir aksiyaga gross bir aksiyaga komissiyaning shuncha baravaridan kam boʻlsa belgilanadi — intervalning yuqori chegarasi ham yetmasa." },
+      tauDefaultBps: { label: "Standart tarqoqlik", help: "Kesimda 30+ savdoli treyderlar 5 tadan kam boʻlganda treyder deskdan qanchalik farq qilishi mumkin (savdo hajmidan b.p.)." },
+      leakMinUsdPerDay: { label: "Xulosa uchun minimum", help: "Kesim «topaman» yoki «yoʻqotaman» deb faqat savdo kuniga shu summadan kam boʻlmasa koʻrsatiladi." },
+    },
+    alerts: {
+      budget: {
+        dailyPush: { label: "Kuniga bir kishiga Telegram", help: "Bir kishi Nyu-York kunida nechta bot xabarini oladi (risk-alertlardan tashqari); qolgani faqat ilovada." },
+        coachingPush: { label: "Ulardan maslahatlar", help: "Ulardan nechtasi xulq boʻyicha maslahat boʻlishi mumkin (hozir — oʻz kontrakti boʻyicha kunlik stop)." },
+        riskQuietMinutes: { label: "Risk-alertdan keyin jimlik", help: "Risk-alertdan keyin necha daqiqa treyderga oʻz kontrakti boʻyicha signal kelmaydi — bir stop ikki marta aytilmaydi." },
+      },
     },
     discipline: {
       contractKeptPoints: { label: "Kontrakt bandi bajarildi", help: "Oʻz kontraktining har bir bajarilgan bandi (stop, savdolar limiti, qoida) uchun kun intizomiga ochkolar." },
@@ -109,6 +126,8 @@ export default {
         options: { reset: "Noldan boshlanadi", halve: "Yarmi saqlanadi" },
       },
       pointsWindowDays: { label: "Intizom ochkolari oynasi", help: "Intizom ochkolari oxirgi nechta savdo kuni boʻyicha jamlanadi (daraja butun davrdagi ochkolar boʻyicha hisoblanadi)." },
+      promotionMinIndex: { label: "Intizom indeksi: bosqichga oʻtish", help: "Junior → Treyder mezonlaridagi intizom indeksi chegarasi (0–100), birinchi marta toʻldirilganda. Saqlangan mezonlar treyder yoʻli ekranida oʻzgartiriladi." },
+      scalingMinIndex: { label: "Intizom indeksi: masshtablash rejasi", help: "Masshtablash rejasining koʻtarish qoidasidagi intizom indeksi chegarasi (0–100), birinchi marta toʻldirilganda. Saqlangan qoidalar masshtablash sahifasida oʻzgartiriladi." },
     },
     rewards: {
       level1Points: { label: "1-daraja «Yigʻilgan»", help: "Birinchi daraja uchun kerak boʻlgan butun davrdagi intizom ochkolari." },
@@ -190,11 +209,10 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Navbat dumi", help: "Hal qilinmagan muammolar kurator navbatida oʻtgan nechta savdo kuni qoladi." },
+      digestEnabled: { label: "Kechki xulosa", help: "Ish kunlari kuratorga bitta xulosa: shogirdlarning yopilgan kunlari va avval nimaga qarash. Telegramda — har bir yopilgan kun uchun xabar oʻrniga." },
+      digestTime: { label: "Kechki xulosa vaqti", help: "Ish kunlari, Nyu-York vaqti." },
+      digestTopN: { label: "Xulosadagi bandlar", help: "Xulosada navbatdan nechta treyder nomlanadi." },
       capacity: { label: "Kurator roʻyxatidagi qadamlar", help: "Nechta «Keyingi qadam» koʻrsatiladi (shoshilinchlari — buzilishlar va stop — doim tepada). Qolgani kechki xulosaga tushadi." },
-    },
-    coach: {
-      tauDefaultBps: { label: "Standart tarqoqlik", help: "Kesimda 30+ savdoli treyderlar 5 tadan kam boʻlganda treyder deskdan qanchalik farq qilishi mumkin (savdo hajmidan b.p.)." },
-      leakMinUsdPerDay: { label: "Xulosa uchun minimum", help: "Kesim «topaman» yoki «yoʻqotaman» deb faqat savdo kuniga shu summadan kam boʻlmasa koʻrsatiladi." },
     },
     academy: {
       plateau: { minTenure: { label: "Surʼat baholanguncha bosqichdagi kunlar", help: "Kurator «surʼat kerakligidan past»ni koʻrishidan oldin bosqichda nechta savdo kuni kerak. Treyderga koʻrsatilmaydi." } },

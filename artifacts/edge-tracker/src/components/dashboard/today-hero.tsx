@@ -65,12 +65,13 @@ function Cell({
       ) : (
         <span className={cn("truncate text-xl font-semibold leading-7 tabular-nums tracking-tight", toneText(tone))}>{value}</span>
       )}
-      {loading ? <Skeleton className="h-3.5 w-28 rounded" /> : hint != null && <span className="truncate text-xs text-muted-foreground tabular-nums">{hint}</span>}
+      {loading ? <Skeleton className="h-3.5 w-28 rounded" /> : hint != null && <span className="text-xs text-muted-foreground tabular-nums max-lg:line-clamp-2 lg:truncate">{hint}</span>}
       {!loading && extra}
     </>
   );
   const cls = "flex min-w-0 flex-col gap-0.5 lg:border-l lg:border-[var(--glass-border)] lg:pl-4";
-  // Narrow cells truncate the hint: keep the full text reachable on hover.
+  // Narrow desktop cells truncate the hint: keep the full text reachable on hover. Phones (no hover, one cell per
+  // row) wrap it to two lines instead («Max drawdown reached: $947.66 from peak with a …» was cut).
   const tip = title ?? (typeof hint === "string" ? hint : undefined);
   if (href) {
     return (
@@ -355,7 +356,7 @@ export function DashboardHeader({
               tone={toneOf(w?.pnlNet ?? (w && w.rCount > 0 ? w.r : null))}
               hint={weekHint}
             />
-            <RiskCell risk={risk} desk={desk} team={team} loading={loading} />
+            <div data-tour="risk" className="min-w-0"><RiskCell risk={risk} desk={desk} team={team} loading={loading} /></div>
           </>
         )}
       </div>

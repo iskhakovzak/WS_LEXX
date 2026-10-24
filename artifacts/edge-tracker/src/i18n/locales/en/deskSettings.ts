@@ -7,13 +7,14 @@ export default {
   description: "Daily-loop thresholds, discipline points, Telegram send times and privacy. They apply to the whole desk as soon as you save.",
   groups: {
     daily: { title: "Focus of the day", description: "How we find a trader's costliest repeating mistake." },
+    coach: { title: "Coaching", description: "The per-band fee model and the desk-adjusted «where I earn / lose» map: windows, thresholds and verdict minimums." },
+    alerts: { title: "Notification budget", description: "How many Telegram messages a person gets a day, and the curator's evening digest. Risk alerts are never capped, only deduplicated." },
     discipline: { title: "Contract and discipline", description: "Points to the day's discipline for the own contract and streaks." },
     rewards: { title: "Levels", description: "Levels by discipline points (the rewards catalog is above)." },
     quests: { title: "Quests", description: "First steps, daily, weekly, monthly and curator quests: switches, targets and rewards in discipline points." },
     achievements: { title: "Achievements", description: "Tier thresholds: 1 — bronze, 2 — silver, 3 — gold, 4 — platinum." },
     telegram: { title: "Telegram", description: "Bot sends on weekdays. Times are New York time, Tashkent time next to them." },
     curator: { title: "Curator queue", description: "What stays in the queue of problems by money." },
-    coach: { title: "Evidence-based coaching", description: "The «where I earn / lose» map adjusted to the desk, and the thresholds of its verdicts." },
     academy: { title: "Academy: pace", description: "When a trader counts as not yet at the stage's pace (curators only)." },
     privacy: { title: "Privacy", description: "What traders see about colleagues and what they may show outside the desk." },
     trainer: { title: "Trainer", description: "Simulator fills (spread, slippage, 1R), «Daily challenge» and «Find the entry»." },
@@ -92,11 +93,27 @@ export default {
       focusWindowDays: { label: "Focus window", help: "How many recent trading days we look at to find the costliest repeating mistake." },
       focusMinDays: { label: "Mistake repeats", help: "A mistake becomes the focus only if it happened on at least this many days of the window." },
       focusMinCostUsd: { label: "Minimum mistake cost", help: "Cheaper mistakes are noise: the focus then says “nothing repeating”." },
-      feesShare: { label: "Fees: mistake threshold", help: "A day whose fees reach this share of the gross profit is the “fees ate the profit” mistake." },
+      feesShare: { label: "Fees: mistake threshold", help: "Fees reaching this share of the gross profit are the “fees ate the profit” mistake; with a gross at or below zero any fees above the minimum count." },
       feesHealthyShare: { label: "Fees: healthy share", help: "The mistake costs the fees above this healthy share of the gross profit." },
       feesMinUsd: { label: "Fees: minimum", help: "A smaller daily fee total is not a mistake." },
+      feesWeekly: { label: "Fees: judge per week", help: "Fees are summed over the trading week (one mistake per week) instead of each day — less daily noise." },
+      feesWeeklyMinUsd: { label: "Fees: weekly minimum", help: "A smaller weekly fee total is not a mistake (when fees are judged per week)." },
       givebackMinPeakUsd: { label: "Giveback: day peak", help: "The day's profit peak from which a giveback counts (or the trader's median green day, if larger)." },
       givebackKeepShare: { label: "Giveback: kept", help: "A giveback is a day closed at this share of the peak or less." },
+    },
+    coach: {
+      feeWindowDays: { label: "Fee model window", help: "How many recent days with trades the fee model by price band uses." },
+      feeBandMinTrades: { label: "Trades in a band", help: "A price band is flagged only with at least this many trades in the window." },
+      feeBandRatioMin: { label: "Gross ÷ fees threshold", help: "A band is flagged when its gross per share is below this many times its fees per share — and even the interval's upper bound falls short." },
+      tauDefaultBps: { label: "Default spread", help: "How far a trader may differ from the desk in a slice while fewer than 5 traders have 30+ trades in it (bp of trade notional)." },
+      leakMinUsdPerDay: { label: "Minimum for a verdict", help: "A slice is shown as «earn» or «lose» only when it is worth at least this much per trading day." },
+    },
+    alerts: {
+      budget: {
+        dailyPush: { label: "Telegram per person a day", help: "How many bot messages (risk alerts aside) a person gets per New York day; the rest stay in the app." },
+        coachingPush: { label: "Of them, coaching nudges", help: "How many of them may be behaviour nudges (now: the own-contract daily stop)." },
+        riskQuietMinutes: { label: "Quiet after a risk alert", help: "For how many minutes after a risk alert the trader gets no own-contract alert — the same stop said twice." },
+      },
     },
     discipline: {
       contractKeptPoints: { label: "Contract item kept", help: "Points to the day's discipline for every kept item of the own contract (stop, trade limit, rule)." },
@@ -109,6 +126,8 @@ export default {
         options: { reset: "Starts from zero", halve: "Keeps half" },
       },
       pointsWindowDays: { label: "Discipline points window", help: "Over how many recent trading days discipline points are summed (the level uses all-time points)." },
+      promotionMinIndex: { label: "Discipline index: stage promotion", help: "Discipline index threshold (0–100) in the Junior → Trader criteria when they are first seeded. Saved criteria are edited on the trader path screen." },
+      scalingMinIndex: { label: "Discipline index: scaling plan", help: "Discipline index threshold (0–100) in the scaling plan's promote rule when it is first seeded. Saved rules are edited on the scaling page." },
     },
     rewards: {
       level1Points: { label: "Level 1 “Focused”", help: "All-time discipline points needed for the first level." },
@@ -190,11 +209,10 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Queue carry-over", help: "How many past trading days unresolved problems stay in the curator queue." },
+      digestEnabled: { label: "Evening digest", help: "One digest for the curator on weekdays: their traders' closed days and what to look at first. In Telegram — instead of a message per closed day." },
+      digestTime: { label: "Evening digest time", help: "Weekdays, New York time." },
+      digestTopN: { label: "Items in the digest", help: "How many traders from the queue the digest names." },
       capacity: { label: "Steps in the curator list", help: "How many «Next steps» to show (urgent ones — breaches and stops — always on top). The rest goes to the evening digest." },
-    },
-    coach: {
-      tauDefaultBps: { label: "Default spread", help: "How far a trader may differ from the desk in a slice while fewer than 5 traders have 30+ trades in it (bp of trade notional)." },
-      leakMinUsdPerDay: { label: "Minimum for a verdict", help: "A slice is shown as «earn» or «lose» only when it is worth at least this much per trading day." },
     },
     academy: {
       plateau: { minTenure: { label: "Days at the stage before the pace is judged", help: "Trading days at the stage before the curator sees «pace below target». Never shown to the trader." } },

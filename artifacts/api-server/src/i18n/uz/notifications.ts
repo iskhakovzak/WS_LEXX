@@ -63,6 +63,15 @@ export default {
   },
   // ── server-b (translation wave) ──
   /** Type labels and descriptions (preferences panel, chips); key = canonical type (lib/notificationCore.ts). */
+  curator_digest: {
+    title: "{date} uchun kechki xulosa",
+    body: "Yopilgan kunlar: {closed}, tahlil kutmoqda: {unreviewed}",
+    top: "Avval bularga qarang:",
+    nothing: "Pul boʻyicha muammolar navbati boʻsh.",
+    line: "{n}. {trader} — {reason}",
+    lineCost: "{n}. {trader} — {reason}, {cost}",
+    reason: { breach_review: "buzilish tahlili", stopped: "stopda", near_stop: "stopga yaqin", eod_review: "yopilgan kun tahlil kutmoqda", weekly_review: "hafta hisoboti", overdue_action: "1:1 kelishuvlari muddati oʻtgan", no_limits: "limitlar yoʻq", template_drift: "limitlar shablonga mos emas", missing_plan: "reja yoʻq", missing_eod: "kun yopilmagan", one_on_one: "uzoq vaqt 1:1 boʻlmagan", plateau_review: "surʼat bosqich uchun kerakligidan past", at_stake: "minus va yoʻqotishlar", dropout_risk: "ketish xavfi", trial_review: "qoida sinovi tugayapti", stop_breach: "limit buzilishi", focus_broken: "fokus buzildi", disputed: "fokus boʻyicha «xato emas»", fees: "komissiyalar", loss_streak: "zararli kunlar seriyasi", giveback: "foydani qaytarish", rule: "qoidalar buzilishi", other: "qarash kerak" },
+  },
   types: {
     mention: { label: "Eslatish", description: "Kimdir sizni muhokama, gʻoya yoki qaydda @ism orqali eslatdi" },
     reply: { label: "Javob", description: "Postingizga yoki muhokamangizda javob, «yechim» belgisi" },
@@ -114,6 +123,7 @@ export default {
     reward_declined: { label: "Mukofot rad etildi", description: "Mukofot soʻrovi rad etildi" },
     curator_request: { label: "Kuratorga soʻrov", description: "Treyder kuratordan yordam soʻradi" },
     curator_request_done: { label: "Kurator soʻrovga javob berdi", description: "Kurator soʻrovingizni yopdi" },
+    curator_digest: { label: "Kuratorning kechki xulosasi", description: "Ish kunlari bitta xulosa: shogirdlarning yopilgan kunlari va avval nimaga qarash (Telegramda — har kun uchun xabar oʻrniga)" },
     system: { label: "Tizim", description: "Xizmat xabarlari" },
   },
   groups: {

@@ -18,8 +18,8 @@ const PREFS_KEY = "ws_lexx_dashboard_prefs_v5";
 const LEGACY_PREFS_KEY = "ws_lexx_dashboard_prefs_v4";
 const LEGACY_SPLIT: Record<string, SectionId[]> = { ritual: ["checkin", "brief", "quote"], market: ["sectors", "macro", "dna"] };
 
-/** Own-trade cards (streaks + the compact insight row): shown on «Мои» only, hidden in a «Команда» default. */
-const OWN_CARDS: SectionId[] = ["streaks", "seqDay", "holdTime", "weekdays", "afterLoss"];
+/** Own-trade insight tiles: shown on «Мои» only, hidden in a «Команда» default. */
+const OWN_CARDS: SectionId[] = ["streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "fees", "todayTile"];
 
 /** Sensible defaults: the cockpit on top, extras off (traders keep the morning check-in); staff see the desk instead of streaks. */
 function defaultPrefs(scope: Scope): DashboardPrefs {

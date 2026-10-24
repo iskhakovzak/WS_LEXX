@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`/edge/costs by price band > groups by the trade-facet price band and reports gross ÷ fees per share 1`] = `
+"WITH base AS MATERIALIZED (
+    SELECT (CASE WHEN t.entry IS NULL OR t.entry <= 0 THEN 'unknown' WHEN t.entry < 5 THEN 'lt5' WHEN t.entry < 10 THEN '5-10' WHEN t.entry < 20 THEN '10-20' WHEN t.entry < 50 THEN '20-50' WHEN t.entry < 100 THEN '50-100' WHEN t.entry < 200 THEN '100-200' ELSE 'gt200' END) AS key, COALESCE(TRANSLATE(LOWER(TRIM(t.result)), 'ПРИБЫЛЬОФТУКСЕЗ', 'прибыльофтуксез') IN ('win','прибыль','профит') OR TRANSLATE(LOWER(TRIM(t.result)), 'ПРИБЫЛЬОФТУКСЕЗ', 'прибыльофтуксез') IN ('loss','убыток','лосс') OR TRANSLATE(LOWER(TRIM(t.result)), 'ПРИБЫЛЬОФТУКСЕЗ', 'прибыльофтуксез') IN ('be','breakeven','безубыток','бу'), FALSE) AS closed,
+           t.pnl::float8 AS gross, (t.pnl - ABS(COALESCE(t.fees, 0)))::float8 AS net,
+           (CASE WHEN t.pnl IS NOT NULL THEN ABS(COALESCE(t.fees, 0)) END)::float8 AS fees,
+           t.fees IS NOT NULL AND t.fees <> 0 AS has_fees,
+           t.qty::float8 AS qty, t.slippage::float8 AS slippage
+    FROM trades t
+    WHERE t.deleted_at IS NULL AND t.trader = $1
+  )
+  SELECT key,
+         COUNT(*)::int AS trades,
+         COUNT(*) FILTER (WHERE closed)::int AS closed,
+         COUNT(gross) FILTER (WHERE closed)::int AS trades_with_pnl,
+         COUNT(*) FILTER (WHERE closed AND has_fees)::int AS trades_with_fees,
+         COALESCE(SUM(gross) FILTER (WHERE closed), 0)::float8 AS gross,
+         COALESCE(SUM(gross) FILTER (WHERE closed AND gross > 0), 0)::float8 AS gross_wins,
+         COALESCE(SUM(fees) FILTER (WHERE closed), 0)::float8 AS fees,
+         COALESCE(SUM(net) FILTER (WHERE closed), 0)::float8 AS net,
+         COALESCE(SUM(ABS(qty)) FILTER (WHERE closed AND gross IS NOT NULL), 0)::float8 AS shares,
+         COUNT(slippage)::int AS slippage_n,
+         COALESCE(SUM(slippage), 0)::float8 AS slippage_sum
+  FROM base
+  GROUP BY key
+  ORDER BY key"
+`;

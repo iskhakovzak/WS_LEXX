@@ -20,6 +20,7 @@ import { cleanUserName, RenameError, renameUserInTx, type RenameReport } from ".
 import { invalidateDashboardCache } from "../lib/hotCache";
 import { warmSettings } from "../lib/settings/store";
 import { StoredAppearanceSchema } from "../lib/people/appearanceSchema";
+import { OnboardingStateSchema } from "../lib/people/onboarding";
 
 const router: IRouter = Router();
 
@@ -240,6 +241,8 @@ const SettingsPatch = z.object({
   shareAchievements: z.boolean().optional(),
   /** «Вид»: the personal look + up to 5 saved looks (lib/people/appearanceSchema). null removes it. */
   appearance: StoredAppearanceSchema.nullable().optional(),
+  /** First-visit onboarding: tour / checklist / page hints seen or dismissed (lib/people/onboarding). null removes it. */
+  onboarding: OnboardingStateSchema.nullable().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -268,6 +271,8 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   if (body.data.shareAchievements !== undefined) set.shareAchievements = body.data.shareAchievements;
   if (body.data.appearance === null) drop.push("appearance");
   else if (body.data.appearance !== undefined) set.appearance = body.data.appearance;
+  if (body.data.onboarding === null) drop.push("onboarding");
+  else if (body.data.onboarding !== undefined) set.onboarding = body.data.onboarding;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,

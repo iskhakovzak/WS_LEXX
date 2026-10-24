@@ -44,8 +44,9 @@ describe("costQueue reasons", () => {
     expect(feesReason(40, 21)).toMatchObject({ kind: "fees", costNet: -11, text: { params: { pct: 53 } } });
     expect(feesReason(6, 4)).toBeNull(); // below $5 of fees
     expect(feesReason(40, 19)).toBeNull();
-    expect(feesReason(-80, 30)).toBeNull();
-    expect(feesReason(null, 30)).toBeNull();
+    // Roadmap R2: a day with gross ≤ 0 counts — every cent of its fees bought nothing.
+    expect(feesReason(-80, 30)).toMatchObject({ kind: "fees", costNet: -30, text: { key: "costQueue.detail.feesNoGross", params: { pct: null } } });
+    expect(feesReason(null, 30)).toMatchObject({ costNet: -30 });
   });
 
   it("loss streak counts losing traded days back from the day", () => {

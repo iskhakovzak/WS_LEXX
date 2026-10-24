@@ -20,6 +20,7 @@ import { MobileNav } from "@/components/shell/mobile-nav";
 import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-prefs";
 import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
 import { Wordmark } from "@/components/ds/brand";
+import { OnboardingMount } from "@/components/onboarding-mount";
 
 /**
  * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
@@ -110,7 +111,7 @@ function Logo() {
   return (
     // «WS_Desk» lockup: the mark carries «WS»; a narrow header keeps just the mark.
     <Link href="/" aria-label={t("header.logoAria")} className="flex h-10 shrink-0 items-center rounded-xl pr-1 text-foreground">
-      <Wordmark className="text-[1.375rem]" deskClassName="hidden @[960px]:inline" />
+      <Wordmark className="text-[1.5rem]" deskClassName="hidden @[960px]:inline" />
     </Link>
   );
 }
@@ -210,6 +211,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <MobileNav location={location} />
       <PlaybookSheetHost />
       <AppearanceHost />
+      <OnboardingMount />
     </SidebarProvider>
   );
 }

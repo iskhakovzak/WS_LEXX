@@ -83,9 +83,10 @@ export function uniqueRecipients(
 /**
  * Notification kinds that are mirrored to Telegram (notifyUser `telegram: true`: rendered in the recipient's
  * language, sent only to a linked chat with the Telegram switch on). The daily loop (Волна 0, item 0.7): the curator's
- * review of a day reaches the trader's phone, a closed day reaches the curator's.
+ * review of a day reaches the trader's phone. A closed day («eod_review_request») stays in-app only: the curator gets
+ * one evening digest in Telegram instead of a message per trader (roadmap R3, lib/curatorDigest).
  */
-export const TELEGRAM_KINDS: ReadonlySet<string> = new Set(["eod_review_request", "eod_reviewed"]);
+export const TELEGRAM_KINDS: ReadonlySet<string> = new Set(["eod_reviewed"]);
 
 /** Does a notification of `type` go to Telegram as well? */
 export function mirrorsToTelegram(type: string): boolean {

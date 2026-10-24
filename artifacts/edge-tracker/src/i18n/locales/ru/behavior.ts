@@ -52,7 +52,7 @@ export default {
   dur: { seconds: "{count} с", minutes: "{count} мин", hm: "{h} ч {m} мин", days: "{value} д" },
   severity: { none: "не стоит денег", few: "мало случаев", low: "низкая", medium: "средняя", high: "высокая" },
   pattern: {
-    revenge: "реванш", martingale: "мартингейл", overtrading: "овертрейдинг", tilt: "тильт", chase: "отыгрыш",
+    revenge: "быстрый перезаход", martingale: "мартингейл", overtrading: "овертрейдинг", tilt: "тильт", chase: "отыгрыш",
     euphoria: "эйфория", fatigue: "усталость", disposition: "пересиживание", firstTrade: "первая сделка",
   },
   marker: { revenge: "Р", tilt: "Т", martingale: "М", euphoria: "Э", chase: "О", overtrading: "+", disposition: "П" },

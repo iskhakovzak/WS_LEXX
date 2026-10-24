@@ -9,6 +9,7 @@ export default {
   tabs: {
     overview: "Обзор",
     edge: "Преимущество",
+    myedge: "Мой edge и рынок",
     matrix: "Матрица",
     whatif: "Что если",
     montecarlo: "Монте-Карло",
