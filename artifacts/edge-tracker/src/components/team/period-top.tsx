@@ -194,7 +194,7 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
     setSide("all");
     setExpanded((prev) => new Set(prev).add(trader));
     requestAnimationFrame(() => {
-      document.getElementById(`lb-${encodeURIComponent(trader)}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById(`lb-${encodeURIComponent(trader)}`)?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
     });
   }, []);
 

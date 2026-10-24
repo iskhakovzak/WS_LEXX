@@ -141,7 +141,7 @@ export default function AnalyticsPro({ trades }: Props) {
     if (kind === "month") setFocus({ view: "month", year: Number(key.slice(0, 4)), month: Number(key.slice(5, 7)) - 1, day: null });
     else setFocus({ ...focusFor(key), day: kind === "day" ? key : null });
     if (typeof document !== "undefined") {
-      document.getElementById("pro-calendar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("pro-calendar")?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
     }
   }, []);
 
