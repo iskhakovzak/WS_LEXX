@@ -34,28 +34,39 @@
 }
 
 /*
- * Dashboard «Ваш edge» (bento.tsx `layout`): `lead` = the primary tiles side by side (wide 7 + streak 5 from 1280px, one
- * row each below), `row` = the compact tiles as equal cards in one row (they wrap, never leave a hole).
+ * Dashboard content layouts (kit.tsx TileVariant, chosen from the tile's packed width): `s` compact = numeral +
+ * verdict, `m` medium = + chart, `l` large = the answer beside the chart and its detail. The tile is a size container,
+ * so numerals scale with the tile, not the window — one type scale: the hero strip > a large tile > a compact one.
  */
-.ins-bento[data-layout] > * { grid-row: auto; }
-.ins-bento[data-layout="lead"] > :only-child,
-.ins-bento[data-layout="lead"] > [data-size="half"] { grid-column: 1 / -1; }
-.ins-bento[data-layout="row"] { grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
-.ins-bento[data-layout="row"] > * { grid-column: auto; }
-
-/* One type scale on the dashboard: hero number (type-hero) > a primary tile's numeral > a compact tile's numeral. */
-.ins-bento[data-layout="lead"] .ins-huge-xl { font-size: clamp(2.5rem, 1.8rem + 1.4vw, 3rem); }
-.ins-bento[data-layout="lead"] .ins-huge-lg { font-size: clamp(2.25rem, 1.6rem + 1.2vw, 2.75rem); }
-.ins-bento[data-layout="lead"] .ins-caption-xl { font-size: clamp(1.25rem, 1rem + 0.5vw, 1.5rem); line-height: 1.1; }
-.ins-bento[data-layout="lead"] .ins-verdict-lg { font-size: 1.0625rem; line-height: 1.35; }
-.ins-bento[data-layout="row"] :is(.ins-huge-xl, .ins-huge-lg, .ins-huge-md) { font-size: clamp(1.75rem, 1.4rem + 0.6vw, 2rem); }
-.ins-bento[data-layout="row"] .ins-caption { font-size: 1rem; }
-/* Compact cards keep one header line and one-line badges: «Подробнее» is its icon (the word stays for screen readers),
+.ins-tile[data-variant] { container-type: inline-size; min-height: 0; }
+.ins-tile[data-variant] .ins-huge-xl { font-size: clamp(3rem, 2rem + 9cqi, 5rem); }
+.ins-tile[data-variant] :is(.ins-huge-lg, .ins-huge-md) { font-size: clamp(2rem, 1.25rem + 5cqi, 3rem); }
+.ins-tile[data-variant] .ins-caption-xl { font-size: clamp(1.125rem, 0.9rem + 1.6cqi, 1.5rem); line-height: 1.1; }
+.ins-tile[data-variant] .ins-verdict-lg { font-size: 1.0625rem; line-height: 1.35; }
+.ins-tile[data-variant="s"] .ins-huge-xl { font-size: clamp(2.75rem, 1.5rem + 9cqi, 4rem); }
+.ins-tile[data-variant="s"] :is(.ins-huge-lg, .ins-huge-md) { font-size: clamp(1.75rem, 1.2rem + 4cqi, 2.25rem); }
+.ins-tile[data-variant="s"] .ins-caption { font-size: 1rem; }
+.ins-tile[data-variant="s"] .ins-strip { height: 3.25rem; gap: 0.2rem; }
+.ins-tile[data-variant="s"] .ins-run { bottom: 1rem; }
+.ins-tile[data-variant="s"] .ins-compact-verdict .ins-verdict {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden;
+}
+.ins-tile[data-variant="l"] .ins-huge-lg { font-size: clamp(2.5rem, 1.5rem + 4cqi, 3.5rem); }
+/* Medium cards keep one header line and one-line badges: «Подробнее» is its icon (the word stays for screen readers),
    the confidence interval lives in the badge's tooltip. */
-.ins-bento[data-layout="row"] .ins-more-text {
+.ins-tile[data-variant="m"] .ins-more-text {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
-.ins-bento[data-layout="row"] .ins-ci { display: none; }
+.ins-tile[data-variant="m"] .ins-ci { display: none; }
+
+/* Large: two columns when the tile is wide enough, stacked otherwise (phones). */
+.ins-large { display: grid; flex: 1 1 auto; gap: 1.25rem 2rem; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.ins-large-main, .ins-large-side { display: flex; min-width: 0; flex-direction: column; gap: 0.875rem; }
+.ins-large-side { justify-content: flex-end; }
+.ins-large-detail { border-top: 1px solid var(--glass-border); padding-top: 0.875rem; }
+@container (min-width: 34rem) {
+  .ins-large { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
+}
 
 .ins-tile {
   --ins-rim-hi: rgb(255 255 255 / 0.95);

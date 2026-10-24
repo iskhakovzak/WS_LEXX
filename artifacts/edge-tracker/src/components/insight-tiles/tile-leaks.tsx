@@ -11,7 +11,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { trendOf } from "@/lib/stats-lite";
 import { cn } from "@/lib/utils";
 import { insightTilesI18n } from "@/i18n/ns/insightTiles";
-import { ActionChip, Actions, Caption, ConfidenceBadge, DetailGrid, Huge, Num, Phrase, Tile, TrendChip, Verdict, toneText, usd, usdAbs, useTone } from "./kit";
+import { ActionChip, Actions, Caption, ConfidenceBadge, DetailGrid, Huge, LowData, Num, Phrase, Tile, TrendChip, Verdict, toneText, usd, usdAbs, useTone, type TileVariant } from "./kit";
 import { EDGE_MIN, ruleForSlice, sliceNet, useEdgeMap, type EdgeSlice } from "./edge-map";
 import { ruleText, sliceLabel, useDrill, whatIfHref, type InsightScope } from "./nav";
 import type { InsightTrade } from "./model";
@@ -41,7 +41,7 @@ function SliceRow({ s, max, onOpen }: { s: EdgeSlice; max: number; onOpen: () =>
   );
 }
 
-export function LeaksTile({ trades, prev, scope }: { trades: readonly InsightTrade[]; prev?: readonly InsightTrade[] | null; scope: InsightScope }) {
+export function LeaksTile({ trades, prev, scope, variant }: { trades: readonly InsightTrade[]; prev?: readonly InsightTrade[] | null; scope: InsightScope; variant?: TileVariant }) {
   const { t } = insightTilesI18n.useT();
   const tone = useTone();
   const map = useEdgeMap(trades);
@@ -51,11 +51,14 @@ export function LeaksTile({ trades, prev, scope }: { trades: readonly InsightTra
   const strength = map?.strengths[0] ?? null;
   const prevLeak = React.useMemo(() => (leak && prev ? sliceNet(prev, leak.dim, leak.key) : null), [leak, prev]);
   const label = t("leaks.label");
-  if (!map) return null;
+  // Too few trades for any slice: on the dashboard the tile still holds its place (its grid never gets a hole).
+  if (!map) return !variant ? null : <Tile variant={variant} id="leaks" size="wide" label={label} verdict={<LowData have={trades.length} need={EDGE_MIN.trades} />} />;
 
   const open = (s: EdgeSlice) => drill(s.dim, [s.key], s.dim === "strategies" ? strategies : []);
   const period = t("period", { period: scope.periodLong });
-  const ranked = [...map.leaks.slice(0, 3), ...map.strengths.slice(0, 2)];
+  // The medium dashboard tile: the ranked list only (the strongest slice is in it); large / /stats: + the strength.
+  const ranked = variant === "m" ? [...map.leaks.slice(0, 2), ...map.strengths.slice(0, 2)] : [...map.leaks.slice(0, 3), ...map.strengths.slice(0, 2)];
+  const showStrength = variant !== "m";
   const max = Math.max(1, ...ranked.map((s) => Math.abs(s.net)));
   const rule = leak ? ruleForSlice(leak) : null;
   const trend = leak && prevLeak && prevLeak.trades ? trendOf(leak.net, prevLeak.net, { flatWithin: 1 }) : null;
@@ -72,6 +75,7 @@ export function LeaksTile({ trades, prev, scope }: { trades: readonly InsightTra
 
   return (
     <Tile
+      variant={variant}
       id="leaks"
       size="wide"
       phoneVerdictFirst={false}
@@ -89,7 +93,7 @@ export function LeaksTile({ trades, prev, scope }: { trades: readonly InsightTra
       chart={
         ranked.length > 0 && (
           <div className="flex flex-col gap-3">
-            {strength && (
+            {strength && showStrength && (
               <div className="flex flex-col items-start gap-1.5 border-t border-[var(--glass-border)] pt-3">
                 <span className="ins-label">{t("leaks.strengthLabel")}</span>
                 <p className="ins-verdict text-sm">

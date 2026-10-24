@@ -13,7 +13,7 @@ import { fmtDate, fmtRate } from "@/lib/format";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { insightTilesI18n } from "@/i18n/ns/insightTiles";
-import { ActionChip, Actions, Caption, DetailGrid, Huge, LowData, Num, Tile, Verdict, toneText, usd, useTone } from "./kit";
+import { ActionChip, Actions, Caption, DetailGrid, Huge, LowData, Num, Tile, Verdict, toneText, usd, useTone, type TileVariant } from "./kit";
 import { TILE_MIN, streakInsight } from "./insights";
 import { idsHref, ruleText, whatIfHref, type InsightScope } from "./nav";
 import type { InsightTrade, StreakTrade } from "./model";
@@ -107,7 +107,7 @@ function Strip({ recent, runFrom }: { recent: StreakTrade[]; runFrom: number }) 
   );
 }
 
-export function StreakTile({ trades, scope }: { trades: readonly InsightTrade[]; scope: InsightScope }) {
+export function StreakTile({ trades, scope, variant }: { trades: readonly InsightTrade[]; scope: InsightScope; variant?: TileVariant }) {
   const { t } = insightTilesI18n.useT();
   const range = useBeRange();
   const tone = useTone();
@@ -119,7 +119,7 @@ export function StreakTile({ trades, scope }: { trades: readonly InsightTrade[];
   const label = t("streak.label", { count: n });
 
   if (s.closed < TILE_MIN.streakTrades) {
-    return <Tile id="streak" size="hero" label={label} verdict={<LowData have={s.closed} need={TILE_MIN.streakTrades} />} />;
+    return <Tile variant={variant} id="streak" size="hero" label={label} verdict={<LowData have={s.closed} need={TILE_MIN.streakTrades} />} />;
   }
 
   const nets = s.recent.map((x) => x.net ?? 0);
@@ -136,9 +136,13 @@ export function StreakTile({ trades, scope }: { trades: readonly InsightTrade[];
     : cur.count >= s.bestWin ? t("streak.record")
     : t("streak.toRecord", { best: s.bestWin, count: s.bestWin - cur.count + 1 });
   const stopRule = { type: "stopAfterLosses" as const, n: 2 };
+  // The compact tile keeps the last capsules (the streak is a picture, not only a number).
+  const miniFrom = Math.max(0, n - PHONE_CAPSULES);
 
   return (
     <Tile
+      variant={variant}
+      mini={<Strip recent={s.recent.slice(miniFrom)} runFrom={Math.max(0, runFrom - miniFrom)} />}
       id="streak"
       size="hero"
       label={label}

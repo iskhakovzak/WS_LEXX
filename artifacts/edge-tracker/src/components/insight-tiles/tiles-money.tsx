@@ -14,13 +14,13 @@ import { insightTilesI18n } from "@/i18n/ns/insightTiles";
 import { TileBars } from "./bars";
 import {
   ActionChip, Actions, Caption, ConfidenceBadge, DetailGrid, Huge, InlineBars, LowData, Num, Phrase, Spark, Tile, TrendChip,
-  pp, toneText, usd, useTone,
+  pp, toneText, usd, useTone, type TileVariant,
 } from "./kit";
 import { TILE_MIN, feesInsight, summaryOf, todayInsight, weekdayInsight, weekdayTradesOf } from "./insights";
 import { idsHref, useDrill, type InsightScope } from "./nav";
 import type { InsightTrade } from "./model";
 
-type Props = { trades: readonly InsightTrade[]; prev?: readonly InsightTrade[] | null; scope: InsightScope };
+type Props = { trades: readonly InsightTrade[]; prev?: readonly InsightTrade[] | null; scope: InsightScope; variant?: TileVariant };
 const tradesUnit = (n: number) => commonI18n.t("units.trades", { count: n });
 /** «1» (Mon) … «7» (Sun) → Date#getDay index for fmtWeekday. */
 const dayIndex = (key: string) => Number(key) % 7;
@@ -29,14 +29,14 @@ const signedPp = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${pp(v)}`;
 
 /* ─────────────────────── «Дни недели» ─────────────────────── */
 
-export function WeekdayTile({ trades, prev, scope }: Props) {
+export function WeekdayTile({ trades, prev, scope, variant }: Props) {
   const { t } = insightTilesI18n.useT();
   const tone = useTone();
   const s = React.useMemo(() => weekdayInsight(trades, prev), [trades, prev]);
   const drill = useDrill(scope);
   const worstSummary = React.useMemo(() => (s.worst ? summaryOf(weekdayTradesOf(trades, s.worst.key)) : null), [trades, s.worst]);
   const label = t("weekdays.label");
-  if (!s.enough || !s.best || !s.worst) return <Tile id="weekdays" size="half" label={label} verdict={<LowData have={s.sample} need={TILE_MIN.weekdayTrades} />} />;
+  if (!s.enough || !s.best || !s.worst) return <Tile variant={variant} id="weekdays" size="half" label={label} verdict={<LowData have={s.sample} need={TILE_MIN.weekdayTrades} />} />;
 
   const best = s.best, worst = s.worst;
   const worstName = cap(fmtWeekday(dayIndex(worst.key), "long"));
@@ -45,6 +45,7 @@ export function WeekdayTile({ trades, prev, scope }: Props) {
     : t("weekdays.verdictUp", { day: worstName, amount: "{amount}" });
   return (
     <Tile
+      variant={variant}
       id="weekdays"
       size="half"
       label={label}
@@ -108,16 +109,17 @@ export function WeekdayTile({ trades, prev, scope }: Props) {
 
 /* ─────────────────────── «Комиссии» ─────────────────────── */
 
-export function FeesTile({ trades, prev, scope }: Props) {
+export function FeesTile({ trades, prev, scope, variant }: Props) {
   const { t } = insightTilesI18n.useT();
   const s = React.useMemo(() => feesInsight(trades, prev), [trades, prev]);
   const label = t("fees.label");
-  if (!s.enough || s.margin == null || s.beRate == null) return <Tile id="fees" size="third" label={label} verdict={<LowData have={s.trades} need={TILE_MIN.feeTrades} />} />;
+  if (!s.enough || s.margin == null || s.beRate == null) return <Tile variant={variant} id="fees" size="third" label={label} verdict={<LowData have={s.trades} need={TILE_MIN.feeTrades} />} />;
 
   const shareKnown = s.feeShare != null;
   const perShare = (v: number | null) => fmtUsd(v, { decimals: 4 });
   return (
     <Tile
+      variant={variant}
       id="fees"
       size="third"
       label={label}

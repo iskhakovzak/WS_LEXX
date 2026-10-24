@@ -52,6 +52,7 @@ export function EquityPanel({
   fill,
   note,
   showBreakeven,
+  density,
 }: {
   data: DashboardEquity | undefined;
   isLoading: boolean;
@@ -66,6 +67,8 @@ export function EquityPanel({
   note?: string | null;
   /** «Мои» view: the win rate vs the breakeven win rate line (roadmap R2). */
   showBreakeven?: boolean;
+  /** Dashboard tile layout: compact = total + curve, medium = + the four numbers in two columns, large = in one row. */
+  density?: "s" | "m" | "l";
 }) {
   const { t: td } = dashboardI18n.useT();
   const PERIOD_OPTIONS = periodOptions();
@@ -182,8 +185,8 @@ export function EquityPanel({
               </div>
             }
           />
-          {t && days.length > 0 && (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+          {t && days.length > 0 && density !== "s" && (
+            <div className={cn("grid grid-cols-2 gap-x-4 gap-y-2", density !== "m" && "sm:grid-cols-4")}>
               <Stat label="Win rate" title={KPI_FORMULAS.winRate}>
                 {fmtRate(t.winRate)} <span className="text-xs font-normal text-muted-foreground">{t.wins}W / {t.losses}L</span>
               </Stat>
@@ -199,7 +202,7 @@ export function EquityPanel({
               </Stat>
             </div>
           )}
-          {showBreakeven && <OwnBreakevenLine />}
+          {showBreakeven && density !== "s" && <OwnBreakevenLine />}
         </div>
       )}
     </DashCard>
