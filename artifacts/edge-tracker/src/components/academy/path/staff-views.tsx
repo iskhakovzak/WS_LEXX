@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Filter, Inbox, Loader2, Plus, Save, Settings2, Trash2 } from "lucide-react";
 import { EmptyState, ErrorState, Panel, Pill } from "@/components/ds";
+import { StageMedal } from "@/components/shared/medals";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -40,7 +41,9 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
       </p>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[repeat(var(--cols),minmax(0,1fr))]" style={{ "--cols": f.columns.length } as React.CSSProperties}>
         {f.columns.map((col) => (
-          <Panel key={col.key} title={col.key === "none" ? t("stage.unassigned") : stageName(f.stages, col.key)} description={t("stage.people", { count: col.people.length })} bodyClassName="flex flex-col gap-2">
+          <Panel key={col.key} title={col.key === "none" ? t("stage.unassigned") : (
+            <span className="inline-flex min-w-0 items-center gap-2"><StageMedal stage={col.key} size={28} decorative /><span className="truncate">{stageName(f.stages, col.key)}</span></span>
+          )} description={t("stage.people", { count: col.people.length })} bodyClassName="flex flex-col gap-2">
             {col.people.length === 0 && <p className="text-xs text-muted-foreground">{t("funnel.empty")}</p>}
             {col.people.map((p) => {
               const pct = p.total ? p.passed / p.total : 0;
@@ -115,8 +118,9 @@ export function RequestsView({ config, me, onOpen }: { config: PathConfig | unde
         <Panel title={t("requests.decidedTitle")}>
           <ul className="flex flex-col gap-2 text-sm">
             {decided.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-baseline gap-x-2">
+              <li key={r.id} className="flex flex-wrap items-center gap-x-2">
                 <Pill tone={r.status === "approved" ? "up" : r.status === "rejected" ? "down" : "neutral"} className="shrink-0">{t(`requests.status.${r.status}`)}</Pill>
+                <StageMedal stage={r.toStage} size={20} decorative locked={r.status !== "approved"} />
                 <button type="button" className="font-medium text-foreground hover:underline" onClick={() => onOpen(r.user)}>
                   {personName(r.user)}: {stageName(stages, r.fromStage)} → {stageName(stages, r.toStage)}
                 </button>

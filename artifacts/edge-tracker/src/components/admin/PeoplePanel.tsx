@@ -24,6 +24,7 @@ import {
   DataTable, EmptyState, FilterChip, Kbd, Panel, Pill, Segmented, SortableTh, TableSkeleton, useTableSort, type Tone,
 } from "@/components/ds";
 import { VirtualRows } from "@/components/ds/virtual";
+import { StageMedal, medalStageOf } from "@/components/shared/medals";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -507,7 +508,7 @@ export function PeoplePanel({
                             ) : canTouch(p) && <LatinSuggestion person={p} onEdit={() => setLatinFor(p)} />}
                           </td>
                           <td><Pill tone={roleTone(p.role)}>{roleLabel(p.role)}</Pill></td>
-                          <td>{p.role === "trader" ? (p.tier ? <span>{tierName[p.tier] ?? p.tier}</span> : <span className="text-muted-foreground">—</span>) : <span className="text-muted-foreground">—</span>}</td>
+                          <td>{p.role === "trader" ? (p.tier ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap">{medalStageOf(p.tier) && <StageMedal stage={medalStageOf(p.tier) ?? "junior"} size={20} decorative />}{tierName[p.tier] ?? p.tier}</span> : <span className="text-muted-foreground">—</span>) : <span className="text-muted-foreground">—</span>}</td>
                           <td>{p.role === "trader" ? (p.curator ? personName(p.curator) : <span className="whitespace-nowrap text-[hsl(var(--chart-3))]">{t("people.curatorNotSet")}</span>) : <span className="text-muted-foreground">—</span>}</td>
                           <td>
                             {p.accounts.length

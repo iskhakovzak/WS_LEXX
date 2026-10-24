@@ -2,6 +2,7 @@
 import * as React from "react";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Check, CircleDashed, Lock, X } from "lucide-react";
 import { Pill, type Tone } from "@/components/ds";
+import { StageMedal } from "@/components/shared/medals";
 import { cn } from "@/lib/utils";
 import {
   type ChallengeStatus, type CriterionResult, type DrawdownMode, type EventKind, type RuleProgress, type RuleState, type StageKey, type StageMeta, type TimelineDay, type Trend,
@@ -41,15 +42,21 @@ export function StageLadder({ stages, current, readyFor, counts }: {
               state === "current" && "border-primary/60 bg-primary/10",
               state === "done" && "border-up/30 bg-up/5",
               state === "next" && (readyFor === s.key ? "border-up/60 bg-up/10" : "border-[var(--field-border)] bg-[var(--glass-bg)]"),
-              state === "locked" && "border-[var(--field-border)] opacity-70",
+              state === "locked" && cn("border-[var(--field-border)]", !counts && "opacity-70"),
             )}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("stage.step", { n: i + 1 })}</span>
               <Icon className={cn("h-4 w-4", state === "done" && "text-up", state === "current" && "text-primary", state === "next" && "text-muted-foreground", state === "locked" && "text-muted-foreground")} aria-hidden="true" />
             </div>
-            <span className="truncate text-base font-semibold text-foreground" title={name}>{name}</span>
-            <span className="line-clamp-2 text-xs text-muted-foreground" title={description}>{description}</span>
+            <div className="flex min-w-0 items-center gap-3">
+              {/* The stage as a coin: earned stages minted, the ones ahead still blank (the staff funnel shows all minted). */}
+              <StageMedal stage={s.key} size={56} decorative locked={!counts && (state === "next" || state === "locked")} className={cn("size-10 sm:size-14", state === "current" && "drop-shadow-md")} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-base font-semibold text-foreground" title={name}>{name}</span>
+                <span className="line-clamp-2 text-xs text-muted-foreground" title={description}>{description}</span>
+              </div>
+            </div>
             <span className="sr-only">
               {t(state === "done" ? "stage.state.done" : state === "current" ? "stage.state.current" : state === "next" ? (readyFor === s.key ? "stage.state.nextReady" : "stage.state.next") : "stage.state.locked")}
             </span>
