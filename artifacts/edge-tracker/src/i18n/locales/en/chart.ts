@@ -2,6 +2,7 @@ import type { Messages } from "../../core";
 import type ru from "../ru/chart";
 
 export default {
+  notes: { title: "Notes on the chart", thisTrade: "this trade" },
   view: {
     label: "Chart zoom",
     day: "Day",
@@ -20,6 +21,7 @@ export default {
     toEntry: "to the entry",
     toExit: "to the exit",
     nextFill: "to the next fill",
+    prevFill: "to the previous fill",
     pauseOnFills: "pause on fills",
     speedKeys: "speed 1×…60×",
     toOpen: "to the 9:30 open",
@@ -94,6 +96,8 @@ export default {
     delete: "Delete",
     local: "this browser only",
     localTitle: "The server does not keep drawings yet — they are saved in this browser only",
+    note: "Note on the drawing",
+    notePlaceholder: "Note: what matters here",
   },
   mode: { analysis: "Analysis", replay: "Replay" },
   overlay: {
@@ -195,6 +199,10 @@ export default {
     jumps: "Jumps",
     toEntryTitle: "To the entry — E",
     nextFillTitle: "Next fill — N: {label}",
+    prevFillTitle: "Previous fill — B: {label}",
+    noFillsBehind: "No fills behind",
+    prevFill: "Previous fill",
+    fillSteps: "Step by fill",
     noFillsAhead: "No fills ahead",
     toExitTitle: "To the exit — X",
     pauseOnFillsTitle: "The replay pauses on every fill — P",
@@ -211,6 +219,7 @@ export default {
     hintSpeed: "speed",
     hintEntry: "entry",
     hintExit: "exit",
+    hintFills: "fills",
     starts: {
       pre: "Premarket",
       preTitle: "From the first premarket bar of the trade day",

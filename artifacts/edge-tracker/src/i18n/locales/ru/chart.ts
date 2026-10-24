@@ -4,6 +4,7 @@
  * Timeframe codes stay the same in every language except RU («1м», «1ч»).
  */
 export default {
+  notes: { title: "Заметки на графике", thisTrade: "к этой сделке" },
   view: {
     label: "Масштаб графика",
     day: "День",
@@ -22,6 +23,7 @@ export default {
     toEntry: "к входу",
     toExit: "к выходу",
     nextFill: "к следующему исполнению",
+    prevFill: "к предыдущему исполнению",
     pauseOnFills: "пауза на исполнениях",
     speedKeys: "скорость 1×…60×",
     toOpen: "к открытию 9:30",
@@ -101,6 +103,8 @@ export default {
     delete: "Удалить",
     local: "только в этом браузере",
     localTitle: "Сервер пока не хранит рисунки — они сохранены только в этом браузере",
+    note: "Заметка к рисунку",
+    notePlaceholder: "Заметка: что здесь важно",
   },
   mode: { analysis: "Анализ", replay: "Реплей" },
   overlay: {
@@ -202,6 +206,10 @@ export default {
     jumps: "Переходы",
     toEntryTitle: "К входу — E",
     nextFillTitle: "Следующее исполнение — N: {label}",
+    prevFillTitle: "Предыдущее исполнение — B: {label}",
+    noFillsBehind: "Исполнений позади нет",
+    prevFill: "Предыдущее исполнение",
+    fillSteps: "Шаг по исполнениям",
     noFillsAhead: "Исполнений впереди нет",
     toExitTitle: "К выходу — X",
     pauseOnFillsTitle: "Реплей сам встаёт на паузу на каждом исполнении — P",
@@ -218,6 +226,7 @@ export default {
     hintSpeed: "скорость",
     hintEntry: "вход",
     hintExit: "выход",
+    hintFills: "исполнения",
     starts: {
       pre: "Премаркет",
       preTitle: "С первого бара премаркета дня сделки",

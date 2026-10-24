@@ -15,7 +15,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useSearch } from "wouter";
 import { CalendarDays, CandlestickChart, ChevronDown, Dumbbell, ListChecks, Loader2, RefreshCw, Search } from "lucide-react";
-import { EmptyState, Pill } from "@/components/ds";
+import { EmptyState, Pill, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,11 @@ import { personName } from "@/i18n";
 import { entryTimeOf, netOf, searchParams } from "@/components/chart-engine/lib/picker";
 import { usePlanOverlay } from "@/components/chart-engine/hooks/usePlanOverlay";
 import type { PlanOverlay } from "@/components/chart-engine/lib/plan-levels";
+import { DecisionDrill } from "@/components/chart-lab/DecisionDrill";
+import { OverlayView } from "@/components/chart-lab/OverlayView";
+import { ExitsView } from "@/components/chart-lab/ExitsView";
+import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
+import { comparePersonNames } from "@/i18n";
 
 /** `movePct`: side-aware entry → exit move, % (desk payload) — the result when neither $ nor R is available. */
 type TradeRow = TradeLike & { rMultiple?: number | string | null; movePct?: number | null };
@@ -40,6 +45,9 @@ type PageResp = { items?: TradeRow[] };
 type DeskTradeResp = { trade: TradeRow; executions: Execution[]; structure: TradeStructureDto | null };
 
 const MODES: ChartMode[] = ["analysis", "replay"];
+/** «Сделка» (one trade / day on the chart), «Наложение» (all entries of a setup aligned), «Выходы» (where to exit). */
+type LabView = "trade" | "overlay" | "exits";
+const VIEWS: LabView[] = ["trade", "overlay", "exits"];
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 /** The trainer page (TRAINER-WEB); old chart-lab training links land there. */
 const TRAINER_HREF = "/trainer";
@@ -212,6 +220,8 @@ export default function ChartLabPage() {
   const adDate = params.get("date") && YMD.test(params.get("date") as string) ? (params.get("date") as string) : null;
   const modeParam = params.get("mode");
   const mode: ChartMode = MODES.includes(modeParam as ChartMode) ? (modeParam as ChartMode) : "analysis";
+  const viewParam = params.get("view");
+  const view: LabView = VIEWS.includes(viewParam as LabView) ? (viewParam as LabView) : "trade";
   const tfParam = params.get("tf");
   const tf: Timeframe = TIMEFRAMES.includes(tfParam as Timeframe) ? (tfParam as Timeframe) : "1m";
 
@@ -223,6 +233,7 @@ export default function ChartLabPage() {
     for (const [k, v] of Object.entries(patch)) { if (v == null) p.delete(k); else p.set(k, v); }
     if (p.get("mode") === "analysis") p.delete("mode");
     if (p.get("tf") === "1m") p.delete("tf");
+    if (p.get("view") === "trade") p.delete("view");
     navigate(`/chart-lab${p.toString() ? `?${p}` : ""}`, { replace });
   }, [search, navigate]);
 
@@ -239,7 +250,10 @@ export default function ChartLabPage() {
     placeholderData: (prev) => (prev && prev.trade.id === tradeId ? prev : undefined),
   });
 
-  const { user } = useAuth();
+  const { user, isCurator, dbUsers } = useAuth();
+  // Staff = traders: their own book by default, any trader by name (the multi-trade views only).
+  const [labTrader, setLabTrader] = React.useState("");
+  const traderNames = React.useMemo(() => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames), [dbUsers]);
   const adHoc: TradeLike | null = React.useMemo(() => (tradeId == null && adTicker && adDate ? { id: adHocId(adTicker, adDate), ticker: adTicker, date: adDate } : null), [tradeId, adTicker, adDate]);
   const current: TradeRow | null = tradeId != null ? trade.data?.trade ?? null : adHoc;
   const overlay = usePlanOverlay(tradeId != null ? { tradeId } : adTicker && adDate ? { ticker: adTicker, date: adDate } : null);
@@ -255,10 +269,29 @@ export default function ChartLabPage() {
   ) : <span className="text-muted-foreground">{tl("picker.pick")}</span>;
 
   if (modeParam === "training") return null;
+  const viewSwitch = (
+    <Segmented<LabView> size="sm" ariaLabel={tl("views.aria")} value={view} onChange={(v) => setParams({ view: v }, false)}
+      options={VIEWS.map((v) => ({ value: v, label: tl(`views.${v}`) }))} />
+  );
+  if (view !== "trade") {
+    return (
+      <div className="mx-auto flex w-full min-w-0 max-w-[var(--page-max)] flex-col gap-3">
+        <header className="flex min-w-0 flex-wrap items-center gap-2">
+          <h1 className="text-lg font-semibold tracking-tight">{tl("title.page")}</h1>
+          {viewSwitch}
+          {isCurator && (
+            <StaffTraderPicker value={labTrader || (user?.traderName ?? "")} onChange={setLabTrader} me={user?.traderName} names={traderNames} team={false} className="h-9 w-auto min-w-[12rem]" ariaLabel={tl("views.traderAria")} />
+          )}
+        </header>
+        {view === "overlay" ? <OverlayView trader={isCurator ? labTrader : ""} /> : <ExitsView trader={isCurator ? labTrader : ""} />}
+      </div>
+    );
+  }
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-[var(--page-max)] flex-col gap-2 lg:-mb-[2.25rem] lg:h-[calc(100svh-6.25rem)] lg:min-h-[520px]">
       <header className="flex min-w-0 flex-wrap items-center gap-2">
         <h1 className="sr-only text-lg font-semibold tracking-tight sm:not-sr-only sm:mr-1">{tl("title.page")}</h1>
+        {viewSwitch}
         <TradePicker
           label={label}
           onPick={openTrade}
@@ -311,6 +344,7 @@ export default function ChartLabPage() {
           onTimeframeChange={(t) => setParams({ tf: t })}
           showModes
           planLevels={overlay?.levels}
+          replayExtra={tradeId != null ? (ctx) => <DecisionDrill ctx={ctx} /> : undefined}
         />
       ) : null}
     </div>
