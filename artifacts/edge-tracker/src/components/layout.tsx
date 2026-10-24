@@ -17,6 +17,7 @@ import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-prefs";
 import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
+import { WsMark, Wordmark } from "@/components/ds/brand";
 
 /**
  * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
@@ -105,14 +106,9 @@ function useScrollerGutter(ref: React.RefObject<HTMLDivElement | null>) {
 function Logo() {
   const { t } = shellI18n.useT();
   return (
-    <Link href="/" aria-label={t("header.logoAria")} className="flex shrink-0 items-center gap-2.5 rounded-xl">
-      <span
-        aria-hidden="true"
-        className="grid h-9 w-9 place-items-center rounded-[11px] bg-primary-solid text-xs font-bold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_6px_16px_-8px_hsl(var(--primary)/0.8)]"
-      >
-        WS
-      </span>
-      <span className="hidden text-sm font-semibold tracking-tight text-foreground @[960px]:inline">WS_LEXX</span>
+    <Link href="/" aria-label={t("header.logoAria")} className="flex shrink-0 items-center gap-2 rounded-xl pr-1 text-foreground">
+      <WsMark size={40} className="-my-1" />
+      <Wordmark className="hidden text-[0.9375rem] @[960px]:inline" />
     </Link>
   );
 }

@@ -11,6 +11,7 @@ import { LanguageSegmented } from "@/i18n/language-switcher";
 import { authI18n } from "@/i18n/ns/auth";
 import { ForcedPasswordChange } from "@/components/auth/forced-password-change";
 import { LoginSmoke } from "@/components/auth/login-smoke";
+import { WsMark, Wordmark } from "@/components/ds/brand";
 
 /**
  * Sign-in (owner decision 2026-10-17): no roster before sign-in — the name is TYPED (the API resolves it across
@@ -262,14 +263,12 @@ export default function LoginPage() {
         className="relative z-raised flex w-full max-w-[400px] flex-col items-center gap-5"
       >
         <div className={cn("glass-thick w-full rounded-3xl p-6 sm:p-7", shake && "animate-[shake_0.4s_ease-in-out]")}>
-          {/* Brand */}
+          {/* Brand: the WS monogram over the wordmark (components/ds/brand) */}
           <div className="flex flex-col items-center gap-3 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-[14px] bg-primary-solid text-base font-bold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.3),0_10px_30px_-10px_hsl(var(--primary)/0.7)]">
-              WS
-            </span>
+            <WsMark size={56} className="text-foreground" title="WS_LEXX" />
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">WS_LEXX</h1>
-              <p className="mt-1 text-sm text-muted-foreground">{t("tagline")}</p>
+              <h1 className="text-[1.75rem] leading-none text-foreground"><Wordmark /></h1>
+              <p className="mt-2 text-sm text-muted-foreground">{t("tagline")}</p>
             </div>
           </div>
 

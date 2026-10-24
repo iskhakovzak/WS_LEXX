@@ -1,3 +1,21 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <!-- WS_LEXX monogram, small optical cut (components/ds/brand.tsx). Ink on light browser chrome, white on dark. -->
+  <style>
+    .ink { stroke: #111111; }
+    @media (prefers-color-scheme: dark) { .ink { stroke: #f2f2f2; } }
+  </style>
+  <defs>
+    <clipPath id="t"><rect width="64" height="31"/></clipPath>
+    <clipPath id="b"><rect y="31" width="64" height="33"/></clipPath>
+    <mask id="mw" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect width="64" height="64" fill="#fff"/>
+      <path clip-path="url(#t)" d="M45 15.5C41.5 8.5 23 8 22.5 19C22 29 41.5 29.5 41.5 41.5C41.5 54 22 55.5 18.5 47.5" stroke="#000" stroke-width="9" stroke-linecap="round"/>
+    </mask>
+    <mask id="ms" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect width="64" height="64" fill="#fff"/>
+      <path clip-path="url(#b)" d="M6 14L18.5 50L32 22L45.5 50L58 14" stroke="#000" stroke-width="9" stroke-miterlimit="10"/>
+    </mask>
+  </defs>
+  <path class="ink" mask="url(#mw)" d="M6 14L18.5 50L32 22L45.5 50L58 14" stroke-width="6.5" stroke-miterlimit="10"/>
+  <path class="ink" mask="url(#ms)" d="M45 15.5C41.5 8.5 23 8 22.5 19C22 29 41.5 29.5 41.5 41.5C41.5 54 22 55.5 18.5 47.5" stroke-width="6.5" stroke-linecap="round"/>
 </svg>
