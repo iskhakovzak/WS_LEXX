@@ -17,7 +17,9 @@ import { fmtRelative } from "@/i18n/format";
 
 /* Foundation modules (usage notes in each file's header). */
 export { GLOSSARY, glossary, TermTooltip, TermContent, TermLabel, termForLabel, type TermKey, type GlossaryEntry } from "@/components/ds/term-tooltip";
-export { ErrorState, QueryState, SkeletonBlock, StatGridSkeleton, ListSkeleton, TableSkeleton, PanelSkeleton } from "@/components/ds/states";
+export { EmptyLink, EmptyState, emptyActions, type EmptyArt, type EmptyChoice } from "@/components/ds/empty-state";
+export { EngravedArt, EMPTY_ART } from "@/components/ds/empty-art";
+export { ErrorState, QueryState, SkeletonBlock, StatGridSkeleton, ListSkeleton, TableSkeleton, PanelSkeleton, ChartSkeleton, SplitSkeleton } from "@/components/ds/states";
 export { AnimatedNumber, Reveal, MOTION, DURATION, EASE, EASE_IN_OUT, fadeRise } from "@/components/ds/motion";
 export { ScrollContainerContext } from "@/components/ds/scroll-context";
 
@@ -516,69 +518,6 @@ export function FilterChip({
 /** Filter/action bar above lists. */
 export function Toolbar({ children, className }: { children: React.ReactNode; className?: string }) {
   return <div className={cn("glass-panel flex flex-wrap items-center gap-2 rounded-2xl p-2", className)}>{children}</div>;
-}
-
-/**
- * Empty state: icon, what's missing, how to fix it, and the action that fixes it.
- * `compact` for small panels/tiles (one row, less padding). `secondaryAction` = a quieter link/button.
- */
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className,
-  secondaryAction,
-  compact = false,
-}: {
-  icon?: LucideIcon;
-  title: React.ReactNode;
-  description?: React.ReactNode;
-  action?: React.ReactNode;
-  className?: string;
-  secondaryAction?: React.ReactNode;
-  compact?: boolean;
-}) {
-  if (compact) {
-    return (
-      <div className={cn("flex flex-wrap items-center gap-3 px-1 py-4 text-left", className)}>
-        {Icon && (
-          <span className="tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-muted-foreground">
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </span>
-        )}
-        <div className="min-w-[12rem] flex-1">
-          <p className="text-sm font-medium text-foreground">{title}</p>
-          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
-        </div>
-        {(action || secondaryAction) && (
-          <div className="flex shrink-0 items-center gap-2">
-            {secondaryAction}
-            {action}
-          </div>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className={cn("flex flex-col items-center justify-center gap-3 px-6 py-12 text-center", className)}>
-      {Icon && (
-        <span className="tile grid h-12 w-12 place-items-center rounded-2xl text-muted-foreground">
-          <Icon className="h-5 w-5" aria-hidden="true" />
-        </span>
-      )}
-      <div className="max-w-sm">
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
-      </div>
-      {(action || secondaryAction) && (
-        <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
-          {action}
-          {secondaryAction}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /** Horizontal scroll wrapper for wide tables on mobile. */

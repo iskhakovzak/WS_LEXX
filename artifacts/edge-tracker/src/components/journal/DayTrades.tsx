@@ -133,13 +133,22 @@ export function DayTrades({
       }
     >
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-label={tc("states.loading")}>
+          {/* Trade-row shape: side badge, ticker + time, result on the right. */}
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
+            <div key={i} className="flex h-16 items-center gap-3 rounded-xl border border-border/40 px-3" aria-hidden="true">
+              <Skeleton className="h-8 w-8 shrink-0 rounded-lg" />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <Skeleton className="h-3.5 rounded" style={{ width: `${44 - i * 8}%` }} />
+                <Skeleton className="h-3 w-24 rounded" />
+              </div>
+              <Skeleton className="h-4 w-16 rounded" />
+            </div>
           ))}
         </div>
       ) : trades.length === 0 && carried.length === 0 && opened.length === 0 ? (
         <EmptyState
+          art="scroll"
           icon={ListOrdered}
           title={tj("trades.emptyTitle")}
           description={tj("trades.emptyDesc")}

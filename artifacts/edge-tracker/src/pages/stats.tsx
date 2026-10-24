@@ -4,7 +4,7 @@ import { BarChart3, FileDown, Microscope, Printer, RefreshCw, SearchX } from "lu
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Page, PageHeader, Panel, Segmented, Toolbar } from "@/components/ds";
+import { ChartSkeleton, EmptyState, Page, PageHeader, Panel, Segmented, Toolbar, emptyActions } from "@/components/ds";
 import { PeriodPicker } from "@/components/shared/period/PeriodPicker";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
 import { KpiGridSkeleton } from "@/components/stats/kpi-grid";
@@ -19,6 +19,7 @@ import { preferredMetricOfAggregate, useStaffAggregates } from "@/components/sta
 import { StatsFacets, facetFilteredTrades, useStatsFacets } from "@/components/stats/StatsFacets";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { facetQuery } from "@/lib/trade-facets";
+import { links } from "@/lib/links";
 import {
   horizonLabel, HORIZON_OPTIONS, PERIOD_OPTIONS, horizonOf, inRange,
   fmtDayKey, periodTexts, preferredMetric, spansYears, statsRanges, toKey,
@@ -256,7 +257,7 @@ export default function Stats() {
             title={t("loadError")}
             description={t("loadErrorHint")}
             action={
-              <Button variant="outline" className="rounded-full" onClick={() => void refetch()} disabled={isFetching}>
+              <Button className="rounded-full" onClick={() => void refetch()} disabled={isFetching}>
                 <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}
               </Button>
             }
@@ -273,8 +274,8 @@ export default function Stats() {
         <div className="skeleton h-[52px] rounded-2xl" aria-hidden="true" />
         <KpiGridSkeleton />
         <div className="grid gap-4 xl:grid-cols-5">
-          <div className="skeleton h-[360px] rounded-2xl xl:col-span-3" aria-hidden="true" />
-          <div className="skeleton h-[360px] rounded-2xl xl:col-span-2" aria-hidden="true" />
+          <ChartSkeleton className="h-[360px] xl:col-span-3" height="100%" />
+          <ChartSkeleton className="h-[360px] xl:col-span-2" height="100%" kind="bars" />
         </div>
         <span className="sr-only" role="status">{t("loading")}</span>
       </Page>
@@ -331,6 +332,7 @@ export default function Stats() {
             icon={BarChart3}
             title={t("bookEmpty")}
             description={t("bookEmptyHint")}
+            action={<Button asChild><Link href={links.myPlan()}>{commonI18n.t("emptyActions.toPlan")}</Link></Button>}
           />
         </Panel>
       ) : count === 0 && hasBroker ? null : count === 0 ? (
@@ -346,20 +348,11 @@ export default function Stats() {
                 : "",
               trader !== "all" || prefs.horizon !== "all" ? t("pickLongerOrClear") : t("pickLonger"),
             ].filter(Boolean).join(" ")}
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                {prefs.period !== "all" && (
-                  <Button className="rounded-full" onClick={() => set("period", "all")}>{t("showAll")}</Button>
-                )}
-                {!solo && trader !== "all" && (
-                  <Button variant="outline" className="rounded-full" onClick={() => pickTrader(TEAM)}>{t("wholeTeam")}</Button>
-                )}
-                {prefs.horizon !== "all" && (
-                  <Button variant="outline" className="rounded-full" onClick={() => set("horizon", "all")}>{t("allHorizons")}</Button>
-
-                )}
-              </div>
-            }
+            {...emptyActions([
+              prefs.period !== "all" && { label: t("showAll"), run: () => set("period", "all") },
+              !solo && trader !== "all" && { label: t("wholeTeam"), run: () => pickTrader(TEAM) },
+              prefs.horizon !== "all" && { label: t("allHorizons"), run: () => set("horizon", "all") },
+            ])}
           />
         </Panel>
       ) : (

@@ -4,7 +4,7 @@
 // Trades come only from PropReports (ARCHITECTURE §0.1): nothing is created here. The form edits the trader's markup
 // (stop, setup, tags, review); old ?new / ?fromIdea links just open the list (filtered by ?ticker when given).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useUpdateTrade, getTrade } from "@workspace/api-client-react";
 import type { Trade, UpdateTradeBody } from "@workspace/api-client-react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
@@ -569,10 +569,10 @@ export default function Trades() {
 
   const presetEmpty = (p: Preset) => (
     <EmptyState
-      icon={p === "review" ? CheckCircle2 : Filter}
+      art={p === "review" ? "laurel" : "amphora"} icon={p === "review" ? CheckCircle2 : Filter}
       title={p === "review" ? tt("page.empty.allTaggedTitle") : tt("page.empty.presetTitle", { preset: PRESET_META[p].label })}
       description={p === "review" ? tt("page.empty.allTaggedDesc") : tt("page.empty.presetDesc", { scope: scopeLabel })}
-      action={<Button variant="outline" onClick={() => F.setPreset(null)}>{tt("page.empty.backToDays")}</Button>}
+      action={<Button onClick={() => F.setPreset(null)}>{tt("page.empty.backToDays")}</Button>}
     />
   );
 
@@ -652,9 +652,10 @@ export default function Trades() {
       ) : noTrades ? (
         <Panel>
           <EmptyState
-            icon={BookText}
+            art="amphora" icon={BookText}
             title={tt("page.empty.noTradesTitle")}
             description={tt("page.empty.noTradesDesc")}
+            action={<Button asChild><Link href="/game-plan?view=my">{tc("emptyActions.toPlan")}</Link></Button>}
           />
         </Panel>
       ) : listMode ? (
@@ -663,7 +664,7 @@ export default function Trades() {
             <RowsSkeleton rows={8} />
           ) : total === 0 ? (
             preset ? presetEmpty(preset) : (
-              <EmptyState icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button variant="outline" onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
+              <EmptyState art="amphora" icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
             )
           ) : (
             <div role="table" aria-label={shellI18n.t("nav.trades")} className={P.isPlaceholder ? "opacity-70 transition-opacity" : "transition-opacity"} aria-busy={P.isPlaceholder || undefined}>
@@ -691,7 +692,7 @@ export default function Trades() {
         <Panel padded={false}><RowsSkeleton rows={6} /></Panel>
       ) : !D.days.length ? (
         <Panel>
-          <EmptyState icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button variant="outline" onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
+          <EmptyState art="amphora" icon={Filter} title={tt("page.empty.filteredTitle")} description={tt("page.empty.filteredDesc", { scope: scopeLabel })} action={<Button onClick={F.reset}>{tc("actions.resetFilters")}</Button>} />
         </Panel>
       ) : (
         <div className="space-y-[var(--grid-gap)]" aria-busy={D.isFetching || undefined}>

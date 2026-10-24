@@ -362,6 +362,7 @@ export default {
     limitValue: "{pct} лимита, {state}",
     updatedAgo: "обновлено {ago}",
     loadingKpis: "Загрузка показателей",
+    loadingChart: "Загрузка графика",
     loadingList: "Загрузка списка",
     loadingTable: "Загрузка таблицы",
     whatIs: "Что такое {term}?",
@@ -429,5 +430,15 @@ export default {
     missing: "Укажите обе даты",
     order: "Дата «с» позже даты «по»",
     prevNote: "Сравнение — с таким же отрезком до него: {range}",
+  },
+  /** The one primary action of an empty state (components/ds/empty-state.tsx) when a page has nothing to show yet. */
+  emptyActions: {
+    toPlan: "Составить план дня",
+    toTrades: "Перейти к сделкам",
+    toPlaybook: "Открыть плейбук",
+    toTrainer: "Открыть тренажёр",
+    toDashboard: "На главную",
+    toLogin: "Войти",
+    toAllTime: "Показать за всё время",
   },
 } as const;

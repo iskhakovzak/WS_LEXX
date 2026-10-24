@@ -7,7 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/hooks/use-toast";
 import { humanizeApiError, isAuthError, retryDelay, shouldRetryQuery } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PageFallback } from "@/components/shell/page-fallback";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
@@ -110,20 +110,6 @@ const queryClient = new QueryClient({
   },
 });
 
-// Mirrors the usual page shape (title, KPI row, content) so the swap to the real page doesn't jump.
-const PageFallback = () => (
-  <div role="status" aria-busy="true" className="space-y-6">
-    <span className="sr-only">{shellI18n.t("app.pageLoading")}</span>
-    <div className="space-y-2">
-      <Skeleton className="h-7 w-48" />
-      <Skeleton className="h-4 w-72 max-w-full" />
-    </div>
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
-    </div>
-    <Skeleton className="h-64" />
-  </div>
-);
 
 const APP_NAME = "WS_LEXX";
 

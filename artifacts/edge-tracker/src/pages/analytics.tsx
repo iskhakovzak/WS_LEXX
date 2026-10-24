@@ -12,7 +12,7 @@ import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
 import { analyticsDataPlan, type AnalyticsTabKey } from "@/components/analytics-page/data-plan";
 import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { Page, PageHeader, Panel, Segmented, EmptyState, StatGrid } from "@/components/ds";
+import { ChartSkeleton, Page, PageHeader, Panel, Segmented, EmptyState, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import AnalyticsPro from "@/components/analytics/analytics-pro";
@@ -300,16 +300,16 @@ export default function Analytics() {
             icon={BarChart3}
             title={t("loadError.title")}
             description={t("loadError.description")}
-            action={<Button variant="outline" onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
+            action={<Button onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
           />
         </Panel>
       ) : isLoading ? (
         <div className="flex flex-col gap-4" aria-busy="true" aria-label={t("loadingAria")}>
           <Skeleton className="h-12 rounded-2xl" />
-          <StatGrid>{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-[96px] rounded-2xl" />)}</StatGrid>
+          <StatGridSkeleton count={8} min="10rem" />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Skeleton className="h-[330px] rounded-2xl lg:col-span-2" />
-            <Skeleton className="h-[330px] rounded-2xl" />
+            <ChartSkeleton className="h-[330px] lg:col-span-2" height="100%" />
+            <ChartSkeleton className="h-[330px]" height="100%" kind="bars" />
           </div>
         </div>
       ) : bookEmpty ? (
@@ -319,7 +319,7 @@ export default function Analytics() {
             title={t("bookEmpty.title")}
             description={t("bookEmpty.description")}
             action={staffView && !scope.team
-              ? <Button variant="outline" onClick={() => pickTrader(TEAM)}>{commonI18n.t("people.wholeTeam")}</Button>
+              ? <Button onClick={() => pickTrader(TEAM)}>{commonI18n.t("people.wholeTeam")}</Button>
               : <Button asChild><Link href="/trades">{t("bookEmpty.action")}</Link></Button>}
           />
         </Panel>
@@ -338,7 +338,7 @@ export default function Analytics() {
                 icon={SearchX}
                 title={t("noMatch.title")}
                 description={t("noMatch.description")}
-                action={activeFilterCount(filters) > 0 ? <Button variant="outline" onClick={() => setFilters(DEFAULT_FILTERS)}>{commonI18n.t("actions.resetFilters")}</Button> : undefined}
+                action={activeFilterCount(filters) > 0 ? <Button onClick={() => setFilters(DEFAULT_FILTERS)}>{commonI18n.t("actions.resetFilters")}</Button> : undefined}
               />
             </Panel>
           ) : tab === "overview" && agg ? (

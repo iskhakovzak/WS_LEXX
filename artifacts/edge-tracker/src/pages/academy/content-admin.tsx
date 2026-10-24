@@ -5,11 +5,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, Toolbar } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Pill, SplitSkeleton, Toolbar } from "@/components/ds";
 import { api, invalidateAcademy, stageLabel, useAcademyMeta, useAdminTree, type ItemKind } from "@/components/academy/content/api";
 import { ContentTree, type Selection } from "@/components/academy/content/content-tree";
 import { ItemEditor, ModuleForm, ProgramForm } from "@/components/academy/content/editors";
@@ -69,7 +68,7 @@ export default function AcademyContentAdmin() {
     return (
       <Page>
         <Panel>
-          <EmptyState icon={ShieldAlert} title={t("admin.mentorsOnly")} description={t("admin.mentorsOnlyDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("admin.toLearning")}</Link></Button>} />
+          <EmptyState art="laurel" icon={ShieldAlert} title={t("admin.mentorsOnly")} description={t("admin.mentorsOnlyDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("admin.toLearning")}</Link></Button>} />
         </Panel>
       </Page>
     );
@@ -101,7 +100,7 @@ export default function AcademyContentAdmin() {
       : null;
   }
   if (!editor && program) {
-    editor = <Panel><EmptyState icon={PencilRuler} title={t("admin.notFound")} description={t("admin.notFoundDesc")} /></Panel>;
+    editor = <Panel><EmptyState art="scroll" icon={PencilRuler} title={t("admin.notFound")} description={t("admin.notFoundDesc")} action={<EmptyLink href={academyLinks.admin()}>{t("learn.openEditor")}</EmptyLink>} /></Panel>;
   }
 
   return (
@@ -141,21 +140,18 @@ export default function AcademyContentAdmin() {
       </Toolbar>
 
       {tree.isLoading || meta.isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-[32rem] rounded-2xl" /></div>
+        <SplitSkeleton side="360px" rows={8} detailHeight={512} />
       ) : tree.isError ? (
         <ErrorState error={tree.error} onRetry={tree.refetch} title={t("admin.contentFailed")} />
       ) : !programs.length && !creatingProgram ? (
         <Panel>
           <EmptyState
+            art="laurel"
             icon={GraduationCap}
             title={t("matrix.noPrograms")}
             description={t("admin.noProgramsDemo")}
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>
-                <Button variant="outline" onClick={() => setProgram(NEW)}><Plus aria-hidden="true" />{t("editor.program.new")}</Button>
-              </div>
-            }
+            action={<Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>}
+            secondaryAction={<Button variant="link" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => setProgram(NEW)}><Plus aria-hidden="true" />{t("editor.program.new")}</Button>}
           />
         </Panel>
       ) : (

@@ -74,16 +74,14 @@ export default function AcademyCohortsPage() {
       {list.isLoading && <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"><Panel><ListSkeleton rows={4} /></Panel><PanelSkeleton height={320} /></div>}
       {list.data && cohorts.length === 0 && (
         <Panel>
-          <EmptyState icon={Users} title={archived ? t("cohortsPage.archiveEmpty") : t("cohortsPage.empty")}
+          <EmptyState art="temple" icon={Users} title={archived ? t("cohortsPage.archiveEmpty") : t("cohortsPage.empty")}
             description={staff ? t("cohortsPage.emptyStaff") : t("cohortsPage.emptyStudent")}
-            action={staff && !archived ? (
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.create")}</Button>
-                {/* The demo seed is a one-off setup action: offered only while there is nothing yet (it never duplicates). */}
-                <Button variant="outline" onClick={runSeed} disabled={seed.isPending} title={t("cohortsPage.demoTitle")}>
-                  <Sparkles className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.demo")}
-                </Button>
-              </div>
+            action={staff && !archived ? <Button onClick={() => setCreateOpen(true)}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.create")}</Button> : undefined}
+            secondaryAction={staff && !archived ? (
+              /* The demo seed is a one-off setup action: offered only while there is nothing yet (it never duplicates). */
+              <Button variant="link" size="sm" className="text-muted-foreground hover:text-foreground" onClick={runSeed} disabled={seed.isPending} title={t("cohortsPage.demoTitle")}>
+                <Sparkles className="mr-1 h-4 w-4" aria-hidden="true" />{t("cohortsPage.demo")}
+              </Button>
             ) : undefined} />
         </Panel>
       )}

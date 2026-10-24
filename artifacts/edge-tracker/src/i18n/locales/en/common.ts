@@ -354,6 +354,7 @@ export default {
     limitValue: "{pct} of the limit, {state}",
     updatedAgo: "updated {ago}",
     loadingKpis: "Loading metrics",
+    loadingChart: "Loading chart",
     loadingList: "Loading list",
     loadingTable: "Loading table",
     whatIs: "What is {term}?",
@@ -416,5 +417,14 @@ export default {
     missing: "Enter both dates",
     order: "The start date is after the end date",
     prevNote: "Compared with the same span right before it: {range}",
+  },
+  emptyActions: {
+    toPlan: "Plan the day",
+    toTrades: "Go to trades",
+    toPlaybook: "Open the playbook",
+    toTrainer: "Open the trainer",
+    toDashboard: "Go home",
+    toLogin: "Sign in",
+    toAllTime: "Show all time",
   },
 } satisfies Messages<typeof ru>;

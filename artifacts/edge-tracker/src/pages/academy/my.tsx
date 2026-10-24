@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { ArrowRight, CalendarClock, CalendarDays, CheckCircle2, GraduationCap, ListChecks, Loader2, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -56,7 +56,7 @@ export default function AcademyMyPage() {
       />
       {q.isLoading && <><StatGridSkeleton count={4} /><PanelSkeleton height={220} /></>}
       {q.isError && <ErrorState error={q.error} onRetry={() => q.refetch()} title={t("myPage.loadFailed")} />}
-      {d && !d.user && <EmptyState icon={GraduationCap} title={t("myPage.signIn")} description={t("myPage.guest")} />}
+      {d && !d.user && <EmptyState art="laurel" icon={GraduationCap} title={t("myPage.signIn")} description={t("myPage.guest")} action={<EmptyLink href="/academy/learn">{shellI18n.t("nav.academyLearn")}</EmptyLink>} />}
       {/* Not in a cohort yet: the next lesson first, no dead end (wave 1, item 1.6). */}
       {d && d.user && d.enrollments.length === 0 && (
         <NotEnrolledPanel user={d.user} viewingOther={!!d.viewingOther}>{!d.viewingOther && <AskCuratorButton kind="group" className="mt-3" />}</NotEnrolledPanel>

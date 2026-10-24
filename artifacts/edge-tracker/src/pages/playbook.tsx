@@ -980,26 +980,27 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
     <div className="glass-panel rounded-2xl">
       {activeSpace === "office" ? (
         <EmptyState
-          icon={Building2}
+          art="amphora" icon={Building2}
           title={t("page.empty.officeTitle")}
           description={viewer.isCurator ? t("page.empty.officeCurator") : t("page.empty.officeTrader")}
-          action={viewer.isCurator ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.officeAction")}</Button> : undefined}
+          action={viewer.isCurator ? <Button onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.officeAction")}</Button> : <Button onClick={() => setSpace("mine")}>{SPACES[1]!.long}</Button>}
         />
       ) : activeSpace === "mine" ? (
         <EmptyState
-          icon={User}
+          art="amphora" icon={User}
           title={t("page.empty.mineTitle")}
           description={traderView ? t("page.empty.mineDescTrader") : t("page.empty.mineDesc")}
-          action={canCreate ? <Button className="bg-primary-solid" onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.mineAction")}</Button> : undefined}
+          action={canCreate ? <Button onClick={() => newSetup()}><Plus className="h-4 w-4" aria-hidden="true" /> {t("page.empty.mineAction")}</Button> : undefined}
         />
       ) : activeSpace === "shared" ? (
         <EmptyState
-          icon={Share2}
+          art="scroll" icon={Share2}
           title={t("page.empty.sharedTitle")}
           description={t("page.empty.sharedDesc")}
+          action={<Button onClick={() => setSpace("mine")}>{SPACES[1]!.long}</Button>}
         />
       ) : (
-        <EmptyState icon={Users} title={t("page.empty.teamTitle")} />
+        <EmptyState art="temple" icon={Users} title={t("page.empty.teamTitle")} action={<Button onClick={() => setSpace("office")}>{SPACES[0]!.long}</Button>} />
       )}
     </div>
   );
@@ -1021,7 +1022,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
           icon={BookOpen}
           title={t("page.loadFailed")}
           description={(error as Error)?.message}
-          action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching} aria-busy={isFetching}>{commonI18n.t("actions.retry")}</Button>}
+          action={<Button onClick={() => refetch()} disabled={isFetching} aria-busy={isFetching}>{commonI18n.t("actions.retry")}</Button>}
         />
       </div>
     );
@@ -1042,7 +1043,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
         )}
         {activeFilterNote}
         {topLevel.length === 0 ? spaceEmpty : list.length === 0 ? (
-          <div className="glass-panel rounded-2xl"><EmptyState icon={Search} title={commonI18n.t("states.nothingFound")} description={t("page.changeFilters")} /></div>
+          <div className="glass-panel rounded-2xl"><EmptyState art="amphora" icon={Search} title={commonI18n.t("states.nothingFound")} description={t("page.changeFilters")} action={<Button onClick={() => { setQuery(""); setQuick("all"); setTagFilter([]); }}>{commonI18n.t("actions.resetFilters")}</Button>} /></div>
         ) : (
           sections.map((sec) => (
             <section key={sec.title ?? "all"} aria-label={sec.title ?? commonI18n.t("trading.setups")}>
@@ -1151,7 +1152,7 @@ function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNo
             </div>
           ) : selectedId ? (
             <div className="glass-panel rounded-2xl">
-              <EmptyState icon={BookOpen} title={t("page.notFoundTitle")} description={t("page.notFoundDesc")} action={<Button variant="outline" onClick={() => openSetup(null)}>{t("page.toOverview")}</Button>} />
+              <EmptyState art="amphora" icon={BookOpen} title={t("page.notFoundTitle")} description={t("page.notFoundDesc")} action={<Button onClick={() => openSetup(null)}>{t("page.toOverview")}</Button>} />
             </div>
           ) : topLevel.length === 0 ? (
             // An empty «Мой» is where a trader starts: the inbox of own trades is the quickest way in.
