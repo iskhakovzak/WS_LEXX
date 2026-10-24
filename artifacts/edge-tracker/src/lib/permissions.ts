@@ -167,6 +167,11 @@ export type PermissionsMe = {
   nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior"; authorNotes?: boolean; blocked?: string[] };
   /** Do I see other traders' real names on shared screens (staff: always)? Absent on older API builds. */
   names?: boolean;
+  /**
+   * Share cards of own trades (desk settings shareCards.enabled / shareCards.money): the «image» button at all, and
+   * whether a card may show $ ("r_only" = R and % only). Absent on older API builds (then: on, $ allowed).
+   */
+  shareCards?: { enabled: boolean; money: "usd" | "r_only" };
 };
 
 /** Section hrefs closed for the viewer's stage (GET /api/permissions/me → nav.blocked). */
