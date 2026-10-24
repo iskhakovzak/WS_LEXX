@@ -32,7 +32,8 @@ function parseSchemaSql(sql: string): SchemaColumn[] {
 }
 
 describe("rename: every name-holding column is classified (db/schema.sql)", () => {
-  const schema = parseSchemaSql(readFileSync(schemaFile, "utf8"));
+  // CRLF-safe: a Windows checkout may convert the snapshot's line endings.
+  const schema = parseSchemaSql(readFileSync(schemaFile, "utf8").replace(/\r\n/g, "\n"));
 
   it("parses the snapshot", () => {
     expect(schema.length).toBeGreaterThan(1000);
