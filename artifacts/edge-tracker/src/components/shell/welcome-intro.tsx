@@ -19,7 +19,7 @@ import { personNameFor } from "@/i18n";
 import { rich, slots } from "@/i18n/rich";
 import { shellI18n } from "@/i18n/ns/shell";
 import { latinizeName } from "@workspace/text-search";
-import { startSmoke } from "./intro-smoke";
+import { startSmoke } from "@/lib/smoke";
 
 /** Hold after the words are in (their CSS animation: 0.1 s delay + 1.2 s, index.css `.intro-text`). */
 const HOLD_MS = 1000;

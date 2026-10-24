@@ -1,12 +1,12 @@
 /**
- * Sign-in background: the same slowly drifting smoke as the opening intro (components/shell/intro-smoke), so the
+ * Sign-in background: the same slowly drifting smoke as the opening intro (lib/smoke), so the
  * intro fades away into the very same scene (owner, 2026-10-24). Decorative only; one still frame under
  * prefers-reduced-motion; stops when the sign-in page unmounts.
  */
 import { useEffect, useRef } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useTheme } from "@/contexts/theme-context";
-import { startSmoke } from "@/components/shell/intro-smoke";
+import { startSmoke } from "@/lib/smoke";
 
 export function LoginSmoke() {
   const ref = useRef<HTMLCanvasElement>(null);
