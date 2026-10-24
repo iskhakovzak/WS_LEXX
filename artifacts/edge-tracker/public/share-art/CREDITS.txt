@@ -1,0 +1,69 @@
+Share-card artwork («Олимп» theme) — credits and licences
+==========================================================
+
+Every image here is a public-domain artwork from Wikimedia Commons, cropped to 4:5 and resized to 1080x1350 WebP
+(thumb/ = 160x200 picker previews of the same crops). No photo of a 3-D object, no modern photo with its own licence.
+Used as share-card backgrounds in artifacts/edge-tracker/src/components/trades/share-card/themes.ts (ids = file names).
+
+atlas-globe.webp
+  Title:   Atlas on the globe (title page for Justus Danckerts, «Atlas»)
+  Artist:  anonymous engraver, published by Justus Danckerts, Amsterdam
+  Year:    c. 1670-1690 (hand-coloured engraving, Rijksmuseum RP-P-1982-1471)
+  Source:  https://commons.wikimedia.org/wiki/File:Atlas_op_globe,_RP-P-1982-1471.jpg
+  Licence: public domain (PD-old; Rijksmuseum «Publiek domein», Commons file CC0)
+
+atlas-hercules.webp
+  Title:   Atlas and Hercules carry the heavens (title page for J. B. Homann, «Atlas Novus»)
+  Artist:  Caspar Luyken, published by Johann Baptist Homann, Nuremberg
+  Year:    1710 (hand-coloured engraving, Rijksmuseum RP-P-1985-353)
+  Source:  https://commons.wikimedia.org/wiki/File:Atlas_en_Hercules_dragen_sterrenhemel,_RP-P-1985-353.jpg
+  Licence: public domain (PD-old; Rijksmuseum «Publiek domein», Commons file CC0)
+
+farnese-hercules.webp
+  Title:   The Farnese Hercules (Hercules Farnese)
+  Artist:  Hendrick Goltzius
+  Year:    c. 1592 (engraving)
+  Source:  https://commons.wikimedia.org/wiki/File:Goltzius,_Hendrik_-_Hercules_Farnese_-_c._1592.jpg
+  Licence: public domain (PD-Art / PD-old)
+
+zeus-ingres.webp
+  Title:   Jupiter and Thetis
+  Artist:  Jean-Auguste-Dominique Ingres
+  Year:    1811
+  Source:  https://commons.wikimedia.org/wiki/File:Jupiter_and_Thetis_(Ingres).jpg
+  Licence: public domain (PD-Art / PD-old)
+
+athena-stuck.webp
+  Title:   Pallas Athene
+  Artist:  Franz von Stuck
+  Year:    1898
+  Source:  https://commons.wikimedia.org/wiki/File:Pallas_Athene_by_Franz_von_Stuck,_1898.jpg
+  Licence: public domain (PD-Art / PD-old; the artist died in 1928)
+
+hercules-zurbaran.webp
+  Title:   Hercules fighting the Nemean Lion
+  Artist:  Francisco de Zurbarán
+  Year:    1634
+  Source:  https://commons.wikimedia.org/wiki/File:H%C3%A9rcules_lucha_con_el_le%C3%B3n_de_Nemea,_por_Zurbar%C3%A1n.jpg
+  Licence: public domain (PD-Art / PD-old)
+
+hermes-goltzius.webp
+  Title:   Mercury
+  Artist:  Hendrick Goltzius
+  Year:    1611
+  Source:  https://commons.wikimedia.org/wiki/File:Hendrick_Goltzius_-_Mercury_-_44_-_Mauritshuis.jpg
+  Licence: public domain (PD-Art / PD-old)
+
+phaeton-rubens.webp
+  Title:   The Fall of Phaeton
+  Artist:  Peter Paul Rubens
+  Year:    c. 1604-1605, probably reworked c. 1606-1608 (National Gallery of Art, Washington)
+  Source:  https://commons.wikimedia.org/wiki/File:Peter_Paul_Rubens_-_The_Fall_of_Phaeton_(National_Gallery_of_Art).jpg
+  Licence: public domain (PD-Art / PD-old)
+
+apollo-coypel.webp
+  Title:   Apollo Crowned by Victory after Having Slain Python (Story of Apollo)
+  Artist:  Noël Coypel
+  Year:    1688
+  Source:  https://commons.wikimedia.org/wiki/File:No%C3%ABl_Coypel,_Story_of_Apollo_-_Apollo_Crowned_by_Victory_after_Having_Slayed_Python,_1688.jpg
+  Licence: public domain (PD-Art / PD-old)
