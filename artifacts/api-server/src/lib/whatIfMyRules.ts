@@ -60,13 +60,16 @@ export function catalogTime(v: unknown): string | null {
   return hhmm(Math.floor(n / 100) * 60 + (n % 100));
 }
 
+/** The trader's risk limits a catalogue field may fall back to (a «по лимиту риска» rule leaves its $ empty). */
+export interface RiskFallback { dailyLossLimit?: number | null; maxRiskPerTrade?: number | null }
+
 /** The what-if twin of a catalogue rule; null when the rule has no honest twin. */
-export function catalogueRule(kind: string, th: Record<string, unknown>): { rule: Rule; estimate: boolean } | null {
+export function catalogueRule(kind: string, th: Record<string, unknown>, limits: RiskFallback = {}): { rule: Rule; estimate: boolean } | null {
   switch (kind) {
     case "max_trades_per_day": { const n = posInt(th.n); return n ? { rule: { type: "maxTradesPerDay", n }, estimate: false } : null; }
     case "no_trade_after_n_losses":
     case "max_consecutive_losses": { const n = posInt(th.n); return n ? { rule: { type: "stopAfterLosses", n }, estimate: false } : null; }
-    case "max_daily_loss_usd": { const usd = num(th.usd); return usd && usd > 0 ? { rule: { type: "dailyLossLimit", usd }, estimate: false } : null; }
+    case "max_daily_loss_usd": { const usd = num(th.usd) ?? limits.dailyLossLimit ?? null; return usd && usd > 0 ? { rule: { type: "dailyLossLimit", usd }, estimate: false } : null; }
     case "max_trades_per_ticker_day": { const n = posInt(th.n); return n ? { rule: { type: "maxTradesPerTicker", n }, estimate: false } : null; }
     case "min_pause_after_loss": { const m = num(th.min); return m && m > 0 ? { rule: { type: "afterLoss", minutes: m }, estimate: false } : null; }
     case "no_trade_first_minutes": { const m = posInt(th.n); return m ? { rule: { type: "timeWindow", from: hhmm(570 + Math.min(m, 389)) }, estimate: false } : null; }
@@ -79,7 +82,7 @@ export function catalogueRule(kind: string, th: Record<string, unknown>): { rule
       const list = Array.isArray(th.tickers) ? th.tickers.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim().toUpperCase()) : [];
       return list.length ? { rule: { type: "excludeTickers", tickers: [...new Set(list)] }, estimate: false } : null;
     }
-    case "max_loss_per_trade_usd": { const usd = num(th.usd); return usd && usd > 0 ? { rule: { type: "capLoss", usd }, estimate: true } : null; }
+    case "max_loss_per_trade_usd": { const usd = num(th.usd) ?? limits.maxRiskPerTrade ?? null; return usd && usd > 0 ? { rule: { type: "capLoss", usd }, estimate: true } : null; }
     default: return null;
   }
 }
@@ -87,8 +90,8 @@ export function catalogueRule(kind: string, th: Record<string, unknown>): { rule
 const daysOf = (trades: SimTrade[]) => new Set(trades.map((t) => t.day)).size;
 
 /** One rule on the trader's trades (all of them, any order). */
-export function ruleInAction(trades: SimTrade[], r: AdoptedRule): RuleInAction {
-  const twin = catalogueRule(r.kind, r.threshold);
+export function ruleInAction(trades: SimTrade[], r: AdoptedRule, limits: RiskFallback = {}): RuleInAction {
+  const twin = catalogueRule(r.kind, r.threshold, limits);
   const head = { id: r.id, name: r.name, kind: r.kind, source: r.source, since: r.since, rule: twin?.rule ?? null, estimate: twin?.estimate ?? false };
   if (!twin) return { ...head, status: "notModelled", after: null, before: null, saved: null };
   if (!r.since) return { ...head, status: "noSince", after: null, before: null, saved: null };
@@ -113,7 +116,7 @@ export function ruleInAction(trades: SimTrade[], r: AdoptedRule): RuleInAction {
 }
 
 /** Every adopted rule, modelled ones first (then by adoption day). */
-export function rulesInAction(trades: SimTrade[], rules: AdoptedRule[]): RuleInAction[] {
+export function rulesInAction(trades: SimTrade[], rules: AdoptedRule[], limits: RiskFallback = {}): RuleInAction[] {
   const rank = (x: RuleInAction) => (x.status === "ok" ? 0 : x.status === "early" ? 1 : x.status === "noSince" ? 2 : 3);
-  return rules.map((r) => ruleInAction(trades, r)).sort((a, b) => rank(a) - rank(b) || (a.since ?? "").localeCompare(b.since ?? "") || a.id.localeCompare(b.id));
+  return rules.map((r) => ruleInAction(trades, r, limits)).sort((a, b) => rank(a) - rank(b) || (a.since ?? "").localeCompare(b.since ?? "") || a.id.localeCompare(b.id));
 }

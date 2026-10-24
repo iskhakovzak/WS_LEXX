@@ -45,6 +45,7 @@ export function ExitsView({ trader }: { trader: string }) {
           <div className="flex flex-wrap gap-1.5 text-xs">
             <Pill tone="neutral">{t("exits.trades", { count: d.total })}</Pill>
             {d.all.missing > 0 && <Pill tone="warn" title={t("exits.missingHint")}>{t("exits.missing", { count: d.all.missing })}</Pill>}
+            {(d.all.coarse ?? 0) > 0 && <Pill tone="neutral" title={t("exits.coarseHint")}>{t("exits.coarse", { count: d.all.coarse ?? 0 })}</Pill>}
             <Pill tone={d.withRisk ? "neutral" : "warn"} title={t("exits.withRiskHint")}>{t("exits.withRisk", { count: d.withRisk })}</Pill>
           </div>
           <div className="overflow-x-auto">
@@ -62,7 +63,7 @@ export function ExitsView({ trader }: { trader: string }) {
                   const actual = g.variants.find((v) => v.variant === "actual");
                   return (
                     <tr key={`${gi}-${g.setup}`} className={cn("border-t border-border/50", gi === 0 && "font-medium")}>
-                      <td className="max-w-[12rem] truncate py-1.5 pr-2" title={g.setup || t("exits.all")}>{gi === 0 ? t("exits.all") : g.setup} <span className="text-xs text-muted-foreground">· {g.trades}</span></td>
+                      <td className="max-w-[12rem] truncate whitespace-nowrap py-1.5 pr-2" title={g.setup || t("exits.all")}>{gi === 0 ? t("exits.all") : g.setup} <span className="text-xs text-muted-foreground">· {g.trades}</span></td>
                       <td className="px-1.5 py-1.5 text-right text-muted-foreground" title={t("exits.actualHint")}>{actual?.winRate != null ? `${Math.round(actual.winRate * 100)}%` : "—"}</td>
                       {variants.map((v) => {
                         const s = g.variants.find((x) => x.variant === v);
@@ -73,7 +74,7 @@ export function ExitsView({ trader }: { trader: string }) {
                           </td>
                         );
                       })}
-                      <td className="py-1.5 pl-2 text-left">{g.best ? <Pill tone="up">{variantLabel(g.best, t)}</Pill> : <span className="text-xs text-muted-foreground">{t("exits.keep")}</span>}</td>
+                      <td className="whitespace-nowrap py-1.5 pl-2 text-left">{g.best ? <Pill tone="up">{variantLabel(g.best, t)}</Pill> : <span className="text-xs text-muted-foreground">{t("exits.keep")}</span>}</td>
                     </tr>
                   );
                 })}

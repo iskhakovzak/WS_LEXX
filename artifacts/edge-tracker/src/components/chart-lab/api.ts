@@ -20,6 +20,8 @@ export type OverlayResponse = {
   mae: { p25: (number | null)[]; p50: (number | null)[]; p75: (number | null)[] };
   n: number[];
   missing: number;
+  /** Entries whose day is archived only in bars coarser than 5 minutes (left out; absent on older builds). */
+  coarse?: number;
   trades: number;
 };
 
@@ -28,7 +30,7 @@ export type VariantStat = {
   variant: ExitVariant; n: number; meanDelta: number | null; totalDelta: number | null; ci: { lo: number; hi: number } | null;
   meanR: number | null; winRate: number | null; q: number | null; verdict: "better" | "worse" | "same" | "few";
 };
-export type SetupExits = { setup: string; trades: number; missing: number; variants: VariantStat[]; best: ExitVariant | null };
+export type SetupExits = { setup: string; trades: number; missing: number; coarse?: number; variants: VariantStat[]; best: ExitVariant | null };
 export type ExitsResponse = { trader: string; setup: string | null; ticker: string | null; total: number; withRisk: number; all: SetupExits; bySetup: SetupExits[] };
 
 function params(trader: string, pick: LabPick, extra: Record<string, string> = {}): string {

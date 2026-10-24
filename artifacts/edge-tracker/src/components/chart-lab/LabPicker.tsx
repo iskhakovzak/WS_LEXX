@@ -12,11 +12,15 @@ export function decodePick(v: string | null | undefined): LabPick {
   return (kind === "setup" || kind === "ticker") && name ? { kind, name } : null;
 }
 
-/** The trader's most traded setup, else ticker — the prefill when nothing is picked yet. */
+/** A setup with at least this many trades is the prefill; else the most traded ticker (a picture of 2 entries says little). */
+export const MIN_PREFILL = 10;
+
+/** The prefill when nothing is picked yet: the most traded setup when it has enough trades, else the most traded ticker. */
 export function defaultPick(f: LabFacets | undefined): LabPick {
   if (!f) return null;
-  if (f.setups[0]) return { kind: "setup", name: f.setups[0].name };
-  if (f.tickers[0]) return { kind: "ticker", name: f.tickers[0].name };
+  const s = f.setups[0], k = f.tickers[0];
+  if (s && (s.n >= MIN_PREFILL || !k)) return { kind: "setup", name: s.name };
+  if (k) return { kind: "ticker", name: k.name };
   return null;
 }
 

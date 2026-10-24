@@ -3,7 +3,7 @@ import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveCont
 import { Layers } from "lucide-react";
 import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CHART, GRID, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, tint, tooltipProps } from "@/components/shared/charts";
+import { CHART, GRID, GlassTooltip, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, tint, tooltipProps } from "@/components/shared/charts";
 import { fmtNum } from "@/lib/format";
 import { chartLabI18n } from "@/i18n/ns/chartLab";
 import { type LabPick, type OverlayResponse, type OverlayUnit, useLabFacets, useLabOverlay } from "./api";
@@ -68,12 +68,13 @@ export function OverlayView({ trader }: { trader: string }) {
       ) : !pick ? (
         <EmptyState compact icon={Layers} title={t("stack.noTradesTitle")} description={t("stack.noTrades")} />
       ) : !o || o.trades === 0 ? (
-        <EmptyState compact icon={Layers} title={t("stack.noBarsTitle")} description={t("stack.noBars", { count: o?.missing ?? 0 })} />
+        <EmptyState compact icon={Layers} title={t("stack.noBarsTitle")} description={t("stack.noBars", { count: (o?.missing ?? 0) + (o?.coarse ?? 0) })} />
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-1.5 text-xs">
             <Pill tone="neutral">{t("stack.entries", { count: o.trades })}</Pill>
             {o.missing > 0 && <Pill tone="warn" title={t("stack.missingHint")}>{t("stack.missing", { count: o.missing })}</Pill>}
+            {(o.coarse ?? 0) > 0 && <Pill tone="neutral" title={t("stack.coarseHint")}>{t("stack.coarse", { count: o.coarse ?? 0 })}</Pill>}
             {drawn < o.trades && <Pill tone="neutral">{t("stack.drawn", { count: drawn })}</Pill>}
           </div>
           <div className="h-[340px]" role="img" aria-label={t("stack.aria", { name: pick.name })}>
@@ -93,7 +94,7 @@ export function OverlayView({ trader }: { trader: string }) {
                 <Line dataKey="mfe" dot={false} isAnimationActive={false} stroke={CHART.up} strokeDasharray="5 3" strokeWidth={1.5} name={t("stack.mfe")} />
                 <Line dataKey="mae" dot={false} isAnimationActive={false} stroke={CHART.down} strokeDasharray="5 3" strokeWidth={1.5} name={t("stack.mae")} />
                 <Line dataKey="mean" dot={false} isAnimationActive={false} stroke={CHART.accent} strokeWidth={STROKE + 0.5} name={t("stack.mean")} />
-                <Tooltip {...tooltipProps("line")} labelFormatter={(m) => t("stack.minute", { m: String(m) })}
+                <Tooltip {...tooltipProps("line")} content={<GlassTooltip />} labelFormatter={(m) => t("stack.minute", { m: String(m) })}
                   formatter={(v: number | [number, number], name: string) => [Array.isArray(v) ? `${fmt(v[0])} … ${fmt(v[1])}` : fmt(v), name]} />
               </ComposedChart>
             </ResponsiveContainer>

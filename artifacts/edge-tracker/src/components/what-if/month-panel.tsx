@@ -3,7 +3,7 @@ import { CalendarRange } from "lucide-react";
 import { ComposedChart, Line, ReferenceLine, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Panel } from "@/components/ds";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ACTIVE_DOT, CHART, GRID, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE, tooltipProps, useChartMotion } from "@/components/shared/charts";
+import { ACTIVE_DOT, CHART, GRID, GlassTooltip, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import { fmtDateCustom, fmtDeskDate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
@@ -55,6 +55,7 @@ export function MonthPanel({ trades, run, onDay }: { trades: SimTrade[]; run: Ru
                 <ReferenceLine {...ZERO_LINE} />
                 <Tooltip
                   {...tooltipProps("line")}
+                  content={<GlassTooltip tone="pnl" />}
                   formatter={(v: number, name: string) => [usd(v), name]}
                   labelFormatter={(_, p) => { const x = p?.[0]?.payload as { day?: string; ticker?: string } | undefined; return x?.day ? `${fmtDeskDate(x.day, "medium")} · ${x.ticker ?? ""}` : ""; }}
                 />

@@ -62,13 +62,20 @@ describe("R brackets", () => {
 });
 
 describe("time stops and VWAP", () => {
-  it("exits at the close of the bar holding entry + m minutes; a missing bar → unknown", () => {
+  it("exits at the last price known at entry + m minutes (the last bar that had ended); a missing bar → unknown", () => {
     const rows = flat(10);
-    rows[10 + 5] = [10, 10.3, 10, 10.25]; // the bar holding T0 + 20 s + 5 min
+    rows[10 + 4] = [10, 10.3, 10, 10.25]; // T0+4m … T0+5m: ended before T0 + 20 s + 5 min
+    rows[10 + 5] = [10, 11, 10, 11]; // still open at that moment: its close is a later price, never used
     expect(timeExit(long(), day(rows), 5)).toBe(0.25);
     const gap = day(rows);
-    gap.bars = gap.bars.filter((b) => b.t !== T0 + 5 * 60);
-    expect(timeExit(long(), gap, 5)).toBeNull();
+    gap.bars = gap.bars.filter((b) => b.t !== T0 + 4 * 60);
+    expect(timeExit(long(), gap, 5)).toBeNull(); // an older bar does not stand in for the missing one
+  });
+  it("coarse bars: a time stop shorter than the bar is unknown, not the bar's later close", () => {
+    const bars30: LabBar[] = Array.from({ length: 6 }, (_, i) => ({ t: T0 - 1800 + i * 1800, o: 10, h: 10.5, l: 9.5, c: 10 + i * 0.1, v: 100 }));
+    const d: DayBars = { bars: bars30, barSec: 1800, closeAt: T0 + 4 * 3600 };
+    expect(timeExit(long({ entryAt: T0 + 20 }), d, 5)).toBeNull();
+    expect(timeExit(long({ entryAt: T0 + 20 }), d, 30)).toBe(0.1); // the T0 … T0+30m bar (close 10.1) ended at +29m40s
   });
   it("VWAP uses the bars BEFORE the touching bar; the exit price is that VWAP", () => {
     // Day at 10 with volume, then the stock runs to 11; the first bar back down through 10 touches the VWAP (10).
@@ -106,7 +113,7 @@ describe("aggregation: honest statistics per setup", () => {
     const rnd = mulberry32(9);
     const rows = Array.from({ length: 40 }, (_, i) => {
       const r = flat(10);
-      r[15] = [10, 10, 10, 10 + (rnd() - 0.5) * 0.02];
+      r[14] = [10, 10, 10, 10 + (rnd() - 0.5) * 0.02]; // the bar that ended just before entry + 5 min
       return tradeExits(long({ id: i, exit: 9.6 }), day(r));
     });
     const s = aggregateExits("ORB", rows, 0, { iters: 400 });
@@ -140,9 +147,12 @@ describe("overlay", () => {
     const p = tradePath({ id: 1, side: 1, entry: 10, entryAt: T0 + 20, riskPerShare: 0.5, result: 1 }, d.bars, 60, "pct")!;
     expect(p.values).toHaveLength(PRE_MIN + POST_MIN + 1);
     expect(p.values[PRE_MIN]).toBe(0);
-    expect(p.values[PRE_MIN + 2]).toBe(5); // +5% at minute 2
+    // The T0+2m … T0+3m bar closes at 10.5: known from minute 3 on, not at minute 2 (it was still open then).
+    expect(p.values[PRE_MIN + 2]).toBe(0);
+    expect(p.values[PRE_MIN + 3]).toBe(5);
     const r = tradePath({ id: 1, side: -1, entry: 10, entryAt: T0 + 20, riskPerShare: 0.5, result: 1 }, d.bars, 60, "r")!;
-    expect(r.values[PRE_MIN + 2]).toBe(-1); // a short: −1R
+    expect(r.values[PRE_MIN + 3]).toBe(-1); // a short: −1R
+    expect(r.mfe[PRE_MIN + 2]).toBe(0); // the bar of the move had not ended yet
     expect(r.mfe[PRE_MIN + 3]).toBe(0.2); // the low 9.9 = +0.2R for the short
     expect(r.mae[PRE_MIN + 3]).toBe(-1.2);
     expect(tradePath({ id: 1, side: 1, entry: 10, entryAt: T0, riskPerShare: null, result: null }, d.bars, 60, "r")).toBeNull();
@@ -162,11 +172,27 @@ describe("overlay", () => {
     expect(o.mean[PRE_MIN + 40]).toBe(0);
     expect(o.paths.map((p) => p.win)).toEqual([true, false]);
   });
-  it("closeAt finds the bar holding a moment or nothing", () => {
-    const d = day(flat(10, 5));
-    expect(closeAt(d.bars, 60, T0 - 600 + 59)).toBe(10);
-    expect(closeAt(d.bars, 60, T0 - 600 + 5 * 60)).toBeNull();
-    expect(closeAt(d.bars, 60, T0 - 601)).toBeNull();
+  it("closeAt: the last bar that had ended, fresh (within one bar) and after `after`", () => {
+    const d = day(flat(10, 5)); // bars T0−600 … T0−300
+    expect(closeAt(d.bars, 60, T0 - 600 + 59)).toBeNull(); // the first bar is still open
+    expect(closeAt(d.bars, 60, T0 - 600 + 60)).toBe(10);
+    expect(closeAt(d.bars, 60, T0 - 600 + 5 * 60 + 30)).toBe(10); // the last bar ended 30 s ago
+    expect(closeAt(d.bars, 60, T0 - 600 + 7 * 60)).toBeNull(); // the archive stopped 2 min ago: stale
+    expect(closeAt(d.bars, 60, T0 - 600 + 3 * 60, T0 - 600 + 3 * 60)).toBeNull(); // ended, but not after `after`
+  });
+  it("coarse bars: nothing at +5 min with 30-minute bars (no bar had ended after the fill)", () => {
+    const bars30: LabBar[] = Array.from({ length: 6 }, (_, i) => ({ t: T0 - 1800 + i * 1800, o: 10, h: 10.5, l: 9.5, c: 11, v: 100 }));
+    const p = tradePath({ id: 1, side: 1, entry: 10, entryAt: T0 + 20, riskPerShare: 0.5, result: 1 }, bars30, 1800, "pct")!;
+    expect(p.values[PRE_MIN + 5]).toBeNull();
+    expect(p.values[PRE_MIN + 30]).toBe(10); // the T0 … T0+30m bar ended at +29m40s
+    // …and the overlay leaves such days out, counted apart.
+    const o = overlayOf([{ trade: { id: 1, side: 1, entry: 10, entryAt: T0 + 20, riskPerShare: 0.5, result: 1 }, bars: bars30, barSec: 1800 }], "pct");
+    expect([o.coarse, o.trades, o.missing]).toEqual([1, 0, 0]);
+  });
+  it("the excursion is unknown until a whole bar after the entry minute has ended", () => {
+    const p = tradePath({ id: 1, side: 1, entry: 10, entryAt: T0 + 20, riskPerShare: 0.5, result: 1 }, day(flat(10)).bars, 60, "pct")!;
+    expect(p.mfe[PRE_MIN + 1]).toBeNull();
+    expect(p.mfe[PRE_MIN + 2]).toBe(0);
   });
 });
 

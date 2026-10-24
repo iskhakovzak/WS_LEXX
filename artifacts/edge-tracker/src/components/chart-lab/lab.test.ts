@@ -65,6 +65,9 @@ describe("pickers and notes", () => {
     expect(decodePick(encodePick(null))).toBeNull();
     expect(decodePick("bogus:x")).toBeNull();
     expect(defaultPick({ trader: "T", setups: [], tickers: [{ name: "AAPL", n: 3 }] })).toEqual({ kind: "ticker", name: "AAPL" });
+    // A setup with 2 trades says little: the most traded ticker is the prefill; a real setup wins.
+    expect(defaultPick({ trader: "T", setups: [{ name: "Gap", n: 2 }], tickers: [{ name: "NVDA", n: 38 }] })).toEqual({ kind: "ticker", name: "NVDA" });
+    expect(defaultPick({ trader: "T", setups: [{ name: "Gap", n: 12 }], tickers: [{ name: "NVDA", n: 38 }] })).toEqual({ kind: "setup", name: "Gap" });
   });
   it("a drawing made on a trade keeps its id through the API; notes of the trade come first", () => {
     const d = { ...makeDrawing("hline", [{ time: 1, price: 10 }], "up", 77), label: "seller here" };

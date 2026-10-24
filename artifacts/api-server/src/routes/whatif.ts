@@ -40,7 +40,7 @@ import { withWhy } from "../lib/whatIfWhy";
 import { COMBO_MAX_RULES, findCombos } from "../lib/whatIfCombo";
 import { type AdoptedRule, MIN_SIDE_DAYS, rulesInAction } from "../lib/whatIfMyRules";
 import { trialRules } from "../lib/whatIfRuleTrials";
-import { fetchRulesFor, ruleSince } from "../lib/rulesEngine";
+import { fetchRiskLimits, fetchRulesFor, ruleSince } from "../lib/rulesEngine";
 import { shownRuleName } from "../lib/rulesTemplates";
 import { freshSimTrades, loadSimTrades } from "../lib/whatIfLoader";
 import { tradesSignature } from "../lib/whatIfSignature";
@@ -477,13 +477,13 @@ router.get("/whatif/my-rules", asyncHandler(async (req, res) => {
   if (scope === undefined) throw unauthorized();
   // Rules belong to one trader: the whole desk and guests get an empty list (the page explains it).
   if (scope == null || isGuest(req)) { res.json({ scope, rules: [], team: scope == null }); return; }
-  const [trades, stored, trials] = await Promise.all([loadSimTrades(scope), fetchRulesFor(scope, { enabledOnly: true }), trialRules(scope)]);
+  const [trades, stored, trials, limits] = await Promise.all([loadSimTrades(scope), fetchRulesFor(scope, { enabledOnly: true }), trialRules(scope), fetchRiskLimits(scope)]);
   const lang = langOf(req);
   const adopted: AdoptedRule[] = [
     ...stored.map((r) => ({ id: String(r.id), name: shownRuleName(r.name, r.templateKey, lang), kind: r.kind, threshold: r.threshold, since: ruleSince(r.createdAt), source: "catalog" as const })),
     ...trials,
   ];
-  const rules = rulesInAction(trades, adopted).map((x) => ({ ...x, label: x.rule ? describeRule(x.rule, lang) : null }));
+  const rules = rulesInAction(trades, adopted, limits).map((x) => ({ ...x, label: x.rule ? describeRule(x.rule, lang) : null }));
   res.json({ scope, team: false, minSideDays: MIN_SIDE_DAYS, rules, generatedAt: new Date().toISOString() });
 }));
 

@@ -143,6 +143,9 @@ describe("«Мои правила в деле»", () => {
     expect(catalogueRule("banned_tickers", { tickers: ["aapl", " tsla", "AAPL"] })?.rule).toEqual({ type: "excludeTickers", tickers: ["AAPL", "TSLA"] });
     expect(catalogueRule("max_loss_per_trade_usd", { usd: 100 })).toEqual({ rule: { type: "capLoss", usd: 100 }, estimate: true });
     expect(catalogueRule("max_daily_loss_usd", { usd: null })).toBeNull();
+    // «Дневной стоп по лимиту риска»: the $ comes from the trader's risk limits.
+    expect(catalogueRule("max_daily_loss_usd", {}, { dailyLossLimit: 300 })?.rule).toEqual({ type: "dailyLossLimit", usd: 300 });
+    expect(catalogueRule("max_loss_per_trade_usd", {}, { maxRiskPerTrade: 50 })?.rule).toEqual({ type: "capLoss", usd: 50 });
     for (const k of ["no_overnight", "no_swing", "trade_without_checklist", "no_averaging_down", "self_check", "position_size_pct"]) expect(catalogueRule(k, {})).toBeNull();
     expect(catalogTime(1599)).toBeNull();
     expect(catalogTime(945)).toBe("09:45");

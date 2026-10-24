@@ -12,7 +12,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
 import { badRequest, unauthorized } from "../lib/http";
 import { labFacets, loadLabBars, loadLabTrades, type LabTrade } from "../lib/chartLab/load";
-import { overlayOf, type OverlayUnit } from "../lib/chartLab/overlayMath";
+import { MAX_BAR_SEC, overlayOf, type OverlayUnit } from "../lib/chartLab/overlayMath";
 import { aggregateExits, tradeExits, type TradeExits } from "../lib/chartLab/exitMath";
 import { TtlCache } from "../lib/hotCache";
 
@@ -78,12 +78,13 @@ router.get("/chart-lab/exits", asyncHandler(async (req, res) => {
   if (hit) { res.json(hit); return; }
   const trades = await loadLabTrades({ trader, setup: f.setup, ticker: f.ticker, from: f.from, to: f.to });
   const bars = await loadLabBars(trades);
-  const groups = new Map<string, { rows: TradeExits[]; missing: number }>();
-  const all = { rows: [] as TradeExits[], missing: 0 };
+  const groups = new Map<string, { rows: TradeExits[]; missing: number; coarse: number }>();
+  const all = { rows: [] as TradeExits[], missing: 0, coarse: 0 };
   for (const t of trades) {
     const d = bars.get(keyOf(t)) ?? null;
-    const g = groups.get(t.setup ?? "") ?? { rows: [], missing: 0 };
+    const g = groups.get(t.setup ?? "") ?? { rows: [], missing: 0, coarse: 0 };
     if (!d) { g.missing++; all.missing++; }
+    else if (d.barSec > MAX_BAR_SEC) { g.coarse++; all.coarse++; }
     else {
       const x = tradeExits({ id: t.id, setup: t.setup, side: t.side, qty: t.qty, entry: t.entry, entryAt: t.entryAt, exit: t.exit, riskPerShare: t.riskPerShare }, d);
       g.rows.push(x);
@@ -92,11 +93,11 @@ router.get("/chart-lab/exits", asyncHandler(async (req, res) => {
     groups.set(t.setup ?? "", g);
   }
   const bySetup = [...groups.entries()]
-    .map(([setup, g]) => aggregateExits(setup, g.rows, g.missing))
+    .map(([setup, g]) => aggregateExits(setup, g.rows, g.missing, { coarse: g.coarse }))
     .sort((a, b) => b.trades - a.trades || a.setup.localeCompare(b.setup));
   const body = {
     trader, setup: f.setup ?? null, ticker: f.ticker ?? null, total: trades.length, withRisk: trades.filter((t) => t.riskPerShare != null).length,
-    all: aggregateExits("", all.rows, all.missing), bySetup,
+    all: aggregateExits("", all.rows, all.missing, { coarse: all.coarse }), bySetup,
   };
   cache.set(key, body);
   res.json(body);

@@ -40,15 +40,15 @@ export function WhyFold({ why, onDay }: { why: Why; onDay?: (day: string) => voi
         <ChevronDown className={cn("h-3 w-3 transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
       </button>
       {open && (
-        <div className="grid grid-cols-1 gap-2 rounded-xl bg-[var(--glass-bg)] p-2 tabular-nums sm:grid-cols-2">
+        <div className="flex flex-col gap-2 rounded-xl bg-[var(--glass-bg)] p-2 tabular-nums">
           <div className="min-w-0">
             <p className="mb-0.5 font-medium text-foreground">{t("why.days")}</p>
             <ul className="flex flex-col gap-0.5">
               {why.topDays.map((d) => (
                 <li key={d.day} className="flex items-center justify-between gap-2">
                   {onDay ? (
-                    <button type="button" onClick={() => onDay(d.day)} className="truncate text-left text-primary underline-offset-2 hover:underline">{fmtDeskDate(d.day, "medium")}</button>
-                  ) : <span className="truncate">{fmtDeskDate(d.day, "medium")}</span>}
+                    <button type="button" onClick={() => onDay(d.day)} className="truncate text-left text-primary underline-offset-2 hover:underline">{fmtDeskDate(d.day, "dayMonth")}</button>
+                  ) : <span className="truncate">{fmtDeskDate(d.day, "dayMonth")}</span>}
                   <span className={d.delta >= 0 ? "text-up" : "text-down"}>{usd(d.delta)}</span>
                 </li>
               ))}
@@ -60,7 +60,7 @@ export function WhyFold({ why, onDay }: { why: Why; onDay?: (day: string) => voi
             <ul className="flex flex-col gap-0.5">
               {why.topTrades.map((x) => (
                 <li key={x.id} className="flex items-center justify-between gap-2" title={t(x.kind === "removed" ? "why.removedHint" : "why.changedHint", { net: usd(x.net) })}>
-                  <span className="min-w-0 truncate"><span className="font-medium">{x.ticker}</span> <span className="text-muted-foreground">{fmtDeskDate(x.day, "short")}</span></span>
+                  <span className="min-w-0 truncate"><span className="font-medium">{x.ticker}</span> <span className="text-muted-foreground">{fmtDeskDate(x.day, "dayMonth")}</span></span>
                   <span className={x.contribution >= 0 ? "text-up" : "text-down"}>{usd(x.contribution)}</span>
                 </li>
               ))}

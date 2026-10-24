@@ -10,6 +10,7 @@
  *     touches both, the STOP counts (we cannot know the order inside a bar — the conservative choice);
  *   - VWAP is cumulative from the day's first bar and the touch test of bar i uses VWAP through bar i − 1 (what was on
  *     the screen when bar i opened); the exit price is that VWAP;
+ *   - a time stop exits at the last price known at that moment (the close of the last bar that had ended by then);
  *   - a variant still open at the regular close exits at the close of the last regular-session bar of the day; when the
  *     archive's bars stop before the variant resolves (a missing tail), the variant is UNKNOWN for that trade and the
  *     trade leaves that variant's statistics (never filled in).
@@ -110,15 +111,20 @@ export function bracketExit(t: ExitTrade, day: DayBars, k: number): number | nul
   return last < 0 ? null : r6(t.side * (bars[last].c - t.entry));
 }
 
-/** Exit `minutes` after the entry at the close of the bar that contains that moment; null when the bar is missing. */
+/**
+ * Exit `minutes` after the entry (at most at the regular close) at the last price known then: the close of the last bar
+ * that had ENDED by that moment, ended after the fill and within one bar of the moment. Null when that bar is missing —
+ * never the close of a bar still open at the moment (a later price) nor an older bar standing in for a missing one.
+ */
 export function timeExit(t: ExitTrade, day: DayBars, minutes: number): number | null {
-  const at = t.entryAt + minutes * 60;
   const { bars, barSec, closeAt } = day;
-  const target = Math.min(at, closeAt - 1);
-  const i = firstAtOrAfter(bars, target - barSec + 1);
-  const b = bars[i];
-  if (!b || b.t > target || b.t + barSec <= target) return null; // the bar holding that moment is not archived
-  return r6(t.side * (b.c - t.entry));
+  const at = Math.min(t.entryAt + minutes * 60, closeAt);
+  let hit = -1;
+  for (let i = 0; i < bars.length && bars[i].t + barSec <= at; i++) hit = i;
+  if (hit < 0) return null;
+  const end = bars[hit].t + barSec;
+  if (end <= at - barSec || end <= t.entryAt) return null;
+  return r6(t.side * (bars[hit].c - t.entry));
 }
 
 /** First touch of the prior-bar VWAP after the entry; the close when none; null without volume or with a missing tail. */
@@ -175,6 +181,8 @@ export interface SetupExits {
   trades: number;
   /** Trades without archived bars for the day. */
   missing: number;
+  /** Trades whose day is archived only in bars coarser than 5 minutes (left out: an hour bar cannot place a 5-minute exit). */
+  coarse: number;
   variants: VariantStat[];
   /** The variant with the best mean Δ among the «better» ones; null = none beats the actual exits. */
   best: ExitVariant | null;
@@ -202,7 +210,7 @@ export function bootMean(values: number[], iters = 1000, seed = 20260103): { lo:
 }
 
 /** Statistics of one group of trades (a setup, or all). `missing` = trades of the group without bars. */
-export function aggregateExits(setup: string, rows: TradeExits[], missing: number, opts: { iters?: number; seed?: number } = {}): SetupExits {
+export function aggregateExits(setup: string, rows: TradeExits[], missing: number, opts: { iters?: number; seed?: number; coarse?: number } = {}): SetupExits {
   const stats: VariantStat[] = [];
   const pRaw: number[] = [];
   const idx: number[] = [];
@@ -227,7 +235,8 @@ export function aggregateExits(setup: string, rows: TradeExits[], missing: numbe
     if (v !== "actual" && deltas.length >= MIN_N && mean != null) {
       const b = bootMean(deltas, opts.iters ?? 1000, (opts.seed ?? 20260103) + stats.length);
       st.ci = { lo: round2(b.lo), hi: round2(b.hi) };
-      pRaw.push(b.se > 0 ? 2 * normalTail(Math.abs(mean) / b.se) : 1);
+      // A difference with no spread at all (every trade moved the same) is certain unless it is zero.
+      pRaw.push(b.se > 0 ? Math.min(1, 2 * normalTail(Math.abs(mean) / b.se)) : mean !== 0 ? 0 : 1);
       idx.push(stats.length);
     }
     stats.push(st);
@@ -240,5 +249,6 @@ export function aggregateExits(setup: string, rows: TradeExits[], missing: numbe
     else if (s.ci && s.ci.hi < 0 && q[k] < Q_MAX) s.verdict = "worse";
   });
   const better = stats.filter((s) => s.verdict === "better").sort((a, b) => (b.meanDelta ?? 0) - (a.meanDelta ?? 0));
-  return { setup, trades: rows.length + missing, missing, variants: stats, best: better[0]?.variant ?? null };
+  const coarse = opts.coarse ?? 0;
+  return { setup, trades: rows.length + missing + coarse, missing, coarse, variants: stats, best: better[0]?.variant ?? null };
 }
