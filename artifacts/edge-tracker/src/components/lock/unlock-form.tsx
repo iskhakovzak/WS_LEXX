@@ -3,37 +3,50 @@
  * that woke it lands in the field, so nothing typed is lost. Enter submits, Esc hides and clears, 10 s without typing
  * hides and clears. A wrong code shakes the field and says how many attempts are left; the 5th wrong answer signs out
  * (the lock controller sends the tab to the sign-in page).
+ * Motion (the viewer's «Движение фона», passed in as `motion`): the field unfolds from the middle out of a blur with a
+ * light sweep along its rim, the hint lines follow; a right code folds the pill into a round check that pops, then
+ * `onSuccess` (the screen's exit) runs before the lock goes away.
  */
 import * as React from "react";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { lockStore } from "@/lib/lock/lock-store";
 import { MAX_UNLOCK_ATTEMPTS, type QuickCodeKind } from "@/lib/lock/lock-model";
 import { lockEggOwnsKey } from "@/lib/lock/eggs/keys";
 import { lockI18n } from "@/i18n/ns/lock";
-import { prefersReducedMotion } from "./ambient";
 
 const IDLE_HIDE_MS = 10_000;
 const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Fn", "NumLock", "ScrollLock", "OS", "Tab"]);
 
 type Message = { text: string; tone: "error" | "muted" } | null;
 
+const EASE_OUT = "cubic-bezier(0.2, 0.9, 0.2, 1)";
+const finished = (a: Animation | undefined) => (a ? a.finished.then(() => undefined, () => undefined) : Promise.resolve());
+
 export function UnlockForm({
-  hasCode, kind, attemptsLeft, onVisibleChange, onForgot,
+  hasCode, kind, attemptsLeft, motion, onVisibleChange, onForgot, onSuccess,
 }: {
   hasCode: boolean | null;
   kind: QuickCodeKind | null;
   attemptsLeft: number;
+  /** Background / UI motion allowed («Движение фона»). */
+  motion: boolean;
   onVisibleChange: (v: boolean) => void;
   onForgot: () => void;
+  /** The screen's exit animation, awaited before the lock goes away. */
+  onSuccess: () => Promise<void>;
 }) {
   const { t } = lockI18n.useT();
   const [visible, setVisibleState] = React.useState(false);
   const [code, setCode] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState<Message>(null);
+  const [success, setSuccess] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const boxRef = React.useRef<HTMLDivElement>(null);
+  const sweepRef = React.useRef<HTMLSpanElement>(null);
+  const restRef = React.useRef<HTMLDivElement>(null);
+  const checkRef = React.useRef<HTMLSpanElement>(null);
   const idleRef = React.useRef(0);
   const visibleRef = React.useRef(false);
 
@@ -56,14 +69,34 @@ export function UnlockForm({
     idleRef.current = window.setTimeout(hide, IDLE_HIDE_MS);
   }, [hide]);
 
+  /** Entrance: the pill unfolds from its middle out of a blur, a light runs along the rim, the lines below follow. */
+  const playEntrance = React.useCallback(() => {
+    if (!motion) return;
+    boxRef.current?.animate?.(
+      [
+        { clipPath: "inset(0 38% round 999px)", transform: "scale(0.9)", filter: "blur(10px)", opacity: 0 },
+        { clipPath: "inset(0 0% round 999px)", transform: "scale(1)", filter: "blur(0px)", opacity: 1 },
+      ],
+      { duration: 560, easing: EASE_OUT },
+    );
+    sweepRef.current?.animate?.(
+      [{ transform: "translateX(-120%)", opacity: 0 }, { opacity: 0.9, offset: 0.35 }, { transform: "translateX(220%)", opacity: 0 }],
+      { duration: 900, delay: 260, easing: "ease-in-out" },
+    );
+    restRef.current?.animate?.(
+      [{ transform: "translateY(6px)", opacity: 0, filter: "blur(4px)" }, { transform: "translateY(0)", opacity: 1, filter: "blur(0px)" }],
+      { duration: 420, delay: 180, easing: EASE_OUT, fill: "backwards" },
+    );
+  }, [motion]);
+
   const reveal = React.useCallback((firstChar?: string) => {
-    if (!visibleRef.current) setVisible(true);
+    if (!visibleRef.current) { setVisible(true); playEntrance(); }
     // The field is always mounted (just transparent), so it can take focus inside this very event (mobile keyboards
     // only open from a focus within the user's gesture).
     inputRef.current?.focus();
     if (firstChar) setCode((c) => (c + firstChar).slice(0, 64));
     armIdle();
-  }, [armIdle, setVisible]);
+  }, [armIdle, setVisible, playEntrance]);
 
   // Any key anywhere wakes the field; printable keys go into it.
   React.useEffect(() => {
@@ -91,8 +124,30 @@ export function UnlockForm({
 
   React.useEffect(() => () => window.clearTimeout(idleRef.current), []);
 
+  /** A right code: the pill folds into a circle around the check, which pops; then the screen's exit. */
+  const playSuccess = async () => {
+    setSuccess(true);
+    if (motion) {
+      restRef.current?.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" });
+      checkRef.current?.animate?.(
+        [{ transform: "scale(0.2) rotate(-25deg)", opacity: 0 }, { transform: "scale(1.25) rotate(0deg)", opacity: 1, offset: 0.6 }, { transform: "scale(1)", opacity: 1 }],
+        { duration: 460, delay: 180, easing: EASE_OUT, fill: "backwards" },
+      );
+      await finished(boxRef.current?.animate?.(
+        [
+          { clipPath: "inset(0 0% round 999px)", transform: "scale(1)" },
+          { clipPath: "inset(0 calc(50% - 24px) round 999px)", transform: "scale(1.06)", offset: 0.7 },
+          { clipPath: "inset(0 calc(50% - 24px) round 999px)", transform: "scale(1)" },
+        ],
+        { duration: 460, easing: EASE_OUT, fill: "forwards" },
+      ));
+      await new Promise((r) => window.setTimeout(r, 180));
+    }
+    await onSuccess();
+  };
+
   const shake = () => {
-    if (prefersReducedMotion()) return;
+    if (!motion) return;
     boxRef.current?.animate?.(
       [{ transform: "translateX(0)" }, { transform: "translateX(-10px)" }, { transform: "translateX(9px)" }, { transform: "translateX(-6px)" }, { transform: "translateX(4px)" }, { transform: "translateX(0)" }],
       { duration: 420, easing: "ease-out" },
@@ -104,7 +159,7 @@ export function UnlockForm({
     if (busy || !code) return;
     setBusy(true);
     window.clearTimeout(idleRef.current);
-    const res = await lockStore.unlock(code);
+    const res = await lockStore.unlock(code, { beforeApply: playSuccess });
     setBusy(false);
     if (res.ok) return; // the screen unmounts
     setCode("");
@@ -156,24 +211,38 @@ export function UnlockForm({
           aria-invalid={message?.tone === "error" || undefined}
           aria-describedby="lock-code-note"
           disabled={busy}
-          className="h-12 w-full rounded-full border border-white/15 bg-black/35 pl-5 pr-12 text-center text-lg tracking-[0.35em] text-white shadow-[0_8px_40px_rgba(0,0,0,0.35)] outline-none backdrop-blur-xl placeholder:text-sm placeholder:tracking-normal placeholder:text-white/55 focus-visible:border-white/35 focus-visible:ring-2 focus-visible:ring-white/25"
+          className={cn(
+            "h-12 w-full rounded-full border border-white/15 bg-black/35 pl-5 pr-12 text-center text-lg tracking-[0.35em] text-white shadow-[0_8px_40px_rgba(0,0,0,0.35)] outline-none backdrop-blur-xl transition-[border-color,box-shadow,color] duration-300 placeholder:text-sm placeholder:tracking-normal placeholder:text-white/55 focus-visible:border-white/35 focus-visible:ring-2 focus-visible:ring-white/25",
+            success && "border-white/70 text-transparent shadow-[0_0_48px_rgba(255,255,255,0.35)]",
+          )}
         />
+        {/* The light that runs along the rim when the field appears. */}
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
+          <span ref={sweepRef} className="absolute inset-y-0 left-0 w-1/2 opacity-0" style={{ background: "linear-gradient(100deg, transparent, rgba(255,255,255,0.22), transparent)" }} />
+        </span>
         <button
           type="submit"
           disabled={busy || !code}
           tabIndex={visible ? 0 : -1}
           aria-label={t("screen.submit")}
-          className="absolute right-1.5 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+          className={cn(
+            "absolute top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full text-white transition-[background-color,color,right] duration-300 ease-out hover:bg-white/25 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+            success ? "right-[calc(50%-18px)] bg-white text-black hover:bg-white disabled:opacity-100" : "right-1.5 bg-white/15",
+          )}
         >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+          {success
+            ? <span ref={checkRef} className="grid place-items-center"><Check className="h-4 w-4" strokeWidth={3} aria-hidden="true" /></span>
+            : busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowRight className="h-4 w-4" aria-hidden="true" />}
         </button>
       </div>
-      <p id="lock-code-note" role="status" aria-live="polite" className={cn("min-h-5 text-center text-xs", note?.tone === "error" ? "text-[#ffb4a8]" : "text-white/60")}>
-        {note?.text ?? (touch ? "" : t("screen.keys"))}
-      </p>
-      <button type="button" tabIndex={visible ? 0 : -1} onClick={onForgot} className="text-xs text-white/45 underline-offset-4 hover:text-white/80 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded">
-        {t("screen.forgot")}
-      </button>
+      <div ref={restRef} className="flex flex-col items-center gap-3">
+        <p id="lock-code-note" role="status" aria-live="polite" className={cn("min-h-5 text-center text-xs", note?.tone === "error" ? "text-[#ffb4a8]" : "text-white/60")}>
+          {note?.text ?? (touch ? "" : t("screen.keys"))}
+        </p>
+        <button type="button" tabIndex={visible ? 0 : -1} onClick={onForgot} className="text-xs text-white/45 underline-offset-4 hover:text-white/80 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 rounded">
+          {t("screen.forgot")}
+        </button>
+      </div>
     </form>
   );
 }

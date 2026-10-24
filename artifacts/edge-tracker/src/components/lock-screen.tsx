@@ -3,12 +3,17 @@
  * notification is mounted underneath). Full screen, above everything (z-tooltip): the viewer's «Вид» background at full
  * brightness without panels — a «WS originals» scene or their own image; anything else falls back to the smoke — always
  * in the dark (a screensaver; kind to OLED), a slow drift and a breathing halo, the clock, New York time with the
- * market phase, the name and the WS mark. The first key (or a click) reveals the unlock field.
+ * market phase, the name and the WS mark. The first key (or a click) reveals the unlock field. With «Движение фона» allowed the scene leans under the pointer
+ * (3D, like the «Вид» scenes) on top of the slow drift; a right code plays the exit — the clock and quote float up and
+ * out, a ring opens from the check, the scene moves toward you — and the site then opens through an iris
+ * (unlock-reveal.tsx).
  * Lives at the top of components/ because it composes three features: appearance (scenes), shell (market clock) and lock.
  */
 import * as React from "react";
 import { LockKeyhole } from "lucide-react";
 import SceneBackdrop from "@/components/appearance/scenes/scene-backdrop";
+import { bgMotionAllowed } from "@/components/appearance/scenes/motion";
+import { setRevealOrigin } from "@/components/unlock-reveal";
 import { useBgImageUrl } from "@/components/appearance/backdrop-layer";
 import { useMarketClock } from "@/components/shell/market-clock";
 import { LockClock } from "@/components/lock/lock-clock";
@@ -54,8 +59,37 @@ export default function LockScreen() {
   const market = useMarketClock();
   const rootRef = React.useRef<HTMLDivElement>(null);
   const glowRef = React.useRef<HTMLDivElement>(null);
+  const sceneRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const ringRef = React.useRef<HTMLDivElement>(null);
+  const formWrapRef = React.useRef<HTMLDivElement>(null);
   const [typing, setTyping] = React.useState(false);
-  useAmbientDrift(rootRef, glowRef);
+  const motion = bgMotionAllowed(appearance.bg.motion);
+  useAmbientDrift(rootRef, glowRef, motion);
+
+  /** The exit after a right code (~650 ms); the iris on the site takes over from the same point. */
+  const playExit = React.useCallback(async () => {
+    const box = formWrapRef.current?.getBoundingClientRect();
+    const origin = box ? { x: box.left + box.width / 2, y: box.top + 24 } : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    setRevealOrigin(origin);
+    if (!motion) return;
+    const ease = "cubic-bezier(0.2, 0.9, 0.2, 1)";
+    const ring = ringRef.current;
+    if (ring) { ring.style.left = `${origin.x}px`; ring.style.top = `${origin.y}px`; }
+    contentRef.current?.animate?.(
+      [{ transform: "translateY(0)", opacity: 1, filter: "blur(0px)" }, { transform: "translateY(-36px)", opacity: 0, filter: "blur(10px)" }],
+      { duration: 520, easing: ease, fill: "forwards" },
+    );
+    sceneRef.current?.animate?.(
+      [{ transform: "scale(1)", filter: "brightness(1)" }, { transform: "scale(1.12)", filter: "brightness(1.35)" }],
+      { duration: 700, easing: ease, fill: "forwards" },
+    );
+    const a = ring?.animate?.(
+      [{ transform: "translate(-50%, -50%) scale(0.2)", opacity: 0.9 }, { transform: "translate(-50%, -50%) scale(14)", opacity: 0 }],
+      { duration: 700, easing: "cubic-bezier(0.1, 0.7, 0.3, 1)", fill: "forwards" },
+    );
+    await (a ? a.finished.then(() => undefined, () => undefined) : new Promise((r) => window.setTimeout(r, 650)));
+  }, [motion]);
 
   const kind = appearance.bg.kind;
   const image = useBgImageUrl(kind === "image");
@@ -83,14 +117,14 @@ export default function LockScreen() {
       className="fixed inset-0 z-tooltip select-none overflow-hidden bg-black text-white print:hidden"
       style={DARK_VARS}
     >
-      <div aria-hidden="true" className="absolute inset-0">
+      <div ref={sceneRef} aria-hidden="true" className="absolute inset-0">
         {kind === "image" && image ? (
           <div
             className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url("${image}")`, transform: "translate3d(calc(var(--px, 0) * -14px), calc(var(--py, 0) * -10px), 0) scale(1.05)" }}
+            style={{ backgroundImage: `url("${image}")`, transform: "translate3d(calc(var(--px, 0) * -38px), calc(var(--py, 0) * -24px), 0) perspective(1200px) rotateY(calc(var(--px, 0) * 2.75deg)) rotateX(calc(var(--py, 0) * -2.75deg)) scale(1.12)" }}
           />
         ) : (
-          <SceneBackdrop key={`${scene}-${sceneTheme}`} scene={scene} theme={sceneTheme} ambient />
+          <SceneBackdrop key={`${scene}-${sceneTheme}`} scene={scene} theme={sceneTheme} motion={appearance.bg.motion} ambient />
         )}
         {/* A soft vignette keeps the white type readable over the brightest photo. */}
         <div className="absolute inset-0" style={{ background: "radial-gradient(120% 90% at 50% 45%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.55) 100%)" }} />
@@ -101,17 +135,21 @@ export default function LockScreen() {
       </div>
 
       <div className="relative flex h-full flex-col items-center justify-center gap-10 px-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-        <div className={typing ? "transition-[opacity,transform] duration-500 -translate-y-4 opacity-80" : "transition-[opacity,transform] duration-500"}>
+        <div ref={contentRef} className={typing ? "transition-[opacity,transform] duration-500 -translate-y-4 opacity-80" : "transition-[opacity,transform] duration-500"}>
           <LockClock nyTime={market.nyTime.slice(0, 5)} phase={market.phase} phaseLabel={tsh(`clock.phase.${market.phase}`)} glowRef={glowRef} />
-          <LockQuote owner={user?.role !== "guest" ? user?.traderName ?? null : null} dim={typing} />
+          <LockQuote owner={user?.role !== "guest" ? user?.traderName ?? null : null} dim={typing} motion={motion} />
         </div>
-        <UnlockForm
-          hasCode={lock.hasCode}
-          kind={lock.kind}
-          attemptsLeft={lock.attemptsLeft}
-          onVisibleChange={setTyping}
-          onForgot={logout}
-        />
+        <div ref={formWrapRef}>
+          <UnlockForm
+            hasCode={lock.hasCode}
+            kind={lock.kind}
+            attemptsLeft={lock.attemptsLeft}
+            motion={motion}
+            onVisibleChange={setTyping}
+            onForgot={logout}
+            onSuccess={playExit}
+          />
+        </div>
       </div>
 
       <div
@@ -128,6 +166,8 @@ export default function LockScreen() {
       </div>
 
       <LockEggs owner={user?.role !== "guest" ? user?.traderName ?? null : null} dim={typing} />
+      {/* The ring that opens from the check on a right code. */}
+      <div ref={ringRef} aria-hidden="true" className="pointer-events-none fixed h-24 w-24 rounded-full border border-white/70 opacity-0" style={{ left: "50%", top: "50%", boxShadow: "0 0 40px rgba(255,255,255,0.35), inset 0 0 30px rgba(255,255,255,0.2)" }} />
     </div>
   );
 }

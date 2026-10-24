@@ -138,7 +138,8 @@ export const lockStore = {
       if (r.ok) applyStatus((await r.json().catch(() => null)) as LockStatus);
     } catch { /* offline */ }
   },
-  async unlock(code: string): Promise<UnlockResult> {
+  /** `beforeApply` (the success animation) runs once the server said yes and before the screen goes away. */
+  async unlock(code: string, opts: { beforeApply?: () => Promise<void> } = {}): Promise<UnlockResult> {
     if (!code) return { ok: false, reason: "empty" };
     let res: UnlockResult;
     try {
@@ -147,7 +148,10 @@ export const lockStore = {
     } catch {
       res = { ok: false, reason: "network" };
     }
-    if (res.ok) apply({ type: "unlock" });
+    if (res.ok) {
+      try { await opts.beforeApply?.(); } catch { /* an animation never blocks the unlock */ }
+      apply({ type: "unlock" });
+    }
     else if (res.reason === "wrong") apply({ type: "fail", attemptsLeft: res.attemptsLeft });
     else if (res.reason === "signedOut") apply({ type: "signedOut" });
     return res;

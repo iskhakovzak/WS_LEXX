@@ -1140,6 +1140,18 @@ body {
   }
 }
 
+/* Lock-screen quote: each word surfaces out of a blur (components/lock/lock-quote.tsx). */
+@keyframes ws-word-in {
+  from { opacity: 0; filter: blur(8px); transform: translateY(0.35em); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+/* Sign-in form: fields rise in one after another (pages/login.tsx). */
+@keyframes ws-rise-in {
+  from { opacity: 0; filter: blur(6px); transform: translateY(10px); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   15% { transform: translateX(-6px); }

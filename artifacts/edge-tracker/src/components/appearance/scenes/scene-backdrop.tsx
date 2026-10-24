@@ -15,9 +15,12 @@ import { RIDGE_LAYERS, RidgeSvg } from "./ridge";
 
 /** A depth layer: nearer layers (bigger depth) travel further against the pointer; the photo also tilts in 3D. The
  * scale keeps the edges off-screen at full travel (±1). */
+/** Photo tilt at full pointer travel, both axes. */
+const TILT_DEG = 2.75;
+
 function layer(depth: number, tilt = false): React.CSSProperties {
   const move = `translate3d(calc(var(--px, 0) * ${(-depth * 38).toFixed(1)}px), calc(var(--py, 0) * ${(-depth * 24).toFixed(1)}px), 0)`;
-  const rot = tilt ? " perspective(1200px) rotateY(calc(var(--px, 0) * 3.5deg)) rotateX(calc(var(--py, 0) * -2.5deg))" : "";
+  const rot = tilt ? ` perspective(1200px) rotateY(calc(var(--px, 0) * ${TILT_DEG}deg)) rotateX(calc(var(--py, 0) * -${TILT_DEG}deg))` : "";
   return { position: "absolute", inset: 0, transform: `${move}${rot} scale(${(1.07 + depth * 0.04).toFixed(3)})`, willChange: "transform" };
 }
 

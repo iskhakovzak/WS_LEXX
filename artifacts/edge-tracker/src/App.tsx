@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import { RouteErrorBoundary } from "@/components/shell/route-error-boundary";
 import { Switch, Route, Redirect, Router as WouterRouter, useLocation, useSearch } from "wouter";
@@ -24,6 +24,9 @@ import { UsageRouteTracker } from "@/components/shared/usage-tracker";
 import { WelcomeIntro } from "@/components/shell/welcome-intro";
 import { LockController } from "@/components/lock/lock-controller";
 import { lockStore, useLockState } from "@/lib/lock/lock-store";
+import { UnlockReveal } from "@/components/unlock-reveal";
+import { bgMotionAllowed } from "@/components/appearance/scenes/motion";
+import { useAppearance } from "@/contexts/appearance-context";
 
 // Every section is its own chunk; see shell/route-loaders.ts. The dashboard too (DEV-11: it pulled the equity chart,
 // the daily cards and the quest strip into the entry chunk, which the login screen and every other page also paid for);
@@ -237,6 +240,18 @@ function AppContent() {
   useEffect(() => {
     if (locked) queryClient.clear();
   }, [locked]);
+  // Locked → unlocked, or signed out → signed in: the site opens through an iris from where the check / the «Войти»
+  // button was (components/unlock-reveal.tsx).
+  const { appearance } = useAppearance();
+  const [revealing, setRevealing] = useState(false);
+  const wasLocked = useRef(locked);
+  const wasSignedIn = useRef(isAuthenticated);
+  useEffect(() => {
+    if (isAuthenticated && ((wasLocked.current && !locked) || !wasSignedIn.current)) setRevealing(true);
+    wasLocked.current = locked;
+    wasSignedIn.current = isAuthenticated;
+  }, [locked, isAuthenticated]);
+  const endReveal = useCallback(() => setRevealing(false), []);
   // Signed out (menu, 5 wrong codes, an expired session): the lock belonged to that session.
   useEffect(() => {
     if (!isAuthenticated && (lock.locked || lock.signedOut)) lockStore.reset();
@@ -277,6 +292,7 @@ function AppContent() {
           <Router />
         </WouterRouter>
       )}
+      {revealing && !locked && <UnlockReveal motion={bgMotionAllowed(appearance.bg.motion)} onDone={endReveal} />}
       <LockController />
     </>
   );

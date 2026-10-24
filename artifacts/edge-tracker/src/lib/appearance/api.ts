@@ -4,7 +4,7 @@
  * Plus a per-user localStorage copy, so the editor opens with the right state before the server answers.
  */
 import { http } from "@/lib/api/http";
-import { parseStored, type StoredAppearance } from "./model";
+import { parseStored, type BgMotion, type StoredAppearance } from "./model";
 
 const SETTINGS_API = "/api/users/me/settings";
 const LOCAL_KEY = "ws_lexx_appearance";
@@ -32,4 +32,18 @@ export function readLocalStored(user: string): StoredAppearance | null {
 
 export function writeLocalStored(user: string, stored: StoredAppearance): void {
   try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ user, stored })); } catch { /* storage unavailable */ }
+}
+
+/**
+ * «Движение фона» from the last look saved on this browser (whoever it belonged to): the sign-in screen and the
+ * opening intro run before the account is known and follow it too.
+ */
+export function readLastBgMotion(): BgMotion {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    const parsed = raw ? (JSON.parse(raw) as { stored?: unknown }) : null;
+    return parsed?.stored ? parseStored(parsed.stored).current.bg.motion : "auto";
+  } catch {
+    return "auto";
+  }
 }

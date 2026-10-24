@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useReducedMotion, motion } from "framer-motion";
+import { bgMotionAllowed } from "@/components/appearance/scenes/motion";
+import { setRevealOrigin } from "@/components/unlock-reveal";
+import { readLastBgMotion } from "@/lib/appearance/api";
 import { useAuth, type LoginError } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -132,7 +134,13 @@ function SignInSteps({ step }: { step: 1 | 2 }) {
 export default function LoginPage() {
   const { t } = authI18n.useT();
   const { loginAsTrader, loginAsGuest, passwordChangePending } = useAuth();
-  const reduceMotion = useReducedMotion();
+  // «Движение фона» from this browser's last look (the account is not known yet); Windows «Animation effects» off
+  // otherwise silences everything here.
+  const [reduceMotion] = useState(() => !bgMotionAllowed(readLastBgMotion()));
+  const submitRef = useRef<HTMLButtonElement>(null);
+  /** Fields rise in one after another (ws-rise-in, index.css); `i` is the order. */
+  const rise = (i: number): React.CSSProperties | undefined =>
+    reduceMotion ? undefined : { animation: `ws-rise-in 620ms cubic-bezier(0.2, 0.9, 0.2, 1) ${120 + i * 90}ms both` };
 
   const [name, setName] = useState<string>(() => readLS(LAST_NAME_KEY) ?? "");
   const [password, setPassword] = useState("");
@@ -194,6 +202,9 @@ export default function LoginPage() {
     if (inFlight.current || submitting || locked) return;
     inFlight.current = true;
     setSubmitting(true);
+    // The site opens through an iris from the button on success (components/unlock-reveal.tsx).
+    const b = submitRef.current?.getBoundingClientRect();
+    if (b) setRevealOrigin({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
     const failure = await loginAsTrader(typedName, password).finally(() => { inFlight.current = false; });
     setSubmitting(false);
     if (!failure) {
@@ -256,11 +267,9 @@ export default function LoginPage() {
         <LanguageSegmented />
       </div>
 
-      <motion.main
-        initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+      <main
         className="relative z-raised flex w-full max-w-[400px] flex-col items-center gap-5"
+        style={reduceMotion ? undefined : { animation: "ws-rise-in 700ms cubic-bezier(0.2, 0.9, 0.2, 1) both" }}
       >
         {/* Smoked glass over the smoke: in dark the card is a translucent black pane (no white sheen), so the drifting
             smoke reads through it like the intro; light keeps the frosted white card. */}
@@ -271,7 +280,7 @@ export default function LoginPage() {
           )}
         >
           {/* Brand: the «WS_Desk» lockup, the mark carrying «WS» (components/ds/brand) */}
-          <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex flex-col items-center gap-3 text-center" style={rise(0)}>
             <h1 className="text-[2.5rem] leading-none text-foreground"><Wordmark /></h1>
             <p className="text-sm text-muted-foreground">{t("tagline")}</p>
           </div>
@@ -284,7 +293,7 @@ export default function LoginPage() {
           ) : (
             <form className="mt-6 flex flex-col gap-4" onSubmit={handleLogin} noValidate>
               {/* Name — typed, never picked from a list (no roster before sign-in). */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5" style={rise(1)}>
                 <label htmlFor="login-name" className="text-xs text-muted-foreground">{t("name.label")}</label>
                 <Input
                   ref={nameRef}
@@ -307,7 +316,7 @@ export default function LoginPage() {
               </div>
 
               {/* Secret: PIN (digits keyboard) or password */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5" style={rise(2)}>
                 <div className="flex items-center justify-between gap-2">
                   <label htmlFor="login-password" className="text-xs text-muted-foreground">
                     {isPin ? t("secret.pin") : t("secret.password")}
@@ -372,7 +381,7 @@ export default function LoginPage() {
                 )}
               </div>
 
-              <Button type="submit" size="lg" disabled={!canSubmit} aria-busy={submitting} className="h-11 w-full text-sm">
+              <Button ref={submitRef} type="submit" size="lg" disabled={!canSubmit} aria-busy={submitting} className="h-11 w-full text-sm" style={rise(3)}>
                 {submitting ? (
                   <>
                     <Loader2 className="animate-spin" aria-hidden="true" />
@@ -416,7 +425,7 @@ export default function LoginPage() {
         )}
 
         <MarketClock />
-      </motion.main>
+      </main>
     </div>
   );
 }

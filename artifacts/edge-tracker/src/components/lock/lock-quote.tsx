@@ -1,7 +1,8 @@
 /**
  * The quote under the lock clock: from the bundled library (lib/quotes — no API call; the lock gate blocks data routes),
  * mostly «Олимп» and the philosophers, changing every N minutes on wall-clock slots (Settings → Безопасность: 1 / 5 /
- * 15 min or off) with a slow cross-fade — instant under prefers-reduced-motion. The reader's own no-repeat cycle
+ * 15 min or off): the old quote drifts up into a blur while the new one surfaces word by word out of it (the
+ * viewer's «Движение фона»; without it, an instant swap). The reader's own no-repeat cycle
  * (rotation «lock», per browser) and quote language (the dashboard card's pick, else the interface language). Each
  * new quote also lands in the card's history.
  */
@@ -15,19 +16,39 @@ import type { Quote } from "@/lib/quotes/types";
 
 const SERIF = "var(--app-font-serif)";
 
-function reducedMotion(): boolean {
-  return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** Per-word delay of the entrance, capped so a long quote is fully in within ~1.4 s. */
+const wordStep = (n: number) => Math.min(55, 1400 / Math.max(1, n));
+
+/** The quote text as words that surface one after another (ws-word-in, index.css). */
+function Words({ text, fade }: { text: string; fade: number }) {
+  const words = text.split(/(\s+)/);
+  const count = words.filter((w) => w.trim()).length;
+  const step = wordStep(count);
+  let i = 0;
+  return (
+    <>
+      {words.map((w, k) => {
+        if (!w.trim()) return w;
+        const d = Math.round(fade * 0.35 + i++ * step);
+        return (
+          <span key={k} className="inline-block" style={{ animation: `ws-word-in 700ms cubic-bezier(0.2, 0.9, 0.2, 1) ${d}ms both` }}>
+            {w}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
 type Layers = { a: Quote | null; b: Quote | null; front: "a" | "b" };
 
-export function LockQuote({ owner, dim }: { owner: string | null; dim: boolean }) {
+export function LockQuote({ owner, dim, motion }: { owner: string | null; dim: boolean; motion: boolean }) {
   const { t, lang: uiLang } = quotesI18n.useT();
   const interval = useLockQuoteInterval();
   const lang = React.useMemo(() => readQuoteLang(uiLang), [uiLang]);
   const [lib, setLib] = React.useState<QuoteLibrary | null>(null);
   const [layers, setLayers] = React.useState<Layers>({ a: null, b: null, front: "a" });
-  const fade = React.useMemo(() => crossFadeMs(reducedMotion()), []);
+  const fade = crossFadeMs(!motion);
 
   React.useEffect(() => {
     if (interval === 0) return;
@@ -73,7 +94,13 @@ export function LockQuote({ owner, dim }: { owner: string | null; dim: boolean }
       key={key}
       aria-hidden={!on}
       className="relative col-start-1 row-start-1 flex flex-col items-center"
-      style={{ opacity: on ? 1 : 0, transition: fade ? `opacity ${fade}ms ease-in-out` : undefined }}
+      style={{
+        opacity: on ? 1 : 0,
+        // Leaving: up and into a blur; arriving: the words do their own entrance.
+        transform: on || !fade ? undefined : "translateY(-10px)",
+        filter: on || !fade ? undefined : "blur(8px)",
+        transition: fade ? `opacity ${fade}ms ease-in-out, transform ${fade}ms ease-in-out, filter ${fade}ms ease-in-out` : undefined,
+      }}
       data-testid={on ? "lock-quote" : undefined}
       data-quote-id={on ? q?.id : undefined}
     >
@@ -84,11 +111,12 @@ export function LockQuote({ owner, dim }: { owner: string | null; dim: boolean }
             className="text-balance text-[clamp(1rem,1.55vw,1.3rem)] leading-relaxed text-white/90"
             style={{ fontFamily: SERIF, textShadow: "0 1px 18px rgba(0,0,0,0.75), 0 0 2px rgba(0,0,0,0.5)" }}
           >
-            {q.text}
+            {on && fade ? <Words key={q.id} text={q.text} fade={fade} /> : q.text}
           </blockquote>
           <figcaption
+            key={on ? `c-${q.id}` : "c"}
             className="mt-2 text-[clamp(0.7rem,0.95vw,0.82rem)] italic text-white/60"
-            style={{ textShadow: "0 1px 10px rgba(0,0,0,0.8)" }}
+            style={{ textShadow: "0 1px 10px rgba(0,0,0,0.8)", animation: on && fade ? `ws-word-in 800ms ease-out ${Math.round(fade * 0.35 + 900)}ms both` : undefined }}
           >
             — {q.authorName} · {citationOf(q)}
           </figcaption>

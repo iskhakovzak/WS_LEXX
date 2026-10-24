@@ -15,6 +15,7 @@ import { BASE } from "@/lib/api";
 import {
   dayPartNY, decideIntro, firstName, markIntroShown, type IntroEnv, type IntroKind, type KeyValueStore,
 } from "@/lib/welcome-intro";
+import { readLastBgMotion } from "@/lib/appearance/api";
 import { personNameFor } from "@/i18n";
 import { rich, slots } from "@/i18n/rich";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -57,7 +58,10 @@ function readEnv(authed: boolean): IntroEnv {
   };
 }
 
+/** Still frame when motion is off: «Движение фона» from this browser's last look (auto = the system setting). */
 function prefersReducedMotion(): boolean {
+  const pref = readLastBgMotion();
+  if (pref !== "auto") return pref === "off";
   return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
