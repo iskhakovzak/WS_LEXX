@@ -241,7 +241,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
     <Panel title={t("strategies.matrixTitle", { year: focus.year })} description={t("strategies.matrixDesc")} icon={Grid3x3}>
       {!rows.length ? <EmptyState compact icon={Grid3x3} title={t("states.noTrades")} /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] border-separate border-spacing-[3px] text-xs tabular-nums">
+          <table data-density="fixed" className="w-full min-w-[560px] border-separate border-spacing-[3px] text-xs tabular-nums">
             <thead>
               <tr>
                 <th className="w-24 text-left font-medium text-muted-foreground" />

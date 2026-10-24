@@ -1,3 +1,5 @@
+import { useBeRange } from "@/components/ds/money";
+import { classifyPnl } from "@/lib/appearance/be-range";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Link } from "wouter";
@@ -38,6 +40,7 @@ export function CalendarPanel({ days, metric, trader, hideTrader }: {
   hideTrader?: boolean;
 }) {
   const { t } = statsI18n.useT();
+  const beRange = useBeRange();
   const byKey = useMemo(() => new Map(days.map((d) => [d.key, d])), [days]);
   const latest = days.at(-1)?.key;
   const first = days[0]?.key;
@@ -111,7 +114,9 @@ export function CalendarPanel({ days, metric, trader, hideTrader }: {
                 const inMonth = d.getMonth() === month.m;
                 const stat = inMonth ? byKey.get(k) : undefined;
                 const active = selected === k;
-                const bg = !stat ? undefined : stat.value != null ? heatBg(stat.value, max) : heatBg(stat.wins - stat.losses, Math.max(4, Math.abs(stat.wins - stat.losses)));
+                // Dollar metrics: a day inside the «Вид» break-even range is tinted as break-even (display only).
+                const be = stat?.value != null && metric !== "r" && classifyPnl(stat.value, beRange) === "be";
+                const bg = !stat ? undefined : be ? "hsl(var(--be) / 0.22)" : stat.value != null ? heatBg(stat.value, max) : heatBg(stat.wins - stat.losses, Math.max(4, Math.abs(stat.wins - stat.losses)));
                 if (!inMonth) return <div key={k} className="aspect-square rounded-lg sm:aspect-[4/3]" role="gridcell" aria-hidden="true" />;
                 const label = `${fmtDate(d, "dayMonthLong")}: ${stat ? `${commonI18n.t("units.trades", { count: stat.count })}${stat.value != null ? `, ${fmtValue(stat.value, metric)}` : ""}` : t("calendar.noTrades")}`;
                 return (

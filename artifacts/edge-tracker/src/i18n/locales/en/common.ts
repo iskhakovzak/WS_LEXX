@@ -397,8 +397,9 @@ export default {
   },
   theme: {
     label: "Theme",
-    dark: "Dark",
-    dim: "Dim",
+    dark: "Midnight",
+    dim: "Onyx",
+    platinum: "Platinum",
     light: "Light",
     change: "Change theme",
     toggleTitle: "Theme: {current} → {next}",

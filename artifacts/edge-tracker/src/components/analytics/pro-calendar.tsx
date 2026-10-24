@@ -1,3 +1,5 @@
+import { moneyText, useBeRange } from "@/components/ds/money";
+import { classifyPnl } from "@/lib/appearance/be-range";
 import { useMemo } from "react";
 import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
@@ -299,6 +301,7 @@ function MonthGrid({
   onDay: (d: string) => void;
   max: number;
 }) {
+  const beRange = useBeRange();
   return (
     <div className="grid grid-cols-7 gap-1 sm:grid-cols-[repeat(7,minmax(0,1fr))_minmax(0,0.9fr)] sm:gap-1.5">
       {weekdayHeaders().map((w, i) => (
@@ -329,7 +332,7 @@ function MonthGrid({
                   </div>
                   {s && (
                     <div className="mt-auto min-w-0">
-                      <div className={cn("truncate text-xs font-semibold tabular-nums sm:text-sm", hasValue(s) ? toneText(toneOf(s.net)) : "text-muted-foreground")}>
+                      <div className={cn("truncate text-xs font-semibold tabular-nums sm:text-sm", !hasValue(s) ? "text-muted-foreground" : metric === "pnl" ? moneyText(s.net, beRange) : toneText(toneOf(s.net)))}>
                         <span className="sm:hidden">{hasValue(s) ? fmtVal(metric, s.net, { compact: true, sign: true }) : `${s.trades}×`}</span>
                         <span className="hidden sm:inline">{hasValue(s) ? fmtVal(metric, s.net, { sign: true, compact: Math.abs(s.net) >= 10000 }) : "—"}</span>
                       </div>
@@ -356,7 +359,7 @@ function MonthGrid({
                   aria-label={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : tp("calendar.noResult")}, ${commonI18n.t("units.trades", { count: s.trades })}`}
                   className={cn(
                     base,
-                    hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/10",
+                    hasValue(s) && metric === "pnl" && classifyPnl(s.net, beRange) === "be" ? "bg-be/15" : hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/10",
                     "transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   )}
                 >

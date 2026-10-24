@@ -409,8 +409,9 @@ export default {
   },
   theme: {
     label: "Тема",
-    dark: "Тёмная",
-    dim: "Сумеречная",
+    dark: "Полночь",
+    dim: "Оникс",
+    platinum: "Платина",
     light: "Светлая",
     change: "Сменить тему",
     toggleTitle: "Тема: {current} → {next}",

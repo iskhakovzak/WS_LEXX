@@ -399,8 +399,9 @@ export default {
   },
   theme: {
     label: "Mavzu",
-    dark: "Toʻq",
-    dim: "Xira",
+    dark: "Yarim tun",
+    dim: "Oniks",
+    platinum: "Platina",
     light: "Yorugʻ",
     change: "Mavzuni oʻzgartirish",
     toggleTitle: "Mavzu: {current} → {next}",

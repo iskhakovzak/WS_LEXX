@@ -2,14 +2,17 @@ import React, { createContext, useContext, useEffect, useState, useRef } from "r
 import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { commonI18n } from "@/i18n/ns/common";
+import { THEME_IDS, isLightTheme, type ThemeId } from "@/lib/appearance/model";
 
-export type Theme = "dark" | "dim" | "light";
+export type Theme = ThemeId;
 
-const THEMES: Theme[] = ["dark", "dim", "light"];
+/** «Полночь» (dark), «Оникс» (dim), «Платина» (platinum), «Светлая» (light) — also the cycle order. */
+const THEMES: Theme[] = [...THEME_IDS];
+export { isLightTheme };
 /** Theme names in the current UI language (common `theme.*`). */
 function themeLabels(): Record<Theme, string> {
   const t = commonI18n.t;
-  return { dark: t("theme.dark"), dim: t("theme.dim"), light: t("theme.light") };
+  return { dark: t("theme.dark"), dim: t("theme.dim"), platinum: t("theme.platinum"), light: t("theme.light") };
 }
 
 interface ThemeContextType {
@@ -30,17 +33,19 @@ const ThemeContext = createContext<ThemeContextType>({
   themeLabel: "dark",
   setTheme: () => {},
   themes: THEMES,
-  themeLabels: { dark: "dark", dim: "dim", light: "light" },
+  themeLabels: { dark: "dark", dim: "dim", platinum: "platinum", light: "light" },
 });
 
 const LS_KEY = "ws_lexx_theme";
 
 function applyTheme(t: Theme) {
   const root = document.documentElement;
-  root.classList.remove("dark", "dim");
+  root.classList.remove("dark", "dim", "platinum");
   if (t === "dark") { root.classList.add("dark"); }
   else if (t === "dim") { root.classList.add("dark", "dim"); }
-  root.style.colorScheme = t === "light" ? "light" : "dark";
+  else if (t === "platinum") { root.classList.add("platinum"); }
+  root.dataset.theme = t;
+  root.style.colorScheme = isLightTheme(t) ? "light" : "dark";
   // Keep the mobile browser chrome (status bar / address bar) in sync with the page background.
   requestAnimationFrame(() => {
     const bg = getComputedStyle(document.body).backgroundColor;

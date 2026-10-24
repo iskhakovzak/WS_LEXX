@@ -52,6 +52,10 @@ export interface SmokeOptions {
   light: boolean;
   /** prefers-reduced-motion: draw one still frame, no loop. */
   still: boolean;
+  /** Time scale of the drift (1 = the intro's pace). The «Вид» background runs it slower. */
+  speed?: number;
+  /** Frame cap (the «Вид» background is on screen all session long, so it redraws at ~15 fps; the drift is slow). */
+  fps?: number;
 }
 
 export function startSmoke(canvas: HTMLCanvasElement, opts: SmokeOptions): () => void {
@@ -116,15 +120,20 @@ export function startSmoke(canvas: HTMLCanvasElement, opts: SmokeOptions): () =>
   let frame = 0;
   let cost = 0; // moving average of the draw time, ms
   let t0 = -1; // the first frame actually drawn (a busy first load must not skip the opening glow)
+  let last = -Infinity;
+  const speed = opts.speed ?? 1;
+  const minGap = opts.fps ? 1000 / opts.fps : 0;
   const loop = (now: number) => {
     if (stopped) return;
     raf = requestAnimationFrame(loop);
+    if (now - last < minGap) return;
+    last = now;
     frame++;
     if (t0 < 0) t0 = now;
     // Weak machine: redraw every other frame (30 Hz is plenty for a drift this slow; CSS keeps the rest at 60).
     if (cost > 8 && frame % 2) return;
     const a = performance.now();
-    draw((now - t0) / 1000);
+    draw(((now - t0) / 1000) * speed);
     const dt = performance.now() - a;
     cost = frame <= 2 ? 0 : cost ? cost * 0.8 + dt * 0.2 : dt;
   };

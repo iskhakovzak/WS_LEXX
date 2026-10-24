@@ -98,9 +98,8 @@ export default {
   appearance: {
     title: "Interfeys mavzusi",
     description: "Darhol qoʻllanadi va barcha qurilmalarda profilingiz bilan sinxronlanadi",
-    darkHint: "Grafit, grafiklar uchun maksimal kontrast",
-    dimHint: "Kechki uzoq sessiyalar uchun yumshoqroq",
-    lightHint: "Kunduzgi yorugʻlik va chop etish uchun",
+    openLook: "Koʻrinishni ochish",
+    openLookHint: "«Koʻrinish»da — aksent, foyda va zarar ranglari, zararsizlik oraligʻi, shrift, fon, jadval zichligi va 5 tagacha saqlangan obraz. Hammasi shaxsiy va barcha qurilmalaringizda siz bilan.",
     hotkeys: "Sozlamalar tezkor tugmalari",
     hotkeysDesc: "Kursor kiritish maydonida boʻlmaganda ishlaydi",
     keySearch: "Sozlamalar boʻyicha qidirish",

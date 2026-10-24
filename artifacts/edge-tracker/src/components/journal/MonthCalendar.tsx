@@ -1,3 +1,4 @@
+import { moneyText, moneyTint, useBeRange } from "@/components/ds/money";
 import { useMemo, type ReactNode } from "react";
 import { CheckCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { Panel, Segmented } from "@/components/ds";
@@ -51,14 +52,15 @@ function fmtMetric(v: number | null, metric: CalMetric, compact = false): string
   return String(v);
 }
 
-/** Heat tint bucket for |v| relative to the month's max. */
-function heatClass(v: number | null, max: number, metric: CalMetric): string {
+/** Heat tint bucket for |v| relative to the month's max. P&L days inside the «Вид» break-even range read as BE. */
+function heatClass(v: number | null, max: number, metric: CalMetric, beRange = 0): string {
   if (v == null || max <= 0) return "";
   if (metric === "count") {
     const k = v / max;
     return k > 0.66 ? "bg-primary/25" : k > 0.33 ? "bg-primary/15" : "bg-primary/10";
   }
   if (v === 0) return "bg-muted/40";
+  if (metric === "pnl") return moneyTint(v, Math.min(1, Math.abs(v) / max), beRange);
   const k = Math.min(1, Math.abs(v) / max);
   const up = v > 0;
   if (k > 0.66) return up ? "bg-up/30" : "bg-down/30";
@@ -66,8 +68,9 @@ function heatClass(v: number | null, max: number, metric: CalMetric): string {
   return up ? "bg-up/10" : "bg-down/10";
 }
 
-function toneClass(v: number | null, metric: CalMetric): string {
+function toneClass(v: number | null, metric: CalMetric, beRange = 0): string {
   if (v == null || metric === "count") return "text-foreground";
+  if (metric === "pnl" && v !== 0) return moneyText(v, beRange);
   return v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted-foreground";
 }
 
@@ -100,6 +103,7 @@ export function MonthCalendar({
   footer?: ReactNode;
 }) {
   const { from, to } = monthBounds(month);
+  const beRange = useBeRange();
 
   const weeks = useMemo(() => {
     const rows: string[][] = [];
@@ -223,7 +227,7 @@ export function MonthCalendar({
                       "hover:border-[var(--glass-border)] hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       !inMonth && "opacity-40",
                       weekend && !s && "opacity-60",
-                      heatClass(v, maxAbs, metric),
+                      heatClass(v, maxAbs, metric, beRange),
                       isActive && "border-primary ring-1 ring-primary",
                     )}
                   >
@@ -240,7 +244,7 @@ export function MonthCalendar({
                     </span>
                     {s && (
                       <span className="w-full min-w-0">
-                        <span className={cn("block truncate text-2xs font-semibold tabular-nums sm:text-xs", toneClass(v, metric))}>
+                        <span className={cn("block truncate text-2xs font-semibold tabular-nums sm:text-xs", toneClass(v, metric, beRange))}>
                           {v != null ? fmtMetric(v, metric, true) : "·"}
                         </span>
                         {metric !== "count" && (

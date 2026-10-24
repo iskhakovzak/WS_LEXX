@@ -12,6 +12,8 @@ import { PaletteLauncher } from "@/components/shell/palette-launcher";
 import { useAuth } from "@/contexts/auth-context";
 import { MarketClock } from "@/components/shell/market-clock";
 import { LanguageMenu, NotificationBell, ThemeToggle, UserMenu } from "@/components/shell/header-actions";
+import { AppearanceHost, GuardMeter } from "@/components/appearance/appearance-host";
+import { useAppearance } from "@/contexts/appearance-context";
 import { shellI18n } from "@/i18n/ns/shell";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
@@ -116,6 +118,7 @@ function Logo() {
 function Header() {
   const { user } = useAuth();
   const { t } = shellI18n.useT();
+  const guardMode = useAppearance().appearance.guard.mode;
   return (
     // Static bar above the scroller (content never slides under it, so no backdrop blur is needed). `app-header`
     // gives it a solid fallback fill; the scroller's top fade band draws the boundary below it.
@@ -130,6 +133,7 @@ function Header() {
       </div>
       <MarketClock fit="container" className="justify-self-center" />
       <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
+        {guardMode !== "off" && <GuardMeter mode={guardMode} className="hidden lg:inline-flex" />}
         <LanguageMenu className="hidden md:grid" />
         <ThemeToggle className="hidden md:grid" />
         {user?.traderName && <NotificationBell traderName={user.traderName} />}
@@ -204,6 +208,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
       <MobileNav location={location} />
       <PlaybookSheetHost />
+      <AppearanceHost />
     </SidebarProvider>
   );
 }

@@ -1,10 +1,12 @@
-/** Header right-side controls: language, theme toggle, notifications bell (popover) and the user menu. */
+/** Header right-side controls: language, the «Вид» (appearance) button, notifications bell (popover) and the user menu. */
 import React from "react";
 import { useLocation } from "wouter";
-import { CloudMoon, LogOut, Moon, Settings, Sun, User } from "lucide-react";
+import { CloudMoon, Gem, LogOut, Moon, Palette, Settings, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme, type Theme } from "@/contexts/theme-context";
+import { useAppearance } from "@/contexts/appearance-context";
+import { appearanceI18n } from "@/i18n/ns/appearance";
 import { NotificationBell as NotificationBellImpl } from "@/components/notifications/notification-bell";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
@@ -18,7 +20,7 @@ export { LanguageMenu } from "@/i18n/language-switcher";
 import { LanguageMenuItems } from "@/i18n/language-switcher";
 import { tierDisplay } from "@/components/shared/tier-labels";
 
-export const THEME_ICONS: Record<Theme, React.ElementType> = { dark: Moon, dim: CloudMoon, light: Sun };
+export const THEME_ICONS: Record<Theme, React.ElementType> = { dark: Moon, dim: CloudMoon, platinum: Gem, light: Sun };
 
 function roleLabel(role: string): string {
   const t = commonI18n.t;
@@ -32,18 +34,20 @@ function roleLabel(role: string): string {
 const iconBtn =
   "chip relative grid h-10 w-10 shrink-0 place-items-center focus-visible:ring-2 focus-visible:ring-ring";
 
+/** The theme button opens «Вид» (themes, colours, font, background, density); the icon shows the current theme. */
 export function ThemeToggle({ className }: { className?: string }) {
-  const { theme, cycleTheme, themeLabel, themes, themeLabels } = useTheme();
-  const next = themes[(themes.indexOf(theme) + 1) % themes.length];
+  const { theme, themeLabel } = useTheme();
+  const { openAppearance } = useAppearance();
   const Icon = THEME_ICONS[theme];
-  const { t } = commonI18n.useT();
+  const { t } = appearanceI18n.useT();
   return (
     <button
       type="button"
-      onClick={cycleTheme}
+      onClick={() => openAppearance("themes")}
+      aria-haspopup="dialog"
       className={cn(iconBtn, className)}
-      title={t("theme.toggleTitle", { current: themeLabel, next: themeLabels[next] })}
-      aria-label={t("theme.toggleAria", { current: themeLabel, next: themeLabels[next] })}
+      title={t("openTitle", { theme: themeLabel })}
+      aria-label={t("openAria")}
     >
       <Icon className="h-4 w-4" aria-hidden="true" />
     </button>
@@ -61,6 +65,8 @@ export function NotificationBell(_props: { traderName?: string; className?: stri
 export function UserMenu() {
   const { user, logout, permissions } = useAuth();
   const { theme, setTheme, themes, themeLabels } = useTheme();
+  const { openAppearance } = useAppearance();
+  const { t: ta } = appearanceI18n.useT();
   const [, navigate] = useLocation();
   const { t } = commonI18n.useT();
   const { t: ts } = shellI18n.useT();
@@ -99,6 +105,10 @@ export function UserMenu() {
             );
           })}
         </DropdownMenuRadioGroup>
+        <DropdownMenuItem onSelect={() => openAppearance("themes")} className="gap-2">
+          <Palette className="h-4 w-4" aria-hidden="true" />
+          {ta("menuItem")}
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {/* Language here too: on phones the header language button is hidden. */}
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground md:hidden">{t("language.label")}</DropdownMenuLabel>

@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, ChevronDown, ExternalLink, ListOrdered, ShieldAlert } from "lucide-react";
+import { moneyText, useBeRange } from "@/components/ds/money";
 import { EmptyState, FilterChip, Panel, Pill, SortableTh, TableScroll, toneOf, toneText, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -269,6 +270,7 @@ function TradeItem({
   const { t: tt } = tradesI18n.useT();
   const r = signedR(t);
   const net = netPnl(t);
+  const beRange = useBeRange();
   const gross = grossPnl(t);
   const fees = gross != null ? feesOf(t) : null;
   const outcome = tradeOutcome(t);
@@ -315,7 +317,7 @@ function TradeItem({
         </span>
         <span className="flex shrink-0 flex-col items-end">
           {net != null ? (
-            <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
+            <span className={cn("text-sm font-semibold tabular-nums", moneyText(net, beRange))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
           ) : (
             <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(r)))}>{r != null ? fmtR(r) : outcomeLabel(outcome)}</span>
           )}

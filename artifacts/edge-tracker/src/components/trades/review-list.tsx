@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookOpen, ChevronDown, ChevronRight, FileText, X } from "lucide-react";
 import { FilterChip, Pill, Segmented, Sparkline, StatCard, StatGrid, toneOf, toneText, type Tone } from "@/components/ds";
+import { moneyText, useBeRange } from "@/components/ds/money";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -301,6 +302,7 @@ export function ReviewTradeRow({
   const net = t.pnl != null ? netPnl(t) : null;
   const open = wallHm(w.open);
   const r = effectiveR(t).value;
+  const beRange = useBeRange();
   return (
     <div
       role="row"
@@ -311,7 +313,7 @@ export function ReviewTradeRow({
       onClick={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; onFocusRow(t.id); onOpen(t); }}
       className={cn(
         ROW_GRID,
-        "group relative min-h-[52px] cursor-pointer border-t border-[var(--glass-border)] px-3 py-1.5 transition-colors first:border-t-0 hover:bg-[var(--glass-hover-bg)]",
+        "group relative min-h-[var(--row-min-h)] cursor-pointer border-t border-[var(--glass-border)] px-3 py-[var(--row-py)] transition-colors first:border-t-0 hover:bg-[var(--glass-hover-bg)]",
         active && "bg-[var(--glass-hover-bg)] shadow-[inset_2px_0_0_hsl(var(--primary))]",
         selected && "bg-primary/[0.07]",
         // Deep-link target: a steady tint (fades with transition-colors when cleared), not an opacity pulse.
@@ -350,7 +352,7 @@ export function ReviewTradeRow({
         <TradeSparkline trade={t} width={100} height={30} />
       </span>
       <span className={cn("flex flex-col items-end leading-tight", CELL_PHONE.net)}>
-        <span className={cn("text-sm font-semibold tabular-nums", net == null ? "text-muted-foreground" : toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
+        <span className={cn("text-sm font-semibold tabular-nums", moneyText(net, beRange))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
         {r != null && <span className="text-xs tabular-nums text-muted-foreground md:hidden" title={tr("review.rGrossTitle")}>{fmtR(r, 2)}</span>}
         {t.fees ? <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted-foreground md:inline" title={tr("review.grossFeesTitle")}>{tr("review.grossFees", { gross: fmtUsd(t.pnl, { signed: true, decimals: "auto" }), fees: fmtUsd(Math.abs(t.fees), { signed: true, decimals: "auto" }).replace("+", "") })}</span> : null}
       </span>
@@ -446,6 +448,7 @@ export function DayCard({
   const feeShare = feeShareText(day.fees, day.gross);
   const closed = day.wins + day.losses + day.be;
   const { t } = tradesI18n.useT();
+  const beRange = useBeRange();
   return (
     <section className="glass-panel overflow-hidden rounded-2xl" aria-label={t("review.day.aria", { date: fmtDayLong(day.date) })}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
@@ -460,7 +463,7 @@ export function DayCard({
             <span className="block text-sm font-semibold text-foreground">{fmtDayLong(day.date)}</span>
             <span className="block text-xs tabular-nums text-muted-foreground">{day.firstAt && day.lastAt ? `${day.firstAt}–${day.lastAt}` : t("review.day.timeUnknown")}</span>
           </span>
-          <span className={cn("ml-auto shrink-0 text-right text-lg font-semibold tabular-nums sm:ml-0 sm:w-[96px]", day.net == null ? "text-muted-foreground" : toneText(toneOf(day.net)))}>
+          <span className={cn("ml-auto shrink-0 text-right text-lg font-semibold tabular-nums sm:ml-0 sm:w-[96px]", moneyText(day.net, beRange))}>
             {fmtUsd(day.net, { signed: true, decimals: "auto" })}
           </span>
           <Sparkline data={curve} baseline={0} tone={toneOf(day.net)} width={120} height={30} className="hidden shrink-0 sm:block" ariaLabel={t("review.day.curveAria")} />

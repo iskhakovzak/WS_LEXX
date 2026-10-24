@@ -30,6 +30,57 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Self-hosted faces for «Вид» → Шрифт (OFL, licences next to the files). Variable weight, latin + latin-ext +
+   cyrillic subsets; the browser downloads a file only when a page actually uses that face. */
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./assets/fonts/geist/geist-cyrillic-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./assets/fonts/geist/geist-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Geist Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("./assets/fonts/geist/geist-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("./assets/fonts/source-serif-4/source-serif-4-cyrillic-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("./assets/fonts/source-serif-4/source-serif-4-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Source Serif 4 Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("./assets/fonts/source-serif-4/source-serif-4-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -113,6 +164,9 @@
   --color-down: hsl(var(--down));
   /* Semantic warn / purple text-safe tones (chart-3 / chart-5 stay for charts: chart-3 fails 4.5:1 as text in light). */
   --color-warn: hsl(var(--warn));
+  /* Break-even results (badges, row accents, calendars) and the header guardrail meter: «Вид» can recolour both. */
+  --color-be: hsl(var(--be));
+  --color-guard: hsl(var(--guard));
   --color-purple: hsl(var(--purple));
   /* Achievement medal tiers (components/quests): text-safe tones, also used as tinted fills (bg-medal-gold/15). */
   --color-medal-bronze: hsl(var(--medal-bronze));
@@ -190,10 +244,13 @@
   --glass-sat: 160%;
   --overlay: rgb(0 0 0 / .32);
   --warn: 32 95% 28%;
+  /* Same element as the theme classes, so these follow --warn in every theme until «Вид» sets its own colours. */
+  --be: var(--warn);
+  --guard: var(--warn);
   --purple: 263 45% 45%;
   --medal-bronze: 25 62% 36%;
   --medal-silver: 215 12% 40%;
-  --medal-gold: 42 92% 31%;
+  --medal-gold: 42 92% 27%;
   --medal-platinum: 192 55% 32%;
   --surface-solid: 0 0% 100%;
   --tile-bg: rgb(0 0 0 / .03);
@@ -218,6 +275,10 @@
   --grid-gap: 0.75rem;         /* gap between cards in a grid (12px; 16px from xl) */
   --panel-p: 1rem;             /* panel inner padding (16px; 20px from sm) */
   --header-h: 3.5rem;          /* app header height (56px) */
+  /* Row density («Вид» → Плотность, html[data-density]): table cells and list rows read these. */
+  --cell-py: 0.5rem;           /* table body cell padding (compact ≈ 41px rows) */
+  --row-py: 0.375rem;          /* div-based list rows (trades review list) */
+  --row-min-h: 52px;
   /* Page-level sticky elements: use `.sticky-top` (or `top-[var(--sticky-top)]` + `z-sticky` + a solid bg).
      The header sits ABOVE the scroller (#main-content), so the offset is measured from the scroller's top edge,
      not from the viewport: no header height here. */
@@ -383,9 +444,9 @@ body {
   --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.6);
 }
 
-/* Dim = lighter neutral graphite variant of dark (html has both .dark and .dim). */
+/* Dim = «Оникс»: a black frame (canvas) with onyx-grey pages (panels, sidebar, popovers); html has .dark and .dim. */
 .dim {
-  --background: 0 0% 12%;
+  --background: 0 0% 6%;
   --foreground: 0 0% 93%;
   --border: 0 0% 23%;
   --card: 0 0% 16%;
@@ -416,8 +477,9 @@ body {
   --warn: 38 92% 66%;
   --purple: 263 60% 80%;
   --surface-solid: 0 0% 15%;
-  --glass-bg: rgb(255 255 255 / .065);
-  --glass-thick-bg: rgb(255 255 255 / .11);
+  /* Translucent panels over the 6% canvas land at ~15% (the onyx page). */
+  --glass-bg: rgb(255 255 255 / .1);
+  --glass-thick-bg: rgb(255 255 255 / .14);
   --glass-fallback: rgb(40 40 40 / .95);
   --button-outline: rgba(255,255,255, .12);
   --badge-outline: rgba(255,255,255, .10);
@@ -428,6 +490,82 @@ body {
   --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.25), 0 2px 4px 0 rgb(0 0 0 / 0.2);
   --shadow: 0 2px 4px -2px rgb(0 0 0 / 0.25), 0 4px 8px -1px rgb(0 0 0 / 0.2);
   --shadow-md: 0 4px 6px -4px rgb(0 0 0 / 0.25), 0 10px 20px -3px rgb(0 0 0 / 0.22);
+}
+
+/* ── Platinum («Платина»): matte mid-grey light theme. A 72% grey frame, 81% pages, ink text; no `.dark` class, so
+   `dark:` variants stay off. Every text token clears 4.5:1 on the darkest surface (the frame), checked by
+   lib/appearance/appearance-tokens.test.ts. Colours are deep: on a grey page only dark tones reach AA. ── */
+.platinum {
+  --button-outline: rgba(0,0,0, .14);
+  --badge-outline: rgba(0,0,0, .12);
+  --elevate-1: rgba(0,0,0, .04);
+  --elevate-2: rgba(0,0,0, .08);
+
+  --background: 0 0% 72%;
+  --foreground: 0 0% 8%;
+  --border: 0 0% 64%;
+  --card: 0 0% 81%;
+  --card-foreground: 0 0% 8%;
+  --card-border: 0 0% 66%;
+  --sidebar: 0 0% 79%;
+  --sidebar-foreground: 0 0% 8%;
+  --sidebar-border: 0 0% 66%;
+  --sidebar-primary: 0 0% 8%;
+  --sidebar-primary-foreground: 0 0% 96%;
+  --sidebar-accent: 0 0% 74%;
+  --sidebar-accent-foreground: 0 0% 8%;
+  --sidebar-ring: 0 0% 14%;
+  --popover: 0 0% 85%;
+  --popover-foreground: 0 0% 8%;
+  --popover-border: 0 0% 66%;
+  --primary: 0 0% 8%;
+  --primary-foreground: 0 0% 96%;
+  --primary-solid: 0 0% 8%;
+  --secondary: 0 0% 76%;
+  --secondary-foreground: 0 0% 8%;
+  --muted: 0 0% 76%;
+  --muted-foreground: 0 0% 25%;
+  --accent: 0 0% 74%;
+  --accent-foreground: 0 0% 8%;
+  --accent-soft: 0 0% 12%;
+  --destructive: 0 65% 30%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 0 0% 58%;
+  --ring: 0 0% 14%;
+  --up: 152 70% 18%;
+  --down: 0 70% 30%;
+  --warn: 30 100% 20%;
+  --purple: 263 50% 36%;
+  --medal-bronze: 25 65% 24%;
+  --medal-silver: 215 14% 27%;
+  --medal-gold: 42 95% 18%;
+  --medal-platinum: 192 60% 21%;
+  --chart-1: 214 45% 32%;
+  --chart-2: 152 60% 26%;
+  --chart-3: 40 90% 30%;
+  --chart-4: 0 62% 38%;
+  --chart-5: 263 40% 42%;
+  --surface-solid: 0 0% 81%;
+
+  --glass-bg: rgb(255 255 255 / .28);
+  --glass-thick-bg: rgb(255 255 255 / .4);
+  --glass-hover-bg: rgb(0 0 0 / .05);
+  --glass-border: rgb(0 0 0 / .1);
+  --field-border: rgb(0 0 0 / .2);
+  --glass-hi: rgb(255 255 255 / .45);
+  --glass-lo: rgb(0 0 0 / .06);
+  --glass-shadow: 0 8px 32px rgb(0 0 0 / .14);
+  --glass-shadow-sm: 0 4px 18px -8px rgb(0 0 0 / .16);
+  --glass-sheen: rgb(255 255 255 / .22);
+  --glass-fallback: rgb(206 206 206 / .97);
+  --glass-sat: 120%;
+  --overlay: rgb(0 0 0 / .38);
+  --tile-bg: rgb(0 0 0 / .035);
+  --tile-hover-bg: rgb(0 0 0 / .06);
+  --tile-border: rgb(0 0 0 / .08);
+}
+.platinum body {
+  background-image: linear-gradient(170deg, #bfbfbf 0%, #b8b8b8 100%);
 }
 
 /* ── Liquid-glass primitives (reference: earnings-analyzer). In `components` so utilities
@@ -921,6 +1059,77 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ── «Вид» (components/appearance): density, custom background, panel material. All driven by <html> data
+   attributes set by lib/appearance (and replayed before first paint by the boot script in index.html). ── */
+
+/* Density. Compact is the desk default (no attribute). Spacious reaches every table body cell — tables that set their
+   own py-* included (this rule is unlayered, so it beats utilities) — and the div lists that read --row-py.
+   Tile grids drawn as tables (heatmaps, calendars) opt out with data-density="fixed". */
+:root[data-density="spacious"] {
+  --cell-py: 0.8125rem;
+  --row-py: 0.75rem;
+  --row-min-h: 60px;
+}
+:root[data-density="spacious"] tbody td:not([data-density="fixed"] td) {
+  padding-top: var(--cell-py);
+  padding-bottom: var(--cell-py);
+}
+
+/* Background layer behind the shell (components/appearance/backdrop-layer.tsx). The scrim keeps text on the canvas
+   AA over any photo: 85% of the canvas colour in dark themes, 88% in light ones (worst case: a white / black image). */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* Procedural backgrounds (the layer and the «Вид» → Фон previews): glows stay faint enough that muted text on the
+   canvas keeps 4.5:1 (dark: +~2% luminance at most; light: −~10%). */
+.bg-kind {
+  --bg-scrim: .85;
+  --bg-glow: .18;
+}
+:root:not(.dark) .bg-kind {
+  --bg-scrim: .88;
+  --bg-glow: .12;
+}
+:root[data-bg] body {
+  background-image: none;
+}
+.bg-kind[data-kind="aurora"] {
+  background:
+    radial-gradient(60% 50% at 12% 8%, hsl(var(--chart-1) / var(--bg-glow)), transparent 70%),
+    radial-gradient(50% 45% at 88% 18%, hsl(var(--chart-5) / calc(var(--bg-glow) * .8)), transparent 70%),
+    radial-gradient(70% 55% at 50% 108%, hsl(var(--chart-2) / calc(var(--bg-glow) * .6)), transparent 70%);
+}
+.bg-kind[data-kind="grid"] {
+  background-image: radial-gradient(hsl(var(--foreground) / .1) 1px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+.bg-kind[data-kind="dusk"] {
+  background: linear-gradient(180deg, transparent 0%, hsl(var(--chart-5) / calc(var(--bg-glow) * .7)) 70%, hsl(var(--chart-1) / var(--bg-glow)) 100%);
+}
+
+/* Panel material over a background: glass (more opaque than without one), frosted (blurred) or solid. */
+:root[data-bg] {
+  --glass-bg: color-mix(in srgb, hsl(var(--card)) 80%, transparent);
+  --glass-thick-bg: color-mix(in srgb, hsl(var(--popover)) 88%, transparent);
+}
+:root[data-panels="frosted"] {
+  --glass-bg: color-mix(in srgb, hsl(var(--card)) 72%, transparent);
+  --glass-thick-bg: color-mix(in srgb, hsl(var(--popover)) 82%, transparent);
+}
+:root[data-panels="frosted"] .glass-panel {
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+:root[data-panels="solid"] {
+  --glass-bg: hsl(var(--card));
+  --glass-thick-bg: hsl(var(--popover));
+  --glass-sheen: transparent;
 }
 
 /* ── Mobile & Safe Area ──────────────────────────────────────────── */
