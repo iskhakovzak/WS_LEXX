@@ -186,17 +186,18 @@ export function Actions({ children }: { children: React.ReactNode }) {
 /* ─────────────────────────── the shell ─────────────────────────── */
 
 export type TileSize = "hero" | "wide" | "third" | "half" | "quarter";
-
 /**
- * The tile: glass shell, mono label (+ right-side extras), hero block, verdict, the body where the chart and the detail
- * share one cell, then badges and actions. The detail shows while the pointer is over the hero, while the «Подробнее»
- * button is pressed (touch / keyboard) — never only on hover.
+ * The dashboard's content layout of a tile at its packed width (components/dashboard layout model): `s` compact = the
+ * numeral + the verdict (+ the trend), `m` medium = + the chart and one action row, `l` large = full detail, the chart
+ * and the detail side by side. Unset (/stats bento): the original tile.
  */
-export function Tile({
-  id, size, label, extra, badge, hero, verdict, chart, detail, meta, actions, className, phoneVerdictFirst = true,
-}: {
+export type TileVariant = "s" | "m" | "l";
+
+type TileProps = {
   id: string;
   size: TileSize;
+  /** Dashboard content layout (see TileVariant). */
+  variant?: TileVariant;
   /** Phones: the verdict above the numeral (default) — off when the verdict reads only after the numeral. */
   phoneVerdictFirst?: boolean;
   label: string;
@@ -207,38 +208,63 @@ export function Tile({
   verdict?: React.ReactNode;
   chart?: React.ReactNode;
   detail?: React.ReactNode;
+  /** A small visual the compact variant keeps (the streak's last capsules). */
+  mini?: React.ReactNode;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
   className?: string;
-}) {
+};
+
+/**
+ * The tile: glass shell, mono label (+ right-side extras), hero block, verdict, the body where the chart and the detail
+ * share one cell, then badges and actions. The detail shows while the pointer is over the hero, while the «Подробнее»
+ * button is pressed (touch / keyboard) — never only on hover. The large dashboard variant shows both at once.
+ */
+export function Tile(props: TileProps) {
+  if (props.variant === "s") return <CompactTile {...props} />;
+  if (props.variant === "l") return <LargeTile {...props} />;
+  return <FullTile {...props} />;
+}
+
+function TileHead({ id, label, extra, children }: { id: string; label: string; extra?: React.ReactNode; children?: React.ReactNode }) {
+  return (
+    <div className="flex min-h-6 flex-wrap items-center justify-between gap-2">
+      <h3 id={`ins-${id}-label`} className="ins-label">{label}</h3>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {extra}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** The original tile (/stats) and the dashboard's medium variant. */
+function FullTile({ id, size, variant, label, extra, badge, hero, verdict, chart, detail, meta, actions, className, phoneVerdictFirst = true }: TileProps) {
   const { t } = insightTilesI18n.useT();
   const [open, setOpen] = React.useState(false);
   const [peek, setPeek] = React.useState(false);
   const showDetail = !!detail && (open || peek);
-  const headId = `ins-${id}-label`;
   const detailId = `ins-${id}-detail`;
+  // The dashboard's medium tile reads top-down on every screen (no phone reordering).
+  const verdictFirst = phoneVerdictFirst && !variant;
   return (
-    <section data-size={size} aria-labelledby={headId} className={cn("ins-tile glass-panel", className)}>
-      <div className="flex min-h-6 flex-wrap items-center justify-between gap-2">
-        <h3 id={headId} className="ins-label">{label}</h3>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {extra}
-          {detail && (
-            <button
-              type="button"
-              aria-expanded={open}
-              aria-controls={detailId}
-              onClick={() => setOpen((v) => !v)}
-              className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-2xs font-medium text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Info className="h-3.5 w-3.5" aria-hidden="true" />
-              <span className="ins-more-text">{open ? t("less") : t("more")}</span>
-            </button>
-          )}
-        </div>
-      </div>
+    <section data-size={size} data-variant={variant} aria-labelledby={`ins-${id}-label`} className={cn("ins-tile glass-panel", className)}>
+      <TileHead id={id} label={label} extra={extra}>
+        {detail && (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={detailId}
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-2xs font-medium text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="ins-more-text">{open ? t("less") : t("more")}</span>
+          </button>
+        )}
+      </TileHead>
       {/* Phones: the verdict comes first (it is the answer), the numeral after it. */}
-      {verdict && phoneVerdictFirst && <div className="sm:hidden">{verdict}</div>}
+      {verdict && verdictFirst && <div className="sm:hidden">{verdict}</div>}
       {hero && (
         <div
           className="min-w-0"
@@ -248,7 +274,7 @@ export function Tile({
           {hero}
         </div>
       )}
-      {verdict && <div className={phoneVerdictFirst ? "hidden sm:block" : undefined}>{verdict}</div>}
+      {verdict && <div className={verdictFirst ? "hidden sm:block" : undefined}>{verdict}</div>}
       {(chart || detail) && (
         <div className="ins-body" data-detail={showDetail}>
           {chart && <div className="ins-layer ins-chart flex flex-col justify-end" aria-hidden={showDetail || undefined}>{chart}</div>}
@@ -265,12 +291,49 @@ export function Tile({
   );
 }
 
+/** Compact: the numeral and the verdict (+ the trend and a mini visual); everything else is one click away on /stats. */
+function CompactTile({ id, size, label, hero, verdict, mini, meta, className }: TileProps) {
+  return (
+    <section data-size={size} data-variant="s" aria-labelledby={`ins-${id}-label`} className={cn("ins-tile glass-panel", className)}>
+      <TileHead id={id} label={label} />
+      {hero && <div className="min-w-0">{hero}</div>}
+      {verdict && <div className="ins-compact-verdict">{verdict}</div>}
+      {mini && <div className="mt-auto min-w-0">{mini}</div>}
+      {meta && <div className={cn("flex flex-wrap items-center gap-1.5", !mini && "mt-auto")}>{meta}</div>}
+    </section>
+  );
+}
+
+/** Large: the answer on the left (numeral, verdict, badges, actions), the chart over its detail on the right. */
+function LargeTile({ id, size, label, extra, badge, hero, verdict, chart, detail, meta, actions, className }: TileProps) {
+  return (
+    <section data-size={size} data-variant="l" aria-labelledby={`ins-${id}-label`} className={cn("ins-tile glass-panel", className)}>
+      <TileHead id={id} label={label} extra={extra} />
+      <div className="ins-large">
+        <div className="ins-large-main">
+          {hero && <div className="min-w-0">{hero}</div>}
+          {verdict}
+          {(badge || meta) && <div className="flex flex-wrap items-center gap-1.5">{badge}{meta}</div>}
+          {actions && <div className="mt-auto">{actions}</div>}
+        </div>
+        {(chart || detail) && (
+          <div className="ins-large-side">
+            {chart && <div className="min-w-0">{chart}</div>}
+            {detail && <div className="ins-large-detail">{detail}</div>}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** Label / value pairs of the detail layer. */
 export function DetailGrid({ items }: { items: { label: string; value: React.ReactNode }[] }) {
   return (
     <dl className="grid grid-cols-3 gap-x-3 gap-y-2 self-end text-sm">
-      {items.map((it) => (
-        <div key={it.label} className="min-w-0">
+      {items.map((it, i) => (
+        // Labels can repeat («Ср. прибыль» after a loss and after a win): the position keeps keys unique.
+        <div key={`${i}:${it.label}`} className="min-w-0">
           <dt className="truncate text-2xs text-muted-foreground" title={it.label}>{it.label}</dt>
           <dd className="truncate font-semibold tabular-nums">{it.value}</dd>
         </div>

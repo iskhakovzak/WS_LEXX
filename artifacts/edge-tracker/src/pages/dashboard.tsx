@@ -1,17 +1,16 @@
-// Dashboard = the trader's command screen, composed in labelled sections with one rhythm (owner, 2026-10-25: «всё
-// вразнобой … скомпонуй»). Top to bottom:
-//   «Сегодня»      — the hero strip: greeting + date, «Мои / Команда», four equal cells (today net · week net · left to
-//                    the daily stop · NY market). Nothing else.
-//   «План на день» — ONE card: the single next step (daily loop + «Что важно сейчас» ranked together, one primary
-//                    button), a slot for one recommended action, the day frame (focus · contract · «Сегодня торгую», or
-//                    the evening card), ≤ 3 more rows, and the one progress row (tier ladder, rewards, quests) in its
-//                    footer — beside «Кривая капитала» (an empty week shows 30 days instead, with a note).
-//   «Ваш edge»     — the insight bento, own trades («Мои») only: «Где уходят деньги» wide + the streak, then the compact
-//                    tiles as equal cards (one quieter type scale: hero > section > tile).
-//   «Сделки»       — open positions (only while a trade is open), recent trades + «Деск сегодня» (staff).
-//   «Дополнительно» — opt-in extras (check-in, brief, sectors, macro, DNA, quote, psychology), off by default.
-// Every card is the insight tile's glass shell (components/dashboard/dash-card). Trades arrive automatically, so there
-// are no entry CTAs here.
+// Dashboard = the trader's command screen, composed in labelled sections (owner, 2026-10-25: «всё вразнобой …
+// скомпонуй»), and customisable right on the page (the same day: remove, add back, move, resize — components/dashboard
+// board). Top to bottom:
+//   «Сегодня»      — the hero strip (fixed): greeting + date, «Мои / Команда», four equal cells. Nothing else.
+//   «План на день» — the plan card (next step, a slot for one recommended action, the day frame, progress) beside
+//                    «Кривая капитала» (an empty week shows 30 days instead, with a note); the morning check-in under
+//                    them before the open.
+//   «Ваш edge»     — the insight tiles, own trades («Мои») only; each tile has a compact / medium / large layout.
+//   «Сделки»       — open positions (only while a trade is open), recent trades, «Деск сегодня» (staff).
+//   «Дополнительно» — opt-in extras (check-in, brief, sectors, macro, DNA, quote, psychology).
+// Which tiles, in which order and at which size: the viewer's layout (components/dashboard/layout-model, stored in the
+// account). Every card is the insight tile's glass shell (components/dashboard/dash-card). Trades arrive automatically,
+// so there are no entry CTAs here.
 import { lazy, Suspense, useCallback, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { Link } from "wouter";
 import { ChevronRight } from "lucide-react";
@@ -29,8 +28,10 @@ import { AttentionPanel } from "@/components/dashboard/attention-panel";
 import { EquityPanel } from "@/components/dashboard/equity-panel";
 import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
-import { CustomizePopover } from "@/components/dashboard/customize-popover";
-import { DashSection } from "@/components/dashboard/dash-card";
+import { DashBoard, type BoardSectionDef, type BoardTileDef } from "@/components/dashboard/board";
+import { TilePlaceholder } from "@/components/dashboard/board-section";
+import { useDashboardLayout } from "@/components/dashboard/dashboard-layout";
+import { addItem, TILE_SPECS, type BoardSection, type TileVariant } from "@/components/dashboard/layout-model";
 import { DayLine, DayProgress } from "@/components/daily/day-line";
 import { useDailyNextStep } from "@/components/daily/next-step-card";
 import { QuestStrip } from "@/components/quests/quest-strip";
@@ -40,7 +41,6 @@ import { dayView } from "@/components/daily/daily-model";
 import { useDailyMe } from "@/components/daily/use-daily";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import {
-  EXTRA_WIDTH,
   SECTION_META,
   useDashboardEquity,
   useDashboardToday,
@@ -54,15 +54,15 @@ import {
   type SectionId,
 } from "@/components/dashboard/use-dashboard";
 import { useDashboardPrefs } from "@/components/dashboard/dashboard-prefs";
-import { InsightBento, TILE_SIZE, type TileId } from "@/components/insight-tiles/bento";
+import { InsightTileCard, type TileId } from "@/components/insight-tiles/bento";
 import type { InsightScope } from "@/components/insight-tiles/nav";
 import { periodRanges, periodTexts } from "@/components/stats/metrics";
 import { useTradesWindow } from "@/hooks/use-trades-window";
 // Every dashboard card is the insight tile's shell (components/dashboard/dash-card): its stylesheet comes with the page.
 import "@/components/insight-tiles/insight-tiles.css";
 
-// Opt-in extras (off by default, switched on in «Настроить») and the open-positions panel: own chunks, so the first screen and every other page
-// don't download them. Resolved after i18nReady() like route chunks (no flash of RU with EN/UZ).
+// Opt-in extras and the open-positions panel: own chunks, so the first screen and every other page don't download
+// them. Resolved after i18nReady() like route chunks (no flash of RU with EN/UZ).
 function extra<P extends object>(load: () => Promise<ComponentType<P>>) {
   return lazy(() => load().then(async (C) => { await i18nReady(); return { default: C }; }));
 }
@@ -84,57 +84,25 @@ const lazyExtra = (node: ReactNode) => <Suspense fallback={<ExtraFallback />}>{n
 const RITUAL_ANCHOR = "dash-ritual";
 const CLOSE_MIN = 16 * 60;
 const OPEN_MIN = 9 * 60 + 30;
-/** «Ваш edge»: the primary tiles (wide / streak / weekdays) lead, the compact ones follow as one row of equal cards. */
-const isLeadTile = (id: TileId) => TILE_SIZE[id] !== "third";
+const EDGE_TILES = new Set<SectionId>(["leaks", "streaks", "seqDay", "afterLoss", "holdTime", "fees", "weekdays"]);
+const isEdge = (id: SectionId): id is SectionId & TileId => EDGE_TILES.has(id);
 
-const SPAN: Record<number, string> = { 5: "lg:col-span-5", 6: "lg:col-span-6", 7: "lg:col-span-7", 12: "lg:col-span-12" };
-
-type Cell = { id: SectionId; node: ReactNode; span: number };
-
-/** Two neighbouring half extras share a row (7/5, 5/7 or 6/6); a full one takes the row. */
-function extraRows(blocks: { id: SectionId; node: ReactNode }[]): Cell[][] {
-  const rows: Cell[][] = [];
-  const pairable = (id: SectionId | undefined) => !!id && EXTRA_WIDTH[id] !== "full";
-  for (let i = 0; i < blocks.length; i++) {
-    const a = blocks[i];
-    const b = blocks[i + 1];
-    if (pairable(a.id) && b && pairable(b.id)) {
-      const wa = EXTRA_WIDTH[a.id];
-      const spanA = wa === EXTRA_WIDTH[b.id] ? 6 : wa === "wide" ? 7 : 5;
-      rows.push([{ ...a, span: spanA }, { ...b, span: 12 - spanA }]);
-      i++;
-    } else {
-      rows.push([{ ...a, span: 12 }]);
-    }
-  }
-  return rows;
-}
-
-/** One row: a single block full width, two side by side from lg (equal heights). */
-function Row({ cells }: { cells: Cell[] }) {
-  if (cells.length === 1) return <div className="min-w-0">{cells[0].node}</div>;
-  return (
-    <div className="grid grid-cols-1 items-stretch gap-[var(--grid-gap)] lg:grid-cols-12">
-      {cells.map((c) => (
-        <div key={c.id} className={`min-w-0 ${SPAN[c.span]}`}>{c.node}</div>
-      ))}
-    </div>
-  );
-}
-
-export default function Dashboard() {
-  const { t } = dashboardI18n.useT();
+/** Everything the dashboard reads, gated by what the viewer's layout shows. */
+function useDashboardModel(editing: boolean) {
   const { user, isCurator } = useAuth();
   const isGuest = !user || user.role === "guest";
   const userName = user?.traderName ?? null;
   const staff = isCurator;
   const authed = !isGuest;
+  const viewer = user ? `${user.role}:${userName ?? ""}` : null;
 
-  // Staff = traders + extras (owner rule 2026-10-21): everyone opens on «Мои» (own day frame, next step, quests,
-  // check-in); staff always have the «Мои» / «Команда» toggle. A trader always sees their own desk.
-  const { prefs, update, reset } = useDashboardPrefs("me", user ? `${user.role}:${userName ?? ""}` : null);
+  // Staff = traders + extras (owner rule 2026-10-21): everyone opens on «Мои»; staff always have «Мои» / «Команда».
+  const { prefs, update } = useDashboardPrefs("me", viewer);
+  const board = useDashboardLayout(viewer, authed);
   const scope = staff ? prefs.scope : "me";
-  const on = (id: SectionId) => authed && !prefs.hidden.includes(id) && (id !== "desk" || staff);
+  const allowed = useCallback((id: SectionId) => authed && (staff || !TILE_SPECS[id].staffOnly), [authed, staff]);
+  const inScope = useCallback((id: SectionId) => scope === "me" || !TILE_SPECS[id].meOnly, [scope]);
+  const on = (id: SectionId) => allowed(id) && inScope(id) && board.layout.items.some((it) => it.id === id);
 
   // «Кривая капитала»: a week without closed trades shows 30 days instead of an empty card (with a note) — until the
   // viewer picks «1Н» by hand in this visit.
@@ -153,10 +121,10 @@ export default function Dashboard() {
   const riskAccount = useHasRiskAccount();
   const riskQ = useRiskMe(authed && !!userName && riskAccount.has);
   const deskQ = useRiskDesk(authed && staff);
-  // Insight tiles: own trades of the /stats «90 дней» window (same query key → shared cache with /stats), then the 90
-  // days before it for the trend chips (after the current window has arrived).
-  const tileIds = prefs.order.filter((id): id is SectionId & TileId => SECTION_META[id].group === "edge" && on(id));
-  const insightsOn = authed && scope === "me" && tileIds.length > 0;
+  // Insight tiles: own trades of the /stats «90 дней» window (shared cache with /stats), then the 90 days before it for
+  // the trend chips. Also while editing (the gallery previews them).
+  const edgeShown = board.layout.items.some((it) => isEdge(it.id));
+  const insightsOn = authed && scope === "me" && (edgeShown || editing);
   const insightRanges = useMemo(() => periodRanges("90d"), []);
   const insightWindow = insightRanges.cur;
   const insightTrader = staff ? userName : null;
@@ -177,7 +145,6 @@ export default function Dashboard() {
   const today = todayQ.data;
   const tradingDate = today?.date ?? nyDate();
   const afterClose = today ? today.market.nyMinutes >= CLOSE_MIN || today.market.weekend : false;
-
   // The most recent own trading day that can be closed: before today, or today once the session is over.
   const lastDay =
     scope === "me"
@@ -197,9 +164,27 @@ export default function Dashboard() {
   // «План на день» counts tasks from all of these: render it once they have answered (no 2 → 3 jump).
   const attentionLoading = todayQ.isLoading || recentQ.isLoading || riskQ.isLoading || deskQ.isLoading || eodQ.isLoading
     || eventsQ.isLoading || holidaysQ.isLoading || unreadQ.isLoading || lastDayEodQ.isLoading || daily.isLoading;
+  // The morning check-in leads before the open on a trading day and is gone on weekends / market holidays (ILYA-20).
+  const tradingDay = today ? !today.market.weekend && !today.market.holidayToday : true;
+  const morning = !!today && tradingDay && today.market.nyMinutes < OPEN_MIN;
+
+  return {
+    isGuest, authed, staff, userName, scope, prefs, update, board, allowed, inScope, on, todayQ, equityQ, widenedQ, weekEmpty,
+    widened, onPeriodChange, recentQ, riskQ, deskQ, insightQ, insightPrevQ, insightScope, eodQ, eventsQ, holidaysQ, unreadQ,
+    lastDay, lastDayEodQ, dailyOn, dayCardDate, journalOpenDate, daily, attentionLoading, tradingDay, morning,
+  };
+}
+
+export default function Dashboard() {
+  const { t } = dashboardI18n.useT();
+  const [editing, setEditing] = useState(false);
+  const m = useDashboardModel(editing);
+  const { scope, prefs, board, todayQ, equityQ, widenedQ, riskQ, deskQ, recentQ } = m;
+  const today = todayQ.data;
+  const checkinNow = m.morning && m.on("checkin");
 
   const goToCheckin = useCallback(() => {
-    if (prefs.hidden.includes("checkin")) update({ hidden: prefs.hidden.filter((h) => h !== "checkin") });
+    board.setLayout((cur) => addItem(cur, "checkin"));
     window.setTimeout(() => {
       const el = document.getElementById(RITUAL_ANCHOR);
       if (!el) return;
@@ -207,7 +192,7 @@ export default function Dashboard() {
       el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
       el.focus({ preventScroll: true });
     }, 50);
-  }, [prefs.hidden, update]);
+  }, [board]);
 
   const extraNode = (id: SectionId): ReactNode => {
     switch (id) {
@@ -227,152 +212,136 @@ export default function Dashboard() {
     }
   };
 
-  // ── «План на день» + «Кривая капитала» ──────────────────────────────────────
-  const plan = on("attention") ? (
+  const plan = (
     <AttentionPanel
       fill
       data={today}
       risk={riskQ.data}
       desk={deskQ.data}
-      eod={eodQ.data}
-      lastDay={lastDay}
-      lastDayEod={lastDayEodQ.data}
+      eod={m.eodQ.data}
+      lastDay={m.lastDay}
+      lastDayEod={m.lastDayEodQ.data}
       recent={scope === "me" ? recentQ.data : undefined}
-      events={eventsQ.data}
-      marketEvents={holidaysQ.data?.today ?? []}
-      unread={unreadQ.data}
-      isLoading={attentionLoading}
+      events={m.eventsQ.data}
+      marketEvents={m.holidaysQ.data?.today ?? []}
+      unread={m.unreadQ.data}
+      isLoading={m.attentionLoading}
       updatedAt={todayQ.dataUpdatedAt || undefined}
       onCheckin={goToCheckin}
-      dayCardDate={dayCardDate}
-      dailyStep={daily.step}
-      dailyToday={daily.today}
-      frame={dailyOn ? <DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} embedded /> : null}
-      progress={dailyOn ? <DayProgress enabled={dailyOn} quests={<QuestStrip enabled={dailyOn} />} /> : null}
+      dayCardDate={m.dayCardDate}
+      dailyStep={m.daily.step}
+      dailyToday={m.daily.today}
+      frame={m.dailyOn ? <DayLine enabled={m.dailyOn} journalOpenDate={m.journalOpenDate} embedded /> : null}
+      progress={m.dailyOn ? <DayProgress enabled={m.dailyOn} quests={<QuestStrip enabled={m.dailyOn} />} /> : null}
     />
-  ) : null;
-  const shownEquity = widened ? widenedQ.data : equityQ.data;
-  const equity = on("equity") ? (
+  );
+  const shownEquity = m.widened ? widenedQ.data : equityQ.data;
+  const equity = (v: TileVariant) => (
     <EquityPanel
       fill
-      data={weekEmpty && widenedQ.isLoading ? undefined : shownEquity}
-      isLoading={equityQ.isLoading || (weekEmpty && widenedQ.isLoading)}
+      density={v}
+      data={m.weekEmpty && widenedQ.isLoading ? undefined : shownEquity}
+      isLoading={equityQ.isLoading || (m.weekEmpty && widenedQ.isLoading)}
       isError={equityQ.isError}
       onRetry={() => equityQ.refetch()}
-      period={widened ? "30d" : prefs.period}
-      onPeriodChange={onPeriodChange}
+      period={m.widened ? "30d" : prefs.period}
+      onPeriodChange={m.onPeriodChange}
       metric={prefs.metric}
-      onMetricChange={(metric) => update({ metric })}
-      note={widened ? t("equity.widened") : null}
+      onMetricChange={(metric) => m.update({ metric })}
+      note={m.widened ? t("equity.widened") : null}
       showBreakeven={scope === "me"}
     />
-  ) : null;
-  const dayCells: Cell[] = [
-    ...(plan ? [{ id: "attention" as const, node: plan, span: equity ? 5 : 12 }] : []),
-    ...(equity ? [{ id: "equity" as const, node: equity, span: plan ? 7 : 12 }] : []),
-  ];
+  );
+  const insight = (id: SectionId & TileId, v: TileVariant) => (
+    <InsightTileCard
+      id={id}
+      variant={v}
+      trades={m.insightQ.data}
+      prev={m.insightPrevQ.isSuccess && !m.insightPrevQ.isPlaceholderData ? m.insightPrevQ.data : null}
+      isLoading={m.insightQ.isLoading || (!m.insightQ.data && !m.insightQ.isError)}
+      scope={m.insightScope}
+    />
+  );
 
-  // The morning check-in leads the extras before the open on a trading day and is gone on weekends / market holidays
-  // (ILYA-20); before the open it sits right under the plan.
-  const tradingDay = today ? !today.market.weekend && !today.market.holidayToday : true;
-  const morning = !!today && tradingDay && today.market.nyMinutes < OPEN_MIN;
-  const checkinNow = morning && on("checkin");
+  const tile = (id: SectionId): BoardTileDef => {
+    if (isEdge(id)) return { ready: true, render: (v) => insight(id, v) };
+    switch (id) {
+      case "attention": return { ready: true, render: () => plan };
+      case "equity": return { ready: true, render: equity };
+      case "positions": return { ready: !!today?.positions?.length, render: () => (today ? lazyExtra(<PositionsPanel data={today} />) : null) };
+      case "recent":
+        return {
+          ready: true,
+          render: () => <RecentTradesPanel fill trades={recentQ.data} isLoading={recentQ.isLoading} isError={recentQ.isError} onRetry={() => recentQ.refetch()} showTrader={scope === "team"} />,
+        };
+      // Staff only; hidden when the risk desk is not deployed (null).
+      case "desk":
+        return {
+          ready: m.staff && deskQ.data !== null,
+          render: () => <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} isError={deskQ.isError} onRetry={() => void deskQ.refetch()} />,
+        };
+      // Before the open it sits under the plan (outside the edit mode); off on weekends / market holidays.
+      case "checkin": return { ready: m.tradingDay && (!checkinNow || editing), render: () => extraNode("checkin") };
+      default: return { ready: true, render: () => extraNode(id) };
+    }
+  };
+  const preview = (id: SectionId) => {
+    const def = tile(id);
+    return def.ready ? def.render("m") : <TilePlaceholder label={SECTION_META[id].label} />;
+  };
 
-  // ── «Ваш edge» («Мои» only: a team-wide sequence mixes different people's trades; staff read one trader on /stats) ──
-  const edgeOn = scope === "me" && tileIds.length > 0;
-  const bento = (ids: TileId[], layout: "lead" | "row") =>
-    ids.length > 0 ? (
-      <InsightBento
-        ids={ids}
-        layout={layout}
-        trades={insightQ.data}
-        prev={insightPrevQ.isSuccess && !insightPrevQ.isPlaceholderData ? insightPrevQ.data : null}
-        isLoading={insightQ.isLoading}
-        scope={insightScope}
+  const sections: Record<BoardSection, BoardSectionDef> = {
+    plan: { title: t("layout.plan"), after: checkinNow && !editing ? extraNode("checkin") : null },
+    edge: {
+      title: t("layout.edge"),
+      hint: t("layout.edgeHint"),
+      action: (
+        <Link href="/stats" className="inline-flex min-h-8 items-center gap-0.5 rounded-lg px-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {t("layout.edgeAll")}
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      ),
+    },
+    trades: { title: t("layout.trades") },
+    extras: { title: t("layout.extras") },
+  };
+
+  const hero = (
+    <>
+      <DashboardHeader
+        data={today}
+        risk={riskQ.data}
+        desk={deskQ.data}
+        isLoading={todayQ.isLoading}
+        isError={todayQ.isError}
+        onRetry={() => todayQ.refetch()}
+        guest={m.isGuest}
+        scope={scope}
+        onScopeChange={(s) => m.update({ scope: s, scopePicked: true })}
+        canChooseScope={m.staff}
+        userName={m.userName}
       />
-    ) : null;
-
-  // ── «Сделки» ──────────────────────────────────────────────────────────────
-  const positions = on("positions") && today?.positions && today.positions.length > 0 ? lazyExtra(<PositionsPanel data={today} />) : null;
-  const recent = on("recent") ? (
-    <RecentTradesPanel fill trades={recentQ.data} isLoading={recentQ.isLoading} isError={recentQ.isError} onRetry={() => recentQ.refetch()} showTrader={scope === "team"} />
-  ) : null;
-  // Staff only; hidden when the risk desk is not deployed (null).
-  const desk = on("desk") && deskQ.data !== null ? (
-    <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} isError={deskQ.isError} onRetry={() => void deskQ.refetch()} />
-  ) : null;
-  const tradeCells: Cell[] = [
-    ...(recent ? [{ id: "recent" as const, node: recent, span: desk ? 7 : 12 }] : []),
-    ...(desk ? [{ id: "desk" as const, node: desk, span: recent ? 5 : 12 }] : []),
-  ];
-
-  // ── «Дополнительно» ───────────────────────────────────────────────────────
-  const extras = prefs.order
-    .filter((id) => SECTION_META[id].extra && on(id) && (id !== "checkin" || (tradingDay && !checkinNow)))
-    .map((id) => ({ id, node: extraNode(id) }))
-    .filter((b) => b.node != null);
-
-  const customize = authed ? (
-    <CustomizePopover staff={staff} order={prefs.order} hidden={prefs.hidden} onChange={(patch) => update(patch)} onReset={reset} />
-  ) : null;
+      {m.authed && <FirstSteps />}
+      {m.dailyOn && <WrappedDashLine />}
+      {m.authed && <Suspense fallback={null}><TodayEdgeLine /></Suspense>}
+    </>
+  );
 
   return (
     <Page className="dash-page">
-      <DashSection id="dash-today" title={t("layout.today")} action={customize}>
-        <DashboardHeader
-          data={today}
-          risk={riskQ.data}
-          desk={deskQ.data}
-          isLoading={todayQ.isLoading}
-          isError={todayQ.isError}
-          onRetry={() => todayQ.refetch()}
-          guest={isGuest}
-          scope={scope}
-          onScopeChange={(s) => update({ scope: s, scopePicked: true })}
-          canChooseScope={staff}
-          userName={userName}
-        />
-        {authed && <FirstSteps />}
-        {dailyOn && <WrappedDashLine />}
-        {authed && <Suspense fallback={null}><TodayEdgeLine /></Suspense>}
-      </DashSection>
-
-      {(dayCells.length > 0 || checkinNow) && (
-        <DashSection id="dash-plan" title={t("layout.plan")}>
-          {dayCells.length > 0 && <Row cells={dayCells} />}
-          {checkinNow && extraNode("checkin")}
-        </DashSection>
-      )}
-
-      {edgeOn && (
-        <DashSection
-          id="dash-edge"
-          title={t("layout.edge")}
-          hint={t("layout.edgeHint")}
-          action={
-            <Link href="/stats" className="inline-flex min-h-8 items-center gap-0.5 rounded-lg px-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              {t("layout.edgeAll")}
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </Link>
-          }
-        >
-          {bento(tileIds.filter(isLeadTile), "lead")}
-          {bento(tileIds.filter((id) => !isLeadTile(id)), "row")}
-        </DashSection>
-      )}
-
-      {(positions || tradeCells.length > 0) && (
-        <DashSection id="dash-trades" title={t("layout.trades")}>
-          {positions}
-          {tradeCells.length > 0 && <Row cells={tradeCells} />}
-        </DashSection>
-      )}
-
-      {extras.length > 0 && (
-        <DashSection id="dash-extras" title={t("layout.extras")} className="dash-extras">
-          {extraRows(extras).map((cells) => <Row key={cells.map((c) => c.id).join("+")} cells={cells} />)}
-        </DashSection>
-      )}
+      <DashBoard
+        layout={board.layout}
+        setLayout={board.setLayout}
+        reset={board.reset}
+        editable={m.authed}
+        allowed={m.allowed}
+        inScope={m.inScope}
+        tile={tile}
+        preview={preview}
+        sections={sections}
+        hero={{ title: t("layout.today"), node: hero }}
+        onEditingChange={setEditing}
+      />
     </Page>
   );
 }

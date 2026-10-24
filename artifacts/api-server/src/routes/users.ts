@@ -21,6 +21,7 @@ import { invalidateDashboardCache } from "../lib/hotCache";
 import { warmSettings } from "../lib/settings/store";
 import { StoredAppearanceSchema } from "../lib/people/appearanceSchema";
 import { OnboardingStateSchema } from "../lib/people/onboarding";
+import { DashboardLayoutSchema } from "../lib/people/dashboardLayoutSchema";
 
 const router: IRouter = Router();
 
@@ -243,6 +244,8 @@ const SettingsPatch = z.object({
   appearance: StoredAppearanceSchema.nullable().optional(),
   /** First-visit onboarding: tour / checklist / page hints seen or dismissed (lib/people/onboarding). null removes it. */
   onboarding: OnboardingStateSchema.nullable().optional(),
+  /** Dashboard tiles: order, sizes, hidden ones (lib/people/dashboardLayoutSchema). null removes it (= the default). */
+  dashboardLayout: DashboardLayoutSchema.nullable().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -273,6 +276,8 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   else if (body.data.appearance !== undefined) set.appearance = body.data.appearance;
   if (body.data.onboarding === null) drop.push("onboarding");
   else if (body.data.onboarding !== undefined) set.onboarding = body.data.onboarding;
+  if (body.data.dashboardLayout === null) drop.push("dashboardLayout");
+  else if (body.data.dashboardLayout !== undefined) set.dashboardLayout = body.data.dashboardLayout;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,

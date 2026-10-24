@@ -12,13 +12,13 @@ import { insightTilesI18n } from "@/i18n/ns/insightTiles";
 import { TileBars } from "./bars";
 import {
   ActionChip, Actions, Caption, ConfidenceBadge, DetailGrid, Huge, InlineBars, LowData, Num, Phrase, Tile, TrendChip,
-  fmtHold, pp, toneText, usd, usdAbs, useTone,
+  fmtHold, pp, toneText, usd, usdAbs, useTone, type TileVariant,
 } from "./kit";
 import { TILE_MIN, afterInsight, holdInsight, seqInsight, seqTradesOf, summaryOf, type BucketSummary } from "./insights";
 import { ruleText, seqLabel, tradesHref, useDrill, whatIfHref, type InsightScope } from "./nav";
 import type { InsightTrade } from "./model";
 
-type Props = { trades: readonly InsightTrade[]; prev?: readonly InsightTrade[] | null; scope: InsightScope };
+type Props = { trades: readonly InsightTrade[]; prev?: readonly InsightTrade[] | null; scope: InsightScope; variant?: TileVariant };
 const tradesUnit = (n: number) => commonI18n.t("units.trades", { count: n });
 
 /** Win rate, avg win / loss and the best / worst trade of a bucket. */
@@ -41,14 +41,14 @@ function SummaryGrid({ s, extra = [] }: { s: BucketSummary; extra?: { label: str
 
 /* ─────────────────────── «Номер сделки в дне» ─────────────────────── */
 
-export function SeqTile({ trades, prev, scope }: Props) {
+export function SeqTile({ trades, prev, scope, variant }: Props) {
   const { t } = insightTilesI18n.useT();
   const tone = useTone();
   const s = React.useMemo(() => seqInsight(trades, prev), [trades, prev]);
   const drill = useDrill(scope);
   const worstSummary = React.useMemo(() => (s.worst ? summaryOf(seqTradesOf(trades, s.worst.key)) : null), [trades, s.worst]);
   const label = t("seq.label");
-  if (!s.enough || !s.best || !s.worst) return <Tile id="seq" size="third" label={label} verdict={<LowData have={s.sample} need={TILE_MIN.seqTrades} />} />;
+  if (!s.enough || !s.best || !s.worst) return <Tile variant={variant} id="seq" size="third" label={label} verdict={<LowData have={s.sample} need={TILE_MIN.seqTrades} />} />;
 
   const best = s.best, worst = s.worst;
   const marks = s.buckets.findIndex((b) => b.key === worst.key);
@@ -58,6 +58,7 @@ export function SeqTile({ trades, prev, scope }: Props) {
 
   return (
     <Tile
+      variant={variant}
       id="seq"
       size="third"
       label={label}
@@ -128,17 +129,18 @@ function Meter({ label, rate, avg, tone, onClick }: { label: string; rate: numbe
   );
 }
 
-export function AfterTile({ trades, prev, scope }: Props) {
+export function AfterTile({ trades, prev, scope, variant }: Props) {
   const { t } = insightTilesI18n.useT();
   const s = React.useMemo(() => afterInsight(trades, prev), [trades, prev]);
   const drill = useDrill(scope);
   const label = t("after.label");
   if (!s.enough || !s.verdict) {
-    return <Tile id="after" size="third" label={label} verdict={<LowData have={Math.min(s.afterLoss.trades, s.afterWin.trades)} need={TILE_MIN.afterEach} />} />;
+    return <Tile variant={variant} id="after" size="third" label={label} verdict={<LowData have={Math.min(s.afterLoss.trades, s.afterWin.trades)} need={TILE_MIN.afterEach} />} />;
   }
   const a = fmtRate(s.afterLoss.winRate), b = fmtRate(s.afterWin.winRate);
   return (
     <Tile
+      variant={variant}
       id="after"
       size="third"
       label={label}
@@ -198,12 +200,12 @@ function HoldRow({ label, sec, max, tone }: { label: string; sec: number | null;
   );
 }
 
-export function HoldTile({ trades, prev, scope }: Props) {
+export function HoldTile({ trades, prev, scope, variant }: Props) {
   const { t } = insightTilesI18n.useT();
   const s = React.useMemo(() => holdInsight(trades, prev), [trades, prev]);
   const label = t("hold.label");
   if (!s.enough || !s.verdict || s.ratio == null) {
-    return <Tile id="hold" size="third" label={label} verdict={<LowData have={Math.min(s.nWin, s.nLoss)} need={TILE_MIN.holdEach} />} />;
+    return <Tile variant={variant} id="hold" size="third" label={label} verdict={<LowData have={Math.min(s.nWin, s.nLoss)} need={TILE_MIN.holdEach} />} />;
   }
   const x = s.verdict === "good" ? 1 / s.ratio : s.ratio;
   const times = `${fmtNum(x, 1)}×`;
@@ -212,6 +214,7 @@ export function HoldTile({ trades, prev, scope }: Props) {
   const fmtX = (v: number) => `${fmtNum(v, 2)}×`;
   return (
     <Tile
+      variant={variant}
       id="hold"
       size="third"
       label={label}
