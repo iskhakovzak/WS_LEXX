@@ -14,6 +14,7 @@ export default {
     telegram: { title: "Telegram", description: "Bot sends on weekdays. Times are New York time, Tashkent time next to them." },
     curator: { title: "Curator queue", description: "What stays in the queue of problems by money." },
     coach: { title: "Evidence-based coaching", description: "The «where I earn / lose» map adjusted to the desk, and the thresholds of its verdicts." },
+    academy: { title: "Academy: pace", description: "When a trader counts as not yet at the stage's pace (curators only)." },
     privacy: { title: "Privacy", description: "What traders see about colleagues and what they may show outside the desk." },
     trainer: { title: "Trainer", description: "Simulator fills (spread, slippage, 1R), «Daily challenge» and «Find the entry»." },
     gamification: { title: "Gamification", description: "Seasons, the curator league, recognition, setup mastery and streak freezes." },
@@ -193,6 +194,9 @@ export default {
     coach: {
       tauDefaultBps: { label: "Default spread", help: "How far a trader may differ from the desk in a slice while fewer than 5 traders have 30+ trades in it (bp of trade notional)." },
       leakMinUsdPerDay: { label: "Minimum for a verdict", help: "A slice is shown as «earn» or «lose» only when it is worth at least this much per trading day." },
+    },
+    academy: {
+      plateau: { minTenure: { label: "Days at the stage before the pace is judged", help: "Trading days at the stage before the curator sees «pace below target». Never shown to the trader." } },
     },
     nav: {
       simpleForTrainees: { label: "Simple menu for newcomers", help: "Traders up to the chosen tier see the 7 main sections; the rest sits in a collapsed «More» group. Curators and admins always get the full menu." },

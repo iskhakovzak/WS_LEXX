@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "coach";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "coach" | "academy";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 /**
@@ -141,6 +141,9 @@ export const SETTINGS = {
   // fewer than 5 traders with 30+ trades, and the smallest |$ per active day| an edge-map verdict needs.
   "coach.tauDefaultBps": { group: "coach", type: "number", default: 3, min: 1, max: 50, step: 0.5, unit: "bp" },
   "coach.leakMinUsdPerDay": { group: "coach", type: "number", default: 3, min: 0, max: 100, step: 0.5, unit: "usd" },
+
+  // Plateau detector (roadmap R6, lib/plateau.ts): active days at a stage before «not at the pace yet» is judged.
+  "academy.plateau.minTenure": { group: "academy", type: "number", default: 120, min: 40, max: 500, step: 10, unit: "days" },
 
   // Curator queue (lib/daily/costQueue)
   "curator.queueCarryDays": { group: "curator", type: "number", default: 2, min: 0, max: 10, step: 1, unit: "days" },

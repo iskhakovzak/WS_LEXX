@@ -92,6 +92,7 @@ export default {
     breach_review_n: "Review the breach ({count})",
     stopped: "On stop — get in touch and check the book",
     near_stop: "Close to stop — warn them",
+    plateau_review: "Pace below the stage target — schedule a 1:1 review",
     eod_review: "Review the closed day",
     eod_review_n: "Review the closed day ({count})",
     weekly_review: "Reply to the weekly report",

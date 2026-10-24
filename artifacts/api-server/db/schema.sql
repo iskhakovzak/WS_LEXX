@@ -246,6 +246,7 @@ CREATE SEQUENCE public.trade_reactions_id_seq AS integer START WITH 1 INCREMENT 
 CREATE SEQUENCE public.trade_reviews_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trade_setup_suggestions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trader_plans_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.trader_progress_snapshots_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.trader_ratings_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trader_risk_limit_events_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trades_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -2587,6 +2588,34 @@ CREATE TABLE public.trader_plans (
   CONSTRAINT trader_plans_trader_date_key UNIQUE (trader, date)
 );
 
+CREATE TABLE public.trader_progress_snapshots (
+  id bigint DEFAULT nextval('public.trader_progress_snapshots_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  as_of date NOT NULL,
+  run_kind text NOT NULL,
+  tenure_active_days integer NOT NULL,
+  stage text,
+  pace_target numeric(12,2),
+  n_days integer DEFAULT 0 NOT NULL,
+  mean_raw numeric(12,2),
+  mean_lb numeric(12,2),
+  lo80 numeric(12,2),
+  hi80 numeric(12,2),
+  p_impr numeric(6,4),
+  shrunk boolean DEFAULT false NOT NULL,
+  plateau boolean DEFAULT false NOT NULL,
+  severity text,
+  escalated boolean DEFAULT false NOT NULL,
+  admin_escalated boolean DEFAULT false NOT NULL,
+  suppressed_until date,
+  diagnosis jsonb DEFAULT '{}'::jsonb NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT trader_progress_snapshots_pkey PRIMARY KEY (id),
+  CONSTRAINT trader_progress_snapshots_key UNIQUE (trader, as_of, run_kind),
+  CONSTRAINT trader_progress_snapshots_run_kind_check CHECK (run_kind = ANY (ARRAY['monthly'::text, 'weekly'::text])),
+  CONSTRAINT trader_progress_snapshots_severity_check CHECK (severity = ANY (ARRAY['slow'::text, 'stuck'::text, 'stuck_long'::text]))
+);
+
 CREATE TABLE public.trader_ratings (
   id integer DEFAULT nextval('public.trader_ratings_id_seq'::regclass) NOT NULL,
   trader text NOT NULL,
@@ -3132,6 +3161,7 @@ ALTER SEQUENCE public.trade_reactions_id_seq OWNED BY public.trade_reactions.id;
 ALTER SEQUENCE public.trade_reviews_id_seq OWNED BY public.trade_reviews.id;
 ALTER SEQUENCE public.trade_setup_suggestions_id_seq OWNED BY public.trade_setup_suggestions.id;
 ALTER SEQUENCE public.trader_plans_id_seq OWNED BY public.trader_plans.id;
+ALTER SEQUENCE public.trader_progress_snapshots_id_seq OWNED BY public.trader_progress_snapshots.id;
 ALTER SEQUENCE public.trader_ratings_id_seq OWNED BY public.trader_ratings.id;
 ALTER SEQUENCE public.trader_risk_limit_events_id_seq OWNED BY public.trader_risk_limit_events.id;
 ALTER SEQUENCE public.trades_id_seq OWNED BY public.trades.id;
@@ -3320,6 +3350,7 @@ CREATE INDEX trade_setup_suggestions_trade_idx ON public.trade_setup_suggestions
 CREATE INDEX trader_achievements_earned_idx ON public.trader_achievements USING btree (trader, earned_on);
 CREATE INDEX trader_badges_awarded_idx ON public.trader_badges USING btree (awarded_on);
 CREATE INDEX trader_plans_date_idx ON public.trader_plans USING btree (date);
+CREATE INDEX trader_progress_snapshots_latest_idx ON public.trader_progress_snapshots USING btree (trader, as_of DESC);
 CREATE INDEX trader_risk_limit_events_trader_idx ON public.trader_risk_limit_events USING btree (trader, changed_at DESC);
 CREATE INDEX trades_broker_account_idx ON public.trades USING btree (broker_account) WHERE (broker_account IS NOT NULL);
 CREATE INDEX trades_chain_idx ON public.trades USING btree (trader, ticker, date);

@@ -7,6 +7,7 @@ import { pool } from "@workspace/db";
 import { readScope } from "./permissions";
 import { groupMembersOf } from "./people/deskGroups";
 import type { NextAction, WeekPoint } from "./curatorLogic";
+import type { PlateauSignal } from "./plateauStore";
 
 /** Read from an optional module's table: any SQL error (table not created yet) → no rows. */
 export async function safe<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -85,4 +86,6 @@ export type TraderSignal = {
   month: { pnl: number | null; trades: number };
   /** Latest sign of life: activity log, closed day, weekly report or trade day (ISO / YYYY-MM-DD). */
   lastActivityAt: string | null;
+  /** R6 plateau (staff-only): not at the stage's pace yet; null = no current plateau. */
+  plateau: PlateauSignal | null;
 };

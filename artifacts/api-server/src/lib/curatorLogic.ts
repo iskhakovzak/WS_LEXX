@@ -159,7 +159,7 @@ export function trendDirection(points: readonly WeekPoint[]): "up" | "down" | "f
 
 export type NextActionKind =
   | "breach_review" | "stopped" | "near_stop" | "eod_review" | "weekly_review" | "overdue_action"
-  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "none";
+  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "plateau_review" | "none";
 
 export type NextAction = { kind: NextActionKind; label: string; priority: number; href: string };
 
@@ -177,6 +177,8 @@ export type NextActionInput = {
   missingEod: boolean;
   /** Дней с последней 1:1 (null — не было ни одной). */
   daysSinceOneOnOne: number | null;
+  /** R6 plateau (lib/plateauStore): an open escalation asks for a templated 1:1 review. */
+  plateau?: { escalationOpen: boolean } | null;
 };
 
 const enc = encodeURIComponent;
@@ -189,6 +191,8 @@ export function nextActionFor(x: NextActionInput, lang: Lang = "ru"): NextAction
   if (x.unreviewedBreaches > 0) cands.push({ kind: "breach_review", priority: 100, label: x.unreviewedBreaches > 1 ? L("next.breach_review_n", { count: x.unreviewedBreaches }) : L("next.breach_review"), href: `/curator?trader=${t}&tab=risk` });
   if (x.halted) cands.push({ kind: "stopped", priority: 95, label: L("next.stopped"), href: `/risk?trader=${t}` });
   if (x.nearStop) cands.push({ kind: "near_stop", priority: 80, label: L("next.near_stop"), href: `/risk?trader=${t}` });
+  // R6: plateau escalated (2nd monthly run below the stage pace) and no 1:1 since — between eod_review and near_stop.
+  if (x.plateau?.escalationOpen) cands.push({ kind: "plateau_review", priority: 75, label: L("next.plateau_review"), href: `/curator?trader=${t}` });
   if (x.eodPending > 0) cands.push({ kind: "eod_review", priority: 70, label: x.eodPending > 1 ? L("next.eod_review_n", { count: x.eodPending }) : L("next.eod_review"), href: `/curator?trader=${t}&tab=journal` });
   if (x.weeklySubmitted) cands.push({ kind: "weekly_review", priority: 65, label: L("next.weekly_review"), href: `/weekly-review?view=curator&trader=${t}` });
   if (x.overdueActions > 0) cands.push({ kind: "overdue_action", priority: 60, label: L("next.overdue_action", { count: x.overdueActions }), href: `/curator?trader=${t}&tab=academy` });

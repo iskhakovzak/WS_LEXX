@@ -35,6 +35,14 @@ const store = vi.hoisted(() => ({
 vi.mock("../../lib/edgeMapStore", () => store);
 const log = vi.hoisted(() => ({ listInterventions: vi.fn(async () => []) }));
 vi.mock("../../lib/interventions/log", () => log);
+const plateau = vi.hoisted(() => ({
+  stuckList: vi.fn(async (traders: string[]) => traders.map((trader) => ({ trader }))),
+  scheduleReview: vi.fn(async (trader: string) => (trader === "Trader One" ? { meetingId: 7, metAt: "2026-10-26T16:00:00.000Z", interventionId: 9 } : null)),
+}));
+vi.mock("../../lib/plateauStore", () => plateau);
+vi.mock("../../lib/curatorRoster", () => ({
+  loadRoster: vi.fn(async (_req: unknown, scope: unknown) => ({ traders: who.wards, scope: scope === "desk" ? "desk" : "mine", wards: who.wards })),
+}));
 
 process.env.JWT_SECRET ??= "vitest-only-secret";
 const { default: router } = await import("../coach");
@@ -57,8 +65,8 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 beforeEach(() => { who = TRADER; vi.clearAllMocks(); });
 
-async function get(path: string): Promise<{ status: number; json: any }> {
-  const r = await fetch(base + path);
+async function get(path: string, method = "GET"): Promise<{ status: number; json: any }> {
+  const r = await fetch(base + path, { method, headers: { "Content-Type": "application/json" } });
   return { status: r.status, json: await r.json().catch(() => null) };
 }
 const enc = encodeURIComponent;
@@ -93,5 +101,31 @@ describe("GET /interventions", () => {
     expect(ok.json).toEqual({ trader: "Trader One", interventions: [] });
     expect((await get(`/api/interventions?trader=${enc("Trader Two")}`)).status).toBe(403);
     expect((await get("/api/interventions")).status).toBe(400);
+  });
+});
+
+describe("«Застряли» (R6)", () => {
+  it("staff only: a trader never gets the list or the action", async () => {
+    expect((await get("/api/curator/stuck")).status).toBe(403);
+    expect((await get(`/api/curator/stuck/${enc("Trader One")}/one-on-one`, "POST")).status).toBe(403);
+    expect(plateau.stuckList).not.toHaveBeenCalled();
+    expect(plateau.scheduleReview).not.toHaveBeenCalled();
+  });
+  it("a curator gets his roster's list; schedules a 1:1 for a ward (201), not for someone outside his scope", async () => {
+    who = CURATOR;
+    const list = await get("/api/curator/stuck?scope=mine");
+    expect(list.status).toBe(200);
+    expect(list.json).toEqual({ scope: "mine", items: [{ trader: "Trader One" }] });
+    const ok = await get(`/api/curator/stuck/${enc("Trader One")}/one-on-one`, "POST");
+    expect(ok.status).toBe(201);
+    expect(ok.json).toMatchObject({ meetingId: 7, interventionId: 9 });
+    expect(plateau.scheduleReview).toHaveBeenCalledWith("Trader One", "Curator One", "ru");
+    expect((await get(`/api/curator/stuck/${enc("Trader Two")}/one-on-one`, "POST")).status).toBe(403);
+  });
+  it("no current plateau → 404 TRADER_NOT_FOUND", async () => {
+    who = { ...CURATOR, wards: ["Trader One", "Trader Three"] };
+    const r = await get(`/api/curator/stuck/${enc("Trader Three")}/one-on-one`, "POST");
+    expect(r.status).toBe(404);
+    expect(r.json.code).toBe("TRADER_NOT_FOUND");
   });
 });

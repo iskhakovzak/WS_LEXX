@@ -35,7 +35,7 @@ export type Scope = "mine" | "desk";
 export type Phase = "premarket" | "session" | "afterclose" | "weekend";
 export type NextActionKind =
   | "breach_review" | "stopped" | "near_stop" | "eod_review" | "weekly_review" | "overdue_action"
-  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "none";
+  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "plateau_review" | "none";
 export type NextAction = { kind: NextActionKind; label: string; priority: number; href: string };
 export type WeekPoint = { week: string; net: number | null; trades: number };
 
@@ -72,6 +72,8 @@ export type TraderSignal = {
   month?: { pnl: number | null; trades: number };
   /** Latest sign of life (activity, closed day, weekly report, trade day). */
   lastActivityAt?: string | null;
+  /** R6 plateau (staff-only): below the stage's pace at the latest check; null / absent = no plateau. */
+  plateau?: { plateau: boolean; severity: "slow" | "stuck" | "stuck_long" | null; escalationOpen: boolean; adminEscalated: boolean } | null;
 };
 
 export type RiskBrief = { trader: string; state: string; label: string; message: string; pnlNet: number | null; dailyPct: number | null; weeklyPct: number | null; drawdownPct: number | null };

@@ -35,6 +35,8 @@ describe("job definitions", () => {
     expect(job?.cron).toBe("40 18 * * 1-5");
     expect(job?.on).toBeUndefined();
     expect(job?.enabled).toBeUndefined(); // follows the scheduler switch (JOBS_ENABLED) like every job
+    const plateau = listJobs().find((j) => j.name === "academy.plateau-monthly");
+    expect(plateau?.cron).toBe("0 7 * * 1-5"); // decides monthly / weekly / catch-up itself (lib/plateauStore runPlateau)
   });
 
   it("candles.archive runs on every PropReports sync and then classifies setups of the new trades", async () => {
