@@ -106,7 +106,7 @@ export function NextStepCard({ enabled, journalOpenDate, className }: { enabled:
   }
 
   return (
-    <section aria-label={t("step.aria")} className={cn("glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)]", className)}>
+    <section aria-label={t("step.aria")} data-tour="next-step" className={cn("glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)]", className)}>
       <div className="flex items-start gap-3">
         <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", step.kind === "done" ? "bg-up/15 text-up" : "bg-primary/15 text-primary")}>
           <Icon className="h-5 w-5" aria-hidden="true" />

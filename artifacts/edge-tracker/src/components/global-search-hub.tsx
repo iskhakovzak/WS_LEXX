@@ -13,7 +13,7 @@ import {
   useListEvents, useListResearch, useListDailyFeed, getTrade,
   getListEventsQueryKey, getListResearchQueryKey, getListDailyFeedQueryKey,
 } from "@workspace/api-client-react";
-import { BookMarked, CalendarClock, ImageDown, Languages, Lightbulb, Moon, ShieldAlert, Crosshair, SunMoon } from "lucide-react";
+import { BookMarked, CalendarClock, CircleHelp, ImageDown, Languages, Lightbulb, Moon, ShieldAlert, Crosshair, SunMoon } from "lucide-react";
 import { fetchTradesPage, TRADES_PAGE_KEY, type TradesPageSummary } from "@/hooks/use-trades-page";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
@@ -29,6 +29,9 @@ import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import ruShell from "@/i18n/locales/ru/shell";
+import ruOnboarding from "@/i18n/locales/ru/onboarding";
+import { onboardingI18n } from "@/i18n/ns/onboarding";
+import { openHelp } from "@/lib/onboarding/store";
 import { ALL_NAV_ITEMS } from "@/components/shell/nav";
 import { navItemOpen } from "@/components/shell/nav-model";
 import { useEodStatus } from "@/components/eod/eod-api";
@@ -265,6 +268,11 @@ export function useHubActions(ctx: Ctx): HubAction[] {
   out.push({
     id: "setup", icon: BookMarked, label: playbookTodayI18n.t("palette.action"), subtitle: playbookTodayI18n.t("palette.hint"),
     run: () => { close(); openSetupSheet({ query: setupQuery(raw) }); }, terms: [ru.keywords.setup, t("palette.keywords.setup"), "setup setap playbook pleybuk orb vwap flag gap"],
+  });
+  out.push({
+    id: "help", icon: CircleHelp, label: onboardingI18n.t("help.paletteAction"), subtitle: onboardingI18n.t("help.paletteHint"),
+    run: () => { close(); window.setTimeout(openHelp, 0); },
+    terms: [ruOnboarding.help.paletteAction, ruOnboarding.help.keywords, onboardingI18n.t("help.keywords"), "help hints tour shortcuts yordam"],
   });
   return out;
 }

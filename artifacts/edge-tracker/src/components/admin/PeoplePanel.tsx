@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import {
-  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, PencilLine, Search, Snowflake, Sun,
+  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, PencilLine, RotateCcw, Search, Snowflake, Sun,
   UserCog, UserPlus, Users, UsersRound, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,8 @@ import { authI18n } from "@/i18n/ns/auth";
 import { adminI18n } from "@/i18n/ns/admin";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { onboardingI18n } from "@/i18n/ns/onboarding";
+import { resetOnboardingFor } from "@/lib/onboarding/store";
 import { FillLatinButton, LatinSuggestion, NameLatinDialog } from "./latin-names";
 
 export type PeopleView = "manage" | "activity";
@@ -330,6 +332,7 @@ export function PeoplePanel({
           {touch && (p.role !== "curator" || canAdmins || self) && <DropdownMenuItem onSelect={() => window.setTimeout(() => legacy.rename(p), 0)}><PencilLine /> {t("people.menu.rename")}</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => legacy.setPassword(p)}><KeyRound /> {t("people.menu.password")}</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => ask("sessions", [p])}><LogOut /> {t("people.menu.sessions")}</DropdownMenuItem>}
+          {touch && <DropdownMenuItem onSelect={() => void resetOnboardingFor(p.id).then(() => toast({ title: onboardingI18n.t("admin.resetDone", { name: personName(p.name) }) }), (e: Error) => toast({ title: tc("states.error"), description: e.message, variant: "destructive" }))}><RotateCcw /> {onboardingI18n.t("admin.reset")}</DropdownMenuItem>}
           {touch && !self && (
             <>
               <DropdownMenuSeparator />

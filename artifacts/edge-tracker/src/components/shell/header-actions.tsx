@@ -1,7 +1,7 @@
 /** Header right-side controls: language, the «Вид» (appearance) button, notifications bell (popover) and the user menu. */
 import React from "react";
 import { useLocation } from "wouter";
-import { CloudMoon, Gem, LogOut, Moon, Palette, Settings, Sun, User } from "lucide-react";
+import { CircleHelp, CloudMoon, Gem, LogOut, Moon, Palette, Settings, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme, type Theme } from "@/contexts/theme-context";
@@ -19,6 +19,8 @@ import { personInitials, personName } from "@/i18n";
 export { LanguageMenu } from "@/i18n/language-switcher";
 import { LanguageMenuItems } from "@/i18n/language-switcher";
 import { tierDisplay } from "@/components/shared/tier-labels";
+import { onboardingI18n } from "@/i18n/ns/onboarding";
+import { openHelp } from "@/lib/onboarding/store";
 
 export const THEME_ICONS: Record<Theme, React.ElementType> = { dark: Moon, dim: CloudMoon, platinum: Gem, light: Sun };
 
@@ -45,6 +47,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       type="button"
       onClick={() => openAppearance("themes")}
       aria-haspopup="dialog"
+      data-tour="look"
       className={cn(iconBtn, className)}
       title={t("openTitle", { theme: themeLabel })}
       aria-label={t("openAria")}
@@ -116,6 +119,10 @@ export function UserMenu() {
           <LanguageMenuItems focus='[data-i18n-focus="user-menu"]' />
           <DropdownMenuSeparator />
         </div>
+        <DropdownMenuItem onSelect={openHelp} className="gap-2">
+          <CircleHelp className="h-4 w-4" aria-hidden="true" />
+          {onboardingI18n.t("help.menu")}
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/settings")} className="gap-2">
           <Settings className="h-4 w-4" aria-hidden="true" />
           {t("actions.settings")}

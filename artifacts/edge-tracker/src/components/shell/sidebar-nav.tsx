@@ -435,7 +435,7 @@ export function SidebarNav({ location }: { location: string }) {
   const ctx: RowCtx = { location, badges: rowBadges, go, pins, opened, toggleOpened };
 
   return (
-    <nav aria-label={t("sidebar.navLabel")} className="flex min-h-0 flex-1 flex-col">
+    <nav aria-label={t("sidebar.navLabel")} data-tour="nav" className="flex min-h-0 flex-1 flex-col">
       <div ref={listRef} className={cn("scrollbar-none min-h-0 flex-1 overflow-y-auto pb-2", rail ? "px-1.5" : "px-2")}>
         {simple ? (
           <>

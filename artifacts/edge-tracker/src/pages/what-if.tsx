@@ -30,6 +30,7 @@ import { TEAM } from "@/components/people/staff-scope";
 import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
 import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
+import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
 /**
  * /what-if — «Что если» (was /simulator; old links with ?r= / ?p= / ?trader= redirect here): the trader's own closed trades re-run under other rules (server engine
@@ -231,7 +232,7 @@ export default function WhatIf() {
       )}
     </>
   );
-  const header = (
+  const header = (<>
     <PageHeader
       title={t("title")}
       icon={FlaskConical}
@@ -243,9 +244,10 @@ export default function WhatIf() {
           <span className="tabular-nums">{t("meta", { trades: commonI18n.t("units.trades", { count: base.data.trades.length }), days: t("tradingDays", { count: base.data.baseline.days }), period: periodPhrase })}</span>
         ) : null
       }
-      actions={controls}
+      actions={<>{controls}<HelpButton id="whatIf" /></>}
     />
-  );
+    <PageHint id="whatIf" />
+  </>);
 
   if (base.isError) {
     return (

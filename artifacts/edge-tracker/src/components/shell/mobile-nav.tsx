@@ -70,6 +70,7 @@ export function MobileNav({ location }: { location: string }) {
     <>
       <nav
         aria-label={t("mobile.navLabel")}
+        data-tour="dock"
         data-keyboard={keyboardOpen ? "open" : undefined}
         inert={keyboardOpen}
         className={cn(

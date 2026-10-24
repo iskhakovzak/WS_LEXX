@@ -25,6 +25,7 @@ import { CustomizePopover } from "@/components/dashboard/customize-popover";
 import { DayLine } from "@/components/daily/day-line";
 import { NextStepCard } from "@/components/daily/next-step-card";
 import { QuestStrip } from "@/components/quests/quest-strip";
+import { FirstSteps } from "@/components/onboarding/first-steps";
 import { WrappedDashLine } from "@/components/wrapped/WrappedLaunch";
 import { dayView } from "@/components/daily/daily-model";
 import { useDailyMe } from "@/components/daily/use-daily";
@@ -260,6 +261,7 @@ export default function Dashboard() {
           authed ? <CustomizePopover staff={staff} order={prefs.order} hidden={prefs.hidden} onChange={(patch) => update(patch)} onReset={reset} /> : null
         }
       />
+      {authed && <FirstSteps />}
       {dailyOn && <WrappedDashLine />}
       {rows.map((row) =>
         row.cells.length === 1 ? (
