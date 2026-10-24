@@ -79,4 +79,6 @@ export interface ChartDrawing {
   points: { t: number; p: number }[]; // unix seconds + price
   label?: string | null;
   color?: "accent" | "up" | "down" | "warn" | null; // theme roles, not hex
+  /** The trade a note belongs to (/chart-lab notes); absent = the ticker in general. */
+  tradeId?: number | null;
 }

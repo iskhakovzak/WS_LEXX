@@ -40,8 +40,8 @@ import {
  *     Romano–Wolf critical value, not 1.96.
  */
 export const HONESTY = {
-  /** Bump on ANY change to the recipes, passes, gates or these constants: it is part of the cache key. */
-  version: 3,
+  /** Bump on ANY change to the recipes, passes, gates or these constants: it is part of the cache key. 4: wave-2 families. */
+  version: 4,
   iters: 600, seed: 20260101, perms: 200, permSeed: 20260102,
   alphaConfirm: 0.1, qHypothesis: 0.2, fdrMethod: "bh" as "bh" | "by",
   wf: { minMonths: 6, warmupMonths: 2, minTrainDays: 30, embargoDays: 5, minFolds: 3, minTestDays: 20, posShare: 0.7, minPick: 7 },

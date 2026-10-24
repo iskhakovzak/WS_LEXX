@@ -27,8 +27,21 @@ export function newDrawingId(): string {
   return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function makeDrawing(type: DrawingType, points: readonly DrawingPoint[], role: DrawingRole = "accent"): Drawing {
-  return { id: newDrawingId(), type, points: points.slice(0, DRAWING_POINTS[type]).map((p) => ({ time: p.time, price: p.price })), role, createdAt: Date.now() };
+/** `tradeId`: the trade the drawing was made on (its notes belong to that trade); null = the ticker in general. */
+export function makeDrawing(type: DrawingType, points: readonly DrawingPoint[], role: DrawingRole = "accent", tradeId: number | null = null): Drawing {
+  return {
+    id: newDrawingId(), type, points: points.slice(0, DRAWING_POINTS[type]).map((p) => ({ time: p.time, price: p.price })), role, createdAt: Date.now(),
+    ...(tradeId != null && tradeId > 0 ? { tradeId } : {}),
+  };
+}
+
+/** Longest note on a drawing (the API keeps ≤ 80 characters). */
+export const MAX_NOTE = 80;
+
+/** Drawings with a note, the ones of `tradeId` first (newest first inside each group). */
+export function notesOf(list: readonly Drawing[], tradeId: number | null): Drawing[] {
+  const own = (d: Drawing) => (tradeId != null && d.tradeId === tradeId ? 0 : 1);
+  return list.filter((d) => (d.label ?? "").trim()).sort((a, b) => own(a) - own(b) || b.createdAt - a.createdAt);
 }
 
 const isRole = (v: unknown): v is DrawingRole => typeof v === "string" && (DRAWING_ROLES as readonly string[]).includes(v);
@@ -43,7 +56,10 @@ export function isValidDrawing(d: unknown): d is Drawing {
 
 /** Web → API shape. */
 export function toApiDrawing(d: Drawing): ChartDrawing {
-  return { id: d.id, kind: d.type, points: d.points.slice(0, DRAWING_POINTS[d.type]).map((p) => ({ t: Math.round(p.time), p: p.price })), label: d.label ?? null, color: d.role ?? "accent" };
+  return {
+    id: d.id, kind: d.type, points: d.points.slice(0, DRAWING_POINTS[d.type]).map((p) => ({ t: Math.round(p.time), p: p.price })), label: d.label ?? null, color: d.role ?? "accent",
+    ...(d.tradeId != null && d.tradeId > 0 ? { tradeId: d.tradeId } : {}),
+  };
 }
 
 /** API → web shape; null for anything malformed. */
@@ -55,8 +71,9 @@ export function fromApiDrawing(c: unknown): Drawing | null {
     type: x.kind as DrawingType,
     points: Array.isArray(x.points) ? x.points.map((p) => ({ time: Number(p?.t), price: Number(p?.p) })) : [],
     role: isRole(x.color) ? x.color : "accent",
-    label: typeof x.label === "string" ? x.label.slice(0, 80) : null,
+    label: typeof x.label === "string" ? x.label.slice(0, MAX_NOTE) : null,
     createdAt: 0,
+    ...(typeof x.tradeId === "number" && Number.isInteger(x.tradeId) && x.tradeId > 0 ? { tradeId: x.tradeId } : {}),
   };
   return isValidDrawing(d) ? d : null;
 }

@@ -274,7 +274,26 @@ export type Drawing = {
   points: DrawingPoint[];
   role?: DrawingRole;
   label?: string | null;
+  /** The trade a note was written on (/chart-lab «Заметки к сделке»); absent = the ticker in general. */
+  tradeId?: number | null;
   createdAt: number;
+};
+
+/**
+ * What a replay extra (WsChart `replayExtra`, the /chart-lab drill and decision readout) sees at the cursor: only the bars
+ * up to it are meant to be read (the rest is the hidden future), the fills, and the replay's own seek / pause.
+ */
+export type ReplayExtraCtx = {
+  cursorIdx: number;
+  bars: readonly Bar[];
+  fills: readonly Fill[];
+  side: Side;
+  qty: number | null;
+  entryIdx: number | null;
+  exitIdx: number | null;
+  redacted: boolean;
+  seek: (idx: number) => void;
+  pause: () => void;
 };
 
 /** «Анализ» (the whole day, the trade in context) or «Реплей» (bar by bar up to a cursor). */

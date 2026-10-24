@@ -4,7 +4,7 @@
  *
  * Validation (zod schema below; a bad item is a 400 VALIDATION with its path): at most MAX_DRAWINGS items; id a client
  * string ≤ 40; kind hline (1 point) | trend (2) | rect (2); points {t: unix seconds, p: price > 0}; label ≤ 80 or null;
- * color a theme role (accent | up | down | warn) or null — never a hex.
+ * color a theme role (accent | up | down | warn) or null — never a hex; tradeId the trade a note belongs to, optional.
  */
 import { z } from "zod";
 import { pool } from "@workspace/db";
@@ -22,6 +22,8 @@ export const drawingSchema = z
     points: z.array(point).min(1).max(2),
     label: z.string().max(80).nullish(),
     color: z.enum(["accent", "up", "down", "warn"]).nullish(),
+    // The trade the note was written on (/chart-lab «Заметки к сделке»); null = a level of the ticker in general.
+    tradeId: z.number().int().positive().max(2_147_483_647).nullish(),
   })
   .strict()
   .superRefine((d, ctx) => {
@@ -41,7 +43,7 @@ export const drawingsSchema = z
 
 /** Canonical stored form (null label / color kept explicit, nothing else). */
 export function normalizeDrawings(list: readonly z.infer<typeof drawingSchema>[]): ChartDrawing[] {
-  return list.map((d) => ({ id: d.id, kind: d.kind, points: d.points.map((p) => ({ t: p.t, p: p.p })), label: d.label ?? null, color: d.color ?? null }));
+  return list.map((d) => ({ id: d.id, kind: d.kind, points: d.points.map((p) => ({ t: p.t, p: p.p })), label: d.label ?? null, color: d.color ?? null, ...(d.tradeId != null ? { tradeId: d.tradeId } : {}) }));
 }
 
 export async function loadDrawings(userId: number, ticker: string, day: string): Promise<ChartDrawing[]> {

@@ -2,6 +2,7 @@ import type { Messages } from "../../core";
 import type ru from "../ru/chart";
 
 export default {
+  notes: { title: "Grafikdagi izohlar", thisTrade: "shu savdoga" },
   view: {
     label: "Grafik masshtabi",
     day: "Kun",
@@ -20,6 +21,7 @@ export default {
     toEntry: "kirishga",
     toExit: "chiqishga",
     nextFill: "keyingi ijroga",
+    prevFill: "oldingi ijroga",
     pauseOnFills: "ijrolarda pauza",
     speedKeys: "tezlik 1×…60×",
     toOpen: "9:30 ochilishiga",
@@ -94,6 +96,8 @@ export default {
     delete: "Oʻchirish",
     local: "faqat shu brauzerda",
     localTitle: "Server hozircha chizmalarni saqlamaydi — ular faqat shu brauzerda saqlangan",
+    note: "Chizmaga izoh",
+    notePlaceholder: "Izoh: bu yerda nima muhim",
   },
   mode: { analysis: "Analiz", replay: "Replay" },
   overlay: {
@@ -195,6 +199,10 @@ export default {
     jumps: "Oʻtishlar",
     toEntryTitle: "Kirishga — E",
     nextFillTitle: "Keyingi ijro — N: {label}",
+    prevFillTitle: "Oldingi ijro — B: {label}",
+    noFillsBehind: "Ortda ijrolar yoʻq",
+    prevFill: "Oldingi ijro",
+    fillSteps: "Ijrolar boʻyicha qadam",
     noFillsAhead: "Oldinda ijrolar yoʻq",
     toExitTitle: "Chiqishga — X",
     pauseOnFillsTitle: "Replay har bir ijroda oʻzi pauza qiladi — P",
@@ -211,6 +219,7 @@ export default {
     hintSpeed: "tezlik",
     hintEntry: "kirish",
     hintExit: "chiqish",
+    hintFills: "ijrolar",
     starts: {
       pre: "Premarket",
       preTitle: "Savdo kunining birinchi premarket shamidan",

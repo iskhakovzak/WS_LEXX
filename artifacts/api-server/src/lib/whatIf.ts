@@ -162,6 +162,13 @@ export function describeRule(r: Rule, lang: Lang = "ru"): string {
     case "excludeTags": return t("rule.excludeTags", { tags: r.tags.join(", ") });
     case "profitGiveback": return t("rule.profitGiveback", { pct: r.pct, peak: r.peak });
     case "dailyProfitTarget": return t("rule.dailyProfitTarget", { usd: r.usd });
+    case "afterWin": return t("rule.afterWin", { n: r.minutes });
+    case "redZone": return r.floor != null ? t("rule.redZoneFloor", { usd: r.usd, k: r.k, floor: r.floor }) : t("rule.redZone", { usd: r.usd, k: r.k });
+    case "blockWindow": return t("rule.blockWindow", { from: r.from, to: r.to });
+    case "maxTradesPerTicker": return t("rule.maxTradesPerTicker", { n: r.n });
+    case "noReentryAfterLoss": return t("rule.noReentryAfterLoss", { n: r.minutes });
+    case "excludeStrategies": return t("rule.excludeStrategies", { strategies: r.strategies.join(", ") });
+    case "excludeEarnings": return t("rule.excludeEarnings");
   }
 }
 
@@ -282,6 +289,7 @@ export const RULE_TYPES: RuleType[] = [
   "dailyLossLimit", "maxTradesPerDay", "stopAfterLosses", "timeWindow", "priceRange", "minHold", "excludeTickers", "excludeSide",
   "commissionPlan", "capLoss", "sizeRange", "afterLoss", "excludeSetups", "minGrade",
   "excludeImx", "noReentry", "requireStop", "maxSizeRel", "excludeMistakes", "excludeTags", "profitGiveback", "dailyProfitTarget",
+  "afterWin", "redZone", "blockWindow", "maxTradesPerTicker", "noReentryAfterLoss", "excludeStrategies", "excludeEarnings",
 ];
 
 /* ───────────────────────── Commission optimizer ───────────────────────── */

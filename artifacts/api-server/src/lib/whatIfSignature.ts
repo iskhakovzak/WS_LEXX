@@ -12,7 +12,7 @@ export function tradesSignature(trades: readonly SimTrade[]): string {
   const rows = [...trades].sort((a, b) => a.id - b.id).map((t) => [
     t.id, t.day, t.closeDay ?? null, t.entryMin == null ? null : round2(t.entryMin), t.holdSec, t.ticker, t.side, t.qty, t.entry,
     t.gross, t.fees, t.setup, t.grade ?? null, t.trader ?? null, t.imx === true, t.reentry === true, t.sizeRel ?? null, t.hasStop ?? null,
-    sorted(t.mistakes), sorted(t.ptags, true),
+    sorted(t.mistakes), sorted(t.ptags, true), t.strategy ?? null, t.earnings === true,
   ]);
   return createHash("sha256").update(JSON.stringify(rows)).digest("hex").slice(0, 40);
 }

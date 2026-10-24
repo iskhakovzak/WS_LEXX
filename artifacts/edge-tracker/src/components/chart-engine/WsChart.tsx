@@ -22,7 +22,7 @@ import {
   type HistogramData, type BaselineData, type AutoscaleInfo, type Time,
 } from "lightweight-charts";
 import { cn } from "@/lib/utils";
-import type { Bar, ChartMode, Execution, Timeframe, TradeLike, TradeStructureDto } from "./types";
+import type { Bar, ChartMode, Execution, ReplayExtraCtx, Timeframe, TradeLike, TradeStructureDto } from "./types";
 import { TIMEFRAMES, TF_LABEL, TF_SECONDS } from "./types";
 import { aggregate, availableTimeframes, barSeconds, baseBarLabel } from "./lib/aggregate";
 import { etDayKey, fmtEtDateTime, fmtEtDay, fmtEtTime } from "./lib/time";
@@ -58,6 +58,7 @@ import { ChartToolbar, DEFAULT_OVERLAYS, DEFAULT_PANES, type HotkeyRow, type Ove
 import { FillLog, PositionCard, SummaryCard } from "./ui/TradePanels";
 import { FillsKey } from "./ui/FillsKey";
 import { DrawingBar } from "./ui/DrawingBar";
+import { DrawingNotes } from "./ui/DrawingNotes";
 import { robustPriceRange } from "./lib/autoscale";
 import { planRail, type PlanLevel } from "./lib/plan-levels";
 
@@ -90,6 +91,8 @@ export type WsChartProps = {
   asideExtra?: React.ReactNode;
   /** The morning plan's levels of this ticker-day (Волна 2 п. 2.12, hooks/usePlanOverlay) — dotted «План» lines. */
   planLevels?: readonly PlanLevel[] | null;
+  /** Replay only: extra content in the side column built from the cursor (/chart-lab «угадай» drill, decision readout). */
+  replayExtra?: (ctx: ReplayExtraCtx) => React.ReactNode;
 };
 
 type ChartRefs = {
@@ -149,7 +152,7 @@ function applyMargins(r: ChartRefs): void {
 
 export function WsChart({
   trade, executions, structure, target, initialTimeframe = "1m", mode: modeProp = "analysis", onModeChange, onTimeframeChange,
-  height = 520, className, contextDays = 2, startBarsBefore, layout = "inline", globalHotkeys, showModes = true, asideExtra, planLevels,
+  height = 520, className, contextDays = 2, startBarsBefore, layout = "inline", globalHotkeys, showModes = true, asideExtra, planLevels, replayExtra,
 }: WsChartProps) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -215,7 +218,7 @@ export function WsChart({
   const showPnlPane = panes.pnl && geo.position.length > 0;
 
   const drawingStore = useDrawings(trade.ticker, data.dateKey, Boolean(trade.ticker && data.dateKey));
-  const tools = useDrawingTools(drawingStore, { bars, barSec });
+  const tools = useDrawingTools(drawingStore, { bars, barSec }, { tradeId: trade.id > 0 ? trade.id : null });
   // Hovered bar lives outside React state: the crosshair updates only the legend, not the whole chart + panels.
   const [hoverStore] = React.useState(createHoverStore);
   const live = React.useRef({ bars, cursorIdx, revealAll, replayActive });
@@ -519,6 +522,7 @@ export function WsChart({
       case "entry": replay.toEntry(); break;
       case "exit": replay.toExit(); break;
       case "nextFill": replay.toNextFill(); break;
+      case "prevFill": replay.toPrevFill(); break;
       case "pauseOnFills": replay.updatePrefs({ pauseOnFills: !replay.prefs.pauseOnFills }); break;
     }
   };
@@ -591,7 +595,7 @@ export function WsChart({
       rows.push(
         [[tc("hotkeys.keySpace")], tc("hotkeys.playPause")], [["→"], tc("hotkeys.stepForward")], [["←"], tc("hotkeys.stepBack")],
         [["1–6"], tc("hotkeys.speedKeys")], [["+", "−"], tc("hotkeys.speed")], [["Home"], tc("hotkeys.toOpen")],
-        [["E"], tc("hotkeys.toEntry")], [["X"], tc("hotkeys.toExit")], [["N"], tc("hotkeys.nextFill")], [["P"], tc("hotkeys.pauseOnFills")],
+        [["E"], tc("hotkeys.toEntry")], [["X"], tc("hotkeys.toExit")], [["N"], tc("hotkeys.nextFill")], [["B"], tc("hotkeys.prevFill")], [["P"], tc("hotkeys.pauseOnFills")],
       );
     }
     if (showViewSwitch) rows.push([["D"], tc("hotkeys.day")], [["Z"], tc("hotkeys.trade")]);
@@ -636,6 +640,8 @@ export function WsChart({
     else if (hasTrade) aside.push(<PositionCard key="pos" position={livePosition} side={geo.side} mark={liveMark} risk={geo.risk} redacted={redacted} sinceEntry={sinceEntryAt(cursorIdx)} entered={geo.entryIdx != null && cursorIdx >= geo.entryIdx} />);
     if (hasTrade) aside.push(<FillLog key="log" fills={geo.fills} cursor={cursorIdx} redacted={redacted} onJump={(i) => replay.seek(i)} />);
   }
+  if (replayActive && cursorIdx != null && replayExtra) aside.push(<React.Fragment key="rx">{replayExtra({ cursorIdx, bars, fills: geo.fills, side: geo.side, qty: trade.qty ?? null, entryIdx: geo.entryIdx, exitIdx: geo.exitIdx, redacted, seek: replay.seek, pause: () => replay.setPlaying(false) })}</React.Fragment>);
+  if (drawingStore.drawings.some((d) => d.label)) aside.push(<DrawingNotes key="notes" drawings={drawingStore.drawings} tradeId={trade.id > 0 ? trade.id : null} selected={tools.selected} onSelect={tools.setSelected} />);
   if (asideExtra) aside.push(<React.Fragment key="extra">{asideExtra}</React.Fragment>);
   const showAside = aside.length > 0;
 
@@ -665,6 +671,7 @@ export function WsChart({
             <DrawingBar
               hint={drawHint} selectedRole={selectedDrawing ? selectedDrawing.role ?? "accent" : null} local={drawingStore.source === "local"}
               onRole={(role) => { if (selectedDrawing) tools.setDrawingRole(selectedDrawing.id, role); }} onDelete={() => tools.remove(tools.selected)}
+              note={selectedDrawing?.label ?? null} onNote={selectedDrawing ? (v) => tools.setDrawingLabel(selectedDrawing.id, v) : undefined}
             />
             {data.baseSec > 60 && intraday && (
               // Honest bar size: an old day may only exist in 5-minute / hourly bars.
@@ -682,7 +689,7 @@ export function WsChart({
               hasExit={geo.exitIdx != null} nextFillLabel={replay.nextFill?.label ?? null} pauseOnFills={replay.prefs.pauseOnFills} onPauseOnFills={(v) => replay.updatePrefs({ pauseOnFills: v })}
               atEnd={replay.atEnd}
               onToggle={replay.togglePlay} onStep={replay.step} onSpeed={(v) => replay.updatePrefs({ speed: v })} onSeek={replay.seek}
-              onNextFill={replay.toNextFill} onEntry={replay.toEntry} onExit={replay.toExit} onOpen={replay.toOpen} onRestart={replay.restart}
+              onNextFill={replay.toNextFill} onPrevFill={replay.toPrevFill} prevFillLabel={replay.prevFill?.label ?? null} onEntry={replay.toEntry} onExit={replay.toExit} onOpen={replay.toOpen} onRestart={replay.restart}
             />
           )}
         </div>

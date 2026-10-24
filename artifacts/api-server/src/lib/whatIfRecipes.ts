@@ -10,7 +10,9 @@
  * once, on the whole base. Pure, no I/O. Never here: commissionPlan, capLoss, minHold, requireStop.
  */
 import type { ErrorVocabCode } from "./tradingErrors";
-import { MAX_SETUP_LEN, MAX_TAG_LEN, type Rule, type SimTrade, gradeRank, netOf, round2, traderDayKey, weightedQuantileSorted } from "./whatIfTypes";
+import {
+  MAX_SETUP_LEN, MAX_TAG_LEN, PREMARKET_STRATEGIES, type Rule, type SimTrade, gradeRank, netOf, round2, traderDayKey, weightedQuantileSorted,
+} from "./whatIfTypes";
 
 export type CandidateKind = "exante" | "label";
 
@@ -234,7 +236,8 @@ function worstKeys(ix: Index, keyOf: Int32Array, keys: number, nameFor: (k: numb
 }
 
 /**
- * The 72 slots (team scope: no share-size caps and no personal tags), in the committed grid's order. `base` = the
+ * The 95 slots (72 of the committed grid, then the 23 of wave 2; team scope: no share-size caps and no personal tags), in
+ * the committed grid's order. `base` = the
  * trades with a money result in simulation order (whatIfSuggest prepare().base) or in the caller's order.
  */
 export function gridRecipes(base: SimTrade[], opts: { team?: boolean } = {}): RecipeGrid {
@@ -348,5 +351,46 @@ export function gridRecipes(base: SimTrade[], opts: { team?: boolean } = {}): Re
   const graded = trades.filter((t) => gradeRank(t.grade) != null).length;
   const gradesOk = graded >= 30 && graded >= 0.6 * trades.length;
   for (const [i, grade] of (["A", "B"] as const).entries()) fixed(`grade.${grade}`, "grade", i + 1, gradesOk ? { type: "minGrade", grade } : null, { kind: "label" });
+  addWave2(recipes, trades, ix, { fixed, fitted, time, hasTime, hm, shared });
   return { days: ix.days, recipes };
+}
+
+type SlotMakers = {
+  fixed: (id: string, family: string | null, order: number, rule: Rule | null, o?: { kind?: CandidateKind; ordering?: boolean }) => void;
+  fitted: (id: string, family: string | null, order: number, fit: (v: FitView) => Rule | null, o?: { kind?: CandidateKind; ordering?: boolean }) => void;
+  time: (rule: Rule, gate?: boolean) => Rule | null;
+  hasTime: boolean;
+  hm: (s: string) => number;
+  shared: <T>(v: FitView, key: string, f: () => T) => T;
+};
+
+/**
+ * Wave 2 families (appended after the committed grid, so its order and dedup never change). All known before the
+ * entry; the ones about the order of trades inside the day are `ordering` (the within-day permutation guard):
+ *   afterWin (a pause after a WIN), the day's red zone, blocked windows, a cap per ticker per day, no re-entry into a
+ *   ticker soon after a loss in it, price bands, the pre-market family by strategy (only when the entry times cannot
+ *   say it — else «без премаркета» is the same rule), stocks reporting earnings that day (the calendar is known ahead).
+ */
+function addWave2(recipes: Recipe[], trades: SimTrade[], ix: Index, m: SlotMakers): void {
+  const { fixed, fitted, time, hasTime, hm, shared } = m;
+  for (const minutes of [2, 5, 10, 15, 30]) fixed(`afterWin.${minutes}`, "afterWin", minutes, time({ type: "afterWin", minutes }), { ordering: true });
+  // Red zone: from the trader's own losing days — the median losing day starts the zone, then 1 or 2 more entries.
+  for (const [p, k] of [[50, 1], [50, 2], [25, 2]] as const) {
+    fitted(`redZone.p${p}.k${k}`, `redZone.k${k}`, p, (v) => {
+      const s = shared(v, "losses", () => weigh(ix.losses, v.all));
+      const usd = s.W >= 3 ? nice(weightedQuantileSorted(ix.losses.v, s.w, p / 100)) : null;
+      return usd != null ? { type: "redZone", usd, k } : null;
+    }, { ordering: true });
+  }
+  for (const [from, to] of [["09:30", "09:35"], ["09:30", "09:45"], ["11:30", "13:30"], ["15:00", "16:00"]] as const) {
+    fixed(`block.${from}-${to}`, null, hm(from), time({ type: "blockWindow", from, to }));
+  }
+  for (const n of [1, 2, 3]) fixed(`mtt.${n}`, "mtt", n, { type: "maxTradesPerTicker", n }, { ordering: true });
+  for (const minutes of [5, 15, 30]) fixed(`reentryLoss.${minutes}`, "reentryLoss", minutes, time({ type: "noReentryAfterLoss", minutes }), { ordering: true });
+  for (const [min, max] of [[2, 20], [5, 50], [10, 100]] as const) fixed(`price.band.${min}-${max}`, null, min, { type: "priceRange", min, max });
+  const premarketByTime = hasTime && enough(trades, (t) => t.entryMin != null && t.entryMin < 570);
+  const premarketByStrategy = enough(trades, (t) => t.strategy != null && PREMARKET_STRATEGIES.includes(t.strategy));
+  fixed("strategy.premarket", null, 0, !premarketByTime && premarketByStrategy ? { type: "excludeStrategies", strategies: [...PREMARKET_STRATEGIES] } : null);
+  const earn = trades.filter((t) => t.earnings === true).length;
+  fixed("earnings", null, 0, enough(trades, (t) => t.earnings === true) && trades.length - earn >= 30 ? { type: "excludeEarnings" } : null);
 }

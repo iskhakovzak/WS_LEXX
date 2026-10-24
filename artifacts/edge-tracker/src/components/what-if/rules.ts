@@ -5,12 +5,10 @@
  * rule touches (a mirror of the engine's per-rule logic, used only for the live counter — the scenario itself is
  * always computed by the server).
  */
-import { fmtUsd } from "@/lib/format";
-import { commonI18n } from "@/i18n/ns/common";
-import { whatIfI18n } from "@/i18n/ns/whatIf";
-import { type ErrorCode, errorCodeOf, errorLabel, isErrorCode } from "@/components/shared/error-vocab";
-import { GRADES, type CommissionPlan, type Grade, type Rule, type Side } from "@/components/shared/what-if-rules";
-export { GRADES, encodeRules, type CommissionPlan, type Grade, type Rule, type Side } from "@/components/shared/what-if-rules";
+import { type ErrorCode, errorCodeOf, isErrorCode } from "@/components/shared/error-vocab";
+import { GRADES, STRATEGIES, type CommissionPlan, type Grade, type Rule, type Side, type Strategy } from "@/components/shared/what-if-rules";
+export { GRADES, STRATEGIES, encodeRules, type CommissionPlan, type Grade, type Rule, type Side, type Strategy } from "@/components/shared/what-if-rules";
+export { ENTRY_MISTAKES, chipLabel, fmtHold, ifNotPhrase, reasonLabel } from "./rules-phrasing";
 
 /** 0 = best (A+); null when not a known grade. Mirror of whatIf.gradeRank. */
 export function gradeRank(g: string | null | undefined): number | null {
@@ -19,12 +17,6 @@ export function gradeRank(g: string | null | undefined): number | null {
 }
 
 export type RuleType = Rule["type"];
-
-/**
- * Mistakes known at the entry (the API grid's GRID_MISTAKES, plus «Завышенный размер»): the builder offers only these,
- * and «ошибки входа» is said only of them. Exit / outcome marks are set because the trade went wrong.
- */
-export const ENTRY_MISTAKES: ReadonlySet<ErrorCode> = new Set<ErrorCode>(["fomo", "offPlan", "earlyEntry", "revenge", "offSetup", "overtrading", "noStop", "oversize"]);
 
 /** Longest personal tag a rule takes (the API's ruleSchema). */
 export const MAX_TAG_LEN = 60;
@@ -67,15 +59,11 @@ export type PreviewTrade = {
   mistakes?: ErrorCode[];
   /** Personal tags (no IMX, no mistakes). */
   ptags?: string[];
+  /** PropReports-style strategy (OPG, Day, MOC …); absent on older API builds. */
+  strategy?: string | null;
+  /** The stock reports earnings that trading day; null / absent = no calendar. */
+  earnings?: boolean | null;
 };
-
-/* ─── Formatting helpers ─────────────────────────────────────────────────── */
-
-export function fmtHold(seconds: number): string {
-  if (seconds < 120) return commonI18n.t("time.secondsShort", { count: Math.round(seconds) });
-  if (seconds < 7200) return commonI18n.t("time.minutesShort", { count: Math.round(seconds / 60) });
-  return commonI18n.t("time.hoursShort", { count: Math.round(seconds / 3600) });
-}
 
 /* ─── Scenario list operations ───────────────────────────────────────────── */
 
@@ -174,96 +162,6 @@ function normalise(r: Rule): Rule {
   }
 }
 
-/* ─── Phrasing (whatIf namespace, read at call time) ─────────────────────── */
-
-const usd = (v: number) => fmtUsd(v, { decimals: "trim" });
-
-/** Short chip label. */
-export function chipLabel(r: Rule): string {
-  const t = whatIfI18n.t;
-  switch (r.type) {
-    case "dailyLossLimit": return t("rules.chip.dailyLossLimit", { amount: usd(r.usd) });
-    case "maxTradesPerDay": return t("rules.chip.maxTradesPerDay", { count: r.n });
-    case "stopAfterLosses": return t("rules.chip.stopAfterLosses", { count: r.n });
-    case "timeWindow":
-      if (r.from && r.to) return t("rules.chip.windowBoth", { from: r.from, to: r.to });
-      if (r.from === "09:30") return t("rules.chip.noPremarket");
-      if (r.to === "16:00" && !r.from) return t("rules.chip.noAfterHours");
-      return r.from ? t("rules.chip.windowFrom", { from: r.from }) : r.to ? t("rules.chip.windowTo", { to: r.to }) : t("rules.chip.window");
-    case "priceRange": return r.min != null && r.max != null ? t("rules.chip.priceBoth", { min: r.min, max: r.max }) : r.min != null ? t("rules.chip.priceMin", { min: r.min }) : r.max != null ? t("rules.chip.priceMax", { max: r.max }) : t("rules.chip.price");
-    case "minHold": return t("rules.chip.minHold", { hold: fmtHold(r.seconds) });
-    case "excludeTickers": return t("rules.chip.excludeTickers", { tickers: r.tickers.join(", ") });
-    case "excludeSide": return r.side === "long" ? t("rules.chip.noLongs") : t("rules.chip.noShorts");
-    case "commissionPlan": return t("rules.chip.commissionPlan", { perShare: r.perShare, min: r.minPerOrder });
-    case "capLoss": return t("rules.chip.capLoss", { amount: usd(r.usd) });
-    case "sizeRange": return r.min != null && r.max != null ? t("rules.chip.sizeBoth", { min: r.min, max: r.max }) : r.min != null ? t("rules.chip.sizeMin", { min: r.min }) : r.max != null ? t("rules.chip.sizeMax", { max: r.max }) : t("rules.chip.size");
-    case "afterLoss": return t("rules.chip.afterLoss", { minutes: r.minutes });
-    case "excludeSetups": return t("rules.chip.excludeSetups", { setups: r.setups.join(", ") });
-    case "minGrade": return r.grade === "A+" ? t("rules.chip.onlyAPlus") : t("rules.chip.minGrade", { grade: r.grade });
-    case "excludeImx": return t("rules.chip.excludeImx");
-    case "noReentry": return t("rules.chip.noReentry");
-    case "requireStop": return t("rules.chip.requireStop");
-    case "maxSizeRel": return t("rules.chip.maxSizeRel", { x: r.x });
-    case "excludeMistakes":
-      if (r.codes.length === 1) return t("rules.chip.excludeMistake", { name: errorLabel(r.codes[0]) });
-      if (r.codes.length === 2) return t("rules.chip.excludeMistakes", { names: r.codes.map(errorLabel).join(", ") });
-      return r.codes.every((c) => ENTRY_MISTAKES.has(c)) ? t("rules.chip.excludeMistakesMany", { count: r.codes.length }) : t("rules.chip.excludeMistakesAny", { count: r.codes.length });
-    case "excludeTags": return r.tags.length === 1 ? t("rules.chip.excludeTag", { tags: r.tags[0] }) : t("rules.chip.excludeTags", { tags: r.tags.join(", ") });
-    case "profitGiveback": return t("rules.chip.profitGiveback", { pct: r.pct, amount: usd(r.peak) });
-    case "dailyProfitTarget": return t("rules.chip.dailyProfitTarget", { amount: usd(r.usd) });
-  }
-}
-
-/** «Если бы ты не …» — the suggestion card headline. */
-export function ifNotPhrase(r: Rule): string {
-  const t = whatIfI18n.t;
-  switch (r.type) {
-    case "dailyLossLimit": return t("rules.ifNot.dailyLossLimit", { amount: usd(r.usd) });
-    case "maxTradesPerDay": return t("rules.ifNot.maxTradesPerDay", { count: r.n });
-    case "stopAfterLosses": return t("rules.ifNot.stopAfterLosses", { count: r.n });
-    case "timeWindow":
-      if (r.from && r.to) return t("rules.ifNot.windowBoth", { from: r.from, to: r.to });
-      if (r.from === "09:30") return t("rules.ifNot.noPremarket");
-      if (r.to === "16:00" && !r.from) return t("rules.ifNot.noAfterHours");
-      if (r.from) return t("rules.ifNot.windowFrom", { from: r.from });
-      if (r.to) return t("rules.ifNot.windowTo", { to: r.to });
-      return t("rules.ifNot.window");
-    case "priceRange":
-      if (r.min != null && r.max != null) return t("rules.ifNot.priceBoth", { min: r.min, max: r.max });
-      if (r.min != null) return t("rules.ifNot.priceMin", { min: r.min });
-      if (r.max != null) return t("rules.ifNot.priceMax", { max: r.max });
-      return t("rules.ifNot.price");
-    case "minHold": return t("rules.ifNot.minHold", { hold: fmtHold(r.seconds) });
-    case "excludeTickers": return t("rules.ifNot.excludeTickers", { tickers: r.tickers.join(", ") });
-    case "excludeSide": return r.side === "long" ? t("rules.ifNot.noLongs") : t("rules.ifNot.noShorts");
-    case "commissionPlan": return t("rules.ifNot.commissionPlan");
-    case "capLoss": return t("rules.ifNot.capLoss", { amount: usd(r.usd) });
-    case "sizeRange":
-      if (r.max != null && r.min == null) return t("rules.ifNot.sizeMax", { max: r.max });
-      if (r.min != null && r.max == null) return t("rules.ifNot.sizeMin", { min: r.min });
-      return t("rules.ifNot.sizeBoth", { min: r.min ?? 0, max: r.max ?? "∞" });
-    case "afterLoss": return t("rules.ifNot.afterLoss", { minutes: r.minutes });
-    case "excludeSetups": return r.setups.length > 1 ? t("rules.ifNot.excludeSetups", { setups: r.setups.join(", ") }) : t("rules.ifNot.excludeSetup", { setups: r.setups.join(", ") });
-    case "minGrade": return r.grade === "A+" ? t("rules.ifNot.onlyAPlus") : t("rules.ifNot.minGrade", { grade: r.grade });
-    case "excludeImx": return t("rules.ifNot.excludeImx");
-    case "noReentry": return t("rules.ifNot.noReentry");
-    case "requireStop": return t("rules.ifNot.requireStop");
-    case "maxSizeRel": return t("rules.ifNot.maxSizeRel", { x: r.x });
-    case "excludeMistakes":
-      if (r.codes.length === 1) return t("rules.ifNot.excludeMistake", { name: errorLabel(r.codes[0]) });
-      if (r.codes.length === 2) return t("rules.ifNot.excludeMistakes", { names: r.codes.map(errorLabel).join(", ") });
-      return r.codes.every((c) => ENTRY_MISTAKES.has(c)) ? t("rules.ifNot.excludeMistakesMany") : t("rules.ifNot.excludeMistakesAny");
-    case "excludeTags": return r.tags.length === 1 ? t("rules.ifNot.excludeTag", { tags: r.tags[0] }) : t("rules.ifNot.excludeTags", { tags: r.tags.join(", ") });
-    case "profitGiveback": return t("rules.ifNot.profitGiveback", { pct: r.pct, amount: usd(r.peak) });
-    case "dailyProfitTarget": return t("rules.ifNot.dailyProfitTarget", { amount: usd(r.usd) });
-  }
-}
-
-/** Display name of an exclusion / change reason (rule type code); unknown codes are shown as they are. */
-export function reasonLabel(code: string): string {
-  return whatIfI18n.tryT(`rules.reason.${code}`) ?? code;
-}
-
 /* ─── URL state ──────────────────────────────────────────────────────────── */
 
 const RULE_KEYS: Record<RuleType, string[]> = {
@@ -272,6 +170,8 @@ const RULE_KEYS: Record<RuleType, string[]> = {
   capLoss: ["usd"], sizeRange: ["min", "max"], afterLoss: ["minutes"], excludeSetups: ["setups"], minGrade: ["grade"],
   excludeImx: [], noReentry: [], requireStop: [], maxSizeRel: ["x"], excludeMistakes: ["codes"], excludeTags: ["tags"],
   profitGiveback: ["peak", "pct"], dailyProfitTarget: ["usd"],
+  afterWin: ["minutes"], redZone: ["usd", "k", "floor"], blockWindow: ["from", "to"], maxTradesPerTicker: ["n"],
+  noReentryAfterLoss: ["minutes"], excludeStrategies: ["strategies"], excludeEarnings: [],
 };
 
 /** Inverse of encodeRules; drops anything that does not look like a valid rule. Never throws. */
@@ -304,7 +204,23 @@ function sanitize(x: unknown): Rule | null {
   if (!(type in RULE_KEYS)) return null;
   switch (type) {
     case "dailyLossLimit": case "capLoss": case "dailyProfitTarget": { const usd = posNum(o.usd); return usd ? { type, usd } : null; }
-    case "excludeImx": case "noReentry": case "requireStop": return { type };
+    case "excludeImx": case "noReentry": case "requireStop": case "excludeEarnings": return { type };
+    case "afterWin": case "noReentryAfterLoss": { const minutes = posNum(o.minutes); return minutes ? { type, minutes } : null; }
+    case "maxTradesPerTicker": { const n = posNum(o.n); return n ? { type, n: Math.max(1, Math.round(n)) } : null; }
+    case "redZone": {
+      const usd = posNum(o.usd), k = nonNeg(o.k), floor = posNum(o.floor);
+      if (!usd || k == null) return null;
+      return { type, usd, k: Math.round(k), ...(floor != null && floor > usd ? { floor } : {}) };
+    }
+    case "blockWindow": {
+      const from = typeof o.from === "string" && HM.test(o.from) ? o.from : null;
+      const to = typeof o.to === "string" && HM.test(o.to) ? o.to : null;
+      return from && to ? { type, from, to } : null;
+    }
+    case "excludeStrategies": {
+      const list = Array.isArray(o.strategies) ? o.strategies.filter((v): v is Strategy => (STRATEGIES as readonly unknown[]).includes(v)) : [];
+      return list.length ? { type, strategies: [...new Set(list)] } : null;
+    }
     case "maxSizeRel": { const x = posNum(o.x); return x != null && x >= 0.5 && x <= 10 ? { type, x } : null; }
     case "profitGiveback": {
       const peak = posNum(o.peak), pct = o.pct;
@@ -399,6 +315,12 @@ export function staticExcludes(r: Rule, t: PreviewTrade): boolean | null {
     case "requireStop": return t.hasStop === false;
     case "excludeMistakes": return !!t.mistakes?.some((c) => r.codes.includes(c));
     case "excludeTags": return !!t.ptags?.some((p) => r.tags.some((x) => x.trim().toLowerCase() === p.trim().toLowerCase()));
+    case "blockWindow": {
+      const from = parseHm(r.from), to = parseHm(r.to);
+      return t.entryMin != null && from != null && to != null && t.entryMin >= from && t.entryMin < to;
+    }
+    case "excludeStrategies": return !!t.strategy && r.strategies.some((s) => s.toLowerCase() === t.strategy!.trim().toLowerCase());
+    case "excludeEarnings": return t.earnings === true;
     default: return null;
   }
 }
@@ -458,9 +380,14 @@ export function previewRule(trades: PreviewTrade[], r: Rule): Preview {
 
 type DayState = {
   dayNet: number; count: number; lossRun: number; peak: number; stopped: boolean; lastLossClose: number | null;
+  lastWinClose: number | null; zoneLeft: number | null; perTicker: Map<string, number>; tickerLoss: Map<string, number>;
   /** Kept trades still open, by close time. */
-  open: { close: number; net: number }[];
+  open: { close: number; net: number; ticker: string }[];
 };
+const newState = (): DayState => ({
+  dayNet: 0, count: 0, lossRun: 0, peak: 0, stopped: false, lastLossClose: null, lastWinClose: null, zoneLeft: null, perTicker: new Map(), tickerLoss: new Map(), open: [],
+});
+const within = (em: number | null, close: number | null | undefined, minutes: number) => em != null && close != null && em >= close && em < close + minutes;
 
 /**
  * Sequential day rules, per trader-day like the engine (the whole team: every trader's day on its own). A kept trade
@@ -470,13 +397,16 @@ type DayState = {
 function sequentialPreview(list: PreviewTrade[], r: Rule, total: number): Preview {
   let affected = 0, net = 0, day = "";
   const states = new Map<string, DayState>();
-  const realise = (s: DayState, n: number, close: number | null) => {
+  const realise = (s: DayState, n: number, close: number | null, ticker: string) => {
     s.dayNet += n;
     if (s.dayNet > s.peak) s.peak = s.dayNet;
     if (n < 0) s.lossRun++; else if (n > 0) s.lossRun = 0;
-    if (n < 0 && close != null) s.lastLossClose = Math.max(s.lastLossClose ?? close, close);
+    if (n < 0 && close != null) { s.lastLossClose = Math.max(s.lastLossClose ?? close, close); s.tickerLoss.set(ticker, Math.max(s.tickerLoss.get(ticker) ?? close, close)); }
+    if (n > 0 && close != null) s.lastWinClose = Math.max(s.lastWinClose ?? close, close);
+    if (r.type === "redZone" && s.zoneLeft == null && s.dayNet <= -r.usd + EPS) s.zoneLeft = r.k;
     if (s.stopped) return;
-    if (r.type === "dailyLossLimit" && s.dayNet <= -r.usd) s.stopped = true;
+    if (r.type === "redZone" && r.floor != null && r.floor > r.usd && s.dayNet <= -r.floor + EPS) s.stopped = true;
+    else if (r.type === "dailyLossLimit" && s.dayNet <= -r.usd) s.stopped = true;
     else if (r.type === "stopAfterLosses" && s.lossRun >= r.n) s.stopped = true;
     else if (r.type === "dailyProfitTarget" && s.dayNet >= r.usd - EPS) s.stopped = true;
     else if (r.type === "profitGiveback" && s.peak >= r.peak - EPS && s.dayNet <= s.peak * (1 - r.pct / 100) + EPS) s.stopped = true;
@@ -485,21 +415,28 @@ function sequentialPreview(list: PreviewTrade[], r: Rule, total: number): Previe
     if (t.day !== day) { day = t.day; states.clear(); }
     const key = t.trader ?? "";
     let s = states.get(key);
-    if (!s) { s = { dayNet: 0, count: 0, lossRun: 0, peak: 0, stopped: false, lastLossClose: null, open: [] }; states.set(key, s); }
+    if (!s) { s = newState(); states.set(key, s); }
     const at = t.entryMin ?? Infinity;
-    while (s.open.length && s.open[0].close <= at) { const o = s.open.shift()!; realise(s, o.net, o.close); }
+    while (s.open.length && s.open[0].close <= at) { const o = s.open.shift()!; realise(s, o.net, o.close, o.ticker); }
     const n = netOf(t)!;
+    const tk = t.ticker.toUpperCase();
     if (s.stopped) { affected++; net += n; continue; }
     if (r.type === "maxTradesPerDay" && s.count >= r.n) { s.stopped = true; affected++; net += n; continue; }
-    const llc = s.lastLossClose;
-    if (r.type === "afterLoss" && llc != null && t.entryMin != null && t.entryMin >= llc && t.entryMin < llc + r.minutes) { affected++; net += n; continue; }
+    const skip = (r.type === "redZone" && s.zoneLeft != null && s.zoneLeft <= 0)
+      || (r.type === "afterLoss" && within(t.entryMin, s.lastLossClose, r.minutes))
+      || (r.type === "afterWin" && within(t.entryMin, s.lastWinClose, r.minutes))
+      || (r.type === "maxTradesPerTicker" && (s.perTicker.get(tk) ?? 0) >= r.n)
+      || (r.type === "noReentryAfterLoss" && within(t.entryMin, s.tickerLoss.get(tk), r.minutes));
+    if (skip) { affected++; net += n; continue; }
     s.count++;
+    s.perTicker.set(tk, (s.perTicker.get(tk) ?? 0) + 1);
+    if (s.zoneLeft != null) s.zoneLeft--;
     if (t.entryMin != null && t.holdSec != null) {
       const close = t.entryMin + t.holdSec / 60;
       let i = s.open.length;
       while (i > 0 && s.open[i - 1].close > close) i--;
-      s.open.splice(i, 0, { close, net: n });
-    } else realise(s, n, t.entryMin);
+      s.open.splice(i, 0, { close, net: n, ticker: tk });
+    } else realise(s, n, t.entryMin, tk);
   }
   return { affected, net: round2(net), effect: round2(-net), total };
 }

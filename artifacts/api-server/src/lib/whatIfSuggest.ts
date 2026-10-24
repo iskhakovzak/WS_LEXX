@@ -17,6 +17,7 @@ import { buildPasses } from "./whatIfPasses";
 import { type CandidateKind, suggestionGrid, trainDays } from "./whatIfGrid";
 import { type Timing, timingOf } from "./whatIfRecipes";
 import { type Rule, type RuleType, type SimTrade, mulberry32, netOf, quantileSorted, round2, sortSim, traderDayKey } from "./whatIfTypes";
+import type { Why } from "./whatIfWhy";
 
 export interface Suggestion {
   rule: Rule;
@@ -50,6 +51,8 @@ export interface Suggestion {
   estimate: boolean;
   /** «до входа» / «в сделке» / «разбор» (Ф2): when the rule can be followed. */
   timing: Timing;
+  /** «Почему»: the trades and days behind the number (lib/whatIfWhy withWhy, added by the route). */
+  why?: Why;
 }
 
 export interface SuggestionsResult {
@@ -123,7 +126,17 @@ export interface Effect {
 
 /** Effect of one rule on the prepared base — the same passes as runScenario, without metrics. */
 export function candidateEffect(prep: Prep, rule: Rule): Effect {
-  const passes = buildPasses([rule], prep.base, null);
+  return rulesEffect(prep, [rule]);
+}
+
+/**
+ * Effect of a SET of rules (lib/whatIfCombo «набор»), applied together like a scenario; `rule` of the result is the
+ * first of them (the card caps only look at single rules).
+ */
+export function rulesEffect(prep: Prep, rules: Rule[]): Effect {
+  const rule = rules[0];
+  const scale = rules.find((r): r is Extract<Rule, { type: "maxSizeRel" }> => r.type === "maxSizeRel");
+  const passes = buildPasses(rules, prep.base, null);
   const dayDiff = new Float64Array(prep.days.length);
   const dayRemoved = new Float64Array(prep.days.length);
   const ids = new Set<number>();
@@ -145,11 +158,13 @@ export function candidateEffect(prep: Prep, rule: Rule): Effect {
     removed += round2(net);
     touch(t, d);
   };
-  const onChange = (_c: unknown, delta: number, t: SimTrade) => {
+  const changedIds = new Set<number>();
+  const onChange = (c: { reason: string }, delta: number, t: SimTrade) => {
     const d = prep.dayIdx.get(t.day) as number;
     dayDiff[d] += delta;
-    if (rule.type === "maxSizeRel" && t.sizeRel != null && t.sizeRel > 0) dayRemoved[d] += Math.max(0, 1 - rule.x / t.sizeRel);
-    changed++;
+    if (scale && c.reason === "maxSizeRel" && t.sizeRel != null && t.sizeRel > 0) dayRemoved[d] += Math.max(0, 1 - scale.x / t.sizeRel);
+    // A set may change one trade twice (a size cap, then a loss cap): it is one changed trade.
+    if (!changedIds.has(t.id)) { changedIds.add(t.id); changed++; }
     touch(t, d);
   };
   if (passes.staticExclusion && !passes.money && !passes.sequential) {
