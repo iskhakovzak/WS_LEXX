@@ -560,7 +560,7 @@ function Bars({ items, max }: { items: { key: string; label?: string; value: num
               className="h-full rounded-full"
               style={{
                 width: `${max > 0 ? Math.max(2, (it.value / max) * 100) : 0}%`,
-                background: it.tone === "down" ? "hsl(var(--down))" : it.tone === "up" ? "hsl(var(--up))" : it.tone === "accent" ? "hsl(var(--primary))" : "hsl(var(--chart-1))",
+                background: it.tone === "down" ? "hsl(var(--down))" : it.tone === "up" ? "hsl(var(--up))" : it.tone === "accent" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
               }}
             />
           </div>
