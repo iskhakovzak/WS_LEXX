@@ -11,6 +11,7 @@ import { Page, PageHeader, Pill } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { SettingsNav, SECTIONS, visibleSections, type SectionId } from "@/components/settings/SettingsNav";
 import { ProfileSection, useMyProfile } from "@/components/settings/ProfileSection";
+import { WrappedProfilePanel } from "@/components/wrapped/WrappedLaunch";
 import { AppearanceSection } from "@/components/settings/AppearanceSection";
 import { TradingSection } from "@/components/settings/TradingSection";
 import { NotificationsSection } from "@/components/settings/NotificationsSection";
@@ -127,7 +128,7 @@ export default function Settings() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
             >
-              {active === "profile" && <ProfileSection onNavigate={select} />}
+              {active === "profile" && <ProfileSection onNavigate={select} recap={<WrappedProfilePanel />} />}
               {active === "appearance" && <AppearanceSection />}
               {active === "trading" && <TradingSection />}
               {active === "notifications" && <NotificationsSection onNavigate={select} />}

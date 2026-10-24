@@ -184,7 +184,8 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   );
 }
 
-export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => void }) {
+/** `recap` = the «Мои итоги» panel (week / month story cards), passed in by the page (features never import features). */
+export function ProfileSection({ onNavigate, recap }: { onNavigate: (id: SectionId) => void; recap?: React.ReactNode }) {
   const { user, can } = useAuth();
   const { themeLabel } = useTheme();
   const { t } = settingsI18n.useT();
@@ -260,6 +261,8 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
           </>
         )}
       </div>}
+
+      {trades && recap}
 
       {/* Broker statistics from PropReports (Trade Performance report) */}
       {trades && <PerformanceReportPanel trader={name} compact />}

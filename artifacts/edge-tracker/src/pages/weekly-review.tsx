@@ -21,6 +21,7 @@ import { ReviewStatusPill } from "@/components/weekly-review/collab";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
 import { PartnersView } from "@/components/weekly-review/partners-view";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
+import { WrappedButton } from "@/components/wrapped/WrappedLaunch";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -193,6 +194,8 @@ export default function WeeklyReviewPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {/* «Итоги недели» story: own week only (a card carries the owner's result out of the desk); closed weeks only. */}
+          {perTrader && me && trader === me && <WrappedButton week={week} />}
           <Button type="button" variant="outline" size="sm" disabled={perTrader && !doc} onClick={() => window.print()}>
             <Printer className="h-4 w-4" aria-hidden="true" /> {t("page.print")}
           </Button>
