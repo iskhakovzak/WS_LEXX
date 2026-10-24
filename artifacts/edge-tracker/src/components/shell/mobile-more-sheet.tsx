@@ -22,10 +22,10 @@ function Tile({ item, active, alert }: { item: NavItem; active: boolean; alert?:
       onPointerDown={() => preloadRoute(item.href)}
       className={cn(
         "relative flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl px-1 py-2 text-center text-xs font-medium transition-colors",
-        active ? "bg-primary-solid text-primary-foreground" : "glass-panel text-foreground active:bg-[var(--glass-hover-bg)]",
+        active ? "bg-foreground/[0.08] text-foreground ring-1 ring-inset ring-foreground/10" : "glass-panel text-foreground active:bg-[var(--glass-hover-bg)]",
       )}
     >
-      <Icon className={cn("h-5 w-5", active ? "text-primary-foreground" : "text-primary")} aria-hidden="true" />
+      <Icon className={cn("h-5 w-5", "text-foreground")} aria-hidden="true" />
       <span className="line-clamp-2 leading-tight">{item.name}</span>
       {alert && <><span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-down" aria-hidden="true" /><span className="sr-only">{t("mobile.needsAttention")}</span></>}
     </Link>

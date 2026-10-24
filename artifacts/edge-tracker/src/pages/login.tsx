@@ -262,7 +262,14 @@ export default function LoginPage() {
         transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
         className="relative z-raised flex w-full max-w-[400px] flex-col items-center gap-5"
       >
-        <div className={cn("glass-thick w-full rounded-3xl p-6 sm:p-7", shake && "animate-[shake_0.4s_ease-in-out]")}>
+        {/* Smoked glass over the smoke: in dark the card is a translucent black pane (no white sheen), so the drifting
+            smoke reads through it like the intro; light keeps the frosted white card. */}
+        <div
+          className={cn(
+            "glass-thick w-full rounded-3xl p-6 sm:p-7 dark:[--glass-sheen:rgb(255_255_255/0.03)] dark:[--glass-thick-bg:rgb(8_8_8/0.55)] dark:[--glass-border:rgb(255_255_255/0.1)]",
+            shake && "animate-[shake_0.4s_ease-in-out]",
+          )}
+        >
           {/* Brand: the WS monogram over the wordmark (components/ds/brand) */}
           <div className="flex flex-col items-center gap-3 text-center">
             <WsMark size={56} className="text-foreground" title="WS_LEXX" />

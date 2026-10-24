@@ -37,15 +37,15 @@ const DOT_CLS: Record<NavBadge["tone"], string> = {
 
 const MOD_KEY = /Mac|iPhone|iPad/.test(typeof navigator !== "undefined" ? navigator.platform : "") ? "⌘" : "Ctrl";
 
-/** Badge chip / dot. `onSolid` = drawn on the active (solid) pill. */
-function BadgeMark({ badge, onSolid, className }: { badge: NavBadge; onSolid?: boolean; className?: string }) {
+/** Badge chip / dot. */
+function BadgeMark({ badge, className }: { badge: NavBadge; className?: string }) {
   if (badge.count) {
     return (
       <span
         role="img"
         aria-label={badge.label}
         title={badge.label}
-        className={cn("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-2xs font-semibold tabular-nums", onSolid ? "bg-primary-foreground/20 text-primary-foreground" : BADGE_CLS[badge.tone], className)}
+        className={cn("grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-2xs font-semibold tabular-nums", BADGE_CLS[badge.tone], className)}
       >
         {badge.count > 99 ? "99+" : badge.count}
       </span>
@@ -77,9 +77,10 @@ function GoHint({ k, go, className }: { k?: string; go: boolean; className: stri
 const rowBase =
   "relative flex items-center gap-3 rounded-full text-[13px] outline-none transition-[background-color,color] duration-[var(--dur-1)] focus-visible:ring-2 focus-visible:ring-ring";
 const rowIdle = "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground";
+/** The open page: a quiet tonal pill (foreground at 8% + a hairline), not a solid accent fill (monochrome, 2026-10-24). */
 const rowActive =
-  "bg-primary-solid font-medium text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_6px_16px_-8px_hsl(var(--primary)/0.7)]";
-/** The row whose child page is open: named, not filled (one solid pill per sidebar). */
+  "bg-foreground/[0.08] font-medium text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.06)]";
+/** The row whose child page is open: named, not filled (one pill per sidebar). */
 const rowWithin = "font-medium text-foreground hover:bg-[var(--glass-hover-bg)]";
 
 type RowCtx = {
@@ -109,7 +110,7 @@ function ChildLink({ item, ctx }: { item: NavItem; ctx: RowCtx }) {
         className={cn(rowBase, "ml-[26px] h-7 gap-2 pl-3 pr-8", active ? rowActive : rowIdle)}
       >
         <span className="min-w-0 flex-1 truncate">{item.name}</span>
-        {badge && <BadgeMark badge={badge} onSolid={active} />}
+        {badge && <BadgeMark badge={badge} />}
         <GoHint k={item.goKey} go={ctx.go} className="right-2" />
       </Link>
       <button
@@ -123,7 +124,7 @@ function ChildLink({ item, ctx }: { item: NavItem; ctx: RowCtx }) {
           "absolute right-0.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full outline-none transition-opacity duration-[var(--dur-1)] focus-visible:ring-2 focus-visible:ring-ring",
           pinned ? "opacity-70" : "opacity-0",
           "focus-visible:opacity-100 group-hover/row:opacity-100 disabled:cursor-not-allowed disabled:group-hover/row:opacity-40",
-          active ? "text-primary-foreground hover:bg-primary-foreground/15" : pinned ? "text-primary hover:bg-[var(--glass-hover-bg)]" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
+          active ? "text-foreground/70 hover:bg-foreground/10" : pinned ? "text-primary hover:bg-[var(--glass-hover-bg)]" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
         )}
       >
         <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} aria-hidden="true" />
@@ -155,9 +156,9 @@ function Row({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
           onFocus={() => preloadRoute(row.href)}
           className={cn(rowBase, "h-8 pl-3", kids.length ? "pr-9" : "pr-2.5", self ? rowActive : within ? rowWithin : rowIdle)}
         >
-          <Icon className={cn("h-4 w-4 shrink-0", self ? "text-primary-foreground" : within ? "text-primary" : "text-muted-foreground group-hover/row:text-foreground")} aria-hidden="true" />
+          <Icon className={cn("h-4 w-4 shrink-0", self ? "text-foreground" : within ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground")} aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate" title={row.goKey ? t("sidebar.goKeyTitle", { name: label, key: row.goKey.toUpperCase() }) : label}>{label}</span>
-          {badge && <BadgeMark badge={badge} onSolid={self} />}
+          {badge && <BadgeMark badge={badge} />}
           <GoHint k={row.goKey} go={ctx.go} className={kids.length ? "right-9" : "right-2"} />
         </Link>
         {kids.length > 0 && (
@@ -171,7 +172,7 @@ function Row({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
             title={open ? t("sidebar.hideChildren", { name: label }) : t("sidebar.showChildren", { name: label })}
             className={cn(
               "absolute right-1 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full outline-none transition-[background-color,color,opacity] duration-[var(--dur-1)] focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none",
-              self ? "text-primary-foreground/80 hover:bg-primary-foreground/15" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
+              self ? "text-foreground/70 hover:bg-foreground/10" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
               // Inside the set the list is always open: the chevron only shows the state.
               within ? "opacity-50" : "opacity-40 group-hover/row:opacity-100 focus-visible:opacity-100",
             )}
