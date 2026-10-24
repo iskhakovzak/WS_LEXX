@@ -466,10 +466,13 @@ export type SectionId =
   | "recent"
   | "desk"
   | "streaks"
+  | "leaks"
   | "seqDay"
+  | "afterLoss"
   | "holdTime"
   | "weekdays"
-  | "afterLoss"
+  | "fees"
+  | "todayTile"
   | "positions"
   | "checkin"
   | "brief"
@@ -480,9 +483,10 @@ export type SectionId =
   | "psychology";
 
 const SECTION_FLAGS: Record<SectionId, { staffOnly?: boolean; extra?: boolean }> = {
-  attention: {}, equity: {}, recent: {}, desk: { staffOnly: true }, streaks: {}, positions: {},
-  // Compact insight cards (components/insight-cards): one row under the cockpit, own trades («Мои») only.
-  seqDay: {}, holdTime: {}, weekdays: {}, afterLoss: {},
+  attention: {}, equity: {}, recent: {}, desk: { staffOnly: true }, positions: {},
+  // Insight tiles (components/insight-tiles): one bento under the cockpit, own trades («Мои») only; each tile is shown /
+  // hidden / reordered on its own, the bento sits where the first visible tile is in the order.
+  streaks: {}, leaks: {}, seqDay: {}, afterLoss: {}, holdTime: {}, weekdays: {}, fees: {}, todayTile: {},
   // Optional extras below the cockpit — off by default, switch on in «Настроить».
   checkin: { extra: true }, brief: { extra: true }, quote: { extra: true }, sectors: { extra: true },
   macro: { extra: true }, dna: { extra: true }, psychology: { extra: true },
@@ -500,14 +504,17 @@ export const SECTION_META: Record<SectionId, { label: string; hint: string; staf
 export const DEFAULT_ORDER: SectionId[] = [
   "attention",
   "equity",
-  "recent",
-  "desk",
   "streaks",
-  "positions",
+  "leaks",
   "seqDay",
   "afterLoss",
   "holdTime",
   "weekdays",
+  "fees",
+  "todayTile",
+  "recent",
+  "desk",
+  "positions",
   "checkin",
   "brief",
   "sectors",
@@ -518,19 +525,22 @@ export const DEFAULT_ORDER: SectionId[] = [
 ];
 
 /**
- * Width class of a block in the 12-col bento: pairs sit side by side, `full` takes the row, neighbouring `compact`
- * blocks share one responsive row (1 → 2 → 3/4 columns).
+ * Width class of a block in the 12-col grid: pairs sit side by side, `full` takes the row, `tile` blocks are gathered
+ * into one insight bento (components/insight-tiles) at the place of the first visible tile.
  */
-export const SECTION_WIDTH: Record<SectionId, "wide" | "narrow" | "full" | "compact"> = {
+export const SECTION_WIDTH: Record<SectionId, "wide" | "narrow" | "full" | "tile"> = {
   attention: "narrow",
   equity: "wide",
   recent: "wide",
   desk: "narrow",
-  streaks: "narrow",
-  seqDay: "compact",
-  holdTime: "compact",
-  weekdays: "compact",
-  afterLoss: "compact",
+  streaks: "tile",
+  leaks: "tile",
+  seqDay: "tile",
+  afterLoss: "tile",
+  holdTime: "tile",
+  weekdays: "tile",
+  fees: "tile",
+  todayTile: "tile",
   positions: "full",
   checkin: "wide",
   brief: "full",
