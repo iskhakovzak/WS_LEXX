@@ -180,7 +180,7 @@ export default function WeeklyReviewPage() {
           {staff && perTrader && (
             <StaffTraderPicker
               value={trader ?? ""} onChange={(v) => setTrader(v)} me={me} names={pickerNames} team={false}
-              className="w-52" ariaLabel={t("page.traderAria")}
+              className="w-auto min-w-[13rem] max-w-[18rem]" ariaLabel={t("page.traderAria")}
             />
           )}
           {perTrader && (

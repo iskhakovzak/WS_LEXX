@@ -281,7 +281,7 @@ export default function Analytics() {
           traderPicker={staffView ? (
             <StaffTraderPicker
               value={scopePickerValue(scope)} onChange={pickTrader} me={me} names={pickerNames}
-              ariaLabel={t("filters.trader")} className="h-9 w-auto min-w-[160px] max-w-[240px]"
+              ariaLabel={t("filters.trader")} className="h-9 w-auto min-w-[160px] max-w-[18rem]"
             />
           ) : undefined}
           showSource={isCurator}
