@@ -1,6 +1,7 @@
 /**
- * Compact insight cards («Серии», «Номер сделки в дне», «Время в позиции», «Дни недели», «После убытка») — the pure
- * maths, computed client-side from the trades a page already has (no new endpoint).
+ * Insight tiles — the bucket maths («Серия», «Номер сделки в дне», «Время в позиции», «Дни недели», «После убытка»),
+ * computed client-side from the trades a page already has (no new endpoint). Verdicts, intervals and trends on top of
+ * these buckets live in ./insights.ts; the leak / strength scan in ./edge-map.ts.
  *
  * Streaks follow the trade rows: the result a row *shows* (lib/trade-result visualResult — the stored result, BE when
  * the net is inside the «Вид» break-even range), so the strip, the current streak and the records always agree with
@@ -14,14 +15,15 @@ import type { Trade } from "@workspace/api-client-react";
 import { classifyPnl } from "@/lib/appearance/be-range";
 import { closeDate, horizonOf, isOpen, netPnl } from "@/lib/trade-math";
 import { visualResult } from "@/lib/trade-result";
+import { median } from "@/lib/stats-lite";
 import {
-  OVERNIGHT_KEY, HOLD_BUCKETS, SEQ_BUCKETS, UNKNOWN_KEY, resultKeyOf, seqKeyOf,
+  OVERNIGHT_KEY, HOLD_BUCKETS, PRICE_BUCKETS, SEQ_BUCKETS, TIME_BUCKETS, UNKNOWN_KEY, resultKeyOf, seqKeyOf,
   type FacetDim, type FacetView,
 } from "@/lib/trade-facets";
 
 export type InsightTrade = Pick<Trade, "id" | "ticker" | "date" | "result"> &
   Partial<Pick<Trade, "exitDate" | "pnl" | "fees" | "rMultiple" | "daySeq" | "prevKind" | "holdSec" | "overnight" | "entrySec"
-    | "horizon" | "trader" | "side" | "entry" | "exit" | "stop" | "riskUsd">>;
+    | "horizon" | "trader" | "side" | "entry" | "exit" | "stop" | "riskUsd" | "qty" | "strategy" | "isImx" | "tags" | "contextSnapshot">>;
 
 /** Sample thresholds: under them a card says «мало данных» instead of a verdict. */
 export const MIN = {
@@ -36,6 +38,9 @@ export const MIN = {
 } as const;
 
 const day = (s: string | null | undefined) => String(s ?? "").slice(0, 10);
+
+/** The day a closed trade counts on (its realisation day) — the cluster of the day bootstrap. */
+export const realisedDay = (t: InsightTrade): string => day(closeDate(t) ?? t.date);
 
 /** Seconds of the exit within its day (entry + hold), for ordering trades closed on the same day. */
 function exitSecOf(t: InsightTrade): number {
@@ -142,8 +147,9 @@ function add(b: Bucket, t: InsightTrade) {
   if (n != null) { b.net += n; b.hasNet = true; }
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
-const closedOnly = (trades: readonly InsightTrade[]) => trades.filter((t) => !isOpen(t) && netPnl(t) != null);
+export const round2 = (n: number) => Math.round(n * 100) / 100;
+/** Closed trades with a net — what every analytic tile counts. */
+export const closedOnly = (trades: readonly InsightTrade[]) => trades.filter((t) => !isOpen(t) && netPnl(t) != null);
 
 /** Win rate W / (W + L); null without decided trades. */
 export const winRateOfBucket = (b: Bucket): number | null => (b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : null);
@@ -204,13 +210,6 @@ export function seqStats(trades: readonly InsightTrade[]): SeqStats {
 /* ─────────────────────── «Время в позиции» ─────────────────────── */
 
 export type HoldStats = { winners: number | null; losers: number | null; nWin: number; nLoss: number; ratio: number | null; enough: boolean };
-
-export function median(xs: readonly number[]): number | null {
-  if (!xs.length) return null;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-}
 
 /** Median hold of intraday winners vs losers (overnight / swing holds would swamp the scale). */
 export function holdStats(trades: readonly InsightTrade[]): HoldStats {
@@ -292,15 +291,20 @@ export function afterLossStats(trades: readonly InsightTrade[]): AfterStats {
 
 /** Every key a column can hold (the panel's buckets), so «only these» can be written as the unchecked rest. */
 export const FACET_KEYS: Partial<Record<FacetDim, readonly string[]>> = {
+  times: [...TIME_BUCKETS.map((b) => b.key), UNKNOWN_KEY],
+  price: [...PRICE_BUCKETS.map((b) => b.key), UNKNOWN_KEY],
   seq: [...SEQ_KEYS, UNKNOWN_KEY],
   days: ["1", "2", "3", "4", "5", "6", "7", UNKNOWN_KEY],
   prev: ["first", "after-win", "after-loss", "after-be", UNKNOWN_KEY],
   hold: [...HOLD_BUCKETS.map((b) => b.key), OVERNIGHT_KEY, UNKNOWN_KEY],
 };
 
-/** The view with only `keep` checked in `dim` (other columns and «Исключить IMX» untouched). */
-export function onlyFacet(view: FacetView, dim: FacetDim, keep: readonly string[]): FacetView {
-  const all = FACET_KEYS[dim] ?? [];
+/**
+ * The view with only `keep` checked in `dim` (other columns and «Исключить IMX» untouched). `known` adds keys of an
+ * open-ended column (strategies) that the page has seen, so «only these» can be written as the unchecked rest.
+ */
+export function onlyFacet(view: FacetView, dim: FacetDim, keep: readonly string[], known: readonly string[] = []): FacetView {
+  const all = [...new Set([...(FACET_KEYS[dim] ?? []), ...known])];
   const off = all.filter((k) => !keep.includes(k));
   const next = { ...view.off };
   if (off.length) next[dim] = off;
