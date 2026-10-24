@@ -60,7 +60,7 @@ export default {
       analytics: { page: "Analytics", answer: "Do you have an edge: expectancy, R and drawdown for the period.", try: "Set the period to a month and find your weakest weekday." },
       risk: { page: "Risk", answer: "How much is left to your stop today and this week.", try: "Check today’s remaining amount before your first trade." },
       riskDesk: { page: "Risk desk", answer: "Who on the desk is close to their stop right now.", try: "Sort by what is left: the top rows are the ones to message first." },
-      academy: { page: "Academy", answer: "Your path through the stages: what counts already and what is left to the next one.", try: "Find the nearest unmet criterion — that is your focus for the week." },
+      academy: { page: "Trader path", answer: "Your path through the stages: what counts already and what is left to the next one.", try: "Find the nearest unmet criterion — that is your focus for the week." },
     },
   },
   help: {

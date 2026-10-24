@@ -2,8 +2,8 @@
 // nothing is lost — every page of the full menu is a primary row or sits in «Ещё».
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
-import { ALL_NAV_ITEMS, rowChildren } from "./nav";
-import { TIERS, isSimpleNav, mobileTabs, navFeatureOn, simpleNav, visibleNav, type NavPrefs } from "./nav-model";
+import { ALL_NAV_ITEMS } from "./nav";
+import { TIERS, isSimpleNav, mobileTabs, navFeatureOn, pinnedNavItems, simpleNav, visibleNav, type NavPrefs } from "./nav-model";
 
 afterEach(async () => {
   await setLang("ru", { source: "init" });
@@ -62,15 +62,15 @@ describe("simpleNav", () => {
     expect(s.moreItems.map((i) => i.href)).toEqual(flat(s.more));
   });
 
-  it("«Ещё» keeps the full-menu order; the trainer leaves the tools hub, the ratings' pages become rows", () => {
+  it("«Ещё» keeps the full-menu order; the ratings' pages become rows", () => {
     expect(s.more.map((r) => r.href)).toEqual([
-      "/risk", "/rules", "/analytics", "/chart-lab", "/events", "/themes", "/watchlist", "/discussions", "/trade-ideas",
-      "/benchmark", "/top-results", "/office",
+      "/risk", "/analytics", "/rules", "/events", "/themes", "/watchlist", "/discussions", "/trade-ideas",
+      "/benchmark", "/top-results", "/trade-idea-stats", "/office",
     ]);
-    const tools = s.more.find((r) => r.href === "/chart-lab")!;
-    expect(rowChildren(tools).map((i) => i.href)).toEqual(["/chart-lab", "/calculator"]);
-    // The full menu is untouched.
-    expect(rowChildren(ALL_NAV_ITEMS.find((i) => i.href === "/chart-lab")!).map((i) => i.href)).toEqual(["/chart-lab", "/trainer", "/calculator"]);
+    const analytics = s.more.find((r) => r.href === "/analytics")!;
+    expect(analytics.children!.map((i) => i.href)).toEqual(["/stats", "/behavior", "/what-if", "/chart-lab", "/ask"]);
+    // No staff group for a junior.
+    expect(groups.map((g) => g.id)).toEqual(["today", "review", "market", "team", "learn"]);
   });
 
   it("the hint names the tier the full menu opens at: Трейдер", () => {
@@ -148,12 +148,15 @@ describe("phone sheet (ILYA-18, OWNER-28)", async () => {
     for (const r of s.primary) for (const c of r.children ?? []) expect(hrefs).toContain(c.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
-  it("desktop row: a pinned child is rendered once, open or closed", async () => {
-    const { rowKidLists } = await import("./nav-model");
-    const kids = [{ href: "/ratings" }, { href: "/office" }];
-    const pinned = (h: string) => h === "/office";
-    expect(rowKidLists(kids, true, pinned)).toEqual({ list: kids, pinned: [] });
-    expect(rowKidLists(kids, false, pinned)).toEqual({ list: [{ href: "/ratings" }], pinned: [{ href: "/office" }] });
+  it("«Закреплённые»: pins this viewer may open, in pin order; staff-only, hidden and closed pages never show", () => {
+    expect(pinnedNavItems(["/office", "/stats"], false, {}).map((i) => i.href)).toEqual(["/office", "/stats"]);
+    expect(pinnedNavItems(["/scaling", "/office"], false, {}).map((i) => i.href)).toEqual(["/office"]);
+    expect(pinnedNavItems(["/scaling"], true, {}).map((i) => i.href)).toEqual(["/scaling"]);
+    expect(pinnedNavItems(["/junior-notes", "/nope"], true, {})).toEqual([]);
+    expect(pinnedNavItems(["/office"], false, { blocked: ["/office"] })).toEqual([]);
+    // Listed once: taken out of its row's list.
+    const ratings = visibleNav(false).flatMap((g) => g.rows).find((r) => r.href === "/ratings")!;
+    expect(withoutPinned(ratings.children!, ["/office"]).map((i) => i.href)).toEqual(["/benchmark", "/top-results", "/trade-idea-stats"]);
   });
   it("a pinned page shows once (in favourites)", () => {
     const items = [{ href: "/a" }, { href: "/office" }, { href: "/b" }];
@@ -175,5 +178,56 @@ describe("sections behind a desk switch (Волна 2 п. 2.15)", () => {
   it("an item without a switch is always on", () => {
     expect(navFeatureOn(undefined, null)).toBe(true);
     expect(navFeatureOn("authorNotes", { authorNotes: "yes" })).toBe(false);
+  });
+});
+
+describe("nav-structure: menus per role", () => {
+  const rows = (groups: ReturnType<typeof visibleNav>) => groups.map((g) => [g.id, g.rows.map((r) => r.href)]);
+
+  it("trader / senior: five groups, 16 rows, no «Управление»", () => {
+    const groups = visibleNav(false);
+    expect(rows(groups)).toEqual([
+      ["today", ["/", "/game-plan", "/trades", "/risk"]],
+      ["review", ["/journal", "/analytics", "/playbook", "/rules"]],
+      ["market", ["/events", "/themes", "/watchlist"]],
+      ["team", ["/discussions", "/trade-ideas", "/ratings"]],
+      ["learn", ["/academy/my", "/trainer"]],
+    ]);
+    expect(groups.flatMap((g) => g.rows).length).toBe(16);
+  });
+
+  it("curator / admin: «Управление» right under «Сегодня», the cabinet first", () => {
+    const groups = visibleNav(true);
+    expect(groups.map((g) => g.id)).toEqual(["today", "manage", "review", "market", "team", "learn"]);
+    const manage = groups[1]!;
+    expect(manage.rows.map((r) => r.href)).toEqual(["/curator", "/admin"]);
+    expect(manage.items.map((i) => i.href)).toEqual(["/curator", "/academy/mentor", "/scaling", "/admin", "/integrations", "/academy/content-admin"]);
+    // The staff member's own learning stays with the trader pages.
+    expect(groups.find((g) => g.id === "learn")!.items.map((i) => i.href)).toEqual([
+      "/academy/my", "/academy/learn", "/academy/path", "/academy/challenges", "/academy/cohorts", "/trainer",
+    ]);
+  });
+
+  it("no single-item sub-menu: a row left with one open child lists it as a row right below", () => {
+    const groups = visibleNav(false, { blocked: ["/analyst-actions"] });
+    const market = groups.find((g) => g.id === "market")!;
+    expect(market.rows.map((r) => r.href)).toEqual(["/events", "/offerings", "/themes", "/watchlist"]);
+    expect(market.rows[0]!.children).toBeUndefined();
+    // The shared item keeps its children (only the copy changes) and the copy keeps its label getter.
+    expect(ALL_NAV_ITEMS.find((i) => i.href === "/events")!.children!.length).toBe(2);
+    expect(market.rows[0]!.name).toBe("Катализаторы");
+    // Nothing anywhere opens a list of one, for either role.
+    for (const staff of [false, true]) {
+      for (const r of visibleNav(staff).flatMap((g) => g.rows)) expect(r.children === undefined || r.children.length > 1).toBe(true);
+    }
+  });
+
+  it("every page of the full menu is reachable in at most two clicks (a row, or a row's child)", () => {
+    for (const staff of [false, true]) {
+      const groups = visibleNav(staff);
+      const reach = new Set(groups.flatMap((g) => g.items.map((i) => i.href)));
+      const all = ALL_NAV_ITEMS.filter((i) => !i.hidden && !i.feature && (staff || !i.staff)).map((i) => i.href);
+      expect(all.filter((h) => !reach.has(h))).toEqual([]);
+    }
   });
 });

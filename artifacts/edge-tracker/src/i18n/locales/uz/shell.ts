@@ -8,7 +8,7 @@ export default {
     risk: "Risk-desk",
     trades: "Savdolar",
     journal: "Kundalik",
-    calculator: "Kalkulyator",
+    calculator: "Opsion kalkulyatori",
     analytics: "Analitika",
     weeklyReview: "Haftalik hisobot",
     dayReport: "Kun tahlili",
@@ -43,7 +43,7 @@ export default {
     ideaStats: "Gʻoyalar statistikasi",
     notifications: "Bildirishnomalar",
     academyMy: "Mening taʼlimim",
-    academyLearn: "Taʼlim",
+    academyLearn: "Kurslar",
     academyPath: "Treyder yoʻli",
     academyChallenges: "Imtihonlar",
     academyMentor: "Mentor",
@@ -70,15 +70,11 @@ export default {
   },
   groups: {
     today: "Bugun",
-    trade: "Savdo",
-    growth: "Tahlil va oʻsish",
+    manage: "Boshqaruv",
+    review: "Tahlil",
     market: "Bozor",
     team: "Jamoa",
-    academy: "Akademiya",
-    manage: "Boshqaruv",
-  },
-  hubs: {
-    tools: "Vositalar",
+    learn: "Taʼlim",
   },
   titles: {
     research: "Tadqiqotlar arxivi",
@@ -104,6 +100,9 @@ export default {
     hideChildren: "«{name}» boʻlimlarini yashirish",
     toRail: "Menyuni belgilargacha yigʻish",
     fromRail: "Menyuni yoyish",
+    pinnedTitle: "Mahkamlangan boʻlimlar. Mahkamlash: kichik boʻlim ustiga olib boring va toʻgʻnagʻichni bosing",
+    goHintOpen: "Barcha tezkor tugmalar — «Yordam»da",
+    goHintDismiss: "Maslahatni yashirish",
   },
   today: {
     title: "Bugun",
@@ -113,6 +112,10 @@ export default {
     haltedWeekly: "Haftalik stop: savdo toʻxtatildi",
     haltedDrawdown: "Maks. pasayish: savdo toʻxtatildi",
     usedAria: "Kunlik limitning {pct} qismi ishlatildi",
+    marketClosed: "Bozor yopiq",
+    /** Halted on a weekend / market holiday: neutral, the stop applies to the next session. */
+    haltedClosed: "{stop} — holat keyingi sessiya uchun",
+    stop: { daily: "Kunlik stop", weekly: "Haftalik stop", drawdown: "Maks. pasayish" },
     open: "Risk-deskni ochish",
   },
   mobile: {

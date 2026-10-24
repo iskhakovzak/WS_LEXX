@@ -60,7 +60,7 @@ export default {
       analytics: { page: "Analitika", answer: "Ustunligingiz bormi: davr boʻyicha expectancy, R va pasayish.", try: "Davrni «oy» qilib qoʻying va haftaning eng zaif kunini toping." },
       risk: { page: "Risk", answer: "Bugun va shu hafta stopgacha qancha qoldi.", try: "Birinchi savdodan oldin kunlik qoldiqqa qarang." },
       riskDesk: { page: "Risk-desk", answer: "Deskda hozir kim stopga yaqin.", try: "Qoldiq boʻyicha saralang: tepadagilarga birinchi yozing." },
-      academy: { page: "Akademiya", answer: "Bosqichlar boʻyicha yoʻlingiz: nima hisoblandi va keyingisigacha nima qoldi.", try: "Eng yaqin bajarilmagan mezonni toping — bu haftalik fokus." },
+      academy: { page: "Treyder yoʻli", answer: "Bosqichlar boʻyicha yoʻlingiz: nima hisoblandi va keyingisigacha nima qoldi.", try: "Eng yaqin bajarilmagan mezonni toping — bu haftalik fokus." },
     },
   },
   help: {

@@ -2,16 +2,17 @@
  * Single source of truth for the app's information architecture: sidebar groups, mobile tabs,
  * command-palette pages and document titles all read from here.
  *
- * Two levels, grouped by the trader's day (Сегодня → Торговля → Разбор и рост → Рынок → Команда → Академия, plus
- * «Управление» for staff):
- * - a group holds a few sidebar rows (~15 for a trader);
+ * Two levels, grouped by the trader's day (nav-structure, 2026-10-25): Сегодня (plan → trade → risk) → Разбор (journal,
+ * analytics, playbook, rules) → Рынок → Команда → Обучение; staff get «Управление» right under «Сегодня» (the curator
+ * cabinet with its review queue, the admin pages). Five groups for a trader, six for staff:
+ * - a group holds a few sidebar rows (16 for a trader);
  * - a row may own `children`: pages of the same job (Аналитика → Статистика, Поведение…). They show under the row
- *   while you are inside that set, when the row is opened with its chevron, or when pinned (use-nav-prefs.ts).
+ *   while you are inside that set or when the row is opened with its chevron; a pinned page sits in «Закреплённые»
+ *   at the top (use-nav-prefs.ts). A row left with a single visible child lists it as a row (nav-model.ts).
  *   Every page keeps its own route; nothing is merged, so deep links and old URLs keep working.
- * A row named for its job (`hub`, e.g. «Инструменты») opens its first page and lists that page among its children.
  *
- * Labels come from the `shell` namespace (i18n/locales/<lang>/shell.ts → nav.*, navShort.*, groups.*, hubs.*).
- * `name`, `short`, `hubLabel` and `label` are getters, so they always return the current language when read during
+ * Labels come from the `shell` namespace (i18n/locales/<lang>/shell.ts → nav.*, navShort.*, groups.*).
+ * `name`, `short` and `label` are getters, so they always return the current language when read during
  * render (never cache them in module-level constants).
  */
 import type { LucideIcon } from "lucide-react";
@@ -19,10 +20,11 @@ import {
   LayoutDashboard, Crosshair, ShieldAlert, CandlestickChart, NotebookPen, Calculator,
   LineChart, BarChart3, ListChecks, BookMarked, Eye, Radar, CalendarClock, BookOpen, Newspaper,
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
-  Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, MessageSquareText,
-  GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Wrench, Gamepad2, Shapes, ScanSearch,
+  Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, TextSearch,
+  GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Gamepad2, Shapes, ScanSearch,
+  ChartSpline, Scale,
 } from "lucide-react";
-import { shellI18n, type NavGroupKey, type NavHubKey, type NavKey, type NavShortKey } from "@/i18n/ns/shell";
+import { shellI18n, type NavGroupKey, type NavKey, type NavShortKey } from "@/i18n/ns/shell";
 import ruShell from "@/i18n/locales/ru/shell";
 
 /** Sections behind a desk switch (GET /api/permissions/me → `nav.<feature>`); off or unknown → not in the menu. */
@@ -55,12 +57,6 @@ export type NavItem = {
   to?: string;
   /** Pages one level below this sidebar row (same job, own routes). */
   children?: NavItem[];
-  /** The row is named for its job («Инструменты») instead of its first page; that page is then listed as a child too. */
-  readonly hubLabel?: string;
-  /** Russian hub label (palette search). */
-  readonly ruHubLabel?: string;
-  /** Row icon when the row is a hub. */
-  hubIcon?: LucideIcon;
 };
 
 export type NavGroup = {
@@ -70,15 +66,13 @@ export type NavGroup = {
   items: NavItem[];
 };
 
-type NavDef<K extends NavKey> = Omit<NavItem, "key" | "name" | "short" | "ruName" | "hubLabel" | "ruHubLabel"> & {
+type NavDef<K extends NavKey> = Omit<NavItem, "key" | "name" | "short" | "ruName"> & {
   /** true → the item has a `navShort.<key>` label (only keys present in navShort are allowed). */
   short?: K extends NavShortKey ? true : never;
-  /** The row is a hub named `hubs.<hub>`. */
-  hub?: NavHubKey;
 };
 
 function nav<K extends NavKey>(key: K, def: NavDef<K>): NavItem {
-  const { short, hub, ...rest } = def;
+  const { short, ...rest } = def;
   // Widen the generic K to the key union, so t() can check the template key (a bare generic stays unresolved).
   const k: NavKey = key;
   const sk = k as NavShortKey;
@@ -88,8 +82,6 @@ function nav<K extends NavKey>(key: K, def: NavDef<K>): NavItem {
     get name() { return shellI18n.t(`nav.${k}`); },
     get short() { return short ? shellI18n.t(`navShort.${sk}`) : undefined; },
     get ruName() { return ruShell.nav[k]; },
-    get hubLabel() { return hub ? shellI18n.t(`hubs.${hub}`) : undefined; },
-    get ruHubLabel() { return hub ? ruShell.hubs[hub] : undefined; },
   };
 }
 
@@ -102,36 +94,42 @@ function group(id: NavGroupKey, items: NavItem[]): NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
+  // The live day: the plan, the trades as they come in from PropReports, what is left to the stop.
   group("today", [
     nav("dashboard", { short: true, href: "/", icon: LayoutDashboard, keywords: "dashboard главная сегодня today", goKey: "d" }),
-    nav("curator", { short: true, href: "/curator", icon: ClipboardList, keywords: "curator куратор кабинет подопечные разбор очередь нарушения риск заметки трейдеры", staff: true, goKey: "k" }),
     nav("gamePlan", { short: true, href: "/game-plan", icon: Crosshair, keywords: "game plan премаркет premarket in play катализаторы уровни", goKey: "p" }),
-    nav("risk", { short: true, href: "/risk", icon: ShieldAlert, keywords: "risk лимиты limits просадка drawdown buying power стоп", goKey: "r", children: [
-      nav("scaling", { href: "/scaling", icon: TrendingUp, keywords: "scaling масштабирование лимиты уровни tier тир", staff: true }),
+    nav("trades", { href: "/trades", icon: CandlestickChart, keywords: "trades трейды позиции сделки", goKey: "t" }),
+    nav("risk", { short: true, href: "/risk", icon: ShieldAlert, keywords: "risk лимиты limits просадка drawdown buying power стоп", goKey: "r" }),
+  ]),
+  // Staff work (curators, admins): the review queue first, then the desk's configuration. Traders never see the group.
+  group("manage", [
+    nav("curator", { short: true, href: "/curator", icon: ClipboardList, keywords: "curator куратор кабинет подопечные разбор очередь нарушения риск заметки трейдеры", staff: true, goKey: "k", children: [
+      nav("academyMentor", { href: "/academy/mentor", icon: UserCheck, keywords: "academy наставник ментор ученики 1:1 договорённости mentor", staff: true }),
+      nav("scaling", { href: "/scaling", icon: TrendingUp, keywords: "scaling масштабирование лимиты уровни tier тир buying power одобрение", staff: true }),
+    ] }),
+    nav("admin", { href: "/admin", icon: ShieldCheck, keywords: "admin модерация жалобы пользователи люди доступ настройки деска", staff: true, children: [
+      nav("integrations", { href: "/integrations", icon: Plug, keywords: "integrations propreports импорт import брокер выписка", staff: true }),
+      nav("academyContent", { short: true, href: "/academy/content-admin", icon: PencilRuler, keywords: "academy редактор курсов уроки тесты задания контент content editor", staff: true }),
     ] }),
   ]),
-  group("trade", [
-    nav("trades", { href: "/trades", icon: CandlestickChart, keywords: "trades трейды позиции сделки", goKey: "t" }),
-    nav("playbook", { href: "/playbook", icon: BookMarked, keywords: "playbook сетапы setups A+", goKey: "b" }),
-    nav("rules", { href: "/rules", icon: ListChecks, keywords: "rules ошибки errors дисциплина error-tracker нарушения", also: ["/error-tracker"] }),
-  ]),
-  group("growth", [
+  // After the close: what happened (journal), why (analytics), the setups and rules it feeds.
+  group("review", [
     nav("journal", { href: "/journal", icon: NotebookPen, keywords: "journal журнал дневник разбор дня eod закрытие дня вечер сводка итог дня junior notes", goKey: "j", children: [
       nav("dayReport", { href: "/day-report", icon: FileText, keywords: "day report разбор дня итоги дня отчёт план на завтра" }),
       nav("weeklyReview", { href: "/weekly-review", icon: ClipboardCheck, keywords: "weekly review неделя итоги недели отчёт" }),
       // Волна 2 п. 2.9: the trader's own 30-day answer (where I earn / lose, one rule for tomorrow); staff keep /analytics.
       nav("myReview", { href: "/my-review", icon: ScanSearch, keywords: "my review мой разбор где зарабатываю где теряю правило на завтра итоги месяца" }),
     ] }),
-    nav("analytics", { href: "/analytics", icon: LineChart, keywords: "analytics equity expectancy R аналитика", goKey: "a", children: [
+    // Every analysis tool under one umbrella; «Мой edge и рынок» is the page's own tab (/analytics?tab=myedge).
+    nav("analytics", { href: "/analytics", icon: LineChart, keywords: "analytics equity expectancy R аналитика my edge мой edge и рынок edge matrix монте-карло monte carlo психология", goKey: "a", children: [
       nav("stats", { href: "/stats", icon: BarChart3, keywords: "stats статистика winrate", goKey: "s" }),
       nav("behavior", { short: true, href: "/behavior", icon: Brain, keywords: "behavior тильт реванш овертрейдинг дисциплина сетапы классификатор setups" }),
-      nav("ask", { short: true, href: "/ask", icon: MessageSquareText, keywords: "ask спроси журнал вопрос поиск запрос сколько лучший худший", goKey: "q" }),
       nav("whatIf", { href: "/what-if", icon: FlaskConical, keywords: "what-if что если комиссии тариф правила издержки costs fees" }),
+      nav("chartLab", { short: true, href: "/chart-lab", icon: ChartSpline, keywords: "chart lab график разбор реплей replay review ws chart свечи vwap уровни рисование tools инструменты" }),
+      nav("ask", { short: true, href: "/ask", icon: TextSearch, keywords: "ask спроси журнал вопрос поиск запрос сколько лучший худший", goKey: "q" }),
     ] }),
-    nav("chartLab", { short: true, hub: "tools", hubIcon: Wrench, href: "/chart-lab", icon: CandlestickChart, keywords: "chart lab график разбор реплей replay review ws chart свечи vwap уровни рисование tools инструменты", children: [
-      nav("trainer", { href: "/trainer", icon: Gamepad2, also: ["/simulator"], keywords: "trainer тренажёр симулятор simulator игра задача дня найди вход мои дни chartgame бар за баром тренировка practice drill" }),
-      nav("calculator", { href: "/calculator", icon: Calculator, keywords: "calculator опционы options греки black-scholes страйк IV payoff", goKey: "c" }),
-    ] }),
+    nav("playbook", { href: "/playbook", icon: BookMarked, keywords: "playbook сетапы setups A+", goKey: "b" }),
+    nav("rules", { href: "/rules", icon: ListChecks, keywords: "rules ошибки errors дисциплина error-tracker нарушения", also: ["/error-tracker"] }),
   ]),
   group("market", [
     nav("events", { href: "/events", icon: CalendarClock, keywords: "events earnings отчёты календарь catalysts катализаторы макро cpi fomc nfp события", goKey: "e", children: [
@@ -142,6 +140,8 @@ export const NAV_GROUPS: NavGroup[] = [
     nav("watchlist", { href: "/watchlist", icon: Eye, keywords: "watchlist список тикеров", goKey: "w", children: [
       nav("big7", { href: "/big7", icon: Radar, keywords: "big7 мегакапы magnificent" }),
       nav("indicators", { href: "/indicators", icon: Gauge, keywords: "indicators макро VIX breadth" }),
+      // Options chain + advisor for a ticker (?ticker= prefills it): a market view, opened from a ticker.
+      nav("calculator", { href: "/calculator", icon: Calculator, keywords: "calculator калькулятор опционы options греки black-scholes страйк IV payoff tools инструменты", goKey: "c" }),
     ] }),
   ]),
   group("team", [
@@ -154,29 +154,24 @@ export const NAV_GROUPS: NavGroup[] = [
       // Item 1.5: the evening summary is the journal's «Закрыть день»; the old page only reads past notes (legacy).
       nav("juniorNotes", { href: "/junior-notes", icon: NotebookText, keywords: "junior notes джуны", hidden: true }),
     ] }),
-    nav("ideas", { href: "/trade-ideas", icon: Lightbulb, keywords: "ideas trade ideas идеи", goKey: "i", children: [
-      nav("ideaStats", { href: "/trade-idea-stats", icon: PieChart, keywords: "idea stats статистика идей" }),
-    ] }),
+    nav("ideas", { href: "/trade-ideas", icon: Lightbulb, keywords: "ideas trade ideas идеи", goKey: "i" }),
+    // Who performs best: people, the desk, the day's top, idea authors (components/ratings/idea-metrics), the office.
     nav("ratings", { href: "/ratings", icon: Trophy, keywords: "ratings рейтинг трейдеров leaderboard", children: [
-      nav("benchmark", { short: true, href: "/benchmark", icon: Gauge, keywords: "benchmark бенчмарк сравнение команда деск перцентили sharpe" }),
+      nav("benchmark", { short: true, href: "/benchmark", icon: Scale, keywords: "benchmark бенчмарк сравнение команда деск перцентили sharpe" }),
       nav("topResults", { href: "/top-results", icon: Crown, keywords: "top results лучшие топ дня top of the day календарь прибыль убыток лидеры" }),
+      nav("ideaStats", { href: "/trade-idea-stats", icon: PieChart, keywords: "idea stats статистика идей авторы калибровка hit rate" }),
       nav("office", { short: true, href: "/office", icon: Building2, keywords: "office офис партнёры статистика стратегии цель капитал" }),
     ] }),
   ]),
-  group("academy", [
+  group("learn", [
     nav("academyMy", { short: true, href: "/academy/my", icon: School, keywords: "academy академия моё обучение цели ипр занятия посещаемость", goKey: "l", children: [
       nav("academyLearn", { short: true, href: "/academy/learn", icon: BookOpen, keywords: "academy академия курсы уроки тесты задания программа обучение" }),
       nav("academyPath", { short: true, href: "/academy/path", icon: GraduationCap, keywords: "academy академия путь стажёр джун трейдер сеньор перевод ступень критерии" }),
       nav("academyChallenges", { href: "/academy/challenges", icon: Target, keywords: "academy экзамены challenge челлендж оценка капитал" }),
       nav("academyCohorts", { href: "/academy/cohorts", icon: UsersRound, keywords: "academy когорты группы офис удалённо расписание занятия" }),
-      nav("academyMentor", { href: "/academy/mentor", icon: UserCheck, keywords: "academy наставник ментор ученики 1:1 договорённости", staff: true }),
-      nav("academyContent", { short: true, href: "/academy/content-admin", icon: PencilRuler, keywords: "academy редактор курсов уроки тесты задания контент", staff: true }),
     ] }),
-  ]),
-  group("manage", [
-    nav("admin", { href: "/admin", icon: ShieldCheck, keywords: "admin модерация жалобы пользователи", staff: true, children: [
-      nav("integrations", { href: "/integrations", icon: Plug, keywords: "integrations propreports импорт import брокер выписка", staff: true }),
-    ] }),
+    // Practice on real charts (bar by bar, the day's task, own days): learning by doing, next to the courses.
+    nav("trainer", { href: "/trainer", icon: Gamepad2, also: ["/simulator"], keywords: "trainer тренажёр симулятор simulator игра задача дня найди вход мои дни chartgame бар за баром тренировка practice drill tools инструменты" }),
   ]),
 ];
 
@@ -208,17 +203,6 @@ export function parentOf(item: NavItem): NavItem | undefined {
 /** The sidebar group of a page (undefined for header-only pages). */
 export function groupOf(item: NavItem): NavGroup | undefined {
   return GROUP.get(item.href);
-}
-
-/** Row label: the hub name when the row names a set of pages, else the page's own name. */
-export function rowLabel(item: NavItem): string {
-  return item.hubLabel ?? item.name;
-}
-
-/** Children as listed under a row: a hub also lists its own first page (it is named differently there). */
-export function rowChildren(item: NavItem): NavItem[] {
-  const kids = item.children ?? [];
-  return item.hubLabel && kids.length ? [item, ...kids] : kids;
 }
 
 export function isNavActive(item: NavItem, location: string): boolean {

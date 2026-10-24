@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NAV_GROUPS, ALL_NAV_ITEMS, GO_KEYS, GO_KEYS_RU_LAYOUT, parentOf, rowChildren, rowLabel, routeTitle } from "./nav";
+import { NAV_GROUPS, ALL_NAV_ITEMS, GO_KEYS, GO_KEYS_RU_LAYOUT, groupOf, parentOf, routeTitle } from "./nav";
 import { setLang } from "@/i18n";
 
 afterEach(async () => {
@@ -41,12 +41,41 @@ describe("nav groups", () => {
     expect(ALL_NAV_ITEMS.filter((i) => !i.hidden).every((i) => rows(true).includes(i) || !!parentOf(i))).toBe(true);
   });
 
-  it("second-level pages know their row; a hub row lists its own page first", () => {
-    expect(rowLabel(parentOf(ALL_NAV_ITEMS.find((i) => i.href === "/stats")!)!)).toBe("Аналитика");
-    expect(parentOf(ALL_NAV_ITEMS.find((i) => i.href === "/trade-idea-stats")!)!.href).toBe("/trade-ideas");
-    const tools = ALL_NAV_ITEMS.find((i) => i.href === "/chart-lab")!;
-    expect(rowLabel(tools)).toBe("Инструменты");
-    expect(rowChildren(tools).map((i) => i.href)).toEqual(["/chart-lab", "/trainer", "/calculator"]);
+  it("second-level pages know their row and group", () => {
+    expect(parentOf(ALL_NAV_ITEMS.find((i) => i.href === "/stats")!)!.name).toBe("Аналитика");
+    expect(parentOf(ALL_NAV_ITEMS.find((i) => i.href === "/trade-idea-stats")!)!.href).toBe("/ratings");
+    expect(groupOf(ALL_NAV_ITEMS.find((i) => i.href === "/scaling")!)!.id).toBe("manage");
+    expect(groupOf(ALL_NAV_ITEMS.find((i) => i.href === "/settings")!)).toBeUndefined();
+  });
+
+  it("nav-structure: five groups for a trader, six for staff, in the order of the day", () => {
+    expect(NAV_GROUPS.map((g) => g.id)).toEqual(["today", "manage", "review", "market", "team", "learn"]);
+    expect(NAV_GROUPS.map((g) => g.label)).toEqual(["Сегодня", "Управление", "Разбор", "Рынок", "Команда", "Обучение"]);
+    const rowsOf = (id: string) => NAV_GROUPS.find((g) => g.id === id)!.items.map((i) => i.href);
+    expect(rowsOf("today")).toEqual(["/", "/game-plan", "/trades", "/risk"]);
+    expect(rowsOf("manage")).toEqual(["/curator", "/admin"]);
+    expect(rowsOf("review")).toEqual(["/journal", "/analytics", "/playbook", "/rules"]);
+    expect(rowsOf("team")).toEqual(["/discussions", "/trade-ideas", "/ratings"]);
+    expect(rowsOf("learn")).toEqual(["/academy/my", "/trainer"]);
+    // «Управление» is staff only, page by page (a trader never gets an empty group).
+    expect(NAV_GROUPS.find((g) => g.id === "manage")!.items.flatMap((r) => [r, ...(r.children ?? [])]).every((i) => i.staff)).toBe(true);
+  });
+
+  it("every analysis tool sits under «Аналитика»; the old «Инструменты» grab-bag is gone", () => {
+    const kids = (href: string) => ALL_NAV_ITEMS.find((i) => i.href === href)!.children!.map((c) => c.href);
+    expect(kids("/analytics")).toEqual(["/stats", "/behavior", "/what-if", "/chart-lab", "/ask"]);
+    expect(kids("/journal")).toEqual(["/day-report", "/weekly-review", "/my-review"]);
+    expect(kids("/ratings")).toEqual(["/benchmark", "/top-results", "/trade-idea-stats", "/office"]);
+    expect(kids("/watchlist")).toEqual(["/big7", "/indicators", "/calculator"]);
+    expect(kids("/curator")).toEqual(["/academy/mentor", "/scaling"]);
+    expect(kids("/admin")).toEqual(["/integrations", "/academy/content-admin"]);
+    expect(ALL_NAV_ITEMS.find((i) => i.href === "/risk")!.children).toBeUndefined();
+    expect(ALL_NAV_ITEMS.find((i) => i.href === "/trade-ideas")!.children).toBeUndefined();
+  });
+
+  it("one icon per page (no two sections share a glyph)", () => {
+    const shown = ALL_NAV_ITEMS.filter((i) => !i.hidden);
+    expect(new Set(shown.map((i) => i.icon)).size).toBe(shown.length);
   });
 
   it("«Темы рынка» is a row of the market group, between catalysts and the watchlist", async () => {

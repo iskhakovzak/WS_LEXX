@@ -1,27 +1,27 @@
 /**
- * Desktop sidebar: ~15 rows grouped by the trader's day, second-level pages under their row (shown while you are in
- * that set, on the chevron, or when pinned), attention badges only where someone should act, a «Сегодня» footer
- * (own P&L and daily stop) and an icon rail (Ctrl/⌘ B). Press G to see every quick-jump letter.
+ * Desktop sidebar: «Закреплённые» on top (pinned sub-pages, when any), then ~16 rows grouped by the trader's day, with
+ * second-level pages under their row (shown while you are in that set or on the chevron), attention badges only where
+ * someone should act, a «Сегодня» footer (own P&L and daily stop, today-card.tsx) and an icon rail (Ctrl/⌘ B). Press G
+ * to see every quick-jump letter; the footer «G + буква» hint folds away after the first jump (the list is in «Помощь»).
  */
 import React from "react";
 import { Link } from "wouter";
-import { ChevronRight, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pin } from "lucide-react";
+import { ChevronRight, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pin, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ds";
 import { Reveal } from "@/components/ds/motion";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/auth-context";
-import { fmtUsd, fmtRate } from "@/lib/format";
-import { GO_MODE_EVENT, isNavActive, isWithin, rowChildren, rowLabel, type NavItem } from "./nav";
-import { rowKidLists, type SimpleNav } from "./nav-model";
+import { openHelp } from "@/lib/onboarding/store";
+import { GO_MODE_EVENT, isNavActive, isWithin, type NavItem } from "./nav";
+import { pinnedNavItems, withoutPinned, type SimpleNav } from "./nav-model";
 import { useNavModel } from "./use-nav-model";
-import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
-import { useRiskToday, useShellBadges, type NavBadge, type RiskToday } from "./use-shell-badges";
-import { LiveBadge } from "@/components/shared/live-badge";
+import { useGoHint, useMoreOpen, usePinnedNav } from "./use-nav-prefs";
+import { useRiskToday, useShellBadges, type NavBadge } from "./use-shell-badges";
+import { TodayCard } from "./today-card";
 import { preloadRoute } from "./route-loaders";
 import { shellI18n } from "@/i18n/ns/shell";
-import { commonI18n } from "@/i18n/ns/common";
 
 
 const BADGE_CLS: Record<NavBadge["tone"], string> = {
@@ -93,7 +93,8 @@ type RowCtx = {
   toggleOpened: (href: string) => void;
 };
 
-function ChildLink({ item, ctx }: { item: NavItem; ctx: RowCtx }) {
+/** A second-level page under its row, or (`pinnedRow`) a pinned page in «Закреплённые» with its own icon. */
+function ChildLink({ item, ctx, pinnedRow }: { item: NavItem; ctx: RowCtx; pinnedRow?: boolean }) {
   const { t } = shellI18n.useT();
   const active = isNavActive(item, ctx.location);
   const pinned = ctx.pins.isPinned(item.href);
@@ -107,8 +108,9 @@ function ChildLink({ item, ctx }: { item: NavItem; ctx: RowCtx }) {
         onPointerEnter={() => preloadRoute(item.href)}
         onFocus={() => preloadRoute(item.href)}
         title={item.goKey ? t("sidebar.goKeyTitle", { name: item.name, key: item.goKey.toUpperCase() }) : item.name}
-        className={cn(rowBase, "ml-[26px] h-7 gap-2 pl-3 pr-8", active ? rowActive : rowIdle)}
+        className={cn(rowBase, pinnedRow ? "h-8 pl-3 pr-8" : "ml-[26px] h-7 gap-2 pl-3 pr-8", active ? rowActive : rowIdle)}
       >
+        {pinnedRow && <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground")} aria-hidden="true" />}
         <span className="min-w-0 flex-1 truncate">{item.name}</span>
         {badge && <BadgeMark badge={badge} />}
         <GoHint k={item.goKey} go={ctx.go} className="right-2" />
@@ -135,14 +137,13 @@ function ChildLink({ item, ctx }: { item: NavItem; ctx: RowCtx }) {
 
 function Row({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
   const { t } = shellI18n.useT();
-  const kids = rowChildren(row);
-  const label = rowLabel(row);
-  const Icon = row.hubIcon ?? row.icon;
-  // A hub (named for its job) is "active" only through its children: its own page is listed among them.
-  const self = !row.hubLabel && isNavActive(row, ctx.location);
+  // A pinned page is listed once, in «Закреплённые» (OWNER-28): not again under its row.
+  const kids = withoutPinned(row.children ?? [], ctx.pins.pins);
+  const label = row.name;
+  const Icon = row.icon;
+  const self = isNavActive(row, ctx.location);
   const within = isWithin(row, ctx.location);
   const open = kids.length > 0 && (within || ctx.opened.has(row.href));
-  const { list: listKids, pinned: pinnedKids } = rowKidLists(kids, open, ctx.pins.isPinned);
   // A closed row still tells you something inside needs you.
   const badge = ctx.badges[row.href] ?? (open ? undefined : kids.map((k) => ctx.badges[k.href]).find(Boolean));
   const listId = `nav-sub-${row.key}`;
@@ -182,18 +183,11 @@ function Row({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
         )}
       </div>
       {kids.length > 0 && (
-        <>
-          <Reveal open={open} id={listId}>
-            <ul className="relative space-y-0.5 py-0.5 before:absolute before:inset-y-1 before:left-[19px] before:w-px before:bg-[var(--glass-border)]">
-              {listKids.map((k) => <ChildLink key={k.href} item={k} ctx={ctx} />)}
-            </ul>
-          </Reveal>
-          {pinnedKids.length > 0 && (
-            <ul className="relative space-y-0.5 pb-0.5 before:absolute before:inset-y-1 before:left-[19px] before:w-px before:bg-[var(--glass-border)]">
-              {pinnedKids.map((k) => <ChildLink key={`pin-${k.href}`} item={k} ctx={ctx} />)}
-            </ul>
-          )}
-        </>
+        <Reveal open={open} id={listId}>
+          <ul className="relative space-y-0.5 py-0.5 before:absolute before:inset-y-1 before:left-[19px] before:w-px before:bg-[var(--glass-border)]">
+            {kids.map((k) => <ChildLink key={k.href} item={k} ctx={ctx} />)}
+          </ul>
+        </Reveal>
       )}
     </li>
   );
@@ -243,14 +237,13 @@ function RailLink({ item, ctx, label, icon, small, self, within }: {
 }
 
 function RailRow({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
-  const kids = rowChildren(row);
-  const self = !row.hubLabel && isNavActive(row, ctx.location);
+  const self = isNavActive(row, ctx.location);
   const within = isWithin(row, ctx.location);
-  // In the rail a set opens only while you are in it (plus pinned pages), so its pages stay one click away.
-  const shown = within ? kids : kids.filter((k) => ctx.pins.isPinned(k.href));
+  // In the rail a set opens only while you are in it, so its pages stay one click away (pinned ones are on top).
+  const shown = within ? withoutPinned(row.children ?? [], ctx.pins.pins) : [];
   return (
     <>
-      <RailLink item={row} ctx={ctx} label={rowLabel(row)} icon={row.hubIcon ?? row.icon} self={self} within={within && !self} />
+      <RailLink item={row} ctx={ctx} label={row.name} icon={row.icon} self={self} within={within && !self} />
       {shown.map((k) => (
         <RailLink key={`sub-${k.href}`} item={k} ctx={ctx} label={k.name} icon={k.icon} small self={isNavActive(k, ctx.location)} />
       ))}
@@ -305,76 +298,57 @@ function MoreGroup({ simple, ctx, rail, open, setOpen }: { simple: SimpleNav; ct
   );
 }
 
-/** Today's own numbers from the risk desk: net P&L, trades, how much of the daily stop is used. Links to /risk. */
-function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
+/**
+ * «Закреплённые»: pinned sub-pages one click away at the top (each with its own icon and an «Открепить» pin). Pin a
+ * page from its row's list (the pin on hover); the admin starts with «Статистика офиса» (use-nav-prefs DEFAULT_PINS).
+ */
+function PinnedGroup({ items, ctx, rail }: { items: NavItem[]; ctx: RowCtx; rail: boolean }) {
   const { t } = shellI18n.useT();
-  const { t: tc } = commonI18n.useT();
-  const tone: NavBadge["tone"] | "ok" = risk.halted || risk.status === "breach" ? "down" : risk.status === "warn" ? "warn" : "ok";
-  const used = risk.dailyUsedPct == null ? null : Math.max(0, Math.min(100, risk.dailyUsedPct));
-  const pnl = risk.trades > 0 || risk.pnlNet != null ? fmtUsd(risk.pnlNet ?? 0, { signed: true, decimals: "auto" }) : null;
-  const pnlCls = (risk.pnlNet ?? 0) > 0 ? "text-up" : (risk.pnlNet ?? 0) < 0 ? "text-down" : "text-foreground";
-  const barCls = tone === "down" ? "bg-down" : tone === "warn" ? "bg-warn" : "bg-primary";
-  const limitLine = risk.halted
-    ? t(risk.haltedBy === "drawdown" ? "today.haltedDrawdown" : risk.haltedBy === "weekly" ? "today.haltedWeekly" : "today.halted")
-    : risk.dailyRemainingUsd != null ? t("today.toStop", { amount: fmtUsd(risk.dailyRemainingUsd, { decimals: "trim" }) }) : null;
-  const tradesLine = risk.trades > 0 ? tc("units.trades", { count: risk.trades }) : t("today.noTrades");
-
+  if (!items.length) return null;
   if (rail) {
-    // Ring = share of the daily stop used; the centre dot = sign of the day.
-    const r = 15;
-    const c = 2 * Math.PI * r;
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Link href="/risk" className="relative mx-auto grid h-9 w-9 place-items-center rounded-full outline-none transition-[background-color] duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] focus-visible:ring-2 focus-visible:ring-ring">
-            <svg viewBox="0 0 36 36" className="h-8 w-8 -rotate-90" aria-hidden="true">
-              <circle cx="18" cy="18" r={r} fill="none" strokeWidth="3" className="stroke-muted-foreground/25" />
-              {used != null && used > 0 && (
-                <circle cx="18" cy="18" r={r} fill="none" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${(used / 100) * c} ${c}`}
-                  className={tone === "down" ? "stroke-down" : tone === "warn" ? "stroke-warn" : "stroke-primary"} />
-              )}
-            </svg>
-            <span aria-hidden="true" className={cn("absolute h-2 w-2 rounded-full", (risk.pnlNet ?? 0) > 0 ? "bg-up" : (risk.pnlNet ?? 0) < 0 ? "bg-down" : "bg-muted-foreground/50")} />
-            <span className="sr-only">{[t("today.title"), pnl ?? t("today.noTrades"), limitLine].filter(Boolean).join(". ")}</span>
-          </Link>
-        </TooltipTrigger>
-        <TooltipContent side="right" sideOffset={10}>
-          <div className="font-medium">{t("today.title")}{pnl && <span className={cn("ml-2 tabular-nums", pnlCls)}>{pnl}</span>}</div>
-          <div className="text-muted-foreground">{tradesLine}{limitLine && <> · {limitLine}</>}</div>
-          <LiveBadge live={risk.live} className="mt-0.5" />
-        </TooltipContent>
-      </Tooltip>
+      <section aria-label={t("sidebar.favorites")} className="border-b border-[var(--glass-border)] pb-1.5 pt-1.5">
+        <ul className="space-y-0.5">
+          {items.map((i) => <RailLink key={`pin-${i.href}`} item={i} ctx={ctx} label={i.name} icon={i.icon} self={isNavActive(i, ctx.location)} />)}
+        </ul>
+      </section>
     );
   }
-
   return (
-    <Link
-      href="/risk"
-      title={t("today.open")}
-      className="block rounded-xl px-2.5 py-1.5 outline-none transition-[background-color] duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span className="flex items-baseline gap-2">
-        <span className="text-xs font-medium text-foreground">{t("today.title")}</span>
-        <span className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">{tradesLine}</span>
-        {pnl && <span className={cn("text-xs font-semibold tabular-nums", pnlCls)}>{pnl}</span>}
-      </span>
-      {used != null && (
-        <>
-          <span
-            role="meter"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(used)}
-            aria-label={t("today.usedAria", { pct: fmtRate(used / 100) })}
-            className="mt-1.5 block h-1 overflow-hidden rounded-full bg-[var(--glass-border)]"
-          >
-            <span className={cn("block h-full origin-left rounded-full transition-transform duration-[var(--dur-3)] ease-smooth", barCls)} style={{ transform: `scaleX(${used / 100})` }} />
-          </span>
-          {limitLine && <span className={cn("mt-1 block truncate text-2xs", tone === "down" ? "text-down" : tone === "warn" ? "text-warn" : "text-muted-foreground")}>{limitLine}</span>}
-        </>
-      )}
-      <LiveBadge live={risk.live} className="mt-0.5 flex max-w-full" />
-    </Link>
+    <section aria-labelledby="nav-group-pinned" className="pt-1.5">
+      <h3 id="nav-group-pinned" className="micro-label flex items-center gap-1.5 px-3 pb-0.5" title={t("sidebar.pinnedTitle")}>
+        <Pin className="h-3 w-3 fill-current" aria-hidden="true" />{t("sidebar.favorites")}
+      </h3>
+      <ul className="space-y-0.5">
+        {items.map((i) => <ChildLink key={`pin-${i.href}`} item={i} ctx={ctx} pinnedRow />)}
+      </ul>
+    </section>
+  );
+}
+
+/** «G + буква» until the first quick jump: a click opens «Помощь» (every letter), × folds it away for good. */
+function GoHintChip({ onDone }: { onDone: () => void }) {
+  const { t } = shellI18n.useT();
+  return (
+    <span className="group/hint inline-flex min-w-0 items-center gap-0.5">
+      <button
+        type="button"
+        onClick={() => { onDone(); openHelp(); }}
+        title={`${t("sidebar.goHint")}. ${t("sidebar.goHintOpen")}`}
+        className="inline-flex min-w-0 items-center gap-1 truncate rounded-full px-1 py-0.5 outline-none transition-colors duration-[var(--dur-1)] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Kbd>G</Kbd>{t("sidebar.goLetter")}
+      </button>
+      <button
+        type="button"
+        onClick={onDone}
+        aria-label={t("sidebar.goHintDismiss")}
+        title={t("sidebar.goHintDismiss")}
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-full opacity-60 outline-none transition-opacity duration-[var(--dur-1)] hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <X className="h-3 w-3" aria-hidden="true" />
+      </button>
+    </span>
   );
 }
 
@@ -382,11 +356,15 @@ function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
 export function SidebarNav({ location }: { location: string }) {
   const { groups, simple } = useNavModel();
   const { t } = shellI18n.useT();
-  const { user } = useAuth();
+  const { user, isCurator, permissions } = useAuth();
   const [moreOpen, setMoreOpen] = useMoreOpen(user?.traderName);
+  const [goHint, doneGoHint] = useGoHint();
   const { state, isMobile, toggleSidebar } = useSidebar();
   const rail = state === "collapsed" && !isMobile;
   const pins = usePinnedNav(user?.role);
+  const pinned = React.useMemo(() => pinnedNavItems(pins.pins, isCurator, permissions.nav), [pins.pins, isCurator, permissions.nav]);
+  /** Rows minus pinned pages (a sub-page lifted to a row is listed once, in «Закреплённые»). */
+  const rowsOf = (rows: readonly NavItem[]) => withoutPinned(rows, pins.pins);
   const badges = useShellBadges();
   const { data: risk } = useRiskToday();
   // The footer shows the trader's own day; a curator without limits or trades today gets no empty card.
@@ -411,11 +389,13 @@ export function SidebarNav({ location }: { location: string }) {
       window.clearTimeout(timer);
       const v = (e as CustomEvent<boolean>).detail !== false;
       setGo(v);
+      // The first quick jump: the footer hint has done its job.
+      if (v) doneGoHint();
       if (v) timer = window.setTimeout(() => setGo(false), 1300);
     };
     window.addEventListener(GO_MODE_EVENT, on);
     return () => { window.removeEventListener(GO_MODE_EVENT, on); window.clearTimeout(timer); };
-  }, []);
+  }, [doneGoHint]);
   React.useEffect(() => setGo(false), [location]);
 
   // Keep the current section visible in the (scrollable) list after navigation.
@@ -437,58 +417,57 @@ export function SidebarNav({ location }: { location: string }) {
   return (
     <nav aria-label={t("sidebar.navLabel")} data-tour="nav" className="flex min-h-0 flex-1 flex-col">
       <div ref={listRef} className={cn("scrollbar-none min-h-0 flex-1 overflow-y-auto pb-2", rail ? "px-1.5" : "px-2")}>
+        <PinnedGroup items={pinned} ctx={ctx} rail={rail} />
         {simple ? (
           <>
             <ul className="space-y-0.5 pt-1.5">
-              {simple.primary.map((row) => (rail ? <RailRow key={row.href} row={row} ctx={ctx} /> : <Row key={row.href} row={row} ctx={ctx} />))}
+              {rowsOf(simple.primary).map((row) => (rail ? <RailRow key={row.href} row={row} ctx={ctx} /> : <Row key={row.href} row={row} ctx={ctx} />))}
             </ul>
-            <MoreGroup simple={simple} ctx={ctx} rail={rail} open={moreOpen} setOpen={setMoreOpen} />
+            <MoreGroup simple={{ ...simple, more: rowsOf(simple.more) }} ctx={ctx} rail={rail} open={moreOpen} setOpen={setMoreOpen} />
           </>
         ) : groups.map((g, gi) =>
           rail ? (
             <section key={g.id} aria-label={g.label} className={cn(gi === 0 ? "pt-1.5" : "mt-1.5 border-t border-[var(--glass-border)] pt-1.5")}>
               <ul className="space-y-0.5">
-                {g.rows.map((row) => <RailRow key={row.href} row={row} ctx={ctx} />)}
+                {rowsOf(g.rows).map((row) => <RailRow key={row.href} row={row} ctx={ctx} />)}
               </ul>
             </section>
           ) : (
             <section key={g.id} aria-labelledby={`nav-group-${g.id}`} className="pt-2.5 first:pt-1.5">
               <h3 id={`nav-group-${g.id}`} className="micro-label px-3 pb-0.5">{g.label}</h3>
               <ul className="space-y-0.5">
-                {g.rows.map((row) => <Row key={row.href} row={row} ctx={ctx} />)}
+                {rowsOf(g.rows).map((row) => <Row key={row.href} row={row} ctx={ctx} />)}
               </ul>
             </section>
           ),
         )}
       </div>
-      <div className={cn("border-t border-[var(--glass-border)]", rail ? "space-y-1 px-1.5 py-2" : "px-2 pb-1.5 pt-1")}>
-        {showToday && risk && <TodayCard risk={risk} rail={rail} />}
-        <div className={cn("flex items-center text-2xs text-muted-foreground", rail ? "justify-center" : "justify-between gap-2 pl-2.5 pr-0.5")}>
-          {!rail && (
-            <span className="inline-flex min-w-0 items-center gap-1 truncate" title={t("sidebar.goHint")}>
-              <Kbd>G</Kbd>{t("sidebar.goLetter")}
-            </span>
-          )}
+      {(showToday || !isMobile) && (
+        <div className={cn("border-t border-[var(--glass-border)]", rail ? "space-y-1 px-1.5 py-2" : "px-2 pb-1.5 pt-1")}>
+          {showToday && risk && <TodayCard risk={risk} rail={rail} />}
           {!isMobile && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={toggleSidebar}
-                  aria-label={rail ? t("sidebar.fromRail") : t("sidebar.toRail")}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full outline-none transition-[background-color,color] duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {rail ? <PanelLeftOpen className="h-4 w-4" aria-hidden="true" /> : <PanelLeftClose className="h-4 w-4" aria-hidden="true" />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side={rail ? "right" : "top"} className="flex items-center gap-2">
-                {rail ? t("sidebar.fromRail") : t("sidebar.toRail")}
-                <Kbd keys={[MOD_KEY, "B"]} />
-              </TooltipContent>
-            </Tooltip>
+            <div className={cn("flex items-center text-2xs text-muted-foreground", rail ? "justify-center" : "justify-end gap-2 pl-1.5 pr-0.5")}>
+              {!rail && goHint && <span className="mr-auto min-w-0"><GoHintChip onDone={doneGoHint} /></span>}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={toggleSidebar}
+                    aria-label={rail ? t("sidebar.fromRail") : t("sidebar.toRail")}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full outline-none transition-[background-color,color] duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {rail ? <PanelLeftOpen className="h-4 w-4" aria-hidden="true" /> : <PanelLeftClose className="h-4 w-4" aria-hidden="true" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side={rail ? "right" : "top"} className="flex items-center gap-2">
+                  {rail ? t("sidebar.fromRail") : t("sidebar.toRail")}
+                  <Kbd keys={[MOD_KEY, "B"]} />
+                </TooltipContent>
+              </Tooltip>
+            </div>
           )}
         </div>
-      </div>
+      )}
     </nav>
   );
 }
