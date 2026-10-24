@@ -20,6 +20,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { personName } from "@/i18n";
 import { CriterionRow, Field, StageLadder, selectCls } from "./bits";
+import { BindingLine, PaceBar, StageDays } from "./realism";
 import { criterionLabel, headlineText, noteText, stageName, stageTitle } from "./labels";
 
 /** Exams of a trader: own page for self, `?user=` for staff looking at someone else. */
@@ -97,6 +98,7 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
             <p className="text-sm text-muted-foreground">
               {[personName(r.user), stagePart, t("person.meta.asOf", { date: fmtDate(r.today) })].join(" · ")}
             </p>
+            <StageDays days={r.stageDays} signal={r.stageSignal} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {/* Connectedness: the exam is the step that moves the trader up — one click from the report. */}
@@ -110,6 +112,12 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
               : r.nextStage && r.stage && (isSelf || isStaff) && <RequestButton user={r.user} ready={r.ready} />}
           </div>
         </div>
+        {(r.bindingConstraint || r.pace) && (
+          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--field-border)] pt-3">
+            <BindingLine b={r.bindingConstraint} />
+            <PaceBar pace={r.pace} />
+          </div>
+        )}
       </Panel>
 
       <StatGrid>
