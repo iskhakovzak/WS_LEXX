@@ -172,8 +172,8 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
     });
   };
   return (
-    <form onSubmit={submit} className="tile grid grid-cols-2 items-end gap-2 p-3 sm:grid-cols-[3.5rem_minmax(7.5rem,1fr)_5.5rem_auto]">
-      <span className="col-span-2 text-sm font-semibold text-foreground sm:col-span-1 sm:pb-2">{s.year}</span>
+    <form onSubmit={submit} className="tile grid grid-cols-2 items-end gap-2 p-3 @md:grid-cols-[3.5rem_minmax(7.5rem,1fr)_5.5rem_auto]">
+      <span className="col-span-2 text-sm font-semibold text-foreground @md:col-span-1 @md:pb-2">{s.year}</span>
       <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
         {t("capital.capitalLabel")}
         <Input inputMode="decimal" value={capital} onChange={(e) => setCapital(e.target.value)} placeholder={t("capital.notSet")} aria-invalid={!capValid} className={cn("tabular-nums", !capValid && "border-destructive")} />
@@ -182,10 +182,10 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
         {t("capital.goalLabel")}
         <Input inputMode="decimal" value={goal} onChange={(e) => setGoal(e.target.value)} aria-invalid={!goalValid} className={cn("tabular-nums", !goalValid && "border-destructive")} />
       </label>
-      <Button type="submit" size="sm" disabled={!dirty || !capValid || !goalValid || save.isPending} className="col-span-2 sm:col-span-1">
+      <Button type="submit" size="sm" disabled={!dirty || !capValid || !goalValid || save.isPending} className="col-span-2 @md:col-span-1">
         <Save className="h-4 w-4" /> {save.isPending ? t("capital.saving") : commonI18n.t("actions.save")}
       </Button>
-      <p className="col-span-2 flex flex-wrap gap-x-3 text-2xs text-muted-foreground sm:col-span-4">
+      <p className="col-span-2 flex flex-wrap gap-x-3 text-2xs text-muted-foreground @md:col-span-4">
         {clearing ? (
           <span className="text-warn">{t("capital.clearingWarn", { year: s.year })}</span>
         ) : capNum != null && capValid ? (
@@ -212,7 +212,9 @@ export function CapitalPanel({ data }: { data: AdminResponse }) {
       fill
       className="lg:col-span-6"
     >
-      <div className="flex flex-col gap-2">
+      {/* @container: the year rows go 4-up only when the panel (not the viewport) is wide enough — at 1024 the
+          half-width panel pushed «Сохранить» 100 px out of the card. */}
+      <div className="@container flex flex-col gap-2">
         {years.map((s) => <CapitalRow key={s.year} s={s} onSaved={() => undefined} />)}
         <p className="text-2xs text-muted-foreground">{t("capital.footnote")}</p>
       </div>

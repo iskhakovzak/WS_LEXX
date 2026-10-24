@@ -66,11 +66,15 @@ export function RegimePanel({ regime, asOf }: { regime: Regime; asOf: string }) 
   const by = (a: Axis) => regime.drivers.filter((d) => d.axis === a).sort((x, y) => Math.abs(y.impact * y.weight) - Math.abs(x.impact * x.weight));
   return (
     <Panel title={t("regime.title")} description={asOf} icon={Gauge} fill>
-      <p className="mb-3 text-xl font-semibold leading-tight tracking-tight">{regime.headline}</p>
-      <div className="grid gap-[var(--grid-gap)] md:grid-cols-3">
-        <AxisBlock axis="trend" label={regime.trend.label} score={regime.trend.score} keyName={regime.trend.key} drivers={by("trend")} />
-        <AxisBlock axis="vol" label={regime.vol.label} score={regime.vol.score} keyName={regime.vol.key} drivers={by("vol")} />
-        <AxisBlock axis="risk" label={regime.risk.label} score={regime.risk.score} keyName={regime.risk.key} drivers={by("risk")} />
+      <p className="mb-3 text-xl font-semibold leading-heading tracking-tight">{regime.headline}</p>
+      {/* Three columns only when the panel itself is wide (≥ 36rem): in the 7/12 column at 1024 px they were 115 px
+          wide and «Обычная волатильность» ran out of its card. */}
+      <div className="@container">
+        <div className="grid gap-grid @[36rem]:grid-cols-3">
+          <AxisBlock axis="trend" label={regime.trend.label} score={regime.trend.score} keyName={regime.trend.key} drivers={by("trend")} />
+          <AxisBlock axis="vol" label={regime.vol.label} score={regime.vol.score} keyName={regime.vol.key} drivers={by("vol")} />
+          <AxisBlock axis="risk" label={regime.risk.label} score={regime.risk.score} keyName={regime.risk.key} drivers={by("risk")} />
+        </div>
       </div>
       <p className="mt-3 text-xs text-muted-foreground">{t("regime.footnote")}</p>
     </Panel>

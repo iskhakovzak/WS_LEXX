@@ -100,7 +100,7 @@ export function AttentionPanel({ data, onOpenTrader, onTemplate, onReviewDay, ex
       {rows.length === 0 ? (
         <EmptyState compact icon={Sparkles} title={t("today.allClear")} description={t("today.allClearHint")} />
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="@container flex flex-col gap-1.5">
           {shown.map((r) => (r.type === "cost"
             ? <CostRow key={r.key} row={r} onOpenTrader={onOpenTrader} onReviewDay={onReviewDay} />
             : r.type === "oneOnOne"
@@ -133,8 +133,8 @@ function CostRow({ row, onOpenTrader, onReviewDay }: {
   const day = fmtDate(item.date, "dayMonth");
   const journalDay = curatorLinks.journalDay(item.trader, item.date);
   return (
-    <li className={cn("tile flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-3", item.resolved && "opacity-70", row.cont && "-mt-1 ml-4 border-l-2 border-[var(--glass-border)]")}>
-      <div className="flex min-w-0 items-baseline gap-2 sm:w-32 sm:shrink-0 sm:flex-col sm:gap-0">
+    <li className={cn("tile flex min-w-0 flex-col gap-2 px-3 py-2 @xl:flex-row @xl:items-center @xl:gap-3", item.resolved && "opacity-70", row.cont && "-mt-1 ml-4 border-l-2 border-[var(--glass-border)]")}>
+      <div className="flex min-w-0 items-baseline gap-2 @xl:w-32 @xl:shrink-0 @xl:flex-col @xl:gap-0">
         {/* Another day of the trader above: the name is not repeated (the group reads as one trader). */}
         {row.cont ? <span className="sr-only">{personName(item.trader)}</span> : (
           <button type="button" onClick={() => onOpenTrader(item.trader)} className="max-w-full truncate text-left text-sm font-medium text-foreground hover:text-primary" title={personName(item.trader)}>
@@ -148,7 +148,7 @@ function CostRow({ row, onOpenTrader, onReviewDay }: {
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {item.reasons.map((r, i) => <ReasonChip key={`${r.kind}:${i}`} r={r} />)}
       </div>
-      <div className="flex shrink-0 items-center justify-end gap-1.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
         <span className="flex w-24 flex-col items-end leading-tight">
           <span className={cn("text-sm font-medium tabular-nums", item.costNet < 0 ? "text-down" : "text-muted-foreground")} title={t("costQueue.totalTitle")}>
             {item.costNet < 0 ? fmtUsd(item.costNet, { signed: true, decimals: 0 }) : "—"}
