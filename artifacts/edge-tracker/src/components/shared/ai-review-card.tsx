@@ -97,7 +97,7 @@ function ReviewBody({ d }: { d: ReviewDto }) {
     <div className="space-y-3">
       <p className="border-l-2 border-foreground/60 pl-3 text-[0.9375rem] font-medium leading-relaxed text-foreground">{r.verdict.headline}</p>
       {d.facts ? <DayFactsStrip f={d.facts} /> : null}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Column title={t("review.wentWell")} icon={ThumbsUp} tone="up" points={r.wentWell} />
         <Column title={t("review.wentWrong")} icon={AlertTriangle} tone="down" points={r.wentWrong} />
       </div>
@@ -197,7 +197,7 @@ export function AiReviewCard({ subject, className }: { subject: ReviewSubject; c
         <div className="space-y-3" aria-busy="true">
           {busy ? <p className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t(subject.kind === "trade" ? "review.stepsTrade" : "review.stepsDay")}</p> : null}
           <Skeleton className="h-4 w-3/4" />
-          <div className="grid gap-3 md:grid-cols-2">{[0, 1].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{[0, 1].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}</div>
           <Skeleton className="h-14 rounded-xl" />
         </div>
       ) : null}
