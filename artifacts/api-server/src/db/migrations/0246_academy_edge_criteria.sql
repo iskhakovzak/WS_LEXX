@@ -6,14 +6,22 @@
 -- here (staff edit / disable them like the others). Labels are the Russian seed texts (academyPath.seedCriteria), so
 -- readers in EN / UZ see them translated. Idempotent: a live row of the metric is never duplicated.
 
-INSERT INTO academy_stage_criteria (from_stage, metric, op, value, window_days, label, enabled, sort_order, updated_by)
-SELECT 'junior', 'edge_margin_pp', '>=', 2, 40, 'Запас над безубыточным винрейтом ≥ 2 п.п.', TRUE,
-       COALESCE((SELECT MAX(sort_order) FROM academy_stage_criteria WHERE archived_at IS NULL), 0) + 1, 'system'
- WHERE EXISTS (SELECT 1 FROM academy_stage_criteria WHERE archived_at IS NULL)
-   AND NOT EXISTS (SELECT 1 FROM academy_stage_criteria WHERE from_stage = 'junior' AND metric = 'edge_margin_pp' AND archived_at IS NULL);
+-- Guarded: a database whose criteria table predates the full shape (op / value / window_days) is left alone.
 
-INSERT INTO academy_stage_criteria (from_stage, metric, op, value, window_days, label, enabled, sort_order, updated_by)
-SELECT 'junior', 'expectancy_lb', '>=', 0, 120, 'Нижняя граница ожидания ≥ $0 за 120 дней', TRUE,
-       COALESCE((SELECT MAX(sort_order) FROM academy_stage_criteria WHERE archived_at IS NULL), 0) + 1, 'system'
- WHERE EXISTS (SELECT 1 FROM academy_stage_criteria WHERE archived_at IS NULL)
-   AND NOT EXISTS (SELECT 1 FROM academy_stage_criteria WHERE from_stage = 'junior' AND metric = 'expectancy_lb' AND archived_at IS NULL);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'academy_stage_criteria' AND column_name = 'window_days') THEN
+    INSERT INTO academy_stage_criteria (from_stage, metric, op, value, window_days, label, enabled, sort_order, updated_by)
+    SELECT 'junior', 'edge_margin_pp', '>=', 2, 40, 'Запас над безубыточным винрейтом ≥ 2 п.п.', TRUE,
+           COALESCE((SELECT MAX(sort_order) FROM academy_stage_criteria WHERE archived_at IS NULL), 0) + 1, 'system'
+     WHERE EXISTS (SELECT 1 FROM academy_stage_criteria WHERE archived_at IS NULL)
+       AND NOT EXISTS (SELECT 1 FROM academy_stage_criteria WHERE from_stage = 'junior' AND metric = 'edge_margin_pp' AND archived_at IS NULL);
+
+    INSERT INTO academy_stage_criteria (from_stage, metric, op, value, window_days, label, enabled, sort_order, updated_by)
+    SELECT 'junior', 'expectancy_lb', '>=', 0, 120, 'Нижняя граница ожидания ≥ $0 за 120 дней', TRUE,
+           COALESCE((SELECT MAX(sort_order) FROM academy_stage_criteria WHERE archived_at IS NULL), 0) + 1, 'system'
+     WHERE EXISTS (SELECT 1 FROM academy_stage_criteria WHERE archived_at IS NULL)
+       AND NOT EXISTS (SELECT 1 FROM academy_stage_criteria WHERE from_stage = 'junior' AND metric = 'expectancy_lb' AND archived_at IS NULL);
+  END IF;
+END $$;
