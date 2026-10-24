@@ -305,14 +305,15 @@ export default {
     toDashboard: "На дашборд",
   },
   /** Opening intro (components/shell/welcome-intro.tsx): {name} is set in an italic serif. */
+  // The opening intro is English in every language (owner, 2026-10-24).
   intro: {
-    welcome: "Добро пожаловать, {name}",
-    trader: "трейдер",
+    welcome: "Welcome, {name}",
+    trader: "Trader",
     greeting: {
-      night: "Доброй ночи, {name}",
-      morning: "Доброе утро, {name}",
-      day: "Добрый день, {name}",
-      evening: "Добрый вечер, {name}",
+      night: "Good night, {name}",
+      morning: "Good morning, {name}",
+      day: "Good afternoon, {name}",
+      evening: "Good evening, {name}",
     },
   },
   app: {

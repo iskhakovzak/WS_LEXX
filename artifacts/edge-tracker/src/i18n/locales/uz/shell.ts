@@ -299,14 +299,15 @@ export default {
     askStaff: "Uni ochish uchun kurator yoki desk administratoriga murojaat qiling.",
     toDashboard: "Boshqaruv paneliga",
   },
+  // The opening intro is English in every language (owner, 2026-10-24).
   intro: {
-    welcome: "Xush kelibsiz, {name}",
-    trader: "treyder",
+    welcome: "Welcome, {name}",
+    trader: "Trader",
     greeting: {
-      night: "Xayrli tun, {name}",
-      morning: "Xayrli tong, {name}",
-      day: "Xayrli kun, {name}",
-      evening: "Xayrli kech, {name}",
+      night: "Good night, {name}",
+      morning: "Good morning, {name}",
+      day: "Good afternoon, {name}",
+      evening: "Good evening, {name}",
     },
   },
   app: {

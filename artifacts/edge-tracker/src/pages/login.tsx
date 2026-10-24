@@ -10,6 +10,7 @@ import { AlertCircle, ArrowRight, Check, Eye, EyeOff, Loader2, ArrowUpFromLine, 
 import { LanguageSegmented } from "@/i18n/language-switcher";
 import { authI18n } from "@/i18n/ns/auth";
 import { ForcedPasswordChange } from "@/components/auth/forced-password-change";
+import { LoginSmoke } from "@/components/auth/login-smoke";
 
 /**
  * Sign-in (owner decision 2026-10-17): no roster before sign-in — the name is TYPED (the API resolves it across
@@ -246,12 +247,8 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-background px-4 pb-10 pt-[calc(3.75rem+env(safe-area-inset-top))]">
-      {/* Ambient colour behind the glass */}
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0">
-        <div className="absolute left-1/2 top-[-18%] h-[520px] w-[820px] max-w-[160vw] -translate-x-1/2 rounded-full bg-primary/15 blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] h-[480px] w-[560px] max-w-[120vw] rounded-full bg-chart-2/10 blur-[110px]" />
-        <div className="absolute bottom-[10%] left-[-12%] h-[360px] w-[420px] max-w-[100vw] rounded-full bg-chart-5/10 blur-[100px]" />
-      </div>
+      {/* The intro's drifting smoke stays behind the glass (the intro fades into the same scene) */}
+      <LoginSmoke />
 
       {/* Language before sign-in (saved locally, then to the profile after login: i18n/locale-sync.tsx). */}
       <div className="absolute right-4 top-[calc(1rem+env(safe-area-inset-top))] z-raised">

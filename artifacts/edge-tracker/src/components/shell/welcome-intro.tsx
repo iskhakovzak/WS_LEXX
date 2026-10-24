@@ -1,5 +1,5 @@
 /**
- * Opening intro: a full-screen «Добро пожаловать, трейдер» (sign-in screen) or «Доброе утро, Закир» (first signed-in
+ * Opening intro, in English for every language: «Welcome, Trader» (sign-in screen) or «Good morning, Zakir» (first signed-in
  * load of the NY day) over slowly drifting smoke, then it fades away to the app, which renders underneath the whole
  * time (nothing waits on it). When it plays and when it never does: lib/welcome-intro.ts.
  *
@@ -15,9 +15,10 @@ import { BASE } from "@/lib/api";
 import {
   dayPartNY, decideIntro, firstName, markIntroShown, type IntroEnv, type IntroKind, type KeyValueStore,
 } from "@/lib/welcome-intro";
-import { personName } from "@/i18n";
+import { personNameFor } from "@/i18n";
 import { rich, slots } from "@/i18n/rich";
 import { shellI18n } from "@/i18n/ns/shell";
+import { latinizeName } from "@workspace/text-search";
 import { startSmoke } from "./intro-smoke";
 
 /** Hold after the words are in (their CSS animation: 0.1 s delay + 1.2 s, index.css `.intro-text`). */
@@ -31,6 +32,12 @@ const REDUCED_OUT_MS = 300;
 
 /** Italic serif for the name / «трейдер»: system faces only (Palatino on Windows/macOS, Georgia as the fallback). */
 const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
+
+/** The intro is English in every language (owner, 2026-10-24): the Latin display name, else a transliteration. */
+function latinShown(stored: string | null | undefined): string {
+  const v = personNameFor(stored, "en");
+  return /[Ѐ-ӿ]/.test(v) ? latinizeName(v).trim() || v : v;
+}
 
 function storage(kind: "sessionStorage" | "localStorage"): KeyValueStore | null {
   try { return window[kind]; } catch { return null; }
@@ -73,7 +80,7 @@ export function WelcomeIntro() {
   }, [kind]);
 
   if (!kind) return null;
-  const name = kind === "greeting" && user?.role !== "guest" ? firstName(personName(user?.traderName)) : "";
+  const name = kind === "greeting" && user?.role !== "guest" ? firstName(latinShown(user?.traderName)) : "";
   return <IntroOverlay kind={kind} name={name} light={theme === "light"} onDone={close} />;
 }
 
