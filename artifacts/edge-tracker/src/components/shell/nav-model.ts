@@ -10,7 +10,8 @@
  *   experienced tiers (Трейдер, Сеньор) keep the full menu. Волна 1, item 1.11: the ladder has no «Стажёр» any more, so
  *   the desk setting nav.simpleUntilTier never goes below «junior» (an old «trainee» value means «newcomers» = juniors);
  *   a trader without a resolved tier counts as a junior (the stage default).
- * - Phone tab bar for juniors (item 1.3): Дашборд · План · Дневник (labelled «Вечер») · Сделки · Ещё.
+ * - Phone dock (mobile wave): Главная · Сделки · Дневник · Аналитика · Риск · Ещё for everyone (juniors see the journal
+ *   as «Вечер», the evening step of the day); «План дня» heads the juniors' sheet.
  * - Sections closed for the viewer's ladder stage (desk setting access.sections → GET /api/permissions/me nav.blocked;
  *   staff never): gone from the sidebar, the phone sheet, the palette and pinned items (`navItemOpen`); a closed row's
  *   open pages move up as rows of their own. The route guard (App.tsx) shows «Раздел закрыт» for a closed URL
@@ -95,10 +96,12 @@ export function isSimpleNav(v: { role: string | null | undefined; tier: string |
 
 /** Primary rows of the simple menu, in order. `/ratings` opens on the quests tab as «Мой прогресс». */
 export const SIMPLE_PRIMARY = ["/", "/game-plan", "/playbook", "/trainer", "/academy/my", "/journal", "/trades", "/ratings"] as const;
-/** Phone tab bar in the simple menu (the 5th slot is «Ещё»): the day's loop — morning plan, evening journal, trades. */
-export const SIMPLE_MOBILE_TABS = ["/", "/game-plan", "/journal", "/trades"] as const;
-/** Phone tab bar in the full menu. */
-export const MOBILE_TABS = ["/", "/game-plan", "/trades", "/journal"] as const;
+/**
+ * Phone bottom dock (below 768 px): the five main screens, the same for every menu — Главная, Сделки, Дневник,
+ * Аналитика, Риск — then «Ещё» (the sheet with the rest of the sidebar). A screen the viewer cannot open (closed for the
+ * stage, staff-only) is left out and stays reachable through «Ещё» / the palette; the dock never shows a dead tab.
+ */
+export const MOBILE_TABS = ["/", "/trades", "/journal", "/analytics", "/risk"] as const;
 
 export type SimpleNav = {
   /** Seven primary rows (labels adapted: «Сегодня», «Мой прогресс»). */
@@ -184,17 +187,46 @@ function withShort(i: NavItem, label: () => string): NavItem {
   return copy;
 }
 
-/** The phone tab bar: four sections (the 5th slot is «Ещё»). Juniors see the journal as «Вечер» (the evening step). */
+/**
+ * The phone dock: up to five main screens (the 6th slot is «Ещё»), in MOBILE_TABS order, only those this viewer may
+ * open (`groups` is already filtered by role, desk switches and stage-closed sections). The home tab is labelled
+ * «Главная»; juniors see the journal as «Вечер» (the evening step).
+ */
 export function mobileTabs(groups: VisibleGroup[], simple: SimpleNav | null): NavItem[] {
-  if (simple) {
-    return SIMPLE_MOBILE_TABS.flatMap((h) => {
-      const i = simple.primary.find((x) => x.href === h);
-      if (!i) return [];
-      return [h === "/journal" ? withShort(i, () => shellI18n.t("simple.evening")) : i];
-    });
-  }
   const all = groups.flatMap((g) => g.items);
-  return MOBILE_TABS.flatMap((h) => all.find((i) => i.href === h) ?? []);
+  return MOBILE_TABS.flatMap((h) => {
+    const i = all.find((x) => x.href === h);
+    if (!i) return [];
+    if (h === "/") return [withShort(i, () => shellI18n.t("mobile.home"))];
+    if (h === "/journal" && simple) return [withShort(i, () => shellI18n.t("simple.evening"))];
+    return [i];
+  });
+}
+
+/**
+ * The phone sheet behind «Ещё» lists the rest of the sidebar: the dock's own screens are taken out (their children —
+ * Статистика, Поведение… — stay). Label getters survive (the copy keeps property descriptors).
+ */
+export function withoutDock(groups: VisibleGroup[], dock: readonly string[]): VisibleGroup[] {
+  if (!dock.length) return groups;
+  const drop = new Set(dock);
+  return groups
+    .map((g) => {
+      const copy = Object.create(Object.getPrototypeOf(g), Object.getOwnPropertyDescriptors(g)) as VisibleGroup;
+      copy.items = g.items.filter((i) => !drop.has(i.href));
+      return copy;
+    })
+    .filter((g) => g.items.length);
+}
+
+/**
+ * Simple menu in the sheet: the dock's screens out of «Главное» (a dock row's children — Разбор дня, Отчёт недели under
+ * the journal — move up as rows of their own) and out of the folded «Ещё» list.
+ */
+export function simpleWithoutDock(simple: SimpleNav, dock: readonly string[]): SimpleNav {
+  const drop = new Set(dock);
+  const primary = simple.primary.flatMap((r) => (drop.has(r.href) ? (r.children ?? []).filter((c) => !drop.has(c.href)) : [r]));
+  return { ...simple, primary, moreItems: simple.moreItems.filter((i) => !drop.has(i.href)) };
 }
 
 // ─── Sections closed per stage ───────────────────────────────────────────────

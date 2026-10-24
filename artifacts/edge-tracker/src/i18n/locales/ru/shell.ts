@@ -122,6 +122,8 @@ export default {
   mobile: {
     navLabel: "Быстрая навигация",
     more: "Ещё",
+    /** Phone dock label of the dashboard (the first tab). */
+    home: "Главная",
     hasWarnings: "есть предупреждения",
     needsAttention: "требует внимания",
     allSections: "Все разделы",

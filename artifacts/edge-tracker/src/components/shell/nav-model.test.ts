@@ -95,22 +95,46 @@ describe("simpleNav", () => {
   });
 });
 
-describe("mobileTabs", () => {
-  it("juniors: Дашборд, План, Вечер (the journal), Сделки; full: Дашборд, План, Сделки, Дневник (5th slot = «Ещё»)", async () => {
+describe("mobileTabs (phone dock)", () => {
+  it("everyone: Главная, Сделки, Дневник, Аналитика, Риск (6th slot = «Ещё»); juniors see the journal as «Вечер»", async () => {
     const groups = visibleNav(false);
     const simpleModel = simpleNav(groups);
-    const simple = mobileTabs(groups, simpleModel);
-    expect(simple.map((i) => i.href)).toEqual(["/", "/game-plan", "/journal", "/trades"]);
-    expect(simple.map((i) => i.short ?? i.name)).toEqual(["Дашборд", "План", "Вечер", "Сделки"]);
-    // Only the tab is relabelled: the sidebar row keeps «Дневник».
+    const dock = ["/", "/trades", "/journal", "/analytics", "/risk"];
+    expect(mobileTabs(groups, null).map((i) => i.href)).toEqual(dock);
+    expect(mobileTabs(visibleNav(true), null).map((i) => i.href)).toEqual(dock);
+    expect(mobileTabs(groups, simpleModel).map((i) => i.href)).toEqual(dock);
+    expect(mobileTabs(groups, null).map((i) => i.short ?? i.name)).toEqual(["Главная", "Сделки", "Дневник", "Аналитика", "Риск"]);
+    expect(mobileTabs(groups, simpleModel).map((i) => i.short ?? i.name)[2]).toBe("Вечер");
+    // Only the tab is relabelled: the sidebar rows keep «Дашборд» / «Дневник».
     expect(simpleModel.primary.find((i) => i.href === "/journal")!.name).toBe("Дневник");
+    expect(groups[0]!.items.find((i) => i.href === "/")!.name).toBe("Дашборд");
     await setLang("en", { source: "init" });
+    expect(mobileTabs(groups, null).map((i) => i.short ?? i.name)[0]).toBe("Home");
     expect(mobileTabs(groups, simpleModel).map((i) => i.short ?? i.name)[2]).toBe("Evening");
     await setLang("uz", { source: "init" });
+    expect(mobileTabs(groups, null).map((i) => i.short ?? i.name)[0]).toBe("Asosiy");
     expect(mobileTabs(groups, simpleModel).map((i) => i.short ?? i.name)[2]).toBe("Kechqurun");
-    await setLang("ru", { source: "init" });
-    expect(mobileTabs(groups, null).map((i) => i.href)).toEqual(["/", "/game-plan", "/trades", "/journal"]);
-    expect(mobileTabs(visibleNav(true), null).map((i) => i.href)).toEqual(["/", "/game-plan", "/trades", "/journal"]);
+  });
+
+  it("a screen closed for the stage is left out of the dock (reachable nowhere, so no dead tab)", () => {
+    const nav = { blocked: ["/risk", "/analytics"] };
+    expect(mobileTabs(visibleNav(false, nav), null).map((i) => i.href)).toEqual(["/", "/trades", "/journal"]);
+  });
+
+  it("the sheet lists the rest: dock screens out, their children kept (juniors' Разбор дня moves up)", async () => {
+    const { withoutDock, simpleWithoutDock, sheetPrimaryItems } = await import("./nav-model");
+    const groups = visibleNav(false);
+    const dock = mobileTabs(groups, null).map((i) => i.href);
+    const rest = withoutDock(groups, dock).flatMap((g) => g.items.map((i) => i.href));
+    for (const h of dock) expect(rest).not.toContain(h);
+    expect(rest).toEqual(expect.arrayContaining(["/stats", "/behavior", "/day-report", "/game-plan", "/playbook"]));
+    expect(withoutDock(groups, dock)[0]!.label).toBe(groups[0]!.label);
+    const s = simpleWithoutDock(simpleNav(groups), dock);
+    const primary = sheetPrimaryItems(s).map((i) => i.href);
+    expect(primary).toContain("/game-plan");
+    expect(primary).toContain("/day-report");
+    for (const h of dock) expect(primary).not.toContain(h);
+    for (const h of dock) expect(s.moreItems.map((i) => i.href)).not.toContain(h);
   });
 });
 
