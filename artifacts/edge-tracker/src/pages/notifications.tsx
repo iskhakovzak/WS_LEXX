@@ -291,7 +291,7 @@ export default function NotificationsPage() {
                   <Archive className="h-3.5 w-3.5" aria-hidden="true" /> {t("page.toArchive")}
                 </button>
               ) : (
-                <button type="button" onClick={() => { actions.unarchive.mutate(selectedIds); clearSelection(); }} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium">
+                <button type="button" onClick={() => { actions.unarchive.mutate(selectedIds); clearSelection(); }} disabled={actions.unarchive.isPending} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium disabled:opacity-50">
                   {t("page.toInbox")}
                 </button>
               )}

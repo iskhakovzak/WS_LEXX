@@ -308,8 +308,8 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
           <div className="flex flex-col gap-2">
             {idp.data?.goals.map((g) => (
               <GoalCard key={g.id} goal={g} compact actions={<>
-                {g.status === "active" && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "cancelled" }, { onError: err })}>{t("mentorPage.detail.cancel")}</Button>}
-                {(g.status === "cancelled" || g.status === "missed") && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "active" }, { onError: err })}>{t("mentorPage.detail.reopen")}</Button>}
+                {g.status === "active" && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "cancelled" }, { onError: err })} disabled={updGoal.isPending}>{t("mentorPage.detail.cancel")}</Button>}
+                {(g.status === "cancelled" || g.status === "missed") && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "active" }, { onError: err })} disabled={updGoal.isPending}>{t("mentorPage.detail.reopen")}</Button>}
                 <Button size="sm" variant="ghost" onClick={() => archiveGoal(g.id, g.title)} disabled={archive.isPending}>{ct("actions.archive")}</Button>
               </>} />
             ))}
