@@ -7,7 +7,13 @@ import type { Anthropic } from "@workspace/integrations-anthropic-ai";
 import type { AssistantClient, StreamParams, TurnStream } from "../client";
 
 export type ScriptStep =
-  | { text?: string; tools?: { name: string; input: unknown; id?: string }[]; stop?: string; usage?: Partial<{ input: number; output: number; cacheRead: number; cacheWrite: number }> }
+  | {
+      text?: string; tools?: { name: string; input: unknown; id?: string }[]; stop?: string; usage?: Partial<{ input: number; output: number; cacheRead: number; cacheWrite: number }>;
+      /** Raw content blocks before the text (e.g. server_tool_use + advisor_tool_result). */
+      blocks?: Record<string, unknown>[];
+      /** usage.iterations as the advisor tool reports them. */
+      iterations?: Record<string, unknown>[];
+    }
   | { throw: unknown };
 
 export type Scripted = AssistantClient & { calls: StreamParams[] };
@@ -32,13 +38,13 @@ export function scriptedClient(steps: Array<ScriptStep | ((p: StreamParams) => S
           abort: () => undefined,
         } as TurnStream;
       }
-      const content: unknown[] = [];
+      const content: unknown[] = [...(step.blocks ?? [])];
       if (step.text) content.push({ type: "text", text: step.text, citations: null });
       for (const t of step.tools ?? []) content.push({ type: "tool_use", id: t.id ?? `toolu_${++seq}`, name: t.name, input: t.input });
       const message = {
         id: `msg_${++seq}`, type: "message", role: "assistant", model: params.model, content,
         stop_reason: step.stop ?? (step.tools?.length ? "tool_use" : "end_turn"), stop_sequence: null,
-        usage: { input_tokens: step.usage?.input ?? 100, output_tokens: step.usage?.output ?? 50, cache_read_input_tokens: step.usage?.cacheRead ?? 0, cache_creation_input_tokens: step.usage?.cacheWrite ?? 0 },
+        usage: { input_tokens: step.usage?.input ?? 100, output_tokens: step.usage?.output ?? 50, cache_read_input_tokens: step.usage?.cacheRead ?? 0, cache_creation_input_tokens: step.usage?.cacheWrite ?? 0, ...(step.iterations ? { iterations: step.iterations } : {}) },
       } as unknown as Anthropic.Message;
       async function* events(): AsyncGenerator<Anthropic.MessageStreamEvent> {
         let idx = 0;
@@ -46,8 +52,10 @@ export function scriptedClient(steps: Array<ScriptStep | ((p: StreamParams) => S
           if (b.type === "text") {
             yield { type: "content_block_start", index: idx, content_block: { type: "text", text: "" } } as unknown as Anthropic.MessageStreamEvent;
             for (const part of String(b.text).match(/.{1,5}/gs) ?? []) yield { type: "content_block_delta", index: idx, delta: { type: "text_delta", text: part } } as Anthropic.MessageStreamEvent;
-          } else {
+          } else if (b.type === "tool_use") {
             yield { type: "content_block_start", index: idx, content_block: { ...b, input: {} } } as unknown as Anthropic.MessageStreamEvent;
+          } else {
+            yield { type: "content_block_start", index: idx, content_block: b } as unknown as Anthropic.MessageStreamEvent;
           }
           yield { type: "content_block_stop", index: idx } as Anthropic.MessageStreamEvent;
           idx++;

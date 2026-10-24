@@ -1,111 +1,99 @@
-import { Router, type IRouter, type Request, type Response } from "express";
-import { asyncHandler } from "../lib/asyncHandler";
-import { generateReview, getLatestReview, RateLimitedError } from "../lib/aiReview";
-import { handleAiNotConfigured } from "../lib/aiErrors";
-import { canAccessTrade } from "../lib/auth";
-import { db, aiReviewRateLimitTable, aiTradeReviewsTable } from "@workspace/db";
-import { eq, and, gte, sql, inArray } from "drizzle-orm";
-import { AppError, badRequest, notFound, sendError, sendErrorWith } from "../lib/http";
-import { langOf } from "../i18n";
-
 /**
- * AI reviews are personal feedback (like curator reviews): the trade's owner and whoever may read it through the
- * permission matrix (trades.read.team). A playbook example opened by another trader is NOT enough — the review
- * quotes the trade's $. Sends 404/403 and returns false when denied.
+ * AI reviews — «AI-разбор» of a trade (trade sheet → Разбор) and of a day (day report), on the assistant
+ * infrastructure (lib/assistant/review: inputs read as the caller, cached prompt, structured output, the advisor).
+ *
+ *   GET  /trades/:id/ai-review          the latest review of the trade (current version) or null — no model call
+ *   POST /trades/:id/ai-review          { force? } → 201 review; same inputs → the stored one (cached: true, no cost)
+ *   GET  /ai/day-review?date=&trader=   the latest review of that day or null
+ *   POST /ai/day-review                 { date, trader?, force? } → 201 review
+ *
+ * Reading a stored review: whoever may read the trade (canAccessTrade) / the trader's personal data (personalTrader).
+ * Generating one: the assistant's gate and budget (capability assistant.use, desk switch, juniors switch, the daily
+ * units budget — the review is charged to the requester), the assistant request rate. A review never names a model:
+ * `tier` is "deep" when the advisor (or the stronger model) took part.
  */
-async function requireReviewAccess(req: Request, res: Response, id: number): Promise<boolean> {
-  const ok = await canAccessTrade(req, id, "read");
-  if (ok === null) { sendError(res, notFound("TRADE_NOT_FOUND")); return false; }
-  if (!ok) throw new AppError("OWN_TRADES_ONLY");
-  return true;
-}
+import { Router, type IRouter, type Request } from "express";
+import { z } from "zod";
+import { AppError, idParam, notFound, route, type ErrorCode } from "../lib/http";
+import { canAccessTrade, personalTrader } from "../lib/auth";
+import type { Actor } from "../lib/permissions";
+import { assistantLimiter } from "../lib/rateLimits";
+import { langOf, type Lang } from "../i18n";
+import { apiCallerFor } from "../lib/assistant/internalApi";
+import type { ToolContext } from "../lib/assistant/tools";
+import { gatherDay, gatherTrade, ReviewInputError } from "../lib/assistant/review/gather";
+import { ReviewInvalid, ReviewRefused } from "../lib/assistant/review/run";
+import { latestReview } from "../lib/assistant/review/store";
+import { reviewDto, reviewOrCached, type Gathered } from "../lib/assistant/review/service";
+import { providerErrorCode, ready } from "./ai-assistant";
 
 const router: IRouter = Router();
 
-const RATE_LIMIT_PER_USER = 30;
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-
-/**
- * Rate-limit / usage key = the signed-in member's name from the token. Every /api route except the public list in
- * lib/auth requires a token, so there is no anonymous caller here (the old x-user / body / query fallbacks are gone).
- */
-function userKeyFor(req: Request): string {
-  return req.authUser?.name?.trim() || "anonymous";
+async function requireTradeRead(req: Request, id: number): Promise<void> {
+  const ok = await canAccessTrade(req, id, "read");
+  if (ok === null) throw notFound("TRADE_NOT_FOUND");
+  if (!ok) throw new AppError("OWN_TRADES_ONLY");
 }
 
-router.get("/ai-review/usage", asyncHandler(async (req, res): Promise<void> => {
-  const userKey = userKeyFor(req);
-
-  const now = Date.now();
-  const hourlyCutoff = new Date(now - RATE_LIMIT_WINDOW_MS);
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-
-  const [hourlyRows, dailyRateLimitRows] = await Promise.all([
-    db.select({ id: aiReviewRateLimitTable.id })
-      .from(aiReviewRateLimitTable)
-      .where(and(eq(aiReviewRateLimitTable.userKey, userKey), gte(aiReviewRateLimitTable.createdAt, hourlyCutoff))),
-    db.select({ tradeId: aiReviewRateLimitTable.tradeId })
-      .from(aiReviewRateLimitTable)
-      .where(and(eq(aiReviewRateLimitTable.userKey, userKey), gte(aiReviewRateLimitTable.createdAt, todayStart))),
-  ]);
-
-  const hourlyCount = hourlyRows.length;
-  const dailyCount = dailyRateLimitRows.length;
-
-  let dailyCostUsd = 0;
-  const dailyTradeIds = dailyRateLimitRows.map(r => r.tradeId).filter((id): id is number => id != null);
-  if (dailyTradeIds.length > 0) {
-    const costRows = await db
-      .select({ costUsd: sql<string>`COALESCE(SUM(${aiTradeReviewsTable.costUsd}), 0)` })
-      .from(aiTradeReviewsTable)
-      .where(and(
-        inArray(aiTradeReviewsTable.tradeId, dailyTradeIds),
-        gte(aiTradeReviewsTable.generatedAt, todayStart),
-      ));
-    dailyCostUsd = parseFloat(costRows[0]?.costUsd ?? "0");
-  }
-
-  res.json({
-    userKey,
-    hourlyCount,
-    hourlyLimit: RATE_LIMIT_PER_USER,
-    dailyCount,
-    dailyCostUsd,
-  });
-}));
-
-router.post("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  if (!(await requireReviewAccess(req, res, id))) return;
-  const userKey = userKeyFor(req);
-  const force = req.query.force === "true" || req.body?.force === true;
+async function generate(req: Request, actor: Actor, force: boolean, gather: (ctx: ToolContext) => Promise<Gathered>) {
+  const r = await ready(actor);
+  const lang: Lang = langOf(req);
+  const ctl = new AbortController();
+  req.on("close", () => { if (!req.complete) ctl.abort(); });
+  const ctx: ToolContext = { api: apiCallerFor(req, lang, ctl.signal), req, lang, actor: { name: actor.name, staff: r.staff, admin: actor.role === "admin" }, today: r.today };
+  let gathered: Gathered;
   try {
-    const result = await generateReview({ tradeId: id, userKey, force, lang: langOf(req) });
-    res.status(201).json(result);
-  } catch (e: any) {
-    if (e instanceof RateLimitedError) {
-      res.setHeader("Retry-After", String(e.retryAfterSec));
-      sendErrorWith(res, new AppError("RATE_LIMITED", 429), { retryAfterSec: e.retryAfterSec });
-      return;
-    }
-    if (e.message?.includes("not found")) {
-      sendError(res, notFound("TRADE_NOT_FOUND"));
-      return;
-    }
-    if (handleAiNotConfigured(e, res)) return; // 503 ai_not_configured (audit P2-3)
-    req.log?.error({ error: e.message, tradeId: id }, "ai review failed");
-    sendError(res, new AppError("AI_UNAVAILABLE", 500));
+    gathered = await gather(ctx);
+  } catch (err) {
+    if (err instanceof ReviewInputError) throw new AppError(err.code as ErrorCode, err.status);
+    throw err;
   }
+  try {
+    return await reviewOrCached({ client: r.client, settings: r.s, lang, today: r.today, actor: actor.name, force, signal: ctl.signal, gathered });
+  } catch (err) {
+    if (err instanceof ReviewInvalid) req.log?.warn({ issues: err.issues }, "ai review: the answer did not fit the schema");
+    throw new AppError(err instanceof ReviewInvalid || err instanceof ReviewRefused ? "AI_UNAVAILABLE" : providerErrorCode(err));
+  }
+}
+
+// ─── trade ──────────────────────────────────────────────────────────────────
+
+router.get("/trades/:id/ai-review", route({ params: z.object({ id: idParam }) }, async ({ req, params }) => {
+  await requireTradeRead(req, params.id);
+  const r = await latestReview({ kind: "trade", tradeId: params.id, trader: "" }, langOf(req));
+  return r ? reviewDto(r, true) : null;
 }));
 
-router.get("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  if (!(await requireReviewAccess(req, res, id))) return;
-  // No review yet is a normal state, not an error: 200 with null (DEV-15; the panel offers «generate»).
-  res.json((await getLatestReview(id)) ?? null);
+router.post("/trades/:id/ai-review", assistantLimiter, route({
+  cap: "assistant.use", params: z.object({ id: idParam }), body: z.object({ force: z.boolean().optional() }).passthrough(),
+}, async ({ req, res, actor, params, body }) => {
+  await requireTradeRead(req, params.id);
+  const out = await generate(req, actor, !!body.force, async (ctx) => {
+    const t = await gatherTrade(ctx, params.id);
+    return { subject: { kind: "trade", tradeId: t.tradeId, trader: t.trader }, data: t.data, facts: null, subjectLabel: `trade ${t.tradeId}` };
+  });
+  res.status(201).json(out);
+}));
+
+// ─── day ────────────────────────────────────────────────────────────────────
+
+const YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+router.get("/ai/day-review", route({ query: z.object({ date: YMD, trader: z.string().trim().max(120).optional() }).passthrough() }, async ({ req, query }) => {
+  const trader = await personalTrader(req, query.trader);
+  const r = await latestReview({ kind: "day", day: query.date, trader }, langOf(req));
+  return r ? reviewDto(r, true) : null;
+}));
+
+router.post("/ai/day-review", assistantLimiter, route({
+  cap: "assistant.use", body: z.object({ date: YMD, trader: z.string().trim().max(120).optional(), force: z.boolean().optional() }),
+}, async ({ req, res, actor, body }) => {
+  const trader = await personalTrader(req, body.trader);
+  const out = await generate(req, actor, !!body.force, async (ctx) => {
+    const d = await gatherDay(ctx, trader, body.date);
+    return { subject: { kind: "day", day: d.day, trader: d.trader }, data: d.data, facts: d.facts, subjectLabel: `day ${d.day} of ${d.trader}` };
+  });
+  res.status(201).json(out);
 }));
 
 export default router;

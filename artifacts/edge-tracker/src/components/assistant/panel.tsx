@@ -1,5 +1,5 @@
 /**
- * «Ассистент WS» — the slide-over panel (right sheet on desktop, full-screen sheet on phones; the backdrop dims the page,
+ * Assistant — the slide-over panel (right sheet on desktop, full-screen sheet on phones; the backdrop dims the page,
  * motion follows the system's reduced-motion setting). It knows the page it was opened on: the route plus whatever the
  * page published (selected trade / day / period / filters, lib/assistant/bus.ts), sent as structured context.
  * Lazy chunk: loaded on the first open (assistant-launcher.tsx).
@@ -7,20 +7,21 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Sparkles, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { assistantI18n } from "@/i18n/ns/assistant";
-import { fmtCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getPageContext, subscribePageContext, type OpenRequest } from "@/lib/assistant/bus";
-import { pageKeyOf, type PageContext, type Starter } from "@/lib/assistant/model";
+import { budgetLeftPct, pageKeyOf, type PageContext, type Starter } from "@/lib/assistant/model";
 import { statusQuery } from "./api";
 import { useAssistantChat } from "./use-assistant-chat";
 import { Starters, Thread } from "./thread";
 import { Composer } from "./composer";
 import { Unavailable } from "./not-configured";
+import { WsMark } from "@/components/shared/ws-mark";
+import { BoostSwitch, BudgetExhausted, BudgetMeter } from "./boost";
 
 function currentRoute(location: string): string {
   return `${location}${typeof window !== "undefined" ? window.location.search : ""}`.slice(0, 300);
@@ -35,7 +36,7 @@ export default function AssistantPanel({ open, onOpenChange, request }: { open: 
   const chat = useAssistantChat(open && ready);
   const published = React.useSyncExternalStore(subscribePageContext, getPageContext, () => null);
   const [text, setText] = React.useState("");
-  const [smart, setSmart] = React.useState(false);
+  const [boost, setBoost] = React.useState(false);
   const [confirmClear, setConfirmClear] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -46,11 +47,11 @@ export default function AssistantPanel({ open, onOpenChange, request }: { open: 
 
   const send = React.useCallback((question: string, intent?: Starter["intent"]) => {
     if (!question.trim()) return;
-    void chat.send(question, { smart, intent: intent ?? extra.current.intent, context: contextNow() });
+    void chat.send(question, { boost, intent: intent ?? extra.current.intent, context: contextNow() });
     setText("");
-    setSmart(false); // «Умнее» is for one question
+    setBoost(false); // the boost is for one question
     extra.current = { context: extra.current.context };
-  }, [chat, smart, contextNow]);
+  }, [chat, boost, contextNow]);
 
   // A request from a page button / the palette: prefill (and maybe send) once per request.
   const handled = React.useRef(0);
@@ -78,7 +79,8 @@ export default function AssistantPanel({ open, onOpenChange, request }: { open: 
   }, [last?.text, last?.chips.length, last?.drafts.length, chat.messages.length]);
 
   const s = status.data;
-  const budget = s?.budget.default;
+  const budget = s?.budget;
+  const exhausted = !!budget && budget.limit > 0 && !budget.left;
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -87,7 +89,7 @@ export default function AssistantPanel({ open, onOpenChange, request }: { open: 
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <header className="overlay-bar overlay-bar-top flex shrink-0 items-center gap-2 px-4 pb-3 pr-14 pt-[max(1rem,env(safe-area-inset-top))]">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/12 text-primary"><Sparkles className="h-4 w-4" aria-hidden="true" /></span>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-foreground text-background"><WsMark className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
             <SheetTitle className="truncate text-base">{t("name")}</SheetTitle>
             <SheetDescription className="truncate text-2xs">{s?.mock ? t("mock") : t("subtitle")}</SheetDescription>
@@ -112,22 +114,11 @@ export default function AssistantPanel({ open, onOpenChange, request }: { open: 
 
         {ready ? (
           <footer className="overlay-bar overlay-bar-bottom shrink-0 space-y-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+            {exhausted ? <BudgetExhausted /> : null}
             <Composer value={text} onChange={setText} onSend={() => send(text)} onStop={chat.stop} busy={chat.busy} inputRef={inputRef} />
             <div className="flex items-center justify-between gap-2 px-1">
-              <button
-                type="button"
-                aria-pressed={smart}
-                onClick={() => setSmart((v) => !v)}
-                title={t("smartHint")}
-                className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                  smart ? "border-primary/50 bg-primary/12 text-foreground" : "border-[var(--glass-border)] text-muted-foreground hover:text-foreground")}
-              >
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                {t("smart")}
-              </button>
-              {budget && budget.limit > 0 ? (
-                <span className="text-2xs text-muted-foreground tabular-nums">{t("budget", { used: fmtCount(budget.used), limit: fmtCount(budget.limit) })}</span>
-              ) : null}
+              <BoostSwitch on={boost} onChange={setBoost} multiplier={budget?.multiplier ?? 5} disabled={exhausted} />
+              <BudgetMeter pct={budgetLeftPct(budget)} />
             </div>
           </footer>
         ) : null}

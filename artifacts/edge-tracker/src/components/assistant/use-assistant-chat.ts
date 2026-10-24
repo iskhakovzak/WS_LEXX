@@ -13,10 +13,10 @@ const nextKey = () => `m${Date.now().toString(36)}${(++seq).toString(36)}`;
 
 function fromStored(m: StoredMessage): ChatMessage {
   const base = newAssistantMessage(`h${m.id}`);
-  return { ...base, role: m.role, text: m.content, model: m.model, drafts: m.drafts ?? [], status: "done" };
+  return { ...base, role: m.role, text: m.content, tier: m.tier, drafts: m.drafts ?? [], status: "done" };
 }
 
-export type SendOptions = { smart?: boolean; intent?: Starter["intent"]; context: PageContext };
+export type SendOptions = { boost?: boolean; intent?: Starter["intent"]; context: PageContext };
 
 export function useAssistantChat(enabled: boolean) {
   const qc = useQueryClient();
@@ -46,7 +46,7 @@ export function useAssistantChat(enabled: boolean) {
     const c = new AbortController();
     ctl.current = c;
     try {
-      await streamChat({ message, smart: opts.smart || undefined, intent: opts.intent, context: opts.context }, (e) => patchLast((m) => applyEvent(m, e)), c.signal);
+      await streamChat({ message, boost: opts.boost || undefined, intent: opts.intent, context: opts.context }, (e) => patchLast((m) => applyEvent(m, e)), c.signal);
       patchLast((m) => (m.status === "streaming" ? { ...m, status: c.signal.aborted ? "stopped" : "done" } : m));
     } catch (err) {
       if (c.signal.aborted) { patchLast((m) => ({ ...m, status: "stopped" })); return; }

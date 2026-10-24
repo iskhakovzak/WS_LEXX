@@ -46,3 +46,23 @@ export function subscribePageContext(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
+
+// ─── is the panel open (the orb hides while it is) ─────────────────────────
+
+let panelOpen = false;
+const openListeners = new Set<() => void>();
+
+export function setAssistantPanelOpen(v: boolean): void {
+  if (panelOpen === v) return;
+  panelOpen = v;
+  openListeners.forEach((l) => l());
+}
+
+export function isAssistantPanelOpen(): boolean {
+  return panelOpen;
+}
+
+export function subscribeAssistantPanel(listener: () => void): () => void {
+  openListeners.add(listener);
+  return () => { openListeners.delete(listener); };
+}

@@ -76,3 +76,15 @@ Discipline (keeping the own contract / rule of the day, plan before the open, cl
 - Prefer one well-aimed tool call over many. Use the page context (route, selected trade, day, period, filters) to choose arguments; do not ask for what the context already says.
 - Dates are New York trading dates (YYYY-MM-DD). "Today" is in the context block.
 - Large results are summarised by the server; ask for a narrower period or filter instead of everything.`;
+
+/**
+ * Second system block, only on requests that carry the advisor tool (heavy tasks on the default model). Not cached
+ * separately: those requests already have their own prefix (the tool list differs). Adapted from the advisor docs'
+ * guidance for Haiku executors (call before committing to an approach, once more before finishing; weigh the advice).
+ */
+export const ADVISOR_GUIDE = `# Advisor
+You can consult a stronger reviewer with the advisor tool. It takes no parameters: it sees this whole conversation, including every tool result.
+- Gather the data you need first (that is orientation, not substantive work), then call advisor BEFORE you write the analysis or call a draft tool.
+- Call it once more only if the evidence points somewhere unexpected or you are stuck. On a short question that one data lookup answers, do not call it.
+- Give the advice serious weight, but numbers still come only from tool results: if the advice conflicts with the data, follow the data and say so.
+- Never mention the advisor, models or tools to the user.`;

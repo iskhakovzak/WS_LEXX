@@ -35,6 +35,7 @@ import { TickerContextList } from "@/components/shared/finviz/ticker-context";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
 import { AskAssistantButton, useAssistantContext } from "@/components/shared/ask-assistant";
+import { AiReviewCard } from "@/components/shared/ai-review-card";
 
 const PRINT_CSS = `
 @media print {
@@ -240,6 +241,8 @@ function headline(doc: DayReport): string {
 
 function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
   const { t } = dayReportI18n.useT();
+  // AI day review (the assistant's budget): for whoever may use the assistant.
+  const canAi = useAuth().can("assistant.use");
   return (
     <div data-day-report className={stale ? "flex flex-col gap-4 opacity-70 transition-opacity sm:gap-5" : "flex flex-col gap-4 transition-opacity sm:gap-5"}>
       <p data-print-title className="hidden text-lg font-semibold">{t("page.printTitle", { trader: personName(doc.trader), date: fmtDayLong(doc.date) })}</p>
@@ -247,6 +250,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
         <p className="text-sm text-muted-foreground">{headline(doc)}</p>
         <SummaryBento doc={doc} />
       </section>
+      {canAi ? <AiReviewCard subject={{ kind: "day", date: doc.date, trader: doc.trader }} /> : null}
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="min-w-0 xl:col-span-2"><EquityPanel doc={doc} /></div>
         <ComparisonPanel doc={doc} />

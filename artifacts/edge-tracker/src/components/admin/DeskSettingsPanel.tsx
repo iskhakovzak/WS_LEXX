@@ -18,6 +18,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { useDeskSettings, useSaveDeskSettings } from "./desk-settings-api";
 import { DeskSettingField } from "./DeskSettingField";
+import { AssistantUsageStats } from "./AssistantUsageStats";
 import {
   changesOf, checkValue, formRows, groupRows, normalize, parseInput, pilotRowsOf, shownProblem, visibleRows, type Problem, type SettingRow, type SettingValue,
 } from "./desk-settings-model";
@@ -161,6 +162,7 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
                 onValue={(v, text) => onValue(r, v, text)}
               />
             ))}
+            {g.group === "assistant" ? <AssistantUsageStats /> : null}
           </div>
         </Panel>
       ))}

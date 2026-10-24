@@ -5,27 +5,31 @@
  *   data: <one line of JSON>\n
  *   \n
  *
- * Events (the web parser is edge-tracker src/lib/assistant/sse.ts):
- *   meta   { model, reason, escalated, smart }                 first frame: the model the turn starts on
- *   model  { model, reason }                                   mid-turn escalation (the label on the answer changes)
- *   text   { delta }                                           answer text (markdown), in order
- *   retry  {}                                                  drop the text of the current step (the step is re-run)
- *   tool   { id, name, status: start | done | error, code? }    the «смотрю ваши сделки…» chips
- *   draft  { id, kind, draft }                                 a structured draft card (never saved by the server)
- *   done   { messageId, model, models, usage, costUsd, stop }   the end of a successful turn
- *   error  { code, message }                                   the end of a failed turn (HTTP status stays 200 once streaming started)
- * A comment line (`: ping`) keeps proxies from closing an idle stream while a tool runs.
+ * Events (the web parser is edge-tracker src/lib/assistant/sse.ts). No event names a model: members see a tier
+ * (standard / boost / deep), never which model answered.
+ *   meta    { tier, reason, boost }                             first frame: the path the turn starts on
+ *   tier    { tier, reason }                                    mid-turn escalation (the mark on the answer changes)
+ *   text    { delta }                                           answer text (markdown), in order
+ *   retry   {}                                                  drop the text of the current step (the step is re-run)
+ *   tool    { id, name, status: start | done | error, code? }    the tool chips («looking at your trades…»)
+ *   advisor { status: start | done | error }                    the default model consults the advisor (deep analysis)
+ *   draft   { id, kind, draft }                                 a structured draft card (never saved by the server)
+ *   done    { messageId, tier, units, stop }                    the end of a successful turn (units = budget it used)
+ *   error   { code, message }                                   the end of a failed turn (HTTP status stays 200 once streaming started)
+ * A comment line (`: ping`) keeps proxies from closing an idle stream while a tool or the advisor runs.
  */
 import type { Response } from "express";
+import type { Tier } from "./models";
 
 export type SseEvent =
-  | { event: "meta"; data: { model: string; reason: string; escalated: boolean; smart: boolean } }
-  | { event: "model"; data: { model: string; reason: string } }
+  | { event: "meta"; data: { tier: Tier; reason: string; boost: boolean } }
+  | { event: "tier"; data: { tier: Tier; reason: string } }
   | { event: "text"; data: { delta: string } }
   | { event: "retry"; data: Record<string, never> }
   | { event: "tool"; data: { id: string; name: string; status: "start" | "done" | "error"; code?: string } }
+  | { event: "advisor"; data: { status: "start" | "done" | "error" } }
   | { event: "draft"; data: { id: string; kind: string; draft: unknown } }
-  | { event: "done"; data: { messageId: number | null; model: string; models: string[]; usage: unknown; costUsd: number; stop: string } }
+  | { event: "done"; data: { messageId: number | null; tier: Tier; units: number; stop: string } }
   | { event: "error"; data: { code: string; message: string } };
 
 /** One SSE frame. JSON never contains a raw newline, so `data:` is always a single line. */
