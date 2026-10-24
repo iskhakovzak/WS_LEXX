@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import {
   ArrowRight,
@@ -7,12 +7,11 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
-  Compass,
   HeartPulse,
   Moon,
   ShieldAlert,
 } from "lucide-react";
-import { Panel, Pill, UpdatedAgo, type Tone } from "@/components/ds";
+import { Pill, UpdatedAgo, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { links } from "@/lib/links";
@@ -24,7 +23,8 @@ import type { DashboardToday, EodStatus, EventsToday, RecentTrade, RiskDesk, Ris
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { personName } from "@/i18n";
-import { dayReportHref, eventsItem, queueItems, staleDay, type Item } from "./attention-model";
+import { dailyStepItem, dayReportHref, eventsItem, queueItems, staleDay, type DailyStepLike, type Item } from "./attention-model";
+import { DashCard } from "./dash-card";
 
 export { STALE_DAYS, staleDay, uniqueTickers, violationsTitle } from "./attention-model";
 
@@ -38,7 +38,8 @@ const TONE_ICON: Record<Tone, string> = {
 };
 
 const CLOSE_MIN = 16 * 60;
-const VISIBLE_ROWS = 5;
+/** «План на день» stays a short to-do: the next step + at most three rows, the rest behind «Ещё N». */
+const VISIBLE_ROWS = 3;
 const INPUT_WAIT_MS = 2500;
 
 function ItemLink({ item, className, children }: { item: Item; className?: string; children: React.ReactNode }) {
@@ -60,14 +61,14 @@ function NextStep({ item }: { item: Item }) {
   const { t } = dashboardI18n.useT();
   const Icon = item.icon;
   return (
-    <div className="tile flex flex-col gap-3 p-3">
+    <div className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", TONE_ICON[item.tone])}>
-          <Icon className="h-4 w-4" aria-hidden="true" />
+        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", TONE_ICON[item.tone])}>
+          <Icon className="h-5 w-5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="micro-label">{t("attention.nextStep")}</div>
-          <div className="text-sm font-semibold leading-5">{item.title}</div>
+          <span className="sr-only">{t("attention.nextStep")}: </span>
+          <div className="text-base font-semibold leading-6 [overflow-wrap:anywhere]">{item.title}</div>
           {item.detail && <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.detail}</div>}
         </div>
       </div>
@@ -124,28 +125,27 @@ function Row({ item, className }: { item: Item; className?: string }) {
   );
 }
 
-/**
- * «Что важно сейчас»: one prioritised list instead of a wall of tiles. Only things that need action are shown;
- * the most urgent becomes «Следующий шаг» with a button. Resolved items disappear.
- */
-export function AttentionPanel({
-  data,
-  risk,
-  desk,
-  eod,
-  lastDayEod,
-  lastDay,
-  recent,
-  events,
-  marketEvents,
-  unread,
-  isLoading,
-  updatedAt,
-  onCheckin,
-  dayCardDate,
-  fill,
-  phoneStepAbove = false,
-}: {
+/** The card while its inputs answer (same shell and rhythm, no jump when the tasks arrive). */
+function PlanSkeleton({ fill }: { fill?: boolean }) {
+  return (
+    <DashCard title={dashboardI18n.t("attention.nextStep")} fill={fill} data-tour="attention">
+      <div className="flex flex-col gap-3" role="status" aria-label={commonI18n.t("states.loading")}>
+        <Skeleton className="h-[88px] w-full rounded-xl" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-2">
+            <Skeleton className="h-7 w-7 rounded-lg" />
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Skeleton className="h-3.5 w-2/3 rounded" />
+              <Skeleton className="h-3 w-1/2 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </DashCard>
+  );
+}
+
+export type AttentionPanelProps = {
   data: DashboardToday | undefined;
   risk: RiskMe | null | undefined;
   desk: RiskDesk | null | undefined;
@@ -166,10 +166,48 @@ export function AttentionPanel({
   /** The day the header's evening card covers: its review (with the journal link) replaces the «fill the day» task. */
   dayCardDate?: string | null;
   fill?: boolean;
-  /** Item 1.3: the phone already leads with the «Следующий шаг» card above — here the first task is an ordinary row
-   * on the phone (one focal point); the big tile stays from `md` up. */
-  phoneStepAbove?: boolean;
-}) {
+  /** The daily loop's step (components/daily/next-step-card useDailyNextStep), ranked with the other tasks. */
+  dailyStep?: DailyStepLike | null;
+  /** The daily loop's «today» (a plan step for today reads «на сегодня»). */
+  dailyToday?: string | null;
+  /** The day frame under the step: focus · contract · «Сегодня торгую», or the evening card after the close (DayLine). */
+  frame?: ReactNode;
+  /** The one progress row (tier ladder, rewards, quests) — the card's footer. */
+  progress?: ReactNode;
+  /**
+   * Slot for ONE recommended action (a coach's «next best action» / curator digest, coach-w0 / coach-w1): shown right
+   * under the next step, above the day frame. Nothing passes it yet.
+   */
+  recommended?: ReactNode;
+};
+
+/**
+ * «План на день» (formerly «Что важно сейчас»): ONE card for the day's to-do. Only things that need action are ranked
+ * (the daily loop's step among them); the most urgent becomes the next step with the one primary button, at most three
+ * more rows follow (the rest behind «Ещё N»). Then the day frame and the progress footer. Resolved items disappear.
+ */
+export function AttentionPanel({
+  data,
+  risk,
+  desk,
+  eod,
+  lastDayEod,
+  lastDay,
+  recent,
+  events,
+  marketEvents,
+  unread,
+  isLoading,
+  updatedAt,
+  onCheckin,
+  dayCardDate,
+  fill,
+  dailyStep,
+  dailyToday = null,
+  frame,
+  progress,
+  recommended,
+}: AttentionPanelProps) {
   const { t } = dashboardI18n.useT();
   const { t: tc } = commonI18n.useT();
   const [expanded, setExpanded] = useState(false);
@@ -181,24 +219,7 @@ export function AttentionPanel({
     return () => window.clearTimeout(timer);
   }, [isLoading, data]);
 
-  if (!data ? isLoading : isLoading && !waited) {
-    return (
-      <Panel title={t("attention.title")} icon={Compass} fill={fill} data-tour="attention">
-        <div className="flex flex-col gap-3" role="status" aria-label={tc("states.loading")}>
-          <Skeleton className="h-[104px] w-full rounded-xl" />
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-2">
-              <Skeleton className="h-7 w-7 rounded-lg" />
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Skeleton className="h-3.5 w-2/3 rounded" />
-                <Skeleton className="h-3 w-1/2 rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    );
-  }
+  if (!data ? isLoading : isLoading && !waited) return <PlanSkeleton fill={fill} />;
   if (!data) return null;
 
   const a = data.attention;
@@ -333,6 +354,10 @@ export function AttentionPanel({
   // ── Notifications, rules, review queues ─────────────────────────────────
   items.push(...queueItems(a, unread, tradingDay, t, tc));
 
+  // ── The daily loop: «Напиши план» / «Закрой день» / «Задача дня» ──────────
+  const daily = team ? null : dailyStepItem(dailyStep, dailyToday, (key) => items.some((i) => i.key === key), t, tc);
+  if (daily) items.push(daily);
+
   items.sort((x, y) => x.rank - y.rank);
   // Nothing urgent → the next step is still useful: look at the last day's breakdown.
   const lastTradeDate = !team ? (recent?.[0]?.closeDate?.slice(0, 10) ?? null) : null;
@@ -373,9 +398,8 @@ export function AttentionPanel({
   const pending = items.length;
 
   return (
-    <Panel
-      title={t("attention.title")}
-      icon={Compass}
+    <DashCard
+      title={t("attention.nextStep")}
       fill={fill}
       data-tour="attention"
       actions={
@@ -389,33 +413,44 @@ export function AttentionPanel({
           </Pill>
         )
       }
-      footer={updatedAt ? <UpdatedAgo at={updatedAt} /> : undefined}
+      bodyClassName="gap-4"
+      footer={
+        progress || updatedAt ? (
+          <>
+            {progress ? <div className="min-w-0 basis-full text-sm text-foreground">{progress}</div> : null}
+            {updatedAt ? <UpdatedAgo at={updatedAt} /> : null}
+          </>
+        ) : undefined
+      }
     >
       {!next ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-          <CheckCircle2 className="h-6 w-6 text-up" aria-hidden="true" />
-          <p className="text-sm font-medium">{t("attention.nothingUrgent")}</p>
-          <p className="max-w-[28ch] text-xs text-muted-foreground">{t("attention.nothingUrgentHint")}</p>
+        <div className="flex items-center gap-3">
+          <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", TONE_ICON.up)}>
+            <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-base font-semibold leading-6">{t("attention.nothingUrgent")}</p>
+            <p className="text-xs text-muted-foreground">{t("attention.nothingUrgentHint")}</p>
+          </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <div className={phoneStepAbove ? "hidden md:block" : undefined}>
-            <NextStep item={next} />
-          </div>
-          {(shown.length > 0 || phoneStepAbove) && (
-            <ul className="flex flex-col" aria-label={t("attention.otherTasks")}>
-              {phoneStepAbove && <Row item={next} className="md:hidden" />}
-              {shown.map((i) => (
-                <Row key={i.key} item={i} />
-              ))}
-            </ul>
-          )}
+        <NextStep item={next} />
+      )}
+      {recommended}
+      {frame && <div className="min-w-0 border-t border-[var(--glass-border)] pt-4">{frame}</div>}
+      {shown.length > 0 && (
+        <div className={cn("flex flex-col gap-1", !frame && "border-t border-[var(--glass-border)] pt-3")}>
+          <ul className="-mx-2 flex flex-col" aria-label={t("attention.otherTasks")}>
+            {shown.map((i) => (
+              <Row key={i.key} item={i} />
+            ))}
+          </ul>
           {(hiddenCount > 0 || expanded) && rest.length > VISIBLE_ROWS && (
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              className="inline-flex min-h-8 cursor-pointer items-center gap-1 self-start rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-8 cursor-pointer items-center gap-1 self-start rounded-lg px-1 py-1 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
               {expanded ? tc("actions.collapse") : t("attention.more", { count: hiddenCount })}
@@ -423,6 +458,6 @@ export function AttentionPanel({
           )}
         </div>
       )}
-    </Panel>
+    </DashCard>
   );
 }

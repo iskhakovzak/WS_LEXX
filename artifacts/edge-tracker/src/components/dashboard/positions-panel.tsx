@@ -1,6 +1,6 @@
 import { Link } from "wouter";
-import { CalendarClock, Moon, Layers } from "lucide-react";
-import { EmptyLink, EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
+import { CalendarClock, Layers } from "lucide-react";
+import { EmptyLink, EmptyState, Pill, toneOf, toneText } from "@/components/ds";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import type { DashboardToday, Horizon, OpenPosition } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { personName } from "@/i18n";
+import { DashCard } from "./dash-card";
 import { HORIZON_LABEL as TRADES_HORIZON_LABEL } from "@/components/shared/trade-labels";
 
 /** Horizon code → label (current language); the trades area owns the labels. */
@@ -92,9 +93,8 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
   const split = data.today.byHorizon;
 
   return (
-    <Panel
+    <DashCard
       title={t("positions.title")}
-      icon={Moon}
       description={team ? t("positions.team") : t("positions.mine")}
       actions={
         <div className="flex flex-wrap items-center gap-1.5">
@@ -181,6 +181,6 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
           </div>
         )}
       </div>
-    </Panel>
+    </DashCard>
   );
 }

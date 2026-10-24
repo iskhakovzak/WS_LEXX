@@ -101,7 +101,7 @@ export function ConfidenceBadge({ claim, fmt, have, need }: { claim: Claim; fmt:
     <span className="inline-flex min-h-6 items-center gap-1.5 rounded-full border border-[var(--glass-border)] px-2 text-2xs font-medium text-muted-foreground tabular-nums">
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", CONF_DOT[confidence])} aria-hidden="true" />
       {text}
-      {ci && confidence !== "low" && <span className="hidden text-muted-foreground/80 sm:inline">· {tip}</span>}
+      {ci && confidence !== "low" && <span className="ins-ci hidden text-muted-foreground/80 sm:inline">· {tip}</span>}
     </span>
   );
   return (
@@ -232,7 +232,7 @@ export function Tile({
               className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-2xs font-medium text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Info className="h-3.5 w-3.5" aria-hidden="true" />
-              {open ? t("less") : t("more")}
+              <span className="ins-more-text">{open ? t("less") : t("more")}</span>
             </button>
           )}
         </div>

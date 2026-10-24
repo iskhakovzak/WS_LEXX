@@ -58,6 +58,7 @@ export function DayLineView({
   quests,
   playbook,
   phoneSplit = false,
+  embedded = false,
 }: {
   me: DailyMe;
   plan: PlanContract | null | undefined;
@@ -70,9 +71,13 @@ export function DayLineView({
   /** Волна 1, item 1.3: on the phone the dashboard's «Следующий шаг» card carries the focus / contract / evening, so
    * this line keeps only the progress there (tier, rewards, quests); from `md` up it shows everything as before. */
   phoneSplit?: boolean;
+  /** Inside the dashboard's «План на день» card: no own divider, and the progress (tier, rewards, quests) is left to
+   * the card's footer (DayProgress) — the focus / contract / picks or the evening card only. */
+  embedded?: boolean;
 }) {
   const { t } = dailyI18n.useT();
   const deskOnly = phoneSplit ? "hidden md:block" : undefined;
+  const frame = embedded ? "flex flex-col gap-3" : "mt-4 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4";
   const [openPending, setOpenPending] = useState(false);
   const view = dayView(me);
   // Progress where the trader looks every day: the tier ladder and the discipline rewards (streak, points, badges).
@@ -84,23 +89,24 @@ export function DayLineView({
     </div>
   );
   if (!view) {
+    if (embedded) return null;
     return me.progress || me.discipline || quests ? <div className="mt-4 border-t border-[var(--glass-border)] pt-3">{tier}</div> : null;
   }
   const card = view.evening;
   const journalOpen = !!card && journalOpenDate === card.date;
   if (view.primary === "evening" && card) {
     return (
-      <section aria-label={t("aria")} className="mt-4 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
+      <section aria-label={t("aria")} className={frame}>
         <div className={deskOnly}>
           <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} untagged={playbook?.untagged ?? 0} />
         </div>
-        {tier}
+        {!embedded && tier}
       </section>
     );
   }
   const line = contractLine(plan, view.focus);
   return (
-    <section aria-label={t("aria")} className="mt-4 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
+    <section aria-label={t("aria")} className={frame}>
       {view.pendingEvening && card && (
         <div className={deskOnly}>
           {openPending ? (
@@ -112,20 +118,42 @@ export function DayLineView({
           )}
         </div>
       )}
-      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start lg:gap-6">
+      <div className={embedded ? "min-w-0" : "grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start lg:gap-6"}>
         <div className={phoneSplit ? "hidden min-w-0 flex-col gap-2.5 md:flex" : "flex min-w-0 flex-col gap-2.5"}>
           {view.focus && <FocusLine focus={view.focus} />}
           <ContractLine line={line} date={contractDate(me)} intraday={me.intraday} yesterday={view.pendingEvening ? null : card?.contract} />
           {playbook && <PicksLine playbook={playbook} />}
         </div>
-        {tier}
+        {!embedded && tier}
       </div>
     </section>
   );
 }
 
+/**
+ * The progress row of «План на день» (one place for it on the dashboard): the tier ladder «До Трейдера: 2 из 12», the
+ * discipline rewards (streak, level, points) and today's quests — each opens in place.
+ */
+export function DayProgressView({ me, quests }: { me: Pick<DailyMe, "progress" | "discipline">; quests?: ReactNode }) {
+  if (!me.progress && !me.discipline && !quests) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
+      <TierProgressChip progress={me.progress} />
+      <RewardsChip discipline={me.discipline} defaultOpen={rewardsLinked()} />
+      {quests}
+    </div>
+  );
+}
+
+/** Loads the daily loop (shared cache with DayLine) and renders the progress row; nothing for a role without one. */
+export function DayProgress({ enabled, quests }: { enabled: boolean; quests?: ReactNode }) {
+  const me = useDailyMe(enabled).data ?? null;
+  if (!enabled || !me) return null;
+  return <DayProgressView me={me} quests={quests} />;
+}
+
 /** Dashboard slot: loads the trader's daily loop and today's plan; renders nothing for a role without one. */
-export function DayLine({ enabled, journalOpenDate, quests, phoneSplit }: { enabled: boolean; journalOpenDate?: string | null; quests?: ReactNode; phoneSplit?: boolean }) {
+export function DayLine({ enabled, journalOpenDate, quests, phoneSplit, embedded = false }: { enabled: boolean; journalOpenDate?: string | null; quests?: ReactNode; phoneSplit?: boolean; embedded?: boolean }) {
   const meQ = useDailyMe(enabled);
   const me = meQ.data ?? null;
   const planQ = useTodayContract(me ? contractDate(me) : null, enabled && !!me);
@@ -133,7 +161,7 @@ export function DayLine({ enabled, journalOpenDate, quests, phoneSplit }: { enab
   if (!enabled) return null;
   if (meQ.isLoading) {
     return (
-      <div className="mt-4 flex items-center gap-3 border-t border-[var(--glass-border)] pt-4" aria-hidden="true">
+      <div className={embedded ? "flex items-center gap-3" : "mt-4 flex items-center gap-3 border-t border-[var(--glass-border)] pt-4"} aria-hidden="true">
         <Skeleton className="h-9 w-9 rounded-xl" />
         <div className="flex flex-1 flex-col gap-1.5">
           <Skeleton className="h-3 w-24 rounded" />
@@ -145,11 +173,11 @@ export function DayLine({ enabled, journalOpenDate, quests, phoneSplit }: { enab
   // The day line is the dashboard's focal point: a failed load says so (with a retry) instead of silently vanishing.
   if (meQ.isError && !me) {
     return (
-      <div className="mt-4 border-t border-[var(--glass-border)] pt-4">
+      <div className={embedded ? undefined : "mt-4 border-t border-[var(--glass-border)] pt-4"}>
         <QueryError compact error={meQ.error} onRetry={() => void meQ.refetch()} />
       </div>
     );
   }
   if (!me) return null;
-  return <DayLineView me={me} plan={planQ.data} journalOpenDate={journalOpenDate} quests={quests} playbook={playbook} phoneSplit={phoneSplit} />;
+  return <DayLineView me={me} plan={planQ.data} journalOpenDate={journalOpenDate} quests={quests} playbook={playbook} phoneSplit={phoneSplit} embedded={embedded} />;
 }

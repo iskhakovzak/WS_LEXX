@@ -13,20 +13,29 @@ export type DashboardPrefs = {
   metric: EquityMetric;
 };
 
-const PREFS_KEY = "ws_lexx_dashboard_prefs_v5";
-/** Previous layout (bundled «ritual» / «market» blocks): migrated once — scope/period/metric/order kept, new defaults hidden. */
-const LEGACY_PREFS_KEY = "ws_lexx_dashboard_prefs_v4";
-const LEGACY_SPLIT: Record<string, SectionId[]> = { ritual: ["checkin", "brief", "quote"], market: ["sectors", "macro", "dna"] };
+/** v6 = the composed dashboard (2026-10-25: sections, «Ваш edge» bento, no «Сегодня» tile). */
+const PREFS_KEY = "ws_lexx_dashboard_prefs_v6";
+/**
+ * Earlier layouts, migrated once into the new default: scope / period / metric are kept, and so are the opt-in extras
+ * the viewer had switched on (v5); the order and the shown / hidden main blocks and tiles start from the new default,
+ * ids that no longer exist are dropped. v4 bundled extras into «ritual» / «market» and saved everything on.
+ */
+const LEGACY_KEYS = [
+  { key: "ws_lexx_dashboard_prefs_v5", keepExtras: true },
+  { key: "ws_lexx_dashboard_prefs_v4", keepExtras: false },
+] as const;
 
 /** Own-trade insight tiles: shown on «Мои» only, hidden in a «Команда» default. */
-const OWN_CARDS: SectionId[] = ["streaks", "leaks", "seqDay", "afterLoss", "holdTime", "weekdays", "fees", "todayTile"];
+const OWN_CARDS: SectionId[] = DEFAULT_ORDER.filter((id) => SECTION_META[id].group === "edge");
+/** Off by default but offered in «Настроить» («Ваш edge»). */
+const QUIET_TILES: SectionId[] = ["weekdays"];
 
-/** Sensible defaults: the cockpit on top, extras off (traders keep the morning check-in); staff see the desk instead of streaks. */
-function defaultPrefs(scope: Scope): DashboardPrefs {
+/** Sensible defaults: the composed dashboard, extras off (traders keep the morning check-in); «Команда» without own tiles. */
+export function defaultPrefs(scope: Scope): DashboardPrefs {
   const extras = DEFAULT_ORDER.filter((id) => SECTION_META[id].extra && (scope === "team" || id !== "checkin"));
   return {
     order: DEFAULT_ORDER,
-    hidden: scope === "team" ? [...OWN_CARDS, ...extras] : extras,
+    hidden: scope === "team" ? [...OWN_CARDS, ...extras] : [...QUIET_TILES, ...extras],
     scope,
     period: "week",
     metric: "pnl",
@@ -34,59 +43,78 @@ function defaultPrefs(scope: Scope): DashboardPrefs {
 }
 
 const PERIODS: EquityPeriod[] = ["week", "30d", "90d", "ytd", "all"];
+const known = new Set<SectionId>(DEFAULT_ORDER);
+const ids = (v: unknown): SectionId[] => (Array.isArray(v) ? v.filter((x): x is SectionId => known.has(x as SectionId)) : []);
 
-function expandLegacy(ids: unknown[]): string[] {
-  return ids.flatMap((x) => (typeof x === "string" && LEGACY_SPLIT[x] ? LEGACY_SPLIT[x] : [x as string]));
+/** The scope fields: a scope switched by hand is kept; an auto-saved staff «Команда» becomes «Мои» (owner rule 2026-10-21). */
+function scopeOf(r: Partial<DashboardPrefs>, fallbackScope: Scope) {
+  const picked = r.scopePicked === true && (r.scope === "team" || r.scope === "me");
+  return { scope: picked ? (r.scope as Scope) : fallbackScope, scopePicked: picked };
 }
 
-export function sanitizeDashboardPrefs(raw: unknown, fallbackScope: Scope, legacy = false): DashboardPrefs {
+function common(r: Partial<DashboardPrefs>, fallbackScope: Scope) {
   const base = defaultPrefs(fallbackScope);
-  if (!raw || typeof raw !== "object") return base;
-  const r = raw as Partial<DashboardPrefs>;
-  const known = new Set<SectionId>(DEFAULT_ORDER);
-  const rawOrder = Array.isArray(r.order) ? (legacy ? expandLegacy(r.order) : r.order) : [];
-  const order = rawOrder.filter((x): x is SectionId => known.has(x as SectionId));
-  for (const id of DEFAULT_ORDER) if (!order.includes(id)) order.push(id);
-  const rawHidden = Array.isArray(r.hidden) ? (legacy ? expandLegacy(r.hidden) : r.hidden) : null;
-  const userHidden = rawHidden ? rawHidden.filter((x): x is SectionId => known.has(x as SectionId)) : base.hidden;
-  // Legacy layouts were saved with everything on; apply the decluttered defaults on top of what the user hid.
-  const hidden = legacy ? Array.from(new Set([...base.hidden, ...userHidden])) : userHidden;
-  // Staff = traders + extras (owner rule 2026-10-21): a «Команда» saved as the old staff default (never picked by
-  // hand) becomes «Мои» once, with the trader blocks it had hidden (streaks, the morning check-in) back on.
-  const picked = r.scopePicked === true && (r.scope === "team" || r.scope === "me");
-  const migrate = !picked && r.scope === "team" && fallbackScope === "me";
   return {
-    order: Array.from(new Set(order)),
-    hidden: migrate ? hidden.filter((id) => !OWN_CARDS.includes(id) && id !== "checkin") : hidden,
-    scope: picked ? (r.scope as Scope) : fallbackScope,
-    scopePicked: picked,
+    ...scopeOf(r, fallbackScope),
     period: PERIODS.includes(r.period as EquityPeriod) ? (r.period as EquityPeriod) : base.period,
-    metric: r.metric === "r" ? "r" : "pnl",
+    metric: r.metric === "r" ? ("r" as const) : ("pnl" as const),
   };
 }
 
-function loadPrefs(key: string, legacyKey: string, fallbackScope: Scope): DashboardPrefs {
+export function sanitizeDashboardPrefs(raw: unknown, fallbackScope: Scope): DashboardPrefs {
+  if (!raw || typeof raw !== "object") return defaultPrefs(fallbackScope);
+  const r = raw as Partial<DashboardPrefs>;
+  const c = common(r, fallbackScope);
+  const order = ids(r.order);
+  for (const id of DEFAULT_ORDER) if (!order.includes(id)) order.push(id);
+  const hidden = Array.isArray(r.hidden) ? ids(r.hidden) : defaultPrefs(c.scope).hidden;
+  // An auto-saved staff «Команда» (never picked by hand) that became «Мои»: the own tiles it had hidden come back.
+  const migrated = !c.scopePicked && r.scope === "team" && fallbackScope === "me";
+  return {
+    order: Array.from(new Set(order)),
+    hidden: Array.from(new Set(migrated ? hidden.filter((id) => !OWN_CARDS.includes(id) && id !== "checkin") : hidden)),
+    ...c,
+  };
+}
+
+/** One-time move from an earlier layout: the new default + scope / period / metric (+ the extras switched on, v5). */
+export function migrateDashboardPrefs(raw: unknown, fallbackScope: Scope, keepExtras: boolean): DashboardPrefs {
+  if (!raw || typeof raw !== "object") return defaultPrefs(fallbackScope);
+  const r = raw as Partial<DashboardPrefs>;
+  const c = common(r, fallbackScope);
+  const base = defaultPrefs(c.scope);
+  const oldHidden = Array.isArray(r.hidden) ? new Set(r.hidden as unknown[]) : null;
+  const shownExtras = keepExtras && oldHidden
+    ? DEFAULT_ORDER.filter((id) => SECTION_META[id].extra && !oldHidden.has(id))
+    : [];
+  return { order: DEFAULT_ORDER, hidden: base.hidden.filter((id) => !shownExtras.includes(id)), ...c };
+}
+
+function loadPrefs(viewer: string, fallbackScope: Scope): DashboardPrefs {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(`${PREFS_KEY}:${viewer}`);
     if (raw) return sanitizeDashboardPrefs(JSON.parse(raw), fallbackScope);
-    const old = localStorage.getItem(legacyKey);
-    return sanitizeDashboardPrefs(old ? JSON.parse(old) : null, fallbackScope, true);
+    for (const l of LEGACY_KEYS) {
+      const old = localStorage.getItem(`${l.key}:${viewer}`);
+      if (old) return migrateDashboardPrefs(JSON.parse(old), fallbackScope, l.keepExtras);
+    }
   } catch {
-    return sanitizeDashboardPrefs(null, fallbackScope);
+    /* unreadable → defaults */
   }
+  return defaultPrefs(fallbackScope);
 }
 
 /** Prefs are keyed by the signed-in identity, so two people on one browser do not share a layout. */
 export function useDashboardPrefs(fallbackScope: Scope, viewerKey: string | null) {
-  const key = `${PREFS_KEY}:${viewerKey ?? "guest"}`;
-  const legacyKey = `${LEGACY_PREFS_KEY}:${viewerKey ?? "guest"}`;
-  const [prefs, setPrefs] = useState<DashboardPrefs>(() => loadPrefs(key, legacyKey, fallbackScope));
+  const viewer = viewerKey ?? "guest";
+  const key = `${PREFS_KEY}:${viewer}`;
+  const [prefs, setPrefs] = useState<DashboardPrefs>(() => loadPrefs(viewer, fallbackScope));
 
   // Identity changed (login/logout) → reload that viewer's prefs.
   useEffect(() => {
-    setPrefs(loadPrefs(key, legacyKey, fallbackScope));
+    setPrefs(loadPrefs(viewer, fallbackScope));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [viewer]);
 
   useEffect(() => {
     try {
@@ -97,6 +125,10 @@ export function useDashboardPrefs(fallbackScope: Scope, viewerKey: string | null
   }, [prefs, key]);
 
   const update = useCallback((patch: Partial<DashboardPrefs>) => setPrefs((p) => ({ ...p, ...patch })), []);
-  const reset = useCallback(() => setPrefs(defaultPrefs(fallbackScope)), [fallbackScope]);
+  // Reset = the new default layout; the scope the viewer is on and the curve's window / unit stay.
+  const reset = useCallback(
+    () => setPrefs((p) => ({ ...defaultPrefs(p.scope), scope: p.scope, scopePicked: p.scopePicked, period: p.period, metric: p.metric })),
+    [],
+  );
   return { prefs, update, reset };
 }

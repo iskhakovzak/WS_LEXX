@@ -2,16 +2,19 @@ import {
   AlertTriangle,
   Bell,
   CalendarClock,
+  ClipboardCheck,
   ClipboardPen,
   FileEdit,
+  Gamepad2,
   Lightbulb,
+  NotebookPen,
   UserCheck,
   type LucideIcon,
 } from "lucide-react";
 import type { Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { shortDate } from "./fmt";
-import { fmtWeekday } from "@/lib/format";
+import { fmtUsd, fmtWeekday } from "@/lib/format";
 import type { DashboardToday, EventsToday, MiniTrade, RecentTrade } from "./use-dashboard";
 import type { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
@@ -21,6 +24,9 @@ import { personName } from "@/i18n";
 
 type DashT = ReturnType<typeof dashboardI18n.useT>["t"];
 type CommonT = ReturnType<typeof commonI18n.useT>["t"];
+
+/** The daily loop's step (components/daily/next-step-model NextStep), structurally — features do not import each other. */
+export type DailyStepLike = { kind: "plan" | "contract" | "close" | "task" | "done"; date: string; href: string | null; trades?: number; netPnl?: number | null };
 
 /** One actionable line. Lower `rank` = more urgent; the first item becomes «Следующий шаг». */
 export type Item = {
@@ -217,4 +223,45 @@ export function queueItems(
     });
   }
   return items;
+}
+
+/**
+ * The daily loop's step («Напиши план» / «Закрой день» / «Задача дня ждёт», components/daily/next-step-model) as one
+ * task of «План на день», ranked with the rest — so the card has ONE next step on every screen. «contract» / «done» are
+ * not tasks: the contract is the card's day frame, a finished day needs nothing. A day already in the list (the
+ * journal's own «Заполнить разбор» row) is not repeated.
+ */
+export function dailyStepItem(step: DailyStepLike | null | undefined, today: string | null, has: (key: string) => boolean, t: DashT, tc: CommonT): Item | null {
+  if (!step || !step.href) return null;
+  if (step.kind === "plan") {
+    return {
+      key: "daily-plan",
+      rank: 1,
+      icon: NotebookPen,
+      tone: "accent",
+      title: step.date === today ? t("step.plan.titleToday") : t("step.plan.titleOn", { date: shortDate(step.date) }),
+      detail: t("step.plan.hint"),
+      href: step.href,
+      cta: t("step.plan.cta"),
+    };
+  }
+  if (step.kind === "close" && !has("eod")) {
+    return {
+      key: "daily-close",
+      rank: 1,
+      icon: ClipboardCheck,
+      tone: "warn",
+      title: t("step.close.title", { date: shortDate(step.date) }),
+      detail: [
+        step.trades ? tc("units.trades", { count: step.trades }) : null,
+        step.netPnl != null ? t("attention.dayNet", { amount: fmtUsd(step.netPnl, { signed: true }) }) : null,
+      ].filter(Boolean).join(" · ") || t("step.close.hint"),
+      href: step.href,
+      cta: t("step.close.cta"),
+    };
+  }
+  if (step.kind === "task") {
+    return { key: "daily-task", rank: 5, icon: Gamepad2, tone: "purple", title: t("step.task.title"), detail: t("step.task.hint"), href: step.href, cta: t("step.task.cta") };
+  }
+  return null;
 }
