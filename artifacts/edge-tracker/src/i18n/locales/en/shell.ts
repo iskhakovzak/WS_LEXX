@@ -299,6 +299,16 @@ export default {
     askStaff: "To open it, ask a curator or a desk admin.",
     toDashboard: "Go to dashboard",
   },
+  intro: {
+    welcome: "Welcome, {name}",
+    trader: "Trader",
+    greeting: {
+      night: "Good night, {name}",
+      morning: "Good morning, {name}",
+      day: "Good afternoon, {name}",
+      evening: "Good evening, {name}",
+    },
+  },
   app: {
     pageLoading: "Loading page…",
     actionFailed: "Something went wrong",

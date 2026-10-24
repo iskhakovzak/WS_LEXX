@@ -850,6 +850,22 @@ body {
   100% { transform: translateX(100%); }
 }
 
+/* Opening intro (components/shell/welcome-intro.tsx): words blur-to-sharp over 1.2 s, the smoke fades up under them.
+   Under «reduce motion» neither runs: the text is simply there over a still frame. */
+@keyframes intro-text-in {
+  from { opacity: 0; filter: blur(14px); transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; filter: blur(0); transform: none; }
+}
+@keyframes intro-smoke-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.intro-text { animation: intro-text-in 1.2s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s both; }
+.intro-smoke { animation: intro-smoke-in 1.1s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .intro-text, .intro-smoke { animation: none; }
+}
+
 /* OS «reduce motion»: every CSS animation/transition ends instantly (framer-motion follows the same setting
    through <MotionConfig reducedMotion="user"> in App.tsx). */
 @media (prefers-reduced-motion: reduce) {

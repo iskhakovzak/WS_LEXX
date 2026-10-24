@@ -304,6 +304,17 @@ export default {
     askStaff: "Чтобы открыть его, обратитесь к куратору или администратору деска.",
     toDashboard: "На дашборд",
   },
+  /** Opening intro (components/shell/welcome-intro.tsx): {name} is set in an italic serif. */
+  intro: {
+    welcome: "Добро пожаловать, {name}",
+    trader: "трейдер",
+    greeting: {
+      night: "Доброй ночи, {name}",
+      morning: "Доброе утро, {name}",
+      day: "Добрый день, {name}",
+      evening: "Добрый вечер, {name}",
+    },
+  },
   app: {
     pageLoading: "Загрузка страницы…",
     actionFailed: "Не удалось выполнить",

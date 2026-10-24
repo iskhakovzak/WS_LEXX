@@ -20,6 +20,7 @@ import { I18nProvider, i18nReady } from "@/i18n";
 import { LocaleSync } from "@/i18n/locale-sync";
 import { shellI18n } from "@/i18n/ns/shell";
 import { UsageRouteTracker } from "@/components/shared/usage-tracker";
+import { WelcomeIntro } from "@/components/shell/welcome-intro";
 
 // Every section is its own chunk; see shell/route-loaders.ts. The dashboard too (DEV-11: it pulled the equity chart,
 // the daily cards and the quest strip into the entry chunk, which the login screen and every other page also paid for);
@@ -275,6 +276,8 @@ function App() {
         <AuthProvider>
           <ThemeProvider>
             <LocaleSync />
+            {/* Opening «Добро пожаловать, трейдер» / «Доброе утро, …» overlay; the app renders underneath meanwhile. */}
+            <WelcomeIntro />
             {/* Re-mounts the app on a language switch (query cache, auth and theme survive; see i18n/README.md). */}
             <I18nProvider>
               {/* Last line of defence: a crash in the shell itself (header, sidebar) shows a retry instead of a blank page. */}

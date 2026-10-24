@@ -299,6 +299,16 @@ export default {
     askStaff: "Uni ochish uchun kurator yoki desk administratoriga murojaat qiling.",
     toDashboard: "Boshqaruv paneliga",
   },
+  intro: {
+    welcome: "Xush kelibsiz, {name}",
+    trader: "treyder",
+    greeting: {
+      night: "Xayrli tun, {name}",
+      morning: "Xayrli tong, {name}",
+      day: "Xayrli kun, {name}",
+      evening: "Xayrli kech, {name}",
+    },
+  },
   app: {
     pageLoading: "Sahifa yuklanmoqda…",
     actionFailed: "Bajarib boʻlmadi",
