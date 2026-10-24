@@ -1,7 +1,7 @@
-/** Header right-side controls: language, the «Вид» (appearance) button, notifications bell (popover) and the user menu. */
+/** Header right-side controls: language, the «Вид» (appearance) button, the screen lock, notifications bell (popover) and the user menu. */
 import React from "react";
 import { useLocation } from "wouter";
-import { CloudMoon, Gem, LogOut, Moon, Palette, Settings, Sun, User } from "lucide-react";
+import { CloudMoon, Gem, LockKeyhole, LogOut, Moon, Palette, Settings, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme, type Theme } from "@/contexts/theme-context";
@@ -15,6 +15,9 @@ import {
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { personInitials, personName } from "@/i18n";
+import { lockI18n } from "@/i18n/ns/lock";
+import { LOCK_KEYS } from "@/lib/lock/lock-model";
+import { requestLock } from "@/lib/lock/lock-store";
 
 export { LanguageMenu } from "@/i18n/language-switcher";
 import { LanguageMenuItems } from "@/i18n/language-switcher";
@@ -54,6 +57,26 @@ export function ThemeToggle({ className }: { className?: string }) {
   );
 }
 
+/** «Заблокировать»: the screensaver lock (components/lock-screen.tsx); also Ctrl+Alt+L, the user menu and the palette. */
+export function LockButton({ className }: { className?: string }) {
+  const { user } = useAuth();
+  const { t } = lockI18n.useT();
+  if (!user || user.role === "guest") return null;
+  return (
+    <button
+      type="button"
+      onClick={requestLock}
+      className={cn(iconBtn, className)}
+      title={t("buttonTitle", { keys: LOCK_KEYS.join("+") })}
+      aria-label={t("button")}
+      aria-keyshortcuts="Control+Alt+L"
+      data-lock-button=""
+    >
+      <LockKeyhole className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+}
+
 /**
  * Bell with unread badge + popover (components/notifications/notification-bell.tsx).
  * `traderName` is accepted for backwards compatibility with the layout; identity comes from the auth context.
@@ -70,6 +93,7 @@ export function UserMenu() {
   const [, navigate] = useLocation();
   const { t } = commonI18n.useT();
   const { t: ts } = shellI18n.useT();
+  const { t: tl } = lockI18n.useT();
   const member = user && user.role !== "guest" ? user.traderName ?? null : null;
   const name = member ? personName(member) : user && user.role !== "guest" ? t("roles.user") : t("roles.guest");
   // UMID-34: a trader is shown by their ladder level («Стажёр»), not the technical role «Трейдер».
@@ -120,6 +144,13 @@ export function UserMenu() {
           <Settings className="h-4 w-4" aria-hidden="true" />
           {t("actions.settings")}
         </DropdownMenuItem>
+        {user && user.role !== "guest" && (
+          <DropdownMenuItem onSelect={requestLock} className="gap-2">
+            <LockKeyhole className="h-4 w-4" aria-hidden="true" />
+            <span className="flex-1 whitespace-nowrap">{tl("button")}</span>
+            <span className="whitespace-nowrap text-2xs tracking-wide text-muted-foreground">{LOCK_KEYS.join("+")}</span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={logout} className="gap-2 text-destructive focus:text-destructive">
           <LogOut className="h-4 w-4" aria-hidden="true" />
           {t("actions.logout")}

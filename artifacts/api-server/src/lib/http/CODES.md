@@ -366,6 +366,10 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `DESK_GROUP_NOT_FOUND` | 404 | PUT /api/desk-groups (group id that does not exist or is archived when a trader is moved into it). | — |
 | `DESK_GROUP_NAME_TAKEN` | 409 | PUT /api/desk-groups: another active group has this name (case-insensitive). | `params.name` |
 | `DESK_GROUP_CURATOR_INVALID` | 400 | PUT /api/desk-groups: `curatorId` is not an active curator / admin. | — |
+| `SESSION_LOCKED` | 423 | The caller's session is screen-locked («Заблокировать», `lib/security/screenLock.ts`). Answered by the global gate (`lib/auth.ts` apiAuthGate) on every route except `POST /auth/unlock`, `POST\|GET /auth/lock`, `POST /auth/logout`, `GET /permissions/me` (and the public routes). The client shows its lock screen. | — |
+| `UNLOCK_CODE_INVALID` | 403 | `POST /auth/unlock`: wrong quick code (or account password when no code is set). | `{ attemptsLeft }` |
+| `UNLOCK_SIGNED_OUT` | 401 | `POST /auth/unlock`: the 5th wrong answer since the lock — this session is signed out (revoked). | — |
+| `QUICK_CODE_INVALID` | 400 | `PUT /auth/quick-code`: not 4–8 digits and not a 6–32 character phrase. | — |
 | `SECTION_BLOCKED` | 403 | The section is closed for the caller's ladder stage (desk setting `access.sections`, admin → «Роли и права» → «Доступ по ступеням»). Answered by one middleware (`lib/access/sections.ts`, table `SECTION_API`) on the section's data endpoints: top of the day, leaderboard, discussions, daily feed (not `/dailyfeed/stream`), desk-day, office stats, benchmark, trade ideas (+ stats), activity. Staff are never blocked. | `{ section, stage }` |
 | `JUNIOR_NOTES_RETIRED` | 410 | Any non-GET /api/junior-notes/*: the juniors' summary is read-only history now (the evening form in the journal replaced it). | — |
 

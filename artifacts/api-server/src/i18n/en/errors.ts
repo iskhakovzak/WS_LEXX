@@ -357,4 +357,8 @@ export default {
   DESK_GROUP_CURATOR_INVALID: "A group's curator must be a curator or an admin",
   JUNIOR_NOTES_RETIRED: "The juniors' summary is no longer kept — fill in the evening form in the journal",
   SECTION_BLOCKED: "This section is closed for your stage. Ask your curator or an admin to open it",
+  SESSION_LOCKED: "The screen is locked. Enter your quick unlock code",
+  UNLOCK_CODE_INVALID: "Wrong code",
+  UNLOCK_SIGNED_OUT: "Too many wrong attempts. Please sign in again",
+  QUICK_CODE_INVALID: "The code is 4 to 8 digits or a phrase of 6 to 32 characters",
 } satisfies Messages<typeof ru>;

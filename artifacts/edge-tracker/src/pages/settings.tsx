@@ -17,6 +17,7 @@ import { TradingSection } from "@/components/settings/TradingSection";
 import { NotificationsSection } from "@/components/settings/NotificationsSection";
 import { DataSection } from "@/components/settings/DataSection";
 import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
+import { SecuritySection } from "@/components/settings/SecuritySection";
 import { useTeam } from "@/components/settings/team-api";
 import { isTypingTarget } from "@/components/settings/shared";
 import { settingsI18n } from "@/i18n/ns/settings";
@@ -132,6 +133,7 @@ export default function Settings() {
               {active === "appearance" && <AppearanceSection />}
               {active === "trading" && <TradingSection />}
               {active === "notifications" && <NotificationsSection onNavigate={select} />}
+              {active === "security" && <SecuritySection />}
               {active === "data" && <DataSection />}
               {active === "integrations" && <IntegrationsSection />}
             </motion.div>

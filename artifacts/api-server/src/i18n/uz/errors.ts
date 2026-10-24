@@ -357,4 +357,8 @@ export default {
   DESK_GROUP_CURATOR_INVALID: "Guruh kuratori faqat kurator yoki admin boʻlishi mumkin",
   JUNIOR_NOTES_RETIRED: "Juniorlar xulosasi endi yuritilmaydi — kundalikdagi kechki shaklni toʻldiring",
   SECTION_BLOCKED: "Bu boʻlim sizning bosqichingiz uchun yopiq. Uni ochish uchun kurator yoki administratorga murojaat qiling",
+  SESSION_LOCKED: "Ekran qulflangan. Tezkor kirish kodini kiriting",
+  UNLOCK_CODE_INVALID: "Kod notoʻgʻri",
+  UNLOCK_SIGNED_OUT: "Notoʻgʻri urinishlar juda koʻp. Qaytadan kiring",
+  QUICK_CODE_INVALID: "Kod 4 dan 8 gacha raqam yoki 6 dan 32 gacha belgidan iborat ibora boʻladi",
 } satisfies Messages<typeof ru>;

@@ -7,6 +7,7 @@ import { can, readScope, resolveActor, type Capability } from "./permissions";
 import { canReadPersonal, guestModeEnabled } from "./accessRules";
 import { AppError, sendError, unauthorized } from "./http/errors";
 import { isSessionRevoked, newSessionId, sessionKey } from "./security/sessions";
+import { allowedWhileLocked, isSessionLocked } from "./security/screenLock";
 
 const SECRET = config.jwtSecret;
 if (!SECRET) {
@@ -160,9 +161,10 @@ declare global {
       authUser?: AuthUser;
       /**
        * Facts about the bearer token itself (set with authUser for members). `sid` = the session's revocation key
-       * (lib/security/sessions.sessionKey), `exp` = expiry in seconds.
+       * (lib/security/sessions.sessionKey), `exp` = expiry in seconds, `locked` = the screen lock is on for this session
+       * (lib/security/screenLock).
        */
-      authMeta?: { iat?: number; exp?: number; pwc: boolean; sid: string };
+      authMeta?: { iat?: number; exp?: number; pwc: boolean; sid: string; locked?: boolean };
     }
   }
 }
@@ -184,7 +186,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
         // token_version = «signed out everywhere»; the session row = «signed out on that device» (menu «Выйти»).
         if (currentTv !== null && currentTv === decoded.tv && !(await isSessionRevoked(sid))) {
           req.authUser = { id: decoded.id, name: decoded.name, role: decoded.role };
-          req.authMeta = { iat: decoded.iat, exp: decoded.exp, pwc: decoded.pwc, sid };
+          req.authMeta = { iat: decoded.iat, exp: decoded.exp, pwc: decoded.pwc, sid, locked: await isSessionLocked(sid) };
         }
       }
     }
@@ -242,10 +244,12 @@ const PASSWORD_CHANGE_ROUTES: readonly PublicRoute[] = [
   { method: "PATCH", path: "/users/me/locale" },
 ];
 
-// Error answers go through lib/http (codes AUTH_REQUIRED / GUEST_READ_ONLY / PASSWORD_CHANGE_REQUIRED, texts in the request language).
+// Error answers go through lib/http (codes AUTH_REQUIRED / GUEST_READ_ONLY / PASSWORD_CHANGE_REQUIRED / SESSION_LOCKED,
+// texts in the request language).
 
 /**
- * 401 for anonymous callers on every non-public route; 403 for guests on every mutation.
+ * 401 for anonymous callers on every non-public route; 403 for guests on every mutation; 423 SESSION_LOCKED for a
+ * screen-locked session on everything but the unlock / lock / logout / permissions-me routes (lib/security/screenLock).
  * `req.path` is relative to the /api mount ("/trades", not "/api/trades").
  */
 export function apiAuthGate(req: Request, res: Response, next: NextFunction): void {
@@ -262,6 +266,10 @@ export function apiAuthGate(req: Request, res: Response, next: NextFunction): vo
   }
   if (req.authMeta?.pwc && !matches(PASSWORD_CHANGE_ROUTES, method === "HEAD" ? "GET" : method, path)) {
     sendError(res, new AppError("PASSWORD_CHANGE_REQUIRED"));
+    return;
+  }
+  if (req.authMeta?.locked && !allowedWhileLocked(method, path)) {
+    sendError(res, new AppError("SESSION_LOCKED"));
     return;
   }
   next();

@@ -1,13 +1,13 @@
 import * as React from "react";
 import { forwardRef } from "react";
-import { ArrowUpRight, Bell, Database, Palette, Plug, Search, ShieldCheck, SlidersHorizontal, UserRound, Users, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Bell, Database, LockKeyhole, Palette, Plug, Search, ShieldCheck, SlidersHorizontal, UserRound, Users, type LucideIcon } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import type { Capability } from "@/lib/permissions";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { commonI18n } from "@/i18n/ns/common";
 
-export type SectionId = "profile" | "appearance" | "trading" | "notifications" | "team" | "permissions" | "data" | "integrations";
+export type SectionId = "profile" | "appearance" | "trading" | "notifications" | "security" | "team" | "permissions" | "data" | "integrations";
 
 export type SectionMeta = {
   id: SectionId;
@@ -40,6 +40,8 @@ export const SECTIONS: SectionMeta[] = [
     keywords: "счёт счет риск комиссия плечо leverage горизонт интрадей овернайт свинг чек-лист checklist покупательная buying power размер позиции account risk fees horizon hisob komissiya leverej savdo" }),
   section("notifications", Bell, {
     keywords: "уведомления оповещения telegram бот утро вечер notifications alerts bot bildirishnoma xabarnoma" }),
+  section("security", LockKeyhole, {
+    keywords: "lock screen screensaver quick code pin auto-lock security xavfsizlik qulf ekran kod" }),
   section("team", Users, {
     keywords: "команда пользователи роли пригласить добавить деактивировать куратор ментор риск-менеджер назначения users team invite roles jamoa foydalanuvchi",
     requiresAny: ["users.read.team"], href: "/admin?tab=people" }),

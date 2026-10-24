@@ -379,6 +379,11 @@ export const ERROR_CODES = {
   JUNIOR_NOTES_RETIRED: 410,
   // ── Stage access (desk setting access.sections, lib/access/sections.ts) ──
   SECTION_BLOCKED: 403,
+  // ── Screen lock (lib/security/screenLock.ts, routes/screen-lock.ts) ──
+  SESSION_LOCKED: 423,
+  UNLOCK_CODE_INVALID: 403,
+  UNLOCK_SIGNED_OUT: 401,
+  QUICK_CODE_INVALID: 400,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

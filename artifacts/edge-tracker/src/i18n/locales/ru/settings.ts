@@ -17,6 +17,7 @@ export default {
     permissions: { label: "Права доступа", description: "Матрица прав по ролям" },
     data: { label: "Данные и бэкапы", description: "Экспорт CSV, бэкап БД" },
     integrations: { label: "Интеграции", description: "Telegram-бот, рассылки" },
+    security: { label: "Безопасность", description: "Блокировка экрана и код быстрого входа" },
   },
   nav: {
     aria: "Разделы настроек",

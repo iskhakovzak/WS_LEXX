@@ -16,6 +16,7 @@ export default {
     permissions: { label: "Kirish huquqlari", description: "Rollar boʻyicha huquqlar matritsasi" },
     data: { label: "Maʼlumotlar va zaxira", description: "CSV eksport, maʼlumotlar bazasi zaxirasi" },
     integrations: { label: "Integratsiyalar", description: "Telegram bot, ommaviy xabarlar" },
+    security: { label: "Xavfsizlik", description: "Ekran qulfi va tezkor kirish kodi" },
   },
   nav: {
     aria: "Sozlamalar boʻlimlari",

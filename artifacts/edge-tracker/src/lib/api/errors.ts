@@ -233,6 +233,8 @@ export function isClientError(err: unknown): boolean {
 /** QueryClient `retry`: never 4xx; network / 5xx up to 2 more times; anything unknown once. */
 export function shouldRetryQuery(failureCount: number, err: unknown): boolean {
   const { status, isNetwork } = parse(err);
+  // 423 SESSION_LOCKED right after an unlock: another API process may still hold the lock for ≤ 3 s — worth a retry.
+  if (status === 423) return failureCount < 2;
   if (status != null && status >= 400 && status < 500) return false;
   if (isNetwork || (status != null && status >= 500)) return failureCount < 2;
   return failureCount < 1;

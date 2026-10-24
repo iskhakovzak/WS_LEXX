@@ -16,6 +16,7 @@ export default {
     permissions: { label: "Permissions", description: "Permissions matrix by role" },
     data: { label: "Data and backups", description: "CSV export, database backup" },
     integrations: { label: "Integrations", description: "Telegram bot, broadcasts" },
+    security: { label: "Security", description: "Screen lock and quick unlock code" },
   },
   nav: {
     aria: "Settings sections",

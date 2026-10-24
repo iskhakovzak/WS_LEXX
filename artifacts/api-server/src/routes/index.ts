@@ -39,6 +39,7 @@ import leaderboardRouter from "./leaderboard";
 import rulesRouter from "./rules";
 import adminRouter from "./admin";
 import authRouter from "./auth";
+import screenLockRouter from "./screen-lock";
 import fxRouter from "./fx";
 import earningsRouter from "./earnings";
 import authorNotesRouter from "./author-notes";
@@ -147,6 +148,7 @@ router.use(leaderboardRouter);
 router.use(rulesRouter);
 router.use(adminRouter);
 router.use(authRouter);
+router.use(screenLockRouter); // «Заблокировать»: /auth/lock, /auth/unlock, /auth/quick-code
 router.use(fxRouter);
 router.use(earningsRouter);
 // «Сводка автора» is behind the desk switch nav.authorNotes (default off, Волна 2 п. 2.15): off → every route 404.
