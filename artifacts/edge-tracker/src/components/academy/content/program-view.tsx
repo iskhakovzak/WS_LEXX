@@ -75,7 +75,7 @@ export function ProgramOutline({ tree, user, viewingOther }: { tree: ProgramTree
             </p>
           </div>
           {next ? (
-            <Button asChild>
+            <Button asChild wrap>
               <Link href={academyLinks.item(next.kind, next.id, { user: linkUser })} title={next.title}>
                 <PlayCircle aria-hidden="true" />
                 {t(tree.progress.done ? "program.continueWith" : "program.startWith", { title: next.title.length > 36 ? `${next.title.slice(0, 36)}…` : next.title })}

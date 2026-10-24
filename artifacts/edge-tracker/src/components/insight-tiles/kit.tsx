@@ -149,14 +149,16 @@ export function TrendChip({ trend, fmt }: { trend: Trend | null; fmt: (delta: nu
 export function ActionChip({ icon: Icon, label, href, onClick, primary }: { icon: LucideIcon; label: string; href?: string; onClick?: () => void; primary?: boolean }) {
   const [, navigate] = useLocation();
   const cls = cn(
-    "inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors",
+    // Two lines before clipping (owner: «в кнопках текст не помещается»): «Проверить: не больше 3 сделок в день» was
+    // cut to «Проверить: не больше 3…» in a 1440 px dashboard tile. A wrapped chip becomes a capsule (18px radius).
+    "inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-[1.125rem] px-3 py-1 text-left text-xs font-medium leading-ui transition-colors",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     primary ? "bg-foreground text-background hover:bg-foreground/90" : "border border-[var(--glass-border)] text-foreground hover:bg-[var(--glass-hover-bg)]",
   );
   const body = (
     <>
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span className="truncate">{label}</span>
+      <span className="line-clamp-2 min-w-0 text-balance">{label}</span>
       <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden="true" />
     </>
   );
