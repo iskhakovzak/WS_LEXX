@@ -11,10 +11,19 @@ export const APPEARANCE_THEMES = ["dark", "dim", "platinum", "light"] as const;
 const ACCENTS = ["ink", "blue", "cyan", "teal", "green", "lime", "amber", "orange", "red", "slate"] as const;
 const TONES = ["ink", "graphite", "espresso", "navy"] as const;
 const LINES = ["theme", "text", "accent"] as const;
+/** «WS originals» scenes (edge-tracker lib/appearance/model SCENE_IDS). */
+const SCENES = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus"] as const;
+/** «Чипы журнала» keys per group (edge-tracker CHIP_GROUPS). */
+const CHIP_KEYS = {
+  strategy: ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing", "PM", "IMX"],
+  tag: ["setup", "mistake", "emotion", "other"],
+  horizon: ["intraday", "overnight", "swing"],
+} as const;
 export const MAX_LOOKS = 5;
 export const BE_RANGE_MAX = 1000;
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+const chipGroup = <T extends readonly [string, ...string[]]>(keys: T) => z.object({ on: z.boolean(), colors: z.record(z.enum(keys), hex) });
 const presetOrHex = <T extends readonly [string, ...string[]]>(ids: T) => z.union([z.enum(ids), hex]);
 
 export const AppearanceSchema = z.object({
@@ -34,10 +43,16 @@ export const AppearanceSchema = z.object({
     color: hex.nullable(),
   }),
   bg: z.object({
-    kind: z.enum(["none", "image", "smoke", "aurora", "grid", "dusk"]),
+    kind: z.enum(["none", "image", "aurora", "grid", "dusk", ...SCENES]),
     panels: z.enum(["glass", "frosted", "solid"]),
   }),
   density: z.enum(["compact", "spacious"]),
+  /** Optional: clients before the chips setting send none. */
+  chips: z.object({
+    strategy: chipGroup(CHIP_KEYS.strategy),
+    tag: chipGroup(CHIP_KEYS.tag),
+    horizon: chipGroup(CHIP_KEYS.horizon),
+  }).optional(),
 });
 
 export const LookSchema = z.object({

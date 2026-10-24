@@ -1,3 +1,4 @@
+import { TradeChip } from "@/components/ds/trade-chip";
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -296,7 +297,8 @@ function TradeItem({
             <span className="text-sm font-semibold">{t.ticker}</span>
             {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
             {t.setup && <span className="truncate text-xs text-muted-foreground">{t.setup}</span>}
-            {t.horizon && t.horizon !== "intraday" && <Pill tone="purple">{HORIZON_LABEL[t.horizon] ?? t.horizon}</Pill>}
+            {t.strategy && <TradeChip group="strategy" value={t.strategy} />}
+            {t.horizon && t.horizon !== "intraday" && <TradeChip group="horizon" value={t.horizon}>{HORIZON_LABEL[t.horizon] ?? t.horizon}</TradeChip>}
             {carriedFrom && <Pill>{tj("trades.since", { date: fmtDate(carriedFrom, "dayMonth") })}</Pill>}
             {closesToday && <Pill tone="accent">{tj("trades.closesToday")}</Pill>}
             {openedHere !== undefined && (

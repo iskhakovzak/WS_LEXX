@@ -1,4 +1,6 @@
 // Building blocks of the trades review page: KPI row, preset bar, trade row and the trading-day card.
+import { TradeChip } from "@/components/ds/trade-chip";
+import { isImxTrade } from "@/lib/trade-facets";
 import * as React from "react";
 import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
@@ -359,7 +361,12 @@ export function ReviewTradeRow({
       <span className="hidden justify-end md:flex">
         <CaptureCell q={quality[t.id]} pending={qualityPending} />
       </span>
-      <ReviewChips trade={t} canTag={canTag} picker={picker} setPicker={setPicker} onPick={onPick} setupOptions={setupOptions} className="hidden md:flex" />
+      {/* Strategy chips (colours from «Вид» → Чипы) lead the tag chips in the same cell. */}
+      <span className="hidden min-w-0 flex-wrap items-center gap-1 md:flex">
+        {t.strategy && <TradeChip group="strategy" value={t.strategy} />}
+        {isImxTrade(t) && t.strategy !== "IMX" && <TradeChip group="strategy" value="IMX" />}
+        <ReviewChips trade={t} canTag={canTag} picker={picker} setPicker={setPicker} onPick={onPick} setupOptions={setupOptions} />
+      </span>
       {/* Row actions: «Картинка» (own closed trades, share-card) and «В плейбук» / the open chevron. */}
       <span className="hidden items-center justify-end md:flex">
         <ShareCardRowButton trade={t} active={active} onFocusRow={onFocusRow} />

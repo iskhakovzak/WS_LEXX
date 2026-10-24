@@ -8,13 +8,17 @@
  * Values are HSL triplets for `hsl(var(--x))` tokens — the charts read the same variables (chart-engine/theme.ts).
  */
 import { AA_TEXT, AA_UI, bestOn, contrast, ensureContrast, hexToRgb, mix, toRgba, toTriplet, type GuardResult, type Rgb } from "./color";
-import { FONT_STACKS, accentHex, isLightTheme, toneHex, type Appearance, type ThemeId } from "./model";
+import { CHIP_GROUP_IDS, CHIP_GROUPS, FONT_STACKS, accentHex, chipToken, isLightTheme, toneHex, type Appearance, type ThemeId } from "./model";
+import { PHOTO_MUTED_DARK, isScene } from "./scenes";
 import { surfaceRgb, textSurfaces } from "./themes";
 
 /** AA plus a hair of margin: the triplets are rounded to 0.1 and pills mix the colour into the card. */
 const TEXT_TARGET = AA_TEXT + 0.05;
 
-export type GuardReport =Partial<Record<"accent" | "tone" | "win" | "loss" | "be" | "guard", GuardResult>>;
+export type GuardReport = Partial<Record<"accent" | "tone" | "win" | "loss" | "be" | "guard", GuardResult>> & {
+  /** Chip colours that had to move for AA, by token. */
+  chips?: Record<string, GuardResult>;
+};
 
 export type ComputedAppearance = {
   vars: Record<string, string>;
@@ -99,7 +103,7 @@ export function computeAppearanceVars(a: Appearance, theme: ThemeId): ComputedAp
   }
 
   // Money colours (P&L, win rate, calendars, result badges, charts).
-  const money: [keyof GuardReport, string | null, string][] = [["win", a.money.win, "--up"], ["loss", a.money.loss, "--down"], ["be", a.money.be, "--be"]];
+  const money: ["win" | "loss" | "be", string | null, string][] = [["win", a.money.win, "--up"], ["loss", a.money.loss, "--down"], ["be", a.money.be, "--be"]];
   for (const [key, hex, token] of money) {
     if (!hex) continue;
     const g = moneyColour(hex, theme);
@@ -115,6 +119,23 @@ export function computeAppearanceVars(a: Appearance, theme: ThemeId): ComputedAp
     report.guard = g;
     vars["--guard"] = toTriplet(g.rgb);
   }
+
+  // Journal chips: a group switched off reads neutral; custom colours are text-safe on the chip's own tint.
+  for (const group of CHIP_GROUP_IDS) {
+    const g = a.chips[group];
+    for (const key of CHIP_GROUPS[group]) {
+      const token = chipToken(group, key);
+      if (!g.on) { vars[token] = "var(--muted-foreground)"; continue; }
+      const hex = g.colors[key];
+      const guarded = hex ? moneyColour(hex, theme) : null;
+      if (!guarded) continue;
+      vars[token] = toTriplet(guarded.rgb);
+      if (guarded.adjusted) (report.chips ??= {})[token] = guarded;
+    }
+  }
+
+  // A photo scene behind the canvas: dark themes lift muted text a little, so the scrim can let more photo through.
+  if (!light && isScene(a.bg.kind) && !vars["--muted-foreground"]) vars["--muted-foreground"] = PHOTO_MUTED_DARK;
 
   const stack = FONT_STACKS[a.font];
   if (stack) { vars["--app-font-sans"] = stack; attrs["data-font"] = a.font; }

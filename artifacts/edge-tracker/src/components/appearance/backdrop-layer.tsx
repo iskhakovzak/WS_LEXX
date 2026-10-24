@@ -1,17 +1,18 @@
 /**
- * The «Вид» background behind the shell: your image (from IndexedDB, under a scrim that keeps canvas text AA), the
- * slow smoke (lib/smoke at ~15 fps and 0.35× pace, faint), or a procedural CSS background (aurora / grid / dusk).
+ * The «Вид» background behind the shell: your image (from IndexedDB, under a scrim that keeps canvas text AA), a
+ * procedural CSS background (aurora / grid / dusk) or a «WS originals» scene (lazy chunk, see scenes/).
  * Fixed, z-index −1, no pointer events; nothing renders for «none».
  */
 import * as React from "react";
-import { useReducedMotion } from "framer-motion";
 import { useAppearance } from "@/contexts/appearance-context";
-import { useTheme, isLightTheme } from "@/contexts/theme-context";
+import { useTheme } from "@/contexts/theme-context";
 import { loadBgImage } from "@/lib/appearance/bg-store";
-import { startSmoke } from "@/lib/smoke";
+import { isScene } from "@/lib/appearance/scenes";
 
 /** Fired on window after the stored image changed (saved / removed), so every reader reloads it. */
 export const BG_IMAGE_EVENT = "ws-appearance-bg";
+
+const SceneBackdrop = React.lazy(() => import("./scenes/scene-backdrop"));
 
 /** Object URL of the stored image (null when there is none); revoked on change / unmount. */
 export function useBgImageUrl(enabled = true): string | null {
@@ -39,17 +40,6 @@ export function useBgImageUrl(enabled = true): string | null {
   return enabled ? url : null;
 }
 
-function SmokeCanvas({ light }: { light: boolean }) {
-  const ref = React.useRef<HTMLCanvasElement>(null);
-  const still = !!useReducedMotion();
-  React.useEffect(() => {
-    const c = ref.current;
-    return c ? startSmoke(c, { light, still, speed: 0.35, fps: 15 }) : undefined;
-  }, [light, still]);
-  // Faint on purpose: muted text on the canvas keeps 4.5:1 over the brightest wisp.
-  return <canvas ref={ref} className="absolute" style={{ inset: "-8%", width: "116%", height: "116%", filter: "blur(18px)", opacity: light ? 0.25 : 0.2 }} />;
-}
-
 export function BackdropLayer() {
   const { appearance } = useAppearance();
   const { theme } = useTheme();
@@ -64,7 +54,11 @@ export function BackdropLayer() {
           <div className="absolute inset-0" style={{ background: "hsl(var(--background) / var(--bg-scrim))" }} />
         </>
       )}
-      {kind === "smoke" && <SmokeCanvas light={isLightTheme(theme)} />}
+      {isScene(kind) && (
+        <React.Suspense fallback={null}>
+          <SceneBackdrop key={`${kind}-${theme}`} scene={kind} theme={theme} />
+        </React.Suspense>
+      )}
     </div>
   );
 }

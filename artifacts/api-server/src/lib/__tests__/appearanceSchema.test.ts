@@ -49,4 +49,12 @@ describe("users.settings.appearance schema", () => {
     expect(StoredAppearanceSchema.safeParse({ v: 1, current, looks: [look("a", { name: "x".repeat(33) })] }).success).toBe(false);
     expect(StoredAppearanceSchema.safeParse({ v: 1, current, looks: [look("a", { theme: "sepia" })] }).success).toBe(false);
   });
+
+  it("accepts the WS originals scenes and chip colours; rejects unknown chip keys and bad colours", () => {
+    const chips = { strategy: { on: true, colors: { OPG: "#3b82f6" } }, tag: { on: false, colors: {} }, horizon: { on: true, colors: { swing: "#a855f7" } } };
+    expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, bg: { kind: "laocoon", panels: "glass" }, chips }, looks: [] }).success).toBe(true);
+    expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, bg: { kind: "porsche-gt3rs", panels: "solid" } }, looks: [] }).success).toBe(true);
+    expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, chips: { ...chips, strategy: { on: true, colors: { XYZ: "#ffffff" } } } }, looks: [] }).success).toBe(false);
+    expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, chips: { ...chips, tag: { on: true, colors: { setup: "red" } } } }, looks: [] }).success).toBe(false);
+  });
 });

@@ -139,12 +139,15 @@ export function OptionCard({
   label,
   children,
   className,
+  title,
 }: {
   selected: boolean;
   onSelect: () => void;
   label: string;
   children: React.ReactNode;
   className?: string;
+  /** Native tooltip (e.g. a photo credit). */
+  title?: string;
 }) {
   return (
     <button
@@ -152,6 +155,7 @@ export function OptionCard({
       role="radio"
       aria-checked={selected}
       aria-label={label}
+      title={title}
       onClick={onSelect}
       className={cn(
         "lift group relative flex flex-col gap-2 rounded-2xl border p-2 text-left transition-colors",

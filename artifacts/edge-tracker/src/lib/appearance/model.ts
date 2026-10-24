@@ -52,7 +52,10 @@ export const FONT_STACKS: Record<FontId, string | null> = {
   mono: "'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
 };
 
-export const BG_KINDS = ["none", "image", "smoke", "aurora", "grid", "dusk"] as const;
+/** «WS originals» (lib/appearance/scenes): interactive 3D / HOVER backgrounds. «smoke» is the HOVER smoke. */
+export const SCENE_IDS = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus"] as const;
+export type SceneId = (typeof SCENE_IDS)[number];
+export const BG_KINDS = ["none", "image", "aurora", "grid", "dusk", ...SCENE_IDS] as const;
 export type BgKind = (typeof BG_KINDS)[number];
 export const PANEL_MODES = ["glass", "frosted", "solid"] as const;
 export type PanelMode = (typeof PANEL_MODES)[number];
@@ -66,7 +69,25 @@ export const BE_RANGE_MAX = 1000;
 export const MAX_LOOKS = 5;
 export const LOOK_NAME_MAX = 32;
 
+/** «Чипы журнала»: chip groups and their keys (CSS tokens --chip-<group>-<key lower-case>, index.css). */
+export const CHIP_GROUPS = {
+  strategy: ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing", "PM", "IMX"],
+  tag: ["setup", "mistake", "emotion", "other"],
+  horizon: ["intraday", "overnight", "swing"],
+} as const;
+export type ChipGroup = keyof typeof CHIP_GROUPS;
+export const CHIP_GROUP_IDS = Object.keys(CHIP_GROUPS) as ChipGroup[];
+export const chipToken = (group: ChipGroup, key: string) => `--chip-${group}-${key.toLowerCase()}`;
+
 const hex = z.string().trim().regex(/^#[0-9a-fA-F]{6}$/);
+const chipGroupSchema = (group: ChipGroup) =>
+  z.object({
+    /** Off: every chip of the group is neutral. */
+    on: z.boolean().catch(true),
+    /** Custom colours by key; keys outside the group and broken colours are dropped. */
+    colors: z.record(z.string(), z.unknown()).catch({}).transform((r) =>
+      Object.fromEntries(Object.entries(r).filter(([k, v]) => (CHIP_GROUPS[group] as readonly string[]).includes(k) && hex.safeParse(v).success)) as Record<string, string>),
+  }).catch({ on: true, colors: {} });
 const presetOrHex = <T extends readonly [string, ...string[]]>(ids: T) => z.union([z.enum(ids), hex]);
 
 export const appearanceSchema = z.object({
@@ -93,6 +114,11 @@ export const appearanceSchema = z.object({
     panels: z.enum(PANEL_MODES).catch("glass"),
   }).catch({ kind: "none", panels: "glass" }),
   density: z.enum(DENSITIES).catch("compact"),
+  chips: z.object({
+    strategy: chipGroupSchema("strategy"),
+    tag: chipGroupSchema("tag"),
+    horizon: chipGroupSchema("horizon"),
+  }).catch({ strategy: { on: true, colors: {} }, tag: { on: true, colors: {} }, horizon: { on: true, colors: {} } }),
 });
 export type Appearance = z.infer<typeof appearanceSchema>;
 
@@ -121,6 +147,7 @@ export const DEFAULT_APPEARANCE: Appearance = Object.freeze({
   guard: { mode: "off", color: null },
   bg: { kind: "none", panels: "glass" },
   density: "compact",
+  chips: { strategy: { on: true, colors: {} }, tag: { on: true, colors: {} }, horizon: { on: true, colors: {} } },
 }) as Appearance;
 
 /** Lenient read: any stored value (old, partial, foreign) → a full, valid Appearance; invalid fields fall back. */

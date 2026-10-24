@@ -42,7 +42,9 @@ const rgbOf = (tk: Record<string, string>, name: string): Rgb => {
 };
 
 const SURFACES = ["--background", "--card", "--popover", "--muted", "--secondary", "--sidebar"];
-const TEXT = ["--foreground", "--card-foreground", "--popover-foreground", "--secondary-foreground", "--muted-foreground", "--up", "--down", "--warn", "--be", "--purple", "--medal-bronze", "--medal-silver", "--medal-gold", "--medal-platinum"];
+const CHIPS = ["opg", "print", "opgtoday", "day", "moc", "aftermarket", "overnight", "swing", "pm", "imx"].map((k) => `--chip-strategy-${k}`)
+  .concat(["setup", "mistake", "emotion", "other"].map((k) => `--chip-tag-${k}`), ["intraday", "overnight", "swing"].map((k) => `--chip-horizon-${k}`));
+const TEXT = [...CHIPS, "--foreground", "--card-foreground", "--popover-foreground", "--secondary-foreground", "--muted-foreground", "--up", "--down", "--warn", "--be", "--purple", "--medal-bronze", "--medal-silver", "--medal-gold", "--medal-platinum"];
 
 describe.each(THEME_IDS as readonly ThemeId[])("theme tokens: %s", (theme) => {
   const tk = tokens(theme);
@@ -54,7 +56,7 @@ describe.each(THEME_IDS as readonly ThemeId[])("theme tokens: %s", (theme) => {
 
   it("semantic tones also read on their 12% tinted pills (bg-up/12 …)", () => {
     const card = rgbOf(tk, "--card");
-    for (const name of ["--up", "--down", "--warn", "--purple"]) {
+    for (const name of ["--up", "--down", "--warn", "--purple", ...CHIPS]) {
       const c = rgbOf(tk, name);
       expect(contrast(c, mix(card, c, 0.12)), name).toBeGreaterThanOrEqual(AA_TEXT);
     }

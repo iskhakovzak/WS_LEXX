@@ -19,9 +19,10 @@ import { ColorsTab } from "./tab-colors";
 import { MoneyTab } from "./tab-money";
 import { BackgroundTab } from "./tab-background";
 import { DensityTab } from "./tab-density";
+import { ChipsTab } from "./tab-chips";
 import { LooksBar, SaveLookButton } from "./looks-bar";
 
-const TABS: readonly AppearanceTab[] = ["themes", "colors", "money", "background", "density"];
+const TABS: readonly AppearanceTab[] = ["themes", "colors", "money", "chips", "background", "density"];
 /** The fan: CSS colours the page is using right now (live variables). */
 const FAN = ["hsl(var(--primary))", "hsl(var(--up))", "hsl(var(--down))", "hsl(var(--be))", "hsl(var(--border))", "hsl(var(--foreground))"];
 
@@ -111,6 +112,7 @@ export default function AppearanceDialog() {
           <TabsContent value="themes" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><ThemesTab /></TabsContent>
           <TabsContent value="colors" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><ColorsTab /></TabsContent>
           <TabsContent value="money" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><MoneyTab /></TabsContent>
+          <TabsContent value="chips" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><ChipsTab /></TabsContent>
           <TabsContent value="background" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><BackgroundTab /></TabsContent>
           <TabsContent value="density" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><DensityTab /></TabsContent>
         </Tabs>

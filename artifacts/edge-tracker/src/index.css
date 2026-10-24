@@ -247,6 +247,25 @@
   /* Same element as the theme classes, so these follow --warn in every theme until «Вид» sets its own colours. */
   --be: var(--warn);
   --guard: var(--warn);
+  /* Journal chips («Вид» → Чипы; components/ds/trade-chip.tsx): text colour of each chip, its 12% tint is the fill.
+     Strategies get categorical hues (text-safe per theme, below); tag kinds and horizons follow the semantic tones. */
+  --chip-tag-setup: var(--accent-soft);
+  --chip-tag-mistake: var(--warn);
+  --chip-tag-emotion: var(--purple);
+  --chip-tag-other: var(--muted-foreground);
+  --chip-horizon-intraday: var(--muted-foreground);
+  --chip-horizon-overnight: var(--purple);
+  --chip-horizon-swing: var(--purple);
+  --chip-strategy-opg: 212.8 76.8% 43.1%;
+  --chip-strategy-print: 188 71.8% 28.8%;
+  --chip-strategy-opgtoday: 19.8 79% 38.1%;
+  --chip-strategy-day: 158.5 73.3% 26.6%;
+  --chip-strategy-moc: 40.8 100% 27%;
+  --chip-strategy-aftermarket: 338.2 61.1% 45.1%;
+  --chip-strategy-overnight: 131.4 54.1% 30.2%;
+  --chip-strategy-swing: 256.4 65.4% 57.4%;
+  --chip-strategy-pm: 218.6 13.6% 42.6%;
+  --chip-strategy-imx: 17.5 88.3% 37.9%;
   --purple: 263 45% 45%;
   --medal-bronze: 25 62% 36%;
   --medal-silver: 215 12% 40%;
@@ -433,6 +452,16 @@ body {
   --tile-bg: rgb(255 255 255 / .03);
   --tile-hover-bg: rgb(255 255 255 / .055);
   --tile-border: rgb(255 255 255 / .06);
+  --chip-strategy-opg: 212.8 76.8% 58.6%;
+  --chip-strategy-print: 188 71.8% 47.3%;
+  --chip-strategy-opgtoday: 19.8 79% 57.1%;
+  --chip-strategy-day: 158.5 73.3% 39.6%;
+  --chip-strategy-moc: 40.8 100% 46.5%;
+  --chip-strategy-aftermarket: 338.2 61.1% 62.6%;
+  --chip-strategy-overnight: 131.4 54.1% 41.2%;
+  --chip-strategy-swing: 256.4 65.4% 68.9%;
+  --chip-strategy-pm: 218.6 13.6% 59.6%;
+  --chip-strategy-imx: 17.5 88.3% 52.4%;
 
   --shadow-2xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.4);
@@ -477,6 +506,16 @@ body {
   --warn: 38 92% 66%;
   --purple: 263 60% 80%;
   --surface-solid: 0 0% 15%;
+  --chip-strategy-opg: 212.8 76.8% 68.1%;
+  --chip-strategy-print: 188 71.8% 47.3%;
+  --chip-strategy-opgtoday: 19.8 79% 64.1%;
+  --chip-strategy-day: 158.5 73.3% 42.1%;
+  --chip-strategy-moc: 40.8 100% 46.5%;
+  --chip-strategy-aftermarket: 338.2 61.1% 71.6%;
+  --chip-strategy-overnight: 131.4 54.1% 47.7%;
+  --chip-strategy-swing: 256.4 65.4% 75.9%;
+  --chip-strategy-pm: 218.6 13.6% 66.1%;
+  --chip-strategy-imx: 17.5 88.3% 64.9%;
   /* Translucent panels over the 6% canvas land at ~15% (the onyx page). */
   --glass-bg: rgb(255 255 255 / .1);
   --glass-thick-bg: rgb(255 255 255 / .14);
@@ -546,6 +585,16 @@ body {
   --chart-4: 0 62% 38%;
   --chart-5: 263 40% 42%;
   --surface-solid: 0 0% 81%;
+  --chip-strategy-opg: 212.8 76.8% 30.1%;
+  --chip-strategy-print: 188 71.8% 20.3%;
+  --chip-strategy-opgtoday: 19.8 79% 26.6%;
+  --chip-strategy-day: 158.5 73.3% 18.6%;
+  --chip-strategy-moc: 40.8 100% 19%;
+  --chip-strategy-aftermarket: 338.2 61.1% 32.6%;
+  --chip-strategy-overnight: 131.4 54.1% 21.2%;
+  --chip-strategy-swing: 256.4 65.4% 43.4%;
+  --chip-strategy-pm: 218.6 13.6% 29.6%;
+  --chip-strategy-imx: 17.5 88.3% 26.9%;
 
   --glass-bg: rgb(255 255 255 / .28);
   --glass-thick-bg: rgb(255 255 255 / .4);
@@ -1091,10 +1140,15 @@ body {
 .bg-kind {
   --bg-scrim: .85;
   --bg-glow: .18;
+  --ridge-k: 2;   /* «Хребет»: dark themes lift muted text under a scene (lib/appearance/scenes), so ridges show more */
 }
 :root:not(.dark) .bg-kind {
   --bg-scrim: .88;
   --bg-glow: .12;
+  --ridge-k: 1;
+}
+.platinum .bg-kind {
+  --ridge-k: .5;  /* a mid-grey canvas leaves little room above 4.5:1 for muted text */
 }
 :root[data-bg] body {
   background-image: none;
