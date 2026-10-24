@@ -102,10 +102,11 @@ export function OverviewTab({
         <StatCard
           label={t("overview.avgWinLoss")}
           value={
-            <span>
-              <span className="text-up">{avgWin != null ? (isR ? fmtNum(avgWin, { decimals: 1, signed: true }) : fmtUsd(avgWin, { signed: true, decimals: "auto" })) : "—"}</span>
+            // Wraps between the two amounts in a narrow card instead of «+$42.93 / −$60.…»
+            <span className="whitespace-normal">
+              <span className="whitespace-nowrap text-up">{avgWin != null ? (isR ? fmtNum(avgWin, { decimals: 1, signed: true }) : fmtUsd(avgWin, { signed: true, decimals: "auto" })) : "—"}</span>
               <span className="text-muted-foreground"> / </span>
-              <span className="text-down">{avgLoss != null ? (isR ? fmtNum(avgLoss, { decimals: 1, signed: true }) : fmtUsd(avgLoss, { signed: true, decimals: "auto" })) : "—"}</span>
+              <span className="whitespace-nowrap text-down">{avgLoss != null ? (isR ? fmtNum(avgLoss, { decimals: 1, signed: true }) : fmtUsd(avgLoss, { signed: true, decimals: "auto" })) : "—"}</span>
             </span>
           }
           hint={payoffUnit != null ? t("overview.payoff", { unit: unitText, value: fmtNum(payoffUnit) }) : unitText}

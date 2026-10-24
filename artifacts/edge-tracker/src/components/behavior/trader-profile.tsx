@@ -47,7 +47,7 @@ function BucketLine({ kind, b, label, auto }: { kind: "best" | "worst"; b: Bucke
       <div className="min-w-0">
         <div className="text-xs text-muted-foreground">{kind === "best" ? tb("prof.best") : tb("prof.worst")}</div>
         {/* Setup names are long («Gap fill», «LOD bounce»): two lines before clipping, not «Gap f…» on one. */}
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
           <span className="line-clamp-2 text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]" title={label}>{label}</span>
           {auto && <Pill tone="neutral" title={tb("prof.autoTitle")}>{tb("prof.auto")}</Pill>}
         </div>

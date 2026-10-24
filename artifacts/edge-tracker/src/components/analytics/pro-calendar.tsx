@@ -347,7 +347,8 @@ function MonthGrid({
               const base = cn(
                 "flex min-h-[56px] min-w-0 flex-col rounded-lg border p-1 text-left sm:min-h-[84px] sm:rounded-xl sm:p-2",
                 isSel ? "border-primary ring-2 ring-primary/40" : "border-border/60",
-                weekend && !s && "opacity-50",
+                // An empty weekend cell is dimmed, but never today (its marker fell to ~3.5:1).
+                weekend && !s && d !== today && "opacity-50",
               );
               return s ? (
                 <button
