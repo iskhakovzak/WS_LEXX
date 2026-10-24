@@ -153,7 +153,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
         </StatGrid>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="flex flex-col gap-4 lg:col-span-2">
           {ratingsLoading ? <Skeleton className="h-80 rounded-2xl" /> : card ? (
             // The focus lives in «Фокус на неделю» below (with «Прочитал»): shown once, not on the card too (MAKSIM-31).

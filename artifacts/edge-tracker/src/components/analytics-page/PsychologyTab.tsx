@@ -155,7 +155,7 @@ export function PsychologyTab({
   const nothing = (cov?.trades ?? 0) === 0 && psych.recentCheckins.length === 0;
 
   return (
-    <div className={cn("flex flex-col gap-4 sm:gap-5 transition-opacity", isFetching && "opacity-70")}>
+    <div className={cn("flex flex-col gap-section transition-opacity", isFetching && "opacity-70")}>
       {!isOwn && (
         <p className="text-sm text-muted-foreground">{t("psych.ofTrader", { name: personName(userId) })}</p>
       )}
@@ -243,7 +243,7 @@ export function PsychologyTab({
             )}
           </Panel>
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-grid lg:grid-cols-2">
             <ComparisonPanel
               icon={Moon}
               title={t("psych.wellbeing")}
@@ -260,7 +260,7 @@ export function PsychologyTab({
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-grid lg:grid-cols-2">
             <Panel icon={Gauge} title={t("psych.conviction")} description={t("psych.convictionHint")}>
               {hasConviction ? (
                 <div className="h-[230px]">

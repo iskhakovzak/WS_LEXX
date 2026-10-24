@@ -118,7 +118,7 @@ export function DayLineView({
           )}
         </div>
       )}
-      <div className={embedded ? "min-w-0" : "grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start lg:gap-6"}>
+      <div className={embedded ? "min-w-0" : "grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start lg:gap-6"}>
         <div className={phoneSplit ? "hidden min-w-0 flex-col gap-2.5 md:flex" : "flex min-w-0 flex-col gap-2.5"}>
           {view.focus && <FocusLine focus={view.focus} />}
           <ContractLine line={line} date={contractDate(me)} intraday={me.intraday} yesterday={view.pendingEvening ? null : card?.contract} />

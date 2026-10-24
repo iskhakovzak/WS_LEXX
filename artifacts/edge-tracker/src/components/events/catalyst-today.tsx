@@ -179,7 +179,7 @@ export function DayBrief({
   const whenLabel = day === today ? t("today.when.today") : day === nextTradingDay(today, closed) && day > today ? t("today.when.next") : past ? t("today.when.past") : null;
 
   return (
-    <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-12">
+    <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-12">
       <Panel
         className="lg:col-span-7"
         icon={CalendarClock}

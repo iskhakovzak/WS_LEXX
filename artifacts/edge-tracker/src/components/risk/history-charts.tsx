@@ -113,7 +113,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <span className="micro-label">{t("history.dayResult")}</span>
               <div className="mt-1" style={{ height: compact ? 100 : 120 }}>

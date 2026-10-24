@@ -41,7 +41,7 @@ function Body({ shape }: { shape: PageShape }) {
             <SkeletonBlock className="h-10 w-56" />
             <SkeletonBlock className="h-3 w-2/3" />
           </div>
-          <div className="grid gap-[var(--grid-gap)] lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-3">
             <ChartSkeleton className="lg:col-span-2" height={220} />
             <div className="glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)]"><SkeletonBlock className="h-4 w-32" /><ListSkeleton rows={4} /></div>
           </div>
@@ -60,7 +60,7 @@ function Body({ shape }: { shape: PageShape }) {
         <>
           <SkeletonBlock className="h-11 rounded-2xl" />
           <StatGridSkeleton count={4} />
-          <div className="grid gap-[var(--grid-gap)] lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-3">
             <ChartSkeleton className="lg:col-span-2" height={260} />
             <ChartSkeleton height={260} kind="bars" />
           </div>
@@ -70,7 +70,7 @@ function Body({ shape }: { shape: PageShape }) {
       return (
         <>
           <SkeletonBlock className="h-11 rounded-2xl" />
-          <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <PanelSkeleton height={180} />
             <div className="glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)]"><SkeletonBlock className="h-4 w-36" /><ListSkeleton rows={4} /></div>
           </div>

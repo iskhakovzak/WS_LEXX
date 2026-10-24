@@ -91,7 +91,7 @@ export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windo
     <>
       <KpiGrid k={d.kpis} prev={d.prevKpis} metric={metric} windowLabel={windowLabel} />
 
-      <div className="grid gap-4 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
         <div className="min-w-0 xl:col-span-3">
           <EquityPanel equity={d.equity} monthly={d.monthly} metric={metric} trades={staff ? undefined : trades} trader={trader} daily={staff} />
         </div>
@@ -100,7 +100,7 @@ export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windo
 
       {insights}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <HorizonPanel
           trades={staff ? undefined : horizonBase}
           groupsFor={a ? (m) => (a.horizonAll ?? []).map((g) => groupStat(g.key, g.b, m)) : undefined}
@@ -109,12 +109,12 @@ export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windo
         <FeesPanel fees={d.fees} prev={d.prevFees} trades={staff ? undefined : trades} counts={d.staffFees ?? undefined} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <CalendarPanel days={d.days} metric={metric} trader={trader} hideTrader={oneTrader} />
         <TimeHeatmap trades={staff ? undefined : trades} cells={a ? heatOf(a, metric) : undefined} metric={metric} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BreakdownPanel
           trades={staff ? undefined : trades}
           groupsFor={a ? (x, m) => groupsOf(a, x, m) : undefined}

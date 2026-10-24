@@ -38,7 +38,7 @@ export function InsightsStrip({ insights }: { insights: Insight[] }) {
         <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("insights.title")}
         <span className="text-xs font-normal text-muted-foreground">{t("insights.hint")}</span>
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {insights.map((i) => {
           const Icon = TONE_ICON[i.tone];
           return (

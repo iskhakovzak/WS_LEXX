@@ -323,7 +323,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
       ) : brief ? (
         <div className="space-y-4">
           {/* Headline: sentiment + AI summary */}
-          <div className="grid gap-3 lg:grid-cols-[13rem_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[13rem_minmax(0,1fr)]">
             {sentiment && (
               <div className="rounded-xl bg-foreground/[0.04] px-3 py-2.5">
                 <div className="text-2xs text-muted-foreground">{t("brief.sentiment")}</div>

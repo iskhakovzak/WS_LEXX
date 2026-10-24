@@ -166,7 +166,7 @@ export function TopLists({ date, q, onOpen }: {
       <div className="flex flex-col gap-3">
         {day.me && day.mode !== "staff" && <MyDay me={day.me} onOpen={onOpen} />}
         {day.me && day.mode === "staff" && !inLists && <MyPlace me={day.me} onOpen={onOpen} />}
-        <div className="grid gap-4 xl:grid-cols-2 xl:gap-3">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:gap-3">
           <List title={t("day.profit")} icon={<TrendingUp className="h-3.5 w-3.5 text-up" aria-hidden="true" />} rows={day.profit} empty={t("day.emptyProfit")} onOpen={onOpen} staff={day.mode === "staff"} />
           <List title={t("day.loss")} icon={<TrendingDown className="h-3.5 w-3.5 text-down" aria-hidden="true" />} rows={day.loss} empty={t("day.emptyLoss")} onOpen={onOpen} staff={day.mode === "staff"} />
         </div>
@@ -183,7 +183,7 @@ export function TopLists({ date, q, onOpen }: {
 
 function ListsSkeleton() {
   return (
-    <div className="grid gap-4 xl:grid-cols-2" aria-busy="true" aria-label={topDayI18n.t("loading")}>
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2" aria-busy="true" aria-label={topDayI18n.t("loading")}>
       {[0, 1].map((k) => (
         <div key={k} className="flex flex-col gap-2">
           {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-12 rounded-xl" />)}

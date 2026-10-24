@@ -71,7 +71,7 @@ export function OverviewTab({
   ].filter(Boolean).join(" · ");
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
+    <div className="flex flex-col gap-section">
       <StatGrid>
         <StatCard
           label={t("overview.trades")}
@@ -160,7 +160,7 @@ export function OverviewTab({
         )}
       </Panel>
 
-      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-grid lg:grid-cols-3">
         <Panel icon={BarChart3} title={t("overview.rDist")} description={t("overview.rDistHint")}>
           {rValues.length > 0 ? (
             <div className="flex flex-col gap-3">
@@ -239,7 +239,7 @@ export function OverviewTab({
         </Panel>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-grid md:grid-cols-2">
         <LeaderPanel
           title={t("overview.edgeTitle")}
           description={t("overview.edgeHint")}
@@ -329,12 +329,16 @@ function LeaderPanel({
                   onClick={() => onOpenDimension(it.dimKey)}
                   className="lift group flex w-full items-center gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2.5 text-left"
                 >
+                  {/* The reliability pill sits on the dimension line: as a fourth column it squeezed the bucket itself to
+                      «13:3…» in a half-width panel (1024 px, uz). The bucket may take two lines. */}
                   <div className="min-w-0 flex-1">
-                    <div className="text-2xs text-muted-foreground">{it.dim}</div>
-                    <div className="truncate text-sm font-medium text-foreground" title={it.label}>{it.label}</div>
-
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-2xs text-muted-foreground">{it.dim}</span>
+                      <Pill tone={rel.level === "high" ? "up" : rel.level === "medium" ? "warn" : "neutral"} className="min-h-5 text-2xs">{rel.label}</Pill>
+                    </div>
+                    <div className="mt-0.5 line-clamp-2 text-sm font-medium leading-ui text-foreground" title={it.label}>{it.label}</div>
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <div className={`text-sm font-semibold tabular-nums ${useR ? (it.score >= 0 ? "text-up" : "text-down") : it.score >= 0.5 ? "text-up" : "text-down"}`}>
                       {useR ? fmtR(it.score) : fmtRate(it.score)}
                     </div>
@@ -342,7 +346,6 @@ function LeaderPanel({
                       WR {fmtRate(it.stats.winRate)} · {commonI18n.t("units.tradesShort", { count: it.n })}
                     </div>
                   </div>
-                  <Pill tone={rel.level === "high" ? "up" : rel.level === "medium" ? "warn" : "neutral"} className="hidden sm:inline-flex">{rel.label}</Pill>
                   <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden="true" />
                 </button>
               </li>

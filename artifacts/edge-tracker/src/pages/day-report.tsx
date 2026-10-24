@@ -192,7 +192,7 @@ export default function DayReportPage() {
         {date !== today && <Button type="button" variant="ghost" size="sm" onClick={() => go(today)}>{t("page.latest")}</Button>}
         {nonTrading && <Pill tone="warn">{t("page.nonTrading")}</Pill>}
         {!nonTrading && (
-          <Link href={links.topDay(date)} className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-primary hover:bg-primary/10">
+          <Link href={links.topDay(date)} data-slot="button" className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-primary hover:bg-primary/10">
             <Crown className="h-4 w-4" aria-hidden="true" /> {topDayI18n.t("link")}
           </Link>
         )}
@@ -251,18 +251,18 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
         <SummaryBento doc={doc} />
       </section>
       {canAi ? <AiReviewCard subject={{ kind: "day", date: doc.date, trader: doc.trader }} /> : null}
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="min-w-0 xl:col-span-2"><EquityPanel doc={doc} /></div>
         <ComparisonPanel doc={doc} />
       </div>
       <TimelinePanel doc={doc} />
       <DeskDayChips tickers={doc.timeline.map((r) => r.ticker)} date={doc.date} trader={doc.trader} className="-mt-1 px-1" />
       <TickerContextList tickers={doc.timeline.map((r) => r.ticker)} day={doc.date} />
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <LeaksPanel doc={doc} />
         <PlanPanel doc={doc} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="min-w-0 xl:col-span-2"><BreakdownPanel doc={doc} /></div>
         <StrengthsPanel doc={doc} />
       </div>

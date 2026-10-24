@@ -168,7 +168,7 @@ export function Tickers({ period, unit }: { period: PeriodView; unit: Unit }) {
   const { t } = officeI18n.useT();
   return (
     <Panel title={t("time.tickersTitle")} description={t("time.tickersDesc")} icon={Tag}>
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <div><p className="mb-2 text-xs font-medium text-up">{t("time.best")}</p><TickerList rows={period.tickers.top.filter((t) => t.v > 0)} unit={unit} tone="up" /></div>
         <div><p className="mb-2 text-xs font-medium text-down">{t("time.worst")}</p><TickerList rows={period.tickers.bottom.filter((t) => t.v < 0)} unit={unit} tone="down" /></div>
       </div>
@@ -320,7 +320,7 @@ export function BestWorstDays({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (d: str
   return (
     <Panel title={t("risk.bestWorstTitle")} description={t("risk.bestWorstDesc")} icon={Medal} fill className="lg:col-span-6">
       {!focus.days.length ? <EmptyState compact icon={Medal} title={t("states.noTradingDays")} /> : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div><p className="mb-1.5 text-xs font-medium text-up">{t("time.best")}</p><ul className="flex flex-col gap-1">{best.map(row)}</ul></div>
           <div><p className="mb-1.5 text-xs font-medium text-down">{t("time.worst")}</p><ul className="flex flex-col gap-1">{worst.length ? worst.map(row) : <li className="text-xs text-muted-foreground">{t("risk.noRedDays")}</li>}</ul></div>
         </div>

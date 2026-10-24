@@ -326,7 +326,7 @@ export function BreakdownPanel({ doc }: { doc: DayReport }) {
   const { t } = dayReportI18n.useT();
   return (
     <Panel title={t("breakdown.title")} description={t("breakdown.desc")} icon={BarChart3} className="min-w-0">
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <BucketTable title={t("breakdown.ticker")} rows={doc.breakdown.byTicker} ariaLabel={t("breakdown.tickerAria")} defaultSort="net" />
         <BucketTable title={t("breakdown.hour")} rows={doc.breakdown.byHour} ariaLabel={t("breakdown.hourAria")} />
         <BucketTable title={t("breakdown.side")} rows={doc.breakdown.bySide} ariaLabel={t("breakdown.sideAria")} />

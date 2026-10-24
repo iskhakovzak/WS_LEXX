@@ -92,11 +92,11 @@ export default {
   },
   tier: {
     to: {
-      trainee: "Stajyorgacha: {met}/{total} bajarildi",
-      junior: "Junior darajasigacha: {met}/{total} bajarildi",
-      trader: "Treydergacha: {met}/{total} bajarildi",
-      senior: "Seniorgacha: {met}/{total} bajarildi",
-      custom: "«{tier}» darajasigacha: {met}/{total} bajarildi",
+      trainee: "Stajyorgacha: {met}/{total}",
+      junior: "Juniorgacha: {met}/{total}",
+      trader: "Treydergacha: {met}/{total}",
+      senior: "Seniorgacha: {met}/{total}",
+      custom: "«{tier}» darajasigacha: {met}/{total}",
     },
     top: "«{tier}» — eng yuqori daraja",
     criteriaAria: "Oʻtish mezonlari",

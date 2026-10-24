@@ -144,7 +144,7 @@ export default function BlackScholesView({ s, onOpenInBuilder }: { s: BsInputs; 
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:items-start">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:items-start">
         <Panel
           title={t("bs.params")}
           actions={

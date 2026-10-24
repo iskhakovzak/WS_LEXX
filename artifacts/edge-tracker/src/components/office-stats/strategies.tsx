@@ -113,7 +113,7 @@ export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
               <span key={y.year} className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: yearColor(rank, dark) }} aria-hidden="true" />{y.year}</span>
             ))}
           </div>
-          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4">
             {STRATEGIES.map((k) => {
               const rowF = focus.strategies.find((s) => s.key === k);
               const series: LineSeries[] = years.map((y, rank) => {

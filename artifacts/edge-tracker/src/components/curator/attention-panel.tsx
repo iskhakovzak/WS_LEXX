@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { ArrowRight, BookCheck, Check, Layers, NotebookPen, Sparkles, Users } from "lucide-react";
-import { EmptyState, Panel, Pill, StatusDot, type Tone } from "@/components/ds";
+import { EmptyState, Panel, Pill, toneBg, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
@@ -100,7 +100,7 @@ export function AttentionPanel({ data, onOpenTrader, onTemplate, onReviewDay, ex
       {rows.length === 0 ? (
         <EmptyState compact icon={Sparkles} title={t("today.allClear")} description={t("today.allClearHint")} />
       ) : (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="@container flex flex-col gap-1.5">
           {shown.map((r) => (r.type === "cost"
             ? <CostRow key={r.key} row={r} onOpenTrader={onOpenTrader} onReviewDay={onReviewDay} />
             : r.type === "oneOnOne"
@@ -133,8 +133,8 @@ function CostRow({ row, onOpenTrader, onReviewDay }: {
   const day = fmtDate(item.date, "dayMonth");
   const journalDay = curatorLinks.journalDay(item.trader, item.date);
   return (
-    <li className={cn("tile flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-3", item.resolved && "opacity-70", row.cont && "-mt-1 ml-4 border-l-2 border-[var(--glass-border)]")}>
-      <div className="flex min-w-0 items-baseline gap-2 sm:w-32 sm:shrink-0 sm:flex-col sm:gap-0">
+    <li className={cn("tile flex min-w-0 flex-col gap-2 px-3 py-2 @xl:flex-row @xl:items-center @xl:gap-3", item.resolved && "opacity-70", row.cont && "-mt-1 ml-4 border-l-2 border-[var(--glass-border)]")}>
+      <div className="flex min-w-0 items-baseline gap-2 @xl:w-32 @xl:shrink-0 @xl:flex-col @xl:gap-0">
         {/* Another day of the trader above: the name is not repeated (the group reads as one trader). */}
         {row.cont ? <span className="sr-only">{personName(item.trader)}</span> : (
           <button type="button" onClick={() => onOpenTrader(item.trader)} className="max-w-full truncate text-left text-sm font-medium text-foreground hover:text-primary" title={personName(item.trader)}>
@@ -148,7 +148,7 @@ function CostRow({ row, onOpenTrader, onReviewDay }: {
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {item.reasons.map((r, i) => <ReasonChip key={`${r.kind}:${i}`} r={r} />)}
       </div>
-      <div className="flex shrink-0 items-center justify-end gap-1.5">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
         <span className="flex w-24 flex-col items-end leading-tight">
           <span className={cn("text-sm font-medium tabular-nums", item.costNet < 0 ? "text-down" : "text-muted-foreground")} title={t("costQueue.totalTitle")}>
             {item.costNet < 0 ? fmtUsd(item.costNet, { signed: true, decimals: 0 }) : "—"}
@@ -206,13 +206,13 @@ function NextRow({ row, onOpenTrader, onTemplate }: {
   const { t } = curatorI18n.useT();
   const a = row.next;
   return (
-    <li className="tile flex min-w-0 items-center gap-3 px-3 py-2">
+    <li className="tile flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
       <button type="button" onClick={() => onOpenTrader(a.trader)} title={personName(a.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(a.trader)}
       </button>
-      <StatusDot tone={actionTone(a.kind)} className="min-w-0 flex-1"><span className="text-sm text-foreground">{a.label}</span></StatusDot>
+      <span className="flex min-w-[9rem] flex-1 items-start gap-1.5" title={a.label}><span className={cn("mt-[0.4375rem] h-2 w-2 shrink-0 rounded-full", toneBg(actionTone(a.kind)))} aria-hidden="true" /><span className="min-w-0 text-sm leading-ui text-foreground">{a.label}</span></span>
       {a.kind === "no_limits" ? (
-        <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onTemplate([a.trader])}>
+        <Button type="button" size="sm" variant="outline" className="ml-auto shrink-0" onClick={() => onTemplate([a.trader])}>
           <Layers className="h-3.5 w-3.5" /> {t("today.template")}
         </Button>
       ) : (
@@ -227,15 +227,18 @@ function NextRow({ row, onOpenTrader, onTemplate }: {
 /** A ward whose last 1:1 is older than 30 days (or who never had one): plan the meeting (OLGA-18). */
 function OneOnOneRow({ row, onOpenTrader }: { row: Extract<AttentionRow, { type: "oneOnOne" }>; onOpenTrader: (trader: string, tab?: string) => void }) {
   const { t } = curatorI18n.useT();
+  const label = row.days == null ? t("oneOnOne.never") : t("oneOnOne.days", { count: row.days });
   return (
-    <li className="tile flex min-w-0 items-center gap-3 px-3 py-2">
+    <li className="tile flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
       <button type="button" onClick={() => onOpenTrader(row.trader)} title={personName(row.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(row.trader)}
       </button>
-      <StatusDot tone="warn" className="min-w-0 flex-1">
-        <span className="text-sm text-foreground">{row.days == null ? t("oneOnOne.never") : t("oneOnOne.days", { count: row.days })}</span>
-      </StatusDot>
-      <Button asChild size="sm" variant="ghost" className="shrink-0">
+      {/* Wraps (with the full text as a tooltip) instead of StatusDot's one-line ellipsis: a narrow panel showed «1:1 е…». */}
+      <span className="flex min-w-[9rem] flex-1 items-start gap-1.5" title={label}>
+        <span className="mt-[0.4375rem] h-2 w-2 shrink-0 rounded-full bg-warn" aria-hidden="true" />
+        <span className="min-w-0 text-sm leading-ui text-foreground">{label}</span>
+      </span>
+      <Button asChild size="sm" variant="ghost" className="ml-auto shrink-0">
         <Link href={`/academy/mentor?student=${encodeURIComponent(row.trader)}`}><Users className="h-3.5 w-3.5" /> {t("oneOnOne.plan")}</Link>
       </Button>
     </li>

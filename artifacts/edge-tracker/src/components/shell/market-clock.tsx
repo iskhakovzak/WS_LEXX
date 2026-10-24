@@ -137,7 +137,7 @@ export function MarketClock({ className, fit = "viewport" }: { className?: strin
             : t("clock.aria", { time: hm, phase: ph.label, next, countdown })}
           tabIndex={0}
           className={cn(
-            "glass-field inline-flex h-10 min-w-0 items-center gap-2 px-3 text-xs tabular-nums text-muted-foreground",
+            "glass-field inline-flex h-10 min-w-0 items-center gap-2 whitespace-nowrap px-3 text-xs tabular-nums text-muted-foreground",
             className,
           )}
         >
@@ -154,9 +154,13 @@ export function MarketClock({ className, fit = "viewport" }: { className?: strin
             <span className={cn("hidden text-muted-foreground", c ? "@[960px]:inline" : "lg:inline")}>{s.nyTime.slice(5)}</span>
           </span>
           <span className={cn("hidden font-medium", c ? "@[600px]:inline" : "md:inline", ph.text)}>{ph.label}</span>
-          <span className={cn("font-medium", c ? "@[600px]:hidden" : "md:hidden", ph.text)}>{ph.short}</span>
-          <span className={cn("hidden h-3.5 w-px bg-[var(--field-border)]", c ? "@[600px]:block" : "sm:block")} aria-hidden="true" />
-          <span className={cn("hidden whitespace-nowrap", c ? "@[600px]:inline" : "sm:inline")}>
+          {/* A tablet header with the sidebar open (< 560 px, ~768–860 px windows) keeps just the dot + time: the short
+              status collided with the search and RU buttons there. Phones keep it (fewer buttons on the right). */}
+          <span className={cn("font-medium", c ? "@[600px]:hidden md:@max-[560px]:hidden" : "md:hidden", ph.text)}>{ph.short}</span>
+          {/* The countdown needs ~140 px: below an 860 px header (1024 px window with the sidebar open) the six icon
+              buttons on the right would slide under it, so it waits for a wider header (the tooltip always has it). */}
+          <span className={cn("hidden h-3.5 w-px bg-[var(--field-border)]", c ? "@[860px]:block" : "sm:block")} aria-hidden="true" />
+          <span className={cn("hidden whitespace-nowrap", c ? "@[860px]:inline" : "sm:inline")}>
             <span className={cn("hidden", c ? "@[1180px]:inline" : "2xl:inline")}>{next} </span>
             {/* DENIS-34: below that width a short label («премаркет») keeps the countdown readable. */}
             <span className={cn("inline", c ? "@[1180px]:hidden" : "2xl:hidden")}>{tx(`clock.nextShort.${s.nextKey}`)} </span>

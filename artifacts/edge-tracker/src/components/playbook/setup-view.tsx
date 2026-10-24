@@ -542,7 +542,7 @@ export function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
   if (entry.reviewed && entry.reviewedBy) facts.push([st("history.reviewedBy"), personName(entry.reviewedBy)]);
 
   return (
-    <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_340px]">
       <DocSection title={st("history.journal")} icon={History} actions={<PlaybookRevisionsButton playbookId={entry.id} currentSnapshot={entry as unknown as Record<string, unknown>} />}>
         {q.isLoading ? (
           <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-[var(--glass-bg)] motion-reduce:animate-none" />)}</div>

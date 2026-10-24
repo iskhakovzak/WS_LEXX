@@ -77,8 +77,9 @@ function DimTable({ r, max }: { r: DimResult; max: number }) {
                 isToday ? "bg-primary/10" : "hover:bg-[var(--tile-hover-bg)]",
               )}
             >
-              <span role="cell" className="flex min-w-0 items-center gap-1.5">
-                <span className={cn("truncate", small && "text-muted-foreground")}>{b.label}</span>
+              {/* The «today» / reliability pills wrap under the condition instead of cutting it to «Тренд…» (uz / ru). */}
+              <span role="cell" className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                <span className={cn("min-w-0 break-words", small && "text-muted-foreground")}>{b.label}</span>
                 {isToday && <Pill tone="accent" className="shrink-0" title={r.todayNote}>{t("edge.today")}</Pill>}
                 {rel && <Pill tone={rel.tone} className="shrink-0">{rel.tone === "up" && <ShieldCheck className="h-3 w-3" aria-hidden="true" />}{rel.label}</Pill>}
               </span>

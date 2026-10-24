@@ -118,7 +118,7 @@ export function EdgeTab({
   ] as { value: MetricKey; label: string; disabled?: boolean }[]);
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
+    <div className="flex flex-col gap-section">
       {/* Edge map (roadmap R4): the robust verdicts of one trader — own map, or the picked trader for staff. */}
       {(!isStaff || filters.trader) && <EdgeMapPanel trader={filters.trader || null} />}
       {/* Choice overload (ARCHITECTURE §4a.6): the most used breakdowns as tabs, the other ~14 under «Ещё разрезы». */}

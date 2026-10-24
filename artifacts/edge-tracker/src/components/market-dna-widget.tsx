@@ -269,7 +269,7 @@ export function MarketDnaWidget() {
 
               {/* Best / worst setup × regime */}
               {(dna!.bestSetupRegime.length > 0 || dna!.worstSetupRegime.length > 0) && (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[
                     { title: t("dna.best"), rows: dna!.bestSetupRegime.slice(0, 3), tone: "up" as Tone },
                     { title: t("dna.worst"), rows: dna!.worstSetupRegime.slice(0, 3), tone: "down" as Tone },

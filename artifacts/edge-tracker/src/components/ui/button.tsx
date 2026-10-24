@@ -33,15 +33,22 @@ const buttonVariants = cva(
         default: "min-h-9 px-4 py-1.5",
         sm: "min-h-8 px-3 text-xs [&_svg]:size-3.5",
         lg: "min-h-10 px-6 py-2",
-        // Touch screens: an invisible ::before grows the tap target to 40px without changing the layout
-        // (::after is taken by hover-elevate).
-        icon: "h-9 w-9 pointer-coarse:before:absolute pointer-coarse:before:-inset-0.5",
-        "icon-sm": "h-8 w-8 [&_svg]:size-3.5 pointer-coarse:before:absolute pointer-coarse:before:-inset-1",
+        // Touch screens: index.css grows every control's hit area to 44×44 px with an invisible ::before
+        // (::after is taken by hover-elevate), so the look stays the same.
+        icon: "h-9 w-9",
+        "icon-sm": "h-8 w-8 [&_svg]:size-3.5",
+      },
+      // A long or dynamic label (a lesson title, a uz / ru phrase) wraps to two balanced lines inside its card
+      // instead of being clipped or pushing the button out of it. The pill turns into a 18px-radius capsule.
+      wrap: {
+        true: "h-auto min-w-0 max-w-full whitespace-normal text-balance text-left leading-ui rounded-[1.125rem] py-1.5",
+        false: "",
       },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      wrap: false,
     },
   }
 )
@@ -53,11 +60,12 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, wrap, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        data-slot="button"
+        className={cn(buttonVariants({ variant, size, wrap, className }))}
         ref={ref}
         {...props}
       />

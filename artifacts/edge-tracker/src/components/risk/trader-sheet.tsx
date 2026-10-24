@@ -206,7 +206,7 @@ export function TraderSheet({
             />
 
             {tab === "overview" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-section">
                 {row.alerts.length > 0 && <AlertList alerts={row.alerts} />}
                 {row.limits ? (
                   <section aria-label={t("sheet.remaining")}>
@@ -241,7 +241,7 @@ export function TraderSheet({
             {tab === "breaches" && <BreachHistory trader={row.trader} limits={row.limits} />}
 
             {tab === "limits" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-section">
                 <LimitsForm trader={row.trader} limits={row.limits} />
                 <section aria-label={t("sheet.limitsHistory")}>
                   <h3 className="micro-label mb-2 flex items-center gap-1"><History className="h-3 w-3" aria-hidden="true" />{t("sheet.limitsHistoryTitle")}</h3>

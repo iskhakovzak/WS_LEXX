@@ -83,14 +83,14 @@ export default function AcademyMentorPage() {
           {!d.hasOwnCohorts && <p className="text-xs text-muted-foreground">{t("mentorPage.notAssigned")}</p>}
           <Kpis d={d} />
           {/* Side-by-side only on wide screens: at 1280–1440 px the students table needs the full width («Почему отстаёт»). */}
-          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
             <Students d={d} selected={selected} onSelect={setSelected} onMeeting={(s) => setMeetingFor(s)} />
             <Today sessions={d.today} />
           </div>
           {selected && d.students.some((s) => s.enrollment.userName === selected) && (
             <StudentDetail student={d.students.find((s) => s.enrollment.userName === selected)!} onClose={() => setSelected(null)} onMeeting={() => setMeetingFor(selected)} />
           )}
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <OpenActions items={d.openActions} />
             <MeetingLog d={d} />
           </div>
@@ -299,7 +299,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
           {student.reasons.map((r) => <Pill key={r.code} tone={sevTone(r.severity)}>{r.text}</Pill>)}
         </div>
       )}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section aria-label={t("mentorPage.detail.idpAria")}>
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("mentorPage.detail.idp")}</h3>
           {idp.isLoading && <p className="text-sm text-muted-foreground">{t("mentorPage.detail.recalculating")}</p>}

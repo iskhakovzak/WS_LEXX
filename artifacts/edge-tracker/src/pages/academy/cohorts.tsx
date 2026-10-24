@@ -71,7 +71,7 @@ export default function AcademyCohortsPage() {
         </>}
       />
       {list.isError && <ErrorState error={list.error} onRetry={() => list.refetch()} title={t("cohortsPage.loadFailed")} />}
-      {list.isLoading && <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"><Panel><ListSkeleton rows={4} /></Panel><PanelSkeleton height={320} /></div>}
+      {list.isLoading && <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"><Panel><ListSkeleton rows={4} /></Panel><PanelSkeleton height={320} /></div>}
       {list.data && cohorts.length === 0 && (
         <Panel>
           <EmptyState art="temple" icon={Users} title={archived ? t("cohortsPage.archiveEmpty") : t("cohortsPage.empty")}
@@ -86,7 +86,7 @@ export default function AcademyCohortsPage() {
         </Panel>
       )}
       {cohorts.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
           <nav aria-label={t("cohortsPage.listAria")} className="flex flex-col gap-2">
             {cohorts.map((c) => <CohortCard key={c.id} c={c} active={c.id === selectedId} onClick={() => setSelectedId(c.id)} />)}
           </nav>
@@ -338,7 +338,7 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
         {sched.isLoading && <ListSkeleton rows={4} dense />}
         {sched.isError && <ErrorState error={sched.error} compact />}
         {sched.data && byDay.length === 0 && <p className="text-sm text-muted-foreground">{t("cohortsPage.schedule.rangeEmpty")}</p>}
-        <div aria-busy={sched.isPlaceholderData || undefined} className={cn("grid gap-2 md:grid-cols-2 2xl:grid-cols-3 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", sched.isPlaceholderData && "pointer-events-none opacity-60")}>
+        <div aria-busy={sched.isPlaceholderData || undefined} className={cn("grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", sched.isPlaceholderData && "pointer-events-none opacity-60")}>
           {byDay.map(([day, list]) => (
             <section key={day} aria-label={fmtYmd(day)} className={cn("glass-field rounded-xl p-2", day === today && "ring-1 ring-primary/60")}>
               <h3 className="mb-1 text-xs font-medium text-muted-foreground">{day === today ? t("cohortsPage.schedule.dayToday", { date: fmtYmd(day) }) : fmtYmd(day)}</h3>
@@ -374,7 +374,7 @@ function AttendanceTab({ d }: { d: CohortDetail }) {
   const { rows: sorted, thProps } = useTableSort(withStats, ATT_ACCESSORS, "rate", "asc");
   return (
     <Panel title={t("cohortsPage.attendanceTab.title")} icon={UserCheck} description={t("cohortsPage.attendanceTab.description")}>
-      <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <AttendanceSummaryView s={d.attendance} title={t("cohortsPage.attendanceTab.wholeCohort")} />
         {withStats.length === 0 ? <p className="text-sm text-muted-foreground">{t("cohortsPage.attendanceTab.noData")}</p> : (
           <DataTable ariaLabel={t("cohortsPage.attendanceTab.tableAria")}>

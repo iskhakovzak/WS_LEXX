@@ -96,7 +96,7 @@ const postHay = (f: DailyFeed) =>
 
 function FeedSkeleton() {
   return (
-    <div className="flex flex-col gap-6" role="status" aria-label={feedI18n.t("page.loading")}>
+    <div className="flex flex-col gap-section" role="status" aria-label={feedI18n.t("page.loading")}>
       {[5, 3].map((rows, d) => (
         <section key={d} className="flex flex-col gap-2">
           <SkeletonBlock className="mx-1 h-6 w-64 rounded-full" />
@@ -588,7 +588,7 @@ export default function DailyFeedPage() {
     );
   } else {
     body = (
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-section">
         {days.map(([day, { items, posts: dayPosts }]) => {
           const entries = groupDay(items);
           const newCount = items.filter((i) => isNewItem(i, baseline)).length + dayPosts.filter((p) => unreadPostIds.has(p.id)).length;
@@ -712,7 +712,7 @@ export default function DailyFeedPage() {
   return (
     <Page>
       {header}
-      <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]">
         <section className="flex min-w-0 flex-col gap-4" aria-label={t("page.title")}>
           {toolbar}
           {dayNav}

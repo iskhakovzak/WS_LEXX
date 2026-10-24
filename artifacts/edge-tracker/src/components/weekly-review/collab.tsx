@@ -139,7 +139,7 @@ export function SelfReviewPanel({ doc, hideFocus = false, className }: { doc: We
 
   return (
     <Panel title={t("collab.mySelf")} description={t("collab.mySelfDesc")} icon={UserRound} className={cn("min-w-0", className)} actions={<ReviewStatusPill status={status} />}>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           <span className="text-up">{t("collab.well")}</span>
           <Textarea value={well} onChange={bind(setWell)} rows={3} maxLength={6000} placeholder={t("collab.wellPlaceholder")} />

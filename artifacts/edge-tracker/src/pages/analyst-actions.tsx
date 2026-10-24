@@ -470,7 +470,7 @@ export default function AnalystActionsPage() {
 
       {/* ── premarket + my stats ── */}
       {/* Same 3-column track as the KPI row above, so the panel edges line up with the stat cards. */}
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-3">
         <PremarketPanel
           className="xl:col-span-2"
           rows={premarketRows}

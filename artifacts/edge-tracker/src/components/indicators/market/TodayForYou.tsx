@@ -72,8 +72,9 @@ export function TodayForYou({
               {todayRows.map(({ r, b }) => (
                 <li key={r.dim.id} className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 text-sm tabular-nums">
                   <span className="min-w-0">
-                    <span className="block truncate text-xs text-muted-foreground">{r.dim.label}</span>
-                    <span className="block truncate" title={`${b.label} · ${t("today.daysShort", { count: b.days })}`}>{b.label}<span className="text-xs text-muted-foreground"> · {t("today.daysShort", { count: b.days })}</span></span>
+                    <span className="block truncate text-xs text-muted-foreground" title={r.dim.label}>{r.dim.label}</span>
+                    {/* Two lines before clipping: in the 5/12 column at 1024 px «Тренд вниз» was cut to «Тренд вни…». */}
+                    <span className="line-clamp-2 leading-ui" title={`${b.label} · ${t("today.daysShort", { count: b.days })}`}>{b.label}<span className="text-xs text-muted-foreground"> · {t("today.daysShort", { count: b.days })}</span></span>
                   </span>
                   <NetBar v={b.netPerDay} max={max} dim={b.days < MIN_DAYS} />
                   <span className={cn("text-right font-medium", b.days < MIN_DAYS ? "text-muted-foreground" : tx(b.netPerDay))} title={b.days < MIN_DAYS ? t("today.unreliable") : undefined}>

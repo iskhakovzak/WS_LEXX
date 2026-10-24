@@ -81,7 +81,9 @@ export function WatchlistTable({
 
   return (
     <DataTable density={density} className="[&_tbody_td]:py-0 [&_thead_th]:py-1.5">
-      <table className="table-fixed">
+      {/* The fixed columns take ~930 px: a minimum width keeps ~130 px for «Заметка» (the header was cut to «Заметк»
+          at 1280 / 1024 px) — narrower windows scroll the table sideways inside DataTable instead. */}
+      <table className="table-fixed min-w-[66rem]">
         <colgroup>
           <col style={{ width: canEdit ? 52 : 12 }} />
           <col style={{ width: comfy ? 170 : 150 }} />

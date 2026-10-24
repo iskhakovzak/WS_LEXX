@@ -373,7 +373,7 @@ function TradeItem({
               </dl>
 
               {hasText && (
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {t.notes && <TextBlock label={tc("fields.notes")} text={t.notes} className="sm:col-span-2" />}
                   {t.whatWorked && <TextBlock label={tt("reviewFields.whatWorked")} text={t.whatWorked} tone="up" />}
                   {t.whatFailed && <TextBlock label={tt("reviewFields.whatFailed")} text={t.whatFailed} tone="down" />}

@@ -92,7 +92,7 @@ export function AggOverview({
   const pf = k.profitFactor;
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
+    <div className="flex flex-col gap-section">
       <StatGrid>
         <StatCard label={t("overview.trades")} value={fmtCount(k.total)} hint={tradesHint} {...delta(k.total, p?.total, "count")} />
         <StatCard
@@ -153,7 +153,7 @@ export function AggOverview({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-grid lg:grid-cols-2">
         <Panel icon={BarChart3} title={t("overview.rDist")} description={t("overview.rDistHint")}>
           {rN > 0 ? (
             <div className="flex flex-col gap-3">

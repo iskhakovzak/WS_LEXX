@@ -253,7 +253,7 @@ function ReportSkeleton() {
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label={weeklyI18n.t("page.loading")}>
       <StatGridSkeleton count={5} />
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
         <PanelSkeleton height={260} className="lg:col-span-7" />
         <PanelSkeleton height={260} className="lg:col-span-5" />
       </div>

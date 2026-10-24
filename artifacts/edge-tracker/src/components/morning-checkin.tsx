@@ -316,7 +316,7 @@ export function MorningCheckin() {
         accent={tone}
         actions={<IconAction icon={Pencil} label={t("checkin.edit")} onClick={() => setEditing(true)} />}
       >
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 items-start gap-3">
             <ReadinessRing score={savedScore} />
             <div className="min-w-0 space-y-1.5">

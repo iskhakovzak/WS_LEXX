@@ -69,7 +69,7 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
     return (
       <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true">
         <StatGridSkeleton count={4} />
-        <div className="grid gap-[var(--grid-gap)] lg:grid-cols-12">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
           <PanelSkeleton height={180} className="lg:col-span-7" />
           <PanelSkeleton height={180} className="lg:col-span-5" />
         </div>

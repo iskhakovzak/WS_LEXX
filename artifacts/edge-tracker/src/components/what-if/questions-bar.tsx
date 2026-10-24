@@ -27,14 +27,16 @@ export function QuestionsBar({ questions, rules, onToggle }: { questions: Questi
               title={q.disabled ? t("questions.unavailable", { reason: q.disabled }) : q.hint || undefined}
               onClick={() => onToggle(q, applied)}
               className={cn(
-                "inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-left text-sm transition-colors duration-[var(--dur-1)]",
+                // A disabled question carries its reason: label and reason wrap as two whole lines of a capsule instead of
+                // the reason breaking inside a pill and squeezing the label to «Без худших…».
+                "inline-flex min-h-9 max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-[1.125rem] border px-3.5 py-1.5 text-left text-sm leading-ui transition-colors duration-[var(--dur-1)]",
                 applied ? "border-primary bg-primary-solid text-primary-foreground" : "border-[var(--glass-border)] bg-[var(--glass-bg)] hover:bg-[var(--glass-hover-bg)]",
                 q.disabled && "cursor-not-allowed opacity-55 hover:bg-[var(--glass-bg)]",
               )}
             >
               {applied && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-              <span className="truncate">{q.label}</span>
-              {q.disabled && <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><HelpCircle className="h-3 w-3" aria-hidden="true" />{q.disabled}</span>}
+              <span className="min-w-0">{q.label}</span>
+              {q.disabled && <span className="inline-flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><HelpCircle className="h-3 w-3" aria-hidden="true" />{q.disabled}</span>}
             </button>
           );
         })}
@@ -50,7 +52,7 @@ export function ChangedDays({ days, trader }: { days: DayChange[]; trader: strin
   return (
     <div className="flex flex-col gap-2">
       <p className="flex items-center gap-2 text-sm font-semibold"><CalendarDays className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("questions.changedDays")}</p>
-      <ul className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
+      <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
         {days.map((d) => (
           <li key={d.day}>
             <Link

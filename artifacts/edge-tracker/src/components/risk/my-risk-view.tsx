@@ -68,7 +68,7 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAl
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-56 rounded-2xl" />
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
           <Skeleton className="h-72 rounded-2xl" />
         </div>

@@ -82,7 +82,7 @@ export function DaySummary({
       }
     >
       {isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <Skeleton className="h-28 w-full rounded-xl" />
           <Skeleton className="h-28 w-full rounded-xl" />
         </div>
@@ -90,7 +90,7 @@ export function DaySummary({
         empty ?? null
       ) : (
         <div className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <div className="@container min-w-0 space-y-3">
               <div>
                 <div className="text-xs text-muted-foreground">{tc("trading.netPnl")}</div>
@@ -131,12 +131,12 @@ export function DaySummary({
           </div>
 
           {report.isLoading && !doc && trader ? (
-            <div className="grid gap-2 md:grid-cols-2" aria-hidden="true">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2" aria-hidden="true">
               <Skeleton className="h-14 w-full rounded-xl" />
               <Skeleton className="h-14 w-full rounded-xl" />
             </div>
           ) : hints.length > 0 && (
-            <ul className="grid gap-2 md:grid-cols-2" aria-label={t("summary.hintsAria")}>
+            <ul className="grid grid-cols-1 gap-2 md:grid-cols-2" aria-label={t("summary.hintsAria")}>
               {hints.map((h) => (
                 <HintRow key={h.id} hint={h} href={h.id === "untagged" ? links.trades({ ids: untaggedIds }) : h.tradeIds?.length ? links.trades({ ids: h.tradeIds }) : undefined} />
               ))}

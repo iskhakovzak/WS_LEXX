@@ -34,7 +34,7 @@ function OptionalBreakdowns({ doc }: { doc: WeeklyReview }) {
     book && <OpenBookPanel key="book" doc={doc} />,
   ].filter(Boolean);
   if (!panels.length) return null;
-  return <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">{panels}</div>;
+  return <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">{panels}</div>;
 }
 
 function NoTradesWeek({ doc }: { doc: WeeklyReview }) {
@@ -62,7 +62,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
     return (
       <div className="flex flex-col gap-[var(--grid-gap)]">
         <NoTradesWeek doc={doc} />
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
           <GoalPanel doc={doc} />
           <PrevGoalsPanel doc={doc} />
         </div>
@@ -87,7 +87,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
       <BestWorstPanel doc={doc} />
       <OptionalBreakdowns doc={doc} />
       <section aria-label={tr("audience.withCurator")} className="flex flex-col gap-[var(--grid-gap)]">
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
           <CuratorReviewPanel doc={doc} readOnly />
           <PrevGoalsPanel doc={doc} />
         </div>
@@ -134,7 +134,7 @@ export function CuratorView({ doc, next }: { doc: WeeklyReview; next?: { name: s
       {k.trades > 0 && <DayStrip doc={doc} ins={ins} />}
       {hasMistakes && <MistakesPanel doc={doc} />}
       <section aria-label={t("audience.oneOnOne")} className="flex flex-col gap-[var(--grid-gap)]">
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
           <SelfReviewPanel doc={doc} />
           <CuratorReviewPanel doc={doc} next={next} />
         </div>

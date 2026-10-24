@@ -213,13 +213,13 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <SideCard title="Long" row={data.bySide.long} />
         <SideCard title="Short" row={data.bySide.short} />
       </div>
 
       {!compact && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <NetBars rows={data.byTime} labelOf={timeLabel} title={t("perf.byTime")} />
           <NetBars rows={data.byWeekday} labelOf={dayLabel} title={t("perf.byWeekday")} />
         </div>

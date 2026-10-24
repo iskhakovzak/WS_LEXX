@@ -145,7 +145,7 @@ export function IndicatorSheet({
               </div>
             </SheetHeader>
 
-            <div className="flex-1 space-y-6 p-5">
+            <div className="flex-1 space-y-section p-5">
               <div className="glass-panel rounded-2xl p-3">
                 <IndicatorSpark id={ind.id} kind={ind.spark} className="h-24" />
                 <p className="mt-1 text-xs text-muted-foreground">{t("sheet.illustration")}</p>

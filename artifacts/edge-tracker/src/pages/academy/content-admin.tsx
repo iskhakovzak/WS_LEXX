@@ -155,7 +155,7 @@ export default function AcademyContentAdmin() {
           />
         </Panel>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
           <aside className="flex flex-col gap-3 lg:sticky lg:top-[var(--sticky-top)] lg:max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))] lg:overflow-y-auto lg:pr-0.5" aria-label={t("admin.structureAria")}>
             {program && (
               <>

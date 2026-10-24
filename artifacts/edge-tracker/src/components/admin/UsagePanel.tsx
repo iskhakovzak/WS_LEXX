@@ -172,7 +172,7 @@ function TopPanels({ data, screenLabel }: { data: UsageOverview; screenLabel?: (
       options={(["d7", "d30"] as const).map((v) => ({ value: v, label: t(`screens.period.${v}`) }))} />
   );
   return (
-    <div className="grid min-w-0 items-start gap-[var(--grid-gap)] lg:grid-cols-2">
+    <div className="grid grid-cols-1 min-w-0 items-start gap-[var(--grid-gap)] lg:grid-cols-2">
       <Panel title={t("screens.title")} description={t("screens.description")} actions={toggle}>
         {screens.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{t("screens.empty")}</p> : (
           <CountTable
@@ -211,7 +211,7 @@ export function UsagePanel({ enabled, screenLabel, onOpenSettings, menu }: {
     return (
       <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true">
         <Skeleton className="h-96 rounded-2xl" />
-        <div className="grid gap-[var(--grid-gap)] lg:grid-cols-2"><Skeleton className="h-48 rounded-2xl" /><Skeleton className="h-48 rounded-2xl" /></div>
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-2"><Skeleton className="h-48 rounded-2xl" /><Skeleton className="h-48 rounded-2xl" /></div>
       </div>
     );
   }
@@ -226,7 +226,7 @@ export function UsagePanel({ enabled, screenLabel, onOpenSettings, menu }: {
       </div>
       <PilotWeekPanel data={data} menu={menu} />
       <FunnelPanel data={data} onOpenSettings={onOpenSettings} />
-      <div className="grid min-w-0 items-stretch gap-[var(--grid-gap)] lg:grid-cols-2">
+      <div className="grid grid-cols-1 min-w-0 items-stretch gap-[var(--grid-gap)] lg:grid-cols-2">
         <InactivePanel rows={data.inactive} lowData={data.inactiveLowData ?? false} trackedSince={data.trackedSince} />
         <ActivityPanel points={data.activity} />
       </div>

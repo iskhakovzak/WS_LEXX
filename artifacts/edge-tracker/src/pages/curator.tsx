@@ -168,7 +168,7 @@ function TodaySkeleton() {
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <StatGridSkeleton count={6} />
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
         <PanelSkeleton className="lg:col-span-7" height={280} />
         <PanelSkeleton className="lg:col-span-5" height={280} />
       </div>

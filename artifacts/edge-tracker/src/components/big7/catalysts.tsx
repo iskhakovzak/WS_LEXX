@@ -121,7 +121,9 @@ function CatalystChip({ c, onClick, onBoard }: { c: MergedCatalyst; onClick?: ()
   const inner = (
     <>
       <span className={cn("absolute inset-y-1.5 left-0 w-0.5 rounded-full", c.impact === "high" ? "bg-down" : c.impact === "low" ? "bg-border" : "bg-[hsl(var(--chart-3))]")} aria-hidden="true" />
-      <span className="flex min-w-0 items-center gap-1.5">
+      {/* Wraps in a narrow day cell (5 columns at 1024 px): the type pill and ✦ drop under the ticker instead of
+          sticking out of the cell. */}
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
         <span className="text-xs font-semibold">{c.ticker}</span>
         <Pill tone={m.tone} className="px-1.5"><Icon className="h-3 w-3" aria-hidden="true" />{m.label}</Pill>
         {c.auto && <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground" aria-label={big7I18n.t("catalyst.fromCalendar")} />}
@@ -182,7 +184,7 @@ export function CatalystWeek({
           <Button size="sm" variant="ghost" onClick={onRetry}>{commonI18n.t("actions.retry")}</Button>
         </div>
       )}
-      <div className="grid gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
         {days.map((d) => {
           const items = byDay(d);
           const isToday = d === TODAY;

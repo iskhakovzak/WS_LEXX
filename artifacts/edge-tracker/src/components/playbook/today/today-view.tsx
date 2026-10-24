@@ -85,7 +85,7 @@ export function TodayView({
     body = (
       <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true">
         <Skeleton className="h-28 rounded-2xl" />
-        <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div>
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-64 rounded-2xl" /></div>
       </div>
     );
   } else if (q.isError) {
@@ -133,7 +133,7 @@ export function TodayView({
           <section aria-labelledby="pb-all-h" className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
             <h2 id="pb-all-h" className="text-lg font-semibold tracking-tight text-foreground">{canPick ? t("all.title") : t("all.titleStaff")}</h2>
             <DayMap windows={today.windows} now={now} onPick={jump} nextSession={session?.ahead ? today.date : null} />
-            <div className="grid min-w-0 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="grid grid-cols-1 min-w-0 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_340px]">
               <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)] lg:sticky lg:top-[var(--sticky-top)] lg:order-2">
                 {canPick ? <EdgeSummaryPanel setups={today.setups} onOpen={(id) => onOpen(id)} /> : <p className="glass-panel rounded-2xl p-[var(--panel-p)] text-sm text-foreground/80">{t("staffNote")}</p>}
               </aside>

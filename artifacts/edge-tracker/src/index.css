@@ -16,8 +16,15 @@
      xs  28px  min-h-7  inline quick-pick chips inside forms / sheets (suggestions, «+ тег»), never in a toolbar row.
      Badge / Pill / Delta 22px (min-h-5.5, grows only for an inline × button), Kbd 20px, Segmented inner segment = control − 2·(1px border + inset).
    ICONS  16px (size-4) in md/lg controls and menu rows, 14px (size-3.5) in sm controls/chips, 12px in badges.
-   SPACING  --panel-p 16→20px (Panel/Card/Dialog-less surfaces), StatCard/Tile 16/12px, Toolbar 8px,
-            --grid-gap 12→16px between cards, --page-gap 20px between sections, header 56px.
+   SPACING (4/8 grid, named utilities — prefer them over raw numbers on pages; see the RHYTHM block below)
+     gap-section  16→20px  between page sections (Page)          gap-grid   12→16px  between cards in a grid
+     p-panel      16→20px  card / panel / dialog inner padding    gap-head   12px     card header → body
+     gap-stack    12px     between blocks inside a card           gap-inline  8px     between controls in a row
+     space-y-field 16px    between form fields (label→control 6px) p-tile    12px     inner tile padding
+     StatCard 16px, Toolbar 8px, header 56px.
+   TYPE RHYTHM (line-height per text role; utilities leading-body / -ui / -heading / -num)
+     body 1.5 (text-sm / text-base paragraphs)   compact UI 1.35 (text-xs / text-2xs labels, chips, captions)
+     headings 1.2 (text-xl+; text-lg 1.3, display 1.12)   numerals 1 (hero / KPI values, badges).
    TABLES  header row 36px (h-9, 12px label), body rows ≈40px compact / 44px comfortable, cell padding-x 12px,
            numeric columns right-aligned + tabular-nums (SortableTh align="right" really aligns now).
    FOCUS   2px ring in --ring (outline for native, ring-2 for primitives), offset 2px.
@@ -152,6 +159,35 @@
   --text-2xs--line-height: 1rem;
   --text-xs: 0.8125rem;
   --text-sm: 0.9375rem;
+
+  /* ── Type rhythm: one line-height per text role (owner 2026-10-25 «межстрочные — гармонично»). ──
+     Tailwind's defaults drifted per size (sm 1.43, lg 1.56, xl 1.4, 2xl 1.33): loose headings, uneven paragraphs. */
+  --leading-body: 1.5;       /* paragraphs, descriptions, chat / notes text */
+  --leading-ui: 1.35;        /* compact UI: labels, chips, captions, table meta */
+  --leading-heading: 1.2;    /* card / section / dialog titles */
+  --leading-num: 1;          /* big numerals, badges */
+  /* The stock steps snap onto the roles, so the ~130 existing `leading-relaxed` / `leading-snug` paragraphs and
+     captions follow the rhythm without touching every file: relaxed (1.625) read airy next to 1.5 body text. */
+  --leading-relaxed: 1.5;
+  --leading-snug: 1.35;
+  --leading-loose: 1.5;
+  --text-xs--line-height: 1.35;
+  --text-sm--line-height: 1.5;
+  --text-lg--line-height: 1.3;
+  --text-xl--line-height: 1.2;
+  --text-2xl--line-height: 1.2;
+  --text-3xl--line-height: 1.15;
+  --text-4xl--line-height: 1.1;
+
+  /* ── Spacing rhythm: named steps (gap-section, p-panel, gap-stack…) that read the responsive tokens in :root. ── */
+  --spacing-section: var(--page-gap);
+  --spacing-grid: var(--grid-gap);
+  --spacing-panel: var(--panel-p);
+  --spacing-head: var(--head-gap);
+  --spacing-stack: var(--stack-gap);
+  --spacing-inline: var(--inline-gap);
+  --spacing-field: var(--field-gap);
+  --spacing-tile: var(--tile-p);
 
   /* Fixed radius scale (bare `rounded` still reads --radius = 8px). */
   --radius-sm: 6px;
@@ -300,9 +336,14 @@
   /* ── Layout / spacing tokens (4/8 grid; Tailwind --spacing = 4px) ── */
   --page-max: 1600px;          /* content max width */
   --page-px: 1rem;             /* side gutter (16px; 24px from lg) */
-  --page-gap: 1.25rem;         /* vertical rhythm between page sections (20px) */
+  --page-gap: 1rem;            /* vertical rhythm between page sections (16px; 20px from sm) */
   --grid-gap: 0.75rem;         /* gap between cards in a grid (12px; 16px from xl) */
   --panel-p: 1rem;             /* panel inner padding (16px; 20px from sm) */
+  --head-gap: 0.75rem;         /* panel header → body (12px) */
+  --stack-gap: 0.75rem;        /* between blocks inside a panel (12px) */
+  --inline-gap: 0.5rem;        /* between controls in a row / button row (8px) */
+  --field-gap: 1rem;           /* between form fields (16px); label → control is 6px (gap-1.5) */
+  --tile-p: 0.75rem;           /* inner tile padding (12px) */
   --header-h: 3.5rem;          /* app header height (56px) */
   /* Row density («Вид» → Плотность, html[data-density]): table cells and list rows read these. */
   --cell-py: 0.5rem;           /* table body cell padding (compact ≈ 41px rows) */
@@ -370,7 +411,7 @@
 }
 
 @media (min-width: 640px) {
-  :root { --panel-p: 1.25rem; }
+  :root { --panel-p: 1.25rem; --page-gap: 1.25rem; }
 }
 @media (min-width: 1024px) {
   :root { --page-px: 1.5rem; }
@@ -1021,6 +1062,29 @@ body {
 
   h1, h2, h3 {
     text-wrap: balance;
+  }
+
+  /* Touch screens: every control's hit area is at least 44×44 px without changing how it looks (an invisible ::before
+     centred on it). Base layer + :where(), so `absolute` / `fixed` / `sticky` utilities on a control still win.
+     Skipped where ::before is already taken (glass surfaces, Tailwind `before:` utilities) or with `.no-tap-target`. */
+  @media (pointer: coarse) {
+    :where(button, [role="button"], [role="tab"], [data-slot="button"], a.chip, summary):not(.glass, .glass-thick, .glass-solid, .no-tap-target, [class*="before:"]) {
+      position: relative;
+    }
+    :where(button, [role="button"], [role="tab"], [data-slot="button"], a.chip, summary):not(.glass, .glass-thick, .glass-solid, .no-tap-target, [class*="before:"])::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+    /* A sideways strip (chips, tabs, segmented) would otherwise turn those taller extenders into a few pixels of
+       vertical scroll. An explicit overflow-y-* utility on the strip still wins (base layer). */
+    :where(.overflow-x-auto) {
+      overflow-y: hidden;
+    }
   }
 
   code, kbd, pre, samp {

@@ -233,7 +233,7 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
 
         {/* works / doesn't */}
         {(feed.whatWorksNow || feed.whatDoesntWork) && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {feed.whatWorksNow && (
               <div className="rounded-xl border border-up/25 bg-up/[0.06] p-3">
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-up">

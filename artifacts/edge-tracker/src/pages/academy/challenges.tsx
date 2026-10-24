@@ -97,7 +97,7 @@ export default function AcademyChallengesPage() {
             action={list.data?.canCreate && config.data ? <Button onClick={() => setCreateOpen(true)}>{t("page.assignExam")}</Button> : <EmptyLink href="/academy/learn">{shellI18n.t("nav.academyLearn")}</EmptyLink>} />
         </Panel>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
           <nav aria-label={t("page.listAria")} aria-busy={list.isPlaceholderData || undefined} className={cn("flex flex-col gap-2 transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", list.isPlaceholderData && "pointer-events-none opacity-60")}>
             {items.map((c) => <ChallengeCard key={c.id} c={c} active={c.id === selected} onOpen={() => setSelected(c.id)} showUser={isCurator} templates={config.data?.templates} />)}
           </nav>

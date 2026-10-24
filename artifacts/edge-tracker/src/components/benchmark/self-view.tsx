@@ -33,7 +33,7 @@ export function SelfView({ data }: { data: BenchmarkResponse }) {
           tone={me.consistencyFlag === "breach" ? "down" : me.consistencyFlag === "warn" ? "warn" : "neutral"}
           hint={t("self.threshold", { warn: Math.round(data.rules.consistencyWarn * 100), breach: Math.round(data.rules.consistencyBreach * 100) })} />
       </StatGrid>
-      <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_420px]">
         <Panel title={t("self.vsMedian")} description={t("self.vsMedianHint", { min: data.minTrades, traders: data.rules.medianMinTraders })} padded={false} bodyClassName="p-2">
           <div className="overflow-x-auto">
           <table className="w-full text-sm tabular-nums">
