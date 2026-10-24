@@ -19,7 +19,7 @@ import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-prefs";
 import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
-import { WsMark, Wordmark } from "@/components/ds/brand";
+import { Wordmark } from "@/components/ds/brand";
 
 /**
  * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
@@ -108,9 +108,9 @@ function useScrollerGutter(ref: React.RefObject<HTMLDivElement | null>) {
 function Logo() {
   const { t } = shellI18n.useT();
   return (
-    <Link href="/" aria-label={t("header.logoAria")} className="flex shrink-0 items-center gap-2 rounded-xl pr-1 text-foreground">
-      <WsMark size={40} className="-my-1" />
-      <Wordmark className="hidden text-[0.9375rem] @[960px]:inline" />
+    // «WS_Desk» lockup: the mark carries «WS»; a narrow header keeps just the mark.
+    <Link href="/" aria-label={t("header.logoAria")} className="flex h-10 shrink-0 items-center rounded-xl pr-1 text-foreground">
+      <Wordmark className="text-[1.375rem]" deskClassName="hidden @[960px]:inline" />
     </Link>
   );
 }

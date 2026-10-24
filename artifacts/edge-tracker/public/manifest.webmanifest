@@ -1,6 +1,6 @@
 {
-  "name": "WS_LEXX",
-  "short_name": "WS_LEXX",
+  "name": "WS_Desk",
+  "short_name": "WS_Desk",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

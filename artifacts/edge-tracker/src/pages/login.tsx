@@ -11,7 +11,7 @@ import { LanguageSegmented } from "@/i18n/language-switcher";
 import { authI18n } from "@/i18n/ns/auth";
 import { ForcedPasswordChange } from "@/components/auth/forced-password-change";
 import { LoginSmoke } from "@/components/auth/login-smoke";
-import { WsMark, Wordmark } from "@/components/ds/brand";
+import { Wordmark } from "@/components/ds/brand";
 
 /**
  * Sign-in (owner decision 2026-10-17): no roster before sign-in — the name is TYPED (the API resolves it across
@@ -270,13 +270,10 @@ export default function LoginPage() {
             shake && "animate-[shake_0.4s_ease-in-out]",
           )}
         >
-          {/* Brand: the WS monogram over the wordmark (components/ds/brand) */}
+          {/* Brand: the «WS_Desk» lockup, the mark carrying «WS» (components/ds/brand) */}
           <div className="flex flex-col items-center gap-3 text-center">
-            <WsMark size={56} className="text-foreground" title="WS_LEXX" />
-            <div>
-              <h1 className="text-[1.75rem] leading-none text-foreground"><Wordmark /></h1>
-              <p className="mt-2 text-sm text-muted-foreground">{t("tagline")}</p>
-            </div>
+            <h1 className="text-[2.5rem] leading-none text-foreground"><Wordmark /></h1>
+            <p className="text-sm text-muted-foreground">{t("tagline")}</p>
           </div>
 
           {passwordChangePending ? (

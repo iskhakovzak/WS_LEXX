@@ -1,21 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
-  <!-- WS_LEXX monogram, small optical cut (components/ds/brand.tsx). Ink on light browser chrome, white on dark. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="-0.59 -0.26 65.18 65.18">
+  <!-- WS_Desk mark, small optical cut (components/ds/brand.tsx): geometric W + italic serif S. Ink on light tabs, white on dark. -->
   <style>
-    .ink { stroke: #111111; }
-    @media (prefers-color-scheme: dark) { .ink { stroke: #f2f2f2; } }
+    path { fill: #111111; }
+    @media (prefers-color-scheme: dark) { path { fill: #f2f2f2; } }
   </style>
-  <defs>
-    <clipPath id="t"><rect width="64" height="31"/></clipPath>
-    <clipPath id="b"><rect y="31" width="64" height="33"/></clipPath>
-    <mask id="mw" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
-      <rect width="64" height="64" fill="#fff"/>
-      <path clip-path="url(#t)" d="M45 15.5C41.5 8.5 23 8 22.5 19C22 29 41.5 29.5 41.5 41.5C41.5 54 22 55.5 18.5 47.5" stroke="#000" stroke-width="9" stroke-linecap="round"/>
-    </mask>
-    <mask id="ms" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
-      <rect width="64" height="64" fill="#fff"/>
-      <path clip-path="url(#b)" d="M6 14L18.5 50L32 22L45.5 50L58 14" stroke="#000" stroke-width="9" stroke-miterlimit="10"/>
-    </mask>
-  </defs>
-  <path class="ink" mask="url(#mw)" d="M6 14L18.5 50L32 22L45.5 50L58 14" stroke-width="6.5" stroke-miterlimit="10"/>
-  <path class="ink" mask="url(#ms)" d="M45 15.5C41.5 8.5 23 8 22.5 19C22 29 41.5 29.5 41.5 41.5C41.5 54 22 55.5 18.5 47.5" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M0.51 18L7.23 46L17.58 46L18.92 38.18L21.36 46L32.04 46L36.03 18L28.96 18L26.14 37.8L19.96 18L15.28 18L12.13 36.4L7.71 18Z"/>
+  <path d="M47.36 46.71Q44.81 46.71 42.32 46.23Q39.83 45.75 38.14 44.83L39.69 38.14H43.74L43.59 44.75L40.6 44.29L41.08 42.03Q42.09 42.57 43.09 42.97Q44.1 43.37 45.24 43.6Q46.38 43.83 47.8 43.83Q49.43 43.83 50.49 43.37Q51.55 42.91 52.19 42.13Q52.84 41.36 53.03 40.44Q53.25 39.44 52.99 38.77Q52.74 38.1 52.05 37.58Q51.37 37.06 50.11 36.51L48.98 35.93Q46.54 34.8 44.87 33.53Q43.2 32.25 42.51 30.56Q41.83 28.87 42.35 26.4Q42.94 23.64 44.76 21.78Q46.57 19.92 49.31 18.94Q52.05 17.96 55.26 17.96Q57.98 17.96 60.1 18.5Q62.22 19.04 63.49 19.76L61.92 26.15H58.04L58.14 19.96L61.27 20.55L60.8 22.76Q59.53 21.89 58.26 21.34Q57 20.8 55.12 20.8Q53.91 20.8 52.95 21.2Q51.98 21.59 51.35 22.33Q50.71 23.06 50.52 23.98Q50.31 24.94 50.59 25.61Q50.86 26.27 51.6 26.84Q52.34 27.4 53.58 28.03L54.84 28.61Q57.31 29.79 58.92 31.02Q60.54 32.25 61.17 33.9Q61.81 35.55 61.31 37.89Q60.73 40.61 58.87 42.57Q57.01 44.54 54.09 45.62Q51.16 46.71 47.36 46.71Z"/>
 </svg>
