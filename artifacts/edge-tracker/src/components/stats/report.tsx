@@ -2,7 +2,7 @@
  * /stats report body: the numbers (useReportData — from the viewer's own trades, or from the server aggregate in the
  * staff view, Волна 2 п. 2.5) and the panels under the KPI cards (ReportPanels). Split out of pages/stats.tsx.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { statsI18n } from "@/i18n/ns/stats";
@@ -79,10 +79,12 @@ export function useWindowExport(o: {
 }
 
 /** KPI cards and every panel of the report. */
-export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windowLabel, trader, horizon, dim, oneTrader, solo, onHorizon, onDim, onPickTrader }: {
+export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windowLabel, trader, horizon, dim, oneTrader, solo, onHorizon, onDim, onPickTrader, insights }: {
   d: ReportData; staff: boolean; agg: StatsAggregate | undefined; trades: Trade[]; horizonBase: Trade[]; metric: Metric; windowLabel: string;
   trader: string; horizon: HorizonFilter; dim: Dimension; oneTrader: boolean; solo: boolean;
   onHorizon: (h: HorizonFilter) => void; onDim: (d: Dimension) => void; onPickTrader?: (name: string) => void;
+  /** Compact insight cards (streaks, trade number in the day…) under the equity row; raw-trade views only. */
+  insights?: ReactNode;
 }) {
   const a = staff ? agg : undefined;
   return (
@@ -95,6 +97,8 @@ export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windo
         </div>
         <div className="min-w-0 xl:col-span-2"><InsightsPanel insights={d.insights} /></div>
       </div>
+
+      {insights}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <HorizonPanel

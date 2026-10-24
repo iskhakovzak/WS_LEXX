@@ -466,6 +466,10 @@ export type SectionId =
   | "recent"
   | "desk"
   | "streaks"
+  | "seqDay"
+  | "holdTime"
+  | "weekdays"
+  | "afterLoss"
   | "positions"
   | "checkin"
   | "brief"
@@ -477,6 +481,8 @@ export type SectionId =
 
 const SECTION_FLAGS: Record<SectionId, { staffOnly?: boolean; extra?: boolean }> = {
   attention: {}, equity: {}, recent: {}, desk: { staffOnly: true }, streaks: {}, positions: {},
+  // Compact insight cards (components/insight-cards): one row under the cockpit, own trades («Мои») only.
+  seqDay: {}, holdTime: {}, weekdays: {}, afterLoss: {},
   // Optional extras below the cockpit — off by default, switch on in «Настроить».
   checkin: { extra: true }, brief: { extra: true }, quote: { extra: true }, sectors: { extra: true },
   macro: { extra: true }, dna: { extra: true }, psychology: { extra: true },
@@ -498,6 +504,10 @@ export const DEFAULT_ORDER: SectionId[] = [
   "desk",
   "streaks",
   "positions",
+  "seqDay",
+  "afterLoss",
+  "holdTime",
+  "weekdays",
   "checkin",
   "brief",
   "sectors",
@@ -507,13 +517,20 @@ export const DEFAULT_ORDER: SectionId[] = [
   "psychology",
 ];
 
-/** Width class of a block in the 12-col bento: pairs sit side by side, `full` takes the row. */
-export const SECTION_WIDTH: Record<SectionId, "wide" | "narrow" | "full"> = {
+/**
+ * Width class of a block in the 12-col bento: pairs sit side by side, `full` takes the row, neighbouring `compact`
+ * blocks share one responsive row (1 → 2 → 3/4 columns).
+ */
+export const SECTION_WIDTH: Record<SectionId, "wide" | "narrow" | "full" | "compact"> = {
   attention: "narrow",
   equity: "wide",
   recent: "wide",
   desk: "narrow",
   streaks: "narrow",
+  seqDay: "compact",
+  holdTime: "compact",
+  weekdays: "compact",
+  afterLoss: "compact",
   positions: "full",
   checkin: "wide",
   brief: "full",

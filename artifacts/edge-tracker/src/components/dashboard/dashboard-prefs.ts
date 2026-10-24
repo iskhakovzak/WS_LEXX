@@ -18,12 +18,15 @@ const PREFS_KEY = "ws_lexx_dashboard_prefs_v5";
 const LEGACY_PREFS_KEY = "ws_lexx_dashboard_prefs_v4";
 const LEGACY_SPLIT: Record<string, SectionId[]> = { ritual: ["checkin", "brief", "quote"], market: ["sectors", "macro", "dna"] };
 
+/** Own-trade cards (streaks + the compact insight row): shown on «Мои» only, hidden in a «Команда» default. */
+const OWN_CARDS: SectionId[] = ["streaks", "seqDay", "holdTime", "weekdays", "afterLoss"];
+
 /** Sensible defaults: the cockpit on top, extras off (traders keep the morning check-in); staff see the desk instead of streaks. */
 function defaultPrefs(scope: Scope): DashboardPrefs {
   const extras = DEFAULT_ORDER.filter((id) => SECTION_META[id].extra && (scope === "team" || id !== "checkin"));
   return {
     order: DEFAULT_ORDER,
-    hidden: scope === "team" ? ["streaks", ...extras] : extras,
+    hidden: scope === "team" ? [...OWN_CARDS, ...extras] : extras,
     scope,
     period: "week",
     metric: "pnl",
@@ -54,7 +57,7 @@ export function sanitizeDashboardPrefs(raw: unknown, fallbackScope: Scope, legac
   const migrate = !picked && r.scope === "team" && fallbackScope === "me";
   return {
     order: Array.from(new Set(order)),
-    hidden: migrate ? hidden.filter((id) => id !== "streaks" && id !== "checkin") : hidden,
+    hidden: migrate ? hidden.filter((id) => !OWN_CARDS.includes(id) && id !== "checkin") : hidden,
     scope: picked ? (r.scope as Scope) : fallbackScope,
     scopePicked: picked,
     period: PERIODS.includes(r.period as EquityPeriod) ? (r.period as EquityPeriod) : base.period,
