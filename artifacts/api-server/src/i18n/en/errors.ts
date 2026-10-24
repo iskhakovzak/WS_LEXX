@@ -361,4 +361,8 @@ export default {
   UNLOCK_CODE_INVALID: "Wrong code",
   UNLOCK_SIGNED_OUT: "Too many wrong attempts. Please sign in again",
   QUICK_CODE_INVALID: "The code is 4 to 8 digits or a phrase of 6 to 32 characters",
+  AI_NOT_CONFIGURED: "The assistant is not connected: the server has no AI_INTEGRATIONS_ANTHROPIC_API_KEY",
+  AI_ASSISTANT_OFF: "The assistant is switched off in the desk settings",
+  AI_ASSISTANT_STAGE: "The assistant is not open for your stage yet",
+  AI_BUDGET_EXCEEDED: "The assistant’s daily limit is used up; it is available again tomorrow",
 } satisfies Messages<typeof ru>;

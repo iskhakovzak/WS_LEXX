@@ -52,6 +52,7 @@ export default {
     "discussions.moderate": { label: "Muhokamalar moderatsiyasi", description: "Boshqalarning mavzulari va izohlarini oʻchirish, mavzularni yopish." },
     "discussions.edit.any": { label: "Boshqalarning izohlarini tahrirlash", description: "Boshqa odamlarning izohlarini tahrirlash." },
     "watchlist.manage": { label: "Desk kuzatuv roʻyxati", description: "Umumiy kuzatuv roʻyxatini tahrirlash (har qanday aʼzo, mehmon emas)." },
+    "assistant.use": { label: "WS Yordamchi", description: "Sayt boʻyicha AI yordamchi: inson baribir koʻra oladigan maʼlumotlar boʻyicha javob beradi va qoralamalar tayyorlaydi (pleybuk, reja, kun yakuni, qoida). Oʻzi hech narsani saqlamaydi. Yoqish, modellar va limitlar: Desk sozlamalari → «WS Yordamchi»." },
     "users.manage": { label: "Foydalanuvchilarni boshqarish", description: "Treyder va kuratorlarni qoʻshish, tahrirlash, muzlatish va arxivlash, biriktirishlarni oʻzgartirish." },
     "users.manage.admins": { label: "Adminlarni boshqarish", description: "Adminlar yaratish, admin rolini berish, adminlarni tahrirlash yoki faolsizlantirish, kuratorlarni bloklash." },
     "admin.reports": { label: "Kontent shikoyatlari", description: "Shikoyatlar navbati, qaror, muallifni bloklash." },

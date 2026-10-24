@@ -371,6 +371,10 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `UNLOCK_SIGNED_OUT` | 401 | `POST /auth/unlock`: the 5th wrong answer since the lock — this session is signed out (revoked). | — |
 | `QUICK_CODE_INVALID` | 400 | `PUT /auth/quick-code`: not 4–8 digits and not a 6–32 character phrase. | — |
 | `SECTION_BLOCKED` | 403 | The section is closed for the caller's ladder stage (desk setting `access.sections`, admin → «Роли и права» → «Доступ по ступеням»). Answered by one middleware (`lib/access/sections.ts`, table `SECTION_API`) on the section's data endpoints: top of the day, leaderboard, discussions, daily feed (not `/dailyfeed/stream`), desk-day, office stats, benchmark, trade ideas (+ stats), activity. Staff are never blocked. | `{ section, stage }` |
+| `AI_NOT_CONFIGURED` | 503 | «Ассистент WS» (`/api/ai/assistant/*`): no `AI_INTEGRATIONS_ANTHROPIC_API_KEY` on the server (docs/AI_ASSISTANT.md). The panel shows how the admin enables it. The older AI helpers keep the lower-case `ai_not_configured`. | — |
+| `AI_ASSISTANT_OFF` | 403 | The assistant is switched off (desk setting `assistant.enabled`). | — |
+| `AI_ASSISTANT_STAGE` | 403 | The assistant is closed for juniors (desk setting `assistant.juniorsEnabled`). | — |
+| `AI_BUDGET_EXCEEDED` | 429 | The caller's daily token budget of the default model is used up (desk setting `assistant.dailyTokensDefault`; the escalation model has its own budget and falls back to the default model when it runs out). | `{ model, used, limit }` |
 | `JUNIOR_NOTES_RETIRED` | 410 | Any non-GET /api/junior-notes/*: the juniors' summary is read-only history now (the evening form in the journal replaced it). | — |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.

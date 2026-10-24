@@ -69,6 +69,8 @@ const schema = z.object({
   // AI
   ANTHROPIC_MODEL: str,
   AI_DAILY_COST_BUDGET_USD: str,
+  /** Development only: «Ассистент WS» answers from a scripted local model (lib/assistant/mockClient) — no key, no cost. */
+  AI_ASSISTANT_MOCK: str,
   AI_INTEGRATIONS_OPENAI_BASE_URL: str,
   AI_INTEGRATIONS_OPENAI_API_KEY: str,
   // transcription
@@ -158,7 +160,10 @@ function buildConfig(e: z.infer<typeof schema>, warnings: string[]) {
     /** Local backup directory (own server); null → Object Storage (DEFAULT_OBJECT_STORAGE_BUCKET_ID) or no backups. */
     backupDir: e.BACKUP_DIR ?? null,
     ai: {
-      anthropicModel: e.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+      // Playbook critique / checklist helpers (routes/playbook.ts). The assistant picks its own models (desk settings).
+      anthropicModel: e.ANTHROPIC_MODEL ?? "claude-sonnet-5-5",
+      /** Scripted assistant model for demos and UI work; ignored in production (never a silent fake there). */
+      assistantMock: !isProduction && ["1", "true", "on", "yes"].includes((e.AI_ASSISTANT_MOCK ?? "").toLowerCase()),
       dailyCostBudgetUsd: Number(e.AI_DAILY_COST_BUDGET_USD ?? "5.0"),
       openaiBaseUrl: e.AI_INTEGRATIONS_OPENAI_BASE_URL,
       openaiApiKey: e.AI_INTEGRATIONS_OPENAI_API_KEY ?? "dummy",

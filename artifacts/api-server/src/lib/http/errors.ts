@@ -384,6 +384,11 @@ export const ERROR_CODES = {
   UNLOCK_CODE_INVALID: 403,
   UNLOCK_SIGNED_OUT: 401,
   QUICK_CODE_INVALID: 400,
+  // «Ассистент WS» (routes/ai-assistant.ts)
+  AI_NOT_CONFIGURED: 503,
+  AI_ASSISTANT_OFF: 403,
+  AI_ASSISTANT_STAGE: 403,
+  AI_BUDGET_EXCEEDED: 429,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

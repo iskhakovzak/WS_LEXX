@@ -8,8 +8,8 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access";
-export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "assistant";
+export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
  * `pilot: true` = one of the ~10 settings the pilot needs (docs/PILOT.md §2.5 / §3): the admin page shows only these
@@ -255,6 +255,22 @@ export const SETTINGS = {
   // A change re-derives every trade (job trades.strategy-backfill).
   "trades.imxWindowStart": { group: "trades", type: "time", default: "15:50" },
   "trades.imxWindowEnd": { group: "trades", type: "time", default: "16:00" },
+
+  // «Ассистент WS» (lib/assistant, docs/AI_ASSISTANT.md; key = env AI_INTEGRATIONS_ANTHROPIC_API_KEY, without it the
+  // assistant answers 503 AI_NOT_CONFIGURED): the switch, the default (cheap) model and the escalation model with the
+  // auto-escalation switch (owner 2026-10-25: «большинство задач — Haiku, если нужно умнее — Sonnet»), juniors on / off
+  // (who else may use it: the roles matrix, capability assistant.use), daily token budgets per user and model class
+  // (input + cache writes + output; cache reads not counted), the per-user request rate, and whether the audit keeps
+  // message bodies (off: only who / when / tokens / tools)
+  "assistant.enabled": { group: "assistant", type: "boolean", default: true },
+  "assistant.defaultModel": { group: "assistant", type: "select", default: "claude-haiku-5-5", options: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] },
+  "assistant.smartModel": { group: "assistant", type: "select", default: "claude-sonnet-5-5", options: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"] },
+  "assistant.autoEscalate": { group: "assistant", type: "boolean", default: true },
+  "assistant.juniorsEnabled": { group: "assistant", type: "boolean", default: true },
+  "assistant.dailyTokensDefault": { group: "assistant", type: "number", default: 400_000, min: 0, max: 20_000_000, step: 10_000, unit: "tokens" },
+  "assistant.dailyTokensSmart": { group: "assistant", type: "number", default: 150_000, min: 0, max: 20_000_000, step: 10_000, unit: "tokens" },
+  "assistant.requestsPer10Min": { group: "assistant", type: "number", default: 20, min: 1, max: 200, step: 1, unit: "count" },
+  "assistant.auditBodies": { group: "assistant", type: "boolean", default: false },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

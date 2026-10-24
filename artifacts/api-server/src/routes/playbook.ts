@@ -1112,7 +1112,7 @@ ${trRows.map((t: any, i: number) => // i18n-ignore (AI prompt context)
   try {
     const result: any = await anthropic.messages.create({
       model: config.ai.anthropicModel,
-      max_tokens: 1500,
+      max_tokens: 6000, // current models think adaptively before the answer; thinking counts toward max_tokens
       system: sys,
       messages: [{ role: "user", content: usr }],
     });
@@ -1155,7 +1155,7 @@ ${pb.checklist ? /* i18n-ignore (AI prompt) */ `Текущий чек-лист (
   try {
     const result: any = await anthropic.messages.create({
       model: config.ai.anthropicModel,
-      max_tokens: 800,
+      max_tokens: 4000, // room for adaptive thinking before the checklist
       system: sys,
       messages: [{ role: "user", content: usr }],
     });

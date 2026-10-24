@@ -361,4 +361,8 @@ export default {
   UNLOCK_CODE_INVALID: "Kod notoʻgʻri",
   UNLOCK_SIGNED_OUT: "Notoʻgʻri urinishlar juda koʻp. Qaytadan kiring",
   QUICK_CODE_INVALID: "Kod 4 dan 8 gacha raqam yoki 6 dan 32 gacha belgidan iborat ibora boʻladi",
+  AI_NOT_CONFIGURED: "Yordamchi ulanmagan: serverda AI_INTEGRATIONS_ANTHROPIC_API_KEY kaliti yoʻq",
+  AI_ASSISTANT_OFF: "Yordamchi desk sozlamalarida oʻchirilgan",
+  AI_ASSISTANT_STAGE: "Yordamchi hozircha sizning bosqichingiz uchun yopiq",
+  AI_BUDGET_EXCEEDED: "Yordamchining kunlik limiti tugadi, ertaga yana ishlaydi",
 } satisfies Messages<typeof ru>;

@@ -1,5 +1,8 @@
 /** Server namespaces. Add one per area: `export const <area>T = defineNamespace(ru<Area>, { en: en<Area>, uz: uz<Area> });` */
 import { defineNamespace } from ".";
+import ruAssistant from "./ru/assistant";
+import enAssistant from "./en/assistant";
+import uzAssistant from "./uz/assistant";
 import ruCommon from "./ru/common";
 import enCommon from "./en/common";
 import uzCommon from "./uz/common";
@@ -167,3 +170,6 @@ export const gamificationT = defineNamespace(ruGamification, { en: enGamificatio
 
 /** `newsChannel`: WS_NEWS Telegram channel briefs (lib/newsChannel/render.ts); the channel posts in `ru`. */
 export const newsChannelT = defineNamespace(ruNewsChannel, { en: enNewsChannel, uz: uzNewsChannel });
+
+/** `assistant`: «Ассистент WS» server texts (lib/assistant): «✦ Помочь» instructions, the dev demo model's lines. */
+export const assistantT = defineNamespace(ruAssistant, { en: enAssistant, uz: uzAssistant });
