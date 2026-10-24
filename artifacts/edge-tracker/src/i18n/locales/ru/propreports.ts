@@ -457,6 +457,8 @@ export default {
     emptyStaff: "Загрузите XLS «Trade Performance» из PropReports (Reports → Trade Performance → Export) во вкладке «Импорт» — формат определится автоматически.",
     time: { "pre-market": "Премаркет", "post-market": "Постмаркет" },
     hold: { h: "{h} ч {m} м", m: "{m} м {s} с", s: "{s} с" },
+    barBest: "лучший",
+    barWorst: "худший",
     barTitle: "{label}: {trades}, win rate {winRate}, gross {gross}, комиссии {fees}",
     netPill: "{value} net",
     trades: "Сделок",

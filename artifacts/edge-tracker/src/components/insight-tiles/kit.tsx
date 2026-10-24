@@ -15,6 +15,7 @@ import { rich } from "@/i18n/rich";
 import { cn } from "@/lib/utils";
 import { insightTilesI18n } from "@/i18n/ns/insightTiles";
 import type { Claim } from "./insights";
+import { smoothPath } from "@/components/shared/charts/path";
 import "./insight-tiles.css";
 
 export const usd = (v: number | null | undefined) => fmtUsd(v, { signed: true, decimals: "auto" });
@@ -376,18 +377,25 @@ export function InlineBars({ values, mark, tone }: { values: number[]; mark: num
 
 /** Line sparkline of a cumulative series (today's net). */
 export function Spark({ series, tone, label, className }: { series: number[]; tone: "up" | "down" | "be" | undefined; label: string; className?: string }) {
+  const gid = `isp${React.useId().replace(/:/g, "")}`;
   const w = 160, h = 44;
   if (series.length < 2) return null;
   const min = Math.min(0, ...series), max = Math.max(0, ...series);
   const span = max - min || 1;
   const x = (i: number) => (i / (series.length - 1)) * w;
   const y = (v: number) => h - 2 - ((v - min) / span) * (h - 4);
-  const d = series.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const d = smoothPath(series.map((v, i) => [x(i), y(v)] as const));
   const color = tone === "up" ? "hsl(var(--up))" : tone === "down" ? "hsl(var(--down))" : tone === "be" ? "hsl(var(--be))" : "hsl(var(--foreground))";
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className={cn("h-11 w-40", className)} role="img" aria-label={label} preserveAspectRatio="none">
       <line x1={0} x2={w} y1={y(0)} y2={y(0)} stroke="currentColor" strokeOpacity={0.2} strokeDasharray="2 3" strokeWidth={1} />
-      <path d={`${d} L${w},${y(0)} L0,${y(0)} Z`} fill={color} fillOpacity={0.12} />
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.26} />
+          <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+        </linearGradient>
+      </defs>
+      <path d={`${d} L${w},${y(0)} L0,${y(0)} Z`} fill={`url(#${gid})`} />
       <path d={d} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       <circle cx={x(series.length - 1)} cy={y(series[series.length - 1])} r={3} fill={color} />
     </svg>

@@ -244,7 +244,7 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
               }}
               formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: "auto" }), t("summary.cumulative")]}
             />
-            <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} fill={paint.fill} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} isAnimationActive={!prefersReducedMotion()} animationDuration={DRAW_MS} />
+            <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} strokeLinejoin="round" strokeLinecap="round" fill={paint.fill} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} isAnimationActive={!prefersReducedMotion()} animationDuration={DRAW_MS} />
           </AreaChart>
         </ResponsiveContainer>
       </div>

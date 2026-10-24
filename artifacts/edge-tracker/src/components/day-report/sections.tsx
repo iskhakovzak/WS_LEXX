@@ -9,7 +9,7 @@ import {
   AlertTriangle, BarChart3, CalendarDays, CheckCircle2, Clock, ExternalLink, LineChart, ListChecks, ListOrdered, NotebookPen, Sparkles, Target,
 } from "lucide-react";
 import {
-  ACTIVE_DOT, CHART, GRID, GlassTooltip, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, pnlPaint, tooltipProps, useChartMotion,
+  ACTIVE_DOT, CHART, GRID, GlassTooltip, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, pnlPaint, tooltipProps, useChartMotion, useGlow,
 } from "@/components/shared/charts";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, StatRow, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
@@ -107,6 +107,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
   };
   const motion = useChartMotion();
   const paint = React.useMemo(() => pnlPaint("dr-eq", data.map((d) => d.cum)), [data]);
+  const glow = useGlow("dr-eq");
   const srcLabel = e.timeSource === "executions" ? t("equity.srcExecutions") : e.timeSource === "snapshot" ? t("equity.srcSnapshot") : t("equity.srcOrder");
   return (
     <Panel
@@ -131,6 +132,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
               {paint.defs}
+              {glow.defs}
               <CartesianGrid {...GRID} />
               <XAxis
                 dataKey="x"
@@ -159,7 +161,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
                 }}
                 formatter={(v: number) => [fmtUsd(v, { signed: true }), t("equity.cumulative")]}
               />
-              <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} fill={paint.fill} {...motion} dot={{ r: 2.5, strokeWidth: 0, fill: CHART.fg, fillOpacity: 0.55 }} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} />
+              <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} strokeLinejoin="round" strokeLinecap="round" filter={glow.filter} fill={paint.fill} {...motion} dot={{ r: 2.5, strokeWidth: 1.5, stroke: CHART.surface, fill: CHART.fg, fillOpacity: 0.7 }} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} />
               {peakPt && <ReferenceDot x={peakPt.x} y={peakPt.cum} r={5} fill={CHART.up} stroke={CHART.surface} strokeWidth={2} />}
               {ddEnd && e.maxDrawdown.value > 0 && <ReferenceDot x={ddEnd.x} y={ddEnd.cum} r={5} fill={CHART.down} stroke={CHART.surface} strokeWidth={2} />}
             </AreaChart>

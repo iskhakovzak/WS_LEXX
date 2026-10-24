@@ -7,7 +7,6 @@ import type { Trade } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { statsI18n } from "@/i18n/ns/stats";
 import { KpiGrid } from "./kpi-grid";
-import { EquityPanel } from "./equity-panel";
 import { CalendarPanel } from "./calendar-panel";
 import { TimeHeatmap } from "./time-heatmap";
 import { BreakdownPanel, type Dimension } from "./breakdown-panel";
@@ -91,12 +90,8 @@ export function ReportPanels({ d, staff, agg, trades, horizonBase, metric, windo
     <>
       <KpiGrid k={d.kpis} prev={d.prevKpis} metric={metric} windowLabel={windowLabel} />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-        <div className="min-w-0 xl:col-span-3">
-          <EquityPanel equity={d.equity} monthly={d.monthly} metric={metric} trades={staff ? undefined : trades} trader={trader} daily={staff} />
-        </div>
-        <div className="min-w-0 xl:col-span-2"><InsightsPanel insights={d.insights} /></div>
-      </div>
+      {/* The equity curve renders above (pages/stats.tsx: right under the cuts, full width). */}
+      <InsightsPanel insights={d.insights} />
 
       {insights}
 

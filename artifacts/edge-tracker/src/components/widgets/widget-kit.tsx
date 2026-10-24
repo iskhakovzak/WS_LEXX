@@ -10,6 +10,7 @@ import { fmtDate, fmtRelative } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tone } from "@/components/ds";
+import { smoothPath, type Pt } from "@/components/shared/charts/path";
 
 /* ───────────────────────────── Shell ───────────────────────────── */
 
@@ -232,18 +233,20 @@ export function Sparkline({
   const x = (i: number) => (values.length === 1 ? width / 2 : (i / (values.length - 1)) * (width - pad * 2) + pad);
   const y = (v: number) => height - pad - ((v - lo) / span) * (height - pad * 2);
 
-  const segments: string[] = [];
-  let cur = "";
+  // Point runs between gaps, each drawn as a smooth monotone curve.
+  const runs: Pt[][] = [];
+  let cur: Pt[] = [];
   values.forEach((v, i) => {
     if (v == null || !Number.isFinite(v)) {
       if (connectGaps) return;
-      if (cur) segments.push(cur);
-      cur = "";
+      if (cur.length) runs.push(cur);
+      cur = [];
       return;
     }
-    cur += `${cur ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+    cur.push([x(i), y(v)]);
   });
-  if (cur) segments.push(cur);
+  if (cur.length) runs.push(cur);
+  const segments = runs.map(smoothPath);
 
   let lastIdx = -1;
   for (let i = values.length - 1; i >= 0; i--) {
@@ -274,7 +277,7 @@ export function Sparkline({
       )}
       {area &&
         segments.map((d, i) => {
-          const pts = d.slice(1).split("L").map((p) => p.split(",").map(Number));
+          const pts = runs[i];
           if (pts.length < 2) return null;
           const first = pts[0];
           const last = pts[pts.length - 1];
@@ -283,7 +286,7 @@ export function Sparkline({
       {segments.map((d, i) => (
         <path key={i} d={d} fill="none" stroke={color} strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
       ))}
-      {lastIdx >= 0 && <circle cx={x(lastIdx)} cy={y(values[lastIdx] as number)} r={2.5} fill={color} />}
+      {lastIdx >= 0 && <circle cx={x(lastIdx)} cy={y(values[lastIdx] as number)} r={3} fill={color} stroke="hsl(var(--card))" strokeWidth={1.5} />}
     </svg>
   );
 }

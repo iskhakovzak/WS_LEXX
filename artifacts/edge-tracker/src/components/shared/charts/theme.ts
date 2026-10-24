@@ -9,13 +9,16 @@
  *
  * Colours are CSS variables only (--up / --down / --muted-foreground / --primary / --chart-N), so a new palette in
  * index.css flows into every chart without touching this file. Rules (dataviz method):
- *   · thin marks — 2px lines (1.5px when dense), 4px rounded data ends anchored to the baseline;
- *   · recessive grid — faint horizontal guides only, no vertical lines, no axis lines / tick marks;
- *   · the zero line is the one emphasised rule (P&L crosses it);
+ *   · smooth monotone curves (no overshoot), 2.25px round-capped lines (1.5px when dense / secondary);
+ *   · bars: rounded data end (zero side flat), a soft gradient body, dimmed neighbours while one is hovered;
+ *   · recessive grid — a few dotted horizontal guides, no vertical lines, no axis lines / tick marks;
+ *   · the zero line is the one emphasised rule (a crisp hairline — P&L crosses it);
+ *   · crosshair = a solid vertical hairline + a dot snapped onto the curve;
  *   · axis text small, muted, tabular; value text wears text tokens (profit / loss tones for P&L);
- *   · motion is a short draw-in, off under prefers-reduced-motion.
+ *   · dark themes add a faint glow under the main line (one cheap SVG / canvas blur);
+ *   · motion is a short draw-in (≤ 700 ms), only when the app's motion setting allows it (./env).
  */
-import { motionReduced, useReducedMotion } from "@/lib/motion";
+import { motionAllowed, useMotionAllowed } from "./env";
 
 /** Semantic chart colours (CSS variables). */
 export const CHART = {
@@ -50,54 +53,56 @@ export function pnlTextClass(v: number | null | undefined): string {
   return v > 0 ? "text-up" : "text-down";
 }
 
-/** Line widths: 2px by default, 1.5px for dense / secondary series. */
-export const STROKE = 2;
+/** Line widths: 2.25px for the main series, 1.5px for dense / secondary series. */
+export const STROKE = 2.25;
 export const STROKE_THIN = 1.5;
 
 /** Rounded data end of a vertical bar (anchored to the baseline; recharts flips it for negative bars). */
-export const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
+export const BAR_RADIUS: [number, number, number, number] = [5, 5, 0, 0];
 /** Rounded data end of a horizontal bar. */
-export const BAR_RADIUS_H: [number, number, number, number] = [0, 4, 4, 0];
+export const BAR_RADIUS_H: [number, number, number, number] = [0, 5, 5, 0];
+/** Fill opacity of the bars that are NOT hovered while one is (focus + context). */
+export const BAR_DIM = 0.35;
 
 const AXIS_TEXT = { fontSize: 11, fill: CHART.axis, style: { fontVariantNumeric: "tabular-nums" } } as const;
 
-/** Faint horizontal guides only. */
-export const GRID = { vertical: false, stroke: CHART.grid, strokeOpacity: 0.45, strokeDasharray: "" } as const;
+/** A few dotted horizontal guides only. */
+export const GRID = { vertical: false, stroke: CHART.grid, strokeOpacity: 0.7, strokeDasharray: "1 4" } as const;
 
-/** Small, muted, tabular axis text; no axis line, no tick marks. */
+/** Small, muted, tabular axis text; no axis line, no tick marks; 4 value ticks (fewer guides). */
 export const X_AXIS = { tick: AXIS_TEXT, tickLine: false, axisLine: false, tickMargin: 8, minTickGap: 16 } as const;
-export const Y_AXIS = { tick: AXIS_TEXT, tickLine: false, axisLine: false, tickMargin: 6, width: 56 } as const;
+export const Y_AXIS = { tick: AXIS_TEXT, tickLine: false, axisLine: false, tickMargin: 6, width: 56, tickCount: 4 } as const;
 /** Axis text style for hand-drawn SVG charts (`<text {...AXIS_SVG_TEXT}>`). */
 export const AXIS_SVG_TEXT = { fontSize: 11, fill: CHART.axis, style: { fontVariantNumeric: "tabular-nums" } } as const;
 
 /** The emphasised zero rule (where P&L crosses zero). */
-export const ZERO_LINE = { y: 0, stroke: CHART.fg, strokeOpacity: 0.4, strokeWidth: 1 } as const;
+export const ZERO_LINE = { y: 0, stroke: CHART.fg, strokeOpacity: 0.32, strokeWidth: 1, shapeRendering: "crispEdges" } as const;
 /** Same rule on a vertical value axis (horizontal bar charts). */
-export const ZERO_LINE_X = { x: 0, stroke: CHART.fg, strokeOpacity: 0.4, strokeWidth: 1 } as const;
+export const ZERO_LINE_X = { x: 0, stroke: CHART.fg, strokeOpacity: 0.32, strokeWidth: 1, shapeRendering: "crispEdges" } as const;
 /** A secondary reference (target, limit, average): thin dashed, muted. */
-export const REF_LINE = { stroke: CHART.axis, strokeOpacity: 0.7, strokeWidth: 1, strokeDasharray: "4 4" } as const;
+export const REF_LINE = { stroke: CHART.axis, strokeOpacity: 0.7, strokeWidth: 1, strokeDasharray: "3 4" } as const;
 
-/** Crosshair (vertical guide) for line / area charts and the column highlight for bar charts. */
-export const LINE_CURSOR = { stroke: CHART.fg, strokeOpacity: 0.35, strokeWidth: 1, strokeDasharray: "3 3" } as const;
-export const BAR_CURSOR = { fill: CHART.fg, fillOpacity: 0.06, radius: 6 } as const;
+/** Crosshair (a solid vertical hairline) for line / area charts and the column highlight for bar charts. */
+export const LINE_CURSOR = { stroke: CHART.fg, strokeOpacity: 0.22, strokeWidth: 1 } as const;
+export const BAR_CURSOR = { fill: CHART.fg, fillOpacity: 0.05, radius: 8 } as const;
 
-/** Hover dot on a line: filled, ringed with the surface so it reads on top of the stroke. */
-export const ACTIVE_DOT = { r: 4, strokeWidth: 2, stroke: CHART.surface } as const;
+/** Hover dot snapped onto a line: filled, ringed with the surface so it reads on top of the stroke. */
+export const ACTIVE_DOT = { r: 4.5, strokeWidth: 2.5, stroke: CHART.surface } as const;
 
 /** Margins that leave room for a 56px value axis. */
 export const MARGIN = { top: 8, right: 8, bottom: 0, left: 0 } as const;
 
 export const DRAW_MS = 650;
 
-/** Draw-in animation props for recharts series; off under prefers-reduced-motion. */
+/** Draw-in animation props for recharts series (lines draw, bars grow from zero); only when motion is allowed. */
 export function useChartMotion(enabled = true): { isAnimationActive: boolean; animationDuration: number; animationEasing: "ease-out" } {
-  const reduce = useReducedMotion();
-  return { isAnimationActive: enabled && !reduce, animationDuration: DRAW_MS, animationEasing: "ease-out" };
+  const allowed = useMotionAllowed();
+  return { isAnimationActive: enabled && allowed, animationDuration: DRAW_MS, animationEasing: "ease-out" };
 }
 
-/** The app's motion setting outside React (canvas / SVG engines): lib/motion.ts. */
+/** Motion is NOT allowed (the app's motion setting, else prefers-reduced-motion) — for canvas / SVG engines. */
 export function prefersReducedMotion(): boolean {
-  return motionReduced();
+  return !motionAllowed();
 }
 
 /**
@@ -119,11 +124,16 @@ export function zeroOffset(values: readonly (number | null | undefined)[]): numb
 
 /** Canvas-engine counterparts of the rules above (alpha steps for ChartTheme colour functions). */
 export const CANVAS = {
-  gridAlpha: (dark: boolean) => (dark ? 0.2 : 0.38),
-  zeroAlpha: (dark: boolean) => (dark ? 0.5 : 0.45),
-  fillTop: (dark: boolean) => (dark ? 0.28 : 0.2),
-  fillMid: (dark: boolean) => (dark ? 0.08 : 0.06),
-  line: 2,
-  lineDense: 1.5,
+  gridAlpha: (dark: boolean) => (dark ? 0.38 : 0.6),
+  /** Dotted guides: 1px dots every 4px. */
+  gridDash: [1, 3] as readonly number[],
+  zeroAlpha: (dark: boolean) => (dark ? 0.36 : 0.34),
+  fillTop: (dark: boolean) => (dark ? 0.3 : 0.2),
+  fillMid: (dark: boolean) => (dark ? 0.1 : 0.07),
+  /** Glow under the main line (dark themes only): blur radius in px and its alpha. */
+  glowBlur: 10,
+  glowAlpha: 0.55,
+  line: STROKE,
+  lineDense: STROKE_THIN,
   fontSize: 11,
 } as const;
