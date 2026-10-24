@@ -10,6 +10,10 @@
  *                                                whatif_honesty_cache) once ready, the fast search marked
  *                                                «предварительно» until then; the whole desk, a rolling window or a
  *                                                closed range (lib/whatIfHonestyBody honestWindow): the fast search
+ *                                                Every card carries its «Почему» (lib/whatIfWhy).
+ *   GET  /whatif/combos?trader=&from=&to=[&rules=JSON]  best sets of 2–3 rules + the own set, one correction over
+ *                                                everything tried (lib/whatIfCombo)
+ *   GET  /whatif/my-rules?trader=                the trader's rules (and rule trials) since adoption (lib/whatIfMyRules)
  *   GET  /whatif/fees?trader=&from=&to=          fee breakdown by price/size/hold/hour/ticker, break-even, advice
  *   GET  /whatif/scenarios?trader=               saved rule sets (table whatif_scenarios)
  *   POST /whatif/scenarios {trader?, name, rules[]}
@@ -32,6 +36,12 @@ import {
 } from "../lib/whatIf";
 import { MAX_SETUP_LEN, MAX_TAG_LEN, WHATIF_STRATEGIES } from "../lib/whatIfTypes";
 import { findSuggestions, type SuggestionsResult } from "../lib/whatIfSuggest";
+import { withWhy } from "../lib/whatIfWhy";
+import { COMBO_MAX_RULES, findCombos } from "../lib/whatIfCombo";
+import { type AdoptedRule, MIN_SIDE_DAYS, rulesInAction } from "../lib/whatIfMyRules";
+import { trialRules } from "../lib/whatIfRuleTrials";
+import { fetchRulesFor, ruleSince } from "../lib/rulesEngine";
+import { shownRuleName } from "../lib/rulesTemplates";
 import { freshSimTrades, loadSimTrades } from "../lib/whatIfLoader";
 import { tradesSignature } from "../lib/whatIfSignature";
 import * as honestyStore from "../lib/whatIfHonestyStore";
@@ -262,7 +272,8 @@ function suggestionsHead(scope: string | null, trades: SimTrade[], q: { from?: s
 function fastSuggestions(cacheKey: string, sig: string, trades: SimTrade[], lang: Lang): SuggestionsResult {
   const hit = cachedFor<SuggestionsResult>(cacheKey, sig);
   if (hit) return hit;
-  const found = findSuggestions(trades, { lang, team: false });
+  // «Почему» of every card (lib/whatIfWhy): computed once with the cards, cached with them.
+  const found = withWhy(findSuggestions(trades, { lang, team: false }), trades);
   cacheFor(cacheKey, sig, found);
   return found;
 }
@@ -360,7 +371,7 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
     const hit = suggestionsCache.get(key);
     if (hit) { res.json(hit); return; }
     const trades = await loadSimTrades(scope, q.from, q.to, facets);
-    const body = suggestionsBody({ head: suggestionsHead(scope, trades, q), lang, team: true, fast: findSuggestions(trades, { lang, team: true }), row: null, available: false });
+    const body = withWhy(suggestionsBody({ head: suggestionsHead(scope, trades, q), lang, team: true, fast: findSuggestions(trades, { lang, team: true }), row: null, available: false }), trades);
     suggestionsCache.set(key, body);
     res.json(body);
     return;
@@ -397,7 +408,7 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   }
   const head = suggestionsHead(scope, trades, q);
   if (row?.state === "ready") {
-    const body = suggestionsBody({ head, lang, team: false, reachDays: win.reachDays, fast: null, row, available: true });
+    const body = withWhy(suggestionsBody({ head, lang, team: false, reachDays: win.reachDays, fast: null, row, available: true }), trades);
     cacheFor(readyKey, sig, body);
     void honestyStore.touch(pool, row.id).catch(() => undefined);
     res.json(body);
@@ -424,6 +435,56 @@ router.get("/whatif/fees", asyncHandler(async (req, res) => {
   const body = { scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades, langOf(req)), generatedAt: new Date().toISOString() };
   feesCache.set(key, body);
   res.json(body);
+}));
+
+/* ─── «Набор правил» and «Мои правила в деле» ─────────────────────────────── */
+
+const combosCache = new TtlCache<string, { sig: string; value: unknown }>(RESULT_TTL_MS);
+const ownRulesSchema = z.array(ruleSchema).max(COMBO_MAX_RULES);
+
+/** GET /whatif/combos?…&rules=<JSON, ≤ 3 rules>: the best sets of 2–3 rules and the trader's own set (lib/whatIfCombo). */
+router.get("/whatif/combos", asyncHandler(async (req, res) => {
+  const parsed = rangeSchema.safeParse(normQuery(req.query));
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
+  const q = parsed.data;
+  let own: Rule[] = [];
+  if (typeof req.query.rules === "string" && req.query.rules.trim()) {
+    let raw: unknown;
+    try { raw = JSON.parse(req.query.rules); } catch { throw badRequest("BAD_REQUEST"); }
+    const r = ownRulesSchema.safeParse(raw);
+    if (!r.success) throw badRequest("BAD_REQUEST", r.error.flatten());
+    own = r.data;
+  }
+  const scope = await resolveScope(req, q.trader);
+  if (scope === undefined) throw unauthorized();
+  const facets = facetFiltersOf(q);
+  const trades = await loadSimTrades(scope, q.from, q.to, facets);
+  const sig = tradesSignature(trades);
+  const key = `${resultKey(req, scope, q.from, q.to, facetCacheKey(facets))}|${JSON.stringify(own)}`;
+  const hit = combosCache.get(key);
+  if (hit && hit.sig === sig) { res.json(hit.value); return; }
+  const found = findCombos(trades, { own, lang: langOf(req), team: scope == null });
+  const body = { scope, period: periodMeta(trades, q.from, q.to), ...found, generatedAt: new Date().toISOString() };
+  combosCache.set(key, { sig, value: body });
+  res.json(body);
+}));
+
+/** GET /whatif/my-rules?trader=: the trader's own rules (and rule trials) on real trades since adoption (lib/whatIfMyRules). */
+router.get("/whatif/my-rules", asyncHandler(async (req, res) => {
+  const parsed = rangeSchema.safeParse(normQuery(req.query));
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
+  const scope = await resolveScope(req, parsed.data.trader);
+  if (scope === undefined) throw unauthorized();
+  // Rules belong to one trader: the whole desk and guests get an empty list (the page explains it).
+  if (scope == null || isGuest(req)) { res.json({ scope, rules: [], team: scope == null }); return; }
+  const [trades, stored, trials] = await Promise.all([loadSimTrades(scope), fetchRulesFor(scope, { enabledOnly: true }), trialRules(scope)]);
+  const lang = langOf(req);
+  const adopted: AdoptedRule[] = [
+    ...stored.map((r) => ({ id: String(r.id), name: shownRuleName(r.name, r.templateKey, lang), kind: r.kind, threshold: r.threshold, since: ruleSince(r.createdAt), source: "catalog" as const })),
+    ...trials,
+  ];
+  const rules = rulesInAction(trades, adopted).map((x) => ({ ...x, label: x.rule ? describeRule(x.rule, lang) : null }));
+  res.json({ scope, team: false, minSideDays: MIN_SIDE_DAYS, rules, generatedAt: new Date().toISOString() });
 }));
 
 /* ─── Saved scenarios ────────────────────────────────────────────────────── */

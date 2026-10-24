@@ -13,7 +13,7 @@ import { mixedTrades, mk } from "./whatIfFixtures";
 const run = (trades: SimTrade[], rules: Rule[]) => runScenario(trades, rules, { bootstrap: false, lang: "en" });
 const ids = (r: ReturnType<typeof run>) => r.excluded.map((e) => e.id);
 /** A trade entered at `entryMin` and closed `hold` minutes later. */
-const at = (entryMin: number, gross: number, hold = 1, p: Partial<SimTrade> = {}) => mk({ entryMin, holdSec: hold * 60, gross, ...p });
+const at = (entryMin: number, gross: number, hold = 1, p: Partial<SimTrade> = {}) => mk({ entryMin, holdSec: hold * 60, ...p, gross });
 
 describe("afterWin: a pause after a WINNING trade", () => {
   it("skips entries inside [close, close + minutes) of a realised win only", () => {
