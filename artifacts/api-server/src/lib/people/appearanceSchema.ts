@@ -12,7 +12,7 @@ const ACCENTS = ["ink", "blue", "cyan", "teal", "green", "lime", "amber", "orang
 const TONES = ["ink", "graphite", "espresso", "navy"] as const;
 const LINES = ["theme", "text", "accent"] as const;
 /** «WS originals» scenes (edge-tracker lib/appearance/model SCENE_IDS). */
-const SCENES = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus", "porsche-gt3", "porsche-turbo-s", "porsche-918", "carrera-gt", "porsche-rs27", "ferrari-f40", "parthenon", "sounion", "nike", "riace", "delphi", "matterhorn", "storm", "manhattan", "nyse"] as const;
+const SCENES = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus", "porsche-gt3", "porsche-turbo-s", "porsche-918", "carrera-gt", "porsche-rs27", "ferrari-f40", "parthenon", "sounion", "nike", "riace", "delphi", "matterhorn", "storm", "manhattan", "nyse", "laferrari", "pagani-huayra", "bugatti-chiron", "mclaren-p1", "pantheon", "augustus", "colosseum", "milky-way", "northern-lights", "lightning", "fog-forest", "glacier", "skogafoss", "tre-cime", "ocean-rocks", "dunes", "sea-mist", "chicago", "hong-kong", "tokyo", "dubai", "london", "brooklyn-bridge", "empire-state", "rain-street", "trading-floor", "golden-gate", "smoke-trail", "ink", "light-trails", "spiral-dome", "spiral-facade", "spiral-stairs"] as const;
 /** «Чипы журнала» keys per group (edge-tracker CHIP_GROUPS). */
 const CHIP_KEYS = {
   strategy: ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing", "PM", "IMX"],

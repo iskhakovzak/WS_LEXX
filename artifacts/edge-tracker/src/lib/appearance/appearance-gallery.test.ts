@@ -20,12 +20,14 @@ const FREE = /^(CC0|Public domain|CC BY(-SA)? \d\.\d( [A-Z]{2})?)$/;
 describe("WS originals gallery: files, sizes, credits", () => {
   const photos = Object.entries(SCENE_PHOTOS);
 
-  it("has the new scenes (≥ 20 photos) in five groups, every scene in exactly one", () => {
-    expect(photos.length).toBeGreaterThanOrEqual(20);
+  it("has five groups of exactly 12 backgrounds each, every scene in exactly one", () => {
+    expect(photos.length).toBeGreaterThanOrEqual(50);
     expect(SCENE_GROUPS).toEqual(["cars", "antiquity", "nature", "city", "abstract"]);
-    for (const g of SCENE_GROUPS) expect(scenesIn(g).length, g).toBeGreaterThan(0);
+    // «Абстракции» also shows «Без фона» and the CSS backgrounds (aurora / grid / dusk) before its scenes (originals.tsx).
+    const procedural = ["none", "aurora", "grid", "dusk"].length;
+    for (const g of SCENE_GROUPS) expect(scenesIn(g).length + (g === "abstract" ? procedural : 0), g).toBe(12);
     expect(SCENE_GROUPS.flatMap((g) => scenesIn(g)).sort()).toEqual([...SCENE_IDS].sort());
-    for (const id of SCENE_IDS) if (SCENES[id].photo) expect(SCENES[id].group).not.toBe("abstract");
+    for (const id of SCENE_IDS) if (SCENES[id].photo) expect(SCENES[id].mode === "3d" || ["laocoon", "storm"].includes(id), id).toBe(true);
   });
 
   it("every photo scene ships ≥ 2560 px (3840 where the source allows), the depth layer and the thumbnail, within budget", () => {
@@ -45,7 +47,7 @@ describe("WS originals gallery: files, sizes, credits", () => {
       expect(p.focusX).toBeGreaterThanOrEqual(0);
       expect(p.focusX).toBeLessThanOrEqual(100);
     }
-    expect(photos.filter(([, p]) => p.widths.includes(3840)).length).toBeGreaterThanOrEqual(15);
+    expect(photos.filter(([, p]) => (p.widths as readonly number[]).includes(3840)).length).toBeGreaterThanOrEqual(40);
   });
 
   it("phones never get more than the 1920 file; wide screens choose by width", () => {

@@ -54,7 +54,7 @@ describe("users.settings.appearance schema", () => {
     const chips = { strategy: { on: true, colors: { OPG: "#3b82f6" } }, tag: { on: false, colors: {} }, horizon: { on: true, colors: { swing: "#a855f7" } } };
     expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, bg: { kind: "laocoon", panels: "glass" }, chips }, looks: [] }).success).toBe(true);
     expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, bg: { kind: "porsche-gt3rs", panels: "solid" } }, looks: [] }).success).toBe(true);
-    for (const kind of ["porsche-gt3", "carrera-gt", "ferrari-f40", "parthenon", "nike", "riace", "matterhorn", "manhattan", "nyse"]) {
+    for (const kind of ["porsche-gt3", "carrera-gt", "ferrari-f40", "parthenon", "nike", "riace", "matterhorn", "manhattan", "nyse", "laferrari", "pantheon", "milky-way", "northern-lights", "hong-kong", "trading-floor", "smoke-trail", "spiral-stairs"]) {
       expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, bg: { kind, panels: "glass", brightness: 0.6 } }, looks: [] }).success, kind).toBe(true);
     }
     expect(StoredAppearanceSchema.safeParse({ v: 1, current: { ...current, chips: { ...chips, strategy: { on: true, colors: { XYZ: "#ffffff" } } } }, looks: [] }).success).toBe(false);
