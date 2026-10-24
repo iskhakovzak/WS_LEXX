@@ -10,7 +10,7 @@ import { comparePersonNames, personName } from "@/i18n";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
 import { analyticsDataPlan, type AnalyticsTabKey } from "@/components/analytics-page/data-plan";
-import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
+import { BarChart3, Brain, Compass, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { ChartSkeleton, Kbd, Page, PageHeader, Panel, Segmented, EmptyState, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import { WhatIfTab } from "@/components/analytics-page/WhatIfTab";
 import { MonteCarloTab } from "@/components/analytics-page/MonteCarloTab";
 import { DeskTab } from "@/components/analytics-page/DeskTab";
 import { PsychologyTab } from "@/components/analytics-page/PsychologyTab";
+import { MyEdgeTab } from "@/components/analytics-page/my-edge/MyEdgeTab";
 import {
   type AnalyticsFilters, type DimensionKey, type Unit,
   DEFAULT_FILTERS, DIMENSIONS, applyAnalyticsFilters, applyNonPeriodFilters, activeFilterCount, horizonLabel,
@@ -42,6 +43,7 @@ type TabKey = AnalyticsTabKey;
 const TAB_DEFS: { value: TabKey; icon: typeof LayoutDashboard; curatorOnly?: boolean }[] = [
   { value: "overview", icon: LayoutDashboard },
   { value: "edge", icon: Layers },
+  { value: "myedge", icon: Compass },
   { value: "matrix", icon: Grid3x3 },
   { value: "whatif", icon: FlaskConical },
   { value: "montecarlo", icon: Dices },
@@ -333,7 +335,9 @@ export default function Analytics() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
         >
-          {tab === "psychology" ? (
+          {tab === "myedge" ? (
+            <MyEdgeTab filters={view} team={scope.team} />
+          ) : tab === "psychology" ? (
             <PsychologyTab userId={psychUser} isOwn={psychUser === user?.traderName} filters={view} trades={current} />
           ) : count === 0 ? (
             <Panel>

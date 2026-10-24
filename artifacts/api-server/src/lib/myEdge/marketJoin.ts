@@ -3,7 +3,7 @@
  * «Сегодняшний рынок» basis. Pure: the loaders (./load) hand in plain maps.
  */
 import {
-  MARKET_DIMS, NODATA, PREV_MAX_GAP_DAYS, analystKeyOf, earningsKeyOf, tickerDayContext, tkAtrKeyOf, tkGapKeyOf, tkRvolKeyOf,
+  NODATA, PREV_MAX_GAP_DAYS, analystKeyOf, earningsKeyOf, tickerDayContext, tkAtrKeyOf, tkGapKeyOf, tkRvolKeyOf,
   type IndexDay, type MarketDim, type MeDailyBar,
 } from "./market";
 
@@ -51,7 +51,6 @@ export function joinMarket(trades: readonly MarketJoinTrade[], src: MarketSource
   return out;
 }
 
-export const marketDims = (): readonly MarketDim[] => MARKET_DIMS;
 
 export type TodayBasis =
   | { basis: "gap"; dim: "spyGap"; key: string; asOf: string; gapPct: number | null }
