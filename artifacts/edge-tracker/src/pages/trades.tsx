@@ -4,6 +4,7 @@
 // Trades come only from PropReports (ARCHITECTURE §0.1): nothing is created here. The form edits the trader's markup
 // (stop, setup, tags, review); old ?new / ?fromIdea links just open the list (filtered by ?ticker when given).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { scrollBehavior } from "@/lib/motion";
 import { Link, useLocation } from "wouter";
 import { useUpdateTrade, getTrade } from "@workspace/api-client-react";
 import type { Trade, UpdateTradeBody } from "@workspace/api-client-react";
@@ -231,7 +232,7 @@ export default function Trades() {
   useEffect(() => {
     if (!scrollReq) return;
     const el = document.querySelector(`[data-trade-id="${scrollReq.id}"]`);
-    el?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    el?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
   }, [scrollReq]);
 
   // Keep the selection inside the visible rows.

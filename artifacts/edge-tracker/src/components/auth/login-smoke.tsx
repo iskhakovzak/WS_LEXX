@@ -4,7 +4,7 @@
  * prefers-reduced-motion; stops when the sign-in page unmounts.
  */
 import { useEffect, useRef } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { useTheme } from "@/contexts/theme-context";
 import { startSmoke } from "@/lib/smoke";
 

@@ -4,7 +4,8 @@
  * desk console: their nav items (and old #team / #permissions links) open /admin?tab=people|roles.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { useLocation } from "wouter";
 import { Settings as SettingsIcon } from "lucide-react";
 import { Page, PageHeader, Pill } from "@/components/ds";

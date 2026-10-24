@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { useGetTopPatterns } from "@workspace/api-client-react";
 import { usePeriodTrades, useTradesBookFacets } from "@/hooks/use-trades-window";
 import { field, useStatsAggregate } from "@/components/stats/aggregate";

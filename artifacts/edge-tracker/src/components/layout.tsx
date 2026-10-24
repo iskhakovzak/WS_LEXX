@@ -5,7 +5,8 @@
  */
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { MOTION } from "@/components/ds/motion";
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { PaletteLauncher } from "@/components/shell/palette-launcher";

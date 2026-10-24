@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { Link } from "wouter";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { ArrowRight, ChevronDown, Footprints, Swords, X } from "lucide-react";
 import { MOTION } from "@/components/ds";
 import { cn } from "@/lib/utils";

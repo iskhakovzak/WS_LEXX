@@ -25,6 +25,7 @@ import { WelcomeIntro } from "@/components/shell/welcome-intro";
 import { LockController } from "@/components/lock/lock-controller";
 import { lockStore, useLockState } from "@/lib/lock/lock-store";
 import { UnlockReveal } from "@/components/unlock-reveal";
+import { useReducedMotion as useAppReducedMotion } from "@/lib/motion";
 import { bgMotionAllowed } from "@/components/appearance/scenes/motion";
 import { useAppearance } from "@/contexts/appearance-context";
 
@@ -298,6 +299,12 @@ function AppContent() {
   );
 }
 
+/** framer-motion's reduced motion from the app setting: «Вкл» animates even with the OS «reduce motion» on. */
+function AppMotion({ children }: { children: React.ReactNode }) {
+  const reduced = useAppReducedMotion();
+  return <MotionConfig reducedMotion={reduced ? "always" : "never"}>{children}</MotionConfig>;
+}
+
 /** Notifications never show over the lock screen. */
 function AppToaster() {
   const { locked } = useLockState();
@@ -314,6 +321,8 @@ function App() {
           <ThemeProvider>
           {/* «Вид»: personal look (accent, money colours, font, background, density) as CSS variables on <html>. */}
           <AppearanceProvider>
+          {/* framer-motion follows «Движение и анимации» (lib/motion.ts), not only the OS setting. */}
+          <AppMotion>
             <LocaleSync />
             {/* Opening «Добро пожаловать, трейдер» / «Доброе утро, …» overlay; the app renders underneath meanwhile. */}
             <WelcomeIntro />
@@ -324,6 +333,7 @@ function App() {
                 <AppContent />
               </RouteErrorBoundary>
             </I18nProvider>
+          </AppMotion>
           </AppearanceProvider>
           </ThemeProvider>
         </AuthProvider>

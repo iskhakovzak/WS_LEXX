@@ -10,6 +10,7 @@
  * - Reduced motion: no glide between anchors, no smooth scrolling. Never printed.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { motionReduced } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { onboardingI18n } from "@/i18n/ns/onboarding";
@@ -50,7 +51,7 @@ function fullyVisible(el: HTMLElement): boolean {
 }
 
 function reducedMotion(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return motionReduced();
 }
 
 function isTyping(el: EventTarget | null): boolean {

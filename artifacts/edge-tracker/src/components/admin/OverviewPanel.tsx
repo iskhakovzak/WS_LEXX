@@ -1,4 +1,5 @@
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Link } from "wouter";
 import {
   AlertTriangle, ArrowRight, BookX, CheckCircle2, ClipboardCheck, Clock, Database, DatabaseBackup, Flag, Gauge, Link2, ListChecks,

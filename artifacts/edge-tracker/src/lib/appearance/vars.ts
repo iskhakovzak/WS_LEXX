@@ -27,7 +27,7 @@ export type ComputedAppearance = {
 };
 
 /** The data attributes this module may set on <html> (removed when not set). */
-export const APPEARANCE_ATTRS = ["data-density", "data-bg", "data-panels", "data-font", "data-scene-panels"] as const;
+export const APPEARANCE_ATTRS = ["data-density", "data-bg", "data-panels", "data-font", "data-scene-panels", "data-motion"] as const;
 
 const FG_KEYS = ["--foreground", "--card-foreground", "--popover-foreground", "--secondary-foreground", "--accent-foreground", "--sidebar-foreground", "--sidebar-accent-foreground"];
 
@@ -163,6 +163,8 @@ export function computeAppearanceVars(a: Appearance, theme: ThemeId): ComputedAp
   if (a.bg.kind !== "none") attrs["data-bg"] = a.bg.kind;
   if (a.bg.panels !== "glass") attrs["data-panels"] = a.bg.panels;
   if (attrs["data-scene-panels"] === "solid") attrs["data-panels"] = "solid";
+  // «Движение и анимации»: the whole app reads it (lib/motion.ts, index.css).
+  if (a.bg.motion !== "auto") attrs["data-motion"] = a.bg.motion;
 
   return { vars, attrs, report };
 }

@@ -3,7 +3,8 @@
  * Under «reduce motion» the coin is simply there (no flip, no shine). Shown once per promotion (reveal-model.ts).
  */
 import * as React from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { fmtDate } from "@/lib/format";

@@ -85,7 +85,7 @@ export default function AssistantPanel({ open, onOpenChange, request }: { open: 
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className={cn("flex flex-col gap-0 overflow-hidden p-0 motion-reduce:animate-none", isMobile ? "w-full max-w-none border-l-0" : "w-full sm:max-w-[30rem]")}
+        className={cn("flex flex-col gap-0 overflow-hidden p-0 data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:duration-[420ms] data-[state=open]:ease-[cubic-bezier(0.2,0.9,0.2,1)]", isMobile ? "w-full max-w-none border-l-0" : "w-full sm:max-w-[30rem]")}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <header className="overlay-bar overlay-bar-top flex shrink-0 items-center gap-2 px-4 pb-3 pr-14 pt-[max(1rem,env(safe-area-inset-top))]">

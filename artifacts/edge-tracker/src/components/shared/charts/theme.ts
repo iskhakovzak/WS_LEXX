@@ -15,7 +15,7 @@
  *   · axis text small, muted, tabular; value text wears text tokens (profit / loss tones for P&L);
  *   · motion is a short draw-in, off under prefers-reduced-motion.
  */
-import { useReducedMotion } from "framer-motion";
+import { motionReduced, useReducedMotion } from "@/lib/motion";
 
 /** Semantic chart colours (CSS variables). */
 export const CHART = {
@@ -95,9 +95,9 @@ export function useChartMotion(enabled = true): { isAnimationActive: boolean; an
   return { isAnimationActive: enabled && !reduce, animationDuration: DRAW_MS, animationEasing: "ease-out" };
 }
 
-/** `prefers-reduced-motion: reduce` outside React (canvas / SVG engines). */
+/** The app's motion setting outside React (canvas / SVG engines): lib/motion.ts. */
 export function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  return motionReduced();
 }
 
 /**

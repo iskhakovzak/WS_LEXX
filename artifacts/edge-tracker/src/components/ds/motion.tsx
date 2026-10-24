@@ -9,7 +9,7 @@
  *   <Reveal open={expanded}>…</Reveal>                 // height expand/collapse (grid-rows trick, no measuring)
  */
 import * as React from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { fmtCount } from "@/lib/format";
 

@@ -12,7 +12,7 @@ import {
 } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { addDays, nyDate } from "@/lib/trading-date";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import {
   useBehavior, useComputeAll, useSetupAggregates, useSetupsAuto, type BehaviorReport, type Range,
 } from "@/components/behavior/api";

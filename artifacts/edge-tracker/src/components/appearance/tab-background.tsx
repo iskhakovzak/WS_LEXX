@@ -105,7 +105,8 @@ function BrightnessSection() {
   );
 }
 
-/** «Движение фона»: auto (system «reduce motion») / on / off; says why a 3D scene stands still under «Авто». */
+/** «Движение и анимации» (the whole app, lib/motion.ts): auto (system «reduce motion») / on / off; says why things
+ * pop in and the 3D stands still under «Авто» when the system reduces motion. */
 function MotionSection() {
   const { t } = appearanceI18n.useT();
   const { appearance, update } = useAppearance();
@@ -167,7 +168,7 @@ export function BackgroundTab() {
         <BackgroundGallery />
       </Section>
       {(kind === "image" || isScene(kind)) && <BrightnessSection />}
-      {isScene(kind) && <MotionSection />}
+      <MotionSection />
       <MoreSettings>
         <ImageControls />
         <PanelsSection />

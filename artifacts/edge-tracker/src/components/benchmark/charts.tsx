@@ -3,7 +3,8 @@
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { AXIS_SVG_TEXT, CHART, DRAW_MS, STROKE, TooltipCard, areaGradient } from "@/components/shared/charts";
 import { chartsI18n } from "@/i18n/ns/charts";

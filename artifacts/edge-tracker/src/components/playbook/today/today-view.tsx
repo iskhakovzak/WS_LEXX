@@ -5,6 +5,7 @@
  * order in one column. ?id= of an office setup opens its cheat sheet here.
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { scrollBehavior } from "@/lib/motion";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import { EmptyState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -77,7 +78,7 @@ export function TodayView({
   const take = () => {
     save.mutate(picks.prompt, { onSuccess: () => toast({ title: t("picks.savedToast") }), onError: failed });
   };
-  const jump = (key: string) => document.getElementById(`pb-window-${key}`)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  const jump = (key: string) => document.getElementById(`pb-window-${key}`)?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
 
   let body: ReactNode;
   if (q.isLoading) {

@@ -11,7 +11,7 @@
  * aria-hidden); `announce` adds a polite live region — use it for one key number per screen, never on table cells.
  */
 import * as React from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { fmtCount } from "@/lib/format";
 import { FLASH_MS, FLASH_STATIC_MS, INITIAL_FLASH, flashClassName, reduceFlash, type FlashDir } from "@/lib/live-flash";

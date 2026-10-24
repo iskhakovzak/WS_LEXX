@@ -112,9 +112,8 @@
 @keyframes ws-orb-chip-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .ws-mark .ws-mark-orbit, .ws-mark .ws-mark-core, .ws-mark .ws-mark-glow,
-  .ws-orb-button::after, .ws-orb-button[data-pulse="true"]::before, .ws-orb-chip { animation: none; }
-  .ws-orb-button { transition: none; }
+  html:not([data-motion="on"]) .ws-mark .ws-mark-orbit, html:not([data-motion="on"]) .ws-mark .ws-mark-core, html:not([data-motion="on"]) .ws-mark .ws-mark-glow, html:not([data-motion="on"]) .ws-orb-button::after, html:not([data-motion="on"]) .ws-orb-button[data-pulse="true"]::before, html:not([data-motion="on"]) .ws-orb-chip { animation: none; }
+  html:not([data-motion="on"]) .ws-orb-button { transition: none; }
 }
 
 /* The boost switch («x5») in the panel: a small power-up badge. */
@@ -143,4 +142,6 @@
 .ws-boost-x { font-variant-numeric: tabular-nums; letter-spacing: -.01em; opacity: .9; }
 .ws-boost[aria-pressed="true"] .ws-boost-bolt { animation: ws-boost-zap .5s var(--ease, ease) 1; }
 @keyframes ws-boost-zap { 0% { transform: scale(.6) rotate(-12deg); } 60% { transform: scale(1.25) rotate(6deg); } 100% { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ws-boost[aria-pressed="true"] .ws-boost-bolt { animation: none; } .ws-boost { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) .ws-boost[aria-pressed="true"] .ws-boost-bolt { animation: none; }
+  html:not([data-motion="on"]) .ws-boost { transition: none; } }

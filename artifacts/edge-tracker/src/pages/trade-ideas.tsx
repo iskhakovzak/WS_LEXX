@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import {
   BarChart3, Columns3, Lightbulb, List, Plus, RotateCcw, Search, Target, Timer, TrendingUp, X, Scale,
 } from "lucide-react";

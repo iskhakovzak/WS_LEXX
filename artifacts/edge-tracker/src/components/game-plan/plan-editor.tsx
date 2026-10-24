@@ -1,5 +1,5 @@
 import { useCallback, useId, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Check, Compass, Globe2, Plus, ShieldAlert, Target, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

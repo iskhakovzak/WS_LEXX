@@ -1,7 +1,8 @@
 import { TradeChip } from "@/components/ds/trade-chip";
 import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { ArrowUpRight, ChevronDown, ExternalLink, ListOrdered, ShieldAlert } from "lucide-react";
 import { moneyText, useBeRange } from "@/components/ds/money";
 import { EmptyState, FilterChip, Panel, Pill, SortableTh, TableScroll, toneOf, toneText, useTableSort } from "@/components/ds";

@@ -1,5 +1,6 @@
 import { Link } from "wouter";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { ArrowUpRight, CalendarClock, Compass, Crosshair, Eye, ShieldAlert, ShieldX, Target, Zap } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { links } from "@/lib/links";

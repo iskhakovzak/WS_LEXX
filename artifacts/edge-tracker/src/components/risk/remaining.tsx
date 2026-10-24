@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { OctagonX } from "lucide-react";
 import type { RiskLimits, RiskMetrics } from "./use-risk";
 import { usageColor, usageText } from "./primitives";

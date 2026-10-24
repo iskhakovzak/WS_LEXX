@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { Bookmark, BookmarkCheck, Copy, Pencil, Trash2, TrendingUp, TrendingDown, Circle, CheckCheck, Hash, CheckCircle2, Crosshair, Eye, UserRound } from "lucide-react";
 import { AddToPlaybookButton, type PlaybookPayload } from "@/components/add-to-playbook";
 import { Pill } from "@/components/ds";

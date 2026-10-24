@@ -8,7 +8,7 @@
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, Copy, Download, Loader2, Palette, Pause, Play, Share2, X } from "lucide-react";
-import { useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { useToast } from "@/hooks/use-toast";
 import { shareCardI18n } from "@/i18n/ns/shareCard";
 import { wrappedI18n } from "@/i18n/ns/wrapped";

@@ -12,11 +12,13 @@
  *   glow  — the halo behind the clock breathes (opacity and scale, 9 s per breath).
  */
 import * as React from "react";
+import { motionReduced } from "@/lib/motion";
 
 const FRAME_MS = 50;
 
+/** The app's motion setting (lib/motion.ts: «Движение и анимации», auto = the OS). */
 export function prefersReducedMotion(): boolean {
-  return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return motionReduced();
 }
 
 /** Position of the drift at time `t` (seconds): two incommensurate sines per axis, so the path never repeats exactly. */

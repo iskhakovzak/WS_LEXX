@@ -5,7 +5,8 @@
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useReducedMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { fmtCount, fmtDate, fmtRate } from "@/lib/format";
 import { ScrollContainerContext } from "@/components/ds/scroll-context";
