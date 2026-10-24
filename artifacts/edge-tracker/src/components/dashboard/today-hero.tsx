@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LimitBar, Segmented, StatusDot, limitTone, limitToneToTone, toneOf, toneText, type Tone } from "@/components/ds";
+import { AnimatedNumber, LimitBar, Segmented, StatusDot, limitTone, limitToneToTone, toneOf, toneText, type Tone } from "@/components/ds";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -86,6 +86,42 @@ function Cell({
   return (
     <div className={cls} title={tip}>
       {body}
+    </div>
+  );
+}
+
+/**
+ * The day's number (owner, 2026-10-24: «huge confident numbers»): today's net P&L at hero size, counting up from 0 and
+ * resolving blur-to-sharp when it first appears (instant under reduced motion). Colour only says up / down.
+ */
+function HeroCell({
+  label,
+  value,
+  format,
+  hint,
+  tone,
+  loading,
+  title,
+}: {
+  label: ReactNode;
+  value: number | null;
+  format: (n: number) => string;
+  hint?: ReactNode;
+  tone: Tone;
+  loading?: boolean;
+  title?: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2 lg:col-span-1" title={title}>
+      <span className="truncate text-xs text-muted-foreground">{label}</span>
+      {loading ? (
+        <Skeleton className="h-12 w-48 rounded-xl" />
+      ) : value == null ? (
+        <span className="text-3xl font-semibold leading-none text-muted-foreground/70">—</span>
+      ) : (
+        <AnimatedNumber value={value} format={format} countIn duration={700} className={cn("reveal type-hero whitespace-nowrap", toneText(tone))} />
+      )}
+      {loading ? <Skeleton className="h-3.5 w-40 rounded" /> : hint != null && <span className="truncate text-xs text-muted-foreground tabular-nums">{hint}</span>}
     </div>
   );
 }
@@ -213,7 +249,9 @@ export function DashboardHeader({
   const team = scope === "team";
   const quietDay = !!data && (data.market.weekend || !!data.market.holidayToday);
 
-  const todayValue = t?.pnlNet != null ? fmtUsd(t.pnlNet, { signed: true }) : t && t.rCount > 0 ? fmtR(t.r) : "—";
+  // The hero number: net dollars, else R when only R is known, else nothing yet.
+  const todayNum = t?.pnlNet != null ? t.pnlNet : t && t.rCount > 0 ? t.r : null;
+  const todayFormat = t?.pnlNet != null ? (n: number) => fmtUsd(n, { signed: true }) : fmtR;
   const todayHint = t
     ? t.closed > 0
       ? [
@@ -236,59 +274,66 @@ export function DashboardHeader({
 
   return (
     <section aria-labelledby="dash-hero-title" className="glass-panel rounded-2xl p-[var(--panel-p)]">
-      <div className="grid items-center gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(270px,1.35fr)_repeat(4,minmax(0,1fr))]">
-        <div className="flex min-w-0 items-start justify-between gap-2 sm:col-span-2 lg:col-span-1">
-          <div className="min-w-0">
-            <p className="truncate text-xs text-muted-foreground">
-              {dateLabel}
-              {data && data.market.nyDate !== data.date ? ` · ${tr("hero.tradingDay", { date: shortDate(data.date) })}` : ""}
-            </p>
-            <h1 id="dash-hero-title" className="line-clamp-2 text-xl font-semibold leading-7 tracking-tight [overflow-wrap:anywhere]">
-              {greeting(now)}
-              {userName ? `, ${personName(userName)}` : ""}
-            </h1>
-            {canChooseScope && !guest && (
-              <Segmented<Scope>
-                ariaLabel={tr("hero.scopeAria")}
-                size="sm"
-                className="mt-1.5"
-                value={scope}
-                onChange={onScopeChange}
-                options={[
-                  { value: "me", label: tr("hero.mine") },
-                  { value: "team", label: tr("hero.team") },
-                ]}
-              />
-            )}
-          </div>
-          <div className="shrink-0">{customize}</div>
+      {/* Greeting: display type, the name in the intro's italic serif (the screen's one accent word). */}
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-xs text-muted-foreground">
+            {dateLabel}
+            {data && data.market.nyDate !== data.date ? ` · ${tr("hero.tradingDay", { date: shortDate(data.date) })}` : ""}
+          </p>
+          <h1 id="dash-hero-title" className="reveal mt-1 line-clamp-2 type-display text-foreground [overflow-wrap:anywhere]">
+            {greeting(now)}
+            {userName ? <>, <em className="type-accent">{personName(userName)}</em></> : ""}
+          </h1>
+          {canChooseScope && !guest && (
+            <Segmented<Scope>
+              ariaLabel={tr("hero.scopeAria")}
+              size="sm"
+              className="mt-2.5"
+              value={scope}
+              onChange={onScopeChange}
+              options={[
+                { value: "me", label: tr("hero.mine") },
+                { value: "team", label: tr("hero.team") },
+              ]}
+            />
+          )}
         </div>
+        <div className="shrink-0">{customize}</div>
+      </div>
 
-        <MarketCell holidays={data?.market.holidays ?? []} />
-
+      <div className="mt-5 grid items-end gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
         {guest ? (
-          <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
-            <span className="text-sm font-medium">{tr("hero.guest")}</span>
-            <span className="text-xs text-muted-foreground">{tr("hero.guestHint")}</span>
-          </div>
+          <>
+            <MarketCell holidays={data?.market.holidays ?? []} />
+            <div className="flex min-w-0 flex-col gap-0.5 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
+              <span className="text-sm font-medium">{tr("hero.guest")}</span>
+              <span className="text-xs text-muted-foreground">{tr("hero.guestHint")}</span>
+            </div>
+          </>
         ) : isError && !data ? (
-          <div className="flex min-w-0 items-center gap-3 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
-            <span className="text-sm">{tr("hero.loadFailed")}</span>
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              <RefreshCw aria-hidden="true" />
-              {commonI18n.t("actions.retry")}
-            </Button>
-          </div>
+          <>
+            <MarketCell holidays={[]} />
+            <div className="flex min-w-0 items-center gap-3 sm:col-span-2 lg:col-span-3 lg:border-l lg:border-[var(--glass-border)] lg:pl-4">
+              <span className="text-sm">{tr("hero.loadFailed")}</span>
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                <RefreshCw aria-hidden="true" />
+                {commonI18n.t("actions.retry")}
+              </Button>
+            </div>
+          </>
         ) : (
           <>
-            <Cell
+            <HeroCell
               label={team ? tr("hero.deskToday") : tr("hero.today")}
               title={KPI_FORMULAS.netPnl}
               loading={loading}
-              value={todayValue}
-              tone={toneOf(t?.pnlNet ?? (t && t.rCount > 0 ? t.r : null))}
+              value={todayNum}
+              format={todayFormat}
+              tone={toneOf(todayNum)}
               hint={todayHint}
             />
+            <MarketCell holidays={data?.market.holidays ?? []} />
             <Cell
               label={w ? tr("hero.weekFrom", { date: shortDate(w.from) }) : tr("hero.week")}
               title={tr("hero.weekTitle")}
