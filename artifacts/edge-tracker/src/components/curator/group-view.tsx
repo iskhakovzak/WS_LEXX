@@ -47,6 +47,7 @@ import {
 } from "./group-model";
 import { GroupCards } from "./group-cards";
 import { VirtualRows } from "@/components/ds/virtual";
+import { StageMedal, medalStageOf } from "@/components/shared/medals";
 import { CuratorNameHL, LatinHintHL, TraderNameHL } from "./name-highlight";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { comparePersonNames, personName } from "@/i18n";
@@ -576,7 +577,7 @@ const GroupRow = React.memo(function GroupRow({ s, showCurator, row }: { s: Trad
         </td>
       )}
       <td className="whitespace-nowrap">
-        {s.tierName ?? <span className="text-muted-foreground">—</span>}
+        {s.tierName ? <span className="inline-flex items-center gap-1.5">{medalStageOf(s.tier ?? s.stage.key) && <StageMedal stage={medalStageOf(s.tier ?? s.stage.key) ?? "junior"} size={20} decorative />}{s.tierName}</span> : <span className="text-muted-foreground">—</span>}
         {s.stage.label && s.stage.label !== s.tierName && <div className="text-2xs text-muted-foreground" title={T.cols.stage}>{T.stagePrefix} {s.stage.label}</div>}
       </td>
       <td className="whitespace-nowrap text-right" title={`${t("tradesShort", { count: s.risk.todayTrades })}${s.risk.openPositions ? ` · ${t("openShort", { count: s.risk.openPositions })}` : ""}`}>

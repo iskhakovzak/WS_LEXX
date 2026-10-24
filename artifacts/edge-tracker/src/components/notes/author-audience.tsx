@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ChevronDown, Copy, Users } from "lucide-react";
 import { Panel, Pill, type Tone } from "@/components/ds";
+import { StageBadge, medalStageOf } from "@/components/shared/medals";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +18,8 @@ const STAGE_TONE: Record<AudienceStage, Tone> = { trainee: "warn", junior: "acce
 function MemberBadge({ m }: { m: AudienceMember }) {
   if (m.role === "curator" || m.role === "admin") return <Pill>{commonI18n.t(m.role === "admin" ? "roles.admin" : "roles.curator")}</Pill>;
   if (!m.stage) return null;
+  const medal = medalStageOf(m.stage);
+  if (medal && m.stage !== "trainee") return <StageBadge stage={medal} label={stageLabel(m.stage)} size={16} className="min-h-5.5 rounded-full bg-foreground/[0.05] py-0.5 pl-0.5 pr-2" />;
   return <Pill tone={STAGE_TONE[m.stage]}>{stageLabel(m.stage)}</Pill>;
 }
 

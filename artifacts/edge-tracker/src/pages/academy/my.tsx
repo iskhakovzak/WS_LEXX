@@ -25,6 +25,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
 import { personName } from "@/i18n";
 import { AskCuratorButton } from "@/components/shared/ask-curator";
+import { StageMedal } from "@/components/shared/medals";
 
 /**
  * /academy/my — «Моё обучение»: когорта и ступень, ближайшие занятия с самоотметкой (удалённо: окно −10…+15 мин,
@@ -148,6 +149,7 @@ function Ladder({ stage }: { stage: (typeof STAGES)[number] }) {
     <ol className="flex items-center gap-1" aria-label={t("myPage.ladderAria", { stage: stageLabel(stage), n: idx + 1, total: STAGES.length })}>
       {STAGES.map((s, i) => (
         <li key={s} className="flex min-w-0 flex-1 flex-col items-center gap-1" aria-current={i === idx ? "step" : undefined}>
+          <StageMedal stage={s} size={i === idx ? 44 : 34} decorative locked={i > idx} className="mb-0.5" />
           <span className={cn("h-1.5 w-full rounded-full", i <= idx ? "bg-primary" : "bg-[var(--glass-border)]")} aria-hidden="true" />
           <span className={cn("max-w-full truncate text-xs", i === idx ? "font-semibold text-foreground" : "text-muted-foreground")} title={stageLabel(s)}>{stageLabel(s)}</span>
         </li>
