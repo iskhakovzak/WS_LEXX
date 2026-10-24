@@ -4,7 +4,8 @@
  *   GET /api/permissions/me        any signed-in member (guests too): my role, effective capabilities, scopes, wards,
  *                                  tier (trainee … lead | null for staff / guests), the simple-menu settings (nav),
  *                                  nav.blocked (section hrefs closed for my stage, desk setting access.sections; staff
- *                                  []) and names (do I see other traders' real names — lib/access/names.ts)
+ *                                  []), names (do I see other traders' real names — lib/access/names.ts) and
+ *                                  shareCards { enabled, money: "usd" | "r_only" } (desk settings shareCards.*)
  *   GET /api/permissions/matrix    staff: capability catalogue, defaults, desk overrides, effective matrix
  *   PUT /api/permissions/matrix    admin (permissions.manage): { cells: [{ role, capability, allowed, scope? }] }
  *                                  or { reset: true }. Admin and guest rows are locked; adminOnly capabilities can
@@ -82,6 +83,8 @@ router.get("/permissions/me", asyncHandler(async (req, res): Promise<void> => {
     },
     // A guest has no name on the shared screens (MoneyViewer.name null): names only when every stage sees them.
     names: namesVisibleFor({ staff, stage: actor.guest ? null : stage }),
+    // Share cards of own trades (web share-card dialog): the desk switch and whether $ may appear on a card.
+    shareCards: { enabled: setting("shareCards.enabled"), money: setting("shareCards.money") === "r_only" ? "r_only" : "usd" },
     capabilities: capabilitiesOf(state.matrix, actor.role),
     scopes: scopesOf(state.matrix, actor.role),
     wards: actor.wards,

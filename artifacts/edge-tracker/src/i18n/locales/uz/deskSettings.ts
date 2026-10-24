@@ -13,7 +13,7 @@ export default {
     achievements: { title: "Yutuqlar", description: "Bosqich chegaralari: 1 — bronza, 2 — kumush, 3 — oltin, 4 — platina." },
     telegram: { title: "Telegram", description: "Bot ish kunlari yuboradi. Vaqt — Nyu-York vaqti, yonida — Toshkent vaqti." },
     curator: { title: "Kurator navbati", description: "Pul boʻyicha muammolar navbatida nima qoladi." },
-    privacy: { title: "Maxfiylik", description: "Treyderlar hamkasblari haqida nimani koʻradi." },
+    privacy: { title: "Maxfiylik", description: "Treyderlar hamkasblari haqida nimani koʻradi va desk tashqarisida nimani koʻrsata oladi." },
     trainer: { title: "Trenajyor", description: "Simulyatorda ijro (spred, sirpanish, 1R), «Kun vazifasi» va «Kirishni top»." },
     gamification: { title: "Geymifikatsiya", description: "Mavsumlar, kuratorlar ligasi, eʼtirof, setap mahorati va seriyani muzlatish." },
     nav: { title: "Menyu", description: "Yangi treyderlar uchun qisqa menyu: asosiy boʻlimlar, qolganlari «Yana» guruhida." },
@@ -227,6 +227,10 @@ export default {
     privacy: {
       hideNamesFromTraders: { label: "Ismlarni treyderlardan yashirish", help: "Umumiy grafiklar va kun topida treyder «Treyder N» va summalarni koʻradi; oʻchirilsa — ismlar koʻrinadi, boshqalarning summalari emas." },
       namesVisibleTo: { label: "Boshqa treyderlarning ismlarini koʻradi", help: "Umumiy ekranlarda hamkasblarning haqiqiy ismlarini koʻradigan bosqichlar; qolganlar «Treyder N»ni koʻradi. Kuratorlar va adminlar ismlarni doim koʻradi." },
+    },
+    shareCards: {
+      enabled: { label: "Savdo rasmlari", help: "Oʻz savdolarida «Rasm» tugmasi: treyder chiroyli savdo kartasini yigʻib, doʻstlariga yuboradi. Rasm brauzerda chiziladi, serverga hech narsa yuklanmaydi. Hisob raqami, komissiyalar va boshqa treyderlarning savdolari unga tushmaydi." },
+      money: { label: "Rasmdagi pul", help: "«Faqat R va %» — kartada $ summalari yoʻq, $ almashtirgichi yashirin.", options: { usd: "$, R va %", r_only: "Faqat R va %" } },
     },
     access: {
       sections: { label: "Yopiq boʻlimlar", help: "Boʻlim → u yopiq boʻlgan bosqichlar. Kuratorlar va adminlar cheklanmaydi." },
