@@ -76,12 +76,25 @@ export function toneBg(tone: Tone) {
   return TONE_BG[tone];
 }
 
-/** `title` for truncated text: only when the content is plain text. */
 /** Plain text of a node for a native tooltip (strings, numbers and simple element trees); undefined when empty. */
 function textTitle(node: React.ReactNode): string | undefined {
   if (typeof node === "string" || typeof node === "number") return String(node);
   const t = nodeText(node).trim();
   return t || undefined;
+}
+
+/** A signed amount («−$35.20», «+$1.2K»): the browser may break a line between the sign and «$». */
+const AMOUNT_RE = /([+−-]?\$\d[\d,]*(?:\.\d+)?[KMB]?)/;
+
+/**
+ * Keeps each signed dollar amount of a plain-text line on one line («avg +$60.72 / −» + «$35.20» on the next line
+ * was the bug). Non-string nodes pass through untouched.
+ */
+function keepAmountsWhole(node: React.ReactNode): React.ReactNode {
+  if (typeof node !== "string" || !/\s/.test(node) || !AMOUNT_RE.test(node)) return node;
+  return node.split(AMOUNT_RE).map((part, i) =>
+    i % 2 === 1 ? <span key={i} className="whitespace-nowrap">{part}</span> : part,
+  );
 }
 
 /**
@@ -301,17 +314,23 @@ export function StatCard({
         <span aria-hidden="true" className="skeleton my-1 block h-7 w-24" />
       ) : (
         <div
-          className={cn("truncate text-2xl font-semibold leading-tight tabular-nums tracking-tight", TONE_TEXT[tone])}
+          className={cn(
+            // A worded / paired value («better than 75%», «+$42.93 / −$60.94») wraps to a second line in a narrow
+            // card (phones: 2 per row) instead of ellipsizing; a single number still truncates.
+            typeof value === "string" && value.includes(" ") ? "line-clamp-2" : "truncate",
+            "text-2xl font-semibold leading-tight tabular-nums tracking-tight",
+            TONE_TEXT[tone],
+          )}
           title={valueTitle ?? textTitle(value)}
         >
-          {value}
+          {keepAmountsWhole(value)}
         </div>
       )}
       {(delta || hint) && (
         <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-xs">
           {delta && <Pill tone={deltaTone ?? "neutral"}>{delta}</Pill>}
           {/* Two lines before clipping: UZ / EN hints are longer; the full text stays in the tooltip. */}
-          {hint && <span className="line-clamp-2 min-w-0 break-words text-muted-foreground" title={textTitle(hint)}>{hint}</span>}
+          {hint && <span className="line-clamp-2 min-w-0 break-words text-muted-foreground" title={textTitle(hint)}>{keepAmountsWhole(hint)}</span>}
         </div>
       )}
       {spark && spark.length > 1 && (
