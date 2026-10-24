@@ -299,7 +299,7 @@ export function TriggersPanel({ trader, range, onPickDay }: { trader: string | n
           />
         )
       ) : (
-        <ul className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2" aria-label={tb("trig.listAria")}>
+        <ul className="grid grid-cols-1 items-start gap-[var(--grid-gap)] xl:grid-cols-2" aria-label={tb("trig.listAria")}>
 
           {d.items.map((t) => <TriggerRow key={t.id} t={t} def={kindMap.get(t.kind)} canEdit={canEdit} onPickDay={onPickDay} />)}
         </ul>

@@ -8,6 +8,7 @@ import * as React from "react";
 import { Link } from "wouter";
 import { CalendarDays, ChevronDown, ChevronRight, ExternalLink, Info, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { Pill, Sparkline, toneOf, toneText, type Tone } from "@/components/ds";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
@@ -70,7 +71,6 @@ function TrendLine({ t }: { t: PatternTrend | undefined }) {
 type CardProps = { p: PatternReport; trader: string | null; canEdit: boolean };
 
 export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit }: CardProps) {
-  const [details, setDetails] = React.useState(false);
   const detailsId = React.useId();
   const costTone = toneOf(p.cost);
   const weekly = React.useMemo(() => p.weekly.map((w) => w.cost ?? 0), [p.weekly]);
@@ -163,34 +163,37 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
             {tb("card.allInJournal", { trades: commonI18n.t("units.trades", { count: p.n }) })} <ExternalLink className="h-3 w-3" aria-hidden="true" />
           </Link>
         )}
-        <button
-          type="button"
-          onClick={() => setDetails((v) => !v)}
-          aria-expanded={details}
-          aria-controls={detailsId}
-          className="ml-auto inline-flex min-h-7 items-center gap-1 rounded-md px-1 text-muted-foreground hover:text-foreground"
-        >
-          <Info className="h-3 w-3" aria-hidden="true" /> {tb("card.how")}
-        </button>
-      </div>
-
-      {details && (
-        <div id={detailsId} className="flex flex-col gap-2 text-xs text-muted-foreground">
-          <p>
-            {tb("card.howCost", { net: fmtUsd(p.net, { signed: true, decimals: "auto" }), n: p.n, group: p.baselineLabel, avg: fmtUsd(p.baselineAvg, { signed: true, decimals: "auto" }) })}{" "}
-            {tb("card.howStats", { avg: fmtUsd(p.avgNet, { signed: true, decimals: "auto" }), wr: fmtRate(p.winRate), share: fmtRate(p.share) })}
-          </p>
-          {extras.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {extras.map(([k, v]) => (
-                <Pill key={k} tone="neutral">
-                  <span className="text-muted-foreground">{extraLabel(k)}:</span> <span className="text-foreground">{extraValue(k, v)}</span>
-                </Pill>
-              ))}
+        {/* "How it is counted" opens over the card (popover): the card and its grid row keep their height. */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="group ml-auto inline-flex min-h-7 items-center gap-1 rounded-md px-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span>{tb("card.how")}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 transition-transform duration-[var(--dur-1)] motion-reduce:transition-none group-data-[state=open]:rotate-180" aria-hidden="true" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))] p-3">
+            <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+              <p>
+                {tb("card.howCost", { net: fmtUsd(p.net, { signed: true, decimals: "auto" }), n: p.n, group: p.baselineLabel, avg: fmtUsd(p.baselineAvg, { signed: true, decimals: "auto" }) })}{" "}
+                {tb("card.howStats", { avg: fmtUsd(p.avgNet, { signed: true, decimals: "auto" }), wr: fmtRate(p.winRate), share: fmtRate(p.share) })}
+              </p>
+              {extras.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {extras.map(([k, v]) => (
+                    <Pill key={k} tone="neutral">
+                      <span className="text-muted-foreground">{extraLabel(k)}:</span> <span className="text-foreground">{extraValue(k, v)}</span>
+                    </Pill>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </PopoverContent>
+        </Popover>
+      </div>
     </article>
   );
 });
