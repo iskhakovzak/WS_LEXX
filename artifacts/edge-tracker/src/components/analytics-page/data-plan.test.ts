@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { RAW_TABS, analyticsDataPlan, type AnalyticsTabKey } from "./data-plan";
 
-const ALL_TABS: AnalyticsTabKey[] = ["overview", "edge", "matrix", "whatif", "montecarlo", "desk", "psychology", "pro"];
+const ALL_TABS: AnalyticsTabKey[] = ["overview", "edge", "myedge", "matrix", "whatif", "montecarlo", "desk", "psychology", "pro"];
 
 describe("analyticsDataPlan", () => {
   it("staff + self (nothing picked) ⇒ the trader path on every tab, with their own name", () => {

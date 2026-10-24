@@ -59,6 +59,8 @@ const UpcomingEventsList = extra(() => import("@/components/holiday-badge").then
 const MarketOpenBrief = extra(() => import("@/components/market-open-brief").then((m) => m.MarketOpenBrief));
 const MorningCheckin = extra(() => import("@/components/morning-checkin").then((m) => m.MorningCheckin));
 const WeeklyPsychologyReport = extra(() => import("@/components/weekly-psychology-report").then((m) => m.WeeklyPsychologyReport));
+// «Сегодняшний рынок → что это значит для вас» (analytics «Мой edge и рынок»): its own small chunk.
+const TodayEdgeLine = extra(() => import("@/components/analytics-page/my-edge/TodayEdgeLine").then((m) => m.TodayEdgeLine));
 const DailyQuoteCard = extra(() => import("@/components/daily-quote-card").then((m) => m.DailyQuoteCard));
 // Open positions show only while a trade is open; the panel brings the trades dictionary (horizon labels) with it.
 const PositionsPanel = extra(() => import("@/components/dashboard/positions-panel").then((m) => m.PositionsPanel));
@@ -310,6 +312,7 @@ export default function Dashboard() {
       />
       {authed && <FirstSteps />}
       {dailyOn && <WrappedDashLine />}
+      {authed && <Suspense fallback={null}><TodayEdgeLine /></Suspense>}
       {rows.map((row) =>
         row.cells.length === 1 ? (
           <div key={row.key} className="min-w-0">

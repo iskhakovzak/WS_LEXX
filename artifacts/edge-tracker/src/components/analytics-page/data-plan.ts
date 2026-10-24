@@ -6,7 +6,7 @@
  */
 import { resolveTraderScope, type TraderScope } from "@/components/people/staff-scope";
 
-export type AnalyticsTabKey = "overview" | "edge" | "matrix" | "whatif" | "montecarlo" | "desk" | "psychology" | "pro";
+export type AnalyticsTabKey = "overview" | "edge" | "myedge" | "matrix" | "whatif" | "montecarlo" | "desk" | "psychology" | "pro";
 
 /** Tabs that compute from every trade (in the team view too). */
 export const RAW_TABS: readonly AnalyticsTabKey[] = ["edge", "whatif", "montecarlo", "psychology", "pro"];
