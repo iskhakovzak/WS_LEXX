@@ -6,7 +6,7 @@ export default {
   leakShort: {
     fee_over_gross: "komissiya > yalpi",
     after_peak: "choʻqqidan keyin",
-    revenge: "revenge",
+    revenge: "tez qayta kirish",
     size_up: "oʻlcham ↑",
     after_limit: "limitdan keyin",
   },

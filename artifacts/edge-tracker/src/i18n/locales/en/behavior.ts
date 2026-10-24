@@ -49,7 +49,7 @@ export default {
   dur: { seconds: "{count} s", minutes: "{count} min", hm: "{h} h {m} min", days: "{value} d" },
   severity: { none: "costs nothing", few: "too few cases", low: "low", medium: "medium", high: "high" },
   pattern: {
-    revenge: "revenge", martingale: "martingale", overtrading: "overtrading", tilt: "tilt", chase: "chasing",
+    revenge: "quick re-entry", martingale: "martingale", overtrading: "overtrading", tilt: "tilt", chase: "chasing",
     euphoria: "euphoria", fatigue: "fatigue", disposition: "holding losers", firstTrade: "first trade",
   },
   marker: { revenge: "R", tilt: "T", martingale: "M", euphoria: "E", chase: "C", overtrading: "+", disposition: "H" },

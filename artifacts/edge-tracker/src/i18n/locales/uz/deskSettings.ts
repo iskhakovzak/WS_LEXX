@@ -107,6 +107,8 @@ export default {
         options: { reset: "Noldan boshlanadi", halve: "Yarmi saqlanadi" },
       },
       pointsWindowDays: { label: "Intizom ochkolari oynasi", help: "Intizom ochkolari oxirgi nechta savdo kuni boʻyicha jamlanadi (daraja butun davrdagi ochkolar boʻyicha hisoblanadi)." },
+      promotionMinIndex: { label: "Intizom indeksi: bosqichga oʻtish", help: "Junior → Treyder mezonlaridagi intizom indeksi chegarasi (0–100), birinchi marta toʻldirilganda. Saqlangan mezonlar treyder yoʻli ekranida oʻzgartiriladi." },
+      scalingMinIndex: { label: "Intizom indeksi: masshtablash rejasi", help: "Masshtablash rejasining koʻtarish qoidasidagi intizom indeksi chegarasi (0–100), birinchi marta toʻldirilganda. Saqlangan qoidalar masshtablash sahifasida oʻzgartiriladi." },
     },
     rewards: {
       level1Points: { label: "1-daraja «Yigʻilgan»", help: "Birinchi daraja uchun kerak boʻlgan butun davrdagi intizom ochkolari." },

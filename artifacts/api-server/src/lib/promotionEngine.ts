@@ -22,6 +22,7 @@ import {
   type LimitsInput, type Op, type RatingInput, type Tier, type TradeInput, type TraderInput,
 } from "./scalingEngine";
 import { curatorDisciplineGradeOf } from "./disciplineIndex";
+import { setting } from "./settings/registry";
 import { academyPathT, criterionLabelFor, ruPath, stageNameFor } from "./academyI18n";
 import { DEFAULT_LANG, formatCountFor, type Lang } from "../i18n";
 import { fmtDateFor } from "../i18n/format";
@@ -138,6 +139,19 @@ export interface Criterion {
 const c = (fromStage: StageKey, metric: PromoMetricKey, op: Op, value: number, windowDays: number | null): Omit<Criterion, "id"> =>
   ({ fromStage, metric, op, value, windowDays, label: (ruPath.seedCriteria as Record<string, Record<string, string>>)[fromStage]?.[metric] ?? null, enabled: true });
 
+/**
+ * A seed row whose threshold is a desk setting, read when the seed is written (roadmap R3: one setting key per place —
+ * promotion discipline here, scaling discipline in lib/scalingSeed; unifying 75 vs 70 is an owner decision). The seed
+ * label quotes the default, so another value seeds without it (the metric label is shown).
+ */
+function seededBy(row: Omit<Criterion, "id">, key: "discipline.promotionMinIndex"): Omit<Criterion, "id"> {
+  const seed = { value: row.value, label: row.label };
+  return Object.defineProperties({ ...row }, {
+    value: { get: () => setting(key), enumerable: true },
+    label: { get: () => (setting(key) === seed.value ? seed.label : null), enumerable: true },
+  });
+}
+
 /** Seeded on first run into academy_stage_criteria, staff-editable afterwards. */
 export const DEFAULT_CRITERIA: Omit<Criterion, "id">[] = [
   // Джун → Трейдер (40 торговых дней)
@@ -150,7 +164,7 @@ export const DEFAULT_CRITERIA: Omit<Criterion, "id">[] = [
   c("junior", "fee_share", "<=", 40, 40),
   c("junior", "limit_breaches", "=", 0, 40),
   c("junior", "violations", "<=", 1, 40),
-  c("junior", "discipline_index", ">=", 75, 40),
+  seededBy(c("junior", "discipline_index", ">=", 75, 40), "discipline.promotionMinIndex"),
   c("junior", "quiz_avg", ">=", 80, null),
   c("junior", "challenges_passed", ">=", 1, null),
   // Трейдер → Сеньор (60 торговых дней)

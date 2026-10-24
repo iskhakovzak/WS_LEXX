@@ -54,6 +54,11 @@ export const SETTINGS = {
   // A broken day: «reset» = the streak starts again from 0; «halve» = it keeps half (rounded down).
   "discipline.streakOnBreak": { group: "discipline", type: "select", default: "reset", options: ["reset", "halve"], pilot: true },
   "discipline.pointsWindowDays": { group: "discipline", type: "number", default: 30, min: 5, max: 120, step: 1, unit: "days" },
+  // Discipline index thresholds of the ladder seeds (roadmap R3): one key per place, current values kept — promotion
+  // (academy criteria, lib/promotionEngine) 75, scaling plan (lib/scalingSeed) 70. Choosing one number is an owner
+  // decision; stored criteria / rules stay authoritative once seeded (editable on their own screens).
+  "discipline.promotionMinIndex": { group: "discipline", type: "number", default: 75, min: 0, max: 100, step: 1, unit: "points" },
+  "discipline.scalingMinIndex": { group: "discipline", type: "number", default: 70, min: 0, max: 100, step: 1, unit: "points" },
 
   // Rewards: levels by all-time discipline points (contract + quest points); traded days a clean month needs
   "rewards.level1Points": { group: "rewards", type: "number", default: 50, min: 1, max: 100000, step: 10, unit: "points" },

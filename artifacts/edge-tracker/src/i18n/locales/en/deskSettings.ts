@@ -107,6 +107,8 @@ export default {
         options: { reset: "Starts from zero", halve: "Keeps half" },
       },
       pointsWindowDays: { label: "Discipline points window", help: "Over how many recent trading days discipline points are summed (the level uses all-time points)." },
+      promotionMinIndex: { label: "Discipline index: stage promotion", help: "Discipline index threshold (0–100) in the Junior → Trader criteria when they are first seeded. Saved criteria are edited on the trader path screen." },
+      scalingMinIndex: { label: "Discipline index: scaling plan", help: "Discipline index threshold (0–100) in the scaling plan's promote rule when it is first seeded. Saved rules are edited on the scaling page." },
     },
     rewards: {
       level1Points: { label: "Level 1 “Focused”", help: "All-time discipline points needed for the first level." },

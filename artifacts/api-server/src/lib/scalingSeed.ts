@@ -4,6 +4,12 @@
  * label (lib/scalingEngine ruleLabel) and the tier name by key (web scaling/format tierLabel).
  */
 import type { Rule, Tier } from "./scalingEngine";
+import { setting } from "./settings/registry";
+
+/** The promote-by-discipline seed reads its threshold from one desk setting (roadmap R3; promotion has its own key). */
+function disciplineSeed(row: Omit<Rule, "id">): Omit<Rule, "id"> {
+  return Object.defineProperty({ ...row }, "value", { get: () => setting("discipline.scalingMinIndex"), enumerable: true });
+}
 
 export const DEFAULT_TIERS: Tier[] = [
   { key: "junior", name: "Джун", order: 2, accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2_000, maxRiskPerTrade: 100, maxPositionUsd: 25_000, maxOvernightExposure: 5_000, maxOpenPositions: 3, allowOvernight: false, allowSwing: false, description: "Интрадей, малый лот" }, // i18n-ignore (seed data)
@@ -19,7 +25,7 @@ export const DEFAULT_RULES: Omit<Rule, "id">[] = [
   { kind: "promote", metric: "profit_factor", op: ">=", value: 1.3, unit: "abs", windowDays: 20, tierKey: null, label: "Profit factor", enabled: true }, // i18n-ignore (seed data)
   { kind: "promote", metric: "max_dd_pct", op: "<", value: 50, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка меньше половины лимита", enabled: true }, // i18n-ignore (seed data)
   { kind: "promote", metric: "limit_breaches", op: "=", value: 0, unit: "abs", windowDays: 20, tierKey: null, label: "Без нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
-  { kind: "promote", metric: "discipline", op: ">=", value: 70, unit: "abs", windowDays: 20, tierKey: null, label: "Индекс дисциплины", enabled: true }, // i18n-ignore (seed data)
+  disciplineSeed({ kind: "promote", metric: "discipline", op: ">=", value: 70, unit: "abs", windowDays: 20, tierKey: null, label: "Индекс дисциплины", enabled: true }), // i18n-ignore (seed data)
   { kind: "demote", metric: "limit_breaches", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Три и более нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
   { kind: "demote", metric: "max_dd_pct", op: ">=", value: 100, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка достигла лимита", enabled: true }, // i18n-ignore (seed data)
   { kind: "demote", metric: "net_pnl", op: "<=", value: -3, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "Убыток ≥ 3 дневных лимитов", enabled: true }, // i18n-ignore (seed data)

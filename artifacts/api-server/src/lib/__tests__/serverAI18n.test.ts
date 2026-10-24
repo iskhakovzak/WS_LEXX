@@ -53,7 +53,7 @@ describe("behaviour / psychology", () => {
   });
   it("pattern titles and triggers per language", () => {
     const rep = analyzeBehavior([bt(1, 0, -50), bt(2, 3, -20), bt(3, 30, 40)], {}, "en");
-    expect(rep.patterns.find((p) => p.key === "revenge")?.title).toBe("Revenge trading");
+    expect(rep.patterns.find((p) => p.key === "revenge")?.title).toBe("Quick re-entry after a loss");
     expect(rep.patterns.find((p) => p.key === "revenge")?.baselineLabel).toBe("other trades");
     expect(describeTrigger("loss_streak", { n: 3 })).toBe("3 убытка подряд");
     expect(describeTrigger("loss_streak", { n: 3 }, "en")).toBe("3 losses in a row");

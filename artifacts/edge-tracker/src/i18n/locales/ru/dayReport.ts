@@ -4,7 +4,7 @@ export default {
   leakShort: {
     fee_over_gross: "комиссия > брутто",
     after_peak: "после пика",
-    revenge: "реванш",
+    revenge: "быстрый перезаход",
     size_up: "размер ↑",
     after_limit: "после лимита",
   },

@@ -14,6 +14,7 @@
  * Деньги — нетто = брутто − |комиссии| (lib/tradeMath.netPnl). Время — America/New_York.
  */
 import { isOpeningDay } from "./dayReportRules";
+import { DEFAULTS as BEHAVIOR } from "./behaviorEngine";
 import { netPnl, num, normResult } from "./tradeMath";
 import { dayReportT } from "../i18n/ns";
 import { localeTagFor, type Lang } from "../i18n";
@@ -69,9 +70,9 @@ export interface DayReportInput {
 }
 
 export interface DayReportOptions {
-  /** Вход быстрее этого числа минут после убыточного выхода = «реванш». По умолчанию 2. */
+  /** Вход быстрее этого числа минут после убыточного выхода = быстрый перезаход (lib/behaviorEngine DEFAULTS, 10). */
   revengeMin?: number;
-  /** Рост размера после убытка: $ нотионал (|qty| × вход) > нотионал предыдущей убыточной × factor (как behaviorEngine). По умолчанию 1.3. */
+  /** Рост размера после убытка: $ нотионал > нотионал предыдущей убыточной × factor (behaviorEngine DEFAULTS.martingaleRatio). */
   sizeUpFactor?: number;
   /** Окно сравнения, торговых дней. По умолчанию 20. */
   lookbackDays?: number;
@@ -673,8 +674,8 @@ export function buildPlan(r: Pick<DayReport, "summary" | "leaks" | "breakdown" |
 
 export function buildDayReport(input: DayReportInput): DayReport {
   const opts: Required<DayReportOptions> = {
-    revengeMin: input.options?.revengeMin ?? 2,
-    sizeUpFactor: input.options?.sizeUpFactor ?? 1.3,
+    revengeMin: input.options?.revengeMin ?? BEHAVIOR.revengeMin,
+    sizeUpFactor: input.options?.sizeUpFactor ?? BEHAVIOR.martingaleRatio,
     lookbackDays: input.options?.lookbackDays ?? 20,
     lang: input.options?.lang ?? "ru",
   };

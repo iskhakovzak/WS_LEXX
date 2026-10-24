@@ -6,7 +6,7 @@ export default {
   leakShort: {
     fee_over_gross: "fees > gross",
     after_peak: "after peak",
-    revenge: "revenge",
+    revenge: "quick re-entry",
     size_up: "size ↑",
     after_limit: "after limit",
   },

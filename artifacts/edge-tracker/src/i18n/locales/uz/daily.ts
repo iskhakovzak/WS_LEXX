@@ -137,7 +137,7 @@ export default {
     unknown: "«{id}» xatosi",
     ruleUnknown: "«{kind}» qoidasi",
     behavior: {
-      revenge: "Zarardan keyin qasos savdosi",
+      revenge: "Zarardan keyin tez qayta kirish",
       martingale: "Zarardan keyin hajmni oshirish",
       overtrading: "Haddan ortiq savdo",
       fatigue: "Charchoqda savdo",
