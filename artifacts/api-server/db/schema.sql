@@ -169,6 +169,7 @@ CREATE SEQUENCE public.activity_log_id_seq AS integer START WITH 1 INCREMENT BY 
 CREATE SEQUENCE public.ai_assistant_audit_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_assistant_messages_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_review_rate_limit_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.ai_reviews_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_trade_reviews_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.analyst_actions_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.app_error_occurrences_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
@@ -683,7 +684,7 @@ CREATE TABLE public.ai_assistant_audit (
   user_message text,
   assistant_message text,
   CONSTRAINT ai_assistant_audit_pkey PRIMARY KEY (id),
-  CONSTRAINT ai_assistant_audit_mode_check CHECK (mode = ANY (ARRAY['chat'::text, 'assist'::text])),
+  CONSTRAINT ai_assistant_audit_mode_check CHECK (mode = ANY (ARRAY['chat'::text, 'assist'::text, 'review'::text])),
   CONSTRAINT ai_assistant_audit_status_check CHECK (status = ANY (ARRAY['ok'::text, 'error'::text, 'aborted'::text, 'refused'::text])),
   CONSTRAINT ai_assistant_audit_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
 );
@@ -699,10 +700,12 @@ CREATE TABLE public.ai_assistant_messages (
   page text,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   cleared_at timestamp with time zone,
+  tier text,
   CONSTRAINT ai_assistant_messages_pkey PRIMARY KEY (id),
   CONSTRAINT ai_assistant_messages_content_check CHECK (char_length(content) <= 40000),
   CONSTRAINT ai_assistant_messages_page_check CHECK (page IS NULL OR char_length(page) <= 300),
   CONSTRAINT ai_assistant_messages_role_check CHECK (role = ANY (ARRAY['user'::text, 'assistant'::text])),
+  CONSTRAINT ai_assistant_messages_tier_check CHECK (tier IS NULL OR (tier = ANY (ARRAY['standard'::text, 'boost'::text, 'deep'::text]))),
   CONSTRAINT ai_assistant_messages_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
 );
 
@@ -729,6 +732,31 @@ CREATE TABLE public.ai_review_rate_limit (
   trade_id integer,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT ai_review_rate_limit_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.ai_reviews (
+  id bigint DEFAULT nextval('public.ai_reviews_id_seq'::regclass) NOT NULL,
+  kind text NOT NULL,
+  trader text NOT NULL,
+  trade_id integer,
+  day text,
+  version integer NOT NULL,
+  input_hash text NOT NULL,
+  lang text NOT NULL,
+  review jsonb NOT NULL,
+  facts jsonb,
+  deep boolean DEFAULT false NOT NULL,
+  units bigint DEFAULT 0 NOT NULL,
+  cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT ai_reviews_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_reviews_check CHECK (kind = 'trade'::text AND trade_id IS NOT NULL OR kind = 'day'::text AND day IS NOT NULL),
+  CONSTRAINT ai_reviews_day_check CHECK (day IS NULL OR day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT ai_reviews_input_hash_check CHECK (char_length(input_hash) = 64),
+  CONSTRAINT ai_reviews_kind_check CHECK (kind = ANY (ARRAY['trade'::text, 'day'::text])),
+  CONSTRAINT ai_reviews_lang_check CHECK (lang = ANY (ARRAY['ru'::text, 'en'::text, 'uz'::text])),
+  CONSTRAINT ai_reviews_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
 );
 
 CREATE TABLE public.ai_trade_reviews (
@@ -3176,6 +3204,7 @@ ALTER SEQUENCE public.activity_log_id_seq OWNED BY public.activity_log.id;
 ALTER SEQUENCE public.ai_assistant_audit_id_seq OWNED BY public.ai_assistant_audit.id;
 ALTER SEQUENCE public.ai_assistant_messages_id_seq OWNED BY public.ai_assistant_messages.id;
 ALTER SEQUENCE public.ai_review_rate_limit_id_seq OWNED BY public.ai_review_rate_limit.id;
+ALTER SEQUENCE public.ai_reviews_id_seq OWNED BY public.ai_reviews.id;
 ALTER SEQUENCE public.ai_trade_reviews_id_seq OWNED BY public.ai_trade_reviews.id;
 ALTER SEQUENCE public.analyst_actions_cache_id_seq OWNED BY public.analyst_actions_cache.id;
 ALTER SEQUENCE public.app_error_occurrences_id_seq OWNED BY public.app_error_occurrences.id;
@@ -3307,6 +3336,8 @@ CREATE INDEX ai_assistant_audit_user_idx ON public.ai_assistant_audit USING btre
 CREATE INDEX ai_assistant_messages_user_idx ON public.ai_assistant_messages USING btree (user_name, id DESC) WHERE (cleared_at IS NULL);
 CREATE INDEX ai_review_rate_created_idx ON public.ai_review_rate_limit USING btree (created_at);
 CREATE INDEX ai_review_rate_user_idx ON public.ai_review_rate_limit USING btree (user_key);
+CREATE INDEX ai_reviews_day_idx ON public.ai_reviews USING btree (trader, day, created_at DESC) WHERE (kind = 'day'::text);
+CREATE INDEX ai_reviews_trade_idx ON public.ai_reviews USING btree (trade_id, created_at DESC) WHERE (kind = 'trade'::text);
 CREATE INDEX ai_trade_reviews_generated_at_idx ON public.ai_trade_reviews USING btree (generated_at);
 CREATE INDEX ai_trade_reviews_trade_idx ON public.ai_trade_reviews USING btree (trade_id);
 CREATE INDEX analyst_actions_graded_at_idx ON public.analyst_actions_cache USING btree (graded_at);

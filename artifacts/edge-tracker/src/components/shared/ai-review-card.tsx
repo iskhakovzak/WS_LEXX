@@ -18,7 +18,7 @@ import { isApiError } from "@/lib/api/http";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BoltMark, WsMark } from "./ws-mark";
-import { reviewText, useAiReview, whatIfHref, type DayFacts, type Evidence, type ReviewDto, type ReviewPoint, type ReviewSubject } from "./ai-review-data";
+import { clause, reviewText, useAiReview, whatIfHref, type DayFacts, type Evidence, type ReviewDto, type ReviewPoint, type ReviewSubject } from "./ai-review-data";
 
 const GRADE_TONE: Record<string, Tone> = { A: "up", B: "accent", C: "warn", D: "down", F: "down" };
 const PLAN_TONE: Record<string, Tone> = { yes: "up", partly: "warn", no: "down", unknown: "neutral" };
@@ -114,7 +114,7 @@ function ReviewBody({ d }: { d: ReviewDto }) {
           {t(d.kind === "trade" ? "review.tomorrow" : "review.tomorrowDay")}
         </div>
         <p className="text-sm leading-relaxed">
-          <span className="font-semibold">{t("review.if")}</span> {r.tomorrow.if} — <span className="font-semibold">{t("review.then")}</span> {r.tomorrow.then}
+          <span className="font-semibold">{t("review.if")}</span> {clause(r.tomorrow.if)} — <span className="font-semibold">{t("review.then")}</span> {clause(r.tomorrow.then)}
         </p>
       </div>
       {href && r.whatIf ? (

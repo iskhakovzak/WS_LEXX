@@ -79,6 +79,11 @@ export function reviewText(d: ReviewDto, t: (k: string, p?: Record<string, strin
   block(t("review.wentWell"), r.wentWell);
   block(t("review.wentWrong"), r.wentWrong);
   if (r.edge) out.push("", `${t("review.edge")}: ${r.edge.text}${r.edge.interval ? ` (${r.edge.interval})` : ""}`);
-  out.push("", `${t(d.kind === "trade" ? "review.tomorrow" : "review.tomorrowDay")}: ${t("review.if")} ${r.tomorrow.if} — ${t("review.then")} ${r.tomorrow.then}`);
+  out.push("", `${t(d.kind === "trade" ? "review.tomorrow" : "review.tomorrowDay")}: ${t("review.if")} ${clause(r.tomorrow.if)} — ${t("review.then")} ${clause(r.tomorrow.then)}`);
   return out.join("\n");
+}
+
+/** «If Before any entry» → «If before any entry»: the clause follows the word, so a capitalised first word (not an acronym or ticker) is lowered. */
+export function clause(s: string): string {
+  return /^\p{Lu}\p{Ll}/u.test(s) ? s[0]!.toLocaleLowerCase() + s.slice(1) : s;
 }

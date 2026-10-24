@@ -24,7 +24,7 @@ const COMMON = `You are the review coach of WS_Desk, the journal of a proprietar
 - verdict.headline: one line, plain trader language. followedPlan: "unknown" when there is no plan / setup / rule to compare with.
 - wentWell / wentWrong: up to 4 points each, most important first. Concrete and specific to THIS data; no generic advice.
 - edge: what the trader's own edge map says about this situation (a matching LEAK or STRENGTH slice) with its interval; null when nothing in the map is relevant.
-- tomorrow: exactly ONE implementation intention: "if" = a concrete cue the trader will notice (a time, a P&L state, a pattern); "then" = one concrete action. Not a slogan.
+- tomorrow: exactly ONE implementation intention: "if" = a concrete cue the trader will notice (a time, a P&L state, a pattern); "then" = one concrete action. Not a slogan. Both are shown after the words «If» / «then», so start each with a lowercase word and do not repeat «if» / «then».
 - whatIf: one rule worth testing in the "What if" simulator on the trader's past trades (types and parameters per the schema; null parameters that the type does not use; items = [] unless excluding setups / tickers), with why; null when no rule fits.
 - confidence: low / medium / high by the amount and quality of data. dataGaps: what was missing and would change the review.
 - Keep every string short. Tickers, strategy codes, P&L, R, VWAP, MAE / MFE stay as they are in every language. Money as $1,234.56 / −$85.10, times as HH:MM ET.
@@ -45,7 +45,7 @@ export const DAY_REVIEW_SYSTEM = `${COMMON}
 
 # This review: ONE TRADING DAY
 <review_data> holds: dayState (the day's state machine, computed by the server: afterLoss / afterWin entries with their net, trades after the equity peak and the giveback, the first three trades vs the rest, overlapping entries, re-entries within 2 minutes), summary, comparison (vs the trader's recent days), equity (peak, trough, max drawdown, final, giveback), timeline (every trade: index = trade number in the day, gapMin, afterLoss, cumAfter), leaks, plan (the day report's own suggestions), dailyLossLimit, edgeMap, behavior, rules and the day's violations, market (the cached brief).
-Judge the day as a sequence: how the trader started, what changed after losses and wins, whether they stopped at the right time or gave back after the peak, and which single habit would have changed the day most. evidence.ref = the trade number in the day. "tomorrow" is THE one focus for the next session.`;
+Judge the day as a sequence: how the trader started, what changed after losses and wins, whether they stopped at the right time or gave back after the peak, and which single habit would have changed the day most. evidence.ref = the trade number in the day, and a trade is labelled as a trade of the day («trade 3 · 10:41 · KORU long» in the review language), never as a fill. "tomorrow" is THE one focus for the next session.`;
 
 const REPLY_IN: Record<Lang, string> = {
   ru: "Write every string of the JSON in Russian.",

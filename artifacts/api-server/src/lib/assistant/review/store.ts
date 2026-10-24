@@ -9,6 +9,7 @@ import { logger } from "../../logger";
 import type { Lang } from "../../../i18n";
 import { REVIEW_VERSION, ReviewSchema, type Review } from "./schema";
 import type { DayFacts } from "./gather";
+import { DAY_REVIEW_SYSTEM, TRADE_REVIEW_SYSTEM } from "./prompt";
 
 export type ReviewKind = "trade" | "day";
 export type Subject = { kind: "trade"; tradeId: number; trader: string } | { kind: "day"; day: string; trader: string };
@@ -18,9 +19,15 @@ export type StoredReview = {
   review: Review; facts: DayFacts | null; deep: boolean; units: number; createdAt: string;
 };
 
-/** The cache key of a set of inputs (stable JSON: key order as built by gather.ts). */
+/** Fingerprint of the frozen prompts + schema: any edit to them is a new cache key without a manual version bump. */
+const PROMPT_FINGERPRINT = crypto.createHash("sha256").update(TRADE_REVIEW_SYSTEM).update(DAY_REVIEW_SYSTEM).digest("hex").slice(0, 16);
+
+/**
+ * The cache key of a set of inputs (stable JSON: key order as built by gather.ts): version + prompt fingerprint +
+ * kind + language + data. Reading the latest review (latestReview) ignores it; generating reuses only an exact hit.
+ */
 export function inputHash(kind: ReviewKind, lang: Lang, data: unknown): string {
-  return crypto.createHash("sha256").update(JSON.stringify({ v: REVIEW_VERSION, kind, lang, data })).digest("hex");
+  return crypto.createHash("sha256").update(JSON.stringify({ v: REVIEW_VERSION, p: PROMPT_FINGERPRINT, kind, lang, data })).digest("hex");
 }
 
 type Row = { id: string; kind: ReviewKind; trader: string; trade_id: number | null; day: string | null; lang: Lang; review: unknown; facts: unknown; deep: boolean; units: string; created_at: Date };
