@@ -30,11 +30,46 @@ version). Files: `<id>-<width>.webp` (the scene at 1280 / 1920 / 2560 / 3840 px 
 | `storm` | Rough sea by the sea stacks | Blair Fraser | CC0 | https://commons.wikimedia.org/wiki/File:Rough_ocean_crashing_on_beach_(Unsplash).jpg |
 | `manhattan` | Lower Manhattan skyline at night | VynedJ | CC BY 4.0 | https://commons.wikimedia.org/wiki/File:Lower_Manhattan_night_skyline_20261003_–_1.jpg |
 | `nyse` | New York Stock Exchange lit up at night | Georgio (Flickr) | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:NYSE_lit_up_at_night_(3122761205).jpg |
+| `laferrari` | Ferrari LaFerrari, Geneva Motor Show 2013 (cut-out) | Noebu, cut-out by Auge=mit | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Ferrari_LaFerrari_2013_Geneva_Motor_Show_noBG.jpg |
+| `pagani-huayra` | Pagani Huayra, GIMS 2024 (cut-out) | MB-one, cut-out by Auge=mit | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Pagani_Huayra_GIMS_2024_noBG.jpg |
+| `bugatti-chiron` | Bugatti Chiron Sport, GIMS 2018 | Matti Blume | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Bugatti_Chiron,_GIMS_2018,_Le_Grand-Saconnex_(1X7A1765).jpg |
+| `mclaren-p1` | McLaren P1 | Calreyn88 | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:McLaren_P1_17.jpg |
+| `pantheon` | Pantheon, Rome, at night | Christoph Strässler | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Pantheon_at_night,_Rome,_Italy.jpg |
+| `augustus` | Augustus, Prima Porta type, Louvre | PierreSelim | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Musée_du_Louvre_-_Auguste_-_Prima_Porta_01.jpg |
+| `colosseum` | Colosseum, Rome, at dusk | Diliff | CC BY-SA 2.5 | https://commons.wikimedia.org/wiki/File:Colosseum_in_Rome-April_2007-1-_copie_2B.jpg |
+| `milky-way` | Milky Way over the Kaçkar Mountains | Kadir KARA | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Kaçkar_Mountains_Night_Sky.jpg |
+| `northern-lights` | Aurora over Vík church, Iceland | AstroAnthony | CC BY 4.0 | https://commons.wikimedia.org/wiki/File:Church_of_light.jpg |
+| `lightning` | Three near-simultaneous lightning strikes | Rollingskyphoto | CC BY 4.0 | https://commons.wikimedia.org/wiki/File:3_Near-Simultaneous_Lightning_Strikes_on_One_Exposure.jpg |
+| `fog-forest` | Forest hillside in fog | Mar Mkrtchyan | CC0 | https://commons.wikimedia.org/wiki/File:Foggy_forest_hillside.jpg |
+| `glacier` | Viedma Glacier, Patagonia | Liam Quinn | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Viedma_Glacier_(5466116020).jpg |
+| `skogafoss` | Skógafoss waterfall, Iceland | Jakub Hałun | CC BY 4.0 | https://commons.wikimedia.org/wiki/File:Skógafoss_Waterfall,_Iceland,_20240720_1411_3075.jpg |
+| `tre-cime` | Tre Cime di Lavaredo, Dolomites | Wolfgang Moroder | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Drei_Zinnen_Tre_Cime_di_Lavaredo_Dolomites.jpg |
+| `ocean-rocks` | Wave crashing over rocks, Iceland | Eric Kilby | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Wave_Crashing_Over_Rocks_-_Iceland.jpg |
+| `dunes` | Dune in Sossusvlei, Namibia | Diego Delso | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Duna_en_Sossusvlei,_Namibia,_2018-08-06,_DD_002.jpg |
+| `sea-mist` | Vlychada Beach, Santorini, long exposure | Dietmar Rabich | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Santorin_(GR),_Exomytis,_Vlychada_Beach_--_2017_--_2999_(bw).jpg |
+| `chicago` | Chicago skyline from Grant Park at night | Daniel Schwen | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Chicago_Grant_Park_night_pano.jpg |
+| `hong-kong` | Hong Kong night skyline from Victoria Peak | Base64 | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Hong_Kong_Night_Skyline_non-HDR.jpg |
+| `tokyo` | Tokyo Tower and Minato City at night | David Kernan | CC BY 4.0 | https://commons.wikimedia.org/wiki/File:Tokyo_Tower,_Minato_City.jpg |
+| `dubai` | Burj Khalifa and the Dubai skyline at night | Sergei Gussev | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Burj_Khalifa_Night_View_01.jpg |
+| `london` | Canary Wharf skyline, London, at night | Diliff | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Canary_Wharf_Skyline_2,_London_UK_-_Oct_2012.jpg |
+| `brooklyn-bridge` | Brooklyn Bridge and Manhattan at night | Rhododendrites | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Brooklyn_Bridge,_Manhattan_at_night_2.jpg |
+| `empire-state` | Empire State Building at night, aerial view | SebastianBlumeArt | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Empire_State_Building_illuminated_at_night_aerial_view_Manhattan.jpg |
+| `rain-street` | Geneva street in the rain | Matt Biddulph | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Geneva_street_in_the_rain.jpg |
+| `trading-floor` | Trading floor of the New York Stock Exchange | Carol M. Highsmith | Public domain | https://commons.wikimedia.org/wiki/File:Trading_floor_of_the_New_York_Stock_Exchange,_New_York_City_LCCN2011632435.tif |
+| `golden-gate` | Golden Gate Bridge in fog, San Francisco | Dietmar Rabich | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:San_Francisco_(CA,_USA),_Golden_Gate_Bridge_--_2022_--_3023_(bw).jpg |
+| `smoke-trail` | Incense smoke and light | Tom Ek | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Scent,_smoke_and_light_(33485066232).jpg |
+| `ink` | Fluorescent ink in water | Schbence | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Fluorescent_ink_in_water_1.jpg |
+| `light-trails` | Highway light trails at night | Jamie Street | CC0 | https://commons.wikimedia.org/wiki/File:Highway_light_trains_at_night_(Unsplash).jpg |
+| `spiral-dome` | Bramante staircase from below, Vatican Museums | Wilfredor | CC0 | https://commons.wikimedia.org/wiki/File:Spiral_staircase_in_the_Vatican_Museums_from_bottom_02.jpg |
+| `spiral-facade` | Abstract spiral pattern, architectural facade | Samuel Zeller | CC0 | https://commons.wikimedia.org/wiki/File:Abstract_spiral_pattern_(Unsplash).jpg |
+| `spiral-stairs` | Spiral staircase, London City Hall | Colin | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:City_Hall,_London,_Spiral_Staircase_-_1.jpg |
 
-Licences: CC BY 2.0 https://creativecommons.org/licenses/by/2.0/ · CC BY 2.5 https://creativecommons.org/licenses/by/2.5/ · CC BY 4.0 https://creativecommons.org/licenses/by/4.0/ · CC BY-SA 3.0 DE https://creativecommons.org/licenses/by-sa/3.0/de/deed.en · CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/ · CC0 https://creativecommons.org/publicdomain/zero/1.0/ · Public domain: no rights reserved.
+Licences: CC BY 2.0 https://creativecommons.org/licenses/by/2.0/ · CC BY 2.5 https://creativecommons.org/licenses/by/2.5/ · CC BY 4.0 https://creativecommons.org/licenses/by/4.0/ · CC BY-SA 2.0 https://creativecommons.org/licenses/by-sa/2.0/ · CC BY-SA 2.5 https://creativecommons.org/licenses/by-sa/2.5/ · CC BY-SA 3.0 https://creativecommons.org/licenses/by-sa/3.0/ · CC BY-SA 3.0 DE https://creativecommons.org/licenses/by-sa/3.0/de/deed.en · CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0/ · CC0 https://creativecommons.org/publicdomain/zero/1.0/ · Public domain: no rights reserved.
 
 Self-drawn scenes (no external material, released CC0 by WS_LEXX): «Дым» (generated noise, lib/smoke) and
 «Хребет» (SVG drawn in components/appearance/scenes).
 
-Porsche, 911, GT3, Carrera, Turbo and 918 Spyder are trademarks of Dr. Ing. h.c. F. Porsche AG; Ferrari and F40 of
-Ferrari S.p.A.; NYSE of NYSE Group, Inc. They are used here only to describe the photographs; no endorsement is implied.
+Porsche, 911, GT3, Carrera, Turbo and 918 Spyder are trademarks of Dr. Ing. h.c. F. Porsche AG; Ferrari, F40 and
+LaFerrari of Ferrari S.p.A.; Pagani and Huayra of Pagani Automobili S.p.A.; Bugatti and Chiron of Bugatti
+Automobiles S.A.S.; McLaren and P1 of McLaren Automotive; NYSE of NYSE Group, Inc. They are used here only to describe
+the photographs; no endorsement is implied.

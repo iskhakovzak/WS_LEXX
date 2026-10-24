@@ -53,7 +53,7 @@ export const FONT_STACKS: Record<FontId, string | null> = {
 };
 
 /** «WS originals» (lib/appearance/scenes): interactive 3D / HOVER backgrounds. «smoke» is the HOVER smoke. */
-export const SCENE_IDS = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus", "porsche-gt3", "porsche-turbo-s", "porsche-918", "carrera-gt", "porsche-rs27", "ferrari-f40", "parthenon", "sounion", "nike", "riace", "delphi", "matterhorn", "storm", "manhattan", "nyse"] as const;
+export const SCENE_IDS = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus", "porsche-gt3", "porsche-turbo-s", "porsche-918", "carrera-gt", "porsche-rs27", "ferrari-f40", "parthenon", "sounion", "nike", "riace", "delphi", "matterhorn", "storm", "manhattan", "nyse", "laferrari", "pagani-huayra", "bugatti-chiron", "mclaren-p1", "pantheon", "augustus", "colosseum", "milky-way", "northern-lights", "lightning", "fog-forest", "glacier", "skogafoss", "tre-cime", "ocean-rocks", "dunes", "sea-mist", "chicago", "hong-kong", "tokyo", "dubai", "london", "brooklyn-bridge", "empire-state", "rain-street", "trading-floor", "golden-gate", "smoke-trail", "ink", "light-trails", "spiral-dome", "spiral-facade", "spiral-stairs"] as const;
 export type SceneId = (typeof SCENE_IDS)[number];
 export const BG_KINDS = ["none", "image", "aurora", "grid", "dusk", ...SCENE_IDS] as const;
 export type BgKind = (typeof BG_KINDS)[number];
