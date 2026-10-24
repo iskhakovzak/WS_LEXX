@@ -177,6 +177,11 @@ export const SETTINGS = {
   "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true, hidden: true },
   // Ladder stages that see other traders' real names (staff always do); unsaved → derived from the legacy switch above.
   "privacy.namesVisibleTo": { group: "privacy", type: "stages", default: [], hidden: true },
+  // Share cards (web components/trades/share-card: a PNG of one own trade, drawn in the browser, nothing uploaded).
+  // Off → no «Картинка» button anywhere. «r_only» → the card never shows $ (result in R or %, the $ switch is gone).
+  // Read by the web from GET /permissions/me → shareCards.
+  "shareCards.enabled": { group: "privacy", type: "boolean", default: true },
+  "shareCards.money": { group: "privacy", type: "select", default: "usd", options: ["usd", "r_only"] },
 
   // Sections closed per ladder stage (owner 2026-10-21): web nav href → blocked stages. {} = everything open. Staff are
   // never blocked. The web menu / route guard read GET /permissions/me → nav.blocked; the API answers 403
