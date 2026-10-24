@@ -45,6 +45,8 @@ export const AppearanceSchema = z.object({
   bg: z.object({
     kind: z.enum(["none", "image", "aurora", "grid", "dusk", ...SCENES]),
     panels: z.enum(["glass", "frosted", "solid"]),
+    /** «Яркость фона» 0…1 (optional: older clients send none). */
+    brightness: z.number().finite().min(0).max(1).optional(),
   }),
   density: z.enum(["compact", "spacious"]),
   /** Optional: clients before the chips setting send none. */

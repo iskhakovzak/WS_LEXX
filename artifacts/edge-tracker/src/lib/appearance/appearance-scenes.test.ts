@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AA_TEXT, contrast, mix, minContrast, tripletToRgb, type Rgb } from "./color";
 import { CHIP_GROUPS, DEFAULT_APPEARANCE, THEME_IDS, isLightTheme, parseAppearance, type Appearance, type ThemeId } from "./model";
-import { PHOTO_MUTED_DARK, SCENES, SCENE_IDS, TRAIL_ALPHA, photoScrim, smokeLevels } from "./scenes";
+import { DEFAULT_BRIGHTNESS, PHOTO_MUTED_DARK, SCENES, SCENE_IDS, sceneLevels, sceneSource } from "./scenes";
 import { computeAppearanceVars } from "./vars";
 import { THEME_SURFACES, surfaceRgb, textSurfaces } from "./themes";
 
@@ -9,50 +9,64 @@ const tri = (t: string) => tripletToRgb(t) as Rgb;
 const MUTED: Record<ThemeId, string> = { dark: PHOTO_MUTED_DARK, dim: PHOTO_MUTED_DARK, light: "0 0% 37%", platinum: "0 0% 25%" };
 const themes = THEME_IDS as readonly ThemeId[];
 
-describe("WS originals: scrims keep muted text AA over every photo pixel", () => {
-  for (const id of SCENE_IDS) {
-    const photo = SCENES[id].photo;
-    if (!photo) continue;
-    it(`${id}`, () => {
+describe("WS originals: «Яркость фона», canvas titles and panel text stay readable", () => {
+  const KINDS = [...SCENE_IDS, "image"] as const;
+  const card = (t: ThemeId) => tri(THEME_SURFACES[t].card);
+  const fg = (t: ThemeId) => tri(THEME_SURFACES[t].foreground);
+
+  it("every scene / image, theme and brightness: titles ≥ 3:1 on the canvas, muted ≥ 4.5:1 on the panels", () => {
+    for (const kind of KINDS) {
       for (const theme of themes) {
-        const trail = SCENES[id].mode === "hover" ? TRAIL_ALPHA : 0;
-        const a = photoScrim(theme, photo, trail);
-        expect(a).toBeLessThanOrEqual(1);
-        const canvas = tri(THEME_SURFACES[theme].background);
-        const ink: Rgb = isLightTheme(theme) ? [40, 40, 40] : [255, 255, 255];
-        for (const g of [photo.max, photo.min, Math.round((photo.max + photo.min) / 2)]) {
-          const c = mix(mix([g, g, g], canvas, a), ink, trail);
-          expect(contrast(tri(MUTED[theme]), c), `${theme} grey ${g} scrim ${a}`).toBeGreaterThanOrEqual(AA_TEXT);
+        const src = sceneSource(kind, theme)!;
+        for (const b of [0, 0.35, 0.7, 1]) {
+          const lv = sceneLevels(theme, src, b);
+          const canvas = tri(THEME_SURFACES[theme].background);
+          const ink: Rgb = isLightTheme(theme) ? [40, 40, 40] : [255, 255, 255];
+          for (const g of [src.titleMax ?? src.max, src.min]) {
+            const c = mix(mix(canvas, [g, g, g], lv.visibility), ink, src.trail);
+            expect(contrast(fg(theme), c), `${kind} ${theme} b=${b} title`).toBeGreaterThanOrEqual(3);
+          }
+          for (const g of [src.max, src.min]) {
+            const c = mix(mix(canvas, [g, g, g], lv.visibility), ink, src.trail);
+            if (!lv.solid) {
+              for (const p of [lv.glass, lv.frosted]) {
+                expect(contrast(tri(MUTED[theme]), mix(c, card(theme), p)), `${kind} ${theme} b=${b} panel ${p}`).toBeGreaterThanOrEqual(AA_TEXT);
+              }
+            }
+          }
         }
-      }
-    });
-  }
-
-  it("dark themes let more of the photo through than the light ones", () => {
-    const p = SCENES.laocoon.photo!;
-    expect(photoScrim("dark", p)).toBeLessThan(photoScrim("light", p));
-  });
-
-  it("smoke + trail levels pass in every theme", () => {
-    for (const theme of themes) {
-      const { smoke, trail } = smokeLevels(theme);
-      expect(smoke).toBeGreaterThan(0.05);
-      const canvas = tri(THEME_SURFACES[theme].background);
-      const range = isLightTheme(theme) ? [140, 245] : [0, 205];
-      const ink: Rgb = isLightTheme(theme) ? [40, 40, 40] : [255, 255, 255];
-      for (const g of range) {
-        const c = mix(mix(canvas, [g, g, g], smoke), ink, trail);
-        expect(contrast(tri(MUTED[theme]), c), `${theme} ${g}`).toBeGreaterThanOrEqual(AA_TEXT);
       }
     }
   });
 
-  it("a scene lifts muted text in the dark themes only", () => {
-    const a: Appearance = { ...DEFAULT_APPEARANCE, bg: { kind: "discobolus", panels: "glass" } };
-    expect(computeAppearanceVars(a, "dark").vars["--muted-foreground"]).toBe(PHOTO_MUTED_DARK);
+  it("brightness scales the visibility; 0 hides the background", () => {
+    const src = sceneSource("porsche-gt3rs", "dark")!;
+    expect(sceneLevels("dark", src, 0).visibility).toBe(0);
+    const lo = sceneLevels("dark", src, 0.35).visibility, hi = sceneLevels("dark", src, 1).visibility;
+    expect(hi).toBeGreaterThan(lo);
+    // The photos are clearly visible in the dark themes at the default (was ≈ 0.3 under the muted-text scrim).
+    expect(sceneLevels("dark", src, DEFAULT_BRIGHTNESS).visibility).toBeGreaterThan(0.45);
+  });
+
+  it("glass panels stay translucent over the default dark scene, and vars carry the levels", () => {
+    const a: Appearance = { ...DEFAULT_APPEARANCE, bg: { kind: "laocoon", panels: "glass", brightness: 0.7 } };
+    const { vars, attrs } = computeAppearanceVars(a, "dark");
+    expect(Number(vars["--scene-vis"])).toBeGreaterThanOrEqual(0.35);
+    expect(vars["--glass-bg"]).toMatch(/color-mix\(in srgb, hsl\(var\(--card\)\) \d+%, transparent\)/);
+    expect(attrs["data-scene-panels"]).toBe("glass");
+    expect(vars["--muted-foreground"]).toBe(PHOTO_MUTED_DARK);
     expect(computeAppearanceVars(a, "light").vars["--muted-foreground"]).toBeUndefined();
-    // The lifted muted text still clears AA on the dark panels.
     expect(minContrast(tri(PHOTO_MUTED_DARK), textSurfaces("dim"))).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("the ridge gets its strength from the same levels", () => {
+    const { vars } = computeAppearanceVars({ ...DEFAULT_APPEARANCE, bg: { kind: "ridge", panels: "glass", brightness: 1 } }, "dark");
+    expect(Number(vars["--ridge-k"])).toBeGreaterThan(2);
+  });
+
+  it("old stored looks without brightness read the default", () => {
+    expect(parseAppearance({ bg: { kind: "zeus", panels: "glass" } }).bg.brightness).toBe(0.7);
+    expect(SCENES.zeus.photo).toBeTruthy();
   });
 });
 

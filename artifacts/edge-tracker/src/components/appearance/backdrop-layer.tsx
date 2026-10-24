@@ -51,13 +51,17 @@ export function BackdropLayer() {
       {kind === "image" && url && (
         <>
           <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url("${url}")` }} />
-          <div className="absolute inset-0" style={{ background: "hsl(var(--background) / var(--bg-scrim))" }} />
+          <div className="absolute inset-0" style={{ background: "hsl(var(--background) / calc(1 - var(--scene-vis, 0.15)))" }} />
         </>
       )}
       {isScene(kind) && (
         <React.Suspense fallback={null}>
           <SceneBackdrop key={`${kind}-${theme}`} scene={kind} theme={theme} />
         </React.Suspense>
+      )}
+      {(kind === "image" || isScene(kind)) && (
+        // A faint band behind the page header: titles and subtitles sit right on the canvas there.
+        <div className="absolute inset-x-0 top-0 h-[38vh]" style={{ background: "linear-gradient(to bottom, hsl(var(--background) / .62), hsl(var(--background) / .25) 55%, transparent)" }} />
       )}
     </div>
   );

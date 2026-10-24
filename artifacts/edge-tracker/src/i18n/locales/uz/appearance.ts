@@ -144,6 +144,8 @@ export default {
     creditSource: "Manba",
     creditsAll: "Barcha mualliflar va litsenziyalar",
     smokeHint: "Tutun sekin harakatlanadi; «Harakatni kamaytirish» yoqilganda u qimirlamaydi.",
+    brightness: "Fon yorqinligi",
+    brightnessHint: "Fon qanchalik yorqin koʻrinishi. Sahifadagi sarlavhalar har qanday qiymatda oʻqiladi, panellar esa ulardagi matn AA dan oʻtishi uchun shaffofligini oʻzi tanlaydi.",
     panels: "Panellar",
     panelsHint: "Panellar fon ustida qanday turadi",
     panelModes: {

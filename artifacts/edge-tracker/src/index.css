@@ -1157,15 +1157,10 @@ body {
 .bg-kind {
   --bg-scrim: .85;
   --bg-glow: .18;
-  --ridge-k: 2;   /* «Хребет»: dark themes lift muted text under a scene (lib/appearance/scenes), so ridges show more */
 }
 :root:not(.dark) .bg-kind {
   --bg-scrim: .88;
   --bg-glow: .12;
-  --ridge-k: 1;
-}
-.platinum .bg-kind {
-  --ridge-k: .5;  /* a mid-grey canvas leaves little room above 4.5:1 for muted text */
 }
 :root[data-bg] body {
   background-image: none;
@@ -1196,6 +1191,19 @@ body {
 :root[data-panels="frosted"] .glass-panel {
   -webkit-backdrop-filter: blur(18px) saturate(130%);
   backdrop-filter: blur(18px) saturate(130%);
+}
+/* A scene / your image behind the shell (lib/appearance/scenes sceneLevels; --scene-vis, --glass-bg come inline):
+   glass panels go translucent with a blur so the scene shows through; text that sits right on the canvas (page
+   titles, subtitles) gets a soft halo in the canvas colour, and the layer adds a faint band behind the page header. */
+:root[data-scene-panels="glass"] .glass-panel {
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  backdrop-filter: blur(16px) saturate(120%);
+}
+:root[data-scene-panels] #main-content {
+  text-shadow: 0 0 2px hsl(var(--background) / .85), 0 1px 14px hsl(var(--background) / .8);
+}
+:root[data-scene-panels] #main-content :is(.glass-panel, .glass, .glass-thick, .tile, .sticky-top, .chip, .glass-field, button) {
+  text-shadow: none;
 }
 :root[data-panels="solid"] {
   --glass-bg: hsl(var(--card));

@@ -112,7 +112,9 @@ export const appearanceSchema = z.object({
   bg: z.object({
     kind: z.enum(BG_KINDS).catch("none"),
     panels: z.enum(PANEL_MODES).catch("glass"),
-  }).catch({ kind: "none", panels: "glass" }),
+    /** «Яркость фона»: share (0…1) of the brightest a scene / image may show in this theme (lib/appearance/scenes). */
+    brightness: z.number().finite().min(0).max(1).catch(0.7),
+  }).catch({ kind: "none", panels: "glass", brightness: 0.7 }),
   density: z.enum(DENSITIES).catch("compact"),
   chips: z.object({
     strategy: chipGroupSchema("strategy"),
@@ -145,7 +147,7 @@ export const DEFAULT_APPEARANCE: Appearance = Object.freeze({
   font: "inter",
   money: { win: null, loss: null, be: null, beRange: 0 },
   guard: { mode: "off", color: null },
-  bg: { kind: "none", panels: "glass" },
+  bg: { kind: "none", panels: "glass", brightness: 0.7 },
   density: "compact",
   chips: { strategy: { on: true, colors: {} }, tag: { on: true, colors: {} }, horizon: { on: true, colors: {} } },
 }) as Appearance;

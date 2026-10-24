@@ -1,4 +1,6 @@
 /** «Вид» → Фон: our procedural backgrounds, your own image (IndexedDB on this device, never uploaded), panel material. */
+import { Slider } from "@/components/ui/slider";
+import { isScene } from "@/lib/appearance/scenes";
 import * as React from "react";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { useAppearance } from "@/contexts/appearance-context";
@@ -93,6 +95,29 @@ function ImageControls() {
   );
 }
 
+/** «Яркость фона»: 0…100 % of the brightest the theme allows for this scene / image (lib/appearance/scenes). */
+function BrightnessSection() {
+  const { t } = appearanceI18n.useT();
+  const { appearance, update } = useAppearance();
+  const [draft, setDraft] = React.useState(appearance.bg.brightness);
+  React.useEffect(() => { setDraft(appearance.bg.brightness); }, [appearance.bg.brightness]);
+  const pct = Math.round(draft * 100);
+  return (
+    <Section title={t("background.brightness")} hint={t("background.brightnessHint")} aside={<span className="text-sm font-semibold tabular-nums text-foreground">{pct}%</span>}>
+      <Slider
+        className="max-w-md"
+        min={0}
+        max={100}
+        step={5}
+        value={[pct]}
+        aria-label={t("background.brightness")}
+        onValueChange={([v]) => setDraft(v / 100)}
+        onValueCommit={([v]) => update((a) => ({ ...a, bg: { ...a.bg, brightness: v / 100 } }))}
+      />
+    </Section>
+  );
+}
+
 export function BackgroundTab() {
   const { t } = appearanceI18n.useT();
   const { appearance, update } = useAppearance();
@@ -110,6 +135,7 @@ export function BackgroundTab() {
         </div>
       </Section>
       <ImageControls />
+      {(appearance.bg.kind === "image" || isScene(appearance.bg.kind)) && <BrightnessSection />}
       <Section title={t("background.panels")} hint={t("background.panelsHint")}>
         <Segmented
           ariaLabel={t("background.panels")}

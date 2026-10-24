@@ -144,6 +144,8 @@ export default {
     creditSource: "Source",
     creditsAll: "All authors and licences",
     smokeHint: "The smoke drifts slowly; with Reduce motion on it stands still.",
+    brightness: "Background brightness",
+    brightnessHint: "How brightly the background shows. Titles on the canvas stay readable at any value, and panels pick their own translucency so the text on them passes AA.",
     panels: "Panels",
     panelsHint: "How panels sit over the background",
     panelModes: {

@@ -9,7 +9,7 @@
  */
 import { AA_TEXT, AA_UI, bestOn, contrast, ensureContrast, hexToRgb, mix, toRgba, toTriplet, type GuardResult, type Rgb } from "./color";
 import { CHIP_GROUP_IDS, CHIP_GROUPS, FONT_STACKS, accentHex, chipToken, isLightTheme, toneHex, type Appearance, type ThemeId } from "./model";
-import { PHOTO_MUTED_DARK, isScene } from "./scenes";
+import { PHOTO_MUTED_DARK, RIDGE_ALPHA_AT_K1, isScene, sceneLevels, sceneSource } from "./scenes";
 import { surfaceRgb, textSurfaces } from "./themes";
 
 /** AA plus a hair of margin: the triplets are rounded to 0.1 and pills mix the colour into the card. */
@@ -27,7 +27,7 @@ export type ComputedAppearance = {
 };
 
 /** The data attributes this module may set on <html> (removed when not set). */
-export const APPEARANCE_ATTRS = ["data-density", "data-bg", "data-panels", "data-font"] as const;
+export const APPEARANCE_ATTRS = ["data-density", "data-bg", "data-panels", "data-font", "data-scene-panels"] as const;
 
 const FG_KEYS = ["--foreground", "--card-foreground", "--popover-foreground", "--secondary-foreground", "--accent-foreground", "--sidebar-foreground", "--sidebar-accent-foreground"];
 
@@ -134,14 +134,29 @@ export function computeAppearanceVars(a: Appearance, theme: ThemeId): ComputedAp
     }
   }
 
-  // A photo scene behind the canvas: dark themes lift muted text a little, so the scrim can let more photo through.
-  if (!light && isScene(a.bg.kind) && !vars["--muted-foreground"]) vars["--muted-foreground"] = PHOTO_MUTED_DARK;
+  // A scene / your image behind the canvas: its visibility from «Яркость фона», panels as translucent as their muted
+  // text allows (solid when even near-opaque glass would fail). Dark themes lift muted text so panels stay glassy.
+  const src = sceneSource(a.bg.kind, theme);
+  if (src) {
+    if (!light && isScene(a.bg.kind) && !vars["--muted-foreground"]) vars["--muted-foreground"] = PHOTO_MUTED_DARK;
+    const lv = sceneLevels(theme, src, a.bg.brightness);
+    vars["--scene-vis"] = String(lv.visibility);
+    if (a.bg.kind === "ridge") vars["--ridge-k"] = String(Math.round((lv.visibility / RIDGE_ALPHA_AT_K1) * 100) / 100);
+    const panels = lv.solid ? "solid" : a.bg.panels;
+    if (panels === "glass" || panels === "frosted") {
+      const p = panels === "glass" ? lv.glass : lv.frosted;
+      vars["--glass-bg"] = `color-mix(in srgb, hsl(var(--card)) ${Math.round(p * 100)}%, transparent)`;
+      vars["--glass-thick-bg"] = `color-mix(in srgb, hsl(var(--popover)) ${Math.min(100, Math.round(p * 100) + 8)}%, transparent)`;
+    }
+    attrs["data-scene-panels"] = panels;
+  }
 
   const stack = FONT_STACKS[a.font];
   if (stack) { vars["--app-font-sans"] = stack; attrs["data-font"] = a.font; }
   if (a.density !== "compact") attrs["data-density"] = a.density;
   if (a.bg.kind !== "none") attrs["data-bg"] = a.bg.kind;
   if (a.bg.panels !== "glass") attrs["data-panels"] = a.bg.panels;
+  if (attrs["data-scene-panels"] === "solid") attrs["data-panels"] = "solid";
 
   return { vars, attrs, report };
 }
