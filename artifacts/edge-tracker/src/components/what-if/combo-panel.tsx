@@ -1,11 +1,12 @@
 import { Check, Layers, Plus, TriangleAlert } from "lucide-react";
-import { EmptyState, Panel, Pill } from "@/components/ds";
+import { EmptyState, Panel } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fmtUsd } from "@/lib/format";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { cn } from "@/lib/utils";
 import type { ComboEval, CombosResponse } from "./api";
 import { type Rule, chipLabel, isApplied } from "./rules";
+import { ConfidenceTicks } from "./confidence-ticks";
 
 /** Distinct rule types of the scenario, at most 3 (the own set the server checks; fewer than 2 = no set). */
 export function ownSet(rules: Rule[]): Rule[] {
@@ -57,31 +58,56 @@ export function ComboPanel({ data, isLoading, rules, onApply }: { data: CombosRe
   );
 }
 
+const COMBO_CONFIDENCE = { robust: 3, hypothesis: 2, weak: 1 } as const;
+
+/**
+ * One set: what each rule adds (a row per rule with its share of the set as a thin bar), the set's joint Δ as the
+ * headline with «вместе», the sum of the singles and the interval underneath, the overlap warning as a note, and the
+ * confidence ticks next to «Применить набор» (which drops under them on a narrow card).
+ */
 function ComboCard({ c, family, applied, own = false, onApply }: { c: ComboEval; family: number; applied: boolean; own?: boolean; onApply: () => void }) {
   const { t } = whatIfI18n.useT();
   const usd = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
   const status = !c.gates ? "weak" : c.robust ? "robust" : "hypothesis";
+  const maxAbs = Math.max(1, ...c.rules.map((_, i) => Math.abs(c.marginal[i] ?? 0)));
   return (
-    <article className={cn("glass-panel flex min-w-0 flex-col gap-2 rounded-2xl p-[var(--panel-p)]", applied && !own && "ring-2 ring-[hsl(var(--primary)/0.55)]")}>
-      <ul className="flex flex-wrap gap-1">
-        {c.rules.map((r, i) => (
-          <li key={r.type} className="chip min-h-7 px-2.5 text-xs" title={t("combo.marginal", { amount: usd(c.marginal[i] ?? 0) })}>
-            {chipLabel(r)} <span className={cn("ml-1 tabular-nums", (c.marginal[i] ?? 0) > 0 ? "text-up" : "text-down")}>{usd(c.marginal[i] ?? 0)}</span>
-          </li>
-        ))}
-      </ul>
-      <div className="flex items-baseline gap-2">
-        <span className={cn("text-2xl font-semibold tabular-nums tracking-tight", c.delta > 0 ? "text-up" : c.delta < 0 ? "text-down" : "text-muted-foreground")}>{usd(c.delta)}</span>
-        <span className="text-xs text-muted-foreground">{t("combo.sum", { amount: usd(c.sumSingles) })}</span>
+    <article className={cn("glass-panel flex min-w-0 flex-col gap-3 rounded-2xl p-[var(--panel-p)]", applied && !own && "ring-2 ring-[hsl(var(--primary)/0.55)]")}>
+      <div className="flex flex-col gap-0.5">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className={cn("text-2xl font-semibold leading-none tabular-nums tracking-tight", c.delta > 0 ? "text-up" : c.delta < 0 ? "text-down" : "text-muted-foreground")}>{usd(c.delta)}</span>
+          <span className="text-xs text-muted-foreground">{t("combo.together")}</span>
+        </div>
+        <p className="text-xs leading-snug text-muted-foreground tabular-nums">
+          {t("combo.sum", { amount: usd(c.sumSingles) })} · {t("combo.range", { lo: usd(c.ci.lo), hi: usd(c.ci.hi) })}
+        </p>
       </div>
-      <p className="text-xs text-muted-foreground tabular-nums">{t("combo.range", { lo: usd(c.ci.lo), hi: usd(c.ci.hi) })}</p>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{t("combo.contrib")}</p>
+        <ul className="flex flex-col gap-1.5">
+          {c.rules.map((r, i) => {
+            const m = c.marginal[i] ?? 0;
+            return (
+              <li key={r.type} className="flex flex-col gap-1" title={t("combo.marginal", { amount: usd(m) })}>
+                <div className="flex items-baseline justify-between gap-3 text-sm leading-snug">
+                  <span className="min-w-0 text-foreground [overflow-wrap:anywhere]">{chipLabel(r)}</span>
+                  <span className={cn("shrink-0 tabular-nums font-medium", m > 0 ? "text-up" : m < 0 ? "text-down" : "text-muted-foreground")}>{usd(m)}</span>
+                </div>
+                <span aria-hidden="true" className="h-1 overflow-hidden rounded-full bg-[hsl(var(--foreground)/0.08)]">
+                  <span className={cn("block h-full rounded-full", m >= 0 ? "bg-[hsl(var(--up)/0.7)]" : "bg-[hsl(var(--down)/0.7)]")} style={{ width: `${Math.max(4, (Math.abs(m) / maxAbs) * 100)}%` }} />
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
       {c.warning && (
-        <p className="flex items-start gap-1 text-xs text-[hsl(var(--warn))]">
-          <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> {t(`combo.warn.${c.warning}`, { overlap: Math.round(c.overlap * 100) })}
+        <p className="flex items-start gap-1.5 rounded-xl bg-[hsl(var(--warn)/0.1)] px-2.5 py-2 text-xs leading-snug text-[hsl(var(--warn))]">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{t(`combo.warn.${c.warning}`, { overlap: Math.round(c.overlap * 100) })}</span>
         </p>
       )}
-      <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-        <Pill tone={status === "robust" ? "up" : status === "hypothesis" ? "warn" : "neutral"} title={t(`combo.status.${status}Hint`, { count: family })}>{t(`combo.status.${status}`)}</Pill>
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+        <ConfidenceTicks level={COMBO_CONFIDENCE[status]} label={t(`combo.status.${status}`)} hint={t(`combo.status.${status}Hint`, { count: family })} />
         {!own && (
           <button
             type="button"

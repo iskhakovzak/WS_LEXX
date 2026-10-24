@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Check, ChevronDown, Crosshair, Info, Lightbulb, Loader2, type LucideIcon, NotebookPen, Plus, ShieldCheck, Timer } from "lucide-react";
+import { Check, Crosshair, Info, Lightbulb, Loader2, type LucideIcon, NotebookPen, Plus, ShieldCheck, Timer } from "lucide-react";
 import { EmptyState, Pill, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -9,16 +8,17 @@ import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { cn } from "@/lib/utils";
 import type { Suggestion, SuggestionsResponse, Timing } from "./api";
 import { WhyFold } from "./why-fold";
+import { ConfidenceTicks } from "./confidence-ticks";
 import { type Rule, chipLabel, ifNotPhrase, isApplied } from "./rules";
 import {
-  type BadgeId, type NeedLine, VISIBLE_CARDS, cardLine, holdoutNote, needLine, preliminaryHintKey, removalLine, sectionNote, suggestionBadges, timingOf,
-  visibleCards,
+  type BadgeId, type NeedLine, cardLine, holdoutNote, needLine, preliminaryHintKey, removalLine, sectionNote, suggestionBadges, timingOf,
 } from "./suggestion-badges";
 
 /**
  * «Что ещё дало бы больше всего»: the best single rules found by the server search, as cards
- * «Если бы ты не … → +$Y за период [интервал]» — the first 5, the rest behind «Ещё N». Each card carries its timing
- * eyebrow («до входа» / «в сделке» / «разбор») and at most two pills (how much to trust it, and one qualifier). Once the
+ * «Если бы ты не … → +$Y за период [интервал]» — all of them at once. Each card carries its timing eyebrow
+ * («до входа» / «в сделке» / «разбор»), how much to trust it as 1–3 ticks (the tier's word and why in the tooltip)
+ * and at most one qualifier pill. Once the
  * server's honest check is ready the cards are «Подтверждено» or «Гипотеза» with their next step (days still needed,
  * the «всё время» period, or a review on the day report); until then the fast cards are «предварительно». «Применить»
  * adds the rule to the scenario, a second click (or ✕ on its chip) takes it back. `onAllTime` switches the page to
@@ -43,7 +43,6 @@ export function SuggestionCards({
   onDay?: (day: string) => void;
 }) {
   const { t } = whatIfI18n.useT();
-  const [expanded, setExpanded] = useState(false);
   if (isLoading || !data) {
     return (
       <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]" aria-busy="true">
@@ -65,26 +64,14 @@ export function SuggestionCards({
       </div>
     );
   }
-  const { shown, hidden } = visibleCards(data.suggestions, expanded);
-  const canToggle = data.suggestions.length > VISIBLE_CARDS;
+  // Every variant at once (owner: no «Ещё» — the whole picture is the point).
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]">
-        {shown.map((s) => (
+        {data.suggestions.map((s) => (
           <SuggestionCard key={JSON.stringify(s.rule)} s={s} data={data} rules={rules} periodLabel={periodLabel} onToggle={onToggle} onAllTime={onAllTime} onDay={onDay} />
         ))}
       </div>
-      {canToggle && (
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((v) => !v)}
-          className="inline-flex min-h-8 items-center gap-1 self-start rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
-        >
-          {expanded ? t("suggestions.less") : t("suggestions.more", { count: hidden })}
-          <ChevronDown className={cn("h-4 w-4 transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", expanded && "rotate-180")} aria-hidden="true" />
-        </button>
-      )}
     </div>
   );
 }
@@ -117,6 +104,10 @@ export function SuggestionsNote({ data, periodPhrase, onAllTime }: { data: Sugge
 }
 
 const TIMING_ICON: Record<Timing, LucideIcon> = { exante: Crosshair, inTrade: Timer, review: NotebookPen };
+
+/** How sure the card is, as 1–3 ticks instead of a word pill (the tier's label and explanation stay in the tooltip). */
+const CONFIDENCE = { confirmed: 3, robust: 3, hypothesis: 2, preliminary: 1, smallSample: 1, weak: 1 } as const;
+
 
 function SuggestionCard({ s, data, rules, periodLabel, onToggle, onAllTime, onDay }: {
   s: Suggestion; data: SuggestionsResponse; rules: Rule[]; periodLabel: string; onToggle: (s: Suggestion, applied: boolean) => void; onAllTime?: () => void;
@@ -162,9 +153,11 @@ function SuggestionCard({ s, data, rules, periodLabel, onToggle, onAllTime, onDa
         <span>{line.kind === "changes" ? t("suggestions.changes", { trades }) : t("suggestions.removes", { trades })}</span>
       </div>
       {s.why && <WhyFold why={s.why} onDay={onDay} />}
-      <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          {badges.map((b) => <Pill key={b} tone={pill[b].tone} title={pill[b].hint}>{pill[b].label}</Pill>)}
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-2 pt-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {badges.map((b, i) => i === 0 && b in CONFIDENCE
+            ? <ConfidenceTicks key={b} level={CONFIDENCE[b as keyof typeof CONFIDENCE]} label={pill[b].label} hint={pill[b].hint} />
+            : <Pill key={b} tone={pill[b].tone} title={pill[b].hint}>{pill[b].label}</Pill>)}
         </div>
         <button
           type="button"
