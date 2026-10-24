@@ -15,6 +15,7 @@ import { LockClock } from "@/components/lock/lock-clock";
 import { UnlockForm } from "@/components/lock/unlock-form";
 import { useAmbientDrift } from "@/components/lock/ambient";
 import { LockEggs } from "@/components/lock/eggs/lock-eggs";
+import { LockQuote } from "@/components/lock/lock-quote";
 import { WsMark } from "@/components/ds/brand";
 import { useAppearance } from "@/contexts/appearance-context";
 import { useTheme } from "@/contexts/theme-context";
@@ -102,6 +103,7 @@ export default function LockScreen() {
       <div className="relative flex h-full flex-col items-center justify-center gap-10 px-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
         <div className={typing ? "transition-[opacity,transform] duration-500 -translate-y-4 opacity-80" : "transition-[opacity,transform] duration-500"}>
           <LockClock nyTime={market.nyTime.slice(0, 5)} phase={market.phase} phaseLabel={tsh(`clock.phase.${market.phase}`)} glowRef={glowRef} />
+          <LockQuote owner={user?.role !== "guest" ? user?.traderName ?? null : null} dim={typing} />
         </div>
         <UnlockForm
           hasCode={lock.hasCode}

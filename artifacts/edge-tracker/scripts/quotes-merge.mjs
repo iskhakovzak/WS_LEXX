@@ -2,7 +2,7 @@
 /**
  * Quote library — merge authoring batches into the shipped layout (src/data/quotes):
  *
- *   meta.json         { version, quotes: [{ id, cat, tags, author, work, loc, lang?, rel }] }   — always loaded
+ *   meta.json         { version, quotes: [{ id, cat, tags, author, work, loc, lang?, rel, o? }] } — always loaded
  *   text.<lang>.json  { authors: {key: name}, works: {key: title}, texts: {id: text} }        — one per ru/en/uz/uk,
  *                     a separate lazy chunk each (the reader downloads only their language)
  *   orig.json         { id: original-language text }                                           — on demand («Оригинал»)
@@ -45,7 +45,7 @@ function shippedAsBatch() {
   const works = {};
   for (const k of Object.keys(texts.en.authors)) authors[k] = Object.fromEntries(LANGS.map((l) => [l, texts[l].authors[k]]));
   for (const k of Object.keys(texts.en.works)) works[k] = Object.fromEntries(LANGS.map((l) => [l, texts[l].works[k]]));
-  const quotes = meta.quotes.map((m) => ({
+  const quotes = meta.quotes.map(({ o: _o, ...m }) => ({
     ...m,
     ...(orig[m.id] ? { orig: orig[m.id] } : {}),
     ...Object.fromEntries(LANGS.map((l) => [l, texts[l].texts[m.id]])),
@@ -88,7 +88,8 @@ const lines = (rows) => `[\n${rows.map((r) => JSON.stringify(r)).join(",\n")}\n]
 const dict = (o) => `{\n${Object.entries(o).map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(",\n")}\n}`;
 
 const version = (shipped?.version ?? 0) + (batches.length || remove.size ? 1 : 0);
-const meta = quotes.map((q) => Object.fromEntries(META_FIELDS.filter((f) => q[f] !== undefined).map((f) => [f, q[f]])));
+// `o: 1` = orig.json has the original (the card offers «Показать оригинал» only then).
+const meta = quotes.map((q) => ({ ...Object.fromEntries(META_FIELDS.filter((f) => q[f] !== undefined).map((f) => [f, q[f]])), ...(q.orig ? { o: 1 } : {}) }));
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, "meta.json"), `{"version":${version},"quotes":${lines(meta)}}\n`);
 for (const l of LANGS) {
