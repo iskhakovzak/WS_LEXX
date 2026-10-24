@@ -245,7 +245,7 @@
 
   --app-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   /* Italic serif accent (the opening intro's «Zakir»): system book faces, Palatino on Windows / macOS. Used through
-     `font-accent`, one word per screen at most (greeting name, a page hero word), never in data or tables. */
+     `type-accent`, one word per screen at most (greeting name, a page hero word), never in data or tables. */
   --app-font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   /* `font-mono` is used ~1.8k times for the old "terminal" look; the reference uses Inter + tabular-nums,
      so the mono slot maps to the sans stack. Real code (code/pre/kbd/samp) keeps a monospace face. */
@@ -648,28 +648,44 @@ body {
 @utility ease-smooth { transition-timing-function: var(--ease); animation-timing-function: var(--ease); }
 
 /* ── Display type (monochrome pass, 2026-10-24) ──
-   text-display  page titles: larger, tightly tracked (PageHeader h1, the dashboard greeting).
-   text-hero     the one big number on a screen (dashboard «today»): huge, confident, tabular.
-   font-accent   the intro's italic serif for a single accent word; slightly larger so its x-height meets the sans. */
-@utility text-display {
+   type-display  page titles: larger, tightly tracked (PageHeader h1, the dashboard greeting).
+   type-hero     the one big number on a screen (dashboard «today»): huge, confident, tabular.
+   type-accent   the intro's italic serif for a single accent word; slightly larger so its x-height meets the sans. */
+@utility type-display {
   font-size: clamp(1.5rem, 1.1rem + 0.9vw, 2rem);
   line-height: 1.12;
   letter-spacing: -0.032em;
   font-weight: 600;
 }
-@utility text-hero {
-  font-size: clamp(2.5rem, 1.6rem + 2.4vw, 3.75rem);
+@utility type-hero {
+  font-size: clamp(2.25rem, 1.4rem + 2.2vw, 3.25rem);
   line-height: 1;
   letter-spacing: -0.045em;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-@utility font-accent {
+@utility type-accent {
   font-family: var(--app-font-serif);
   font-style: italic;
   font-weight: 400;
   font-size: 1.08em;
   letter-spacing: 0;
+}
+
+/* Shared reveal: blur-to-sharp + fade + 4px rise, 520 ms. For page headers and hero numbers only, never per element.
+   Off under prefers-reduced-motion (the content is simply there). */
+@keyframes reveal-in {
+  from { opacity: 0; filter: blur(8px); transform: translateY(4px); }
+  to { opacity: 1; filter: blur(0); transform: none; }
+}
+@utility reveal {
+  animation: reveal-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@utility reveal-late {
+  animation-delay: 90ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { animation: none; }
 }
 
 

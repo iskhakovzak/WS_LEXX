@@ -30,7 +30,7 @@ const SKIP_MS = 150;
 const REDUCED_HOLD_MS = 1200;
 const REDUCED_OUT_MS = 300;
 
-/** Italic serif for the name: the app's accent stack (index.css --app-font-serif, the `font-accent` utility). */
+/** Italic serif for the name: the app's accent stack (index.css --app-font-serif, the `type-accent` utility). */
 const SERIF = "var(--app-font-serif)";
 
 /** The intro is English in every language (owner, 2026-10-24): the Latin display name, else a transliteration. */

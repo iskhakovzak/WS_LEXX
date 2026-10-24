@@ -4,6 +4,8 @@
  *
  *   <motion.div transition={MOTION.base} />            // 180 ms, desk easing
  *   <AnimatedNumber value={pnl} format={fmtUsd} />     // count to the new value, no layout shift
+ *   <AnimatedNumber value={pnl} countIn duration={700} /> // hero number: also counts up from 0 when it first appears
+ *   <h1 className="reveal">                            // CSS: blur-to-sharp + fade on mount (index.css `reveal`)
  *   <Reveal open={expanded}>…</Reveal>                 // height expand/collapse (grid-rows trick, no measuring)
  */
 import * as React from "react";
@@ -33,31 +35,38 @@ export function fadeRise(reduce: boolean | null, delay = 0) {
 
 /**
  * Number that tweens to its new value (rAF, ~240 ms, ease-out). Tabular digits + `min-width` in `ch`
- * of the final string keep the box stable. Instant under reduced motion or on first render.
+ * of the final string keep the box stable. Instant under reduced motion or on first render, unless `countIn`:
+ * then the first value counts up from 0 (the dashboard's day number), later changes tween as usual.
  */
 export function AnimatedNumber({
   value,
   format = (n) => fmtCount(n),
   duration = 240,
+  countIn = false,
   className,
   title,
 }: {
   value: number | null | undefined;
   format?: (n: number) => string;
   duration?: number;
+  countIn?: boolean;
   className?: string;
   title?: string;
 }) {
   const reduce = useReducedMotion();
   const target = typeof value === "number" && Number.isFinite(value) ? value : null;
-  const [shown, setShown] = React.useState<number | null>(target);
-  const fromRef = React.useRef<number | null>(target);
+  const countFromZero = countIn && !reduce && target != null && target !== 0;
+  const [shown, setShown] = React.useState<number | null>(countFromZero ? 0 : target);
+  const fromRef = React.useRef<number | null>(countFromZero ? 0 : target);
+  // countIn: the first value to arrive (also after a loading state) starts from 0.
+  const countedRef = React.useRef(!countIn);
   const formatRef = React.useRef(format);
   formatRef.current = format;
 
   React.useEffect(() => {
     if (target == null) { setShown(null); fromRef.current = null; return; }
-    const from = fromRef.current;
+    const from = fromRef.current == null && !countedRef.current ? 0 : fromRef.current;
+    countedRef.current = true;
     if (reduce || from == null || from === target || typeof requestAnimationFrame === "undefined") {
       setShown(target); fromRef.current = target; return;
     }

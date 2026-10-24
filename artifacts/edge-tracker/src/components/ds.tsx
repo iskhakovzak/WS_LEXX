@@ -144,8 +144,8 @@ export function PageHeader({
               <Icon className="h-5 w-5" aria-hidden="true" />
             </span>
           )}
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold leading-10 tracking-tight text-foreground sm:text-2xl" title={textTitle(title)}>
+          <div className="reveal min-w-0">{/* display type + blur-to-sharp reveal; the 40px line keeps the row height */}
+            <h1 className="truncate type-display leading-10! text-foreground" title={textTitle(title)}>
               {title}
             </h1>
             {description && <p className="line-clamp-3 max-w-3xl text-sm text-muted-foreground sm:line-clamp-2" title={textTitle(description)}>{description}</p>}
