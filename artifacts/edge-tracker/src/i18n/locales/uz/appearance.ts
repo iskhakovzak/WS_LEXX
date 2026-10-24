@@ -229,10 +229,8 @@ export default {
     panels: "Panellar",
     panelsHint: "Panellar fon ustida qanday turadi",
     motion: "Harakat va animatsiyalar",
-    motionHint: "Silliq oynalar va panellar, kursorga ergashuvchi 3D fonlar, kirish va qulflash animatsiyalari. «Avto» tizimdagi animatsiya sozlamasiga ergashadi.",
-    motionModes: { auto: "Avto", on: "Yoq", off: "Oʻchiq" },
-    motionReduced: "Tizimda animatsiya effektlari oʻchirilgan, shuning uchun «Avto» rejimida saytda animatsiya yoʻq: oynalar keskin chiqadi, fon harakatsiz. Hammasi silliq boʻlishi uchun «Yoq»ni tanlang.",
-    motionTurnOn: "Animatsiyalarni yoqish",
+    motionHint: "Silliq oynalar va panellar, kursorga ergashuvchi 3D fonlar, kirish va qulflash animatsiyalari. Siz oʻchirmaguningizcha doim yoqilgan.",
+    motionModes: { on: "Yoq", off: "Oʻchiq" },
     panelModes: {
       glass: "Shisha",
       frosted: "Xira shisha",

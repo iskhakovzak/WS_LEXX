@@ -174,9 +174,7 @@
 .ins-body > .ins-layer { transition: opacity 180ms var(--ease, ease), visibility 180ms; }
 .ins-body[data-detail="true"] > .ins-chart { opacity: 0; visibility: hidden; }
 .ins-body[data-detail="false"] > .ins-detail { opacity: 0; visibility: hidden; }
-@media (prefers-reduced-motion: reduce) {
-  html:not([data-motion="on"]) .ins-body > .ins-layer { transition: none; }
-}
+html[data-motion="off"] .ins-body > .ins-layer { transition: none; }
 
 /* Streak capsules: diverging from a hairline, height = size of the net. */
 .ins-strip { position: relative; display: grid; gap: 0.3rem; align-items: stretch; height: clamp(7.5rem, 14vw, 11rem); }

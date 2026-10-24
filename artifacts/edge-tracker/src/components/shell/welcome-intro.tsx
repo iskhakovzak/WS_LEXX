@@ -58,11 +58,9 @@ function readEnv(authed: boolean): IntroEnv {
   };
 }
 
-/** Still frame when motion is off: «Движение фона» from this browser's last look (auto = the system setting). */
+/** Still frame only when «Движение и анимации» is off in this browser's last look. */
 function prefersReducedMotion(): boolean {
-  const pref = readLastBgMotion();
-  if (pref !== "auto") return pref === "off";
-  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return readLastBgMotion() === "off";
 }
 
 export function WelcomeIntro() {

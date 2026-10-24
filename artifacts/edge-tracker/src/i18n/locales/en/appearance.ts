@@ -229,10 +229,8 @@ export default {
     panels: "Panels",
     panelsHint: "How panels sit over the background",
     motion: "Motion and animations",
-    motionHint: "Smooth windows and panels, 3D backgrounds under the cursor, sign-in and lock animations. «Auto» follows the system animation setting.",
-    motionModes: { auto: "Auto", on: "On", off: "Off" },
-    motionReduced: "Animation effects are turned off in your system, so in «Auto» the site has no animations: windows pop in, the background stays still. Choose «On» to make everything smooth.",
-    motionTurnOn: "Turn animations on",
+    motionHint: "Smooth windows and panels, 3D backgrounds under the cursor, sign-in and lock animations. Always on unless you switch it off.",
+    motionModes: { on: "On", off: "Off" },
     panelModes: {
       glass: "Glass",
       frosted: "Frosted",

@@ -163,8 +163,8 @@ export function computeAppearanceVars(a: Appearance, theme: ThemeId): ComputedAp
   if (a.bg.kind !== "none") attrs["data-bg"] = a.bg.kind;
   if (a.bg.panels !== "glass") attrs["data-panels"] = a.bg.panels;
   if (attrs["data-scene-panels"] === "solid") attrs["data-panels"] = "solid";
-  // «Движение и анимации»: the whole app reads it (lib/motion.ts, index.css).
-  if (a.bg.motion !== "auto") attrs["data-motion"] = a.bg.motion;
+  // «Движение и анимации»: on unless switched off; the whole app reads it (lib/motion.ts, index.css).
+  if (a.bg.motion === "off") attrs["data-motion"] = "off";
 
   return { vars, attrs, report };
 }

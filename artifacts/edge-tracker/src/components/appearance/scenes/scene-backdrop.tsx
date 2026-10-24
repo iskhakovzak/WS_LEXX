@@ -36,7 +36,7 @@ function useTrailCanvas(enabled: boolean, light: boolean) {
 
 const hiddenOnly = () => typeof document !== "undefined" && document.hidden;
 
-export default function SceneBackdrop({ scene, theme, motion = "auto", ambient = false }: { scene: SceneId; theme: ThemeId; motion?: BgMotion; ambient?: boolean }) {
+export default function SceneBackdrop({ scene, theme, motion = "on", ambient = false }: { scene: SceneId; theme: ThemeId; motion?: BgMotion; ambient?: boolean }) {
   const def = SCENES[scene];
   const light = isLightTheme(theme);
   const root = React.useRef<HTMLDivElement>(null);

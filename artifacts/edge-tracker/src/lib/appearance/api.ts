@@ -42,8 +42,8 @@ export function readLastBgMotion(): BgMotion {
   try {
     const raw = localStorage.getItem(LOCAL_KEY);
     const parsed = raw ? (JSON.parse(raw) as { stored?: unknown }) : null;
-    return parsed?.stored ? parseStored(parsed.stored).current.bg.motion : "auto";
+    return parsed?.stored ? parseStored(parsed.stored).current.bg.motion : "on";
   } catch {
-    return "auto";
+    return "on";
   }
 }

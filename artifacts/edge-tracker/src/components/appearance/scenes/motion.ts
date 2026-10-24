@@ -1,8 +1,7 @@
 /**
  * Motion for the «WS originals» scenes. One requestAnimationFrame loop per scene, throttled (~30 fps), that runs only
  * while something moves and stops itself when idle; it pauses while the tab is hidden or the window is not focused.
- * «Движение фона» (bg.motion): «auto» follows prefers-reduced-motion (Windows «Animation effects» off → a still frame),
- * «on» runs anyway (the user asked for it in «Вид»), «off» is always still.
+ * «Движение и анимации» (bg.motion): on by default whatever the OS says; «off» is always still.
  *   parallax — writes --px / --py (−1…1, eased) on the scene root; layers translate by depth in CSS.
  *              Phones: the device's tilt, only when that permission is already granted (never prompts).
  *   trail    — a soft smoke trail behind the pointer on a half-resolution canvas, fading out.
@@ -16,9 +15,9 @@ export function prefersReducedMotion(): boolean {
   return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-/** Whether background motion runs for the «Движение фона» choice. */
+/** Whether motion runs for the «Движение и анимации» choice (on unless switched off; an old «auto» = on). */
 export function bgMotionAllowed(pref: "auto" | "on" | "off"): boolean {
-  return pref === "on" || (pref === "auto" && !prefersReducedMotion());
+  return pref !== "off";
 }
 
 /** Parallax follows the pointer even while another window has focus (a second monitor); only a hidden tab pauses it. */
