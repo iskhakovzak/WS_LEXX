@@ -19,6 +19,7 @@ import { fmtRelative } from "@/i18n/format";
 export { GLOSSARY, glossary, TermTooltip, TermContent, TermLabel, termForLabel, type TermKey, type GlossaryEntry } from "@/components/ds/term-tooltip";
 export { ErrorState, QueryState, SkeletonBlock, StatGridSkeleton, ListSkeleton, TableSkeleton, PanelSkeleton } from "@/components/ds/states";
 export { AnimatedNumber, Reveal, MOTION, DURATION, EASE, EASE_IN_OUT, fadeRise } from "@/components/ds/motion";
+export { LiveNumber, useFlashOnChange, type FlashOnChange } from "@/components/ds/live-number";
 export { ScrollContainerContext } from "@/components/ds/scroll-context";
 
 export type Tone = "up" | "down" | "accent" | "warn" | "purple" | "neutral";
