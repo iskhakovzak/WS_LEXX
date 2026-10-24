@@ -1,32 +1,69 @@
-/** «Вид» → Цвета: accent, text tone (light themes), lines and the interface font. Every colour is contrast-guarded. */
+/**
+ * «Вид» → Цвета: six accent swatches and three fonts up front; the other accents + your own colour, the text tone
+ * (light themes), the lines and the mono font under «Ещё настройки». Every colour is contrast-guarded.
+ * A choice that lives under «Ещё» but is the current one also shows up front, so the selection is always visible.
+ */
 import { useTheme } from "@/contexts/theme-context";
 import { useAppearance } from "@/contexts/appearance-context";
 import { Segmented } from "@/components/ds";
-import { cn } from "@/lib/utils";
 import {
   ACCENTS, ACCENT_IDS, FONT_IDS, FONT_STACKS, LINE_MODES, TEXT_TONES, TEXT_TONE_IDS, isLightTheme,
-  type Appearance, type FontId, type LineMode,
+  type AccentId, type Appearance, type FontId, type LineMode,
 } from "@/lib/appearance/model";
 import { isHex } from "@/lib/appearance/color";
+import { cn } from "@/lib/utils";
 import { appearanceI18n } from "@/i18n/ns/appearance";
-import { CustomSwatch, GuardNote, OptionCard, Section, Swatch, SwatchGroup } from "./bits";
+import { CustomSwatch, GuardNote, MoreSettings, OptionCard, OptionText, Section, Swatch, SwatchGroup } from "./bits";
 
 const INK_SWATCH = "linear-gradient(135deg, hsl(var(--foreground)) 50%, hsl(var(--background)) 50%)";
+/** The six accents up front: ink + hues that do not clash with the green / red money colours. */
+const TOP_ACCENTS: readonly AccentId[] = ["ink", "blue", "cyan", "teal", "amber", "orange"];
+const TOP_FONTS: readonly FontId[] = ["inter", "geist", "serif"];
+
+function useAccent() {
+  const { appearance, update } = useAppearance();
+  const set = (accent: Appearance["accent"]) => update((a) => ({ ...a, accent }));
+  return { accent: appearance.accent, set };
+}
+
+function AccentSwatches({ ids }: { ids: readonly AccentId[] }) {
+  const { t } = appearanceI18n.useT();
+  const { accent, set } = useAccent();
+  return (
+    <>
+      {ids.map((id) => (
+        <Swatch key={id} color={ACCENTS[id] ?? INK_SWATCH} label={t(`colors.accents.${id}`)} selected={accent === id} onSelect={() => set(id)} />
+      ))}
+    </>
+  );
+}
 
 function AccentSection() {
   const { t } = appearanceI18n.useT();
-  const { appearance, update, computed } = useAppearance();
-  const set = (accent: Appearance["accent"]) => update((a) => ({ ...a, accent }));
-  const custom = isHex(appearance.accent) ? appearance.accent : null;
+  const { computed } = useAppearance();
+  const { accent } = useAccent();
+  const extra = !isHex(accent) && !TOP_ACCENTS.includes(accent as AccentId) ? [accent as AccentId] : [];
+  const name = isHex(accent) ? t("colors.custom") : t(`colors.accents.${accent as AccentId}`);
   return (
-    <Section title={t("colors.accent")} hint={t("colors.accentHint")}>
+    <Section title={t("colors.accent")} hint={t("colors.accentHint")} aside={<span className="text-xs text-muted-foreground">{t("colors.accentNow", { name })}</span>}>
       <SwatchGroup label={t("colors.accent")}>
-        {ACCENT_IDS.map((id) => (
-          <Swatch key={id} color={ACCENTS[id] ?? INK_SWATCH} label={t(`colors.accents.${id}`)} selected={appearance.accent === id} onSelect={() => set(id)} />
-        ))}
-        <CustomSwatch value={custom} selected={!!custom} label={t("colors.customAria", { name: t("colors.accent") })} onPick={set} />
+        <AccentSwatches ids={[...TOP_ACCENTS, ...extra]} />
       </SwatchGroup>
       <GuardNote result={computed.report.accent} />
+    </Section>
+  );
+}
+
+function MoreAccentsSection() {
+  const { t } = appearanceI18n.useT();
+  const { accent, set } = useAccent();
+  const custom = isHex(accent) ? accent : null;
+  return (
+    <Section title={t("colors.moreAccents")} hint={t("colors.moreAccentsHint")}>
+      <SwatchGroup label={t("colors.moreAccents")}>
+        <AccentSwatches ids={ACCENT_IDS.filter((id) => !TOP_ACCENTS.includes(id))} />
+        <CustomSwatch value={custom} selected={!!custom} label={t("colors.customAria", { name: t("colors.accent") })} onPick={set} />
+      </SwatchGroup>
     </Section>
   );
 }
@@ -75,13 +112,13 @@ function LinesSection() {
   );
 }
 
-function FontSection() {
+function FontCards({ ids, title, hint }: { ids: readonly FontId[]; title: string; hint?: string }) {
   const { t } = appearanceI18n.useT();
   const { appearance, update } = useAppearance();
   return (
-    <Section title={t("colors.font")} hint={t("colors.fontHint")}>
-      <div role="radiogroup" aria-label={t("colors.font")} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {FONT_IDS.map((id: FontId) => (
+    <Section title={title} hint={hint}>
+      <div role="radiogroup" aria-label={title} className={cn("grid grid-cols-2 gap-2", ids.length > 3 ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
+        {ids.map((id) => (
           <OptionCard
             key={id}
             selected={appearance.font === id}
@@ -89,13 +126,10 @@ function FontSection() {
             label={`${t(`colors.fonts.${id}`)}. ${t(`colors.fontNotes.${id}`)}`}
             className="p-3"
           >
-            <span className={cn("block text-2xl font-semibold leading-none tracking-tight text-up tabular-nums")} style={{ fontFamily: FONT_STACKS[id] ?? "'Inter', system-ui, sans-serif" }}>
+            <span className="block text-2xl font-semibold leading-none tracking-tight text-up tabular-nums" style={{ fontFamily: FONT_STACKS[id] ?? "'Inter', system-ui, sans-serif" }}>
               +$4,320
             </span>
-            <span className="block">
-              <span className="block text-sm font-medium text-foreground">{t(`colors.fonts.${id}`)}</span>
-              <span className="block text-xs text-muted-foreground">{t(`colors.fontNotes.${id}`)}</span>
-            </span>
+            <OptionText title={t(`colors.fonts.${id}`)} note={t(`colors.fontNotes.${id}`)} />
           </OptionCard>
         ))}
       </div>
@@ -104,12 +138,19 @@ function FontSection() {
 }
 
 export function ColorsTab() {
+  const { t } = appearanceI18n.useT();
+  const { appearance } = useAppearance();
+  const fonts = TOP_FONTS.includes(appearance.font) ? TOP_FONTS : [...TOP_FONTS, appearance.font];
   return (
     <div className="flex flex-col gap-5">
       <AccentSection />
-      <ToneSection />
-      <LinesSection />
-      <FontSection />
+      <FontCards ids={fonts} title={t("colors.font")} hint={t("colors.fontHint")} />
+      <MoreSettings>
+        <MoreAccentsSection />
+        <ToneSection />
+        <LinesSection />
+        <FontCards ids={FONT_IDS.filter((id) => !TOP_FONTS.includes(id))} title={t("colors.moreFonts")} />
+      </MoreSettings>
     </div>
   );
 }

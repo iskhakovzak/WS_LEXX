@@ -8,60 +8,73 @@
  */
 import { AA_TEXT, contrast, mix, tripletToRgb, type Rgb } from "./color";
 import { SCENE_IDS, isLightTheme, type SceneId, type ThemeId } from "./model";
+import { SCENE_PHOTOS, type ScenePhoto } from "./scene-photos";
 import { THEME_SURFACES } from "./themes";
 import { BASE } from "@/lib/api";
 
-/** URL of a scene file in public/backgrounds (`-bg` depth layer, `-thumb` picker tile). */
+/** URL of a scene file in public/backgrounds (`-bg` depth layer, `-thumb` picker tile, `-<width>` the scene). */
 export const sceneUrl = (file: string, suffix = "") => `${BASE}/backgrounds/${file}${suffix}.webp`;
 
-export { SCENE_IDS, type SceneId };
+export { SCENE_IDS, type SceneId, type ScenePhoto };
+export type { SceneCredit } from "./scene-photos";
 
-export type SceneCredit = { author: string; license: string; source: string };
+/** Gallery groups («Вид» → Фон). «abstract» also holds our procedural backgrounds and «Без фона». */
+export const SCENE_GROUPS = ["cars", "antiquity", "nature", "city", "abstract"] as const;
+export type SceneGroup = (typeof SCENE_GROUPS)[number];
+
 export type SceneDef = {
   mode: "3d" | "hover";
-  /** Photo file stem in /backgrounds (absent for drawn / generated scenes). */
-  /** max / min: brightest / darkest grey; p98: 98th percentile (what titles on the canvas are measured against). */
-  photo?: { file: string; max: number; p98: number; min: number; credit: SceneCredit };
-  /** Horizontal focus of the subject (object-position), so phones crop to it. */
-  focusX?: number;
+  group: SceneGroup;
+  /** Photo scenes: files, measured greys and credit (scene-photos.ts, generated with the files). */
+  photo?: ScenePhoto;
 };
 
-const commons = (file: string) => `https://commons.wikimedia.org/wiki/File:${file}`;
+const photo = (id: keyof typeof SCENE_PHOTOS, mode: SceneDef["mode"], group: SceneGroup): SceneDef => ({ mode, group, photo: SCENE_PHOTOS[id] });
 
 export const SCENES: Record<SceneId, SceneDef> = {
-  smoke: { mode: "hover" },
-  ridge: { mode: "3d" },
-  "porsche-gt3rs": {
-    mode: "3d",
-    focusX: 55,
-    photo: { file: "porsche-gt3rs", max: 210, p98: 162, min: 0, credit: { author: "Matti Blume", license: "CC BY-SA 4.0", source: commons("Porsche_911_GT3_RS,_GIMS_2018,_Le_Grand-Saconnex_(1X7A0084).jpg") } },
-  },
-  "porsche-wheel": {
-    mode: "3d",
-    focusX: 45,
-    photo: { file: "porsche-wheel", max: 208, p98: 119, min: 0, credit: { author: "Matti Blume", license: "CC BY-SA 4.0", source: commons("Porsche_911_GT3_RS,_GIMS_2018,_Le_Grand-Saconnex_(1X7A0077).jpg") } },
-  },
-  laocoon: {
-    mode: "hover",
-    focusX: 64,
-    photo: { file: "laocoon", max: 242, p98: 223, min: 0, credit: { author: "LivioAndronico (2014), Notwist", license: "CC BY-SA 4.0", source: commons("Laocoon_and_His_Sons_black.jpg") } },
-  },
-  discobolus: {
-    mode: "3d",
-    focusX: 68,
-    photo: { file: "discobolus", max: 242, p98: 158, min: 0, credit: { author: "Livioandronico2013", license: "CC BY-SA 4.0", source: commons("Discobolus_in_National_Roman_Museum_Palazzo_Massimo_alle_Terme.JPG") } },
-  },
-  hercules: {
-    mode: "3d",
-    focusX: 70,
-    photo: { file: "hercules", max: 227, p98: 153, min: 0, credit: { author: "Marie-Lan Nguyen (2011)", license: "CC BY 2.5", source: commons("Herakles_Farnese_MAN_Napoli_Inv6001_n01.jpg") } },
-  },
-  zeus: {
-    mode: "3d",
-    focusX: 68,
-    photo: { file: "zeus", max: 240, p98: 148, min: 0, credit: { author: "Jastrow (2006)", license: "Public domain", source: commons("Zeus_Otricoli_Pio-Clementino_Inv257.jpg") } },
-  },
+  smoke: { mode: "hover", group: "abstract" },
+  ridge: { mode: "3d", group: "abstract" },
+  "porsche-gt3rs": photo("porsche-gt3rs", "3d", "cars"),
+  "porsche-wheel": photo("porsche-wheel", "3d", "cars"),
+  "porsche-gt3": photo("porsche-gt3", "3d", "cars"),
+  "porsche-turbo-s": photo("porsche-turbo-s", "3d", "cars"),
+  "porsche-918": photo("porsche-918", "3d", "cars"),
+  "carrera-gt": photo("carrera-gt", "3d", "cars"),
+  "porsche-rs27": photo("porsche-rs27", "3d", "cars"),
+  "ferrari-f40": photo("ferrari-f40", "3d", "cars"),
+  parthenon: photo("parthenon", "3d", "antiquity"),
+  sounion: photo("sounion", "3d", "antiquity"),
+  delphi: photo("delphi", "3d", "antiquity"),
+  nike: photo("nike", "3d", "antiquity"),
+  laocoon: photo("laocoon", "hover", "antiquity"),
+  discobolus: photo("discobolus", "3d", "antiquity"),
+  hercules: photo("hercules", "3d", "antiquity"),
+  zeus: photo("zeus", "3d", "antiquity"),
+  riace: photo("riace", "3d", "antiquity"),
+  matterhorn: photo("matterhorn", "3d", "nature"),
+  storm: photo("storm", "hover", "nature"),
+  manhattan: photo("manhattan", "3d", "city"),
+  nyse: photo("nyse", "3d", "city"),
 };
+
+/** Scene ids of a gallery group, in gallery order. */
+export const scenesIn = (group: SceneGroup): SceneId[] => (Object.keys(SCENES) as SceneId[]).filter((id) => SCENES[id].group === group);
+
+/**
+ * Responsive sources of a photo scene. Wide screens pick by rendered width × DPR (the photo covers the viewport, so it
+ * is drawn at least 160vh wide); phones get at most the 1920 file (the scene sits behind the panels: 1920 is plenty
+ * there and keeps a phone's download ≤ ~300 KB).
+ */
+export function sceneSources(p: ScenePhoto): { src: string; srcSet: string; sizes: string; phoneSrcSet: string } {
+  const url = (w: number) => sceneUrl(p.file, `-${w}`);
+  const phone = p.widths.filter((w) => w <= 1920);
+  return {
+    src: url(phone[phone.length - 1]),
+    srcSet: p.widths.map((w) => `${url(w)} ${w}w`).join(", "),
+    sizes: "max(100vw, 160vh)",
+    phoneSrcSet: phone.map((w, i) => `${url(w)} ${i + 1}x`).join(", "),
+  };
+}
 
 export const isScene = (v: string): v is SceneId => (SCENE_IDS as readonly string[]).includes(v);
 export const isPhotoScene = (v: string): boolean => isScene(v) && !!SCENES[v].photo;

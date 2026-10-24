@@ -1,13 +1,14 @@
 /**
  * The «WS originals» scenes behind the shell (lazy chunk: loaded only when a scene is chosen). Photo scenes stack a
  * blurred depth layer, the photo (with a slight 3D tilt) and a fog layer at different depths, then a scrim of
- * 1 − --scene-vis (lib/appearance/scenes `sceneLevels`, set by «Яркость фона»). HOVER scenes add the smoke trail. Images: public/backgrounds (WebP, ≤ 100 KB each; credits in CREDITS.md there).
+ * 1 − --scene-vis (lib/appearance/scenes `sceneLevels`, set by «Яркость фона»). HOVER scenes add the smoke trail. Images: public/backgrounds (WebP at 1280 / 1920 / 2560 / 3840 px picked by srcset —
+ * phones ≤ 1920; credits in CREDITS.md there).
  * `ambient` (the screen lock): the smoke keeps drifting while the window is unfocused (a desk monitor nobody is
  * clicking on), pausing only while the tab is hidden; the pointer parallax is off (the caller drifts --px / --py).
  */
 import * as React from "react";
 import { isLightTheme, type ThemeId } from "@/lib/appearance/model";
-import { SCENES, TRAIL_ALPHA, sceneUrl, type SceneId } from "@/lib/appearance/scenes";
+import { SCENES, TRAIL_ALPHA, sceneSources, sceneUrl, type SceneId } from "@/lib/appearance/scenes";
 import { startSmoke } from "@/lib/smoke";
 import { createTrail, isPaused, prefersReducedMotion, startSceneMotion } from "./motion";
 import { RIDGE_LAYERS, RidgeSvg } from "./ridge";
@@ -49,12 +50,16 @@ export default function SceneBackdrop({ scene, theme, ambient = false }: { scene
   }, [def.mode, trail, scene, ambient]);
 
   const photo = def.photo;
+  const src = photo ? sceneSources(photo) : null;
   return (
     <div ref={root} className="absolute inset-0 overflow-hidden">
-      {photo && (
+      {photo && src && (
         <>
           <img src={sceneUrl(photo.file, "-bg")} alt="" decoding="async" style={{ ...layer(0.35), width: "100%", height: "100%", objectFit: "cover", filter: "blur(6px)" }} />
-          <img src={sceneUrl(photo.file)} alt="" decoding="async" style={{ ...layer(1, def.mode === "3d"), width: "100%", height: "100%", objectFit: "cover", objectPosition: `${def.focusX ?? 50}% 50%` }} />
+          <picture>
+            <source media="(max-width: 767px)" srcSet={src.phoneSrcSet} />
+            <img src={src.src} srcSet={src.srcSet} sizes={src.sizes} alt="" decoding="async" style={{ ...layer(1, def.mode === "3d"), width: "100%", height: "100%", objectFit: "cover", objectPosition: `${photo.focusX}% 50%` }} />
+          </picture>
           <div style={{ ...layer(1.6), background: "radial-gradient(120% 60% at 50% 110%, hsl(var(--background) / .55), transparent 70%)" }} />
           <div className="absolute inset-0" style={{ background: "hsl(var(--background) / calc(1 - var(--scene-vis, 0.3)))" }} />
         </>
