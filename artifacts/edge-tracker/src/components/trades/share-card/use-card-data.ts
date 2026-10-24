@@ -1,47 +1,11 @@
 /**
- * Data of the share card: the price line (the same bars and fills the trade chart already fetched — useChartData with
- * the chart's own window, so an opened chart makes the card instant) and the background images.
+ * Data of the share card: the price line (shared useCardSeries — the same bars and fills the trade chart already
+ * fetched) and the background images (shared «Олимп» loader, the user's own photo decoded here).
  */
-import * as React from "react";
-import type { Trade } from "@workspace/api-client-react";
-import { useChartData } from "@/components/chart-engine/hooks/useChartData";
-import { isoToEpoch } from "@/components/chart-engine/lib/time";
-import { cardSeries, fallbackSeries, type CardSeries } from "./model";
-import { artUrl } from "./themes";
+import type { LoadedImage } from "@/components/shared/share-canvas/art";
 
-export type CardSeriesState = { series: CardSeries | null; loading: boolean };
-
-export function useCardSeries(trade: Trade, entry: number | null, exit: number | null): CardSeriesState {
-  const data = useChartData(trade);
-  const series = React.useMemo(() => {
-    const opening = data.executions.filter((e) => (e.kind === "entry" || e.kind === "add") && e.executedAt);
-    const closing = data.executions.filter((e) => e.kind !== "entry" && e.kind !== "add" && e.executedAt);
-    const entryTime = opening.length ? isoToEpoch(opening[0]!.executedAt) : null;
-    const exitTime = closing.length ? isoToEpoch(closing[closing.length - 1]!.executedAt) : null;
-    const fromBars = cardSeries(data.bars, Number.isFinite(entryTime) ? entryTime : null, Number.isFinite(exitTime) ? exitTime : null, entry, exit);
-    return fromBars ?? fallbackSeries(entry, exit);
-  }, [data.bars, data.executions, entry, exit]);
-  return { series: data.loading ? null : series, loading: data.loading };
-}
-
-export type LoadedImage = { image: CanvasImageSource; w: number; h: number };
-
-const artCache = new Map<string, Promise<LoadedImage | null>>();
-
-/** A «Олимп» artwork as a decoded image (cached for the session; null when it fails to load). */
-export function loadArt(id: string): Promise<LoadedImage | null> {
-  const hit = artCache.get(id);
-  if (hit) return hit;
-  const p = new Promise<LoadedImage | null>((resolve) => {
-    const img = new Image();
-    img.decoding = "async";
-    img.onload = () => resolve({ image: img, w: img.naturalWidth, h: img.naturalHeight });
-    img.onerror = () => { artCache.delete(id); resolve(null); };
-    img.src = artUrl(id);
-  });
-  artCache.set(id, p);
-  return p;
-}
+export { useCardSeries, type CardSeriesState } from "@/components/chart-engine/hooks/useCardSeries";
+export { loadArt, type LoadedImage } from "@/components/shared/share-canvas/art";
 
 /** The user's own photo, decoded in the browser (never uploaded). EXIF rotation is applied where supported. */
 export async function loadPhoto(file: File): Promise<LoadedImage | null> {
