@@ -7,7 +7,7 @@ import * as React from "react";
 import { useQueryClient, useIsFetching } from "@tanstack/react-query";
 import { useSearch } from "wouter";
 import { Moon, RefreshCw, ShieldAlert } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
+import { EmptyLink, EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -90,7 +90,7 @@ export default function RiskPage() {
 
       {!signedIn ? (
         <Panel>
-          <EmptyState icon={ShieldAlert} title={t("page.signInTitle")} description={t("page.signInDesc")} />
+          <EmptyState art="scales" icon={ShieldAlert} title={t("page.signInTitle")} description={t("page.signInDesc")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />
         </Panel>
       ) : view === "desk" && isCurator ? (
         <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader} focusTab={focusTab} onShowOvernight={() => setView("overnight")} />
@@ -100,7 +100,7 @@ export default function RiskPage() {
         <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} focusAlert={focusAlert} />
       ) : (
         <Panel>
-          <EmptyState icon={ShieldAlert} title={t("page.noTraderTitle")} description={t("page.noTraderDesc")} />
+          <EmptyState art="scales" icon={ShieldAlert} title={t("page.noTraderTitle")} description={t("page.noTraderDesc")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />
         </Panel>
       )}
     </Page>

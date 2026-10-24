@@ -5,7 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
+import { ChartSkeleton, EmptyLink, EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
+import { links } from "@/lib/links";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
@@ -18,7 +19,7 @@ import { LEGACY_RULE_TYPES, type Rule, type RuleType, decodeRules, encodeRules, 
 import { SuggestionCards, SuggestionsNote } from "@/components/what-if/suggestions-panel";
 import { ScenarioBar } from "@/components/what-if/scenario-bar";
 import { BootstrapDetails, DeltaHeadline, KeyMetrics, MetricsTable } from "@/components/what-if/compare-panel";
-import { ChartSkeleton, DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
+import { DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
 import { RuleBuilder } from "@/components/what-if/rule-builder";
 import { ExcludedTable } from "@/components/what-if/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/what-if/questions-bar";
@@ -81,6 +82,37 @@ function initialState(me: string) {
     trader: sp.get("trader") ?? (prefs.trader || me),
     rules: decodeRules(sp.get("r")),
   };
+}
+
+/** Loading: the page's own order — questions (chips) → result panel (headline, key metrics, equity chart) → suggestion cards. */
+function WhatIfSkeleton() {
+  return (
+    <>
+      {/* Same order as the page: questions (chips) → result panel → suggestion cards. */}
+      <div className="flex flex-col gap-2" aria-hidden="true">
+        <Skeleton className="h-4 w-48 rounded-md" />
+        <div className="flex flex-wrap gap-2">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-9 w-44 rounded-full" />)}</div>
+      </div>
+      {/* Result panel: headline delta, key metrics, the equity chart. */}
+      <div className="glass-panel flex h-[560px] flex-col gap-4 rounded-2xl p-[var(--panel-p)]" aria-hidden="true">
+        <Skeleton className="h-6 w-2/3 max-w-md rounded-md" />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {Array.from({ length: 4 }, (_, i) => <div key={i} className="space-y-2 rounded-xl border border-border/40 p-3"><Skeleton className="h-3 w-16 rounded" /><Skeleton className="h-6 w-24 rounded" /></div>)}
+        </div>
+        <ChartSkeleton bare title={false} height={340} />
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]" aria-hidden="true">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="glass-panel flex h-[168px] flex-col gap-2 rounded-2xl p-4">
+            <Skeleton className="h-4 w-3/4 rounded" />
+            <Skeleton className="h-3 w-full rounded" />
+            <Skeleton className="h-3 w-2/3 rounded" />
+            <Skeleton className="mt-auto h-8 w-28 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
 }
 
 export default function WhatIf() {
@@ -224,7 +256,7 @@ export default function WhatIf() {
             icon={SearchX}
             title={t("loadError")}
             description={(base.error as Error | null)?.message ?? t("loadErrorHint")}
-            action={<Button variant="outline" className="rounded-full" onClick={() => void base.refetch()} disabled={base.isFetching}><RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
+            action={<Button className="rounded-full" onClick={() => void base.refetch()} disabled={base.isFetching}><RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
           />
         </Panel>
       </Page>
@@ -235,15 +267,7 @@ export default function WhatIf() {
     return (
       <Page>
         {header}
-        {/* Same order as the page: questions (chips) → result panel → suggestion cards. */}
-        <div className="flex flex-col gap-2" aria-hidden="true">
-          <Skeleton className="h-4 w-48 rounded-md" />
-          <div className="flex flex-wrap gap-2">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-9 w-44 rounded-full" />)}</div>
-        </div>
-        <Skeleton className="h-[560px] rounded-2xl" />
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]" aria-hidden="true">
-          {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[168px] rounded-2xl" />)}
-        </div>
+        <WhatIfSkeleton />
         <span className="sr-only" role="status">{t("loadingTrades")}</span>
       </Page>
     );
@@ -260,7 +284,7 @@ export default function WhatIf() {
             icon={SearchX}
             title={scopeTrader ? t("empty.titleOf", { trader: personName(scopeTrader), period: periodPhrase }) : t("empty.title", { period: periodPhrase })}
             description={period !== "all" ? (isCurator ? t("empty.longerCurator") : t("empty.longer")) : (isCurator ? t("empty.syncCurator") : t("empty.sync"))}
-            action={period !== "all" ? <Button className="rounded-full bg-primary-solid" onClick={() => setPeriod("all")}>{t("empty.showAll")}</Button> : undefined}
+            action={period !== "all" ? <Button className="rounded-full" onClick={() => setPeriod("all")}>{t("empty.showAll")}</Button> : <EmptyLink href={links.myPlan()}>{commonI18n.t("emptyActions.toPlan")}</EmptyLink>}
           />
         </Panel>
       </Page>
@@ -315,7 +339,7 @@ export default function WhatIf() {
           <div className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none", recalculating && "opacity-60")}>
             <DeltaHeadline baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} bootstrap={r?.bootstrap ?? null} />
             {hasRules && !r ? (
-              <ChartSkeleton />
+              <ChartSkeleton bare title={false} height={340} />
             ) : (
               <EquityChart base={r?.baselineEquity ?? b.equity} scenario={r?.scenarioEquity ?? []} hasScenario={showScenario} onDay={openDay} />
             )}

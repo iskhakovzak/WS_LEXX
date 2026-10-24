@@ -118,6 +118,8 @@ export default {
   mobile: {
     navLabel: "Quick navigation",
     more: "More",
+    /** Phone dock label of the dashboard (the first tab). */
+    home: "Home",
     hasWarnings: "has warnings",
     needsAttention: "needs attention",
     allSections: "All sections",

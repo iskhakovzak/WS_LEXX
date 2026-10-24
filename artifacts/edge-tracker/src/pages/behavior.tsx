@@ -8,7 +8,7 @@
 import * as React from "react";
 import { Activity, BellRing, Brain, CalendarRange, Gauge, Grid3x3, LineChart, Sparkles, UserRound } from "lucide-react";
 import {
-  EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SkeletonBlock, TableSkeleton,
+  ChartSkeleton, EmptyLink, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SkeletonBlock, TableSkeleton,
 } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { addDays, nyDate } from "@/lib/trading-date";
@@ -153,7 +153,7 @@ export default function BehaviorPage() {
       {!isGuest && <RangeFacetsPanel rf={rf} />}
 
       {isGuest ? (
-        <Panel><EmptyState icon={Brain} title={tb("guest")} description={tb("guestHint")} /></Panel>
+        <Panel><EmptyState icon={Brain} title={tb("guest")} description={tb("guestHint")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} /></Panel>
       ) : tab === "behavior" ? (
         <BehaviorTab trader={scopeTrader} me={me} range={range} canEdit={canEdit} day={day} onDay={setDay} onOpenSetups={openSetups} />
       ) : (
@@ -169,12 +169,19 @@ function BehaviorSkeleton() {
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label={tb("loadingAria")}>
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
-        {Array.from({ length: 4 }, (_, i) => <SkeletonBlock key={i} className="h-[196px] rounded-2xl lg:col-span-3" />)}
-        <SkeletonBlock className="h-[188px] rounded-2xl lg:col-span-12" />
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="glass-panel flex h-[196px] flex-col gap-2 rounded-2xl p-4 lg:col-span-3" aria-hidden="true">
+            <SkeletonBlock className="h-3 w-24" />
+            <SkeletonBlock className="h-8 w-28" />
+            <SkeletonBlock className="h-3 w-3/4" />
+            <SkeletonBlock className="mt-auto h-14 w-full rounded-lg" />
+          </div>
+        ))}
+        <ChartSkeleton className="h-[188px] lg:col-span-12" height="100%" kind="bars" />
       </div>
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
-        <SkeletonBlock className="h-[460px] rounded-2xl" />
-        <SkeletonBlock className="h-[460px] rounded-2xl" />
+        <ChartSkeleton className="h-[460px]" height="100%" />
+        <div className="glass-panel flex h-[460px] flex-col gap-3 rounded-2xl p-[var(--panel-p)]"><SkeletonBlock className="h-4 w-40" /><ListSkeleton rows={8} /></div>
       </div>
       <PanelSkeleton height={200} />
     </div>
@@ -224,7 +231,7 @@ function BehaviorTab({
     return <BehaviorSkeleton />;
   }
   if (!r.summary.closed) {
-    return <Panel><EmptyState icon={Brain} title={tb("empty")} description={tb("emptyHint")} /></Panel>;
+    return <Panel><EmptyState icon={Brain} title={tb("empty")} description={tb("emptyHint")} action={<EmptyLink href="/trades">{commonI18n.t("emptyActions.toTrades")}</EmptyLink>} /></Panel>;
   }
   const owner = r.scope ?? me;
   const noTime = r.summary.closed - r.summary.withTime;

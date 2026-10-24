@@ -4,8 +4,7 @@ import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Circle, Clock, Eye, Laye
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
+import { EmptyLink, EmptyState, Page, PageHeader, Panel, Pill, SplitSkeleton } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
@@ -64,7 +63,7 @@ export default function AcademyLesson() {
     return (
       <Page>
         <Panel>
-          <EmptyState icon={BookOpen} title={t("lesson.noTarget")} description={t("lesson.noTargetDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>} />
+          <EmptyState art="scroll" icon={BookOpen} title={t("lesson.noTarget")} description={t("lesson.noTargetDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>} />
         </Panel>
       </Page>
     );
@@ -82,20 +81,17 @@ export default function AcademyLesson() {
 
 function LoadState({ error, onRetry }: { error: unknown; onRetry: () => unknown }) {
   const { t } = academyI18n.useT();
-  if (!error) return <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]"><Skeleton className="h-80 rounded-2xl" /><Skeleton className="h-[28rem] rounded-2xl" /></div>;
+  if (!error) return <SplitSkeleton side="260px" rows={6} detailHeight={448} />;
   const status = error instanceof ApiError ? error.status : 0;
   return (
     <Panel>
       <EmptyState
+        art="scroll"
         icon={BookOpen}
         title={status === 404 ? t("lesson.notFound") : t("lesson.loadFailed")}
         description={status === 404 ? t("lesson.notFoundDesc") : (error as Error).message}
-        action={
-          <div className="flex flex-wrap justify-center gap-2">
-            {status !== 404 && <Button variant="outline" onClick={() => void onRetry()}>{commonI18n.t("actions.retry")}</Button>}
-            <Button asChild><Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link></Button>
-          </div>
-        }
+        action={status !== 404 ? <Button onClick={() => void onRetry()}>{commonI18n.t("actions.retry")}</Button> : <EmptyLink href={academyLinks.learn()}>{t("lesson.toCourses")}</EmptyLink>}
+        secondaryAction={status !== 404 ? <Link href={academyLinks.learn()}>{t("lesson.toCourses")}</Link> : undefined}
       />
     </Panel>
   );

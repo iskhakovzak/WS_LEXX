@@ -118,6 +118,8 @@ export default {
   mobile: {
     navLabel: "Tezkor navigatsiya",
     more: "Yana",
+    /** Phone dock label of the dashboard (the first tab). */
+    home: "Asosiy",
     hasWarnings: "ogohlantirishlar bor",
     needsAttention: "eʼtibor talab qiladi",
     allSections: "Barcha boʻlimlar",

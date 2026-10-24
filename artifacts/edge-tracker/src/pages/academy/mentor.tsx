@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { AlertTriangle, CalendarClock, ClipboardCheck, Eye, ListChecks, MessagesSquare, MoreHorizontal, Plus, Target, UserCog, Users, X } from "lucide-react";
 import {
-  DataTable, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, Segmented, SortableTh, StatCard, StatGrid, StatGridSkeleton, useTableSort, type Tone,
+  DataTable, EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, Segmented, SortableTh, StatCard, StatGrid, StatGridSkeleton, useTableSort, type Tone,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,10 +50,11 @@ export default function AcademyMentorPage() {
     return (
       <Page>
         <PageHeader icon={UserCog} title={title} />
-        <Panel><EmptyState icon={UserCog} title={t("mentorPage.staffOnly")}
+        <Panel><EmptyState art="laurel" icon={UserCog} title={t("mentorPage.staffOnly")}
           description={withNodes(t("mentorPage.staffOnlyDesc", { link: "{link}" }), {
             link: <Link className="text-primary hover:underline" href="/academy/my">{t("mentorPage.staffOnlyLink")}</Link>,
-          })} /></Panel>
+          })}
+          action={<EmptyLink href="/academy/my">{shellI18n.t("nav.academyMy")}</EmptyLink>} /></Panel>
       </Page>
     );
   }
@@ -75,7 +76,7 @@ export default function AcademyMentorPage() {
       {q.isLoading && <><StatGridSkeleton count={4} /><PanelSkeleton height={280} /></>}
       {q.isError && <ErrorState error={q.error} onRetry={() => q.refetch()} title={t("mentorPage.loadFailed")} />}
       {d && d.cohorts.length === 0 && (
-        <Panel><EmptyState icon={Users} title={t("mentorPage.noCohorts")} description={t("mentorPage.noCohortsDesc")} action={<Button asChild><Link href="/academy/cohorts">{t("mentorPage.toCohorts")}</Link></Button>} /></Panel>
+        <Panel><EmptyState art="temple" icon={Users} title={t("mentorPage.noCohorts")} description={t("mentorPage.noCohortsDesc")} action={<Button asChild><Link href="/academy/cohorts">{t("mentorPage.toCohorts")}</Link></Button>} /></Panel>
       )}
       {d && d.cohorts.length > 0 && (
         <div aria-busy={q.isPlaceholderData || undefined} className={cn("flex flex-col gap-4 sm:gap-[var(--page-gap)] transition-opacity duration-[var(--dur-2)] ease-[var(--ease)]", q.isPlaceholderData && "pointer-events-none opacity-60")}>

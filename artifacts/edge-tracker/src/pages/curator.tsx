@@ -7,7 +7,7 @@ import * as React from "react";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { ClipboardList, Lock, RefreshCw, ServerOff, ShieldAlert, Sun, Users } from "lucide-react";
-import { EmptyState, Page, PageHeader, PanelSkeleton, Pill, QueryState, SectionTabs, Segmented, SkeletonBlock, StatGridSkeleton, TableSkeleton, UpdatedAgo, usePersistentState } from "@/components/ds";
+import { EmptyLink, EmptyState, Page, PageHeader, PanelSkeleton, Pill, QueryState, SectionTabs, Segmented, SkeletonBlock, StatGridSkeleton, TableSkeleton, UpdatedAgo, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import { CuratorQuestsPanel } from "@/components/quests/curator-panel";
 import { RewardQueueItems } from "@/components/gamification/reward-queue";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { shellI18n } from "@/i18n/ns/shell";
+import { commonI18n } from "@/i18n/ns/common";
 import { fmtDate } from "@/lib/format";
 
 type View = "today" | "traders" | "risk";
@@ -33,7 +34,7 @@ export default function CuratorPage() {
     return (
       <Page>
         <PageHeader title={shellI18n.t("nav.curator")} icon={ClipboardList} />
-        <EmptyState icon={Lock} title={t("page.staffOnly")} description={t("page.staffOnlyHint")} />
+        <EmptyState art="temple" icon={Lock} title={t("page.staffOnly")} description={t("page.staffOnlyHint")} action={<EmptyLink href="/">{commonI18n.t("emptyActions.toDashboard")}</EmptyLink>} />
       </Page>
     );
   }
@@ -137,9 +138,11 @@ function CuratorCabinet() {
 
       {notAvailable ? (
         <EmptyState
+          art="temple"
           icon={ServerOff}
           title={t("page.notConnected")}
           description={t("page.notConnectedHint")}
+          action={<EmptyLink href="/risk">{shellI18n.t("nav.risk")}</EmptyLink>}
         />
       ) : view === "today" ? (
         <QueryState query={today} skeleton={<TodaySkeleton />} errorTitle={t("page.todayFailed")}>

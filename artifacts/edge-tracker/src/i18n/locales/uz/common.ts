@@ -356,6 +356,7 @@ export default {
     limitValue: "limitning {pct}, {state}",
     updatedAgo: "yangilandi: {ago}",
     loadingKpis: "Koʻrsatkichlar yuklanmoqda",
+    loadingChart: "Grafik yuklanmoqda",
     loadingList: "Roʻyxat yuklanmoqda",
     loadingTable: "Jadval yuklanmoqda",
     whatIs: "{term} nima?",
@@ -418,5 +419,14 @@ export default {
     missing: "Ikkala sanani kiriting",
     order: "Boshlanish sanasi tugash sanasidan keyin",
     prevNote: "Undan oldingi xuddi shunday oraliq bilan solishtiriladi: {range}",
+  },
+  emptyActions: {
+    toPlan: "Kun rejasini tuzish",
+    toTrades: "Savdolarga oʻtish",
+    toPlaybook: "Pleybukni ochish",
+    toTrainer: "Trenajyorni ochish",
+    toDashboard: "Bosh sahifaga",
+    toLogin: "Kirish",
+    toAllTime: "Butun davr uchun koʻrsatish",
   },
 } satisfies Messages<typeof ru>;

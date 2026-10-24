@@ -7,9 +7,8 @@ import * as React from "react";
 import { useSearch } from "wouter";
 import { Flag, Plus, RefreshCw } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { EmptyState, ErrorState, Page, PageHeader, Panel, Segmented } from "@/components/ds";
+import { EmptyLink, EmptyState, ErrorState, Page, PageHeader, Panel, Segmented, SplitSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -88,14 +87,14 @@ export default function AcademyChallengesPage() {
       </PageHeader>
 
       {list.isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-[340px_1fr]"><Skeleton className="h-72 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
+        <SplitSkeleton side="340px" rows={5} />
       ) : list.isError ? (
         <ErrorState error={list.error} onRetry={list.refetch} title={t("page.loadFailed")} />
       ) : !items.length ? (
         <Panel>
-          <EmptyState icon={Flag} title={filter === "archived" ? t("page.archiveEmpty") : t("page.noExams")}
+          <EmptyState art="laurel" icon={Flag} title={filter === "archived" ? t("page.archiveEmpty") : t("page.noExams")}
             description={isCurator ? t("page.noExamsStaff", { from: defaultStageName("junior"), to: defaultStageName("trader") }) : t("page.noExamsTrader")}
-            action={list.data?.canCreate && config.data ? <Button size="sm" onClick={() => setCreateOpen(true)}>{t("page.assignExam")}</Button> : undefined} />
+            action={list.data?.canCreate && config.data ? <Button onClick={() => setCreateOpen(true)}>{t("page.assignExam")}</Button> : <EmptyLink href="/academy/learn">{shellI18n.t("nav.academyLearn")}</EmptyLink>} />
         </Panel>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[340px_1fr]">

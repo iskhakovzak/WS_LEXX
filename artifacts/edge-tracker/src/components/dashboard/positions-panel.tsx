@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { CalendarClock, Moon, Layers } from "lucide-react";
-import { EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
+import { EmptyLink, EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -140,10 +140,12 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
 
         {positions.length === 0 ? (
           <EmptyState
+            art="scales"
             icon={Layers}
             className="py-6"
             title={t("positions.emptyTitle")}
             description={t("positions.emptyHint")}
+            action={<EmptyLink href="/trades">{commonI18n.t("emptyActions.toTrades")}</EmptyLink>}
           />
         ) : (
           <div className="flex flex-col gap-3">
