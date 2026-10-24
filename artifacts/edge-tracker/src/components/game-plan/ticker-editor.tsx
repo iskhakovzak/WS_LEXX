@@ -138,7 +138,7 @@ export function TickerEditor({
           <Field label={tr("editor.catalyst")} htmlFor={id("c")}>
             <Input id={id("c")} maxLength={500} placeholder={tr("editor.catalystPlaceholder")} value={t.catalyst} onChange={(ev) => patch({ catalyst: ev.target.value })} />
           </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={tr("editor.support")} htmlFor={id("s")} error={e("support")}>
               <Input id={id("s")} inputMode="decimal" placeholder="121.5 119" value={t.support} onChange={(ev) => patch({ support: ev.target.value })} className="tabular-nums" />
             </Field>
@@ -146,7 +146,7 @@ export function TickerEditor({
               <Input id={id("r")} inputMode="decimal" placeholder="125 127.8" value={t.resistance} onChange={(ev) => patch({ resistance: ev.target.value })} className="tabular-nums" />
             </Field>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={tr("editor.scenarioALabel")} htmlFor={id("a")}>
               <Textarea id={id("a")} rows={2} maxLength={1500} placeholder={tr("editor.scenarioAPlaceholder")} value={t.scenarioA} onChange={(ev) => patch({ scenarioA: ev.target.value })} />
             </Field>
@@ -154,7 +154,7 @@ export function TickerEditor({
               <Textarea id={id("b")} rows={2} maxLength={1500} placeholder={tr("editor.scenarioBPlaceholder")} value={t.scenarioB} onChange={(ev) => patch({ scenarioB: ev.target.value })} />
             </Field>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={tr("editor.trigger")} htmlFor={id("tr")}>
               <Input id={id("tr")} maxLength={1000} placeholder={tr("editor.triggerPlaceholder")} value={t.trigger} onChange={(ev) => patch({ trigger: ev.target.value })} />
             </Field>

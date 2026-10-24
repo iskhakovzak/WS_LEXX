@@ -377,7 +377,7 @@ export function WeeklyPsychologyReport() {
           </button>
 
           {details === "open" && (
-            <div id="weekly-psychology-details" className="grid gap-4 md:grid-cols-2">
+            <div id="weekly-psychology-details" className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <div className="micro-label mb-2">{t("psych.byState")}</div>
                 {breakdown.length ? (

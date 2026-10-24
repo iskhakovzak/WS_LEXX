@@ -279,7 +279,7 @@ export default function Stats() {
         {header}
         <div className="skeleton h-[52px] rounded-2xl" aria-hidden="true" />
         <KpiGridSkeleton />
-        <div className="grid gap-4 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
           <ChartSkeleton className="h-[360px] xl:col-span-3" height="100%" />
           <ChartSkeleton className="h-[360px] xl:col-span-2" height="100%" kind="bars" />
         </div>

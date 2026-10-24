@@ -117,7 +117,7 @@ export function InsiderPanel({
               {fmtUsd(netAll, { signed: true, compact: true })}
             </span>
           </div>
-          <ul className="grid gap-0.5 md:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-0.5 md:grid-cols-2 xl:grid-cols-3">
             {items.map((s) => <InsiderRow key={s.ticker} s={s} onOpen={onOpenTicker} />)}
           </ul>
           {!!q.data?.missing.length && (

@@ -39,7 +39,7 @@ export function TraderPlans({ date }: { date: string }) {
 
   if (q.isLoading)
     return (
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]" aria-busy="true" aria-label={t("traders.loading")}>
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]" aria-busy="true" aria-label={t("traders.loading")}>
         <Skeleton className="h-80 rounded-2xl" />
         <Skeleton className="h-96 rounded-2xl" />
       </div>
@@ -60,7 +60,7 @@ export function TraderPlans({ date }: { date: string }) {
   const ready = plans.filter((p) => p.status === "ready").length;
 
   return (
-    <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[280px_minmax(0,1fr)]">
       <Panel
         title={t("traders.title")}
         icon={Users}

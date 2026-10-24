@@ -74,7 +74,7 @@ function PendingCard({ p, staff }: { p: PendingTrade; staff: boolean }) {
         <span className="text-2xs text-muted-foreground">{tt("inbox.queuedSince", { date: fmtDate(p.createdAt, "medium") })}</span>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Side title={tt("inbox.broker")} tone="accent">
           <StatRow label={tt("inbox.entryExit")} value={`${fmtPrice(t.avgEntry)} → ${fmtPrice(t.avgExit)}`} />
           <StatRow label={tt("inbox.qtyMax")} value={tt("inbox.qtyValue", { qty: t.qty, fills: t.fillCount })} />

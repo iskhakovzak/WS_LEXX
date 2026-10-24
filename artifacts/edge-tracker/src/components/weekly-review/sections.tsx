@@ -266,7 +266,7 @@ export function BestWorstPanel({ doc }: { doc: WeeklyReview }) {
       {empty ? (
         <p className="py-4 text-sm text-muted-foreground">{t("sections.noResult")}</p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <p className="micro-label mb-1 text-up">{t("sections.winners")}</p>
             {doc.bestTrades.length ? <ul className="-mx-2">{doc.bestTrades.map((t) => <TradeRow key={t.id} t={t} unit={u} />)}</ul> : <p className="px-2 py-2 text-sm text-muted-foreground">{t("sections.noWinners")}</p>}

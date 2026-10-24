@@ -160,7 +160,7 @@ export default function AcademyLearn() {
               />
             </Panel>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
               <nav aria-label={t("learn.programsAria")} className="flex flex-col gap-3">
                 {list.map((p) => <ProgramCard key={p.id} p={p} active={p.id === selectedId} onSelect={() => setParams({ program: p.id })} />)}
               </nav>

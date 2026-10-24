@@ -233,7 +233,7 @@ export function ExamplesBoard({
   return (
     <div className="flex flex-col gap-3">
       <div className="sr-only" aria-live="polite">{announce}</div>
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-3">
         {TIERS.map((t) => {
           const col = byTier[t.tier];
           return (

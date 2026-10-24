@@ -87,7 +87,7 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
 
   return (
     <>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {d.enrollments.map((e) => {
           const format = formatLabel(e.cohort.format);
           const date = fmtYmd(e.joinedOn, true);
@@ -125,15 +125,15 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
           hint={overdue ? t("myPage.kpi.overdue", { n: overdue }) : t("myPage.kpi.open")} />
       </StatGrid>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <Upcoming d={d} now={now} readOnly={readOnly} />
         <Goals goals={d.goals} readOnly={readOnly} user={d.user!} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Actions items={d.actionItems} readOnly={readOnly} />
         <AttendancePanel d={d} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Meetings d={d} />
         <History d={d} />
       </div>
@@ -304,7 +304,7 @@ function AttendancePanel({ d }: { d: MyDashboard }) {
   const { t } = academyCohortsI18n.useT();
   return (
     <Panel title={t("myPage.attendance.title")} icon={UserCheck} description={t("myPage.attendance.description")}>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {(d.attendance?.byCohort ?? []).map((c) => (
           <div key={c.cohortId}>
             <AttendanceSummaryView s={c.last30} title={t("myPage.attendance.cohort30", { cohort: c.cohortName })} />

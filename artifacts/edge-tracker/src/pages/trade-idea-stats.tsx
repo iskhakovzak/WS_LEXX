@@ -198,7 +198,7 @@ export default function TradeIdeaStats() {
       {isLoading && (
         <div className="flex flex-col gap-4" aria-busy="true" aria-label={t("stats.loading")}>
           <StatGrid className="xl:grid-cols-5">{[0, 1, 2, 3, 4].map((k) => <Skeleton key={k} className="h-24 rounded-2xl" />)}</StatGrid>
-          <div className="grid gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
             <Skeleton className="h-80 rounded-2xl lg:col-span-3" />
             <Skeleton className="h-80 rounded-2xl lg:col-span-2" />
           </div>
@@ -261,7 +261,7 @@ export default function TradeIdeaStats() {
               />
             </Panel>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
               <div className="lg:col-span-3"><IdeaCalibration ideas={scoped} basis={basis} pending={trackingPending} /></div>
               <Panel
                 className="lg:col-span-2"

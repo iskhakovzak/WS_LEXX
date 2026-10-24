@@ -153,7 +153,7 @@ function PrevNext({ nav, user }: { nav: Nav; user?: string }) {
   const { t } = academyI18n.useT();
   if (!nav.prev && !nav.next) return null;
   return (
-    <nav aria-label={t("lesson.adjacentAria")} className="grid gap-3 sm:grid-cols-2">
+    <nav aria-label={t("lesson.adjacentAria")} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {nav.prev ? (
         <Link href={academyLinks.item(nav.prev.kind, nav.prev.id, { user })} className="glass-panel group flex items-center gap-3 rounded-2xl p-4 hover:bg-[var(--glass-hover-bg)]">
           <ArrowLeft className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
@@ -176,7 +176,7 @@ function Shell({ nav, current, user, staff, title, kind, meta, actions, children
 }) {
   const { t } = academyI18n.useT();
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
       <OutlineNav nav={nav} current={current} user={user} />
       <div className="flex min-w-0 flex-col gap-4">
         <PageHeader
@@ -267,7 +267,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
     >
       {lesson.summary && <p className="text-sm text-muted-foreground">{lesson.summary}</p>}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
         <div className="flex min-w-0 flex-col gap-4">
           {lesson.video && <VideoPlayer video={lesson.video} title={lesson.title} />}
           <Panel>

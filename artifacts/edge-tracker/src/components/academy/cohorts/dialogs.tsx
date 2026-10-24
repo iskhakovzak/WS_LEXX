@@ -460,7 +460,7 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
             <DialogTitle>{t("meeting.title")}</DialogTitle>
             <DialogDescription>{t("meeting.description")}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field id="m-student" label={t("cols.student")}>
               <PersonSelect id="m-student" value={student ?? ""} onValueChange={pickStudent} options={names} placeholder={t("meeting.pickStudent")} ariaLabel={t("cols.student")} />
             </Field>

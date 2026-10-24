@@ -575,7 +575,7 @@ export default function AuthorNotesPage() {
       </PageHeader>
 
       {view === "write" && canEdit && (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="flex min-w-0 flex-col gap-4">
             <section className="glass-panel flex flex-col gap-4 rounded-2xl p-4 sm:p-5" aria-labelledby="author-editor-title">
               {/* Header: date + status */}

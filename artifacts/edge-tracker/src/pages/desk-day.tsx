@@ -76,7 +76,7 @@ function DayView({ day, ticker, date, alias }: { day: DeskDay; ticker: string; d
   const baseSec = candles.data?.tf === "5m" ? 300 : candles.data?.tf === "15m" ? 900 : 60;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-12">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       <Panel className="lg:col-span-8" bodyClassName="flex flex-col gap-3">
         {lines.length > 0 && (
           <p className="text-sm text-foreground">
@@ -111,7 +111,7 @@ function DayView({ day, ticker, date, alias }: { day: DeskDay; ticker: string; d
 /** Same grid as DayView (chart 8/12 + legend 4/12) so nothing jumps when the day arrives. */
 function DayViewSkeleton({ label }: { label: string }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-12" aria-busy="true" aria-label={label}>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12" aria-busy="true" aria-label={label}>
       <div className="glass-panel flex flex-col gap-3 rounded-2xl p-[var(--panel-p)] lg:col-span-8">
         <Skeleton className="h-4 w-2/3 rounded-md" />
         <Skeleton className="h-[340px] rounded-xl sm:h-[460px]" />

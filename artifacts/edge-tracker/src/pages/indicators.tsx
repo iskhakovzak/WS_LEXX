@@ -309,7 +309,7 @@ function IndicatorLibrary() {
     <>
 
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+      <div className="grid grid-cols-1 gap-grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
           <Toolbar className="flex-col items-stretch gap-2 sm:p-2.5">
             <div className="flex flex-wrap items-center gap-2">

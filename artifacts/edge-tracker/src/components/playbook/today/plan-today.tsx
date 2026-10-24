@@ -96,7 +96,7 @@ function PickPrompt({
         <p className="text-base font-semibold text-foreground">{t("myPlan.promptTitle")}</p>
         <p className="text-sm text-foreground/80">{t(PROMPT_HINT[suggestionSource(today.setups, suggestion)])}</p>
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {tiles.map((s) => {
           const on = draft.includes(s.id);
           const chip = edgeChip(s.myEdge);

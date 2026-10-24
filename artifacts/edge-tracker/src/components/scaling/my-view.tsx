@@ -28,7 +28,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
   if (ev.isError) return <Panel><QueryError error={ev.error} onRetry={() => ev.refetch()} title={t("me.loadFailed")} /></Panel>;
   if (ev.isLoading || !ev.data) {
     return (
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Skeleton className="h-56 rounded-2xl lg:col-span-2" />
         <Skeleton className="h-56 rounded-2xl" />
         <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
@@ -55,7 +55,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
   const showPromote = !showDemote && action === "promote" && pendingList.length === 0;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3 sm:gap-5">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 sm:gap-5">
       {/* Hero: current tier + progress ring */}
       <Panel className="lg:col-span-2" bodyClassName="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-4">

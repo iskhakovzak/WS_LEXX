@@ -296,7 +296,7 @@ export function SetupPanel({ status, accounts, onGoTab }: { status: Status; acco
       <SetupWizard status={status} onGoTab={onGoTab} />
       <GroupPicker status={status} />
       {/* The fee table needs the width; the unmatched list is usually one line («всё сопоставлено») — don't stretch it. */}
-      <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <FeeSettings status={status} />
         <UnmatchedAccounts status={status} accounts={accounts} />
       </div>

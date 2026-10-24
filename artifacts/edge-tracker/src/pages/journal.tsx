@@ -415,7 +415,7 @@ export default function JournalPage() {
       {view === "queue" && isCurator ? (
         <EodQueuePanel enabled={isCurator} />
       ) : (
-        <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.15fr)_minmax(400px,1fr)]">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1.15fr)_minmax(400px,1fr)]">
           <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
             <DaySummary
               trader={effectiveAccount}

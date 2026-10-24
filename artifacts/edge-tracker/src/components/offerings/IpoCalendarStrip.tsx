@@ -76,7 +76,7 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
   const loading = q.isLoading;
 
   return (
-    <div className="grid min-w-0 items-start gap-[var(--grid-gap)] xl:grid-cols-2">
+    <div className="grid grid-cols-1 min-w-0 items-start gap-[var(--grid-gap)] xl:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
         <Panel title={t("ipo.upcoming")} icon={CalendarDays}
           description={q.data ? t("ipo.upcomingNasdaq") : t("ipo.upcomingCalendar")}

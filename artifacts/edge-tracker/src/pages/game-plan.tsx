@@ -255,7 +255,7 @@ export default function GamePlanPage() {
       ) : view === "traders" ? (
         <TraderPlans date={date} />
       ) : (
-      <div className="grid gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
           {dayQ.isLoading ? (
             <BriefingSkeleton />
@@ -345,7 +345,7 @@ export default function GamePlanPage() {
                     <p className="text-sm text-muted-foreground">{t("page.noTickers")}</p>
                   </Panel>
                 ) : (
-                  <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 2xl:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-[var(--grid-gap)] md:grid-cols-2 2xl:grid-cols-3">
                     {visible.map((i, idx) => (
                       <InPlayCard key={`${i.ticker}-${idx}`} item={i} index={idx} />
                     ))}
@@ -409,12 +409,12 @@ function BriefingSkeleton() {
           <Skeleton className="h-7 w-36 rounded-full" />
         </div>
         <Skeleton className="h-16 w-full rounded-xl" />
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Skeleton className="h-32 rounded-xl" />
           <Skeleton className="h-32 rounded-xl" />
         </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-56 rounded-2xl" />
         ))}

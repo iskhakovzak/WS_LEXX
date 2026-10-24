@@ -304,7 +304,7 @@ export function DayJournalEditor({
               )}
 
               <Step n={1} title={t("editor.step1")} aside={<MorningCheckin trader={trader} date={date} />}>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <ScaleField label={t("editor.mood")} labels={MOOD_LABELS} value={draft.mood} editable={editable} onChange={(v) => update({ mood: v })} />
                   <ScaleField label={t("editor.discipline")} labels={DISCIPLINE_LABELS} value={draft.discipline} editable={editable} onChange={(v) => update({ discipline: v })} />
                 </div>
@@ -319,7 +319,7 @@ export function DayJournalEditor({
               </Step>
 
               <Step n={2} title={t("editor.step2")}>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <ReviewField id="journal-well" label={t("editor.well")} tone="up" value={draft.well} editable={editable}
                     placeholder={t("editor.wellPlaceholder")} onChange={(v) => update({ well: v })} />
                   <ReviewField id="journal-mistakes" label={t("editor.mistakes")} tone="down" value={draft.mistakes} editable={editable}

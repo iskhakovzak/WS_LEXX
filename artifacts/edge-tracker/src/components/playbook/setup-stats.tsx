@@ -129,7 +129,7 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
         </p>
       )}
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
         <DocSection title={t("stats.bestTime")} icon={Clock}>
           {s.slots.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("stats.noTimes")}</p>
@@ -166,7 +166,7 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
         </DocSection>
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] 2xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] 2xl:grid-cols-2">
         <DocSection title={t("stats.tickers")}>
           <UsdTable head={t("stats.ticker")} rows={s.tickers.map((x) => ({ key: x.ticker, label: x.ticker, u: x }))} />
         </DocSection>

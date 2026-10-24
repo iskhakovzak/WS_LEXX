@@ -182,7 +182,7 @@ export function MarketView() {
         </div>
       </BentoGrid>
 
-      <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4" role="list" aria-label={t("market.cardsAria")}>
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] sm:grid-cols-2 xl:grid-cols-4" role="list" aria-label={t("market.cardsAria")}>
         {INDICATORS.map((def) => (
           <div key={def.id} role="listitem" className="min-w-0">
             <MarketCard def={def} reading={readById.get(def.id)} rule={alerts[def.id]} focused={focus === def.id} onFocus={setFocus} onSaveAlert={onSaveAlert} />

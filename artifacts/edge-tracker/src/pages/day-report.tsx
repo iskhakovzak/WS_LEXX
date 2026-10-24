@@ -251,18 +251,18 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
         <SummaryBento doc={doc} />
       </section>
       {canAi ? <AiReviewCard subject={{ kind: "day", date: doc.date, trader: doc.trader }} /> : null}
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="min-w-0 xl:col-span-2"><EquityPanel doc={doc} /></div>
         <ComparisonPanel doc={doc} />
       </div>
       <TimelinePanel doc={doc} />
       <DeskDayChips tickers={doc.timeline.map((r) => r.ticker)} date={doc.date} trader={doc.trader} className="-mt-1 px-1" />
       <TickerContextList tickers={doc.timeline.map((r) => r.ticker)} day={doc.date} />
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <LeaksPanel doc={doc} />
         <PlanPanel doc={doc} />
       </div>
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="min-w-0 xl:col-span-2"><BreakdownPanel doc={doc} /></div>
         <StrengthsPanel doc={doc} />
       </div>
