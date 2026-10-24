@@ -1,9 +1,12 @@
 /**
  * Plain-SVG charts of the benchmark (no chart lib): multi-series equity lines and a percentile radar.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { AXIS_SVG_TEXT, CHART, DRAW_MS, STROKE, TooltipCard, areaGradient } from "@/components/shared/charts";
+import { chartsI18n } from "@/i18n/ns/charts";
 import { PERIOD_HINT, dayHref, usePeriodNav } from "@/lib/period-links";
 import type { DayPoint } from "./api";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
@@ -18,8 +21,22 @@ export type EquitySeries = { name: string; color: string; unit: "usd" | "r" | nu
  * click a day (or focus + ←/→ + Enter) opens that trader's «Разбор дня» — with several lines, of the nearest one.
  */
 export function EquityLines({ series, height = 260, className }: { series: EquitySeries[]; height?: number; className?: string }) {
-  const W = 760, H = height, PL = 64, PR = 12, PT = 12, PB = 26;
+  // Drawn at the measured width (no viewBox scaling), so 11px text and 2px lines stay 11px / 2px at any size.
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const hasDays = new Set(series.flatMap((s) => s.points.map((p) => p.day))).size >= 2;
+  const [W, setW] = useState(760);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setW(Math.max(280, Math.floor(el.clientWidth))));
+    ro.observe(el);
+    return () => ro.disconnect();
+    // The box exists only once there are ≥ 2 days (the early return below renders a placeholder instead).
+  }, [hasDays]);
+  const H = height, PL = 64, PR = 12, PT = 12, PB = 26;
   const [hover, setHover] = useState<number | null>(null);
+  const reduce = useReducedMotion();
+  const gid = `bm${useId().replace(/:/g, "")}`;
   const model = useMemo(() => {
     const days = [...new Set(series.flatMap((s) => s.points.map((p) => p.day)))].sort();
     const idx = new Map(days.map((d, i) => [d, i]));
@@ -78,28 +95,44 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
     navigate(dayHref(days[i], best));
   };
   const shown = hover ?? (nav.active >= 0 ? nav.active : null);
+  const single = lines.length === 1 ? lines[0] : null;
+  const dayDelta = (i: number) => {
+    if (!single) return null;
+    const v = single.vals[i];
+    if (v == null) return null;
+    return v - (i > 0 ? single.vals[i - 1] ?? 0 : 0);
+  };
   return (
-    <div {...nav.wrapperProps} className={cn("relative", nav.wrapperProps.className, className)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={benchmarkI18n.t("charts.equityAria", { names: series.map((s) => personName(s.name)).join(", ") })}>
+    <div ref={boxRef} {...nav.wrapperProps} className={cn("relative", nav.wrapperProps.className, className)}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} className="block" role="img" aria-label={benchmarkI18n.t("charts.equityAria", { names: series.map((s) => personName(s.name)).join(", ") })}>
+        {single && areaGradient(gid, single.color)}
         {ticks.map((t, i) => (
           <g key={i}>
-            <line x1={PL} x2={W - PR} y1={y(t)} y2={y(t)} stroke="hsl(var(--border))" strokeDasharray={t === 0 ? undefined : "2 4"} strokeWidth={1} />
-            <text x={PL - 6} y={y(t) + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">{fmt(t)}</text>
+            {/* Faint horizontal guides only; zero gets its own emphasised rule below. */}
+            <line x1={PL} x2={W - PR} y1={y(t)} y2={y(t)} stroke={CHART.grid} strokeOpacity={0.45} strokeWidth={1} />
+            <text x={PL - 8} y={y(t) + 4} textAnchor="end" {...AXIS_SVG_TEXT}>{fmt(t)}</text>
           </g>
         ))}
-        {min < 0 && max > 0 && <line x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeWidth={1} />}
+        {min < 0 && max > 0 && <line x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} stroke={CHART.fg} strokeOpacity={0.4} strokeWidth={1} />}
         {xTicks.map((i) => (
-          <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[10px] tabular-nums">{fmtDate(days[i], "shortYY")}</text>
+          <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"} {...AXIS_SVG_TEXT}>{fmtDate(days[i], "shortYY")}</text>
         ))}
         {lines.map((l) => {
           let d = "";
-          l.vals.forEach((v, i) => { if (v == null) return; d += `${d ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; });
-          return <path key={l.name} d={d} fill="none" stroke={l.color} strokeWidth={1.8} strokeLinejoin="round" />;
+          let firstX: number | null = null, lastX = 0;
+          l.vals.forEach((v, i) => { if (v == null) return; if (firstX == null) firstX = x(i); lastX = x(i); d += `${d ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; });
+          const base = y(Math.max(min, Math.min(max, 0)));
+          return (
+            <g key={l.name}>
+              {single && firstX != null && <motion.path d={`${d}L${lastX.toFixed(1)},${base.toFixed(1)}L${(firstX as number).toFixed(1)},${base.toFixed(1)}Z`} fill={`url(#${gid})`} initial={{ opacity: reduce ? 1 : 0 }} animate={{ opacity: 1 }} transition={{ duration: DRAW_MS / 1000, ease: "easeOut" }} />}
+              <motion.path d={d} fill="none" stroke={l.color} strokeWidth={STROKE} strokeLinejoin="round" strokeLinecap="round" initial={{ pathLength: reduce ? 1 : 0 }} animate={{ pathLength: 1 }} transition={{ duration: DRAW_MS / 1000, ease: "easeOut" }} />
+            </g>
+          );
         })}
         {shown != null && (
           <g>
-            <line x1={x(shown)} x2={x(shown)} y1={PT} y2={H - PB} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
-            {lines.map((l) => (l.vals[shown] != null ? <circle key={l.name} cx={x(shown)} cy={y(l.vals[shown] as number)} r={3} fill={l.color} /> : null))}
+            <line x1={x(shown)} x2={x(shown)} y1={PT} y2={H - PB} stroke={CHART.fg} strokeOpacity={0.35} strokeDasharray="3 3" />
+            {lines.map((l) => (l.vals[shown] != null ? <circle key={l.name} cx={x(shown)} cy={y(l.vals[shown] as number)} r={4} fill={l.color} stroke={CHART.surface} strokeWidth={2} /> : null))}
           </g>
         )}
         <rect
@@ -107,19 +140,25 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
           onMouseMove={onMove} onMouseLeave={() => setHover(null)} onClick={onClick}
         />
       </svg>
-      {shown != null && (
-        <div className="glass-panel pointer-events-none absolute right-2 top-2 rounded-lg px-2.5 py-1.5 text-xs tabular-nums">
-          <div className="font-medium text-foreground">{fmtDate(days[shown], "shortYY")}</div>
-          {lines.map((l) => (
-            <div key={l.name} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ background: l.color }} aria-hidden="true" />
-              <span className="text-muted-foreground">{personName(l.name)}</span>
-              <span className="ml-auto pl-2 text-foreground">{l.vals[shown] == null ? "—" : fmt(l.vals[shown] as number)}</span>
-            </div>
-          ))}
-          <div className="mt-1 text-2xs font-medium text-primary">{hover != null ? benchmarkI18n.t("charts.click") : benchmarkI18n.t("charts.enter")} — {PERIOD_HINT.day.toLowerCase()} →</div>
-        </div>
-      )}
+      {shown != null && (() => {
+        const dd = dayDelta(shown);
+        return (
+          <TooltipCard
+            className="absolute right-2 top-2"
+            title={fmtDate(days[shown], "shortYY")}
+            tone="pnl"
+            rows={lines.map((l) => ({
+              key: l.name,
+              name: personName(l.name),
+              color: l.color,
+              raw: l.vals[shown] as number | null,
+              value: l.vals[shown] == null ? "—" : fmt(l.vals[shown] as number),
+            }))}
+            delta={dd != null ? { raw: dd, text: fmt(dd), label: chartsI18n.t("tip.day") } : null}
+            footer={<span className="font-medium text-primary">{hover != null ? benchmarkI18n.t("charts.click") : benchmarkI18n.t("charts.enter")} — {PERIOD_HINT.day.toLowerCase()} →</span>}
+          />
+        );
+      })()}
       <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
         {series.map((s) => (
           <span key={s.name} className="inline-flex items-center gap-1.5">
@@ -148,21 +187,21 @@ export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis
     <svg viewBox={`${-RADAR_PAD_X} 0 ${size + RADAR_PAD_X * 2} ${size}`} className={cn("h-auto w-full max-w-[440px] overflow-visible", className)} role="img"
       aria-label={benchmarkI18n.t("charts.radarAria", { names: series.map((s) => personName(s.name)).join(" vs ") })}>
       {[0.25, 0.5, 0.75, 1].map((g) => (
-        <polygon key={g} points={axes.map((_, i) => pt(i, g).join(",")).join(" ")} fill="none" stroke="hsl(var(--border))" strokeDasharray={g === 0.5 ? undefined : "2 3"} />
+        <polygon key={g} points={axes.map((_, i) => pt(i, g).join(",")).join(" ")} fill="none" stroke={CHART.grid} strokeOpacity={g === 1 ? 0.8 : 0.45} />
       ))}
       {axes.map((a, i) => {
         const [x2, y2] = pt(i, 1);
         const [lx, ly] = pt(i, 1.18);
         return (
           <g key={a.key}>
-            <line x1={c} y1={c} x2={x2} y2={y2} stroke="hsl(var(--border))" />
-            <text x={lx} y={ly} textAnchor={Math.abs(lx - c) < 8 ? "middle" : lx > c ? "start" : "end"} dominantBaseline="middle" className="fill-muted-foreground text-[10px]">{a.label}</text>
+            <line x1={c} y1={c} x2={x2} y2={y2} stroke={CHART.grid} strokeOpacity={0.45} />
+            <text x={lx} y={ly} textAnchor={Math.abs(lx - c) < 8 ? "middle" : lx > c ? "start" : "end"} dominantBaseline="middle" fontSize={11} fill={CHART.axis}>{a.label}</text>
           </g>
         );
       })}
       {series.map((s) => (
         <polygon key={s.name} points={axes.map((a, i) => pt(i, s.values[a.key] ?? 0).join(",")).join(" ")}
-          fill={s.color} fillOpacity={0.14} stroke={s.color} strokeWidth={1.8} strokeLinejoin="round" />
+          fill={s.color} fillOpacity={0.14} stroke={s.color} strokeWidth={STROKE} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       ))}
       {series.map((s) => axes.map((a, i) => {
         const v = s.values[a.key];

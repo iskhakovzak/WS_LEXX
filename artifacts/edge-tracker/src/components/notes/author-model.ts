@@ -3,7 +3,6 @@
  * Sections are stored inside `raw_text` as `## Heading` blocks, so the DB schema and the
  * AI-improve endpoint stay unchanged and old free-form notes keep working.
  */
-import type { CSSProperties } from "react";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { fmtRelative } from "@/lib/format";
@@ -328,16 +327,6 @@ export function writingStreak(dates: Set<string>, today: string): number {
 export function horizonLabel(h: Horizon): string {
   return commonI18n.t(`trading.${h}`);
 }
-
-export const CHART_TOOLTIP: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
 
 /* ───────────────────────── API ───────────────────────── */
 

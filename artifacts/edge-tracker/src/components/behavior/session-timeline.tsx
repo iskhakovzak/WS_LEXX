@@ -17,6 +17,7 @@ import {
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { behaviorI18n } from "@/i18n/ns/behavior";
+import { AXIS_SVG_TEXT, CHART, STROKE } from "@/components/shared/charts";
 
 const tb = behaviorI18n.t;
 const sideWord = (side: string | null | undefined) => (side === "short" ? commonI18n.t("trading.short").toLowerCase() : side === "long" ? commonI18n.t("trading.long").toLowerCase() : "");
@@ -132,19 +133,19 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
           {/* сетка часов */}
           {ticks.map((m) => (
             <g key={m}>
-              <line x1={x(m)} x2={x(m)} y1={0} y2={height - AXIS_H} stroke="hsl(var(--border))" strokeDasharray="2 4" />
-              <text x={x(m)} y={height - 6} textAnchor="middle" fontSize={12} fill="hsl(var(--muted-foreground))" className="tabular-nums">{fmtClock(m)}</text>
+              <line x1={x(m)} x2={x(m)} y1={0} y2={height - AXIS_H} stroke={CHART.grid} strokeOpacity={0.3} />
+              <text x={x(m)} y={height - 6} textAnchor="middle" {...AXIS_SVG_TEXT}>{fmtClock(m)}</text>
             </g>
           ))}
           {/* основная сессия */}
           <rect x={x(570)} y={0} width={Math.max(0, x(960) - x(570))} height={height - AXIS_H} fill="hsl(var(--muted) / 0.12)" />
 
           {/* накопленный нетто */}
-          <text x={PAD_L - 8} y={y(0) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--muted-foreground))">$0</text>
-          <line x1={PAD_L} x2={PAD_L + innerW} y1={y(0)} y2={y(0)} stroke="hsl(var(--muted-foreground) / 0.4)" />
-          <path d={path} fill="none" stroke={TONE_VAR[finalTone]} strokeWidth={2} strokeLinejoin="round" />
-          {tl.summary.peak > 0 && <text x={PAD_L - 8} y={y(tl.summary.peak) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--up))" className="tabular-nums">{fmtUsd(tl.summary.peak, { signed: true, compact: true })}</text>}
-          {tl.summary.trough < 0 && <text x={PAD_L - 8} y={y(tl.summary.trough) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--down))" className="tabular-nums">{fmtUsd(tl.summary.trough, { signed: true, compact: true })}</text>}
+          <text x={PAD_L - 8} y={y(0) + 4} textAnchor="end" {...AXIS_SVG_TEXT}>$0</text>
+          <line x1={PAD_L} x2={PAD_L + innerW} y1={y(0)} y2={y(0)} stroke={CHART.fg} strokeOpacity={0.4} />
+          <path d={path} fill="none" stroke={TONE_VAR[finalTone]} strokeWidth={STROKE} strokeLinejoin="round" strokeLinecap="round" />
+          {tl.summary.peak > 0 && <text x={PAD_L - 8} y={y(tl.summary.peak) + 4} textAnchor="end" {...AXIS_SVG_TEXT} fill={CHART.up}>{fmtUsd(tl.summary.peak, { signed: true, compact: true })}</text>}
+          {tl.summary.trough < 0 && <text x={PAD_L - 8} y={y(tl.summary.trough) + 4} textAnchor="end" {...AXIS_SVG_TEXT} fill={CHART.down}>{fmtUsd(tl.summary.trough, { signed: true, compact: true })}</text>}
 
           {/* момент срыва */}
           {bd && bd.entryMin != null && (

@@ -139,15 +139,6 @@ export function fmtStrike(n: number, maxDigits = 2): string {
   return fmtNum(n, d);
 }
 
-export const TOOLTIP_STYLE: React.CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-};
 
 // ─── Black-Scholes ───────────────────────────────────────────────────────────
 

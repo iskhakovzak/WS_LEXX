@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AXIS, CHART_TOOLTIP_STYLE, GRID } from "@/components/analytics-page/metrics";
+import {
+  ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
+  areaGradient, pnlPaint, tint, tooltipProps, useChartMotion,
+} from "@/components/shared/charts";
 import { fmtDate, fmtDateCustom, fmtDeskDate, fmtUsd } from "@/lib/format";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import type { DayResult, EquityPoint } from "./api";
@@ -30,6 +33,11 @@ export function mergeEquity(base: EquityPoint[], scenario: EquityPoint[], hasSce
 export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }: { base: EquityPoint[]; scenario: EquityPoint[]; hasScenario: boolean; height?: number; /** Click on a day → e.g. open its report. */ onDay?: (day: string) => void }) {
   const { t } = whatIfI18n.useT();
   const data = useMemo(() => mergeEquity(base, scenario, hasScenario), [base, scenario, hasScenario, t]); // eslint-disable-line react-hooks/exhaustive-deps -- labels follow the language
+  const motion = useChartMotion();
+  const gid = `wi${useId().replace(/:/g, "")}`;
+  // Fact alone: a P&L curve (profit above zero, loss below). With a scenario: fact recedes (dashed, muted), scenario leads.
+  const paint = useMemo(() => pnlPaint(gid, base.map((p) => p.cum)), [base, gid]);
+  const usd = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
   return (
     <div style={{ height }} className={onDay ? "cursor-pointer" : undefined} title={onDay ? t("chart.clickDay") : undefined} role="img" aria-label={hasScenario ? t("chart.ariaBoth") : t("chart.ariaFact")}>
       {data.length ? (
@@ -39,21 +47,30 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
             margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
             onClick={onDay ? (st: { activePayload?: { payload?: { day?: unknown } }[] } | null) => { const day = st?.activePayload?.[0]?.payload?.day; if (typeof day === "string") onDay(day); } : undefined}
           >
-            <defs>
-              <linearGradient id="sim-scenario-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.22} />
-                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke={GRID} vertical={false} />
-            <XAxis dataKey="label" {...AXIS} minTickGap={36} />
-            <YAxis {...AXIS} tickFormatter={(v: number) => fmtUsd(v, { signed: true, decimals: "auto" })} width={76} />
-            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => fmtUsd(v, { signed: true, decimals: "auto" })} labelFormatter={(_, p) => { const d = p?.[0]?.payload?.day; return typeof d === "string" ? fmtDeskDate(d, "medium") : ""; }} />
-            <Legend verticalAlign="top" align="right" height={28} iconType="plainline" />
-            <ReferenceLine y={0} stroke={GRID} />
-            <Line type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke="hsl(var(--muted-foreground))" dot={false} strokeWidth={1.5} strokeDasharray={hasScenario ? "4 3" : undefined} isAnimationActive={false} />
+            {hasScenario ? areaGradient(`${gid}-sc`, CHART.accent) : paint.defs}
+            <CartesianGrid {...GRID} />
+            <XAxis dataKey="label" {...X_AXIS} minTickGap={36} />
+            <YAxis {...Y_AXIS} tickFormatter={usd} width={76} />
+            <Tooltip
+              {...tooltipProps("line")}
+              content={<GlassTooltip
+                tone="pnl"
+                delta={hasScenario ? (r) => (typeof r[SERIES_SCENARIO] === "number" && typeof r[SERIES_BASE] === "number" ? (r[SERIES_SCENARIO] as number) - (r[SERIES_BASE] as number) : null) : undefined}
+                deltaFormat={usd}
+                deltaLabel={t("chart.delta")}
+              />}
+              formatter={(v: number, name: string) => [usd(v), name]}
+              labelFormatter={(_, p) => { const d = p?.[0]?.payload?.day; return typeof d === "string" ? fmtDeskDate(d, "medium") : ""; }}
+            />
+            {hasScenario && <Legend verticalAlign="top" align="right" height={28} iconType="plainline" wrapperStyle={{ fontSize: 11 }} />}
+            <ReferenceLine {...ZERO_LINE} />
+            {hasScenario ? (
+              <Line type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke={CHART.neutral} dot={false} strokeWidth={STROKE_THIN} strokeDasharray="4 3" activeDot={{ ...ACTIVE_DOT, fill: CHART.neutral }} {...motion} />
+            ) : (
+              <Area type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke={paint.stroke} fill={paint.fill} dot={false} strokeWidth={STROKE} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} {...motion} />
+            )}
             {hasScenario && (
-              <Area type="monotone" dataKey={SERIES_SCENARIO} name={t("chart.scenario")} stroke="hsl(var(--primary))" strokeWidth={2.25} fill="url(#sim-scenario-fill)" dot={false} isAnimationActive={false} connectNulls />
+              <Area type="monotone" dataKey={SERIES_SCENARIO} name={t("chart.scenario")} stroke={CHART.accent} strokeWidth={STROKE} fill={`url(#${gid}-sc)`} dot={false} activeDot={{ ...ACTIVE_DOT, fill: CHART.accent }} {...motion} connectNulls />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -102,22 +119,23 @@ export function DailyHistogram({ base, scenario, hasScenario }: { base: DayResul
     while (last > 0 && !bins[last][SERIES_BASE] && !bins[last][SERIES_SCENARIO]) last--;
     return first < 0 ? [] : bins.slice(first, last + 1);
   }, [base, scenario, hasScenario, t]); // eslint-disable-line react-hooks/exhaustive-deps -- bin labels follow the language
+  const motion = useChartMotion();
   return (
     <div className="h-[220px]">
       {data.length ? (
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2}>
-            <CartesianGrid stroke={GRID} vertical={false} />
-            <XAxis dataKey="tick" {...AXIS} interval={0} fontSize={12} />
-            <YAxis {...AXIS} allowDecimals={false} width={32} />
-            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => t("chart.days", { count: v })} labelFormatter={(_, p) => (p?.[0]?.payload?.label as string) ?? ""} />
-            <Legend />
-            <Bar dataKey={SERIES_BASE} name={t("chart.base")} isAnimationActive={false} radius={[4, 4, 0, 0]}>
-              {data.map((d) => <Cell key={d.i} fill={d.neg ? "hsl(var(--down) / 0.4)" : "hsl(var(--up) / 0.4)"} />)}
+          <BarChart data={data} margin={MARGIN} barGap={2}>
+            <CartesianGrid {...GRID} />
+            <XAxis dataKey="tick" {...X_AXIS} interval={0} />
+            <YAxis {...Y_AXIS} allowDecimals={false} width={32} />
+            <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} formatter={(v: number, name: string) => [t("chart.days", { count: v }), name]} labelFormatter={(_, p) => (p?.[0]?.payload?.label as string) ?? ""} />
+            {hasScenario && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />}
+            <Bar dataKey={SERIES_BASE} name={t("chart.base")} fill={hasScenario ? tint("muted-foreground", 0.45) : CHART.up} radius={BAR_RADIUS} {...motion}>
+              {data.map((d) => <Cell key={d.i} fill={hasScenario ? tint(d.neg ? "down" : "up", 0.4) : d.neg ? CHART.down : CHART.up} />)}
             </Bar>
             {hasScenario && (
-              <Bar dataKey={SERIES_SCENARIO} name={t("chart.scenario")} isAnimationActive={false} radius={[4, 4, 0, 0]}>
-                {data.map((d) => <Cell key={d.i} fill={d.neg ? "hsl(var(--down))" : "hsl(var(--up))"} />)}
+              <Bar dataKey={SERIES_SCENARIO} name={t("chart.scenario")} fill={CHART.up} radius={BAR_RADIUS} {...motion}>
+                {data.map((d) => <Cell key={d.i} fill={d.neg ? CHART.down : CHART.up} />)}
               </Bar>
             )}
           </BarChart>

@@ -3,12 +3,14 @@
  * tomorrow's plan and cross-links. All numbers come pre-computed from GET /api/day-report (net $, ET time).
  */
 import * as React from "react";
-import type { CSSProperties } from "react";
 import { Link } from "wouter";
 import { Area, AreaChart, CartesianGrid, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   AlertTriangle, BarChart3, CalendarDays, CheckCircle2, Clock, ExternalLink, LineChart, ListChecks, ListOrdered, NotebookPen, Sparkles, Target,
 } from "lucide-react";
+import {
+  ACTIVE_DOT, CHART, GRID, GlassTooltip, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, pnlPaint, tooltipProps, useChartMotion,
+} from "@/components/shared/charts";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, StatRow, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -19,17 +21,6 @@ import {
 import { fmtNum, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { dayReportI18n } from "@/i18n/ns/dayReport";
-
-const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: "0 8px 32px rgb(0 0 0 / 0.3)",
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
 
 /** Leak kind → short label in the current language (read on access). */
 export const LEAK_SHORT: Record<LeakKind, string> = Object.defineProperties({} as Record<LeakKind, string>, Object.fromEntries(
@@ -114,7 +105,8 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
     const p = data.find((d) => d.x === x);
     return p?.time?.slice(0, 5) ?? "";
   };
-  const color = e.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
+  const motion = useChartMotion();
+  const paint = React.useMemo(() => pnlPaint("dr-eq", data.map((d) => d.cum)), [data]);
   const srcLabel = e.timeSource === "executions" ? t("equity.srcExecutions") : e.timeSource === "snapshot" ? t("equity.srcSnapshot") : t("equity.srcOrder");
   return (
     <Panel
@@ -138,39 +130,38 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
         <div className="h-56 w-full" role="img" aria-label={t("equity.aria", { peak: fmtUsd(e.peak.value, { signed: true }), close: fmtUsd(e.final, { signed: true }), dd: fmtUsd(e.maxDrawdown.value) })}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="dr-eq" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={color} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="hsl(var(--border) / 0.4)" vertical={false} />
+              {paint.defs}
+              <CartesianGrid {...GRID} />
               <XAxis
                 dataKey="x"
                 type="number"
                 domain={["dataMin", "dataMax"]}
                 ticks={data.map((d) => d.x)}
                 tickFormatter={fmtX}
-                tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                axisLine={false}
-                tickLine={false}
+                {...X_AXIS}
                 interval="preserveStartEnd"
                 minTickGap={24}
               />
-              <YAxis width={64} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => fmtUsd(v)} />
-              <ReferenceLine y={0} stroke="hsl(var(--border))" />
-              {doc.dailyLossLimit != null && <ReferenceLine y={-doc.dailyLossLimit} stroke="hsl(var(--down))" strokeDasharray="4 4" label={{ value: t("equity.dailyLimit"), fill: "hsl(var(--down))", fontSize: 10, position: "insideBottomLeft" }} />}
+              <YAxis {...Y_AXIS} width={64} tickFormatter={(v: number) => fmtUsd(v)} />
+              <ReferenceLine {...ZERO_LINE} />
+              {doc.dailyLossLimit != null && <ReferenceLine y={-doc.dailyLossLimit} {...REF_LINE} stroke={CHART.down} label={{ value: t("equity.dailyLimit"), fill: CHART.down, fontSize: 11, position: "insideBottomLeft" }} />}
               <Tooltip
-                contentStyle={TOOLTIP_STYLE}
+                {...tooltipProps("line")}
+                content={<GlassTooltip
+                  tone="pnl"
+                  delta={(r) => (r.tradeId ? (r.net as number | null) : null)}
+                  deltaFormat={(v) => fmtUsd(v, { signed: true })}
+                  deltaLabel={commonI18n.t("trading.net")}
+                />}
                 labelFormatter={(x: number) => {
                   const p = data.find((d) => d.x === x);
                   return p ? `${p.time ?? ""} · ${p.ticker || t("equity.start")}` : "";
                 }}
-                formatter={(v: number, _n, item) => [`${fmtUsd(v, { signed: true })}${item?.payload?.tradeId ? ` ${t("equity.tradeNet", { amount: fmtUsd(item.payload.net, { signed: true }) })}` : ""}`, t("equity.cumulative")]}
+                formatter={(v: number) => [fmtUsd(v, { signed: true }), t("equity.cumulative")]}
               />
-              <Area type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} fill="url(#dr-eq)" isAnimationActive={false} dot={{ r: 2.5, fill: color }} />
-              {peakPt && <ReferenceDot x={peakPt.x} y={peakPt.cum} r={5} fill="hsl(var(--up))" stroke="hsl(var(--background))" />}
-              {ddEnd && e.maxDrawdown.value > 0 && <ReferenceDot x={ddEnd.x} y={ddEnd.cum} r={5} fill="hsl(var(--down))" stroke="hsl(var(--background))" />}
+              <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} fill={paint.fill} {...motion} dot={{ r: 2.5, strokeWidth: 0, fill: CHART.fg, fillOpacity: 0.55 }} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} />
+              {peakPt && <ReferenceDot x={peakPt.x} y={peakPt.cum} r={5} fill={CHART.up} stroke={CHART.surface} strokeWidth={2} />}
+              {ddEnd && e.maxDrawdown.value > 0 && <ReferenceDot x={ddEnd.x} y={ddEnd.cum} r={5} fill={CHART.down} stroke={CHART.surface} strokeWidth={2} />}
             </AreaChart>
           </ResponsiveContainer>
         </div>

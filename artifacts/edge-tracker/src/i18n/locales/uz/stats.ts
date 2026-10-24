@@ -165,6 +165,8 @@ export default {
     hintDaily: "Har kun yopilishidagi jamlangan {unit} va choʻqqidan pasayish",
     aria: "Natija egri chizigʻi: jami {value}",
     accumulated: "Jamlangan",
+    deltaDay: "Kun uchun",
+    deltaTrade: "Savdo",
     drawdown: "Pasayish",
     few: "Egri chiziq uchun maʼlumot kam",
     fewHint: "{unit} toʻldirilgan kamida 2 ta yopilgan savdo kerak.",

@@ -3,10 +3,11 @@ import type { Trade } from "@workspace/api-client-react";
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import { BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, X_AXIS, Y_AXIS, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import { TrendingUp, TrendingDown, LineChart as LineIcon, BarChart3, ArrowRight, Clock, CandlestickChart } from "lucide-react";
 import { EquityChart, buildDayCandles, soleTrader } from "@/components/equity-chart";
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
-import { type Unit, type DimensionKey, computeStats, equitySeries, valueIn, rHistogram, streaks, realizedR, median, edgeLeaders, breakdown, reliability, horizonLabel, HORIZONS, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { type Unit, type DimensionKey, computeStats, equitySeries, valueIn, rHistogram, streaks, realizedR, median, edgeLeaders, breakdown, reliability, horizonLabel, HORIZONS } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { fmtCount, fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
@@ -24,6 +25,7 @@ export function OverviewTab({
   onOpenDimension: (d: DimensionKey) => void;
 }) {
   const { t } = analyticsI18n.useT();
+  const motion = useChartMotion();
   const s = useMemo(() => computeStats(trades), [trades]);
   const p = useMemo(() => (previous && previous.length ? computeStats(previous) : null), [previous]);
   const series = useMemo(() => (unit ? equitySeries(trades, unit) : []), [trades, unit]);
@@ -163,13 +165,13 @@ export function OverviewTab({
             <div className="flex flex-col gap-3">
               <div className="h-[190px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={hist} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                    <XAxis dataKey="label" {...AXIS} fontSize={10} interval={0} angle={-35} textAnchor="end" height={40} />
-                    <YAxis {...AXIS} allowDecimals={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} formatter={(v: number) => [commonI18n.t("units.trades", { count: v }), t("overview.tradesCol")]} labelFormatter={(l) => `${l}R`} />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
-                      {hist.map((b) => <Cell key={b.label} fill={b.tone === "up" ? "hsl(var(--up))" : "hsl(var(--down))"} fillOpacity={0.85} />)}
+                  <BarChart data={hist} margin={MARGIN} barCategoryGap={2}>
+                    <CartesianGrid {...GRID} />
+                    <XAxis dataKey="label" {...X_AXIS} interval="preserveStartEnd" />
+                    <YAxis {...Y_AXIS} width={32} allowDecimals={false} />
+                    <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} formatter={(v: number) => [commonI18n.t("units.trades", { count: v }), t("overview.tradesCol")]} labelFormatter={(l) => `${l}R`} />
+                    <Bar dataKey="count" radius={BAR_RADIUS} {...motion}>
+                      {hist.map((b) => <Cell key={b.label} fill={b.tone === "up" ? CHART.up : CHART.down} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>

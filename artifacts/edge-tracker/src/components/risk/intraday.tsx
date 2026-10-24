@@ -13,7 +13,7 @@ import { ErrorState } from "@/components/ds";
 import type { BehaviorFlags, TraderDay } from "./use-risk";
 import { useBehaviorDay, useTraderDay } from "./use-risk";
 import { intradayCurve } from "./risk-math";
-import { AXIS, CHART_TOOLTIP_STYLE } from "./primitives";
+import { CHART, GRID, GlassTooltip, REF_LINE, STROKE, X_AXIS, Y_AXIS, ZERO_LINE, tint, tooltipProps } from "@/components/shared/charts";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
@@ -37,7 +37,7 @@ export function IntradayChart({ day, dailyLimit, height = 180 }: { day: TraderDa
   const lo = Math.min(curve.low, limit != null ? -limit * 1.08 : curve.low);
   const hi = Math.max(curve.high, 0);
   const pad = Math.max(10, (hi - lo) * 0.08);
-  const color = curve.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
+  const color = curve.final >= 0 ? CHART.up : CHART.down;
   const xs = curve.points.map((p) => p.min);
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs, x0 + 30);
@@ -51,24 +51,32 @@ export function IntradayChart({ day, dailyLimit, height = 180 }: { day: TraderDa
     >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={curve.points} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="min" type="number" domain={[x0, x1]} tickFormatter={clock} {...AXIS} minTickGap={28} />
-          <YAxis {...AXIS} width={56} domain={[lo - pad, hi + pad]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 })} />
-          {limit != null && <ReferenceArea y1={lo - pad} y2={-limit} fill="hsl(var(--down))" fillOpacity={0.08} ifOverflow="hidden" />}
+          <CartesianGrid {...GRID} />
+          <XAxis dataKey="min" type="number" domain={[x0, x1]} tickFormatter={clock} {...X_AXIS} minTickGap={28} />
+          <YAxis {...Y_AXIS} width={56} domain={[lo - pad, hi + pad]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 })} />
+          {limit != null && <ReferenceArea y1={lo - pad} y2={-limit} fill={CHART.down} fillOpacity={0.08} ifOverflow="hidden" />}
           {limit != null && (
-            <ReferenceLine y={-limit} stroke="hsl(var(--down))" strokeDasharray="4 3" label={{ value: t("day.stopLine", { amount: fmtUsd(-limit, { decimals: 0 }) }), position: "insideBottomLeft", fill: "hsl(var(--down))", fontSize: 11 }} />
+            <ReferenceLine y={-limit} {...REF_LINE} stroke={CHART.down} label={{ value: t("day.stopLine", { amount: fmtUsd(-limit, { decimals: 0 }) }), position: "insideBottomLeft", fill: CHART.down, fontSize: 11 }} />
           )}
-          {limit != null && <ReferenceLine y={-limit * 0.7} stroke="hsl(var(--warn))" strokeDasharray="2 4" strokeOpacity={0.7} />}
-          <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.4} />
+          {limit != null && <ReferenceLine y={-limit * 0.7} {...REF_LINE} stroke={tint("warn", 0.8)} strokeDasharray="2 4" />}
+          <ReferenceLine {...ZERO_LINE} />
           <Tooltip
-            contentStyle={CHART_TOOLTIP_STYLE}
-            labelFormatter={(l) => (curve.timed ? `${clock(Number(l))} ET` : "")}
-            formatter={(v: number, _n, item) => {
-              const p = item?.payload as { ticker: string | null; net: number | null } | undefined;
-              return [`${fmtUsd(v, { signed: true, decimals: 0 })}${p?.ticker ? ` · ${p.ticker} ${fmtUsd(p.net, { signed: true, decimals: 0 })}` : ""}`, t("day.cum")];
+            {...tooltipProps("line")}
+            content={<GlassTooltip
+              tone="pnl"
+              delta={(r) => (r.ticker ? (r.net as number | null) : null)}
+              deltaFormat={(v) => fmtUsd(v, { signed: true, decimals: 0 })}
+              deltaLabel={commonI18n.t("trading.net")}
+            />}
+            labelFormatter={(l, payload) => {
+              const p = (payload as unknown as { payload?: { ticker?: string | null } }[] | undefined)?.[0]?.payload;
+              const time = curve.timed ? `${clock(Number(l))} ET` : "";
+              return [time, p?.ticker].filter(Boolean).join(" · ");
             }}
+            formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: 0 }), t("day.cum")]}
           />
-          <Line type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} dot={{ r: 2.5, fill: color, strokeWidth: 0 }} isAnimationActive={false} />
+          {/* Live chart: redrawn on every poll, so no draw-in animation (it would replay each refresh). */}
+          <Line type="stepAfter" dataKey="cum" stroke={color} strokeWidth={STROKE} dot={{ r: 2.5, fill: color, strokeWidth: 0 }} activeDot={{ r: 4, strokeWidth: 2, stroke: CHART.surface, fill: color }} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

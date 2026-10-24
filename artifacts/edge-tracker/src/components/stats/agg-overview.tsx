@@ -9,7 +9,8 @@ import { useMemo } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { ArrowRight, BarChart3 } from "lucide-react";
 import { Panel, StatCard, StatGrid, EmptyState, toneOf, type Tone } from "@/components/ds";
-import { CHART_CURSOR, CHART_TOOLTIP, EquityPanel } from "./equity-panel";
+import { EquityPanel } from "./equity-panel";
+import { BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, X_AXIS, Y_AXIS, tooltipProps, useChartMotion } from "@/components/shared/charts";
 import { BreakdownPanel, type Dimension } from "./breakdown-panel";
 import { HorizonPanel } from "./horizon-fees";
 import {
@@ -21,8 +22,6 @@ import { analyticsI18n } from "@/i18n/ns/analytics";
 import { fmtCount, fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
 
 const HIST_MIN = -3;
-const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
-const GRID = "hsl(var(--border))";
 /** /analytics units: signed R or net $. */
 type Unit = "r" | "usd";
 
@@ -58,6 +57,7 @@ export function AggOverview({
   const { t } = analyticsI18n.useT();
   const isR = unit === "r";
   const metric: Metric = isR ? "r" : "net";
+  const motion = useChartMotion();
   const k = useMemo(() => kpisFromAggregate(agg, metric), [agg, metric]);
   const p = useMemo(() => (previous && field(previous.total, "n") ? kpisFromAggregate(previous, metric) : null), [previous, metric]);
   const days = useMemo(() => daysOf(agg, metric), [agg, metric]);
@@ -159,13 +159,13 @@ export function AggOverview({
             <div className="flex flex-col gap-3">
               <div className="h-[190px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={hist} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
-                    <XAxis dataKey="label" {...AXIS} fontSize={10} interval={0} angle={-35} textAnchor="end" height={40} />
-                    <YAxis {...AXIS} allowDecimals={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP} cursor={CHART_CURSOR} formatter={(v: number) => [commonI18n.t("units.trades", { count: v }), t("overview.tradesCol")]} labelFormatter={(l) => `${l}R`} />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
-                      {hist.map((b) => <Cell key={b.label} fill={b.tone === "up" ? "hsl(var(--up))" : "hsl(var(--down))"} fillOpacity={0.85} />)}
+                  <BarChart data={hist} margin={MARGIN} barCategoryGap={2}>
+                    <CartesianGrid {...GRID} />
+                    <XAxis dataKey="label" {...X_AXIS} interval="preserveStartEnd" />
+                    <YAxis {...Y_AXIS} width={32} allowDecimals={false} />
+                    <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} formatter={(v: number) => [commonI18n.t("units.trades", { count: v }), t("overview.tradesCol")]} labelFormatter={(l) => `${l}R`} />
+                    <Bar dataKey="count" radius={BAR_RADIUS} {...motion}>
+                      {hist.map((b) => <Cell key={b.label} fill={b.tone === "up" ? CHART.up : CHART.down} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>

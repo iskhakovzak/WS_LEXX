@@ -386,6 +386,7 @@ export default {
   chart: {
     base: "Haqiqatda",
     scenario: "Ssenariy",
+    delta: "Farq",
     clickDay: "Bosing — kun hisoboti",
     ariaBoth: "Kapital egri chizigʻi: haqiqatda va ssenariy",
     ariaFact: "Haqiqiy kapital egri chizigʻi",

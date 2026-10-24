@@ -12,6 +12,7 @@ import { crosshairDate, timeTicks } from "./time";
 import { navWindow, xOf, type Layout, type Rect } from "./geometry";
 import { fullView, type View } from "./viewport";
 import { equityChartI18n } from "@/i18n/ns/equityChart";
+import { CANVAS } from "@/components/shared/charts/theme";
 
 export interface Frame {
   layout: Layout;
@@ -41,7 +42,7 @@ export interface Frame {
 
 export interface Pointer { index: number; y: number | null; selected: boolean }
 
-const FONT_SIZE = 11;
+const FONT_SIZE: number = CANVAS.fontSize;
 const crisp = (v: number) => Math.round(v) + 0.5;
 
 function font(th: ChartTheme, size = FONT_SIZE, weight = 500) {
@@ -109,23 +110,7 @@ export function drawBase(ctx: CanvasRenderingContext2D, f: Frame) {
   const x = (slot: number) => xOf(slot, l.plotX, l.plotW, f.view);
   const ticks = timeTicks(f.keys, f.view.from, f.view.to, f.slotPx, f.agg);
 
-  // Vertical guides at the time labels (month starts a bit stronger), across every pane.
-  const bottomPane = f.layout.dd ?? f.layout.pnl ?? f.layout.main;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(l.plotX, l.main.y, l.plotW, bottomPane.y + bottomPane.h - l.main.y);
-  ctx.clip();
-  for (const t of ticks) {
-    const gx = crisp(x(t.index + 0.5));
-    ctx.strokeStyle = th.border(t.major ? (th.dark ? 0.32 : 0.55) : (th.dark ? 0.16 : 0.3));
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(gx, l.main.y);
-    ctx.lineTo(gx, bottomPane.y + bottomPane.h);
-    ctx.stroke();
-  }
-  ctx.restore();
-
+  // No vertical guides (shared chart style): the time labels carry x; only faint horizontal guides below.
   drawMain(ctx, f, x);
   if (l.pnl) drawPnl(ctx, f, l.pnl, x);
   if (l.dd) drawDd(ctx, f, l.dd, x);
@@ -166,7 +151,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, d: Domain
     const py = crisp(y(v));
     if (py < pane.y - 0.5 || py > pane.y + pane.h + 0.5) continue;
     if (v !== 0) {
-      ctx.strokeStyle = th.border(th.dark ? 0.3 : 0.5);
+      ctx.strokeStyle = th.border(CANVAS.gridAlpha(th.dark));
       ctx.beginPath();
       ctx.moveTo(pane.x, py);
       ctx.lineTo(pane.x + pane.w, py);
@@ -178,12 +163,11 @@ function drawGrid(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, d: Domain
       lastLabelY = py;
     }
   }
-  // Start / zero line.
+  // Start / zero line: the one emphasised rule (solid, stronger than the guides).
   const zy = y(0);
   if (zy >= pane.y && zy <= pane.y + pane.h) {
     ctx.save();
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = th.muted(th.dark ? 0.45 : 0.55);
+    ctx.strokeStyle = th.fg(CANVAS.zeroAlpha(th.dark));
     ctx.beginPath();
     ctx.moveTo(pane.x, crisp(zy));
     ctx.lineTo(pane.x + pane.w, crisp(zy));
@@ -281,8 +265,8 @@ function drawArea(
     ctx.rect(pane.x - 2, pane.y - 4, pane.w + 4, y0 - pane.y + 4);
     ctx.clip();
     const g = ctx.createLinearGradient(0, Math.min(top, y0 - 1), 0, y0);
-    g.addColorStop(0, th.up(th.dark ? 0.34 : 0.26));
-    g.addColorStop(0.6, th.up(th.dark ? 0.1 : 0.08));
+    g.addColorStop(0, th.up(CANVAS.fillTop(th.dark)));
+    g.addColorStop(0.6, th.up(CANVAS.fillMid(th.dark)));
     g.addColorStop(1, th.up(0));
     ctx.fillStyle = g;
     ctx.fill(fill);
@@ -296,8 +280,8 @@ function drawArea(
     ctx.clip();
     const g = ctx.createLinearGradient(0, y0, 0, Math.max(bot, y0 + 1));
     g.addColorStop(0, th.down(0));
-    g.addColorStop(0.4, th.down(th.dark ? 0.1 : 0.08));
-    g.addColorStop(1, th.down(th.dark ? 0.34 : 0.26));
+    g.addColorStop(0.4, th.down(CANVAS.fillMid(th.dark)));
+    g.addColorStop(1, th.down(CANVAS.fillTop(th.dark)));
     ctx.fillStyle = g;
     ctx.fill(fill);
     strokeLine(ctx, f, line, th.down());
@@ -310,15 +294,8 @@ function strokeLine(ctx: CanvasRenderingContext2D, f: Frame, line: Path2D, color
   const dense = f.slotPx < 3;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  ctx.lineWidth = dense ? 1.5 : 2;
+  ctx.lineWidth = dense ? CANVAS.lineDense : CANVAS.line;
   ctx.strokeStyle = color;
-  // Soft glow under the line (cheap: one extra blurred stroke).
-  ctx.save();
-  ctx.shadowColor = color.replace(/[\d.]+\)$/, f.th.dark ? "0.55)" : "0.35)");
-  ctx.shadowBlur = f.th.dark ? 10 : 6;
-  ctx.shadowOffsetY = 2;
-  ctx.stroke(line);
-  ctx.restore();
   ctx.stroke(line);
 }
 

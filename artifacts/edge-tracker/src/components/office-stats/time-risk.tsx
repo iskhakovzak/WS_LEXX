@@ -37,7 +37,7 @@ function DivergingBars({ items, unit, height = 150, labelEvery = 1 }: {
     <div className="flex flex-col gap-1">
       <div className="h-5 text-xs text-muted-foreground" aria-live="polite">{hov ? hov.title : t("time.hoverHint")}</div>
       <div className="relative flex items-stretch gap-[2px]" style={{ height }}>
-        <span className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-border" aria-hidden="true" />
+        <span className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-foreground/40" aria-hidden="true" />
         {items.map((i) => {
           const h = (Math.abs(i.v) / max) * 50;
           return (

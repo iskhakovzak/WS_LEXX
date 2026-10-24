@@ -165,6 +165,8 @@ export default {
     hintDaily: "Cumulative {unit} at each day's close and the drawdown from the peak",
     aria: "Equity curve: total {value}",
     accumulated: "Cumulative",
+    deltaDay: "Day",
+    deltaTrade: "Trade",
     drawdown: "Drawdown",
     few: "Not enough data for a curve",
     fewHint: "You need at least 2 closed trades with {unit} filled in.",

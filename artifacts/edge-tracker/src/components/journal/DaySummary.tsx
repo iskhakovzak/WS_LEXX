@@ -1,8 +1,9 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, ArrowUpRight, Lightbulb, ListChecks, ShieldAlert, Sparkles, Tag } from "lucide-react";
 import { Panel, toneOf, toneText } from "@/components/ds";
+import { ACTIVE_DOT, CHART, DRAW_MS, GlassTooltip, STROKE, ZERO_LINE, pnlPaint, prefersReducedMotion, tooltipProps } from "@/components/shared/charts";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -17,16 +18,6 @@ import { dayHref } from "@/lib/period-links";
 import { rich as withNodes } from "@/i18n/rich";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
-
-const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "hsl(var(--popover) / 0.92)",
-  border: "1px solid hsl(var(--border))",
-  color: "hsl(var(--popover-foreground))",
-  borderRadius: 12,
-  fontSize: 12,
-  backdropFilter: "blur(24px)",
-  fontVariantNumeric: "tabular-nums",
-};
 
 /** «Разбор дня» page (/day-report) for this trader + date. */
 export function dayReportHref(date: string, trader?: string | null): string {
@@ -220,7 +211,7 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
   }
   const timed = e.points.every((p) => p.t != null);
   const data = e.points.map((p, i) => ({ ...p, x: timed ? (p.t as number) : i }));
-  const color = e.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
+  const paint = pnlPaint("jn-eq", data.map((d) => d.cum));
   const first = data[0], last = data[data.length - 1];
   return (
     <div className="tile min-w-0 p-3">
@@ -239,24 +230,20 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
       >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
-            <defs>
-              <linearGradient id="jn-eq" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={color} stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
+            {paint.defs}
             <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} hide />
             <YAxis hide domain={["dataMin", "dataMax"]} />
-            <ReferenceLine y={0} stroke="hsl(var(--border))" strokeDasharray="2 3" />
+            <ReferenceLine {...ZERO_LINE} />
             <Tooltip
-              contentStyle={TOOLTIP_STYLE}
+              {...tooltipProps("line")}
+              content={<GlassTooltip tone="pnl" />}
               labelFormatter={(x: number) => {
                 const p = data.find((d) => d.x === x);
                 return p ? `${p.time?.slice(0, 5) ?? ""} · ${p.ticker || t("summary.start")}` : "";
               }}
               formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: "auto" }), t("summary.cumulative")]}
             />
-            <Area type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} fill="url(#jn-eq)" isAnimationActive={false} />
+            <Area type="stepAfter" dataKey="cum" stroke={paint.stroke} strokeWidth={STROKE} fill={paint.fill} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} isAnimationActive={!prefersReducedMotion()} animationDuration={DRAW_MS} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
