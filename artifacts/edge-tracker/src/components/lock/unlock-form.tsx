@@ -9,6 +9,7 @@ import { ArrowRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { lockStore } from "@/lib/lock/lock-store";
 import { MAX_UNLOCK_ATTEMPTS, type QuickCodeKind } from "@/lib/lock/lock-model";
+import { lockEggOwnsKey } from "@/lib/lock/eggs/keys";
 import { lockI18n } from "@/i18n/ns/lock";
 import { prefersReducedMotion } from "./ambient";
 
@@ -68,6 +69,7 @@ export function UnlockForm({
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || MODIFIERS.has(e.key)) return;
+      if (lockEggOwnsKey(e.target, e.key)) return; // an open mini-game / the launcher's buttons (./eggs)
       if (e.key === "Escape") { if (visibleRef.current) { e.preventDefault(); hide(); } return; }
       const focused = document.activeElement === inputRef.current;
       if (focused) { armIdle(); return; }
