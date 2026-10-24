@@ -192,8 +192,16 @@
 .ins-run { position: absolute; bottom: 1.25rem; height: 1px; background: hsl(var(--foreground) / 0.55); }
 
 /* Bars of a tile chart (seq, weekdays): soft by default, the marked ones solid. */
-.ins-bar { position: absolute; left: 22%; right: 22%; border-radius: 0.375rem; }
-.ins-bar[data-tone="up"] { background: hsl(var(--up) / var(--a, 0.4)); }
-.ins-bar[data-tone="down"] { background: hsl(var(--down) / var(--a, 0.4)); }
-.ins-bar[data-tone="be"] { background: hsl(var(--be) / var(--a, 0.4)); }
+.ins-bar {
+  /* Shared chart language: rounded data end (the zero side stays flat), a gradient from the full tone at the end to
+     softer at zero; while one bar is hovered the others recede. */
+  --c: var(--be);
+  position: absolute; left: 20%; right: 20%; border-radius: 0.375rem 0.375rem 1px 1px;
+  background: linear-gradient(to top, hsl(var(--c) / calc(var(--a, 0.4) * 0.6)), hsl(var(--c) / var(--a, 0.4)));
+  transition: opacity var(--dur-1, 150ms) ease-out;
+}
+.ins-bar[data-dir="down"] { border-radius: 1px 1px 0.375rem 0.375rem; background: linear-gradient(to bottom, hsl(var(--c) / calc(var(--a, 0.4) * 0.6)), hsl(var(--c) / var(--a, 0.4))); }
+.ins-bar[data-tone="up"] { --c: var(--up); }
+.ins-bar[data-tone="down"] { --c: var(--down); }
 .ins-bar[data-mark="true"] { --a: 0.95; }
+.ins-bars:has(button:enabled:hover) button:not(:hover) .ins-bar { opacity: 0.45; }

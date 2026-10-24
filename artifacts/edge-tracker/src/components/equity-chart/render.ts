@@ -1,18 +1,21 @@
 /**
  * Canvas 2D painters. `drawBase` paints everything that only changes with the view / data / theme (grid,
- * series, panes, axes, navigator); `drawOverlay` paints the cheap per-pointer layer (crosshair, highlighted
- * candle, axis pills). Both receive a fully resolved `Frame` — no state lives here.
+ * series, panes, axes, navigator); `drawOverlay` paints the cheap per-pointer layer (P&L bars — so a hover can
+ * dim the other days —, crosshair, highlighted candle, axis pills). Both receive a fully resolved `Frame` — no state lives here.
  */
 import type { ChartTheme } from "@/components/chart-engine/theme";
 import type { EquityCandle, EquityUnit } from "@/components/equity-candles/lib";
 import { fmtValue } from "@/components/equity-candles/lib";
 import type { EquityAgg, EquityDerived } from "./model";
-import { linear, niceTicks, niceStep, axisLabel, type Domain } from "./scale";
+import { niceTicks, niceStep, axisLabel, type Domain } from "./scale";
 import { crosshairDate, timeTicks } from "./time";
 import { navWindow, xOf, type Layout, type Rect } from "./geometry";
 import { fullView, type View } from "./viewport";
 import { equityChartI18n } from "@/i18n/ns/equityChart";
-import { CANVAS } from "@/components/shared/charts/theme";
+import { BAR_DIM, CANVAS } from "@/components/shared/charts/theme";
+import {
+  FONT_SIZE, barWidth, bodyWidth, canBlur, chip, clamp01, crisp, easeOut, font, inkOn, monotonePath, overlaps, pill, rr, rr4, splitPaint, yScale,
+} from "./paint";
 
 export interface Frame {
   layout: Layout;
@@ -42,59 +45,14 @@ export interface Frame {
 
 export interface Pointer { index: number; y: number | null; selected: boolean }
 
-const FONT_SIZE: number = CANVAS.fontSize;
-const crisp = (v: number) => Math.round(v) + 0.5;
-
-function font(th: ChartTheme, size = FONT_SIZE, weight = 500) {
-  return `${weight} ${size}px ${th.font}`;
-}
-
-function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  if (typeof ctx.roundRect === "function") ctx.roundRect(x, y, w, h, rad);
-  else ctx.rect(x, y, w, h);
-}
-
-/** Text pill (axis labels, markers). Returns its rect. */
-function pill(
-  ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
-  o: { bg: string; fg: string; border?: string; align?: "left" | "right" | "center"; h?: number; size?: number; weight?: number; th: ChartTheme },
-): Rect {
-  ctx.font = font(o.th, o.size ?? FONT_SIZE, o.weight ?? 600);
-  const h = o.h ?? 18;
-  const w = Math.ceil(ctx.measureText(text).width) + 12;
-  const left = o.align === "right" ? x - w : o.align === "center" ? x - w / 2 : x;
-  const top = y - h / 2;
-  rr(ctx, left, top, w, h, h / 2);
-  ctx.fillStyle = o.bg;
-  ctx.fill();
-  if (o.border) { ctx.strokeStyle = o.border; ctx.lineWidth = 1; ctx.stroke(); }
-  ctx.fillStyle = o.fg;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, left + w / 2, top + h / 2 + 0.5);
-  return { x: left, y: top, w, h };
-}
-
-const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-
-function yScale(d: Domain, r: Rect) {
-  return linear(d, r.y + r.h, r.y);
-}
-
 function aggWord(agg: EquityAgg): { best: string; worst: string; pnl: string } {
   const t = equityChartI18n.t;
   return { best: t(`canvas.best.${agg}`), worst: t(`canvas.worst.${agg}`), pnl: t(`canvas.pnl.${agg}`) };
 }
 
-export function bodyWidth(slotPx: number): number {
-  return Math.max(1, Math.min(24, slotPx * (slotPx > 12 ? 0.62 : slotPx > 5 ? 0.7 : 0.8)));
-}
-
-/** Labels of the right axis for a pane domain (also used to size the axis). */
+/** Labels of the right axis for a pane domain (also used to size the axis). Few guides: one per ~52px, at least three. */
 export function axisTicks(d: Domain, h: number): { values: number[]; step: number } {
-  const target = Math.max(2, Math.min(8, Math.floor(h / 46)));
+  const target = Math.max(3, Math.min(6, Math.floor(h / 52)));
   const step = niceStep(d.max - d.min, target);
   return { values: niceTicks(d.min, d.max, target), step };
 }
@@ -112,7 +70,7 @@ export function drawBase(ctx: CanvasRenderingContext2D, f: Frame) {
 
   // No vertical guides (shared chart style): the time labels carry x; only faint horizontal guides below.
   drawMain(ctx, f, x);
-  if (l.pnl) drawPnl(ctx, f, l.pnl, x);
+  if (l.pnl) drawPnl(ctx, f, l.pnl);
   if (l.dd) drawDd(ctx, f, l.dd, x);
 
   // Time axis.
@@ -151,11 +109,15 @@ function drawGrid(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, d: Domain
     const py = crisp(y(v));
     if (py < pane.y - 0.5 || py > pane.y + pane.h + 0.5) continue;
     if (v !== 0) {
+      // Dotted, recessive guides.
+      ctx.save();
+      ctx.setLineDash(CANVAS.gridDash as number[]);
       ctx.strokeStyle = th.border(CANVAS.gridAlpha(th.dark));
       ctx.beginPath();
       ctx.moveTo(pane.x, py);
       ctx.lineTo(pane.x + pane.w, py);
       ctx.stroke();
+      ctx.restore();
     }
     if (shown.includes(v) && py > pane.y + 6 && py < pane.y + pane.h - 4 && Math.abs(py - lastLabelY) >= 14) {
       ctx.fillStyle = th.muted(0.85);
@@ -244,8 +206,7 @@ function drawArea(
   const pts = linePoints(f, x, y, a, b);
   if (!pts.length) return;
   const line = new Path2D();
-  line.moveTo(pts[0][0], pts[0][1]);
-  for (let k = 1; k < pts.length; k++) line.lineTo(pts[k][0], pts[k][1]);
+  monotonePath(line, pts);
   if (pts.length === 1) line.lineTo(pts[0][0] + 0.01, pts[0][1]);
   const y0 = Math.max(pane.y, Math.min(pane.y + pane.h, y(0)));
   const fill = new Path2D(line);
@@ -253,50 +214,32 @@ function drawArea(
   fill.lineTo(pts[0][0], y0);
   fill.closePath();
 
+  // A monotone curve never leaves the points' range, so the points bound the paint.
   let top = Infinity, bot = -Infinity;
   for (const p of pts) { top = Math.min(top, p[1]); bot = Math.max(bot, p[1]); }
+  const paint = splitPaint(ctx, th, top, bot, y0);
 
   ctx.save();
   ctx.globalAlpha = alpha;
-  // Above the start — green, below — red; both fade towards the start line.
-  if (y0 > pane.y) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(pane.x - 2, pane.y - 4, pane.w + 4, y0 - pane.y + 4);
-    ctx.clip();
-    const g = ctx.createLinearGradient(0, Math.min(top, y0 - 1), 0, y0);
-    g.addColorStop(0, th.up(CANVAS.fillTop(th.dark)));
-    g.addColorStop(0.6, th.up(CANVAS.fillMid(th.dark)));
-    g.addColorStop(1, th.up(0));
-    ctx.fillStyle = g;
-    ctx.fill(fill);
-    strokeLine(ctx, f, line, th.up());
-    ctx.restore();
-  }
-  if (y0 < pane.y + pane.h) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(pane.x - 2, y0, pane.w + 4, pane.y + pane.h - y0 + 4);
-    ctx.clip();
-    const g = ctx.createLinearGradient(0, y0, 0, Math.max(bot, y0 + 1));
-    g.addColorStop(0, th.down(0));
-    g.addColorStop(0.4, th.down(CANVAS.fillMid(th.dark)));
-    g.addColorStop(1, th.down(CANVAS.fillTop(th.dark)));
-    ctx.fillStyle = g;
-    ctx.fill(fill);
-    strokeLine(ctx, f, line, th.down());
-    ctx.restore();
-  }
-  ctx.restore();
-}
-
-function strokeLine(ctx: CanvasRenderingContext2D, f: Frame, line: Path2D, color: string) {
+  ctx.fillStyle = paint.fill;
+  ctx.fill(fill);
   const dense = f.slotPx < 3;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
+  // Dark themes: a soft glow under the line (one blurred pass of the same stroke).
+  if (th.dark && !dense && canBlur(ctx)) {
+    ctx.save();
+    ctx.filter = `blur(${CANVAS.glowBlur / 2}px)`;
+    ctx.globalAlpha = alpha * CANVAS.glowAlpha;
+    ctx.lineWidth = CANVAS.line + 2;
+    ctx.strokeStyle = paint.stroke;
+    ctx.stroke(line);
+    ctx.restore();
+  }
   ctx.lineWidth = dense ? CANVAS.lineDense : CANVAS.line;
-  ctx.strokeStyle = color;
+  ctx.strokeStyle = paint.stroke;
   ctx.stroke(line);
+  ctx.restore();
 }
 
 function drawCandles(
@@ -307,48 +250,53 @@ function drawCandles(
   const thin = f.slotPx < 2.2;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.lineWidth = 1;
+  ctx.lineCap = "round";
+  ctx.lineWidth = f.slotPx > 10 ? 1.5 : 1;
   for (let i = a; i <= b; i++) {
     const c = bars[i];
     const cx = x(i + 0.5);
     const up = c.close > c.open;
     const flat = c.close === c.open;
-    const color = flat ? th.muted(0.8) : up ? th.up() : th.down();
-    const wx = crisp(cx);
+    const base = flat ? th.muted : up ? th.up : th.down;
+    const wx = f.slotPx > 10 ? cx : crisp(cx);
     const yh = y(c.high), yl = y(c.low);
     if (thin) {
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = base(flat ? 0.8 : 1);
       ctx.beginPath();
       ctx.moveTo(wx, yh);
       ctx.lineTo(wx, Math.max(yl, yh + 1));
       ctx.stroke();
       continue;
     }
-    // Wick.
-    if (yl - yh > 0.5) {
-      ctx.strokeStyle = flat ? th.muted(0.7) : up ? th.up(0.85) : th.down(0.85);
-      ctx.beginPath();
-      ctx.moveTo(wx, yh);
-      ctx.lineTo(wx, yl);
-      ctx.stroke();
-    }
-    // Body: rounded, with a soft vertical sheen.
     const yo = y(c.open), yc = y(c.close);
     const top = Math.min(yo, yc);
     const h = Math.max(1.5, Math.abs(yo - yc));
-    const left = cx - bw / 2;
-    rr(ctx, left, top, bw, h, Math.min(3, bw / 4));
-    if (bw >= 5 && h >= 4) {
-      const g = ctx.createLinearGradient(left, 0, left + bw, 0);
-      const base = flat ? th.muted : up ? th.up : th.down;
-      g.addColorStop(0, base(0.82));
-      g.addColorStop(0.5, base(1));
-      g.addColorStop(1, base(0.82));
-      ctx.fillStyle = g;
-    } else {
-      ctx.fillStyle = color;
+    // Wick: round-capped, a little softer than the body; two halves, so it never shows through the body.
+    if (yl - yh > 0.5) {
+      ctx.strokeStyle = base(flat ? 0.6 : 0.72);
+      ctx.beginPath();
+      if (top - yh > 0.5) { ctx.moveTo(wx, yh); ctx.lineTo(wx, top); }
+      if (yl - (top + h) > 0.5) { ctx.moveTo(wx, top + h); ctx.lineTo(wx, yl); }
+      ctx.stroke();
     }
-    ctx.fill();
+    // Body: 2px corners, a gentle vertical gradient (lit top → deeper bottom) and a crisp edge of the same hue.
+    const left = cx - bw / 2;
+    rr(ctx, left, top, bw, h, bw >= 6 ? 2 : 1);
+    if (bw >= 5 && h >= 4) {
+      const g = ctx.createLinearGradient(0, top, 0, top + h);
+      g.addColorStop(0, base(flat ? 0.75 : 1));
+      g.addColorStop(1, base(flat ? 0.55 : 0.72));
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = base(0.95);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.fillStyle = base(flat ? 0.8 : 1);
+      ctx.fill();
+    }
   }
   ctx.restore();
 }
@@ -372,9 +320,30 @@ function drawMarkers(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s:
     const c = bars[m.i];
     const cx = x(m.i + 0.5);
     const anchorY = lineMode ? y(c.close) : y(m.above ? c.high : c.low);
-    const dy = m.above ? -14 : 14;
-    const py = anchorY + dy;
-    // Dot on the anchor.
+    // Label: flipped towards the inside near the edges, skipped if it collides.
+    ctx.font = font(th, 10, 600);
+    const w = ctx.measureText(m.text).width + 14;
+    const align: "left" | "right" | "center" = cx - w / 2 < pane.x + 4 ? "left" : cx + w / 2 > pane.x + pane.w - 4 ? "right" : "center";
+    const lx = align === "left" ? cx - 8 : align === "right" ? cx + 8 : cx;
+    const ly = Math.max(pane.y + 10, Math.min(pane.y + pane.h - 10, anchorY + (m.above ? -20 : 20)));
+    const probe: Rect = { x: align === "left" ? lx : align === "right" ? lx - w : lx - w / 2, y: ly - 9, w, h: 18 };
+    const collides = placed.some((r) => overlaps(r, probe));
+    // Leader: a short hairline from the point to the label.
+    if (!collides && Math.abs(ly - anchorY) > 10) {
+      ctx.save();
+      ctx.strokeStyle = m.color(0.5);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(crisp(cx), anchorY + (m.above ? -5 : 5));
+      ctx.lineTo(crisp(cx), ly + (m.above ? 9 : -9));
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Point: a ringed dot with a soft halo.
+    ctx.beginPath();
+    ctx.arc(cx, anchorY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = m.color(0.16);
+    ctx.fill();
     ctx.beginPath();
     ctx.arc(cx, anchorY, 3, 0, Math.PI * 2);
     ctx.fillStyle = m.color();
@@ -382,15 +351,9 @@ function drawMarkers(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s:
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = th.bg();
     ctx.stroke();
-    // Label pill, flipped towards the inside near the edges, skipped if it collides.
-    ctx.font = font(th, 10, 600);
-    const w = ctx.measureText(m.text).width + 12;
-    const align: "left" | "right" | "center" = cx - w / 2 < pane.x + 4 ? "left" : cx + w / 2 > pane.x + pane.w - 4 ? "right" : "center";
-    const lx = align === "left" ? cx - 6 : align === "right" ? cx + 6 : cx;
-    const ly = Math.max(pane.y + 10, Math.min(pane.y + pane.h - 10, py + (m.above ? -4 : 4)));
-    const probe: Rect = { x: align === "left" ? lx : align === "right" ? lx - w : lx - w / 2, y: ly - 8, w, h: 16 };
-    if (placed.some((r) => overlaps(r, probe))) continue;
-    placed.push(pill(ctx, m.text, lx, ly, { bg: th.bg(th.dark ? 0.86 : 0.92), fg: m.color(), border: m.color(0.45), align, h: 16, size: 10, th }));
+    if (collides) continue;
+    // Quiet chip: surface-tinted, a hairline edge, the value in the series tone (sign + word carry the meaning too).
+    placed.push(chip(ctx, m.text, lx, ly, { tone: m.color, align, th }));
   }
 }
 
@@ -408,57 +371,102 @@ function drawLastValue(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (
   const lastX = x(bars.length - 0.5);
   if (lastX < l.plotX + l.plotW) {
     ctx.save();
-    ctx.setLineDash([2, 3]);
-    ctx.strokeStyle = color(0.55);
+    ctx.setLineDash([1, 3]);
+    ctx.strokeStyle = color(0.6);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(Math.max(l.plotX, lastX + 6), crisp(py));
+    ctx.moveTo(Math.max(l.plotX, lastX + 8), crisp(py));
     ctx.lineTo(l.axisX, crisp(py));
     ctx.stroke();
     ctx.restore();
     if (f.mix >= 0.5 && f.reveal >= 1 && lastX >= l.plotX) {
+      // The living end point: halo + ringed dot (the pulse ring is a CSS layer on top, when motion is allowed).
       ctx.beginPath();
-      ctx.arc(lastX, y(v), 7, 0, Math.PI * 2);
-      ctx.fillStyle = color(0.18);
+      ctx.arc(lastX, y(v), 8, 0, Math.PI * 2);
+      ctx.fillStyle = color(0.16);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(lastX, y(v), 3.5, 0, Math.PI * 2);
+      ctx.arc(lastX, y(v), 4, 0, Math.PI * 2);
       ctx.fillStyle = color();
       ctx.fill();
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 2;
       ctx.strokeStyle = th.bg();
       ctx.stroke();
     }
   }
-  pill(ctx, axisLabel(v, f.unit, niceStep(f.yMain.max - f.yMain.min, 6) / 10), l.axisX + 3, py, {
-    bg: color(), fg: "rgba(255,255,255,0.98)", align: "left", th, size: 11, weight: 600,
+  // End-value tag: solid tone, 6px corners, a small notch pointing at the level; ink picked for AA contrast.
+  const bg = color();
+  const r = pill(ctx, axisLabel(v, f.unit, niceStep(f.yMain.max - f.yMain.min, 6) / 10), l.axisX + 6, py, {
+    bg, fg: inkOn(bg), align: "left", th, size: 11, weight: 650, h: 20, radius: 6,
   });
+  ctx.beginPath();
+  ctx.moveTo(r.x + 0.5, py - 4);
+  ctx.lineTo(r.x - 4, py);
+  ctx.lineTo(r.x + 0.5, py + 4);
+  ctx.closePath();
+  ctx.fillStyle = bg;
+  ctx.fill();
 }
 
-function drawPnl(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s: number) => number) {
-  const { th, bars } = f;
-  const y = yScale(f.yPnl, pane);
+function drawPnl(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect) {
+  // Guides only: the bars live on the overlay layer, so a hover can dim the other days without a full repaint.
   drawGrid(ctx, f, pane, f.yPnl, "edges");
-  const zy = y(0);
-  const bw = bodyWidth(f.slotPx);
+}
+
+/** P&L bars (overlay layer): grow from zero on entrance; while a day is hovered, the others recede. */
+function drawPnlBars(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, hover: number) {
+  const { th, bars, layout: l } = f;
+  const y = yScale(f.yPnl, pane);
+  const x = (slot: number) => xOf(slot, l.plotX, l.plotW, f.view);
   ctx.save();
   ctx.beginPath();
-  ctx.rect(pane.x, pane.y, pane.w * f.reveal, pane.h);
+  ctx.rect(pane.x, pane.y, pane.w, pane.h);
   ctx.clip();
   ctx.globalAlpha = f.alpha;
   for (let i = Math.max(0, f.i0 - 1); i <= Math.min(bars.length - 1, f.i1 + 1); i++) {
-    const v = bars[i].value;
-    if (!v) continue;
     const cx = x(i + 0.5);
-    const vy = y(v);
-    const top = Math.min(vy, zy);
-    const h = Math.max(1, Math.abs(vy - zy));
-    rr(ctx, cx - bw / 2, top, bw, h, Math.min(2, bw / 4));
-    ctx.fillStyle = v > 0 ? th.up(th.dark ? 0.62 : 0.7) : th.down(th.dark ? 0.62 : 0.7);
-    ctx.fill();
+    // Entrance: bars grow from zero, left to right (f.reveal stays 1 when motion is off).
+    const grow = f.reveal >= 1 ? 1 : easeOut(clamp01((f.reveal - 0.35 * clamp01((cx - pane.x) / pane.w)) / 0.65));
+    pnlBar(ctx, th, f, y, cx, bars[i].value, grow, hover < 0 || hover === i ? 1 : BAR_DIM);
   }
   ctx.restore();
+  zeroRule(ctx, f, pane, y(0));
   paneTitle(ctx, f, pane, aggWord(f.agg).pnl);
+}
+
+/** The crisp zero hairline on top of the bars (they sit on it). */
+function zeroRule(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, zy: number) {
+  if (zy < pane.y || zy > pane.y + pane.h) return;
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = f.th.fg(CANVAS.zeroAlpha(f.th.dark));
+  ctx.beginPath();
+  ctx.moveTo(pane.x, crisp(zy));
+  ctx.lineTo(pane.x + pane.w, crisp(zy));
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** One P&L bar: rounded data end (the zero side stays flat), a gradient from the full tone at the end to softer at zero. */
+function pnlBar(ctx: CanvasRenderingContext2D, th: ChartTheme, f: Frame, y: (v: number) => number, cx: number, v: number, grow: number, emph: number) {
+  if (!v || grow <= 0) return;
+  const zy = y(0);
+  const bw = barWidth(f.slotPx);
+  const vy = zy + (y(v) - zy) * grow;
+  const h = Math.max(1, Math.abs(vy - zy));
+  const top = v > 0 ? zy - h : zy;
+  const r = bw >= 6 ? Math.min(4, bw / 3) : bw >= 3 ? 1 : 0;
+  rr4(ctx, cx - bw / 2, top, bw, h, v > 0 ? [r, r, 0, 0] : [0, 0, r, r]);
+  const tone = v > 0 ? th.up : th.down;
+  if (h >= 4) {
+    const g = ctx.createLinearGradient(0, v > 0 ? top : top + h, 0, v > 0 ? top + h : top);
+    g.addColorStop(0, tone(0.95 * emph));
+    g.addColorStop(1, tone((th.dark ? 0.45 : 0.5) * emph));
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = tone(0.85 * emph);
+  }
+  ctx.fill();
 }
 
 function drawDd(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s: number) => number) {
@@ -471,8 +479,9 @@ function drawDd(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s: numb
   const zy = y(0);
   const line = new Path2D();
   const startX = a === 0 ? x(0) : x(a + 0.5);
-  line.moveTo(startX, a === 0 ? zy : y(derived.underwater[a]));
-  for (let i = a; i <= b; i++) line.lineTo(x(i + 0.5), y(derived.underwater[i]));
+  const dpts: [number, number][] = a === 0 ? [[startX, zy]] : [];
+  for (let i = a; i <= b; i++) dpts.push([x(i + 0.5), y(derived.underwater[i])]);
+  monotonePath(line, dpts);
   const area = new Path2D(line);
   area.lineTo(x(b + 0.5), zy);
   area.lineTo(startX, zy);
@@ -487,8 +496,9 @@ function drawDd(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s: numb
   g.addColorStop(1, th.down(th.dark ? 0.4 : 0.32));
   ctx.fillStyle = g;
   ctx.fill(area);
-  ctx.lineWidth = 1.25;
+  ctx.lineWidth = 1.5;
   ctx.lineJoin = "round";
+  ctx.lineCap = "round";
   ctx.strokeStyle = th.down(0.9);
   ctx.stroke(line);
   ctx.restore();
@@ -516,11 +526,12 @@ function drawNavigator(ctx: CanvasRenderingContext2D, f: Frame, nav: Rect) {
   ctx.clip();
   // Mini curve, split above / below the start like the main area.
   const line = new Path2D();
-  line.moveTo(nx(0), y(bars[0].open));
   // Long series: one point per ~1.5px is plenty.
   const step = Math.max(1, Math.floor(n / (nav.w / 1.5)));
-  for (let i = 0; i < n; i += step) line.lineTo(nx(i + 0.5), y(bars[i].close));
-  line.lineTo(nx(n - 0.5), y(bars[n - 1].close));
+  const npts: [number, number][] = [[nx(0), y(bars[0].open)]];
+  for (let i = 0; i < n - 1; i += step) npts.push([nx(i + 0.5), y(bars[i].close)]);
+  npts.push([nx(n - 0.5), y(bars[n - 1].close)]);
+  monotonePath(line, npts);
   const zy = Math.max(inner.y, Math.min(inner.y + inner.h, y(0)));
   const area = new Path2D(line);
   area.lineTo(nx(n - 0.5), zy);
@@ -580,27 +591,37 @@ function drawNavigator(ctx: CanvasRenderingContext2D, f: Frame, nav: Rect) {
 export function drawOverlay(ctx: CanvasRenderingContext2D, f: Frame, p: Pointer | null) {
   const { layout: l, th, bars } = f;
   ctx.clearRect(0, 0, l.width, l.height);
-  if (!p || p.index < 0 || p.index >= bars.length) return;
+  if (!bars.length) return;
   const x = (slot: number) => xOf(slot, l.plotX, l.plotW, f.view);
-  const cx = x(p.index + 0.5);
-  if (cx < l.plotX - 1 || cx > l.plotX + l.plotW + 1) return;
+  const valid = !!p && p.index >= 0 && p.index < bars.length;
+  const cx = valid ? x(p!.index + 0.5) : NaN;
+  const inside = valid && cx >= l.plotX - 1 && cx <= l.plotX + l.plotW + 1;
+  if (l.pnl) drawPnlBars(ctx, f, l.pnl, inside ? p!.index : -1);
+  if (!p || !inside) return;
   const bottomPane = l.dd ?? l.pnl ?? l.main;
   const c = bars[p.index];
 
-  // Column highlight + vertical crosshair through every pane.
-  const colW = Math.max(f.slotPx, 6);
-  ctx.fillStyle = p.selected ? th.primary(th.dark ? 0.12 : 0.08) : th.fg(th.dark ? 0.05 : 0.04);
-  ctx.fillRect(cx - colW / 2, l.main.y, colW, bottomPane.y + bottomPane.h - l.main.y);
+  const lineMode = f.mix >= 0.5;
+  const colTop = l.main.y, colBot = bottomPane.y + bottomPane.h;
+  // Candles: highlight the whole day column (soft rounded band). Line: the hairline alone is enough.
+  if (!lineMode || p.selected) {
+    const colW = Math.max(Math.min(f.slotPx * 0.92, f.slotPx - 2), 6);
+    rr(ctx, cx - colW / 2, colTop - 2, colW, colBot - colTop + 4, Math.min(8, colW / 2));
+    ctx.fillStyle = p.selected ? th.primary(th.dark ? 0.12 : 0.08) : th.fg(th.dark ? 0.06 : 0.045);
+    ctx.fill();
+  }
+  // Vertical crosshair: one solid hairline through every pane.
   ctx.save();
-  ctx.setLineDash([3, 3]);
-  ctx.strokeStyle = th.fg(th.dark ? 0.35 : 0.3);
+  ctx.strokeStyle = th.fg(th.dark ? 0.28 : 0.24);
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(crisp(cx), l.main.y);
-  ctx.lineTo(crisp(cx), bottomPane.y + bottomPane.h);
+  ctx.moveTo(crisp(cx), colTop);
+  ctx.lineTo(crisp(cx), colBot);
   ctx.stroke();
-  // Horizontal crosshair at the pointer inside the main pane.
+  // Horizontal guide at the pointer inside the main pane (dotted, quieter).
   if (p.y != null && p.y >= l.main.y && p.y <= l.main.y + l.main.h) {
+    ctx.setLineDash([1, 3]);
+    ctx.strokeStyle = th.fg(th.dark ? 0.3 : 0.26);
     ctx.beginPath();
     ctx.moveTo(l.plotX, crisp(p.y));
     ctx.lineTo(l.axisX, crisp(p.y));
@@ -610,17 +631,19 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, f: Frame, p: Pointer 
 
   const y = yScale(f.yMain, l.main);
   const color = c.close > c.open ? th.up : c.close < c.open ? th.down : th.muted;
-  if (f.mix >= 0.5) {
+  if (lineMode) {
+    // Dot snapped onto the curve.
     const py = y(c.close);
+    const tone = c.close >= 0 ? th.up : th.down;
     ctx.beginPath();
     ctx.arc(cx, py, 10, 0, Math.PI * 2);
-    ctx.fillStyle = (c.close >= 0 ? th.up : th.down)(0.16);
+    ctx.fillStyle = tone(0.16);
     ctx.fill();
     ctx.beginPath();
-    ctx.arc(cx, py, 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = (c.close >= 0 ? th.up : th.down)();
+    ctx.arc(cx, py, 5, 0, Math.PI * 2);
+    ctx.fillStyle = tone();
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.strokeStyle = th.bg();
     ctx.stroke();
   } else {
@@ -628,7 +651,7 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, f: Frame, p: Pointer 
     const bw = bodyWidth(f.slotPx);
     const top = Math.min(y(c.open), y(c.close));
     const h = Math.max(1.5, Math.abs(y(c.open) - y(c.close)));
-    rr(ctx, cx - bw / 2 - 2.5, top - 2.5, bw + 5, h + 5, Math.min(5, bw / 2 + 2));
+    rr(ctx, cx - bw / 2 - 3, top - 3, bw + 6, h + 6, 5);
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = color(0.9);
     ctx.stroke();

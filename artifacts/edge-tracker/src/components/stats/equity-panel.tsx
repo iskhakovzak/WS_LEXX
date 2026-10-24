@@ -6,8 +6,8 @@ import {
 import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { EquityChart, buildDayCandles, soleTrader, type EquityTradeInput } from "@/components/equity-chart";
 import {
-  ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
-  pnlColor, pnlPaint, tint, tooltipProps, useChartMotion,
+  ACTIVE_DOT, BAR_RADIUS, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
+  barGradients, pnlColor, pnlPaint, tint, tooltipProps, useBarFocus, useChartMotion, useGlow,
 } from "@/components/shared/charts";
 import { fmtMetricCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
 import { fmtMonth } from "@/lib/format";
@@ -40,6 +40,8 @@ export function EquityPanel({
   const motion = useChartMotion();
   const gid = useId().replace(/:/g, "");
   const paint = useMemo(() => pnlPaint(`statsEq${gid}`, equity.map((p) => p.equity)), [equity, gid]);
+  const glow = useGlow(`statsEq${gid}`);
+  const focus = useBarFocus();
   const rows = useMemo(() => equity.map((p, i) => ({ ...p, step: i ? p.equity - equity[i - 1].equity : p.equity })), [equity]);
   const unit = metric === "r" ? "R" : "$";
   const last = equity.at(-1)?.equity ?? null;
@@ -72,7 +74,7 @@ export function EquityPanel({
           unit={eqUnit}
           trader={trader && trader !== "all" ? trader : soleTrader(trades)}
           storageKey="stats.equity"
-          height={400}
+          height={440}
         />
       ) : view === "equity" ? (
         equity.length >= 2 ? (
@@ -87,6 +89,7 @@ export function EquityPanel({
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={rows} margin={MARGIN}>
                   {paint.defs}
+                  {glow.defs}
                   <CartesianGrid {...GRID} />
                   <XAxis dataKey="idx" {...X_AXIS} minTickGap={48} />
                   <YAxis {...Y_AXIS} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
@@ -102,8 +105,8 @@ export function EquityPanel({
                     fill={tint("down", 0.12)} dot={false} activeDot={false}
                   />
                   <Area
-                    {...motion} type="monotone" dataKey="equity" stroke={paint.stroke} strokeWidth={STROKE}
-                    fill={paint.fill} dot={false} activeDot={{ ...ACTIVE_DOT, fill: pnlColor(last) }}
+                    {...motion} type="monotone" dataKey="equity" stroke={paint.stroke} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round"
+                    filter={glow.filter} fill={paint.fill} dot={false} activeDot={{ ...ACTIVE_DOT, fill: pnlColor(last) }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -123,7 +126,8 @@ export function EquityPanel({
       ) : monthly.length > 0 ? (
         <div className="h-[268px]" role="img" aria-label={t("equity.monthlyAria")}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthly} margin={MARGIN}>
+            <BarChart data={monthly} margin={MARGIN} {...focus.chartProps}>
+              {barGradients(`statsMo${gid}`)}
               <CartesianGrid {...GRID} />
               <XAxis dataKey="month" {...X_AXIS} tickFormatter={monthLabel} />
               <YAxis {...Y_AXIS} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
@@ -135,7 +139,7 @@ export function EquityPanel({
                 formatter={(v: number) => [fmtValue(v, metric), t("equity.result")]}
               />
               <Bar dataKey="value" radius={BAR_RADIUS} maxBarSize={36} {...motion}>
-                {monthly.map((m) => <Cell key={m.month} fill={m.value >= 0 ? CHART.up : CHART.down} />)}
+                {monthly.map((m, i) => <Cell key={m.month} fill={`url(#statsMo${gid}-${m.value >= 0 ? "up" : "down"})`} fillOpacity={focus.opacity(i)} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>

@@ -26,7 +26,7 @@ export function TileBars({ items, height = 88 }: { items: TileBar[]; height?: nu
   const span = maxPos + maxNeg || 1;
   const zero = maxPos / span;
   return (
-    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+    <div className="ins-bars grid gap-1" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
       {items.map((it) => {
         const h = (Math.abs(it.value) / span) * 100;
         const up = it.value >= 0;
@@ -47,6 +47,7 @@ export function TileBars({ items, height = 88 }: { items: TileBar[]; height?: nu
                       className="ins-bar"
                       data-tone={tone(it.value) ?? "be"}
                       data-mark={it.mark ? "true" : "false"}
+                      data-dir={up ? "up" : "down"}
                       style={up ? { bottom: `${(1 - zero) * 100}%`, height: `max(${h}%, 3px)` } : { top: `${zero * 100}%`, height: `max(${h}%, 3px)` }}
                     />
                   )}

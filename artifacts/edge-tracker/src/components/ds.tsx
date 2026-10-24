@@ -14,6 +14,7 @@ import { useScrollActiveIntoView } from "@/components/ds/scroll-active";
 import { useEdgeFade } from "@/components/ds/edge-fade";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
 import { commonI18n } from "@/i18n/ns/common";
+import { smoothPath } from "@/lib/smooth-path";
 import { fmtRelative } from "@/i18n/format";
 
 /* Foundation modules (usage notes in each file's header). */
@@ -685,6 +686,7 @@ export function Sparkline({
   className?: string;
   ariaLabel?: string;
 }) {
+  const gid = `spk${React.useId().replace(/:/g, "")}`;
   const pts = data.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   const resolved: Tone = tone === "auto" ? (pts.length > 1 ? toneOf(pts[pts.length - 1] - pts[0]) : "neutral") : tone;
   const colour = resolved === "neutral" ? "text-muted-foreground" : TONE_TEXT[resolved];
@@ -702,7 +704,8 @@ export function Sparkline({
   const span = max - min || 1;
   const x = (i: number) => (i / (pts.length - 1)) * width;
   const y = (v: number) => pad + (1 - (v - min) / span) * (height - pad * 2);
-  const line = pts.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(" ");
+  // Smooth monotone line (no overshoot) and a soft gradient area fading to the bottom.
+  const line = smoothPath(pts.map((v, i) => [x(i), y(v)] as const));
   const area = `${line} L${width},${height} L0,${height} Z`;
   return (
     <svg
@@ -717,7 +720,17 @@ export function Sparkline({
       {baseline != null && (
         <line x1={0} x2={width} y1={y(baseline)} y2={y(baseline)} stroke="hsl(var(--border))" strokeWidth={1} strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
       )}
-      {fill && <path d={area} fill="currentColor" opacity={0.12} />}
+      {fill && (
+        <>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="currentColor" stopOpacity={0.24} />
+              <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <path d={area} fill={`url(#${gid})`} />
+        </>
+      )}
       <path d={line} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
     </svg>
   );

@@ -451,6 +451,8 @@ export default {
     emptyStaff: "PropReportsdan «Trade Performance» XLS ni (Reports → Trade Performance → Export) «Import» boʻlimida yuklang — format avtomatik aniqlanadi.",
     time: { "pre-market": "Premarket", "post-market": "Postmarket" },
     hold: { h: "{h} soat {m} daq", m: "{m} daq {s} s", s: "{s} s" },
+    barBest: "eng yaxshi",
+    barWorst: "eng yomon",
     barTitle: "{label}: {trades}, win rate {winRate}, gross {gross}, komissiyalar {fees}",
     netPill: "{value} net",
     trades: "Savdolar",

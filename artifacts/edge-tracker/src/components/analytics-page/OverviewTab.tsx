@@ -1,9 +1,9 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, X_AXIS, Y_AXIS, tooltipProps, useChartMotion } from "@/components/shared/charts";
+import { BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, X_AXIS, Y_AXIS, barGradients, tooltipProps, useBarFocus, useChartMotion } from "@/components/shared/charts";
 import { TrendingUp, TrendingDown, LineChart as LineIcon, BarChart3, ArrowRight, Clock, CandlestickChart } from "lucide-react";
 import { EquityChart, buildDayCandles, soleTrader } from "@/components/equity-chart";
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
@@ -26,6 +26,8 @@ export function OverviewTab({
 }) {
   const { t } = analyticsI18n.useT();
   const motion = useChartMotion();
+  const focus = useBarFocus();
+  const gid = `ovh${useId().replace(/:/g, "")}`;
   const s = useMemo(() => computeStats(trades), [trades]);
   const p = useMemo(() => (previous && previous.length ? computeStats(previous) : null), [previous]);
   const series = useMemo(() => (unit ? equitySeries(trades, unit) : []), [trades, unit]);
@@ -166,13 +168,14 @@ export function OverviewTab({
             <div className="flex flex-col gap-3">
               <div className="h-[190px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={hist} margin={MARGIN} barCategoryGap={2}>
+                  <BarChart data={hist} margin={MARGIN} barCategoryGap={2} {...focus.chartProps}>
+                    {barGradients(gid, CHART.up, CHART.down, false)}
                     <CartesianGrid {...GRID} />
                     <XAxis dataKey="label" {...X_AXIS} interval="preserveStartEnd" />
                     <YAxis {...Y_AXIS} width={32} allowDecimals={false} />
                     <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} formatter={(v: number) => [commonI18n.t("units.trades", { count: v }), t("overview.tradesCol")]} labelFormatter={(l) => `${l}R`} />
                     <Bar dataKey="count" radius={BAR_RADIUS} {...motion}>
-                      {hist.map((b) => <Cell key={b.label} fill={b.tone === "up" ? CHART.up : CHART.down} />)}
+                      {hist.map((b, i) => <Cell key={b.label} fill={`url(#${gid}-${b.tone === "up" ? "up" : "down"})`} fillOpacity={focus.opacity(i)} />)}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>

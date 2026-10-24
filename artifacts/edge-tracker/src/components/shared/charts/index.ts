@@ -8,3 +8,6 @@ export * from "./tooltip";
 export * from "./heat";
 export * from "./heat-calendar";
 export * from "./axis";
+export * from "./env";
+export * from "./focus";
+export * from "./path";

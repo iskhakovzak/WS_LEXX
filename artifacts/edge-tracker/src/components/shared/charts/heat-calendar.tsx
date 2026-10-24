@@ -11,7 +11,7 @@ import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { getBeRange, subscribeBeRange } from "@/lib/appearance/be-range";
 import { chartsI18n } from "@/i18n/ns/charts";
-import { HEAT_BE, HEAT_FLAT, heatFill, heatKind, heatRamp } from "./heat";
+import { HEAT_BE, HEAT_CELL, HEAT_FLAT, heatCellStyle, heatFill, heatKind, heatRamp } from "./heat";
 import { TooltipCard, type TooltipRow } from "./tooltip";
 import { pnlTextClass } from "./theme";
 
@@ -215,11 +215,13 @@ export function HeatCalendar({
                     aria-label={d.label}
                     aria-current={d.today ? "date" : undefined}
                     onClick={() => onActivate?.(d.date)}
-                    style={fill ? { backgroundColor: fill } : undefined}
+                    style={heatCellStyle(fill)}
                     className={cn(
-                      "flex h-full min-h-[2.75rem] w-full min-w-0 flex-col justify-between rounded-lg p-1 text-left transition-[box-shadow,background-color] duration-[var(--dur-1)] sm:min-h-[4rem] sm:p-1.5",
-                      kind === "empty" ? "border border-dashed border-[hsl(var(--border)/0.7)]" : "border border-transparent",
-                      d.quiet && kind === "empty" && "opacity-60",
+                      "flex h-full min-h-[2.75rem] w-full min-w-0 flex-col justify-between p-1 text-left sm:min-h-[4rem] sm:p-1.5",
+                      HEAT_CELL,
+                      kind === "empty" ? "border border-dashed border-[hsl(var(--border)/0.45)] hover:translate-y-0 hover:shadow-none" : "border border-transparent",
+                      d.quiet && kind === "empty" && "opacity-50",
+                      d.today && !d.active && "ring-1 ring-primary/60",
                       !d.inMonth && "opacity-45",
                       !d.disabled && "hover:ring-1 hover:ring-[hsl(var(--foreground)/0.25)]",
                       d.active && "ring-2 ring-primary",
@@ -236,7 +238,7 @@ export function HeatCalendar({
                     {d.traded && d.valueText != null && (
                       <span className={cn("w-full min-w-0 flex-col leading-tight", phoneValues ? "flex" : "hidden sm:flex")}>
                         <span className={cn("truncate font-semibold tabular-nums text-foreground", cols > 5 ? "text-2xs tracking-tight lg:text-xs" : "text-2xs sm:text-xs")}>{d.valueText}</span>
-                        {d.sub && <span className="hidden truncate text-2xs tabular-nums text-foreground/70 md:block">{d.sub}</span>}
+                        {d.sub && <span className="hidden truncate text-2xs tabular-nums text-foreground/60 md:block">{d.sub}</span>}
                       </span>
                     )}
                   </button>
@@ -288,8 +290,9 @@ function WeekCell({ total, weekMax, hue, focus, tipClass, showTip }: {
       {traded && total!.sub && <span className="hidden truncate text-2xs tabular-nums text-muted-foreground sm:block">{total!.sub}</span>}
     </>
   );
-  const cls = "flex h-full min-h-[2.75rem] w-full min-w-0 flex-col items-center justify-center rounded-lg bg-[var(--glass-bg)] px-0.5 text-center sm:min-h-[4rem]";
-  const style = fill ? { backgroundImage: `linear-gradient(${fill}, ${fill})` } : undefined;
+  // Totals read as totals: a framed glass tile (not one more day), bold value, the tint only as a quiet wash.
+  const cls = "flex h-full min-h-[2.75rem] w-full min-w-0 flex-col items-center justify-center rounded-[10px] border border-[var(--glass-border)] bg-[var(--glass-bg)] px-0.5 text-center shadow-none sm:min-h-[4rem]";
+  const style = heatCellStyle(fill);
   return (
     <div role="gridcell" className="relative min-w-0 border-l border-[var(--glass-border)] pl-1 sm:pl-1.5">
       {total?.href && traded ? (
@@ -316,7 +319,7 @@ function WeekCell({ total, weekMax, hue, focus, tipClass, showTip }: {
 /** Legend: empty · break-even · loss ramp · profit ramp (or one accent ramp for counts). */
 export function HeatLegend({ hue = "pnl", extra, className }: { hue?: "pnl" | "accent"; extra?: React.ReactNode; className?: string }) {
   const { t } = chartsI18n.useT();
-  const sw = "h-2.5 w-2.5 rounded-[3px]";
+  const sw = "h-2.5 w-2.5 rounded-[4px]";
   return (
     <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1.5 text-2xs text-muted-foreground", className)} title={t("heat.scale")}>
       <span className="inline-flex items-center gap-1.5"><span className={cn(sw, "border border-dashed border-[hsl(var(--border))]")} aria-hidden="true" />{t("heat.noTrades")}</span>

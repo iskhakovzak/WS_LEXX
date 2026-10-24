@@ -12,6 +12,7 @@ import { niceTicks } from "@/components/equity-chart/scale";
 import { cn } from "@/lib/utils";
 import { fmtMonth, localeTag } from "@/lib/format";
 import { CANVAS, DRAW_MS, prefersReducedMotion } from "@/components/shared/charts/theme";
+import { monotoneCurve } from "@/components/shared/charts/path";
 import { TOOLTIP_SURFACE } from "@/components/shared/charts/tooltip";
 
 export type LinePoint = { x: number; y: number; date: string };
@@ -146,9 +147,12 @@ export function LineCanvas({
     ctx.lineWidth = 1;
     for (const t of ticks) {
       const y = Math.round(sy(t)) + 0.5;
-      // Faint horizontal guides; the zero rule is the emphasised one.
-      ctx.strokeStyle = Math.abs(t) < 1e-9 ? th.fg(CANVAS.zeroAlpha(th.dark)) : th.border(CANVAS.gridAlpha(th.dark) * (compact ? 0.7 : 1));
+      // Dotted, faint horizontal guides; the zero rule is the emphasised (solid) one.
+      const zero = Math.abs(t) < 1e-9;
+      ctx.setLineDash(zero ? [] : (CANVAS.gridDash as number[]));
+      ctx.strokeStyle = zero ? th.fg(CANVAS.zeroAlpha(th.dark)) : th.border(CANVAS.gridAlpha(th.dark) * (compact ? 0.7 : 1));
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      ctx.setLineDash([]);
       if (!compact) {
         ctx.fillStyle = th.muted(0.95);
         ctx.textAlign = "right"; ctx.textBaseline = "middle";
@@ -207,7 +211,7 @@ export function LineCanvas({
       if (s.area) {
         ctx.beginPath();
         ctx.moveTo(sx(pts[0].x), sy(0));
-        for (const p of pts) ctx.lineTo(sx(p.x), sy(p.y));
+        monotoneCurve(ctx, pts.map((p) => [sx(p.x), sy(p.y)] as const), true);
         ctx.lineTo(sx(pts[pts.length - 1].x), sy(0));
         ctx.closePath();
         // Soft fade: strongest at the curve's far edge, transparent at the zero line.
@@ -219,8 +223,9 @@ export function LineCanvas({
         ctx.fillStyle = g;
         ctx.fill();
       }
+      // Smooth monotone line (passes through every point, no overshoot).
       ctx.beginPath();
-      pts.forEach((p, i) => (i ? ctx.lineTo(sx(p.x), sy(p.y)) : ctx.moveTo(sx(p.x), sy(p.y))));
+      monotoneCurve(ctx, pts.map((p) => [sx(p.x), sy(p.y)] as const));
       ctx.strokeStyle = s.color;
       ctx.lineWidth = s.width ?? (compact ? CANVAS.lineDense : CANVAS.line);
       ctx.lineJoin = "round"; ctx.lineCap = "round";
@@ -249,17 +254,16 @@ export function LineCanvas({
     if (rows.length && hoverX != null) {
       const anyPt = rows.find((r) => r.point);
       const cx = anyPt?.point ? sx(anyPt.point.x) : sx(hoverX);
-      ctx.strokeStyle = th.fg(0.35);
+      // Crosshair: a solid hairline + dots snapped onto the curves.
+      ctx.strokeStyle = th.fg(th.dark ? 0.28 : 0.24);
       ctx.lineWidth = 1;
-      ctx.setLineDash([3, 3]);
       ctx.beginPath(); ctx.moveTo(Math.round(cx) + 0.5, yTop); ctx.lineTo(Math.round(cx) + 0.5, yBot); ctx.stroke();
-      ctx.setLineDash([]);
       for (const r of rows) {
         if (!r.point) continue;
         ctx.beginPath();
-        ctx.arc(sx(r.point.x), sy(r.point.y), compact ? 3 : 4, 0, Math.PI * 2);
+        ctx.arc(sx(r.point.x), sy(r.point.y), compact ? 3.5 : 4.5, 0, Math.PI * 2);
         ctx.fillStyle = r.color; ctx.fill();
-        ctx.lineWidth = 2; ctx.strokeStyle = th.bg(1); ctx.stroke();
+        ctx.lineWidth = 2.5; ctx.strokeStyle = th.bg(1); ctx.stroke();
       }
     }
   }

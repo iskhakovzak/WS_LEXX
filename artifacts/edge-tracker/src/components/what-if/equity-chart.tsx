@@ -3,7 +3,7 @@ import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, 
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ACTIVE_DOT, BAR_RADIUS, CHART, GRID, GlassTooltip, MARGIN, STROKE, STROKE_THIN, X_AXIS, Y_AXIS, ZERO_LINE,
-  areaGradient, pnlPaint, tint, tooltipProps, useChartMotion,
+  areaGradient, barGradients, pnlPaint, tint, tooltipProps, useBarFocus, useChartMotion, useGlow,
 } from "@/components/shared/charts";
 import { fmtDate, fmtDateCustom, fmtDeskDate, fmtUsd } from "@/lib/format";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
@@ -37,6 +37,7 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
   const gid = `wi${useId().replace(/:/g, "")}`;
   // Fact alone: a P&L curve (profit above zero, loss below). With a scenario: fact recedes (dashed, muted), scenario leads.
   const paint = useMemo(() => pnlPaint(gid, base.map((p) => p.cum)), [base, gid]);
+  const glow = useGlow(gid);
   const usd = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
   return (
     <div style={{ height }} className={onDay ? "cursor-pointer" : undefined} title={onDay ? t("chart.clickDay") : undefined} role="img" aria-label={hasScenario ? t("chart.ariaBoth") : t("chart.ariaFact")}>
@@ -48,6 +49,7 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
             onClick={onDay ? (st: { activePayload?: { payload?: { day?: unknown } }[] } | null) => { const day = st?.activePayload?.[0]?.payload?.day; if (typeof day === "string") onDay(day); } : undefined}
           >
             {hasScenario ? areaGradient(`${gid}-sc`, CHART.accent) : paint.defs}
+            {glow.defs}
             <CartesianGrid {...GRID} />
             <XAxis dataKey="label" {...X_AXIS} minTickGap={36} />
             <YAxis {...Y_AXIS} tickFormatter={usd} width={76} />
@@ -67,10 +69,10 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
             {hasScenario ? (
               <Line type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke={CHART.neutral} dot={false} strokeWidth={STROKE_THIN} strokeDasharray="4 3" activeDot={{ ...ACTIVE_DOT, fill: CHART.neutral }} {...motion} />
             ) : (
-              <Area type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke={paint.stroke} fill={paint.fill} dot={false} strokeWidth={STROKE} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} {...motion} />
+              <Area type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke={paint.stroke} fill={paint.fill} dot={false} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" filter={glow.filter} activeDot={{ ...ACTIVE_DOT, fill: CHART.fg }} {...motion} />
             )}
             {hasScenario && (
-              <Area type="monotone" dataKey={SERIES_SCENARIO} name={t("chart.scenario")} stroke={CHART.accent} strokeWidth={STROKE} fill={`url(#${gid}-sc)`} dot={false} activeDot={{ ...ACTIVE_DOT, fill: CHART.accent }} {...motion} connectNulls />
+              <Area type="monotone" dataKey={SERIES_SCENARIO} name={t("chart.scenario")} stroke={CHART.accent} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" filter={glow.filter} fill={`url(#${gid}-sc)`} dot={false} activeDot={{ ...ACTIVE_DOT, fill: CHART.accent }} {...motion} connectNulls />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -120,22 +122,25 @@ export function DailyHistogram({ base, scenario, hasScenario }: { base: DayResul
     return first < 0 ? [] : bins.slice(first, last + 1);
   }, [base, scenario, hasScenario, t]); // eslint-disable-line react-hooks/exhaustive-deps -- bin labels follow the language
   const motion = useChartMotion();
+  const focus = useBarFocus();
+  const gid = `wh${useId().replace(/:/g, "")}`;
   return (
     <div className="h-[220px]">
       {data.length ? (
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={MARGIN} barGap={2}>
+          <BarChart data={data} margin={MARGIN} barGap={2} {...focus.chartProps}>
+            {barGradients(gid, CHART.up, CHART.down, false)}
             <CartesianGrid {...GRID} />
             <XAxis dataKey="tick" {...X_AXIS} interval={0} />
             <YAxis {...Y_AXIS} allowDecimals={false} width={32} />
             <Tooltip {...tooltipProps("bar")} content={<GlassTooltip />} formatter={(v: number, name: string) => [t("chart.days", { count: v }), name]} labelFormatter={(_, p) => (p?.[0]?.payload?.label as string) ?? ""} />
             {hasScenario && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />}
             <Bar dataKey={SERIES_BASE} name={t("chart.base")} fill={hasScenario ? tint("muted-foreground", 0.45) : CHART.up} radius={BAR_RADIUS} {...motion}>
-              {data.map((d) => <Cell key={d.i} fill={hasScenario ? tint(d.neg ? "down" : "up", 0.4) : d.neg ? CHART.down : CHART.up} />)}
+              {data.map((d, k) => <Cell key={d.i} fill={hasScenario ? tint(d.neg ? "down" : "up", 0.4) : `url(#${gid}-${d.neg ? "down" : "up"})`} fillOpacity={focus.opacity(k)} />)}
             </Bar>
             {hasScenario && (
               <Bar dataKey={SERIES_SCENARIO} name={t("chart.scenario")} fill={CHART.up} radius={BAR_RADIUS} {...motion}>
-                {data.map((d) => <Cell key={d.i} fill={d.neg ? CHART.down : CHART.up} />)}
+                {data.map((d, k) => <Cell key={d.i} fill={`url(#${gid}-${d.neg ? "down" : "up"})`} fillOpacity={focus.opacity(k)} />)}
               </Bar>
             )}
           </BarChart>

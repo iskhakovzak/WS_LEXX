@@ -10,6 +10,7 @@ import { parseDayRange, type DayRange } from "@/lib/period-range";
 import { KpiGridSkeleton } from "@/components/stats/kpi-grid";
 import { type Dimension } from "@/components/stats/breakdown-panel";
 import { ReportPanels, useReportData, useWindowExport } from "@/components/stats/report";
+import { EquityPanel } from "@/components/stats/equity-panel";
 import { downloadReportCsv, openPrintReport } from "@/components/stats/export";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
 import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
@@ -278,17 +279,15 @@ export default function Stats() {
       <Page>
         {header}
         <div className="skeleton h-[52px] rounded-2xl" aria-hidden="true" />
+        <ChartSkeleton className="h-[460px]" height="100%" />
         <KpiGridSkeleton />
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
-          <ChartSkeleton className="h-[360px] xl:col-span-3" height="100%" />
-          <ChartSkeleton className="h-[360px] xl:col-span-2" height="100%" kind="bars" />
-        </div>
         <span className="sr-only" role="status">{t("loading")}</span>
       </Page>
     );
   }
 
   const windowLabel = windowLabelOf(ranges.cur, days);
+  const bookEmpty = trader === "all" && (bookTotal === 0 || (bookTotal == null && !staff && allTrades.length === 0 && prefs.period === "all"));
   const prevNote = prevNoteOf(ranges.prev, prevLoading, prevKpis);
 
   return (
@@ -325,6 +324,11 @@ export default function Stats() {
 
       <StatsFacets fv={FV} data={FQ.data} loading={FQ.isFetching} error={FQ.isError} />
 
+      {/* The result curve right under the cuts, full width (owner: the first thing after the filters). */}
+      {!bookEmpty && count > 0 && (
+        <EquityPanel equity={d.equity} monthly={d.monthly} metric={metric} trades={staff ? undefined : trades} trader={trader} daily={staff} />
+      )}
+
       {hasBroker && (
         <div className="space-y-4">
           <PerformanceReportPanel trader={trader} />
@@ -332,7 +336,7 @@ export default function Stats() {
         </div>
       )}
 
-      {trader === "all" && (bookTotal === 0 || (bookTotal == null && !staff && allTrades.length === 0 && prefs.period === "all")) ? (
+      {bookEmpty ? (
         <Panel>
           <EmptyState
             icon={BarChart3}

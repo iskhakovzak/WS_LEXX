@@ -25,6 +25,7 @@ import { PersonSelect } from "@/components/people/person-select";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { NetBars } from "./net-bars";
 
 const WEEKDAY_IDX: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
@@ -47,40 +48,6 @@ const pct = (v: number | null | undefined, digits = 1) => fmtPct(v, { decimals: 
 /** «Jan 2, 2026 — Oct 15, 2026»: the same date shape as the broker card on Analytics (was raw ISO). */
 function periodText(r: { periodFrom: string; periodTo: string }): string {
   return `${fmtDate(r.periodFrom, "medium")} — ${fmtDate(r.periodTo, "medium")}`;
-}
-
-/* ── bars ─────────────────────────────────────────────────────────────────── */
-
-function NetBars({ rows, labelOf, title }: { rows: PerfRow[]; labelOf: (label: string) => string; title: string }) {
-  const { t } = propreportsI18n.useT();
-  const max = Math.max(1, ...rows.map((r) => Math.abs(r.totals.net)));
-  if (!rows.length) return null;
-  return (
-    <div className="grid gap-2">
-      <div className="text-xs font-medium text-muted-foreground">{title}</div>
-      <div className="grid gap-1.5" role="list" aria-label={title}>
-        {rows.map((r) => {
-          const w = Math.max(2, Math.round((Math.abs(r.totals.net) / max) * 100));
-          const up = r.totals.net >= 0;
-          return (
-            <div key={r.label} role="listitem" className="grid grid-cols-[88px_1fr_auto] items-center gap-2 text-xs" title={t("perf.barTitle", { label: labelOf(r.label), trades: commonI18n.t("units.trades", { count: r.trades }), winRate: pct(r.totals.winRate), gross: fmtUsd(r.totals.gross), fees: fmtUsd(r.totals.fees) })}>
-              <span className="truncate text-muted-foreground">{labelOf(r.label)}</span>
-              <div className="relative h-4 rounded bg-[var(--glass-bg)]">
-                <div
-                  className={cn("absolute inset-y-0 rounded", up ? "bg-up/70" : "bg-down/70")}
-                  style={{ left: up ? "50%" : `${50 - w / 2}%`, width: `${w / 2}%` }}
-                  aria-hidden="true"
-                />
-                <div className="absolute inset-y-0 left-1/2 w-px bg-border" aria-hidden="true" />
-              </div>
-              <span className={cn("w-24 text-right font-medium tabular-nums", up ? "text-up" : "text-down")}>{fmtUsd(r.totals.net, { signed: true })}</span>
-              <span className="sr-only">{commonI18n.t("units.trades", { count: r.trades })}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 /* ── side comparison ──────────────────────────────────────────────────────── */
@@ -219,7 +186,7 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
       </div>
 
       {!compact && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
           <NetBars rows={data.byTime} labelOf={timeLabel} title={t("perf.byTime")} />
           <NetBars rows={data.byWeekday} labelOf={dayLabel} title={t("perf.byWeekday")} />
         </div>
