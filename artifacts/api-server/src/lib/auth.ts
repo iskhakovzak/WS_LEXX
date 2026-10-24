@@ -108,6 +108,16 @@ export async function signToken(u: AuthUser, opts: { pwc?: boolean; sid?: string
   });
 }
 
+/**
+ * A short-lived token for a server job that reads the app's own API AS a member (the nightly AI reviews gather a
+ * trader's data with the trader's own rights — lib/assistant/batch/caller.ts). Never leaves this process: it is sent
+ * only over loopback to this same server, never logged, stored or returned. Revoked like any token (token_version).
+ */
+export async function signServiceToken(u: AuthUser, ttlSec = 15 * 60): Promise<string> {
+  const tv = (await getTokenVersion(u.id)) ?? 0;
+  return jwt.sign({ sub: u.id, name: u.name, role: u.role, tv, sid: newSessionId(), svc: true }, SECRET_OK, { expiresIn: ttlSec, algorithm: JWT_ALG });
+}
+
 /** Sliding session: should GET /auth/me hand out a fresh token? (`iat` in seconds.) */
 export function shouldRefreshToken(iat: number | undefined, nowMs = Date.now()): boolean {
   return typeof iat === "number" && nowMs / 1000 - iat > REFRESH_AFTER_SEC;

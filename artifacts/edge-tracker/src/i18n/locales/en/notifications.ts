@@ -45,6 +45,7 @@ export default {
     curator_request: { label: "Curator request", description: "A trader asked a curator for help" },
     curator_request_done: { label: "Curator answered your request", description: "A curator closed your request" },
     curator_digest: { label: "Curator evening digest", description: "One digest on weekdays: your traders' closed days and what to look at first (in Telegram — instead of a message per day)" },
+    ai_review_ready: { label: "AI review ready", description: "The overnight AI review of your day (and week or month, when on) is ready — arrives in the morning" },
     risk_warn: { label: "Close to the limit", description: "≥ 70% of the daily / weekly limit or drawdown used" },
     risk_breach: { label: "Limit exceeded", description: "Daily / weekly limit or max drawdown breached — trading stop" },
     risk_repeat_breach: { label: "Repeat breach", description: "The trader breached a limit for the second time this week — needs a curator review" },

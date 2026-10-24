@@ -45,6 +45,7 @@ export default {
     curator_request: { label: "Kuratorga soʻrov", description: "Treyder kuratordan yordam soʻradi" },
     curator_request_done: { label: "Kurator soʻrovga javob berdi", description: "Kurator soʻrovingizni yopdi" },
     curator_digest: { label: "Kuratorning kechki xulosasi", description: "Ish kunlari bitta xulosa: shogirdlarning yopilgan kunlari va avval nimaga qarash (Telegramda — har kun uchun xabar oʻrniga)" },
+    ai_review_ready: { label: "AI-tahlil tayyor", description: "Kuningizning tungi AI-tahlili (yoqilgan boʻlsa — hafta yoki oyniki ham) tayyor — ertalab keladi" },
     risk_warn: { label: "Limitga yaqin", description: "Kunlik / haftalik limit yoki pasayishning ≥ 70% qismi ishlatildi" },
     risk_breach: { label: "Limit oshib ketdi", description: "Kunlik / haftalik limit yoki maks. pasayish buzildi — savdo toʻxtatiladi" },
     risk_repeat_breach: { label: "Takroriy buzilish", description: "Treyder shu haftada ikkinchi marta limitni buzdi — kurator tahlili kerak" },

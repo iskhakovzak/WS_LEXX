@@ -72,7 +72,15 @@ export default {
     lineCost: "{n}. {trader} — {reason}, {cost}",
     reason: { breach_review: "buzilish tahlili", stopped: "stopda", near_stop: "stopga yaqin", eod_review: "yopilgan kun tahlil kutmoqda", weekly_review: "hafta hisoboti", overdue_action: "1:1 kelishuvlari muddati oʻtgan", no_limits: "limitlar yoʻq", template_drift: "limitlar shablonga mos emas", missing_plan: "reja yoʻq", missing_eod: "kun yopilmagan", one_on_one: "uzoq vaqt 1:1 boʻlmagan", plateau_review: "surʼat bosqich uchun kerakligidan past", at_stake: "minus va yoʻqotishlar", dropout_risk: "ketish xavfi", trial_review: "qoida sinovi tugayapti", stop_breach: "limit buzilishi", focus_broken: "fokus buzildi", disputed: "fokus boʻyicha «xato emas»", fees: "komissiyalar", loss_streak: "zararli kunlar seriyasi", giveback: "foydani qaytarish", rule: "qoidalar buzilishi", other: "qarash kerak" },
   },
+  ai_review_ready: {
+    title: "AI-tahlil tayyor",
+    body: "Tahlil tayyor — koʻrish uchun oching.",
+    day: { title: "Kun tahlili tayyor", body: "{period} kunining AI-tahlili: nima ishladi, nima ishlamadi va bugun uchun bitta fokus." },
+    week: { title: "Hafta tahlili tayyor", body: "{period} dan boshlangan haftaning AI-tahlili: natija, hafta odatlari va keyingisi uchun bitta fokus." },
+    month: { title: "Oy tahlili tayyor", body: "{period} dan boshlangan oyning AI-tahlili: natija, oy odatlari va keyingisi uchun bitta fokus." },
+  },
   types: {
+    ai_review_ready: { label: "AI-tahlil tayyor", description: "Kuningizning tungi AI-tahlili (yoqilgan boʻlsa — hafta yoki oyniki ham) tayyor — ertalab keladi" },
     mention: { label: "Eslatish", description: "Kimdir sizni muhokama, gʻoya yoki qaydda @ism orqali eslatdi" },
     reply: { label: "Javob", description: "Postingizga yoki muhokamangizda javob, «yechim» belgisi" },
     review_request: { label: "Tahlil soʻrovi", description: "Treyder kuratordan savdo yoki mavzuni tahlil qilishni soʻraydi" },

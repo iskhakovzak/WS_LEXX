@@ -18,7 +18,9 @@ import { isApiError } from "@/lib/api/http";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BoltMark, WsMark } from "./ws-mark";
-import { clause, reviewText, useAiReview, whatIfHref, type DayFacts, type Evidence, type ReviewDto, type ReviewPoint, type ReviewSubject } from "./ai-review-data";
+import {
+  clause, FOCUS_KEY, isPeriodSubject, reviewText, TITLE_KEY, useAiReview, whatIfHref, type DayFacts, type Evidence, type ReviewDto, type ReviewPoint, type ReviewSubject,
+} from "./ai-review-data";
 
 const GRADE_TONE: Record<string, Tone> = { A: "up", B: "accent", C: "warn", D: "down", F: "down" };
 const PLAN_TONE: Record<string, Tone> = { yes: "up", partly: "warn", no: "down", unknown: "neutral" };
@@ -111,7 +113,7 @@ function ReviewBody({ d }: { d: ReviewDto }) {
       <div className="rounded-xl bg-foreground px-3.5 py-3 text-background" data-testid="ai-review-tomorrow">
         <div className="mb-1 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide opacity-75">
           <Target className="h-3.5 w-3.5" aria-hidden="true" />
-          {t(d.kind === "trade" ? "review.tomorrow" : "review.tomorrowDay")}
+          {t(FOCUS_KEY[d.kind])}
         </div>
         <p className="text-sm leading-relaxed">
           <span className="font-semibold">{t("review.if")}</span> {clause(r.tomorrow.if)} — <span className="font-semibold">{t("review.then")}</span> {clause(r.tomorrow.then)}
@@ -146,7 +148,10 @@ export function AiReviewCard({ subject, className }: { subject: ReviewSubject; c
   const busy = run.isPending;
   const err = run.error;
   const budgetOut = isApiError(err) && err.code === "AI_BUDGET_EXCEEDED";
-  const title = t(subject.kind === "trade" ? "review.title" : "review.dayTitle");
+  const title = t(TITLE_KEY[subject.kind]);
+  // Week / month: prepared overnight only — no button, and no card until one exists.
+  const period = isPeriodSubject(subject);
+  if (period && !d) return null;
 
   const copy = async () => {
     if (!d) return;
@@ -154,7 +159,7 @@ export function AiReviewCard({ subject, className }: { subject: ReviewSubject; c
   };
 
   return (
-    <section className={cn("glass-panel space-y-4 rounded-2xl p-4", className)} data-testid={subject.kind === "trade" ? "ai-review-panel" : "ai-day-review"} aria-label={title}>
+    <section className={cn("glass-panel space-y-4 rounded-2xl p-4", className)} data-testid={subject.kind === "trade" ? "ai-review-panel" : `ai-${subject.kind}-review`} aria-label={title}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-full bg-foreground text-background"><WsMark className="h-[18px] w-[18px]" still={!busy} /></span>
@@ -174,10 +179,12 @@ export function AiReviewCard({ subject, className }: { subject: ReviewSubject; c
               {copied ? <Check className="text-up" aria-hidden="true" /> : <Copy aria-hidden="true" />}
             </Button>
           ) : null}
-          <Button type="button" variant={d ? "outline" : "default"} size="sm" onClick={() => run.mutate(!!d)} disabled={busy || loading} data-testid="button-ai-review">
-            {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : d ? <RefreshCw aria-hidden="true" /> : <WsMark className="h-4 w-4" still />}
-            {busy ? t("review.running") : d ? t("review.refresh") : t("review.run")}
-          </Button>
+          {period ? null : (
+            <Button type="button" variant={d ? "outline" : "default"} size="sm" onClick={() => run.mutate(!!d)} disabled={busy || loading} data-testid="button-ai-review">
+              {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : d ? <RefreshCw aria-hidden="true" /> : <WsMark className="h-4 w-4" still />}
+              {busy ? t("review.running") : d ? t("review.refresh") : t("review.run")}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -215,7 +222,7 @@ export function AiReviewCard({ subject, className }: { subject: ReviewSubject; c
           <ReviewBody d={d} />
           <p className="mt-3 border-t border-[var(--glass-border)] pt-2 text-2xs text-muted-foreground">
             {t("review.generated", { date: fmtDate(d.createdAt, "dateTime") })}
-            {d.cached ? <> · {t("review.cached")}</> : null}
+            {period ? <> · {t("review.batchNote")}</> : d.cached ? <> · {t("review.cached")}</> : null}
           </p>
         </div>
       ) : null}

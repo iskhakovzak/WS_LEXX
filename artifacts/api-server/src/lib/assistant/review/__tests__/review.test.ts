@@ -76,6 +76,18 @@ describe("review schema", () => {
     expect(r.ok && r.review.wentWell.length).toBe(4);
     expect(r.ok && r.review.dataGaps.length).toBe(5);
   });
+  it("clips an over-long data-gap note at a word instead of losing the whole review (seen in a real batch)", () => {
+    const long = "The data does not include the playbook setup for these SOXL trades, so whether the re-entries matched a planned setup or were impulsive cannot be confirmed from here.";
+    expect(long.length).toBeGreaterThan(160);
+    const r = parseReview(json({ ...GOOD, dataGaps: [long] }));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.review.dataGaps[0]!.length).toBeLessThanOrEqual(160);
+      expect(r.review.dataGaps[0]!.endsWith("…")).toBe(true);
+      expect(long.startsWith(r.review.dataGaps[0]!.slice(0, -1))).toBe(true);
+    }
+    expect(parseReview(json({ ...GOOD, verdict: { ...GOOD.verdict, headline: "x".repeat(201) } })).ok).toBe(false); // other fields are not clipped
+  });
   it("the json_schema sent to the API and the validator describe the same object", () => {
     const top = REVIEW_JSON_SCHEMA as { required: string[]; additionalProperties: boolean; properties: Record<string, unknown> };
     expect(top.additionalProperties).toBe(false);

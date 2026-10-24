@@ -168,6 +168,8 @@ CREATE SEQUENCE public.academy_submissions_id_seq AS integer START WITH 1 INCREM
 CREATE SEQUENCE public.activity_log_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.ai_assistant_audit_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_assistant_messages_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
+CREATE SEQUENCE public.ai_batch_items_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
+CREATE SEQUENCE public.ai_batches_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_review_rate_limit_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.ai_reviews_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_trade_reviews_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -684,7 +686,7 @@ CREATE TABLE public.ai_assistant_audit (
   user_message text,
   assistant_message text,
   CONSTRAINT ai_assistant_audit_pkey PRIMARY KEY (id),
-  CONSTRAINT ai_assistant_audit_mode_check CHECK (mode = ANY (ARRAY['chat'::text, 'assist'::text, 'review'::text])),
+  CONSTRAINT ai_assistant_audit_mode_check CHECK (mode = ANY (ARRAY['chat'::text, 'assist'::text, 'review'::text, 'batch'::text])),
   CONSTRAINT ai_assistant_audit_status_check CHECK (status = ANY (ARRAY['ok'::text, 'error'::text, 'aborted'::text, 'refused'::text])),
   CONSTRAINT ai_assistant_audit_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
 );
@@ -726,6 +728,68 @@ CREATE TABLE public.ai_assistant_usage (
   CONSTRAINT ai_assistant_usage_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
 );
 
+CREATE TABLE public.ai_batch_items (
+  id bigint DEFAULT nextval('public.ai_batch_items_id_seq'::regclass) NOT NULL,
+  batch_id bigint NOT NULL,
+  kind text NOT NULL,
+  trader text NOT NULL,
+  period text NOT NULL,
+  lang text NOT NULL,
+  input_hash text NOT NULL,
+  facts jsonb,
+  status text DEFAULT 'pending'::text NOT NULL,
+  error text,
+  est_units bigint DEFAULT 0 NOT NULL,
+  units bigint DEFAULT 0 NOT NULL,
+  cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
+  review_id bigint,
+  notified_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  finished_at timestamp with time zone,
+  CONSTRAINT ai_batch_items_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_batch_items_kind_trader_period_key UNIQUE (kind, trader, period),
+  CONSTRAINT ai_batch_items_input_hash_check CHECK (char_length(input_hash) = 64),
+  CONSTRAINT ai_batch_items_kind_check CHECK (kind = ANY (ARRAY['day'::text, 'week'::text, 'month'::text])),
+  CONSTRAINT ai_batch_items_lang_check CHECK (lang = ANY (ARRAY['ru'::text, 'en'::text, 'uz'::text])),
+  CONSTRAINT ai_batch_items_period_check CHECK (period ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT ai_batch_items_status_check CHECK (status = ANY (ARRAY['pending'::text, 'stored'::text, 'invalid'::text, 'errored'::text, 'expired'::text, 'canceled'::text, 'refused'::text])),
+  CONSTRAINT ai_batch_items_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
+);
+
+CREATE TABLE public.ai_batches (
+  id bigint DEFAULT nextval('public.ai_batches_id_seq'::regclass) NOT NULL,
+  night text NOT NULL,
+  provider_id text,
+  status text NOT NULL,
+  model text NOT NULL,
+  advisor text,
+  kinds text[] DEFAULT '{}'::text[] NOT NULL,
+  requests integer DEFAULT 0 NOT NULL,
+  succeeded integer DEFAULT 0 NOT NULL,
+  invalid integer DEFAULT 0 NOT NULL,
+  errored integer DEFAULT 0 NOT NULL,
+  expired integer DEFAULT 0 NOT NULL,
+  canceled integer DEFAULT 0 NOT NULL,
+  skipped_budget integer DEFAULT 0 NOT NULL,
+  est_units bigint DEFAULT 0 NOT NULL,
+  units bigint DEFAULT 0 NOT NULL,
+  input_tokens bigint DEFAULT 0 NOT NULL,
+  output_tokens bigint DEFAULT 0 NOT NULL,
+  cache_read_tokens bigint DEFAULT 0 NOT NULL,
+  cache_write_tokens bigint DEFAULT 0 NOT NULL,
+  cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
+  poll_count integer DEFAULT 0 NOT NULL,
+  next_poll_at timestamp with time zone,
+  error text,
+  created_by text DEFAULT 'system'::text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  ended_at timestamp with time zone,
+  CONSTRAINT ai_batches_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_batches_provider_id_key UNIQUE (provider_id),
+  CONSTRAINT ai_batches_night_check CHECK (night ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT ai_batches_status_check CHECK (status = ANY (ARRAY['submitting'::text, 'in_progress'::text, 'ended'::text, 'failed'::text, 'expired'::text, 'canceled'::text]))
+);
+
 CREATE TABLE public.ai_review_rate_limit (
   id integer DEFAULT nextval('public.ai_review_rate_limit_id_seq'::regclass) NOT NULL,
   user_key text NOT NULL,
@@ -750,12 +814,14 @@ CREATE TABLE public.ai_reviews (
   cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
   created_by text NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
+  source text DEFAULT 'live'::text NOT NULL,
   CONSTRAINT ai_reviews_pkey PRIMARY KEY (id),
-  CONSTRAINT ai_reviews_check CHECK (kind = 'trade'::text AND trade_id IS NOT NULL OR kind = 'day'::text AND day IS NOT NULL),
+  CONSTRAINT ai_reviews_check CHECK (kind = 'trade'::text AND trade_id IS NOT NULL OR kind <> 'trade'::text AND day IS NOT NULL),
   CONSTRAINT ai_reviews_day_check CHECK (day IS NULL OR day ~ '^\d{4}-\d{2}-\d{2}$'::text),
   CONSTRAINT ai_reviews_input_hash_check CHECK (char_length(input_hash) = 64),
-  CONSTRAINT ai_reviews_kind_check CHECK (kind = ANY (ARRAY['trade'::text, 'day'::text])),
+  CONSTRAINT ai_reviews_kind_check CHECK (kind = ANY (ARRAY['trade'::text, 'day'::text, 'week'::text, 'month'::text])),
   CONSTRAINT ai_reviews_lang_check CHECK (lang = ANY (ARRAY['ru'::text, 'en'::text, 'uz'::text])),
+  CONSTRAINT ai_reviews_source_check CHECK (source = ANY (ARRAY['live'::text, 'batch'::text])),
   CONSTRAINT ai_reviews_trader_check CHECK (char_length(trader) >= 1 AND char_length(trader) <= 200)
 );
 
@@ -3203,6 +3269,8 @@ ALTER SEQUENCE public.academy_submissions_id_seq OWNED BY public.academy_submiss
 ALTER SEQUENCE public.activity_log_id_seq OWNED BY public.activity_log.id;
 ALTER SEQUENCE public.ai_assistant_audit_id_seq OWNED BY public.ai_assistant_audit.id;
 ALTER SEQUENCE public.ai_assistant_messages_id_seq OWNED BY public.ai_assistant_messages.id;
+ALTER SEQUENCE public.ai_batch_items_id_seq OWNED BY public.ai_batch_items.id;
+ALTER SEQUENCE public.ai_batches_id_seq OWNED BY public.ai_batches.id;
 ALTER SEQUENCE public.ai_review_rate_limit_id_seq OWNED BY public.ai_review_rate_limit.id;
 ALTER SEQUENCE public.ai_reviews_id_seq OWNED BY public.ai_reviews.id;
 ALTER SEQUENCE public.ai_trade_reviews_id_seq OWNED BY public.ai_trade_reviews.id;
@@ -3334,9 +3402,14 @@ CREATE INDEX academy_submissions_user_idx ON public.academy_submissions USING bt
 CREATE INDEX activity_log_section_entity_idx ON public.activity_log USING btree (section, entity_id, created_at DESC);
 CREATE INDEX ai_assistant_audit_user_idx ON public.ai_assistant_audit USING btree (user_name, created_at DESC);
 CREATE INDEX ai_assistant_messages_user_idx ON public.ai_assistant_messages USING btree (user_name, id DESC) WHERE (cleared_at IS NULL);
+CREATE INDEX ai_batch_items_batch_idx ON public.ai_batch_items USING btree (batch_id);
+CREATE INDEX ai_batch_items_notify_idx ON public.ai_batch_items USING btree (finished_at) WHERE ((status = 'stored'::text) AND (notified_at IS NULL));
+CREATE INDEX ai_batches_night_idx ON public.ai_batches USING btree (night, created_at DESC);
+CREATE INDEX ai_batches_open_idx ON public.ai_batches USING btree (next_poll_at) WHERE (status = ANY (ARRAY['submitting'::text, 'in_progress'::text]));
 CREATE INDEX ai_review_rate_created_idx ON public.ai_review_rate_limit USING btree (created_at);
 CREATE INDEX ai_review_rate_user_idx ON public.ai_review_rate_limit USING btree (user_key);
 CREATE INDEX ai_reviews_day_idx ON public.ai_reviews USING btree (trader, day, created_at DESC) WHERE (kind = 'day'::text);
+CREATE INDEX ai_reviews_period_idx ON public.ai_reviews USING btree (trader, kind, day, created_at DESC) WHERE (kind = ANY (ARRAY['week'::text, 'month'::text]));
 CREATE INDEX ai_reviews_trade_idx ON public.ai_reviews USING btree (trade_id, created_at DESC) WHERE (kind = 'trade'::text);
 CREATE INDEX ai_trade_reviews_generated_at_idx ON public.ai_trade_reviews USING btree (generated_at);
 CREATE INDEX ai_trade_reviews_trade_idx ON public.ai_trade_reviews USING btree (trade_id);
@@ -3541,6 +3614,7 @@ ALTER TABLE public.academy_quiz_attempts ADD CONSTRAINT academy_quiz_attempts_qu
 ALTER TABLE public.academy_quizzes ADD CONSTRAINT academy_quizzes_module_id_fkey FOREIGN KEY (module_id) REFERENCES public.academy_modules(id);
 ALTER TABLE public.academy_sessions ADD CONSTRAINT academy_sessions_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES public.academy_cohorts(id);
 ALTER TABLE public.academy_submissions ADD CONSTRAINT academy_submissions_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES public.academy_assignments(id);
+ALTER TABLE public.ai_batch_items ADD CONSTRAINT ai_batch_items_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.ai_batches(id) ON DELETE CASCADE;
 ALTER TABLE public.app_error_occurrences ADD CONSTRAINT app_error_occurrences_error_id_fkey FOREIGN KEY (error_id) REFERENCES public.app_errors(id) ON DELETE CASCADE;
 ALTER TABLE public.author_note_reads ADD CONSTRAINT author_note_reads_note_id_fkey FOREIGN KEY (note_id) REFERENCES public.author_notes(id) ON DELETE CASCADE;
 ALTER TABLE public.chart_drawings ADD CONSTRAINT chart_drawings_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;

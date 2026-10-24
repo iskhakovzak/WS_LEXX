@@ -57,6 +57,7 @@ const TEXT: Record<string, readonly string[]> = {
   ai_assistant_usage: ["user_name"],
   ai_review_rate_limit: ["user_key"],
   ai_reviews: ["created_by", "trader"],
+  ai_batch_items: ["trader"],
   app_errors: ["resolved_by"],
   app_settings: ["updated_by"],
   author_note_reads: ["reader"],
@@ -254,6 +255,9 @@ export const KEPT: Readonly<Record<string, string>> = {
   "ai_assistant_messages.tools": "assistant tool names",
   "ai_reviews.review": "model-written review (validated JSON: verdict, points, evidence labels), no structured person fields",
   "ai_reviews.facts": "the day's numbers (counts and $), no names",
+  "ai_batch_items.facts": "the day's numbers (counts and $), no names",
+  "ai_batches.kinds": "review kinds (day / week / month)",
+  "ai_batches.created_by": "who started the batch: «system» (the nightly job) or «manual» (the admin's run), never a person name",
   // json: market data, caches, content without people
   ...Object.fromEntries([
     "academy_assignments.rubric", "academy_lessons.attachments", "academy_quiz_attempts.answers", "academy_quiz_attempts.results",

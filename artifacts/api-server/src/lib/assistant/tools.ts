@@ -113,7 +113,7 @@ function matchScore(r: Record<string, unknown>, words: string[]): number {
 
 // ─── market context: cached tables only ────────────────────────────────────
 
-export async function marketContext(ctx: ToolContext, ticker: string | undefined, date: string | undefined): Promise<unknown> {
+export async function marketContext(ctx: Pick<ToolContext, "api" | "lang" | "today">, ticker: string | undefined, date: string | undefined): Promise<unknown> {
   const day = date ?? ctx.today;
   const out: Record<string, unknown> = { date: day };
   const { rows } = await pool.query<{ data: any; fetched_at: Date }>(

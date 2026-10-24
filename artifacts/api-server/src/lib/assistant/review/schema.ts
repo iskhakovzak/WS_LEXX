@@ -132,14 +132,23 @@ export function extractJson(raw: string): unknown {
   try { return JSON.parse(m[0]); } catch { return null; }
 }
 
-/** Validate a model answer. Lists over their caps are trimmed (the model sometimes gives a 5th point), not rejected. */
+/** A data-gap note longer than the cap is cut at a word with «…» (structured output cannot enforce string lengths). */
+export const DATA_GAP_MAX = 160;
+const clip = (v: unknown) => (typeof v === "string" && v.trim().length > DATA_GAP_MAX ? `${v.trim().slice(0, DATA_GAP_MAX - 1).replace(/\s+\S*$/, "")}…` : v);
+
+/**
+ * Validate a model answer. Lists over their caps are trimmed (the model sometimes gives a 5th point) and over-long
+ * data-gap notes are clipped (seen in a real batch: a whole answer was lost to one long note) — not rejected. Every
+ * other field must fit as is.
+ */
 export function parseReview(raw: string): { ok: true; review: Review } | { ok: false; issues: string[] } {
   const data = extractJson(raw);
   if (!data || typeof data !== "object") return { ok: false, issues: ["not a JSON object"] };
   const d = data as Record<string, unknown>;
   const trim = (v: unknown, n: number) => (Array.isArray(v) ? v.slice(0, n) : v);
   const pts = (v: unknown) => (Array.isArray(v) ? v.slice(0, 4).map((p) => (p && typeof p === "object" ? { ...p, evidence: trim((p as Record<string, unknown>).evidence, 4) } : p)) : v);
-  const fixed = { ...d, wentWell: pts(d.wentWell), wentWrong: pts(d.wentWrong), dataGaps: trim(d.dataGaps, 5) };
+  const gaps = trim(d.dataGaps, 5);
+  const fixed = { ...d, wentWell: pts(d.wentWell), wentWrong: pts(d.wentWrong), dataGaps: Array.isArray(gaps) ? gaps.map(clip) : gaps };
   const r = ReviewSchema.safeParse(fixed);
   return r.success ? { ok: true, review: r.data } : { ok: false, issues: r.error.issues.slice(0, 8).map((i) => `${i.path.join(".")}: ${i.message}`) };
 }

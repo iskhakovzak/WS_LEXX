@@ -19,7 +19,8 @@ import { usagesOf } from "../usage";
 import { logger } from "../../logger";
 import type { Lang } from "../../../i18n";
 import { parseReview, REVIEW_JSON_SCHEMA, type Review } from "./schema";
-import { DAY_REVIEW_SYSTEM, TRADE_REVIEW_SYSTEM, reviewUserTurn } from "./prompt";
+import { reviewSystem, reviewUserTurn } from "./prompt";
+import type { ReviewKind } from "./store";
 
 const MAX_TOKENS = 12_000;
 const MAX_PAUSES = 3;
@@ -39,7 +40,7 @@ export type ReviewCall = {
   advisorCalls: number;
 };
 
-type Plan = { model: AssistantModel; advisor: AssistantModel | null; format: boolean };
+export type Plan = { model: AssistantModel; advisor: AssistantModel | null; format: boolean };
 
 export function reviewPlan(s: RouteSettings): Plan {
   const advisor = support.advisor ? advisorFor(s) : null;
@@ -47,11 +48,15 @@ export function reviewPlan(s: RouteSettings): Plan {
   return { model: s.autoEscalate ? s.smartModel : s.defaultModel, advisor: null, format: true };
 }
 
-export function reviewParams(kind: "trade" | "day", plan: Plan, messages: Anthropic.MessageParam[]): StreamParams {
+/**
+ * The request of one review. `cacheTtl: "1h"` = the batch form (docs: a batch can take longer than the 5-minute cache
+ * lifetime, so the shared prefix is written with the 1-hour TTL); the prompt, the schema and the data are identical.
+ */
+export function reviewParams(kind: ReviewKind, plan: Plan, messages: Anthropic.MessageParam[], opts: { cacheTtl?: "1h" } = {}): StreamParams {
   const params: StreamParams = {
     model: plan.model,
     max_tokens: MAX_TOKENS,
-    system: [{ type: "text", text: kind === "trade" ? TRADE_REVIEW_SYSTEM : DAY_REVIEW_SYSTEM, cache_control: { type: "ephemeral" } }],
+    system: [{ type: "text", text: reviewSystem(kind), cache_control: opts.cacheTtl ? { type: "ephemeral", ttl: opts.cacheTtl } : { type: "ephemeral" } }],
     tools: plan.advisor ? [advisorTool(plan.advisor) as unknown as Record<string, unknown>] : [],
     messages,
     output_config: { effort: "medium", ...(plan.format ? { format: { type: "json_schema" as const, schema: REVIEW_JSON_SCHEMA } } : {}) },
@@ -66,10 +71,10 @@ async function once(client: AssistantClient, params: StreamParams, signal: Abort
   return stream.finalMessage();
 }
 
-const textOf = (m: Anthropic.Message) => (m.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+export const textOf = (m: Pick<Anthropic.Message, "content">) => (m.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
 
 export async function callReview(args: {
-  client: AssistantClient; settings: RouteSettings; kind: "trade" | "day"; lang: Lang; today: string; subject: string; data: unknown; signal: AbortSignal;
+  client: AssistantClient; settings: RouteSettings; kind: ReviewKind; lang: Lang; today: string; subject: string; data: unknown; signal: AbortSignal;
 }): Promise<ReviewCall> {
   const { client, settings: s, kind, signal } = args;
   const out: ReviewCall = { review: null as unknown as Review, usage: {}, costUsd: 0, costByModel: {}, units: 0, models: [], deep: false, advisorCalls: 0 };

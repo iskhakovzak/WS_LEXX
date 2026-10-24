@@ -33,6 +33,9 @@ export default {
   review: {
     title: "Bitimning AI tahlili",
     dayTitle: "Kunning AI tahlili",
+    weekTitle: "Haftaning AI tahlili",
+    monthTitle: "Oyning AI tahlili",
+    batchNote: "Kechasi avtomatik tayyorlanadi.",
     run: "Tahlil qilish",
     refresh: "Yangilash",
     running: "Tahlil qilyapman…",
@@ -53,6 +56,8 @@ export default {
     edge: "Edge xaritasi",
     tomorrow: "Ertangi qoida",
     tomorrowDay: "Ertangi fokus",
+    nextWeek: "Keyingi hafta uchun fokus",
+    nextMonth: "Keyingi oy uchun fokus",
     if: "Agar",
     then: "unda",
     whatIf: "Qoidani «Agar» simulyatorida tekshirish",
