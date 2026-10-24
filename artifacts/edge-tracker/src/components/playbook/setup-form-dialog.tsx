@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -497,7 +498,10 @@ export function SetupFormDialog({
               <div className="space-y-1.5">
                 <div className="flex min-h-8 items-center justify-between gap-2">
                   <Label htmlFor="pb-conditions" className="text-xs text-muted-foreground">{live ? t("form.oneTextLabel") : t("form.conditions")}</Label>
-                  <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("conditions")} /></React.Suspense>
+                  <div className="flex items-center gap-1">
+                    <AssistHelp field="playbook" value={form.conditions} onAccept={(v) => set("conditions", v)} context={editId ? { playbookId: editId } : undefined} />
+                    <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("conditions")} /></React.Suspense>
+                  </div>
                 </div>
                 <Textarea id="pb-conditions" value={form.conditions} onChange={(e) => set("conditions", e.target.value)} rows={5} placeholder={t("form.conditionsPlaceholder")} className="resize-y text-sm" />
               </div>
@@ -522,7 +526,10 @@ export function SetupFormDialog({
               <div className="space-y-1.5">
                 <div className="flex min-h-8 items-center justify-between gap-2">
                   <Label htmlFor="pb-notes" className="text-xs text-muted-foreground">{t("form.notes")}</Label>
-                  <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("notes")} /></React.Suspense>
+                  <div className="flex items-center gap-1">
+                    <AssistHelp field="playbook" value={form.notes} onAccept={(v) => set("notes", v)} context={editId ? { playbookId: editId } : undefined} actions={["improve", "fill"]} />
+                    <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("notes")} /></React.Suspense>
+                  </div>
                 </div>
                 <Textarea id="pb-notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={5} className="resize-y text-sm" placeholder={t("form.notesPlaceholder")} />
               </div>

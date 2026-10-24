@@ -13,7 +13,7 @@ import {
   useListEvents, useListResearch, useListDailyFeed, getTrade,
   getListEventsQueryKey, getListResearchQueryKey, getListDailyFeedQueryKey,
 } from "@workspace/api-client-react";
-import { BookMarked, CalendarClock, CircleHelp, ImageDown, Languages, Lightbulb, LockKeyhole, Moon, ShieldAlert, Crosshair, SunMoon } from "lucide-react";
+import { BookMarked, CalendarClock, CircleHelp, ImageDown, Languages, Lightbulb, LockKeyhole, Moon, ShieldAlert, Crosshair, Sparkles, SunMoon } from "lucide-react";
 import { fetchTradesPage, TRADES_PAGE_KEY, type TradesPageSummary } from "@/hooks/use-trades-page";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
@@ -36,6 +36,9 @@ import { requestLock } from "@/lib/lock/lock-store";
 import ruOnboarding from "@/i18n/locales/ru/onboarding";
 import { onboardingI18n } from "@/i18n/ns/onboarding";
 import { openHelp } from "@/lib/onboarding/store";
+import { openAssistant } from "@/lib/assistant/bus";
+import { assistantI18n } from "@/i18n/ns/assistant";
+import ruAssistant from "@/i18n/locales/ru/assistant";
 import { ALL_NAV_ITEMS } from "@/components/shell/nav";
 import { navItemOpen } from "@/components/shell/nav-model";
 import { useEodStatus } from "@/components/eod/eod-api";
@@ -211,6 +214,7 @@ export function useHubActions(ctx: Ctx): HubAction[] {
   const { cycleTheme, themeLabel, theme } = useTheme();
   const lang = useLang();
   lockI18n.useT(); // the lock action's texts follow the language (its EN / UZ chunk loads on first use)
+  assistantI18n.useT();
   const t = shellI18n.t;
   const canMine = !!me && can("journal.write.own", { trader: me });
   const latest = useMyLatestTrades(open, me);
@@ -255,6 +259,14 @@ export function useHubActions(ctx: Ctx): HubAction[] {
     out.push({
       id: "lock", quick: true, icon: LockKeyhole, keys: [...LOCK_KEYS], label: lockI18n.t("palette.label"), subtitle: lockI18n.t("palette.hint"),
       run: () => { close(); requestLock(); }, terms: [ruLock.palette.label, ruLock.palette.keywords, lockI18n.t("palette.keywords"), "lock screen away qulf"],
+    });
+  }
+  if (me && can("assistant.use")) {
+    // «Ассистент WS» (components/assistant): opens the panel with the current page as context; Ctrl/⌘+J does the same.
+    out.push({
+      id: "assistant", quick: true, icon: Sparkles, keys: ["Ctrl", "J"], label: assistantI18n.t("palette.label"), subtitle: assistantI18n.t("palette.hint"),
+      run: () => { close(); window.setTimeout(() => openAssistant({}), 0); },
+      terms: [ruAssistant.palette.label, ruAssistant.palette.keywords, assistantI18n.t("palette.keywords"), "assistant ai ask chat yordamchi"],
     });
   }
   out.push({

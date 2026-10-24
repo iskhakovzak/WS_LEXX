@@ -8,7 +8,7 @@
  *   normalize              a value equal to the default is sent as null («по умолчанию»: no stored override)
  *   nyToTashkent           "16:30" NY → "01:30" Tashkent, +1 day (today's DST offsets)
  */
-export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
+export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 /**
  * `pilot`: one of the ~10 pilot settings (server registry flag) — shown by default, the rest under «Показать все».
  * `hidden`: edited on its own screen (stage access: «Роли и права» → «Доступ по ступеням»), never in this form.

@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Check, NotebookPen, Plus } from "lucide-react";
 import { Panel } from "@/components/ds";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { KEYS } from "@/lib/api/keys";
@@ -449,6 +450,7 @@ function TomorrowFocus({
   }
   return (
     <div className="space-y-2">
+      <div className="-mb-1 flex justify-end"><AssistHelp field="plan" value={text} onAccept={change} /></div>
       <Textarea
         aria-label={t("editor.focusAria")}
         value={text}

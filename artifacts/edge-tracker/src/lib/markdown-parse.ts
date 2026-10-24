@@ -1,5 +1,5 @@
 /**
- * Minimal safe markdown → AST (no raw HTML, ever). The project has no markdown library, so lessons use this:
+ * Minimal safe markdown → AST (no raw HTML, ever). The project has no markdown library, so lessons (components/academy/content) and the assistant panel (components/assistant) use this:
  * headings (#–####), paragraphs, **bold**, *italic* / _italic_, `code`, fenced ``` code blocks, bullet and
  * numbered lists, > quotes, --- rules, pipe tables, [links](url) and bare http(s) links.
  * HTML tags in the source stay plain text (React escapes them); link targets are limited to http(s), mailto,

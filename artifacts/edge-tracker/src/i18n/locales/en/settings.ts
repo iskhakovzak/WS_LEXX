@@ -425,6 +425,7 @@ export default {
       discussions_moderate: { label: "Moderate discussions", description: "Delete others’ threads and comments, close threads." },
       discussions_edit_any: { label: "Edit others’ comments", description: "Edit other people’s comments." },
       watchlist_manage: { label: "Desk watchlist", description: "Edit the shared watchlist (any member, not a guest)." },
+      assistant_use: { label: "WS Assistant", description: "AI helper for the site: answers from the data the person can already see and prepares drafts (playbook, plan, end of day, rule). It never saves anything by itself." },
       users_manage: { label: "Manage users", description: "Add, edit, freeze and archive traders and curators, change assignments." },
       users_manage_admins: { label: "Manage admins", description: "Create admins, grant the admin role, edit/deactivate admins, ban curators." },
       admin_reports: { label: "Content reports", description: "Report queue, decisions, banning the author." },
