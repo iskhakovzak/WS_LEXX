@@ -147,7 +147,8 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `ACCOUNT_LINKED_TO_OTHER` | 400 | PropReports import: the account belongs to another trader. | — |
 | `INVALID_LOCALE` | 400 | PATCH /users/me/locale with an unsupported locale. | — |
 | `ADMIN_ONLY` | 403 | Creating / changing / deactivating admins, granting the admin role. | — |
-| `USER_NAME_TAKEN` | 409 | Create / rename a user to an existing name. | — |
+| `USER_NAME_TAKEN` | 409 | Create / rename a user to an existing name (rename: also another user's Latin name, compared like the sign-in). | — |
+| `RENAME_DATA_CONFLICT` | 409 | Rename: rows already carry the new name (orphans, an import under that name); nothing was renamed. | `{ rows: { "table.column": n } }` |
 | `CANNOT_DEACTIVATE_SELF` | 400 | Users: deactivate your own account. | — |
 | `PASSWORD_CHANGE_REQUIRED` | 403 | The account must change its password before using the API (token flag `pwc`). The login screen branches on it. | — |
 | `GUEST_NO_PERSONAL` | 403 | A guest asked for a trader's personal data (check-ins, psychology report…). | — |

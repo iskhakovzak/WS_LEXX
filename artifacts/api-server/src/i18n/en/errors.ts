@@ -138,6 +138,7 @@ export default {
   INVALID_LOCALE: "Unknown language: {value}",
   ADMIN_ONLY: "Only an administrator can do this",
   USER_NAME_TAKEN: "A user with this name already exists",
+  RENAME_DATA_CONFLICT: "{count} records already carry this name (left from someone else or an import) — sort them out before renaming",
   CANNOT_DEACTIVATE_SELF: "You can't deactivate yourself",
   PASSWORD_CHANGE_REQUIRED: "Set a new password first",
   GUEST_NO_PERSONAL: "Guest mode: traders' personal data isn't available",

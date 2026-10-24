@@ -8,6 +8,7 @@ import { signToken, signGuestToken, verifyPassword, bumpTokenVersion, hashPasswo
 import { logAudit } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { lockoutKey, lockoutStore, resolveLoginName } from "../lib/security/loginGuard";
+import { formerNamesOf } from "../lib/people/renameUser";
 import { mustChangeSecret, secretPolicyFor, TRADER_MIN_SECRET } from "../lib/security/passwordPolicy";
 import { securityT } from "../lib/security/i18n";
 import { revokeSession } from "../lib/security/sessions";
@@ -102,9 +103,12 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
   await store.clear(key);
   const pwc = user.must_change_secret || mustChangeSecret(user.role, password);
   const token = await signToken({ id: user.id, name: user.name, role: user.role }, { pwc });
+  // Renamed by an admin (lib/people/renameUser): the browser moves its name-keyed storage from these to the new name.
+  const formerNames = await formerNamesOf(pool, user.id).catch(() => [] as string[]);
   res.json({
     token,
     user: { id: user.id, name: user.name, role: user.role },
+    ...(formerNames.length ? { formerNames } : {}),
     mustChangePassword: pwc,
     ...(pwc ? { mustChangeReason: user.must_change_secret ? "first" : "policy" } : {}),
     secretPolicy: secretPolicyFor(user.role),

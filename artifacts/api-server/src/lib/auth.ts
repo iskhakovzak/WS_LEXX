@@ -87,6 +87,11 @@ function invalidateTvCache(userId: number): void {
   tvCache.delete(userId);
 }
 
+/** Drop the cached token version after it was bumped in SQL elsewhere (a rename bumps it inside its transaction). */
+export function forgetTokenVersion(userId: number): void {
+  invalidateTvCache(userId);
+}
+
 /**
  * `pwc` (password change required): the account still has an issued secret (users.must_change_secret), or staff whose
  * secret is shorter than the staff minimum (lib/security/passwordPolicy).

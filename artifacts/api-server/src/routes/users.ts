@@ -3,7 +3,7 @@ import { pool } from "@workspace/db";
 import { forgetQuests } from "../lib/quests/cache";
 import { asyncHandler } from "../lib/asyncHandler";
 import { z } from "zod";
-import { hashPassword, verifyPassword, bumpTokenVersion, requireMember, isGuestUser, signToken } from "../lib/auth";
+import { hashPassword, verifyPassword, bumpTokenVersion, forgetTokenVersion, requireMember, isGuestUser, signToken } from "../lib/auth";
 import { sendSecurityError } from "../lib/security/respond";
 import { checkSecret, secretPolicyFor, type SecretProblem } from "../lib/security/passwordPolicy";
 import { lockoutStore } from "../lib/security/loginGuard";
@@ -16,6 +16,9 @@ import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 import { clearFeedStreamCache } from "../lib/feedStream";
 import { logAudit } from "../lib/audit";
+import { cleanUserName, RenameError, renameUserInTx, type RenameReport } from "../lib/people/renameUser";
+import { invalidateDashboardCache } from "../lib/hotCache";
+import { warmSettings } from "../lib/settings/store";
 
 const router: IRouter = Router();
 
@@ -431,10 +434,12 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     fields.push(`active = $${i++}`); vals.push(active);
     activeChanged = !active;
   }
+  // A new name cascades to every row keyed by the old one (lib/people/renameUser), in the same transaction.
+  let newName: string | null = null;
   if (name !== undefined) {
-    const cleanName = String(name).trim();
-    if (!cleanName || cleanName.length > 100) throw new AppError("INVALID_FIELD", undefined, { field: "name" });
-    fields.push(`name = $${i++}`); vals.push(cleanName);
+    const cleanName = cleanUserName(String(name));
+    if (!cleanName) throw new AppError("INVALID_FIELD", undefined, { field: "name" });
+    if (cleanName !== target.name) newName = cleanName;
   }
   let passwordChanged = false;
   if (password !== undefined) {
@@ -455,19 +460,37 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     fields.push(`role = $${i++}`); vals.push(newRole);
     roleChanged = newRole !== target.role;
   }
-  if (!fields.length) throw badRequest("NO_FIELDS");
+  if (!fields.length && newName === null) {
+    if (name !== undefined) { const { rows } = await pool.query<any>(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [id]); res.json(rows[0]); return; }
+    throw badRequest("NO_FIELDS");
+  }
   vals.push(id);
   try {
-    const { rows } = await pool.query<any>(
-      `UPDATE users SET ${fields.join(", ")} WHERE id = $${i}
-       RETURNING ${USER_COLUMNS}`,
-      vals
-    );
-    if (!rows[0]) throw notFound();
-    const nameChanged = typeof name === "string" && rows[0].name !== target.name;
+    const client = await pool.connect();
+    let rows: any[];
+    let renamed: RenameReport | null = null;
+    try {
+      await client.query("BEGIN");
+      if (newName !== null) renamed = await renameUserInTx(client, { userId: id, newName, actor: req.authUser?.name ?? "?" });
+      ({ rows } = await client.query(
+        `UPDATE users SET ${fields.length ? fields.join(", ") : "id = id"} WHERE id = $${i}
+         RETURNING ${USER_COLUMNS}`,
+        vals,
+      ));
+      if (!rows[0]) throw notFound();
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw e;
+    } finally {
+      client.release();
+    }
+    const nameChanged = renamed !== null;
+    if (renamed) await afterRename(renamed);
     // Invalidate existing sessions so a reset password / new role / new name takes effect immediately (the name is
-    // signed into the token: an old token would keep acting under the old name).
-    if (passwordChanged || roleChanged || activeChanged || nameChanged) await bumpTokenVersion(id);
+    // signed into the token: an old token would keep acting under the old name). A rename bumped it in its transaction.
+    if (nameChanged) forgetTokenVersion(id);
+    else if (passwordChanged || roleChanged || activeChanged) await bumpTokenVersion(id);
     // An admin reset of the secret also lifts a sign-in lock on that account.
     if (passwordChanged) await lockoutStore().clearUser(id).catch((err) => logger.warn({ err }, "users: clear login lock failed"));
     // Audit: PIN / password reset, role, (de)activation, rename — never the secret itself.
@@ -484,9 +507,28 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     res.json(rows[0]);
   } catch (e: any) {
     if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
+    if (e instanceof RenameError) throw renameHttpError(e);
     throw e;
   }
 }));
+
+function renameHttpError(e: RenameError): AppError {
+  if (e.code === "INVALID_FIELD") return new AppError("INVALID_FIELD", undefined, { field: "name" });
+  if (e.code === "NOT_FOUND") return notFound();
+  if (e.code === "USER_NAME_TAKEN") return new AppError("USER_NAME_TAKEN");
+  const rows = (e.details?.rows ?? {}) as Record<string, number>;
+  return new AppError("RENAME_DATA_CONFLICT", undefined, { count: Object.values(rows).reduce((s, n) => s + n, 0) }, { rows });
+}
+
+/** In-process caches keyed by name, after a committed rename (another API process catches up on its own TTLs). */
+async function afterRename(r: RenameReport): Promise<void> {
+  forgetQuests(r.from);
+  forgetQuests(r.to);
+  invalidateDashboardCache();
+  clearFeedStreamCache();
+  await Promise.all([reloadLatinNames(), warmSettings()]);
+  logger.info({ userId: r.userId, from: r.from, to: r.to, rows: r.total }, "users: renamed with every reference");
+}
 
 router.delete("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);

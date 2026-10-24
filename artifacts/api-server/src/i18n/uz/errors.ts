@@ -138,6 +138,7 @@ export default {
   INVALID_LOCALE: "Nomaʼlum til: {value}",
   ADMIN_ONLY: "Buni faqat administrator qila oladi",
   USER_NAME_TAKEN: "Bunday nomli foydalanuvchi allaqachon bor",
+  RENAME_DATA_CONFLICT: "Bu nom ostida allaqachon yozuvlar bor ({count}) — boshqa odamdan yoki importdan qolgan. Nomini oʻzgartirishdan oldin ularni hal qiling",
   CANNOT_DEACTIVATE_SELF: "Oʻzingizni oʻchira olmaysiz",
   PASSWORD_CHANGE_REQUIRED: "Avval yangi parol oʻrnating",
   GUEST_NO_PERSONAL: "Mehmon rejimi: treyderlarning shaxsiy maʼlumotlari mavjud emas",
