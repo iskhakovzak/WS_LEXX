@@ -19,6 +19,7 @@ import { PRESETS, PRESET_META, type Preset, type TagKind } from "./review-preset
 import { ReviewChips, type PickerTarget } from "./review-tagging";
 import { SidePill } from "./trade-bits";
 import { SortHead } from "./sort-head";
+import { ShareCardRowButton } from "./share-card/ShareCardButton";
 import type { TradesView } from "./use-trade-filters";
 import { fmtCount, fmtDateCustom, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
@@ -234,7 +235,7 @@ export function PresetBar({
  * Row grid. md+: the review table (fixed tracks, ~900px; the page scrolls it sideways when needed). Below md a
  * two-line card (ILYA-09): checkbox | ticker + side / time + hold | net + R; the other cells are hidden there.
  */
-export const ROW_GRID = "grid grid-cols-[20px_minmax(0,1fr)_auto] md:grid-cols-[20px_116px_minmax(96px,0.6fr)_104px_140px_92px_minmax(200px,1.7fr)_20px] items-center gap-x-3";
+export const ROW_GRID = "grid grid-cols-[20px_minmax(0,1fr)_auto] md:grid-cols-[20px_116px_minmax(96px,0.6fr)_104px_140px_92px_minmax(200px,1.7fr)_52px] items-center gap-x-3";
 /** Cell placement of the phone card (reset to the table flow from md). */
 const CELL_PHONE = {
   check: "row-span-2 md:row-span-1",
@@ -306,7 +307,8 @@ export function ReviewTradeRow({
       data-trade-id={t.id}
       data-active={active || undefined}
       aria-selected={selected || undefined}
-      onClick={() => { onFocusRow(t.id); onOpen(t); }}
+      // Clicks inside a dialog portalled from this row (share card) bubble here through React: they are not row clicks.
+      onClick={(e) => { if (!e.currentTarget.contains(e.target as Node)) return; onFocusRow(t.id); onOpen(t); }}
       className={cn(
         ROW_GRID,
         "group relative min-h-[52px] cursor-pointer border-t border-[var(--glass-border)] px-3 py-1.5 transition-colors first:border-t-0 hover:bg-[var(--glass-hover-bg)]",
@@ -356,22 +358,26 @@ export function ReviewTradeRow({
         <CaptureCell q={quality[t.id]} pending={qualityPending} />
       </span>
       <ReviewChips trade={t} canTag={canTag} picker={picker} setPicker={setPicker} onPick={onPick} setupOptions={setupOptions} className="hidden md:flex" />
-      {onAddToPlaybook ? (
-        <button
-          type="button"
-          aria-label={tr("review.addToPlaybookAria", { ticker: t.ticker })}
-          title={tr("review.addToPlaybookTitle")}
-          onClick={(e) => { e.stopPropagation(); onFocusRow(t.id); onAddToPlaybook(t); }}
-          className={cn(
-            "-mx-1.5 hidden h-8 w-8 place-items-center md:grid rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover:opacity-100",
-            active && "md:opacity-100",
-          )}
-        >
-          <BookOpen className="h-4 w-4" aria-hidden="true" />
-        </button>
-      ) : (
-        <ChevronRight className="hidden h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 md:block" aria-hidden="true" />
-      )}
+      {/* Row actions: «Картинка» (own closed trades, share-card) and «В плейбук» / the open chevron. */}
+      <span className="hidden items-center justify-end md:flex">
+        <ShareCardRowButton trade={t} active={active} onFocusRow={onFocusRow} />
+        {onAddToPlaybook ? (
+          <button
+            type="button"
+            aria-label={tr("review.addToPlaybookAria", { ticker: t.ticker })}
+            title={tr("review.addToPlaybookTitle")}
+            onClick={(e) => { e.stopPropagation(); onFocusRow(t.id); onAddToPlaybook(t); }}
+            className={cn(
+              "-mr-1.5 hidden h-8 w-8 place-items-center md:grid rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover:opacity-100",
+              active && "md:opacity-100",
+            )}
+          >
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : (
+          <ChevronRight className="hidden h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 md:block" aria-hidden="true" />
+        )}
+      </span>
     </div>
   );
 }

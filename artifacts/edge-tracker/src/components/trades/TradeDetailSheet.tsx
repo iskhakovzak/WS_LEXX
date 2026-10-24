@@ -31,6 +31,7 @@ import { ExecutionsPanel } from "./ExecutionsPanel";
 import { TradeRelated, useSourceIdeaTarget } from "./TradeRelated";
 import { InViewSheetChart, SheetChart } from "./SheetChart";
 import { TradeSocial } from "./TradeSocial";
+import { ShareCardButton } from "./share-card/ShareCardButton";
 import { QualityBlock, useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { ET_SESSION_LABEL, etWallToIso, fmtDuration, sessionOfEt, type EtSession } from "@/components/trade-chart-parts/chart-utils";
 import { fmtCount, fmtDate, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
@@ -299,6 +300,7 @@ export function TradeDetailSheet(p: Props) {
                 <div className="flex flex-wrap items-center gap-2">
                   {p.canEdit && canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> {tc("actions.edit")}</Button>}
                   {p.canEdit && <AddToPlaybookButton payload={tradePlaybookPayload(t)} />}
+                  <ShareCardButton trade={t} />
                   <ReplayOwnDayButton tradeId={t.id} own={ownLoss} />
                   {p.canEdit && canDelete && (
                     <Button variant="ghost" size="sm" className="ml-auto gap-1.5 text-muted-foreground hover:text-down" onClick={() => p.onDelete(t)}>

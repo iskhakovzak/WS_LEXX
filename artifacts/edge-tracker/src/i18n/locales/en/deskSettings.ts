@@ -13,7 +13,7 @@ export default {
     achievements: { title: "Achievements", description: "Tier thresholds: 1 — bronze, 2 — silver, 3 — gold, 4 — platinum." },
     telegram: { title: "Telegram", description: "Bot sends on weekdays. Times are New York time, Tashkent time next to them." },
     curator: { title: "Curator queue", description: "What stays in the queue of problems by money." },
-    privacy: { title: "Privacy", description: "What traders see about colleagues." },
+    privacy: { title: "Privacy", description: "What traders see about colleagues and what they may show outside the desk." },
     trainer: { title: "Trainer", description: "Simulator fills (spread, slippage, 1R), «Daily challenge» and «Find the entry»." },
     gamification: { title: "Gamification", description: "Seasons, the curator league, recognition, setup mastery and streak freezes." },
     nav: { title: "Menu", description: "A short menu for new traders: the main sections, everything else under «More»." },
@@ -227,6 +227,10 @@ export default {
     privacy: {
       hideNamesFromTraders: { label: "Hide names from traders", help: "On shared charts and the top of the day a trader sees “Trader N” and the amounts; off — names show, other traders’ amounts don’t." },
       namesVisibleTo: { label: "See other traders’ names", help: "Stages that see colleagues’ real names on shared screens; everyone else sees “Trader N”. Curators and admins always see names." },
+    },
+    shareCards: {
+      enabled: { label: "Trade images", help: "An «Image» button on your own trades: the trader builds a good-looking trade card and sends it to friends. The image is drawn in the browser, nothing is uploaded. The account number, commissions and other traders’ trades never appear on it." },
+      money: { label: "Money on the image", help: "«R and % only» — no $ amounts on the card, the $ switch is hidden.", options: { usd: "$, R and %", r_only: "R and % only" } },
     },
     access: {
       sections: { label: "Closed sections", help: "Section → the stages it is closed for. Curators and admins are never restricted." },
