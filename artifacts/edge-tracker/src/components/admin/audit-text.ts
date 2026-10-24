@@ -399,6 +399,7 @@ function describeAuditRaw(e: AuditLike, tierNames?: Record<string, string>): Aud
       };
     }
 
+    case "user.rename": return { label: L("rename"), tone: "neutral", text: t("text.rename", { from: pn(d.from), to: pn(d.to) }), detail: t("detail.renameRows", { count: n(d.rows) }) };
     case "user.name_latin": return d.to
       ? { label: L("latin"), tone: "neutral", text: t("text.latinSet", { who, to: s(d.to) }), detail: d.from ? t("detail.was", { value: s(d.from) }) : undefined }
       : { label: L("latin"), tone: "neutral", text: t("text.latinRemove", { who }), detail: d.from ? t("detail.was", { value: s(d.from) }) : undefined };

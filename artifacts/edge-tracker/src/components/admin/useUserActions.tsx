@@ -18,7 +18,7 @@ export function banPresets(): string[] {
 type Target = { id: number; name: string; role: string };
 
 /**
- * Ban / unban / role / password actions with a reason dialog, shared by the traders table,
+ * Ban / unban / role / password / rename actions with a reason dialog, shared by the traders table,
  * the trader sheet and the overview. Render `dialog` once in the owning component.
  */
 export function useUserActions(actor: string, onChange?: () => void) {
@@ -75,7 +75,18 @@ export function useUserActions(actor: string, onChange?: () => void) {
     onError,
   });
 
-  const busy = banMut.isPending || unbanMut.isPending || roleMut.isPending || passwordMut.isPending;
+  // Rename cascades on the server (every trade, journal day, academy and notification row moves to the new name).
+  const renameMut = useMutation({
+    mutationFn: ({ id, name }: { id: number; from: string; name: string }) => http.patch<{ name?: string }>(`/api/users/${id}`, { name }),
+    onSuccess: (u, v) => {
+      invalidate();
+      setState(null);
+      toast({ title: t("userActions.renamed", { from: personName(v.from), to: u?.name ?? v.name }), description: t("userActions.renamedHint") });
+    },
+    onError,
+  });
+
+  const busy = banMut.isPending || unbanMut.isPending || roleMut.isPending || passwordMut.isPending || renameMut.isPending;
 
   return {
     busy,
@@ -100,6 +111,13 @@ export function useUserActions(actor: string, onChange?: () => void) {
       confirmLabel: t("userActions.role.confirm"),
       input: { label: t("people.reasonLabel"), kind: "textarea", required: true, minLength: 3, presets: t("people.presets.role").split("|"), placeholder: t("people.reasonPlaceholder") },
       onConfirm: (reason) => roleMut.mutate({ id: u.id, role, reason }),
+    }),
+    rename: (u: Target) => setState({
+      title: t("userActions.rename.title", { name: personName(u.name) }),
+      description: u.name === actor ? t("userActions.rename.textSelf") : t("userActions.rename.text"),
+      confirmLabel: t("userActions.rename.confirm"),
+      input: { label: t("userActions.rename.label"), kind: "text", required: true, initial: u.name },
+      onConfirm: (name) => { if (name !== u.name) renameMut.mutate({ id: u.id, from: u.name, name }); else setState(null); },
     }),
     setPassword: (u: Target) => setState({
       title: t("userActions.password.title", { name: personName(u.name) }),

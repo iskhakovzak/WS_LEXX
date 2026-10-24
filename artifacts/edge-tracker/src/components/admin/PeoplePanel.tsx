@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import {
-  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, Search, Snowflake, Sun,
+  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, PencilLine, Search, Snowflake, Sun,
   UserCog, UserPlus, Users, UsersRound, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -326,6 +326,7 @@ export function PeoplePanel({
             </DropdownMenuSub>
           )}
           {touch && <DropdownMenuItem onSelect={() => window.setTimeout(() => setLatinFor(p), 0)}><Languages /> {t("people.menu.latin")}</DropdownMenuItem>}
+          {touch && (p.role !== "curator" || canAdmins || self) && <DropdownMenuItem onSelect={() => window.setTimeout(() => legacy.rename(p), 0)}><PencilLine /> {t("people.menu.rename")}</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => legacy.setPassword(p)}><KeyRound /> {t("people.menu.password")}</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => ask("sessions", [p])}><LogOut /> {t("people.menu.sessions")}</DropdownMenuItem>}
           {touch && !self && (

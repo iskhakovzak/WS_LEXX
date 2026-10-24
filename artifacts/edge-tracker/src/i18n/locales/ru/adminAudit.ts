@@ -46,6 +46,7 @@ export default {
     stage: "Ступень",
     dailyQuote: "Цитата дня",
     latin: "Латинское имя",
+    rename: "Переименование",
     jobs: "Задачи",
     playbook: "Плейбук",
     login: "Вход",
@@ -174,6 +175,7 @@ export default {
     quoteCron: "цитата дня обновлена по расписанию",
 
     latinSet: "задал латинское имя {who}: {to}",
+    rename: "переименовал {from} → {to}",
     latinRemove: "убрал латинское имя {who}",
     jobRun: "запустил задачу «{job}»",
     queueRestore: {
@@ -194,6 +196,7 @@ export default {
   detail: {
     curator: "куратор {name}",
     was: "было: {value}",
+    renameRows: "записей перенесено: {count}",
     wasTier: "был: {tier}",
     wasTierLong: "был тир: {tier}",
     wasStage: "была: {stage}",

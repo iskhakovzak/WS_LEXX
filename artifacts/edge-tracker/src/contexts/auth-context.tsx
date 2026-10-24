@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
+import { adoptFormerNames } from "@/lib/people/rename-local";
 import { BASE } from "@/lib/api";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { AUTH_EXPIRED_EVENT } from "@/lib/install-fetch-auth";
@@ -280,6 +281,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await r.json() as {
         token: string;
         user: { id: number; name: string; role: string };
+        formerNames?: string[]; // earlier names of this account (renamed by an admin), newest first
         mustChangePassword?: boolean;
         mustChangeReason?: "first" | "policy";
         secretPolicy?: { min?: number };
@@ -287,6 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       _currentToken = data.token;
       // Persist synchronously so raw fetch() calls fired by the first authenticated render carry the token.
       writeToken(data.token);
+      adoptFormerNames(data.formerNames, data.user.name); // renamed by an admin: this device's name-keyed entries follow
       setUser({
         role: (data.user.role as UserRole) ?? "trader",
         traderName: data.user.name,

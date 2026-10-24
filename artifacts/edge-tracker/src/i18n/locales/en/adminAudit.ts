@@ -42,6 +42,7 @@ export default {
     stage: "Stage",
     dailyQuote: "Quote of the day",
     latin: "Latin name",
+    rename: "Rename",
     jobs: "Jobs",
     playbook: "Playbook",
     login: "Sign-in",
@@ -155,6 +156,7 @@ export default {
     quoteCron: "quote of the day refreshed on schedule",
 
     latinSet: "set the Latin name of {who}: {to}",
+    rename: "renamed {from} → {to}",
     latinRemove: "removed the Latin name of {who}",
     jobRun: "ran job “{job}”",
     queueRestore: { one: "returned {count} item to the review queue", other: "returned {count} items to the review queue" },
@@ -169,6 +171,7 @@ export default {
   detail: {
     curator: "curator {name}",
     was: "was: {value}",
+    renameRows: "records moved: {count}",
     wasTier: "was: {tier}",
     wasTierLong: "previous tier: {tier}",
     wasStage: "was: {stage}",

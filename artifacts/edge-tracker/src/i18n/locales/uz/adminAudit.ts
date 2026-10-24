@@ -42,6 +42,7 @@ export default {
     stage: "Bosqich",
     dailyQuote: "Kun iqtibosi",
     latin: "Lotincha ism",
+    rename: "Nomini oʻzgartirish",
     jobs: "Vazifalar",
     playbook: "Pleybuk",
     login: "Kirish",
@@ -155,6 +156,7 @@ export default {
     quoteCron: "kun iqtibosi jadval boʻyicha yangilandi",
 
     latinSet: "{who} uchun lotincha ismni belgiladi: {to}",
+    rename: "{from} nomini {to} ga oʻzgartirdi",
     latinRemove: "{who} lotincha ismini olib tashladi",
     jobRun: "«{job}» vazifasini ishga tushirdi",
     queueRestore: { one: "tahlillar navbatiga {count} ta elementni qaytardi", other: "tahlillar navbatiga {count} ta elementni qaytardi" },
@@ -169,6 +171,7 @@ export default {
   detail: {
     curator: "kurator {name}",
     was: "avval: {value}",
+    renameRows: "koʻchirilgan yozuvlar: {count}",
     wasTier: "avval: {tier}",
     wasTierLong: "avvalgi daraja: {tier}",
     wasStage: "avval: {stage}",
