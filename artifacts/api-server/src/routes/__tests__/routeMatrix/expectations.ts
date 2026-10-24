@@ -20,6 +20,7 @@ const retired = (reason: string): Expectation => ({ kind: "retired", reason });
 const off = (reason: string): Expectation => ({ kind: "switch", reason });
 
 export const EXPECTATIONS: Record<string, Expectation> = {
+  "DELETE /auth/quick-code": member("removes the own quick-unlock code"),
   "DELETE /author-notes/:id": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
   "DELETE /author-notes/:id/read": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
   "DELETE /behavior/triggers/:id": owner("own behaviour triggers (checked after the row loads)"),
@@ -124,6 +125,8 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /auth/login": pub("sign-in, guest token and first-run bootstrap are public by design (own limiters)"),
   "POST /auth/logout": guestOk("ends the own session, the one write a guest may do"),
   "POST /auth/logout-all": member("revokes the own sessions"),
+  "POST /auth/lock": member("screen lock of the own session (lib/security/screenLock)"),
+  "POST /auth/unlock": member("unlocks the own session with the own quick code / password"),
   "POST /author-notes/:id/read": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
   "POST /author-notes/improve": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
   "POST /author-notes/team-summary": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
@@ -254,6 +257,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /watchlist/score-all": member("personal watchlist; the desk list needs a senior or staff (checked on the body)"),
   "POST /whatif/run": member("the own what-if scenarios"),
   "POST /whatif/scenarios": member("the own what-if scenarios"),
+  "PUT /auth/quick-code": member("sets / changes the own quick-unlock code"),
   "PUT /author-notes": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
   "PUT /chart/drawings": member("the own chart drawings"),
   "PUT /daily/focus/:trader/:date": cap("journal.review", "curator sets a trader's focus (checked after the body is validated)"),

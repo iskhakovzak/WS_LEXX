@@ -745,6 +745,16 @@ CREATE TABLE public.auth_revoked_sessions (
   CONSTRAINT auth_revoked_sessions_sid_check CHECK (char_length(sid) >= 1 AND char_length(sid) <= 64)
 );
 
+CREATE TABLE public.auth_session_locks (
+  sid text NOT NULL,
+  user_id integer NOT NULL,
+  locked_at timestamp with time zone DEFAULT now() NOT NULL,
+  failures integer DEFAULT 0 NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  CONSTRAINT auth_session_locks_pkey PRIMARY KEY (sid),
+  CONSTRAINT auth_session_locks_sid_check CHECK (char_length(sid) >= 1 AND char_length(sid) <= 64)
+);
+
 CREATE TABLE public.author_note_reads (
   note_id integer NOT NULL,
   reader text NOT NULL,
@@ -2808,8 +2818,12 @@ CREATE TABLE public.users (
   settings jsonb DEFAULT '{}'::jsonb NOT NULL,
   must_change_secret boolean DEFAULT false NOT NULL,
   group_id integer,
+  quick_code_hash text,
+  quick_code_kind text,
+  quick_code_set_at timestamp with time zone,
   CONSTRAINT users_pkey PRIMARY KEY (id),
-  CONSTRAINT users_name_key UNIQUE (name)
+  CONSTRAINT users_name_key UNIQUE (name),
+  CONSTRAINT users_quick_code_kind_check CHECK (quick_code_kind = ANY (ARRAY['digits'::text, 'phrase'::text]))
 );
 
 CREATE TABLE public.voice_notes (
@@ -3103,6 +3117,7 @@ CREATE INDEX audit_log_action_idx ON public.audit_log USING btree (action);
 CREATE INDEX audit_log_actor_idx ON public.audit_log USING btree (actor);
 CREATE INDEX audit_log_created_at_idx ON public.audit_log USING btree (created_at);
 CREATE INDEX auth_revoked_sessions_user_idx ON public.auth_revoked_sessions USING btree (user_id, revoked_at DESC);
+CREATE INDEX auth_session_locks_user_idx ON public.auth_session_locks USING btree (user_id);
 CREATE INDEX author_notes_trader_date_idx ON public.author_notes USING btree (trader, note_date);
 CREATE INDEX behavior_triggers_trader_idx ON public.behavior_triggers USING btree (trader) WHERE (deleted_at IS NULL);
 CREATE INDEX big7_tickers_group_idx ON public.big7_tickers USING btree (group_name);
