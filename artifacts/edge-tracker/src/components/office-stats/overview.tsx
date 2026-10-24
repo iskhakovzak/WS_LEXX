@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { CalendarDays, Download, Flag, Lightbulb, MousePointerClick, TrendingDown, TrendingUp, AlertTriangle, Info } from "lucide-react";
-import { EmptyState, Panel, Pill, ProgressRing, StatCard, StatGrid, toneOf, type Tone } from "@/components/ds";
+import { EmptyState, LiveNumber, Panel, Pill, ProgressRing, StatCard, StatGrid, toneOf, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -17,7 +17,12 @@ import { fmtRate, fmtRatio, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { officeI18n } from "@/i18n/ns/officeStats";
 
-export type Ctx = { unit: Unit; view: OfficeView; focus: YearView; isAdmin: boolean };
+export type Ctx = {
+  unit: Unit; view: OfficeView; focus: YearView; isAdmin: boolean;
+  /** Context of the shown numbers (unit, years, period, facets; a fixed value while the next answer loads): a change
+   *  re-bases the KPI live numbers instead of flashing them. */
+  liveKey?: string;
+};
 
 const TONE_ICON: Record<Insight["tone"], typeof Info> = { up: TrendingUp, down: TrendingDown, warn: AlertTriangle, neutral: Info };
 const TONE_CLASS: Record<Insight["tone"], string> = {
@@ -66,6 +71,8 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
   const { focus, unit, view, isAdmin } = ctx;
   const { t } = officeI18n.useT();
   const tot = focus.totals;
+  const liveKey = `${ctx.liveKey ?? ""}:${focus.year}`;
+  const live = (v: number) => <LiveNumber value={v} format={(n) => fmtV(n, unit)} resetKey={liveKey} />;
   const last = focus.days[focus.days.length - 1];
   const prevY = view.years.find((y) => y.year === focus.year - 1);
   const yoy = last ? sameDayValue(prevY, last.doy) : null;
@@ -80,7 +87,8 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
     <StatGrid cols={4} min="9rem">
       <StatCard
         label={t("kpi.netYear", { year: focus.year })}
-        value={fmtV(tot.net, unit)}
+        value={live(tot.net)}
+        valueTitle={fmtV(tot.net, unit)}
         tone={toneOf(tot.net)}
         delta={yoy != null && prevY ? t("kpi.vsYear", { value: fmtV(tot.net - yoy, unit), year: prevY.year }) : undefined}
         deltaTone={yoy != null ? toneOf(tot.net - yoy) : undefined}
@@ -137,7 +145,8 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
       ) : (
         <StatCard
           label={t("kpi.avgDay")}
-          value={fmtV(period.totals.avgDay, unit)}
+          value={period.totals.avgDay != null ? live(period.totals.avgDay) : fmtV(period.totals.avgDay, unit)}
+          valueTitle={fmtV(period.totals.avgDay, unit)}
           tone={toneOf(period.totals.avgDay)}
           hint={commonI18n.t("units.tradingDays", { count: period.totals.tradingDays })}
         />
@@ -151,7 +160,8 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
       />
       <StatCard
         label={t("kpi.maxDrawdown")}
-        value={fmtV(focus.drawdown.max, unit)}
+        value={live(focus.drawdown.max)}
+        valueTitle={fmtV(focus.drawdown.max, unit)}
         tone={focus.drawdown.max < 0 ? "down" : "neutral"}
         hint={focus.drawdown.recoveryDays != null ? t("kpi.recovered", { count: focus.drawdown.recoveryDays }) : focus.drawdown.max < 0 ? t("kpi.notRecovered") : t("kpi.noDrawdown")}
         onClick={() => onJump("risk")}

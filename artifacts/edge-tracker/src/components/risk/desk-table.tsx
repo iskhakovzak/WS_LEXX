@@ -1,7 +1,7 @@
 
 import { Moon, PanelRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DataTable, SortableTh, useTableSort } from "@/components/ds";
+import { DataTable, LiveNumber, SortableTh, useFlashOnChange, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import type { DeskRow } from "./use-risk";
 import { rankLevel, riskScore, worstUsage, type RankInput, type RankLevel, type TraderExposure } from "./risk-math";
@@ -65,6 +65,26 @@ const ACCESSORS = {
 };
 
 const ddmm = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
+const signedUsd0 = (n: number) => fmtUsd(n, { signed: true, decimals: 0 });
+
+/** Today's P&L cell: the number rolls to a new polled value and the cell tints green / red by the move (no aria-live). */
+function PnlCell({ r }: { r: DeskRow }) {
+  const { t } = riskI18n.useT();
+  const c = commonI18n.t;
+  const pnl = r.today.pnlNet;
+  const flash = useFlashOnChange(pnl);
+  return (
+    <td className={cn("text-right", flash.className)}>
+      <div className={cn("font-semibold", pnl == null ? "text-muted-foreground" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "")}>
+        {pnl != null ? <LiveNumber value={pnl} format={signedUsd0} flash={false} /> : "—"}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {r.today.trades ? c("units.tradesShort", { count: r.today.trades }) : r.lastTradeDate ? t("table.lastTrade", { date: ddmm(r.lastTradeDate) }) : t("table.noTrades")}
+      </div>
+      <LiveOpenNote live={r.live} />
+    </td>
+  );
+}
 
 export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (trader: string) => void }) {
   const { rows: sorted, thProps } = useTableSort(rows, ACCESSORS, "risk");
@@ -130,15 +150,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                 <td><UsageCell label={t("table.usageDaily", { name: personName(r.trader) })} pct={r.stop.dailyPct} used={todayLoss} limit={L?.dailyLossLimit} /></td>
                 <td><UsageCell label={t("table.usageWeekly", { name: personName(r.trader) })} pct={r.stop.weeklyPct} used={weekLoss} limit={L?.weeklyLossLimit} /></td>
                 <td><UsageCell label={t("table.usageDrawdown", { name: personName(r.trader) })} pct={r.stop.drawdownPct} used={r.drawdown.currentUsd} limit={L?.maxDrawdown} /></td>
-                <td className="text-right">
-                  <div className={cn("font-semibold", pnl == null ? "text-muted-foreground" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "")}>
-                    {pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : "—"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {r.today.trades ? c("units.tradesShort", { count: r.today.trades }) : r.lastTradeDate ? t("table.lastTrade", { date: ddmm(r.lastTradeDate) }) : t("table.noTrades")}
-                  </div>
-                  <LiveOpenNote live={r.live} />
-                </td>
+                <PnlCell r={r} />
                 <td className="text-right">
                   {e && e.count > 0 ? (
                     <>

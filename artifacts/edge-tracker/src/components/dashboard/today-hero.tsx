@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AnimatedNumber, LimitBar, Segmented, StatusDot, limitTone, limitToneToTone, toneOf, toneText, type Tone } from "@/components/ds";
+import { LimitBar, LiveNumber, Segmented, StatusDot, limitTone, limitToneToTone, toneOf, toneText, type Tone } from "@/components/ds";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -98,6 +98,7 @@ function HeroCell({
   label,
   value,
   format,
+  resetKey,
   hint,
   tone,
   loading,
@@ -106,6 +107,8 @@ function HeroCell({
   label: ReactNode;
   value: number | null;
   format: (n: number) => string;
+  /** Scope / unit of the number: a switch re-bases it without a live flash. */
+  resetKey: string;
   hint?: ReactNode;
   tone: Tone;
   loading?: boolean;
@@ -119,7 +122,11 @@ function HeroCell({
       ) : value == null ? (
         <span className="text-3xl font-semibold leading-none text-muted-foreground/70">—</span>
       ) : (
-        <AnimatedNumber value={value} format={format} countIn duration={700} className={cn("reveal type-hero whitespace-nowrap", toneText(tone))} />
+        // The reveal sits on a wrapper: the live flash is an animation too, and on the same element it would replace
+        // (and on removal restart) the reveal.
+        <span className={cn("reveal type-hero w-fit whitespace-nowrap", toneText(tone))}>
+          <LiveNumber value={value} format={format} resetKey={resetKey} countIn countInDuration={700} />
+        </span>
       )}
       {loading ? <Skeleton className="h-3.5 w-40 rounded" /> : hint != null && <span className="truncate text-xs text-muted-foreground tabular-nums">{hint}</span>}
     </div>
@@ -191,7 +198,7 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
   return (
     <Cell
       label={t("hero.remaining")}
-      value={fmtUsd(remaining, { decimals: 0 })}
+      value={<LiveNumber value={remaining} format={(n) => fmtUsd(n, { decimals: 0 })} announce />}
       tone={lt === "ok" ? "neutral" : limitToneToTone(lt)}
       hint={t("hero.usedOf", { limit: fmtUsd(limit, { decimals: 0 }), pct: fmtRate(Math.min(1, loss / limit)) })}
       href={links.risk(risk.trader)}
@@ -248,6 +255,9 @@ export function DashboardHeader({
   const loading = isLoading && !data;
   const team = scope === "team";
   const quietDay = !!data && (data.market.weekend || !!data.market.holidayToday);
+  // Live-number context from the answer itself: right after a scope switch the previous scope's numbers are still shown
+  // (keepPreviousData), so the toggle alone would flash the arrival of the other scope's total.
+  const liveKey = data ? `${data.scope}:${data.trader ?? ""}:${data.date}` : "";
 
   // The hero number: net dollars, else R when only R is known, else nothing yet.
   const todayNum = t?.pnlNet != null ? t.pnlNet : t && t.rCount > 0 ? t.r : null;
@@ -265,7 +275,9 @@ export function DashboardHeader({
         : tr("hero.noClosed")
     : undefined;
 
-  const weekValue = w?.pnlNet != null ? fmtUsd(w.pnlNet, { signed: true }) : w && w.rCount > 0 ? fmtR(w.r) : "—";
+  const weekValue = w?.pnlNet != null
+    ? <LiveNumber value={w.pnlNet} format={(n) => fmtUsd(n, { signed: true })} resetKey={liveKey} />
+    : w && w.rCount > 0 ? fmtR(w.r) : "—";
   const weekHint = w
     ? w.closed > 0
       ? tr("hero.weekHint", { trades: commonI18n.t("units.trades", { count: w.closed }), green: w.greenDays, days: w.tradingDays })
@@ -330,6 +342,7 @@ export function DashboardHeader({
               loading={loading}
               value={todayNum}
               format={todayFormat}
+              resetKey={`${liveKey}:${t?.pnlNet != null ? "usd" : "r"}`}
               tone={toneOf(todayNum)}
               hint={todayHint}
             />
