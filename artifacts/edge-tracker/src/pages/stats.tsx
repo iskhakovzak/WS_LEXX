@@ -31,6 +31,7 @@ import { statsScope } from "@/components/stats/staff-data";
 import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
+import { StatsInsights } from "@/components/insight-cards/stats-insights";
 
 /**
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
@@ -102,8 +103,11 @@ export default function Stats() {
   const { toast } = useToast();
   const [prefs, setPrefs] = useState<Prefs>(() => {
     const p = loadPrefs();
-    const urlTrader = new URLSearchParams(window.location.search).get("trader");
-    return urlTrader ? { ...p, trader: urlTrader } : p;
+    const sp = new URLSearchParams(window.location.search);
+    const urlTrader = sp.get("trader");
+    // ?period=<preset> (the dashboard insight cards open /stats on their own window).
+    const urlPeriod = PERIOD_OPTIONS.find((o) => o.value === sp.get("period"))?.value;
+    return { ...p, ...(urlTrader ? { trader: urlTrader } : {}), ...(urlPeriod ? { period: urlPeriod } : {}) };
   });
   // «Вся команда»: an explicit pick (or a ?trader=all link) for this visit only.
   const [team, setTeam] = useState(() => new URLSearchParams(window.location.search).get("trader") === "all");
@@ -370,6 +374,12 @@ export default function Stats() {
             trader={trader} horizon={prefs.horizon} dim={prefs.dim} oneTrader={oneTrader} solo={oneTrader}
             onHorizon={(h) => set("horizon", h)} onDim={(x) => set("dim", x)}
             onPickTrader={!solo && trader === "all" ? pickTrader : undefined}
+            insights={staff ? undefined : (
+              <StatsInsights
+                trades={trades}
+                scope={{ target: "trades", from: ranges.cur.from, to: ranges.cur.to, trader: windowTrader, ownerName: trader !== "all" && trader !== me ? trader : null }}
+              />
+            )}
           />
         </>
       )}

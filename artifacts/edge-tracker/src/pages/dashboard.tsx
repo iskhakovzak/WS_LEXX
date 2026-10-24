@@ -2,10 +2,11 @@
 // «Что важно сейчас» merged by the phase of the day — components/daily/next-step-card), then the header with P&L and
 // the limit. Desktop, top to bottom: header (NY session, today / week net, risk limit + the day
 // line: focus / own contract / evening card / tier progress — the one focal point) →
-// «Что важно сейчас» + week/month equity → recent trades + desk (staff) or streaks → opt-in extras
+// «Что важно сейчас» + week/month equity → recent trades + desk (staff) or «Серии» → the compact insight row (trade
+// number in the day, after a loss, time in position, weekdays — own trades, «Мои» only) → opt-in extras
 // (check-in, brief, sectors, macro, DNA, quote, psychology — off by default, switched on in «Настроить»).
 // Each block answers one question; trades arrive automatically, so there are no entry CTAs here.
-import { lazy, Suspense, useCallback, type ComponentType, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useMemo, type ComponentType, type ReactNode } from "react";
 import { Page } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { i18nReady } from "@/i18n";
@@ -18,7 +19,6 @@ import { useHasRiskAccount } from "@/components/shell/use-shell-badges";
 import { DashboardHeader } from "@/components/dashboard/today-hero";
 import { AttentionPanel } from "@/components/dashboard/attention-panel";
 import { EquityPanel } from "@/components/dashboard/equity-panel";
-import { StreaksPanel } from "@/components/dashboard/streaks-panel";
 import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { CustomizePopover } from "@/components/dashboard/customize-popover";
@@ -42,6 +42,10 @@ import {
   type SectionId,
 } from "@/components/dashboard/use-dashboard";
 import { useDashboardPrefs } from "@/components/dashboard/dashboard-prefs";
+import { DashboardInsight, type InsightSectionId } from "@/components/insight-cards/dashboard-insight";
+import type { InsightScope } from "@/components/insight-cards/kit";
+import { periodRanges } from "@/components/stats/metrics";
+import { useTradesWindow } from "@/hooks/use-trades-window";
 
 // Opt-in extras (off by default, switched on in «Настроить») and the open-positions panel: own chunks, so the first screen and every other page
 // don't download them. Resolved after i18nReady() like route chunks (no flash of RU with EN/UZ).
@@ -62,6 +66,7 @@ const ExtraFallback = () => <Skeleton className="h-40 w-full rounded-2xl" />;
 const lazyExtra = (node: ReactNode) => <Suspense fallback={<ExtraFallback />}>{node}</Suspense>;
 
 const RITUAL_ANCHOR = "dash-ritual";
+const INSIGHT_IDS: SectionId[] = ["streaks", "seqDay", "holdTime", "weekdays", "afterLoss"];
 const CLOSE_MIN = 16 * 60;
 const OPEN_MIN = 9 * 60 + 30;
 
@@ -73,16 +78,37 @@ const SPAN: Record<number, string> = {
 };
 
 type Block = { id: SectionId; node: ReactNode };
+/** `lead`: a compact row of 5 opened by a half-block that found no partner (bento: 2 + 1 + 1 / 2 + 2 on xl). */
+type Row = { key: string; cells: { block: Block; span: number }[]; compact?: boolean; lead?: boolean };
+const LEAD_CELL = ["sm:col-span-2", "", "", "xl:col-span-2", "xl:col-span-2"];
 
-/** Group visible blocks into bento rows: two neighbouring half-blocks share a row (7/5, 5/7 or 6/6), full blocks take one. */
-function toRows(blocks: Block[]): { key: string; cells: { block: Block; span: number }[] }[] {
-  const rows: { key: string; cells: { block: Block; span: number }[] }[] = [];
+/** Columns of a compact row by its card count (no lonely half-empty last line at the common widths). */
+const COMPACT_COLS: Record<number, string> = {
+  1: "",
+  2: "sm:grid-cols-2",
+  3: "sm:grid-cols-2 lg:grid-cols-3",
+  4: "sm:grid-cols-2 xl:grid-cols-4",
+  5: "sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5",
+};
+
+/**
+ * Group visible blocks into bento rows: two neighbouring half-blocks share a row (7/5, 5/7 or 6/6), full blocks take
+ * one, neighbouring compact blocks share a responsive row. A half-block left without a partner right before compact
+ * blocks joins their row (e.g. staff «Серии» after the desk took the slot next to recent trades).
+ */
+function toRows(blocks: Block[]): Row[] {
+  const rows: Row[] = [];
+  const pairable = (w: string | undefined) => w === "wide" || w === "narrow";
   for (let i = 0; i < blocks.length; i++) {
     const a = blocks[i];
     const b = blocks[i + 1];
     const wa = SECTION_WIDTH[a.id];
     const wb = b ? SECTION_WIDTH[b.id] : "full";
-    if (wa !== "full" && b && wb !== "full") {
+    if (wa === "compact" || (pairable(wa) && wb === "compact")) {
+      const cells = [{ block: a, span: 1 }];
+      while (blocks[i + 1] && SECTION_WIDTH[blocks[i + 1].id] === "compact") cells.push({ block: blocks[++i], span: 1 });
+      rows.push({ key: cells.map((c) => c.block.id).join("+"), cells, compact: true, lead: wa !== "compact" && cells.length === 5 });
+    } else if (pairable(wa) && b && pairable(wb)) {
       const spanA = wa === wb ? 6 : wa === "wide" ? 7 : 5;
       rows.push({ key: `${a.id}+${b.id}`, cells: [{ block: a, span: spanA }, { block: b, span: 12 - spanA }] });
       i++;
@@ -114,6 +140,15 @@ export default function Dashboard() {
   const riskAccount = useHasRiskAccount();
   const riskQ = useRiskMe(authed && !!userName && riskAccount.has);
   const deskQ = useRiskDesk(authed && staff);
+  // Insight cards: own trades of the /stats «90 дней» window (same query key → shared cache with /stats).
+  const insightsOn = authed && scope === "me" && INSIGHT_IDS.some(on);
+  const insightWindow = useMemo(() => periodRanges("90d").cur, []);
+  const insightTrader = staff ? userName : null;
+  const insightQ = useTradesWindow({ from: insightWindow.from, to: insightWindow.to, trader: insightTrader }, { enabled: insightsOn });
+  const insightScope = useMemo<InsightScope>(
+    () => ({ target: "stats", from: insightWindow.from, to: insightWindow.to, trader: insightTrader, statsPeriod: "90d" }),
+    [insightWindow, insightTrader],
+  );
   const eodQ = useEodStatus(authed && scope === "team");
   const eventsQ = useEventsToday(on("attention"));
   const holidaysQ = useTodayHolidays();
@@ -205,7 +240,14 @@ export default function Dashboard() {
         // Staff only; hidden when the risk desk is not deployed (null).
         return staff && deskQ.data !== null ? <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} isError={deskQ.isError} onRetry={() => void deskQ.refetch()} /> : null;
       case "streaks":
-        return <StreaksPanel fill data={today} isLoading={todayQ.isLoading} />;
+      case "seqDay":
+      case "holdTime":
+      case "weekdays":
+      case "afterLoss":
+        // «Мои» only: a team-wide sequence mixes different people's trades (staff read one trader on /stats).
+        return scope === "me" ? (
+          <DashboardInsight id={id as InsightSectionId} trades={insightQ.data} isLoading={insightQ.isLoading} scope={insightScope} />
+        ) : null;
       case "positions":
         return today?.positions && today.positions.length > 0 ? lazyExtra(<PositionsPanel data={today} />) : null;
       case "checkin":
@@ -262,7 +304,18 @@ export default function Dashboard() {
       />
       {dailyOn && <WrappedDashLine />}
       {rows.map((row) =>
-        row.cells.length === 1 ? (
+        row.compact ? (
+          <div
+            key={row.key}
+            className={`grid grid-cols-1 items-stretch gap-[var(--grid-gap)] ${row.lead ? "sm:grid-cols-2 xl:grid-cols-4" : COMPACT_COLS[Math.min(row.cells.length, 5)]}`}
+          >
+            {row.cells.map((c, i) => (
+              <div key={c.block.id} className={row.lead ? `min-w-0 ${LEAD_CELL[i] ?? ""}` : "min-w-0"}>
+                {c.block.node}
+              </div>
+            ))}
+          </div>
+        ) : row.cells.length === 1 ? (
           <div key={row.key} className="min-w-0">
             {row.cells[0].block.node}
           </div>
