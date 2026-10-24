@@ -86,13 +86,14 @@ describe("lines and tiers (default settings)", () => {
 
   it("reviews total and the on-time review streak (the last day may still be reviewed)", () => {
     const d = weekdays(12, "2026-09-28");
-    const reviews = d.map((date, i) => ({ date, reviewedOn: i === 5 ? null : date }));
+    // Full EOD reviews (roadmap R3: the one-tap «Разобрал» does not count for the review lines).
+    const reviews = d.map((date, i) => ({ date, reviewedOn: i === 5 ? null : date, fullOn: i === 5 ? null : date }));
     const res = a.evaluateAchievements(input({ reviews, asOf: d[11]! }));
     expect(line(res, "reviews_total").current).toBe(11);
     expect(earned(res, "reviews_total")[0]).toBe(d[10]);
     expect(earned(res, "review_streak")).toEqual([d[4], null, null, null]);
     expect(line(res, "review_streak").current).toBe(6);
-    const open = reviews.map((r, i) => (i === 11 ? { ...r, reviewedOn: null } : r));
+    const open = reviews.map((r, i) => (i === 11 ? { ...r, reviewedOn: null, fullOn: null } : r));
     expect(line(a.evaluateAchievements(input({ reviews: open, asOf: d[11]! })), "review_streak").current).toBe(5);
   });
 
@@ -108,7 +109,7 @@ describe("lines and tiers (default settings)", () => {
     const d = weekdays(30);
     const plansBeforeOpen = d.slice(0, 25);
     const ledger = ledgerOf(d.map((date) => ({ date, items: kept })));
-    const reviews = d.map((date) => ({ date, reviewedOn: date }));
+    const reviews = d.map((date) => ({ date, reviewedOn: date, fullOn: date }));
     const games = [
       ...d.slice(0, 9).map((finishedOn) => ({ finishedOn, verdict: "worse" })),
       ...d.slice(9, 12).map((finishedOn) => ({ finishedOn, verdict: "better" })),

@@ -36,22 +36,24 @@ const TRADED_DAYS = `SELECT DISTINCT substring(date, 1, 10) AS d FROM trades WHE
  */
 export async function reviewDays(trader: string, asOf: string): Promise<ReviewDay[]> {
   const ny = (col: string) => `to_char(${col} AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')`;
+  // full_on: the full EOD review (eod_days.full_review_at, migration 0247) — what the review rewards count (R3).
   const withJournal = `
-    SELECT t.d, ${ny("LEAST(r.reviewed_at, e.closed_at)")} AS reviewed_on
+    SELECT t.d, ${ny("LEAST(r.reviewed_at, e.closed_at)")} AS reviewed_on, ${ny("e.full_at")} AS full_on
       FROM (${TRADED_DAYS}) t
       LEFT JOIN daily_reviews r ON r.trader = $1 AND r.date = t.d
-      LEFT JOIN (SELECT date, MIN(closed_at) AS closed_at FROM eod_days WHERE trader = $1 AND closed_at IS NOT NULL GROUP BY date) e ON e.date = t.d
+      LEFT JOIN (SELECT date, MIN(closed_at) AS closed_at, MIN(full_review_at) AS full_at FROM eod_days WHERE trader = $1 AND closed_at IS NOT NULL GROUP BY date) e ON e.date = t.d
      ORDER BY t.d`;
   const reviewsOnly = `
     SELECT t.d, ${ny("r.reviewed_at")} AS reviewed_on FROM (${TRADED_DAYS}) t
       LEFT JOIN daily_reviews r ON r.trader = $1 AND r.date = t.d ORDER BY t.d`;
   const { rows } = await pool
-    .query<{ d: string; reviewed_on: string | null }>(withJournal, [trader, asOf])
+    .query<{ d: string; reviewed_on: string | null; full_on?: string | null }>(withJournal, [trader, asOf])
     .catch((err) => {
-      if ((err as { code?: string })?.code !== "42P01") throw err; // eod_days missing → reviews only
-      return pool.query<{ d: string; reviewed_on: string | null }>(reviewsOnly, [trader, asOf]);
+      const code = (err as { code?: string })?.code;
+      if (code !== "42P01" && code !== "42703") throw err; // eod_days (or its full_review_at) missing → reviews only
+      return pool.query<{ d: string; reviewed_on: string | null; full_on?: string | null }>(reviewsOnly, [trader, asOf]);
     });
-  return rows.map((r) => ({ date: String(r.d), reviewedOn: r.reviewed_on }));
+  return rows.map((r) => ({ date: String(r.d), reviewedOn: r.reviewed_on, fullOn: r.full_on ?? null }));
 }
 
 export async function focusDays(trader: string, asOf: string): Promise<FocusDay[]> {

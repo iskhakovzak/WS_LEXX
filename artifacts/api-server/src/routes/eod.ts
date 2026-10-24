@@ -302,6 +302,17 @@ async function prefillJournal(trader: string, date: string, day: DayRow, trades:
 
 export type CloseVia = "journal" | "daily";
 
+/** A full EOD review = the journal form with ≥ 1 trade review or mistake verdict (roadmap R3). */
+export const isFullReview = (trades: readonly Pick<TradeRow, "followedPlan" | "mistakes" | "lesson">[]): boolean =>
+  trades.some((t) => t.followedPlan != null || (t.mistakes?.length ?? 0) > 0 || !!t.lesson?.trim());
+
+/** Stamps eod_days.full_review_at once (rewards count only full reviews; the one-tap «Разобрал» is «seen»). */
+async function markFullReview(dayId: number, trades: readonly TradeRow[]): Promise<void> {
+  if (!isFullReview(trades)) return;
+  await pool.query(`UPDATE eod_days SET full_review_at = NOW() WHERE id = $1 AND full_review_at IS NULL`, [dayId])
+    .catch((err) => logger.warn({ err }, "eod: full review stamp failed"));
+}
+
 /**
  * Closes `trader`'s `date` for the curator — the one close of the day (Волна 0, item 0.4), used by the journal form
  * (POST /eod/day/:date/close, via "journal") and by «Разобрал» on the dashboard / in Telegram (lib/daily/service
@@ -327,6 +338,7 @@ export async function closeEodDay(
     if (!isQuickClose(existing)) throw new AppError("EOD_ALREADY_CLOSED", 409, undefined, { day: serializeDay(existing) });
     // The journal form extends a «Разобрал» day: its summary replaces the marker, closed_at stays (no second notice).
     const day = await upsertDay(trader, date, body);
+    await markFullReview(day.id, trades);
     forgetQuests(trader);
     forgetPlanPrefill(trader);
     await prefillJournal(trader, date, day, trades).catch((err) => logger.warn({ err }, "eod: journal prefill failed"));
@@ -356,6 +368,7 @@ export async function closeEodDay(
     );
     day = rows[0];
   }
+  if (via === "journal") await markFullReview(day.id, trades);
   forgetQuests(trader); // the review quest credits the closed day now, not after the quest cache expires
   forgetPlanPrefill(trader); // the suggested rule of the next plan reads the window with this day closed
   if (via === "journal") {
