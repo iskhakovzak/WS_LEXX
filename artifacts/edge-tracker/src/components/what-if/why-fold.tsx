@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { ChevronDown, TriangleAlert } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { fmtDeskDate, fmtUsd } from "@/lib/format";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { cn } from "@/lib/utils";
@@ -16,31 +16,37 @@ export function whyHeadline(w: Why): { key: "oneDay" | "spread" | "none"; pct: n
 }
 
 /**
- * «Почему» under a suggestion card: one line (how much of the effect is the best day — a rule carried by one lucky day
- * is flagged), opening the 3 days and the 3 trades that moved the number most. Each day opens its report.
+ * «Почему» under a suggestion card: one line that reads as a sentence (how much of the effect is the best day — a rule
+ * carried by one lucky day is flagged), opening the 3 days and the 3 trades that moved the number most in a popover
+ * over the card, so the card (and its row of the grid) keeps its height. Each day opens its report.
  */
 export function WhyFold({ why, onDay }: { why: Why; onDay?: (day: string) => void }) {
   const { t } = whatIfI18n.useT();
-  const [open, setOpen] = useState(false);
   const h = whyHeadline(why);
   const usd = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
   if (!why.topTrades.length) return null;
   return (
-    <div className="flex flex-col gap-1 text-xs">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className={cn("inline-flex items-center gap-1 self-start rounded-full text-left underline-offset-2 hover:underline", h.lucky ? "text-[hsl(var(--warn))]" : "text-muted-foreground")}
-        title={h.lucky ? t("why.luckyHint") : undefined}
-      >
-        {h.lucky && <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />}
-        <span className="font-medium">{t("why.toggle")}</span>
-        {h.key !== "none" && <span>· {t(`why.${h.key}`, { pct: h.pct })}</span>}
-        <ChevronDown className={cn("h-3 w-3 transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
-      </button>
-      {open && (
-        <div className="flex flex-col gap-2 rounded-xl bg-[var(--glass-bg)] p-2 tabular-nums">
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "group flex w-full items-start gap-1.5 rounded-lg py-0.5 text-left text-xs leading-snug transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            h.lucky ? "text-[hsl(var(--warn))] hover:text-[hsl(var(--warn))]" : "text-muted-foreground",
+          )}
+          title={h.lucky ? t("why.luckyHint") : undefined}
+        >
+          {h.lucky && <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          {/* One flowing sentence: «Почему: лучший день — 46% эффекта». */}
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">{t("why.toggle")}</span>
+            {h.key !== "none" && <>: {t(`why.${h.key}`, { pct: h.pct })}</>}
+          </span>
+          <ChevronDown className="mt-px h-3.5 w-3.5 shrink-0 transition-transform duration-[var(--dur-1)] group-data-[state=open]:rotate-180" aria-hidden="true" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] p-3 text-xs">
+        <div className="flex flex-col gap-3 tabular-nums">
           <div className="min-w-0">
             <p className="mb-0.5 font-medium text-foreground">{t("why.days")}</p>
             <ul className="flex flex-col gap-0.5">
@@ -67,7 +73,7 @@ export function WhyFold({ why, onDay }: { why: Why; onDay?: (day: string) => voi
             </ul>
           </div>
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
