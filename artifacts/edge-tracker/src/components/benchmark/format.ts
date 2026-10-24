@@ -53,11 +53,11 @@ export function fmtMetric(def: Pick<MetricDef, "unit" | "key">, v: number | null
 
 /**
  * Heatmap cell colour for a desk percentile (1 = best): red → neutral → green, as an inline style using the theme tokens.
- * Neutral (style) metrics use the accent hue instead of good/bad colours.
+ * Neutral (style) metrics use a monochrome (foreground) tint instead of good/bad colours.
  */
 export function heatStyle(p: number | null | undefined, neutral = false): CSSProperties {
   if (!isNum(p)) return {};
-  if (neutral) return { backgroundColor: `hsl(var(--chart-1) / ${(0.06 + p * 0.3).toFixed(3)})` };
+  if (neutral) return { backgroundColor: `hsl(var(--foreground) / ${(0.06 + p * 0.3).toFixed(3)})` };
   const d = p - 0.5;
   const a = (Math.abs(d) * 2 * 0.42 + 0.04).toFixed(3);
   return { backgroundColor: d >= 0 ? `hsl(var(--up) / ${a})` : `hsl(var(--down) / ${a})` };

@@ -316,7 +316,7 @@ export default function Stats() {
         {!solo && (
           <StaffTraderPicker
             value={scopePickerValue(scope)} onChange={pickTrader} me={me} names={[...traders, ...reportTraders]} teamLabel={t("wholeTeam")}
-            className="h-9 w-full sm:w-[220px]" ariaLabel={t("traderAria")}
+            className="h-9 w-full sm:w-auto sm:min-w-[13rem] sm:max-w-[18rem]" ariaLabel={t("traderAria")}
           />
         )}
       </Toolbar>

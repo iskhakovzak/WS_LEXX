@@ -225,7 +225,7 @@ export default function WhatIf() {
           me={me}
           names={traders}
           teamLabel={t("wholeTeam")}
-          className="h-10 w-[220px]"
+          className="h-10 w-auto min-w-[13rem] max-w-[18rem]"
           ariaLabel={t("traderAria")}
         />
       )}

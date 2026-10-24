@@ -130,7 +130,7 @@ export default function BehaviorPage() {
         actions={
           <>
             {isCurator && (
-              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="w-52" ariaLabel={tb("traderAria")} />
+              <StaffTraderPicker value={trader ?? ""} onChange={pickTrader} me={me} names={names ?? []} team={false} className="w-auto min-w-[13rem] max-w-[18rem]" ariaLabel={tb("traderAria")} />
             )}
             <PeriodPicker<Preset>
               ariaLabel={tb("periodAria")} value={period} custom={custom} presetRange={win} today={nyDate()} options={periodOptions()}

@@ -169,7 +169,7 @@ export default function RulesTracker() {
                 self={self}
                 selfSuffix={t("page.selfSuffix")}
                 ariaLabel={t("page.traderAria")}
-                className="w-full sm:w-[180px]"
+                className="w-full sm:w-auto sm:min-w-[11rem] sm:max-w-[18rem]"
               />
             )}
             <Segmented<PeriodValue> ariaLabel={t("page.periodAria")} value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.value, label: p.label }))} />

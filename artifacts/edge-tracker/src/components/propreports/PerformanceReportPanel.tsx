@@ -44,8 +44,9 @@ export function fmtHold(seconds: number | null | undefined, raw?: string | null)
 /** Win rate already in percent (PropReports): "57.1%". */
 const pct = (v: number | null | undefined, digits = 1) => fmtPct(v, { decimals: digits, signed: false });
 
+/** «Jan 2, 2026 — Oct 15, 2026»: the same date shape as the broker card on Analytics (was raw ISO). */
 function periodText(r: { periodFrom: string; periodTo: string }): string {
-  return `${r.periodFrom} — ${r.periodTo}`;
+  return `${fmtDate(r.periodFrom, "medium")} — ${fmtDate(r.periodTo, "medium")}`;
 }
 
 /* ── bars ─────────────────────────────────────────────────────────────────── */
@@ -281,8 +282,8 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
         t("perf.descReport"),
         t("perf.descAccount", { account: latest.account }),
         periodText(latest),
-        latest.traderName ?? "",
-        latest.uploadedBy ? t("perf.descUploadedBy", { date: fmtDate(latest.uploadedAt, "short"), by: personName(latest.uploadedBy) }) : t("perf.descUploaded", { date: fmtDate(latest.uploadedAt, "short") }),
+        latest.traderName ? personName(latest.traderName) : "",
+        latest.uploadedBy ? t("perf.descUploadedBy", { date: fmtDate(latest.uploadedAt, "medium"), by: personName(latest.uploadedBy) }) : t("perf.descUploaded", { date: fmtDate(latest.uploadedAt, "medium") }),
       ].filter(Boolean).join(" · ")
     : t("perf.descEmpty");
 

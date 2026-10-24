@@ -51,7 +51,10 @@ type Props = {
   className?: string;
 };
 
-const GRID = "grid gap-x-5 gap-y-4 [grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr))]";
+// Wrapping columns that share the free width (≥ 10.5rem each, at most 18rem from md): a tab with fewer dimensions
+// widens its columns instead of leaving empty tracks on the right while long headings («Trade of the day», «Before
+// the trade») and labels ellipsize; a 2-dimension tab stays packed on the left. Phones: full-width columns.
+const GRID = "flex flex-wrap gap-x-5 gap-y-4 [&>*]:min-w-0 [&>*]:flex-[1_1_10.5rem] md:[&>*]:max-w-[18rem]";
 const LINK = "inline-flex min-h-6 min-w-6 items-center justify-center rounded px-1.5 text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** A column offers a choice only with 2+ values, or when something in it is already excluded (so it can come back). */

@@ -12,7 +12,7 @@ import { TEAM, scopePickerValue } from "@/components/people/staff-scope";
 import { analyticsDataPlan, type AnalyticsTabKey } from "@/components/analytics-page/data-plan";
 import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { ChartSkeleton, Page, PageHeader, Panel, Segmented, EmptyState, StatGridSkeleton } from "@/components/ds";
+import { ChartSkeleton, Kbd, Page, PageHeader, Panel, Segmented, EmptyState, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import AnalyticsPro from "@/components/analytics/analytics-pro";
@@ -260,8 +260,8 @@ export default function Analytics() {
         icon={BarChart3}
         description={isLoading ? t("loadingTrades") : summary}
         actions={
-          <span className="hidden text-xs text-muted-foreground lg:inline">
-            {hotBefore}<kbd className="rounded bg-[var(--glass-bg)] px-1.5 py-0.5 font-sans">1</kbd>–<kbd className="rounded bg-[var(--glass-bg)] px-1.5 py-0.5 font-sans">{lastKey}</kbd>{hotAfter}
+          <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex">
+            {hotBefore}<Kbd>1</Kbd>–<Kbd>{lastKey}</Kbd>{hotAfter}
           </span>
         }
       >
@@ -281,7 +281,7 @@ export default function Analytics() {
           traderPicker={staffView ? (
             <StaffTraderPicker
               value={scopePickerValue(scope)} onChange={pickTrader} me={me} names={pickerNames}
-              ariaLabel={t("filters.trader")} className="h-9 w-auto min-w-[160px] max-w-[240px]"
+              ariaLabel={t("filters.trader")} className="h-9 w-auto min-w-[160px] max-w-[18rem]"
             />
           ) : undefined}
           showSource={isCurator}

@@ -68,7 +68,7 @@ export function HorizonPanel({
                     >
                       <span className={cn("font-medium", isActive ? "text-primary" : "text-foreground")}>{horizonLabel(h)}</span>
                       <span className="h-1 w-full max-w-[96px] overflow-hidden rounded-full bg-[var(--glass-hover-bg)]" aria-hidden="true">
-                        <span className="block h-full rounded-full bg-chart-1" style={{ width: `${(count / total) * 100}%` }} />
+                        <span className="block h-full rounded-full bg-primary/70" style={{ width: `${(count / total) * 100}%` }} />
                       </span>
                     </button>
                   </td>
@@ -126,9 +126,10 @@ export function FeesPanel({ fees, prev, trades, counts }: {
               { l: t("fees.fees"), v: fees.fees ? fmtValue(-fees.fees, "usd") : "$0", c: fees.fees ? "text-down" : "text-muted-foreground" },
               { l: t("fees.net"), v: fmtValue(fees.net, "usd"), c: toneCls(fees.net) },
             ].map((x) => (
-              <div key={x.l} className="rounded-xl bg-[var(--glass-bg)] p-3">
+              <div key={x.l} className="min-w-0 rounded-xl bg-[var(--glass-bg)] p-3">
                 <div className="text-xs text-muted-foreground">{x.l}</div>
-                <div className={cn("truncate text-lg font-semibold tabular-nums", x.c)}>{x.v}</div>
+                {/* text-base on phones: three tiles in ~330px cut «−$622.…» at text-lg */}
+                <div className={cn("truncate text-base font-semibold tabular-nums sm:text-lg", x.c)} title={x.v}>{x.v}</div>
               </div>
             ))}
           </div>
