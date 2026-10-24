@@ -33,7 +33,7 @@ export const CHART = {
   series: ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))"],
 } as const;
 
-export type ChartToken = "up" | "down" | "muted-foreground" | "primary" | "foreground" | "border" | "chart-1" | "chart-2" | "chart-3" | "chart-4" | "chart-5" | "warn";
+export type ChartToken = "up" | "down" | "muted-foreground" | "primary" | "foreground" | "border" | "chart-1" | "chart-2" | "chart-3" | "chart-4" | "chart-5" | "warn" | "be";
 
 /** `hsl(var(--token) / a)` — a translucent step of a theme token. */
 export const tint = (token: ChartToken, alpha: number) => `hsl(var(--${token}) / ${alpha})`;

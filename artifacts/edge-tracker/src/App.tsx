@@ -12,6 +12,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { AppearanceProvider } from "@/contexts/appearance-context";
 import { BASE } from "@/lib/api";
 import { routeTitle } from "@/components/shell/nav";
 import { blockedSectionOf, navFeatureOn } from "@/components/shell/nav-model";
@@ -261,6 +262,8 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <ThemeProvider>
+          {/* «Вид»: personal look (accent, money colours, font, background, density) as CSS variables on <html>. */}
+          <AppearanceProvider>
             <LocaleSync />
             {/* Opening «Добро пожаловать, трейдер» / «Доброе утро, …» overlay; the app renders underneath meanwhile. */}
             <WelcomeIntro />
@@ -271,6 +274,7 @@ function App() {
                 <AppContent />
               </RouteErrorBoundary>
             </I18nProvider>
+          </AppearanceProvider>
           </ThemeProvider>
         </AuthProvider>
         <Toaster />

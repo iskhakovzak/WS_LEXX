@@ -98,7 +98,7 @@ export function TimeHeatmap({ trades, cells, metric }: {
         <EmptyState title={t("heatmap.empty")} />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[440px] border-separate border-spacing-1 text-xs">
+          <table data-density="fixed" className="w-full min-w-[440px] border-separate border-spacing-1 text-xs">
             <thead>
               <tr>
                 <th className="w-8 text-left font-normal text-muted-foreground"><span className="sr-only">{t("heatmap.day")}</span></th>

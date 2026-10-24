@@ -98,9 +98,8 @@ export default {
   appearance: {
     title: "Interface theme",
     description: "Applies right away and syncs with your profile on all devices",
-    darkHint: "Graphite, maximum contrast for charts",
-    dimHint: "Softer for long evening sessions",
-    lightHint: "For daylight and printing",
+    openLook: "Open Appearance",
+    openLookHint: "Appearance holds the accent, profit and loss colours, the break-even range, font, background, table density and up to 5 saved looks. All personal, following you to every device.",
     hotkeys: "Settings shortcuts",
     hotkeysDesc: "Work when the cursor is not in a text field",
     keySearch: "Search settings",

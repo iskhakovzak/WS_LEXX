@@ -9,8 +9,9 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
+import { getBeRange, subscribeBeRange } from "@/lib/appearance/be-range";
 import { chartsI18n } from "@/i18n/ns/charts";
-import { HEAT_FLAT, heatFill, heatKind, heatRamp } from "./heat";
+import { HEAT_BE, HEAT_FLAT, heatFill, heatKind, heatRamp } from "./heat";
 import { TooltipCard, type TooltipRow } from "./tooltip";
 import { pnlTextClass } from "./theme";
 
@@ -95,6 +96,8 @@ export function HeatCalendar({
   weeks, weekdays, max, hue = "pnl", ariaLabel, onActivate, phoneValues = false, showOutside = false, className, legend = true, legendExtra,
 }: HeatCalendarProps) {
   const { t } = chartsI18n.useT();
+  // Re-render when the «Вид» break-even range changes (heat.ts reads it while colouring the days).
+  React.useSyncExternalStore(subscribeBeRange, getBeRange, getBeRange);
   const keysId = React.useId();
   const cols = weekdays.length;
   const refs = React.useRef(new Map<string, HTMLElement>());
@@ -200,7 +203,7 @@ export function HeatCalendar({
               const p = { r, c };
               if (!d.inMonth && !showOutside) return <div key={d.date} role="gridcell" aria-hidden="true" className="min-h-[2.75rem] rounded-lg sm:min-h-[4rem]" />;
               const kind = heatKind(d.value, d.traded);
-              const fill = kind === "up" || kind === "down" ? heatFill(d.value, max, hue) : kind === "flat" ? d.fill ?? HEAT_FLAT : undefined;
+              const fill = kind === "up" || kind === "down" ? heatFill(d.value, max, hue) : kind === "be" ? HEAT_BE : kind === "flat" ? d.fill ?? HEAT_FLAT : undefined;
               const showTip = tip && tip.r === r && tip.c === c && (d.tipRows?.length || d.tipTitle);
               return (
                 <div key={d.date} role="gridcell" className="relative min-w-0" aria-selected={d.active || undefined}>

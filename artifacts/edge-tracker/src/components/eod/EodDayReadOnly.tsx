@@ -1,3 +1,4 @@
+import { TradeChip } from "@/components/ds/trade-chip";
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2, MessageSquareText } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
@@ -106,7 +107,7 @@ export function EodDayReadOnly({
                 <li key={tr.id} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">{tr.ticker}</span>
-                    <Pill tone="purple">{HORIZON_LABEL[tr.horizonEff]}</Pill>
+                    <TradeChip group="horizon" value={tr.horizonEff}>{HORIZON_LABEL[tr.horizonEff]}</TradeChip>
                     {tr.date !== data.date && <Pill>{journalI18n.t("trades.since", { date: fmtDate(tr.date, "dayMonth") })}</Pill>}
                     {p?.thesisValid === true && <Pill tone="up">{t("readOnly.thesisValid")}</Pill>}
                     {p?.thesisValid === false && <Pill tone="down">{t("readOnly.thesisBroken")}</Pill>}

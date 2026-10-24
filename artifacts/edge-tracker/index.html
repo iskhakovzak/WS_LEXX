@@ -10,13 +10,19 @@
     <meta name="color-scheme" content="dark light" />
     <title>WS_LEXX</title>
     <script>
-      // Apply the saved theme before first paint to avoid a dark flash for light-theme users.
+      // Apply the saved theme and the «Вид» look (lib/appearance/apply.ts: ws_lexx_look) before first paint,
+      // so a light-theme or customised user never sees a flash of the default dark look.
       try {
-        var t = localStorage.getItem("ws_lexx_theme");
+        var d = document.documentElement, c = d.classList, t = localStorage.getItem("ws_lexx_theme");
         if (t === "sepia") t = "light";
-        var c = document.documentElement.classList;
-        if (t === "light") { c.remove("dark"); document.documentElement.style.colorScheme = "light"; }
+        if (t === "light" || t === "platinum") { c.remove("dark"); d.style.colorScheme = "light"; if (t === "platinum") c.add("platinum"); }
         else if (t === "dim") { c.add("dark", "dim"); }
+        d.setAttribute("data-theme", t === "light" || t === "dim" || t === "platinum" ? t : "dark");
+        var l = JSON.parse(localStorage.getItem("ws_lexx_look") || "null");
+        if (l && l.theme === d.getAttribute("data-theme")) {
+          for (var k in l.vars) if (k.indexOf("--") === 0) d.style.setProperty(k, String(l.vars[k]));
+          for (var a in l.attrs) if (a.indexOf("data-") === 0) d.setAttribute(a, String(l.attrs[a]));
+        }
       } catch (e) {}
     </script>
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />

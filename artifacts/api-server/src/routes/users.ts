@@ -19,6 +19,7 @@ import { logAudit } from "../lib/audit";
 import { cleanUserName, RenameError, renameUserInTx, type RenameReport } from "../lib/people/renameUser";
 import { invalidateDashboardCache } from "../lib/hotCache";
 import { warmSettings } from "../lib/settings/store";
+import { StoredAppearanceSchema } from "../lib/people/appearanceSchema";
 
 const router: IRouter = Router();
 
@@ -109,7 +110,7 @@ router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/users/theme", asyncHandler(async (req, res): Promise<void> => {
   const { name, theme } = req.body as { name?: string; theme?: string };
   if (!name || !theme) throw new AppError("VALIDATION");
-  const allowed = ["dark", "dim", "sepia", "light"];
+  const allowed = ["dark", "dim", "platinum", "sepia", "light"];
   if (!allowed.includes(theme)) throw new AppError("INVALID_FIELD", undefined, { field: "theme" });
   if (!(await canActOnName(req, name))) throw forbidden();
   await pool.query(`UPDATE users SET theme = $1 WHERE name = $2`, [theme, name]);
@@ -237,6 +238,8 @@ const SettingsPatch = z.object({
   dailyTelegram: z.boolean().optional(),
   /** Recognition (desk feed, Telegram group, others' rankings, public titles — lib/gamification). Absent = on. */
   shareAchievements: z.boolean().optional(),
+  /** «Вид»: the personal look + up to 5 saved looks (lib/people/appearanceSchema). null removes it. */
+  appearance: StoredAppearanceSchema.nullable().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -263,6 +266,8 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   }
   if (body.data.dailyTelegram !== undefined) set.dailyTelegram = body.data.dailyTelegram;
   if (body.data.shareAchievements !== undefined) set.shareAchievements = body.data.shareAchievements;
+  if (body.data.appearance === null) drop.push("appearance");
+  else if (body.data.appearance !== undefined) set.appearance = body.data.appearance;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,
