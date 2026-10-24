@@ -34,6 +34,9 @@ export default {
   review: {
     title: "AI-разбор сделки",
     dayTitle: "AI-разбор дня",
+    weekTitle: "AI-разбор недели",
+    monthTitle: "AI-разбор месяца",
+    batchNote: "Готовится ночью автоматически.",
     run: "Разобрать",
     refresh: "Обновить",
     running: "Разбираю…",
@@ -54,6 +57,8 @@ export default {
     edge: "Карта edge",
     tomorrow: "Правило на завтра",
     tomorrowDay: "Фокус на завтра",
+    nextWeek: "Фокус на следующую неделю",
+    nextMonth: "Фокус на следующий месяц",
     if: "Если",
     then: "то",
     whatIf: "Проверить правило в «Что если»",

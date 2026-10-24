@@ -19,6 +19,7 @@ import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { useDeskSettings, useSaveDeskSettings } from "./desk-settings-api";
 import { DeskSettingField } from "./DeskSettingField";
 import { AssistantUsageStats } from "./AssistantUsageStats";
+import { AiBatchStats } from "./AiBatchStats";
 import {
   changesOf, checkValue, formRows, groupRows, normalize, parseInput, pilotRowsOf, shownProblem, visibleRows, type Problem, type SettingRow, type SettingValue,
 } from "./desk-settings-model";
@@ -163,6 +164,7 @@ function SettingsForm({ rows }: { rows: SettingRow[] }) {
               />
             ))}
             {g.group === "assistant" ? <AssistantUsageStats /> : null}
+            {g.group === "aiBatch" ? <AiBatchStats /> : null}
           </div>
         </Panel>
       ))}

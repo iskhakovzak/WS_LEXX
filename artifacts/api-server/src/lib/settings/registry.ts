@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy" | "assistant" | "aiBatch";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams" | "tokens";
 
 /**
@@ -314,6 +314,20 @@ export const SETTINGS = {
   "assistant.advisorModel": { group: "assistant", type: "select", default: "claude-sonnet-5-5", options: ["claude-sonnet-5-5", "claude-opus-5-5"] },
   "assistant.requestsPer10Min": { group: "assistant", type: "number", default: 20, min: 1, max: 200, step: 1, unit: "count" },
   "assistant.auditBodies": { group: "assistant", type: "boolean", default: false },
+
+  // Nightly AI reviews at half price (lib/assistant/batch, job ai.batch-reviews; Message Batches API, −50%): when the
+  // day closes (every EOD of the day closed, at the latest aiBatch.time NY) ONE batch carries an «AI-разбор дня» for
+  // every trader who traded; Fridays optionally the weekly summary per trader, the 1st of the month the monthly one.
+  // Off until the owner turns it on. They never spend a trader's personal budget (assistant.dailyUnits): they count
+  // against the desk-wide nightly cap in the same units; over the cap, traders without a day review come first, then
+  // juniors. The model writes the reviews; the advisor follows assistant.advisorEnabled / assistant.advisorModel.
+  "aiBatch.enabled": { group: "aiBatch", type: "boolean", default: false },
+  "aiBatch.time": { group: "aiBatch", type: "time", default: "21:00" },
+  "aiBatch.day": { group: "aiBatch", type: "boolean", default: true },
+  "aiBatch.week": { group: "aiBatch", type: "boolean", default: false },
+  "aiBatch.month": { group: "aiBatch", type: "boolean", default: false },
+  "aiBatch.nightlyUnits": { group: "aiBatch", type: "number", default: 2_000_000, min: 0, max: 100_000_000, step: 100_000, unit: "tokens" },
+  "aiBatch.model": { group: "aiBatch", type: "select", default: "claude-haiku-5-5", options: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

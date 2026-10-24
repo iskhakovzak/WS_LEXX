@@ -29,6 +29,7 @@ import { dailyPickCron } from "../lib/trainer/schedule";
 import { registerFinvizJobs } from "../lib/finviz/jobDefs";
 import { registerNewsChannelJobs } from "../lib/newsChannel/jobDefs";
 import { registerWhatIfHonestyJobs } from "../lib/whatIfHonestyJobDefs";
+import { registerBatchJobs } from "../lib/assistant/batch/jobDefs";
 
 const MIN = 60_000;
 let registered = false;
@@ -340,4 +341,5 @@ function registerModuleJobs(): void {
   registerCoachJobs(registerJob); // coaching: reward-ping batch, curator digest (R3), edge map (R4), plateau (R6) — lib/coachJobDefs.ts
   registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
   registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
+  registerBatchJobs(registerJob); // nightly AI reviews through the Message Batches API (lib/assistant/batch/jobDefs.ts)
 }

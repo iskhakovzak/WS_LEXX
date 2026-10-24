@@ -11,11 +11,16 @@
  * Day:   the day report (summary, equity: peak / giveback, timeline, leaks), the state machine (after-loss / after-win
  *        entries, trades after the peak, trade number in the day), the edge map, rules and the day's violations,
  *        behaviour patterns and the market brief.
+ * Week / month (nightly batch only): the period's totals with every trading day, the same totals of the period
+ *        before, the stored AI day reviews of the period (grade, headline, the next-day focus), behaviour patterns,
+ *        the edge map, rules and the period's violations.
  */
 import { readArchivedDays } from "../../candleArchive/service";
 import type { Bar } from "../../candleArchive/codec";
 import { apiGet, type ApiResult } from "../internalApi";
+import { zipBucket } from "../toolData";
 import { compactSetup, compactTrade, marketContext, shapeBehavior, shapeStats, shiftDays, type ToolContext } from "../tools";
+import { dayReviewsBetween, type PeriodKind } from "./store";
 
 export class ReviewInputError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
@@ -162,7 +167,10 @@ export function dayFacts(report: { summary?: { net?: number | null }; equity?: {
 
 export type DayInput = { trader: string; day: string; facts: DayFacts; data: Record<string, unknown> };
 
-export async function gatherDay(ctx: ToolContext, trader: string, day: string): Promise<DayInput> {
+/** What gathering reads with: the API caller, the language and today (no request — the nightly batch has none). */
+export type ReadContext = Pick<ToolContext, "api" | "lang" | "today">;
+
+export async function gatherDay(ctx: ReadContext, trader: string, day: string): Promise<DayInput> {
   const rep = await apiGet(ctx.api, "/day-report", { trader, date: day });
   if (!rep.ok) throw new ReviewInputError(rep.status === 403 ? 403 : 400, rep.status === 403 ? "PERSONAL_DATA_FORBIDDEN" : "BAD_REQUEST");
   const report = rep.data as Record<string, any>;
@@ -188,6 +196,61 @@ export async function gatherDay(ctx: ToolContext, trader: string, day: string): 
       rules: okOr(rules, (d) => (Array.isArray(d) ? d.slice(0, 20).map((r: any) => ({ id: r.id, kind: r.kind, name: r.name ?? r.title, threshold: r.threshold ?? r.params ?? null, enabled: r.enabled })) : d)),
       violations: okOr(viol, (d) => (Array.isArray(d) ? d.slice(0, 20).map((v: any) => ({ rule: v.ruleName ?? v.rule ?? v.kind, tradeId: v.tradeId ?? null, detail: v.detail ?? v.message ?? null })) : d)),
       market,
+    },
+  };
+}
+
+// ─── week / month ───────────────────────────────────────────────────────────
+
+export type PeriodInput = { trader: string; kind: PeriodKind; from: string; to: string; data: Record<string, unknown> };
+
+/** The period's first and last day (NY dates): week = Monday..Friday from `start`, month = the calendar month of `start`. */
+export function periodBounds(kind: PeriodKind, start: string): { from: string; to: string } {
+  if (kind === "week") return { from: start, to: shiftDays(start, 4) };
+  const [y, m] = start.split("-").map(Number) as [number, number];
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { from: start, to: `${start.slice(0, 7)}-${String(last).padStart(2, "0")}` };
+}
+
+/** The period before (same kind): the previous week / month. */
+function previousBounds(kind: PeriodKind, from: string): { from: string; to: string } {
+  if (kind === "week") return periodBounds("week", shiftDays(from, -7));
+  const [y, m] = from.split("-").map(Number) as [number, number];
+  return periodBounds("month", new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10));
+}
+
+const MAX_PERIOD_DAYS = 25;
+
+export async function gatherPeriod(ctx: ReadContext, trader: string, kind: PeriodKind, start: string): Promise<PeriodInput> {
+  const { from, to } = periodBounds(kind, start);
+  const prev = previousBounds(kind, from);
+  const [stats, previous, behavior, edge, rules, viol, reviews] = await Promise.all([
+    apiGet(ctx.api, "/stats/aggregate", { scope: "trader", trader, from, to }),
+    apiGet(ctx.api, "/stats/aggregate", { scope: "trader", trader, from: prev.from, to: prev.to }),
+    apiGet(ctx.api, "/behavior", { trader, from, to }),
+    apiGet(ctx.api, "/edge/map", { trader }),
+    apiGet(ctx.api, "/rules", { trader }),
+    apiGet(ctx.api, "/rule-violations", { trader, from, to }),
+    dayReviewsBetween(trader, from, to, ctx.lang).catch(() => []),
+  ]);
+  if (!stats.ok) throw new ReviewInputError(stats.status === 403 ? 403 : 400, stats.status === 403 ? "PERSONAL_DATA_FORBIDDEN" : "BAD_REQUEST");
+  const raw = (stats.data ?? {}) as { days?: unknown[] };
+  const days = Array.isArray(raw.days) ? raw.days : [];
+  if (!days.length) throw new ReviewInputError(404, "NOT_FOUND");
+  const shaped = shapeStats(raw) as Record<string, unknown>;
+  const fields = (raw as { fields?: string[] }).fields;
+  const everyDay = days.slice(-MAX_PERIOD_DAYS).map((r: any) => ({ key: r?.key, ...(zipBucket(fields, r?.b) as object) }));
+  return {
+    trader, kind, from, to,
+    data: {
+      period: { kind, from, to, tradingDays: days.length },
+      stats: { ...shaped, lastDays: undefined, days: everyDay },
+      previous: okOr(previous, (d) => ({ from: prev.from, to: prev.to, total: (shapeStats(d) as { total?: unknown }).total, tradingDays: Array.isArray(d?.days) ? d.days.length : 0 })),
+      dayReviews: reviews,
+      behavior: okOr(behavior, shapeBehavior),
+      edgeMap: okOr(edge, (d) => d),
+      rules: okOr(rules, (d) => (Array.isArray(d) ? d.slice(0, 20).map((r: any) => ({ id: r.id, kind: r.kind, name: r.name ?? r.title, threshold: r.threshold ?? r.params ?? null, enabled: r.enabled })) : d)),
+      violations: okOr(viol, (d) => (Array.isArray(d) ? d.slice(0, 30).map((v: any) => ({ rule: v.ruleName ?? v.rule ?? v.kind, day: v.date ?? v.day ?? null, detail: v.detail ?? v.message ?? null })) : d)),
     },
   };
 }

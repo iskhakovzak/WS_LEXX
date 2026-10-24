@@ -63,6 +63,7 @@ export default {
     "news-channel": { premarket: "WS_NEWS channel: premarket", open: "WS_NEWS channel: from the open", close: "WS_NEWS channel: day recap" },
     edgemap: { nightly: "«Where I earn / lose» map: nightly run" },
     whatif: { honesty: "Honest check of the “What if” suggestions" },
+    ai: { "batch-reviews": "Overnight AI reviews (one batch, half price)" },
   },
   backups: {
     description: "pg_dump daily at 03:15 New York time (cache tables without data). 14 daily and 8 weekly copies are kept.",

@@ -33,6 +33,9 @@ export default {
   review: {
     title: "AI trade review",
     dayTitle: "AI day review",
+    weekTitle: "AI week review",
+    monthTitle: "AI month review",
+    batchNote: "Prepared overnight automatically.",
     run: "Review",
     refresh: "Refresh",
     running: "Reviewing…",
@@ -53,6 +56,8 @@ export default {
     edge: "Edge map",
     tomorrow: "Rule for tomorrow",
     tomorrowDay: "Focus for tomorrow",
+    nextWeek: "Focus for next week",
+    nextMonth: "Focus for next month",
     if: "If",
     then: "then",
     whatIf: "Test the rule in «What if»",

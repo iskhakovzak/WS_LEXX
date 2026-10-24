@@ -13,6 +13,14 @@ import { AnswerCard, RuleCard } from "@/components/my-review/sections";
 import { myReviewI18n } from "@/i18n/ns/myReview";
 import { useFacetView } from "@/components/shared/trade-facets/api";
 import { ImxLine, ImxToggle } from "@/components/shared/trade-facets/FacetSummary";
+import { AiReviewCard } from "@/components/shared/ai-review-card";
+import { nyDate } from "@/lib/trading-date";
+
+/** A day of the month before `ymd`'s month (the API returns the month review that covers it). */
+const lastMonthDay = (ymd: string) => {
+  const [y, m] = ymd.split("-").map(Number) as [number, number];
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10);
+};
 
 export default function MyReviewPage() {
   const { t } = myReviewI18n.useT();
@@ -53,6 +61,8 @@ export default function MyReviewPage() {
         <EmptyState icon={CalendarRange} title={t("empty.title", { days })} description={t("empty.description")} />
       ) : (
         <div className="flex flex-col gap-4">
+          {/* Last month's nightly AI review (the 1st, when the desk turned it on); nothing shows until one exists. */}
+          <AiReviewCard subject={{ kind: "month", date: lastMonthDay(nyDate()) }} />
           <RuleCard review={q.data!} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-start">
             <AnswerCard kind="earn" review={q.data!} />

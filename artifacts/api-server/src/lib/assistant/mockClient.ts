@@ -75,7 +75,7 @@ function assistRewrite(action: string, turn: string, fillLine: string): string {
 function mockReview(turn: string): string {
   const lang: Lang = /in English/.test(turn) ? "en" : /in Uzbek/.test(turn) ? "uz" : "ru";
   const t = assistantT.tFor(lang);
-  const kind = /kind="day"/.test(turn) ? "day" : "trade";
+  const kind = /kind="(day|week|month)"/.test(turn) ? "day" : "trade";
   let data: any = {};
   try { data = JSON.parse(/<review_data>\n([\s\S]*?)\n<\/review_data>/.exec(turn)?.[1] ?? "{}"); } catch { /* demo */ }
   const fills = Array.isArray(data.fills) ? data.fills : [];

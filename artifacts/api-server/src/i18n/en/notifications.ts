@@ -72,7 +72,15 @@ export default {
     lineCost: "{n}. {trader} — {reason}, {cost}",
     reason: { breach_review: "breach to review", stopped: "on stop", near_stop: "close to stop", eod_review: "closed day waits for review", weekly_review: "weekly report", overdue_action: "1:1 agreements overdue", no_limits: "no limits", template_drift: "limits off the template", missing_plan: "no plan", missing_eod: "day not closed", one_on_one: "no 1:1 for long", plateau_review: "pace below the stage target", at_stake: "red and leaks", dropout_risk: "dropout risk", trial_review: "rule trial ending", stop_breach: "limit breach", focus_broken: "focus broken", disputed: "“not a mistake” on the focus", fees: "fees", loss_streak: "losing streak", giveback: "profit given back", rule: "rule violations", other: "needs a look" },
   },
+  ai_review_ready: {
+    title: "AI review ready",
+    body: "Your review is ready — open it to see.",
+    day: { title: "Day review ready", body: "AI review of {period}: what worked, what did not, and one focus for today." },
+    week: { title: "Week review ready", body: "AI review of the week from {period}: the result, the week's habits and one focus for the next one." },
+    month: { title: "Month review ready", body: "AI review of the month from {period}: the result, the month's habits and one focus for the next one." },
+  },
   types: {
+    ai_review_ready: { label: "AI review ready", description: "The overnight AI review of your day (and week or month, when on) is ready — arrives in the morning" },
     mention: { label: "Mention", description: "Someone mentioned you with @name in a discussion, idea or note" },
     reply: { label: "Reply", description: "A reply to your post or in your discussion, or a “solution” mark" },
     review_request: { label: "Review request", description: "A trader asks a curator to review a trade or topic" },

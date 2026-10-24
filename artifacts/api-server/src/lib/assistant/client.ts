@@ -45,8 +45,9 @@ export interface AssistantClient {
 
 const FALLBACK_MODELS: ReadonlySet<AssistantModel> = new Set(["claude-sonnet-5-5", "claude-opus-5-5"]);
 
-export function hasAdvisor(params: Pick<StreamParams, "tools">): boolean {
-  return params.tools.some((t) => t.type === "advisor_20260301");
+export function hasAdvisor(params: Partial<Pick<StreamParams, "tools">>): boolean {
+  // An AI review without the advisor drops `tools` altogether (review/run.ts reviewParams).
+  return (params.tools ?? []).some((t) => t.type === "advisor_20260301");
 }
 
 /** The beta flags a request needs (empty = the plain Messages API). Exported for tests. */

@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   CircleSlash, AtSign, MessageSquareReply, MessageSquarePlus, HelpCircle, Lightbulb, ClipboardCheck, MessageSquare, CalendarCheck, AlarmClock,
   CheckCircle2, CalendarRange, Star, BadgeCheck, TriangleAlert, OctagonAlert, SlidersHorizontal, TrendingUp,
-  Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert, Award, Swords, Medal, Gift, XCircle,
+  Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert, Award, Swords, Medal, Gift, XCircle, Sparkles,
 } from "lucide-react";
 import { http } from "@/lib/api/http";
 import { fmtDate } from "@/lib/format";
@@ -108,6 +108,7 @@ export const TYPES: TypeMeta[] = [
   meta("curator_request", "review", "info"),
   meta("curator_request_done", "review", "info"),
   meta("curator_digest", "review", "info"),
+  meta("ai_review_ready", "review", "info"),
   meta("risk_warn", "risk", "warn"),
   meta("risk_breach", "risk", "critical"),
   meta("risk_repeat_breach", "risk", "critical"),
@@ -151,7 +152,7 @@ export const TYPE_ICONS: Record<string, LucideIcon> = {
   rating: Star, rating_ack: BadgeCheck, discipline_badge: Award,
   quest_assigned: Swords, quest_done: CheckCircle2, quest_failed: TriangleAlert, quest_cancelled: CircleSlash, achievement_earned: Medal,
   reward_eligible: Gift, reward_requested: Gift, reward_granted: Gift, reward_declined: XCircle,
-  curator_request: HelpCircle, curator_request_done: CheckCircle2, curator_digest: CalendarCheck,
+  curator_request: HelpCircle, curator_request_done: CheckCircle2, curator_digest: CalendarCheck, ai_review_ready: Sparkles,
   risk_warn: TriangleAlert, risk_breach: OctagonAlert, risk_repeat_breach: OctagonAlert, risk_breach_review: ClipboardCheck, limit_change: SlidersHorizontal, rule_violation: ShieldAlert,
   scaling_proposal: TrendingUp, scaling_decision: Gavel,
   academy_promotion_ready: GraduationCap, academy_promotion_request: GraduationCap, academy_promotion_decision: Gavel,

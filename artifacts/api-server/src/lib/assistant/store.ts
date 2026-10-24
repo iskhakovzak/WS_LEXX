@@ -182,7 +182,7 @@ export async function usageStats(from: string, to: string, s: Pick<AssistantSett
 }
 
 export type AuditRow = {
-  user: string; mode: "chat" | "assist" | "review"; models: string[]; reason: string; usage: Usage; costUsd: number; tools: string[]; drafts: number;
+  user: string; mode: "chat" | "assist" | "review" | "batch"; models: string[]; reason: string; usage: Usage; costUsd: number; tools: string[]; drafts: number;
   status: "ok" | "error" | "aborted" | "refused"; errorCode?: string | null; page?: string | null; durationMs: number;
   /** Bodies are written only when the desk setting assistant.auditBodies is on. */
   userMessage?: string | null; assistantMessage?: string | null;

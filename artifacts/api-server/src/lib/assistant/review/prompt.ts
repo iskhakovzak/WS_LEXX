@@ -47,13 +47,33 @@ export const DAY_REVIEW_SYSTEM = `${COMMON}
 <review_data> holds: dayState (the day's state machine, computed by the server: afterLoss / afterWin entries with their net, trades after the equity peak and the giveback, the first three trades vs the rest, overlapping entries, re-entries within 2 minutes), summary, comparison (vs the trader's recent days), equity (peak, trough, max drawdown, final, giveback), timeline (every trade: index = trade number in the day, gapMin, afterLoss, cumAfter), leaks, plan (the day report's own suggestions), dailyLossLimit, edgeMap, behavior, rules and the day's violations, market (the cached brief).
 Judge the day as a sequence: how the trader started, what changed after losses and wins, whether they stopped at the right time or gave back after the peak, and which single habit would have changed the day most. evidence.ref = the trade number in the day, and a trade is labelled as a trade of the day («trade 3 · 10:41 · KORU long» in the review language), never as a fill. "tomorrow" is THE one focus for the next session.`;
 
+const PERIOD_COMMON = `<review_data> holds: period (from / to, trading days), stats (the trader's totals for the period: n, wins / losses, net / gross / fees, R, win rate, profit factor; best / worst trade, streaks, every trading day with its totals, and the breakdown by setup, ticker, hour, weekday), previous (the same totals for the period before, to compare with), dayReviews (the stored AI day reviews of the period: date, grade, headline, the "tomorrow" focus of each day), behavior (patterns of the period), edgeMap, rules and the period's violations.
+Judge the period as a whole: the trend against the previous period, which days made and lost the money and why, whether the daily focuses were kept (compare a day's "tomorrow" with the next day), the one habit that cost the most and the one that worked. evidence: kind "stat" (a total, a day's net), "rule", "edge"; label = the day (date) and the number; ref = null; at = null. Never invent days that are not in stats.`;
+
+export const WEEK_REVIEW_SYSTEM = `${COMMON}
+
+# This review: ONE TRADING WEEK (Monday to Friday)
+${PERIOD_COMMON}
+"tomorrow" is THE one focus for the next week.`;
+
+export const MONTH_REVIEW_SYSTEM = `${COMMON}
+
+# This review: ONE MONTH
+${PERIOD_COMMON}
+"tomorrow" is THE one focus for the next month; grade the month's process, not its P&L.`;
+
+/** The frozen system prompt of a review kind. */
+export function reviewSystem(kind: "trade" | "day" | "week" | "month"): string {
+  return kind === "trade" ? TRADE_REVIEW_SYSTEM : kind === "day" ? DAY_REVIEW_SYSTEM : kind === "week" ? WEEK_REVIEW_SYSTEM : MONTH_REVIEW_SYSTEM;
+}
+
 const REPLY_IN: Record<Lang, string> = {
   ru: "Write every string of the JSON in Russian.",
   en: "Write every string of the JSON in English.",
   uz: "Write every string of the JSON in Uzbek (Latin script).",
 };
 
-export function reviewUserTurn(args: { kind: "trade" | "day"; lang: Lang; today: string; subject: string; data: unknown }): string {
+export function reviewUserTurn(args: { kind: "trade" | "day" | "week" | "month"; lang: Lang; today: string; subject: string; data: unknown }): string {
   return [
     `<review_request kind="${args.kind}" subject="${args.subject}" today="${args.today}" />`,
     REPLY_IN[args.lang],

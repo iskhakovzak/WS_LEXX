@@ -28,6 +28,7 @@ import marketBriefRouter from "./marketbrief";
 import marketConditionsRouter from "./marketconditions";
 import tradeIdeasRouter from "./tradeideas";
 import aireviewRouter from "./aireview";
+import aibatchRouter from "./aibatch";
 import aiAssistantRouter from "./ai-assistant";
 import emotionalstateRouter from "./emotionalstate";
 import voicenotesRouter from "./voicenotes";
@@ -142,6 +143,7 @@ router.use(marketBriefRouter);
 router.use(marketConditionsRouter);
 router.use(tradeIdeasRouter);
 router.use(aireviewRouter);
+router.use(aibatchRouter);
 router.use(aiAssistantRouter); // «Ассистент WS» (docs/AI_ASSISTANT.md)
 router.use(emotionalstateRouter);
 router.use(voicenotesRouter);

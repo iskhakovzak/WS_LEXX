@@ -20,6 +20,7 @@ import { http } from "@/lib/api/http";
 import { ReviewStatusPill } from "@/components/weekly-review/collab";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
 import { PartnersView } from "@/components/weekly-review/partners-view";
+import { AiReviewCard } from "@/components/shared/ai-review-card";
 import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { WrappedButton } from "@/components/wrapped/WrappedLaunch";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
@@ -241,6 +242,8 @@ export default function WeeklyReviewPage() {
             <p data-print-title className="mb-3 hidden text-lg font-semibold">
               {t(effectiveView === "curator" ? "page.printTitleCurator" : "page.printTitle", { week: weekLabel(doc.week.key), trader: personName(doc.trader) })}
             </p>
+            {/* The nightly AI week review (Fridays, when the desk turned it on); nothing shows until one exists. */}
+            <AiReviewCard subject={{ kind: "week", date: doc.week.start, trader: doc.trader }} className="mb-[var(--grid-gap)]" />
             {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} next={next} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} />}
           </div>
         )}
