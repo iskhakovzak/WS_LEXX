@@ -304,8 +304,14 @@ export const SETTINGS = {
   "assistant.smartModel": { group: "assistant", type: "select", default: "claude-sonnet-5-5", options: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"] },
   "assistant.autoEscalate": { group: "assistant", type: "boolean", default: true },
   "assistant.juniorsEnabled": { group: "assistant", type: "boolean", default: true },
-  "assistant.dailyTokensDefault": { group: "assistant", type: "number", default: 400_000, min: 0, max: 20_000_000, step: 10_000, unit: "tokens" },
-  "assistant.dailyTokensSmart": { group: "assistant", type: "number", default: 150_000, min: 0, max: 20_000_000, step: 10_000, unit: "tokens" },
+  // One daily budget per user in units (owner 2026-10-25: 1M): default-model tokens count 1x, boosted / escalated /
+  // advisor tokens count boostMultiplier x (the «x5» badge). Replaces the per-model budgets (migration 0261). 0 = off.
+  "assistant.dailyUnits": { group: "assistant", type: "number", default: 1_000_000, min: 0, max: 50_000_000, step: 50_000, unit: "tokens" },
+  "assistant.boostMultiplier": { group: "assistant", type: "number", default: 5, min: 1, max: 50, step: 1, unit: "count" },
+  // Advisor tool (beta advisor-tool-2026-03-01): heavy tasks stay on the default model, which consults the advisor model
+  // mid-answer instead of re-running on the escalation model. Off = the old routing (re-run on assistant.smartModel).
+  "assistant.advisorEnabled": { group: "assistant", type: "boolean", default: true },
+  "assistant.advisorModel": { group: "assistant", type: "select", default: "claude-sonnet-5-5", options: ["claude-sonnet-5-5", "claude-opus-5-5"] },
   "assistant.requestsPer10Min": { group: "assistant", type: "number", default: 20, min: 1, max: 200, step: 1, unit: "count" },
   "assistant.auditBodies": { group: "assistant", type: "boolean", default: false },
 } as const satisfies Record<string, SettingDef>;

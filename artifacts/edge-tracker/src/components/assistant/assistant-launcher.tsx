@@ -1,21 +1,23 @@
 /**
- * The header button of «Ассистент WS» + its app-wide ways in: Ctrl/⌘+J (no other binding in the app or the shell uses
- * it; checked by key code so the Russian layout works too), the palette action and the «Спросить ассистента» buttons
- * (openAssistant in lib/assistant/bus.ts). On phones the header has no room for it (the market clock): the palette
- * action and the page buttons open it there; the panel itself mounts here either way. The panel is a lazy chunk mounted on the first open. Hidden for guests and
- * for anyone without the capability assistant.use (roles matrix).
+ * The assistant's ways in: the header button (the WS mark), the floating orb (assistant-orb.tsx: «Ask WS» +
+ * the shortcut, suggestions on pages with an «ask» context), Ctrl/⌘+J (no other binding in the app or the shell uses
+ * it; checked by key code so the Russian layout works too), the palette action and the page buttons (openAssistant in
+ * lib/assistant/bus.ts). On phones the header has no room for the button (the market clock): the orb above the dock,
+ * the palette and the page buttons open it there. The panel is a lazy chunk mounted on the first open and mounts here
+ * either way. Hidden for guests and for anyone without the capability assistant.use (roles matrix).
  */
 import * as React from "react";
-import { Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { assistantI18n } from "@/i18n/ns/assistant";
 import { cn } from "@/lib/utils";
-import { ASSISTANT_OPEN_EVENT, type OpenRequest } from "@/lib/assistant/bus";
+import { ASSISTANT_OPEN_EVENT, setAssistantPanelOpen, type OpenRequest } from "@/lib/assistant/bus";
+import { WsMark } from "@/components/shared/ws-mark";
+import { AssistantOrb } from "./assistant-orb";
+import { ASSISTANT_KEYS } from "./keys";
+
+export { ASSISTANT_KEYS } from "./keys";
 
 const AssistantPanel = React.lazy(() => import("./panel"));
-
-const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-export const ASSISTANT_KEYS = IS_MAC ? "⌘J" : "Ctrl+J";
 
 export function AssistantButton({ className }: { className?: string }) {
   const { user, can } = useAuth();
@@ -24,6 +26,8 @@ export function AssistantButton({ className }: { className?: string }) {
   const [open, setOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
   const [request, setRequest] = React.useState<(OpenRequest & { n: number }) | null>(null);
+
+  React.useEffect(() => { setAssistantPanelOpen(open); }, [open]);
 
   React.useEffect(() => {
     if (!allowed) return;
@@ -61,10 +65,11 @@ export function AssistantButton({ className }: { className?: string }) {
         title={t("openTitle", { keys: ASSISTANT_KEYS })}
         aria-label={t("openTitle", { keys: ASSISTANT_KEYS })}
         data-tour="assistant"
-        className={cn("chip relative grid h-10 w-10 shrink-0 place-items-center text-primary focus-visible:ring-2 focus-visible:ring-ring", className)}
+        className={cn("chip relative grid h-10 w-10 shrink-0 place-items-center text-foreground focus-visible:ring-2 focus-visible:ring-ring", className)}
       >
-        <Sparkles className="h-4 w-4" aria-hidden="true" />
+        <WsMark className="h-5 w-5" />
       </button>
+      <AssistantOrb />
       {mounted ? (
         <React.Suspense fallback={null}>
           <AssistantPanel open={open} onOpenChange={setOpen} request={request} />

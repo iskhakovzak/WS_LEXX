@@ -1,0 +1,146 @@
+/*
+ * The assistant's mark and its floating orb (ws-mark.tsx, assistant-orb.tsx). Monochrome like the rest of WS_Desk:
+ * the mark is currentColor; the life is in light, not hue — a slow orbit on the ring, a breathing core glow, a sheen
+ * sweeping the orb once in a while. A new member's orb pulses three times once; afterwards it stays calm.
+ * Every animation stops under prefers-reduced-motion.
+ */
+
+.ws-mark { overflow: visible; }
+.ws-mark .ws-mark-orbit { transform-origin: 12px 12px; animation: ws-mark-orbit 9s linear infinite; }
+.ws-mark .ws-mark-core { transform-origin: 12px 12px; animation: ws-mark-breathe 3.6s ease-in-out infinite; }
+.ws-mark .ws-mark-glow { animation: ws-mark-glow 3.6s ease-in-out infinite; }
+.ws-mark[data-still="true"] .ws-mark-orbit,
+.ws-mark[data-still="true"] .ws-mark-core,
+.ws-mark[data-still="true"] .ws-mark-glow { animation: none; }
+
+@keyframes ws-mark-orbit { to { transform: rotate(360deg); } }
+@keyframes ws-mark-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes ws-mark-glow { 0%, 100% { opacity: .18; } 50% { opacity: .42; } }
+
+/* ── the orb ─────────────────────────────────────────────────────────────── */
+
+.ws-orb {
+  position: fixed;
+  right: max(1.25rem, env(safe-area-inset-right));
+  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: .5rem;
+  pointer-events: none;
+}
+/* Phones: above the dock (bottom-2 + ~4rem tall + the safe area). */
+@media (max-width: 767px) {
+  .ws-orb { right: .875rem; bottom: calc(5.25rem + env(safe-area-inset-bottom)); }
+}
+.ws-orb > * { pointer-events: auto; }
+
+.ws-orb-button {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  height: 2.75rem;
+  padding: 0 1rem 0 .75rem;
+  border-radius: 999px;
+  overflow: hidden;
+  color: hsl(var(--background));
+  background: hsl(var(--foreground));
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06) inset;
+  transition: transform var(--dur-2, .2s) var(--ease, ease), box-shadow var(--dur-2, .2s) var(--ease, ease);
+}
+.ws-orb-button:hover { transform: translateY(-1px); box-shadow: 0 14px 36px -12px rgb(0 0 0 / .55), 0 0 0 1px rgb(255 255 255 / .1) inset; }
+.ws-orb-button:active { transform: translateY(0) scale(.98); }
+.ws-orb-button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+/* The sheen: a soft light band crossing the pill every few seconds. */
+.ws-orb-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .16) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: ws-orb-sheen 7s ease-in-out 2s infinite;
+}
+@keyframes ws-orb-sheen { 0%, 70% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+
+.ws-orb-keys {
+  font-size: .6875rem;
+  line-height: 1;
+  padding: .25rem .375rem;
+  border-radius: .375rem;
+  background: rgb(255 255 255 / .12);
+  color: rgb(255 255 255 / .75);
+  font-variant-numeric: tabular-nums;
+}
+.dark .ws-orb-keys { background: rgb(0 0 0 / .1); color: rgb(0 0 0 / .65); }
+
+/* First visit: three soft rings, then calm for good. */
+.ws-orb-button[data-pulse="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 hsl(var(--foreground) / .45);
+  animation: ws-orb-pulse 1.8s ease-out 3;
+}
+@keyframes ws-orb-pulse { 0% { box-shadow: 0 0 0 0 hsl(var(--foreground) / .45); } 100% { box-shadow: 0 0 0 14px hsl(var(--foreground) / 0); } }
+
+/* Phones: a round orb (the mark only) so it never covers content. */
+@media (max-width: 767px) {
+  .ws-orb-button { width: 2.875rem; height: 2.875rem; padding: 0; justify-content: center; }
+  .ws-orb-label, .ws-orb-keys { display: none; }
+}
+
+/* The suggestion chip above the orb. */
+.ws-orb-chip {
+  display: inline-flex;
+  max-width: min(22rem, calc(100vw - 2rem));
+  align-items: center;
+  gap: .25rem;
+  border-radius: 999px;
+  padding: .25rem .25rem .25rem .75rem;
+  font-size: .8125rem;
+  color: hsl(var(--foreground));
+  background: var(--glass-thick-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-sm);
+  backdrop-filter: blur(16px) saturate(var(--glass-sat, 160%));
+  animation: ws-orb-chip-in .32s var(--ease, ease) both;
+}
+@keyframes ws-orb-chip-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-mark .ws-mark-orbit, .ws-mark .ws-mark-core, .ws-mark .ws-mark-glow,
+  .ws-orb-button::after, .ws-orb-button[data-pulse="true"]::before, .ws-orb-chip { animation: none; }
+  .ws-orb-button { transition: none; }
+}
+
+/* The boost switch («x5») in the panel: a small power-up badge. */
+.ws-boost {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  height: 1.75rem;
+  padding: 0 .625rem 0 .5rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 600;
+  border: 1px solid var(--glass-border);
+  color: hsl(var(--muted-foreground));
+  transition: color var(--dur-2, .2s), background-color var(--dur-2, .2s), border-color var(--dur-2, .2s), box-shadow var(--dur-2, .2s);
+}
+.ws-boost:hover { color: hsl(var(--foreground)); }
+.ws-boost:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.ws-boost[aria-pressed="true"] {
+  color: hsl(var(--background));
+  background: hsl(var(--foreground));
+  border-color: hsl(var(--foreground));
+  box-shadow: 0 0 0 3px hsl(var(--foreground) / .12), 0 6px 18px -8px hsl(var(--foreground) / .6);
+}
+.ws-boost-x { font-variant-numeric: tabular-nums; letter-spacing: -.01em; opacity: .9; }
+.ws-boost[aria-pressed="true"] .ws-boost-bolt { animation: ws-boost-zap .5s var(--ease, ease) 1; }
+@keyframes ws-boost-zap { 0% { transform: scale(.6) rotate(-12deg); } 60% { transform: scale(1.25) rotate(6deg); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ws-boost[aria-pressed="true"] .ws-boost-bolt { animation: none; } .ws-boost { transition: none; } }

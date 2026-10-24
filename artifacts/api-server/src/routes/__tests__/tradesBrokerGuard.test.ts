@@ -93,7 +93,6 @@ vi.mock("../../lib/permissions", async (orig) => {
 });
 vi.mock("../../lib/activity", () => ({ logActivity: vi.fn() }));
 vi.mock("../../lib/marketContext", () => ({ captureAndAttach: vi.fn(async () => undefined) }));
-vi.mock("../../lib/aiReview", () => ({ maybeAutoGenerateReview: vi.fn() }));
 vi.mock("../../lib/rulesEngine", () => ({ scanRulesForTrader: vi.fn(async () => undefined) }));
 vi.mock("../../lib/hotCache", () => ({ invalidateDashboardCache: vi.fn() }));
 vi.mock("../../lib/tradesPageCache", () => ({ invalidateTradesPageCache: vi.fn() }));

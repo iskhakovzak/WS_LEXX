@@ -146,10 +146,10 @@ describe("a turn over SSE", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toMatch(/^text\/event-stream/);
     const f = frames(await r.text());
-    expect(f[0]).toMatchObject({ event: "meta", data: { model: "claude-haiku-5-5", reason: "default" } });
+    expect(f[0]).toMatchObject({ event: "meta", data: { tier: "standard", reason: "default", boost: false } });
     expect(f.filter((x) => x.event === "tool").map((x) => x.data.status)).toEqual(["start", "done"]);
     expect(f.filter((x) => x.event === "text").map((x) => x.data.delta).join("")).toBe("Let me look. See the day report.");
-    expect(f[f.length - 1]).toMatchObject({ event: "done", data: { model: "claude-haiku-5-5", messageId: 2 } });
+    expect(f[f.length - 1]).toMatchObject({ event: "done", data: { tier: "standard", messageId: 2, units: 300 } });
     const audit = h.state.queries.find((q) => /INSERT INTO ai_assistant_audit/.test(q.text))!;
     expect(audit.values[0]).toBe("Senior S.");
     expect(audit.values[9]).toEqual(["search_help"]);
@@ -192,21 +192,36 @@ describe("limits", () => {
   it("an exhausted daily budget answers 429 AI_BUDGET_EXCEEDED before any model call", async () => {
     const client = scriptedClient([{ text: "never" }]);
     __setAssistantClientForTests(client);
-    __loadSettingsCache({ "assistant.dailyTokensDefault": 1000 });
+    __loadSettingsCache({ "assistant.dailyUnits": 1000 });
     h.state.usage = [{ model: "claude-haiku-5-5", tokens: "1000" }];
     const r = await call(6, "POST", "/ai/assistant/chat", { message: "hi" });
     expect(r.status).toBe(429);
-    expect(await r.json()).toMatchObject({ code: "AI_BUDGET_EXCEEDED", details: { limit: 1000 } });
+    const body = await r.json();
+    expect(body).toMatchObject({ code: "AI_BUDGET_EXCEEDED", details: { used: 1000, limit: 1000 } });
+    expect(JSON.stringify(body)).not.toMatch(/claude|haiku|sonnet|opus/i);
     expect(client.calls).toHaveLength(0);
   });
 
-  it("an exhausted escalation budget falls back to the default model for «Умнее»", async () => {
-    const client = scriptedClient([{ text: "cheap answer" }]);
+  it("one shared budget: stronger-model tokens count x5 (200 Sonnet tokens use up a 1000-unit day)", async () => {
+    const client = scriptedClient([{ text: "never" }]);
     __setAssistantClientForTests(client);
-    __loadSettingsCache({ "assistant.dailyTokensSmart": 10 });
-    h.state.usage = [{ model: "claude-sonnet-5-5", tokens: "10" }];
-    const f = frames(await (await call(6, "POST", "/ai/assistant/chat", { message: "hi", smart: true })).text());
-    expect(f[0]).toMatchObject({ event: "meta", data: { model: "claude-haiku-5-5", reason: "smart_budget" } });
+    __loadSettingsCache({ "assistant.dailyUnits": 1000 });
+    h.state.usage = [{ model: "claude-sonnet-5-5", tokens: "200" }];
+    expect((await call(6, "POST", "/ai/assistant/chat", { message: "hi", boost: true })).status).toBe(429);
+    __loadSettingsCache({ "assistant.dailyUnits": 1000, "assistant.boostMultiplier": 2 });
+    const s = (await (await call(6, "GET", "/ai/assistant/status")).json()) as { budget: unknown };
+    expect(s.budget).toEqual({ used: 400, limit: 1000, left: true, leftShare: 0.6, multiplier: 2 });
+  });
+
+  it("boost runs the stronger model and the frames say «boost», never the model", async () => {
+    const client = scriptedClient([{ text: "strong answer" }]);
+    __setAssistantClientForTests(client);
+    const text = await (await call(6, "POST", "/ai/assistant/chat", { message: "hi", boost: true })).text();
+    expect(client.calls[0]!.model).toBe("claude-sonnet-5-5");
+    const f = frames(text);
+    expect(f[0]).toMatchObject({ event: "meta", data: { tier: "boost", reason: "manual", boost: true } });
+    expect(f[f.length - 1]).toMatchObject({ event: "done", data: { tier: "boost", units: 750 } });
+    expect(text).not.toMatch(/claude|haiku|sonnet|opus/i);
   });
 
   it("the per-user request rate is the desk setting (429 RATE_LIMITED past it)", async () => {

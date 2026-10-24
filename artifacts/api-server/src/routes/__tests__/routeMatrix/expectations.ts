@@ -122,6 +122,7 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /academy/sessions": staff("academy cohorts, sessions and 1:1s: requireStaff role check, not on the matrix"),
   "POST /academy/sessions/:id/archive": staff("academy cohorts, sessions and 1:1s: requireStaff role check, not on the matrix"),
   "POST /ai/assistant/assist": member("«✦ Помочь» on the own text; reads only what the caller may read (assistant.use: every member by default)"),
+  "POST /ai/day-review": owner("AI review of the own day, or a trader the caller may read (personalTrader; assistant.use + the daily budget)"),
   "POST /ai/assistant/chat": member("the own assistant turn; tools read through the API as the caller (assistant.use: every member by default)"),
   "POST /auth/guest": pub("sign-in, guest token and first-run bootstrap are public by design (own limiters)"),
   "POST /auth/init-passwords": pub("sign-in, guest token and first-run bootstrap are public by design (own limiters)"),

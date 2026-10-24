@@ -375,7 +375,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `AI_NOT_CONFIGURED` | 503 | «Ассистент WS» (`/api/ai/assistant/*`): no `AI_INTEGRATIONS_ANTHROPIC_API_KEY` on the server (docs/AI_ASSISTANT.md). The panel shows how the admin enables it. The older AI helpers keep the lower-case `ai_not_configured`. | — |
 | `AI_ASSISTANT_OFF` | 403 | The assistant is switched off (desk setting `assistant.enabled`). | — |
 | `AI_ASSISTANT_STAGE` | 403 | The assistant is closed for juniors (desk setting `assistant.juniorsEnabled`). | — |
-| `AI_BUDGET_EXCEEDED` | 429 | The caller's daily token budget of the default model is used up (desk setting `assistant.dailyTokensDefault`; the escalation model has its own budget and falls back to the default model when it runs out). | `{ model, used, limit }` |
+| `AI_BUDGET_EXCEEDED` | 429 | The caller's daily assistant budget is used up (desk setting `assistant.dailyUnits`, default 1,000,000 units: default-model tokens 1x, boost / escalation / advisor tokens x `assistant.boostMultiplier`). Chat, «Help» and AI reviews share it. No model name in the body. | `{ used, limit }` |
 | `JUNIOR_NOTES_RETIRED` | 410 | Any non-GET /api/junior-notes/*: the juniors' summary is read-only history now (the evening form in the journal replaced it). | — |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.

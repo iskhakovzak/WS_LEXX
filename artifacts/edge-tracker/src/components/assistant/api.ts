@@ -6,9 +6,10 @@ import { queryOptions } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { createSseParser, type AssistantEvent } from "@/lib/assistant/sse";
-import type { DraftCard, PageContext, Starter } from "@/lib/assistant/model";
+import type { DraftCard, PageContext, Starter, Tier } from "@/lib/assistant/model";
 
-export type BudgetState = { used: number; limit: number; left: boolean };
+/** Today's unified budget in units (default-model tokens 1x, boost / deep tokens x multiplier). */
+export type BudgetState = { used: number; limit: number; left: boolean; leftShare: number; multiplier: number };
 
 export type AssistantStatus = {
   configured: boolean;
@@ -17,9 +18,7 @@ export type AssistantStatus = {
   allowed: boolean;
   blocked: "AI_NOT_CONFIGURED" | "AI_ASSISTANT_OFF" | "AI_ASSISTANT_STAGE" | null;
   canConfigure: boolean;
-  models: { default: string; smart: string };
-  autoEscalate: boolean;
-  budget: { default: BudgetState; smart: BudgetState };
+  budget: BudgetState;
   staff: boolean;
 };
 
@@ -27,7 +26,7 @@ export type StoredMessage = {
   id: number;
   role: "user" | "assistant";
   content: string;
-  model: string | null;
+  tier: Tier | null;
   drafts: DraftCard[] | null;
   tools: string[];
   createdAt: string;
@@ -55,7 +54,7 @@ export function clearHistory(): Promise<{ cleared: number }> {
   return http.del<{ cleared: number }>("/api/ai/assistant/history");
 }
 
-export type ChatRequest = { message: string; smart?: boolean; intent?: Starter["intent"]; context?: PageContext };
+export type ChatRequest = { message: string; boost?: boolean; intent?: Starter["intent"]; context?: PageContext };
 
 /** POST the question and hand every SSE event to `onEvent` as it arrives. Rejects with ApiError on a non-2xx start. */
 export async function streamChat(req: ChatRequest, onEvent: (e: AssistantEvent) => void, signal: AbortSignal): Promise<void> {

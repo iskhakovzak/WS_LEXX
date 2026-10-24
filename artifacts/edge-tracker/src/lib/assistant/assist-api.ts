@@ -8,7 +8,7 @@ import type { PageContext } from "./model";
 
 export type AssistAction = "improve" | "structure" | "fill";
 export type AssistField = "playbook" | "plan" | "eod" | "journal" | "note";
-export type AssistResult = { suggestion: string; model: string; costUsd: number; refused: boolean };
+export type AssistResult = { suggestion: string; tier: "standard" | "boost" | "deep"; units: number; refused: boolean };
 
 export function assistText(body: { action: AssistAction; field: AssistField; text: string; context?: PageContext }, signal?: AbortSignal): Promise<AssistResult> {
   return http.post<AssistResult>("/api/ai/assistant/assist", body, { signal });

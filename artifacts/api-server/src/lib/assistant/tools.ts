@@ -48,14 +48,14 @@ const TRADE_KEYS = [
 ] as const;
 const TRADE_TEXT_KEYS = ["notes", "whatWorked", "whatFailed", "conclusion", "lesson"] as const;
 
-function compactTrade(t: Record<string, unknown>, withText: boolean): Record<string, unknown> {
+export function compactTrade(t: Record<string, unknown>, withText: boolean): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of TRADE_KEYS) if (t[k] !== undefined && t[k] !== null && t[k] !== "") out[k] = t[k];
   if (withText) for (const k of TRADE_TEXT_KEYS) if (typeof t[k] === "string" && (t[k] as string).trim()) out[k] = t[k];
   return out;
 }
 
-function shapeStats(d: any): unknown {
+export function shapeStats(d: any): unknown {
   const fields = d?.fields as string[] | undefined;
   const top = (rows: unknown, n: number) => Array.isArray(rows) ? rows.slice(0, n).map((r: any) => ({ key: r.key, ...(zipBucket(fields, r.b) as object) })) : undefined;
   const groups: Record<string, unknown> = {};
@@ -80,7 +80,7 @@ function shapeTradesPage(d: any): unknown {
   };
 }
 
-function shapeBehavior(d: any): unknown {
+export function shapeBehavior(d: any): unknown {
   const patterns = Array.isArray(d?.patterns) ? d.patterns.filter((p: any) => p?.n > 0).slice(0, 12).map((p: any) => ({
     key: p.key, title: p.title, n: p.n, cost: p.cost ?? null, severity: p.severity ?? null, advice: p.advice ?? p.hint ?? undefined,
   })) : undefined;
@@ -99,7 +99,7 @@ function shapeWhatif(d: any): unknown {
 }
 
 const PLAYBOOK_LIST_KEYS = ["id", "name", "folder", "setupType", "horizon", "tags", "locked", "reviewVerdict", "trader", "access"] as const;
-function compactSetup(r: Record<string, unknown>, full: boolean): Record<string, unknown> {
+export function compactSetup(r: Record<string, unknown>, full: boolean): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of PLAYBOOK_LIST_KEYS) if (r[k] !== undefined && r[k] !== null) out[k] = k === "access" ? { space: (r.access as any)?.space, mine: (r.access as any)?.mine } : r[k];
   if (full) for (const k of ["conditions", "checklist", "checklistItems", "notes", "ticker", "sector", "confidenceLevel", "minTier"]) if (r[k] !== undefined && r[k] !== null && r[k] !== "") out[k] = r[k];
@@ -113,7 +113,7 @@ function matchScore(r: Record<string, unknown>, words: string[]): number {
 
 // ─── market context: cached tables only ────────────────────────────────────
 
-async function marketContext(ctx: ToolContext, ticker: string | undefined, date: string | undefined): Promise<unknown> {
+export async function marketContext(ctx: ToolContext, ticker: string | undefined, date: string | undefined): Promise<unknown> {
   const day = date ?? ctx.today;
   const out: Record<string, unknown> = { date: day };
   const { rows } = await pool.query<{ data: any; fetched_at: Date }>(
@@ -141,7 +141,7 @@ async function marketContext(ctx: ToolContext, ticker: string | undefined, date:
   return out;
 }
 
-function shiftDays(ymd: string, n: number): string {
+export function shiftDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);

@@ -1,5 +1,5 @@
 /**
- * «Ассистент WS» — one turn of the agent loop (manual streaming loop over the Messages API; docs/AI_ASSISTANT.md).
+ * Assistant — one turn of the agent loop (manual streaming loop over the Messages API; docs/AI_ASSISTANT.md).
  *
  *   request (tools → system → history + user turn, cached) → stream text to the client as it comes
  *   → tool_use? validate + run the tools (parallel), send chips / draft cards, append all results in ONE user message
@@ -8,24 +8,34 @@
  * Prompt caching: the tool list (fixed, sorted, breakpoint on the last tool) and the frozen system prompt (breakpoint)
  * form the shared prefix; a third breakpoint moves to the newest message each request, so the tool loop and the next
  * turn read the conversation from cache. Per-request facts live in the user turn (context.ts), never in the prefix.
- * Model routing (models.ts): the turn starts on initialRoute(); after a cheap-model response, escalateAfter() may
- * re-run it on the escalation model (draft requested) or hand the next request to it (heavy data). Thinking blocks
- * are passed back unchanged with the assistant content (a model that cannot read another model's blocks drops them).
+ * Model routing (models.ts): the turn starts on initialRoute(); after a plain default-model response, escalateAfter()
+ * may re-run it or hand the next request to the stronger path — the advisor tool (the default model consults the
+ * advisor model mid-answer) or, with the advisor off, the escalation model. Once on, the advisor stays for the turn
+ * (history with advisor results needs the tool). pause_turn (a long advisor call) re-sends the assistant content as is.
+ * Thinking / advisor blocks are passed back unchanged with the assistant content.
  * Eager input streaming: a tool input the SDK could not parse at all rejects the stream → the step is re-issued
  * (at most MAX_JSON_RETRIES); typed API errors are never mistaken for that. Inputs are validated before any run.
  */
 import { Anthropic } from "@workspace/integrations-anthropic-ai";
-import type { AssistantClient, StreamParams } from "./client";
-import { ASSISTANT_SYSTEM_PROMPT } from "./systemPrompt";
+import type { AdvisorTool, AssistantClient, StreamParams } from "./client";
+import { ADVISOR_GUIDE, ASSISTANT_SYSTEM_PROMPT } from "./systemPrompt";
 import { TOOL_BY_NAME, apiTools } from "./toolDefs";
 import { executeTool, type ToolContext } from "./tools";
 import type { Draft } from "./drafts";
 import type { SseEvent } from "./sse";
-import { ZERO_USAGE, addUsage, budgetTokens, escalateAfter, requestCostUsd, type AssistantModel, type Route, type RouteSettings, type TurnSignals, type Usage } from "./models";
+import {
+  ZERO_USAGE, addUsage, budgetTokens, escalateAfter, requestCostUsd, tierOf, unitWeight,
+  type AssistantModel, type Route, type RouteSettings, type TurnSignals, type Usage,
+} from "./models";
+import { advisorCalls, usagesOf } from "./usage";
+import { logger } from "../logger";
 
 export const MAX_STEPS = 8;
 const MAX_TOKENS = 32_000;
 const MAX_JSON_RETRIES = 2;
+/** Advisor calls per request and the cap on each call's output (docs: 2048 cuts advice ~7x with no truncation). */
+export const ADVISOR_MAX_USES = 2;
+export const ADVISOR_MAX_TOKENS = 2048;
 
 export type Emit = (e: SseEvent) => void;
 
@@ -38,8 +48,8 @@ export type EngineInput = {
   userTurn: string;
   emit: Emit;
   signal: AbortSignal;
-  /** May the escalation model still spend `smartTokens` more today (its budget)? */
-  smartBudgetLeft: (smartTokensThisTurn: number) => boolean;
+  /** Is there budget left after `turnUnits` more units today (gates the mid-turn stronger path)? */
+  budgetLeft: (turnUnits: number) => boolean;
   /** At most this many model requests (default MAX_STEPS); the last one may not call tools. */
   maxSteps?: number;
 };
@@ -50,83 +60,111 @@ export type EngineResult = {
   text: string;
   drafts: Draft[];
   tools: string[];
+  /** Internal (audit only): every model that ran, the advisor included. */
   models: AssistantModel[];
   usage: Partial<Record<AssistantModel, Usage>>;
   costByModel: Partial<Record<AssistantModel, number>>;
   costUsd: number;
+  /** Budget units of this turn. */
+  units: number;
+  advisorCalls: number;
   route: Route;
   stop: string;
 };
 
 const SYSTEM: Anthropic.TextBlockParam[] = [{ type: "text", text: ASSISTANT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }];
+const SYSTEM_WITH_ADVISOR: Anthropic.TextBlockParam[] = [...SYSTEM, { type: "text", text: ADVISOR_GUIDE }];
 const TOOLS = apiTools();
 
-/** The request for one step: the newest message carries the moving cache breakpoint (only that one). */
-export function buildParams(model: AssistantModel, messages: Anthropic.MessageParam[], lastStep: boolean): StreamParams & { tool_choice?: { type: "none" } } {
-  const msgs = messages.map((m, i) => {
+export function advisorTool(model: AssistantModel): AdvisorTool {
+  return { type: "advisor_20260301", name: "advisor", model, max_uses: ADVISOR_MAX_USES, max_tokens: ADVISOR_MAX_TOKENS };
+}
+
+/** The newest message carries the moving cache breakpoint (only that one). */
+export function withMovingBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  return messages.map((m, i) => {
     if (i !== messages.length - 1) return m;
     const blocks = typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content.map((b) => ({ ...b }));
     const last = blocks[blocks.length - 1] as Record<string, unknown> | undefined;
-    if (last && last.type !== "thinking" && last.type !== "redacted_thinking") last.cache_control = { type: "ephemeral" };
+    if (last && (last.type === "text" || last.type === "tool_result")) last.cache_control = { type: "ephemeral" };
     return { role: m.role, content: blocks } as Anthropic.MessageParam;
   });
+}
+
+/** The request for one step. */
+export function buildParams(route: Pick<Route, "model" | "advisor">, messages: Anthropic.MessageParam[], lastStep: boolean): StreamParams {
   return {
-    model,
+    model: route.model,
     max_tokens: MAX_TOKENS,
-    system: SYSTEM,
-    tools: TOOLS,
-    messages: msgs,
+    system: route.advisor ? SYSTEM_WITH_ADVISOR : SYSTEM,
+    tools: route.advisor ? [...TOOLS, advisorTool(route.advisor) as unknown as Record<string, unknown>] : TOOLS,
+    messages: withMovingBreakpoint(messages),
     output_config: { effort: "medium" },
     ...(lastStep ? { tool_choice: { type: "none" as const } } : {}),
   };
 }
 
-const usageOf = (m: Anthropic.Message): Usage => ({
-  input: m.usage?.input_tokens ?? 0,
-  output: m.usage?.output_tokens ?? 0,
-  cacheRead: m.usage?.cache_read_input_tokens ?? 0,
-  cacheWrite: m.usage?.cache_creation_input_tokens ?? 0,
-});
-
 class AbortedTurn extends Error {}
 
+type StreamOutcome = { message: Anthropic.Message; text: string };
+
+/** Streams one request: text deltas, tool chips and advisor progress go to the client as they come. */
+async function streamStep(input: EngineInput, params: StreamParams): Promise<StreamOutcome> {
+  const { client, emit, signal } = input;
+  let text = "";
+  const stream = client.stream(params, { signal });
+  for await (const ev of stream) {
+    if (signal.aborted) { stream.abort(); throw new AbortedTurn(); }
+    if (ev.type === "content_block_start") {
+      const b = ev.content_block as { type: string; id?: string; name?: string; content?: { type?: string } };
+      if (b.type === "tool_use") emit({ event: "tool", data: { id: b.id!, name: b.name!, status: "start" } });
+      else if (b.type === "server_tool_use" && b.name === "advisor") emit({ event: "advisor", data: { status: "start" } });
+      else if (b.type === "advisor_tool_result") emit({ event: "advisor", data: { status: b.content?.type === "advisor_tool_result_error" ? "error" : "done" } });
+    } else if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
+      text += ev.delta.text;
+      emit({ event: "text", data: { delta: ev.delta.text } });
+    }
+  }
+  return { message: await stream.finalMessage(), text };
+}
+
 export async function runTurn(input: EngineInput): Promise<EngineResult> {
-  const { client, emit, signal, settings } = input;
+  const { emit, signal, settings } = input;
   const maxSteps = input.maxSteps ?? MAX_STEPS;
   const messages: Anthropic.MessageParam[] = [...input.history, { role: "user", content: input.userTurn }];
-  const res: EngineResult = { status: "ok", text: "", drafts: [], tools: [], models: [input.route.model], usage: {}, costByModel: {}, costUsd: 0, route: input.route, stop: "end_turn" };
+  const res: EngineResult = {
+    status: "ok", text: "", drafts: [], tools: [], models: [input.route.model, ...(input.route.advisor ? [input.route.advisor] : [])],
+    usage: {}, costByModel: {}, costUsd: 0, units: 0, advisorCalls: 0, route: input.route, stop: "end_turn",
+  };
   let route = input.route;
   let dataCalls = 0;
   let whatif = false;
   let jsonRetries = 0;
-  let smartTokens = 0;
 
-  const account = (model: AssistantModel, m: Anthropic.Message) => {
-    const u = usageOf(m);
-    res.usage[model] = addUsage(res.usage[model] ?? ZERO_USAGE, u);
-    const cost = requestCostUsd(model, u);
-    res.costByModel[model] = (res.costByModel[model] ?? 0) + cost;
-    res.costUsd += cost;
-    if (route.cls === "smart") smartTokens += budgetTokens(u);
+  const account = (m: Anthropic.Message) => {
+    // Usage only (no content): cache reads / writes and advisor iterations, for cost and cache-hit checks.
+    logger.info({ model: route.model, advisor: route.advisor, stop: m.stop_reason, usage: m.usage }, "assistant: model call");
+    for (const { model, usage } of usagesOf(route.model, m, route.advisor)) {
+      res.usage[model] = addUsage(res.usage[model] ?? ZERO_USAGE, usage);
+      const cost = requestCostUsd(model, usage);
+      res.costByModel[model] = (res.costByModel[model] ?? 0) + cost;
+      res.costUsd += cost;
+      res.units += budgetTokens(usage) * unitWeight(model, settings);
+    }
+    res.advisorCalls += advisorCalls(m);
+  };
+  const switchTo = (next: Route) => {
+    route = next;
+    for (const m of [next.model, next.advisor]) if (m && !res.models.includes(m)) res.models.push(m);
+    emit({ event: "tier", data: { tier: tierOf(next), reason: next.reason } });
   };
 
   for (let step = 1; step <= maxSteps; step++) {
     if (signal.aborted) return { ...res, status: "aborted" };
-    const params = buildParams(route.model, messages, step === maxSteps);
-    let message: Anthropic.Message;
-    let stepText = "";
+    const params = buildParams(route, messages, step === maxSteps);
+    let out: StreamOutcome;
     try {
-      const stream = client.stream(params, { signal });
-      for await (const ev of stream) {
-        if (signal.aborted) { stream.abort(); throw new AbortedTurn(); }
-        if (ev.type === "content_block_start" && ev.content_block.type === "tool_use") {
-          emit({ event: "tool", data: { id: ev.content_block.id, name: ev.content_block.name, status: "start" } });
-        } else if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
-          stepText += ev.delta.text;
-          emit({ event: "text", data: { delta: ev.delta.text } });
-        }
-      }
-      message = await stream.finalMessage();
+      out = await streamStep(input, params);
     } catch (err) {
       if (signal.aborted || err instanceof AbortedTurn) return { ...res, status: "aborted" };
       if (err instanceof Anthropic.APIError) throw err; // auth, rate limit, overload… → the route answers an error event
@@ -136,12 +174,19 @@ export async function runTurn(input: EngineInput): Promise<EngineResult> {
       step--;
       continue;
     }
-    account(route.model, message);
+    const { message, text: stepText } = out;
+    account(message);
     res.stop = message.stop_reason ?? "end_turn";
 
     if (message.stop_reason === "refusal") {
       res.text += stepText;
       return { ...res, status: "refused", route };
+    }
+    if ((message.stop_reason as string) === "pause_turn") {
+      // A long advisor call paused the turn: re-send the assistant content unchanged, advisor tool still on.
+      res.text += stepText;
+      messages.push({ role: "assistant", content: message.content as Anthropic.ContentBlockParam[] });
+      continue;
     }
     const toolUses = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (!toolUses.length) {
@@ -162,13 +207,11 @@ export async function runTurn(input: EngineInput): Promise<EngineResult> {
       whatif: whatif || toolUses.some((t) => t.name === "run_whatif"),
       draftRequested: kinds.includes("draft"),
     };
-    const esc = escalateAfter(route, settings, signals, input.smartBudgetLeft(smartTokens));
+    const esc = escalateAfter(route, settings, signals, input.budgetLeft(res.units));
     if (esc?.rerun) {
-      // The cheap model wants to write a draft: the escalation model writes it — drop this response, same request again.
+      // A draft is written on the stronger path: drop this response, same request again there.
       emit({ event: "retry", data: {} });
-      route = esc;
-      res.models.push(route.model);
-      emit({ event: "model", data: { model: route.model, reason: route.reason } });
+      switchTo(esc);
       step--; // the re-run does not use up a step
       continue;
     }
@@ -188,11 +231,7 @@ export async function runTurn(input: EngineInput): Promise<EngineResult> {
     });
     dataCalls = signals.dataCalls;
     whatif = signals.whatif;
-    if (esc && !esc.rerun) {
-      route = esc;
-      res.models.push(route.model);
-      emit({ event: "model", data: { model: route.model, reason: route.reason } });
-    }
+    if (esc && !esc.rerun) switchTo(esc);
     if (signal.aborted) return { ...res, status: "aborted", route };
   }
   return { ...res, route };

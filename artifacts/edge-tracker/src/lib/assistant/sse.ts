@@ -3,19 +3,23 @@
  * api-server lib/assistant/sse.ts). Chunks may split a frame anywhere; comment lines (`: ping`) are ignored.
  */
 
+/** What a member sees about the path of an answer — never a model name. */
+export type Tier = "standard" | "boost" | "deep";
+
 export type AssistantEvent =
-  | { event: "meta"; data: { model: string; reason: string; escalated: boolean; smart: boolean } }
-  | { event: "model"; data: { model: string; reason: string } }
+  | { event: "meta"; data: { tier: Tier; reason: string; boost: boolean } }
+  | { event: "tier"; data: { tier: Tier; reason: string } }
+  | { event: "advisor"; data: { status: "start" | "done" | "error" } }
   | { event: "text"; data: { delta: string } }
   | { event: "retry"; data: Record<string, never> }
   | { event: "tool"; data: { id: string; name: string; status: "start" | "done" | "error"; code?: string } }
   | { event: "draft"; data: { id: string; kind: DraftKind; draft: Record<string, unknown> } }
-  | { event: "done"; data: { messageId: number | null; model: string; models: string[]; usage: unknown; costUsd: number; stop: string } }
+  | { event: "done"; data: { messageId: number | null; tier: Tier; units: number; stop: string } }
   | { event: "error"; data: { code: string; message: string } };
 
 export type DraftKind = "playbook" | "plan" | "eod" | "rule" | "curatorNote";
 
-const KNOWN = new Set(["meta", "model", "text", "retry", "tool", "draft", "done", "error"]);
+const KNOWN = new Set(["meta", "tier", "advisor", "text", "retry", "tool", "draft", "done", "error"]);
 
 export function createSseParser(): { feed: (chunk: string) => AssistantEvent[]; flush: () => AssistantEvent[] } {
   let buf = "";

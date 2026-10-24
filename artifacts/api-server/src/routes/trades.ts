@@ -28,7 +28,6 @@ import { tradesListWindow } from "../lib/tradesListWindow";
 import { rowIsImx } from "../lib/imx";
 import { selectTradesList } from "../lib/tradesListQuery";
 import { captureAndAttach } from "../lib/marketContext";
-import { maybeAutoGenerateReview } from "../lib/aiReview";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { invalidateDashboardCache } from "../lib/hotCache";
 import { invalidateTradesPageCache } from "../lib/tradesPageCache";
@@ -463,7 +462,6 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
     ticker: trade.ticker,
     session: trade.session ?? null,
   }).catch(() => {});
-  maybeAutoGenerateReview({ tradeId: trade.id, result: trade.result, trader: trade.trader });
   logActivity({ action: "created", section: "trades", entityId: String(trade.id), entityTitle: trade.ticker, trader: trade.trader ?? undefined, details: `${trade.side ?? ""} ${trade.result} ${trade.pnl ? "$" + trade.pnl : ""}`.trim() });
   if (trade.trader) {
     scanRulesForTrader(trade.trader).catch((e) => req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "rules engine scan failed"));
@@ -538,10 +536,6 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
       ticker: trade.ticker,
       session: trade.session ?? null,
     }).catch(() => {});
-  }
-  const resultChanged = Object.prototype.hasOwnProperty.call(req.body ?? {}, "result");
-  if (resultChanged) {
-    maybeAutoGenerateReview({ tradeId: trade.id, result: trade.result, trader: trade.trader });
   }
   // Stop / risk / side / symbol / day feed the fill roles (Стоп, Перезаход …) — recompute in the background.
   if (["stop", "riskUsd", "side", "ticker", "date", "qty"].some((f) => Object.prototype.hasOwnProperty.call(req.body ?? {}, f))) {

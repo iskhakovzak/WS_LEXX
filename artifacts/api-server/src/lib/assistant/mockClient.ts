@@ -71,8 +71,38 @@ function assistRewrite(action: string, turn: string, fillLine: string): string {
   return action === "fill" ? `${tidy}${tidy ? "\n\n" : ""}${fillLine}` : tidy;
 }
 
+/** AI review in the demo: a schema-valid review built mechanically from the <review_data> numbers. */
+function mockReview(turn: string): string {
+  const lang: Lang = /in English/.test(turn) ? "en" : /in Uzbek/.test(turn) ? "uz" : "ru";
+  const t = assistantT.tFor(lang);
+  const kind = /kind="day"/.test(turn) ? "day" : "trade";
+  let data: any = {};
+  try { data = JSON.parse(/<review_data>\n([\s\S]*?)\n<\/review_data>/.exec(turn)?.[1] ?? "{}"); } catch { /* demo */ }
+  const fills = Array.isArray(data.fills) ? data.fills : [];
+  const first = fills[0];
+  const st = data.dayState ?? {};
+  const net = Number(kind === "day" ? st.net ?? 0 : data.trade?.netPnl ?? data.trade?.pnl ?? 0);
+  const evidence = kind === "trade" && first
+    ? [{ kind: "fill", label: `${t("mock.review.fill")} 1 · ${first.timeET ?? "—"} · ${first.kind} @ ${first.price}`, at: first.timeET ? String(first.timeET).slice(0, 5) : null, ref: 1 }]
+    : [{ kind: "stat", label: `${t("mock.review.trades")}: ${st.trades ?? 0}`, at: null, ref: null }];
+  const review = {
+    verdict: { grade: net >= 0 ? "B" : "C", headline: t(kind === "day" ? "mock.review.dayHeadline" : "mock.review.tradeHeadline", { net: usd(net) }), followedPlan: "unknown" },
+    wentWell: [{ text: t("mock.review.well"), basis: "fact", evidence }],
+    wentWrong: kind === "day" && st.afterLoss?.n
+      ? [{ text: t("mock.review.afterLoss", { n: st.afterLoss.n, net: usd(Number(st.afterLoss.net ?? 0)) }), basis: "fact", evidence: [{ kind: "stat", label: `${t("mock.review.afterLossLabel")}: ${st.afterLoss.n}`, at: null, ref: null }] }]
+      : [{ text: t("mock.review.wrong"), basis: "hypothesis", evidence: [] }],
+    edge: null,
+    tomorrow: { if: t("mock.review.if"), then: t("mock.review.then") },
+    whatIf: { type: "afterLoss", n: null, minutes: 10, usd: null, pct: null, from: null, to: null, value: null, items: [], why: t("mock.review.why") },
+    confidence: "low",
+    dataGaps: [t("mock.review.gap")],
+  };
+  return JSON.stringify(review);
+}
+
 function plan(params: StreamParams): Plan {
   const { text, index } = lastUserText(params.messages);
+  if (text.startsWith("<review_request")) return { text: mockReview(text), tools: [] };
   const lang: Lang = ((l) => (isLang(l) ? l : "ru"))(field(text, "interface language"));
   const t = assistantT.tFor(lang);
   const today = field(text, "today \\(New York\\)") || new Date().toISOString().slice(0, 10);
