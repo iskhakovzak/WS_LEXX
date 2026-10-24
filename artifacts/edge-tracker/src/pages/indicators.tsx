@@ -311,7 +311,9 @@ function IndicatorLibrary() {
 
       <div className="grid grid-cols-1 gap-grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
-          <Toolbar className="flex-col items-stretch gap-2 sm:p-2.5">
+          {/* flex-nowrap: a wrapping column flex sizes its line to the widest row, so the 9-category Segmented made the
+              toolbar 655 px wide on a 390 px phone instead of scrolling inside its own track. */}
+          <Toolbar className="flex-col flex-nowrap items-stretch gap-2 sm:p-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-0 flex-1 basis-48">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -348,7 +350,7 @@ function IndicatorLibrary() {
               <div className="order-last min-w-0 basis-full">
                 <Segmented ariaLabel={t("library.categoriesAria")} value={category} onChange={setCategory} options={categoryOptions} size="sm" />
               </div>
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex min-w-0 max-w-full items-center gap-2">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" aria-label={extraFilters ? t("library.filtersActive", { count: extraFilters }) : t("library.filters")}>
