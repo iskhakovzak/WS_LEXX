@@ -6,4 +6,5 @@ export * from "./theme";
 export * from "./gradient";
 export * from "./tooltip";
 export * from "./heat";
+export * from "./heat-calendar";
 export * from "./axis";
