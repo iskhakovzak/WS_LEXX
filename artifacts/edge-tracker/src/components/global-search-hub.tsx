@@ -13,7 +13,7 @@ import {
   useListEvents, useListResearch, useListDailyFeed, getTrade,
   getListEventsQueryKey, getListResearchQueryKey, getListDailyFeedQueryKey,
 } from "@workspace/api-client-react";
-import { BookMarked, CalendarClock, ImageDown, Languages, Lightbulb, Moon, ShieldAlert, Crosshair, SunMoon } from "lucide-react";
+import { BookMarked, CalendarClock, ImageDown, Languages, Lightbulb, LockKeyhole, Moon, ShieldAlert, Crosshair, SunMoon } from "lucide-react";
 import { fetchTradesPage, TRADES_PAGE_KEY, type TradesPageSummary } from "@/hooks/use-trades-page";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
@@ -28,7 +28,11 @@ import { LANGS, LANG_META, setLang, useLang, type Lang } from "@/i18n";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
+import { lockI18n } from "@/i18n/ns/lock";
 import ruShell from "@/i18n/locales/ru/shell";
+import ruLock from "@/i18n/locales/ru/lock";
+import { LOCK_KEYS } from "@/lib/lock/lock-model";
+import { requestLock } from "@/lib/lock/lock-store";
 import { ALL_NAV_ITEMS } from "@/components/shell/nav";
 import { navItemOpen } from "@/components/shell/nav-model";
 import { useEodStatus } from "@/components/eod/eod-api";
@@ -203,6 +207,7 @@ export function useHubActions(ctx: Ctx): HubAction[] {
   const me = user && user.role !== "guest" ? user.traderName : null;
   const { cycleTheme, themeLabel, theme } = useTheme();
   const lang = useLang();
+  lockI18n.useT(); // the lock action's texts follow the language (its EN / UZ chunk loads on first use)
   const t = shellI18n.t;
   const canMine = !!me && can("journal.write.own", { trader: me });
   const latest = useMyLatestTrades(open, me);
@@ -241,6 +246,12 @@ export function useHubActions(ctx: Ctx): HubAction[] {
       id: "risk", quick: true, icon: ShieldAlert, keys: ["G", "R"], label: desk ? t("palette.action.riskDesk") : t("palette.action.myRisk"),
       subtitle: desk ? t("palette.action.riskDeskHint") : t("palette.action.myRiskHint"),
       run: () => go(links.risk()), terms: [ru.action.riskDesk, ru.action.myRisk, ru.keywords.risk, t("palette.keywords.risk"), "risk desk limits xavf"],
+    });
+  }
+  if (me) {
+    out.push({
+      id: "lock", quick: true, icon: LockKeyhole, keys: [...LOCK_KEYS], label: lockI18n.t("palette.label"), subtitle: lockI18n.t("palette.hint"),
+      run: () => { close(); requestLock(); }, terms: [ruLock.palette.label, ruLock.palette.keywords, lockI18n.t("palette.keywords"), "lock screen away qulf"],
     });
   }
   out.push({

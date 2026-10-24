@@ -2,6 +2,8 @@
  * The «WS originals» scenes behind the shell (lazy chunk: loaded only when a scene is chosen). Photo scenes stack a
  * blurred depth layer, the photo (with a slight 3D tilt) and a fog layer at different depths, then a scrim of
  * 1 − --scene-vis (lib/appearance/scenes `sceneLevels`, set by «Яркость фона»). HOVER scenes add the smoke trail. Images: public/backgrounds (WebP, ≤ 100 KB each; credits in CREDITS.md there).
+ * `ambient` (the screen lock): the smoke keeps drifting while the window is unfocused (a desk monitor nobody is
+ * clicking on), pausing only while the tab is hidden; the pointer parallax is off (the caller drifts --px / --py).
  */
 import * as React from "react";
 import { isLightTheme, type ThemeId } from "@/lib/appearance/model";
@@ -26,7 +28,9 @@ function useTrailCanvas(enabled: boolean, light: boolean) {
   return { ref, trail };
 }
 
-export default function SceneBackdrop({ scene, theme }: { scene: SceneId; theme: ThemeId }) {
+const hiddenOnly = () => typeof document !== "undefined" && document.hidden;
+
+export default function SceneBackdrop({ scene, theme, ambient = false }: { scene: SceneId; theme: ThemeId; ambient?: boolean }) {
   const def = SCENES[scene];
   const light = isLightTheme(theme);
   const root = React.useRef<HTMLDivElement>(null);
@@ -37,12 +41,12 @@ export default function SceneBackdrop({ scene, theme }: { scene: SceneId; theme:
   // Smoke: its own loop also draws the trail (one loop). Everything else: the scene motion loop.
   React.useEffect(() => {
     if (scene !== "smoke" || !smokeRef.current) return;
-    return startSmoke(smokeRef.current, { light, still: prefersReducedMotion(), speed: 0.35, fps: 15, startAt: 3, paused: isPaused, onFrame: () => { trail?.frame(); } });
-  }, [scene, light, trail]);
+    return startSmoke(smokeRef.current, { light, still: prefersReducedMotion(), speed: 0.35, fps: 15, startAt: 3, paused: ambient ? hiddenOnly : isPaused, onFrame: () => { trail?.frame(); } });
+  }, [scene, light, trail, ambient]);
   React.useEffect(() => {
     if (!root.current) return;
-    return startSceneMotion(root.current, { parallax: def.mode === "3d", trail, externalLoop: scene === "smoke" });
-  }, [def.mode, trail, scene]);
+    return startSceneMotion(root.current, { parallax: def.mode === "3d" && !ambient, trail, externalLoop: scene === "smoke" });
+  }, [def.mode, trail, scene, ambient]);
 
   const photo = def.photo;
   return (

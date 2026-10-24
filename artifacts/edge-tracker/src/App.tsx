@@ -22,6 +22,8 @@ import { LocaleSync } from "@/i18n/locale-sync";
 import { shellI18n } from "@/i18n/ns/shell";
 import { UsageRouteTracker } from "@/components/shared/usage-tracker";
 import { WelcomeIntro } from "@/components/shell/welcome-intro";
+import { LockController } from "@/components/lock/lock-controller";
+import { lockStore, useLockState } from "@/lib/lock/lock-store";
 
 // Every section is its own chunk; see shell/route-loaders.ts. The dashboard too (DEV-11: it pulled the equity chart,
 // the daily cards and the quest strip into the entry chunk, which the login screen and every other page also paid for);
@@ -84,6 +86,9 @@ const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
 // Signed-out screen and the 404 page: own chunks too (a signed-in visit never needs the login form).
 const NotFound = lazy(() => import("@/pages/not-found").then(async (m) => { await i18nReady(); return m; }));
 const LoginPage = lazy(() => import("@/pages/login").then(async (m) => { await i18nReady(); return m; }));
+// Screen lock «Заблокировать»: rendered INSTEAD of the routes while locked (components/lock-screen.tsx); preloaded when idle.
+const loadLockScreen = () => import("@/components/lock-screen").then(async (m) => { await i18nReady(); return m; });
+const LockScreen = lazy(loadLockScreen);
 // «Раздел закрыт для вашей ступени» (desk setting access.sections): own chunk, only a closed URL ever loads it.
 const SectionBlocked = lazy(() => import("@/pages/section-blocked").then(async (m) => { await i18nReady(); return m; }));
 
@@ -224,7 +229,18 @@ function Router() {
 }
 
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const lock = useLockState();
+  // Locked: the routes unmount (no page, number or poll stays alive underneath) and the query cache is dropped; the
+  // unlock re-mounts the same URL and refetches. The server refuses this token meanwhile (423 SESSION_LOCKED).
+  const locked = isAuthenticated && lock.locked && user?.role !== "guest";
+  useEffect(() => {
+    if (locked) queryClient.clear();
+  }, [locked]);
+  // Signed out (menu, 5 wrong codes, an expired session): the lock belonged to that session.
+  useEffect(() => {
+    if (!isAuthenticated && (lock.locked || lock.signedOut)) lockStore.reset();
+  }, [isAuthenticated, lock.locked, lock.signedOut]);
 
   // Drop every cached response on logout / session expiry so the next user never sees the
   // previous user's data flash in before refetching.
@@ -236,6 +252,9 @@ function AppContent() {
 
   useEffect(() => {
     if (isAuthenticated) void loadDashboard().catch(() => undefined);
+    if (!isAuthenticated) return;
+    const id = window.setTimeout(() => void loadLockScreen().catch(() => undefined), 5_000);
+    return () => window.clearTimeout(id);
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
@@ -248,10 +267,25 @@ function AppContent() {
   }
 
   return (
-    <WouterRouter base={BASE}>
-      <Router />
-    </WouterRouter>
+    <>
+      {locked ? (
+        <Suspense fallback={<div aria-hidden="true" className="fixed inset-0 z-tooltip bg-black" />}>
+          <LockScreen />
+        </Suspense>
+      ) : (
+        <WouterRouter base={BASE}>
+          <Router />
+        </WouterRouter>
+      )}
+      <LockController />
+    </>
   );
+}
+
+/** Notifications never show over the lock screen. */
+function AppToaster() {
+  const { locked } = useLockState();
+  return locked ? null : <Toaster />;
 }
 
 function App() {
@@ -277,7 +311,7 @@ function App() {
           </AppearanceProvider>
           </ThemeProvider>
         </AuthProvider>
-        <Toaster />
+        <AppToaster />
       </TooltipProvider>
       </MotionConfig>
     </QueryClientProvider>

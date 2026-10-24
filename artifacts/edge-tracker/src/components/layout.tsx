@@ -11,7 +11,7 @@ import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from "@/componen
 import { PaletteLauncher } from "@/components/shell/palette-launcher";
 import { useAuth } from "@/contexts/auth-context";
 import { MarketClock } from "@/components/shell/market-clock";
-import { LanguageMenu, NotificationBell, ThemeToggle, UserMenu } from "@/components/shell/header-actions";
+import { LanguageMenu, LockButton, NotificationBell, ThemeToggle, UserMenu } from "@/components/shell/header-actions";
 import { AppearanceHost, GuardMeter } from "@/components/appearance/appearance-host";
 import { useAppearance } from "@/contexts/appearance-context";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -136,6 +136,7 @@ function Header() {
         {guardMode !== "off" && <GuardMeter mode={guardMode} className="hidden lg:inline-flex" />}
         <LanguageMenu className="hidden md:grid" />
         <ThemeToggle className="hidden md:grid" />
+        <LockButton className="hidden md:grid" />
         {user?.traderName && <NotificationBell traderName={user.traderName} />}
         <UserMenu />
       </div>
