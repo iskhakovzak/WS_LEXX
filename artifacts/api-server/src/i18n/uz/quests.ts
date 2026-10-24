@@ -90,6 +90,11 @@ export default {
     cancelledBody: "{curator} topshiriqni bekor qildi — uni endi bajarish shart emas.",
     achievementTitle: "Yutuq: {achievement} — {tier}",
     achievementBody: "Yutuqning yangi pogʻonasi. Barcha yutuqlar «Kvestlar va yutuqlar» boʻlimida.",
+    batchQuestsTitle: { one: "Bugun {count} ta kvest bajarildi", other: "Bugun {count} ta kvest bajarildi" },
+    batchAchTitle: { one: "Bugun {count} ta yangi yutuq", other: "Bugun {count} ta yangi yutuq" },
+    batchPoints: "intizomga +{points}",
+    batchAch: { one: "{count} ta yangi yutuq", other: "{count} ta yangi yutuq" },
+    batchTail: "Tafsilotlar — «Kvestlar va yutuqlar» boʻlimida.",
   },
   tier: { bronze: "bronza", silver: "kumush", gold: "oltin", platinum: "platina" },
 } satisfies Messages<typeof ru>;

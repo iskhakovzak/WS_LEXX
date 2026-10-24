@@ -55,6 +55,8 @@ export default {
     telegram: { "daily-morning": "Telegram: утренний фокус", "daily-evening": "Telegram: карточка дня", "contract-alerts": "Telegram: стоп по контракту" },
     rewards: { nightly: "Награды: ночной пересчёт" },
     quests: { nightly: "Квесты: ночной пересчёт" },
+    notifications: { "rewards-batch": "Уведомления: квесты и достижения за день одним сообщением" },
+    curator: { digest: "Куратор: вечерняя сводка" },
     gamification: { nightly: "Геймификация: ночной пересчёт" },
     usage: { prune: "Чистка учёта использования" },
     trainer: { "daily-pick": "Тренажёр: выбор задачи дня" },

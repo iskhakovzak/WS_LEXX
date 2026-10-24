@@ -66,6 +66,15 @@ export default {
   },
   // ── server-b (translation wave) ──
   /** Type labels and descriptions (preferences panel, chips); key = canonical type (lib/notificationCore.ts). */
+  curator_digest: {
+    title: "Вечерняя сводка за {date}",
+    body: "Закрыто дней: {closed}, ждут разбора: {unreviewed}",
+    top: "Посмотреть в первую очередь:",
+    nothing: "Очередь проблем по деньгам пуста.",
+    line: "{n}. {trader} — {reason}",
+    lineCost: "{n}. {trader} — {reason}, {cost}",
+    reason: { stop_breach: "пробой лимита", focus_broken: "фокус нарушен", disputed: "«не ошибка» по фокусу", fees: "комиссии", loss_streak: "серия убыточных дней", giveback: "отдача прибыли", rule: "нарушение правил", other: "нужен взгляд" },
+  },
   types: {
     mention: { label: "Упоминание", description: "Кто-то упомянул вас через @имя в обсуждении, идее или заметке" },
     reply: { label: "Ответ", description: "Ответ на ваш пост или в вашем обсуждении, отметка «решение»" },
@@ -117,6 +126,7 @@ export default {
     reward_declined: { label: "Награда отклонена", description: "Запрос награды отклонён" },
     curator_request: { label: "Запрос куратору", description: "Трейдер попросил куратора о помощи" },
     curator_request_done: { label: "Куратор ответил на запрос", description: "Куратор закрыл ваш запрос" },
+    curator_digest: { label: "Вечерняя сводка куратора", description: "Одна сводка по будням: закрытые дни подопечных и что посмотреть первым (в Telegram — вместо сообщения на каждый день)" },
     system: { label: "Системное", description: "Служебные сообщения" },
   },
   groups: {

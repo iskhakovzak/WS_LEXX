@@ -58,5 +58,5 @@ export function jobState(j: { running: boolean; enabled: boolean; last: { status
 
 /** Jobs whose run sends messages to people (Telegram, digests): «Запустить» asks first. */
 export function sendsMessages(name: string): boolean {
-  return name.startsWith("telegram.") || name.startsWith("digest.") || name === "psychology.weekly-report";
+  return name.startsWith("telegram.") || name.startsWith("digest.") || name === "psychology.weekly-report" || name === "curator.digest";
 }

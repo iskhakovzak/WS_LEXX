@@ -4,6 +4,7 @@ import { config } from "../config";
 import { localeOfUser } from "../i18n";
 import { renderNotification, type NotificationParams } from "./notificationText";
 import { sendMessage, sendIdeaNotification, buildTraderReplyKeyboard } from "./telegramBot";
+import { claimPush, releasePush } from "./pushBudget";
 import {
   ALL_TYPES_KEY, defaultSeverity, deliveryVerdict, isSeverity, normalizeType, notifLinks, safeLink, typeMeta,
   type PrefRow, type Severity,
@@ -177,7 +178,9 @@ export async function notifyUser(opts: NotifyUserOpts): Promise<number | null> {
   });
   if (opts.telegram) {
     const text = typeof opts.telegram === "string" ? opts.telegram : await telegramTextFor(opts.userName, opts.type, opts.params, opts.message);
-    if (text) await notifyTraderTelegram(opts.userName, text, opts.ideaId ? { ideaId: opts.ideaId } : undefined);
+    // The push budget (lib/pushBudget) counts it by type; the entity makes repeats of one event a duplicate.
+    const dedupKey = opts.entityId != null ? `${normalizeType(opts.type)}:${opts.entityId}` : null;
+    if (text) await notifyTraderTelegram(opts.userName, text, { ...(opts.ideaId ? { ideaId: opts.ideaId } : {}), kind: normalizeType(opts.type), dedupKey });
   }
   return id;
 }
@@ -280,11 +283,14 @@ export async function notifyMentions(opts: {
 /**
  * Send a Telegram message to a trader.
  * If ideaId is provided, attach a "Reply to curator/risk" inline button.
+ * `kind` (a notification type, «idea_reply», …) and `dedupKey` feed the push budget (lib/pushBudget, roadmap R3): a push
+ * over the person's daily budget is not sent (the in-app notification stays). Without a kind: an idea reply when it
+ * carries an idea, else a counted push.
  */
 export async function notifyTraderTelegram(
   trader: string | null | undefined,
   message: string,
-  opts?: { ideaId?: number },
+  opts?: { ideaId?: number; kind?: string; dedupKey?: string | null },
 ): Promise<void> {
   if (!trader) return;
   try {
@@ -296,10 +302,13 @@ export async function notifyTraderTelegram(
     const notificationsEnabled = rows[0]?.tg_notifications_enabled as boolean ?? true;
     if (!chatId || !notificationsEnabled) return;
 
+    const claim = await claimPush(trader, opts?.kind ?? (opts?.ideaId ? "idea_reply" : "telegram_message"), opts?.dedupKey ?? null);
+    if (!claim.ok) return;
     const keyboard = opts?.ideaId ? buildTraderReplyKeyboard(opts.ideaId, await localeOfUser(trader)) : undefined;
-    await sendMessage(chatId, message, {
+    const sent = await sendMessage(chatId, message, {
       ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
     });
+    if (!sent) await releasePush(claim);
   } catch (e: any) {
     logger.warn({ error: e.message, trader }, "notifyTraderTelegram failed");
   }
@@ -415,7 +424,7 @@ export async function notifyPublicComment(opts: {
       });
       // Trader (idea creator) gets the reply button; reviewers do not (they already have the idea keyboard)
       const isCreator = name === traderName;
-      await notifyTraderTelegram(name, await telegramTextFor(name, "idea_comment", params), isCreator ? { ideaId } : undefined);
+      await notifyTraderTelegram(name, await telegramTextFor(name, "idea_comment", params), { ...(isCreator ? { ideaId } : {}), kind: "idea_comment" });
     }
 
     logger.info({ ideaId, authorName, recipients, source }, "notifyPublicComment: notified");
@@ -448,7 +457,7 @@ export async function applyIdeaReview(
     params,
   });
   // Trader gets a "Reply" button so they can respond directly in Telegram
-  if (idea.trader) await notifyTraderTelegram(idea.trader, await telegramTextFor(idea.trader, "idea_review", params), { ideaId });
+  if (idea.trader) await notifyTraderTelegram(idea.trader, await telegramTextFor(idea.trader, "idea_review", params), { ideaId, kind: "idea_review" });
 
   return idea;
 }

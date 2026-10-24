@@ -105,6 +105,13 @@ export default {
       feeBandMinTrades: { label: "Diapazondagi savdolar", help: "Narx diapazoni oynada kamida shuncha savdo boʻlsagina belgilanadi." },
       feeBandRatioMin: { label: "Gross ÷ komissiya chegarasi", help: "Diapazon bir aksiyaga gross bir aksiyaga komissiyaning shuncha baravaridan kam boʻlsa belgilanadi — intervalning yuqori chegarasi ham yetmasa." },
     },
+    alerts: {
+      budget: {
+        dailyPush: { label: "Kuniga bir kishiga Telegram", help: "Bir kishi Nyu-York kunida nechta bot xabarini oladi (risk-alertlardan tashqari); qolgani faqat ilovada." },
+        coachingPush: { label: "Ulardan maslahatlar", help: "Ulardan nechtasi xulq boʻyicha maslahat boʻlishi mumkin (hozir — oʻz kontrakti boʻyicha kunlik stop)." },
+        riskQuietMinutes: { label: "Risk-alertdan keyin jimlik", help: "Risk-alertdan keyin necha daqiqa treyderga oʻz kontrakti boʻyicha signal kelmaydi — bir stop ikki marta aytilmaydi." },
+      },
+    },
     discipline: {
       contractKeptPoints: { label: "Kontrakt bandi bajarildi", help: "Oʻz kontraktining har bir bajarilgan bandi (stop, savdolar limiti, qoida) uchun kun intizomiga ochkolar." },
       contractBrokenPoints: { label: "Kontrakt bandi buzildi", help: "Har bir buzilgan band uchun ochkolar (manfiy son)." },
@@ -199,6 +206,9 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Navbat dumi", help: "Hal qilinmagan muammolar kurator navbatida oʻtgan nechta savdo kuni qoladi." },
+      digestEnabled: { label: "Kechki xulosa", help: "Ish kunlari kuratorga bitta xulosa: shogirdlarning yopilgan kunlari va avval nimaga qarash. Telegramda — har bir yopilgan kun uchun xabar oʻrniga." },
+      digestTime: { label: "Kechki xulosa vaqti", help: "Ish kunlari, Nyu-York vaqti." },
+      digestTopN: { label: "Xulosadagi bandlar", help: "Xulosada navbatdan nechta treyder nomlanadi." },
     },
     nav: {
       simpleForTrainees: { label: "Yangilar uchun oddiy menyu", help: "Tanlangan darajagacha boʻlgan treyderlar 7 ta asosiy boʻlimni koʻradi, qolganlari yigʻilgan «Yana» guruhida. Kuratorlar va adminlar doim toʻliq menyuni koʻradi." },

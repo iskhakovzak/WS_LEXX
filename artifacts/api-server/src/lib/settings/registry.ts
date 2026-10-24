@@ -152,8 +152,20 @@ export const SETTINGS = {
   "telegram.eveningTime": { group: "telegram", type: "time", default: "16:30", pilot: true },
   "telegram.contractAlertsEnabled": { group: "telegram", type: "boolean", default: true },
 
+  // Telegram push budget per person and New York day (roadmap R3; lib/notificationCore pushVerdict, lib/pushBudget):
+  // all non-risk pushes, of them coaching nudges; a contract alert waits while a risk alert is this fresh. Risk alerts
+  // are never capped, only deduplicated.
+  "alerts.budget.dailyPush": { group: "alerts", type: "number", default: 3, min: 1, max: 20, step: 1, unit: "count" },
+  "alerts.budget.coachingPush": { group: "alerts", type: "number", default: 1, min: 0, max: 10, step: 1, unit: "count" },
+  "alerts.budget.riskQuietMinutes": { group: "alerts", type: "number", default: 30, min: 0, max: 240, step: 5, unit: "minutes" },
+
   // Curator queue (lib/daily/costQueue)
   "curator.queueCarryDays": { group: "curator", type: "number", default: 2, min: 0, max: 10, step: 1, unit: "days" },
+  // Curator evening digest (roadmap R3; lib/curatorDigest, job curator.digest): one Telegram + one in-app notice per
+  // curator, weekdays at this New York time — closed days to review and the top items of the queue.
+  "curator.digestEnabled": { group: "curator", type: "boolean", default: true },
+  "curator.digestTime": { group: "curator", type: "time", default: "17:30" },
+  "curator.digestTopN": { group: "curator", type: "number", default: 3, min: 1, max: 10, step: 1, unit: "count" },
 
   // Gamification (lib/gamification/*): monthly seasons, curator league, recognition, setup mastery, streak freeze
   "gamification.enabled": { group: "gamification", type: "boolean", default: true },

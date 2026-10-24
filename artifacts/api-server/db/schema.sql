@@ -180,6 +180,7 @@ CREATE SEQUENCE public.market_events_id_seq AS integer START WITH 1 INCREMENT BY
 CREATE SEQUENCE public.market_open_brief_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.market_themes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.news_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.notification_batch_items_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.notifications_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.plan_media_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.plan_templates_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -214,6 +215,7 @@ CREATE SEQUENCE public.scaling_proposals_id_seq AS integer START WITH 1 INCREMEN
 CREATE SEQUENCE public.scaling_rules_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.telegram_link_tokens_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.telegram_pending_actions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.telegram_push_log_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.trade_archive_batches_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trade_executions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trade_idea_comments_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -1129,6 +1131,7 @@ CREATE TABLE public.eod_days (
   curator_score smallint,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  full_review_at timestamp with time zone,
   CONSTRAINT eod_days_pkey PRIMARY KEY (id),
   CONSTRAINT eod_days_trader_date_key UNIQUE (trader, date)
 );
@@ -1454,6 +1457,18 @@ CREATE TABLE public.news_cache (
   fetched_at timestamp with time zone DEFAULT now() NOT NULL,
   is_ticker_specific boolean DEFAULT false,
   CONSTRAINT news_cache_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.notification_batch_items (
+  id bigint DEFAULT nextval('public.notification_batch_items_id_seq'::regclass) NOT NULL,
+  user_name text NOT NULL,
+  "type" text NOT NULL,
+  params jsonb DEFAULT '{}'::jsonb NOT NULL,
+  entity_id text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  flushed_at timestamp with time zone,
+  CONSTRAINT notification_batch_items_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_batch_items_type_check CHECK (type = ANY (ARRAY['quest_done'::text, 'achievement_earned'::text]))
 );
 
 CREATE TABLE public.notification_dedup (
@@ -2323,6 +2338,20 @@ CREATE TABLE public.telegram_pending_actions (
   CONSTRAINT telegram_pending_actions_telegram_chat_id_key UNIQUE (telegram_chat_id)
 );
 
+CREATE TABLE public.telegram_push_log (
+  id bigint DEFAULT nextval('public.telegram_push_log_id_seq'::regclass) NOT NULL,
+  user_name text NOT NULL,
+  ny_date date NOT NULL,
+  kind text NOT NULL,
+  category text NOT NULL,
+  dedup_key text,
+  sent_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT telegram_push_log_pkey PRIMARY KEY (id),
+  CONSTRAINT telegram_push_log_category_check CHECK (category = ANY (ARRAY['risk'::text, 'coaching'::text, 'standard'::text])),
+  CONSTRAINT telegram_push_log_dedup_key_check CHECK (dedup_key IS NULL OR char_length(dedup_key) <= 200),
+  CONSTRAINT telegram_push_log_kind_check CHECK (char_length(kind) >= 1 AND char_length(kind) <= 60)
+);
+
 CREATE TABLE public.ticker_data_cache (
   ticker text NOT NULL,
   market_cap text,
@@ -3016,6 +3045,7 @@ ALTER SEQUENCE public.market_events_id_seq OWNED BY public.market_events.id;
 ALTER SEQUENCE public.market_open_brief_cache_id_seq OWNED BY public.market_open_brief_cache.id;
 ALTER SEQUENCE public.market_themes_id_seq OWNED BY public.market_themes.id;
 ALTER SEQUENCE public.news_cache_id_seq OWNED BY public.news_cache.id;
+ALTER SEQUENCE public.notification_batch_items_id_seq OWNED BY public.notification_batch_items.id;
 ALTER SEQUENCE public.notifications_id_seq OWNED BY public.notifications.id;
 ALTER SEQUENCE public.plan_media_id_seq OWNED BY public.plan_media.id;
 ALTER SEQUENCE public.plan_templates_id_seq OWNED BY public.plan_templates.id;
@@ -3050,6 +3080,7 @@ ALTER SEQUENCE public.scaling_proposals_id_seq OWNED BY public.scaling_proposals
 ALTER SEQUENCE public.scaling_rules_id_seq OWNED BY public.scaling_rules.id;
 ALTER SEQUENCE public.telegram_link_tokens_id_seq OWNED BY public.telegram_link_tokens.id;
 ALTER SEQUENCE public.telegram_pending_actions_id_seq OWNED BY public.telegram_pending_actions.id;
+ALTER SEQUENCE public.telegram_push_log_id_seq OWNED BY public.telegram_push_log.id;
 ALTER SEQUENCE public.trade_archive_batches_id_seq OWNED BY public.trade_archive_batches.id;
 ALTER SEQUENCE public.trade_executions_id_seq OWNED BY public.trade_executions.id;
 ALTER SEQUENCE public.trade_idea_comments_id_seq OWNED BY public.trade_idea_comments.id;
@@ -3167,6 +3198,7 @@ CREATE UNIQUE INDEX market_themes_name_key ON public.market_themes USING btree (
 CREATE INDEX market_themes_order_idx ON public.market_themes USING btree (active, sort_order, id);
 CREATE UNIQUE INDEX news_cache_ticker_guid_uniq ON public.news_cache USING btree (ticker, guid);
 CREATE INDEX news_cache_ticker_idx ON public.news_cache USING btree (ticker);
+CREATE INDEX notification_batch_items_pending_idx ON public.notification_batch_items USING btree (user_name) WHERE (flushed_at IS NULL);
 CREATE INDEX notifications_user_created_idx ON public.notifications USING btree (user_name, created_at DESC, id DESC);
 CREATE INDEX notifications_user_unread_idx ON public.notifications USING btree (user_name, is_read);
 CREATE INDEX plan_media_date_idx ON public.plan_media USING btree (plan_date, context);
@@ -3231,6 +3263,8 @@ CREATE UNIQUE INDEX sim_games_one_active_idx ON public.sim_games USING btree (us
 CREATE INDEX sim_games_series_idx ON public.sim_games USING btree (series_id, id) WHERE (series_id IS NOT NULL);
 CREATE INDEX sim_games_user_idx ON public.sim_games USING btree (user_id, id DESC);
 CREATE INDEX sim_series_user_idx ON public.sim_series USING btree (user_id, id DESC);
+CREATE UNIQUE INDEX telegram_push_log_dedup_idx ON public.telegram_push_log USING btree (user_name, ny_date, dedup_key) WHERE (dedup_key IS NOT NULL);
+CREATE INDEX telegram_push_log_user_day_idx ON public.telegram_push_log USING btree (user_name, ny_date);
 CREATE INDEX trade_executions_trade_idx ON public.trade_executions USING btree (trade_id);
 CREATE INDEX trade_idea_comments_idea_idx ON public.trade_idea_comments USING btree (idea_id);
 CREATE INDEX trade_idea_reactions_idea_idx ON public.trade_idea_reactions USING btree (trade_idea_id);

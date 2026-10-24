@@ -105,6 +105,13 @@ export default {
       feeBandMinTrades: { label: "Trades in a band", help: "A price band is flagged only with at least this many trades in the window." },
       feeBandRatioMin: { label: "Gross ÷ fees threshold", help: "A band is flagged when its gross per share is below this many times its fees per share — and even the interval's upper bound falls short." },
     },
+    alerts: {
+      budget: {
+        dailyPush: { label: "Telegram per person a day", help: "How many bot messages (risk alerts aside) a person gets per New York day; the rest stay in the app." },
+        coachingPush: { label: "Of them, coaching nudges", help: "How many of them may be behaviour nudges (now: the own-contract daily stop)." },
+        riskQuietMinutes: { label: "Quiet after a risk alert", help: "For how many minutes after a risk alert the trader gets no own-contract alert — the same stop said twice." },
+      },
+    },
     discipline: {
       contractKeptPoints: { label: "Contract item kept", help: "Points to the day's discipline for every kept item of the own contract (stop, trade limit, rule)." },
       contractBrokenPoints: { label: "Contract item broken", help: "Points for every broken item (a negative number)." },
@@ -199,6 +206,9 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Queue carry-over", help: "How many past trading days unresolved problems stay in the curator queue." },
+      digestEnabled: { label: "Evening digest", help: "One digest for the curator on weekdays: their traders' closed days and what to look at first. In Telegram — instead of a message per closed day." },
+      digestTime: { label: "Evening digest time", help: "Weekdays, New York time." },
+      digestTopN: { label: "Items in the digest", help: "How many traders from the queue the digest names." },
     },
     nav: {
       simpleForTrainees: { label: "Simple menu for newcomers", help: "Traders up to the chosen tier see the 7 main sections; the rest sits in a collapsed «More» group. Curators and admins always get the full menu." },

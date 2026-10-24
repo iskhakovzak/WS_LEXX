@@ -93,7 +93,8 @@ router.post("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<
       }));
       const lang = await localeOfUser(idea.trader);
       await notifyTraderTelegram(idea.trader,
-        telegramT.tFor(lang)("privateReply", { id: ideaId, ticker: escHtml(idea.ticker), author: escHtml(personNameFor(author, lang)), text: escHtml(preview) }));
+        telegramT.tFor(lang)("privateReply", { id: ideaId, ticker: escHtml(idea.ticker), author: escHtml(personNameFor(author, lang)), text: escHtml(preview) }),
+        { kind: "idea_reply" });
     }
   } else {
     // Team activity feed (same row as a discussion comment). Public comments only, and without the text: a private

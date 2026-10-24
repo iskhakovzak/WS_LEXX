@@ -36,6 +36,7 @@ import { academyCohortsRenderers } from "./notificationRenderers/academyCohorts"
 import { academyContentRenderers } from "./notificationRenderers/academyContent";
 import { questsRenderers } from "./notificationRenderers/quests";
 import { gamificationRenderers } from "./notificationRenderers/gamification";
+import { curatorRenderers } from "./notificationRenderers/curator";
 
 export type NotificationParams = Record<string, string | number | boolean | null | undefined>;
 export type RenderedNotification = { title: string; body: string; telegram: string };
@@ -189,6 +190,7 @@ const CUSTOM: Record<string, NotificationRenderer> = {
   ...academyContentRenderers,
   ...questsRenderers,
   ...gamificationRenderers,
+  ...curatorRenderers,
 };
 
 /**
