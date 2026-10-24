@@ -472,7 +472,6 @@ export type SectionId =
   | "holdTime"
   | "weekdays"
   | "fees"
-  | "todayTile"
   | "positions"
   | "checkin"
   | "brief"
@@ -482,39 +481,50 @@ export type SectionId =
   | "dna"
   | "psychology";
 
-const SECTION_FLAGS: Record<SectionId, { staffOnly?: boolean; extra?: boolean }> = {
-  attention: {}, equity: {}, recent: {}, desk: { staffOnly: true }, positions: {},
-  // Insight tiles (components/insight-tiles): one bento under the cockpit, own trades («Мои») only; each tile is shown /
-  // hidden / reordered on its own, the bento sits where the first visible tile is in the order.
-  streaks: {}, leaks: {}, seqDay: {}, afterLoss: {}, holdTime: {}, weekdays: {}, fees: {}, todayTile: {},
-  // Optional extras below the cockpit — off by default, switch on in «Настроить».
-  checkin: { extra: true }, brief: { extra: true }, quote: { extra: true }, sectors: { extra: true },
-  macro: { extra: true }, dna: { extra: true }, psychology: { extra: true },
+/**
+ * Which part of the composed dashboard a block belongs to (pages/dashboard.tsx): `main` = the fixed sections («План на
+ * день», «Кривая капитала», «Сделки»: shown / hidden only), `edge` = the insight tiles of «Ваш edge» (shown / hidden /
+ * reordered among themselves), `extra` = opt-in extras at the bottom (off by default, reordered among themselves).
+ */
+export type SectionGroup = "main" | "edge" | "extra";
+
+const SECTION_FLAGS: Record<SectionId, { group: SectionGroup; staffOnly?: boolean }> = {
+  attention: { group: "main" }, equity: { group: "main" }, positions: { group: "main" }, recent: { group: "main" },
+  desk: { group: "main", staffOnly: true },
+  // Insight tiles (components/insight-tiles): «Ваш edge», own trades («Мои») only. «Сегодня» is not a tile here — the
+  // hero already carries today's net.
+  leaks: { group: "edge" }, streaks: { group: "edge" }, seqDay: { group: "edge" }, afterLoss: { group: "edge" },
+  holdTime: { group: "edge" }, fees: { group: "edge" }, weekdays: { group: "edge" },
+  checkin: { group: "extra" }, brief: { group: "extra" }, quote: { group: "extra" }, sectors: { group: "extra" },
+  macro: { group: "extra" }, dna: { group: "extra" }, psychology: { group: "extra" },
 };
 
+type SectionMeta = { label: string; hint: string; group: SectionGroup; staffOnly?: boolean; extra: boolean };
+
 /** Label / hint are read in the current language on access; flags are plain. */
-export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }> = Object.fromEntries(
+export const SECTION_META: Record<SectionId, SectionMeta> = Object.fromEntries(
   (Object.keys(SECTION_FLAGS) as SectionId[]).map((id) => [id, {
     ...SECTION_FLAGS[id],
+    extra: SECTION_FLAGS[id].group === "extra",
     get label() { return dashboardI18n.t(`sections.${id}.label`); },
     get hint() { return dashboardI18n.t(`sections.${id}.hint`); },
   }]),
-) as Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }>;
+) as Record<SectionId, SectionMeta>;
 
+/** The composed order: plan + curve, the edge bento (primary «Где уходят деньги» first), trades, then the extras. */
 export const DEFAULT_ORDER: SectionId[] = [
   "attention",
   "equity",
-  "streaks",
   "leaks",
+  "streaks",
   "seqDay",
   "afterLoss",
   "holdTime",
-  "weekdays",
   "fees",
-  "todayTile",
+  "weekdays",
+  "positions",
   "recent",
   "desk",
-  "positions",
   "checkin",
   "brief",
   "sectors",
@@ -524,24 +534,8 @@ export const DEFAULT_ORDER: SectionId[] = [
   "psychology",
 ];
 
-/**
- * Width class of a block in the 12-col grid: pairs sit side by side, `full` takes the row, `tile` blocks are gathered
- * into one insight bento (components/insight-tiles) at the place of the first visible tile.
- */
-export const SECTION_WIDTH: Record<SectionId, "wide" | "narrow" | "full" | "tile"> = {
-  attention: "narrow",
-  equity: "wide",
-  recent: "wide",
-  desk: "narrow",
-  streaks: "tile",
-  leaks: "tile",
-  seqDay: "tile",
-  afterLoss: "tile",
-  holdTime: "tile",
-  weekdays: "tile",
-  fees: "tile",
-  todayTile: "tile",
-  positions: "full",
+/** Width of an opt-in extra in its 12-col rows: two neighbouring half blocks share a row, `full` takes one. */
+export const EXTRA_WIDTH: Partial<Record<SectionId, "wide" | "narrow" | "full">> = {
   checkin: "wide",
   brief: "full",
   quote: "narrow",

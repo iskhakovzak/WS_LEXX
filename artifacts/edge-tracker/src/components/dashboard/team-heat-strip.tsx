@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { ChevronRight, Users } from "lucide-react";
-import { EmptyState, LiveNumber, Panel, Pill, StatusDot, limitTone, limitToneToTone, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
+import { EmptyState, LiveNumber, Pill, StatusDot, limitTone, limitToneToTone, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { SortHead } from "@/components/trades/sort-head";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
@@ -14,6 +14,7 @@ import type { RiskDesk, RiskDeskRow } from "./use-dashboard";
 import { stoppedTraders } from "./today-hero";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { DashCard } from "./dash-card";
 
 const STATUS_TONE: Record<RiskDeskRow["status"], Tone> = { breach: "down", warn: "warn", ok: "up", no_limits: "neutral" };
 const statusLabel = (s: RiskDeskRow["status"]) => dashboardI18n.t(`desk.status.${s}`);
@@ -83,21 +84,21 @@ function TraderRow({ r }: { r: RiskDeskRow }) {
 export function DeskTodayPanel({ data, isLoading, isError, onRetry, fill }: { data: RiskDesk | null | undefined; isLoading: boolean; isError?: boolean; onRetry?: () => void; fill?: boolean }) {
   if (isLoading && data === undefined) {
     return (
-      <Panel title={dashboardI18n.t("desk.title")} icon={Users} fill={fill}>
+      <DashCard title={dashboardI18n.t("desk.title")} fill={fill}>
         <div className="flex flex-col gap-2" role="status" aria-label={commonI18n.t("states.loading")}>
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-10 w-full rounded-lg" />
           ))}
         </div>
-      </Panel>
+      </DashCard>
     );
   }
   // A failed load (not a 404 = «desk not deployed», which is null) keeps the panel with a retry instead of vanishing.
   if (data === undefined && isError) {
     return (
-      <Panel title={dashboardI18n.t("desk.title")} icon={Users} fill={fill}>
+      <DashCard title={dashboardI18n.t("desk.title")} fill={fill}>
         <QueryError compact onRetry={onRetry} />
-      </Panel>
+      </DashCard>
     );
   }
   if (!data) return null;
@@ -114,9 +115,8 @@ function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
   const { rows, thProps } = useTableSort(base, DESK_ACCESSORS, "status", "asc");
 
   return (
-    <Panel
+    <DashCard
       title={t("desk.title")}
-      icon={Users}
       fill={fill}
       description={t("desk.desc", { traders: commonI18n.t("units.traders", { count: s.traders }), trades: commonI18n.t("units.trades", { count: s.tradesToday }) })}
       actions={
@@ -130,7 +130,7 @@ function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
           </Pill>
         ) : undefined
       }
-      bodyClassName="px-2 sm:px-3"
+      bodyClassName="-mx-2"
       footer={
         <>
           <span className="tabular-nums">
@@ -161,6 +161,6 @@ function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
           </ul>
         </div>
       )}
-    </Panel>
+    </DashCard>
   );
 }

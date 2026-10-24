@@ -65,6 +65,7 @@ export function InsightBento({
   isLoading,
   scope,
   today,
+  layout,
 }: {
   ids?: readonly TileId[];
   trades: readonly InsightTrade[] | undefined;
@@ -72,12 +73,22 @@ export function InsightBento({
   isLoading?: boolean;
   scope: InsightScope;
   today?: TodayLive | null;
+  /**
+   * The dashboard's «Ваш edge» (default: the /stats bento): `lead` = the primary tiles side by side (wide «Где уходят
+   * деньги» + the streak), `row` = the compact tiles in one row of equal cards. Both take the dashboard's quieter
+   * numeral scale (hero > section > tile).
+   */
+  layout?: "lead" | "row";
 }) {
   insightTilesI18n.useT(); // re-render on a language switch
   const shown = ids.filter((id) => id !== "todayTile" || !!today);
   if (!shown.length) return null;
   return (
-    <div className="ins-bento" data-fill={shown[shown.length - 1] === "fees" && !shown.includes("todayTile") ? "last" : undefined}>
+    <div
+      className="ins-bento"
+      data-layout={layout}
+      data-fill={!layout && shown[shown.length - 1] === "fees" && !shown.includes("todayTile") ? "last" : undefined}
+    >
       {shown.map((id) =>
         trades ? (
           <TileOf key={id} id={id} trades={trades} prev={prev} scope={scope} today={today} />

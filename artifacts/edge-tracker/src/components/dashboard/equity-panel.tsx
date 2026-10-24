@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
 import { ChevronRight, LineChart as LineChartIcon, RefreshCw } from "lucide-react";
-import { EmptyState, Panel, Segmented, toneOf, toneText } from "@/components/ds";
+import { EmptyState, Segmented, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EquityChart, fromDashboardDays } from "@/components/equity-chart";
@@ -14,6 +14,7 @@ import type { DashboardEquity, EquityMetric, EquityPeriod } from "./use-dashboar
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { equityChartI18n } from "@/i18n/ns/equityChart";
+import { DashCard } from "./dash-card";
 
 /** Server windows of the curve; the engine's own zoom / navigator work inside the loaded one. Built in render (UI language). */
 function periodOptions(): { value: EquityPeriod; label: string; title: string }[] {
@@ -49,6 +50,7 @@ export function EquityPanel({
   metric,
   onMetricChange,
   fill,
+  note,
   showBreakeven,
 }: {
   data: DashboardEquity | undefined;
@@ -60,6 +62,8 @@ export function EquityPanel({
   metric: EquityMetric;
   onMetricChange: (m: EquityMetric) => void;
   fill?: boolean;
+  /** A quiet line under the title, e.g. «На этой неделе сделок нет — показаны 30 дней». */
+  note?: string | null;
   /** «Мои» view: the win rate vs the breakeven win rate line (roadmap R2). */
   showBreakeven?: boolean;
 }) {
@@ -81,9 +85,9 @@ export function EquityPanel({
   const longer = LONGER[period];
 
   return (
-    <Panel
+    <DashCard
       title={effMetric === "pnl" ? td("equity.titleNet") : td("equity.titleR")}
-      icon={LineChartIcon}
+      description={note ?? undefined}
       fill={fill}
       actions={
         hasR && hasPnl ? (
@@ -198,7 +202,7 @@ export function EquityPanel({
           {showBreakeven && <OwnBreakevenLine />}
         </div>
       )}
-    </Panel>
+    </DashCard>
   );
 }
 
