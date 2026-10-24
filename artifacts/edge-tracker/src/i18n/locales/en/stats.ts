@@ -28,7 +28,7 @@ export default {
   traderAria: "Trader",
   myTrades: "My trades",
   wholeTeam: "Whole team",
-  reportTitle: "WS_LEXX report — {scope}",
+  reportTitle: "WS_Desk report — {scope}",
   reportPeriod: "{label} ({range})",
   prevCompare: "Compared with {range} · {trades}",
   prevEmpty: "No trades in the previous period ({range}) — nothing to compare with",

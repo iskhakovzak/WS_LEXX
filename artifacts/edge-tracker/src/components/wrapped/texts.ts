@@ -50,7 +50,7 @@ export interface SummaryTexts {
   brand: string;
 }
 
-const BRAND = "WS_LEXX";
+const BRAND = "WS_Desk";
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** «Неделя 42 · 13–17 окт. 2026» / «Октябрь 2026». */
@@ -236,7 +236,7 @@ export function storyAlt(s: StoryTexts): string {
     .filter(Boolean).join(". ");
 }
 
-/** File names: «WS_LEXX-week-2026-W42-1.png», «WS_LEXX-month-2026-10-summary.png». */
+/** File names: «WS_Desk-week-2026-W42-1.png», «WS_Desk-month-2026-10-summary.png». */
 export function fileNameOf(p: WrappedPeriod, part: number | "summary"): string {
   return `${BRAND}-${p.kind}-${p.key}-${part}.png`;
 }

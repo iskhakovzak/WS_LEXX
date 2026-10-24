@@ -189,8 +189,8 @@ describe("texts and helpers", () => {
   it("hour buckets, file names", () => {
     expect(hourText("10")).toBe("10:00–11:00");
     expect(hourText("before open")).toBe("before open");
-    expect(fileNameOf(week, 2)).toBe("WS_LEXX-week-2026-W42-2.png");
-    expect(fileNameOf(month, "summary")).toBe("WS_LEXX-month-2026-10-summary.png");
+    expect(fileNameOf(week, 2)).toBe("WS_Desk-week-2026-W42-2.png");
+    expect(fileNameOf(month, "summary")).toBe("WS_Desk-month-2026-10-summary.png");
   });
 
   it("wrapLines: wraps by width, cuts the last line with «…»", () => {

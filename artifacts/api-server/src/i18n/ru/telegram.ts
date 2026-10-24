@@ -1,7 +1,7 @@
-/** Server `telegram`: Telegram bot messages and buttons (HTML; params are escaped by the caller). Language: the linked user's users.locale, else the Telegram client language, else RU. «WS_LEXX», «Telegram», «Trade Idea» stay as is. Terms: edge-tracker/src/i18n/GLOSSARY.md. */
+/** Server `telegram`: Telegram bot messages and buttons (HTML; params are escaped by the caller). Language: the linked user's users.locale, else the Telegram client language, else RU. «WS_Desk», «Telegram», «Trade Idea» stay as is. Terms: edge-tracker/src/i18n/GLOSSARY.md. */
 export default {
   start: {
-    hello: "👋 Привет! Это бот WS_LEXX Trade Desk.\n\nЧтобы привязать аккаунт, нажми <b>Connect Telegram</b> в Settings на сайте.",
+    hello: "👋 Привет! Это бот WS_Desk.\n\nЧтобы привязать аккаунт, нажми <b>Connect Telegram</b> в Settings на сайте.",
     badToken: "❌ Ссылка недействительна или истекла. Сгенерируй новую на сайте в разделе <b>Settings → Telegram</b>.",
     linkedElsewhere: "❌ Этот Telegram аккаунт уже привязан к <b>{name}</b>. Сначала отвяжи его в Settings.",
     linked: "✅ Telegram привязан к аккаунту <b>{name}</b>!\n\nТеперь ты будешь получать уведомления о trade ideas и сможешь реагировать прямо здесь.",

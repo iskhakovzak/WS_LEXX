@@ -109,7 +109,7 @@ export default function ShareCardDialog({ trade, open, onOpenChange }: { trade: 
   async function share() {
     const blob = blobRef.current ?? (await pngNow());
     if (!blob) { toast({ title: t("toast.renderFailed"), variant: "destructive" }); return; }
-    if ((await sharePng(blob, fileName, `${st.ticker} · WS_LEXX`)) === "failed") toast({ title: t("toast.shareFailed"), variant: "destructive" });
+    if ((await sharePng(blob, fileName, `${st.ticker} · WS_Desk`)) === "failed") toast({ title: t("toast.shareFailed"), variant: "destructive" });
   }
 
   async function onPhoto(file: File) {

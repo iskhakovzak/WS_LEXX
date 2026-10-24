@@ -142,7 +142,7 @@ export default {
   header: {
     skipToContent: "Asosiy kontentga oʻtish",
     toggleMenu: "Menyuni yigʻish yoki yoyish",
-    logoAria: "WS_LEXX — boshqaruv paneliga",
+    logoAria: "WS_Desk — boshqaruv paneliga",
     userMenuAria: "Foydalanuvchi menyusi: {name}",
     languageAria: "Interfeys tili: {name}",
   },

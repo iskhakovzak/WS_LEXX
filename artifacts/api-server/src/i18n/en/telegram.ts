@@ -3,7 +3,7 @@ import type ru from "../ru/telegram";
 
 export default {
   start: {
-    hello: "👋 Hi! This is the WS_LEXX Trade Desk bot.\n\nTo link your account, press <b>Connect Telegram</b> in Settings on the website.",
+    hello: "👋 Hi! This is the WS_Desk bot.\n\nTo link your account, press <b>Connect Telegram</b> in Settings on the website.",
     badToken: "❌ The link is invalid or expired. Generate a new one on the website in <b>Settings → Telegram</b>.",
     linkedElsewhere: "❌ This Telegram account is already linked to <b>{name}</b>. Unlink it in Settings first.",
     linked: "✅ Telegram is linked to <b>{name}</b>!\n\nYou'll now get trade idea notifications and can respond right here.",

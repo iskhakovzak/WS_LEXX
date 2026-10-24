@@ -36,7 +36,7 @@ export default {
   profile: {
     guest: "You are in guest mode. Sign in with your name to set up your profile, notifications and trading parameters.",
     memberSince: "On the team since {date}",
-    member: "WS_LEXX team member",
+    member: "WS_Desk team member",
     telegramLinked: "Telegram connected",
     connectTelegram: "Connect Telegram",
     theme: "Theme: {name}",

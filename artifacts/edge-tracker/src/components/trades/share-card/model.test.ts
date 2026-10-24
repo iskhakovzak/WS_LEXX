@@ -125,8 +125,8 @@ describe("card texts", () => {
     expect(cardTexts(st(), { mode: "r", money: "usd", showPrices: true, name: "  " }).name).toBeNull();
     expect(initials("Zakir Ishakov")).toBe("ZI");
     expect(initials("Олег")).toBe("О");
-    expect(cardFileName({ ticker: "BRK.B", day: "2026-10-14" })).toBe("WS_LEXX-BRK.B-2026-10-14.png");
-    expect(cardFileName({ ticker: "../x", day: "2026-10-14" })).toBe("WS_LEXX-..x-2026-10-14.png");
+    expect(cardFileName({ ticker: "BRK.B", day: "2026-10-14" })).toBe("WS_Desk-BRK.B-2026-10-14.png");
+    expect(cardFileName({ ticker: "../x", day: "2026-10-14" })).toBe("WS_Desk-..x-2026-10-14.png");
   });
 });
 

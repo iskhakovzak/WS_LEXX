@@ -21,8 +21,8 @@ export default {
     tooLarge: "Слишком большой запрос (больше {limit})",
   },
   alert: {
-    title: "WS_LEXX: новая ошибка на сервере",
-    titleClient: "WS_LEXX: новая ошибка в приложении",
+    title: "WS_Desk: новая ошибка на сервере",
+    titleClient: "WS_Desk: новая ошибка в приложении",
     route: "Маршрут: {route}",
     count: "Повторов: {count}",
     open: "Открыть: {url}",

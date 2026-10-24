@@ -198,12 +198,12 @@ export function cardTexts(st: ShareTrade, o: CardOptions): CardTexts {
     big: bigResultText(st, mode),
     stats: cardStats(st, { ...o, mode }),
     name: o.name?.trim() || null,
-    brand: "WS_LEXX",
+    brand: "WS_Desk",
   };
 }
 
-/** File name of the PNG: «WS_LEXX-NVDA-2026-10-14.png» (ticker reduced to safe characters). */
+/** File name of the PNG: «WS_Desk-NVDA-2026-10-14.png» (ticker reduced to safe characters). */
 export function cardFileName(st: Pick<ShareTrade, "ticker" | "day">): string {
   const t = st.ticker.replace(/[^A-Z0-9._-]/gi, "") || "trade";
-  return `WS_LEXX-${t}-${st.day || "card"}.png`;
+  return `WS_Desk-${t}-${st.day || "card"}.png`;
 }

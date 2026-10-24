@@ -37,7 +37,7 @@ export default {
   profile: {
     guest: "Вы в гостевом режиме. Войдите под своим именем, чтобы настроить профиль, уведомления и торговые параметры.",
     memberSince: "В команде с {date}",
-    member: "Участник команды WS_LEXX",
+    member: "Участник команды WS_Desk",
     telegramLinked: "Telegram подключён",
     connectTelegram: "Подключить Telegram",
     theme: "Тема: {name}",

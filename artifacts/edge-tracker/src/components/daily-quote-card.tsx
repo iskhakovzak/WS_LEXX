@@ -224,7 +224,7 @@ export function DailyQuoteCard() {
           </blockquote>
           <figcaption className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
             <CatIcon className={cn("h-3 w-3", cat === "trading" ? "text-up" : "text-[hsl(var(--chart-5))]")} aria-hidden="true" />
-            {author ? `— ${author}` : data.source === "ai" ? "AI · WS_LEXX" : "WS_LEXX"}
+            {author ? `— ${author}` : data.source === "ai" ? "AI · WS_Desk" : "WS_Desk"}
           </figcaption>
         </figure>
       </div>

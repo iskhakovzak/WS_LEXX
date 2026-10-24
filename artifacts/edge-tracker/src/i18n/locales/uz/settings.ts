@@ -36,7 +36,7 @@ export default {
   profile: {
     guest: "Siz mehmon rejimidasiz. Profil, bildirishnomalar va savdo parametrlarini sozlash uchun oʻz ismingiz bilan kiring.",
     memberSince: "{date}dan beri jamoada",
-    member: "WS_LEXX jamoasi aʼzosi",
+    member: "WS_Desk jamoasi aʼzosi",
     telegramLinked: "Telegram ulangan",
     connectTelegram: "Telegramni ulash",
     theme: "Mavzu: {name}",

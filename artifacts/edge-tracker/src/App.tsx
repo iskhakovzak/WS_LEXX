@@ -112,7 +112,7 @@ const queryClient = new QueryClient({
 });
 
 
-const APP_NAME = "WS_LEXX";
+const APP_NAME = "WS_Desk";
 
 /** Keeps the tab title in sync with the current section, and moves focus to the new page for keyboard/SR users. */
 function RouteTitle() {

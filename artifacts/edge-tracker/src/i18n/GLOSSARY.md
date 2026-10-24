@@ -1,4 +1,4 @@
-# WS_LEXX glossary — RU → EN → UZ
+# WS_Desk glossary — RU → EN → UZ
 
 Every agent follows this table: the same Russian term gets the same English and Uzbek term everywhere (UI, server texts, Telegram). If you introduce a new domain term, add it to **your own section at the bottom** (don't edit the shared tables).
 
@@ -22,7 +22,7 @@ Every agent follows this table: the same Russian term gets the same English and 
 | Metrics, abbreviations | P&L, R, R:R, MAE, MFE, WR, PF, EV, VWAP, ATR, SMA, EMA, RVOL, IV, float, short interest, gap, halt, SSR, ETF, IPO, SPAC, 8-K, S-1, 10-Q, CPI, FOMC, NFP, bid/ask, spread, A+ (setup grade) |
 | Earnings | «earnings» may stay as is in EN/UZ («Earnings») |
 | Long / Short | RU «Лонг / Шорт» · EN «Long / Short» · UZ «Long / Short» |
-| Products / brands | WS_LEXX, PropReports, Telegram, Big 7, Chart Lab, WS Chart, Whisper |
+| Products / brands | WS_Desk, PropReports, Telegram, Big 7, Chart Lab, WS Chart, Whisper |
 | Units kept by convention | `R`, `%`, `$`, `bp` |
 
 ## People and roles

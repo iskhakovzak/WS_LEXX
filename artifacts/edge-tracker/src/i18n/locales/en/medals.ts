@@ -4,7 +4,7 @@ import type ru from "../ru/medals";
 export default {
   stageAria: "{stage} stage medal",
   stageLockedAria: "{stage} stage medal — still ahead",
-  rimBottom: "WS_LEXX Academy",
+  rimBottom: "WS_Desk Academy",
   reveal: {
     eyebrow: "New stage",
     title: "You are a {stage} now",

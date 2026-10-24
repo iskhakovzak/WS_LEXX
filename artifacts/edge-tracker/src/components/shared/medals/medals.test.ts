@@ -80,7 +80,7 @@ describe("coins", () => {
     await i18nReady();
     const en = renderToStaticMarkup(createElement(StageMedal, { stage: "trader", size: 120 }));
     expect(en).toContain("TRADER");
-    expect(en).toContain("WS_LEXX ACADEMY");
+    expect(en).toContain("WS_DESK ACADEMY");
   });
 
   it("a 24 px medal drops the legend; a decorative one is hidden from screen readers", () => {

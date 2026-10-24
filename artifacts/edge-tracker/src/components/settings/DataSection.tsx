@@ -387,7 +387,7 @@ export function DataSection() {
         }
         throw e;
       }
-      const filename = `ws-lexx-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const filename = `ws-desk-backup-${new Date().toISOString().slice(0, 10)}.json`;
       saveText(text, "application/json;charset=utf-8", filename);
       toast({ title: t("data.downloaded", { file: filename }), description: t("data.kb", { size: fmtCount(Math.round(text.length / 1024)) }) });
     } catch {

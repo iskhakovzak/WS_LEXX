@@ -147,7 +147,7 @@ export default {
   header: {
     skipToContent: "Перейти к содержимому",
     toggleMenu: "Свернуть или развернуть меню",
-    logoAria: "WS_LEXX — на дашборд",
+    logoAria: "WS_Desk — на дашборд",
     userMenuAria: "Меню пользователя: {name}",
     languageAria: "Язык интерфейса: {name}",
   },

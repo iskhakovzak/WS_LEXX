@@ -323,7 +323,7 @@ function ExportCard({ actor }: { actor: string }) {
     try {
       const text = (await http.get<string | null>(adminUrl("/admin/db-export", actor, { tables: all ? undefined : [...picked].join(",") }), { responseType: "text" })) ?? "";
       const day = new Date().toISOString().slice(0, 10);
-      downloadBlob(text, `ws-lexx-${all ? "backup" : "export"}-${day}.json`, "application/json");
+      downloadBlob(text, `ws-desk-${all ? "backup" : "export"}-${day}.json`, "application/json");
       let summary = "";
       try {
         const j = JSON.parse(text) as { summary?: Record<string, number> };

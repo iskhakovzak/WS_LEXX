@@ -28,7 +28,7 @@ export default {
   traderAria: "Treyder",
   myTrades: "Mening savdolarim",
   wholeTeam: "Butun jamoa",
-  reportTitle: "WS_LEXX hisoboti — {scope}",
+  reportTitle: "WS_Desk hisoboti — {scope}",
   reportPeriod: "{label} ({range})",
   prevCompare: "{range} bilan solishtirish · {trades}",
   prevEmpty: "Oldingi davrda ({range}) savdolar yoʻq — solishtiradigan narsa yoʻq",

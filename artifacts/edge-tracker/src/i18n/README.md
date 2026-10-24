@@ -61,7 +61,7 @@ One module for every number, date and plural: `import { … } from "@/lib/format
 
 ## Do not translate
 
-Tickers, codes (OPG, MOC, Day…), metrics (P&L, R, MAE, VWAP, ATR, RVOL, float, gap, halt…), Long/Short (RU «Лонг/Шорт»), product names (WS_LEXX, PropReports, Telegram, Big 7), user content (names, setup names, notes, comments, folders, tags). Full list: GLOSSARY.md.
+Tickers, codes (OPG, MOC, Day…), metrics (P&L, R, MAE, VWAP, ATR, RVOL, float, gap, halt…), Long/Short (RU «Лонг/Шорт»), product names (WS_Desk, PropReports, Telegram, Big 7), user content (names, setup names, notes, comments, folders, tags). Full list: GLOSSARY.md.
 
 ## Language state
 

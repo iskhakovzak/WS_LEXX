@@ -30,7 +30,7 @@ export default {
   traderAria: "Трейдер",
   myTrades: "Мои сделки",
   wholeTeam: "Вся команда",
-  reportTitle: "Отчёт WS_LEXX — {scope}",
+  reportTitle: "Отчёт WS_Desk — {scope}",
   reportPeriod: "{label} ({range})",
   prevCompare: "Сравнение с {range} · {trades}",
   prevEmpty: "В предыдущем периоде ({range}) сделок нет — сравнивать не с чем",

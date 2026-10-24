@@ -132,7 +132,7 @@ export default function WrappedViewer({ kind, periodKey, open, onOpenChange }: {
   }, [target, story.summary, summaryBg, fontsReady]);
 
   const period = story.period;
-  const fileName = period ? fileNameOf(period, target === "summary" ? "summary" : i + 1) : "WS_LEXX.png";
+  const fileName = period ? fileNameOf(period, target === "summary" ? "summary" : i + 1) : "WS_Desk.png";
   const pngNow = async (): Promise<Blob | null> => {
     if (target === "card") return blobs.current.card ?? (canvasRef.current ? canvasPng(canvasRef.current) : null);
     for (let k = 0; k < 20 && !blobs.current.summary; k++) await new Promise((r) => window.setTimeout(r, 50));
@@ -154,7 +154,7 @@ export default function WrappedViewer({ kind, periodKey, open, onOpenChange }: {
   const share = async () => {
     const blob = await pngNow();
     if (!blob) { toast({ title: ts("toast.renderFailed"), variant: "destructive" }); return; }
-    if ((await sharePng(blob, fileName, period ? `${periodTitle(period)} · WS_LEXX` : "WS_LEXX")) === "failed") toast({ title: ts("toast.shareFailed"), variant: "destructive" });
+    if ((await sharePng(blob, fileName, period ? `${periodTitle(period)} · WS_Desk` : "WS_Desk")) === "failed") toast({ title: ts("toast.shareFailed"), variant: "destructive" });
   };
 
   const title = period ? t("viewer.label", { title: periodTitle(period), period: periodLabel(period) }) : "";

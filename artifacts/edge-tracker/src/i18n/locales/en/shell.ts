@@ -142,7 +142,7 @@ export default {
   header: {
     skipToContent: "Skip to content",
     toggleMenu: "Collapse or expand the menu",
-    logoAria: "WS_LEXX — go to dashboard",
+    logoAria: "WS_Desk — go to dashboard",
     userMenuAria: "User menu: {name}",
     languageAria: "Interface language: {name}",
   },

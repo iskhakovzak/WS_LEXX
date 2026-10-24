@@ -4,7 +4,7 @@ import type ru from "../ru/medals";
 export default {
   stageAria: "«{stage}» bosqichi medali",
   stageLockedAria: "«{stage}» bosqichi medali — hali oldinda",
-  rimBottom: "WS_LEXX Akademiyasi",
+  rimBottom: "WS_Desk Akademiyasi",
   reveal: {
     eyebrow: "Yangi bosqich",
     title: "Siz endi — {stage}",

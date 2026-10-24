@@ -2,7 +2,7 @@
 export default {
   stageAria: "Медаль ступени «{stage}»",
   stageLockedAria: "Медаль ступени «{stage}» — ещё впереди",
-  rimBottom: "Академия WS_LEXX",
+  rimBottom: "Академия WS_Desk",
   reveal: {
     eyebrow: "Новая ступень",
     title: "Вы — {stage}",
