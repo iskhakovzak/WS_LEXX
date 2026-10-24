@@ -124,7 +124,7 @@ export function WatchlistFormDialog({
           <DialogDescription>{t("form.description")}</DialogDescription>
         </DialogHeader>
         <div
-          className="space-y-5"
+          className="space-y-field"
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (!saving) handleSave(); } }}
         >
           <FieldGroup title={t("form.main")}>

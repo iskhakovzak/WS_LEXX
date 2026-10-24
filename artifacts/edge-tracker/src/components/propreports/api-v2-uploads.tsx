@@ -277,7 +277,7 @@ export function SuperuserUploads({ canSync }: { canSync: boolean }) {
           {check.error ? <span className="text-down">{check.error instanceof Error ? check.error.message : String(check.error)}</span> : null}
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-section">
           {canSync && <UploadForm onSent={setOpen} />}
           <UploadList onOpen={setOpen} />
         </div>

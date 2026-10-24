@@ -103,7 +103,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const filterLabel = (f: Filter) => (f === "all" ? tc("states.all") : f === "action" ? t("desk.filterAction") : t("desk.filterPending"));
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-5">
+    <div className="flex flex-col gap-section">
       <StatGrid>
         {ev.isLoading || !s ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
@@ -120,9 +120,9 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
       {(pending.isLoading || pendingList.length > 0) && (
         <Panel title={t("desk.queueTitle")} description={t("desk.queueDesc")} icon={Inbox}>
           {pending.isLoading ? (
-            <div className="grid gap-2 md:grid-cols-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {pendingList.map((p) => (
                 <ProposalCard key={p.id} proposal={p} tiers={data?.tiers ?? []} canDecide={!!data?.canEdit} onOpenTrader={setSelected} />
               ))}

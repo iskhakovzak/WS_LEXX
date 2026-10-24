@@ -322,7 +322,7 @@ export function PeriodTop({ tabs }: { tabs: ReactNode }) {
               )}
             </Panel>
 
-            <div className="flex min-w-0 flex-col gap-4 lg:gap-5">
+            <div className="flex min-w-0 flex-col gap-section">
               {mostImproved && mostImproved.deltaScore != null && mostImproved.deltaScore > 0 && (
                 <MostImprovedPanel row={mostImproved} period={period} onSelect={selectTrader} />
               )}

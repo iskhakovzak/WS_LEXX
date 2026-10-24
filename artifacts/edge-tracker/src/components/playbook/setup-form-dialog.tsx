@@ -328,7 +328,7 @@ export function SetupFormDialog({
 
         <form
           id="pb-form"
-          className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-6 py-5"
+          className="min-h-0 flex-1 space-y-field overflow-y-auto overscroll-contain px-6 py-5"
           onSubmit={(e) => { e.preventDefault(); save(); }}
           noValidate
         >

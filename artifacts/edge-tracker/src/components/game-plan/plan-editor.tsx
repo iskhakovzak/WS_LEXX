@@ -134,7 +134,7 @@ function EditorInner({
   const takenTickers = draft.inPlay.map((t) => t.ticker.trim().toUpperCase()).filter(Boolean);
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-6">
+    <div ref={rootRef} className="flex flex-col gap-section">
       {/* Block nav */}
       <nav
         aria-label={tr("editor.blocksAria")}

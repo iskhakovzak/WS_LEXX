@@ -278,7 +278,7 @@ export function OfferingDetailSheet({
           </div>
         </SheetHeader>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5">
+        <div className="flex-1 space-y-section overflow-y-auto px-5 py-5">
           {exposure && exposure.held.length > 0 && (
             <div role="alert" className="flex gap-3 rounded-xl bg-down/10 p-3 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />
