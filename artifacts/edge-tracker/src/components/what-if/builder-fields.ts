@@ -6,7 +6,7 @@
  */
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { errorLabel, isErrorCode, type ErrorCode } from "@/components/shared/error-vocab";
-import { ENTRY_MISTAKES, MAX_TAG_LEN, type PreviewTrade, type Rule, type RuleType, stopsRecorded } from "./rules";
+import { ENTRY_MISTAKES, MAX_TAG_LEN, STRATEGIES, type PreviewTrade, type Rule, type RuleType, type Strategy, stopsRecorded } from "./rules";
 
 export type Mode = "exclude" | "stop" | "cap";
 export type Op = { id: string; label: string };
@@ -125,7 +125,37 @@ export const EXCLUDE_FIELDS: FieldDef[] = [
     options: tagOptions,
     build: (_op, v) => (v.trim() ? { type: "excludeTags", tags: [v.trim()] } : null),
   },
+  {
+    id: "afterWin", get label() { return wt("builder.field.afterWin"); }, ops: [{ id: "within", get label() { return wt("builder.op.within"); } }], input: "number", get unit() { return wt("builder.unit.min"); }, defaultValue: "5", requires: "afterWin",
+    visible: (trades) => trades.some((t) => t.entryMin != null),
+    build: (_op, v) => { const n = num(v); return n && n > 0 ? { type: "afterWin", minutes: n } : null; },
+  },
+  {
+    id: "reentryLoss", get label() { return wt("builder.field.reentryLoss"); }, ops: [{ id: "within", get label() { return wt("builder.op.within"); } }], input: "number", get unit() { return wt("builder.unit.min"); }, defaultValue: "15", requires: "noReentryAfterLoss",
+    visible: (trades) => trades.some((t) => t.entryMin != null),
+    build: (_op, v) => { const n = num(v); return n && n > 0 ? { type: "noReentryAfterLoss", minutes: n } : null; },
+  },
+  {
+    // A short list of windows instead of two time inputs (fewer choices): the open, lunch, the last hour.
+    id: "blockWindow", get label() { return wt("builder.field.blockWindow"); }, ops: [], input: "choice", defaultValue: "", requires: "blockWindow",
+    visible: (trades) => trades.some((t) => t.entryMin != null),
+    options: () => BLOCK_WINDOWS.map((w) => ({ value: w, label: `${w.replace("-", "–")} ET` })),
+    build: (_op, v) => { const [from, to] = v.split("-"); return HM.test(from ?? "") && HM.test(to ?? "") ? { type: "blockWindow", from, to } : null; },
+  },
+  {
+    id: "strategy", get label() { return wt("builder.field.strategy"); }, ops: [], input: "choice", defaultValue: "", requires: "excludeStrategies",
+    options: (trades) => byCount<string>(trades, (t) => (t.strategy && (STRATEGIES as readonly string[]).includes(t.strategy) ? [t.strategy] : [])).map(([s]) => ({ value: s, label: s })),
+    build: (_op, v) => ((STRATEGIES as readonly string[]).includes(v) ? { type: "excludeStrategies", strategies: [v as Strategy] } : null),
+  },
+  {
+    id: "earnings", get label() { return wt("builder.field.earnings"); }, ops: [isOp], input: "none", defaultValue: "", requires: "excludeEarnings",
+    visible: (trades) => trades.some((t) => t.earnings === true),
+    build: () => ({ type: "excludeEarnings" }),
+  },
 ];
+
+/** Windows «не входить» offers (from-to, ET). */
+export const BLOCK_WINDOWS = ["09:30-09:35", "09:30-09:45", "11:30-13:30", "15:00-16:00", "15:30-16:00"];
 
 export const STOP_FIELDS: FieldDef[] = [
   {
@@ -143,6 +173,17 @@ export const STOP_FIELDS: FieldDef[] = [
   {
     id: "maxTrades", get label() { return wt("builder.field.maxTrades"); }, ops: [], input: "number", get unit() { return wt("builder.unit.pcs"); }, defaultValue: "10", requires: "maxTradesPerDay",
     build: (_op, v) => { const n = num(v); return n && n >= 1 ? { type: "maxTradesPerDay", n: Math.round(n) } : null; },
+  },
+  {
+    id: "maxPerTicker", get label() { return wt("builder.field.maxPerTicker"); }, ops: [], input: "number", get unit() { return wt("builder.unit.pcs"); }, defaultValue: "2", requires: "maxTradesPerTicker",
+    build: (_op, v) => { const n = num(v); return n && n >= 1 ? { type: "maxTradesPerTicker", n: Math.round(n) } : null; },
+  },
+  {
+    // «Красная зона»: from −$X on, k more entries (the op picks k: none / one more / two more).
+    id: "redZone", get label() { return wt("builder.field.redZone"); },
+    ops: (["k0", "k1", "k2"] as const).map((id) => ({ id, get label() { return wt(`builder.op.${id}`); } })),
+    input: "number", unit: "$", defaultValue: "100", requires: "redZone",
+    build: (op, v) => { const n = num(v); const k = Number(op.slice(1)); return n && n > 0 && Number.isInteger(k) ? { type: "redZone", usd: n, k } : null; },
   },
 ];
 

@@ -10,9 +10,12 @@ const ids = (mode: "exclude" | "stop" | "cap", trades: PreviewTrade[], team = fa
 
 describe("builder fields", () => {
   it("IMX / re-entry / mistakes / tags only when the loaded trades have them", () => {
-    expect(ids("exclude", [mk(1)])).toEqual(["time", "ticker", "hold", "price", "size", "side", "afterLoss"]);
-    const rich = [mk(1, { imx: true, reentry: true, mistakes: ["fomo"], ptags: ["news"] }), mk(2)];
-    expect(ids("exclude", rich)).toEqual(["time", "ticker", "hold", "price", "size", "side", "afterLoss", "imx", "reentry", "mistake", "tag"]);
+    const timed = ["afterWin", "reentryLoss", "blockWindow"];
+    expect(ids("exclude", [mk(1)])).toEqual(["time", "ticker", "hold", "price", "size", "side", "afterLoss", ...timed]);
+    const rich = [mk(1, { imx: true, reentry: true, mistakes: ["fomo"], ptags: ["news"], strategy: "OPG", earnings: true }), mk(2)];
+    expect(ids("exclude", rich)).toEqual(["time", "ticker", "hold", "price", "size", "side", "afterLoss", "imx", "reentry", "mistake", "tag", ...timed, "strategy", "earnings"]);
+    // Without entry times the order-in-the-day questions are not asked.
+    expect(ids("exclude", [mk(1, { entryMin: null })])).not.toContain("afterWin");
   });
 
   it("personal tags are not offered for the whole team", () => {
@@ -30,7 +33,7 @@ describe("builder fields", () => {
     expect(ids("exclude", [mk(1, { imx: true })], false, old)).toEqual(["time"]);
     expect(ids("stop", [mk(1)], false, old)).toEqual(["dayLoss"]);
     expect(ids("cap", [mk(1, { sizeRel: 3 })], false, old)).toEqual(["cap"]);
-    expect(ids("stop", [mk(1)])).toEqual(["dayLoss", "profitTarget", "lossRun", "maxTrades"]);
+    expect(ids("stop", [mk(1)])).toEqual(["dayLoss", "profitTarget", "lossRun", "maxTrades", "maxPerTicker", "redZone"]);
     expect(ids("cap", [mk(1, { sizeRel: 3 })])).toEqual(["cap", "sizeRel"]);
     expect(ids("cap", [mk(1)])).toEqual(["cap"]);
   });

@@ -45,6 +45,9 @@ export type SimTrade = {
   hasStop?: boolean | null;
   mistakes?: ErrorCode[];
   ptags?: string[];
+  /** Wave-2 fields (absent on older API builds): PropReports strategy, earnings that trading day. */
+  strategy?: string | null;
+  earnings?: boolean | null;
 };
 
 export type DayResult = { day: string; net: number; gross: number; fees: number; trades: number };
@@ -151,7 +154,43 @@ export type Suggestion = {
   needAllTime?: boolean;
   /** Most of the effect comes from a few days. */
   fragile?: { reason: "fewDays" | "topDays"; days: number } | null;
+  /** «Почему»: the trades and days behind the number (absent on older builds). */
+  why?: Why;
 };
+
+/** api lib/whatIfWhy Why. */
+export type Why = {
+  total: number;
+  days: number;
+  topTrades: { id: number; day: string; ticker: string; net: number; contribution: number; kind: "removed" | "changed" }[];
+  topDays: { day: string; delta: number }[];
+  topDayShare: number | null;
+  top3Share: number | null;
+  withoutTopDay: number | null;
+};
+
+/** api lib/whatIfCombo ComboEval. */
+export type ComboEval = {
+  rules: Rule[]; labels: string[];
+  delta: number; singles: number[]; sumSingles: number; interaction: number; marginal: number[]; overlap: number;
+  warning: "overlap" | "redundant" | "synergy" | null;
+  ci: { lo: number; hi: number }; robust: boolean; holdout: { delta: number; days: number; affected: number } | null;
+  affected: number; excluded: number; tradesLeft: number; gates: boolean; beatsBest: boolean;
+};
+export type CombosResponse = {
+  combos: ComboEval[]; own: ComboEval | null; searched: number; singles: number; family: number; blocks: string[];
+  smallSample: boolean; holdout: boolean;
+};
+
+/** api lib/whatIfMyRules RuleInAction (+ the label of its twin). */
+export type RuleInAction = {
+  id: string; name: string; kind: string; source: "catalog" | "trial"; since: string | null; rule: Rule | null; label: string | null; estimate: boolean;
+  status: "ok" | "early" | "notModelled" | "noSince";
+  after: { days: number; trades: number; broke: number; cost: number } | null;
+  before: { days: number; trades: number; perDay: number } | null;
+  saved: number | null;
+};
+export type MyRulesResponse = { scope: string | null; team: boolean; minSideDays?: number; rules: RuleInAction[] };
 
 export type Timing = "exante" | "inTrade" | "review";
 /** «window»: a rolling 30 / 90-day period or a closed range — it never grows, so no honest verdict can resolve there. */
@@ -236,7 +275,7 @@ export const whatIfKeys = {
 
 const TABLE_COLS = [
   "id", "day", "entryMin", "ticker", "side", "qty", "entry", "gross", "fees", "holdSec", "seq", "fills", "reg", "setup", "grade",
-  "trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes",
+  "trader", "imx", "reentry", "sizeRel", "hasStop", "ptags", "mistakes", "strategy", "earnings",
 ];
 
 /**
@@ -270,6 +309,8 @@ export function decodeTrades(t: TradeTable): SimTrade[] {
     if (has("hasStop")) { const v = num(r, "hasStop"); out.hasStop = v === 1 ? true : v === 0 ? false : null; }
     if (has("ptags")) out.ptags = list(r, "ptags");
     if (has("mistakes")) out.mistakes = list(r, "mistakes").filter(isErrorCode);
+    if (has("strategy")) out.strategy = str(r, "strategy");
+    if (has("earnings")) { const v = num(r, "earnings"); out.earnings = v === 1 ? true : v === 0 ? false : null; }
     return out;
   });
 }
@@ -309,6 +350,34 @@ export function useWhatIfSuggestions(scope: Scope, enabled = true) {
     // While the honest check runs on the server the fast cards are shown, and the query polls until it is ready.
     refetchInterval: (q) => suggestionsPollMs(q.state.data),
     queryFn: () => http.get<SuggestionsResponse>(`/api/whatif/suggestions?${suggestionsParams(scope)}`),
+  });
+}
+
+/** «Набор правил»: the best sets of 2–3 rules and the own set (≤ 3 rules of distinct types; fewer than 2 → none). */
+export function useWhatIfCombos(scope: Scope, own: Rule[], enabled = true) {
+  const rules = own.length >= 2 ? JSON.stringify(own.slice(0, 3)) : "";
+  return useQuery<CombosResponse>({
+    queryKey: ["whatif", "combos", scopeParams(scope), rules], enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData,
+    queryFn: () => {
+      const sp = new URLSearchParams(scopeParams(scope));
+      if (rules) sp.set("rules", rules);
+      return http.get<CombosResponse>(`/api/whatif/combos?${sp}`);
+    },
+  });
+}
+
+/** «Мои правила в деле»: the trader's own rules since adoption (an older API without the route → none). */
+export function useMyRules(trader: string, enabled = true) {
+  return useQuery<MyRulesResponse | null>({
+    queryKey: ["whatif", "my-rules", trader], enabled, staleTime: 5 * 60_000, retry: false,
+    queryFn: async () => {
+      try {
+        return await http.get<MyRulesResponse>(`/api/whatif/my-rules${trader ? `?trader=${encodeURIComponent(trader)}` : ""}`);
+      } catch (e) {
+        if (isNotFound(e)) return null;
+        throw e;
+      }
+    },
   });
 }
 

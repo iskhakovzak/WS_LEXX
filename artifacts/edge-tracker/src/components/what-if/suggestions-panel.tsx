@@ -8,6 +8,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { cn } from "@/lib/utils";
 import type { Suggestion, SuggestionsResponse, Timing } from "./api";
+import { WhyFold } from "./why-fold";
 import { type Rule, chipLabel, ifNotPhrase, isApplied } from "./rules";
 import {
   type BadgeId, type NeedLine, VISIBLE_CARDS, cardLine, holdoutNote, needLine, preliminaryHintKey, removalLine, sectionNote, suggestionBadges, timingOf,
@@ -30,6 +31,7 @@ export function SuggestionCards({
   periodLabel,
   onToggle,
   onAllTime,
+  onDay,
 }: {
   data: SuggestionsResponse | undefined;
   isLoading: boolean;
@@ -37,6 +39,8 @@ export function SuggestionCards({
   periodLabel: string;
   onToggle: (s: Suggestion, applied: boolean) => void;
   onAllTime?: () => void;
+  /** «Почему»: a day of the decomposition opens its report. */
+  onDay?: (day: string) => void;
 }) {
   const { t } = whatIfI18n.useT();
   const [expanded, setExpanded] = useState(false);
@@ -67,7 +71,7 @@ export function SuggestionCards({
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]">
         {shown.map((s) => (
-          <SuggestionCard key={JSON.stringify(s.rule)} s={s} data={data} rules={rules} periodLabel={periodLabel} onToggle={onToggle} onAllTime={onAllTime} />
+          <SuggestionCard key={JSON.stringify(s.rule)} s={s} data={data} rules={rules} periodLabel={periodLabel} onToggle={onToggle} onAllTime={onAllTime} onDay={onDay} />
         ))}
       </div>
       {canToggle && (
@@ -114,8 +118,9 @@ export function SuggestionsNote({ data, periodPhrase, onAllTime }: { data: Sugge
 
 const TIMING_ICON: Record<Timing, LucideIcon> = { exante: Crosshair, inTrade: Timer, review: NotebookPen };
 
-function SuggestionCard({ s, data, rules, periodLabel, onToggle, onAllTime }: {
+function SuggestionCard({ s, data, rules, periodLabel, onToggle, onAllTime, onDay }: {
   s: Suggestion; data: SuggestionsResponse; rules: Rule[]; periodLabel: string; onToggle: (s: Suggestion, applied: boolean) => void; onAllTime?: () => void;
+  onDay?: (day: string) => void;
 }) {
   const { t } = whatIfI18n.useT();
   const applied = isApplied(rules, s.rule);
@@ -156,6 +161,7 @@ function SuggestionCard({ s, data, rules, periodLabel, onToggle, onAllTime }: {
         <span aria-hidden="true">·</span>
         <span>{line.kind === "changes" ? t("suggestions.changes", { trades }) : t("suggestions.removes", { trades })}</span>
       </div>
+      {s.why && <WhyFold why={s.why} onDay={onDay} />}
       <div className="mt-auto flex items-center justify-between gap-2 pt-1">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {badges.map((b) => <Pill key={b} tone={pill[b].tone} title={pill[b].hint}>{pill[b].label}</Pill>)}

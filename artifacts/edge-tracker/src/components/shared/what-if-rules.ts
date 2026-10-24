@@ -34,7 +34,23 @@ export type Rule =
   | { type: "excludeTags"; tags: string[] }
   /** Stop the day after giving back `pct`% of a day profit that reached +peak. */
   | { type: "profitGiveback"; peak: number; pct: number }
-  | { type: "dailyProfitTarget"; usd: number };
+  | { type: "dailyProfitTarget"; usd: number }
+  /** Pause after a WINNING trade (same trader-day). */
+  | { type: "afterWin"; minutes: number }
+  /** Once the realised day is at −usd: at most k more entries; with floor, none at −floor. */
+  | { type: "redZone"; usd: number; k: number; floor?: number | null }
+  /** No entries inside [from, to) ET. */
+  | { type: "blockWindow"; from: string; to: string }
+  | { type: "maxTradesPerTicker"; n: number }
+  /** No re-entry into the same ticker for `minutes` after a loss in it. */
+  | { type: "noReentryAfterLoss"; minutes: number }
+  | { type: "excludeStrategies"; strategies: Strategy[] }
+  /** Skip stocks reporting earnings that trading day. */
+  | { type: "excludeEarnings" };
+
+/** Strategies a rule may skip (api lib/whatIfTypes WHATIF_STRATEGIES). */
+export const STRATEGIES = ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing"] as const;
+export type Strategy = (typeof STRATEGIES)[number];
 
 export const GRADES = ["A+", "A", "B", "C"] as const;
 export type Grade = (typeof GRADES)[number];

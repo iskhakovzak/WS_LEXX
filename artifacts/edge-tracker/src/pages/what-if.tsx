@@ -13,8 +13,12 @@ import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { comparePersonNames, personName } from "@/i18n";
 import {
-  type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfRun, useWhatIfSuggestions,
+  type Scope, type Suggestion, useDebounced, useDeleteScenario, useMyRules, useSaveScenario, useSavedScenarios, useTraderLimits, useWhatIfBase, useWhatIfCombos, useWhatIfRun,
+  useWhatIfSuggestions,
 } from "@/components/what-if/api";
+import { MonthPanel } from "@/components/what-if/month-panel";
+import { ComboPanel, ownSet } from "@/components/what-if/combo-panel";
+import { MyRulesPanel } from "@/components/what-if/my-rules-panel";
 import { LEGACY_RULE_TYPES, type Rule, type RuleType, decodeRules, encodeRules, mergeRule, removeRule, subtractRule } from "@/components/what-if/rules";
 import { SuggestionCards, SuggestionsNote } from "@/components/what-if/suggestions-panel";
 import { ScenarioBar } from "@/components/what-if/scenario-bar";
@@ -197,6 +201,9 @@ export default function WhatIf() {
 
   const run = useWhatIfRun(scope, runRules, hasRules && hasTrades);
   const suggestions = useWhatIfSuggestions(scope, hasTrades);
+  // «Набор правил» (the best sets + the scenario as a set) and «Мои правила в деле» (the trader's own rules).
+  const combos = useWhatIfCombos(scope, useMemo(() => ownSet(runRules), [runRules]), hasTrades);
+  const myRules = useMyRules(isCurator ? scopeTrader : "", hasTrades && user?.role !== "guest");
   const saved = useSavedScenarios(scenarioOwner, canEdit);
   const save = useSaveScenario(scenarioOwner);
   const del = useDeleteScenario();
@@ -351,6 +358,8 @@ export default function WhatIf() {
         </div>
       </Panel>
 
+      {showScenario && <MonthPanel trades={b.trades} run={r!} onDay={openDay} />}
+
       <section aria-labelledby="sim-suggestions" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="sim-suggestions" className="flex items-center gap-2 text-sm font-semibold">
@@ -358,7 +367,7 @@ export default function WhatIf() {
           </h2>
           <SuggestionsNote data={suggestions.data} periodPhrase={periodPhrase} onAllTime={showAllTime} />
         </div>
-        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} onAllTime={showAllTime} />
+        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} onAllTime={showAllTime} onDay={openDay} />
         {suggestions.isError && (
           <p className="flex flex-wrap items-center gap-2 text-xs text-down" role="alert">
             {t("suggestionsError")}
@@ -368,6 +377,9 @@ export default function WhatIf() {
           </p>
         )}
       </section>
+
+      <ComboPanel data={combos.data} isLoading={combos.isLoading} rules={rules} onApply={(set) => setRules((rs) => set.reduce(mergeRule, rs))} />
+      <MyRulesPanel data={myRules.data} isLoading={myRules.isLoading} />
 
       <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
         <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={presets} team={b.scope == null} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
