@@ -24,10 +24,11 @@ export default {
     finviz: { title: "Finviz", description: "Finviz Elite’dan ertalabki skriner, tiker konteksti va hisobotlar taqvimi. Serverda FINVIZ_AUTH kaliti boʻlmasa, hammasi oʻchiq." },
     trades: { title: "Savdolar: IMX", description: "IMX — yopilish auksioni (disbalans) savdolari. Shu Nyu-York oynasida istalgan ijrosi boʻlgan savdo MOC strategiyasi va «IMX» tegini oladi; roʻyxat va jamilarda qoladi, treyder uni chiqarib tashlashi mumkin." },
     newsChannel: { title: "WS_NEWS kanali", description: "Savdo kunlari WS_NEWS Telegram kanaliga bozor sharhlari: premarket, ochilishdan beri, kun yakuni. Serverda NEWS_CHANNEL_BOT_TOKEN va NEWS_CHANNEL_CHAT_ID boʻlmasa, hammasi oʻchiq." },
+    assistant: { title: "WS Yordamchi", description: "Sayt boʻyicha AI yordamchi (sarlavhadagi ✦ tugmasi, Ctrl+J). Kalit — serverdagi AI_INTEGRATIONS_ANTHROPIC_API_KEY oʻzgaruvchisi; usiz yordamchi uni qanday yoqishni koʻrsatadi. Kim foydalana oladi: «Rollar va huquqlar», «WS Yordamchi» huquqi." },
     access: { title: "Bosqichlar boʻyicha kirish", description: "Qaysi boʻlimlar Junior, Treyder va Senior uchun yopiq. «Rollar va huquqlar»da oʻzgartiriladi." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
-  units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta", places: "oʻrin", people: "kishi", shares: "aksiya", bars: "sham", times: "×", bp: "b.p.", atr: "ATR", quests: "kvest", trades: "savdo", months: "oy", lessons: "dars", exams: "imtihon", tasks: "topshiriq", teams: "jamoa" },
+  units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta", places: "oʻrin", people: "kishi", shares: "aksiya", bars: "sham", times: "×", bp: "b.p.", atr: "ATR", quests: "kvest", trades: "savdo", months: "oy", lessons: "dars", exams: "imtihon", tasks: "topshiriq", teams: "jamoa", tokens: "token" },
   jump: {
     aria: "Sozlamalar guruhlari",
     pilot: "Pilot · {count} band",
@@ -89,6 +90,17 @@ export default {
     unknown: "Bunday treyder yoʻq — olib tashlang yoki ismni tuzating",
   },
   settings: {
+    assistant: {
+      enabled: { label: "Yordamchi yoqilgan", help: "Oʻchirilgan — tugma qoladi, lekin yordamchi oʻchirilganini aytadi." },
+      defaultModel: { label: "Standart model", help: "Oddiy savollarga javob beradi va asboblarni chaqiradi. Haiku boshqalardan bir necha barobar arzon.", options: { "claude-haiku-5-5": "Haiku 5.5 · tez", "claude-sonnet-5-5": "Sonnet 5.5 · aqlliroq", "claude-opus-5-5": "Opus 5.5 · kuchliroq" } },
+      smartModel: { label: "«Aqlliroq» model", help: "«Aqlliroq» tugmasi va ogʻir vazifalar uchun: pleybuk, reja va kun yakuni qoralamalari, «✦ Yordam», koʻp maʼlumot boʻyicha tahlil.", options: { "claude-haiku-5-5": "Haiku 5.5 · tez", "claude-sonnet-5-5": "Sonnet 5.5 · aqlliroq", "claude-opus-5-5": "Opus 5.5 · kuchliroq" } },
+      autoEscalate: { label: "Aqlli modelga oʻzi oʻtsin", help: "Ogʻir vazifalarda yordamchi «aqlliroq» modelni oʻzi oladi. Oʻchirilgan — faqat «Aqlliroq» tugmasi bilan." },
+      juniorsEnabled: { label: "Junlar uchun ochiq", help: "Oʻchirilgan — Junlar yordamchidan foydalana olmaydi (Treyderlar, Senyorlar va kuratorlar foydalanadi)." },
+      dailyTokensDefault: { label: "Kunlik limit, standart model", help: "Bir kishiga kuniga tokenlar (kirish + kesh yozuvi + chiqish). Tugasa — yordamchi ertagacha ishlamaydi. 0 — oʻchirish." },
+      dailyTokensSmart: { label: "Kunlik limit, «aqlliroq» model", help: "Aqlli model uchun alohida limit. Tugasa — javoblar standart modeldan keladi." },
+      requestsPer10Min: { label: "10 daqiqada savollar", help: "Tasodifiy spamdan himoya: bir kishiga 10 daqiqada shuncha soʻrov." },
+      auditBodies: { label: "Jurnalda matnlarni saqlash", help: "Chaqiruvlar jurnali har doim kim, qachon, model, tokenlar va asboblarni yozadi. Yoqilgan — savol va javob matnlarini ham." },
+    },
     daily: {
       focusWindowDays: { label: "Fokus oynasi", help: "Eng qimmat takrorlanuvchi xatoni topish uchun oxirgi nechta savdo kuniga qaraymiz." },
       focusMinDays: { label: "Xato takrori", help: "Xato oynaning kamida shuncha kunida boʻlsagina fokusga aylanadi." },

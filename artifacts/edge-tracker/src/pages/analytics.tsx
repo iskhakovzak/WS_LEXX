@@ -33,6 +33,7 @@ import {
 } from "@/components/analytics-page/metrics";
 import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
 import { fmtDayRange } from "@/components/shared/period/PeriodPicker";
+import { AskAssistantButton } from "@/components/shared/ask-assistant";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
@@ -266,6 +267,7 @@ export default function Analytics() {
           <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex">
             {hotBefore}<Kbd>1</Kbd>–<Kbd>{lastKey}</Kbd>{hotAfter}
           </span>
+          <AskAssistantButton context={{ ...(periodWin?.from ? { from: periodWin.from } : {}), ...(periodWin?.to ? { to: periodWin.to } : {}), ...(scope.trader ? { trader: scope.trader } : {}) }} />
           <HelpButton id="analytics" />
         </>}
       >

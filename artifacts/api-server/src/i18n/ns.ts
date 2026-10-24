@@ -1,5 +1,8 @@
 /** Server namespaces. Add one per area: `export const <area>T = defineNamespace(ru<Area>, { en: en<Area>, uz: uz<Area> });` */
 import { defineNamespace } from ".";
+import ruAssistant from "./ru/assistant";
+import enAssistant from "./en/assistant";
+import uzAssistant from "./uz/assistant";
 import ruCommon from "./ru/common";
 import enCommon from "./en/common";
 import uzCommon from "./uz/common";
@@ -173,3 +176,5 @@ export const newsChannelT = defineNamespace(ruNewsChannel, { en: enNewsChannel, 
 
 /** `coach`: coaching evidence for staff — the plateau 1:1 agenda and edge-map slice labels (lib/plateauStore.ts). */
 export const coachT = defineNamespace(ruCoach, { en: enCoach, uz: uzCoach });
+/** `assistant`: «Ассистент WS» server texts (lib/assistant): «✦ Помочь» instructions, the dev demo model's lines. */
+export const assistantT = defineNamespace(ruAssistant, { en: enAssistant, uz: uzAssistant });

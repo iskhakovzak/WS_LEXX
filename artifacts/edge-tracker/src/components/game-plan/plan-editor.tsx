@@ -4,6 +4,7 @@ import { Check, Compass, Globe2, Plus, ShieldAlert, Target, X } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { AssistHelp } from "@/components/shared/assist-help";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Segmented } from "@/components/ds";
 import { useEdgeFade } from "@/components/ds/edge-fade";
@@ -174,6 +175,7 @@ function EditorInner({
           </div>
         </div>
         <Field label={tr("editor.context")} htmlFor={`${uid}-mv`}>
+          <div className="-mt-1 mb-1 flex justify-end"><AssistHelp field="plan" value={draft.marketView} onAccept={(v) => patch({ marketView: v })} /></div>
           <Textarea
             id={`${uid}-mv`}
             rows={4}
@@ -291,6 +293,7 @@ function EditorInner({
         </div>
         {!isDesk && <OwnRuleField id={`${uid}-or`} value={draft.ownRule} onChange={(v) => patch({ ownRule: v })} focusMistake={focusMistake} suggestion={ruleSuggestion} />}
         <Field label={isDesk ? tr("editor.riskNotesDesk") : tr("editor.riskNotes")} htmlFor={`${uid}-rn`}>
+          <div className="-mt-1 mb-1 flex justify-end"><AssistHelp field="plan" value={draft.riskNotes} onAccept={(v) => patch({ riskNotes: v })} /></div>
           <Textarea
             id={`${uid}-rn`}
             rows={3}

@@ -37,6 +37,7 @@ import { ExecutionsPanel } from "./ExecutionsPanel";
 import { TradeRelated, useSourceIdeaTarget } from "./TradeRelated";
 import { TradeSocial } from "./TradeSocial";
 import { ShareCardButton } from "./share-card/ShareCardButton";
+import { AskAssistantButton, useAssistantContext } from "@/components/shared/ask-assistant";
 import { KeyFacts, SheetHero } from "./sheet-hero";
 import { SheetSection, useSheetSections, type SectionsApi } from "./sheet-section";
 import { ContextRow, NOTES_KEYS, REVIEW_TEXT_KEYS, ReviewEditor, type TradePatch } from "./sheet-review";
@@ -187,6 +188,7 @@ function SheetBody(p: Props & { trade: Trade; mobile: boolean }) {
     notesHasContent: notesHasContent(t),
   });
   const showActions = p.canEdit || ownLoss;
+  useAssistantContext({ tradeId: t.id, date: dayOf(t), ...(t.trader ? { trader: t.trader } : {}) });
   // Values from other features (chart session labels, quality excursions, the redacted hint) are resolved here.
   const excursions = useExcursionFacts(!redacted && (t.entry != null || t.exit != null) ? t.id : null, afterExit);
   const hold = timing.holdSeconds ?? parseHoldText(t.holdTime);
@@ -219,6 +221,7 @@ function SheetBody(p: Props & { trade: Trade; mobile: boolean }) {
             )}
             <PlaybookSheetButton className="h-8" />
             <CopyTradeLink id={t.id} ticker={t.ticker} />
+            <AskAssistantButton compact context={{ tradeId: t.id, date: dayOf(t), ...(t.trader ? { trader: t.trader } : {}) }} />
           </div>
         </div>
         <SheetDescription className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:text-sm">

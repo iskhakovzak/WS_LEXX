@@ -88,6 +88,7 @@ export const CAPABILITIES = [
   { key: "discussions.moderate", group: G.content },
   { key: "discussions.edit.any", group: G.content, adminOnly: true },
   { key: "watchlist.manage", group: G.content },
+  { key: "assistant.use", group: G.content, own: true },
 
   { key: "users.manage", group: G.admin, sensitive: true },
   { key: "users.manage.admins", group: G.admin, adminOnly: true },
@@ -114,7 +115,7 @@ export function capabilityDef(cap: string): CapabilityDef | undefined {
 
 const MEMBER_CAPS: readonly Capability[] = [
   "trades.read.own", "trades.write.own", "journal.write.own", "risk.read.own", "propreports.import",
-  "playbook.edit", "ideas.publish", "watchlist.manage",
+  "playbook.edit", "ideas.publish", "watchlist.manage", "assistant.use",
 ];
 
 /** Curator defaults: everything except adminOnly and `sensitive` caps (same as the API). */

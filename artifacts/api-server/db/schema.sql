@@ -166,6 +166,8 @@ CREATE SEQUENCE public.academy_stage_criteria_id_seq AS integer START WITH 1 INC
 CREATE SEQUENCE public.academy_stage_history_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.academy_submissions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.activity_log_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.ai_assistant_audit_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
+CREATE SEQUENCE public.ai_assistant_messages_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.ai_review_rate_limit_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.ai_trade_reviews_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.analyst_actions_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -658,6 +660,67 @@ CREATE TABLE public.activity_log (
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   params jsonb,
   CONSTRAINT activity_log_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.ai_assistant_audit (
+  id bigint DEFAULT nextval('public.ai_assistant_audit_id_seq'::regclass) NOT NULL,
+  user_name text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  mode text NOT NULL,
+  models text[] DEFAULT '{}'::text[] NOT NULL,
+  route_reason text,
+  input_tokens bigint DEFAULT 0 NOT NULL,
+  output_tokens bigint DEFAULT 0 NOT NULL,
+  cache_read_tokens bigint DEFAULT 0 NOT NULL,
+  cache_write_tokens bigint DEFAULT 0 NOT NULL,
+  cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
+  tools text[] DEFAULT '{}'::text[] NOT NULL,
+  drafts integer DEFAULT 0 NOT NULL,
+  status text NOT NULL,
+  error_code text,
+  page text,
+  duration_ms integer,
+  user_message text,
+  assistant_message text,
+  CONSTRAINT ai_assistant_audit_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_assistant_audit_mode_check CHECK (mode = ANY (ARRAY['chat'::text, 'assist'::text])),
+  CONSTRAINT ai_assistant_audit_status_check CHECK (status = ANY (ARRAY['ok'::text, 'error'::text, 'aborted'::text, 'refused'::text])),
+  CONSTRAINT ai_assistant_audit_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
+);
+
+CREATE TABLE public.ai_assistant_messages (
+  id bigint DEFAULT nextval('public.ai_assistant_messages_id_seq'::regclass) NOT NULL,
+  user_name text NOT NULL,
+  role text NOT NULL,
+  content text DEFAULT ''::text NOT NULL,
+  model text,
+  drafts jsonb,
+  tools text[] DEFAULT '{}'::text[] NOT NULL,
+  page text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  cleared_at timestamp with time zone,
+  CONSTRAINT ai_assistant_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT ai_assistant_messages_content_check CHECK (char_length(content) <= 40000),
+  CONSTRAINT ai_assistant_messages_page_check CHECK (page IS NULL OR char_length(page) <= 300),
+  CONSTRAINT ai_assistant_messages_role_check CHECK (role = ANY (ARRAY['user'::text, 'assistant'::text])),
+  CONSTRAINT ai_assistant_messages_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
+);
+
+CREATE TABLE public.ai_assistant_usage (
+  user_name text NOT NULL,
+  day text NOT NULL,
+  model text NOT NULL,
+  input_tokens bigint DEFAULT 0 NOT NULL,
+  output_tokens bigint DEFAULT 0 NOT NULL,
+  cache_read_tokens bigint DEFAULT 0 NOT NULL,
+  cache_write_tokens bigint DEFAULT 0 NOT NULL,
+  requests integer DEFAULT 0 NOT NULL,
+  cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT ai_assistant_usage_pkey PRIMARY KEY (user_name, day, model),
+  CONSTRAINT ai_assistant_usage_day_check CHECK (day ~ '^\d{4}-\d{2}-\d{2}$'::text),
+  CONSTRAINT ai_assistant_usage_model_check CHECK (char_length(model) >= 1 AND char_length(model) <= 80),
+  CONSTRAINT ai_assistant_usage_user_name_check CHECK (char_length(user_name) >= 1 AND char_length(user_name) <= 200)
 );
 
 CREATE TABLE public.ai_review_rate_limit (
@@ -3110,6 +3173,8 @@ ALTER SEQUENCE public.academy_stage_criteria_id_seq OWNED BY public.academy_stag
 ALTER SEQUENCE public.academy_stage_history_id_seq OWNED BY public.academy_stage_history.id;
 ALTER SEQUENCE public.academy_submissions_id_seq OWNED BY public.academy_submissions.id;
 ALTER SEQUENCE public.activity_log_id_seq OWNED BY public.activity_log.id;
+ALTER SEQUENCE public.ai_assistant_audit_id_seq OWNED BY public.ai_assistant_audit.id;
+ALTER SEQUENCE public.ai_assistant_messages_id_seq OWNED BY public.ai_assistant_messages.id;
 ALTER SEQUENCE public.ai_review_rate_limit_id_seq OWNED BY public.ai_review_rate_limit.id;
 ALTER SEQUENCE public.ai_trade_reviews_id_seq OWNED BY public.ai_trade_reviews.id;
 ALTER SEQUENCE public.analyst_actions_cache_id_seq OWNED BY public.analyst_actions_cache.id;
@@ -3238,6 +3303,8 @@ CREATE INDEX academy_stage_history_user_idx ON public.academy_stage_history USIN
 CREATE INDEX academy_submissions_status_idx ON public.academy_submissions USING btree (status) WHERE (archived_at IS NULL);
 CREATE INDEX academy_submissions_user_idx ON public.academy_submissions USING btree (user_name, assignment_id);
 CREATE INDEX activity_log_section_entity_idx ON public.activity_log USING btree (section, entity_id, created_at DESC);
+CREATE INDEX ai_assistant_audit_user_idx ON public.ai_assistant_audit USING btree (user_name, created_at DESC);
+CREATE INDEX ai_assistant_messages_user_idx ON public.ai_assistant_messages USING btree (user_name, id DESC) WHERE (cleared_at IS NULL);
 CREATE INDEX ai_review_rate_created_idx ON public.ai_review_rate_limit USING btree (created_at);
 CREATE INDEX ai_review_rate_user_idx ON public.ai_review_rate_limit USING btree (user_key);
 CREATE INDEX ai_trade_reviews_generated_at_idx ON public.ai_trade_reviews USING btree (generated_at);

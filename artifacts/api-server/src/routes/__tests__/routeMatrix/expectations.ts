@@ -20,6 +20,7 @@ const retired = (reason: string): Expectation => ({ kind: "retired", reason });
 const off = (reason: string): Expectation => ({ kind: "switch", reason });
 
 export const EXPECTATIONS: Record<string, Expectation> = {
+  "DELETE /ai/assistant/history": member("clears the own assistant conversation (assistant.use: every member holds it by default)"),
   "DELETE /auth/quick-code": member("removes the own quick-unlock code"),
   "DELETE /author-notes/:id": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
   "DELETE /author-notes/:id/read": off("author's summary behind the desk switch nav.authorNotes, off by default (wave 2, item 2.15)"),
@@ -120,6 +121,8 @@ export const EXPECTATIONS: Record<string, Expectation> = {
   "POST /academy/path/requests/:id/withdraw": owner("the author withdraws the own request (checked after the row is loaded)"),
   "POST /academy/sessions": staff("academy cohorts, sessions and 1:1s: requireStaff role check, not on the matrix"),
   "POST /academy/sessions/:id/archive": staff("academy cohorts, sessions and 1:1s: requireStaff role check, not on the matrix"),
+  "POST /ai/assistant/assist": member("«✦ Помочь» on the own text; reads only what the caller may read (assistant.use: every member by default)"),
+  "POST /ai/assistant/chat": member("the own assistant turn; tools read through the API as the caller (assistant.use: every member by default)"),
   "POST /auth/guest": pub("sign-in, guest token and first-run bootstrap are public by design (own limiters)"),
   "POST /auth/init-passwords": pub("sign-in, guest token and first-run bootstrap are public by design (own limiters)"),
   "POST /auth/login": pub("sign-in, guest token and first-run bootstrap are public by design (own limiters)"),

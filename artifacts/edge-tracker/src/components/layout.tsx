@@ -21,6 +21,7 @@ import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-pr
 import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
 import { Wordmark } from "@/components/ds/brand";
 import { OnboardingMount } from "@/components/onboarding-mount";
+import { AssistantButton } from "@/components/assistant/assistant-launcher";
 
 /**
  * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
@@ -138,6 +139,7 @@ function Header() {
         <LanguageMenu className="hidden md:grid" />
         <ThemeToggle className="hidden md:grid" />
         <LockButton className="hidden md:grid" />
+        <AssistantButton className="hidden md:grid" />
         {user?.traderName && <NotificationBell traderName={user.traderName} />}
         <UserMenu />
       </div>

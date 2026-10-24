@@ -1,0 +1,38 @@
+import type { Messages } from "../core";
+import type ru from "../ru/assistant";
+
+export default {
+  assist: {
+    improve: "Improve the wording: shorter, more precise, in trader language. Keep the meaning and the facts.",
+    structure: "Lay the text out as a setup: context, trigger, entry, stop, targets, management, invalidation. Leave empty sections empty.",
+    fill: "Fill the gaps from the user's linked trades (look them up with the tools): concrete tickers, times, R. Do not invent anything.",
+    only: "Return ONLY the full new version of the text, with no explanation and no quotes around it.",
+  },
+  mock: {
+    assistFill: "Across your trades of the last 30 days this setup has a positive expectancy — a hypothesis for now; check it on 20+ more trades.",
+    lookingStats: "Looking at your statistics for the last 30 days…\n\n",
+    lookingDraft: "Putting together a setup draft from your best trades…\n\n",
+    statsIntro: "**{from} – {to}:** {n} trades, win rate {wr}, net {net}, total R {r}.\n\n",
+    colSetup: "Setup",
+    colTrades: "Trades",
+    colNet: "Net",
+    colR: "R",
+    noSetup: "no setup",
+    hypothesis: "\nThe sample is {n} trades: a **hypothesis** for now, not a conclusion. Details: [Statistics](/stats).\n",
+    noData: "There are no trades in this period, so there is nothing to conclude yet. Trades appear after the PropReports sync.\n",
+    demo: "\n_Demo mode (AI_ASSISTANT_MOCK): the answer is a template filled with your real data, no model involved._\n",
+    draftDone: "The draft «{name}» is in the card below. It rests on {n} trades of this setup. Check the stop and targets before saving: nothing is saved until you click «Save to playbook».\n",
+    draftName: "{setup}: my working version",
+    draftContext: "Liquid ticker with a catalyst, RVOL above 2, the first 30–60 minutes after the open.",
+    draftTrigger: "Break of the pre-market level on volume after a 3–5 minute consolidation.",
+    draftEntry: "Enter on the retest of the level or the first pullback, with a limit order.",
+    draftStop: "Stop below the consolidation low, risk no more than 1R.",
+    draftTargets: "Partial at +1R, the rest to +2R or until the VWAP pullback.",
+    draftManagement: "After +1R move the stop to breakeven; never add against the position.",
+    draftInvalidation: "A close back under the level on volume, or weak RVOL — the setup is off.",
+    draftChecklist1: "Catalyst present and RVOL > 2",
+    draftChecklist2: "Level and stop defined before entry",
+    draftChecklist3: "Risk no more than 1R",
+    draftNotes: "From the last 30 days: {n} trades, net {net}. A small sample is a hypothesis; check it on 20+ more trades.",
+  },
+} satisfies Messages<typeof ru>;

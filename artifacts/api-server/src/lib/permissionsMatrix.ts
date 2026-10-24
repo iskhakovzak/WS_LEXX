@@ -96,6 +96,8 @@ export const CAPABILITIES = [
   { key: "discussions.moderate", group: "Контент", label: "Модерация обсуждений", description: "Удалять чужие темы и комментарии, закрывать темы." },
   { key: "discussions.edit.any", group: "Контент", label: "Править чужие комментарии", adminOnly: true, description: "Редактировать чужие комментарии." },
   { key: "watchlist.manage", group: "Контент", label: "Вотчлист деска", description: "Править общий вотчлист (любой участник, не гость)." },
+  { key: "assistant.use", group: "Контент", label: "Ассистент WS", own: true,
+    description: "AI-помощник по сайту: отвечает по тем данным, которые человеку и так доступны, и готовит черновики (плейбук, план, итоги дня, правило). Сам ничего не сохраняет. Выключатель, модели и лимиты — Настройки деска → «Ассистент WS»." },
 
   // ── Users / admin ────────────────────────────────────────────────────────
   { key: "users.manage", group: "Администрирование", sensitive: true, label: "Управлять пользователями", description: "Добавлять, править, замораживать и архивировать трейдеров и кураторов, менять назначения." },
@@ -127,7 +129,7 @@ export function isCapability(cap: string): cap is Capability {
 /** Own-only capabilities every signed-in member (trader, curator, admin) holds. */
 const MEMBER_CAPS: readonly Capability[] = [
   "trades.read.own", "trades.write.own", "journal.write.own", "risk.read.own", "propreports.import",
-  "playbook.edit", "ideas.publish", "watchlist.manage",
+  "playbook.edit", "ideas.publish", "watchlist.manage", "assistant.use",
 ];
 
 /**

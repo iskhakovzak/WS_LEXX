@@ -24,10 +24,11 @@ export default {
     finviz: { title: "Finviz", description: "Morning screener, ticker context and the earnings calendar from Finviz Elite. Without the FINVIZ_AUTH key on the server all of it is off." },
     trades: { title: "Trades: IMX", description: "IMX are closing-auction (imbalance) trades. A trade with any fill inside this New York window gets the MOC strategy and the «IMX» tag; it stays in lists and totals, a trader may exclude it." },
     newsChannel: { title: "WS_NEWS channel", description: "Market briefs in the WS_NEWS Telegram channel on trading days: premarket, from the open, day recap. Without NEWS_CHANNEL_BOT_TOKEN and NEWS_CHANNEL_CHAT_ID on the server all of it is off." },
+    assistant: { title: "WS Assistant", description: "AI helper for the site (the ✦ button in the header, Ctrl+J). The key is the server variable AI_INTEGRATIONS_ANTHROPIC_API_KEY; without it the assistant shows how to enable it. Who may use it: «Roles and rights», the «WS Assistant» right." },
     access: { title: "Access by stage", description: "Which sections are closed for Juniors, Traders and Seniors. Changed in “Roles and permissions”." },
     other: { title: "Other", description: "Settings without a group." },
   },
-  units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times", places: "places", people: "people", shares: "shares", bars: "bars", times: "×", bp: "bp", atr: "ATR", quests: "quests", trades: "trades", months: "mo.", lessons: "lessons", exams: "exams", tasks: "tasks", teams: "teams" },
+  units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times", places: "places", people: "people", shares: "shares", bars: "bars", times: "×", bp: "bp", atr: "ATR", quests: "quests", trades: "trades", months: "mo.", lessons: "lessons", exams: "exams", tasks: "tasks", teams: "teams", tokens: "tokens" },
   jump: {
     aria: "Settings groups",
     pilot: "Pilot · {count} items",
@@ -89,6 +90,17 @@ export default {
     unknown: "No such trader — remove or fix the name",
   },
   settings: {
+    assistant: {
+      enabled: { label: "Assistant on", help: "Off — the button stays, but the assistant answers that it is switched off." },
+      defaultModel: { label: "Default model", help: "Answers ordinary questions and calls the tools. Haiku costs a small fraction of the others.", options: { "claude-haiku-5-5": "Haiku 5.5 · fast", "claude-sonnet-5-5": "Sonnet 5.5 · smarter", "claude-opus-5-5": "Opus 5.5 · strongest" } },
+      smartModel: { label: "«Smarter» model", help: "Used by the «Smarter» toggle and for heavy tasks: playbook, plan and end-of-day drafts, «✦ Help», analysis over lots of data.", options: { "claude-haiku-5-5": "Haiku 5.5 · fast", "claude-sonnet-5-5": "Sonnet 5.5 · smarter", "claude-opus-5-5": "Opus 5.5 · strongest" } },
+      autoEscalate: { label: "Switch to the smart model by itself", help: "For heavy tasks the assistant takes the «smarter» model on its own. Off — only by the «Smarter» toggle." },
+      juniorsEnabled: { label: "Open for Juniors", help: "Off — Juniors cannot use the assistant (Traders, Seniors and curators can)." },
+      dailyTokensDefault: { label: "Daily limit, default model", help: "Tokens per person per day (input + cache writes + output). Used up — the assistant is unavailable until tomorrow. 0 turns it off." },
+      dailyTokensSmart: { label: "Daily limit, «smarter» model", help: "A separate limit for the smart model. Used up — answers come from the default model." },
+      requestsPer10Min: { label: "Questions per 10 minutes", help: "Guard against accidental spam: this many requests per person per 10 minutes." },
+      auditBodies: { label: "Keep texts in the log", help: "The call log always records who, when, the model, tokens and tools. On — also the question and answer texts." },
+    },
     daily: {
       focusWindowDays: { label: "Focus window", help: "How many recent trading days we look at to find the costliest repeating mistake." },
       focusMinDays: { label: "Mistake repeats", help: "A mistake becomes the focus only if it happened on at least this many days of the window." },

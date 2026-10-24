@@ -35,6 +35,7 @@ import { StaffTraderPicker } from "@/components/people/staff-trader-picker";
 import { TEAM } from "@/components/people/staff-scope";
 import { PeriodPicker, fmtDayRange } from "@/components/shared/period/PeriodPicker";
 import { RangeFacetsPanel, useRangeFacets } from "@/components/shared/trade-facets/range-facets";
+import { AskAssistantButton } from "@/components/shared/ask-assistant";
 import { parseDayRange, type DayRange } from "@/lib/period-range";
 import { HelpButton, PageHint } from "@/components/shared/page-hint";
 
@@ -254,7 +255,7 @@ export default function WhatIf() {
           <span className="tabular-nums">{t("meta", { trades: commonI18n.t("units.trades", { count: base.data.trades.length }), days: t("tradingDays", { count: base.data.baseline.days }), period: periodPhrase })}</span>
         ) : null
       }
-      actions={<>{controls}<HelpButton id="whatIf" /></>}
+      actions={<>{controls}<AskAssistantButton context={{ ...(win.from ? { from: win.from } : {}), ...(win.to ? { to: win.to } : {}), ...(scopeTrader ? { trader: scopeTrader } : {}) }} /><HelpButton id="whatIf" /></>}
     />
     <PageHint id="whatIf" />
   </>);

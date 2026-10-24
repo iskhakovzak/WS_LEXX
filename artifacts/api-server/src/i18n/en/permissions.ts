@@ -54,6 +54,7 @@ export default {
     "discussions.moderate": { label: "Discussion moderation", description: "Delete others’ topics and comments, close topics." },
     "discussions.edit.any": { label: "Edit others’ comments", description: "Edit other people’s comments." },
     "watchlist.manage": { label: "Desk watchlist", description: "Edit the shared watchlist (any member, not a guest)." },
+    "assistant.use": { label: "WS Assistant", description: "AI helper for the site: answers from the data the person can already see and prepares drafts (playbook, plan, end of day, rule). It never saves anything by itself. Switch, models and limits: Desk settings → «WS Assistant»." },
     "users.manage": { label: "Manage users", description: "Add, edit, freeze and archive traders and curators, change assignments." },
     "users.manage.admins": { label: "Manage admins", description: "Create admins, grant the admin role, edit or deactivate admins, ban curators." },
     "admin.reports": { label: "Content reports", description: "Report queue, decisions, banning the author." },

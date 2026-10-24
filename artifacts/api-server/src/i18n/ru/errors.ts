@@ -372,4 +372,8 @@ export default {
   UNLOCK_CODE_INVALID: "Неверный код",
   UNLOCK_SIGNED_OUT: "Слишком много неверных попыток. Войдите заново",
   QUICK_CODE_INVALID: "Код — от 4 до 8 цифр или фраза от 6 до 32 символов",
+  AI_NOT_CONFIGURED: "Ассистент не подключён: на сервере не задан ключ AI_INTEGRATIONS_ANTHROPIC_API_KEY",
+  AI_ASSISTANT_OFF: "Ассистент выключен в настройках деска",
+  AI_ASSISTANT_STAGE: "Ассистент пока закрыт для вашей ступени",
+  AI_BUDGET_EXCEEDED: "Дневной лимит ассистента исчерпан, он снова доступен завтра",
 } as const;

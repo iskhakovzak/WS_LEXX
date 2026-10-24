@@ -52,6 +52,9 @@ const TEXT: Record<string, readonly string[]> = {
   academy_submissions: ["graded_by", "user_name"],
   academy_trader_stage: ["updated_by", "user_name"],
   activity_log: ["trader"],
+  ai_assistant_audit: ["user_name"],
+  ai_assistant_messages: ["user_name"],
+  ai_assistant_usage: ["user_name"],
   ai_review_rate_limit: ["user_key"],
   app_errors: ["resolved_by"],
   app_settings: ["updated_by"],
@@ -169,6 +172,7 @@ const JSON_COLS: Record<string, readonly string[]> = {
   academy_promotion_requests: ["report"],
   academy_stage_history: ["report"],
   activity_log: ["params"],
+  ai_assistant_messages: ["drafts"], // draft cards (a curator-note draft names its trader)
   behavior_triggers: ["params"],
   daily_reviews: ["verdict"],
   eod_days: ["summary"],
@@ -244,6 +248,9 @@ export const KEPT: Readonly<Record<string, string>> = {
   "curator_interventions.params": "intervention parameters: codes and numbers (rule kind, tier, mistake), no names",
   "usage_events.meta": "no names by design (lib/usage/keys.ts)",
   "app_settings.value": "typed settings; the one name list (usage.pilotUsers) is renamed as nameList",
+  "ai_assistant_audit.models": "assistant model ids (claude-…)",
+  "ai_assistant_audit.tools": "assistant tool names",
+  "ai_assistant_messages.tools": "assistant tool names",
   // json: market data, caches, content without people
   ...Object.fromEntries([
     "academy_assignments.rubric", "academy_lessons.attachments", "academy_quiz_attempts.answers", "academy_quiz_attempts.results",
