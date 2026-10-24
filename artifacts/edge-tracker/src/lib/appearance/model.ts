@@ -58,6 +58,9 @@ export type SceneId = (typeof SCENE_IDS)[number];
 export const BG_KINDS = ["none", "image", "aurora", "grid", "dusk", ...SCENE_IDS] as const;
 export type BgKind = (typeof BG_KINDS)[number];
 export const PANEL_MODES = ["glass", "frosted", "solid"] as const;
+/** Background motion (3D parallax, HOVER trail): follow the system «reduce motion», always on, or off. */
+export const BG_MOTIONS = ["auto", "on", "off"] as const;
+export type BgMotion = (typeof BG_MOTIONS)[number];
 export type PanelMode = (typeof PANEL_MODES)[number];
 export const DENSITIES = ["compact", "spacious"] as const;
 export type Density = (typeof DENSITIES)[number];
@@ -114,7 +117,8 @@ export const appearanceSchema = z.object({
     panels: z.enum(PANEL_MODES).catch("glass"),
     /** «Яркость фона»: share (0…1) of the brightest a scene / image may show in this theme (lib/appearance/scenes). */
     brightness: z.number().finite().min(0).max(1).catch(0.7),
-  }).catch({ kind: "none", panels: "glass", brightness: 0.7 }),
+    motion: z.enum(BG_MOTIONS).catch("auto"),
+  }).catch({ kind: "none", panels: "glass", brightness: 0.7, motion: "auto" }),
   density: z.enum(DENSITIES).catch("compact"),
   chips: z.object({
     strategy: chipGroupSchema("strategy"),
@@ -147,7 +151,7 @@ export const DEFAULT_APPEARANCE: Appearance = Object.freeze({
   font: "inter",
   money: { win: null, loss: null, be: null, beRange: 0 },
   guard: { mode: "off", color: null },
-  bg: { kind: "none", panels: "glass", brightness: 0.7 },
+  bg: { kind: "none", panels: "glass", brightness: 0.7, motion: "auto" },
   density: "compact",
   chips: { strategy: { on: true, colors: {} }, tag: { on: true, colors: {} }, horizon: { on: true, colors: {} } },
 }) as Appearance;

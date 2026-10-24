@@ -85,6 +85,19 @@ const MUTED_LIGHT: Partial<Record<ThemeId, string>> = { light: "0 0% 37%", plati
 /** Muted text in the dark themes while a scene is on: a little brighter, so the panels can stay more translucent. */
 export const PHOTO_MUTED_DARK = "0 0% 74%";
 
+/**
+ * Photo tone in the light themes: the dark monochrome photos are lifted into a pale «engraving» (CSS
+ * `contrast(c) brightness(b)`), so a light canvas shows the picture instead of a grey haze. Black lands near 24 % grey,
+ * white stays white. The scrim maths below runs on the toned greys, so AA still holds.
+ */
+export const LIGHT_PHOTO_TONE = { contrast: 0.62, brightness: 1.24 } as const;
+export const LIGHT_PHOTO_FILTER = `contrast(${LIGHT_PHOTO_TONE.contrast}) brightness(${LIGHT_PHOTO_TONE.brightness})`;
+/** A grey after the light-theme tone (same formula the browser applies: contrast around 50 %, then a gain). */
+export function toneLight(g: number): number {
+  const c = (g / 255 - 0.5) * LIGHT_PHOTO_TONE.contrast + 0.5;
+  return Math.round(Math.min(1, Math.max(0, c * LIGHT_PHOTO_TONE.brightness)) * 255);
+}
+
 /** Trail strength in the HOVER scenes. */
 export const TRAIL_ALPHA = 0.08;
 /** Default «Яркость фона» (share of the brightest the theme allows). */
@@ -128,7 +141,12 @@ export function sceneSource(kind: string, theme: ThemeId): SceneSource | null {
   if (!isScene(kind)) return null;
   const def = SCENES[kind];
   const trail = def.mode === "hover" ? TRAIL_ALPHA : 0;
-  if (def.photo) return { max: def.photo.max, min: def.photo.min, titleMax: def.photo.p98, cap: 1, trail };
+  if (def.photo) {
+    const p = def.photo;
+    return light
+      ? { max: toneLight(p.max), min: toneLight(p.min), titleMax: toneLight(p.p98), cap: 1, trail }
+      : { max: p.max, min: p.min, titleMax: p.p98, cap: 1, trail };
+  }
   if (kind === "smoke") return light ? { max: 245, min: 140, cap: 0.6, trail } : { max: 205, min: 0, cap: 0.6, trail };
   // Ridge: fills in the theme's text colour.
   const g = Math.round((tripletToRgb(THEME_SURFACES[theme].foreground) as Rgb)[0]);

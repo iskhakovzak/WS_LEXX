@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { AA_TEXT, contrast, mix, minContrast, tripletToRgb, type Rgb } from "./color";
 import { CHIP_GROUPS, DEFAULT_APPEARANCE, THEME_IDS, isLightTheme, parseAppearance, type Appearance, type ThemeId } from "./model";
-import { DEFAULT_BRIGHTNESS, PHOTO_MUTED_DARK, SCENES, SCENE_IDS, sceneLevels, sceneSource } from "./scenes";
+import { DEFAULT_BRIGHTNESS, PHOTO_MUTED_DARK, SCENES, SCENE_IDS, sceneLevels, sceneSource, toneLight } from "./scenes";
+import { bgMotionAllowed } from "@/components/appearance/scenes/motion";
 import { computeAppearanceVars } from "./vars";
 import { THEME_SURFACES, surfaceRgb, textSurfaces } from "./themes";
 
@@ -49,7 +50,7 @@ describe("WS originals: «Яркость фона», canvas titles and panel tex
   });
 
   it("glass panels stay translucent over the default dark scene, and vars carry the levels", () => {
-    const a: Appearance = { ...DEFAULT_APPEARANCE, bg: { kind: "laocoon", panels: "glass", brightness: 0.7 } };
+    const a: Appearance = { ...DEFAULT_APPEARANCE, bg: { kind: "laocoon", panels: "glass", brightness: 0.7, motion: "auto" } };
     const { vars, attrs } = computeAppearanceVars(a, "dark");
     expect(Number(vars["--scene-vis"])).toBeGreaterThanOrEqual(0.35);
     expect(vars["--glass-bg"]).toMatch(/color-mix\(in srgb, hsl\(var\(--card\)\) \d+%, transparent\)/);
@@ -60,7 +61,7 @@ describe("WS originals: «Яркость фона», canvas titles and panel tex
   });
 
   it("the ridge gets its strength from the same levels", () => {
-    const { vars } = computeAppearanceVars({ ...DEFAULT_APPEARANCE, bg: { kind: "ridge", panels: "glass", brightness: 1 } }, "dark");
+    const { vars } = computeAppearanceVars({ ...DEFAULT_APPEARANCE, bg: { kind: "ridge", panels: "glass", brightness: 1, motion: "auto" } }, "dark");
     expect(Number(vars["--ridge-k"])).toBeGreaterThan(2);
   });
 
@@ -95,5 +96,28 @@ describe("journal chips", () => {
     const a = parseAppearance({ chips: { strategy: { on: true, colors: { OPG: "#123456", NOPE: "#123456", Day: "red" } } } });
     expect(a.chips.strategy.colors).toEqual({ OPG: "#123456" });
     expect(a.chips.tag).toEqual({ on: true, colors: {} });
+  });
+});
+
+describe("Light-theme photo tone and «Движение фона»", () => {
+  it("lifts the darks into a pale engraving, keeps white white and the order of greys", () => {
+    expect(toneLight(255)).toBe(255);
+    expect(toneLight(0)).toBeGreaterThan(50);
+    expect(toneLight(0)).toBeLessThan(70);
+    for (let g = 1; g <= 255; g++) expect(toneLight(g)).toBeGreaterThanOrEqual(toneLight(g - 1));
+  });
+  it("photo scenes in the light themes are modelled on the toned greys (more of the photo shows)", () => {
+    const id = SCENE_IDS.find((s) => SCENES[s].photo)!;
+    const p = SCENES[id].photo!;
+    expect(sceneSource(id, "light")!.min).toBe(toneLight(p.min));
+    expect(sceneSource(id, "dark")!.min).toBe(p.min);
+  });
+  it("«Вкл» runs even under the system «reduce motion», «Выкл» never runs", () => {
+    expect(bgMotionAllowed("on")).toBe(true);
+    expect(bgMotionAllowed("off")).toBe(false);
+  });
+  it("old stored appearances without the field read as «Авто»", () => {
+    const a = parseAppearance({ bg: { kind: "parthenon", panels: "glass", brightness: 0.7 } });
+    expect(a.bg.motion).toBe("auto");
   });
 });

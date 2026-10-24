@@ -56,7 +56,7 @@ export function BackdropLayer() {
       )}
       {isScene(kind) && (
         <React.Suspense fallback={null}>
-          <SceneBackdrop key={`${kind}-${theme}`} scene={kind} theme={theme} />
+          <SceneBackdrop key={`${kind}-${theme}`} scene={kind} theme={theme} motion={appearance.bg.motion} />
         </React.Suspense>
       )}
       {(kind === "image" || isScene(kind)) && (

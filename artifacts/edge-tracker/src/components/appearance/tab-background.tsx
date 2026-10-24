@@ -9,7 +9,8 @@ import { isScene } from "@/lib/appearance/scenes";
 import { useAppearance } from "@/contexts/appearance-context";
 import { Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { PANEL_MODES } from "@/lib/appearance/model";
+import { BG_MOTIONS, PANEL_MODES } from "@/lib/appearance/model";
+import { prefersReducedMotion } from "./scenes/motion";
 import { deleteBgImage, prepareBgImage, saveBgImage } from "@/lib/appearance/bg-store";
 import { appearanceI18n } from "@/i18n/ns/appearance";
 import { MoreSettings, OptionCard, OptionText, Section } from "./bits";
@@ -104,6 +105,32 @@ function BrightnessSection() {
   );
 }
 
+/** «Движение фона»: auto (system «reduce motion») / on / off; says why a 3D scene stands still under «Авто». */
+function MotionSection() {
+  const { t } = appearanceI18n.useT();
+  const { appearance, update } = useAppearance();
+  const motion = appearance.bg.motion;
+  const reduced = React.useMemo(prefersReducedMotion, []);
+  const setMotion = (m: (typeof BG_MOTIONS)[number]) => update((a) => ({ ...a, bg: { ...a.bg, motion: m } }));
+  return (
+    <Section title={t("background.motion")} hint={t("background.motionHint")}>
+      <Segmented
+        ariaLabel={t("background.motion")}
+        className="self-start"
+        value={motion}
+        onChange={setMotion}
+        options={BG_MOTIONS.map((m) => ({ value: m, label: t(`background.motionModes.${m}`) }))}
+      />
+      {reduced && motion === "auto" && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-[var(--glass-border)] px-3 py-2">
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">{t("background.motionReduced")}</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => setMotion("on")}>{t("background.motionTurnOn")}</Button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 function PanelsSection() {
   const { t } = appearanceI18n.useT();
   const { appearance, update } = useAppearance();
@@ -140,6 +167,7 @@ export function BackgroundTab() {
         <BackgroundGallery />
       </Section>
       {(kind === "image" || isScene(kind)) && <BrightnessSection />}
+      {isScene(kind) && <MotionSection />}
       <MoreSettings>
         <ImageControls />
         <PanelsSection />

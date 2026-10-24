@@ -228,6 +228,11 @@ export default {
     brightnessHint: "How brightly the background shows. Titles on the canvas stay readable at any value, and panels pick their own translucency so the text on them passes AA.",
     panels: "Panels",
     panelsHint: "How panels sit over the background",
+    motion: "Background motion",
+    motionHint: "3D scenes follow the cursor, HOVER leaves a smoke trail. «Auto» follows the system animation setting.",
+    motionModes: { auto: "Auto", on: "On", off: "Off" },
+    motionReduced: "Animation effects are turned off in your system, so in «Auto» the background stays still. Choose «On» to make 3D work.",
+    motionTurnOn: "Turn motion on",
     panelModes: {
       glass: "Glass",
       frosted: "Frosted",

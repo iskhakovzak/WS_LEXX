@@ -228,6 +228,11 @@ export default {
     brightnessHint: "Fon qanchalik yorqin koʻrinishi. Sahifadagi sarlavhalar har qanday qiymatda oʻqiladi, panellar esa ulardagi matn AA dan oʻtishi uchun shaffofligini oʻzi tanlaydi.",
     panels: "Panellar",
     panelsHint: "Panellar fon ustida qanday turadi",
+    motion: "Fon harakati",
+    motionHint: "3D sahnalar kursorga ergashadi, HOVER tutun izi qoldiradi. «Avto» tizimdagi animatsiya sozlamasiga ergashadi.",
+    motionModes: { auto: "Avto", on: "Yoq", off: "Oʻchiq" },
+    motionReduced: "Tizimda animatsiya effektlari oʻchirilgan, shuning uchun «Avto» rejimida fon harakatsiz. 3D ishlashi uchun «Yoq»ni tanlang.",
+    motionTurnOn: "Harakatni yoqish",
     panelModes: {
       glass: "Shisha",
       frosted: "Xira shisha",

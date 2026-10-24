@@ -1,7 +1,8 @@
 /**
  * Motion for the «WS originals» scenes. One requestAnimationFrame loop per scene, throttled (~30 fps), that runs only
  * while something moves and stops itself when idle; it pauses while the tab is hidden or the window is not focused.
- * Under prefers-reduced-motion nothing runs (a still frame).
+ * «Движение фона» (bg.motion): «auto» follows prefers-reduced-motion (Windows «Animation effects» off → a still frame),
+ * «on» runs anyway (the user asked for it in «Вид»), «off» is always still.
  *   parallax — writes --px / --py (−1…1, eased) on the scene root; layers translate by depth in CSS.
  *              Phones: the device's tilt, only when that permission is already granted (never prompts).
  *   trail    — a soft smoke trail behind the pointer on a half-resolution canvas, fading out.
@@ -14,6 +15,14 @@ export const isPaused = () => (typeof document !== "undefined" && (document.hidd
 export function prefersReducedMotion(): boolean {
   return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
+
+/** Whether background motion runs for the «Движение фона» choice. */
+export function bgMotionAllowed(pref: "auto" | "on" | "off"): boolean {
+  return pref === "on" || (pref === "auto" && !prefersReducedMotion());
+}
+
+/** Parallax follows the pointer even while another window has focus (a second monitor); only a hidden tab pauses it. */
+const isHidden = () => typeof document !== "undefined" && document.hidden;
 
 /** Device tilt without ever asking: iOS fires the events only if access was granted before; elsewhere check first. */
 async function tiltAllowed(): Promise<boolean> {
@@ -70,12 +79,12 @@ export function createTrail(canvas: HTMLCanvasElement, light: boolean): Trail {
  * Wires pointer / tilt input to a scene root. `onTick` runs inside the single loop (trail drawing); `parallax`
  * toggles the --px / --py easing. Returns the cleanup.
  */
-export function startSceneMotion(root: HTMLElement, opts: { parallax: boolean; trail?: Trail | null; externalLoop?: boolean }): () => void {
-  if (prefersReducedMotion()) return () => {};
+export function startSceneMotion(root: HTMLElement, opts: { parallax: boolean; allowed: boolean; trail?: Trail | null; externalLoop?: boolean }): () => void {
+  if (!opts.allowed) return () => {};
   let raf = 0, last = 0, tx = 0, ty = 0, cx = 0, cy = 0, alive = true, trailBusy = false;
   const tick = (now: number) => {
     raf = 0;
-    if (!alive || isPaused()) return;
+    if (!alive || (opts.parallax ? isHidden() : isPaused())) return;
     if (now - last < FRAME_MS) { raf = requestAnimationFrame(tick); return; }
     last = now;
     let busy = false;

@@ -114,7 +114,7 @@ describe("computed appearance stays AA in every theme", () => {
   });
 
   it("density, background, panels and font become data attributes / the font stack", () => {
-    const { vars, attrs } = computeAppearanceVars(withA({ density: "spacious", font: "serif", bg: { kind: "smoke", panels: "frosted", brightness: 0.7 } }), "dark");
+    const { vars, attrs } = computeAppearanceVars(withA({ density: "spacious", font: "serif", bg: { kind: "smoke", panels: "frosted", brightness: 0.7, motion: "auto" } }), "dark");
     expect(attrs).toEqual({ "data-density": "spacious", "data-font": "serif", "data-bg": "smoke", "data-panels": "frosted", "data-scene-panels": "frosted" });
     expect(vars["--app-font-sans"]).toContain("Source Serif 4");
   });
