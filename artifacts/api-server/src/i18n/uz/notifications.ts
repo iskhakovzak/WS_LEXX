@@ -70,7 +70,7 @@ export default {
     nothing: "Pul boʻyicha muammolar navbati boʻsh.",
     line: "{n}. {trader} — {reason}",
     lineCost: "{n}. {trader} — {reason}, {cost}",
-    reason: { stop_breach: "limit buzilishi", focus_broken: "fokus buzildi", disputed: "fokus boʻyicha «xato emas»", fees: "komissiyalar", loss_streak: "zararli kunlar seriyasi", giveback: "foydani qaytarish", rule: "qoidalar buzilishi", other: "qarash kerak" },
+    reason: { breach_review: "buzilish tahlili", stopped: "stopda", near_stop: "stopga yaqin", eod_review: "yopilgan kun tahlil kutmoqda", weekly_review: "hafta hisoboti", overdue_action: "1:1 kelishuvlari muddati oʻtgan", no_limits: "limitlar yoʻq", template_drift: "limitlar shablonga mos emas", missing_plan: "reja yoʻq", missing_eod: "kun yopilmagan", one_on_one: "uzoq vaqt 1:1 boʻlmagan", plateau_review: "surʼat bosqich uchun kerakligidan past", at_stake: "minus va yoʻqotishlar", dropout_risk: "ketish xavfi", trial_review: "qoida sinovi tugayapti", stop_breach: "limit buzilishi", focus_broken: "fokus buzildi", disputed: "fokus boʻyicha «xato emas»", fees: "komissiyalar", loss_streak: "zararli kunlar seriyasi", giveback: "foydani qaytarish", rule: "qoidalar buzilishi", other: "qarash kerak" },
   },
   types: {
     mention: { label: "Eslatish", description: "Kimdir sizni muhokama, gʻoya yoki qaydda @ism orqali eslatdi" },

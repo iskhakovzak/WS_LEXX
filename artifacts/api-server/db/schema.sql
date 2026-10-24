@@ -1,5 +1,26 @@
 -- Schema built from src/db/migrations (db:snapshot). Do not edit: change a migration and re-run the script.
 
+CREATE OR REPLACE FUNCTION public.curator_intervention_trigger(who text, day date)
+ RETURNS text
+ LANGUAGE sql
+ STABLE
+AS $function$
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM risk_alert_log a
+       WHERE a.trader = who AND a.level = 'breach'
+         AND a.date >= to_char(day - 5, 'YYYY-MM-DD') AND a.date <= to_char(day, 'YYYY-MM-DD')
+    ) THEN 'breach'
+    WHEN (
+      SELECT SUM(t.pnl - ABS(COALESCE(t.fees, 0))) FROM trades t
+       WHERE t.trader = who AND t.deleted_at IS NULL AND t.pnl IS NOT NULL AND t.result <> 'open'
+         AND LEFT(COALESCE(t.exit_date, t.date), 10) >= to_char(day - 28, 'YYYY-MM-DD')
+         AND LEFT(COALESCE(t.exit_date, t.date), 10) < to_char(day, 'YYYY-MM-DD')
+    ) < 0 THEN 'after_bad_period'
+    ELSE 'scheduled'
+  END
+$function$;
+
 CREATE OR REPLACE FUNCTION public.trade_executions_strategy_stale()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -160,6 +181,7 @@ CREATE SEQUENCE public.big7_tickers_id_seq AS integer START WITH 1 INCREMENT BY 
 CREATE SEQUENCE public.candles_cache_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.comments_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.content_reports_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.curator_interventions_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.curator_notes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.curator_requests_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.daily_feed_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -168,6 +190,7 @@ CREATE SEQUENCE public.desk_groups_id_seq AS integer START WITH 1 INCREMENT BY 1
 CREATE SEQUENCE public.digest_subscriptions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.discussion_votes_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.discussions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.edge_map_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.emotional_state_log_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.eod_days_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.finviz_runs_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
@@ -225,6 +248,7 @@ CREATE SEQUENCE public.trade_reactions_id_seq AS integer START WITH 1 INCREMENT 
 CREATE SEQUENCE public.trade_reviews_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trade_setup_suggestions_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trader_plans_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
+CREATE SEQUENCE public.trader_progress_snapshots_id_seq AS bigint START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854776000 CACHE 1;
 CREATE SEQUENCE public.trader_ratings_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trader_risk_limit_events_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
 CREATE SEQUENCE public.trades_id_seq AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1;
@@ -929,6 +953,26 @@ CREATE TABLE public.content_reports (
   CONSTRAINT content_reports_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE public.curator_interventions (
+  id bigint DEFAULT nextval('public.curator_interventions_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  kind text NOT NULL,
+  params jsonb DEFAULT '{}'::jsonb NOT NULL,
+  target_metric text,
+  target_slice text,
+  trigger text DEFAULT 'scheduled'::text NOT NULL,
+  started_on date NOT NULL,
+  ends_on date,
+  author text,
+  source_table text,
+  source_id text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT curator_interventions_pkey PRIMARY KEY (id),
+  CONSTRAINT curator_interventions_source_key UNIQUE (source_table, source_id),
+  CONSTRAINT curator_interventions_kind_check CHECK (kind = ANY (ARRAY['limit_change'::text, 'size_change'::text, 'rule_added'::text, 'rule_removed'::text, 'rule_trial'::text, 'focus_set'::text, 'one_on_one'::text, 'pause'::text, 'quest'::text, 'fee_plan'::text, 'concern_note'::text, 'plateau_review'::text, 'scaling_decision'::text])),
+  CONSTRAINT curator_interventions_trigger_check CHECK (trigger = ANY (ARRAY['scheduled'::text, 'after_bad_period'::text, 'plateau'::text, 'breach'::text, 'random'::text, 'trader_request'::text]))
+);
+
 CREATE TABLE public.curator_notes (
   id integer DEFAULT nextval('public.curator_notes_id_seq'::regclass) NOT NULL,
   trader text NOT NULL,
@@ -1101,6 +1145,34 @@ CREATE TABLE public.discussions (
   journal_date text,
   accepted_comment_id integer,
   CONSTRAINT discussions_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE public.edge_map (
+  id bigint DEFAULT nextval('public.edge_map_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  as_of date NOT NULL,
+  slice_key text NOT NULL,
+  family text NOT NULL,
+  n integer NOT NULL,
+  days integer NOT NULL,
+  net numeric(14,2) NOT NULL,
+  xbar_bps numeric(12,4) NOT NULL,
+  se_bps numeric(12,4) NOT NULL,
+  theta_bps numeric(12,4) NOT NULL,
+  lo80 numeric(12,4) NOT NULL,
+  hi80 numeric(12,4) NOT NULL,
+  q numeric(10,6),
+  persist_blocks smallint DEFAULT 0 NOT NULL,
+  verdict text NOT NULL,
+  cost_per_day numeric(12,2) NOT NULL,
+  cost_lo numeric(12,2) NOT NULL,
+  cost_hi numeric(12,2) NOT NULL,
+  prior_mu numeric(12,4) NOT NULL,
+  prior_tau numeric(12,4) NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT edge_map_pkey PRIMARY KEY (id),
+  CONSTRAINT edge_map_key UNIQUE (trader, as_of, slice_key),
+  CONSTRAINT edge_map_verdict_check CHECK (verdict = ANY (ARRAY['LEAK'::text, 'STRENGTH'::text, 'NONE'::text]))
 );
 
 CREATE TABLE public.emotional_state_log (
@@ -2545,6 +2617,34 @@ CREATE TABLE public.trader_plans (
   CONSTRAINT trader_plans_trader_date_key UNIQUE (trader, date)
 );
 
+CREATE TABLE public.trader_progress_snapshots (
+  id bigint DEFAULT nextval('public.trader_progress_snapshots_id_seq'::regclass) NOT NULL,
+  trader text NOT NULL,
+  as_of date NOT NULL,
+  run_kind text NOT NULL,
+  tenure_active_days integer NOT NULL,
+  stage text,
+  pace_target numeric(12,2),
+  n_days integer DEFAULT 0 NOT NULL,
+  mean_raw numeric(12,2),
+  mean_lb numeric(12,2),
+  lo80 numeric(12,2),
+  hi80 numeric(12,2),
+  p_impr numeric(6,4),
+  shrunk boolean DEFAULT false NOT NULL,
+  plateau boolean DEFAULT false NOT NULL,
+  severity text,
+  escalated boolean DEFAULT false NOT NULL,
+  admin_escalated boolean DEFAULT false NOT NULL,
+  suppressed_until date,
+  diagnosis jsonb DEFAULT '{}'::jsonb NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT trader_progress_snapshots_pkey PRIMARY KEY (id),
+  CONSTRAINT trader_progress_snapshots_key UNIQUE (trader, as_of, run_kind),
+  CONSTRAINT trader_progress_snapshots_run_kind_check CHECK (run_kind = ANY (ARRAY['monthly'::text, 'weekly'::text])),
+  CONSTRAINT trader_progress_snapshots_severity_check CHECK (severity = ANY (ARRAY['slow'::text, 'stuck'::text, 'stuck_long'::text]))
+);
+
 CREATE TABLE public.trader_ratings (
   id integer DEFAULT nextval('public.trader_ratings_id_seq'::regclass) NOT NULL,
   trader text NOT NULL,
@@ -3025,6 +3125,7 @@ ALTER SEQUENCE public.big7_tickers_id_seq OWNED BY public.big7_tickers.id;
 ALTER SEQUENCE public.candles_cache_id_seq OWNED BY public.candles_cache.id;
 ALTER SEQUENCE public.comments_id_seq OWNED BY public.comments.id;
 ALTER SEQUENCE public.content_reports_id_seq OWNED BY public.content_reports.id;
+ALTER SEQUENCE public.curator_interventions_id_seq OWNED BY public.curator_interventions.id;
 ALTER SEQUENCE public.curator_notes_id_seq OWNED BY public.curator_notes.id;
 ALTER SEQUENCE public.curator_requests_id_seq OWNED BY public.curator_requests.id;
 ALTER SEQUENCE public.daily_feed_id_seq OWNED BY public.daily_feed.id;
@@ -3033,6 +3134,7 @@ ALTER SEQUENCE public.desk_groups_id_seq OWNED BY public.desk_groups.id;
 ALTER SEQUENCE public.digest_subscriptions_id_seq OWNED BY public.digest_subscriptions.id;
 ALTER SEQUENCE public.discussion_votes_id_seq OWNED BY public.discussion_votes.id;
 ALTER SEQUENCE public.discussions_id_seq OWNED BY public.discussions.id;
+ALTER SEQUENCE public.edge_map_id_seq OWNED BY public.edge_map.id;
 ALTER SEQUENCE public.emotional_state_log_id_seq OWNED BY public.emotional_state_log.id;
 ALTER SEQUENCE public.eod_days_id_seq OWNED BY public.eod_days.id;
 ALTER SEQUENCE public.finviz_runs_id_seq OWNED BY public.finviz_runs.id;
@@ -3090,6 +3192,7 @@ ALTER SEQUENCE public.trade_reactions_id_seq OWNED BY public.trade_reactions.id;
 ALTER SEQUENCE public.trade_reviews_id_seq OWNED BY public.trade_reviews.id;
 ALTER SEQUENCE public.trade_setup_suggestions_id_seq OWNED BY public.trade_setup_suggestions.id;
 ALTER SEQUENCE public.trader_plans_id_seq OWNED BY public.trader_plans.id;
+ALTER SEQUENCE public.trader_progress_snapshots_id_seq OWNED BY public.trader_progress_snapshots.id;
 ALTER SEQUENCE public.trader_ratings_id_seq OWNED BY public.trader_ratings.id;
 ALTER SEQUENCE public.trader_risk_limit_events_id_seq OWNED BY public.trader_risk_limit_events.id;
 ALTER SEQUENCE public.trades_id_seq OWNED BY public.trades.id;
@@ -3162,6 +3265,8 @@ CREATE INDEX comments_discussion_id_idx ON public.comments USING btree (discussi
 CREATE INDEX content_reports_created_at_idx ON public.content_reports USING btree (created_at);
 CREATE INDEX content_reports_status_idx ON public.content_reports USING btree (status);
 CREATE INDEX content_reports_target_idx ON public.content_reports USING btree (target_type, target_id);
+CREATE INDEX curator_interventions_kind_idx ON public.curator_interventions USING btree (kind, started_on);
+CREATE INDEX curator_interventions_trader_idx ON public.curator_interventions USING btree (trader, started_on DESC, id DESC);
 CREATE INDEX curator_notes_trader_idx ON public.curator_notes USING btree (trader, created_at DESC) WHERE (archived_at IS NULL);
 CREATE UNIQUE INDEX curator_requests_open_link_uniq ON public.curator_requests USING btree (trader_id, kind, COALESCE(link, ''::text)) WHERE (status = 'open'::text);
 CREATE INDEX curator_requests_status_idx ON public.curator_requests USING btree (status, created_at DESC);
@@ -3178,6 +3283,8 @@ CREATE UNIQUE INDEX discussion_votes_unique ON public.discussion_votes USING btr
 CREATE INDEX discussions_ticker_idx ON public.discussions USING btree (ticker);
 CREATE INDEX discussions_ticker_upper_idx ON public.discussions USING btree (upper(ticker));
 CREATE INDEX discussions_trade_id_idx ON public.discussions USING btree (trade_id);
+CREATE INDEX edge_map_latest_idx ON public.edge_map USING btree (trader, as_of DESC);
+CREATE INDEX edge_map_verdict_idx ON public.edge_map USING btree (as_of, verdict) WHERE (verdict <> 'NONE'::text);
 CREATE INDEX emotional_state_log_date_idx ON public.emotional_state_log USING btree (date);
 CREATE INDEX emotional_state_log_user_date_idx ON public.emotional_state_log USING btree (user_id, date);
 CREATE INDEX emotional_state_log_user_id_idx ON public.emotional_state_log USING btree (user_id);
@@ -3277,6 +3384,7 @@ CREATE INDEX trade_setup_suggestions_trade_idx ON public.trade_setup_suggestions
 CREATE INDEX trader_achievements_earned_idx ON public.trader_achievements USING btree (trader, earned_on);
 CREATE INDEX trader_badges_awarded_idx ON public.trader_badges USING btree (awarded_on);
 CREATE INDEX trader_plans_date_idx ON public.trader_plans USING btree (date);
+CREATE INDEX trader_progress_snapshots_latest_idx ON public.trader_progress_snapshots USING btree (trader, as_of DESC);
 CREATE INDEX trader_risk_limit_events_trader_idx ON public.trader_risk_limit_events USING btree (trader, changed_at DESC);
 CREATE INDEX trades_broker_account_idx ON public.trades USING btree (broker_account) WHERE (broker_account IS NOT NULL);
 CREATE INDEX trades_chain_idx ON public.trades USING btree (trader, ticker, date);

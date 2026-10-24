@@ -8,6 +8,7 @@ import type { PatternBrief, TraderSignal } from "./api";
 import { actionTone, disciplineTone, riskTone, worstUsage } from "./curator-math";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { coachI18n } from "@/i18n/ns/coach";
 import { personName } from "@/i18n";
 import { tierDisplay } from "@/components/shared/tier-labels";
 import { StageMedal, medalStageOf } from "@/components/shared/medals";
@@ -48,6 +49,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
           </span>
         </button>
         <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : t("noLimits")}</Pill>
+        {s.plateau?.severity && <Pill tone={s.plateau.escalationOpen ? "warn" : "neutral"}>{coachI18n.t(`stuck.severity.${s.plateau.severity}`)}</Pill>}
       </header>
 
       <div className="grid grid-cols-3 gap-2">

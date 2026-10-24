@@ -7,7 +7,7 @@ export default {
   description: "Kunlik sikl chegaralari, intizom ochkolari, Telegram yuborish vaqti va maxfiylik. Saqlangan zahoti butun deskka amal qiladi.",
   groups: {
     daily: { title: "Kun fokusi", description: "Treyderning eng qimmat takrorlanuvchi xatosini qanday topamiz." },
-    coach: { title: "Kouching: komissiyalar", description: "Treyderning narx diapazonlari boʻyicha komissiya modeli: oyna, diapazonga kerakli savdolar va «bir aksiyaga gross ÷ bir aksiyaga komissiya» chegarasi." },
+    coach: { title: "Kouching", description: "Narx diapazonlari boʻyicha komissiya modeli va desk boʻyicha tuzatilgan «qayerda topaman / yoʻqotaman» xaritasi: oynalar, chegaralar va xulosa minimumlari." },
     alerts: { title: "Bildirishnomalar byudjeti", description: "Bir kishi kuniga nechta Telegram xabar oladi va kuratorga kechki xulosa. Risk-alertlar cheklanmaydi, faqat takrorlanmaydi." },
     discipline: { title: "Kontrakt va intizom", description: "Oʻz kontrakti va seriyalar uchun kun intizomiga ochkolar." },
     rewards: { title: "Darajalar", description: "Intizom ochkolari boʻyicha darajalar (mukofotlar katalogi — yuqorida)." },
@@ -15,6 +15,7 @@ export default {
     achievements: { title: "Yutuqlar", description: "Bosqich chegaralari: 1 — bronza, 2 — kumush, 3 — oltin, 4 — platina." },
     telegram: { title: "Telegram", description: "Bot ish kunlari yuboradi. Vaqt — Nyu-York vaqti, yonida — Toshkent vaqti." },
     curator: { title: "Kurator navbati", description: "Pul boʻyicha muammolar navbatida nima qoladi." },
+    academy: { title: "Akademiya: surʼat", description: "Treyder bosqich surʼatiga hali chiqmagan deb qachon hisoblanadi (faqat kuratorlar koʻradi)." },
     privacy: { title: "Maxfiylik", description: "Treyderlar hamkasblari haqida nimani koʻradi va desk tashqarisida nimani koʻrsata oladi." },
     trainer: { title: "Trenajyor", description: "Simulyatorda ijro (spred, sirpanish, 1R), «Kun vazifasi» va «Kirishni top»." },
     gamification: { title: "Geymifikatsiya", description: "Mavsumlar, kuratorlar ligasi, eʼtirof, setap mahorati va seriyani muzlatish." },
@@ -104,6 +105,8 @@ export default {
       feeWindowDays: { label: "Komissiya modeli oynasi", help: "Narx diapazonlari boʻyicha komissiya modeli uchun savdo boʻlgan oxirgi nechta kun olinadi." },
       feeBandMinTrades: { label: "Diapazondagi savdolar", help: "Narx diapazoni oynada kamida shuncha savdo boʻlsagina belgilanadi." },
       feeBandRatioMin: { label: "Gross ÷ komissiya chegarasi", help: "Diapazon bir aksiyaga gross bir aksiyaga komissiyaning shuncha baravaridan kam boʻlsa belgilanadi — intervalning yuqori chegarasi ham yetmasa." },
+      tauDefaultBps: { label: "Standart tarqoqlik", help: "Kesimda 30+ savdoli treyderlar 5 tadan kam boʻlganda treyder deskdan qanchalik farq qilishi mumkin (savdo hajmidan b.p.)." },
+      leakMinUsdPerDay: { label: "Xulosa uchun minimum", help: "Kesim «topaman» yoki «yoʻqotaman» deb faqat savdo kuniga shu summadan kam boʻlmasa koʻrsatiladi." },
     },
     alerts: {
       budget: {
@@ -209,6 +212,10 @@ export default {
       digestEnabled: { label: "Kechki xulosa", help: "Ish kunlari kuratorga bitta xulosa: shogirdlarning yopilgan kunlari va avval nimaga qarash. Telegramda — har bir yopilgan kun uchun xabar oʻrniga." },
       digestTime: { label: "Kechki xulosa vaqti", help: "Ish kunlari, Nyu-York vaqti." },
       digestTopN: { label: "Xulosadagi bandlar", help: "Xulosada navbatdan nechta treyder nomlanadi." },
+      capacity: { label: "Kurator roʻyxatidagi qadamlar", help: "Nechta «Keyingi qadam» koʻrsatiladi (shoshilinchlari — buzilishlar va stop — doim tepada). Qolgani kechki xulosaga tushadi." },
+    },
+    academy: {
+      plateau: { minTenure: { label: "Surʼat baholanguncha bosqichdagi kunlar", help: "Kurator «surʼat kerakligidan past»ni koʻrishidan oldin bosqichda nechta savdo kuni kerak. Treyderga koʻrsatilmaydi." } },
     },
     nav: {
       simpleForTrainees: { label: "Yangilar uchun oddiy menyu", help: "Tanlangan darajagacha boʻlgan treyderlar 7 ta asosiy boʻlimni koʻradi, qolganlari yigʻilgan «Yana» guruhida. Kuratorlar va adminlar doim toʻliq menyuni koʻradi." },

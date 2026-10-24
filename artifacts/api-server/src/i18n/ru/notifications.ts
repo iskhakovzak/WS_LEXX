@@ -73,7 +73,7 @@ export default {
     nothing: "Очередь проблем по деньгам пуста.",
     line: "{n}. {trader} — {reason}",
     lineCost: "{n}. {trader} — {reason}, {cost}",
-    reason: { stop_breach: "пробой лимита", focus_broken: "фокус нарушен", disputed: "«не ошибка» по фокусу", fees: "комиссии", loss_streak: "серия убыточных дней", giveback: "отдача прибыли", rule: "нарушение правил", other: "нужен взгляд" },
+    reason: { breach_review: "разбор нарушения", stopped: "на стопе", near_stop: "близко к стопу", eod_review: "закрытый день ждёт разбора", weekly_review: "отчёт недели", overdue_action: "просрочены договорённости 1:1", no_limits: "нет лимитов", template_drift: "лимиты не по шаблону", missing_plan: "нет плана", missing_eod: "день не закрыт", one_on_one: "давно не было 1:1", plateau_review: "темп ниже нужного для ступени", at_stake: "минус и утечки", dropout_risk: "риск ухода", trial_review: "испытание правила заканчивается", stop_breach: "пробой лимита", focus_broken: "фокус нарушен", disputed: "«не ошибка» по фокусу", fees: "комиссии", loss_streak: "серия убыточных дней", giveback: "отдача прибыли", rule: "нарушение правил", other: "нужен взгляд" },
   },
   types: {
     mention: { label: "Упоминание", description: "Кто-то упомянул вас через @имя в обсуждении, идее или заметке" },

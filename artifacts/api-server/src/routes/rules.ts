@@ -18,6 +18,7 @@ import { activeViolationSql, archiveWhereSql, parseArchiveMode } from "../lib/vi
 import { VIOLATION_SELECT, archivedCounts, persistedMap, shapeViolation } from "../lib/rulesViolationStore";
 import { AppError, badRequest, forbidden, notFound, unauthorized, type ErrorCode } from "../lib/http";
 import { parseRuleStage, shownRuleName, stageRuleApplies, traderStage } from "../lib/rulesTemplates";
+import { logInterventionSafe } from "../lib/interventions/log";
 
 const router: IRouter = Router();
 
@@ -142,6 +143,11 @@ router.get("/rules", asyncHandler(async (req, res): Promise<void> => {
  * - origin is derived: staff creating for another trader → "office", otherwise "personal".
  * - threshold is validated against the kind's fields (GET /rules/kinds); empty optional fields fall back to the risk desk.
  */
+/** R9a: an office rule a staff member set / switched for one trader is an intervention (lib/interventions/log). */
+function logRuleIntervention(trader: string, author: string | null, kind: "rule_added" | "rule_removed", rule: string | null, ruleId: number, sourceId: string) {
+  return logInterventionSafe({ trader, kind, author, params: { ruleId, ...(rule ? { rule } : {}) }, targetSlice: rule ? `rule:${rule}` : null, sourceTable: "trading_rules", sourceId });
+}
+
 router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
   const { trader, name, kind, threshold, enabled, note, desk, stage } = req.body as Record<string, unknown>;
   if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
@@ -188,6 +194,7 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
   }
   if (owner === DESK_TRADER) scanRulesAll().catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
   else scanRulesForTrader(owner).catch((e) => req.log.warn({ err: e.message }, "rule scan failed"));
+  if (origin === "office" && owner !== DESK_TRADER && rows[0].enabled !== false) await logRuleIntervention(owner, actor, "rule_added", String(kind), rows[0].id, String(rows[0].id));
   if (origin === "office") {
     const ru = rulesT.tFor("ru");
     logActivity({
@@ -202,7 +209,7 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
-  const { rows: existing } = await pool.query<any>(`SELECT trader, kind, origin FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
+  const { rows: existing } = await pool.query<any>(`SELECT trader, kind, origin, enabled FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
   if (!existing[0]) throw notFound("RULE_NOT_FOUND");
   const access = await canTouchRule(req, existing[0]);
   if (!access.ok) throw new AppError(access.code, 403);
@@ -244,6 +251,9 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
     params,
   );
   if (rows.length === 0) throw notFound("RULE_NOT_FOUND");
+  if (enabled !== undefined && rows[0].enabled !== existing[0].enabled && existing[0].origin === "office" && existing[0].trader !== DESK_TRADER) {
+    await logRuleIntervention(existing[0].trader, req.authUser?.name ?? null, rows[0].enabled === false ? "rule_removed" : "rule_added", effectiveKind, id, `${id}:${rows[0].enabled === false ? "off" : "on"}:${Date.now()}`);
+  }
   // Disabled rules are skipped by the scanner: their violations (with comments and reviews) are archived, not deleted —
   // out of counts and default lists, shown in rule history with «правило выключено». Re-enabling brings them back;
   // the rescan below then dedups by dedup_key (upsert) and archives/deletes the ones that no longer apply.
@@ -275,6 +285,7 @@ router.delete("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   const access = await canTouchRule(req, existing[0]);
   if (!access.ok) throw new AppError(access.code, 403);
   await pool.query(`UPDATE trading_rules SET deleted_at = NOW(), enabled = false WHERE id = $1`, [id]);
+  if (existing[0].origin === "office" && existing[0].trader !== DESK_TRADER) await logRuleIntervention(existing[0].trader, req.authUser?.name ?? null, "rule_removed", null, id, `${id}:deleted:${Date.now()}`);
   const arch = await pool.query(
     `UPDATE rule_violations SET archived_at = COALESCE(archived_at, NOW()), archived_reason = 'rule_deleted'
       WHERE rule_id = $1 AND (archived_at IS NULL OR archived_reason = 'rule_disabled')`,

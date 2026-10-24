@@ -337,7 +337,7 @@ export function registerAllJobs(): void {
 /** Feature modules that declare their own jobs (kept out of registerAllJobs, which is at the function-size limit). */
 function registerModuleJobs(): void {
   registerFinvizJobs(registerJob); // Finviz Elite screener / snapshot / earnings (lib/finviz/jobDefs.ts)
-  registerCoachJobs(registerJob); // roadmap R3: reward-ping batch, curator evening digest (lib/coachJobDefs.ts)
+  registerCoachJobs(registerJob); // coaching: reward-ping batch, curator digest (R3), edge map (R4), plateau (R6) — lib/coachJobDefs.ts
   registerNewsChannelJobs(registerJob); // WS_NEWS channel briefs: premarket / from the open / day recap (lib/newsChannel/jobDefs.ts)
   registerWhatIfHonestyJobs(registerJob); // honest «Что если» verdicts per trader (lib/whatIfHonestyJobDefs.ts)
 }

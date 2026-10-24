@@ -64,6 +64,7 @@ const TEXT: Record<string, readonly string[]> = {
   big7_tickers: ["created_by"],
   comments: ["trader"],
   content_reports: ["reporter", "resolved_by"],
+  curator_interventions: ["author", "trader"],
   curator_notes: ["archived_by", "author", "trader"],
   curator_queue_acks: ["acked_by", "trader"],
   daily_feed: ["created_by"],
@@ -75,6 +76,7 @@ const TEXT: Record<string, readonly string[]> = {
   discussions: ["trader"],
   emotional_state_log: ["user_id"],
   eod_days: ["reviewed_by", "trader"],
+  edge_map: ["trader"],
   eod_trade_reviews: ["trader"],
   feed_acks: ["user_name"],
   feed_visits: ["user_name"],
@@ -140,6 +142,7 @@ const TEXT: Record<string, readonly string[]> = {
   trader_achievements: ["trader"],
   trader_badges: ["trader"],
   trader_plans: ["trader"],
+  trader_progress_snapshots: ["trader"],
   trader_ratings: ["curator", "trader"],
   trader_risk_limit_events: ["changed_by", "trader"],
   trader_risk_limits: ["trader", "updated_by"],
@@ -237,6 +240,8 @@ export const KEPT: Readonly<Record<string, string>> = {
   // json: operational logs / snapshots of what happened
   "app_error_occurrences.context": "error log",
   "job_runs.details": "job run log",
+  "trader_progress_snapshots.diagnosis": "plateau diagnosis pack: slice codes, $ per day, fee share — no names",
+  "curator_interventions.params": "intervention parameters: codes and numbers (rule kind, tier, mistake), no names",
   "usage_events.meta": "no names by design (lib/usage/keys.ts)",
   "app_settings.value": "typed settings; the one name list (usage.pilotUsers) is renamed as nameList",
   // json: market data, caches, content without people

@@ -46,7 +46,7 @@ export default {
     psychology: { "weekly-report": "Weekly psychology report" },
     quotes: { daily: "Quote of the day" },
     db: { backup: "Database backup" },
-    academy: { challenges: "Academy challenges", readiness: "Promotion readiness" },
+    academy: { challenges: "Academy challenges", readiness: "Promotion readiness", "plateau-monthly": "Stage pace: monthly check (refreshed on Mondays)" },
     propreports: { sync: "PropReports sync (every 5 min in session)", "tick-hourly": "PropReports sync (hourly)", outbox: "PropReports: after-sync actions" },
     trades: { "structure-backfill": "Trade structure", "strategy-backfill": "Trade strategies and IMX" },
     jobs: { prune: "Job history cleanup" },
@@ -61,6 +61,7 @@ export default {
     trainer: { "daily-pick": "Trainer: task of the day pick" },
     finviz: { screener: "Finviz: screener", snapshot: "Finviz: ticker data", "snapshot-pending": "Finviz: requested tickers", earnings: "Finviz: earnings calendar" },
     "news-channel": { premarket: "WS_NEWS channel: premarket", open: "WS_NEWS channel: from the open", close: "WS_NEWS channel: day recap" },
+    edgemap: { nightly: "«Where I earn / lose» map: nightly run" },
     whatif: { honesty: "Honest check of the “What if” suggestions" },
   },
   backups: {

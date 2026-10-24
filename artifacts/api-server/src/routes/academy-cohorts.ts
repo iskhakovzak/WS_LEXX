@@ -60,6 +60,7 @@ import { AppError, conflict, forbidden, notFound, sendError, unauthorized, type 
 import { ruCohorts } from "../lib/academyI18n";
 import { DEMO, DEMO_URL } from "../lib/academyCohortsDemo";
 import { langOf, type Lang, type Params } from "../i18n";
+import { logInterventionSafe } from "../lib/interventions/log";
 
 const router: IRouter = Router();
 
@@ -1157,6 +1158,7 @@ router.post("/academy/one-on-ones", asyncHandler(async (req, res) => {
   );
   const items = [];
   for (const a of b.actionItems) items.push(mapAction(await insertAction(b.student, a, rows[0].id, v.me)));
+  await logInterventionSafe({ trader: b.student, kind: "one_on_one", author: v.me, params: { format: b.format }, startedOn: nyDate(new Date(b.metAt)), sourceTable: "academy_one_on_ones", sourceId: rows[0].id });
   res.status(201).json({ ...mapMeeting(rows[0], true), actionItems: items });
 }));
 

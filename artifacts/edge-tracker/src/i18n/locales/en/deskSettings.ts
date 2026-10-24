@@ -7,7 +7,7 @@ export default {
   description: "Daily-loop thresholds, discipline points, Telegram send times and privacy. They apply to the whole desk as soon as you save.",
   groups: {
     daily: { title: "Focus of the day", description: "How we find a trader's costliest repeating mistake." },
-    coach: { title: "Coaching: fees", description: "The trader's fee model by price band: window, trades a band needs and the gross-per-share ÷ fees-per-share threshold." },
+    coach: { title: "Coaching", description: "The per-band fee model and the desk-adjusted «where I earn / lose» map: windows, thresholds and verdict minimums." },
     alerts: { title: "Notification budget", description: "How many Telegram messages a person gets a day, and the curator's evening digest. Risk alerts are never capped, only deduplicated." },
     discipline: { title: "Contract and discipline", description: "Points to the day's discipline for the own contract and streaks." },
     rewards: { title: "Levels", description: "Levels by discipline points (the rewards catalog is above)." },
@@ -15,6 +15,7 @@ export default {
     achievements: { title: "Achievements", description: "Tier thresholds: 1 — bronze, 2 — silver, 3 — gold, 4 — platinum." },
     telegram: { title: "Telegram", description: "Bot sends on weekdays. Times are New York time, Tashkent time next to them." },
     curator: { title: "Curator queue", description: "What stays in the queue of problems by money." },
+    academy: { title: "Academy: pace", description: "When a trader counts as not yet at the stage's pace (curators only)." },
     privacy: { title: "Privacy", description: "What traders see about colleagues and what they may show outside the desk." },
     trainer: { title: "Trainer", description: "Simulator fills (spread, slippage, 1R), «Daily challenge» and «Find the entry»." },
     gamification: { title: "Gamification", description: "Seasons, the curator league, recognition, setup mastery and streak freezes." },
@@ -104,6 +105,8 @@ export default {
       feeWindowDays: { label: "Fee model window", help: "How many recent days with trades the fee model by price band uses." },
       feeBandMinTrades: { label: "Trades in a band", help: "A price band is flagged only with at least this many trades in the window." },
       feeBandRatioMin: { label: "Gross ÷ fees threshold", help: "A band is flagged when its gross per share is below this many times its fees per share — and even the interval's upper bound falls short." },
+      tauDefaultBps: { label: "Default spread", help: "How far a trader may differ from the desk in a slice while fewer than 5 traders have 30+ trades in it (bp of trade notional)." },
+      leakMinUsdPerDay: { label: "Minimum for a verdict", help: "A slice is shown as «earn» or «lose» only when it is worth at least this much per trading day." },
     },
     alerts: {
       budget: {
@@ -209,6 +212,10 @@ export default {
       digestEnabled: { label: "Evening digest", help: "One digest for the curator on weekdays: their traders' closed days and what to look at first. In Telegram — instead of a message per closed day." },
       digestTime: { label: "Evening digest time", help: "Weekdays, New York time." },
       digestTopN: { label: "Items in the digest", help: "How many traders from the queue the digest names." },
+      capacity: { label: "Steps in the curator list", help: "How many «Next steps» to show (urgent ones — breaches and stops — always on top). The rest goes to the evening digest." },
+    },
+    academy: {
+      plateau: { minTenure: { label: "Days at the stage before the pace is judged", help: "Trading days at the stage before the curator sees «pace below target». Never shown to the trader." } },
     },
     nav: {
       simpleForTrainees: { label: "Simple menu for newcomers", help: "Traders up to the chosen tier see the 7 main sections; the rest sits in a collapsed «More» group. Curators and admins always get the full menu." },

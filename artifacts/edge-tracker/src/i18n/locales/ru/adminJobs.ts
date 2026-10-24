@@ -47,7 +47,7 @@ export default {
     psychology: { "weekly-report": "Недельный отчёт по психологии" },
     quotes: { daily: "Цитата дня" },
     db: { backup: "Бэкап базы данных" },
-    academy: { challenges: "Экзамены академии", readiness: "Готовность к переводу" },
+    academy: { challenges: "Экзамены академии", readiness: "Готовность к переводу", "plateau-monthly": "Темп ступени: ежемесячная проверка (обновление по понедельникам)" },
     propreports: { sync: "Синхронизация PropReports (каждые 5 мин в сессию)", "tick-hourly": "Синхронизация PropReports (ежечасно)", outbox: "PropReports: действия после синхронизации" },
     trades: { "structure-backfill": "Структура сделок", "strategy-backfill": "Стратегии сделок и IMX" },
     jobs: { prune: "Очистка истории задач" },
@@ -62,6 +62,7 @@ export default {
     trainer: { "daily-pick": "Тренажёр: выбор задачи дня" },
     finviz: { screener: "Finviz: скринер", snapshot: "Finviz: данные тикеров", "snapshot-pending": "Finviz: запрошенные тикеры", earnings: "Finviz: календарь отчётов" },
     "news-channel": { premarket: "Канал WS_NEWS: премаркет", open: "Канал WS_NEWS: от открытия", close: "Канал WS_NEWS: итоги дня" },
+    edgemap: { nightly: "Карта «где зарабатываю / теряю»: ночной пересчёт" },
     whatif: { honesty: "Честная проверка подсказок «Что если»" },
   },
   backups: {

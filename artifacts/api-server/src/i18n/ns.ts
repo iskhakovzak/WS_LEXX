@@ -82,6 +82,9 @@ import ruGamification from "./ru/gamification";
 import enGamification from "./en/gamification";
 import uzGamification from "./uz/gamification";
 import ruNewsChannel from "./ru/newsChannel";
+import ruCoach from "./ru/coach";
+import enCoach from "./en/coach";
+import uzCoach from "./uz/coach";
 import enNewsChannel from "./en/newsChannel";
 import uzNewsChannel from "./uz/newsChannel";
 
@@ -167,3 +170,6 @@ export const gamificationT = defineNamespace(ruGamification, { en: enGamificatio
 
 /** `newsChannel`: WS_NEWS Telegram channel briefs (lib/newsChannel/render.ts); the channel posts in `ru`. */
 export const newsChannelT = defineNamespace(ruNewsChannel, { en: enNewsChannel, uz: uzNewsChannel });
+
+/** `coach`: coaching evidence for staff — the plateau 1:1 agenda and edge-map slice labels (lib/plateauStore.ts). */
+export const coachT = defineNamespace(ruCoach, { en: enCoach, uz: uzCoach });

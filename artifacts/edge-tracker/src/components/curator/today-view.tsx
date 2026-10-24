@@ -21,6 +21,7 @@ import { TemplateDialog } from "./template-dialog";
 import { AttentionPanel } from "./attention-panel";
 import { QuestEventChips } from "./quest-events";
 import { CuratorRequestsPanel } from "./requests-panel";
+import { StuckPanel } from "./coach-stuck";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -344,6 +345,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }
             </div>
           </div>
         </Panel>
+        <StuckPanel className="lg:col-span-7" scope={scope} onOpenTrader={onOpenTrader} />
       </BentoGrid>
 
       <TemplateDialog open={!!templateFor} onOpenChange={(v) => { if (!v) setTemplateFor(null); }} traders={templateFor ?? []} />

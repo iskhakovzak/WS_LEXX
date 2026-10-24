@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access";
+export type SettingGroup = "daily" | "coach" | "alerts" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage" | "finviz" | "newsChannel" | "trades" | "access" | "academy";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio" | "places" | "people" | "shares" | "bars" | "times" | "bp" | "atr" | "quests" | "trades" | "months" | "lessons" | "exams" | "tasks" | "teams";
 
 /**
@@ -152,6 +152,14 @@ export const SETTINGS = {
   "telegram.eveningTime": { group: "telegram", type: "time", default: "16:30", pilot: true },
   "telegram.contractAlertsEnabled": { group: "telegram", type: "boolean", default: true },
 
+  // Coaching evidence (roadmap R4, lib/edgeMap.ts): τ of the fallback desk prior (bps of notional) when a slice has
+  // fewer than 5 traders with 30+ trades, and the smallest |$ per active day| an edge-map verdict needs.
+  "coach.tauDefaultBps": { group: "coach", type: "number", default: 3, min: 1, max: 50, step: 0.5, unit: "bp" },
+  "coach.leakMinUsdPerDay": { group: "coach", type: "number", default: 3, min: 0, max: 100, step: 0.5, unit: "usd" },
+
+  // Plateau detector (roadmap R6, lib/plateau.ts): active days at a stage before «not at the pace yet» is judged.
+  "academy.plateau.minTenure": { group: "academy", type: "number", default: 120, min: 40, max: 500, step: 10, unit: "days" },
+
   // Telegram push budget per person and New York day (roadmap R3; lib/notificationCore pushVerdict, lib/pushBudget):
   // all non-risk pushes, of them coaching nudges; a contract alert waits while a risk alert is this fresh. Risk alerts
   // are never capped, only deduplicated.
@@ -166,6 +174,8 @@ export const SETTINGS = {
   "curator.digestEnabled": { group: "curator", type: "boolean", default: true },
   "curator.digestTime": { group: "curator", type: "time", default: "17:30" },
   "curator.digestTopN": { group: "curator", type: "number", default: 3, min: 1, max: 10, step: 1, unit: "count" },
+  // R11: «Следующие шаги» keep this many steps (urgent ones ≥ 80 always); the rest waits for the 17:30 digest.
+  "curator.capacity": { group: "curator", type: "number", default: 6, min: 1, max: 30, step: 1, unit: "count" },
 
   // Gamification (lib/gamification/*): monthly seasons, curator league, recognition, setup mastery, streak freeze
   "gamification.enabled": { group: "gamification", type: "boolean", default: true },

@@ -70,7 +70,7 @@ export default {
     nothing: "The money queue is empty.",
     line: "{n}. {trader} — {reason}",
     lineCost: "{n}. {trader} — {reason}, {cost}",
-    reason: { stop_breach: "limit breach", focus_broken: "focus broken", disputed: "“not a mistake” on the focus", fees: "fees", loss_streak: "losing streak", giveback: "profit given back", rule: "rule violations", other: "needs a look" },
+    reason: { breach_review: "breach to review", stopped: "on stop", near_stop: "close to stop", eod_review: "closed day waits for review", weekly_review: "weekly report", overdue_action: "1:1 agreements overdue", no_limits: "no limits", template_drift: "limits off the template", missing_plan: "no plan", missing_eod: "day not closed", one_on_one: "no 1:1 for long", plateau_review: "pace below the stage target", at_stake: "red and leaks", dropout_risk: "dropout risk", trial_review: "rule trial ending", stop_breach: "limit breach", focus_broken: "focus broken", disputed: "“not a mistake” on the focus", fees: "fees", loss_streak: "losing streak", giveback: "profit given back", rule: "rule violations", other: "needs a look" },
   },
   types: {
     mention: { label: "Mention", description: "Someone mentioned you with @name in a discussion, idea or note" },
