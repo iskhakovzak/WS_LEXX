@@ -74,16 +74,16 @@ export function CompareBlock({ data, isLoading, isError, hasPeriod }: { data: Co
         <div className="flex flex-col gap-3">
           <Verdict rows={data.rows} />
           <ul className="@container divide-y divide-[var(--glass-border)]">
-            <li className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_8rem_7rem] gap-3 pb-2 text-right text-[11px] uppercase tracking-wide text-muted-foreground @xl:grid">
+            <li className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_8rem_10rem] gap-x-4 gap-y-3 pb-2 text-right text-[11px] uppercase tracking-wide text-muted-foreground @xl:grid">
               <span className="text-left">&nbsp;</span><span>{t("compare.current")}</span><span>{t("compare.previous")}</span><span>{t("compare.diff")}</span><span />
             </li>
             {data.rows.map((r) => {
               const better = BETTER[r.metric];
               const tone = r.changed && r.diff && better ? toneOf(r.diff.point * better) : "neutral";
               return (
-                <li key={r.metric} className="grid grid-cols-3 items-center gap-x-3 gap-y-1 py-2.5 @xl:grid-cols-[minmax(0,1fr)_7rem_7rem_8rem_7rem]">
+                <li key={r.metric} className="grid grid-cols-3 items-center gap-x-3 gap-y-1 py-2.5 @xl:grid-cols-[minmax(0,1fr)_7rem_7rem_8rem_10rem] @xl:gap-x-4">
                   <span className="col-span-2 text-sm text-foreground @xl:col-span-1">{t(`metric.${r.metric}`)}</span>
-                  <span className="justify-self-end @xl:order-last">
+                  <span className="justify-self-end whitespace-nowrap @xl:order-last @xl:pl-2">
                     <Pill tone="neutral" className={cn(r.changed && "border-foreground/40 text-foreground")}>{r.changed ? t("compare.changed") : t("compare.noise")}</Pill>
                   </span>
                   <span className="flex flex-col items-start @xl:items-end">
