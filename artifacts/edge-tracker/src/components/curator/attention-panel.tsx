@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { ArrowRight, BookCheck, Check, Layers, NotebookPen, Sparkles, Users } from "lucide-react";
-import { EmptyState, Panel, Pill, StatusDot, type Tone } from "@/components/ds";
+import { EmptyState, Panel, Pill, toneBg, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
@@ -206,13 +206,13 @@ function NextRow({ row, onOpenTrader, onTemplate }: {
   const { t } = curatorI18n.useT();
   const a = row.next;
   return (
-    <li className="tile flex min-w-0 items-center gap-3 px-3 py-2">
+    <li className="tile flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
       <button type="button" onClick={() => onOpenTrader(a.trader)} title={personName(a.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(a.trader)}
       </button>
-      <StatusDot tone={actionTone(a.kind)} className="min-w-0 flex-1"><span className="text-sm text-foreground">{a.label}</span></StatusDot>
+      <span className="flex min-w-[9rem] flex-1 items-start gap-1.5" title={a.label}><span className={cn("mt-[0.4375rem] h-2 w-2 shrink-0 rounded-full", toneBg(actionTone(a.kind)))} aria-hidden="true" /><span className="min-w-0 text-sm leading-ui text-foreground">{a.label}</span></span>
       {a.kind === "no_limits" ? (
-        <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => onTemplate([a.trader])}>
+        <Button type="button" size="sm" variant="outline" className="ml-auto shrink-0" onClick={() => onTemplate([a.trader])}>
           <Layers className="h-3.5 w-3.5" /> {t("today.template")}
         </Button>
       ) : (
@@ -227,15 +227,18 @@ function NextRow({ row, onOpenTrader, onTemplate }: {
 /** A ward whose last 1:1 is older than 30 days (or who never had one): plan the meeting (OLGA-18). */
 function OneOnOneRow({ row, onOpenTrader }: { row: Extract<AttentionRow, { type: "oneOnOne" }>; onOpenTrader: (trader: string, tab?: string) => void }) {
   const { t } = curatorI18n.useT();
+  const label = row.days == null ? t("oneOnOne.never") : t("oneOnOne.days", { count: row.days });
   return (
-    <li className="tile flex min-w-0 items-center gap-3 px-3 py-2">
+    <li className="tile flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
       <button type="button" onClick={() => onOpenTrader(row.trader)} title={personName(row.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary sm:w-32">
         {personName(row.trader)}
       </button>
-      <StatusDot tone="warn" className="min-w-0 flex-1">
-        <span className="text-sm text-foreground">{row.days == null ? t("oneOnOne.never") : t("oneOnOne.days", { count: row.days })}</span>
-      </StatusDot>
-      <Button asChild size="sm" variant="ghost" className="shrink-0">
+      {/* Wraps (with the full text as a tooltip) instead of StatusDot's one-line ellipsis: a narrow panel showed «1:1 е…». */}
+      <span className="flex min-w-[9rem] flex-1 items-start gap-1.5" title={label}>
+        <span className="mt-[0.4375rem] h-2 w-2 shrink-0 rounded-full bg-warn" aria-hidden="true" />
+        <span className="min-w-0 text-sm leading-ui text-foreground">{label}</span>
+      </span>
+      <Button asChild size="sm" variant="ghost" className="ml-auto shrink-0">
         <Link href={`/academy/mentor?student=${encodeURIComponent(row.trader)}`}><Users className="h-3.5 w-3.5" /> {t("oneOnOne.plan")}</Link>
       </Button>
     </li>
