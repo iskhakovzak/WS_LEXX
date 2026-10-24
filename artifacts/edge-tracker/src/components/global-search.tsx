@@ -23,7 +23,7 @@ import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { links } from "@/lib/links";
-import { ALL_NAV_ITEMS, groupOf, parentOf, rowChildren, rowLabel, type NavItem } from "@/components/shell/nav";
+import { ALL_NAV_ITEMS, groupOf, parentOf, type NavItem } from "@/components/shell/nav";
 import { useVisibleNav } from "@/components/shell/use-nav-model";
 import { navItemOpen } from "@/components/shell/nav-model";
 import { usePeopleDirectory, type DirectoryPerson, type SearchHit } from "@/components/people/search";
@@ -59,8 +59,7 @@ const recentKeys = (r: RecentItem) => {
   return page ? goKeys(page) : undefined;
 };
 function pagePath(p: NavItem) {
-  const owner = parentOf(p) ?? (p.hubLabel ? p : undefined);
-  return [groupOf(p)?.label, owner ? rowLabel(owner) : null].filter(Boolean).join(" · ") || undefined;
+  return [groupOf(p)?.label, parentOf(p)?.name].filter(Boolean).join(" · ") || undefined;
 }
 
 type Props = {
@@ -147,7 +146,7 @@ export default function GlobalSearch({ open, onOpenChange: setOpen, request, tri
     if (!q || notesOnly || pq.tradeId) return [];
     const visible = ALL_NAV_ITEMS.filter((i) => navItemOpen(i, isCurator, navPrefs));
     // Current-language name, the Russian name and RU/EN keywords: a section is found whatever language you type in.
-    return rankItems(visible, q, (i) => [i.name, i.hubLabel, { text: i.ruName, weight: 0.9 }, { text: i.ruHubLabel, weight: 0.9 }, { text: i.keywords, weight: 0.6, fuzzy: false }], 8);
+    return rankItems(visible, q, (i) => [i.name, { text: i.ruName, weight: 0.9 }, { text: i.keywords, weight: 0.6, fuzzy: false }], 8);
   }, [q, notesOnly, pq.tradeId, isCurator, navPrefs]);
   const actionHits = useMemo<Hit<HubAction>[]>(() => {
     if (notesOnly || pq.tradeId) return [];
@@ -342,8 +341,8 @@ function NavGroups({ onPick }: { onPick: (p: NavItem) => void }) {
       {navGroups.map((g) => (
         <Group key={g.id} heading={g.label}>
           {g.rows.map((row) => (
-            <Item key={row.href} value={`page-${row.href}`} icon={row.hubIcon ?? row.icon} title={rowLabel(row)}
-              subtitle={rowChildren(row).map((c) => c.name).join(" · ") || undefined} onSelect={() => onPick(row)} hint={goKeys(row)} />
+            <Item key={row.href} value={`page-${row.href}`} icon={row.icon} title={row.name}
+              subtitle={(row.children ?? []).map((c) => c.name).join(" · ") || undefined} onSelect={() => onPick(row)} hint={goKeys(row)} />
           ))}
         </Group>
       ))}

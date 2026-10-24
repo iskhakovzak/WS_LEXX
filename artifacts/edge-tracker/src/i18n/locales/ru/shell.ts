@@ -9,7 +9,7 @@ export default {
     risk: "Риск-деск",
     trades: "Сделки",
     journal: "Дневник",
-    calculator: "Калькулятор",
+    calculator: "Опционный калькулятор",
     analytics: "Аналитика",
     weeklyReview: "Отчёт недели",
     dayReport: "Разбор дня",
@@ -44,7 +44,7 @@ export default {
     ideaStats: "Статистика идей",
     notifications: "Уведомления",
     academyMy: "Моё обучение",
-    academyLearn: "Обучение",
+    academyLearn: "Курсы",
     academyPath: "Путь трейдера",
     academyChallenges: "Экзамены",
     academyMentor: "Наставник",
@@ -69,19 +69,14 @@ export default {
     academyPath: "Путь",
     academyContent: "Редактор",
   },
-  /** Sidebar groups, in the order of a trader's day. */
+  /** Sidebar groups, in the order of a trader's day («Управление» = staff only, right under «Сегодня»). */
   groups: {
     today: "Сегодня",
-    trade: "Торговля",
-    growth: "Разбор и рост",
+    manage: "Управление",
+    review: "Разбор",
     market: "Рынок",
     team: "Команда",
-    academy: "Академия",
-    manage: "Управление",
-  },
-  /** Sidebar rows that name a set of pages by its job (the row opens the first page of the set). */
-  hubs: {
-    tools: "Инструменты",
+    learn: "Обучение",
   },
   titles: {
     research: "Архив исследований",
@@ -107,6 +102,9 @@ export default {
     hideChildren: "Скрыть разделы «{name}»",
     toRail: "Свернуть меню до иконок",
     fromRail: "Развернуть меню",
+    pinnedTitle: "Закреплённые подразделы. Закрепить: наведите на подраздел и нажмите булавку",
+    goHintOpen: "Все горячие клавиши — в «Помощи»",
+    goHintDismiss: "Скрыть подсказку",
   },
   /** Sidebar footer: the trader's own day (from the risk desk). */
   today: {
@@ -117,6 +115,10 @@ export default {
     haltedWeekly: "Недельный стоп: торговля остановлена",
     haltedDrawdown: "Макс. просадка: торговля остановлена",
     usedAria: "Использовано {pct} дневного лимита",
+    marketClosed: "Рынок закрыт",
+    /** Halted on a weekend / market holiday: neutral, the stop applies to the next session. */
+    haltedClosed: "{stop} — статус к следующей сессии",
+    stop: { daily: "Дневной стоп", weekly: "Недельный стоп", drawdown: "Макс. просадка" },
     open: "Открыть риск-деск",
   },
   mobile: {

@@ -1,7 +1,7 @@
-/** Phone «More» sheet: every section + favourites + search (simple menu: «Главное» + a folded «Ещё», nav-model.ts). Own chunk (vaul): loaded on the phone layout when the
+/** Phone «More» sheet: search, «Закреплённые», then every section in the sidebar's groups (simple menu: «Главное» + a folded «Ещё», nav-model.ts). Own chunk (vaul): loaded on the phone layout when the
  * browser is idle, or on the first tap on «More». */
 import { Link } from "wouter";
-import { ChevronRight, Search, Star } from "lucide-react";
+import { ChevronRight, Pin, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { isNavActive, type NavItem } from "./nav";
@@ -113,7 +113,7 @@ export default function MobileMoreSheet({ open: moreOpen, onOpenChange: setMoreO
           </button>
           {pinnedItems.length > 0 && (
             <section className="mb-4">
-              <h3 className="micro-label mb-2 flex items-center gap-1.5"><Star className="h-3 w-3" aria-hidden="true" /> {t("sidebar.favorites")}</h3>
+              <h3 className="micro-label mb-2 flex items-center gap-1.5"><Pin className="h-3 w-3 fill-current" aria-hidden="true" /> {t("sidebar.favorites")}</h3>
               <div className={grid}>
                 {pinnedItems.map((i) => <Tile key={`p-${i.href}`} item={i} active={isNavActive(i, location)} alert={!!badges[i.href]} />)}
               </div>

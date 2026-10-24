@@ -8,7 +8,7 @@ export default {
     risk: "Risk desk",
     trades: "Trades",
     journal: "Journal",
-    calculator: "Calculator",
+    calculator: "Options calculator",
     analytics: "Analytics",
     weeklyReview: "Weekly report",
     dayReport: "Day review",
@@ -43,7 +43,7 @@ export default {
     ideaStats: "Idea stats",
     notifications: "Notifications",
     academyMy: "My learning",
-    academyLearn: "Learning",
+    academyLearn: "Courses",
     academyPath: "Trader path",
     academyChallenges: "Exams",
     academyMentor: "Mentor",
@@ -70,15 +70,11 @@ export default {
   },
   groups: {
     today: "Today",
-    trade: "Trading",
-    growth: "Review & growth",
+    manage: "Management",
+    review: "Review",
     market: "Market",
     team: "Team",
-    academy: "Academy",
-    manage: "Management",
-  },
-  hubs: {
-    tools: "Tools",
+    learn: "Learning",
   },
   titles: {
     research: "Research archive",
@@ -104,6 +100,9 @@ export default {
     hideChildren: "Hide “{name}” sections",
     toRail: "Collapse the menu to icons",
     fromRail: "Expand the menu",
+    pinnedTitle: "Pinned pages. To pin one, hover a sub-page and press the pin",
+    goHintOpen: "All shortcuts are in Help",
+    goHintDismiss: "Hide the hint",
   },
   today: {
     title: "Today",
@@ -113,6 +112,10 @@ export default {
     haltedWeekly: "Weekly stop: trading halted",
     haltedDrawdown: "Max drawdown: trading halted",
     usedAria: "{pct} of the daily limit used",
+    marketClosed: "Market closed",
+    /** Halted on a weekend / market holiday: neutral, the stop applies to the next session. */
+    haltedClosed: "{stop} — status for the next session",
+    stop: { daily: "Daily stop", weekly: "Weekly stop", drawdown: "Max drawdown" },
     open: "Open the risk desk",
   },
   mobile: {

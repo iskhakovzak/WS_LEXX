@@ -60,6 +60,21 @@ export function useTodayCloseMin(): number {
   return sessionBounds(holidays.some((h) => h.earlyClose && h.date === today)).closeMin;
 }
 
+/**
+ * Is the market closed for the whole NY day (weekend / full-day holiday)? Re-checked every 5 minutes (it flips only at
+ * NY midnight). `reason` names a holiday only; on a weekend «Рынок закрыт» says it all. The sidebar «Сегодня» card.
+ */
+export function useMarketDay(): { closed: boolean; reason: string | null } {
+  const holidays = useMarketHolidays();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 5 * 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const s = getSessionState(now, holidays);
+  return { closed: s.weekend || !!s.holiday, reason: s.weekend ? null : s.holiday };
+}
+
 const PHASE: Record<SessionPhase, { dot: string; text: string }> = {
   pre: { dot: "bg-warn", text: "text-warn" },
   regular: { dot: "bg-up", text: "text-up" },

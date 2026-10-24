@@ -8,8 +8,8 @@ import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ALL_NAV_ITEMS, isNavActive, type NavItem } from "./nav";
-import { mobileTabs, navItemOpen, simpleWithoutDock, withoutDock } from "./nav-model";
+import { isNavActive } from "./nav";
+import { mobileTabs, pinnedNavItems, simpleWithoutDock, withoutDock } from "./nav-model";
 import { useSoftKeyboardOpen } from "./use-soft-keyboard";
 import { useNavModel } from "./use-nav-model";
 import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
@@ -37,8 +37,9 @@ export function MobileNav({ location }: { location: string }) {
   const arm = useCallback(() => { void loadSheet().then(() => setSheetArmed(true), () => {}); }, []);
   const { t } = shellI18n.useT();
   const { groups, simple } = useNavModel();
-  const { pins } = usePinnedNav();
   const { isCurator, user, permissions } = useAuth();
+  // Same pins as the sidebar, role defaults included (the admin's «Статистика офиса»).
+  const { pins } = usePinnedNav(user?.role);
   const [moreGroupOpen, setMoreGroupOpen] = useMoreOpen(user?.traderName);
   const badges = useShellBadges();
   const keyboardOpen = useSoftKeyboardOpen();
@@ -49,9 +50,8 @@ export function MobileNav({ location }: { location: string }) {
   const sheetGroups = React.useMemo(() => withoutDock(groups, tabHrefs), [groups, tabHrefs]);
   const sheetSimple = React.useMemo(() => (simple ? simpleWithoutDock(simple, tabHrefs) : null), [simple, tabHrefs]);
   const inTabs = tabs.some((t) => isNavActive(t, location));
-  // Same rule as the sidebar: a staff-only section pinned while signed in as curator never shows for a trader, nor a
-  // section closed for the stage.
-  const pinnedItems = pins.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i && !i.hidden && navItemOpen(i, isCurator, permissions.nav));
+  // «Закреплённые» on top, by the sidebar's rule (staff-only / closed-for-the-stage pins never show).
+  const pinnedItems = React.useMemo(() => pinnedNavItems(pins, isCurator, permissions.nav), [pins, isCurator, permissions.nav]);
   const anyAlert = Object.entries(badges).some(([href, b]) => b && !tabHrefs.includes(href));
 
   useEffect(() => { setMoreOpen(false); }, [location]);

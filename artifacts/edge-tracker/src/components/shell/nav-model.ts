@@ -11,7 +11,8 @@
  *   the desk setting nav.simpleUntilTier never goes below «junior» (an old «trainee» value means «newcomers» = juniors);
  *   a trader without a resolved tier counts as a junior (the stage default).
  * - Phone dock (mobile wave): Главная · Сделки · Дневник · Аналитика · Риск · Ещё for everyone (juniors see the journal
- *   as «Вечер», the evening step of the day); «План дня» heads the juniors' sheet.
+ *   as «Вечер», the evening step of the day); «План дня» heads the juniors' sheet. The sheet lists the rest of the
+ *   sidebar in the same groups, «Закреплённые» first (`pinnedNavItems`).
  * - Sections closed for the viewer's ladder stage (desk setting access.sections → GET /api/permissions/me nav.blocked;
  *   staff never): gone from the sidebar, the phone sheet, the palette and pinned items (`navItemOpen`); a closed row's
  *   open pages move up as rows of their own. The route guard (App.tsx) shows «Раздел закрыт» for a closed URL
@@ -47,7 +48,11 @@ export function navItemOpen(i: NavItem, isCurator: boolean, nav: unknown): boole
   return (!i.staff || isCurator) && navFeatureOn(i.feature, nav) && !blockedSections(nav).includes(i.href);
 }
 
-/** Full nav for the role (staff-only pages filtered, hidden ones, switched-off and closed sections dropped). */
+/**
+ * Full nav for the role (staff-only pages filtered, hidden ones, switched-off and closed sections dropped). No
+ * single-item sub-menus: a row left with one visible child (role, desk switch, closed section) lists that child as a
+ * row of its own right below it, so a chevron never opens a list of one.
+ */
 export function visibleNav(isCurator: boolean, nav?: unknown): VisibleGroup[] {
   const closed = new Set(blockedSections(nav));
   const ok = (i: NavItem) => !i.hidden && navItemOpen(i, isCurator, nav);
@@ -58,8 +63,9 @@ export function visibleNav(isCurator: boolean, nav?: unknown): VisibleGroup[] {
       if (closed.has(r.href)) return (r.children ?? []).filter(ok);
       if (!r.children) return [r];
       const copy = withGetters(r);
-      copy.children = r.children.filter(ok);
-      return [copy];
+      const kids = r.children.filter(ok);
+      copy.children = kids.length > 1 ? kids : undefined;
+      return kids.length === 1 ? [copy, kids[0]!] : [copy];
     });
     return { id: g.id, get label() { return g.label; }, rows, items: rows.flatMap((r) => [r, ...(r.children ?? [])]) };
   }).filter((g) => g.rows.length);
@@ -130,7 +136,7 @@ export function simpleNav(groups: VisibleGroup[], _prefs?: Partial<NavPrefs> | n
     if (!i) return [];
     // «Квесты и достижения» = that ratings tab, named exactly like it; the ratings' own pages (Бенчмарк, Топ, Офис) go to «Ещё».
     if (href === "/ratings") return [relabel(i, () => shellI18n.t("simple.progress"), { to: "/ratings?tab=quests", children: undefined })];
-    // A page that is a child in the full menu (Тренажёр under «Инструменты») becomes a row of its own.
+    // A page that would be a child in the full menu becomes a row of its own here.
     return [withGetters(i)];
   });
   const more: NavItem[] = [];
@@ -172,12 +178,14 @@ export function withoutPinned<T extends { href: string }>(items: readonly T[], p
 }
 
 /**
- * OWNER-28 (desktop): a set's children. Open → all of them in the list. Closed → the pinned ones stay visible under the
- * row and the folded list keeps only the others, so a pinned page is never in the DOM twice (two «Открепить»).
+ * «Закреплённые» (top of the sidebar and of the phone sheet): the pinned pages this viewer may open, in pin order. A
+ * staff-only page pinned while signed in as curator never shows for a trader, nor a section closed for the stage or
+ * a hidden one. Each pinned page is listed there only (`withoutPinned` takes it out of its row / group).
  */
-export function rowKidLists<T extends { href: string }>(kids: readonly T[], open: boolean, isPinned: (href: string) => boolean): { list: T[]; pinned: T[] } {
-  if (open) return { list: [...kids], pinned: [] };
-  return { list: kids.filter((k) => !isPinned(k.href)), pinned: kids.filter((k) => isPinned(k.href)) };
+export function pinnedNavItems(pins: readonly string[], isCurator: boolean, nav: unknown): NavItem[] {
+  return pins
+    .map((h) => ALL_NAV_ITEMS.find((i) => i.href === h))
+    .filter((i): i is NavItem => !!i && !i.hidden && navItemOpen(i, isCurator, nav));
 }
 
 /** A copy with another phone-tab label (the sidebar keeps the page's own name). */
