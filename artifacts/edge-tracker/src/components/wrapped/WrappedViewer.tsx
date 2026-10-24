@@ -171,10 +171,12 @@ export default function WrappedViewer({ kind, periodKey, open, onOpenChange }: {
           onKeyDown={player.onKeyDown}
           aria-describedby="wrapped-hint"
         >
-          <div className="flex h-full w-full max-w-[min(100vw,max(22rem,calc((100dvh-11rem)*0.5625)))] flex-col gap-2 px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-0">
+          {/* The card is sized by the height; the chrome around it (title, export switch, actions) gets at least 30rem, so the
+              title is not cut to a few words and the actions stay on one row. */}
+          <div className="flex h-full w-full max-w-[min(100vw,max(30rem,calc((100dvh-11rem)*0.5625)))] flex-col gap-2 px-2 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-0">
             <StoryBars count={Math.max(count, 1)} index={i} running={running} onDone={player.next} />
             <div className="flex items-center gap-1">
-              <DialogPrimitive.Title className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</DialogPrimitive.Title>
+              <DialogPrimitive.Title className="min-w-0 flex-1 truncate text-sm font-semibold" title={title}>{title}</DialogPrimitive.Title>
               <DialogPrimitive.Description id="wrapped-hint" className="sr-only">{t("viewer.description")}</DialogPrimitive.Description>
               <button type="button" className={iconBtn} onClick={() => story.setTheme(nextTheme)} aria-label={t("viewer.theme", { name: ts(`themes.${nextTheme}`) })} title={t("viewer.theme", { name: ts(`themes.${story.theme}`) })}>
                 <Palette className="h-5 w-5" aria-hidden="true" />

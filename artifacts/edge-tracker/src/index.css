@@ -653,6 +653,61 @@ body {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+  /* Overlay surfaces scroll their own content (dialog / sheet body): paint the glass on the element itself so
+     it stays put — an absolutely positioned ::before would scroll away with the content and leave a bare band. */
+  .glass-solid {
+    background-image: linear-gradient(135deg, var(--glass-sheen), transparent 40%), linear-gradient(var(--glass-thick-bg), var(--glass-thick-bg));
+  }
+  .glass-solid::before {
+    background: none;
+  }
+
+  /* Sticky header / footer of a scrolling overlay (DialogHeader / DialogFooter / SheetHeader / SheetFooter):
+     the title and the actions stay visible while the body scrolls. The scroller's padding stays free, so the
+     cover (::before = the bar, its box-shadows = 1.5rem around it plus a hairline 0.75rem off the content side)
+     hides the content passing under it. Shadows, not a bigger box: ink never adds scrollable overflow, so a
+     dialog without padding gets no stray horizontal / extra vertical scroll. Where scroll-driven animations
+     exist, the cover only shows while content is actually under it (no band on a resting dialog). */
+  .overlay-bar {
+    position: sticky;
+    z-index: var(--z-raised);
+  }
+  .overlay-bar::before {
+    --bar-dy: -0.75rem;
+    --bar-line: calc(var(--bar-dy) + 1px);
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(var(--glass-thick-bg), var(--glass-thick-bg)), hsl(var(--popover));
+    box-shadow:
+      0 var(--bar-dy) 0 1.5rem var(--glass-thick-bg),
+      0 var(--bar-dy) 0 1.5rem hsl(var(--popover)),
+      0 var(--bar-line) 0 1.5rem var(--glass-border),
+      0 var(--bar-line) 0 1.5rem hsl(var(--popover));
+  }
+  .overlay-bar-top { top: 0; }
+  .overlay-bar-bottom { bottom: 0; }
+  .overlay-bar-bottom::before {
+    --bar-dy: 0.75rem;
+    --bar-line: calc(var(--bar-dy) - 1px);
+  }
+  @supports (animation-timeline: scroll()) {
+    .overlay-bar::before {
+      opacity: 0;
+      animation: overlay-bar-cover linear both;
+      animation-timeline: scroll(nearest block);
+    }
+    .overlay-bar-top::before { animation-range: 0 1.5rem; }
+    .overlay-bar-bottom::before { animation-direction: reverse; animation-range: calc(100% - 1.5rem) 100%; }
+  }
+}
+@keyframes overlay-bar-cover {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@layer components {
 
   /* Static glass panel (cards): same look without backdrop blur — the canvas behind cards is a
      smooth gradient, so blurring it is invisible but costly on long lists. No pseudo element

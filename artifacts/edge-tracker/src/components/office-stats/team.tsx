@@ -264,7 +264,7 @@ export function RulesPopover({ rules, isAdmin }: { rules: Rules; isAdmin: boolea
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm"><HelpCircle className="h-4 w-4" /> {t("rules.button")}</Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(92vw,30rem)] max-h-[70vh] overflow-y-auto text-sm">
+      <PopoverContent align="end" className="w-[min(92vw,30rem)] max-h-[min(70dvh,var(--radix-popover-content-available-height))] overflow-y-auto text-sm">
         <p className="font-semibold text-foreground">{t("rules.button")}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {t("rules.intro")}

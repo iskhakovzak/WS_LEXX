@@ -118,7 +118,7 @@ export function CompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setLastInitial(null); }}>
-      <DialogContent className="max-h-[85dvh] w-full max-w-5xl overflow-y-auto">
+      <DialogContent size="xl" className="max-h-[85dvh]">
         <DialogHeader>
           <DialogTitle>{t("compare.title")}</DialogTitle>
           <DialogDescription>{t("compare.description")}</DialogDescription>

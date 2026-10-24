@@ -83,6 +83,9 @@ function Toolbar() {
   );
 }
 
+/** A tab body: scrolls on its own on tall screens, flows into the scrolling card on short ones. */
+const tabBody = "-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1 [@media(max-height:50rem)]:flex-none [@media(max-height:50rem)]:overflow-visible max-sm:flex-none max-sm:overflow-visible";
+
 export default function AppearanceDialog() {
   const { t } = appearanceI18n.useT();
   const { open, setOpen, tab, setTab, undo, redo } = useAppearance();
@@ -98,23 +101,25 @@ export default function AppearanceDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent onKeyDown={onKeyDown} className="flex max-h-[calc(100dvh-1.5rem)] max-w-4xl flex-col gap-4 overflow-hidden p-4 sm:p-6">
+      {/* Tall screens: preview, toolbar and looks stay, only the tab body scrolls. Short or narrow ones (< 50rem tall, a 1280×720 laptop;
+          phones): the tab body would shrink to a sliver, so the whole card scrolls instead. */}
+      <DialogContent onKeyDown={onKeyDown} size="xl" className="flex max-h-[calc(100dvh-1.5rem)] flex-col gap-4 overflow-hidden p-4 sm:p-6 max-sm:overflow-y-auto [@media(max-height:50rem)]:overflow-y-auto">
         <div className="shrink-0 pr-10">
           <DialogTitle className="type-display">{t("title")}</DialogTitle>
           <DialogDescription className="mt-1 text-sm text-muted-foreground">{t("description")}</DialogDescription>
         </div>
         <PreviewHeader />
         <Toolbar />
-        <Tabs value={tab} onValueChange={(v) => setTab(v as AppearanceTab)} className="flex min-h-0 flex-1 flex-col">
-          <TabsList aria-label={t("tabs.aria")} className="scrollbar-none max-w-full justify-start self-start overflow-x-auto">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as AppearanceTab)} className="flex min-h-0 flex-1 flex-col max-sm:flex-none [@media(max-height:50rem)]:flex-none">
+          <TabsList aria-label={t("tabs.aria")} className="scrollbar-none max-w-full shrink-0 justify-start self-start overflow-x-auto">
             {TABS.map((id) => <TabsTrigger key={id} value={id}>{t(`tabs.${id}`)}</TabsTrigger>)}
           </TabsList>
-          <TabsContent value="themes" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><ThemesTab /></TabsContent>
-          <TabsContent value="colors" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><ColorsTab /></TabsContent>
-          <TabsContent value="money" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><MoneyTab /></TabsContent>
-          <TabsContent value="chips" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><ChipsTab /></TabsContent>
-          <TabsContent value="background" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><BackgroundTab /></TabsContent>
-          <TabsContent value="density" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><DensityTab /></TabsContent>
+          <TabsContent value="themes" className={tabBody}><ThemesTab /></TabsContent>
+          <TabsContent value="colors" className={tabBody}><ColorsTab /></TabsContent>
+          <TabsContent value="money" className={tabBody}><MoneyTab /></TabsContent>
+          <TabsContent value="chips" className={tabBody}><ChipsTab /></TabsContent>
+          <TabsContent value="background" className={tabBody}><BackgroundTab /></TabsContent>
+          <TabsContent value="density" className={tabBody}><DensityTab /></TabsContent>
         </Tabs>
         <div className="shrink-0 border-t border-[var(--glass-border)] pt-4">
           <LooksBar />
