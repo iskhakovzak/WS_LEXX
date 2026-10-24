@@ -29,8 +29,8 @@ const FAN = ["hsl(var(--primary))", "hsl(var(--up))", "hsl(var(--down))", "hsl(v
 function PreviewHeader() {
   const { t } = appearanceI18n.useT();
   return (
-    <div role="img" aria-label={t("preview.aria")} className="tile relative flex items-center gap-5 overflow-hidden px-5 py-4">
-      <span className="font-sans text-6xl font-semibold leading-none tracking-tight text-foreground" aria-hidden="true">Aa</span>
+    <div role="img" aria-label={t("preview.aria")} className="tile relative flex shrink-0 items-center gap-4 overflow-hidden px-4 py-3 sm:gap-5 sm:px-5 sm:py-4">
+      <span className="font-sans text-5xl font-semibold leading-none tracking-tight text-foreground sm:text-6xl" aria-hidden="true">Aa</span>
       <span className="min-w-0" aria-hidden="true">
         <span className="micro-label block">{t("preview.label")}</span>
         <span className="block text-3xl font-semibold leading-tight tracking-tight text-up tabular-nums">+$16,480</span>
@@ -56,7 +56,7 @@ function Toolbar() {
   const { undo, redo, canUndo, canRedo, reset, appearance, status } = useAppearance();
   const { toast } = useToast();
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
       <Button type="button" variant="ghost" size="icon-sm" onClick={undo} disabled={!canUndo} aria-label={t("undo")} title={`${t("undo")} (Ctrl+Z)`}>
         <Undo2 aria-hidden="true" />
       </Button>
@@ -99,7 +99,7 @@ export default function AppearanceDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent onKeyDown={onKeyDown} className="flex max-h-[calc(100dvh-1.5rem)] max-w-4xl flex-col gap-4 overflow-hidden p-4 sm:p-6">
-        <div className="pr-10">
+        <div className="shrink-0 pr-10">
           <DialogTitle className="type-display">{t("title")}</DialogTitle>
           <DialogDescription className="mt-1 text-sm text-muted-foreground">{t("description")}</DialogDescription>
         </div>
@@ -116,7 +116,7 @@ export default function AppearanceDialog() {
           <TabsContent value="background" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><BackgroundTab /></TabsContent>
           <TabsContent value="density" className="-mx-1 mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 py-1"><DensityTab /></TabsContent>
         </Tabs>
-        <div className="border-t border-[var(--glass-border)] pt-4">
+        <div className="shrink-0 border-t border-[var(--glass-border)] pt-4">
           <LooksBar />
         </div>
       </DialogContent>
