@@ -1,5 +1,5 @@
 /**
- * Plateau store + job run (roadmap R6) on a scratch database built from every migration (0248 included). Synthetic
+ * Plateau store + job run (roadmap R6) on a scratch database built from every migration (0250 included). Synthetic
  * traders only: a flat one (μ $0, σ $120) and a strong one (μ $90).
  *
  *   - the run catches up the missing monthly run of the previous month, then the monthly run of the day;

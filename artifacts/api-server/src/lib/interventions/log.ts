@@ -1,5 +1,5 @@
 /**
- * Intervention log (roadmap R9a; table curator_interventions, migration 0246). Every curator action on a trader writes
+ * Intervention log (roadmap R9a; table curator_interventions, migration 0248). Every curator action on a trader writes
  * exactly one row here, so the desk can later estimate what each kind of action changes (R9b, Wave 2: ITS with
  * matched controls and the regression-to-the-mean guard — lib/interventions/effect.ts plugs in on these rows).
  *

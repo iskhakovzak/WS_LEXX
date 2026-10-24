@@ -1,5 +1,5 @@
 /**
- * Edge map storage and the nightly run (roadmap R4; table edge_map, migration 0247; pure engine lib/edgeMap.ts).
+ * Edge map storage and the nightly run (roadmap R4; table edge_map, migration 0249; pure engine lib/edgeMap.ts).
  *
  *   runEdgeMapNightly()        job edgemap.nightly (18:40 NY): the desk's closed trades of the last ~250 trading days →
  *                              computeEdgeMap → one run per as-of date (re-running the same date replaces it)

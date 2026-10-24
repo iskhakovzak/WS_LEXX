@@ -1,11 +1,11 @@
 /**
- * R9a intervention log against a real Postgres: a scratch database built from every repository migration (0246
+ * R9a intervention log against a real Postgres: a scratch database built from every repository migration (0248
  * included), the real route handlers mounted on express with a mocked actor. Synthetic people only.
  *
  *   - each writer creates exactly one row per action (risk limits, office rules on / off / delete, curator focus, 1:1,
  *     curator quest, tier assignment, concern note); a self-action and a desk-wide rule are not interventions;
  *   - the trigger is derived (breach / after_bad_period / scheduled) when the writer does not know it;
- *   - the one-time backfill (the INSERT … SELECT part of 0246) rebuilds the rows from the source tables and is
+ *   - the one-time backfill (the INSERT … SELECT part of 0248) rebuilds the rows from the source tables and is
  *     idempotent: a second run, or a run over rows the writers already logged, adds nothing.
  */
 import { readFileSync } from "node:fs";
@@ -41,8 +41,8 @@ vi.mock("../permissions", async (orig) => {
   };
 });
 
-const MIGRATION = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../db/migrations/0246_curator_interventions.sql");
-/** The backfill part of 0246: every statement after the function definition. */
+const MIGRATION = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../db/migrations/0248_curator_interventions.sql");
+/** The backfill part of 0248: every statement after the function definition. */
 const BACKFILL = readFileSync(MIGRATION, "utf8").split("-- ─── one-time backfill")[1]!.replace(/^[^\n]*\n/, "");
 
 const available = await pgAvailable();

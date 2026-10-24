@@ -1,6 +1,6 @@
 /**
  * Plateau detector storage, the job run and the curator actions (roadmap R6; table trader_progress_snapshots,
- * migration 0248; pure engine lib/plateau.ts).
+ * migration 0250; pure engine lib/plateau.ts).
  *
  *   runPlateau()            job academy.plateau-monthly (07:00 NY weekdays; the 1st trading day of a month = monthly,
  *                           Mondays = weekly refresh, other days skip): every active trader → one snapshot; an escalation

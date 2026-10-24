@@ -1,5 +1,5 @@
 /**
- * Edge map store + nightly run (roadmap R4) on a scratch database built from every migration (0247 included).
+ * Edge map store + nightly run (roadmap R4) on a scratch database built from every migration (0249 included).
  * Synthetic traders and trades only.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
