@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Briefcase, Moon, Search, ShieldAlert, Users, Wallet, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EmptyState, ErrorState, Panel, Segmented, StatCard, StatGrid, StatGridSkeleton, TableSkeleton, toneOf } from "@/components/ds";
+import { EmptyState, ErrorState, LiveNumber, Panel, Segmented, StatCard, StatGrid, StatGridSkeleton, TableSkeleton, toneOf } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
@@ -184,7 +184,8 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           <StatCard
             label={t("desk.kpiPnl")}
             icon={Wallet}
-            value={s.pnlNetToday != null ? fmtUsd(s.pnlNetToday, { signed: true, decimals: 0 }) : "—"}
+            value={s.pnlNetToday != null ? <LiveNumber value={s.pnlNetToday} format={(n) => fmtUsd(n, { signed: true, decimals: 0 })} /> : "—"}
+            valueTitle={s.pnlNetToday != null ? fmtUsd(s.pnlNetToday, { signed: true }) : undefined}
             tone={toneOf(s.pnlNetToday)}
             hint={s.tradesToday
               ? t("desk.kpiPnlHint", { trades: c("units.trades", { count: s.tradesToday }), traded: tradedToday, total: s.traders })

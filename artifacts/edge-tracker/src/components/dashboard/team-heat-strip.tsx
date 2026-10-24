@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { ChevronRight, Users } from "lucide-react";
-import { EmptyState, Panel, Pill, StatusDot, limitTone, limitToneToTone, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
+import { EmptyState, LiveNumber, Panel, Pill, StatusDot, limitTone, limitToneToTone, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { SortHead } from "@/components/trades/sort-head";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
@@ -37,6 +37,8 @@ const DESK_ACCESSORS = {
   limit: limitUse,
 } as const;
 
+const signedUsd = (n: number) => fmtUsd(n, { signed: true });
+
 function money(v: number | null, r: number, trades: number) {
   return v != null ? fmtUsd(v, { signed: true }) : trades > 0 && r !== 0 ? fmtR(r) : "—";
 }
@@ -63,7 +65,7 @@ function TraderRow({ r }: { r: RiskDeskRow }) {
           </span>
         </span>
         <span className={cn("text-right text-sm font-medium tabular-nums", toneText(toneOf(pnl ?? r.today.r)))} title={KPI_FORMULAS.netPnl}>
-          {money(pnl, r.today.r, r.today.trades)}
+          {pnl != null ? <LiveNumber value={pnl} format={signedUsd} /> : money(pnl, r.today.r, r.today.trades)}
         </span>
         <span className={cn("text-right text-sm tabular-nums", toneText(toneOf(r.week.pnlNet ?? r.week.r)))}>{money(r.week.pnlNet, r.week.r, r.week.trades)}</span>
         <span className="flex justify-end">

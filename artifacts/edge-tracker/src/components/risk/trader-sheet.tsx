@@ -4,7 +4,7 @@ import { AlertTriangle, History, Moon, OctagonX } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ErrorState, Pill, Segmented } from "@/components/ds";
+import { ErrorState, LiveNumber, Pill, Segmented } from "@/components/ds";
 import { links } from "@/lib/links";
 import type { DeskRow, LimitEvent, RiskPosition } from "./use-risk";
 import { useLimitsHistory, useTraderDay } from "./use-risk";
@@ -157,7 +157,7 @@ export function TraderSheet({
                   {rich(t("sheet.today", slots("value")), {
                     value: (
                       <span className={cn("font-medium", pnlTone(pnl ?? row.today.r))}>
-                        {pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : row.today.trades ? fmtR(row.today.r) : t("sheet.noTrades")}
+                        {pnl != null ? <LiveNumber value={pnl} format={(n) => fmtUsd(n, { signed: true, decimals: 0 })} resetKey={row.trader} /> : row.today.trades ? fmtR(row.today.r) : t("sheet.noTrades")}
                       </span>
                     ),
                   })}

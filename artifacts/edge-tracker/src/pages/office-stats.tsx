@@ -153,7 +153,8 @@ export default function OfficeStatsPage() {
   const forbidden = q.error instanceof ApiError && (q.error.status === 403 || q.error.status === 401);
   const memberNoCapital = data?.role === "member" && !capitalSet;
   const adminPctNoCapital = isAdmin && unit === "pct" && !capitalSet;
-  const ctx: Ctx | null = view && focus ? { unit, view, focus, isAdmin } : null;
+  const liveKey = q.isPlaceholderData ? "loading" : [unit, selYears.join(","), period.from, period.to, rf.query ?? ""].join("|");
+  const ctx: Ctx | null = view && focus ? { unit, view, focus, isAdmin, liveKey } : null;
   const showAdminHint = isAdmin && !capitalSet;
 
   return (

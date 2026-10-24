@@ -6,6 +6,9 @@ import { usageColor, usageText } from "./primitives";
 import { fmtPct, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { commonI18n } from "@/i18n/ns/common";
+import { LiveNumber } from "@/components/ds";
+
+const usd0 = (n: number) => fmtUsd(n, { decimals: 0 });
 
 type Item = { key: string; label: string; used: number; limit: number | null; pnlText: string };
 
@@ -19,7 +22,8 @@ function items(m: RiskMetrics, L: RiskLimits | null): Item[] {
   ];
 }
 
-function Cell({ it, big }: { it: Item; big: boolean }) {
+/** `announce`: the remaining amount is a polite live region (the trader's own day cell only). */
+function Cell({ it, big, announce = false }: { it: Item; big: boolean; announce?: boolean }) {
   const reduce = useReducedMotion();
   const { t } = riskI18n.useT();
   if (it.limit == null || it.limit <= 0) {
@@ -41,7 +45,7 @@ function Cell({ it, big }: { it: Item; big: boolean }) {
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
         <span className={cn("inline-flex items-center gap-1.5 font-semibold", big ? "text-2xl" : "text-lg", over ? "text-down" : usageText(pct))}>
           {over && <OctagonX className={big ? "h-5 w-5" : "h-4 w-4"} aria-hidden="true" />}
-          {over ? t("remaining.stop") : fmtUsd(remaining, { decimals: 0 })}
+          {over ? t("remaining.stop") : <LiveNumber value={remaining} format={usd0} announce={announce} />}
         </span>
         <span className={cn("text-xs", over ? "font-medium text-down" : "text-muted-foreground")}>
           {over
@@ -70,11 +74,18 @@ function Cell({ it, big }: { it: Item; big: boolean }) {
   );
 }
 
-export function StopRemaining({ m, limits, big = false, className }: { m: RiskMetrics; limits: RiskLimits | null; big?: boolean; className?: string }) {
+export function StopRemaining({ m, limits, big = false, announce = false, className }: {
+  m: RiskMetrics;
+  limits: RiskLimits | null;
+  big?: boolean;
+  /** Announce the day's remaining amount to screen readers when it changes (the trader's own view; not the staff card). */
+  announce?: boolean;
+  className?: string;
+}) {
   riskI18n.useT();
   return (
     <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-3", className)}>
-      {items(m, limits).map((it) => <Cell key={it.key} it={it} big={big} />)}
+      {items(m, limits).map((it) => <Cell key={it.key} it={it} big={big} announce={announce && it.key === "day"} />)}
     </div>
   );
 }

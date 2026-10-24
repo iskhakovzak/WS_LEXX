@@ -2,7 +2,7 @@ import * as React from "react";
 import { Link } from "wouter";
 import { Activity, Briefcase, Calculator, Check, LineChart, OctagonX, ShieldAlert, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EmptyState, ErrorState, Panel } from "@/components/ds";
+import { EmptyState, ErrorState, LiveNumber, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { humanizeApiError, isNotFound } from "@/lib/api/errors";
@@ -130,14 +130,14 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false, focusAl
             <LiveBadge live={m.live} className="mt-1 flex" />
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <Fact label={t("me.pnlToday")} value={pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : m.today.trades ? fmtR(m.today.r) : "—"} tone={(pnl ?? 0) > 0 ? "up" : (pnl ?? 0) < 0 ? "down" : undefined} />
+            <Fact label={t("me.pnlToday")} value={pnl != null ? <LiveNumber value={pnl} format={(n) => fmtUsd(n, { signed: true, decimals: 0 })} /> : m.today.trades ? fmtR(m.today.r) : "—"} tone={(pnl ?? 0) > 0 ? "up" : (pnl ?? 0) < 0 ? "down" : undefined} />
             <Fact label={t("me.tradesToday")} value={m.today.trades} />
             {m.today.openPositions > 0 && <Fact label={t("me.openRisk")} value={fmtUsd(m.today.openRiskUsd, { decimals: 0 })} tone={afterOpen != null && afterOpen < 0 ? "down" : undefined} />}
           </div>
           {stop.state === "no_limits" && (canEditLimits ? <Button size="sm" onClick={() => setLimitsOpen(true)}>{t("me.setLimits")}</Button> : <AskCuratorButton kind="limits" />)}
         </div>
 
-        {L && <StopRemaining m={m} limits={L} big />}
+        {L && <StopRemaining m={m} limits={L} big announce />}
 
         {m.live?.counted && <LivePositionsList positions={m.livePositions} />}
 

@@ -34,8 +34,9 @@ export function fadeRise(reduce: boolean | null, delay = 0) {
 }
 
 /**
- * Number that tweens to its new value (rAF, ~240 ms, ease-out). Tabular digits + `min-width` in `ch`
- * of the final string keep the box stable. Instant under reduced motion or on first render, unless `countIn`:
+ * Number that tweens to its new value (rAF, ~240 ms, ease-out). Tabular digits plus invisible copies of the final
+ * text (and, while rolling, of the start text) stacked in one grid cell keep the box exactly as wide as the widest of
+ * them, so the width never jumps mid-roll. Instant under reduced motion or on first render, unless `countIn`:
  * then the first value counts up from 0 (the dashboard's day number), later changes tween as usual.
  */
 export function AnimatedNumber({
@@ -43,6 +44,7 @@ export function AnimatedNumber({
   format = (n) => fmtCount(n),
   duration = 240,
   countIn = false,
+  countInDuration,
   className,
   title,
 }: {
@@ -50,6 +52,8 @@ export function AnimatedNumber({
   format?: (n: number) => string;
   duration?: number;
   countIn?: boolean;
+  /** Duration of the first count-up from 0 (defaults to `duration`); later changes use `duration`. */
+  countInDuration?: number;
   className?: string;
   title?: string;
 }) {
@@ -62,33 +66,41 @@ export function AnimatedNumber({
   const countedRef = React.useRef(!countIn);
   const formatRef = React.useRef(format);
   formatRef.current = format;
+  // The start text while a tween runs: its invisible copy holds the width (1,050 → 950 must not shrink mid-roll).
+  const [fromText, setFromText] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (target == null) { setShown(null); fromRef.current = null; return; }
     const from = fromRef.current == null && !countedRef.current ? 0 : fromRef.current;
+    const ms = countedRef.current ? duration : (countInDuration ?? duration);
     countedRef.current = true;
     if (reduce || from == null || from === target || typeof requestAnimationFrame === "undefined") {
       setShown(target); fromRef.current = target; return;
     }
     let raf = 0;
     const start = performance.now();
+    setFromText(formatRef.current(from));
     const step = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
+      const t = Math.min(1, (now - start) / ms);
       const k = 1 - Math.pow(1 - t, 3);
       const v = from + (target - from) * k;
       setShown(t >= 1 ? target : v);
       fromRef.current = t >= 1 ? target : v;
       if (t < 1) raf = requestAnimationFrame(step);
+      else setFromText(null);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [target, reduce, duration]);
+  }, [target, reduce, duration, countInDuration]);
 
   if (shown == null) return <span className={cn("tabular-nums text-muted-foreground", className)}>—</span>;
   const finalText = target != null ? formatRef.current(target) : "";
+  const ghost = "invisible col-start-1 row-start-1 whitespace-nowrap";
   return (
-    <span className={cn("inline-block tabular-nums", className)} style={{ minWidth: `${finalText.length}ch` }} title={title}>
-      {format(shown)}
+    <span className={cn("inline-grid tabular-nums", className)} title={title}>
+      <span aria-hidden="true" className={ghost}>{finalText}</span>
+      {fromText != null && <span aria-hidden="true" className={ghost}>{fromText}</span>}
+      <span className="col-start-1 row-start-1 whitespace-nowrap">{format(shown)}</span>
     </span>
   );
 }
