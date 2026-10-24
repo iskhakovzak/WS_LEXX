@@ -1,6 +1,7 @@
-/** Small building blocks of the «Вид» dialog: sections, colour swatches, the custom picker, contrast notes. */
+/** Small building blocks of the «Вид» dialog: sections, «Ещё настройки», colour swatches, the custom picker, contrast notes. */
 import * as React from "react";
-import { Check, Pipette, ShieldCheck } from "lucide-react";
+import { Check, ChevronDown, Pipette, ShieldCheck } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { rgbToHex, type GuardResult } from "@/lib/appearance/color";
 import { appearanceI18n } from "@/i18n/ns/appearance";
@@ -18,6 +19,41 @@ export function Section({ title, hint, children, aside }: { title: string; hint?
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * «Ещё настройки»: the one disclosure per tab that holds everything advanced (collapsed by default). Controlled when
+ * `open` is passed, so a «Своя» choice up front can open it.
+ */
+export function MoreSettings({ children, open, onOpenChange }: { children: React.ReactNode; open?: boolean; onOpenChange?: (v: boolean) => void }) {
+  const { t } = appearanceI18n.useT();
+  const [own, setOwn] = React.useState(false);
+  const isOpen = open ?? own;
+  const set = onOpenChange ?? setOwn;
+  return (
+    <Collapsible open={isOpen} onOpenChange={set} className="border-t border-[var(--glass-border)] pt-2">
+      <CollapsibleTrigger
+        className="group flex min-h-11 w-full items-center gap-3 rounded-xl px-2 text-left transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-foreground">{t("more")}</span>
+          <span className="block text-xs text-muted-foreground">{t("moreHint")}</span>
+        </span>
+        <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-[var(--dur-1)] group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-5 pb-1 pt-4">{children}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/** Title + one-line plain description inside an option card. */
+export function OptionText({ title, note }: { title: string; note?: string }) {
+  return (
+    <span className="block min-w-0 px-1 pb-0.5">
+      <span className="block truncate text-sm font-semibold text-foreground">{title}</span>
+      {note && <span className="line-clamp-2 block text-xs text-muted-foreground">{note}</span>}
+    </span>
   );
 }
 

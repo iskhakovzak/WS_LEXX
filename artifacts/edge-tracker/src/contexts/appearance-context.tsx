@@ -14,7 +14,7 @@ import { setBeRange } from "@/lib/appearance/be-range";
 import { initHistory, pushHistory, redoHistory, undoHistory, type History } from "@/lib/appearance/history";
 import { fetchStoredAppearance, readLocalStored, saveStoredAppearance, writeLocalStored } from "@/lib/appearance/api";
 
-export type AppearanceTab = "themes" | "colors" | "money" | "chips" | "background" | "density";
+export type AppearanceTab = "themes" | "background" | "colors" | "details";
 export type SyncStatus = "idle" | "saving" | "saved" | "local" | "error";
 
 interface AppearanceContextType {

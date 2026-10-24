@@ -12,7 +12,7 @@ const ACCENTS = ["ink", "blue", "cyan", "teal", "green", "lime", "amber", "orang
 const TONES = ["ink", "graphite", "espresso", "navy"] as const;
 const LINES = ["theme", "text", "accent"] as const;
 /** «WS originals» scenes (edge-tracker lib/appearance/model SCENE_IDS). */
-const SCENES = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus"] as const;
+const SCENES = ["smoke", "ridge", "porsche-gt3rs", "porsche-wheel", "laocoon", "discobolus", "hercules", "zeus", "porsche-gt3", "porsche-turbo-s", "porsche-918", "carrera-gt", "porsche-rs27", "ferrari-f40", "parthenon", "sounion", "nike", "riace", "delphi", "matterhorn", "storm", "manhattan", "nyse"] as const;
 /** «Чипы журнала» keys per group (edge-tracker CHIP_GROUPS). */
 const CHIP_KEYS = {
   strategy: ["OPG", "Print", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "Swing", "PM", "IMX"],

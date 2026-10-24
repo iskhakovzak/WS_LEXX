@@ -7,7 +7,7 @@
  *   the guardrail meter fill (non-text UI)                             ≥ 3:1.
  * Values are HSL triplets for `hsl(var(--x))` tokens — the charts read the same variables (chart-engine/theme.ts).
  */
-import { AA_TEXT, AA_UI, bestOn, contrast, ensureContrast, hexToRgb, mix, toRgba, toTriplet, type GuardResult, type Rgb } from "./color";
+import { AA_TEXT, AA_UI, bestOn, contrast, ensureContrast, hexToRgb, minContrast, mix, toRgba, toTriplet, type GuardResult, type Rgb } from "./color";
 import { CHIP_GROUP_IDS, CHIP_GROUPS, FONT_STACKS, accentHex, chipToken, isLightTheme, toneHex, type Appearance, type ThemeId } from "./model";
 import { PHOTO_MUTED_DARK, RIDGE_ALPHA_AT_K1, isScene, sceneLevels, sceneSource } from "./scenes";
 import { surfaceRgb, textSurfaces } from "./themes";
@@ -47,9 +47,15 @@ function accentColours(base: Rgb, theme: ThemeId): { solid: GuardResult; fg: Rgb
 
 /** Text colour that also reads on its own 12 % / 15 % tinted pill (bg-up/12, bg-down/15 …). */
 function moneyColour(hex: string, theme: ThemeId): GuardResult | null {
-  const base = hexToRgb(hex);
+  let base = hexToRgb(hex);
   if (!base) return null;
   const card = surfaceRgb(theme, "card");
+  // A grey that fails here mirrors its lightness (a light grey picked in a dark theme reads as a dark grey in a light
+  // one), so the «Монохром» money preset keeps win / break-even / loss apart in every theme.
+  if (base[0] === base[1] && base[1] === base[2] && minContrast(base, textSurfaces(theme)) < TEXT_TARGET) {
+    const m = 255 - base[0];
+    base = [m, m, m];
+  }
   const first = ensureContrast(base, textSurfaces(theme), TEXT_TARGET);
   const tinted = [mix(card, first.rgb, 0.12), mix(card, first.rgb, 0.15)];
   const second = ensureContrast(first.rgb, [...textSurfaces(theme), ...tinted], TEXT_TARGET);

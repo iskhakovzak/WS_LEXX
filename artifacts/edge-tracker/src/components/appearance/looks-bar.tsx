@@ -60,14 +60,13 @@ export function LooksBar() {
   const { theme, themeLabels } = useTheme();
   const current = JSON.stringify(appearance);
   return (
-    <section aria-label={t("looks.title")} className="flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-foreground">{t("looks.title")}</h3>
-        <span className="text-xs tabular-nums text-muted-foreground">{looks.length}/{MAX_LOOKS}</span>
-      </div>
-      <p className="text-xs text-muted-foreground">{looks.length ? t("looks.hint") : t("looks.empty")}</p>
+    <section aria-label={t("looks.title")} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <h3 className="text-sm font-semibold text-foreground" title={t("looks.hint")}>
+        {t("looks.title")} <span className="text-xs font-normal tabular-nums text-muted-foreground">{looks.length}/{MAX_LOOKS}</span>
+      </h3>
+      {looks.length === 0 && <p className="min-w-0 text-xs text-muted-foreground">{t("looks.empty")}</p>}
       {looks.length > 0 && (
-        <ul className="flex flex-wrap gap-2">
+        <ul className="flex min-w-0 flex-wrap gap-2">
           {looks.map((l) => {
             const active = l.theme === theme && JSON.stringify(l.settings) === current;
             return (
