@@ -111,7 +111,7 @@ function Logo() {
   return (
     // «WS_Desk» lockup: the mark carries «WS»; a narrow header keeps just the mark.
     <Link href="/" aria-label={t("header.logoAria")} className="flex h-10 shrink-0 items-center rounded-xl pr-1 text-foreground">
-      <Wordmark className="text-[1.375rem]" deskClassName="hidden @[960px]:inline" />
+      <Wordmark className="text-[1.5rem]" deskClassName="hidden @[960px]:inline" />
     </Link>
   );
 }

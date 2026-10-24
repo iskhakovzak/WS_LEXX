@@ -9,8 +9,8 @@ const SIZES = {
   md: "h-10 w-10 text-sm",
   lg: "h-14 w-14 text-lg",
 } as const;
-/** The WS mark inside a system avatar (about 60% of the circle). */
-const MARK_PX = { xs: 14, sm: 18, md: 24, lg: 32 } as const;
+/** The WS mark inside a system avatar (its square ~62% of the circle, so the ink spans ~55%). */
+const MARK_PX = { xs: 15, sm: 20, md: 25, lg: 35 } as const;
 
 /** Initials avatar with a stable per-name tint. Decorative: the name should be rendered next to it. */
 export function TraderAvatar({
