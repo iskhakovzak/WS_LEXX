@@ -164,7 +164,7 @@ export function AuthorWeeklyCard({
             <SheetTitle>{t("author.weekly.reviewTitle")}</SheetTitle>
             <SheetDescription>
               {fmtDate(week, "dayMonth")} — {fmtDate(addDays(week, 6), "dayMonth")}
-              {summary ? ` · ${t("author.weekly.builtOn", { date: fmtDate(summary.created_at, "short") })}` : ""}
+              {summary ? ` · ${t("author.weekly.builtOn", { date: fmtDate(summary.created_at, "medium") })}` : ""}
             </SheetDescription>
           </SheetHeader>
           {summary && (

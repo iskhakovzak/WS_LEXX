@@ -537,8 +537,8 @@ export function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
   if (entry.updatedAt) facts.push([st("history.updated"), timeAgo(entry.updatedAt) ?? ""]);
   if (entry.copiedFromAuthor) facts.push([st("history.copiedFrom"), `${copiedFromLabel(entry.copiedFromAuthor)}${entry.copiedFromId ? ` (#${entry.copiedFromId})` : ""}`]);
   if (entry.promotedFromId) facts.push([st("history.promotedFrom"), `#${entry.promotedFromId}`]);
-  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push([st("history.shared"), `${fmtDate(entry.sharedAt, "short")}${entry.sharedBy ? ` · ${personName(entry.sharedBy)}` : ""}`]);
-  if (entry.officeProposedAt) facts.push([st("history.proposed"), `${fmtDate(entry.officeProposedAt, "short")}${entry.officeProposedBy ? ` · ${personName(entry.officeProposedBy)}` : ""}`]);
+  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push([st("history.shared"), `${fmtDate(entry.sharedAt, "medium")}${entry.sharedBy ? ` · ${personName(entry.sharedBy)}` : ""}`]);
+  if (entry.officeProposedAt) facts.push([st("history.proposed"), `${fmtDate(entry.officeProposedAt, "medium")}${entry.officeProposedBy ? ` · ${personName(entry.officeProposedBy)}` : ""}`]);
   if (entry.reviewed && entry.reviewedBy) facts.push([st("history.reviewedBy"), personName(entry.reviewedBy)]);
 
   return (

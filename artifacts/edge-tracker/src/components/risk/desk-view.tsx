@@ -189,7 +189,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
             tone={toneOf(s.pnlNetToday)}
             hint={s.tradesToday
               ? t("desk.kpiPnlHint", { trades: c("units.trades", { count: s.tradesToday }), traded: tradedToday, total: s.traders })
-              : t("desk.kpiPnlNone", { date: fmtDate(desk.data!.date, "dayMonthNumeric") })}
+              : t("desk.kpiPnlNone", { date: fmtDate(desk.data!.date, "dayMonth") })}
           />
           <StatCard
             label={t("desk.kpiStops")}

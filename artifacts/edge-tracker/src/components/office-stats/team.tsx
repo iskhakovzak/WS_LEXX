@@ -194,7 +194,7 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
           <span className="text-destructive">{t("capital.capitalInvalid")}</span>
         ) : null}
         {!goalValid && <span className="text-destructive">{t("capital.goalInvalid")}</span>}
-        {s.updatedBy && <span>{t("capital.changedBy", { name: personName(s.updatedBy) })}{s.updatedAt ? ` · ${fmtDate(s.updatedAt, "short")}` : ""}</span>}
+        {s.updatedBy && <span>{t("capital.changedBy", { name: personName(s.updatedBy) })}{s.updatedAt ? ` · ${fmtDate(s.updatedAt, "medium")}` : ""}</span>}
       </p>
     </form>
   );
