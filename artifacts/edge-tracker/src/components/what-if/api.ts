@@ -355,24 +355,23 @@ export function useWhatIfSuggestions(scope: Scope, enabled = true) {
 
 /** «Набор правил»: the best sets of 2–3 rules and the own set (≤ 3 rules of distinct types; fewer than 2 → none). */
 export function useWhatIfCombos(scope: Scope, own: Rule[], enabled = true) {
-  const rules = own.length >= 2 ? JSON.stringify(own.slice(0, 3)) : "";
+  const sp = new URLSearchParams(scopeParams(scope));
+  if (own.length >= 2) sp.set("rules", JSON.stringify(own.slice(0, 3)));
+  const url = `/api/whatif/combos?${sp}`;
   return useQuery<CombosResponse>({
-    queryKey: ["whatif", "combos", scopeParams(scope), rules], enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData,
-    queryFn: () => {
-      const sp = new URLSearchParams(scopeParams(scope));
-      if (rules) sp.set("rules", rules);
-      return http.get<CombosResponse>(`/api/whatif/combos?${sp}`);
-    },
+    queryKey: ["whatif", "combos", url], enabled, staleTime: 5 * 60_000, placeholderData: keepPreviousData,
+    queryFn: () => http.get<CombosResponse>(url),
   });
 }
 
 /** «Мои правила в деле»: the trader's own rules since adoption (an older API without the route → none). */
 export function useMyRules(trader: string, enabled = true) {
+  const url = `/api/whatif/my-rules${trader ? `?trader=${encodeURIComponent(trader)}` : ""}`;
   return useQuery<MyRulesResponse | null>({
-    queryKey: ["whatif", "my-rules", trader], enabled, staleTime: 5 * 60_000, retry: false,
+    queryKey: ["whatif", "my-rules", url], enabled, staleTime: 5 * 60_000, retry: false,
     queryFn: async () => {
       try {
-        return await http.get<MyRulesResponse>(`/api/whatif/my-rules${trader ? `?trader=${encodeURIComponent(trader)}` : ""}`);
+        return await http.get<MyRulesResponse>(url);
       } catch (e) {
         if (isNotFound(e)) return null;
         throw e;
