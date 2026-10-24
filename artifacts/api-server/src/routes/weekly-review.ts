@@ -14,6 +14,7 @@ import { AppError, notFound, unauthorized } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
 import { violationMessage } from "../lib/rulesI18n";
+import { feeCoachingFor } from "../lib/feeModelStore";
 
 /**
  * «Отчёт недели 1:1» — the weekly trader ↔ curator review document.
@@ -519,6 +520,8 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     };
   });
 
+  // Fee model + breakeven line of the rolling window ending with the week (roadmap R2); never breaks the report.
+  const feeCoaching = await feeCoachingFor(trader, week.end).catch(() => null);
   const reviewRows = reviews.rows as any[];
   const review = presentReview(reviewRows.find((r) => r.week === week.key));
   const prevReview = presentReview(reviewRows.find((r) => r.week === week.prevKey));
@@ -545,6 +548,7 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     review,
     prevReview,
     prevGoals: prevReview?.goals ?? [],
+    feeCoaching,
   });
 }));
 

@@ -3,7 +3,7 @@ import type ru from "../ru/daily";
 
 export default {
   mistake: {
-    "behavior:revenge": "Revenge trade after a loss",
+    "behavior:revenge": "Quick re-entry after a loss",
     "behavior:martingale": "Sizing up after a loss",
     "behavior:overtrading": "Overtrading",
     "behavior:fatigue": "Late-day fatigue",
@@ -43,7 +43,7 @@ export default {
     none: "No repeating mistakes in the last {days} trading days. Today: trade your plan.",
     noTrades: "No trades in the last {days} trading days yet — the focus appears after your first trades.",
     own: "Your focus: {text}",
-    "behavior:revenge": "Revenge: an entry right after a loss — {count} times in {days} days, cost ${cost}. Today: after a loss, pause 10 minutes.",
+    "behavior:revenge": "Quick re-entry: an entry right after a loss — {count} times in {days} days, cost ${cost}. Today: after a loss, pause 10 minutes.",
     "behavior:martingale": "Sizing up after a loss — {count} times in {days} days, cost ${cost}. Today: after a loss, size no bigger than before.",
     "behavior:overtrading": "Trades above your norm — {count} in {days} days, cost ${cost}. Today: only trades from the plan.",
     "behavior:fatigue": "Late trades are worse than early ones: {count} in {days} days, ${cost}. Today: decide in advance when you stop.",

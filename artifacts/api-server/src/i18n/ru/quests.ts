@@ -135,6 +135,12 @@ export default {
     cancelledBody: "{curator} отменил(а) задание — выполнять его больше не нужно.",
     achievementTitle: "Достижение: {achievement} — {tier}",
     achievementBody: "Новая ступень достижения. Все достижения — во вкладке «Квесты и достижения».",
+    /** Nightly batch (roadmap R3): one notice per day instead of a ping per quest / achievement. */
+    batchQuestsTitle: { one: "За день выполнен {count} квест", few: "За день выполнено {count} квеста", many: "За день выполнено {count} квестов", other: "За день выполнено {count} квеста" },
+    batchAchTitle: { one: "{count} новое достижение за день", few: "{count} новых достижения за день", many: "{count} новых достижений за день", other: "{count} новых достижения за день" },
+    batchPoints: "+{points} к дисциплине",
+    batchAch: { one: "{count} новое достижение", few: "{count} новых достижения", many: "{count} новых достижений", other: "{count} новых достижения" },
+    batchTail: "Подробности — во вкладке «Квесты и достижения».",
   },
   tier: { bronze: "бронза", silver: "серебро", gold: "золото", platinum: "платина" },
 } as const;

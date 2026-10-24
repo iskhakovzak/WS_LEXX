@@ -162,7 +162,7 @@ const settle = () => new Promise((r) => setTimeout(r, 40)); // the curator notic
 const DATE = "2026-10-16";
 
 describe("«Разобрал» closes the day for the curator", () => {
-  it("creates the closed eod day, puts it in the curator queue with the note, pings the curator once (also in Telegram)", async () => {
+  it("creates the closed eod day, puts it in the curator queue with the note, pings the curator once in-app (Telegram: the evening digest, roadmap R3)", async () => {
     const r = await call("POST", "/api/daily/review", { date: DATE, note: "перебрал размер на втором входе" });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ reviewed: true, closed: true });
@@ -171,7 +171,7 @@ describe("«Разобрал» closes the day for the curator", () => {
     expect(day.summary).toMatchObject({ via: "daily" });
     await settle();
     expect(notify.notifyUsers).toHaveBeenCalledTimes(1);
-    expect(notify.notifyUsers).toHaveBeenCalledWith(["Ольга Н."], expect.objectContaining({ type: "eod_review_request", telegram: true }), TRADER.name);
+    expect(notify.notifyUsers).toHaveBeenCalledWith(["Ольга Н."], expect.objectContaining({ type: "eod_review_request", telegram: false }), TRADER.name);
 
     // The journal shows it closed («Разобрал» day) with the note.
     const j = await call("GET", `/api/eod/day?date=${DATE}`);

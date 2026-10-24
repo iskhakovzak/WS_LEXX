@@ -170,6 +170,19 @@ function exitMs(t: TradeForRule): number | null {
   if (t.entryAt != null && t.holdSec != null) return t.entryAt + t.holdSec * 1000;
   return null;
 }
+/** The day's trade that closed last before `list[i]` entered (no time on the entry: the previous trade in order). */
+export function lastClosedFor(list: readonly TradeForRule[], i: number): TradeForRule | null {
+  const t = list[i];
+  if (t.entryAt == null) return i > 0 ? list[i - 1] : null;
+  let best: TradeForRule | null = null;
+  let bestEx = -Infinity;
+  for (const p of list) {
+    const ex = exitMs(p);
+    if (p === t || ex == null || ex > t.entryAt || (p.entryAt != null && p.entryAt >= t.entryAt)) continue;
+    if (ex >= bestEx) { best = p; bestEx = ex; }
+  }
+  return best;
+}
 function clock(min: number): string {
   const m = Math.round(min);
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
@@ -363,14 +376,17 @@ export function evalRule(rule: RuleRow, trades: TradeForRule[], limits: RiskLimi
     case "no_size_up_after_loss": {
       const factor = Math.max(1, th(t.factor) ?? 1.3);
       for (const [day, list] of groupBy(trades, (x) => x.date)) {
-        let prevLoss: number | null = null;
-        for (const tr of list) {
+        for (let i = 0; i < list.length; i++) {
+          const tr = list[i];
           const size = notionalOf(tr);
+          // The trade closed last before this entry (behaviorEngine martingale's lastClosedBefore): a win in between
+          // resets the chain (roadmap R3). Without times: the previous trade of the day in order.
+          const prev = lastClosedFor(list, i);
+          const prevLoss = prev && prev.result === "loss" ? notionalOf(prev) : null;
           if (size != null && prevLoss != null && size >= prevLoss * factor) {
             push(tr, day, "high", reason("sizeUp", { sizeUsd: size, factor, prevUsd: prevLoss }),
               { notional: size, prevLossNotional: prevLoss, factor }, excessShare(tr, prevLoss, size));
           }
-          if (tr.result === "loss" && size != null) prevLoss = size;
         }
       }
       break;

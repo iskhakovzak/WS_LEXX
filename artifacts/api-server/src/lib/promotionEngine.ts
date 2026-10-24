@@ -18,13 +18,19 @@
  * PF = Σ⁺/|Σ⁻|, null (never ∞) when there are no losses; dates are NY trading dates (YYYY-MM-DD).
  */
 import {
+  bindingConstraintOf, edgeMarginMetric, expectancyLbMetric, paceOf, stageSignalOf, type BindingConstraint, type Pace, type StageSignal,
+} from "./academy/readinessRealism";
+import {
   addDays, compare, computeWindowMetrics, disciplineIndexOf, isWeekend, progressOf, windowStart,
   type LimitsInput, type Op, type RatingInput, type Tier, type TradeInput, type TraderInput,
 } from "./scalingEngine";
 import { curatorDisciplineGradeOf } from "./disciplineIndex";
+import { setting } from "./settings/registry";
 import { academyPathT, criterionLabelFor, ruPath, stageNameFor } from "./academyI18n";
-import { DEFAULT_LANG, formatCountFor, type Lang } from "../i18n";
+import { DEFAULT_LANG, type Lang } from "../i18n";
 import { fmtDateFor } from "../i18n/format";
+import { OP_TEXT, PROMO_METRIC_DEFS, adviceFor, formatPromo, type AdviceCtx } from "./academy/promotionAdvice";
+export { adviceFor, formatPromo, type AdviceCtx };
 
 // ─── stages ─────────────────────────────────────────────────────────────────
 
@@ -67,9 +73,9 @@ export function nextStageOf(stages: StageMeta[], key: StageKey | null): StageMet
 export type PromoMetricKey =
   | "net_pnl" | "trading_days" | "trades" | "max_dd_usd" | "max_dd_pct" | "consistency" | "win_rate" | "profit_factor"
   | "fee_share" | "violations" | "limit_breaches" | "red_streak_max" | "green_days_pct" | "discipline_index"
-  | "rating_discipline" | "lessons_pct" | "quiz_avg" | "challenges_passed";
+  | "rating_discipline" | "lessons_pct" | "quiz_avg" | "challenges_passed" | "edge_margin_pp" | "expectancy_lb";
 
-export type PromoUnit = "usd" | "count" | "pct" | "x" | "score100" | "score10" | "days";
+export type PromoUnit = "usd" | "count" | "pct" | "x" | "score100" | "score10" | "days" | "pp";
 export type MetricSource = "trades" | "rules" | "behavior" | "ratings" | "learning" | "challenges";
 
 export interface PromoMetricMeta {
@@ -81,26 +87,6 @@ export interface PromoMetricMeta {
   hint: string;
 }
 
-const METRIC_DEFS: readonly Omit<PromoMetricMeta, "label" | "hint">[] = [
-  { key: "net_pnl", unit: "usd", higherIsBetter: true, source: "trades" },
-  { key: "trading_days", unit: "days", higherIsBetter: true, source: "trades" },
-  { key: "trades", unit: "count", higherIsBetter: true, source: "trades" },
-  { key: "max_dd_usd", unit: "usd", higherIsBetter: false, source: "trades" },
-  { key: "max_dd_pct", unit: "pct", higherIsBetter: false, source: "trades" },
-  { key: "consistency", unit: "pct", higherIsBetter: false, source: "trades" },
-  { key: "win_rate", unit: "pct", higherIsBetter: true, source: "trades" },
-  { key: "profit_factor", unit: "x", higherIsBetter: true, source: "trades" },
-  { key: "fee_share", unit: "pct", higherIsBetter: false, source: "trades" },
-  { key: "violations", unit: "count", higherIsBetter: false, source: "rules" },
-  { key: "limit_breaches", unit: "count", higherIsBetter: false, source: "trades" },
-  { key: "red_streak_max", unit: "days", higherIsBetter: false, source: "trades" },
-  { key: "green_days_pct", unit: "pct", higherIsBetter: true, source: "trades" },
-  { key: "discipline_index", unit: "score100", higherIsBetter: true, source: "behavior" },
-  { key: "rating_discipline", unit: "score10", higherIsBetter: true, source: "ratings" },
-  { key: "lessons_pct", unit: "pct", higherIsBetter: true, source: "learning" },
-  { key: "quiz_avg", unit: "pct", higherIsBetter: true, source: "learning" },
-  { key: "challenges_passed", unit: "count", higherIsBetter: true, source: "challenges" },
-];
 
 const metricsCache = new Map<Lang, PromoMetricMeta[]>();
 /** Metric catalog with labels / hints in `lang` (`academyPath.metrics.*`). */
@@ -108,7 +94,7 @@ export function promoMetricsFor(lang: Lang = DEFAULT_LANG): PromoMetricMeta[] {
   let m = metricsCache.get(lang);
   if (!m) {
     const t = academyPathT.tFor(lang);
-    m = METRIC_DEFS.map((d) => ({ ...d, label: t(`metrics.${d.key}.label`), hint: t(`metrics.${d.key}.hint`) }));
+    m = PROMO_METRIC_DEFS.map((d) => ({ ...d, label: t(`metrics.${d.key}.label`), hint: t(`metrics.${d.key}.hint`) }));
     metricsCache.set(lang, m);
   }
   return m;
@@ -138,6 +124,19 @@ export interface Criterion {
 const c = (fromStage: StageKey, metric: PromoMetricKey, op: Op, value: number, windowDays: number | null): Omit<Criterion, "id"> =>
   ({ fromStage, metric, op, value, windowDays, label: (ruPath.seedCriteria as Record<string, Record<string, string>>)[fromStage]?.[metric] ?? null, enabled: true });
 
+/**
+ * A seed row whose threshold is a desk setting, read when the seed is written (roadmap R3: one setting key per place —
+ * promotion discipline here, scaling discipline in lib/scalingSeed; unifying 75 vs 70 is an owner decision). The seed
+ * label quotes the default, so another value seeds without it (the metric label is shown).
+ */
+function seededBy(row: Omit<Criterion, "id">, key: "discipline.promotionMinIndex"): Omit<Criterion, "id"> {
+  const seed = { value: row.value, label: row.label };
+  return Object.defineProperties({ ...row }, {
+    value: { get: () => setting(key), enumerable: true },
+    label: { get: () => (setting(key) === seed.value ? seed.label : null), enumerable: true },
+  });
+}
+
 /** Seeded on first run into academy_stage_criteria, staff-editable afterwards. */
 export const DEFAULT_CRITERIA: Omit<Criterion, "id">[] = [
   // Джун → Трейдер (40 торговых дней)
@@ -146,11 +145,14 @@ export const DEFAULT_CRITERIA: Omit<Criterion, "id">[] = [
   c("junior", "max_dd_pct", "<=", 50, 40),
   c("junior", "consistency", "<=", 35, 40),
   c("junior", "win_rate", ">=", 48, 40),
+  // Roadmap R1 (owner 2026-10-24: added next to win rate, not instead of it); migration 0246 adds them to seeded desks.
+  c("junior", "edge_margin_pp", ">=", 2, 40),
+  c("junior", "expectancy_lb", ">=", 0, 120),
   c("junior", "profit_factor", ">=", 1.3, 40),
   c("junior", "fee_share", "<=", 40, 40),
   c("junior", "limit_breaches", "=", 0, 40),
   c("junior", "violations", "<=", 1, 40),
-  c("junior", "discipline_index", ">=", 75, 40),
+  seededBy(c("junior", "discipline_index", ">=", 75, 40), "discipline.promotionMinIndex"),
   c("junior", "quiz_avg", ">=", 80, null),
   c("junior", "challenges_passed", ">=", 1, null),
   // Трейдер → Сеньор (60 торговых дней)
@@ -298,6 +300,7 @@ export function computePromoMetrics(input: PromotionInput, tier: Tier | null, wi
 
   const cons = moneyRows.length ? consistencyPct(series) : null;
   const fee = grossKnown ? feeSharePct(gross, fees) : null;
+  let lb: MetricOut | undefined;
 
   return {
     net_pnl: val("net_pnl"),
@@ -332,104 +335,10 @@ export function computePromoMetrics(input: PromotionInput, tier: Tier | null, wi
     challenges_passed: passed == null
       ? { value: null, unavailable: true, note: t("notes.examsOff") }
       : { value: passed.filter((d) => YMD.test(d) && (!since || d >= since) && d <= today).length },
+    edge_margin_pp: edgeMarginMetric(moneyRows, t),
+    // Lazy: the bootstrap runs only when this criterion reads it (the binding-constraint scan reads many windows).
+    get expectancy_lb() { return (lb ??= expectancyLbMetric(moneyRows, t)); },
   };
-}
-
-// ─── formatting & advice ────────────────────────────────────────────────────
-
-/** Display value of a metric. Money: "$1 234" in RU (historical), "$1,234" otherwise; counts follow `lang`. */
-export function formatPromo(key: PromoMetricKey, v: number | null, lang: Lang = DEFAULT_LANG): string {
-  if (v == null) return "—";
-  switch (PROMO_METRIC_BY_KEY[key].unit) {
-    case "usd": return `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString(lang === "ru" ? "ru-RU" : "en-US", { maximumFractionDigits: 0 })}`;
-    case "pct": return `${v.toFixed(0)}%`;
-    case "x": return `${v.toFixed(2)}×`;
-    case "score100": return `${v.toFixed(0)}/100`;
-    case "score10": return `${v.toFixed(1)}/10`;
-    default: return formatCountFor(lang, Math.round(v));
-  }
-}
-
-const OP_TEXT: Record<Op, string> = { ">=": "≥", ">": ">", "<=": "≤", "<": "<", "=": "=" };
-
-export interface AdviceCtx {
-  windowDays: number;
-  tradingDaysLeftHint?: number;
-  bestDay?: number | null;
-  totalNet?: number | null;
-  grossLoss?: number | null;
-  grossProfit?: number | null;
-  wins?: number;
-  losses?: number;
-  gross?: number | null;
-  fees?: number | null;
-}
-
-/** "What to improve" for a failing criterion — concrete numbers where they can be derived (text in `lang`). */
-export function adviceFor(metric: PromoMetricKey, op: Op, actual: number | null, target: number, ctx: AdviceCtx, lang: Lang = DEFAULT_LANG): string {
-  const t = academyPathT.tFor(lang);
-  const usd = (x: number) => formatPromo("net_pnl", x, lang);
-  const opText = OP_TEXT[op];
-  switch (metric) {
-    case "net_pnl":
-      return actual == null ? t("advice.netNoTrades")
-        : t("advice.net", { missing: usd(Math.max(0, target - actual)), days: ctx.windowDays, perDay: usd(Math.max(0, target - actual) / Math.max(1, ctx.windowDays)) });
-    case "trading_days":
-      return t("advice.tradingDays", { n: Math.max(0, Math.ceil(target - (actual ?? 0))), days: ctx.windowDays });
-    case "trades":
-      return t("advice.trades", { n: Math.max(0, Math.ceil(target - (actual ?? 0))) });
-    case "max_dd_usd":
-      return actual == null ? t("advice.noMoney") : t("advice.maxDdUsd", { dd: usd(actual), limit: usd(target) });
-    case "max_dd_pct":
-      return actual == null ? t("advice.maxDdPctNone") : t("advice.maxDdPct", { pct: actual.toFixed(0), op: opText, target });
-    case "consistency": {
-      if (actual == null) return t("advice.consistencyNoProfit");
-      const best = ctx.bestDay ?? null, total = ctx.totalNet ?? null;
-      if (best != null && total != null && target > 0) {
-        const need = best / (target / 100) - total;
-        return t("advice.consistencyNeed", { pct: actual.toFixed(0), target, usd: usd(Math.max(0, need)) });
-      }
-      return t("advice.consistency", { pct: actual.toFixed(0), target });
-    }
-    case "win_rate": {
-      const w = ctx.wins ?? 0, l = ctx.losses ?? 0;
-      if (actual == null) return t("advice.winRateNone");
-      const p = target / 100;
-      const needWins = p < 1 ? Math.max(0, Math.ceil((p * (w + l) - w) / (1 - p))) : 0;
-      return t("advice.winRate", { pct: actual.toFixed(0), w, l, op: opText, target, need: needWins });
-    }
-    case "profit_factor": {
-      if (actual == null) return t("advice.pfNone");
-      const gl = Math.abs(ctx.grossLoss ?? 0), gp = ctx.grossProfit ?? 0;
-      return gl > 0
-        ? t("advice.pf", { pf: actual.toFixed(2), target, needProfit: usd(target * gl), profit: usd(gp), cut: usd(Math.max(0, gl - gp / target)) })
-        : t("advice.pfShort", { pf: actual.toFixed(2), target });
-    }
-    case "fee_share": {
-      if (actual == null) return t("advice.feesNone");
-      return (ctx.gross ?? 0) <= 0
-        ? t("advice.feesAteAll", { fees: usd(ctx.fees ?? 0), gross: usd(ctx.gross ?? 0) })
-        : t("advice.fees", { pct: actual.toFixed(0), target });
-    }
-    case "violations":
-      return t("advice.violations", { count: actual ?? 0, target });
-    case "limit_breaches":
-      return t("advice.limitBreaches", { count: actual ?? 0 });
-    case "red_streak_max":
-      return actual == null ? t("advice.noMoney") : t("advice.redStreak", { n: actual, target });
-    case "green_days_pct":
-      return t("advice.greenDays", { pct: actual?.toFixed(0) ?? "—", target });
-    case "discipline_index":
-      return actual == null ? t("advice.disciplineNone") : t("advice.discipline", { value: actual.toFixed(0), target });
-    case "rating_discipline":
-      return actual == null ? t("advice.ratingNone") : t("advice.rating", { value: actual.toFixed(1), target });
-    case "lessons_pct":
-      return t("advice.lessons", { pct: actual?.toFixed(0) ?? 0, target });
-    case "quiz_avg":
-      return actual == null ? t("advice.quizNone") : t("advice.quiz", { pct: actual.toFixed(0), target });
-    case "challenges_passed":
-      return t("advice.challenges");
-  }
 }
 
 // ─── evaluation ─────────────────────────────────────────────────────────────
@@ -488,6 +397,13 @@ export interface ReadinessReport {
     feeShare: number | null;
     disciplineIndex: number | null;
   };
+  /** Roadmap R1: the one criterion to work on (null when all pass / no stage). */
+  bindingConstraint: BindingConstraint | null;
+  /** Trading days on the current stage (null: start unknown) and its signal (info ≥ 120, curator ≥ 250, admin ≥ 500). */
+  stageDays: number | null;
+  stageSignal: StageSignal | null;
+  /** Net-P&L pace of the stage's net criterion (no ETA date). */
+  pace: Pace | null;
 }
 
 function trendOf(meta: PromoMetricMeta, cur: number | null, prev: number | null): Trend | null {
@@ -511,8 +427,15 @@ function adviceCtx(input: PromotionInput, windowDays: number, today: string): Ad
     if (t.gross != null) { gross += t.gross; fees += Math.abs(t.fees || 0); }
   }
   const nets = [...dayNet.values()];
+  const tradeNets = rows.map((t) => t.net).filter((v): v is number => v != null);
+  const winsN = tradeNets.filter((v) => v > 0), lossN = tradeNets.filter((v) => v < 0);
+  // The first full window of a new stage: how many of its trading days are still ahead.
+  const elapsed = input.stageSince && input.stageSince <= today ? tradingDaysBetween(input.stageSince, today) : null;
   return {
     windowDays,
+    tradingDaysLeftHint: elapsed != null && elapsed < windowDays ? windowDays - elapsed : undefined,
+    avgWin: winsN.length ? winsN.reduce((a, b) => a + b, 0) / winsN.length : null,
+    avgLoss: lossN.length ? lossN.reduce((a, b) => a + b, 0) / lossN.length : null,
     bestDay: nets.length ? Math.max(...nets) : null,
     totalNet: nets.length ? nets.reduce((a, b) => a + b, 0) : null,
     grossProfit: gp, grossLoss: gl, wins, losses, gross, fees,
@@ -588,6 +511,15 @@ export function evaluatePromotion(input: PromotionInput, criteriaIn: Criterion[]
     (status === "na" ? skipped : results).push(res);
   }
 
+  // Roadmap R1: binding constraint, stage days, pace.
+  const failing = results.filter((r) => r.status === "fail").map((r) => ({ ...r, source: metricMeta.get(r.metric)!.source }));
+  const bindingConstraint = bindingConstraintOf(failing, (metric, n, end) => {
+    const m = metricsFor(n, end);
+    return { value: m[metric].value, traded: !!m.trading_days.value };
+  }, today);
+  const stageDays = input.stageSince && YMD.test(input.stageSince) && input.stageSince <= today ? tradingDaysBetween(input.stageSince, today) : null;
+  const netCr = criteria.find((x) => x.metric === "net_pnl" && x.windowDays != null && x.windowDays > 0);
+  const pace = netCr ? paceOf(netCr.value, dailyNets(input, windowStart(today, netCr.windowDays as number), today)) : null;
   const passed = results.filter((r) => r.status === "pass").length;
   const total = results.length;
   const ready = !!nextStage && total > 0 && passed === total;
@@ -625,6 +557,20 @@ export function evaluatePromotion(input: PromotionInput, criteriaIn: Criterion[]
       feeShare: s.fee_share.value,
       disciplineIndex: s.discipline_index.value,
     },
+    bindingConstraint, stageDays, stageSignal: stageSignalOf(stageDays), pace,
   };
+}
+
+/** Net of each weekday of [from, today] (0 without trades; broker rows when the trader has any). */
+function dailyNets(input: PromotionInput, from: string, today: string): number[] {
+  const anyBroker = input.trades.some((t) => t.source === "propreports");
+  const byDay = new Map<string, number>();
+  for (const t of input.trades) {
+    if (t.net == null || t.date < from || t.date > today || (anyBroker && t.source !== "propreports")) continue;
+    byDay.set(t.date, (byDay.get(t.date) ?? 0) + t.net);
+  }
+  const out: number[] = [];
+  for (let d = from; d <= today; d = addDays(d, 1)) if (!isWeekend(d)) out.push(byDay.get(d) ?? 0);
+  return out;
 }
 

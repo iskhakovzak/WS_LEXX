@@ -9,11 +9,12 @@
  *   clean_month       finished months with ≥ rewards.cleanMonthMinDays traded days, the daily stop known and never
  *                     reached (total, not in a row)                                                 1 / 3 / 6
  *   comeback (secret) a kept contract day right after a broken one                                  5
- *   reviews_total     reviewed trading days, all time                                               10 / 50 / 100 / 250
- *   review_streak     traded days in a row reviewed on time (that day or the next trading day)      5 / 10 / 20 / 40
+ *   reviews_total     FULLY reviewed trading days, all time (journal form with a trade review)      10 / 50 / 100 / 250
+ *   review_streak     traded days in a row fully reviewed on time (that day or the next trading day) 5 / 10 / 20 / 40
  *   focus_beaten      the day's focus mistake absent on judged days in a row («победил ошибку»)     5 / 10 / 20
  *   plan_before_open  days with a personal plan created before 09:30 NY                              10 / 30 / 100
- *   full_loop (secret) days with a plan before the open + kept contract + reviewed on time           20
+ *   full_loop (secret) days with a plan before the open + kept contract + fully reviewed on time     20
+ * Roadmap R3: the one-tap «Разобрал» is «seen» — the review lines read ReviewDay.fullOn (lib/daily/badges asFullReview).
  *   own_replays       own days replayed in the simulator (finished own games)                        1 / 10 / 50
  *   beat_yourself     own replays where the new decision beat the real trade (verdict «better»)      3 / 10 / 25
  *   lessons           academy lessons completed (only when the trader has academy data)             5 / 20 / 50
@@ -21,7 +22,7 @@
  *   tier_up           scaling promotions: Джун / Трейдер / Сеньор (scaling_history)
  *   onboarding        every first-steps quest done (lib/quests/catalog ONBOARDING)
  */
-import { reviewedOnTime, type FocusDay, type OwnGame, type ReviewDay, type StopDay } from "../daily/badges";
+import { asFullReview, reviewedOnTime, type FocusDay, type OwnGame, type ReviewDay, type StopDay } from "../daily/badges";
 import type { LedgerDay } from "../daily/discipline";
 import { setting, type SettingKey } from "../settings/registry";
 import type { BadgeId, BadgeState } from "../daily/types";
@@ -149,7 +150,7 @@ export function comebacks(ledger: readonly LedgerDay[]): string[] {
 /** Plan before the open + kept contract + reviewed on time, on the same day. */
 export function fullLoopDays(input: Pick<AchievementInput, "ledger" | "reviews" | "plansBeforeOpen">): string[] {
   const early = new Set(input.plansBeforeOpen);
-  const reviewed = new Set(input.reviews.filter(reviewedOnTime).map((r) => r.date));
+  const reviewed = new Set(input.reviews.map(asFullReview).filter(reviewedOnTime).map((r) => r.date));
   return input.ledger.filter((d) => d.outcome === "kept" && early.has(d.date) && reviewed.has(d.date)).map((d) => d.date);
 }
 
@@ -157,7 +158,8 @@ export function fullLoopDays(input: Pick<AchievementInput, "ledger" | "reviews" 
 export function lineSeries(input: AchievementInput): Record<LineId, LineSeries> {
   const ledger = byDate(input.ledger);
   const promotions = byDate(input.promotions);
-  const reviewedOn = input.reviews.map((r) => r.reviewedOn).filter((d): d is string => !!d);
+  const full = input.reviews.map(asFullReview);
+  const reviewedOn = full.map((r) => r.reviewedOn).filter((d): d is string => !!d);
   return {
     contract_streak: {
       current: ledger.length ? ledger[ledger.length - 1]!.streak : 0,
@@ -167,7 +169,7 @@ export function lineSeries(input: AchievementInput): Record<LineId, LineSeries> 
     comeback: countSeries(comebacks(ledger)),
     reviews_total: countSeries(reviewedOn),
     // The last finished day can still be reviewed tomorrow: not reviewed yet = skipped, not a miss.
-    review_streak: runSeries(input.reviews, (d) => (reviewedOnTime(d) ? "hit" : d.date >= input.asOf && d.reviewedOn == null ? "skip" : "miss")),
+    review_streak: runSeries(full, (d) => (reviewedOnTime(d) ? "hit" : d.date >= input.asOf && d.reviewedOn == null ? "skip" : "miss")),
     focus_beaten: runSeries(input.focus, (d) => (d.disputed ? "skip" : d.status === "kept" ? "hit" : d.status === "broken" ? "miss" : "skip")),
     plan_before_open: countSeries(input.plansBeforeOpen),
     full_loop: countSeries(fullLoopDays(input)),
@@ -249,9 +251,13 @@ export function newAwards(results: readonly LineResult[], awarded: Awarded): New
  * only; «reviews» gave the review streak's bronze the silver's day) and tiers an older build dated on a lower tier's
  * day. A tier the data no longer shows, or whose number changed since, keeps its stored day.
  */
+/** Lines whose rule changed (R3: full reviews only): stored tiers keep their day — the new rule never re-dates history. */
+const KEEP_STORED_DATE: ReadonlySet<LineId> = new Set(["reviews_total", "review_streak", "full_loop"]);
+
 export function dateFixes(results: readonly LineResult[], awarded: Awarded): NewAward[] {
   const out: NewAward[] = [];
   for (const r of results) {
+    if (KEEP_STORED_DATE.has(r.id)) continue;
     for (const t of r.tiers) {
       const stored = awarded.get(awardKey(r.id, t.tier));
       if (stored && t.earnedOn && stored.target === t.target && stored.date !== t.earnedOn) out.push({ line: r.id, tier: t.tier, date: t.earnedOn, target: t.target });

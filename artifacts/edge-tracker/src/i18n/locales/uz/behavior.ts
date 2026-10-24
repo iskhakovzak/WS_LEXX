@@ -49,7 +49,7 @@ export default {
   dur: { seconds: "{count} s", minutes: "{count} daq", hm: "{h} soat {m} daq", days: "{value} kun" },
   severity: { none: "pul yoʻqotmaydi", few: "holatlar kam", low: "past", medium: "oʻrtacha", high: "yuqori" },
   pattern: {
-    revenge: "revenge", martingale: "martingeyl", overtrading: "overtrading", tilt: "tilt", chase: "qaytarib olish",
+    revenge: "tez qayta kirish", martingale: "martingeyl", overtrading: "overtrading", tilt: "tilt", chase: "qaytarib olish",
     euphoria: "eyforiya", fatigue: "charchoq", disposition: "zararni ushlab turish", firstTrade: "birinchi savdo",
   },
   marker: { revenge: "R", tilt: "T", martingale: "M", euphoria: "E", chase: "Q", overtrading: "+", disposition: "U" },

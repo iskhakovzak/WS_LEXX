@@ -11,8 +11,10 @@
  *                           trade (trader_risk_limits) — cost = the part beyond the limit
  *   day:giveback            day peak of cumulative realised net ≥ a meaningful amount, closed ≤ keepShare of the
  *                           peak; cost = close − peak
- *   day:fees                fees ≥ share of a positive gross; cost = −(fees above a healthy healthyShare of the gross)
- *                           — what trading less would have saved, not every cent of commission
+ *   day:fees                fees ≥ max(min $, share × max(gross, 0)) — a day / week with gross ≤ 0 counts too (roadmap
+ *                           R2); cost = −(fees above a healthy healthyShare of the positive gross) — what trading less
+ *                           would have saved. Weekly by default (daily.feesWeekly): Σ over the NY week (Mon–Fri) in the
+ *                           window against daily.feesWeeklyMinUsd, one hit on the week's last traded day
  *   day:after_limit         trades opened after the realised net hit the daily loss limit (plan maxLossUsd, else
  *                           trader_risk_limits.daily_loss_limit); cost = their net
  *   rule:<RuleKind>         lib/rulesEval violations in the window; cost = impactNet (else costNet)
@@ -25,6 +27,7 @@ import { evalRule, NO_LIMITS, type RiskLimits, type RuleRow, type TradeForRule }
 import { computeStructures, type ExecRowLite, type TradeRowLite } from "../tradeStructureStore";
 import type { Leg, TradeStructure } from "../tradeStructure";
 import { setting } from "../settings/registry";
+import { feeCost, feeShares } from "../feeRule";
 import type { MistakeId, TradeRef } from "./types";
 
 /** Giveback / fees thresholds now in force (admin → «Настройки деска»; the curator queue prices days the same way). */
@@ -34,13 +37,38 @@ export function dayThresholds() {
     givebackMinUsd: setting("daily.givebackMinPeakUsd"),
     /** …and a close at or below this share of the peak. */
     givebackKeepShare: setting("daily.givebackKeepShare"),
-    /** Fees are a mistake from this share of a positive gross… */
+    /** Fees are a mistake from this share of the gross (gross ≤ 0: any fees past the minimum)… */
     feesShare: setting("daily.feesShare"),
-    /** …and at least this many $. */
+    /** …and at least this many $ a day… */
     feesMinUsd: setting("daily.feesMinUsd"),
+    /** …judged per week (Σ fees ≥ this many $) instead of per day: less daily noise. */
+    feesWeekly: setting("daily.feesWeekly"),
+    feesWeeklyMinUsd: setting("daily.feesWeeklyMinUsd"),
     /** Cost = the fees above this healthy share of the gross (never above the mistake share: a fee day never «earns»). */
-    feesHealthyShare: Math.min(setting("daily.feesHealthyShare"), setting("daily.feesShare")),
+    feesHealthyShare: feeShares().feesHealthyShare,
   };
+}
+
+/** The one fee rule (lib/feeRule): engine «day:fees», curator queue «fees», day report «fee_over_gross». */
+export { feeCost };
+
+/** Monday of the NY trading week of a YYYY-MM-DD date. */
+export function weekMonday(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+/** Day gross / fees summed per week: `last` = the week's last day in `days` (where a weekly hit is booked). */
+export function feeWeeks(days: readonly { date: string; gross: number; fees: number }[]): { monday: string; last: string; gross: number; fees: number }[] {
+  const out = new Map<string, { monday: string; last: string; gross: number; fees: number }>();
+  for (const d of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
+    const m = weekMonday(d.date);
+    const w = out.get(m) ?? { monday: m, last: d.date, gross: 0, fees: 0 };
+    w.last = d.date; w.gross = round2(w.gross + d.gross); w.fees = round2(w.fees + d.fees);
+    out.set(m, w);
+  }
+  return [...out.values()];
 }
 
 export const STOP_OVERSHOOT_SHARE = 0.25;
@@ -215,6 +243,7 @@ export function dailyLossLimit(input: DetectInput, date: string): number | null 
 export function detectDay(input: DetectInput, book: HitBook, days: Map<string, BehaviorTrade[]>): void {
   const k = dayThresholds();
   const thr = givebackThreshold(input.trades, k.givebackMinUsd);
+  const feeDays: { date: string; gross: number; fees: number }[] = [];
   for (const [date, day] of days) {
     const p = dayPath(day);
     // A giveback needs a green peak to give back (with a 0 threshold a plain losing day is not one).
@@ -226,7 +255,9 @@ export function detectDay(input: DetectInput, book: HitBook, days: Map<string, B
     }
     let gross = 0, fees = 0;
     for (const t of day) if (t.gross != null && t.net != null) { gross += t.gross; fees += Math.max(0, t.gross - t.net); }
-    if (gross > 0 && fees >= k.feesMinUsd && fees >= k.feesShare * gross) book.add("day:fees", date, round2(-(fees - k.feesHealthyShare * gross)), null);
+    feeDays.push({ date, gross, fees });
+    const dayCost = k.feesWeekly ? null : feeCost(gross, fees, k.feesMinUsd, k);
+    if (dayCost != null) book.add("day:fees", date, dayCost, null);
     const limit = dailyLossLimit(input, date);
     if (limit != null) {
       let cum = 0, hitAt: number | null = null, hitIdx = -1;
@@ -240,6 +271,12 @@ export function detectDay(input: DetectInput, book: HitBook, days: Map<string, B
           if (later) book.add("day:after_limit", date, t.net, refOf(t));
         });
       }
+    }
+  }
+  if (k.feesWeekly) {
+    for (const w of feeWeeks(feeDays)) {
+      const cost = feeCost(w.gross, w.fees, k.feesWeeklyMinUsd, k);
+      if (cost != null) book.add("day:fees", w.last, cost, null);
     }
   }
 }

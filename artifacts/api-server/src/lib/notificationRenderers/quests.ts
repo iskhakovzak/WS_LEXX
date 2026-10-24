@@ -6,6 +6,8 @@
  *   quest_assigned      { template, target, points, curator, endsDate (YYYY-MM-DD), note?, questId } → the trader
  *   quest_cancelled     { template, target, curator, note?, questId } → the trader (the curator cancelled the quest)
  *   achievement_earned  { line, tier, target } → the trader
+ *   variant "batch" (roadmap R3, lib/notificationBatch — the nightly in-app batch instead of a ping each):
+ *     quest_done { count, points, achievements }, achievement_earned { count }
  * Names and the curator's note are data.
  */
 import type { NotificationRenderer } from "../notificationText";
@@ -35,6 +37,11 @@ const titleOf = (lang: Lang, params: Record<string, unknown>) =>
 
 const questDone: NotificationRenderer = ({ params, lang, variant }) => {
   const t = questsT.tFor(lang);
+  if (variant === "batch") {
+    const count = num(params.count) ?? 0, points = num(params.points) ?? 0, ach = num(params.achievements) ?? 0;
+    const parts = [points > 0 ? t("notify.batchPoints", { points }) : null, ach > 0 ? t("notify.batchAch", { count: ach }) : null].filter(Boolean);
+    return { title: t("notify.batchQuestsTitle", { count }), body: [...parts, t("notify.batchTail")].join(" · ") };
+  }
   const quest = titleOf(lang, params);
   if (!quest) return null;
   if (variant === "staff") {
@@ -75,8 +82,9 @@ const questCancelled: NotificationRenderer = ({ params, lang }) => {
   return { title: t("notify.cancelledTitle", { quest }), body: t("notify.cancelledBody", { curator }) };
 };
 
-const achievementEarned: NotificationRenderer = ({ params, lang }) => {
+const achievementEarned: NotificationRenderer = ({ params, lang, variant }) => {
   const t = questsT.tFor(lang);
+  if (variant === "batch") return { title: t("notify.batchAchTitle", { count: num(params.count) ?? 0 }), body: t("notify.batchTail") };
   const name = achievementNameFor(lang, str(params.line), str(params.tier));
   if (!name) return null;
   return { title: t("notify.achievementTitle", name), body: t("notify.achievementBody") };

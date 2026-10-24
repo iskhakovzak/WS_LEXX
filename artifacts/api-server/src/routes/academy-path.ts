@@ -59,6 +59,7 @@ import {
   ensureAcademyPathSeed, loadCriteria, loadStageInfo, loadStages, loadTiers, tableExists, type StageInfo,
 } from "../lib/academyPathStore";
 import { loadLearning, loadPromoTrades, loadViolationDates } from "../lib/academy/promotion-input";
+import { INFEASIBLE_LOOKBACK } from "../lib/academy/readinessRealism";
 import { loadDisciplineDays } from "../lib/disciplineDays";
 import { setStage } from "../lib/academy/stage-actions";
 import { myPeople, pickScope } from "../lib/people/deskGroups";
@@ -133,7 +134,8 @@ async function buildReport(user: string, today: string, ctx?: { stages: StageMet
   const info = ctx?.info ?? (await loadStageInfo([user])).get(user) ?? { stage: null, since: null, source: null, cohortId: null };
   const mine = criteria.filter((c) => c.enabled && c.fromStage === info.stage);
   const maxWin = Math.max(20, ...mine.map((c) => resolveWindow(c.windowDays, info.since, today)));
-  const from = windowStart(today, Math.min(600, maxWin * 2 + 10));
+  // Twice the longest window (trend) and the R1 «never met» scan: INFEASIBLE_LOOKBACK days of window ends.
+  const from = windowStart(today, Math.min(600, Math.max(maxWin * 2 + 10, INFEASIBLE_LOOKBACK + maxWin)));
   const stage = stages.find((s) => s.key === info.stage);
   const tier = stage?.scalingTier ? tiers.find((t) => t.key === stage.scalingTier) ?? null : null;
 
@@ -348,6 +350,9 @@ router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> 
       passed: r.passed, total: r.total, ready: r.ready, headline: r.headline, nextStage: r.nextStage?.key ?? null,
       failing: r.criteria.filter((c) => c.status !== "pass").map((c) => c.label).slice(0, 4),
       summary: r.summary, pendingRequestId: p ? Number(p.id) : null,
+      // Roadmap R1: days on the stage and the main bottleneck (a «never met» one goes to the curator).
+      stageDays: r.stageDays, stageSignal: r.stageSignal,
+      binding: r.bindingConstraint ? { label: r.bindingConstraint.label, kind: r.bindingConstraint.kind, neverMetWindows: r.bindingConstraint.neverMetWindows } : null,
     };
   }));
   people.sort((a, b) => Number(b.ready) - Number(a.ready) || (b.total ? b.passed / b.total : 0) - (a.total ? a.passed / a.total : 0) || a.user.localeCompare(b.user, "ru"));

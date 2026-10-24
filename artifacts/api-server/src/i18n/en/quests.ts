@@ -90,6 +90,11 @@ export default {
     cancelledBody: "{curator} cancelled the task — there is nothing more to do for it.",
     achievementTitle: "Achievement: {achievement} — {tier}",
     achievementBody: "A new achievement tier. All achievements are on the “Quests and achievements” tab.",
+    batchQuestsTitle: { one: "{count} quest done today", other: "{count} quests done today" },
+    batchAchTitle: { one: "{count} new achievement today", other: "{count} new achievements today" },
+    batchPoints: "+{points} to discipline",
+    batchAch: { one: "{count} new achievement", other: "{count} new achievements" },
+    batchTail: "Details are on the “Quests and achievements” tab.",
   },
   tier: { bronze: "bronze", silver: "silver", gold: "gold", platinum: "platinum" },
 } satisfies Messages<typeof ru>;

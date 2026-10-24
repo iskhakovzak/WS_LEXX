@@ -207,6 +207,7 @@ export default {
   EOD_OWN_ONLY: "Faqat oʻz kuningizni koʻrish mumkin",
   INVALID_RANGE: "Davr notoʻgʻri: from ≤ to, YYYY-MM-DD formatida, koʻpi bilan {max} kun",
   TRADE_REVIEW_OWN_ONLY: "Faqat oʻz savdolaringizni tahlil qilish mumkin",
+  WHATIF_FEE_PLAN_STAFF_ONLY: "Komissiya tariflarini solishtirish faqat kuratorlar va adminlar uchun",
   EOD_DAY_CLOSED: "{date} kuni yopilgan — tahlilni tahrirlash uchun uni qayta oching",
   EOD_ALREADY_CLOSED: "Kun allaqachon yopilgan",
   EOD_FUTURE_DAY: "Kelajakdagi kunni yopib boʻlmaydi",

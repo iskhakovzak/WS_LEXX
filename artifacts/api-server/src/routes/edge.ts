@@ -3,8 +3,11 @@
  *
  *   GET /edge/matrix  ?rows=setup&cols=horizon&trader=&from=&to=&horizon=&side=&account=&source=&setup=&ticker=&tod=15|30
  *                     → cells per (row, col) with counts, ΣR, Σnet and capped per-trade value arrays (client bootstrap CI)
- *   GET /edge/costs   ?group=trader|account|month|setup|horizon&…same filters
- *                     → gross vs net, fees per share / per trade, share of gross profit eaten, slippage
+ *   GET /edge/costs   ?group=trader|account|month|setup|horizon|price&…same filters
+ *                     → gross vs net, fees per share / per trade, gross per share and gross ÷ fees per share (ratio),
+ *                       share of gross profit eaten, slippage. group=price (entry price bands, lib/tradeFacetBuckets) for
+ *                       one trader adds `feeModel`: the rolling per-band fee model + breakeven line (lib/feeModelStore)
+ *   GET /edge/breakeven ?trader=  → win rate vs the breakeven win rate of the rolling window (lib/breakeven)
  *
  * Dimensions (rows/cols): setup, horizon, tod (15/30-min ET buckets from the first entry execution, else the time in
  * `date`, else session), hold (minutes between first entry and last exit execution, else hold_time text), catalyst
@@ -24,6 +27,9 @@ import { execSpanJoin } from "../lib/execSpan";
 import { badRequest, unauthorized } from "../lib/http";
 import { FACET_QUERY, facetFiltersOf } from "../lib/tradesPageParams";
 import { facetSqlTail } from "../lib/tradeFacetsSql";
+import { priceSql } from "../lib/tradeFacetBuckets";
+import { feeCoachingFor } from "../lib/feeModelStore";
+import { nyDate } from "../lib/tradingDate";
 
 const router: IRouter = Router();
 
@@ -58,7 +64,7 @@ const matrixSchema = filterSchema.extend({
   cols: z.enum(EDGE_DIMENSIONS).default("horizon"),
 });
 const costsSchema = filterSchema.extend({
-  group: z.enum(["trader", "account", "month", "setup", "horizon"]).default("trader"),
+  group: z.enum(["trader", "account", "month", "setup", "horizon", "price"]).default("trader"),
 });
 
 function normQuery(q: Request["query"]): Record<string, string> {
@@ -342,12 +348,14 @@ export type EdgeCostRow = {
   /** fees / |gross| — share of the absolute gross result. */
   feePctOfGross: number | null;
   shares: number; feePerShare: number | null; feePerTrade: number | null;
+  /** Σ gross / Σ shares and its ratio to the fees per share (< 1: fees above the gross). */
+  grossPerShare: number | null; feeRatio: number | null;
   slippageN: number; slippageSum: number; slippageAvg: number | null;
 };
 
 export function buildCostsQuery(q: CostsQuery, scope: string | null): { sql: string; params: unknown[] } {
   const { where, params } = buildWhere(q, scope);
-  const keySql = dimensionSql(q.group, 30, false);
+  const keySql = q.group === "price" ? priceSql("t") : dimensionSql(q.group, 30, false);
   const sql = `WITH base AS MATERIALIZED (
     SELECT ${keySql} AS key, ${closedSql("t")} AS closed,
            t.pnl::float8 AS gross, ${netPnlSql("t")}::float8 AS net,
@@ -397,6 +405,7 @@ router.get("/edge/costs", asyncHandler(async (req, res) => {
     shares: r.shares,
     feePerShare: r.shares > 0 ? r.fees / r.shares : null,
     feePerTrade: r.trades_with_pnl > 0 ? r.fees / r.trades_with_pnl : null,
+    ...perShare(r.gross, r.fees, r.shares),
     slippageN: r.slippage_n, slippageSum: r.slippage_sum,
     slippageAvg: r.slippage_n > 0 ? r.slippage_sum / r.slippage_n : null,
   }));
@@ -416,10 +425,26 @@ router.get("/edge/costs", asyncHandler(async (req, res) => {
       feePctOfGross: total.gross !== 0 ? total.fees / Math.abs(total.gross) : null,
       feePerShare: total.shares > 0 ? total.fees / total.shares : null,
       feePerTrade: total.tradesWithPnl > 0 ? total.fees / total.tradesWithPnl : null,
+      ...perShare(total.gross, total.fees, total.shares),
       slippageAvg: total.slippageN > 0 ? total.slippageSum / total.slippageN : null,
     },
+    ...(q.group === "price" && scope != null ? { feeModel: await feeCoachingFor(scope, q.to ?? nyDate()) } : {}),
     generatedAt: new Date().toISOString(),
   });
+}));
+
+/** Gross per share and gross ÷ fees per share of a cost row. */
+export function perShare(gross: number, fees: number, shares: number): { grossPerShare: number | null; feeRatio: number | null } {
+  return { grossPerShare: shares > 0 ? gross / shares : null, feeRatio: shares > 0 && fees > 0 ? gross / fees : null };
+}
+
+router.get("/edge/breakeven", asyncHandler(async (req, res) => {
+  const trader = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim().slice(0, 120) : undefined;
+  const scope = await scopeTrader(req, trader ?? req.authUser?.name); // no trader = the viewer (staff trade too)
+  if (scope === undefined) throw unauthorized();
+  if (scope == null) { res.json({ scope, window: null, breakeven: null }); return; }
+  const f = await feeCoachingFor(scope, nyDate());
+  res.json({ scope, window: f.window, breakeven: f.breakeven });
 }));
 
 export const edgeRouter = router;

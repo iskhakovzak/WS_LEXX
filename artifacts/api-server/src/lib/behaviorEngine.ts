@@ -208,7 +208,8 @@ export type DayTimeline = {
   norms: { tradesPerDayNorm: number; medianGapMin: number | null; revengeMin: number; euphoriaMin: number };
 };
 
-const DEFAULTS: Required<BehaviorOptions> = {
+/** Canonical behaviour thresholds (roadmap R3: one source) — lib/dayReport reads revenge / size-up from here. */
+export const DEFAULTS: Readonly<Required<BehaviorOptions>> = {
   revengeMin: 10,
   overtradingK: 2,
   martingaleRatio: 1.3,

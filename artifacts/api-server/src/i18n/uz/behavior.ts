@@ -19,7 +19,7 @@ export default {
   },
   patterns: {
     revenge: {
-      title: "Revenge trading",
+      title: "Zarardan keyin tez qayta kirish",
       description: "Zararli savdodan keyin {min} daqiqadan kamroq vaqt ichida yangi savdo.",
       rule: "Oʻsha kundagi zararli savdodan chiqqandan keyin < {min} daqiqada kirish. Kuchaytiruvchilar: oʻsha tiker, oʻlcham ≥ ×1.25.",
       baseline: "boshqa savdolar",

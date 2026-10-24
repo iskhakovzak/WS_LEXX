@@ -319,10 +319,16 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
   });
 }));
 
+/** A tariff (commissionPlan) what-if is staff-only (roadmap R2.4; the desk does not choose its broker fees — owner 2026-10-22). */
+export function feePlanAllowed(role: string | null | undefined, rules: readonly Rule[]): boolean {
+  return isStaffRole(role) || !rules.some((r) => r.type === "commissionPlan");
+}
+
 router.post("/whatif/run", asyncHandler(async (req, res) => {
   const parsed = runSchema.safeParse(req.body ?? {});
   if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
+  if (!feePlanAllowed(req.authUser?.role, q.rules)) throw new AppError("WHATIF_FEE_PLAN_STAFF_ONLY");
   const scope = await resolveScope(req, q.trader);
   if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to, facetFiltersOf(q));
