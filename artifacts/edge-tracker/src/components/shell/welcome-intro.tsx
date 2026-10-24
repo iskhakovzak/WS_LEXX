@@ -30,8 +30,8 @@ const SKIP_MS = 150;
 const REDUCED_HOLD_MS = 1200;
 const REDUCED_OUT_MS = 300;
 
-/** Italic serif for the name / «трейдер»: system faces only (Palatino on Windows/macOS, Georgia as the fallback). */
-const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
+/** Italic serif for the name: the app's accent stack (index.css --app-font-serif, the `font-accent` utility). */
+const SERIF = "var(--app-font-serif)";
 
 /** The intro is English in every language (owner, 2026-10-24): the Latin display name, else a transliteration. */
 function latinShown(stored: string | null | undefined): string {

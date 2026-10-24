@@ -134,60 +134,61 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .06);
 
-  /* ── Light ("Apple glass" light): #f0f1f4 canvas, white glass, accent #007aff (deepened for 4.5:1) ── */
-  --background: 225 15% 95%;
-  --foreground: 240 3% 14%;
-  --border: 225 10% 85%;
+  /* ── Light (monochrome, owner 2026-10-24): neutral #f5f5f5 canvas, white surfaces, ink-black primary.
+     Colour is reserved for meaning: up / down / warn (+ chart series). ── */
+  --background: 0 0% 96%;
+  --foreground: 0 0% 9%;
+  --border: 0 0% 87%;
   --card: 0 0% 100%;
-  --card-foreground: 240 3% 14%;
-  --card-border: 225 10% 86%;
+  --card-foreground: 0 0% 9%;
+  --card-border: 0 0% 88%;
   --sidebar: 0 0% 100%;
-  --sidebar-foreground: 240 3% 14%;
-  --sidebar-border: 225 10% 86%;
-  --sidebar-primary: 211 100% 42%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 225 14% 92%;
-  --sidebar-accent-foreground: 240 3% 14%;
-  --sidebar-ring: 211 100% 50%;
+  --sidebar-foreground: 0 0% 9%;
+  --sidebar-border: 0 0% 88%;
+  --sidebar-primary: 0 0% 9%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 0 0% 93%;
+  --sidebar-accent-foreground: 0 0% 9%;
+  --sidebar-ring: 0 0% 20%;
   --popover: 0 0% 100%;
-  --popover-foreground: 240 3% 14%;
-  --popover-border: 225 10% 84%;
-  --primary: 211 100% 42%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 225 14% 91%;
-  --secondary-foreground: 240 3% 14%;
-  --muted: 225 14% 91%;
-  --muted-foreground: 220 9% 30%;
-  --accent: 211 100% 42%;
-  --accent-foreground: 0 0% 100%;
-  --accent-soft: 211 100% 38%;
-  --primary-solid: 211 100% 42%;
+  --popover-foreground: 0 0% 9%;
+  --popover-border: 0 0% 86%;
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 93%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 93%;
+  --muted-foreground: 0 0% 37%;
+  --accent: 0 0% 92%;
+  --accent-foreground: 0 0% 9%;
+  --accent-soft: 0 0% 20%;
+  --primary-solid: 0 0% 9%;
   --destructive: 0 62% 47%;
   --destructive-foreground: 0 0% 100%;
-  --input: 225 10% 80%;
-  --ring: 211 100% 50%;
-  --up: 152 60% 30%;
+  --input: 0 0% 80%;
+  --ring: 0 0% 20%;
+  --up: 152 62% 28%;
   --down: 0 66% 42%;
-  --chart-1: 211 100% 45%;
+  --chart-1: 214 42% 44%;
   --chart-2: 152 60% 36%;
   --chart-3: 42 85% 45%;
   --chart-4: 0 62% 50%;
   --chart-5: 263 40% 55%;
 
   /* Glass surface tokens (raw colours — used by .glass / .glass-field / .chip / .glass-panel) */
-  --glass-bg: rgb(255 255 255 / .55);
-  --glass-thick-bg: rgb(255 255 255 / .72);
-  --glass-hover-bg: rgb(255 255 255 / .70);
+  --glass-bg: rgb(255 255 255 / .62);
+  --glass-thick-bg: rgb(255 255 255 / .78);
+  --glass-hover-bg: rgb(0 0 0 / .04);
   --glass-border: rgb(0 0 0 / .08);
-  --field-border: rgb(0 0 0 / .14);
+  --field-border: rgb(0 0 0 / .13);
   --glass-hi: rgb(255 255 255 / .9);
   --glass-lo: rgb(0 0 0 / .04);
-  --glass-shadow: 0 8px 32px rgb(15 23 42 / .10);
-  --glass-shadow-sm: 0 4px 18px -6px rgb(15 23 42 / .10);
+  --glass-shadow: 0 8px 32px rgb(0 0 0 / .08);
+  --glass-shadow-sm: 0 4px 18px -8px rgb(0 0 0 / .08);
   --glass-sheen: rgb(255 255 255 / .5);
-  --glass-fallback: rgb(250 250 252 / .97);
+  --glass-fallback: rgb(252 252 252 / .97);
   --glass-sat: 160%;
-  --overlay: rgb(15 23 42 / .32);
+  --overlay: rgb(0 0 0 / .32);
   --warn: 32 95% 28%;
   --purple: 263 45% 45%;
   --medal-bronze: 25 62% 36%;
@@ -195,8 +196,8 @@
   --medal-gold: 42 92% 31%;
   --medal-platinum: 192 55% 32%;
   --surface-solid: 0 0% 100%;
-  --tile-bg: rgb(15 23 42 / .035);
-  --tile-hover-bg: rgb(15 23 42 / .06);
+  --tile-bg: rgb(0 0 0 / .03);
+  --tile-hover-bg: rgb(0 0 0 / .055);
   --tile-border: rgb(0 0 0 / .06);
 
   /* ── Motion tokens: hover/press 120, small expand 180, panels 240, sheets/modals 320. ── */
@@ -243,7 +244,9 @@
   --z-skip: 100;       /* skip link */
 
   --app-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-  --app-font-serif: Georgia, serif;
+  /* Italic serif accent (the opening intro's «Zakir»): system book faces, Palatino on Windows / macOS. Used through
+     `font-accent`, one word per screen at most (greeting name, a page hero word), never in data or tables. */
+  --app-font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   /* `font-mono` is used ~1.8k times for the old "terminal" look; the reference uses Inter + tabular-nums,
      so the mono slot maps to the sans stack. Real code (code/pre/kbd/samp) keeps a monospace face. */
   --app-font-mono: var(--app-font-sans);
@@ -288,19 +291,18 @@
 
 body {
   background-color: hsl(var(--background));
-  background-image: linear-gradient(160deg, #f2f3f5 0%, #eceef2 100%);
+  background-image: linear-gradient(170deg, #f7f7f7 0%, #f0f0f0 100%);
   background-attachment: fixed;
 }
 
+/* Dark: no coloured glows, one faint light from above (the intro's black stage). */
 .dark body {
-  background-image:
-    radial-gradient(70% 50% at 15% 110%, rgb(0 191 255 / 0.07), transparent 55%),
-    radial-gradient(50% 40% at 85% -10%, rgb(0 191 255 / 0.05), transparent 50%),
-    radial-gradient(60% 50% at 50% 60%, rgb(34 195 120 / 0.04), transparent 60%);
+  background-image: radial-gradient(90% 60% at 50% -20%, rgb(255 255 255 / 0.045), transparent 60%);
   background-attachment: fixed;
 }
 
-/* ── Dark ("Apple liquid-glass dark terminal"): graphite #111214, hairlines white/12, accent #0a84ff ── */
+/* ── Dark (monochrome, owner 2026-10-24, after the opening intro): neutral near-black #0a0a0a, grey surfaces, white
+   hairlines; the primary is near-white (white buttons with black text, white active pills). Colour only for meaning. ── */
 .dark {
   --button-outline: rgba(255,255,255, .12);
   --badge-outline: rgba(255,255,255, .10);
@@ -308,56 +310,56 @@ body {
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .08);
 
-  --background: 220 8% 7%;
-  --foreground: 220 9% 93%;
-  --border: 220 4% 18%;
-  --card: 225 6% 12%;
-  --card-foreground: 220 9% 93%;
-  --card-border: 220 4% 19%;
-  --sidebar: 225 6% 10%;
-  --sidebar-foreground: 220 9% 93%;
-  --sidebar-border: 220 4% 18%;
-  --sidebar-primary: 210 100% 56%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 4% 16%;
-  --sidebar-accent-foreground: 220 9% 93%;
-  --sidebar-ring: 210 100% 63%;
-  --popover: 225 7% 12%;
-  --popover-foreground: 220 9% 93%;
-  --popover-border: 220 4% 22%;
-  --primary: 210 100% 56%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 220 4% 16%;
-  --secondary-foreground: 220 9% 93%;
-  --muted: 220 4% 15%;
-  --muted-foreground: 220 6% 68%;
-  --accent: 210 100% 56%;
-  --accent-foreground: 0 0% 100%;
-  --accent-soft: 210 100% 68%;
-  --primary-solid: 211 100% 45%;
+  --background: 0 0% 4%;
+  --foreground: 0 0% 94%;
+  --border: 0 0% 15%;
+  --card: 0 0% 8%;
+  --card-foreground: 0 0% 94%;
+  --card-border: 0 0% 16%;
+  --sidebar: 0 0% 6%;
+  --sidebar-foreground: 0 0% 94%;
+  --sidebar-border: 0 0% 15%;
+  --sidebar-primary: 0 0% 95%;
+  --sidebar-primary-foreground: 0 0% 6%;
+  --sidebar-accent: 0 0% 13%;
+  --sidebar-accent-foreground: 0 0% 94%;
+  --sidebar-ring: 0 0% 78%;
+  --popover: 0 0% 9%;
+  --popover-foreground: 0 0% 94%;
+  --popover-border: 0 0% 19%;
+  --primary: 0 0% 95%;
+  --primary-foreground: 0 0% 6%;
+  --secondary: 0 0% 13%;
+  --secondary-foreground: 0 0% 94%;
+  --muted: 0 0% 13%;
+  --muted-foreground: 0 0% 63%;
+  --accent: 0 0% 15%;
+  --accent-foreground: 0 0% 94%;
+  --accent-soft: 0 0% 84%;
+  --primary-solid: 0 0% 95%;
   --destructive: 0 85% 71%;
   --destructive-foreground: 0 0% 100%;
-  --input: 220 4% 22%;
-  --ring: 210 100% 63%;
+  --input: 0 0% 20%;
+  --ring: 0 0% 78%;
   --up: 151 50% 55%;
   --down: 0 85% 71%;
-  --chart-1: 210 100% 60%;
+  --chart-1: 214 32% 70%;
   --chart-2: 151 50% 55%;
   --chart-3: 46 74% 59%;
   --chart-4: 0 85% 71%;
   --chart-5: 263 47% 70%;
 
-  --glass-bg: rgb(255 255 255 / .06);
-  --glass-thick-bg: rgb(255 255 255 / .10);
-  --glass-hover-bg: rgb(255 255 255 / .10);
-  --glass-border: rgb(255 255 255 / .12);
+  --glass-bg: rgb(255 255 255 / .045);
+  --glass-thick-bg: rgb(255 255 255 / .08);
+  --glass-hover-bg: rgb(255 255 255 / .08);
+  --glass-border: rgb(255 255 255 / .09);
   --field-border: rgb(255 255 255 / .12);
-  --glass-hi: rgb(255 255 255 / .18);
-  --glass-lo: rgb(0 0 0 / .20);
-  --glass-shadow: 0 8px 32px rgb(0 0 0 / .35);
-  --glass-shadow-sm: 0 6px 24px -8px rgb(0 0 0 / .45);
-  --glass-sheen: rgb(255 255 255 / .14);
-  --glass-fallback: rgb(32 33 37 / .94);
+  --glass-hi: rgb(255 255 255 / .08);
+  --glass-lo: rgb(0 0 0 / .25);
+  --glass-shadow: 0 8px 32px rgb(0 0 0 / .5);
+  --glass-shadow-sm: 0 6px 24px -10px rgb(0 0 0 / .6);
+  --glass-sheen: rgb(255 255 255 / .05);
+  --glass-fallback: rgb(18 18 18 / .96);
   --glass-sat: 115%;
   --overlay: rgb(0 0 0 / .6);
   --warn: 38 92% 62%;
@@ -366,10 +368,10 @@ body {
   --medal-silver: 215 16% 76%;
   --medal-gold: 45 88% 60%;
   --medal-platinum: 190 62% 72%;
-  --surface-solid: 225 6% 11%;
-  --tile-bg: rgb(255 255 255 / .035);
-  --tile-hover-bg: rgb(255 255 255 / .06);
-  --tile-border: rgb(255 255 255 / .07);
+  --surface-solid: 0 0% 7%;
+  --tile-bg: rgb(255 255 255 / .03);
+  --tile-hover-bg: rgb(255 255 255 / .055);
+  --tile-border: rgb(255 255 255 / .06);
 
   --shadow-2xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.4);
@@ -381,40 +383,42 @@ body {
   --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.6);
 }
 
-/* Dim = lighter graphite variant of dark (html has both .dark and .dim). */
+/* Dim = lighter neutral graphite variant of dark (html has both .dark and .dim). */
 .dim {
-  --background: 225 6% 14%;
-  --foreground: 220 12% 92%;
-  --border: 220 5% 25%;
-  --card: 225 6% 18%;
-  --card-foreground: 220 12% 92%;
-  --card-border: 220 5% 26%;
-  --sidebar: 225 6% 16%;
-  --sidebar-foreground: 220 12% 92%;
-  --sidebar-border: 220 5% 25%;
-  --sidebar-accent: 220 5% 24%;
-  --sidebar-accent-foreground: 220 12% 92%;
-  --popover: 225 6% 19%;
-  --popover-foreground: 220 12% 92%;
-  --popover-border: 220 5% 29%;
-  --secondary: 220 5% 23%;
-  --secondary-foreground: 220 12% 92%;
-  --muted: 220 5% 22%;
-  --muted-foreground: 220 8% 76%;
-  --input: 220 5% 30%;
-  /* Lighter canvas ⇒ brighter semantic text so it keeps ≥4.5:1 on panels and 12% tinted pills. */
-  --primary: 210 100% 60%;
-  --accent: 210 100% 60%;
-  --accent-soft: 210 100% 72%;
+  --background: 0 0% 12%;
+  --foreground: 0 0% 93%;
+  --border: 0 0% 23%;
+  --card: 0 0% 16%;
+  --card-foreground: 0 0% 93%;
+  --card-border: 0 0% 24%;
+  --sidebar: 0 0% 14%;
+  --sidebar-foreground: 0 0% 93%;
+  --sidebar-border: 0 0% 23%;
+  --sidebar-accent: 0 0% 22%;
+  --sidebar-accent-foreground: 0 0% 93%;
+  --popover: 0 0% 17%;
+  --popover-foreground: 0 0% 93%;
+  --popover-border: 0 0% 27%;
+  --secondary: 0 0% 21%;
+  --secondary-foreground: 0 0% 93%;
+  --muted: 0 0% 20%;
+  --muted-foreground: 0 0% 72%;
+  --input: 0 0% 28%;
+  /* Lighter canvas: brighter semantic text so it keeps >= 4.5:1 on panels and 12% tinted pills. */
+  --primary: 0 0% 94%;
+  --primary-solid: 0 0% 94%;
+  --primary-foreground: 0 0% 8%;
+  --accent: 0 0% 22%;
+  --accent-soft: 0 0% 86%;
   --up: 151 50% 58%;
   --down: 0 85% 75%;
   --destructive: 0 85% 75%;
   --warn: 38 92% 66%;
   --purple: 263 60% 80%;
-  --surface-solid: 225 6% 17%;
+  --surface-solid: 0 0% 15%;
   --glass-bg: rgb(255 255 255 / .065);
   --glass-thick-bg: rgb(255 255 255 / .11);
-  --glass-fallback: rgb(44 45 50 / .95);
+  --glass-fallback: rgb(40 40 40 / .95);
   --button-outline: rgba(255,255,255, .12);
   --badge-outline: rgba(255,255,255, .10);
   --elevate-1: rgba(255,255,255, .035);
@@ -642,6 +646,32 @@ body {
 @utility dur-3 { transition-duration: var(--dur-3); animation-duration: var(--dur-3); }
 @utility dur-4 { transition-duration: var(--dur-4); animation-duration: var(--dur-4); }
 @utility ease-smooth { transition-timing-function: var(--ease); animation-timing-function: var(--ease); }
+
+/* ── Display type (monochrome pass, 2026-10-24) ──
+   text-display  page titles: larger, tightly tracked (PageHeader h1, the dashboard greeting).
+   text-hero     the one big number on a screen (dashboard «today»): huge, confident, tabular.
+   font-accent   the intro's italic serif for a single accent word; slightly larger so its x-height meets the sans. */
+@utility text-display {
+  font-size: clamp(1.5rem, 1.1rem + 0.9vw, 2rem);
+  line-height: 1.12;
+  letter-spacing: -0.032em;
+  font-weight: 600;
+}
+@utility text-hero {
+  font-size: clamp(2.5rem, 1.6rem + 2.4vw, 3.75rem);
+  line-height: 1;
+  letter-spacing: -0.045em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@utility font-accent {
+  font-family: var(--app-font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.08em;
+  letter-spacing: 0;
+}
+
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass::before,

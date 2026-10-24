@@ -12,8 +12,9 @@ const buttonVariants = cva(
       variant: {
         default:
            // @replit: no hover, and add primary border
-           // Solid fill is a touch deeper than --primary so white text clears 4.5:1 (WCAG AA).
-           "bg-primary-solid text-primary-foreground font-semibold border border-[hsl(var(--primary-solid)/0.6)] shadow-[inset_0_1px_0_rgb(255_255_255/0.22),0_6px_18px_-8px_hsl(var(--primary)/0.6)] hover:not-disabled:brightness-110",
+           // Monochrome primary (2026-10-24): near-white with black text in dark, ink with white text in light. No glow;
+           // hover steps the fill back a little (brightness would not move a white fill).
+           "bg-primary-solid text-primary-foreground font-semibold border border-transparent shadow-[inset_0_1px_0_rgb(255_255_255/0.2)] hover:not-disabled:bg-primary-solid/88",
         destructive:
           "border border-destructive/30 bg-destructive/12 text-destructive hover:not-disabled:bg-destructive/18",
         // Glass family: outline = hairline glass pill, secondary = thicker glass pill,
