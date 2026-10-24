@@ -126,8 +126,10 @@ function Header() {
     // gives it a solid fallback fill; the scroller's top fade band draws the boundary below it.
     // Same max width + gutters as <Page>, so header edges line up with page content.
     // `@container`: the clock and the search size themselves by the header's width (sidebar open or not), not the viewport.
+    // Neither side column shrinks below its buttons (max-content), so nothing slides under the clock; the clock itself
+    // compacts by the header width (market-clock.tsx) and the lock button waits for a 600 px header (also in the user menu).
     <div className="@container mx-auto w-full max-w-[calc(var(--page-max)_+_2_*_var(--page-px))] shrink-0 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] md:px-[var(--page-px)] md:pt-[calc(0.75rem+env(safe-area-inset-top))]">
-    <header className="app-header glass-thick glass-solid relative z-header grid h-[var(--header-h)] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-2xl px-2 md:px-2.5">
+    <header className="app-header glass-thick glass-solid relative z-header grid h-[var(--header-h)] grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)] items-center gap-2 rounded-2xl px-2 md:px-2.5">
       <div className="flex min-w-0 items-center gap-2">
         <SidebarTrigger aria-label={t("header.toggleMenu")} className="chip hidden h-10 w-10 shrink-0 hover:text-foreground md:inline-flex" />
         <Logo />
@@ -135,10 +137,10 @@ function Header() {
       </div>
       <MarketClock fit="container" className="justify-self-center" />
       <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
-        {guardMode !== "off" && <GuardMeter mode={guardMode} className="hidden lg:inline-flex" />}
+        {guardMode !== "off" && <GuardMeter mode={guardMode} className="hidden @[940px]:inline-flex" />}
         <LanguageMenu className="hidden md:grid" />
         <ThemeToggle className="hidden md:grid" />
-        <LockButton className="hidden md:grid" />
+        <LockButton className="hidden md:@[600px]:grid" />
         <AssistantButton className="hidden md:grid" />
         {user?.traderName && <NotificationBell traderName={user.traderName} />}
         <UserMenu />
