@@ -42,7 +42,8 @@ export function riskTone(state: string): Tone {
 export function actionTone(kind: NextActionKind): Tone {
   switch (kind) {
     case "breach_review": case "stopped": return "down";
-    case "near_stop": case "overdue_action": case "missing_eod": case "no_limits": case "plateau_review": return "warn";
+    case "near_stop": case "overdue_action": case "missing_eod": case "no_limits": case "plateau_review": case "at_stake": case "dropout_risk": return "warn";
+    case "trial_review": return "accent";
     case "eod_review": case "weekly_review": return "accent";
     case "none": return "up";
     default: return "neutral";

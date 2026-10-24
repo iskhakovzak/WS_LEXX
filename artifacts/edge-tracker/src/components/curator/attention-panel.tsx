@@ -11,6 +11,7 @@ import { links } from "@/lib/links";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { mistakeLabel } from "@/components/shared/mistake-labels";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { coachI18n } from "@/i18n/ns/coach";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
 import { curatorApi, useCuratorMutation, type CostQueueRow, type CostReasonKind, type TodayPayload } from "./api";
@@ -105,6 +106,9 @@ export function AttentionPanel({ data, onOpenTrader, onTemplate, onReviewDay, ex
             : r.type === "oneOnOne"
               ? <OneOnOneRow key={r.key} row={r} onOpenTrader={onOpenTrader} />
               : <NextRow key={r.key} row={r} onOpenTrader={onOpenTrader} onTemplate={onTemplate} />))}
+          {!!data.nextActionsMore && (
+            <li className="px-1 text-xs text-muted-foreground">{coachI18n.t("priority.moreInDigest", { count: data.nextActionsMore })}</li>
+          )}
           {rows.length > VISIBLE && (
             <li>
               <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="inline-flex min-h-8 items-center px-1 text-xs text-primary hover:underline">

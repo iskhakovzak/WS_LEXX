@@ -147,6 +147,8 @@ export const SETTINGS = {
 
   // Curator queue (lib/daily/costQueue)
   "curator.queueCarryDays": { group: "curator", type: "number", default: 2, min: 0, max: 10, step: 1, unit: "days" },
+  // R11: «Следующие шаги» keep this many steps (urgent ones ≥ 80 always); the rest waits for the 17:30 digest.
+  "curator.capacity": { group: "curator", type: "number", default: 6, min: 1, max: 30, step: 1, unit: "count" },
 
   // Gamification (lib/gamification/*): monthly seasons, curator league, recognition, setup mastery, streak freeze
   "gamification.enabled": { group: "gamification", type: "boolean", default: true },

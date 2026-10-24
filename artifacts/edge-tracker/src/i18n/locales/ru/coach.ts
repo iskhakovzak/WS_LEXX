@@ -87,4 +87,7 @@ export default {
     scheduleFailed: "Не удалось назначить разбор",
     showMore: "Ещё {count}",
   },
+  priority: {
+    moreInDigest: { one: "Ещё {count} шаг — в вечерней сводке", few: "Ещё {count} шага — в вечерней сводке", many: "Ещё {count} шагов — в вечерней сводке", other: "Ещё {count} шага — в вечерней сводке" },
+  },
 } as const;

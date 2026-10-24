@@ -35,8 +35,12 @@ export type Scope = "mine" | "desk";
 export type Phase = "premarket" | "session" | "afterclose" | "weekend";
 export type NextActionKind =
   | "breach_review" | "stopped" | "near_stop" | "eod_review" | "weekly_review" | "overdue_action"
-  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "plateau_review" | "none";
-export type NextAction = { kind: NextActionKind; label: string; priority: number; href: string };
+  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "plateau_review"
+  | "at_stake" | "dropout_risk" | "trial_review" | "none";
+/** R11 score breakdown ($ at stake, stagnation, dropout risk, overdue reviews, rule trial; total ≤ 79). */
+export type PriorityScore = { atStake: number; stagnation: number; dropout: number; sla: number; trial: number; total: number };
+/** `priority`: urgent steps keep their fixed priority (≥ 80), the rest is the R11 score; `base` = the step's own priority. */
+export type NextAction = { kind: NextActionKind; label: string; priority: number; href: string; base?: number; score?: PriorityScore };
 export type WeekPoint = { week: string; net: number | null; trades: number };
 
 export type TraderSignal = {
@@ -103,6 +107,8 @@ export type TodayPayload = {
   queueWindow?: { days: number; includeOld: boolean; old: number; oldOverdue: number };
   overdueActions: { id: number; trader: string; title: string; dueOn: string; owner: string; daysOverdue: number }[];
   nextActions: (NextAction & { trader: string })[];
+  /** R11: steps beyond curator.capacity — they wait for the 17:30 digest. Absent on older API builds. */
+  nextActionsMore?: number;
   /** OLGA-18: wards whose last 1:1 is older than 30 days (`days` null = never had one), longest first. */
   oneOnOneDue?: { trader: string; days: number | null; last: string | null }[];
   /** The queue by money (lib/daily/costQueue): most negative first; `resolved` — the curator already looked. Absent on older API builds. */

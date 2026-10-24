@@ -190,6 +190,7 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Queue carry-over", help: "How many past trading days unresolved problems stay in the curator queue." },
+      capacity: { label: "Steps in the curator list", help: "How many «Next steps» to show (urgent ones — breaches and stops — always on top). The rest goes to the evening digest." },
     },
     coach: {
       tauDefaultBps: { label: "Default spread", help: "How far a trader may differ from the desk in a slice while fewer than 5 traders have 30+ trades in it (bp of trade notional)." },

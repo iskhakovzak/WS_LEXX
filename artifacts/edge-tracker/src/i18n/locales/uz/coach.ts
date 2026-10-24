@@ -86,4 +86,7 @@ export default {
     scheduleFailed: "Tahlilni belgilab boʻlmadi",
     showMore: "Yana {count}",
   },
+  priority: {
+    moreInDigest: { one: "Yana {count} qadam — kechki xulosada", other: "Yana {count} qadam — kechki xulosada" },
+  },
 } satisfies Messages<typeof ru>;

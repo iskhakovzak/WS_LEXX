@@ -86,4 +86,7 @@ export default {
     scheduleFailed: "Could not schedule the review",
     showMore: "{count} more",
   },
+  priority: {
+    moreInDigest: { one: "{count} more step — in the evening digest", other: "{count} more steps — in the evening digest" },
+  },
 } satisfies Messages<typeof ru>;

@@ -190,6 +190,7 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Navbat dumi", help: "Hal qilinmagan muammolar kurator navbatida oʻtgan nechta savdo kuni qoladi." },
+      capacity: { label: "Kurator roʻyxatidagi qadamlar", help: "Nechta «Keyingi qadam» koʻrsatiladi (shoshilinchlari — buzilishlar va stop — doim tepada). Qolgani kechki xulosaga tushadi." },
     },
     coach: {
       tauDefaultBps: { label: "Standart tarqoqlik", help: "Kesimda 30+ savdoli treyderlar 5 tadan kam boʻlganda treyder deskdan qanchalik farq qilishi mumkin (savdo hajmidan b.p.)." },

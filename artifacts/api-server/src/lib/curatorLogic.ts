@@ -6,7 +6,11 @@
  *   breachStats        нарушения за 7 календарных дней → повторное ли сегодняшнее (эскалация руководителю деска)
  *   templateDiff       расхождение лимитов трейдера с шаблоном тира (Стажёр / Джун / Трейдер / Сеньор)
  *   weeklyTrend        P&L нетто по неделям (пн–пт) за N последних недель
- *   nextActionFor      следующий шаг куратора по трейдеру (один, самый важный)
+ *   nextActionFor      следующий шаг куратора по трейдеру (один, самый важный); срочное (≥ 80) — как было, остальное
+ *                      ранжируется счётом priorityScore (roadmap R11)
+ *   priorityScore      R11: $ под риском + стагнация + риск ухода + просрочка разборов + испытание, не выше 79
+ *   capNextActions     R11: в списке не больше curator.capacity шагов (срочные всегда), остальное — в вечернюю сводку
+ *   digestTopItems     R11: топ шагов для сводки куратора 17:30 (по одному на трейдера)
  *   BREACH_REASONS     справочник причин нарушения для «Разбора нарушения»
  */
 import { addDays, isWeekend } from "./tradingDate";
@@ -159,9 +163,47 @@ export function trendDirection(points: readonly WeekPoint[]): "up" | "down" | "f
 
 export type NextActionKind =
   | "breach_review" | "stopped" | "near_stop" | "eod_review" | "weekly_review" | "overdue_action"
-  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "plateau_review" | "none";
+  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "plateau_review"
+  | "at_stake" | "dropout_risk" | "trial_review" | "none";
 
-export type NextAction = { kind: NextActionKind; label: string; priority: number; href: string };
+/** R11 score components (0–30, 0–25, 0–20, 0–15, 0–10; total capped at 79). */
+export type PriorityScore = { atStake: number; stagnation: number; dropout: number; sla: number; trial: number; total: number };
+
+/**
+ * `priority` — what lists sort by: an urgent step keeps its fixed priority (≥ 80), any other step gets the R11 score
+ * (0–79) when the coaching inputs are known; `base` = the step's own fixed priority (tie-break); `score` = the breakdown.
+ */
+export type NextAction = { kind: NextActionKind; label: string; priority: number; href: string; base?: number; score?: PriorityScore };
+
+/** Inputs of the R11 score (lib/curatorPriority loads them; the plateau comes from lib/plateauStore). */
+export type PriorityInputs = {
+  /** Mean daily net of the last 20 trading days, shrunk toward the desk ($); null = no trades. */
+  shrunkMean20: number | null;
+  /** Σ |$ per active day| of the trader's edge-map LEAK slices (R4). */
+  leakCostPerDay: number;
+  /** Active days in the last 20 trading days fell ≥ 40% vs the 20 before. */
+  activityDrop: boolean;
+  /** No green week in the last 6 weeks (with trades). */
+  noGreenWeek6: boolean;
+  /** Plan or EOD completion fell ≥ 30 percentage points (last 20 vs previous 20 trading days). */
+  completionDrop: boolean;
+  /** Review-queue items of the trader past their SLA (QUEUE_SLA_HOURS). */
+  overdueQueue: number;
+  /** R5 (Wave 2): a rule trial ends this week or hit futility. Always false until R5 lands. */
+  trialAttention?: boolean;
+};
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/** R11 priority score: $ at stake + stagnation + dropout + SLA + trial, capped at 79. Pure. */
+export function priorityScore(x: PriorityInputs, plateau: { plateau: boolean; escalationOpen: boolean } | null | undefined): PriorityScore {
+  const atStake = Math.round(clamp(Math.max(0, -(x.shrunkMean20 ?? 0)) + Math.max(0, x.leakCostPerDay), 0, 30));
+  const stagnation = plateau?.escalationOpen ? 25 : plateau?.plateau ? 12 : 0;
+  const dropout = (x.activityDrop ? 10 : 0) + (x.noGreenWeek6 ? 5 : 0) + (x.completionDrop ? 5 : 0);
+  const sla = Math.min(15, 5 * Math.max(0, x.overdueQueue));
+  const trial = x.trialAttention ? 10 : 0;
+  return { atStake, stagnation, dropout, sla, trial, total: Math.min(79, atStake + stagnation + dropout + sla + trial) };
+}
 
 export type NextActionInput = {
   trader: string;
@@ -178,7 +220,9 @@ export type NextActionInput = {
   /** Дней с последней 1:1 (null — не было ни одной). */
   daysSinceOneOnOne: number | null;
   /** R6 plateau (lib/plateauStore): an open escalation asks for a templated 1:1 review. */
-  plateau?: { escalationOpen: boolean } | null;
+  plateau?: { plateau?: boolean; escalationOpen: boolean } | null;
+  /** R11 inputs; absent → the old fixed priorities. */
+  coach?: PriorityInputs | null;
 };
 
 const enc = encodeURIComponent;
@@ -203,8 +247,43 @@ export function nextActionFor(x: NextActionInput, lang: Lang = "ru"): NextAction
   if (x.daysSinceOneOnOne == null || x.daysSinceOneOnOne > 14) {
     cands.push({ kind: "one_on_one", priority: 20, label: x.daysSinceOneOnOne == null ? L("next.one_on_one_first") : L("next.one_on_one_days", { days: x.daysSinceOneOnOne }), href: `/academy/mentor?student=${t}` });
   }
-  if (!cands.length) return { kind: "none", priority: 0, label: L("next.none"), href: `/curator?trader=${t}` };
-  return cands.sort((a, b) => b.priority - a.priority)[0];
+  const top = cands.sort((a, b) => b.priority - a.priority)[0];
+  if (top && top.priority >= 80) return top; // urgent: breach review, stopped, near stop — as before
+  if (!x.coach) return top ?? { kind: "none", priority: 0, label: L("next.none"), href: `/curator?trader=${t}` };
+  // R11: everything below urgent is ranked by the score; the shown step is the operational one, else the score's
+  // dominant reason (stagnation → a plateau review, money at stake, dropout risk, a trial needing a verdict).
+  const score = priorityScore(x.coach, x.plateau ? { plateau: x.plateau.plateau ?? true, escalationOpen: x.plateau.escalationOpen } : null);
+  if (top) return { ...top, base: top.priority, priority: score.total, score };
+  if (score.total <= 0) return { kind: "none", priority: 0, label: L("next.none"), href: `/curator?trader=${t}`, base: 0, score };
+  const reasons: ["plateau_review" | "at_stake" | "dropout_risk" | "trial_review", number][] = [["plateau_review", score.stagnation], ["at_stake", score.atStake], ["dropout_risk", score.dropout], ["trial_review", score.trial]];
+  const [kind] = reasons.sort((a, b) => b[1] - a[1])[0];
+  return { kind, label: L(`next.${kind}`), priority: score.total, href: `/curator?trader=${t}`, base: 0, score };
+}
+
+/** Lists order: priority, then the step's own fixed priority, then the trader. */
+const byPriority = (a: NextAction & { trader: string }, b: NextAction & { trader: string }) =>
+  b.priority - a.priority || (b.base ?? b.priority) - (a.base ?? a.priority) || a.trader.localeCompare(b.trader, "ru");
+
+/**
+ * R11 capacity: the «Следующие шаги» list keeps every urgent step (≥ 80) and fills up to `capacity` with the rest; the
+ * others wait for the curator's 17:30 digest. Pure.
+ */
+export function capNextActions<T extends NextAction & { trader: string }>(list: readonly T[], capacity: number): { shown: T[]; more: T[] } {
+  const sorted = [...list].filter((a) => a.kind !== "none").sort(byPriority);
+  const urgent = sorted.filter((a) => a.priority >= 80);
+  const rest = sorted.filter((a) => a.priority < 80);
+  const room = Math.max(0, capacity - urgent.length);
+  return { shown: [...urgent, ...rest.slice(0, room)], more: rest.slice(room) };
+}
+
+/**
+ * R11 / R3: the top items of a curator's 17:30 digest — one per trader (the trader's top step), urgent first, then by
+ * score; «none» never. Pure: the digest job (another branch) renders and sends them, deduped per curator and day.
+ */
+export function digestTopItems<T extends NextAction & { trader: string }>(list: readonly T[], n = 3): T[] {
+  const best = new Map<string, T>();
+  for (const a of [...list].sort(byPriority)) if (a.kind !== "none" && !best.has(a.trader)) best.set(a.trader, a);
+  return [...best.values()].sort(byPriority).slice(0, n);
 }
 
 // ─── разбор нарушения ───────────────────────────────────────────────────────
