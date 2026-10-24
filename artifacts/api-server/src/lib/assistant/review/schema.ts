@@ -105,7 +105,7 @@ export const REVIEW_JSON_SCHEMA: Record<string, unknown> = obj({
   }),
   wentWell: { type: "array", items: pointJson },
   wentWrong: { type: "array", items: pointJson },
-  edge: nullable(obj({ text: str("What the trader's own edge map says about this situation."), interval: nullable(str("The interval as given, e.g. '$12–$70 per day (80%)'")) })),
+  edge: nullable(obj({ text: str("What the trader's own edge map says about this situation."), interval: nullable(str("The interval in the review language with its unit, e.g. '$12 to $70 a day (80%)', translated")) })),
   tomorrow: obj({ if: str("The cue (situation) — when …"), then: str("The concrete action — I will …") }),
   whatIf: nullable(obj({
     type: { type: "string", enum: [...WHATIF_TYPES] },
