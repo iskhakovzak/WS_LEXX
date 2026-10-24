@@ -1,7 +1,6 @@
 /**
  * The trade chart of the detail sheet (chart engine, lazy chunk) with the morning plan's levels (Волна 2 п. 2.12).
- * The plan request lives here, so it fires only when a chart actually mounts; on «Обзор» the chart mounts once it is
- * scrolled near the viewport (InViewSheetChart), on «График» at once.
+ * It sits in the sheet's hero, so it mounts with the sheet; the plan request lives here and fires with it.
  */
 import * as React from "react";
 import type { Trade } from "@workspace/api-client-react";
@@ -19,33 +18,18 @@ export function parseTargetPrice(target: string | null): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** Height the chart's toolbar (modes, intervals, layers) adds above the plot. */
+const TOOLBAR_PX = 64;
+
 type ChartProps = { trade: Trade; ideaTarget: string | null; height: number; showModes: boolean; fallbackClassName: string };
 
 export function SheetChart({ trade, ideaTarget, height, showModes, fallbackClassName }: ChartProps) {
   const plan = usePlanOverlay(trade.id > 0 ? { tradeId: trade.id } : null);
   return (
-    <React.Suspense fallback={<Skeleton className={fallbackClassName} />}>
+    <React.Suspense fallback={<Skeleton className={fallbackClassName} style={{ height: height + (showModes ? TOOLBAR_PX : 0) }} />}>
       <LazyReplayChart
         trade={trade} target={parseTargetPrice(ideaTarget)} height={height} mode="analysis" showModes={showModes} planLevels={plan?.levels}
       />
     </React.Suspense>
   );
-}
-
-/** Mounts the chart (and its bars / plan requests) only once the slot is near the viewport; stays mounted after. */
-export function InViewSheetChart(p: ChartProps) {
-  const ref = React.useRef<HTMLDivElement | null>(null);
-  const [seen, setSeen] = React.useState(false);
-  React.useEffect(() => {
-    if (seen) return;
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") { setSeen(true); return; }
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) { setSeen(true); io.disconnect(); }
-    }, { rootMargin: "200px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [seen]);
-  if (seen) return <SheetChart {...p} />;
-  return <div ref={ref} className={p.fallbackClassName} aria-hidden="true" />;
 }
