@@ -13,6 +13,7 @@ import { fmtCount, fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ratingsI18n } from "@/i18n/ns/ratings";
 import { comparePersonNames, personName } from "@/i18n";
+import { PersonLink } from "@/components/shared/person-link";
 import { gamificationTitlesQuery } from "@/lib/api/queries";
 import { TitleTag } from "@/components/shared/season-bar";
 import { titleLabel } from "@/components/shared/gamification-labels";
@@ -266,7 +267,7 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                        <PersonLink name={l.trader} className="truncate text-sm font-semibold text-foreground" />
                         <TitleTag label={titleLabel(titles[l.trader])} />
                         {l.trader === me && <Pill tone="accent">{t("shared.you")}</Pill>}
                       </div>
@@ -363,7 +364,7 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
                             <Avatar name={l.trader} highlight={mine} className="h-7 w-7" />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-foreground">{personName(l.trader)}</span>
+                                <PersonLink name={l.trader} className="font-medium text-foreground" />
                                 <TitleTag label={titleLabel(titles[l.trader])} />
                                 {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                               </div>
@@ -414,7 +415,7 @@ export function LeaderboardTab({ me, staff = false }: { me: string | null; staff
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="truncate font-medium text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                      <PersonLink name={l.trader} className="truncate font-medium text-foreground" />
                       <TitleTag label={titleLabel(titles[l.trader])} />
                       {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                     </div>

@@ -22,7 +22,7 @@ import {
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
   Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, TextSearch,
   GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2, Gamepad2, Shapes, ScanSearch,
-  ChartSpline, Scale,
+  ChartSpline, Scale, IdCard,
 } from "lucide-react";
 import { shellI18n, type NavGroupKey, type NavKey, type NavShortKey } from "@/i18n/ns/shell";
 import ruShell from "@/i18n/locales/ru/shell";
@@ -177,6 +177,9 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /** Sections reached from the header (user menu, bell): searchable and titled, never in the sidebar. */
 const HEADER_ITEMS: NavItem[] = [
+  // Everyone's own profile (scouting card, biography, analytics) — from the user menu and the palette, like settings
+  // (the sidebar stays at 16 rows, nav-structure); /people/:id (a member's, staff / own) is titled by it too.
+  nav("profile", { href: "/profile", icon: IdCard, keywords: "profile профиль характеристика автобиография карточка трейдера мой профиль people", hidden: true, also: ["/people"] }),
   nav("settings", { href: "/settings", icon: Settings, keywords: "settings профиль тема настройки", hidden: true }),
   nav("notifications", { href: "/notifications", icon: Bell, keywords: "notifications уведомления колокольчик инбокс inbox упоминания алерты", hidden: true, goKey: "n" }),
 ];

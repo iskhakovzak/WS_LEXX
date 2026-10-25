@@ -69,6 +69,7 @@ import weeklyReviewRouter from "./weekly-review";
 import eodRouter from "./eod";
 import edgeRouter from "./edge";
 import myEdgeRouter from "./my-edge";
+import profileRouter from "./profile";
 import statsAggregateRouter from "./stats-aggregate";
 import permissionsRouter from "./permissions";
 import whatifRouter from "./whatif";
@@ -181,6 +182,7 @@ router.use(weeklyReviewRouter);
 router.use(eodRouter);
 router.use(edgeRouter);
 router.use(myEdgeRouter); // «Мой edge и рынок» (analytics)
+router.use(profileRouter); // «Профиль»: scouting card, biography, analytics (GET /profile/me, /profile/:id)
 router.use(statsAggregateRouter); // GET /stats/aggregate — staff /stats and /analytics without raw trades
 router.use(permissionsRouter);
 router.use(whatifRouter);

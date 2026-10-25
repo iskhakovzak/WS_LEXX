@@ -38,6 +38,7 @@ export default {
     authorNotes: "Сводка автора",
     juniorNotes: "Сводка джунов",
     ratings: "Рейтинги",
+    profile: "Мой профиль",
     scaling: "План масштабирования",
     topResults: "Топ",
     activity: "Активность",
@@ -310,6 +311,7 @@ export default {
     },
     setupVariation: "вариация сетапа",
     people: {
+      card: "Профиль: характеристика и автобиография",
       heading: "Люди",
       actionsFor: "{name}: открыть",
       profile: "Профиль в кабинете куратора",

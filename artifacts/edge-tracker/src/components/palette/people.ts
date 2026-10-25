@@ -3,7 +3,7 @@
  * and what can be opened for a person given the viewer's role. Texts: shell `palette.people.*`.
  */
 import * as React from "react";
-import { BookText, CandlestickChart, ClipboardList, NotebookPen, UserRound, UsersRound } from "lucide-react";
+import { BookText, CandlestickChart, ClipboardList, IdCard, NotebookPen, UserRound, UsersRound } from "lucide-react";
 import { personName } from "@/i18n";
 import { shellI18n } from "@/i18n/ns/shell";
 import { rankPeople, type DirectoryPerson, type SearchHit } from "@/components/people/search";
@@ -43,6 +43,9 @@ export function personActions(p: DirectoryPerson, ctx: { isCurator: boolean; me:
   const isTrader = p.role === "trader";
   const self = p.name === ctx.me;
   const out: PersonAction[] = [];
+  // The personal profile first: one's own, or anyone's for staff (staff are traders too). Others' profiles are closed.
+  if (self) out.push({ id: "card", label: t("palette.people.card"), icon: IdCard, path: "/profile" });
+  else if (ctx.isCurator) out.push({ id: "card", label: t("palette.people.card"), icon: IdCard, path: `/people/${p.id}` });
   if (ctx.isCurator && isTrader) out.push({ id: "profile", label: t("palette.people.profile"), icon: UserRound, path: `/curator?trader=${enc(p.name)}` });
   if (isTrader && (ctx.isCurator || self)) {
     out.push({ id: "trades", label: t("palette.people.trades"), icon: CandlestickChart, path: `/trades?trader=${enc(p.name)}` });

@@ -37,6 +37,7 @@ export default {
     authorNotes: "Author’s notes",
     juniorNotes: "Junior notes",
     ratings: "Ratings",
+    profile: "My profile",
     scaling: "Scaling plan",
     topResults: "Top",
     activity: "Activity",
@@ -306,6 +307,7 @@ export default {
     },
     setupVariation: "setup variation",
     people: {
+      card: "Profile: characteristic and biography",
       heading: "People",
       actionsFor: "{name}: open",
       profile: "Profile in the curator desk",
