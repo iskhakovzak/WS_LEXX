@@ -54,18 +54,20 @@ export const TILE_SPECS: Record<SectionId, TileSpec> = {
   afterLoss: { section: "edge", sizes: INSIGHT, tall: ["s", "m"], size: "s", on: true, meOnly: true },
   holdTime: { section: "edge", sizes: INSIGHT, tall: ["s", "m"], size: "s", on: true, meOnly: true },
   fees: { section: "edge", sizes: INSIGHT, tall: ["s", "m"], size: "s", on: true, meOnly: true },
-  weekdays: { section: "edge", sizes: INSIGHT, tall: ["s", "m"], size: "m", on: false, meOnly: true },
+  weekdays: { section: "edge", sizes: INSIGHT, tall: ["s", "m"], size: "m", on: true, meOnly: true },
   positions: { section: "trades", sizes: ["xl"], size: "xl", on: true, conditional: true },
   recent: { section: "trades", sizes: ALL, size: "m", on: true },
   // The desk table needs half a row at least (trader · day · week · limit).
   desk: { section: "trades", sizes: ["m", "l", "xl"], size: "m", on: true, staffOnly: true, conditional: true },
+  // Owner, 2026-10-25: «по стандарту у всех всё включено» — every tile on by default, ordered so the rows pack
+  // without stretching (xl · m+m · s+s+s · xl).
+  brief: { section: "extras", sizes: ["m", "l", "xl"], size: "xl", on: true },
   checkin: { section: "extras", sizes: ["m", "l", "xl"], size: "m", on: true },
-  brief: { section: "extras", sizes: ["m", "l", "xl"], size: "xl", on: false },
-  sectors: { section: "extras", sizes: ["m", "l", "xl"], size: "m", on: false },
-  macro: { section: "extras", sizes: INSIGHT, size: "s", on: false },
-  dna: { section: "extras", sizes: INSIGHT, size: "s", on: false },
-  quote: { section: "extras", sizes: INSIGHT, size: "s", on: false },
-  psychology: { section: "extras", sizes: ["m", "l", "xl"], size: "xl", on: false },
+  sectors: { section: "extras", sizes: ["m", "l", "xl"], size: "m", on: true },
+  macro: { section: "extras", sizes: INSIGHT, size: "s", on: true },
+  dna: { section: "extras", sizes: INSIGHT, size: "s", on: true },
+  quote: { section: "extras", sizes: INSIGHT, size: "s", on: true },
+  psychology: { section: "extras", sizes: ["m", "l", "xl"], size: "xl", on: true },
 };
 
 export const TILE_ORDER = Object.keys(TILE_SPECS) as SectionId[];

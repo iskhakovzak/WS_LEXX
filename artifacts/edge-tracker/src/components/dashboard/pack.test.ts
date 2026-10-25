@@ -40,11 +40,12 @@ describe("spanFor", () => {
 describe("the default dashboard (all tiles)", () => {
   const edge = sectionItems(defaultLayout(), "edge").map((it) => T(it.id, it.size, it.rows));
 
-  it("«Ваш edge»: «Где уходят деньги» L × 2 rows with «Серия» and «Номер сделки» beside it, then three compact tiles", () => {
+  it("«Ваш edge»: «Где уходят деньги» L × 2 rows with «Серия» and «Номер сделки» beside it, three compact tiles, then «Дни недели» across", () => {
     expect(pic(edge)).toEqual([
       "AAAAAAAABBBB",
       "AAAAAAAACCCC",
       "DDDDEEEEFFFF",
+      "GGGGGGGGGGGG",
     ]);
   });
 
@@ -63,7 +64,7 @@ describe("the default dashboard (all tiles)", () => {
       "AAAAAA",
       "BBBCCC",
       "DDDEEE",
-      "FFFFFF",
+      "FFFGGG",
     ]);
     invariants(packTiles(edge, 6), 6);
   });

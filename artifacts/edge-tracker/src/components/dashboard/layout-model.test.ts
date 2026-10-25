@@ -10,9 +10,14 @@ import { reconcile } from "./dashboard-layout";
 const ids = (l: DashLayout) => l.items.map((it) => it.id);
 
 describe("defaultLayout", () => {
-  it("the composed dashboard: plan + curve, the edge bento, trades, the morning check-in; extras and «Дни недели» off", () => {
+  it("every tile is on by default (owner: «по стандарту у всех всё включено»), in section order", () => {
     const l = defaultLayout();
-    expect(ids(l)).toEqual(["attention", "equity", "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "fees", "positions", "recent", "desk", "checkin"]);
+    expect(ids(l)).toEqual([
+      "attention", "equity",
+      "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "fees", "weekdays",
+      "positions", "recent", "desk",
+      "brief", "checkin", "sectors", "macro", "dna", "quote", "psychology",
+    ]);
     expect(l.items.find((it) => it.id === "leaks")).toEqual({ id: "leaks", size: "l", rows: 2 });
     expect(l.items.find((it) => it.id === "attention")?.size).toBe("s");
   });
@@ -39,7 +44,7 @@ describe("layoutFromV6 (one-time migration)", () => {
   it("a v6 «Команда» default had the own tiles hidden: they come back (they hide on «Команда» by themselves)", () => {
     const l = layoutFromV6({ order: [], hidden: ["leaks", "streaks", "seqDay", "afterLoss", "holdTime", "fees", "weekdays", "checkin"], scope: "team" });
     expect(ids(l as DashLayout)).toEqual(expect.arrayContaining(["leaks", "streaks", "fees"]));
-    expect(ids(l as DashLayout)).not.toContain("weekdays");
+    expect(ids(l as DashLayout)).toContain("weekdays");
     expect(ids(l as DashLayout)).not.toContain("checkin");
   });
 
@@ -79,7 +84,7 @@ describe("sanitizeLayout (what comes from the account)", () => {
 describe("edit operations", () => {
   it("move inside a section only; the others stay", () => {
     const l = moveItem(defaultLayout(), "fees", 0);
-    expect(sectionItems(l, "edge").map((it) => it.id)).toEqual(["fees", "leaks", "streaks", "seqDay", "afterLoss", "holdTime"]);
+    expect(sectionItems(l, "edge").map((it) => it.id)).toEqual(["fees", "leaks", "streaks", "seqDay", "afterLoss", "holdTime", "weekdays"]);
     expect(ids(l).slice(0, 2)).toEqual(["attention", "equity"]);
     expect(moveOnto(defaultLayout(), "fees", "recent")).toEqual(defaultLayout());
   });
@@ -93,10 +98,10 @@ describe("edit operations", () => {
   });
 
   it("add: at the end of its section by default, at its default size", () => {
-    const l = addItem(defaultLayout(), "weekdays");
+    const l = addItem(removeItem(defaultLayout(), "weekdays").layout, "weekdays");
     expect(sectionItems(l, "edge").at(-1)).toEqual({ id: "weekdays", size: "m" });
-    const l2 = addItem(defaultLayout(), "brief", { index: 0 });
-    expect(sectionItems(l2, "extras").map((it) => it.id)).toEqual(["brief", "checkin"]);
+    const l2 = addItem(removeItem(defaultLayout(), "quote").layout, "quote", { index: 0 });
+    expect(sectionItems(l2, "extras").map((it) => it.id)).toEqual(["quote", "brief", "checkin", "sectors", "macro", "dna", "psychology"]);
   });
 
   it("resize keeps 2 rows only where the size allows it", () => {
