@@ -6,6 +6,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 // Trainer eligibility (lib/trainer/eligibility): no close-auction ticker-days in these fixtures.
 vi.mock("../trainer/eligibilityStore", () => ({ blockedTickerDays: vi.fn(async () => new Set<string>()), _resetEligibilityMemo: vi.fn() }));
+// Day rule (lib/sim/catalyst.ts): the fixture day gapped with a catalyst; no DB.
+vi.mock("../sim/catalystStore", async (orig) => {
+  const real = await orig<typeof import("../sim/catalystStore")>();
+  return {
+    ...real,
+    catalystKeys: vi.fn(async (keys: { ticker: string; day: string }[]) => new Set(keys.map((k) => `${k.ticker}:${k.day}`))),
+    archivedGaps: vi.fn(async (keys: { ticker: string; day: string }[]) => new Map(keys.map((k) => [`${k.ticker}:${k.day}`, 9.4]))),
+    catalystsOf: vi.fn(async () => [
+      { kind: "news", source: "news", timing: "pre", at: "2026-10-16T11:00:00.000Z", headline: "ZZ Top Holdings (ZZTOP) jumps on record 2026 guidance", publisher: "Wire", url: "https://news.example/zztop-2026-10-16" },
+      { kind: "earnings", source: "earnings", timing: "prevAfter", at: "2026-10-15", headline: null, publisher: "Finviz", url: null },
+    ]),
+    fundamentalsOf: vi.fn(async () => ({ names: ["ZZ Top Holdings Inc"], shares: 50_000_000, floatShares: 41_234_567, capNow: 2.2e9 })),
+  };
+});
 import type { SimBar } from "../sim/engine";
 
 const DAY = "2026-10-16";
@@ -32,7 +46,8 @@ vi.mock("../sim/store", async (orig) => {
   const real = await orig<typeof import("../sim/store")>();
   return {
     ...real,
-    intradayCandidates: vi.fn(async () => [{ ticker: TICKER, day: DAY, tf: "1m", desk: 3, gapPct: 1.2, rangePct: 3.4, prevClose: 41 }]),
+    intradayCandidates: vi.fn(async () => [{ ticker: TICKER, day: DAY, tf: "1m", desk: 3, gapPct: 9.4, rangePct: 3.4, prevClose: 41 }]),
+    loadDailySeries: vi.fn(async () => ({ bars: [], dates: [] })),
     swingCandidates: vi.fn(async () => []),
     loadDayBars: vi.fn(async () => ({ bars: DAY_BARS, tf: "1m", prevClose: 41 })),
     loadPrevDay: vi.fn(async () => ({ bars: PREV_BARS, levels: { h: 41, l: 40, c: PREV_BARS[PREV_BARS.length - 1].c } })),

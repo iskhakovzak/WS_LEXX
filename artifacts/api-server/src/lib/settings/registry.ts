@@ -238,6 +238,8 @@ export const SETTINGS = {
   "trainer.slipUsd": { group: "trainer", type: "number", default: 0.01, min: 0, max: 0.5, step: 0.005, unit: "usd" },
   "trainer.stopSlipUsd": { group: "trainer", type: "number", default: 0.02, min: 0, max: 1, step: 0.005, unit: "usd" },
   "trainer.oneRUsd": { group: "trainer", type: "number", default: 50, min: 1, max: 10_000, step: 5, unit: "usd" },
+  // Every trainer ticker-day opens at least this far from the previous close, up or down, with a catalyst (lib/sim/catalyst.ts).
+  "trainer.minGapPct": { group: "trainer", type: "number", default: 7, min: 1, max: 50, step: 0.5, unit: "pct" },
   "trainer.dailyEnabled": { group: "trainer", type: "boolean", default: true },
   "trainer.dailyPickTime": { group: "trainer", type: "time", default: "08:30" },
   "trainer.dailyPlayMinutes": { group: "trainer", type: "number", default: 120, min: 30, max: 390, step: 15, unit: "minutes", pilot: true },

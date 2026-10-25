@@ -2,12 +2,14 @@
  * «Задача дня» — pure rules (no I/O): which ticker-day becomes a challenge, the desk ranking, the streak.
  *
  * Pick (one per NY challenge date, the same for the whole desk):
+ *   - day rule (owner 2026-10-25, lib/sim/catalyst.ts): only ticker-days that opened ≥ trainer.minGapPct from the
+ *     previous close (up or down) with a catalyst (an earnings report or news) — never relaxed by any level below;
  *   - candidates = archived 1-minute ticker-days before the challenge date (the archive's own regular-session stats:
  *     range % and gap %, the same day features the simulator filters on), liquid (open ≥ trainer.dailyMinPriceUsd,
  *     day volume ≥ trainer.dailyMinVolume) and interesting (range in [dailyMinRangePct, dailyMaxRangePct]);
  *   - never a ticker-day any desk trader traded (whoever traded it would know how it went), never a ticker-day used
  *     in the last trainer.dailyNoRepeatDays challenges, and not one of the last 5 challenge tickers;
- *   - deterministic: the eligible list is ranked by «interest» (a mid-size range, a moderate gap), the best 20 are
+ *   - deterministic: the eligible list is ranked by «interest» (a readable range, not a 300 % runner), the best 20 are
  *     ordered by a hash of (date, ticker, day) and the first wins — the same inputs always give the same pick;
  *   - when the archive has no clean day, the rule relaxes step by step (fewest desk traders first, then the
  *     liquidity / range filters); traders who traded a relaxed pick are left out of its ranking.
@@ -15,6 +17,7 @@
  * last. Shown to the viewer after they finished, or for everyone after the close (16:00 NY of the challenge date).
  */
 import { createHash } from "node:crypto";
+import { isGapDay } from "../sim/catalyst";
 
 export type DailyCandidate = {
   ticker: string;
@@ -25,6 +28,8 @@ export type DailyCandidate = {
   gapPct: number | null;
   /** Distinct desk traders who traded the ticker that day. */
   deskTraders: number;
+  /** The day has a known catalyst (lib/sim/catalystStore); absent = unknown = not eligible. */
+  catalyst?: boolean;
 };
 
 export type PickRules = {
@@ -32,6 +37,8 @@ export type PickRules = {
   minVolume: number;
   minRangePct: number;
   maxRangePct: number;
+  /** trainer.minGapPct: |gap| at least this, up or down. */
+  minGapPct: number;
 };
 
 /** Stable 32-bit hash of a string (sha256 prefix). */
@@ -39,11 +46,12 @@ export function hash32(s: string): number {
   return createHash("sha256").update(s).digest().readUInt32BE(0);
 }
 
-/** Higher = a better challenge: a 3–6 % range reads well intraday; a big gap makes the open a coin flip. */
+/** Higher = a better challenge (every candidate already gapped ≥ the threshold): a 6–10 % range reads well
+ *  intraday; a gap past 40 % is a lottery ticket more than a lesson. */
 export function interestOf(c: Pick<DailyCandidate, "rangePct" | "gapPct">): number {
   const range = c.rangePct ?? 0;
   const gap = Math.abs(c.gapPct ?? 0);
-  return -Math.abs(range - 4.5) - Math.max(0, gap - 3) * 0.5;
+  return -Math.abs(range - 8) - Math.max(0, gap - 40) * 0.2;
 }
 
 const TICKER_RE = /^[A-Z]{1,5}$/;
@@ -59,7 +67,8 @@ export function pickOrder(
   usedKeys: ReadonlySet<string>,
   recentTickers: ReadonlySet<string>,
 ): DailyCandidate[] {
-  const base = cands.filter((c) => c.day < date && TICKER_RE.test(c.ticker) && !usedKeys.has(`${c.ticker}:${c.day}`));
+  const base = cands.filter((c) => c.day < date && TICKER_RE.test(c.ticker) && !usedKeys.has(`${c.ticker}:${c.day}`)
+    && isGapDay(c.gapPct, rules.minGapPct) && c.catalyst === true);
   const liquid = (c: DailyCandidate) => (c.open ?? 0) >= rules.minPrice && c.volume >= rules.minVolume;
   const ranged = (c: DailyCandidate) => c.rangePct != null && c.rangePct >= rules.minRangePct && c.rangePct <= rules.maxRangePct;
   const fresh = (c: DailyCandidate) => !recentTickers.has(c.ticker);

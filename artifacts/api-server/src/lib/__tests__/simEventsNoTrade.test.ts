@@ -193,6 +193,7 @@ describe("base series and context", () => {
     expect(c.levels.atr14).toBe(0.8);
     const done = contextOf({ ...g, status: "finished" as never }, daily);
     expect(new Date(done.daily[1][0] * 1000).toISOString().slice(0, 10)).toBe("2026-10-15");
-    expect(contextOf({ ...g, mode: "swing" as never }, daily)).toEqual({ daily: [], levels: { pdh: null, pdl: null, pdc: null, pmh: null, pml: null, gapPct: null, atr14: null } });
+    expect(contextOf({ ...g, mode: "swing" as never }, daily)).toEqual({ daily: [], levels: { pdh: null, pdl: null, pdc: null, pmh: null, pml: null, gapPct: null, atr14: null, hi52: null, lo52: null }, day: null });
+    expect(c.levels).toMatchObject({ hi52: 10.2, lo52: 8.9 });
   });
 });

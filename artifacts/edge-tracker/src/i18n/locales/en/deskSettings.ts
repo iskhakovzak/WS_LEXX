@@ -350,6 +350,7 @@ export default {
       slipUsd: { label: "Market order slippage, $", help: "On top of half the spread, per share." },
       stopSlipUsd: { label: "Stop slippage, $", help: "A stop fills worse by this amount; on a gap, from the bar open." },
       oneRUsd: { label: "Default 1R, $", help: "For risk sizing when the trader’s plan and limits set no 1R." },
+      minGapPct: { label: "Min exercise gap, %", help: "Every trainer day opens at least this far from the previous close, up or down, and has a catalyst (an earnings report or news)." },
       dailyEnabled: { label: "«Daily challenge»", help: "One ticker-day for the whole desk every trading day." },
       dailyPickTime: { label: "Challenge pick time", help: "New York time, weekdays. Also closes the rating window of the «Daily challenge»." },
       dailyPlayMinutes: { label: "Challenge length", help: "Minutes of the session played from the open." },

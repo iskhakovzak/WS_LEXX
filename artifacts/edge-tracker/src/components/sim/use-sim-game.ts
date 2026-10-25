@@ -14,6 +14,7 @@ import { toast } from "@/hooks/use-toast";
 import { humanizeApiError } from "@/lib/api/errors";
 import { simI18n } from "@/i18n/ns/simulator";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
+import { trainerI18n } from "@/i18n/ns/trainer";
 import { simApi, simKeys, type Difficulty, type OrderKind, type IntradayTf, type OwnPick, type PublicState, type Reveal, type SimEvent, type SimMode, type Snapshot, type StepBody, type StepResult } from "./api";
 import { breakEvenStop, entryBracket, fromWire, halfQty, maxQtyFor, positionAfter, roundPrice, stepErrorOf, stopFits, type Speed } from "./model";
 import { trainerApi, trainerKeys } from "./trainer-api";
@@ -258,7 +259,9 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
       void qc.invalidateQueries({ queryKey: simKeys.active() });
       void qc.invalidateQueries({ queryKey: trainerKeys.all });
     } catch (err) {
-      toast({ title: humanizeApiError(err, t("errors.load")), variant: "destructive" });
+      // 404 noChallenge: no ticker-day passed the day rule (gap + catalyst) — the challenge comes after the close.
+      const reason = (err as { body?: { details?: { reason?: unknown } } }).body?.details?.reason;
+      toast({ title: reason === "noChallenge" ? trainerI18n.t("daily.noDay") : humanizeApiError(err, t("errors.load")), variant: "destructive" });
     } finally {
       setStarting(false);
     }

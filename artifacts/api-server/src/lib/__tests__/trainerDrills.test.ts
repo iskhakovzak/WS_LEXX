@@ -98,6 +98,17 @@ vi.mock("../trainer/drillStore", () => ({
 vi.mock("../sim/store", async (orig) => ({
   ...(await orig<typeof import("../sim/store")>()),
   loadDayBars: vi.fn(async () => ({ bars: BARS, tf: "1m", prevClose: 37 })),
+  loadDailyBefore: vi.fn(async () => Array.from({ length: 130 }, (_, i) => ({ date: `2026-0${1 + Math.floor(i / 22)}-${String(1 + (i % 22)).padStart(2, "0")}`, o: 30 + i * 0.05, h: 31 + i * 0.05, l: 29 + i * 0.05, c: 30.5 + i * 0.05, v: 1e6 }))),
+  loadDailySeries: vi.fn(async () => ({ bars: [], dates: [] })),
+}));
+// Day rule: gap and catalyst per test (gap 9.4 % with a catalyst by default); catalyst text names the company.
+const dayRule = { gap: 9.4 as number | null, catalyst: true };
+vi.mock("../sim/catalystStore", async (orig) => ({
+  ...(await orig<typeof import("../sim/catalystStore")>()),
+  archivedGaps: vi.fn(async (keys: { ticker: string; day: string }[]) => new Map(keys.map((k) => [`${k.ticker}:${k.day}`, dayRule.gap]))),
+  catalystKeys: vi.fn(async (keys: { ticker: string; day: string }[]) => new Set(dayRule.catalyst ? keys.map((k) => `${k.ticker}:${k.day}`) : [])),
+  catalystsOf: vi.fn(async () => [{ kind: "news", source: "news", timing: "pre", at: "2026-10-08T11:30:00.000Z", headline: "Quizworks Corp (QZXW) wins a big contract", publisher: "Wire", url: "https://x.example/qzxw" }]),
+  fundamentalsOf: vi.fn(async () => ({ names: ["Quizworks Corp"], shares: 10_000_000, floatShares: 9_000_000, capNow: null })),
 }));
 
 const viewer = { id: 2, name: "Артур", staff: false };
@@ -117,9 +128,29 @@ describe("drill service", () => {
     expect(json).not.toContain(String(ENTRY_PX));
     expect(json).not.toContain("Кирилл");
     for (const b of d.bars) expect(REAL.has(b.t)).toBe(false);
-    expect(Object.keys(d).sort()).toEqual(["bars", "id", "setupCode", "setupId", "setupName", "side", "tf", "window"]);
+    expect(Object.keys(d).sort()).toEqual(["bars", "context", "id", "setupCode", "setupId", "setupName", "side", "tf", "window"]);
+    expect(json).not.toMatch(/quizworks|x.example|2026/i);
+    expect(d.context?.day.catalysts[0].headline).toContain("wins a big contract");
+    expect(d.context?.day.cap).toEqual({ usd: 370_000_000, bucket: "small", basis: "day" });
+    expect(d.context?.daily.length).toBe(130);
+    expect(d.context?.daily.every((b) => new Date(b.t * 1000).getUTCFullYear() <= 2001)).toBe(true);
     expect(d.bars).toHaveLength(d.window.to + 1);
     expect(d).toMatchObject({ setupCode: "1.3", setupName: "ORB 5 минут", side: "long", tf: "1m" });
+  });
+
+  it("never serves a drill on a day under the gap threshold or without a catalyst (404, not a relaxed pick)", async () => {
+    const { nextDrill, _resetDrillMemo } = await import("../trainer/drillService");
+    try {
+      for (const rule of [{ gap: 6.9, catalyst: true }, { gap: -6.9, catalyst: true }, { gap: null, catalyst: true }, { gap: 25, catalyst: false }]) {
+        Object.assign(dayRule, rule);
+        _resetDrillMemo();
+        await expect(nextDrill(viewer, null, () => 0.5)).rejects.toMatchObject({ status: 404 });
+      }
+      Object.assign(dayRule, { gap: -12, catalyst: true });
+      await expect(nextDrill(viewer, null, () => 0.5)).resolves.toMatchObject({ id: DRILL.id });
+    } finally {
+      Object.assign(dayRule, { gap: 9.4, catalyst: true });
+    }
   });
 
   it("never serves a trader his own trade", async () => {
@@ -135,6 +166,7 @@ describe("drill service", () => {
     expect(a.score).toBe(100);
     expect(a.masteryDelta).toBe(1);
     expect(a.revealed).toEqual({ ticker: TICKER, date: DAY, source: "playbook_example" });
+    expect(a.context?.day.catalysts[0].full?.headline).toBe("Quizworks Corp (QZXW) wins a big contract");
     expect(a.explanation.key).toBe("trainer.findEntry.verdict.exact");
     expect(a.barsAfter.length).toBeGreaterThan(0);
     expect(a.barsAfter[0].t).toBeGreaterThan(d.bars[d.bars.length - 1].t);
