@@ -193,7 +193,8 @@ export function FocusGlow({ container, motion }: { container: React.RefObject<HT
       glow.style.width = `${b.width}px`;
       glow.style.height = `${b.height}px`;
       glow.style.borderRadius = getComputedStyle(target).borderRadius;
-      glow.style.transform = `translate3d(${b.left - r.left}px, ${b.top - r.top}px, 0)`;
+      // Relative to the form's padding box (where an absolute child starts).
+      glow.style.transform = `translate3d(${b.left - r.left - root.clientLeft}px, ${b.top - r.top - root.clientTop}px, 0)`;
       glow.style.opacity = "1";
       shown = true;
     };
@@ -206,10 +207,26 @@ export function FocusGlow({ container, motion }: { container: React.RefObject<HT
     // The form resized (viewport, a hint line appearing): follow the focused field at once, no glide.
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => { if (shown) place(document.activeElement, true); }) : null;
     ro?.observe(root);
+    // The fields rise in with an animation: a field focused on load is measured mid-way, so settle on it once any
+    // entrance animation / transition inside the form (or of the card around it) ends — no ring left offset.
+    const settle = () => { if (shown) place(document.activeElement, true); };
+    const host = root.parentElement ?? root;
     root.addEventListener("focusin", onIn);
     root.addEventListener("focusout", onOut);
+    host.addEventListener("animationend", settle);
+    host.addEventListener("transitionend", settle);
+    window.addEventListener("resize", settle);
     place(document.activeElement);
-    return () => { ro?.disconnect(); root.removeEventListener("focusin", onIn); root.removeEventListener("focusout", onOut); };
+    const late = window.setTimeout(settle, 1200);
+    return () => {
+      ro?.disconnect();
+      window.clearTimeout(late);
+      root.removeEventListener("focusin", onIn);
+      root.removeEventListener("focusout", onOut);
+      host.removeEventListener("animationend", settle);
+      host.removeEventListener("transitionend", settle);
+      window.removeEventListener("resize", settle);
+    };
   }, [container, motion]);
   return (
     <span
