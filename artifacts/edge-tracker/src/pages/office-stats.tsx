@@ -6,7 +6,7 @@
  * before the response leaves it, so nothing here relies on hiding for privacy; admin blocks are simply not mounted.
  */
 import * as React from "react";
-import { AlertTriangle, Building2, CalendarDays, Clock, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Building2, CalendarDays, Clock, Landmark, LayoutDashboard, Layers, ShieldAlert, Users } from "lucide-react";
 import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,10 @@ import { StrategyMonthMatrix, StrategyMultiples, StrategyTable, TotalNetByStrate
 import { BestWorstDays, DailyHistogram, StreaksPanel, Tickers, TimeOfDay, Underwater, WeekdayProfile } from "@/components/office-stats/time-risk";
 import { CapitalPanel, CsvButton, RulesPopover, TradersTable } from "@/components/office-stats/team";
 import { MonthlyPanel } from "@/components/office-stats/monthly";
+import { OfficeRecommendations } from "@/components/office-stats/recommendations";
+import { WeeklyPulseCard } from "@/components/office-stats/pulse-card";
+import { officeRecsI18n } from "@/i18n/ns/officeRecs";
+import { scrollBehavior } from "@/lib/motion";
 import { officeI18n } from "@/i18n/ns/officeStats";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
@@ -38,6 +42,7 @@ const minYmd = (a: string, b: string) => (a < b ? a : b);
 
 const SECTIONS = [
   { id: "overview", icon: LayoutDashboard },
+  { id: "advice", icon: BadgeCheck },
   { id: "strategies", icon: Layers },
   { id: "time", icon: Clock },
   { id: "risk", icon: ShieldAlert },
@@ -48,7 +53,7 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
   return (
     // The scroller's scroll-padding (--scroll-pad-top) already clears a stuck bar; the margin is just breathing room.
     <section id={`office-${id}`} aria-labelledby={`office-${id}-h`} className="flex scroll-mt-3 flex-col gap-[var(--grid-gap)]">
-      <div className="flex items-baseline gap-3 pt-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pt-2">
         <h2 id={`office-${id}-h`} className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
         {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
       </div>
@@ -56,8 +61,6 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
     </section>
   );
 }
-
-const scrollBehavior = (): ScrollBehavior => (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
 
 /**
  * Section jump: land the heading right under the sticky section nav, measured (the nav's height and the header
@@ -255,7 +258,7 @@ export default function OfficeStatsPage() {
           <div className="glass-panel scrollbar-none flex h-10 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-surface-solid/95 p-[3px] shadow-sm">
             {SECTIONS.filter((s) => !("admin" in s) || isAdmin).map((s) => (
               <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`page.sections.${s.id}`)}
+                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{s.id === "advice" ? officeRecsI18n.t("title") : t(`page.sections.${s.id}`)}
               </button>
             ))}
           </div>
@@ -296,17 +299,24 @@ export default function OfficeStatsPage() {
           )}
 
           <Section id="overview" title={t("page.sections.overview")} hint={periodLabel}>
-            <InsightsStrip insights={view.insights} />
+            <BentoGrid>
+              {view.insights.length > 0 && <div className="lg:col-span-12 xl:col-span-8"><InsightsStrip insights={view.insights} /></div>}
+              <WeeklyPulseCard ctx={ctx} today={data.today} onPickDay={pickDay} className={view.insights.length > 0 ? "lg:col-span-12 xl:col-span-4" : "lg:col-span-6"} />
+            </BentoGrid>
             <KpiRow ctx={ctx} period={view.period} onJump={jump} />
             <BentoGrid>
               <GeneralChart ctx={ctx} onPickDay={pickDay} />
               <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-4">
-                <PacePanel ctx={ctx} />
+                <PacePanel ctx={ctx} today={data.today} />
                 <div id="office-day" className="flex-1"><DayDetail ctx={ctx} date={day} onClear={() => setDay(null)} /></div>
               </div>
             </BentoGrid>
             <CalendarHeatmap ctx={ctx} selected={day} onPickDay={pickDay} onPickMonth={pickMonth} />
             <MonthlyPanel ctx={ctx} today={data.today} onPickMonth={pickMonth} />
+          </Section>
+
+          <Section id="advice" title={officeRecsI18n.t("title")} hint={officeRecsI18n.t("hint")}>
+            <OfficeRecommendations />
           </Section>
 
           <Section id="strategies" title={t("page.sections.strategies")} hint={t("page.strategiesHint")}>

@@ -35,8 +35,12 @@ export interface LineCanvasProps {
   xMin: number;
   xMax: number;
   xTicks?: { x: number; label: string }[];
-  /** Horizontal goal line (+ optional diagonal from (xMin, 0) to (xMax, goal)). */
-  goal?: { y: number; label: string; pace?: boolean } | null;
+  /**
+   * Horizontal goal line (+ optional diagonal from (xMin, 0) to (xMax, goal)). `fit: false` keeps the y-scale on the
+   * data: a goal beyond it is not drawn as a line, a chip with `offLabel` at the top edge says where it is, and the pace
+   * diagonal is clipped to the plot.
+   */
+  goal?: { y: number; label: string; pace?: boolean; fit?: boolean; offLabel?: string } | null;
   fmtY: (v: number) => string;
   height: number;
   compact?: boolean;
@@ -102,7 +106,7 @@ export function LineCanvas({
   const geo = React.useMemo(() => {
     let min = 0, max = 0;
     for (const s of series) for (const p of s.points) { if (p.y < min) min = p.y; if (p.y > max) max = p.y; }
-    if (goal) { min = Math.min(min, goal.y); max = Math.max(max, goal.y); }
+    if (goal && goal.fit !== false) { min = Math.min(min, goal.y); max = Math.max(max, goal.y); }
     if (max - min < 1e-9) { max += 1; min -= 1; }
     const span = max - min;
     min -= span * 0.08; max += span * 0.1;
@@ -177,9 +181,12 @@ export function LineCanvas({
       }
     }
     // goal + pace
+    const goalOff = !!goal && goal.fit === false && (goal.y > geo.max || goal.y < geo.min);
     if (goal) {
       const gy = Math.round(sy(goal.y)) + 0.5;
       ctx.save();
+      // Clip to the plot: with a data-fitted scale the goal (and the far end of its pace line) can lie outside.
+      ctx.beginPath(); ctx.rect(x0, yTop, x1 - x0, yBot - yTop); ctx.clip();
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = th.fg(0.55);
       ctx.lineWidth = 1.25;
@@ -191,13 +198,14 @@ export function LineCanvas({
       }
       ctx.restore();
       if (!compact) {
+        const text = goalOff ? (goal.offLabel ?? goal.label) : goal.label;
         ctx.font = `600 11px ${th.font}`;
-        const w = ctx.measureText(goal.label).width + 12;
-        const lx = x0 + 6, ly = gy - 10;
+        const w = ctx.measureText(text).width + 12;
+        const lx = x0 + 6, ly = goalOff ? (goal.y > geo.max ? yTop + 10 : yBot - 10) : gy - 10;
         ctx.fillStyle = th.labelBg;
         roundRect(ctx, lx, ly - 9, w, 18, 9); ctx.fill();
         ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-        ctx.fillText(goal.label, lx + 6, ly + 0.5);
+        ctx.fillText(text, lx + 6, ly + 0.5);
         ctx.font = `500 11px ${th.font}`;
       }
     }

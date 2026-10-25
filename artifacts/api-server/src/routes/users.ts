@@ -249,6 +249,8 @@ const SettingsPatch = z.object({
   quotes: QuotePrefsSchema.nullable().optional(),
   /** Dashboard tiles: order, sizes, hidden ones (lib/people/dashboardLayoutSchema). null removes it (= the default). */
   dashboardLayout: DashboardLayoutSchema.nullable().optional(),
+  /** «Рекомендации офису» hidden for a week: rec id → until YYYY-MM-DD (lib/officeRecs/redact). null removes it. */
+  officeRecsHidden: z.record(z.string().min(1).max(80), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).refine((m) => Object.keys(m).length <= 50).nullable().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -283,6 +285,8 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   else if (body.data.quotes !== undefined) set.quotes = body.data.quotes;
   if (body.data.dashboardLayout === null) drop.push("dashboardLayout");
   else if (body.data.dashboardLayout !== undefined) set.dashboardLayout = body.data.dashboardLayout;
+  if (body.data.officeRecsHidden === null) drop.push("officeRecsHidden");
+  else if (body.data.officeRecsHidden !== undefined) set.officeRecsHidden = body.data.officeRecsHidden;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,
