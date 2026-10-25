@@ -1,7 +1,7 @@
 /**
  * Sign-in background: the same slowly drifting smoke as the opening intro (lib/smoke), so the
- * intro fades away into the very same scene (owner, 2026-10-24). Decorative only; one still frame under
- * prefers-reduced-motion; stops when the sign-in page unmounts.
+ * intro fades away into the very same scene (owner, 2026-10-24). Decorative only; one still frame when
+ * «Движение и анимации» is off; stops when the sign-in page unmounts.
  */
 import { useEffect, useRef } from "react";
 import { useReducedMotion } from "@/lib/motion";

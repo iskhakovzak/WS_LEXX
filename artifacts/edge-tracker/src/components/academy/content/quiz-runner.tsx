@@ -3,6 +3,7 @@
  * (POST /academy/content/quizzes/:id/attempts). Correct answers and explanations are shown only after a pass
  * or when attempts are exhausted (server decides: state.revealAnswers).
  */
+import { scrollBehavior } from "@/lib/motion";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, Loader2, RotateCcw, Send, XCircle } from "lucide-react";
 import { Link } from "wouter";
@@ -65,7 +66,7 @@ export function QuizRunner({ data, canAnswer }: { data: QuizResponse; canAnswer:
       setResult({ grade: r.grade, feedback: r.feedback, state: r.state, answers });
       toast({ title: r.grade.passed ? t("quiz.passed") : t("quiz.failed"), description: t("quiz.scoreWithPct", { score: r.grade.score, count: r.grade.maxScore, pct: Math.round(r.grade.pct) }) });
       void invalidateAcademy(qc);
-      document.getElementById("main-content")?.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      document.getElementById("main-content")?.scrollTo({ top: 0, behavior: scrollBehavior() });
     } catch (e) {
       toast({ title: t("quiz.sendFailed"), description: (e as Error).message, variant: "destructive" });
     } finally {

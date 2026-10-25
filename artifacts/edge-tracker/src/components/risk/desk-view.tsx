@@ -184,7 +184,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           <StatCard
             label={t("desk.kpiPnl")}
             icon={Wallet}
-            value={s.pnlNetToday != null ? <LiveNumber value={s.pnlNetToday} format={(n) => fmtUsd(n, { signed: true, decimals: 0 })} /> : "—"}
+            value={s.pnlNetToday != null ? <LiveNumber value={s.pnlNetToday} format={(n) => fmtUsd(n, { signed: true, decimals: 0 })} countIn countInDuration={600} /> : "—"}
             valueTitle={s.pnlNetToday != null ? fmtUsd(s.pnlNetToday, { signed: true }) : undefined}
             tone={toneOf(s.pnlNetToday)}
             hint={s.tradesToday

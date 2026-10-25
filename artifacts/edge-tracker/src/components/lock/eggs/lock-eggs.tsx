@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { type EggStats, loadEggStats, saveEggStats } from "@/lib/lock/eggs/egg-store";
 import { LOCK_EGG_ATTR } from "@/lib/lock/eggs/keys";
 import { lockEggsI18n } from "@/i18n/ns/lockEggs";
-import { prefersReducedMotion } from "../ambient";
+import { motionReduced } from "@/lib/motion";
 import { SERIF, type GameProps } from "./game-props";
 
 type GameId = "pong" | "candle" | "breath";
@@ -53,7 +53,7 @@ export function LockEggs({ owner, dim }: { owner: string | null; dim: boolean })
   const menuRef = React.useRef<HTMLDivElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
-  const reduced = React.useMemo(prefersReducedMotion, []);
+  const reduced = React.useMemo(motionReduced, []);
 
   const update = React.useCallback((f: (s: EggStats) => EggStats) => {
     setStats((prev) => {

@@ -11,10 +11,6 @@ const FRAME_MS = 33;
 
 export const isPaused = () => (typeof document !== "undefined" && (document.hidden || !document.hasFocus()));
 
-export function prefersReducedMotion(): boolean {
-  return typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 /** Whether motion runs for the «Движение и анимации» choice (on unless switched off; an old «auto» = on). */
 export function bgMotionAllowed(pref: "auto" | "on" | "off"): boolean {
   return pref !== "off";

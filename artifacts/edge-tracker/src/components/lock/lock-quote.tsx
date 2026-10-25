@@ -13,32 +13,9 @@ import { crossFadeMs, lockQuotePlan } from "@/lib/quotes/lock-timer";
 import { SURFACE_WEIGHTS, quoteForSlot } from "@/lib/quotes/rotation";
 import { pushHistory, readPrefs, readQuoteLang, readRotation, seedFor, useLockQuoteInterval, writeRotation } from "@/lib/quotes/store";
 import type { Quote } from "@/lib/quotes/types";
+import { WordReveal } from "@/components/shared/word-reveal";
 
 const SERIF = "var(--app-font-serif)";
-
-/** Per-word delay of the entrance, capped so a long quote is fully in within ~1.4 s. */
-const wordStep = (n: number) => Math.min(55, 1400 / Math.max(1, n));
-
-/** The quote text as words that surface one after another (ws-word-in, index.css). */
-function Words({ text, fade }: { text: string; fade: number }) {
-  const words = text.split(/(\s+)/);
-  const count = words.filter((w) => w.trim()).length;
-  const step = wordStep(count);
-  let i = 0;
-  return (
-    <>
-      {words.map((w, k) => {
-        if (!w.trim()) return w;
-        const d = Math.round(fade * 0.35 + i++ * step);
-        return (
-          <span key={k} className="inline-block" style={{ animation: `ws-word-in 700ms cubic-bezier(0.2, 0.9, 0.2, 1) ${d}ms both` }}>
-            {w}
-          </span>
-        );
-      })}
-    </>
-  );
-}
 
 type Layers = { a: Quote | null; b: Quote | null; front: "a" | "b" };
 
@@ -111,7 +88,7 @@ export function LockQuote({ owner, dim, motion }: { owner: string | null; dim: b
             className="text-balance text-[clamp(1rem,1.55vw,1.3rem)] leading-relaxed text-white/90"
             style={{ fontFamily: SERIF, textShadow: "0 1px 18px rgba(0,0,0,0.75), 0 0 2px rgba(0,0,0,0.5)" }}
           >
-            {on && fade ? <Words key={q.id} text={q.text} fade={fade} /> : q.text}
+            {on && fade ? <WordReveal key={q.id} text={q.text} delay={Math.round(fade * 0.35)} /> : q.text}
           </blockquote>
           <figcaption
             key={on ? `c-${q.id}` : "c"}

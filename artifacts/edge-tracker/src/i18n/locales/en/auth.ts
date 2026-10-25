@@ -2,6 +2,11 @@ import type { Messages } from "../../core";
 import type ru from "../ru/auth";
 
 export default {
+  greeting: {
+    first: "Welcome",
+    back: "Welcome back",
+    backName: "Welcome back, {name}",
+  },
   tagline: "Prop trading desk journal",
   steps: {
     aria: "Sign-in steps",
@@ -65,6 +70,7 @@ export default {
     failedPin: "Couldn’t save the PIN",
   },
   clock: {
+    ny: "New York {time} · {phase}",
     weekend: "Weekend",
     premarket: "Premarket",
     regular: "Regular session",

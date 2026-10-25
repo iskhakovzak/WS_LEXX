@@ -18,10 +18,11 @@ import { useBgImageUrl } from "@/components/appearance/backdrop-layer";
 import { useMarketClock } from "@/components/shell/market-clock";
 import { LockClock } from "@/components/lock/lock-clock";
 import { UnlockForm } from "@/components/lock/unlock-form";
-import { useAmbientDrift } from "@/components/lock/ambient";
+import { useAmbientDrift } from "@/hooks/use-ambient-drift";
 import { LockEggs } from "@/components/lock/eggs/lock-eggs";
 import { LockQuote } from "@/components/lock/lock-quote";
 import { WsMark } from "@/components/ds/brand";
+import { HeroRing, playHeroExit } from "@/components/shared/hero-fx";
 import { useAppearance } from "@/contexts/appearance-context";
 import { useTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -72,23 +73,7 @@ export default function LockScreen() {
     const box = formWrapRef.current?.getBoundingClientRect();
     const origin = box ? { x: box.left + box.width / 2, y: box.top + 24 } : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     setRevealOrigin(origin);
-    if (!motion) return;
-    const ease = "cubic-bezier(0.2, 0.9, 0.2, 1)";
-    const ring = ringRef.current;
-    if (ring) { ring.style.left = `${origin.x}px`; ring.style.top = `${origin.y}px`; }
-    contentRef.current?.animate?.(
-      [{ transform: "translateY(0)", opacity: 1, filter: "blur(0px)" }, { transform: "translateY(-36px)", opacity: 0, filter: "blur(10px)" }],
-      { duration: 520, easing: ease, fill: "forwards" },
-    );
-    sceneRef.current?.animate?.(
-      [{ transform: "scale(1)", filter: "brightness(1)" }, { transform: "scale(1.12)", filter: "brightness(1.35)" }],
-      { duration: 700, easing: ease, fill: "forwards" },
-    );
-    const a = ring?.animate?.(
-      [{ transform: "translate(-50%, -50%) scale(0.2)", opacity: 0.9 }, { transform: "translate(-50%, -50%) scale(14)", opacity: 0 }],
-      { duration: 700, easing: "cubic-bezier(0.1, 0.7, 0.3, 1)", fill: "forwards" },
-    );
-    await (a ? a.finished.then(() => undefined, () => undefined) : new Promise((r) => window.setTimeout(r, 650)));
+    await playHeroExit({ motion, origin, ring: ringRef.current, scene: sceneRef.current, content: [contentRef.current] });
   }, [motion]);
 
   const kind = appearance.bg.kind;
@@ -167,7 +152,7 @@ export default function LockScreen() {
 
       <LockEggs owner={user?.role !== "guest" ? user?.traderName ?? null : null} dim={typing} />
       {/* The ring that opens from the check on a right code. */}
-      <div ref={ringRef} aria-hidden="true" className="pointer-events-none fixed h-24 w-24 rounded-full border border-white/70 opacity-0" style={{ left: "50%", top: "50%", boxShadow: "0 0 40px rgba(255,255,255,0.35), inset 0 0 30px rgba(255,255,255,0.2)" }} />
+      <HeroRing ref={ringRef} />
     </div>
   );
 }

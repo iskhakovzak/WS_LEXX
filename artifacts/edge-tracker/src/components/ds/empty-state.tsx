@@ -92,7 +92,7 @@ export function EmptyState({
   }
   return (
     <div data-empty-state="full" className={cn("flex flex-col items-center justify-center gap-3 px-6 py-10 text-center", className)}>
-      <div className="relative text-muted-foreground">
+      <div className="ws-float relative text-muted-foreground">
         <EngravedArt art={art} size={88} />
         {Icon && (
           <span className="absolute -bottom-0.5 -right-1 grid h-7 w-7 place-items-center rounded-full border border-[var(--glass-border)] bg-background text-foreground/80 shadow-[0_0_0_3px_hsl(var(--background))]">

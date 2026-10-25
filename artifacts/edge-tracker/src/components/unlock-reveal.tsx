@@ -22,27 +22,42 @@ export function UnlockReveal({ motion, onDone }: { motion: boolean; onDone: () =
     if (!motion || !el?.animate) { onDone(); return; }
     const p = origin ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     origin = null;
-    // The farthest corner, so the circle ends past every edge.
-    const r = Math.hypot(Math.max(p.x, window.innerWidth - p.x), Math.max(p.y, window.innerHeight - p.y)) + 40;
-    const at = `${Math.round(p.x)}px ${Math.round(p.y)}px`;
-    const mask = (rad: number, soft: number) => `radial-gradient(circle at ${at}, transparent ${rad}px, black ${rad + soft}px)`;
-    const a = el.animate(
-      [
-        { maskImage: mask(0, 2), WebkitMaskImage: mask(0, 2), opacity: 1 },
-        { maskImage: mask(r * 0.55, 120), WebkitMaskImage: mask(r * 0.55, 120), opacity: 1, offset: 0.6 },
-        { maskImage: mask(r, 160), WebkitMaskImage: mask(r, 160), opacity: 0 },
-      ] as Keyframe[],
-      { duration: DURATION_MS, easing: "cubic-bezier(0.3, 0.6, 0.2, 1)", fill: "forwards" },
-    );
-    const main = document.getElementById("main-content") ?? document.querySelector("main");
-    main?.animate?.(
-      [{ transform: "scale(1.035)", filter: "blur(6px)" }, { transform: "scale(1)", filter: "blur(0px)" }],
-      { duration: DURATION_MS, easing: "cubic-bezier(0.2, 0.9, 0.2, 1)" },
-    );
+    // The site mounts under the black cover in this same commit (routes, the first page's chunk): start the iris once
+    // the main thread is free (or after 350 ms), so its first frames are not eaten by that work.
+    let a: Animation | null = null;
     let done = false;
     const finish = () => { if (!done) { done = true; onDone(); } };
-    a.finished.then(finish, finish);
-    return () => { a.cancel(); finish(); };
+    const ric = "requestIdleCallback" in window;
+    const start = () => { if (!done) { a = play(el, p); a.finished.then(finish, finish); } };
+    const idle = ric ? window.requestIdleCallback(start, { timeout: 350 }) : window.setTimeout(start, 60);
+    return () => {
+      if (ric) window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle);
+      a?.cancel();
+      finish();
+    };
   }, [motion, onDone]);
   return <div ref={ref} aria-hidden="true" className="pointer-events-none fixed inset-0 z-tooltip bg-black print:hidden" />;
+}
+
+/** The iris itself: the black cover opens as a soft circle from `p`, the page under it settling from a slight zoom. */
+function play(el: HTMLDivElement, p: { x: number; y: number }): Animation {
+  // The farthest corner, so the circle ends past every edge.
+  const r = Math.hypot(Math.max(p.x, window.innerWidth - p.x), Math.max(p.y, window.innerHeight - p.y)) + 40;
+  const at = `${Math.round(p.x)}px ${Math.round(p.y)}px`;
+  const mask = (rad: number, soft: number) => `radial-gradient(circle at ${at}, transparent ${rad}px, black ${rad + soft}px)`;
+  const a = el.animate(
+    [
+      { maskImage: mask(0, 2), WebkitMaskImage: mask(0, 2), opacity: 1 },
+      { maskImage: mask(r * 0.55, 120), WebkitMaskImage: mask(r * 0.55, 120), opacity: 1, offset: 0.6 },
+      { maskImage: mask(r, 160), WebkitMaskImage: mask(r, 160), opacity: 0 },
+    ] as Keyframe[],
+    { duration: DURATION_MS, easing: "cubic-bezier(0.3, 0.6, 0.2, 1)", fill: "forwards" },
+  );
+  const main = document.getElementById("main-content") ?? document.querySelector("main");
+  main?.animate?.(
+    [{ transform: "scale(1.035)", filter: "blur(6px)" }, { transform: "scale(1)", filter: "blur(0px)" }],
+    { duration: DURATION_MS, easing: "cubic-bezier(0.2, 0.9, 0.2, 1)" },
+  );
+  return a;
 }
