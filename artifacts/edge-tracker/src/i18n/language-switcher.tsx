@@ -1,6 +1,7 @@
 
 import { Check, Languages } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ActivePill } from "@/components/ui/active-pill";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -74,11 +75,12 @@ export function LanguageSegmented({ className }: { className?: string }) {
           onClick={() => choose(l, `[data-i18n-focus="lang-seg-${l}"]`)}
           data-i18n-focus={`lang-seg-${l}`}
           className={cn(
-            "h-7 min-w-9 rounded-full px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            l === lang ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            "press relative h-7 min-w-9 rounded-full px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            l === lang ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <span aria-hidden="true">{LANG_META[l].code}</span>
+          {l === lang && <ActivePill layoutId="lang-seg-pill" />}
+          <span aria-hidden="true" className="relative">{LANG_META[l].code}</span>
           <span className="sr-only">{LANG_META[l].native}</span>
         </button>
       ))}

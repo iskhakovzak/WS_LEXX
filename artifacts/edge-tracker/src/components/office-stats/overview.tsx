@@ -72,7 +72,7 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
   const { t } = officeI18n.useT();
   const tot = focus.totals;
   const liveKey = `${ctx.liveKey ?? ""}:${focus.year}`;
-  const live = (v: number) => <LiveNumber value={v} format={(n) => fmtV(n, unit)} resetKey={liveKey} />;
+  const live = (v: number) => <LiveNumber value={v} format={(n) => fmtV(n, unit)} resetKey={liveKey} countIn countInDuration={600} />;
   const last = focus.days[focus.days.length - 1];
   const prevY = view.years.find((y) => y.year === focus.year - 1);
   const yoy = last ? sameDayValue(prevY, last.doy) : null;

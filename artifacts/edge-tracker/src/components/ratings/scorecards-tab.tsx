@@ -1,3 +1,4 @@
+import { scrollBehavior } from "@/lib/motion";
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ClipboardCheck, Crosshair, History, MessageSquareQuote, Pencil, Plus, Star, Trash2, TriangleAlert, Users } from "lucide-react";
@@ -201,7 +202,7 @@ export function ScorecardsTab({
 
   function showHistory(trader: string) {
     setFilter(trader);
-    requestAnimationFrame(() => journalRef.current?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }));
+    requestAnimationFrame(() => journalRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: "start" }));
   }
 
   if (isLoading) {

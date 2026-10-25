@@ -253,6 +253,9 @@ function AppContent() {
     wasSignedIn.current = isAuthenticated;
   }, [locked, isAuthenticated]);
   const endReveal = useCallback(() => setRevealing(false), []);
+  // Right after sign-in the account's look may not be loaded yet: the sign-in page put this browser's motion setting
+  // on <html data-motion> (lib/motion), which counts too.
+  const revealMotion = !useAppReducedMotion() || bgMotionAllowed(appearance.bg.motion);
   // Signed out (menu, 5 wrong codes, an expired session): the lock belonged to that session.
   useEffect(() => {
     if (!isAuthenticated && (lock.locked || lock.signedOut)) lockStore.reset();
@@ -293,7 +296,7 @@ function AppContent() {
           <Router />
         </WouterRouter>
       )}
-      {revealing && !locked && <UnlockReveal motion={bgMotionAllowed(appearance.bg.motion)} onDone={endReveal} />}
+      {revealing && !locked && <UnlockReveal motion={revealMotion} onDone={endReveal} />}
       <LockController />
     </>
   );

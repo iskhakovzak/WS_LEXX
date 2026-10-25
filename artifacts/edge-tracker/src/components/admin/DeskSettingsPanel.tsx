@@ -6,6 +6,7 @@
  * By default only the ~10 pilot settings (registry flag `pilot`, PILOT.md) are shown; «Показать все (N)» opens the rest
  * (remembered per browser). Rows with unsaved edits or server problems stay visible either way.
  */
+import { scrollBehavior } from "@/lib/motion";
 import { useMemo, useState } from "react";
 import { Save, SlidersHorizontal, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ const groupId = (group: string) => `desk-settings-group-${group}`;
 function jumpTo(id: string, focus = false) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: focus ? "center" : "start" });
+  el.scrollIntoView({ behavior: scrollBehavior(), block: focus ? "center" : "start" });
   if (focus) (el as HTMLElement).focus?.({ preventScroll: true });
 }
 

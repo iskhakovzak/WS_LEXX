@@ -14,7 +14,7 @@ const buttonVariants = cva(
            // @replit: no hover, and add primary border
            // Monochrome primary (2026-10-24): near-white with black text in dark, ink with white text in light. No glow;
            // hover steps the fill back a little (brightness would not move a white fill).
-           "bg-primary-solid text-primary-foreground font-semibold border border-transparent shadow-[inset_0_1px_0_rgb(255_255_255/0.2)] hover:not-disabled:bg-primary-solid/88",
+           "bg-primary-solid text-primary-foreground font-semibold border border-transparent shadow-[inset_0_1px_0_rgb(255_255_255/0.2)] hover:not-disabled:bg-primary-solid/88 active:scale-[0.97]",
         destructive:
           "border border-destructive/30 bg-destructive/12 text-destructive hover:not-disabled:bg-destructive/18",
         // Glass family: outline = hairline glass pill, secondary = thicker glass pill,

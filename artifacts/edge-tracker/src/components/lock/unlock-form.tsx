@@ -14,14 +14,14 @@ import { lockStore } from "@/lib/lock/lock-store";
 import { MAX_UNLOCK_ATTEMPTS, type QuickCodeKind } from "@/lib/lock/lock-model";
 import { lockEggOwnsKey } from "@/lib/lock/eggs/keys";
 import { lockI18n } from "@/i18n/ns/lock";
+import { HERO_EASE, RimSweep, SuccessDisc, playRimSweep, playShake } from "@/components/shared/hero-fx";
 
 const IDLE_HIDE_MS = 10_000;
 const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "AltGraph", "Fn", "NumLock", "ScrollLock", "OS", "Tab"]);
 
 type Message = { text: string; tone: "error" | "muted" } | null;
 
-const EASE_OUT = "cubic-bezier(0.2, 0.9, 0.2, 1)";
-const finished = (a: Animation | undefined) => (a ? a.finished.then(() => undefined, () => undefined) : Promise.resolve());
+const EASE_OUT = HERO_EASE;
 
 export function UnlockForm({
   hasCode, kind, attemptsLeft, motion, onVisibleChange, onForgot, onSuccess,
@@ -46,8 +46,7 @@ export function UnlockForm({
   const boxRef = React.useRef<HTMLDivElement>(null);
   const sweepRef = React.useRef<HTMLSpanElement>(null);
   const restRef = React.useRef<HTMLDivElement>(null);
-  const badgeRef = React.useRef<HTMLSpanElement>(null);
-  const tickRef = React.useRef<SVGPathElement>(null);
+  const drawnRef = React.useRef<(() => void) | null>(null);
   const idleRef = React.useRef(0);
   const visibleRef = React.useRef(false);
 
@@ -80,10 +79,7 @@ export function UnlockForm({
       ],
       { duration: 560, easing: EASE_OUT },
     );
-    sweepRef.current?.animate?.(
-      [{ transform: "translateX(-120%)", opacity: 0 }, { opacity: 0.9, offset: 0.35 }, { transform: "translateX(220%)", opacity: 0 }],
-      { duration: 900, delay: 260, easing: "ease-in-out" },
-    );
+    playRimSweep(sweepRef.current, { delay: 260 });
     restRef.current?.animate?.(
       [{ transform: "translateY(6px)", opacity: 0, filter: "blur(4px)" }, { transform: "translateY(0)", opacity: 1, filter: "blur(0px)" }],
       { duration: 420, delay: 180, easing: EASE_OUT, fill: "backwards" },
@@ -127,6 +123,8 @@ export function UnlockForm({
 
   /** A right code: the pill folds into a circle around the check, which pops; then the screen's exit. */
   const playSuccess = async () => {
+    // The disc (components/shared/hero-fx) plays on mount and reports when its tick is drawn.
+    const drawn = new Promise<void>((r) => { drawnRef.current = r; });
     setSuccess(true);
     if (motion) {
       restRef.current?.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" });
@@ -135,30 +133,13 @@ export function UnlockForm({
         [{ transform: "scaleX(1)", opacity: 1, filter: "blur(0px)" }, { transform: "scaleX(0.25)", opacity: 0, filter: "blur(6px)" }],
         { duration: 320, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" },
       );
-      badgeRef.current?.animate?.(
-        [
-          { transform: "scale(0.4)", opacity: 0, filter: "blur(8px)" },
-          { transform: "scale(1.08)", opacity: 1, filter: "blur(0px)", offset: 0.65 },
-          { transform: "scale(1)", opacity: 1, filter: "blur(0px)" },
-        ],
-        { duration: 520, delay: 140, easing: EASE_OUT, fill: "backwards" },
-      );
-      await finished(tickRef.current?.animate?.(
-        [{ strokeDashoffset: 24 }, { strokeDashoffset: 0 }],
-        { duration: 380, delay: 420, easing: "cubic-bezier(0.65, 0, 0.35, 1)", fill: "backwards" },
-      ));
+      await drawn;
       await new Promise((r) => window.setTimeout(r, 160));
     }
     await onSuccess();
   };
 
-  const shake = () => {
-    if (!motion) return;
-    boxRef.current?.animate?.(
-      [{ transform: "translateX(0)" }, { transform: "translateX(-10px)" }, { transform: "translateX(9px)" }, { transform: "translateX(-6px)" }, { transform: "translateX(4px)" }, { transform: "translateX(0)" }],
-      { duration: 420, easing: "ease-out" },
-    );
-  };
+  const shake = () => { if (motion) playShake(boxRef.current); };
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -201,15 +182,7 @@ export function UnlockForm({
         {success && (
           // The glass disc with the self-drawing tick (a right code).
           <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-raised grid place-items-center">
-            <span
-              ref={badgeRef}
-              className="grid h-14 w-14 place-items-center rounded-full border border-white/35 bg-white/10 backdrop-blur-xl"
-              style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06) inset, 0 10px 40px rgba(0,0,0,0.45), 0 0 36px rgba(255,255,255,0.22)" }}
-            >
-              <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none">
-                <path ref={tickRef} d="M5.5 12.5l4.2 4.2L18.5 7.8" stroke="white" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={24} />
-              </svg>
-            </span>
+            <SuccessDisc motion={motion} onDrawn={() => drawnRef.current?.()} />
           </span>
         )}
         <div ref={boxRef} className="relative w-full">
@@ -237,9 +210,7 @@ export function UnlockForm({
             )}
           />
           {/* The light that runs along the rim when the field appears. */}
-          <span aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
-            <span ref={sweepRef} className="absolute inset-y-0 left-0 w-1/2 opacity-0" style={{ background: "linear-gradient(100deg, transparent, rgba(255,255,255,0.22), transparent)" }} />
-          </span>
+          <RimSweep ref={sweepRef} className="rounded-full" />
           <button
             type="submit"
             disabled={busy || !code}

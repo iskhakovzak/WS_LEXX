@@ -20,6 +20,7 @@
 import * as React from "react";
 import { QueryError } from "@/components/query-error";
 import { cn } from "@/lib/utils";
+import { motionReduced } from "@/lib/motion";
 import { commonI18n } from "@/i18n/ns/common";
 
 /* ── Error ─────────────────────────────────────────────────────────────────── */
@@ -241,12 +242,32 @@ export function QueryState<T>({
   errorTitle?: string;
 }) {
   const { data } = query;
+  // Content that replaces a skeleton cross-fades in; content that was cached from the start just shows.
+  const [sawSkeleton] = React.useState(data === undefined);
   if (data === undefined) {
     if (query.isError) {
       return <ErrorState error={query.error} onRetry={query.refetch} compact={errorCompact} inset={errorInset} title={errorTitle} />;
     }
     return <>{skeleton ?? <ListSkeleton rows={4} />}</>;
   }
-  if (isEmpty?.(data) && empty) return <>{empty}</>;
-  return <>{children(data)}</>;
+  const body = isEmpty?.(data) && empty ? empty : children(data);
+  return sawSkeleton ? <FadeInOnMount>{body}</FadeInOnMount> : <>{body}</>;
+}
+
+/**
+ * Fades its content in once, on mount (180 ms), without a wrapper element that could break the parent's grid / flex:
+ * two hidden markers bracket the content and the elements between them (up to 8) are animated with WAAPI. A refetch
+ * keeps it mounted, so it never replays. Nothing with «Движение и анимации» off.
+ */
+function FadeInOnMount({ children }: { children: React.ReactNode }) {
+  const start = React.useRef<HTMLSpanElement>(null);
+  const end = React.useRef<HTMLSpanElement>(null);
+  React.useLayoutEffect(() => {
+    if (motionReduced()) return;
+    let el = start.current?.nextElementSibling ?? null;
+    for (let n = 0; el && el !== end.current && n < 8; n++, el = el.nextElementSibling) {
+      (el as HTMLElement).animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+    }
+  }, []);
+  return <><span ref={start} hidden />{children}<span ref={end} hidden /></>;
 }

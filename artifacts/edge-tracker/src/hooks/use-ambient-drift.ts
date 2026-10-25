@@ -1,6 +1,6 @@
 /**
- * The lock screen's slow life: a drift loop and a breathing glow, plus the 3D parallax under the pointer. `allowed`
- * is the viewer's «Движение фона» (auto = prefers-reduced-motion, on, off); without it nothing moves (a still frame).
+ * The slow life of the hero screens (the screen lock and the sign-in page): a drift loop and a breathing glow, plus the 3D parallax under the pointer. `allowed`
+ * is the viewer's «Движение и анимации» (lib/motion: on unless switched off); without it nothing moves.
  * Both pause while the tab is hidden and keep going while the window is merely unfocused (the lock screen is meant for
  * a monitor nobody is clicking on).
  *
@@ -12,14 +12,8 @@
  *   glow  — the halo behind the clock breathes (opacity and scale, 9 s per breath).
  */
 import * as React from "react";
-import { motionReduced } from "@/lib/motion";
 
 const FRAME_MS = 50;
-
-/** The app's motion setting (lib/motion.ts: «Движение и анимации», auto = the OS). */
-export function prefersReducedMotion(): boolean {
-  return motionReduced();
-}
 
 /** Position of the drift at time `t` (seconds): two incommensurate sines per axis, so the path never repeats exactly. */
 export function driftAt(t: number): { px: number; py: number; dx: number; dy: number } {
