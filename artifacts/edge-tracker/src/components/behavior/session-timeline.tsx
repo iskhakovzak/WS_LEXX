@@ -331,7 +331,7 @@ export function SessionTimeline({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {usedFlags.map((k) => (
               <span key={k} className="inline-flex items-center gap-1">
-                <span className="inline-grid h-4 w-4 place-items-center rounded-full text-[10px] font-bold text-background" style={{ background: TONE_VAR[PATTERN_TONE[k]] }} aria-hidden="true">{MARKER_LETTER[k]}</span>
+                <span className="[display:inline-grid] h-4 w-4 place-items-center rounded-full text-[10px] font-bold text-background" style={{ background: TONE_VAR[PATTERN_TONE[k]] }} aria-hidden="true">{MARKER_LETTER[k]}</span>
                 {PATTERN_SHORT[k]}
               </span>
             ))}

@@ -222,7 +222,8 @@ export function JuniorNoteSheet({
       <SheetContent
         side="right"
         onKeyDown={onSheetKey}
-        className={cn("flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl", isCurator && "lg:max-w-4xl")}
+        size={isCurator ? "lg" : "default"}
+        className={cn("flex flex-col gap-0 overflow-hidden p-0", !isCurator && "w-full sm:max-w-xl")}
       >
         {n && (
           <>
@@ -264,7 +265,7 @@ export function JuniorNoteSheet({
             </SheetHeader>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className={cn("p-5", isCurator ? "grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]" : "space-y-5")}>
+              <div className={cn("p-5", isCurator ? "grid grid-cols-1 gap-5 @3xl/sheet:grid-cols-[minmax(0,1fr)_20rem]" : "space-y-5")}>
                 <div className="min-w-0 space-y-5">
                   {!isCurator && <FeedbackCard note={n} />}
                   {isCurator && <PrevFocusCard ctx={ctx} isLoading={ctxQ.isLoading} />}
@@ -281,7 +282,7 @@ export function JuniorNoteSheet({
                   )}
                 </div>
                 {isCurator && (
-                  <aside aria-label={t("contextAria")} className="min-w-0 lg:border-l lg:border-border lg:pl-5">
+                  <aside aria-label={t("contextAria")} className="min-w-0 @3xl/sheet:border-l @3xl/sheet:border-border @3xl/sheet:pl-5">
                     <ReviewContextRail ctx={ctx} isLoading={ctxQ.isLoading} isError={ctxQ.isError} />
                   </aside>
                 )}

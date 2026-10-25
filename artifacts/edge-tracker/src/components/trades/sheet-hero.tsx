@@ -78,7 +78,7 @@ function Fact({ label, value, hint, className }: { label: string; value: React.R
   return (
     <div className="min-w-0 rounded-xl bg-[var(--glass-bg)] px-2.5 py-1.5" title={hint ?? (typeof value === "string" ? value : undefined)}>
       <p className="truncate text-2xs text-muted-foreground">{label}</p>
-      <p className={cn("truncate text-sm font-semibold tabular-nums", className)}>{value}</p>
+      <p className={cn("break-words text-sm font-semibold leading-snug tabular-nums", className)}>{value}</p>
     </div>
   );
 }

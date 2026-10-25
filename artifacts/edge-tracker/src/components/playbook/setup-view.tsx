@@ -161,7 +161,7 @@ export function SetupView({
               </>
             )}
           </nav>
-          <IconAction aria-label={t("view.close")} title={t("view.close")} onClick={onClose} className="hidden lg:inline-grid"><X /></IconAction>
+          <IconAction aria-label={t("view.close")} title={t("view.close")} onClick={onClose} className="hidden lg:[display:inline-grid]"><X /></IconAction>
         </div>
 
         <h2 id="pb-doc-title" className="mt-2 text-2xl font-semibold tracking-tight text-foreground [overflow-wrap:anywhere]">{entry.name}</h2>

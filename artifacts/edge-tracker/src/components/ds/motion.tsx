@@ -97,7 +97,7 @@ export function AnimatedNumber({
   const finalText = target != null ? formatRef.current(target) : "";
   const ghost = "invisible col-start-1 row-start-1 whitespace-nowrap";
   return (
-    <span className={cn("inline-grid tabular-nums", className)} title={title}>
+    <span className={cn("[display:inline-grid] tabular-nums", className)} title={title}>
       <span aria-hidden="true" className={ghost}>{finalText}</span>
       {fromText != null && <span aria-hidden="true" className={ghost}>{fromText}</span>}
       <span className="col-start-1 row-start-1 whitespace-nowrap">{format(shown)}</span>

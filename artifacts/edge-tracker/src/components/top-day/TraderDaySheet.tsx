@@ -67,7 +67,7 @@ export function TraderDaySheet({ date, alias, staff, onClose }: { date: string |
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-md">
+      <SheetContent side="right" size="md" className="flex flex-col gap-4 overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2.5">
             {d && <AliasBadge row={d} />}

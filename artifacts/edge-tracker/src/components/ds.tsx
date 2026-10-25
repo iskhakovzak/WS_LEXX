@@ -769,7 +769,7 @@ export function ProgressRing({
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={Math.round(v * 100) / 100}
-      className={cn("relative inline-grid shrink-0 place-items-center", className)}
+      className={cn("relative [display:inline-grid] shrink-0 place-items-center", className)}
       style={{ width: size, height: size }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={cn("-rotate-90", tone === "neutral" ? "text-muted-foreground" : TONE_TEXT[tone])} aria-hidden="true">

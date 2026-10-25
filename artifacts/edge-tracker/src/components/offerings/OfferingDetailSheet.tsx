@@ -230,7 +230,7 @@ export function OfferingDetailSheet({
 
   return (
     <Sheet open={!!o} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl lg:max-w-3xl">
+      <SheetContent side="right" size="lg" className="flex flex-col gap-0 overflow-hidden p-0">
         <SheetHeader className="space-y-3 border-b border-border px-5 pb-4 pt-5 text-left">
           <div className="flex flex-wrap items-center gap-2 pr-8">
             <SheetTitle className="text-2xl font-semibold tracking-tight">{o.ticker}</SheetTitle>
@@ -329,7 +329,7 @@ export function OfferingDetailSheet({
           {s && (
             <Section title={t("sheet.scoreParts")} icon={AlertTriangle} aside={<span className={toneText(SCORE_LEVEL_TONE[s.level])}>{s.score}/100</span>}>
               <p className="text-xs text-muted-foreground">{DEAL_TYPE_HINT[type]}</p>
-              <ScoreBreakdown s={s} className="rounded-xl bg-[var(--glass-bg)] p-3" />
+              <ScoreBreakdown s={s} className="rounded-xl bg-[var(--glass-bg)] p-3 @4xl/sheet:grid @4xl/sheet:grid-cols-2 @4xl/sheet:gap-x-8 @4xl/sheet:gap-y-2 @4xl/sheet:space-y-0" />
             </Section>
           )}
 
