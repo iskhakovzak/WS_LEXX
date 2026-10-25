@@ -21,6 +21,7 @@ import { EdgeMapPanel } from "@/components/shared/edge-map/edge-verdicts";
 import { fmtDate, fmtDeskDateTime, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
+import { PersonLink } from "@/components/shared/person-link";
 import { commonI18n } from "@/i18n/ns/common";
 import { tierDisplay } from "@/components/shared/tier-labels";
 import { StageBadge, StageMedal, medalStageOf } from "@/components/shared/medals";
@@ -129,7 +130,7 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
           : <span className="tile grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary"><UserRound className="h-5 w-5" aria-hidden="true" /></span>}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-lg font-semibold text-foreground" title={personName(p.trader)}>{personName(p.trader)}</h2>
+            <h2 className="truncate text-lg font-semibold text-foreground" title={personName(p.trader)}><PersonLink name={p.trader} /></h2>
             {s.stage.label && (medalStageOf(s.stage.key)
               ? <StageBadge stage={medalStageOf(s.stage.key) ?? "junior"} label={s.stage.label} className="min-h-5.5 rounded-full bg-foreground/[0.05] py-0.5 pl-0.5 pr-2" />
               : <Pill tone="purple">{s.stage.label}</Pill>)}

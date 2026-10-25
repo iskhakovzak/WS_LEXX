@@ -37,6 +37,7 @@ export default {
     authorNotes: "Muallif sharhi",
     juniorNotes: "Juniorlar sharhi",
     ratings: "Reytinglar",
+    profile: "Mening profilim",
     scaling: "Masshtablash rejasi",
     topResults: "Top",
     activity: "Faollik",
@@ -306,6 +307,7 @@ export default {
     },
     setupVariation: "setap varianti",
     people: {
+      card: "Profil: tavsif va tarjimai hol",
       heading: "Odamlar",
       actionsFor: "{name}: ochish",
       profile: "Kurator kabinetidagi profil",

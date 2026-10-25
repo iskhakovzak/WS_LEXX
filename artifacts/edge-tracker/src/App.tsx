@@ -42,6 +42,8 @@ const DailyFeed = lazy(L["/dailyfeed"]);
 const Discussions = lazy(L["/discussions"]);
 const Analytics = lazy(L["/analytics"]);
 const Settings = lazy(L["/settings"]);
+const Profile = lazy(L["/profile"]);
+const People = lazy(L["/people"]);
 const Watchlist = lazy(L["/watchlist"]);
 const Playbook = lazy(L["/playbook"]);
 const TradeIdeas = lazy(L["/trade-ideas"]);
@@ -192,6 +194,8 @@ function Router() {
           <Route path="/ratings" component={Ratings} />
           <Route path="/analyst-actions" component={AnalystActions} />
           <Route path="/settings" component={Settings} />
+          <Route path="/profile" component={Profile} />
+          <Route path="/people/:id" component={People} />
           <Route path="/admin" component={Admin} />
           <Route path="/curator" component={Curator} />
           <Route path="/author-notes" component={AuthorNotesRoute} />

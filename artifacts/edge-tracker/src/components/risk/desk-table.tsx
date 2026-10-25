@@ -9,6 +9,7 @@ import { LevelBadge, UsageCell, tierLabel } from "./primitives";
 import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
 import { personName } from "@/i18n";
+import { PersonProfileLink } from "@/components/shared/person-link";
 import { commonI18n } from "@/i18n/ns/common";
 import { alertLabel, stopMessage, stopStateLabel } from "./labels";
 import { LiveOpenNote } from "./live";
@@ -139,6 +140,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                   >
                     {personName(r.trader)}
                   </button>
+                  <PersonProfileLink name={r.trader} className="-my-1 ml-0.5 align-middle" />
                   <div className="text-xs text-muted-foreground">{tierLabel(L?.tier) ?? c("tiers.noTier")}</div>
                 </td>
                 <td>

@@ -1,7 +1,7 @@
 /** Header right-side controls: language, the «Вид» (appearance) button, the screen lock, notifications bell (popover) and the user menu. */
 import React from "react";
 import { useLocation } from "wouter";
-import { CircleHelp, CloudMoon, Gem, LockKeyhole, LogOut, Moon, Palette, Settings, Sun, User } from "lucide-react";
+import { CircleHelp, CloudMoon, Gem, IdCard, LockKeyhole, LogOut, Moon, Palette, Settings, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme, type Theme } from "@/contexts/theme-context";
@@ -147,6 +147,12 @@ export function UserMenu() {
           <CircleHelp className="h-4 w-4" aria-hidden="true" />
           {onboardingI18n.t("help.menu")}
         </DropdownMenuItem>
+        {user && user.role !== "guest" && (
+          <DropdownMenuItem onSelect={() => navigate("/profile")} className="gap-2">
+            <IdCard className="h-4 w-4" aria-hidden="true" />
+            {shellI18n.t("nav.profile")}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={() => navigate("/settings")} className="gap-2">
           <Settings className="h-4 w-4" aria-hidden="true" />
           {t("actions.settings")}
