@@ -40,7 +40,7 @@ function DimHeader({ r }: { r: DimResult }) {
       <h3 className="truncate text-sm font-medium text-foreground">{r.dim.label}</h3>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button type="button" aria-label={t("edge.howCounted", { label: r.dim.label })} className="-my-1 inline-grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" aria-label={t("edge.howCounted", { label: r.dim.label })} className="-my-1 [display:inline-grid] h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Info className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </TooltipTrigger>

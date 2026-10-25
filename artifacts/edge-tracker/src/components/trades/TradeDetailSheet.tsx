@@ -148,10 +148,11 @@ export function TradeDetailSheet(p: Props) {
       {/* Phones: a bottom sheet. Everywhere the header stays and the body scrolls (the chart and the review are reachable, ILYA-01). */}
       <SheetContent
         side={mobile ? "bottom" : "right"}
+        size={mobile ? "default" : "xl"}
         data-onboarding-seen="trade"
         className={mobile
           ? "flex h-[92dvh] flex-col gap-0 overflow-hidden rounded-t-2xl p-0"
-          : "flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl"}
+          : "flex flex-col gap-0 overflow-hidden p-0"}
       >
         {t ? <SheetBody key={t.id} {...p} trade={t} mobile={mobile} /> : (
           <SheetHeader className="sr-only"><SheetTitle>{tc("trading.trade")}</SheetTitle><SheetDescription>{tt("sheet.noData")}</SheetDescription></SheetHeader>
@@ -203,15 +204,16 @@ function SheetBody(p: Props & { trade: Trade; mobile: boolean }) {
     <>
       <SheetHeader className="shrink-0 space-y-1 px-4 pb-3 pr-14 pt-4 text-left sm:px-5 sm:pr-16">
         {p.mobile && <div aria-hidden="true" className="mx-auto -mt-2 mb-1 h-1 w-10 rounded-full bg-muted-foreground/30" />}
-        <div className="flex items-start gap-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
+        {/* Wraps: on a phone the tools drop under the ticker instead of squeezing it to one word per line. */}
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="flex min-w-0 flex-1 basis-[14rem] flex-wrap items-center gap-x-2 gap-y-1.5">
             <SheetTitle className="text-2xl font-semibold tracking-tight">{t.ticker}</SheetTitle>
             <SidePill side={t.side} />
             <HorizonPill horizon={horizonOf(t)} showIntraday />
             <ResultMenu result={t.result} ticker={t.ticker} disabled={!canEditResult} onChange={(r) => { void p.onPatch(t, { result: r }); }} />
             <EarningsBadge ticker={t.ticker} day={dayOf(t)} />
           </div>
-          <div className="flex shrink-0 items-center gap-1 pt-0.5">
+          <div className="flex max-w-full shrink-0 flex-wrap items-center gap-1 pt-0.5">
             {(p.onPrev || p.onNext) && (
               <>
                 {p.position && <span className="mr-1 hidden text-xs tabular-nums text-muted-foreground sm:inline">{p.position.index + 1} / {p.position.total}</span>}
@@ -240,6 +242,8 @@ function SheetBody(p: Props & { trade: Trade; mobile: boolean }) {
       </SheetHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5">
+        {/* Wide sheet (≥ 80rem, i.e. screens from ~1600 px): the chart, facts and actions on the left, executions / review / notes on the right. */}
+        <div className="@min-[80rem]/sheet:grid @min-[80rem]/sheet:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @min-[80rem]/sheet:items-start @min-[80rem]/sheet:gap-x-section">
         <div className="space-y-3">
           <SheetHero trade={t} ideaTarget={ideaTarget} chartHeight={p.mobile ? 240 : 360} exitOutside={exitOutside} redactedText={redactedText} />
           <KeyFacts trade={t} holdText={hold != null ? fmtDuration(hold) : null} excursions={excursions} redactedText={redactedText} />
@@ -263,7 +267,7 @@ function SheetBody(p: Props & { trade: Trade; mobile: boolean }) {
           )}
         </div>
 
-        <div className="mt-4 divide-y divide-border/70 border-t border-border/70">
+        <div className="mt-4 divide-y divide-border/70 border-t border-border/70 @min-[80rem]/sheet:mt-0 @min-[80rem]/sheet:border-t-0">
           <SheetSection id="executions" title={tt("sheet.sections.executions")} api={sections}>
             {/* Broker fills are the broker's record: no basket, no «Добавить» (read-only on the server too). */}
             <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit && canEditForm && !isBrokerTrade(t)} fees={t.fees} qty={t.qty} pnl={t.pnl} onOpenTradeId={(id) => { const x = p.allTrades.find((a) => a.id === id); if (x) p.onOpenTrade(x); }} />
@@ -310,6 +314,7 @@ function SheetBody(p: Props & { trade: Trade; mobile: boolean }) {
               <TradeRelated trade={t} allTrades={p.allTrades} onOpenTrade={p.onOpenTrade} parts={["playbook"]} />
             </div>
           </SheetSection>
+        </div>
         </div>
       </div>
     </>

@@ -94,13 +94,16 @@ export function DayTradesList({ day, max }: { day: TraderDay; max?: number }) {
   const { t } = riskI18n.useT();
   const c = commonI18n.t;
   return (
-    <div className="overflow-hidden rounded-xl ring-1 ring-inset ring-[var(--field-border)]">
+    // Its own container: gross and fees columns appear once the list is wide enough (≥ 42rem).
+    <div className="@container overflow-hidden rounded-xl ring-1 ring-inset ring-[var(--field-border)]">
       <table className="w-full text-sm tabular-nums">
         <thead className="bg-[var(--glass-bg)] text-xs text-muted-foreground">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-medium">{c("time.time")}</th>
             <th scope="col" className="px-3 py-2 text-left font-medium">{c("trading.ticker")}</th>
             <th scope="col" className="px-3 py-2 text-right font-medium">{t("positions.qty")}</th>
+            <th scope="col" className="hidden px-3 py-2 text-right font-medium @2xl:table-cell">{c("trading.gross")}</th>
+            <th scope="col" className="hidden px-3 py-2 text-right font-medium @2xl:table-cell">{c("trading.fees")}</th>
             <th scope="col" className="px-3 py-2 text-right font-medium">{c("trading.net")}</th>
             <th scope="col" className="px-3 py-2 text-right font-medium">{t("day.cum")}</th>
           </tr>
@@ -114,6 +117,8 @@ export function DayTradesList({ day, max }: { day: TraderDay; max?: number }) {
                 <span className="ml-1.5 text-xs text-muted-foreground">{sideLabel(tr.side)}</span>
               </td>
               <td className="px-3 py-1.5 text-right">{tr.qty ?? "—"}</td>
+              <td className="hidden px-3 py-1.5 text-right text-xs text-muted-foreground @2xl:table-cell">{tr.gross != null ? fmtUsd(tr.gross, { signed: true, decimals: 0 }) : "—"}</td>
+              <td className="hidden px-3 py-1.5 text-right text-xs text-muted-foreground @2xl:table-cell">{tr.fees ? fmtUsd(tr.fees, { decimals: 2 }) : "—"}</td>
               <td className={cn("px-3 py-1.5 text-right font-medium", (tr.net ?? 0) > 0 ? "text-up" : (tr.net ?? 0) < 0 ? "text-down" : "")} title={tr.fees ? t("day.feesTitle", { gross: fmtUsd(tr.gross, { signed: true, decimals: 0 }), fees: fmtUsd(tr.fees, { decimals: 0 }) }) : undefined}>
                 {tr.net != null ? fmtUsd(tr.net, { signed: true, decimals: 0 }) : "—"}
               </td>
@@ -164,7 +169,14 @@ export function DaySkeleton({ height = 180 }: { height?: number }) {
  * The trading day block: header line (which day, net, trades, fees), behaviour note, intraday curve vs the
  * daily stop and, optionally, the trades. Renders a one-line note when there were no trades in the last 10 days.
  */
-export function TraderDayBlock({ trader, dailyLimit, showTrades = false, height = 180 }: { trader: string; dailyLimit: number | null | undefined; showTrades?: boolean; height?: number }) {
+export function TraderDayBlock({ trader, dailyLimit, showTrades = false, tradesBeside = false, height = 180 }: {
+  trader: string;
+  dailyLimit: number | null | undefined;
+  showTrades?: boolean;
+  /** Wide containers (≥ 56rem) show the last trades beside the curve; narrower ones show the curve alone. */
+  tradesBeside?: boolean;
+  height?: number;
+}) {
   const q = useTraderDay(trader);
   const day = q.data;
   const beh = useBehaviorDay(trader, day?.date ?? null);
@@ -187,7 +199,16 @@ export function TraderDayBlock({ trader, dailyLimit, showTrades = false, height 
         <Link href={links.journalDay(day.date, trader)} className="ml-auto whitespace-nowrap text-primary hover:underline">{t("day.journal")}</Link>
       </p>
       <BehaviorNote flags={beh.data} />
-      <IntradayChart day={day} dailyLimit={dailyLimit} height={height} />
+      {tradesBeside && !showTrades ? (
+        <div className="@container">
+          <div className="grid grid-cols-1 gap-grid @4xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @4xl:items-start">
+            <IntradayChart day={day} dailyLimit={dailyLimit} height={height} />
+            <div className="hidden @4xl:block"><DayTradesList day={day} max={6} /></div>
+          </div>
+        </div>
+      ) : (
+        <IntradayChart day={day} dailyLimit={dailyLimit} height={height} />
+      )}
       {showTrades && <DayTradesList day={day} />}
     </div>
   );

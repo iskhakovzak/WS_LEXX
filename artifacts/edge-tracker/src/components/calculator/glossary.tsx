@@ -33,7 +33,7 @@ export function OptTerm({ term, children, icon = true, className }: { term: OptT
             <button
               type="button"
               aria-label={t("term.whatIs", { term: termLabel })}
-              className="relative inline-grid h-4 w-4 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-1)] after:absolute after:-inset-2.5 after:content-[''] hover:text-foreground focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="relative [display:inline-grid] h-4 w-4 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-1)] after:absolute after:-inset-2.5 after:content-[''] hover:text-foreground focus-visible:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               onClick={(e) => e.preventDefault()}
             >
               <Info className="h-3 w-3" aria-hidden="true" />

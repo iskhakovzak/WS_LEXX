@@ -29,7 +29,7 @@ export function TraderAvatar({
     <span
       aria-hidden="true"
       className={cn(
-        "inline-grid shrink-0 select-none place-items-center rounded-full font-semibold tabular-nums",
+        "[display:inline-grid] shrink-0 select-none place-items-center rounded-full font-semibold tabular-nums",
         SIZES[size],
         isSystem ? "bg-[var(--glass-bg)] text-muted-foreground border border-[var(--field-border)]" : avatarTone(name),
         ring && "ring-2 ring-primary ring-offset-2 ring-offset-background",

@@ -42,12 +42,12 @@ function Cell({ it, big, announce = false }: { it: Item; big: boolean; announce?
   return (
     <div className={cn("flex flex-col gap-1.5 rounded-xl p-3 ring-1 ring-inset", over ? "bg-down/10 ring-down/40" : pct >= 70 ? "bg-warn/10 ring-warn/30" : "bg-[var(--glass-bg)] ring-[var(--field-border)]")}>
       <span className="text-xs text-muted-foreground">{it.label}</span>
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
-        <span className={cn("inline-flex items-center gap-1.5 font-semibold", big ? "text-2xl" : "text-lg", over ? "text-down" : usageText(pct))}>
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 tabular-nums">
+        <span className={cn("inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap font-semibold", big ? "text-2xl" : "text-lg", over ? "text-down" : usageText(pct))}>
           {over && <OctagonX className={big ? "h-5 w-5" : "h-4 w-4"} aria-hidden="true" />}
           {over ? t("remaining.stop") : <LiveNumber value={remaining} format={usd0} announce={announce} />}
         </span>
-        <span className={cn("text-xs", over ? "font-medium text-down" : "text-muted-foreground")}>
+        <span className={cn("min-w-0 text-xs", over ? "font-medium text-down" : "text-muted-foreground")}>
           {over
             ? t("remaining.over", { amount: fmtUsd(it.used - it.limit, { decimals: 0 }) })
             : t("remaining.leftPct", { pct: fmtPct(remainingPct, { decimals: 0, signed: false }) })}
@@ -84,8 +84,11 @@ export function StopRemaining({ m, limits, big = false, announce = false, classN
 }) {
   riskI18n.useT();
   return (
-    <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-3", className)}>
-      {items(m, limits).map((it) => <Cell key={it.key} it={it} big={big} announce={announce && it.key === "day"} />)}
+    // Three in a row once the block itself has room (≥ 32rem): the same tiles fit a narrow sheet and a wide page.
+    <div className={cn("@container", className)}>
+      <div className="grid grid-cols-1 gap-grid @lg:grid-cols-3">
+        {items(m, limits).map((it) => <Cell key={it.key} it={it} big={big} announce={announce && it.key === "day"} />)}
+      </div>
     </div>
   );
 }

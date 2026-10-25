@@ -41,7 +41,7 @@ export function TraderSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent side="right" size="lg" className="overflow-y-auto">
         {row && (
           <div className="flex flex-col gap-5">
             <SheetHeader className="pr-10 text-left">
@@ -82,6 +82,7 @@ export function TraderSheet({
             {row.pendingProposal && <ProposalCard proposal={row.pendingProposal} tiers={evaluation.tiers} canDecide={evaluation.canEdit} />}
 
             <Segmented
+              className="self-start"
               ariaLabel={t("sheet.tabsAria")}
               value={tab}
               onChange={setTab}
@@ -95,7 +96,8 @@ export function TraderSheet({
             />
 
             {tab === "rules" && (
-              <div className="flex flex-col gap-4">
+              // Wide sheet: promote and demote rules side by side.
+              <div className="grid grid-cols-1 gap-4 @4xl/sheet:grid-cols-2 @4xl/sheet:items-start">
                 <section className="flex flex-col gap-2">
                   <h3 className="micro-label">{actionLabel("promote")}</h3>
                   <RuleList rules={promote} metrics={evaluation.meta.metrics} emptyText={t("rules.emptyPromote")} />

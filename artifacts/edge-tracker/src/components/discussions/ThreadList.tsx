@@ -13,7 +13,7 @@ import { personName } from "@/i18n";
 export function Avatar({ name, size = "sm", className }: { name?: string | null; size?: "xs" | "sm" | "md"; className?: string }) {
   const dim = size === "xs" ? "h-6 w-6 text-2xs" : size === "sm" ? "h-7 w-7 text-2xs" : "h-8 w-8 text-xs";
   return (
-    <span title={personName(name) || undefined} aria-hidden="true" className={cn("inline-grid shrink-0 place-items-center rounded-full font-semibold ring-2 ring-background", dim, avatarTone(name), className)}>
+    <span title={personName(name) || undefined} aria-hidden="true" className={cn("[display:inline-grid] shrink-0 place-items-center rounded-full font-semibold ring-2 ring-background", dim, avatarTone(name), className)}>
       {initials(name)}
     </span>
   );
