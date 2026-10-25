@@ -22,6 +22,12 @@ const weekdayLabel = (i: number) => { const s = fmtWeekday(i + 1, "short"); retu
 /** Entry-time bucket label: pre/post come from the server in RU, so they are rendered from the key. */
 const bucketLabel = (b: { key: string; label: string }) => (b.key === "pre" ? officeI18n.t("time.premarket") : b.key === "post" ? officeI18n.t("time.postmarket") : b.label);
 
+/** Bar body in the shared chart language: full colour at the data end, softer towards zero (charts-v2 net bars). */
+function barPaint(up: boolean, dir: "to top" | "to bottom" | "to right" | "to left"): React.CSSProperties {
+  const tone = up ? "up" : "down";
+  return { backgroundImage: `linear-gradient(${dir}, hsl(var(--${tone}) / 0.5), hsl(var(--${tone}) / 0.95))` };
+}
+
 /** Vertical diverging bars around a zero line (DOM, so every bar has a native hover + aria). */
 function DivergingBars({ items, unit, height = 150, labelEvery = 1 }: {
   items: { key: string; label: string; v: number; title: string; muted?: boolean }[];
@@ -37,7 +43,7 @@ function DivergingBars({ items, unit, height = 150, labelEvery = 1 }: {
     <div className="flex flex-col gap-1">
       <div className="h-5 text-xs text-muted-foreground" aria-live="polite">{hov ? hov.title : t("time.hoverHint")}</div>
       <div className="relative flex items-stretch gap-[2px]" style={{ height }}>
-        <span className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-foreground/40" aria-hidden="true" />
+        <span className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-foreground/30" aria-hidden="true" />
         {items.map((i) => {
           const h = (Math.abs(i.v) / max) * 50;
           return (
@@ -54,8 +60,15 @@ function DivergingBars({ items, unit, height = 150, labelEvery = 1 }: {
             >
               <span className="absolute inset-0 rounded-sm group-hover:bg-[var(--tile-hover-bg)]" aria-hidden="true" />
               <span
-                className={cn("absolute inset-x-[1px] rounded-[3px]", i.v >= 0 ? "bg-up" : "bg-down", i.muted && "opacity-60", hover && hover !== i.key && "opacity-45")}
-                style={i.v >= 0 ? { bottom: "50%", height: `${Math.max(0.6, h)}%` } : { top: "50%", height: `${Math.max(0.6, h)}%` }}
+                className={cn(
+                  "absolute inset-x-[1px] transition-opacity duration-[var(--dur-1)]",
+                  i.v >= 0 ? "rounded-t-[5px] rounded-b-[1px]" : "rounded-b-[5px] rounded-t-[1px]",
+                  i.muted && "opacity-60", hover && hover !== i.key && "opacity-40",
+                )}
+                style={{
+                  ...(i.v >= 0 ? { bottom: "50%" } : { top: "50%" }), height: `${Math.max(0.6, h)}%`,
+                  ...barPaint(i.v >= 0, i.v >= 0 ? "to top" : "to bottom"),
+                }}
               />
             </button>
           );
@@ -123,8 +136,14 @@ export function WeekdayProfile({ period, unit }: { period: PeriodView; unit: Uni
                 <span className="font-medium text-foreground">{weekdayLabel(r.weekday)}</span>
                 <span className="flex flex-col gap-1">
                   <span className="relative h-3">
-                    {zero > 0.5 && <span className="absolute inset-y-0 w-px bg-border" style={{ left: `${zero}%` }} aria-hidden="true" />}
-                    <span className={cn("absolute inset-y-0 rounded-[3px]", a >= 0 ? "bg-up/85" : "bg-down/85")} style={a >= 0 ? { left: `${zero}%`, width: `${(Math.abs(a) / span) * 100}%` } : { right: `${100 - zero}%`, width: `${(Math.abs(a) / span) * 100}%` }} />
+                    {zero > 0.5 && <span className="absolute -inset-y-0.5 w-px bg-foreground/30" style={{ left: `${zero}%` }} aria-hidden="true" />}
+                    <span
+                      className={cn("absolute inset-y-0", a >= 0 ? "rounded-r-[6px] rounded-l-[1px]" : "rounded-l-[6px] rounded-r-[1px]")}
+                      style={{
+                        ...(a >= 0 ? { left: `${zero}%` } : { right: `${100 - zero}%` }), width: `max(2px, ${(Math.abs(a) / span) * 100}%)`,
+                        ...barPaint(a >= 0, a >= 0 ? "to right" : "to left"),
+                      }}
+                    />
                   </span>
                   <span className="text-2xs text-muted-foreground">{r.days ? t("time.weekdayGreen", { share: fmtShare(r.green / r.days), days: daysShort(r.days) }) : t("time.noDays")}</span>
                 </span>
@@ -151,8 +170,8 @@ function TickerList({ rows, unit, tone }: { rows: TickerRow[]; unit: Unit; tone:
           <span className="flex min-w-0 items-center gap-1.5 truncate font-medium text-foreground">
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: strategyColor(r.strategy, dark) }} aria-hidden="true" />{r.ticker}
           </span>
-          <span className="relative h-1.5 rounded-full bg-[var(--glass-bg)]">
-            <span className={cn("absolute inset-y-0 left-0 rounded-full", tone === "up" ? "bg-up" : "bg-down")} style={{ width: `${(Math.abs(r.v) / max) * 100}%` }} />
+          <span className="relative h-2">
+            <span className="absolute inset-y-0 left-0 rounded-r-[5px] rounded-l-[1px]" style={{ width: `max(3px, ${(Math.abs(r.v) / max) * 100}%)`, ...barPaint(tone === "up", "to right") }} />
           </span>
           <span className="flex items-baseline gap-1.5 tabular-nums">
             <b className={cn(tone === "up" ? "text-up" : "text-down")}>{fmtV(r.v, unit)}</b>
@@ -289,8 +308,8 @@ export function DailyHistogram({ ctx }: { ctx: Ctx }) {
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
                 title={t("risk.histBin", { from: fmtV(b.from, unit), to: fmtV(b.to, unit), days: daysShort(b.count) })}
-                className={cn("flex-1 rounded-t-[4px] transition-opacity", b.to <= 0 ? "bg-down/85" : "bg-up/85", hover != null && hover !== i && "opacity-50")}
-                style={{ height: `${b.count ? Math.max(4, (b.count / max) * 100) : 0}%` }}
+                className={cn("flex-1 rounded-t-[5px] rounded-b-[1px] transition-opacity duration-[var(--dur-1)]", hover != null && hover !== i && "opacity-40")}
+                style={{ height: `${b.count ? Math.max(4, (b.count / max) * 100) : 0}%`, ...barPaint(b.to > 0, "to top") }}
               />
             ))}
           </div>
