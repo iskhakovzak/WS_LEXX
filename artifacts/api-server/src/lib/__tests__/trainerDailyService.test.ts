@@ -28,14 +28,20 @@ vi.mock("../trainer/dailyStore", () => ({
   recentChallenges: vi.fn(async () => []),
   challengeDates: vi.fn(async () => [...challenges.keys()].sort().reverse()),
   dailyCandidates: vi.fn(async () => [
-    { ticker: "AAA", day: DAY_BARS_DATE, open: 50, volume: 9e6, rangePct: 4, gapPct: 0.5, deskTraders: 0 },
-    { ticker: "BBB", day: "2026-10-02", open: 40, volume: 9e6, rangePct: 5, gapPct: 0.2, deskTraders: 0 },
+    { ticker: "AAA", day: DAY_BARS_DATE, open: 50, volume: 9e6, rangePct: 4, gapPct: 8.5, deskTraders: 0 },
+    { ticker: "BBB", day: "2026-10-02", open: 40, volume: 9e6, rangePct: 5, gapPct: -10.2, deskTraders: 0 },
+    // Under the gap threshold / no catalyst: never picked (lib/sim/catalyst.ts).
+    { ticker: "SMALL", day: "2026-10-05", open: 40, volume: 9e6, rangePct: 8, gapPct: 3, deskTraders: 0 },
+    { ticker: "NOCAT", day: "2026-10-06", open: 40, volume: 9e6, rangePct: 8, gapPct: 12, deskTraders: 0 },
   ]),
   dailyGames: vi.fn(async () => games.filter((g) => g.status === "finished").map((g) => ({ userId: g.userId, name: g.name, r: g.r, trades: g.trades }))),
   dailyParticipants: vi.fn(async () => games.map((g) => g.name)),
   myDailyGame: vi.fn(async (uid: number) => { const g = games.find((x) => x.userId === uid); return g ? { id: g.id, status: g.status } : null; }),
   playedDates: vi.fn(async () => new Set<string>()),
   tradersOfTickerDay: vi.fn(async () => new Set<string>()),
+}));
+vi.mock("../sim/catalystStore", () => ({
+  catalystKeys: vi.fn(async (keys: { ticker: string; day: string }[]) => new Set(keys.filter((k) => k.ticker !== "NOCAT").map((k) => `${k.ticker}:${k.day}`))),
 }));
 vi.mock("../sim/service", () => ({
   gameSnapshot: vi.fn(async (_v: unknown, id: number) => ({ id, resumed: true })),
@@ -126,6 +132,17 @@ describe("daily pick", () => {
     const again = await ensurePick("2026-10-16");
     expect(again?.ticker).toBe(a?.ticker);
     expect(saved).toHaveLength(1);
+    // Day rule: only the gapped days with a catalyst.
+    expect(["AAA", "BBB"]).toContain(a?.ticker);
+  });
+
+  it("every eligible day used inside the no-repeat window: repeats an older one (never yesterday's), never a non-eligible day", async () => {
+    const ds = await import("../trainer/dailyStore");
+    const row = (date: string, ticker: string, barsDay: string) => ({ date, ticker, barsDay, tf: "1m", deskTraders: 0, features: {} }) as unknown as ChallengeRow;
+    vi.mocked(ds.recentChallenges).mockResolvedValueOnce([row("2026-10-15", "AAA", DAY_BARS_DATE), row("2026-10-14", "BBB", "2026-10-02")]);
+    const { ensurePick } = await import("../trainer/daily");
+    const pick = await ensurePick("2026-10-16");
+    expect(pick?.ticker).toBe("BBB");
   });
 });
 

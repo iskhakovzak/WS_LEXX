@@ -350,6 +350,7 @@ export default {
       slipUsd: { label: "Bozor orderi sirpanishi, $", help: "Yarim spreddan tashqari, aksiya boshiga." },
       stopSlipUsd: { label: "Stop sirpanishi, $", help: "Stop shu summaga yomonroq bajariladi; gepda — bar ochilish narxidan." },
       oneRUsd: { label: "Standart 1R, $", help: "Treyder rejasi va limitlarida 1R boʻlmasa, risk boʻyicha hajm uchun." },
+      minGapPct: { label: "Mashqning min. gepi, %", help: "Trenajordagi har bir kun oldingi yopilishdan kamida shuncha uzoqda ochiladi — yuqoriga yoki pastga; va kunning katalizatori bor (hisobot yoki yangilik)." },
       dailyEnabled: { label: "«Kun vazifasi»", help: "Har savdo kuni butun desk uchun bitta tiker-kun." },
       dailyPickTime: { label: "Vazifani tanlash vaqti", help: "Nyu-York vaqti, ish kunlari. «Kun vazifasi» reyting oynasini ham yopadi." },
       dailyPlayMinutes: { label: "Vazifa davomiyligi", help: "Ochilishdan boshlab sessiyaning necha daqiqasi oʻynaladi." },

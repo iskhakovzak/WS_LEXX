@@ -51,11 +51,14 @@ export function weekdaysBetween(a: string, b: string): number {
 /**
  * The archived trading day before `day`: its bars (chart context — only when they are as fine as the game's bars)
  * and its regular-session high / low / close (PDH / PDL / PDC). Null when the archive has no day close enough.
+ * `expectClose` (the play day's previous close as the provider knows it): a found day whose close is more than 1 % off
+ * is not the previous session (a missing Friday looked like a holiday) — null then, never a wrong PDC / gap.
  */
-export async function loadPrevDay(ticker: string, day: string, maxBarSec: number): Promise<{ bars: SimBar[]; levels: { h: number; l: number; c: number } } | null> {
+export async function loadPrevDay(ticker: string, day: string, maxBarSec: number, expectClose?: number | null): Promise<{ bars: SimBar[]; levels: { h: number; l: number; c: number } } | null> {
   const { items } = await listArchivedDays({ symbol: ticker, from: addDays(day, -7), to: addDays(day, -1), limit: 10 });
   const prev = items[0];
   if (!prev || weekdaysBetween(prev.day, day) > 1 || prev.high == null || prev.low == null || prev.close == null) return null;
+  if (expectClose != null && expectClose > 0 && Math.abs(prev.close - expectClose) / expectClose > 0.01) return null;
   const sec = prev.tf === "1m" ? 60 : prev.tf === "5m" ? 300 : Infinity;
   const bars = sec <= maxBarSec ? (await loadDayBars(ticker, prev.day))?.bars ?? [] : [];
   return { bars, levels: { h: prev.high, l: prev.low, c: prev.close } };
@@ -166,7 +169,7 @@ export async function loadDailyBefore(ticker: string, day: string, n = 60): Prom
     const { rows } = await pool.query<{ day: string; o: string; h: string; l: string; c: string; v: string | null }>(
       `SELECT DISTINCT ON (day) day::text AS day, rth_open AS o, rth_high AS h, rth_low AS l, rth_close AS c, volume AS v
          FROM candle_archive
-        WHERE symbol = $1 AND day < $2::date AND day >= $2::date - 120 AND rth_open IS NOT NULL AND rth_close IS NOT NULL
+        WHERE symbol = $1 AND day < $2::date AND day >= $2::date - 400 AND rth_open IS NOT NULL AND rth_close IS NOT NULL
         ORDER BY day DESC, CASE tf WHEN '1m' THEN 1 WHEN '5m' THEN 2 WHEN '15m' THEN 3 WHEN '30m' THEN 4 ELSE 5 END`,
       [ticker, day],
     );

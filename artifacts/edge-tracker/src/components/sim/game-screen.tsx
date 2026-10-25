@@ -8,7 +8,9 @@
  *
  * «Как торговый экран» (Тренажёр 2): a timeframe switcher over the chart (keys 1–4; base bars aggregated on the client,
  * the last candle forming bar by bar — tf-model.ts), a daily mini panel (Д) and a brief card at the start (gap, PDH /
- * PDL / PMH / PML, ATR — GET /sim/games/:id/context), size in bases ½ · 1 · 2 · 3 (Shift+1..4), a TradingView-like
+ * PDL / PMH / PML, ATR — GET /sim/games/:id/context), the view «Дневка» (the long daily chart: 250 days, previous close,
+ * 52-week high / low, the gap), «Контекст дня» on top of the side column (gap, catalyst masked until the reveal, cap,
+ * float, premarket volume — every trainer day gapped ≥ 7 % with a catalyst), size in bases ½ · 1 · 2 · 3 (Shift+1..4), a TradingView-like
  * position box (use-game-overlay; lines draggable by mouse and finger, Shift / Alt+click or the long-press menu to
  * place them), auto stop + target on entry (use-entry-bracket), playback 1× / 5× / 30× with → = to the close of the
  * current candle, Shift+→ = jump to the next event, and an automatic pause when a stop / target fills. Series games
@@ -41,7 +43,8 @@ import { usePlayback } from "./use-playback";
 import { TF_MINUTES, baseTfOf, displayTfsOf, formingInfo, pickDisplayTf, stepToClose, tfMinutes, todayCandle, type DisplayTf } from "./tf-model";
 import { SizeBar } from "./size-bar";
 import { ChartStage, type PlaceMenu } from "./chart-stage";
-import { ChartToolbar } from "./chart-toolbar";
+import { ChartToolbar, type ChartView } from "./chart-toolbar";
+import { DayContextCard } from "./day-context";
 import { MobileBar } from "./mobile-bar";
 import { useGameKeys } from "./use-game-keys";
 import { useEntryBracket } from "./use-entry-bracket";
@@ -83,7 +86,8 @@ export function GameScreen({
   const intraday = meta.mode === "intraday";
   const { pos } = game.state;
   const price = game.feed.bars[game.cursor]?.c ?? 0;
-  React.useEffect(() => { setPlanTarget(null); setMenu(null); }, [meta.id]);
+  const [view, setView] = React.useState<ChartView>("intraday");
+  React.useEffect(() => { setPlanTarget(null); setMenu(null); setView("intraday"); }, [meta.id]);
 
   // ── Timeframes ──────────────────────────────────────────────────────────
   const tfs = React.useMemo(() => displayTfsOf(meta), [meta]);
@@ -167,7 +171,7 @@ export function GameScreen({
         <div className="flex min-w-0 flex-col gap-2">
           <ChartToolbar
             tfs={tfs} tf={dispTf} setTf={setTf} fine={fine} intraday={intraday}
-            canDaily={intraday && dc.dailyBars.length > 0} showDaily={dc.showDaily} toggleDaily={dc.toggleDaily}
+            canDaily={intraday && dc.dailyBars.length > 0} showDaily={dc.showDaily} toggleDaily={dc.toggleDaily} view={view} setView={setView}
             forming={done ? null : forming} toggles={toggles} setToggles={setToggles}
             onNoTrade={onNoTrade && canNoTrade ? onNoTrade : null} onSkip={onSkip && !done ? onSkip : null}
           />
@@ -177,6 +181,8 @@ export function GameScreen({
             daily={dc.dailyBars} today={dc.today} showDaily={dc.showDaily}
             chip={eb.notice ?? (event ? eventLabel(event, t) : null)} chipWarn={!!eb.notice}
             brief={dc.brief && dc.ctx ? dc.ctx.levels : null} onCloseBrief={dc.closeBrief}
+            view={view} dailyLevels={dc.ctx ? { pdc: dc.levels.pdc ?? dc.ctx.levels.pdc, hi52: dc.ctx.levels.hi52, lo52: dc.ctx.levels.lo52 } : undefined}
+            gapPct={dc.ctx?.day?.gapPct ?? dc.ctx?.levels.gapPct ?? null} day={dc.ctx?.day ?? null}
           />
           {!done && (
             <MobileBar
@@ -188,11 +194,15 @@ export function GameScreen({
         </div>
         <aside className="glass-panel flex min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl p-[var(--panel-p)] lg:h-[calc(100dvh-13rem)] lg:min-h-[480px]">
           {done ? (
-            game.reveal?.own
-              ? <OwnResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} />
-              : <ResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} noAgain={daily} />
+            <>
+              {game.reveal?.own
+                ? <OwnResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} />
+                : <ResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} noAgain={daily} />}
+              {dc.ctx?.day && <DayContextCard day={dc.ctx.day} revealed />}
+            </>
           ) : (
             <>
+              {dc.ctx?.day && <DayContextCard day={dc.ctx.day} revealed={false} compact />}
               {meta.own && <OwnMoment cursor={game.cursor} decisionIdx={meta.own.decisionIdx} />}
               <PositionCard game={game} />
               <OrderPad

@@ -1,5 +1,6 @@
 /**
- * The row over the game chart: timeframe (keys 1–4) + the daily panel (Д), how far the forming candle is, the overlay
+ * The row over the game chart: the view (intraday / the long daily chart), timeframe (keys 1–4) + the daily mini panel
+ * (Д), how far the forming candle is, the overlay
  * chips (levels, VWAP / MA), and on series games the decisions «Не торгую (T)» (only while flat with no trade yet)
  * and «Пропустить (N)».
  */
@@ -12,9 +13,14 @@ import type { DisplayTf } from "./tf-model";
 
 const noFocus = (e: { preventDefault: () => void }) => e.preventDefault();
 
+export type ChartView = "intraday" | "daily";
+
 export function ChartToolbar({
-  tfs, tf, setTf, fine, intraday, canDaily, showDaily, toggleDaily, forming, toggles, setToggles, onNoTrade, onSkip,
+  tfs, tf, setTf, fine, intraday, canDaily, showDaily, toggleDaily, forming, toggles, setToggles, onNoTrade, onSkip, view = "intraday", setView,
 }: {
+  /** Intraday chart or the long daily chart (only offered when the game has daily context). */
+  view?: ChartView;
+  setView?: ((v: ChartView) => void) | null;
   tfs: readonly DisplayTf[];
   tf: DisplayTf | null;
   setTf: (tf: DisplayTf) => void;
@@ -34,14 +40,21 @@ export function ChartToolbar({
   const { t } = simI18n.useT();
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {tfs.length > 1 && tf && (
+      {intraday && canDaily && setView && (
+        <Segmented
+          size="sm" ariaLabel={t("view.label")} value={view}
+          onChange={(v) => setView(v === "daily" ? "daily" : "intraday")}
+          options={[{ value: "intraday", label: t("view.intraday") }, { value: "daily", label: t("view.daily"), title: t("view.dailyHint") }]}
+        />
+      )}
+      {view === "intraday" && tfs.length > 1 && tf && (
         <Segmented
           size="sm" ariaLabel={t("tf.label")} value={tf}
           onChange={(v) => setTf(v as DisplayTf)}
           options={tfs.map((x, i) => ({ value: x, label: x, title: fine ? t("tf.keyHint", { tf: x, key: String(i + 1) }) : x }))}
         />
       )}
-      {canDaily && <FilterChip size="sm" active={showDaily} onClick={toggleDaily} title={t("tf.dailyHint")}>{t("tf.daily")}</FilterChip>}
+      {canDaily && view === "intraday" && <FilterChip size="sm" active={showDaily} onClick={toggleDaily} title={t("tf.dailyHint")}>{t("tf.daily")}</FilterChip>}
       {forming && tf && (
         <span className="px-1 text-2xs tabular-nums text-muted-foreground" title={t("tf.formingHint")} data-testid="sim-forming">
           {t("tf.forming", { tf, have: forming.have, need: forming.need })}
